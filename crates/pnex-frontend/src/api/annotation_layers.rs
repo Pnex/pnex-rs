@@ -127,7 +127,7 @@ pub async fn update(
     .await
 }
 
-/// `DELETE /api/v1/annotation-layers/{id}` — couche + versions (cascade).
+/// `DELETE /api/v1/annotation-layers/{id}` — layer + versions (cascade).
 pub async fn delete(id: &str) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,
@@ -141,7 +141,7 @@ pub async fn delete(id: &str) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// `GET /api/v1/annotation-layers/{id}/versions` — historique, desc.
+/// `GET /api/v1/annotation-layers/{id}/versions` — history, desc.
 pub async fn versions(
     id: &str,
     limit: i64,
@@ -158,7 +158,7 @@ pub async fn versions(
     .await
 }
 
-/// `GET /api/v1/annotation-layers/{id}/versions/{n}` — document historique.
+/// `GET /api/v1/annotation-layers/{id}/versions/{n}` — historical document.
 pub async fn version(
     id: &str,
     version_number: i64,
@@ -237,7 +237,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn classification_des_echecs_de_save() {
+    fn save_failure_classification() {
         let conflict = ApiError::http(
             409,
             r#"{"error":"conflict","description":"version périmée"}"#,

@@ -145,7 +145,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     state::N_STEPS.store(plan.n_steps as u8, Ordering::Relaxed);
                     state::STEP_DEG_MD.store((plan.step_deg * 1000.0) as i32, Ordering::Relaxed);
                     super::filelog::log(&format!(
-                        "overlay: plan d'anneau — {} cibles de {:.1}°",
+                        "overlay: ring plan — {} targets of {:.1}°",
                         plan.n_steps, plan.step_deg
                     ));
                     return;
@@ -292,7 +292,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                                         state::RING.store(ring as u8 + 1, Ordering::Relaxed);
                                         state::STEP.store(0, Ordering::Relaxed);
                                         super::filelog::log(&format!(
-                                            "ring: {ring} complet → anneau {}",
+                                            "ring: {ring} complete → ring {}",
                                             ring + 1
                                         ));
                                     }
@@ -322,7 +322,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     }
                 }
 
-                // ── Snapshot UI discret ────────────────────────────────
+                // ── Discrete UI snapshot ────────────────────────────────
                 let err = pose
                     .map(|p| guidance::signed_error(target_yaw, target_pitch, p))
                     .unwrap_or((999.0, 999.0, 999.0));
@@ -361,7 +361,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     last_rendered = Some(snapshot);
                 }
 
-                // ── Couche DOM continue (15 Hz) ────────────────────────
+                // ── Continuous DOM layer (15 Hz) ────────────────────────
                 if now.saturating_sub(last_dom_push) >= 66 {
                     last_dom_push = now;
                     push_overlay_dom(pose, target_yaw, target_pitch, dwell_start, now);

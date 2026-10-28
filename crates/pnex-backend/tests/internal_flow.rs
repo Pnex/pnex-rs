@@ -103,7 +103,7 @@ async fn deploy_ai_nodes(ctx: &loco_rs::app::AppContext, org: i64) {
 /// Fail-closed: without a configured token, every write is refused 401.
 #[tokio::test]
 #[serial]
-async fn interne_sans_token_refuse() {
+async fn internal_without_token_refused() {
     with_app(|server| async move {
         let resp = server
             .post("/internal/flow/device-write")
@@ -124,7 +124,7 @@ async fn interne_sans_token_refuse() {
 /// resolution as the route).
 #[tokio::test]
 #[serial]
-async fn interne_mauvais_token_et_device_inconnu() {
+async fn internal_wrong_token_and_unknown_device() {
     with_app(|server| async move {
         unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-test-123") };
         let bad = server
@@ -154,7 +154,7 @@ async fn interne_mauvais_token_et_device_inconnu() {
 /// never reaches an internal route, even with the right token.
 #[tokio::test]
 #[serial]
-async fn interne_via_proxy_public_404() {
+async fn internal_via_public_proxy_404() {
     with_app(|server| async move {
         unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-test-123") };
         for header in ["x-forwarded-for", "x-real-ip", "forwarded"] {

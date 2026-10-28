@@ -803,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn doc_tolerant_aux_champs_manquants() {
+    fn doc_tolerates_missing_fields() {
         // Old doc without color/label: defaults set, doc accepted.
         let doc: AnnotationDoc = serde_json::from_str(
             r#"{"items":[{"id":"a1","media_asset_id":"00000000-0000-0000-0000-000000000000",
@@ -816,12 +816,12 @@ mod tests {
     }
 
     #[test]
-    fn doc_vide_valide() {
+    fn empty_doc_is_valid() {
         assert!(validate_annotation_doc(&AnnotationDoc::default()).is_empty());
     }
 
     #[test]
-    fn validation_structurelle() {
+    fn structural_validation() {
         let mut doc = AnnotationDoc {
             items: vec![item(
                 "a1",
@@ -955,7 +955,7 @@ mod tests {
     }
 
     #[test]
-    fn kind_pour_geometrie() {
+    fn kind_for_geometry() {
         assert!(geometry_requires_panorama(&AnnotationGeometry::Equirect {
             yaw: 0.0,
             pitch: 0.0

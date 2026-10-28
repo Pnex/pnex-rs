@@ -3,8 +3,8 @@
 # country; country packs add their registers), extended
 # with its commercial status and coverage; no "company" or "account" type
 # next to it (D304), so the graph stays one.
-# `subsidiary_of` (group structure, D331) moved to `companies` 1.1.0 in
-# 1.1.0: it is not specific to selling.
+# `subsidiary_of` (group structure, D331) moved to the `companies` pack
+# (1.1.0): it is not specific to selling.
 # `last_revenue` is the latest known revenue and `revenue_year` its fiscal
 # year: the core has no per-year scalar property (D178 temporal = O2
 # series or events), past years stay in the object history.
@@ -36,7 +36,7 @@
 # (placeholders of `page_render`): account plan, competitor sheet, meeting
 # preparation. A snapshot of the day, then free text.
 # Personal data (D341, crm.md D442–D447): the persona of a person is
-# `personnelle`; `opposed_on` records an objection (prospecting flows
+# `personal`; `opposed_on` records an objection (prospecting flows
 # skip the person); the legal basis shown on a person and the retention
 # period of the erasure queue are settings of the org.
 # Meetings: a `meeting` with an account, its participants (ours and
@@ -54,10 +54,11 @@
 # (`registry_id`, `matching`, `candidates`, `contact_of`) is done by a
 # country layer (`prospecting_b2b_fr` for France); nothing here is French.
 # Since 2.0.0 every identifier is English (breaking).
+# Since 3.0.0 the `personal` classification value and the flow names are English (breaking).
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "2.0.0"
+version: "3.0.0"
 requires: [companies, web_presence]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -116,7 +117,7 @@ extends:
         values: [decision_maker, champion, sponsor, influencer, buyer, user, technical, other]
         labels: {decision_maker: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, influencer: {fr: "Prescripteur", en: "Influencer"}, buyer: {fr: "Acheteur", en: "Buyer"}, user: {fr: "Utilisateur", en: "User"}, technical: {fr: "Technique", en: "Technical"}, other: {fr: "Autre", en: "Other"}}
         indexed: true
-        classification: personnelle
+        classification: personal
       - { key: review_on, name: Review on, names: {fr: "À revoir le"}, kind: date }
       - { key: opposed_on, name: Objected on, names: {fr: "Opposition le"}, kind: date, indexed: true }
 link_types:
@@ -446,7 +447,7 @@ functions:
                   pts = int(number(props.get("points", 0)) or 0)
                   total += pts
                   sign = "+" if pts >= 0 else ""
-                  lines.append(c.get("title", props.get("property", "")) + " : " + sign + str(pts))
+                  lines.append(c.get("title", props.get("property", "")) + ": " + sign + str(pts))
           return {
               "payload": {
                   "target_score": total,
@@ -470,7 +471,7 @@ functions:
           lines = []
           for r in rows:
               p = r["properties"]
-              lines.append("- " + p.get("date", "") + " " + r["title"] + " : " + p.get("summary", ""))
+              lines.append("- " + p.get("date", "") + " " + r["title"] + ": " + p.get("summary", ""))
           return [
               {"payload": {"trigger": True, "count": len(rows), "text": "\n".join(lines)}},
               {"payload": {}},
@@ -531,7 +532,7 @@ functions:
       def handle(inputs, msg):
           return {"payload": {"notified_on": msg.get("today", "")}, "object_id": msg["object"]["id"]}
 flows:
-  - name: "Prospection · watched pages to signals"
+  - name: "Prospecting · watched pages to signals"
     note: "Every hour, up to 50 watched pages whose text changed are read by the organization's LLM: a page announcing a topic of the list (new site, investment, hiring, ramp-up, takeover, retirements, quality problem, multi-site, in-house school, new offer, prices) becomes a commercial signal about the account, to validate, quoting the sentence. Edit the topics in the function ps_signal and in the prompt together. Watch a page with a site crawl whose record writes type watched_page (url, text, changed → changed, link_to → account). Needs an AI provider."
     graph:
       nodes:
@@ -556,8 +557,8 @@ flows:
         - { id: about, kind: pnex_function, config: { function_name: ps_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
         - { id: linked, kind: link_upsert, config: { link_type: signal_about } }
         - { id: done, kind: object_upsert, config: { object_type: watched_page, key: id } }
-  - name: "Prospection · signals digest"
-    note: "Each morning the commercial signals not yet notified make one digest (payload.text, payload.count), then are marked notified. Add your Notification node on the digest port (template with a « text » variable, trigger = payload.trigger), then deploy."
+  - name: "Prospecting · signals digest"
+    note: "Each morning the commercial signals not yet notified make one digest (payload.text, payload.count), then are marked notified. Add your Notification node on the digest port (template with a 'text' variable, trigger = payload.trigger), then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "0 7 * * *" }, outputs: [{ port: 0, targets: [new] }] }
@@ -579,8 +580,8 @@ flows:
           outputs: [{ port: 0, targets: [mark] }]
         - { id: mark, kind: pnex_function, config: { function_name: pb_mark_notified, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - { id: write, kind: object_upsert, config: { object_type: sales_signal, key: id } }
-  - name: "Prospection · target score"
-    note: "Every 15 minutes, up to 500 organizations not scored today get their target score from the org's active targeting criteria (objects « Targeting criterion »: property, operator, value, points). Add criteria first, then deploy. A large list is covered over the day."
+  - name: "Prospecting · target score"
+    note: "Every 15 minutes, up to 500 organizations not scored today get their target score from the org's active targeting criteria (objects 'Targeting criterion': property, operator, value, points). Add criteria first, then deploy. A large list is covered over the day."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "*/15 * * * *" }, outputs: [{ port: 0, targets: [crit] }] }

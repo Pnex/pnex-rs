@@ -54,7 +54,7 @@ pub mod media_ingest;
 pub mod media_runs;
 pub mod media_sniff;
 pub mod memory;
-/// Notifications (D49–D54) — broker WS, journal, pruner, livraison.
+/// Notifications (D49–D54) — WS broker, journal, pruner, delivery.
 pub mod notify;
 pub mod notify_journal;
 pub mod notify_recipients;

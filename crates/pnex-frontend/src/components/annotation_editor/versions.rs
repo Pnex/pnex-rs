@@ -110,7 +110,7 @@ pub fn AnnotationVersionsDrawer(
                     }
                 }
 
-                // ─── Historique ───
+                // ─── History ───
                 {
                     match &*versions.value().read() {
                         Some(Ok(paged)) if paged.results.is_empty() => rsx! {

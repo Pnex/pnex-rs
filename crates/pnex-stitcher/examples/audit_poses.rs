@@ -39,7 +39,7 @@ fn main() {
 
     let poses: Vec<Pose> =
         serde_json::from_slice(&std::fs::read(format!("{dir}/poses.json")).expect("poses.json"))
-            .expect("poses.json invalide");
+            .expect("poses.json invalid");
     let n = poses.len();
 
     // Loading + preparation (same logic as the stitcher, gains 1.0).
@@ -87,7 +87,7 @@ fn main() {
             pairs.push((a, b));
         }
     }
-    println!("{n} frames, {} paires candidates", pairs.len());
+    println!("{n} frames, {} candidate pairs", pairs.len());
 
     // Match of one pair: extraction + match + Horn/RANSAC → (inliers, angle°).
     let match_pair = |a: usize, b: usize| -> Option<(usize, f32)> {

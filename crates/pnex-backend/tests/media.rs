@@ -60,7 +60,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 /// Minimal JPEG with an APP1 XMP segment (same encoding as the GPano sniff).
@@ -299,7 +299,7 @@ async fn cycle_upload_list_detail_versions() {
 
 #[tokio::test]
 #[serial]
-async fn isolation_org_et_derniere_version() {
+async fn org_isolation_and_latest_version() {
     with_app(|server, env| async move {
         let org1 = personal_org(&server, &env.alice).await;
         let org2 = personal_org(&server, &env.bob).await;
@@ -443,7 +443,7 @@ async fn content_etag_revalidation() {
 
 #[tokio::test]
 #[serial]
-async fn roles_et_pagination() {
+async fn roles_and_pagination() {
     with_app(|server, env| async move {
         // JIT provisioning of both users (as in tenant_isolation:
         // a user must exist before being added as a member).
@@ -508,7 +508,7 @@ async fn roles_et_pagination() {
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(res.status_code(), 403, "viewer delete → 403 avant 404");
+        assert_eq!(res.status_code(), 403, "viewer delete → 403 before 404");
 
         // Pagination limit=2 → count 3, next present.
         let page: serde_json::Value = server

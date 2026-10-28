@@ -24,14 +24,15 @@
 # `appears_on` of the media coverage pack.
 # Since 1.11.0 personal data is classified (crm.md D442): a person's name,
 # aliases, role and notes, identifier values and a position held are
-# `personnelle`, hidden from a role without the read permission and
+# `personal`, hidden from a role without the read permission and
 # removed by an erasure.
 # No "suspect" or "guilty" field (K16): an actor has roles in events, legal
 # qualification is not an object attribute.
+# Since 2.0.0 the `personal` classification value is English (breaking).
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "1.13.0"
+version: "2.0.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -40,12 +41,12 @@ types:
     names: {fr: "Personne"}
     icon: user
     may_be_contained_in: [folder]
-    title_classification: personnelle
+    title_classification: personal
     properties:
-      - { key: aliases, name: Aliases, names: {fr: "Alias"}, kind: text, max_len: 1000, classification: personnelle }
-      - { key: role_label, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255, classification: personnelle }
+      - { key: aliases, name: Aliases, names: {fr: "Alias"}, kind: text, max_len: 1000, classification: personal }
+      - { key: role_label, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255, classification: personal }
       - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
-      - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000, classification: personnelle }
+      - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000, classification: personal }
   - key: organization
     name: Organization
     names: {fr: "Organisation"}
@@ -145,7 +146,7 @@ types:
     names: {fr: "Identifiant"}
     icon: tag
     may_be_contained_in: [folder]
-    title_classification: personnelle
+    title_classification: personal
     properties:
       - key: kind
         name: Kind
@@ -154,7 +155,7 @@ types:
         values: [phone, email, plate, account, imei, iban, other]
         labels: {phone: {fr: "Téléphone", en: "Phone"}, email: {fr: "E-mail", en: "Email"}, plate: {fr: "Plaque", en: "Plate"}, account: {fr: "Compte", en: "Account"}, imei: {fr: "IMEI", en: "IMEI"}, iban: {fr: "IBAN", en: "IBAN"}, other: {fr: "Autre", en: "Other"}}
         required: true
-      - { key: value, name: Value, names: {fr: "Valeur"}, kind: text, max_len: 255, required: true, indexed: true, classification: personnelle }
+      - { key: value, name: Value, names: {fr: "Valeur"}, kind: text, max_len: 255, required: true, indexed: true, classification: personal }
 link_types:
   - key: occurred_at
     name: occurred at
@@ -205,10 +206,10 @@ link_types:
     from_types: [organization]
     to_types: [person]
     attributes:
-      - { key: position, name: Position, names: {fr: "Poste"}, kind: text, max_len: 255, classification: personnelle }
+      - { key: position, name: Position, names: {fr: "Poste"}, kind: text, max_len: 255, classification: personal }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
-      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000, classification: personnelle }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000, classification: personal }
   - key: owns
     name: owns
     names: {fr: "possède"}

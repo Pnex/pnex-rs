@@ -130,7 +130,7 @@ pub async fn versions(
     .await
 }
 
-/// `GET /api/v1/flows/{id}/versions/{n}` — graphe historique.
+/// `GET /api/v1/flows/{id}/versions/{n}` — historical graph.
 pub async fn version(id: i64, version_number: i64) -> Result<FlowVersionDetail, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -302,7 +302,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn filtres_vers_query() {
+    fn filters_to_query() {
         let mut f = FlowFilters::default();
         assert_eq!(f.to_query(), "");
         f.search = Some("pipeline température".into());
@@ -316,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn conflit_409_reconnu() {
+    fn conflict_409_recognized() {
         let err = ApiError::http(
             409,
             r#"{"error":"conflict","description":"version périmée : attendu 1, version courante 2 — rechargez la dernière version"}"#,
@@ -330,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn violations_400_extraites() {
+    fn violations_400_extracted() {
         let err = ApiError::http(
             400,
             r#"{"error":"flow-invalid","errors":{"violations":[{"node_id":"n1","code":"readonly_sql","message":"mot-clé interdit en lecture seule : DELETE"}]}}"#,
@@ -346,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn erreurs_autres_relayees() {
+    fn other_errors_relayed() {
         assert_eq!(
             classify_save_error(&ApiError::new("réseau : timeout")),
             SaveError::Other("réseau : timeout".into())

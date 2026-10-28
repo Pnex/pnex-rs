@@ -237,7 +237,7 @@ async fn names_match_without_accents_or_case() {
         assert_eq!(st, 200, "{o}");
         let twin = object(&server, &env.alice, org, "person", "ELODIE  martin", json!({})).await;
         let (st, e) = link(&server, &env.alice, org, "employs", &acme, &twin, json!({})).await;
-        assert_eq!((st, e["error"].as_str()), (409, Some("prospection-opposed")), "{e}");
+        assert_eq!((st, e["error"].as_str()), (409, Some("prospecting-opposed")), "{e}");
     })
     .await;
 }

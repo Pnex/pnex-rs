@@ -24,7 +24,7 @@ impl From<AdmissionError> for Error {
     }
 }
 
-/// Mode fil → code (helpers locaux, miroirs de ws_device::str_to_mode).
+/// Wire mode → code (local helpers, mirrors of ws_device::str_to_mode).
 fn str_to_mode_local(s: &str) -> Mode {
     match s {
         "digital_out" => Mode::DigitalOut,
@@ -168,7 +168,7 @@ pub(crate) async fn load_overlay(
         ));
     };
     let details: pnex_core::BoardDetails = serde_json::from_value(details.clone())
-        .map_err(|e| Error::string(&format!("overlay board invalide : {e}")))?;
+        .map_err(|e| Error::string(&format!("invalid board overlay: {e}")))?;
     let peripherals = device_peripherals(device);
     let mut pins = details.admission_pins(soc);
     let reserved: HashSet<u16> = details.reserved_gpios(&peripherals).into_iter().collect();

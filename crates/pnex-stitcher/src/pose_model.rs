@@ -274,7 +274,7 @@ mod tests {
     /// work_size: portrait aspect 1080×1920 at max 896 → 504×896 (both
     /// multiples of 8); landscape the reverse; minimum bounded.
     #[test]
-    fn taille_travail() {
+    fn working_size() {
         assert_eq!(work_size(1080, 1920, 896), (504, 896));
         assert_eq!(work_size(1920, 1080, 896), (896, 504));
         assert_eq!(work_size(64, 64, 896), (64, 64));
@@ -284,7 +284,7 @@ mod tests {
     /// resize_gray: constant everywhere = constant everywhere, mean of a
     /// gradient preserved, no overflow of [0,1].
     #[test]
-    fn gris_moyenne() {
+    fn gray_mean() {
         let (w, h) = (64u32, 64u32);
         let mut rgb = vec![0u8; (w * h * 3) as usize];
         for j in 0..h {
@@ -300,6 +300,6 @@ mod tests {
         assert!(g.iter().all(|&v| (0.0..=1.0).contains(&v)));
         // Global mean preserved (linear gradient 0..252 → ~0.5).
         let m = g.iter().sum::<f32>() / g.len() as f32;
-        assert!((m - 0.492).abs() < 0.05, "moyenne = {m}");
+        assert!((m - 0.492).abs() < 0.05, "mean = {m}");
     }
 }

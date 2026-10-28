@@ -35,7 +35,7 @@ pub enum AnnotationLayerWriteError {
     NameRequired,
     /// Name > 200 characters.
     NameTooLong,
-    /// `validate_annotation_doc` non satisfait (structurel).
+    /// `validate_annotation_doc` not satisfied (structural).
     Doc(Vec<AnnotationViolation>),
     /// Referenced asset missing from the org (or non-UUID id).
     UnknownAsset { id: String },
@@ -56,7 +56,7 @@ pub enum AnnotationLayerWriteError {
     MediaAndTour,
     /// Associated tour missing from the org.
     UnknownTour { id: String },
-    /// Concurrence optimiste perdue.
+    /// Optimistic concurrency lost.
     Conflict { expected: i64, current: i64 },
     /// Database failure.
     Db,

@@ -97,7 +97,7 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn poste_le_payload_et_le_bearer_vers_deliver() {
+    async fn posts_the_payload_and_the_bearer_to_deliver() {
         let seen = Arc::new(tokio::sync::Mutex::new(None::<(HeaderMap, Value)>));
         let seen_for_handler = seen.clone();
         let app = axum::Router::new().route(
@@ -141,7 +141,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn coords_injectees_absentes_erreur_config() {
+    async fn missing_injected_coords_config_error() {
         let e = WebSocketChannel
             .send(
                 &json!({}),

@@ -31,7 +31,7 @@ pub fn registered() {}
 #[cfg(test)]
 mod tests {
     #[test]
-    fn registered_ne_panique_pas() {
+    fn registered_does_not_panic() {
         super::registered();
     }
 }

@@ -76,7 +76,7 @@ fn onto_error(e: OntologyError) -> ToolError {
             None,
         ),
         OntologyError::Opposed => coded(
-            c::PROSPECTION_OPPOSED,
+            c::PROSPECTING_OPPOSED,
             "this person objected to the processing of their data: never link them again, tell the user".into(),
             None,
         ),

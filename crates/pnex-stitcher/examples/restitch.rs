@@ -31,10 +31,10 @@ fn main() {
     let capture: Capture = serde_json::from_slice(
         &std::fs::read(format!("{dir}/capture.json")).expect("capture.json"),
     )
-    .expect("capture.json invalide");
+    .expect("capture.json invalid");
     let poses: Vec<Pose> =
         serde_json::from_slice(&std::fs::read(format!("{dir}/poses.json")).expect("poses.json"))
-            .expect("poses.json invalide");
+            .expect("poses.json invalid");
 
     let mut frames: Vec<Frame> = Vec::with_capacity(poses.len());
     for (k, pose) in poses.iter().enumerate() {
@@ -152,7 +152,7 @@ fn main() {
     // shows exactly where real content stops (synthetic caps
     // show up as bands < 20 %).
     if std::env::var("PROFILE").is_ok() {
-        let img = image::load_from_memory(&out.jpeg).expect("relire panorama");
+        let img = image::load_from_memory(&out.jpeg).expect("reread panorama");
         let gray = img.to_luma8();
         let (w, h) = (gray.width() as usize, gray.height() as usize);
         println!("\ncontent profiles by latitude (local mean of the gradient):");
@@ -174,7 +174,7 @@ fn main() {
                 }
             }
             println!(
-                "  lat [{:+6.1} → {:+6.1}]  gradient moyen = {:.2}",
+                "  lat [{:+6.1} → {:+6.1}]  mean gradient = {:.2}",
                 lat_hi - 5.0,
                 lat_hi,
                 grad / cnt.max(1) as f64

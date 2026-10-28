@@ -368,8 +368,8 @@ mod tests {
     use edgelink_core::runtime::registry::RegistryBuilder;
 
     #[test]
-    fn node_enregistre_dans_le_registre() {
-        let reg = RegistryBuilder::default().build().expect("registre");
+    fn node_is_in_the_registry() {
+        let reg = RegistryBuilder::default().build().expect("registry");
         let meta = reg
             .get("pnex-coolprop")
             .expect("pnex-coolprop node missing from the registry");
@@ -377,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn registered_ne_panique_pas() {
+    fn registered_does_not_panic() {
         registered();
     }
 }

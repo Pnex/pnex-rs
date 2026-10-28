@@ -1331,7 +1331,7 @@ static void enterMain(const pnex_status::NetState& st, unsigned long now) {
         tft->print("- zone data -");
         tft->setTextColor(COLOR_DIM_AZURE);
         tft->setCursor((SCREEN_W - 24 * 6) / 2, 60);
-        tft->print("(transmission a definir)");
+        tft->print("(transmission to define)");
         s_pin_total = 0;
     } else {
         s_pin_total = 255;  // force the first panel pass to build

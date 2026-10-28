@@ -1135,8 +1135,8 @@ mod tests {
     use edgelink_core::runtime::registry::RegistryBuilder;
 
     #[test]
-    fn node_enregistre_dans_le_registre() {
-        let reg = RegistryBuilder::default().build().expect("registre");
+    fn node_is_in_the_registry() {
+        let reg = RegistryBuilder::default().build().expect("registry");
         let meta = reg
             .get("pnex-notify")
             .expect("pnex-notify node missing from the registry");
@@ -1144,14 +1144,14 @@ mod tests {
     }
 
     #[test]
-    fn registered_ne_panique_pas() {
+    fn registered_does_not_panic() {
         registered();
     }
 
     /// The stale artefact (without snapshot) is refused with an explicit
     /// "redeploy" message — never a silent node without channels.
     #[test]
-    fn config_rejete_snapshot_manquant() {
+    fn config_rejects_missing_snapshot() {
         let err = serde_json::from_str::<PnexNotifyNodeConfig>(
             r#"{"channel_ids":["x"],"template_id":null}"#,
         )
@@ -1160,7 +1160,7 @@ mod tests {
     }
 
     #[test]
-    fn config_accepte_snapshot_complet() {
+    fn config_accepts_complete_snapshot() {
         let cfg: PnexNotifyNodeConfig = serde_json::from_str(
             r#"{
                 "pnex_flow_id": 12, "pnex_org_id": 7, "strict": true,
@@ -1217,7 +1217,7 @@ mod tests {
     }
 
     #[test]
-    fn build_refuse_trigger_absent() {
+    fn build_refuses_missing_trigger() {
         // Anti-spam guarantee: no trigger flag = always-send era artifact —
         // never built, so the node can never send unsolicited notifications.
         let cfg: PnexNotifyNodeConfig = serde_json::from_str(
@@ -1235,7 +1235,7 @@ mod tests {
     }
 
     #[test]
-    fn config_accepte_flag_trigger() {
+    fn config_accepts_trigger_flag() {
         let cfg: PnexNotifyNodeConfig = serde_json::from_str(
             r#"{
                 "pnex_notify_channels": [],
@@ -1248,7 +1248,7 @@ mod tests {
     }
 
     #[test]
-    fn trigger_gate_arme_desarme_et_commit() {
+    fn trigger_gate_arms_disarms_and_commits() {
         let mut armed = false;
         let mut ready = false;
         // Disarmed by default: a true arms the gate, nothing pending yet.
@@ -1284,7 +1284,7 @@ mod tests {
     }
 
     #[test]
-    fn trigger_gate_permet_envoi_seulement_arme() {
+    fn trigger_gate_allows_sending_only_when_armed() {
         // Unwired: immediate always-send.
         assert!(trigger_allows_send(false, false));
         assert!(trigger_allows_send(true, false));
@@ -1311,7 +1311,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_accepte_vars_template() {
+    fn snapshot_accepts_template_vars() {
         let cfg: PnexNotifyNodeConfig = serde_json::from_str(
             r#"{
                 "pnex_notify_channels": [],
@@ -1326,7 +1326,7 @@ mod tests {
     }
 
     #[test]
-    fn fill_par_topic_puis_par_cles_payload() {
+    fn fill_by_topic_then_by_payload_keys() {
         let stamped = vec!["seuil".to_string(), "value".to_string()];
         let mut filled = BTreeMap::new();
         // Tagger: topic = var, whole payload = the var's value.
@@ -1506,7 +1506,7 @@ mod tests {
     }
 
     #[test]
-    fn fill_payload_non_objet_sans_topic_ne_remplit_rien() {
+    fn fill_non_object_payload_without_topic_fills_nothing() {
         let stamped = vec!["a".to_string()];
         let mut filled = BTreeMap::new();
         assert!(!fill_vars(
@@ -1519,7 +1519,7 @@ mod tests {
     }
 
     #[test]
-    fn anti_spam_fenetre_fixe() {
+    fn anti_spam_fixed_window() {
         let cfg = pnex_core::AntiSpamConfig {
             max_msgs: 3,
             window_secs: 600,
@@ -1544,7 +1544,7 @@ mod tests {
     }
 
     #[test]
-    fn anti_spam_premier_envoi_ouvre_la_fenetre() {
+    fn anti_spam_first_send_opens_the_window() {
         let cfg = pnex_core::AntiSpamConfig {
             max_msgs: 2,
             window_secs: 60,

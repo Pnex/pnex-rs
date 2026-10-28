@@ -217,7 +217,7 @@ fn highlight_code(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
                 i += 1;
             }
             if i < bytes.len() {
-                i += 1; // guillemet fermant
+                i += 1; // closing quote
             }
             out.push(Tok {
                 class: "text-emerald-600",
@@ -671,7 +671,7 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_texte_integral() {
+    fn roundtrip_full_text() {
         let code = "// @input a number\ndef handle(inputs, msg):\n    return inputs[\"a\"]\n";
         assert_eq!(text_of(&highlight(code, FunctionLanguage::Starlark)), code);
         let js = "function handle(inputs, msg) {\n  return msg.payload; // commentaire\n}\n";
@@ -710,7 +710,7 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_directives_espace_conserve() {
+    fn roundtrip_directives_space_preserved() {
         // Regression (user screenshot): the name/type split swallowed
         // the space → "temperaturenumber" and overlay misalignment.
         let star = "# @input temperature number \"Température mesurée (°C)\"\n# @input threshold number=20 \"Seuil d'alerte\"\n# @output heating number \"1 si chauffage\"\n";
@@ -720,7 +720,7 @@ mod tests {
     }
 
     #[test]
-    fn prefixe_commentaire_par_langage() {
+    fn comment_prefix_per_language() {
         // In Starlark, `//` is NOT a comment (integer division):
         // the line stays tokenised as code, not swallowed as a comment.
         let toks = highlight("x = a // b\n", FunctionLanguage::Starlark);
@@ -736,7 +736,7 @@ mod tests {
     }
 
     #[test]
-    fn directives_sub_colorees() {
+    fn sub_directives_colored() {
         let toks = highlight(
             "// @input temperature number \"Température\"\n",
             FunctionLanguage::Js,
@@ -750,7 +750,7 @@ mod tests {
     }
 
     #[test]
-    fn classes_basiques() {
+    fn basic_classes() {
         let toks = highlight(
             "function handle(inputs, msg) { return 42; }",
             FunctionLanguage::Js,

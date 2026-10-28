@@ -67,6 +67,7 @@ mod m20261026_000057_object_erased_at;
 mod m20261026_000058_mailboxes;
 mod m20261026_000059_mail_flow_cursors;
 mod m20261027_000060_mail_invitations;
+mod m20261028_000061_prospecting_oppositions;
 
 pub struct Migrator;
 
@@ -130,6 +131,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261026_000058_mailboxes::Migration),
             Box::new(m20261026_000059_mail_flow_cursors::Migration),
             Box::new(m20261027_000060_mail_invitations::Migration),
+            Box::new(m20261028_000061_prospecting_oppositions::Migration),
         ]
     }
 }

@@ -16,7 +16,7 @@
 //! `crates/pnex-frontend/locales/*.ftl` files. Enforced by the cross-checks:
 //! `crates/pnex-backend/tests/error_codes.rs` (every literal first argument
 //! of `ErrorDetail::new(` must be in `ALL`) and the frontend test
-//! `err_codes_resolvent_en_fr` (every `ALL` code has its key in both
+//! `err_codes_resolve_in_en_fr` (every `ALL` code has its key in both
 //! locales).
 
 // ── Client-side codes (pnex-frontend, resolved at display time) ──────────
@@ -891,7 +891,7 @@ pub const EXT_TARGET_NOT_PROFILE: &str = "ext-target-not-profile";
 /// (D333); args: `max`.
 pub const EXT_PROFILE_DAILY_CAP: &str = "ext-profile-daily-cap";
 /// The person objected to prospecting: no capture, no re-creation (D341).
-pub const PROSPECTION_OPPOSED: &str = "prospection-opposed";
+pub const PROSPECTING_OPPOSED: &str = "prospecting-opposed";
 /// The object was erased: a shell, never edited nor linked again (D446).
 pub const ONTOLOGY_ERASED: &str = "ontology-erased";
 
@@ -931,7 +931,7 @@ pub const ALL: &[&str] = &[
     EXT_NO_AGENT,
     EXT_TARGET_NOT_PROFILE,
     EXT_PROFILE_DAILY_CAP,
-    PROSPECTION_OPPOSED,
+    PROSPECTING_OPPOSED,
     ONTOLOGY_ERASED,
     CRAWL_BLOCKED,
     CRAWL_ROBOTS_DISALLOWED,

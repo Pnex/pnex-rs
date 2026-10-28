@@ -119,7 +119,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn sept_kinds_livres() {
+    fn seven_kinds_shipped() {
         let ks = kinds();
         let mut names: Vec<&str> = ks.iter().map(|k| k.kind.as_str()).collect();
         names.sort_unstable();
@@ -147,7 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn masquage_et_merge_secret() {
+    fn secret_masking_and_merge() {
         let cfg = json!({"url": "https://e.com", "secret_header": "x-sig", "secret_value": "abc"});
         let masked = mask_config("webhook", &cfg);
         assert!(masked["secret_value"].is_null());
@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn kind_inconnu_ne_panique_pas() {
+    fn unknown_kind_does_not_panic() {
         assert!(channel("gotify").is_none());
         assert!(secrets_set("gotify", &json!({})).is_empty());
     }
@@ -191,12 +191,12 @@ mod tests {
     /// (finding: the 3 keys of the webhook field_spec were missing, opening the
     /// webhook form broke the app).
     #[test]
-    fn cles_field_spec_presentes_dans_les_locales() {
+    fn field_spec_keys_present_in_the_locales() {
         let locales = [
             include_str!("../../pnex-frontend/locales/fr-FR.ftl"),
             include_str!("../../pnex-frontend/locales/en-US.ftl"),
         ];
-        let cles_par_locale: Vec<Vec<&str>> = locales
+        let keys_by_locale: Vec<Vec<&str>> = locales
             .iter()
             .map(|ftl| {
                 ftl.lines()
@@ -206,7 +206,7 @@ mod tests {
             .collect();
         for ch in CHANNELS {
             for f in ch.field_spec() {
-                for keys in &cles_par_locale {
+                for keys in &keys_by_locale {
                     assert!(
                         keys.contains(&f.label_i18n.as_str()),
                         "key {} missing from a locale (field_spec {}.{} — add it to both .ftl files)",
@@ -215,7 +215,7 @@ mod tests {
                         f.id
                     );
                     if let Some(help) = &f.help_i18n {
-                        for keys in &cles_par_locale {
+                        for keys in &keys_by_locale {
                             assert!(
                                 keys.contains(&help.as_str()),
                                 "help key {help} missing from a locale (field_spec {}.{})",

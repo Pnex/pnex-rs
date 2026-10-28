@@ -1148,7 +1148,7 @@ pub(super) async fn runtime(
     Ok(format::json(status).into_response())
 }
 
-// ─────────────────────────── Debug (panneau) ───────────────────────────
+// ─────────────────────────── Debug (panel) ───────────────────────────
 
 /// Latest camera/vision node statuses of a flow (D103) plus the last
 /// message of each debug/display node — run mode too: statuses are health,

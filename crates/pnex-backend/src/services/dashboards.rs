@@ -23,13 +23,13 @@ use pnex_core::{DashboardLayout, VizViolation};
 /// (400 field/violations, 409 conflict, 500).
 #[derive(Debug)]
 pub enum DashboardWriteError {
-    /// `validate_layout` non satisfait.
+    /// `validate_layout` not satisfied.
     Violations(Vec<VizViolation>),
     /// Name empty after trim.
     NameRequired,
     /// Name > 255 characters (varchar(255) column).
     NameTooLong,
-    /// Concurrence optimiste perdue.
+    /// Optimistic concurrency lost.
     Conflict { expected: i64, current: i64 },
     /// Version targeted by a restore does not exist.
     VersionUnknown,

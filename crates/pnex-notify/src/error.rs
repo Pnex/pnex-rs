@@ -35,7 +35,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retryable_couvre_transitoire_seulement() {
+    fn retryable_covers_transient_only() {
         assert!(NotifyError::Network("timeout".into()).retryable());
         assert!(NotifyError::Http { status: 500 }.retryable());
         assert!(NotifyError::Http { status: 429 }.retryable());

@@ -59,7 +59,7 @@ pub struct MapClick {
     pub id: Option<String>,
     #[allow(dead_code)]
     pub label: String,
-    /// Coords (clic carte nue).
+    /// Coords (click on bare map).
     pub lng: Option<f64>,
     pub lat: Option<f64>,
 }

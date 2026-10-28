@@ -170,7 +170,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "status": {"type": "string", "enum": ["draft", "deployed", "error"], "description": "filtre optionnel"}
+                    "status": {"type": "string", "enum": ["draft", "deployed", "error"], "description": "optional filter"}
                 },
                 "required": []
             }),
@@ -585,7 +585,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
                     "flow_id": {"type": "integer", "description": "internal flow id (list_flows)"},
                     "expected_version": {"type": "integer", "description": "latest_version_number returned by get_flow"},
                     "graph": {"type": "object", "description": "full FlowGraph graph of the new version"},
-                    "note": {"type": "string", "description": "note de version optionnelle"}
+                    "note": {"type": "string", "description": "optional version note"}
                 },
                 "required": ["flow_id", "expected_version", "graph"]
             }),
@@ -1250,7 +1250,7 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
     }
 }
 
-// ─────────────────────────── Outils : devices ───────────────────────────
+// ─────────────────────────── Tools: devices ───────────────────────────
 
 /// Defensive cap of the device listing (the prompt context already lists
 /// a few; here it is the full but bounded view).
@@ -1316,7 +1316,7 @@ async fn get_device_pins(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
     })
 }
 
-// ─────────────────────────── Outils : flows ───────────────────────────
+// ─────────────────────────── Tools: flows ───────────────────────────
 
 async fn list_flows(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let status_filter = args.get("status").and_then(Value::as_str);
@@ -1444,7 +1444,7 @@ async fn query_telemetry(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
     })
 }
 
-// ─────────────────── Outils statiques (pnex-core) ───────────────────
+// ─────────────────── Static tools (pnex-core) ───────────────────
 
 /// Static node documentation — built from the real config shapes of
 /// `pnex-core/src/flow.rs` (a test checks that every `FlowNodeKind`
@@ -1744,7 +1744,7 @@ mod tests {
     /// The registry is **exactly** the allowed set: it is the structural
     /// assertion of the "no deploy / deletion / commands" safeguard.
     #[test]
-    fn registre_ne_contient_que_des_outils_autorises() {
+    fn registry_contains_only_allowed_tools() {
         let names: Vec<&str> = tool_specs().iter().map(|t| t.name).collect();
         assert_eq!(
             names,
@@ -1838,7 +1838,7 @@ mod tests {
     /// `execute` refuses anything that is not the registry — including
     /// tempting names ("deploy_flow", "run_sql", "http").
     #[tokio::test]
-    async fn execute_refuse_les_noms_hors_registre() {
+    async fn execute_refuses_names_outside_the_registry() {
         // Refused before any query: no database needed.
         let db = sea_orm::DatabaseConnection::default();
         let deps = ToolDeps {
@@ -1869,7 +1869,7 @@ mod tests {
         // A simple read tool works without anything else.
         let out = execute(&deps, "describe_node_types", &serde_json::json!({}))
             .await
-            .expect("describe_node_types statique");
+            .expect("static describe_node_types");
         assert!(out.value["nodes"].as_array().expect("nodes").len() >= 8);
     }
 

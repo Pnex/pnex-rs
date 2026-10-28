@@ -1,4 +1,4 @@
-//! Endpoints organisations — CRUD + membres (multi-tenant Phase 3).
+//! Organization endpoints — CRUD + members (multi-tenant Phase 3).
 
 use pnex_core::{
     AddMember, CreateOrg, OrgDetail, OrgMember, OrgRole, OrgSummary, UpdateMember, UpdateOrg,
@@ -27,7 +27,7 @@ pub async fn detail(id: i64) -> Result<OrgDetail, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/orgs/{id}"), None).await
 }
 
-/// `PATCH /api/v1/orgs/{id}` — renommage (owner/admin).
+/// `PATCH /api/v1/orgs/{id}` — rename (owner/admin).
 pub async fn rename(id: i64, name: &str) -> Result<(), ApiError> {
     client::request(
         reqwest::Method::PATCH,

@@ -117,7 +117,7 @@ mod tests {
     /// Roundtrip: numeric points come out as named, labelled
     /// series, non-numeric ones are discarded.
     #[test]
-    fn roundtrip_series_et_labels() {
+    fn roundtrip_series_and_labels() {
         let mut req = WriteRequest::decode(
             encode(&[point("soil_moisture", "42.5")])
                 .unwrap()
@@ -180,7 +180,7 @@ mod tests {
     /// Invalid metric names sanitized (dashes, space, digit
     /// prefix) — dimensions stay as they are.
     #[test]
-    fn noms_de_metriques_assainis() {
+    fn metric_names_sanitized() {
         assert_eq!(sanitize_metric_name("soil-moisture"), "soil_moisture");
         assert_eq!(sanitize_metric_name("temp extérieure"), "temp_ext_rieure");
         assert_eq!(sanitize_metric_name("2ph"), "_ph");

@@ -32,9 +32,9 @@ flowchart LR
   R --> D[file_download]
   D -->|port 2 inchangé| STOP((fin))
   D --> X[archive_extract]
-  X --> I1[table_inspect Certificateurs] --> F1[rows_filter SIRET client] --> M1[ontology_import fc_certificateurs]
-  M1 --> I2[table_inspect Standard] --> F2[rows_filter fiches connues] --> M2[ontology_import fc_fiches]
-  M2 --> I3[table_inspect Partenaires] --> F3[rows_filter fiches connues] --> M3[ontology_import fc_partenaires]
+  X --> I1[table_inspect Certificateurs] --> F1[rows_filter SIRET client] --> M1[ontology_import fc_certifiers]
+  M1 --> I2[table_inspect Standard] --> F2[rows_filter fiches connues] --> M2[ontology_import fc_sheets]
+  M2 --> I3[table_inspect Partenaires] --> F3[rows_filter fiches connues] --> M3[ontology_import fc_partners]
   M3 --> S[ontology_import SIRENE] --> C[staging_cleanup]
 ```
 
@@ -128,7 +128,7 @@ cette part des objets et liens vivants de l'import (`ingest-suspicious-closures`
 Un pack référence une import par son nom (`import_name`, résolu à
 l'installation comme `function_name`).
 
-**Durée (2026-10-22, incident fc_certificateurs 42 730 lignes)** : une
+**Durée (2026-10-22, incident fc_certifiers 42 730 lignes)** : une
 import dépasse n'importe quel appel HTTP (enrichissement `per_object` :
 des heures). L'étape ouvre son run (`ingest_run_id` + `ingest_node_id`,
 unique), le lance dans une tâche détachée qui journalise l'étape elle-même,

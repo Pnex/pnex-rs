@@ -366,7 +366,7 @@ corrigées le jour même.
   Fix **à la frontière** : `mirror_rows` + `mirror_mask` en fin de
   `stitch()` (rgb + masque ; `covered` est invariant) — le pipeline
   interne (align NCC, solve, seams, multiband, gains, fills) garde la
-  convention historique verrouillée par les sondes. Sonde `rendu_handedness`
+  convention historique verrouillée par les sondes. Sonde `render_handedness`
   (lib.rs) : frame split blanc/noir à yaw 30° → le blanc doit sortir à
   GAUCHE du centre (texte lisible = non-miroir). Validé en réelle :
   re-stitch hôte du job `060dd4ef` (48 frames 3 anneaux, 81 s,
@@ -413,7 +413,7 @@ franges roses/cyan.
 - **Warp local (mesh) : DÉSACTIVÉ par défaut (2026-09-11 soir)** —
   l'implémentation existe (`align::estimate_local_warp`, grille 7,5°,
   mesure NCC sub-pixel, jauge δa=−m/2/δb=+m/2 verrouillée par la sonde
-  `sonde_warp_local`, application via `project::sample_ray`) mais la
+  `probe_local_warp`, application via `project::sample_ray`) mais la
   grille libre interpolée depuis des mesures isolées crée des
   distorsions haute fréquence qui AMPLIFIENT le contraste local au rendu
   4096 (« hyper contrasté, cassé » — constat utilisateur, l'A/B à 2048
@@ -434,7 +434,7 @@ franges roses/cyan.
   son contenu PLEIN dans le recouvrement (deux frames constantes 100/200
   en recouvrement total sortaient ~300, clampé 255 = halos blancs).
   Fix : L = G − expand(G), tout pondéré par la Gaussienne du masque.
-  Tests : `recouvrement_constant_sans_double_comptage` (100 → 150 → 200,
+  Tests : `constant_overlap_without_double_counting` (100 → 150 → 200,
   jamais ≥ 250) + reconstruction à octave fine. Défaut multiband_levels
   2 → 1 → **3** (fondu large sans fantôme). LEVELS=1 = chemin plat
   crossfade + fondu étroit de couture (SEAM_FEATHER_PX, moyenne pondérée

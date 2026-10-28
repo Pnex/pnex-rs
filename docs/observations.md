@@ -1287,7 +1287,7 @@ Restent ouverts :
   épinglé (`map_pins.preview_kind/preview_id`) pointait une visite 3D
   supprimée ; son arête `placed_on` était bien fermée, mais pas l'épingle.
 - **Correction** : `resources::purge_for` retire l'épingle des POI qui
-  visaient la ressource supprimée (test `pois::pin_apercu_poi`).
+  visaient la ressource supprimée (test `pois::poi_preview_pin`).
 - **Statut** : corrigé.
 
 ## 2026-10-14 — déconnexion
@@ -1571,7 +1571,7 @@ pagination, types, verbes, langue) sont traités par les lots H1–H5 de
   sinon `no-cache` (revalidation).
 - **Statut** : ✅ 2026-10-17 — `immutable` un an seulement avec `?v=n`,
   `no-cache` sinon (`public_tours.rs::asset_cache_control`) ; test
-  `endpoint_public_et_cache` (`tests/tours.rs`).
+  `public_endpoint_and_cache` (`tests/tours.rs`).
 
 ### O75 — Approbation de document : noms d'auteur à `null`
 

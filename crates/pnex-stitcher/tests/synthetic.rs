@@ -173,7 +173,7 @@ fn out_lonlat(i: u32, j: u32, w: u32, h: u32) -> (f32, f32) {
 /// Ring 16 × hfov 65° at pitch 15° (the real capture): gradients
 /// reproduced to ±3, continuous closing seam, poles filled.
 #[test]
-fn anneau_16_reprojection_et_poles() {
+fn ring_16_reprojection_and_poles() {
     let (fw, fh, hfov) = (100u32, 75u32, 65.0_f32);
     let pitch = 15.0_f32;
     let frames: Vec<Frame> = (0..16)
@@ -329,7 +329,7 @@ fn anneau_16_reprojection_et_poles() {
 /// Small ring 4 × hfov 100°: full band coverage and bounded
 /// reprojection error (fast minimal validation).
 #[test]
-fn anneau_4_couverture() {
+fn ring_4_coverage() {
     let (fw, fh, hfov) = (96u32, 72u32, 100.0_f32);
     let frames: Vec<Frame> = (0..4)
         .map(|k| make_frame(k as f32 * 90.0, 0.0, 0.0, fw, fh, hfov))
@@ -375,7 +375,7 @@ fn anneau_4_couverture() {
 /// The ring with non-zero roll (tilted phone) stays correct — the roll
 /// pose is integrated into the warp.
 #[test]
-fn anneau_avec_roll() {
+fn ring_with_roll() {
     let (fw, fh, hfov) = (100u32, 75u32, 65.0_f32);
     let frames: Vec<Frame> = (0..16)
         .map(|k| make_frame(k as f32 * 22.5, 15.0, -3.0, fw, fh, hfov))
@@ -419,7 +419,7 @@ fn anneau_avec_roll() {
 /// azimuthal hole of ~31° (24°·2 < 65°: spacing is not enough, the
 /// last edge + hfov must not reach the first) → refused by the threshold.
 #[test]
-fn anneau_troure_refuse() {
+fn holed_ring_refused() {
     let (fw, fh, hfov) = (100u32, 75u32, 65.0_f32);
     let frames: Vec<Frame> = (0..12)
         .map(|k| make_frame(k as f32 * 24.0, 15.0, 0.0, fw, fh, hfov))
@@ -441,7 +441,7 @@ fn anneau_troure_refuse() {
 /// the Quality pipeline must converge (residuals ≤ 0.3° per accepted pair)
 /// and produce full coverage — THE test of the `align` module.
 #[test]
-fn quality_deux_anneaux_jitter_converge() {
+fn quality_two_rings_jitter_converge() {
     let (fw, fh, hfov) = (512u32, 910u32, 39.4_f32);
     let mut lcg = Lcg(0x5EED_2026_0910);
 
@@ -585,7 +585,7 @@ fn quality_deux_anneaux_jitter_converge() {
 /// measurement noise → corrections feedback loop (fundamental invariant — the
 /// rollback to the minimal-residual best state ensures it).
 #[test]
-fn quality_align_sans_jitter_stable() {
+fn quality_align_without_jitter_stable() {
     let (fw, fh, hfov) = (256u32, 455u32, 39.4_f32);
     let mut frames: Vec<Frame> = (0..16)
         .map(|k| {
@@ -646,7 +646,7 @@ fn wrap180_test(deg: f32) -> f32 {
 /// pillar area, we would see a dark↔bright wall in the output; routed,
 /// the pillar stays whole on one side and no step appears.
 #[test]
-fn quality_couture_route_obstacle() {
+fn quality_seam_routes_around_obstacle() {
     let (fw, fh, hfov) = (128u32, 96u32, 65.0_f32);
     let frame0 = make_frame_with(0.0, 0.0, 0.0, fw, fh, hfov, |lon, lat| {
         scene_texture(lon, lat, true)
@@ -700,7 +700,7 @@ fn quality_couture_route_obstacle() {
 /// Two different exposures (×1.4): multi-band blending smooths the
 /// transition (no luminance step) WITHOUT blurring the fine texture.
 #[test]
-fn quality_multiband_exposition_lisse() {
+fn quality_multiband_exposure_smooth() {
     let (fw, fh, hfov) = (128u32, 96u32, 65.0_f32);
     let mut frames: Vec<Frame> = [0.0f32, 40.0]
         .iter()

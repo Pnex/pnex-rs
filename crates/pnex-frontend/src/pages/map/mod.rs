@@ -135,11 +135,11 @@ pub fn Map() -> Element {
     let mut reload = use_signal(|| 0u32);
     // Filter change counter → cluster refetch.
     let mut filters_rev = use_signal(|| 0u32);
-    // Dernier zoom connu (clic cluster → zoom +2).
+    // Last known zoom (cluster click → zoom +2).
     let mut current_zoom = use_signal(|| DEFAULT_ZOOM);
     // Last known viewport (cluster refetch when the filters change).
     let mut last_view = use_signal(|| None::<(f64, f64, f64, f64, i32)>);
-    // Couche GPS live (device_positions, D38).
+    // Live GPS layer (device_positions, D38).
     let mut positions = use_signal(Vec::<viz::DevicePosition>::new);
     // Map points status (slow networks: the user sees that points are on
     // their way, or that they failed and are retried).
@@ -230,7 +230,7 @@ pub fn Map() -> Element {
                     click_seen = click.seq;
                     handle_click(selected, pending_add, current_zoom, add_mode, click).await;
                 }
-                // Couche GPS live (D38) — poll ~15 s.
+                // Live GPS layer (D38) — poll ~15 s.
                 tick += 1;
                 if tick.is_multiple_of(POSITIONS_POLL_TICKS) {
                     if let Ok(rows) = viz::device_positions().await {
@@ -276,7 +276,7 @@ pub fn Map() -> Element {
     rsx! {
         div {
             class: "relative flex h-[calc(100vh-4rem)] lg:h-screen overflow-hidden bg-gray-100",
-            // ── Sidebar gauche repliable ──────────────────────────
+            // ── Collapsible left sidebar ──────────────────────────
             if sidebar_open() {
                 // Phone backdrop: tap outside the overlay panel to close it.
                 div {
@@ -486,7 +486,7 @@ use form::PoiFormModal;
 use search::AddressSearch;
 // ───────────────────── attached media viewer (modal) ─────────────────────
 
-// ─────────────────────────── badge d'erreur carte ─────────────────────────
+// ──────────────────────────── map error badge ───────────────────────────
 
 #[component]
 pub(super) fn MapErrorBadge() -> Element {

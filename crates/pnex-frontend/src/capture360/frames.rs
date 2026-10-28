@@ -59,7 +59,7 @@ pub async fn open_camera(video_id: &str) -> Result<(u32, u32), FrameError> {
         id_q = id_q
     ));
 
-    // 2) Sondage synchrone (~6 s max).
+    // 2) Synchronous polling (~6 s max).
     for _ in 0..40 {
         crate::util::sleep(std::time::Duration::from_millis(150)).await;
         let value = eval_value(&format!(

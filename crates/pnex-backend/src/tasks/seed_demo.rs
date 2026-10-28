@@ -63,7 +63,7 @@ impl Task for SeedDemo {
             .await?
             .ok_or_else(|| Error::string("no organization for admin@example.com"))?;
         let org_id = member.org_id;
-        println!("  org cible : #{org_id} (admin@example.com)");
+        println!("  target org: #{org_id} (admin@example.com)");
 
         // ── Idempotence guard: already seeded? ──
         let existing = device_registries::Entity::find()
@@ -99,7 +99,7 @@ impl Task for SeedDemo {
             .insert(db)
             .await?;
         }
-        println!("  devices : 105");
+        println!("  devices: 105");
 
         // ── Basic flows: 12 (varied statuses for the badges) ──
         let statuses = [
@@ -131,7 +131,7 @@ impl Task for SeedDemo {
                 f.update(db).await?;
             }
         }
-        println!("  flows : 12");
+        println!("  flows: 12");
 
         // ── Functions: 12 (js, v1 with skeleton code) ──
         for i in 1..=12 {
@@ -160,7 +160,7 @@ impl Task for SeedDemo {
             f.current_version_id = Set(Some(version.id));
             f.update(db).await?;
         }
-        println!("  fonctions : 12");
+        println!("  functions: 12");
 
         // ── Tours: 12 (default doc, panorama mode) ──
         for i in 1..=12 {
@@ -192,7 +192,7 @@ impl Task for SeedDemo {
             .insert(db)
             .await?;
         }
-        println!("  tours : 12");
+        println!("  tours: 12");
 
         // ── Dashboards: 12 (empty layout — empty canvas when live) ──
         for i in 1..=12 {
@@ -217,7 +217,7 @@ impl Task for SeedDemo {
             .insert(db)
             .await?;
         }
-        println!("  dashboards : 12");
+        println!("  dashboards: 12");
 
         // ── Media: 12 photos (real 1×1 PNG in storage) ──
         let settings = MediaSettings::from_config(&ctx.config);
@@ -298,9 +298,9 @@ impl Task for SeedDemo {
             .insert(db)
             .await?;
         }
-        println!("  canaux webhook : 12");
+        println!("  webhook channels: 12");
 
-        // ── Templates : 12 ──
+        // ── Templates: 12 ──
         for i in 1..=12 {
             notify_templates::ActiveModel {
                 id: Set(uuid::Uuid::new_v4()),
@@ -316,7 +316,7 @@ impl Task for SeedDemo {
             .insert(db)
             .await?;
         }
-        println!("  templates : 12");
+        println!("  templates: 12");
 
         println!("✅ Demo seed done (org #{org_id}) — the lists now paginate.");
         Ok(())

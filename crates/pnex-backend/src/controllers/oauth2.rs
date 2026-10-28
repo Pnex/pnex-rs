@@ -433,7 +433,7 @@ pub fn routes() -> Routes {
         .add("/refresh", post(refresh))
         .add("/sso", get(sso))
         .add("/logout", get(logout))
-        // Pont de callback natif (login navigateur + polling app).
+        // Native callback bridge (browser login + app polling).
         .add("/native", get(native_callback))
         .add("/native/{state}", get(native_poll))
 }
@@ -761,7 +761,7 @@ mod tests {
     }
 
     #[test]
-    fn langue_de_la_page_pont() {
+    fn bridge_page_language() {
         assert_eq!(preferred_language(&hdr("fr-FR,fr;q=0.9,en;q=0.8")), "fr");
         assert_eq!(preferred_language(&hdr("en-US,en;q=0.9")), "en");
         assert_eq!(preferred_language(&hdr("de-DE,de;q=0.9,fr;q=0.2")), "fr");

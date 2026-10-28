@@ -87,7 +87,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 /// Configurable inject → debug graph (the interval materialises the version).
@@ -136,14 +136,14 @@ async fn create_flow(
 async fn read_state_flows_json() -> serde_json::Value {
     let raw = std::fs::read_to_string(format!("{}/flows.json", flow_state_dir()))
         .expect("flows.json projected");
-    serde_json::from_str(&raw).expect("flows.json valide")
+    serde_json::from_str(&raw).expect("valid flows.json")
 }
 
 // ─────────────────────────── versioned CRUD ───────────────────────────
 
 #[tokio::test]
 #[serial]
-async fn cycle_creation_versioning_et_isolation_org() {
+async fn create_versioning_cycle_and_org_isolation() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -212,7 +212,7 @@ async fn cycle_creation_versioning_et_isolation_org() {
             .json::<serde_json::Value>();
         assert_eq!(list_bob["count"], 0, "{list_bob}");
 
-        // Suppression : 204, historique parti.
+        // Deletion: 204, history gone.
         let deleted = server
             .delete(&format!("/api/v1/flows/{flow_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -229,11 +229,11 @@ async fn cycle_creation_versioning_et_isolation_org() {
     .await;
 }
 
-// ─────────────────────────── Concurrence optimiste (e) ───────────────────────────
+// ─────────────────────────── Optimistic concurrency (e) ───────────────────────────
 
 #[tokio::test]
 #[serial]
-async fn save_perime_rejete_409_et_aucune_v3() {
+async fn stale_save_rejected_409_and_no_v3() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let created = create_flow(&server, &env.alice, org, "concurrent", 1.0).await;
@@ -279,7 +279,7 @@ async fn save_perime_rejete_409_et_aucune_v3() {
 
 #[tokio::test]
 #[serial]
-async fn validation_rejette_graphe_invalide() {
+async fn validation_rejects_invalid_graph() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -378,7 +378,7 @@ async fn validation_rejette_graphe_invalide() {
 
 #[tokio::test]
 #[serial]
-async fn deploy_sans_moteur_repond_503() {
+async fn deploy_without_engine_answers_503() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let created = create_flow(&server, &env.alice, org, "jamais déployé", 1.0).await;
@@ -416,7 +416,7 @@ async fn deploy_sans_moteur_repond_503() {
 /// A single test enables the supervisor (per-process static — see module doc).
 #[tokio::test]
 #[serial]
-async fn cycle_deploy_edit_rollback_avec_runtime() {
+async fn deploy_edit_rollback_cycle_with_runtime() {
     with_app_flow_engine(true, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let created = create_flow(&server, &env.alice, org, "pipeline complet", 1.0).await;
@@ -662,7 +662,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(runtime["running"], true, "{runtime}");
         assert_eq!(runtime["engine_status"], "running", "{runtime}");
 
-        // ─── Stop / Start / Restart (ferme: the tab leaves and comes back) ───
+        // ─── Stop / Start / Restart (closed: the tab leaves and comes back) ───
         // Stop acknowledged by the fake runtime's `flow_stopped`: DB `stopped`
         // (deployed version kept) and tab absent from the artifact.
         let stop = server
@@ -832,7 +832,7 @@ async fn delete_stopped_flow_does_not_wait_for_runtime_ack() {
 
 #[tokio::test]
 #[serial]
-async fn stop_start_gardes_sans_moteur() {
+async fn stop_start_guards_without_engine() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let created = create_flow(&server, &env.alice, org, "jamais déployé", 1.0).await;

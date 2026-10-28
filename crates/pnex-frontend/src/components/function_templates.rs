@@ -1,4 +1,4 @@
-//! Creation templates ("Partir de" cards) — starter code per language.
+//! Creation templates ("Start from" cards) — starter code per language.
 //! Content is user-editable generated code (English, allowlisted from the
 //! i18n guard like the skeletons).
 

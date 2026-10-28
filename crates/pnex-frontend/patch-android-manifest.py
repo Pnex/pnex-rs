@@ -162,7 +162,7 @@ def patch_media_provider(manifest_path: str) -> None:
     if not package:
         sys.exit("package not found (manifest/gradle) — dx template changed?")
 
-    # 2) <provider> FileProvider avant </application>.
+    # 2) <provider> FileProvider before </application>.
     if "androidx.core.content.FileProvider" not in xml:
         provider = (
             f'<provider android:name="androidx.core.content.FileProvider" '

@@ -157,7 +157,7 @@ pub fn BoardPinoutEditor(device_pk: i64, can_write: bool) -> Element {
         api::pins::pinout(device_pk).await
     });
 
-    // Polling auto-entretenu (pattern PinsPanel).
+    // Self-sustaining polling (PinsPanel pattern).
     let mut polling = use_signal(|| false);
     if !polling() {
         polling.set(true);

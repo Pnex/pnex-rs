@@ -133,7 +133,7 @@ pub async fn run_turn(
                     });
                 }
                 Err(err) => {
-                    tracing::info!(tool = %call.name, erreur = %err.message, "assistant tool failed");
+                    tracing::info!(tool = %call.name, error = %err.message, "assistant tool failed");
                     trace.push(ToolTrace {
                         name: call.name.clone(),
                         arguments: call.arguments.clone(),

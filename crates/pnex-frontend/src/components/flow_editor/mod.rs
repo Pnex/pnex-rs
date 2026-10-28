@@ -1191,7 +1191,7 @@ pub fn FlowEditor(
             }
         }
 
-        // ─── Modales ───
+        // ─── Modals ───
         if let Some(description) = conflict() {
             Modal {
                 title: t!("flows-conflict-title"),

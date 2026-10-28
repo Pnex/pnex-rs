@@ -327,7 +327,7 @@ fn artifact_is_empty(artifact: &Value) -> bool {
     artifact.as_array().is_none_or(|a| a.is_empty())
 }
 
-// ───────────────────────────── Boucle interne ─────────────────────────────
+// ───────────────────────────── Internal loop ─────────────────────────────
 
 struct ChildProc {
     pid: u32,
@@ -547,7 +547,7 @@ async fn handle_deploy(
             }
         }
     }
-    let pid = child.as_ref().expect("enfant vivant").pid;
+    let pid = child.as_ref().expect("live child").pid;
 
     // 5) SIGUSR1 — except on a fresh spawn, which already reads the new
     //    file and announces all its tabs at boot (flow_started per flow).
@@ -662,7 +662,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolve_program_chemins() {
+    fn resolve_program_paths() {
         // Token without `/`: PATH lookup, left as is.
         assert_eq!(resolve_program("pnex-flow-runtime"), "pnex-flow-runtime");
         // Nonexistent path: as is (clear error at spawn).
@@ -701,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_status_sans_etat() {
+    fn runtime_status_without_state() {
         let s = FlowSettings {
             state_dir: "/tmp/pnex-flow-status-absente".into(),
             ..Default::default()
@@ -716,7 +716,7 @@ mod tests {
     }
 
     #[test]
-    fn runtime_status_ne_porte_pas_de_version() {
+    fn runtime_status_carries_no_version() {
         // runtime.json carries NO version/flow (multi-flow artifact
         // — a flow's deployed version lives in the DB). An old file with
         // these fields is read without error but ignored.
@@ -748,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn sante_par_flow_et_acquittement_deploy() {
+    fn per_flow_health_and_deploy_ack() {
         // Sanity: the health map is a test global — dedicated ids.
         reset_flow_health_for_tests();
         let fid = 999_820;
@@ -802,7 +802,7 @@ mod tests {
         assert_eq!(
             rx.try_recv().expect("ack resolved"),
             Ok(()),
-            "retrait = acquittement"
+            "removal = acknowledgement"
         );
         let (status, _) = flow_engine_health(fid).expect("health entry");
         assert_eq!(status, FlowEngineHealth::Stopped);
@@ -881,7 +881,7 @@ mod tests {
     }
 
     #[test]
-    fn feed_cap_ttls_et_sans_attribution() {
+    fn feed_cap_ttls_and_without_attribution() {
         // Without flow attribution: the entry is DROPPED (multi-org — no
         // "unknown" bucket).
         push_debug(&serde_json::json!({
@@ -919,7 +919,7 @@ mod tests {
     }
 
     #[test]
-    fn rfc3339_forme() {
+    fn rfc3339_shape() {
         let ts = rfc3339_now();
         assert_eq!(ts.len(), 20, "{ts}");
         assert!(ts.ends_with('Z'), "{ts}");
@@ -928,7 +928,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_debug_tools_defaut_faux() {
+    fn settings_debug_tools_default_false() {
         let s = FlowSettings::default();
         assert!(!s.debug_tools, "run mode by default");
     }

@@ -128,7 +128,7 @@ impl JwksVerifier {
         }
     }
 
-    /// Valide un access token : signature RS256 (JWKS), `iss`, `aud`, `exp`.
+    /// Validates an access token: RS256 signature (JWKS), `iss`, `aud`, `exp`.
     pub async fn verify(&self, token: &str) -> Result<Claims, VerifyError> {
         let header = jsonwebtoken::decode_header(token).map_err(|_| VerifyError::Malformed)?;
         let kid = header.kid.ok_or(VerifyError::Malformed)?;

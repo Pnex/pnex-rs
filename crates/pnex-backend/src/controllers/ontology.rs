@@ -179,7 +179,7 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
         ),
         OntologyError::Opposed => coded(
             StatusCode::CONFLICT,
-            err_codes::PROSPECTION_OPPOSED,
+            err_codes::PROSPECTING_OPPOSED,
             "This person objected to the processing of their data: the link is refused.",
         ),
         OntologyError::ClaimUnsourced => coded(
@@ -1310,7 +1310,7 @@ fn changes_unavailable() -> Error {
         (status = 400, description = "Invalid field (field → token), or `ontology-link-not-allowed`", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found` (link type or object)", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`ontology-link-cardinality` (an open link already takes this place), `ontology-already-exists`, `ontology-erased` (an end was erased), `prospection-opposed`", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`ontology-link-cardinality` (an open link already takes this place), `ontology-already-exists`, `ontology-erased` (an end was erased), `prospecting-opposed`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]

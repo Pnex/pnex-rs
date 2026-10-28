@@ -100,7 +100,7 @@ fn summary_dto(
         latest_version_number: latest,
         published_version_number: published_number,
         share_enabled: t.share_token.is_some(),
-        // Secret de publication : writers uniquement.
+        // Publication secret: writers only.
         share_token: can_write.then_some(t.share_token).flatten(),
         created_at: t.created_at.to_rfc3339(),
         updated_at: t.updated_at.to_rfc3339(),

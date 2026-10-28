@@ -150,7 +150,7 @@ pub fn start_finish_job(frames: Arc<Mutex<Vec<CapturedFrame>>>, hfov_deg: f32) {
                 // in place, a job failure is only logged.
                 match submit_server_job(&asset, taken, hfov_frame).await {
                     Ok(job_id) => {
-                        super::filelog::log(&format!("job serveur HD : {job_id}"));
+                        super::filelog::log(&format!("server HD job: {job_id}"));
                         spawn_job_poller(asset.id.clone(), job_id.clone());
                     }
                     Err(e) => {
@@ -160,7 +160,7 @@ pub fn start_finish_job(frames: Arc<Mutex<Vec<CapturedFrame>>>, hfov_deg: f32) {
                 1
             }
             Err(e) => {
-                super::filelog::log(&format!("upload: ERREUR {e}"));
+                super::filelog::log(&format!("upload: ERROR {e}"));
                 state::PHASE.store(Phase::Error as u8, Ordering::Relaxed);
                 state::ERROR_CODE.store(5, Ordering::Relaxed);
                 3
@@ -226,7 +226,7 @@ fn spawn_job_poller(asset_id: String, job_id: String) {
                     }
                     _ => {}
                 },
-                Err(e) => super::filelog::log(&format!("job serveur HD : poll {e}")),
+                Err(e) => super::filelog::log(&format!("server HD job: poll {e}")),
             }
         }
     });
@@ -361,7 +361,7 @@ fn stitch_frames(
             state::PROGRESS.store(85, Ordering::Relaxed);
             super::filelog::log("render: OK");
         }
-        Err(e) => super::filelog::log(&format!("render: ERREUR {e}")),
+        Err(e) => super::filelog::log(&format!("render: ERROR {e}")),
     }
     (out, hfov_frame)
 }

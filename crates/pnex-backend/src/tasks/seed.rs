@@ -104,7 +104,7 @@ fn read_yaml<T: for<'de> serde::Deserialize<'de>>(path: &std::path::Path) -> Res
     let f = std::fs::File::open(path)
         .map_err(|e| Error::string(&format!("fixture {} unreadable: {e}", path.display())))?;
     serde_saphyr::from_reader(f)
-        .map_err(|e| Error::string(&format!("fixture {} invalide : {e}", path.display())))
+        .map_err(|e| Error::string(&format!("fixture {} invalid: {e}", path.display())))
 }
 
 /// Sorted list of the YAML files of a fixtures folder.
@@ -372,7 +372,7 @@ async fn seed_global_conversions(db: &Db, path: &std::path::Path) -> Result<usiz
             "custom" => ConversionKind::Custom,
             other => {
                 return Err(Error::string(&format!(
-                    "conversion_type inconnu : {other:?}"
+                    "unknown conversion_type: {other:?}"
                 )))
             }
         };
@@ -433,7 +433,7 @@ async fn seed_global_formulas(db: &Db, path: &std::path::Path) -> Result<usize> 
             "fluid_property" => FormulaKind::FluidProperty,
             "power_calculation" => FormulaKind::PowerCalculation,
             "rate_of_change" => FormulaKind::RateOfChange,
-            other => return Err(Error::string(&format!("formula_type inconnu : {other:?}"))),
+            other => return Err(Error::string(&format!("unknown formula_type: {other:?}"))),
         };
         let global_id = parse_global_id(&r.global_id)?;
         let existing = formulas::Entity::find()

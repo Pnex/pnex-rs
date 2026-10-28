@@ -68,7 +68,7 @@ pub async fn save_version(
     .await
 }
 
-/// `GET /api/v1/functions/{id}/versions` — historique, version_number DESC.
+/// `GET /api/v1/functions/{id}/versions` — history, version_number DESC.
 pub async fn versions(
     id: i64,
     limit: i64,

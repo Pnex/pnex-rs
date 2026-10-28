@@ -23,7 +23,7 @@ use super::EditorCx;
 /// needs a shape, picked in the library panel).
 pub const SYMBOLS_KEY: &str = "symbol";
 
-/// Palette key opening the guided "from a device" panel (parcours §1.2).
+/// Palette key opening the guided "from a device" panel (user journey §1.2).
 pub const FROM_DEVICE_KEY: &str = "from_device";
 
 pub fn kind_label(kind: &str) -> String {

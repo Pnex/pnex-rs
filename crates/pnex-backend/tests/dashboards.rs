@@ -61,7 +61,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 /// Minimal valid layout: one gauge + one wire (covers the happy path
@@ -100,7 +100,7 @@ async fn create_dashboard(
 
 #[tokio::test]
 #[serial]
-async fn cycle_creation_save_restore_et_isolation_org() {
+async fn create_save_restore_cycle_and_org_isolation() {
     with_app(|server, env| async move {
         let org_a = personal_org(&server, &env.alice).await;
         let org_b = personal_org(&server, &env.bob).await;
@@ -127,7 +127,7 @@ async fn cycle_creation_save_restore_et_isolation_org() {
         assert_eq!(saved["current_version_number"], 2);
         assert_eq!(saved["layout"]["widgets"][0]["type"], "gauge");
 
-        // ── Historique : 2 versions, v2 courante, append-only.
+        // ── History: 2 versions, v2 current, append-only.
         let versions = server
             .get(&format!("/api/v1/dashboards/{id}/versions"))
             .add_header("Authorization", bearer(&env.alice))
@@ -195,7 +195,7 @@ async fn cycle_creation_save_restore_et_isolation_org() {
 
 #[tokio::test]
 #[serial]
-async fn violations_layout_et_roles_viewer() {
+async fn layout_violations_and_viewer_roles() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let id = create_dashboard(&server, &env.alice, org, "Invalides").await["id"]
@@ -291,7 +291,7 @@ async fn violations_layout_et_roles_viewer() {
 
 #[tokio::test]
 #[serial]
-async fn save_sans_nom_valide_et_404_inconnu() {
+async fn save_without_name_valid_and_404_unknown() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 

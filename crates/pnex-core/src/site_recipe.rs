@@ -1050,7 +1050,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn la_strat() -> Value {
+    fn site_fixture_training_org() -> Value {
         json!({
             "name": "programme-rs0101",
             "site": "https://www.la-strat.fr",
@@ -1068,7 +1068,7 @@ mod tests {
 
     #[test]
     fn a_valid_recipe_parses() {
-        let r = validate(&la_strat()).unwrap();
+        let r = validate(&site_fixture_training_org()).unwrap();
         assert_eq!(r.steps.len(), 6);
         assert!(r.steps[1].optional());
         assert_eq!(r.steps[4].label(), "Programme … Modalités");
@@ -1076,9 +1076,9 @@ mod tests {
 
     #[test]
     fn captures_retention_defaults_and_round_trips() {
-        let r = validate(&la_strat()).unwrap();
+        let r = validate(&site_fixture_training_org()).unwrap();
         assert_eq!(r.capture_retention(), CAPTURES_DEFAULT);
-        let mut d = la_strat();
+        let mut d = site_fixture_training_org();
         d["captures"] = json!("days:0");
         assert!(validate(&d)
             .unwrap_err()
@@ -1094,7 +1094,7 @@ mod tests {
 
     #[test]
     fn bad_steps_point_at_their_index() {
-        let mut d = la_strat();
+        let mut d = site_fixture_training_org();
         d["steps"][2] = json!({"click": {"text": "a", "selector": "b"}});
         d["steps"][3] = json!({"type_text": "x"});
         d["steps"][5] = json!({"assert": {"not_empty": "nope"}});
@@ -1106,7 +1106,7 @@ mod tests {
 
     #[test]
     fn unknown_params_are_refused_and_known_ones_filled() {
-        let mut d = la_strat();
+        let mut d = site_fixture_training_org();
         d["params"] = json!([]);
         assert!(validate(&d)
             .unwrap_err()
@@ -1123,7 +1123,7 @@ mod tests {
         for a in ACTIONS {
             assert_eq!(new_step(a).map(|s| s.action()), Some(a));
         }
-        let y = to_yaml(&validate(&la_strat()).unwrap());
+        let y = to_yaml(&validate(&site_fixture_training_org()).unwrap());
         assert!(
             y.contains("  - click: {text: \"Accepter\", optional: true}\n"),
             "{y}"

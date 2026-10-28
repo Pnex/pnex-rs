@@ -1,6 +1,6 @@
 use super::*;
 
-// ─────────────────────────── erreurs ───────────────────────────
+// ─────────────────────────── errors ───────────────────────────
 
 // Error helpers carry a machine code (`pnex_core::err_codes` registry) so
 // the frontend can resolve `err-<kebab>` at render time; the English text is

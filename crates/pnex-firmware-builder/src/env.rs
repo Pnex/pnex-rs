@@ -137,7 +137,7 @@ mod tests {
 
     /// The 5 device vars in base64 (round trip), the key as is.
     #[test]
-    fn env_conforme_au_contrat_firmware() {
+    fn env_matches_the_firmware_contract() {
         let vars = child_env(&secrets());
         let get = |k: &str| {
             vars.iter()
@@ -162,7 +162,7 @@ mod tests {
     /// SSID with spaces: the passed env contains neither space nor quote
     /// (the platformio.ini `-D` flag cannot break).
     #[test]
-    fn ssid_avec_espaces_devient_base64() {
+    fn ssid_with_spaces_becomes_base64() {
         let mut s = secrets();
         s.wifi_ssid = "Chez Shan".into();
         let vars = child_env(&s);

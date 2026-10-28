@@ -40,7 +40,7 @@ pub(super) async fn find_asset(
         .one(db)
         .await
         .map_err(|e| {
-            tracing::error!("media : lecture asset {id} : {e}");
+            tracing::error!("media: read asset {id}: {e}");
             Error::InternalServerError
         })
 }
@@ -56,7 +56,7 @@ pub(super) async fn versions_of(
         .all(db)
         .await
         .map_err(|e| {
-            tracing::error!("media : lecture versions asset {asset_id} : {e}");
+            tracing::error!("media: read asset versions {asset_id}: {e}");
             Error::InternalServerError
         })
 }

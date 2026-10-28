@@ -61,7 +61,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 fn gpano_jpeg() -> Vec<u8> {
@@ -129,7 +129,7 @@ fn doc_minimal() -> serde_json::Value {
 }
 
 /// Document with a scene referencing a panorama asset + a link.
-fn doc_avec_scene(asset_id: &str, link_target: Option<&str>) -> serde_json::Value {
+fn doc_with_scene(asset_id: &str, link_target: Option<&str>) -> serde_json::Value {
     let mut links = Vec::new();
     if let Some(target) = link_target {
         links.push(serde_json::json!({
@@ -280,7 +280,7 @@ async fn cycle_creation_save_versions_409() {
 
 #[tokio::test]
 #[serial]
-async fn validation_doc_structure_et_assets() {
+async fn validation_doc_structure_and_assets() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let created = create_tour(&server, &env.alice, org, "Validation").await;
@@ -293,10 +293,10 @@ async fn validation_doc_structure_et_assets() {
             org,
             &tour_id,
             1,
-            doc_avec_scene("00000000-0000-0000-0000-0000000000aa", Some("zz")),
+            doc_with_scene("00000000-0000-0000-0000-0000000000aa", Some("zz")),
         )
         .await;
-        assert_eq!(res.status_code(), 400, "lien orphelin → 400");
+        assert_eq!(res.status_code(), 400, "orphan link → 400");
         let body: serde_json::Value = res.json();
         let codes: Vec<&str> = body["errors"]["violations"]
             .as_array()
@@ -317,10 +317,10 @@ async fn validation_doc_structure_et_assets() {
             org,
             &tour_id,
             1,
-            doc_avec_scene("00000000-0000-0000-0000-0000000000bb", None),
+            doc_with_scene("00000000-0000-0000-0000-0000000000bb", None),
         )
         .await;
-        assert_eq!(res.status_code(), 400, "asset inconnu → 400");
+        assert_eq!(res.status_code(), 400, "unknown asset → 400");
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "tour-invalid", "{body}");
         assert_eq!(body["errors"]["violations"][0]["code"], "unknown_asset");
@@ -349,7 +349,7 @@ async fn validation_doc_structure_et_assets() {
             org,
             &tour_id,
             1,
-            doc_avec_scene(&asset_id, None),
+            doc_with_scene(&asset_id, None),
         )
         .await;
         assert_eq!(
@@ -371,7 +371,7 @@ async fn validation_doc_structure_et_assets() {
             org,
             &tour_id,
             2,
-            doc_avec_scene("pas-un-uuid", None),
+            doc_with_scene("pas-un-uuid", None),
         )
         .await;
         assert_eq!(res.status_code(), 400);
@@ -393,7 +393,7 @@ async fn publish_share_cycle() {
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(res.status_code(), 409, "share avant publish → 409");
+        assert_eq!(res.status_code(), 409, "share before publish → 409");
         let body: serde_json::Value = res.json();
         // Loco CustomError body: {"error": code, "description": message}.
         assert_eq!(body["error"], "tour-not-published");
@@ -490,7 +490,7 @@ async fn publish_share_cycle() {
 }
 
 /// Full document: floor with a plan + 2 scenes + a link.
-fn doc_complet(plan_id: &str, pano_id: &str) -> serde_json::Value {
+fn full_doc(plan_id: &str, pano_id: &str) -> serde_json::Value {
     serde_json::json!({
         "mode": "panorama",
         "start_scene": "s1",
@@ -519,7 +519,7 @@ fn doc_complet(plan_id: &str, pano_id: &str) -> serde_json::Value {
 
 #[tokio::test]
 #[serial]
-async fn kind_floorplan_et_plan_d_etage() {
+async fn kind_floorplan_and_floor_plan() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -565,9 +565,9 @@ async fn kind_floorplan_et_plan_d_etage() {
 
         // A panorama used as a plan → 400 kind required (a panorama
         // stays forbidden as a plan: only a flat image fits).
-        let doc = doc_complet(&pano_id, &pano_id);
+        let doc = full_doc(&pano_id, &pano_id);
         let res = save_tour(&server, &env.alice, org, &tour_id, 1, doc).await;
-        assert_eq!(res.status_code(), 400, "panorama en plan → 400");
+        assert_eq!(res.status_code(), 400, "panorama in plan → 400");
         let body: serde_json::Value = res.json();
         let violation = &body["errors"]["violations"][0];
         assert_eq!(violation["code"], "asset_kind_mismatch", "{body}");
@@ -594,7 +594,7 @@ async fn kind_floorplan_et_plan_d_etage() {
             .as_str()
             .unwrap()
             .to_string();
-        let doc = doc_complet(&photo_id, &pano_id);
+        let doc = full_doc(&photo_id, &pano_id);
         let res = save_tour(&server, &env.alice, org, &tour_id, 1, doc).await;
         assert_eq!(
             res.status_code(),
@@ -606,16 +606,16 @@ async fn kind_floorplan_et_plan_d_etage() {
         // Full and consistent document → 200 (dedicated floorplan kind). The
         // photo save above went to v2: optimistic concurrency with
         // expected=2.
-        let doc = doc_complet(&plan_id, &pano_id);
+        let doc = full_doc(&plan_id, &pano_id);
         let res = save_tour(&server, &env.alice, org, &tour_id, 2, doc).await;
-        assert_eq!(res.status_code(), 200, "doc complet : {}", res.text());
+        assert_eq!(res.status_code(), 200, "full doc: {}", res.text());
     })
     .await;
 }
 
 #[tokio::test]
 #[serial]
-async fn endpoint_public_et_cache() {
+async fn public_endpoint_and_cache() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -654,7 +654,7 @@ async fn endpoint_public_et_cache() {
             org,
             &tour_id,
             1,
-            doc_complet(&plan_id, &pano_id),
+            full_doc(&plan_id, &pano_id),
         )
         .await;
         assert_eq!(res.status_code(), 200);
@@ -665,7 +665,7 @@ async fn endpoint_public_et_cache() {
             .await;
         assert_eq!(res.status_code(), 404, "unknown token masked");
 
-        // Share avant publish → 409.
+        // Share before publish → 409.
         let res = server
             .post(&format!("/api/v1/tours/{tour_id}/share"))
             .add_header("Content-Type", "application/json")
@@ -827,7 +827,7 @@ async fn endpoint_public_et_cache() {
         let token2 = shared2["share_token"].as_str().unwrap().to_string();
         assert_ne!(token2, token, "new token after revocation");
         let res = server.get(&format!("/api/v1/public/tours/{token2}")).await;
-        assert_eq!(res.status_code(), 200, "nouveau lien vivant");
+        assert_eq!(res.status_code(), 200, "new live link");
 
         // DELETE /share: revokes the link while keeping the publication.
         let res = server
@@ -852,7 +852,7 @@ async fn endpoint_public_et_cache() {
 
 #[tokio::test]
 #[serial]
-async fn isolation_org_et_roles() {
+async fn org_isolation_and_roles() {
     with_app(|server, env| async move {
         let org1 = personal_org(&server, &env.alice).await;
         let org2 = personal_org(&server, &env.bob).await;
@@ -956,7 +956,7 @@ async fn isolation_org_et_roles() {
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", shared_org.to_string())
             .await;
-        assert_eq!(res.status_code(), 403, "viewer delete → 403 avant 404");
+        assert_eq!(res.status_code(), 403, "viewer delete → 403 before 404");
 
         // Unknown tour → 404 (the owner themself).
         let res = server

@@ -102,7 +102,7 @@ fn set_env(base: &str) {
 }
 
 #[tokio::test]
-async fn client_o2_lit_et_ecrit() {
+async fn o2_client_reads_and_writes() {
     let (base, captured) = spawn_mock_o2().await;
     set_env(&base);
     let client = pnex_node_device::o2::O2Client::from_env().expect("client");
@@ -142,9 +142,9 @@ async fn client_o2_lit_et_ecrit() {
 }
 
 #[test]
-fn registre_contient_les_noeuds_device() {
+fn registry_contains_the_device_nodes() {
     use edgelink_core::runtime::registry::RegistryBuilder;
-    let reg = RegistryBuilder::default().build().expect("registre");
+    let reg = RegistryBuilder::default().build().expect("registry");
     for type_name in [
         "pnex-device-read",
         "pnex-device-write",
@@ -159,7 +159,7 @@ fn registre_contient_les_noeuds_device() {
 }
 
 #[test]
-fn noms_et_cles_phase6() {
+fn phase6_names_and_keys() {
     // Device payload keys: identical editor/runtime.
     assert_eq!(pnex_core::device_payload_key("cap-1", "D1"), "cap_1_D1");
     // etl_ prefix idempotent + normalized.

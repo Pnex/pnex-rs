@@ -39,7 +39,7 @@ impl TelemetrySink for RecSink {
     }
 }
 
-// ─────────────────── Harnais ───────────────────
+// ─────────────────── Harness ───────────────────
 
 async fn with_app<F, Fut>(f: F)
 where
@@ -150,7 +150,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org perso")
+        .expect("personal org")
 }
 
 /// Announce → waits for the ProvisionAck, returns the received caps.
@@ -205,7 +205,7 @@ async fn wait_offline(server: &axum_test::TestServer, auth: &str, org: i64, dev_
 /// (last_values memory + telemetry output) → GET /pins.
 #[tokio::test]
 #[serial]
-async fn announce_provision_et_state_report() {
+async fn announce_provision_and_state_report() {
     telemetry::reset_sink();
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-jardin").await;
@@ -295,7 +295,7 @@ async fn announce_provision_et_state_report() {
 /// (the next Announce will apply it on reconnect).
 #[tokio::test]
 #[serial]
-async fn commandes_validation_puis_offline_409() {
+async fn commands_validation_then_offline_409() {
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-relais").await;
         let org = personal_org(&server, &auth).await;
@@ -327,7 +327,7 @@ async fn commandes_validation_puis_offline_409() {
             res.json::<serde_json::Value>()
                 .to_string()
                 .contains("strapping"),
-            "raison chip-caps attendue"
+            "chip-caps reason expected"
         );
         // Legal set_mode but device offline → 409; mode persisted anyway.
         // (D5 = GPIO14 on NodeMCU — the D5 label never meant GPIO5.)
@@ -443,7 +443,7 @@ async fn stale_session_is_superseded_and_commands_reach_the_new_one() {
     .await;
 }
 
-// ─────────────────── F2 : manifeste (D47) + horloge (D46) ───────────────────
+// ─────────────────── F2: manifest (D47) + clock (D46) ───────────────────
 
 // ─────────────────── OTA phase 2 : announce inventory ───────────────────
 
@@ -451,7 +451,7 @@ async fn stale_session_is_superseded_and_commands_reach_the_new_one() {
 /// the `ota` cap attestation — GET /devices/{id} reflects both.
 #[tokio::test]
 #[serial]
-async fn announce_persiste_fw_version_et_ota_ready() {
+async fn announce_persists_fw_version_and_ota_ready() {
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-ota-inventaire").await;
         let org = personal_org(&server, &auth).await;
@@ -494,7 +494,7 @@ async fn announce_persiste_fw_version_et_ota_ready() {
 /// the manifest).
 #[tokio::test]
 #[serial]
-async fn announce_sans_cap_ota_reste_pas_admis() {
+async fn announce_without_ota_cap_stays_not_admitted() {
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-ota-off").await;
         let org = personal_org(&server, &auth).await;
@@ -520,7 +520,7 @@ async fn announce_sans_cap_ota_reste_pas_admis() {
 /// (overlay = pin_slave authority, attestation journaled) → ProvisionAck.
 #[tokio::test]
 #[serial]
-async fn announce_avec_manifeste_accepte() {
+async fn announce_with_manifest_accepted() {
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-manifeste").await;
         let mut ws = connect(&server, &dev).await;
@@ -550,7 +550,7 @@ async fn announce_avec_manifeste_accepte() {
 /// unchanged, D46 fields tolerated.
 #[tokio::test]
 #[serial]
-async fn state_report_etendu_route_par_label() {
+async fn extended_state_report_routed_by_label() {
     telemetry::reset_sink();
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-horloge").await;
@@ -593,7 +593,7 @@ async fn state_report_etendu_route_par_label() {
 /// fed by gpio (UI /pins — soft switchover §7).
 #[tokio::test]
 #[serial]
-async fn state_report_cap_route_le_sens() {
+async fn state_report_cap_routes_the_direction() {
     telemetry::reset_sink();
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-cap").await;
@@ -648,7 +648,7 @@ async fn state_report_cap_route_le_sens() {
 /// never invented); out/cycles always emitted.
 #[tokio::test]
 #[serial]
-async fn reg_state_route_vers_o2() {
+async fn reg_state_routed_to_o2() {
     telemetry::reset_sink();
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-regdiag").await;
@@ -708,7 +708,7 @@ async fn reg_state_route_vers_o2() {
 /// strapping), analog_in admitted on D0 (GPIO2 = ADC1).
 #[tokio::test]
 #[serial]
-async fn admission_et_chip_caps_esp32c3() {
+async fn admission_and_chip_caps_esp32c3() {
     with_app(|server, auth, ctx| async move {
         // C3 board with the catalogue profile `xiao_esp32c3` + predefined
         // device.
@@ -776,7 +776,7 @@ async fn admission_et_chip_caps_esp32c3() {
             pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
             other => panic!("ProvisionAck expected, got: {other:?}"),
         };
-        assert_eq!(caps.len(), 11, "11 pins D0–D10 attendus");
+        assert_eq!(caps.len(), 11, "11 pins D0–D10 expected");
         // Profile order (physical header order), compared as a set.
         let mut labels: Vec<&str> = caps.iter().map(|p| p.label.as_str()).collect();
         labels.sort_by_key(|l| l[1..].parse::<u32>().unwrap_or(u32::MAX));
@@ -797,7 +797,7 @@ async fn admission_et_chip_caps_esp32c3() {
         res.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
         assert!(
             res.json::<serde_json::Value>().to_string().contains("ADC2"),
-            "raison ADC2 attendue"
+            "ADC2 reason expected"
         );
 
         // analog_in on D0 (GPIO2 = ADC1) → legal (persisted, offline = 409).
@@ -825,7 +825,7 @@ async fn admission_et_chip_caps_esp32c3() {
             res.json::<serde_json::Value>()
                 .to_string()
                 .contains("strapping"),
-            "raison strapping attendue"
+            "strapping reason expected"
         );
         let res = server
             .post(&format!("/api/v1/devices/{}/commands", dev.id))
@@ -893,7 +893,7 @@ async fn custom_firmware_admits_declared_pins() {
             .await;
         res.assert_status(axum_test::http::StatusCode::OK);
         let body = res.json::<serde_json::Value>();
-        let list = body["pins"].as_array().expect("liste pins");
+        let list = body["pins"].as_array().expect("pins list");
         let labels: Vec<&str> = list.iter().filter_map(|p| p["label"].as_str()).collect();
         assert!(
             labels.contains(&"pump") && labels.contains(&"door") && labels.contains(&"photo"),
@@ -1110,7 +1110,7 @@ async fn post_build(
 /// fw == target → succeeded → POST again → 409 ota-same-version.
 #[tokio::test]
 #[serial]
-async fn ota_cycle_complet_en_ligne() {
+async fn ota_full_cycle_online() {
     with_app(|server, auth, ctx| async move {
         let dev = create_generic(&server, &auth, "gen-ota-cycle").await;
         let org = personal_org(&server, &auth).await;
@@ -1253,7 +1253,7 @@ async fn ota_cycle_complet_en_ligne() {
 /// device lagged by 3 versions).
 #[tokio::test]
 #[serial]
-async fn ota_offline_pickup_a_l_annonce() {
+async fn ota_offline_pickup_on_announce() {
     with_app(|server, auth, ctx| async move {
         let dev = create_generic(&server, &auth, "gen-ota-offline").await;
         let org = personal_org(&server, &auth).await;
@@ -1308,7 +1308,7 @@ async fn ota_offline_pickup_a_l_annonce() {
 /// active assignment; device download route is token-gated.
 #[tokio::test]
 #[serial]
-async fn ota_gardes_et_refus_device() {
+async fn ota_guards_and_device_refusal() {
     with_app(|server, auth, ctx| async move {
         let dev = create_generic(&server, &auth, "gen-ota-gardes").await;
         let org = personal_org(&server, &auth).await;

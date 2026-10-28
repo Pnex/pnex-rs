@@ -83,7 +83,7 @@ fn bearer(token: &str) -> String {
 
 #[tokio::test]
 #[serial]
-async fn sans_token_toute_l_api_est_refusee() {
+async fn without_token_the_whole_api_is_refused() {
     with_app(|server, _env| async move {
         let res = server.get("/api/v1/user-info").await;
         assert_eq!(res.status_code(), 401);
@@ -97,7 +97,7 @@ async fn sans_token_toute_l_api_est_refusee() {
 
 #[tokio::test]
 #[serial]
-async fn jit_provisioning_cree_user_profil_et_org_owner() {
+async fn jit_provisioning_creates_user_profile_and_owner_org() {
     with_app(|server, env| async move {
         let res = server
             .get("/api/v1/user-info")
@@ -130,7 +130,7 @@ async fn jit_provisioning_cree_user_profil_et_org_owner() {
 
 #[tokio::test]
 #[serial]
-async fn sub_change_avec_meme_email_relie_le_meme_user() {
+async fn sub_change_with_same_email_relinks_the_same_user() {
     with_app(|server, env| async move {
         // alice provisions herself with a first sub.
         let sub_a = "00000000-0000-0000-0000-0000000000aa";
@@ -165,7 +165,7 @@ async fn sub_change_avec_meme_email_relie_le_meme_user() {
 
 #[tokio::test]
 #[serial]
-async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
+async fn sso_register_and_reset_point_to_the_rauthy_pages() {
     with_app(|server, env| async move {
         // register: Rauthy sign-up UI page (not an OIDC endpoint,
         // activation by mail — no OAuth2 params).
@@ -255,7 +255,7 @@ async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
 
 #[tokio::test]
 #[serial]
-async fn token_lean_rauthy_username_reprend_l_email() {
+async fn lean_rauthy_token_username_takes_the_email() {
     with_app(|server, env| async move {
         // Actual shape of a Rauthy access token (D19): without
         // preferred_username (the claim lives in the id_token). The user-info
@@ -279,7 +279,7 @@ async fn token_lean_rauthy_username_reprend_l_email() {
 
 #[tokio::test]
 #[serial]
-async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
+async fn a_tenant_does_not_see_the_other_tenants_orgs() {
     with_app(|server, env| async move {
         // Provisions alice then bob.
         for token in [&env.alice, &env.bob] {
@@ -298,7 +298,7 @@ async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
             .json();
         let alice_org_id = alice_orgs["results"][0]["id"]
             .as_i64()
-            .expect("id org alice");
+            .expect("alice org id");
 
         // Bob doesn't see alice's org, neither for reading nor for writing.
         let res = server
@@ -333,7 +333,7 @@ async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
 
 #[tokio::test]
 #[serial]
-async fn roles_viewer_owner_et_garde_fous() {
+async fn viewer_owner_roles_and_safeguards() {
     with_app(|server, env| async move {
         for token in [&env.alice, &env.bob] {
             server
@@ -423,7 +423,7 @@ async fn roles_viewer_owner_et_garde_fous() {
             .delete(&format!("/api/v1/orgs/{org_id}/members/{alice_user_id}"))
             .add_header("Authorization", bearer(&env.alice))
             .await;
-        assert_eq!(res.status_code(), 409, "dernier owner inamovible");
+        assert_eq!(res.status_code(), 409, "last owner cannot be removed");
 
         // Bob the viewer tries to promote himself: refused (owner required).
         let bob_user_id: i64 = server

@@ -73,7 +73,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 const INTERNAL_TOKEN: &str = "test-internal-token";
@@ -129,7 +129,7 @@ async fn create_channel(
 
 #[tokio::test]
 #[serial]
-async fn kinds_exposent_les_canaux_livres() {
+async fn kinds_expose_the_shipped_channels() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let kinds = server
@@ -174,7 +174,7 @@ async fn kinds_exposent_les_canaux_livres() {
         assert!(fields
             .iter()
             .any(|f| f["id"] == "chat_id" && f["required"] == true));
-        // Slack / Discord : webhook_url porteuse de secret (D65).
+        // Slack / Discord: webhook_url carries a secret (D65).
         for kind in ["slack", "discord"] {
             let k = list.iter().find(|x| x["kind"] == kind).unwrap();
             let fields = k["field_spec"].as_array().unwrap();
@@ -200,7 +200,7 @@ async fn kinds_exposent_les_canaux_livres() {
 
 #[tokio::test]
 #[serial]
-async fn cycle_crud_masquage_et_409() {
+async fn crud_cycle_masking_and_409() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (id, created) = create_channel(
@@ -300,7 +300,7 @@ async fn cycle_crud_masquage_et_409() {
 /// lists it, and a PUT without the secret keeps it (registry merge).
 #[tokio::test]
 #[serial]
-async fn cycle_crud_masquage_telegram() {
+async fn crud_cycle_masking_telegram() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (id, created) = create_channel(
@@ -346,7 +346,7 @@ async fn cycle_crud_masquage_telegram() {
 
 #[tokio::test]
 #[serial]
-async fn isolation_org_et_viewer() {
+async fn org_isolation_and_viewer() {
     with_app(|server, env| async move {
         let org_a = personal_org(&server, &env.alice).await;
         let org_b = personal_org(&server, &env.bob).await;
@@ -402,7 +402,7 @@ async fn isolation_org_et_viewer() {
 
 #[tokio::test]
 #[serial]
-async fn templates_crud_et_preview() {
+async fn templates_crud_and_preview() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let created = server
@@ -468,7 +468,7 @@ async fn templates_crud_et_preview() {
 
 #[tokio::test]
 #[serial]
-async fn test_draft_et_test_canal_webhook() {
+async fn test_draft_and_test_webhook_channel() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (url, seen) = spawn_webhook_receiver().await;
@@ -541,7 +541,7 @@ async fn test_draft_et_test_canal_webhook() {
 
 #[tokio::test]
 #[serial]
-async fn test_canal_avec_template_rendu() {
+async fn test_channel_with_rendered_template() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (url, seen) = spawn_webhook_receiver().await;
@@ -615,7 +615,7 @@ async fn test_canal_avec_template_rendu() {
 /// `{server}/`).
 #[tokio::test]
 #[serial]
-async fn test_draft_ntfy_contre_recepteur_local() {
+async fn test_draft_ntfy_against_local_receiver() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         // ntfy receiver: the channel publishes to `{server}/` as JSON.
@@ -671,7 +671,7 @@ async fn test_draft_ntfy_contre_recepteur_local() {
 
 #[tokio::test]
 #[serial]
-async fn interne_sans_token_refuse() {
+async fn internal_without_token_refused() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (id, _) = create_channel(
@@ -706,7 +706,7 @@ async fn interne_sans_token_refuse() {
 /// received + journal (source flow). Wrong token → 401.
 #[tokio::test]
 #[serial]
-async fn interne_delivre_frame_ws_et_journalise() {
+async fn internal_delivers_ws_frame_and_logs() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (id, _) = create_channel(
@@ -717,7 +717,7 @@ async fn interne_delivre_frame_ws_et_journalise() {
         )
         .await;
 
-        // Mauvais token → 401.
+        // Bad token → 401.
         let bad = server
             .post("/internal/notify/deliver")
             .add_header("Content-Type", "application/json")
@@ -739,7 +739,7 @@ async fn interne_delivre_frame_ws_et_journalise() {
             .into_websocket()
             .await;
 
-        // Livraison interne → 200 {delivered: 1}.
+        // Internal delivery → 200 {delivered: 1}.
         let resp = server
             .post("/internal/notify/deliver")
             .add_header("Content-Type", "application/json")
@@ -869,7 +869,7 @@ async fn test_draft_websocket_draft_reaches_the_bus() {
 /// WS without a ticket → 4002; no ticket for a foreign org; replayed ticket → 4001.
 #[tokio::test]
 #[serial]
-async fn ws_notify_rejets_auth() {
+async fn ws_notify_auth_rejections() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         // Without a token: the connection is accepted then closed (4002).

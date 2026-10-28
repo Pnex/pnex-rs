@@ -398,12 +398,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn publish_sans_session_renvoie_zero() {
+    fn publish_without_session_returns_zero() {
         assert_eq!(publish(987_654_321, "{}".into()), 0);
     }
 
     #[tokio::test]
-    async fn session_enregistree_recoit_puis_elaguee() {
+    async fn registered_session_receives_then_is_pruned() {
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
         register_session(555, Uuid::nil(), tx);
         assert_eq!(publish(555, "frame".into()), 1);

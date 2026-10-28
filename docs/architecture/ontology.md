@@ -832,7 +832,7 @@ confiance, auteur machine.
     propre version, le pack n'y touche plus. Un flow mis à jour reste à
     redéployer (D123). La réponse de l'installation nomme ce qui a été
     gardé (`kept`) et l'UI l'affiche après la mise à jour. Test :
-    `partner_watch` presence_web.
+    `partner_watch` web_presence.
 - **Livré, deuxième partie (2026-10-23)** : les **libellés et couleurs
   des valeurs d'énumération** (D370).
   - `PropertyDef.labels` : valeur → libellé par langue, à côté de
@@ -865,7 +865,7 @@ confiance, auteur machine.
     `{{coverage:…}}`.
   - Les pastilles de la hiérarchie portent le libellé (`labels` de
     `NodeMark` / `MarkCount`).
-  - Test : `partner_watch` presence_web (libellé et couleur gardés à la
+  - Test : `partner_watch` web_presence (libellé et couleur gardés à la
     montée de version).
 - **Pas fait** :
   - fusion d'une fonction ou d'un flow que l'org a modifié avec la

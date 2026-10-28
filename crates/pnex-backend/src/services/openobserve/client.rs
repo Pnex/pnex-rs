@@ -216,7 +216,7 @@ impl Client {
         let resp = req
             .send()
             .await
-            .map_err(|e| format!("openobserve injoignable : {e}"))?;
+            .map_err(|e| format!("openobserve unreachable: {e}"))?;
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         Ok((status, text))
@@ -370,7 +370,7 @@ impl Client {
             .body(compressed)
             .send()
             .await
-            .map_err(|e| format!("ingest injoignable : {e}"))?;
+            .map_err(|e| format!("ingest unreachable: {e}"))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -564,7 +564,7 @@ impl Client {
                 .header("Authorization", auth)
                 .send()
                 .await
-                .map_err(|e| format!("{what} injoignable : {e}"))?;
+                .map_err(|e| format!("{what} unreachable: {e}"))?;
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             if status.as_u16() == 401 || status.as_u16() == 403 {

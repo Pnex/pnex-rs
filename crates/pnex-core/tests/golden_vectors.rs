@@ -51,14 +51,14 @@ const TT: &[TtScenario] = &[
     // Asymmetric hysteresis: ON below setpoint − deadband, OFF when back at
     // the setpoint; excluded boundaries included.
     TtScenario {
-        name: "chauffage_hysteresis",
+        name: "heating_hysteresis",
         heat: true,
         setpoint: 19.0,
         deadband: 0.5,
         steps: &[
             (18.4, false), // < 18.5 → ON
             (18.6, false), // dead band → OFF
-            (18.6, true),  // < 19 → reste ON
+            (18.6, true),  // < 19 → stays ON
             (18.99, true),
             (19.0, true),     // exact return to the setpoint → OFF
             (18.5, false),    // boundary: 18.5 < 18.5 is false → OFF
@@ -67,7 +67,7 @@ const TT: &[TtScenario] = &[
     },
     // Cooling: inverted direction, boundary 26.5 excluded.
     TtScenario {
-        name: "clim_inversee",
+        name: "cooling_inverted",
         heat: false,
         setpoint: 26.0,
         deadband: 0.5,
@@ -81,14 +81,14 @@ const TT: &[TtScenario] = &[
     },
     // Fail-safe: deadband ≤ 0 → never ON.
     TtScenario {
-        name: "deadband_zero_ne_s_allume_jamais",
+        name: "zero_deadband_never_turns_on",
         heat: true,
         setpoint: 19.0,
         deadband: 0.0,
         steps: &[(10.0, false), (10.0, true)],
     },
     TtScenario {
-        name: "deadband_negatif_ne_s_allume_jamais",
+        name: "negative_deadband_never_turns_on",
         heat: true,
         setpoint: 19.0,
         deadband: -1.0,
@@ -100,7 +100,7 @@ const PID: &[PidScenario] = &[
     // 1st sample (D=0), convergence, overshoot (duty 0, integral
     // bounded low), then re-armed by room_min.
     PidScenario {
-        name: "convergence_overshoot_re_arme",
+        name: "convergence_overshoot_rearm",
         setpoint: 20.0,
         kp: 2.0,
         ki: 0.5,
@@ -115,7 +115,7 @@ const PID: &[PidScenario] = &[
     },
     // Anti-windup: integral capped at room_max = 100 − P.
     PidScenario {
-        name: "anti_windup_saturation_haute",
+        name: "anti_windup_high_saturation",
         setpoint: 20.0,
         kp: 1.0,
         ki: 10.0,
@@ -124,7 +124,7 @@ const PID: &[PidScenario] = &[
     },
     // Integral bounded low: room_min = −P.
     PidScenario {
-        name: "borne_basse_integrale",
+        name: "integral_lower_bound",
         setpoint: 20.0,
         kp: 1.0,
         ki: 10.0,
@@ -133,7 +133,7 @@ const PID: &[PidScenario] = &[
     },
     // Derivative on the measurement: changing the setpoint does not kick the output.
     PidScenario {
-        name: "kick_de_consigne_absent",
+        name: "setpoint_kick_absent",
         setpoint: 20.0,
         kp: 1.0,
         ki: 0.0,
@@ -142,7 +142,7 @@ const PID: &[PidScenario] = &[
     },
     // dt ≤ 0: derivative degraded to 0 even with a prev.
     PidScenario {
-        name: "dt_nul_sans_derivee",
+        name: "zero_dt_no_derivative",
         setpoint: 20.0,
         kp: 1.0,
         ki: 0.0,
@@ -159,25 +159,25 @@ const RELAY: &[RelayScenario] = &[
         steps: &[0.0, 2.49, 2.5, 9.9],
     },
     RelayScenario {
-        name: "bords_duty",
+        name: "duty_edges",
         duty_pct: 0.0,
         cycle_time_secs: 10.0,
         steps: &[0.0],
     },
     RelayScenario {
-        name: "duty_100_toujours_on",
+        name: "duty_100_always_on",
         duty_pct: 100.0,
         cycle_time_secs: 10.0,
         steps: &[0.0, 5.0, 9.99],
     },
     RelayScenario {
-        name: "cycle_nul_jamais_on",
+        name: "zero_cycle_never_on",
         duty_pct: 50.0,
         cycle_time_secs: 0.0,
         steps: &[0.0],
     },
     RelayScenario {
-        name: "elapsed_negatif_jamais_on",
+        name: "negative_elapsed_never_on",
         duty_pct: 50.0,
         cycle_time_secs: 10.0,
         steps: &[-0.1],
@@ -456,7 +456,7 @@ fn render_cpp_header() -> String {
     s
 }
 
-// ─────────────────────────── Test gardien ───────────────────────────
+// ─────────────────────────── Guard test ───────────────────────────
 
 static REGEN_LOCK: Mutex<()> = Mutex::new(());
 
@@ -477,7 +477,7 @@ fn golden_paths() -> (PathBuf, PathBuf) {
 /// Safeguard: the generated artifacts match the current reference
 /// exactly. `PNEX_REGEN_GOLDENS=1` rewrites both files.
 #[test]
-fn golden_vectors_sont_a_jour() {
+fn golden_vectors_are_up_to_date() {
     let _guard = REGEN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let (json_path, cpp_path) = golden_paths();
     if std::env::var("PNEX_REGEN_GOLDENS").as_deref() == Ok("1") {

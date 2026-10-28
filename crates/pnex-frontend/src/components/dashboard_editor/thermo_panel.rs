@@ -123,7 +123,7 @@ pub fn ThermoPanel(
 
     rsx! {
         div { class: "space-y-3",
-            // Diagramme
+            // Diagram
             span { class: "block text-xs font-medium text-gray-500", {t!("insp-thermo-diagram")} }
             select {
                 class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",

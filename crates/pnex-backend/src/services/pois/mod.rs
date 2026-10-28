@@ -75,7 +75,7 @@ pub use placements::*;
 pub use positions::*;
 pub use validation::*;
 
-// ─────────────────────────── tests unitaires purs ───────────────────────────
+// ─────────────────────────── pure unit tests ───────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -92,7 +92,7 @@ mod tests {
     }
 
     #[test]
-    fn cellule_diminue_avec_le_zoom() {
+    fn cell_shrinks_with_zoom() {
         assert!((cell_size_deg(0) - 45.0).abs() < 1e-9, "360 / (8 × 2⁰)");
         assert!((cell_size_deg(1) - 22.5).abs() < 1e-9);
         assert!(cell_size_deg(10) < cell_size_deg(5));
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn sous_le_seuil_points_individuels_porteurs_did() {
+    fn below_threshold_individual_points_carry_did() {
         let points: Vec<ClusterPoint> = (0..10)
             .map(|i| {
                 point(
@@ -116,13 +116,13 @@ mod tests {
             })
             .collect();
         let items = cluster_points(&points, cell_size_deg(3));
-        assert_eq!(items.len(), 10, "≤ CLUSTER_INDIVIDUAL_MAX : individuels");
+        assert_eq!(items.len(), 10, "≤ CLUSTER_INDIVIDUAL_MAX: individual");
         assert!(items.iter().all(|i| i.count == 1 && i.id.is_some()));
         assert!(items.iter().all(|i| i.label.starts_with("poi-")));
     }
 
     #[test]
-    fn au_dessu_du_seuil_agregation_en_centroides() {
+    fn above_threshold_aggregation_into_centroids() {
         // 250 nearly overlapping points + 1 very far: 2 buckets (zoom 3).
         let mut points: Vec<ClusterPoint> = (0..CLUSTER_INDIVIDUAL_MAX + 50)
             .map(|i| {
@@ -136,7 +136,7 @@ mod tests {
         points.push(point("ffffffff-ffff-ffff-ffff-ffffffffff01", 10.0, 20.0));
         let items = cluster_points(&points, cell_size_deg(3));
         assert_eq!(items.len(), 2, "two occupied cells");
-        let big = items.iter().find(|i| i.count > 1).expect("groupe dense");
+        let big = items.iter().find(|i| i.count > 1).expect("dense group");
         assert_eq!(big.count as usize, CLUSTER_INDIVIDUAL_MAX + 50);
         assert!(big.id.is_none(), "cluster without an id");
         // Centroid ≈ barycentre of the jitter.
@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn le_cap_ditems_doubl_la_cellule() {
+    fn the_item_cap_doubles_the_cell() {
         // 300 points evenly spread on a diagonal: at zoom 22 the cell is
         // tiny → many buckets; the cap forces growth.
         let points: Vec<ClusterPoint> = (0..CLUSTER_INDIVIDUAL_MAX + 100)
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn tri_decroissant_par_densite() {
+    fn sorted_by_descending_density() {
         let mut points: Vec<ClusterPoint> = (0..CLUSTER_INDIVIDUAL_MAX + 30)
             .map(|i| {
                 point(

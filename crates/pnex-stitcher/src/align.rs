@@ -628,7 +628,7 @@ const WARP_MAX_DEG: f32 = 0.25;
 /// overlap (the align's `measure_slab` machinery), on grey strips
 /// whitened at 1024 px. Gauge: symmetric correction ±m/2 per pair
 /// (content_a += +m/2, content_b += −m/2 — convention locked by the
-/// probe `sonde_convention_yaw`: m = Δa − Δb), applied δ = −content,
+/// probe `probe_yaw_convention`: m = Δa − Δb), applied δ = −content,
 /// so δa = −m/2, δb = +m/2. Smoothing 2× 3×3 box + clamp ±0.15°.
 pub fn estimate_local_warp(frames: &mut [PreparedFrame]) {
     let n = frames.len();
@@ -1275,7 +1275,7 @@ mod tests {
 
     /// wrap180: circle bounds.
     #[test]
-    fn wrap180_bornes() {
+    fn wrap180_bounds() {
         assert!((wrap180(0.0)).abs() < 1e-6);
         assert!((wrap180(190.0) - (-170.0)).abs() < 1e-6);
         assert!((wrap180(-190.0) - 170.0).abs() < 1e-6);
@@ -1284,7 +1284,7 @@ mod tests {
 
     /// Parabola: vertex on a symmetric and an asymmetric triplet.
     #[test]
-    fn parabola_sommet() {
+    fn parabola_vertex() {
         assert!((parabola(0.0, 1.0, 0.0)).abs() < 1e-6);
         // Triplet descending to the right: vertex shifted left by 1/6.
         assert!((parabola(0.5, 1.0, 0.0) - (-1.0 / 6.0)).abs() < 1e-6);
@@ -1295,7 +1295,7 @@ mod tests {
     /// recorded at 24.5° → Δ_b = +2°, Δ_a = 0). Locks the sign/scale
     /// convention of `measure_pair` independently of the full pipeline.
     #[test]
-    fn sonde_convention_yaw() {
+    fn probe_yaw_convention() {
         use crate::geom::euler_to_mat;
         use crate::project::{f_px_from_hfov, lat_band};
 
@@ -1362,7 +1362,7 @@ mod tests {
         };
         let sa = render_gray_strip(&a, qp.align_work_width);
         let sb = render_gray_strip(&b, qp.align_work_width);
-        let ms = measure_pair(&sa, &sb, PairKind::Intra, &qp).expect("mesure");
+        let ms = measure_pair(&sa, &sb, PairKind::Intra, &qp).expect("measurement");
         for m in &ms {
             println!(
                 "probe Δ_b=+2°: dlon={:+.3} dlat={:+.3} ncc={:.3}",
@@ -1445,7 +1445,7 @@ mod tests {
     /// Gauge: without the graph (0 pairs), the solve must stay at the sensor.
     #[test]
     #[cfg(feature = "pose-model")]
-    fn solve_sans_paires_reste_au_capteur() {
+    fn solve_without_pairs_stays_at_sensor() {
         let sensor: Vec<[f64; 3]> = vec![[10.0, 5.0, -3.0], [30.0, -2.0, 1.0]];
         let qp = QualityParams::default();
         let solved = solve_rotation_gn(&[], &sensor, &qp).expect("convergence");
@@ -1461,7 +1461,7 @@ mod tests {
     /// of the applied δ (δa = −m/2, δb = +m/2) and the effectiveness (NCC
     /// re-measurement ≈ 0 after application, strips rendered VIA the warp).
     #[test]
-    fn sonde_warp_local() {
+    fn probe_local_warp() {
         use crate::geom::euler_to_mat;
         use crate::project::{f_px_from_hfov, lat_band};
 
@@ -1535,7 +1535,7 @@ mod tests {
         let m_pre = pre[0].dlon_deg;
         println!("warp probe: m_pre = {m_pre:+.3}°");
         // The periodic synthetic texture biases the NCC at small Δ
-        // (see sonde_convention_yaw: ±0.55°) — injection at Δ = −2° where the
+        // (see probe_yaw_convention: ±0.55°) — injection at Δ = −2° where the
         // measurement is reliable.
         assert!(m_pre.abs() > 1.2, "injected residual missing: {m_pre}");
 
@@ -1573,7 +1573,7 @@ mod tests {
             PairKind::Intra,
             &qp,
         )
-        .expect("mesure post");
+        .expect("post measurement");
         let m_post = post[0].dlon_deg;
         println!("warp probe: m_post = {m_post:+.3}°");
         // Direction: the warp REDUCES the residual (the ±0.15° clamp and the
@@ -1581,7 +1581,7 @@ mod tests {
         // the extent is validated on a real capture).
         assert!(
             m_post.abs() < m_pre.abs() - 0.02,
-            "warp local inefficace : {m_pre} → {m_post}"
+            "local warp ineffective: {m_pre} → {m_post}"
         );
     }
 }

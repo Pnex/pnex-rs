@@ -1575,6 +1575,7 @@ notify-field-priority = Priority
 notify-field-tags = Tags (comma-separated)
 notify-field-bot-token = Bot token
 notify-field-chat-id = Chat ID
+notify-field-chat-id-placeholder = -1001234567890 or @mychannel
 notify-field-webhook-url = Webhook URL
 notify-field-username = Username (optional)
 notify-field-host = SMTP host
@@ -6145,7 +6146,7 @@ profile-opposition-confirm = Confirm the objection (final)
 profile-opposition-recorded = Objection recorded: no more captures of this person.
 err-ext-target-not-profile = This address is not one person's profile page on a known network (searches, relations and suggestions are refused).
 err-ext-profile-daily-cap = The organization captured as many profiles of this network today as allowed ({ $max }): try again tomorrow.
-err-prospection-opposed = This person objected to prospecting: no profile capture, and no new link to them at the same account.
+err-prospecting-opposed = This person objected to prospecting: no profile capture, and no new link to them at the same account.
 err-ontology-erased = This object was erased (personal data): it can no longer be edited nor linked.
 
 ## Mailboxes (mail.md D453–D454)

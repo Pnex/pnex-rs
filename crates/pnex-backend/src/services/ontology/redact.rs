@@ -53,9 +53,9 @@ impl Redaction {
 
     pub fn hides(&self, c: Classification) -> bool {
         match c {
-            Classification::Personnelle => self.personal,
-            Classification::Sensible => self.sensitive,
-            Classification::Publique | Classification::Interne => false,
+            Classification::Personal => self.personal,
+            Classification::Sensitive => self.sensitive,
+            Classification::Public | Classification::Internal => false,
         }
     }
 
@@ -299,10 +299,10 @@ mod tests {
 
     fn schema() -> OrgSchema {
         let person: ObjectTypeDef = serde_json::from_value(json!({
-            "key": "person", "name": "Person", "title_classification": "personnelle",
+            "key": "person", "name": "Person", "title_classification": "personal",
             "properties": [
-                {"key": "notes", "kind": "text", "classification": "personnelle"},
-                {"key": "health", "kind": "text", "classification": "sensible"},
+                {"key": "notes", "kind": "text", "classification": "personal"},
+                {"key": "health", "kind": "text", "classification": "sensitive"},
                 {"key": "wikidata", "kind": "text"}
             ]
         }))
@@ -312,7 +312,7 @@ mod tests {
         let employs: LinkTypeDef = serde_json::from_value(json!({
             "key": "employs", "from_types": ["organization"], "to_types": ["person"],
             "attributes": [
-                {"key": "position", "kind": "text", "classification": "personnelle"},
+                {"key": "position", "kind": "text", "classification": "personal"},
                 {"key": "source", "kind": "text"}
             ]
         }))

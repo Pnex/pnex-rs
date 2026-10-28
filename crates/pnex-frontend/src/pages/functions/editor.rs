@@ -474,7 +474,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                 run_test,
             }
 
-            // ── Drawer d'historique ──
+            // ── History drawer ──
             if versions_open() {
                 FunctionVersionsDrawer {
                     fn_id,

@@ -331,7 +331,7 @@ mod tests {
     /// Contract `notify-kinds.v1`: FieldSpec roundtrip, `options` defaults to
     /// empty.
     #[test]
-    fn field_spec_roundtrip_sans_options() {
+    fn field_spec_roundtrip_without_options() {
         let json = r#"{"id":"url","label_i18n":"notify-field-url","type":"text","required":true}"#;
         let spec: FieldSpec = serde_json::from_str(json).expect("deserializable");
         assert_eq!(spec.r#type, FieldType::Text);

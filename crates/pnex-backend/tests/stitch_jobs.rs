@@ -88,7 +88,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 /// Minimal JPEG with an APP1 XMP segment (same encoding as the GPano sniff).
@@ -123,7 +123,7 @@ fn frame_jpeg() -> Vec<u8> {
             rgb[i + 2] = ((y * 255) / h) as u8;
         }
     }
-    pnex_stitcher::encode_jpeg(&rgb, w, h, 85).expect("encode jpeg de test")
+    pnex_stitcher::encode_jpeg(&rgb, w, h, 85).expect("encode test jpeg")
 }
 
 /// Octet-stream upload of a media (panorama asset via the GPano sniff).
@@ -214,7 +214,7 @@ fn ring_poses() -> serde_json::Value {
 /// in the store, frames already received are immutable.
 #[tokio::test]
 #[serial]
-async fn cycle_job_complet() {
+async fn full_job_cycle() {
     with_app(true, |server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let asset = upload_media(&server, &env.alice, org).await;
@@ -226,19 +226,14 @@ async fn cycle_job_complet() {
             serde_json::json!([]),
         ] {
             let res = create_job(&server, &env.alice, org, &asset_id, bad).await;
-            assert_eq!(
-                res.status_code(),
-                400,
-                "job invalide → 400 : {}",
-                res.text()
-            );
+            assert_eq!(res.status_code(), 400, "invalid job → 400: {}", res.text());
             let body: serde_json::Value = res.json();
             assert_eq!(body["error"], "field-invalid", "{body}");
             assert_eq!(body["errors"]["fields"]["frames_total"], "range:2..64");
         }
 
         // Cross-org asset: bob, in HIS org, targets alice's asset → masked
-        // 404 (as in tests/media.rs::isolation_org_et_derniere_version).
+        // 404 (as in tests/media.rs::org_isolation_and_latest_version).
         let org_bob = personal_org(&server, &env.bob).await;
         let res = create_job(&server, &env.bob, org_bob, &asset_id, ring_poses()).await;
         assert_eq!(res.status_code(), 404, "cross-org asset masked");
@@ -276,7 +271,7 @@ async fn cycle_job_complet() {
         let res = upload_frame(&server, &env.alice, org, &job_id, 3, frame_jpeg()).await;
         assert_eq!(res.status_code(), 200, "last frame: {}", res.text());
         let body: serde_json::Value = res.json();
-        assert_eq!(body["state"], "succeeded", "worker synchrone");
+        assert_eq!(body["state"], "succeeded", "synchronous worker");
         assert_eq!(body["frames_received"], 4);
         assert_eq!(body["error"], serde_json::Value::Null);
 
@@ -291,7 +286,7 @@ async fn cycle_job_complet() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(detail["current_version_number"], 2, "v2 serveur courante");
+        assert_eq!(detail["current_version_number"], 2, "server v2 is current");
         assert_eq!(detail["versions_count"], 2);
 
         // Version 2 = 1024×512 JPEG with GPano + assembly note.
@@ -304,9 +299,9 @@ async fn cycle_job_complet() {
         assert_eq!(versions["count"], 2);
         let v2 = &versions["results"][1];
         assert_eq!(v2["version_number"], 2);
-        assert_eq!(v2["filename"], "panorama-serveur-1024.jpg");
-        assert_eq!(v2["note"], "assemblage serveur 1024 (Take 360 V2)");
-        assert!(v2["current"].as_bool().unwrap(), "v2 courante");
+        assert_eq!(v2["filename"], "panorama-server-1024.jpg");
+        assert_eq!(v2["note"], "server stitch 1024 (Take 360 V2)");
+        assert!(v2["current"].as_bool().unwrap(), "v2 is current");
 
         // v2 bytes: equirect JPEG 1024×512 (height = width / 2).
         let res = server
@@ -341,7 +336,7 @@ async fn cycle_job_complet() {
 /// new version on the asset.
 #[tokio::test]
 #[serial]
-async fn job_echec_couverture() {
+async fn job_coverage_failure() {
     with_app(true, |server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let asset = upload_media(&server, &env.alice, org).await;
@@ -369,7 +364,7 @@ async fn job_echec_couverture() {
 
         // The last frame POST triggered the inline worker: coverage failure.
         let after = get_job(&server, &env.alice, org, &job_id).await;
-        assert_eq!(after["state"], "failed", "couverture insuffisante → failed");
+        assert_eq!(after["state"], "failed", "insufficient coverage → failed");
         let err = after["error"].as_str().expect("error message present");
         assert!(!err.is_empty());
         assert!(!err.contains('/'), "no disk path in the error: {err}");
@@ -390,7 +385,7 @@ async fn job_echec_couverture() {
 /// Org isolation: bob (another org) sees neither the job nor its frames.
 #[tokio::test]
 #[serial]
-async fn isolation_org() {
+async fn org_isolation() {
     with_app(true, |server, env| async move {
         let org1 = personal_org(&server, &env.alice).await;
         let org2 = personal_org(&server, &env.bob).await;
@@ -428,7 +423,7 @@ async fn isolation_org() {
 /// (GETs are still served — a job created earlier can finish).
 #[tokio::test]
 #[serial]
-async fn kill_switch_desactive() {
+async fn kill_switch_disabled() {
     with_app(false, |server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let asset = upload_media(&server, &env.alice, org).await;
@@ -446,7 +441,7 @@ async fn kill_switch_desactive() {
 /// job of an asset (state + error), 404 if never stitched, org isolation.
 #[tokio::test]
 #[serial]
-async fn dernier_job_par_asset() {
+async fn latest_job_per_asset() {
     with_app(true, |server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let asset = upload_media(&server, &env.alice, org).await;

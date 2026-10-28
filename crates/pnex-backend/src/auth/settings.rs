@@ -29,11 +29,11 @@ impl RauthySettings {
             .and_then(|s| s.get("rauthy"))
             .ok_or_else(|| {
                 loco_rs::Error::Message(
-                    "config settings.rauthy manquante (base_url, client_id)".into(),
+                    "missing config settings.rauthy (base_url, client_id)".into(),
                 )
             })?;
         serde_json::from_value(value.clone())
-            .map_err(|err| loco_rs::Error::Message(format!("settings.rauthy invalide : {err}")))
+            .map_err(|err| loco_rs::Error::Message(format!("invalid settings.rauthy: {err}")))
     }
 
     /// Rauthy OIDC issuer **seen by browsers**: `{issuer}/auth/v1/` —

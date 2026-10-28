@@ -219,7 +219,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_et_clamp() {
+    fn defaults_and_clamp() {
         // Env-driven default (absent here) → fallback 10, everywhere.
         assert_eq!(PageParams::from(None, None).limit, default_limit());
         assert_eq!(default_limit(), DEFAULT_LIMIT_FALLBACK);
@@ -236,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn recherche_rust_multichamps() {
+    fn rust_multi_field_search() {
         let search = Some("RELAY".to_string());
         assert!(rust_search_match(&search, &["relay_1ch", "actuator"]));
         // Case-insensitive.
@@ -251,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn offsets_de_navigation() {
+    fn navigation_offsets() {
         let page = PageParams {
             limit: 20,
             offset: 0,
@@ -296,7 +296,7 @@ mod tests {
     }
 
     #[test]
-    fn slice_ne_deborde_pas() {
+    fn slice_does_not_overflow() {
         let page = PageParams {
             limit: 20,
             offset: 30,
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn enveloppe_conserve_les_filtres() {
+    fn envelope_keeps_the_filters() {
         let page = PageParams {
             limit: 2,
             offset: 0,

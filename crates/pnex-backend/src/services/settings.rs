@@ -192,7 +192,7 @@ mod tests {
     /// ⇒ fail-closed 401 on /internal/notify/deliver + "missing token"
     /// toast on the Test button).
     #[test]
-    fn section_partielle_garde_le_token() {
+    fn partial_section_keeps_the_token() {
         let s: NotifySettings = serde_json::from_value(serde_json::json!({
             "internal_token": "tok-dev",
             "deliver_url": "http://127.0.0.1:5150/internal/notify/deliver"

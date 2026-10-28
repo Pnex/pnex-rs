@@ -958,7 +958,7 @@ mod tests {
     }
 
     #[test]
-    fn supprimer_un_widget_entraine_ses_traits() {
+    fn deleting_a_widget_removes_its_traces() {
         let mut l = empty_layout();
         new_widget(&mut l, "w-0001".into(), "stat", 0, 0);
         new_widget(&mut l, "w-0002".into(), "stat", 400, 0);
@@ -998,7 +998,7 @@ mod tests {
     }
 
     #[test]
-    fn undo_redo_par_snapshots() {
+    fn undo_redo_by_snapshots() {
         let mut l = empty_layout();
         let mut history = History::default();
 
@@ -1014,13 +1014,13 @@ mod tests {
         l = redone;
         assert_eq!(l.widgets.len(), 1);
 
-        assert!(history.undo(&l).is_some(), "un undo reste possible");
+        assert!(history.undo(&l).is_some(), "one undo still possible");
         // After this second undo, the past is empty: nothing left to undo.
         assert!(history.undo(&l).is_none());
     }
 
     #[test]
-    fn compteur_amorce_sur_les_ids_persistes() {
+    fn counter_seeded_from_persisted_ids() {
         let mut l = empty_layout();
         assert_eq!(seed_counter(&l), 0, "empty layout → 0");
         new_widget(&mut l, "w-0003".into(), "stat", 0, 0);
@@ -1147,7 +1147,7 @@ mod tests {
     }
 
     #[test]
-    fn push_avec_cap() {
+    fn push_with_cap() {
         let mut history = History::default();
         let mut l = empty_layout();
         for _ in 0..60 {

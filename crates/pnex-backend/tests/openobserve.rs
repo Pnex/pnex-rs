@@ -551,7 +551,7 @@ fn o2_client(base: &str) -> Client {
     })
 }
 
-// ───────────────────────── Harnais ─────────────────────────
+// ───────────────────────── Harness ─────────────────────────
 
 async fn with_app<F, Fut>(f: F)
 where
@@ -592,7 +592,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org perso")
+        .expect("personal org")
 }
 
 fn point(org_id: i64, metric: &str, value: &str) -> TelemetryPoint {
@@ -669,7 +669,7 @@ async fn provisioning_idempotent() {
 /// password is reset by root, passcode re-read, row recreated.
 #[tokio::test]
 #[serial]
-async fn provisioning_recupere_ligne_perdue() {
+async fn provisioning_recovers_lost_row() {
     with_app(|server, auth, ctx, o2_base, mock| async move {
         let org = personal_org(&server, &auth).await;
         let client = o2_client(&o2_base);
@@ -700,7 +700,7 @@ async fn provisioning_recupere_ligne_perdue() {
 /// correlated from the database; non-numeric values are dropped.
 #[tokio::test]
 #[serial]
-async fn batcher_flush_vers_openobserve() {
+async fn batcher_flush_to_openobserve() {
     telemetry::reset_sink();
     with_app(|server, auth, ctx, o2_base, mock| async move {
         let org = personal_org(&server, &auth).await;
@@ -748,7 +748,7 @@ async fn batcher_flush_vers_openobserve() {
 /// Along the way: the regex selector `{__name__=~…}` returns EMPTY (seen
 /// e2e) — only bare names select.
 #[tokio::test]
-async fn prom_query_bascule_root_et_parse() {
+async fn prom_query_falls_back_to_root_and_parses() {
     let (base, mock) = spawn_mock_o2().await;
     let email = "pnex-ingest+org7@pnex.local";
     {
@@ -817,7 +817,7 @@ async fn prom_query_bascule_root_et_parse() {
 /// Passcode AND root refused (e.g. root password rotated) → explicit
 /// error, no panic — the dashboard will degrade to available:false.
 #[tokio::test]
-async fn prom_query_erreur_si_tout_refuse() {
+async fn prom_query_error_if_everything_refused() {
     let (base, _mock) = spawn_mock_o2().await;
     let client = Client::new(&openobserve::OpenobserveSettings {
         base_url: base,
@@ -836,7 +836,7 @@ async fn prom_query_erreur_si_tout_refuse() {
 /// `{device_id="…"}` honoured, points returned in chronological order
 /// within the [start, end] window only.
 #[tokio::test]
-async fn query_range_bascule_root_et_parse() {
+async fn query_range_falls_back_to_root_and_parses() {
     let (base, mock) = spawn_mock_o2().await;
     let email = "pnex-ingest+org7@pnex.local";
     {
@@ -921,7 +921,7 @@ async fn query_range_bascule_root_et_parse() {
 /// series. Dedicated harness: the variable must be set BEFORE boot.
 #[tokio::test]
 #[serial]
-async fn dashboard_summary_complet_contre_mock() {
+async fn dashboard_summary_full_against_mock() {
     let kc = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &kc) };
@@ -1011,7 +1011,7 @@ async fn dashboard_summary_complet_contre_mock() {
 /// on server-computed [start, end].
 #[tokio::test]
 #[serial]
-async fn visualization_catalog_et_series_contre_mock() {
+async fn visualization_catalog_and_series_against_mock() {
     let kc = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &kc) };
@@ -1086,7 +1086,7 @@ async fn visualization_catalog_et_series_contre_mock() {
             assert_eq!(body["available"], true);
             let points = body["points"].as_array().unwrap();
             assert_eq!(points.len(), 2, "both points of the series");
-            assert_eq!(points[0]["value"], 100.0, "ordre chronologique");
+            assert_eq!(points[0]["value"], 100.0, "chronological order");
             assert_eq!(points[1]["value"], 99.5);
             let ts0 = points[0]["ts"].as_f64().unwrap();
             let ts1 = points[1]["ts"].as_f64().unwrap();

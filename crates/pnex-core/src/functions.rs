@@ -343,7 +343,7 @@ pub fn directive_spans(code: &str) -> Vec<DirectiveSpan> {
     spans
 }
 
-// ───────────────────────── Bindings & chemins msg ─────────────────────────
+// ───────────────────────── Bindings & msg paths ─────────────────────────
 
 /// Default binding of an input: `payload.<name>`.
 pub fn default_binding(input_name: &str) -> String {
@@ -833,9 +833,9 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn parse_directives_complet() {
-        let code = r#"
-// @input temperature number "Température mesurée"  english-guard: allow (French example)
+    fn parse_directives_complete() {
+        let code = r#"// english-guard: allow (French example on the next line)
+// @input temperature number "Température mesurée"
 // @input mode string="auto" Mode de marche
 // @input enabled bool=true
 # @output heating number
@@ -857,7 +857,7 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn parse_directives_vide_et_sans_directive() {
+    fn parse_directives_empty_and_without_directive() {
         assert!(parse_directives("").unwrap().inputs.is_empty());
         assert!(parse_directives("// nothing here\nlet x = 1;")
             .unwrap()
@@ -866,8 +866,8 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn parse_directives_erreurs() {
-        // type inconnu
+    fn parse_directives_errors() {
+        // unknown type
         let e = parse_directives("// @input a float").unwrap_err();
         assert_eq!(e.line, 1);
         assert!(e.message.contains("unknown type"), "{}", e.message);
@@ -880,13 +880,13 @@ function handle(inputs, msg) { return inputs.temperature; }
         // invalid name
         let e = parse_directives("# @input 1abc number").unwrap_err();
         assert!(e.message.contains("snake_case"), "{}", e.message);
-        // type manquant
+        // missing type
         let e = parse_directives("// @input a").unwrap_err();
         assert!(e.message.contains("type required"), "{}", e.message);
     }
 
     #[test]
-    fn parse_directives_defaut_any_json() {
+    fn parse_directives_default_any_json() {
         let sig = parse_directives("// @input cfg any={\"limit\":5}").unwrap();
         assert_eq!(sig.inputs[0].default, Some(json!({"limit": 5})));
     }
@@ -936,7 +936,7 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn resolve_msg_path_chemins() {
+    fn resolve_msg_path_paths() {
         let msg = json!({"payload": {"t": [10, 20]}, "topic": "a"});
         assert_eq!(resolve_msg_path(&msg, "payload.t.1"), Some(&json!(20)));
         assert_eq!(resolve_msg_path(&msg, "topic"), Some(&json!("a")));
@@ -945,7 +945,7 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn insert_msg_path_cree_les_niveaux() {
+    fn insert_msg_path_creates_levels() {
         let mut msg = serde_json::json!({"topic": "a"});
         insert_msg_path(&mut msg, "payload.temperature", serde_json::json!(10));
         assert_eq!(msg["payload"]["temperature"], 10);
@@ -994,7 +994,7 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn build_inputs_topic_route_le_payload() {
+    fn build_inputs_topic_routes_the_payload() {
         let inputs = vec![FunctionInput {
             name: "t".into(),
             ty: FunctionType::Number,
@@ -1014,7 +1014,7 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn build_input_tag_func_estampe_le_topic() {
+    fn build_input_tag_func_stamps_the_topic() {
         let js = build_input_tag_func("in_float");
         // Direct body of __el_user_func: the return at body level
         // (a function handle defined without being called → message dropped).
@@ -1046,7 +1046,7 @@ function handle(inputs, msg) { return inputs.temperature; }
         assert!(js.contains("function handle(inputs, msg)"), "code user");
         assert!(js.contains("\"payload.t\""), "implicit payload.<name> path");
         assert!(js.contains("21.5"), "serialized default");
-        assert!(js.contains("__pnex_inputs"), "objet inputs");
+        assert!(js.contains("__pnex_inputs"), "inputs object");
         assert!(js.contains("msg.topic === \"t\""), "topic routing branch");
         assert!(js.contains("await Promise.resolve(handle("), "tail");
         // Escaping: an input name containing a quote does not break the JS.
@@ -1064,7 +1064,7 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn build_js_wrapper_route_le_retour_par_sorties() {
+    fn build_js_wrapper_routes_return_by_outputs() {
         let fout = |name: &str| FunctionOutput {
             name: name.into(),
             ty: FunctionType::Bool,
@@ -1092,7 +1092,7 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn json_split_genere_fan_out_par_cle() {
+    fn json_split_generates_fan_out_per_key() {
         let js = build_json_split_func(&[]);
         assert!(
             js.contains("Array.isArray(p)"),
@@ -1112,7 +1112,7 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn json_split_genere_ports_nommes() {
+    fn json_split_generates_named_ports() {
         let js = build_json_split_func(&["a".to_string(), "b".to_string()]);
         assert!(
             js.contains(r#"var keys = ["a","b"]"#),
@@ -1137,11 +1137,11 @@ function handle(inputs, msg) { return inputs.temperature; }
     }
 
     #[test]
-    fn json_merge_genere_accumulation_contexte() {
+    fn json_merge_generates_context_accumulation() {
         let js = build_json_merge_func("ma clé");
         assert!(
             js.contains("context.get(\"__pnex_merge\")"),
-            "lecture accumulateur"
+            "accumulator read"
         );
         assert!(
             js.contains("context.set(\"__pnex_merge\", acc)"),

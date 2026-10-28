@@ -263,7 +263,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn vars_from_rows_ignore_les_vides() {
+    fn vars_from_rows_ignores_empty() {
         let vars = vars_from_rows(vec![
             ("seuil".into(), "80".into()),
             ("  ".into(), "x".into()),

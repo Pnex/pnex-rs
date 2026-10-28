@@ -127,7 +127,7 @@ mod tests {
 
     /// Put/get/exists/delete on the memory backend, semantics of the real backends.
     #[tokio::test]
-    async fn in_memory_store_cycle_complet() {
+    async fn in_memory_store_full_cycle() {
         let store = InMemoryStore::default();
         let key = "org_7/firmware/dev-1-firmware.bin";
 
@@ -155,7 +155,7 @@ mod tests {
 
     /// D6 key: shape `org_{id}/firmware/{sanitized}-firmware.bin`.
     #[test]
-    fn cles_artefact_sanitisees() {
+    fn artifact_keys_sanitized() {
         assert_eq!(
             artifact_key(7, "capteur-jardin"),
             "org_7/firmware/capteur-jardin-firmware.bin"

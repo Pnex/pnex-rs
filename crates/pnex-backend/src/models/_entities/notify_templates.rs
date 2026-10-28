@@ -15,7 +15,7 @@ pub struct Model {
     /// Optional minijinja subject (the body alone is enough for ntfy-like).
     #[sea_orm(column_type = "Text", nullable)]
     pub subject: Option<String>,
-    /// Corps minijinja — contexte `{msg, meta, vars}` (D52).
+    /// minijinja body — context `{msg, meta, vars}` (D52).
     #[sea_orm(column_type = "Text")]
     pub body: String,
     /// Declared vars `[{name, example}]` — UI picker + preview fallback.

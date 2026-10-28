@@ -89,7 +89,7 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                     button {
                         class: "text-gray-500 hover:text-gray-600 shrink-0",
                         onclick: move |_| on_close.call(()),
-                        aria_label: "Fermer",
+                        aria_label: t!("common-close"),
                         icons::X { class: "h-4 w-4" }
                     }
                 }

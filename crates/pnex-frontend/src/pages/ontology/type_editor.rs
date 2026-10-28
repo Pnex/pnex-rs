@@ -866,11 +866,11 @@ mod display_tests {
     #[test]
     fn enum_texts_and_colours_follow_the_values() {
         let mut p = PropertyDef {
-            key: "statut".into(),
+            key: "status".into(),
             name: String::new(),
             names: Default::default(),
             kind: PropertyKind::Enum {
-                values: vec!["client".into(), "cible".into()],
+                values: vec!["customer".into(), "target".into()],
             },
             required: false,
             indexed: false,
@@ -880,15 +880,15 @@ mod display_tests {
             labels: Default::default(),
             classification: Default::default(),
         };
-        set_label(&mut p, "client", "fr", "Client actif");
-        set_color(&mut p, "cible", "amber");
-        assert_eq!(p.label_of("client", "fr-FR"), Some("Client actif"));
+        set_label(&mut p, "customer", "fr", "Client actif");
+        set_color(&mut p, "target", "amber");
+        assert_eq!(p.label_of("customer", "fr-FR"), Some("Client actif"));
         p.kind = PropertyKind::Enum {
-            values: vec!["client".into()],
+            values: vec!["customer".into()],
         };
         keep_known_values(&mut p);
         assert!(p.colors.is_empty());
-        set_label(&mut p, "client", "fr", " ");
+        set_label(&mut p, "customer", "fr", " ");
         assert!(p.labels.is_empty());
     }
 }

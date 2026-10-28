@@ -541,7 +541,7 @@ mod tests {
 
     /// Exact TTL boundary: fresh strictly before, stale after.
     #[test]
-    fn fraicheur_bord_du_ttl() {
+    fn freshness_at_the_ttl_edge() {
         let ttl = 10;
         let now = Utc::now();
         assert!(is_fresh(now - TimeDelta::seconds(ttl - 1), ttl));

@@ -63,8 +63,8 @@ FLOW RULES:
          - Node kinds, config fields and ports: call describe_node_types (never guess a kind or a field).\n\n",
     );
 
-    // ── 3. Contexte org ──
-    p.push_str(&format!("CONTEXTE ORG « {org_name} » :\n"));
+    // ── 3. Org context ──
+    p.push_str(&format!("ORG CONTEXT « {org_name} »:\n"));
     let devices = device_registries::Entity::find()
         .filter(device_registries::Column::OrgId.eq(org_id))
         .all(db)
@@ -78,7 +78,7 @@ FLOW RULES:
                 "#{} {} ({})",
                 d.id,
                 d.device_id,
-                if d.active { "actif" } else { "inactif" }
+                if d.active { "active" } else { "inactive" }
             )
         })
         .collect::<Vec<_>>()
@@ -86,7 +86,7 @@ FLOW RULES:
     p.push_str(&format!(
         "Devices (internal id, slug, state): {}\n",
         if devices.is_empty() {
-            "aucun".to_string()
+            "none".to_string()
         } else {
             devices_line
         }
@@ -125,7 +125,7 @@ FLOW RULES:
         p.push_str(&format!(
             "OpenObserve telemetry series (metric×device): {}{}\n",
             if series_line.is_empty() {
-                "(vide)"
+                "(empty)"
             } else {
                 &series_line
             },
@@ -158,7 +158,7 @@ FLOW RULES:
     p.push_str(&format!(
         "Flows : {}\n\n",
         if flows_line.is_empty() {
-            "aucun".to_string()
+            "none".to_string()
         } else {
             flows_line
         }

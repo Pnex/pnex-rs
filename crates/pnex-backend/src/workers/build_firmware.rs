@@ -231,7 +231,7 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
                 tracing::error!(
                     build = args.build_record_id,
                     code = failure.code,
-                    erreur = %failure.log,
+                    error = %failure.log,
                     "firmware build failed"
                 );
                 set_phase(&self.db, args.build_record_id, PHASE_FAILED, None).await?;

@@ -165,7 +165,7 @@ async fn eject_object(
     Ok(())
 }
 
-// ─────────────────────────── vues ───────────────────────────
+// ─────────────────────────── views ───────────────────────────
 
 /// Row ready to render: everything is resolved before the rsx ("flat rsx"
 /// school). Payloads pre-cloned for the closures ('static FnMut, never a
@@ -203,7 +203,7 @@ struct TreeRow {
     is_previewed: bool,
     /// Row = current pin (filled star).
     is_pinned: bool,
-    /// Objet : bouton Detach.
+    /// Object: Detach button.
     detach: Option<Detach>,
     /// Folder: (id, name) for deletion.
     delete: Option<(i64, String)>,
@@ -229,7 +229,7 @@ struct ViewCtx<'a> {
     pinned: &'a Option<PreviewTarget>,
 }
 
-// ─────────────────────────── composant ───────────────────────────
+// ─────────────────────────── component ───────────────────────────
 
 #[component]
 pub fn PoiTreeSection(
@@ -519,7 +519,7 @@ pub fn PoiTreeSection(
                     dragging.set(None);
                 }
             },
-            // Actions : compteur + ＋ dossier + ＋ objet
+            // Actions: counter + ＋ folder + ＋ object
             div { class: "flex items-center justify-between gap-2",
                 span { class: "text-xs text-gray-500", {t!("poi-tree-count", count : total)} }
                 div { class: "flex gap-1",
@@ -552,7 +552,7 @@ pub fn PoiTreeSection(
             if views.is_empty() {
                 p { class: "text-sm text-gray-500", {t!("poi-attachment-empty")} }
             }
-            // Lignes d'arbre
+            // Tree rows
             for row in views {
                 if row.is_device {
                     // Device: not a button (location editing inside) —
@@ -685,7 +685,7 @@ pub fn PoiTreeSection(
                                 {if row.is_pinned { "★" } else { "☆" }}
                             }
                         }
-                        // Objet : Detach
+                        // Object: Detach
                         if row.detach.is_some() {
                             span {
                                 class: "shrink-0 text-xs text-red-600 hover:underline cursor-pointer",
@@ -712,7 +712,7 @@ pub fn PoiTreeSection(
                                 icons::Tag { class: "w-3 h-3" }
                             }
                         }
-                        // Dossier : suppression
+                        // Folder: delete
                         if row.delete.is_some() {
                             span {
                                 class: "shrink-0 text-gray-300 hover:text-red-600 cursor-pointer",

@@ -39,7 +39,7 @@ pub fn save_to_downloads(_filename: &str, _mime: &str, _bytes: &[u8]) -> bool {
 
 // ─────────────────────── JNI (capture.rs school) ───────────────────────
 
-/// Build.VERSION.SDK_INT (MediaStore.Downloads existe depuis l'API 29).
+/// Build.VERSION.SDK_INT (MediaStore.Downloads exists since API 29).
 #[cfg(target_os = "android")]
 unsafe fn sdk_int(env: *mut ::jni::sys::JNIEnv) -> i32 {
     unsafe {
@@ -55,7 +55,7 @@ unsafe fn sdk_int(env: *mut ::jni::sys::JNIEnv) -> i32 {
     }
 }
 
-/// Chemin API 29+ : MediaStore.Downloads.
+/// API 29+ path: MediaStore.Downloads.
 #[cfg(target_os = "android")]
 unsafe fn media_store_save(
     env: *mut ::jni::sys::JNIEnv,
@@ -372,7 +372,7 @@ unsafe fn static_object_field(
     }
 }
 
-/// File.getAbsolutePath() → String (jumeau capture.rs).
+/// File.getAbsolutePath() → String (twin of capture.rs).
 #[cfg(target_os = "android")]
 unsafe fn file_path(env: *mut ::jni::sys::JNIEnv, file: ::jni::sys::jobject) -> Option<String> {
     let Some(jstr) = call_object(

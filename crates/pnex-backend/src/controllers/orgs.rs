@@ -339,7 +339,7 @@ struct UpdateOrgParams {
     name: String,
 }
 
-/// `PATCH /api/v1/orgs/:id` — renommage (owner/admin).
+/// `PATCH /api/v1/orgs/:id` — rename (owner/admin).
 #[utoipa::path(
     patch,
     path = "/api/v1/orgs/{id}",
@@ -503,7 +503,7 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-// ────────────────────────────── Membres ──────────────────────────────
+// ────────────────────────────── Members ──────────────────────────────
 
 async fn list_members_json(
     db: &sea_orm::DatabaseConnection,

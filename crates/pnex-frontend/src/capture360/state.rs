@@ -33,7 +33,7 @@ pub enum Phase {
     Error = 8,
 }
 
-/// Phase courante.
+/// Current phase.
 pub static PHASE: AtomicU8 = AtomicU8::new(Phase::Idle as u8);
 /// Captured frames (0..=16).
 pub static STEP: AtomicU8 = AtomicU8::new(0);
@@ -136,7 +136,7 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Phase courante.
+/// Current phase.
 #[must_use]
 pub fn phase() -> Phase {
     match PHASE.load(Ordering::Relaxed) {

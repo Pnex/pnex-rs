@@ -26,7 +26,7 @@ fn key_bytes(b64: &str) -> [u8; 32] {
         .expect("32-byte key")
 }
 
-// ─────────────────── Harnais ───────────────────
+// ─────────────────── Harness ───────────────────
 
 async fn with_app<F, Fut>(f: F)
 where
@@ -101,7 +101,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org perso")
+        .expect("personal org")
 }
 
 async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
@@ -155,7 +155,7 @@ async fn connect_announce_with_retry(
                 return (ws, caps);
             }
         }
-        // Close (4003 probable) : on retente.
+        // Close (4003 likely): retry.
         let _ = attempt;
     }
     panic!("announce impossible after retries (anti-clone lease still held?)");
@@ -169,13 +169,13 @@ async fn expect_control_config(ws: &mut common::DevWs) -> pnex_core::ControlSpec
         let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         if let pnex_core::ServerMsg::ControlConfig { configs, .. } = msg {
             assert_eq!(configs.len(), 1, "a single card expected: {configs:?}");
-            return configs.into_iter().next().expect("carte");
+            return configs.into_iter().next().expect("card");
         }
     }
     panic!("no ControlConfig received");
 }
 
-/// set_mode D1 (gpio 5) → digital_out, retour safe low.
+/// set_mode D1 (gpio 5) → digital_out, back to safe low.
 async fn set_d1_output(server: &axum_test::TestServer, auth: &str, org: i64, d: &Dev) {
     let res = server
         .post(&format!("/api/v1/devices/{}/commands", d.id))
@@ -241,7 +241,7 @@ async fn deploy_expect_503(server: &axum_test::TestServer, auth: &str, org: i64,
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
-async fn deploy_caste_control_config_au_device_connecte() {
+async fn deploy_casts_control_config_to_connected_device() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-serre").await;
@@ -274,7 +274,7 @@ async fn deploy_caste_control_config_au_device_connecte() {
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
-async fn offline_au_deploy_recast_a_l_announce() {
+async fn offline_at_deploy_recast_on_announce() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-differe").await;
@@ -306,7 +306,7 @@ async fn offline_au_deploy_recast_a_l_announce() {
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
-async fn edit_redeploy_recaste_nouveau_setpoint() {
+async fn edit_redeploy_recasts_new_setpoint() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-seuil").await;
@@ -319,7 +319,7 @@ async fn edit_redeploy_recaste_nouveau_setpoint() {
         let spec = expect_control_config(&mut ws).await;
         assert!((spec.setpoint - 19.0).abs() < 1e-9);
 
-        // v2 : consigne 21 → redeploy → re-cast.
+        // v2: setpoint 21 → redeploy → re-cast.
         let updated = server
             .patch(&format!("/api/v1/flows/{flow_id}"))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -352,7 +352,7 @@ async fn edit_redeploy_recaste_nouveau_setpoint() {
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
-async fn rollback_recaste_ancien_setpoint() {
+async fn rollback_recasts_old_setpoint() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-rollback").await;
@@ -404,7 +404,7 @@ async fn rollback_recaste_ancien_setpoint() {
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
-async fn suppression_caste_liste_vide() {
+async fn deletion_casts_empty_list() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-clear").await;
@@ -443,7 +443,7 @@ async fn suppression_caste_liste_vide() {
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
-async fn conflit_cross_flows_plus_petit_flow_id_gagne() {
+async fn cross_flow_conflict_smallest_flow_id_wins() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-conflit").await;
@@ -475,7 +475,7 @@ async fn conflit_cross_flows_plus_petit_flow_id_gagne() {
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
-async fn set_mode_capteur_dedeploie_et_clear() {
+async fn set_mode_sensor_undeploys_and_clears() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-stop").await;
@@ -483,7 +483,7 @@ async fn set_mode_capteur_dedeploie_et_clear() {
         let _caps = announce_and_expect_provision(&mut ws).await;
         set_d1_output(&server, &auth, org, &dev).await;
 
-        // Capteur D2 (gpio 4, digital_in) — basculable in↔out.
+        // Sensor D2 (gpio 4, digital_in) — switchable in↔out.
         let res = server
             .post("/api/v1/flows")
             .add_header("Authorization", format!("Bearer {auth}"))

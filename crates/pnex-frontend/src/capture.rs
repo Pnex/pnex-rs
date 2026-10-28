@@ -571,7 +571,7 @@ fn start_camera_intent(uri: jni::sys::jobject) -> bool {
 /// Is the app process in the foreground? (`ActivityManager.getMyMemoryState`
 /// importance == IMPORTANCE_FOREGROUND). The camera app on top of us drops it.
 /// `Activity.hasWindowFocus` is no use here: it stays true under the camera
-/// (constat device 2026-10-04). `None` when it cannot be read.
+/// (device finding 2026-10-04). `None` when it cannot be read.
 #[cfg(target_os = "android")]
 fn app_in_foreground() -> Option<bool> {
     const IMPORTANCE_FOREGROUND: i32 = 100;
@@ -717,7 +717,7 @@ pub(crate) fn request_camera() {
         }
         let args = [
             jni::sys::jvalue { l: arr },
-            jni::sys::jvalue { i: 4201 }, // requestCode arbitraire
+            jni::sys::jvalue { i: 4201 }, // arbitrary requestCode
         ];
         ((**env).v1_1.CallVoidMethodA)(env, ctx_obj, mid, args.as_ptr());
         if ((**env).v1_2.ExceptionCheck)(env) {

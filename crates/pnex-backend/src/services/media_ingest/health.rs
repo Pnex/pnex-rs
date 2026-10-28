@@ -22,7 +22,7 @@ use crate::services::openobserve::promwrite::{encode_labelled, LabelledPoint};
 use crate::services::openobserve::{ensure_org_credentials, Client, OpenobserveSettings};
 
 const HEALTH_EVERY: Duration = Duration::from_secs(30);
-/// No audio for this long = silent stream (D160: "flux muet > 2 min").
+/// No audio for this long = silent stream (D160: "silent stream > 2 min").
 pub const SILENT_AFTER_SECS: i64 = 120;
 /// Window of `media_coverage_ratio`.
 const COVERAGE_WINDOW_SECS: i64 = 3600;

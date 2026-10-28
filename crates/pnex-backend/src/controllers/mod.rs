@@ -34,7 +34,7 @@ pub mod health;
 /// Access management API (iam.md §8).
 pub mod iam;
 pub mod internal_flow;
-/// Endpoint interne de livraison websocket (runtime de flows / loopback).
+/// Internal websocket delivery endpoint (flow runtime / loopback).
 pub mod internal_notify;
 /// Time ranges (media-ingest.md D169).
 pub mod lab;
@@ -46,7 +46,7 @@ pub mod media_ingest;
 pub mod memory;
 pub mod meta;
 pub mod ml_models;
-/// Notifications (D49–D54) — CRUD canaux/templates + test/preview/journal.
+/// Notifications (D49–D54) — CRUD channels/templates + test/preview/journal.
 pub mod notify;
 pub mod oauth2;
 pub mod ontology;

@@ -309,7 +309,7 @@ impl EngineFarm {
 pub async fn read_tabs(flows_path: &str) -> Result<(Vec<TabInput>, String), String> {
     let raw = tokio::fs::read_to_string(flows_path)
         .await
-        .map_err(|e| format!("lecture : {e}"))?;
+        .map_err(|e| format!("read: {e}"))?;
     let rev = sha256_hex(raw.as_bytes());
     let value: Value = serde_json::from_str(&raw).map_err(|e| format!("JSON : {e}"))?;
     let tabs = parse_tabs(&value)?;
@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_tabs_groupe_par_z_et_ignore_les_orphelins() {
+    fn parse_tabs_groups_by_z_and_ignores_orphans() {
         let tabs = parse_tabs(&two_tab_artifact()).expect("tabs");
         assert_eq!(tabs.len(), 2);
         assert_eq!(tabs[0].flow_id, 1);
@@ -441,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_tabs_ignore_les_tabs_sans_flow_id() {
+    fn parse_tabs_ignores_tabs_without_flow_id() {
         let artifact = json!([
             { "id": "pnexflow1", "type": "tab", "pnex_flow_id": 1 },
             { "id": "sans-id", "type": "tab", "label": "étranger" },
@@ -452,12 +452,12 @@ mod tests {
     }
 
     #[test]
-    fn racine_non_tableau_erreur_fichier() {
+    fn non_array_root_is_a_file_error() {
         assert!(parse_tabs(&json!({})).is_err());
     }
 
     #[test]
-    fn hash_par_tab_change_avec_le_contenu() {
+    fn per_tab_hash_changes_with_the_content() {
         let a = parse_tabs(&two_tab_artifact()).unwrap();
         let mut b_artifact = two_tab_artifact();
         b_artifact[1]["payload"] = json!("autre");

@@ -2,7 +2,7 @@
 
 use super::*;
 
-// ───────────────────────── Feed debug (panneau) ─────────────────────────
+// ───────────────────────── Debug feed (panel) ─────────────────────────
 
 /// Debug panel ring: latest `debug` outputs of the runtime,
 /// attributed per flow (the runtime emits `flow`/`node_red` — an entry without

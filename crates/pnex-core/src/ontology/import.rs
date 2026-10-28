@@ -1973,16 +1973,16 @@ mod tests {
             ]},
             {"key": "certification", "name": "Cert", "properties": [
                 {"key": "code", "kind": "text", "required": true, "unique": true},
-                {"key": "intitule", "kind": "text"}
+                {"key": "title", "kind": "text"}
             ]},
-            {"key": "site_web", "name": "Site", "properties": [
-                {"key": "url_racine", "kind": "url", "required": true},
-                {"key": "domaine", "kind": "text", "unique": true}
+            {"key": "website", "name": "Site", "properties": [
+                {"key": "root_url", "kind": "url", "required": true},
+                {"key": "domain", "kind": "text", "unique": true}
             ]},
-            {"key": "offre", "name": "Offre", "properties": [
+            {"key": "offer", "name": "Offer", "properties": [
                 {"key": "id", "kind": "text", "unique": true},
-                {"key": "prix", "kind": "money"},
-                {"key": "heures", "kind": "number"}
+                {"key": "price", "kind": "money"},
+                {"key": "hours", "kind": "number"}
             ]}
         ]))
         .unwrap()
@@ -1990,10 +1990,10 @@ mod tests {
 
     fn links() -> Vec<LinkTypeDef> {
         serde_json::from_value(json!([
-            {"key": "habilite_pour", "name": "h", "from_types": ["organization"], "to_types": ["certification"],
-             "attributes": [{"key": "perimetre", "kind": "enum", "values": ["preparation", "evaluation", "les_deux"]},
-                            {"key": "declaree_fc", "kind": "bool"}]},
-            {"key": "a_pour_site", "name": "s", "from_types": ["organization"], "to_types": ["site_web"]}
+            {"key": "accredited_for", "name": "h", "from_types": ["organization"], "to_types": ["certification"],
+             "attributes": [{"key": "scope", "kind": "enum", "values": ["preparation", "evaluation", "both"]},
+                            {"key": "declared_fc", "kind": "bool"}]},
+            {"key": "has_website", "name": "s", "from_types": ["organization"], "to_types": ["website"]}
         ]))
         .unwrap()
     }
@@ -2007,17 +2007,17 @@ mod tests {
                  "properties": {"siren": {"from": "siret", "convert": ["digits", "left:9"]}, "nda": "nda"}},
                 {"as": "cert", "type": "certification", "key": "code", "create": false,
                  "properties": {"code": {"from": "code_certification", "convert": ["trim", "upper"]}}},
-                {"as": "site", "type": "site_web", "key": "domaine",
+                {"as": "site", "type": "website", "key": "domain",
                  "each": {"from": "site_web", "convert": ["split:;"]},
-                 "properties": {"url_racine": {"from": ".", "convert": ["url_origin"]},
-                                "domaine": {"from": ".", "convert": ["domain"]}}}
+                 "properties": {"root_url": {"from": ".", "convert": ["url_origin"]},
+                                "domain": {"from": ".", "convert": ["domain"]}}}
             ],
             "links": [
-                {"type": "habilite_pour", "from": "org", "to": "cert",
+                {"type": "accredited_for", "from": "org", "to": "cert",
                  "valid_from": {"from": "date_debut", "convert": ["date:%d/%m/%Y"]},
-                 "attributes": {"perimetre": "perimetre",
-                                "declaree_fc": {"from": "declaree", "convert": [{"enum": {"oui": "true", "non": "false"}}]}}},
-                {"type": "a_pour_site", "from": "org", "to": "site"}
+                 "attributes": {"scope": "perimetre",
+                                "declared_fc": {"from": "declaree", "convert": [{"enum": {"oui": "true", "non": "false"}}]}}},
+                {"type": "has_website", "from": "org", "to": "site"}
             ]
         });
         from_value(yaml).unwrap()
@@ -2044,17 +2044,10 @@ mod tests {
         assert_eq!(check(&m, &s).unwrap_err().0, "objects.0.properties.nope");
         // A merge value names a declared attribute and fits its kind.
         let mut m = mapping();
-        m.links[0]
-            .on_conflict
-            .insert("perimetre".into(), json!("les_deux"));
+        m.links[0].on_conflict.insert("scope".into(), json!("both"));
         assert_eq!(check(&m, &s), Ok(()));
-        m.links[0]
-            .on_conflict
-            .insert("perimetre".into(), json!("tout"));
-        assert_eq!(
-            check(&m, &s).unwrap_err().0,
-            "links.0.on_conflict.perimetre"
-        );
+        m.links[0].on_conflict.insert("scope".into(), json!("all"));
+        assert_eq!(check(&m, &s).unwrap_err().0, "links.0.on_conflict.scope");
         let mut m = mapping();
         m.links[0].on_conflict.insert("nope".into(), json!("x"));
         assert_eq!(check(&m, &s).unwrap_err().0, "links.0.on_conflict.nope");
@@ -2074,7 +2067,7 @@ mod tests {
         let row = json!({
             "siret": "123 456 789 00012", "raison_sociale": " ACME ", "nda": "",
             "code_certification": " rncp12345", "site_web": "www.Acme.fr/formations; https://b.acme.fr",
-            "date_debut": "01/02/2024", "perimetre": "les_deux", "declaree": "oui"
+            "date_debut": "01/02/2024", "perimetre": "both", "declaree": "oui"
         });
         let p = plan_row(&mapping(), &s, 2, &row).unwrap();
         assert_eq!(p.objects.len(), 4);
@@ -2088,7 +2081,7 @@ mod tests {
         assert_eq!(p.objects[1].key, "RNCP12345");
         assert!(!p.objects[1].create);
         assert_eq!(
-            p.objects[2].properties["url_racine"],
+            p.objects[2].properties["root_url"],
             json!("https://www.acme.fr")
         );
         assert_eq!(p.objects[2].key, "acme.fr");
@@ -2098,7 +2091,7 @@ mod tests {
             p.links[0].valid_from.as_deref(),
             Some("2024-02-01T00:00:00Z")
         );
-        assert_eq!(p.links[0].attributes["declaree_fc"], json!(true));
+        assert_eq!(p.links[0].attributes["declared_fc"], json!(true));
         assert_eq!((p.links[2].from, p.links[2].to), (0, 3));
     }
 
@@ -2126,16 +2119,16 @@ mod tests {
             links: &l,
         };
         let m = from_value(json!({"key": "o", "name": "o", "objects": [
-            {"as": "o", "type": "offre", "key": "id", "properties": {
-                "id": "id", "prix": {"from": "prix", "convert": ["money:EUR"]}, "heures": "h"}}]}))
+            {"as": "o", "type": "offer", "key": "id", "properties": {
+                "id": "id", "price": {"from": "prix", "convert": ["money:EUR"]}, "hours": "h"}}]}))
         .unwrap();
         let p = plan_row(&m, &s, 1, &json!({"id": 42, "prix": "1 250,50", "h": "35"})).unwrap();
         assert_eq!(p.objects[0].key, "42");
         assert_eq!(
-            p.objects[0].properties["prix"],
+            p.objects[0].properties["price"],
             json!({"amount": 1250.5, "currency": "EUR"})
         );
-        assert_eq!(p.objects[0].properties["heures"], json!(35.0));
+        assert_eq!(p.objects[0].properties["hours"], json!(35.0));
     }
 
     #[test]
@@ -2232,7 +2225,7 @@ mod tests {
                     "siren": {"from": "siret", "convert": ["digits", "left:9", "luhn"], "invalid": invalid},
                     "qualiopi": {"from": "q", "invalid": invalid}}},
                 {"as": "cert", "type": "certification", "key": "code", "properties": {"code": "code"}}],
-                "links": [{"type": "habilite_pour", "from": "org", "to": "cert"}]}))
+                "links": [{"type": "accredited_for", "from": "org", "to": "cert"}]}))
             .unwrap()
         };
         // The key fails: the object and its link are left out, the other end
@@ -2252,7 +2245,7 @@ mod tests {
         assert_eq!(
             p.held,
             [HeldEnd {
-                link_type: "habilite_pour".into(),
+                link_type: "accredited_for".into(),
                 end: 0,
                 is_source: false
             }]
@@ -2320,16 +2313,16 @@ mod tests {
     fn each_positions_element_links_and_needs() {
         let t: Vec<ObjectTypeDef> = serde_json::from_value(json!([
             {"key": "certification", "name": "C", "properties": [{"key": "code", "kind": "text", "unique": true}]},
-            {"key": "competence", "name": "K", "properties": [
-                {"key": "cle", "kind": "text", "unique": true}, {"key": "rang", "kind": "number"},
-                {"key": "libelle", "kind": "text"}]},
+            {"key": "skill", "name": "K", "properties": [
+                {"key": "ref", "kind": "text", "unique": true}, {"key": "rank", "kind": "number"},
+                {"key": "label", "kind": "text"}]},
             {"key": "organization", "name": "O", "properties": [{"key": "siren", "kind": "text", "unique": true}]}
         ]))
         .unwrap();
         let l: Vec<LinkTypeDef> = serde_json::from_value(json!([
-            {"key": "competence_de", "name": "d", "from_types": ["competence"], "to_types": ["certification"]},
-            {"key": "habilite_pour", "name": "h", "from_types": ["organization"], "to_types": ["certification"],
-             "attributes": [{"key": "etat_fc", "kind": "enum", "values": ["actif", "inactif"]}]}
+            {"key": "skill_of", "name": "d", "from_types": ["skill"], "to_types": ["certification"]},
+            {"key": "accredited_for", "name": "h", "from_types": ["organization"], "to_types": ["certification"],
+             "attributes": [{"key": "fc_state", "kind": "enum", "values": ["active", "inactive"]}]}
         ]))
         .unwrap();
         let s = Schema {
@@ -2341,18 +2334,18 @@ mod tests {
             "objects": [
                 {"as": "cert", "type": "certification", "key": "code", "create": false, "missing": "skip",
                  "properties": {"code": "NUMERO_FICHE"}},
-                {"as": "comp", "type": "competence", "key": "cle", "needs": "cert",
+                {"as": "comp", "type": "skill", "key": "ref", "needs": "cert",
                  "each": {"from": "CAPACITES_ATTESTEES", "convert": ["split_spaces:3"]},
-                 "properties": {"cle": {"concat": ["^NUMERO_FICHE", "#"], "sep": "-C"},
-                                "rang": "#", "libelle": "."}},
+                 "properties": {"ref": {"concat": ["^NUMERO_FICHE", "#"], "sep": "-C"},
+                                "rank": "#", "label": "."}},
                 {"as": "org", "type": "organization", "key": "siren", "create": false, "missing": "skip",
                  "each": "PARTENAIRES.PARTENAIRE",
                  "properties": {"siren": {"from": "SIRET_PARTENAIRE", "convert": ["left:9"]}}}
             ],
             "links": [
-                {"type": "competence_de", "from": "comp", "to": "cert"},
-                {"type": "habilite_pour", "from": "org", "to": "cert", "create": false,
-                 "attributes": {"etat_fc": {"from": "ETAT_HABILITATION", "convert": [{"enum": {"Actif": "actif", "Inactif": "inactif"}}]}}}
+                {"type": "skill_of", "from": "comp", "to": "cert"},
+                {"type": "accredited_for", "from": "org", "to": "cert", "create": false,
+                 "attributes": {"fc_state": {"from": "ETAT_HABILITATION", "convert": [{"enum": {"Actif": "active", "Inactif": "inactive"}}]}}}
             ]
         }))
         .unwrap();
@@ -2375,24 +2368,20 @@ mod tests {
             ]}
         });
         let p = plan_row(&m, &s, 1, &row).unwrap();
-        let comps: Vec<_> = p
-            .objects
-            .iter()
-            .filter(|o| o.type_key == "competence")
-            .collect();
+        let comps: Vec<_> = p.objects.iter().filter(|o| o.type_key == "skill").collect();
         assert_eq!(comps.len(), 2);
         assert_eq!(
-            (comps[1].key.as_str(), &comps[1].properties["rang"]),
+            (comps[1].key.as_str(), &comps[1].properties["rank"]),
             ("RS0101-C2", &json!(2))
         );
         assert_eq!(comps[0].needs, [0]);
-        let etats: Vec<_> = p
+        let states: Vec<_> = p
             .links
             .iter()
-            .filter(|l| l.link_type == "habilite_pour")
-            .map(|l| l.attributes["etat_fc"].clone())
+            .filter(|l| l.link_type == "accredited_for")
+            .map(|l| l.attributes["fc_state"].clone())
             .collect();
-        assert_eq!(etats, [json!("actif"), json!("inactif")]);
+        assert_eq!(states, [json!("active"), json!("inactive")]);
         // A `needs` naming a later entry is refused.
         let mut bad = m.clone();
         bad.objects[1].needs = Some("org".into());

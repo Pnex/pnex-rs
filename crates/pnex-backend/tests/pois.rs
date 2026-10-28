@@ -62,7 +62,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 /// Catalogue device (`temp_sensor`, as in builds.rs) attached to the org.
@@ -143,7 +143,7 @@ async fn get_cluster(
 
 #[tokio::test]
 #[serial]
-async fn cycle_complet_poi() {
+async fn full_poi_cycle() {
     with_app(|server, _db, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -250,7 +250,7 @@ async fn cycle_complet_poi() {
 
 #[tokio::test]
 #[serial]
-async fn pin_apercu_poi() {
+async fn poi_preview_pin() {
     with_app(|server, db, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let headers = |r: axum_test::TestRequest| {
@@ -285,7 +285,7 @@ async fn pin_apercu_poi() {
                 "preview_id": "11111111-2222-3333-4444-555555555555"
             }))
             .await;
-        assert_eq!(res.status_code(), 200, "pose pin : {}", res.text());
+        assert_eq!(res.status_code(), 200, "set pin: {}", res.text());
         let dto = res.json::<serde_json::Value>();
         assert_eq!(dto["preview_kind"], "media_asset");
         assert_eq!(dto["preview_id"], "11111111-2222-3333-4444-555555555555");
@@ -307,7 +307,12 @@ async fn pin_apercu_poi() {
                 "preview_id": "x"
             }))
             .await;
-        assert_eq!(res.status_code(), 400, "kind hors liste : {}", res.text());
+        assert_eq!(
+            res.status_code(),
+            400,
+            "kind outside the list: {}",
+            res.text()
+        );
         let body = res.json::<serde_json::Value>();
         assert_eq!(body["error"], "field-invalid");
         assert_eq!(body["errors"]["fields"]["preview_kind"], "invalid");
@@ -358,7 +363,7 @@ async fn pin_apercu_poi() {
 
 #[tokio::test]
 #[serial]
-async fn placements_multiples_et_deplacement() {
+async fn multiple_placements_and_move() {
     with_app(|server, _db, env| async move {
         let org = personal_org(&server, &env.alice).await;
         create_device(&server, &env.alice, org, "soil-01").await;
@@ -414,7 +419,7 @@ async fn placements_multiples_et_deplacement() {
 
         // Unknown device → 400 device_id field.
         let res = attach_device(&server, &env.alice, org, &poi_a, "inexistant-01").await;
-        assert_eq!(res.status_code(), 400, "device inconnu : {}", res.text());
+        assert_eq!(res.status_code(), 400, "unknown device: {}", res.text());
         assert_eq!(
             res.json::<serde_json::Value>()["errors"]["fields"]["device_id"],
             "not-found"
@@ -511,7 +516,7 @@ async fn placements_multiples_et_deplacement() {
                 "pin_id": "00000000-0000-0000-0000-0000000000ff"
             }))
             .await;
-        assert_eq!(res.status_code(), 400, "cible inconnue : {}", res.text());
+        assert_eq!(res.status_code(), 400, "unknown target: {}", res.text());
         assert!(res.text().contains("pin_id"));
         let res = server
             .patch("/api/v1/pois/placements/999999")
@@ -586,7 +591,7 @@ async fn placements_multiples_et_deplacement() {
         assert_eq!(res.status_code(), 400, "location > 255");
         assert!(res.text().contains("location_detail"));
         let res = create_poi(&server, &env.alice, org, "Pôle", 95.0, 4.8).await;
-        assert_eq!(res.status_code(), 400, "latitude hors bornes");
+        assert_eq!(res.status_code(), 400, "latitude out of bounds");
         assert!(res.text().contains("latitude"));
         let res = server
             .post("/api/v1/pois")
@@ -608,7 +613,7 @@ async fn placements_multiples_et_deplacement() {
 
 #[tokio::test]
 #[serial]
-async fn cluster_pois_et_filtres() {
+async fn cluster_pois_and_filters() {
     with_app(|server, _db, env| async move {
         let org = personal_org(&server, &env.alice).await;
         create_device(&server, &env.alice, org, "soil-01").await;
@@ -655,7 +660,7 @@ async fn cluster_pois_et_filtres() {
         let res = get_cluster(&server, &env.alice, org, "").await;
         assert_eq!(res.status_code(), 200, "{}", res.text());
         let body = res.json::<serde_json::Value>();
-        assert_eq!(body["total"], 207, "2 POI + 205 de la grille");
+        assert_eq!(body["total"], 207, "2 POIs + 205 from the grid");
         let items = body["items"].as_array().expect("items");
         assert!(
             items.len() < body["total"].as_u64().unwrap() as usize,
@@ -684,7 +689,7 @@ async fn cluster_pois_et_filtres() {
         assert_eq!(items.len(), 2, "1 cluster + 1 singleton");
         assert_eq!(items[0]["count"], 207, "sorted by density desc");
         assert_eq!(items[1]["count"], 1);
-        assert!(items[1]["id"].is_string(), "singleton porte son id");
+        assert!(items[1]["id"].is_string(), "a singleton carries its id");
 
         // Zoom 22: tiny cell → individual points with ids.
         let res = server
@@ -695,7 +700,7 @@ async fn cluster_pois_et_filtres() {
         let body = res.json::<serde_json::Value>();
         assert_eq!(body["total"], 207, "tight Lyon bbox");
         let items = body["items"].as_array().expect("items");
-        assert!(items.iter().all(|i| i["count"] == 1), "individuels");
+        assert!(items.iter().all(|i| i["count"] == 1), "individual points");
         assert!(items.iter().all(|i| i["id"].is_string()), "id present");
 
         // has_device filter: only Lyon 2 (2 placements = counted ONCE).
@@ -708,7 +713,7 @@ async fn cluster_pois_et_filtres() {
         let body = get_cluster(&server, &env.alice, org, "search=lyon")
             .await
             .json::<serde_json::Value>();
-        assert_eq!(body["total"], 2, "filtre search");
+        assert_eq!(body["total"], 2, "search filter");
         // …and by the slug of a placed device (D43: haystack via placements).
         let body = get_cluster(&server, &env.alice, org, "search=soil-01")
             .await
@@ -736,7 +741,7 @@ async fn cluster_pois_et_filtres() {
 
 #[tokio::test]
 #[serial]
-async fn positions_observees() {
+async fn observed_positions() {
     with_app(|server, db, env| async move {
         use pnex_backend::services::{pois as svc, telemetry::TelemetryPoint};
         let org = personal_org(&server, &env.alice).await;
@@ -776,7 +781,7 @@ async fn positions_observees() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(listed["count"], 0, "demi-position invisible");
+        assert_eq!(listed["count"], 0, "half position is invisible");
         svc::observe(&db, &point("longitude", "4.835659"))
             .await
             .expect("observe lon");
@@ -810,7 +815,7 @@ async fn positions_observees() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(listed["count"], 1, "filtre has_position");
+        assert_eq!(listed["count"], 1, "has_position filter");
     })
     .await;
 }
@@ -819,7 +824,7 @@ async fn positions_observees() {
 
 #[tokio::test]
 #[serial]
-async fn isolation_org_et_roles_viewer() {
+async fn org_isolation_and_viewer_roles() {
     with_app(|server, _db, env| async move {
         // JIT boot of both users.
         for token in [&env.alice, &env.bob] {
@@ -915,7 +920,7 @@ async fn isolation_org_et_roles_viewer() {
         assert_eq!(res.status_code(), 403, "viewer does not attach");
         // A viewer can't detach either (D43 amendment).
         let res = attach_device(&server, &env.alice, shared_org, &shared_poi, "soil-shared").await;
-        assert_eq!(res.status_code(), 201, "alice attache : {}", res.text());
+        assert_eq!(res.status_code(), 201, "alice attaches: {}", res.text());
         let detach_id = res.json::<serde_json::Value>()["id"].as_i64().expect("id");
         let res = server
             .delete(&format!("/api/v1/pois/placements/{detach_id}"))

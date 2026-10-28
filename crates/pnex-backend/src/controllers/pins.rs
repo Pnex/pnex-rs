@@ -553,7 +553,7 @@ fn pin_cfg(r: &device_capability_instances::Model) -> ModeOpts {
         .unwrap_or_default()
 }
 
-/// Mode fil → Mode code (miroir de ws_device::str_to_mode).
+/// Wire mode → code mode (mirror of ws_device::str_to_mode).
 fn str_to_mode_local(s: &str) -> Mode {
     match s {
         "digital_out" => Mode::DigitalOut,
@@ -968,7 +968,7 @@ async fn persist_instance(
     interval_ms: Option<u32>,
     validated: Option<pnex_core::ValidatedPin>,
 ) -> Result<()> {
-    // config jsonb = ModeOpts + interval_ms optionnel (fusion objet JSON).
+    // config jsonb = ModeOpts + optional interval_ms (JSON object merge).
     let mut obj = serde_json::to_value(cfg).unwrap_or_else(|_| serde_json::json!({}));
     if let Some(ms) = interval_ms {
         if let Some(map) = obj.as_object_mut() {
@@ -985,7 +985,7 @@ async fn persist_instance(
     Ok(())
 }
 
-/// Mode code → string fil (miroir provisioning::mode_to_str).
+/// Code mode → wire string (mirror of provisioning::mode_to_str).
 fn mode_to_str(m: Mode) -> &'static str {
     match m {
         Mode::DigitalIn => "digital_in",

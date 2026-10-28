@@ -309,7 +309,7 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   `quali_watch` 1.3.0 et `prospecting_b2b` en dépendent. **La passation
   couvre maintenant les types d'objets** (`types::set_pack`), en plus des
   propriétés et des types de liens. Test :
-  `presence_web_takes_websites_over` (org en `quali_watch` 1.2.0 → 1.3.0).
+  `web_presence_takes_websites_over` (org en `quali_watch` 1.2.0 → 1.3.0).
 - **W3** : nœud `web_visit` (cœur `pnex_core::web_visit`, runtime
   `pnex-web-visit`, route `/internal/flow/web-visit`). Il fait trois requêtes
   au plus avec le client du parcours D307 (identifié, egress gardé,
@@ -340,9 +340,9 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
     par `domain` et `link_upsert` pose `has_website` avec `skip_closed`.
   - **Avis du modèle (`web_presence` 1.2.0)** : un score moyen est
     proposé tout de suite, puis `llm_text` (LLM de l'org, réponse
-    OUI / NON / PEUT-ETRE + une phrase) et `pw_opinion` reproposent les mêmes
+    YES / NO / MAYBE depuis 3.0.0 + une phrase) et `pw_opinion` reproposent les mêmes
     valeurs avec l'avis en `evidence` : la proposition ouverte prend l'avis
-    et la confiance (+10 sur OUI, 79 au plus ; −20 sur NON). Sans
+    et la confiance (+10 sur YES, 79 au plus ; −20 sur NO). Sans
     fournisseur d'IA, la proposition reste sans avis. Le texte du site est
     passé comme donnée. Le choix de `llm_text` plutôt que `text_decide` :
     le modèle de décision n'est pas installé partout et un échec perdrait
@@ -354,7 +354,7 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   - `validated_by` = nom affiché, « — » à défaut, jamais l'e-mail. Le
     domaine candidat est affiché en texte, jamais en lien cliquable.
   - Tests : Starlark (`pack_rules.rs`, 2 tests) et
-    `presence_web_takes_websites_over` (liste, lecteur 403, rejet
+    `web_presence_takes_websites_over` (liste, lecteur 403, rejet
     définitif, 404 sur un lien fermé).
 
 Limites connues :

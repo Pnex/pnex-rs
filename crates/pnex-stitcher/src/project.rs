@@ -297,7 +297,7 @@ mod tests {
 
     /// Focal length: full hfov → the left/right edges at ±w/2 from the centre.
     #[test]
-    fn focale_hfov() {
+    fn focal_hfov() {
         let f = f_px_from_hfov(90.0, 1000);
         assert!((f - 500.0).abs() < 1e-3); // tan(45°) = 1
         let fr = frame_yields(1000, 750, 90.0);
@@ -309,13 +309,13 @@ mod tests {
         let (lon, lat) = (-44.0_f32.to_radians(), 0.0_f32);
         let ray = [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
         let (u, _) = project(&fr, ray).unwrap();
-        let attendu = 500.0 + 500.0 * 44.0_f32.to_radians().tan();
-        assert!((u - attendu).abs() < 1.0, "u = {u}, expected {attendu}");
+        let expected = 500.0 + 500.0 * 44.0_f32.to_radians().tan();
+        assert!((u - expected).abs() < 1.0, "u = {u}, expected {expected}");
     }
 
     /// Centrality: axis ray → c ≈ 1; oblique ray → smaller c.
     #[test]
-    fn centralite() {
+    fn centrality_in_unit_range() {
         let fr = frame_yields(1000, 750, 90.0);
         let (_, _, c0) = project_uvc(&fr, [1.0, 0.0, 0.0]).unwrap();
         assert!((c0 - 1.0).abs() < 1e-4, "c axe = {c0}");
@@ -327,7 +327,7 @@ mod tests {
 
     /// interior_weight: ~1 at the centre, 0 at the edge.
     #[test]
-    fn poids_interieur() {
+    fn interior_weight_centre_to_edge() {
         let fr = frame_yields(800, 600, 65.0);
         assert!((interior_weight(&fr, 400.0, 300.0) - 1.0).abs() < 1e-6);
         assert!(interior_weight(&fr, 0.0, 300.0) < 1e-6);
@@ -336,7 +336,7 @@ mod tests {
 
     /// Out of view: behind the camera or beyond the sensor → None.
     #[test]
-    fn hors_champ() {
+    fn out_of_view() {
         let fr = frame_yields(1000, 750, 60.0);
         assert!(project(&fr, [-1.0, 0.0, 0.0]).is_none());
         // lon 90° is far outside the hfov 60 → None

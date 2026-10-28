@@ -20,14 +20,14 @@ async fn verifier(base_url: &str) -> std::sync::Arc<JwksVerifier> {
 }
 
 #[tokio::test]
-async fn token_valide_passe_et_expose_les_claims() {
+async fn valid_token_passes_and_exposes_the_claims() {
     let base = spawn_mock_rauthy().await;
     let v = verifier(&base).await;
     let token = mint_token(&TokenSpec {
         issuer: format!("{base}/auth/v1/"),
         ..Default::default()
     });
-    let claims = v.verify(&token).await.expect("token valide");
+    let claims = v.verify(&token).await.expect("valid token");
     assert_eq!(claims.preferred_username.as_deref(), Some("alice"));
     assert_eq!(claims.display_name(), "Alice Martin");
     assert_eq!(claims.email.as_deref(), Some("alice@example.com"));
@@ -35,7 +35,7 @@ async fn token_valide_passe_et_expose_les_claims() {
 }
 
 #[tokio::test]
-async fn mauvais_issuer_rejete() {
+async fn wrong_issuer_rejected() {
     let base = spawn_mock_rauthy().await;
     let v = verifier(&base).await;
     let token = mint_token(&TokenSpec {
@@ -50,7 +50,7 @@ async fn mauvais_issuer_rejete() {
 }
 
 #[tokio::test]
-async fn mauvaise_audience_rejetee() {
+async fn wrong_audience_rejected() {
     let base = spawn_mock_rauthy().await;
     let v = verifier(&base).await;
     let token = mint_token(&TokenSpec {
@@ -65,7 +65,7 @@ async fn mauvaise_audience_rejetee() {
 }
 
 #[tokio::test]
-async fn token_expire_rejete() {
+async fn expired_token_rejected() {
     let base = spawn_mock_rauthy().await;
     let v = verifier(&base).await;
     let token = mint_token(&TokenSpec {
@@ -80,7 +80,7 @@ async fn token_expire_rejete() {
 }
 
 #[tokio::test]
-async fn token_non_rs256_rejete() {
+async fn non_rs256_token_rejected() {
     let base = spawn_mock_rauthy().await;
     let v = verifier(&base).await;
     // HS256 header with the mock's kid: the algorithm is refused even
@@ -104,7 +104,7 @@ async fn token_non_rs256_rejete() {
 }
 
 #[tokio::test]
-async fn kid_inconnu_rejete_apres_rafraichissement() {
+async fn unknown_kid_rejected_after_refresh() {
     let base = spawn_mock_rauthy().await;
     let v = verifier(&base).await;
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
@@ -122,7 +122,7 @@ async fn kid_inconnu_rejete_apres_rafraichissement() {
         &jsonwebtoken::EncodingKey::from_rsa_pem(include_bytes!("fixtures/jwks_test_key.pem"))
             .expect("key"),
     )
-    .expect("token kid inconnu");
+    .expect("unknown kid token");
     assert!(matches!(
         v.verify(&token).await,
         Err(jwks::VerifyError::UnknownKid)
@@ -130,7 +130,7 @@ async fn kid_inconnu_rejete_apres_rafraichissement() {
 }
 
 #[tokio::test]
-async fn token_malforme_rejete() {
+async fn malformed_token_rejected() {
     let base = spawn_mock_rauthy().await;
     let v = verifier(&base).await;
     assert!(matches!(

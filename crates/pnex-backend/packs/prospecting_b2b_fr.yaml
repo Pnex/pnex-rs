@@ -6,7 +6,7 @@
 # `prospecting_b2b` (account status, list contacts), so neither has to know
 # the other.
 # Target list: one API import per saved search of the company register
-# (its filters in the URL: NAF codes, headcount bands, département…), paged
+# (its filters in the URL: NAF codes, headcount bands, French departments…), paged
 # up to the register's 10,000 results. New SIRENs enter as `target`; an
 # existing account keeps its status. The latest revenue the company
 # published fills `last_revenue` (its year stays in the register). The
@@ -26,10 +26,11 @@
 # candidates for a human.
 # Since 2.0.0 every identifier is English (breaking); the pack was
 # `prospection_fr` before 2.0.0.
+# Since 3.0.0 the import aliases and flow names are English (breaking).
 key: prospecting_b2b_fr
 name: B2B prospecting, France layer
 names: {fr: "Prospection B2B, couche France"}
-version: "2.0.0"
+version: "3.0.0"
 requires: [companies_fr, prospecting_b2b]
 description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
 descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
@@ -46,7 +47,7 @@ imports:
       rows: results
       page_param: page
       objects:
-        - as: ul
+        - as: legal_unit
           type: organization
           key: siren
           title: nom_complet
@@ -63,7 +64,7 @@ imports:
             country: { value: FR }
             activity_code: { from: activite_principale, convert: ["left:5"] }
             last_revenue: { from: finances.@last.ca, convert: ["money:EUR"] }
-        - as: siege
+        - as: head_office
           type: map_pin
           key: siret
           title: nom_complet
@@ -76,7 +77,7 @@ imports:
             headcount_min: { from: siege.tranche_effectif_salarie, convert: [*headcount_min] }
             headcount_max: { from: siege.tranche_effectif_salarie, convert: [*headcount_max] }
       links:
-        - { type: establishment_of, from: siege, to: ul }
+        - { type: establishment_of, from: head_office, to: legal_unit }
   - name: Legal announcements (BODACC)
     source: api
     source_url: "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=registre%3D%22{value}%22%20and%20familleavis!%3D%22dpc%22&order_by=dateparution%20desc&limit=20"
@@ -92,7 +93,7 @@ imports:
         property: siren
         only: { property: account_status, values: [customer, prospect, target] }
       objects:
-        - as: ul
+        - as: legal_unit
           type: organization
           key: siren
           create: false
@@ -103,7 +104,7 @@ imports:
           type: sales_signal
           key: ref
           title: { concat: [commercant, familleavis_lib], sep: " · " }
-          needs: ul
+          needs: legal_unit
           defaults: { state: to_validate }
           properties:
             ref: id
@@ -112,32 +113,32 @@ imports:
             summary: { concat: [familleavis_lib, typeavis_lib], sep: " — " }
             date: dateparution
             source_url: url_complete
-        - as: sig_modif
+        - as: sig_change
           type: sales_signal
           key: ref
           when: { from: familleavis, equals: modification }
-          needs: ul
+          needs: legal_unit
           properties:
             ref: id
             excerpt: { from: modificationsgenerales, convert: [json, "field:descriptif"] }
-        - as: sig_jugement
+        - as: sig_judgment
           type: sales_signal
           key: ref
           when: { from: familleavis, equals: collective }
-          needs: ul
+          needs: legal_unit
           properties:
             ref: id
             excerpt: { from: jugement, convert: [json, "field:nature"] }
-        - as: sig_acte
+        - as: sig_deed
           type: sales_signal
           key: ref
           when: { from: familleavis, equals: immatriculation }
-          needs: ul
+          needs: legal_unit
           properties:
             ref: id
             excerpt: { from: acte, convert: [json, "field:descriptif"] }
       links:
-        - { type: signal_about, from: sig, to: ul }
+        - { type: signal_about, from: sig, to: legal_unit }
 functions:
   - name: pl_prepare
     language: starlark
@@ -186,7 +187,7 @@ functions:
           return {"payload": {"source_id": msg["contact"]["id"], "target_id": msg["object"]["id"],
                               "attributes": {}}}
 flows:
-  - name: "Prospection · list contacts to companies"
+  - name: "Prospecting · list contacts to companies"
     note: "Every 15 minutes, up to 100 list contacts not looked up yet get their company's SIREN from the company register (org_resolve): a clear match creates the company and proposes the contact's attachment on the To validate page; an ambiguous one keeps its candidates on the contact (Company found: to_review). Deploy after importing a list."
     graph:
       nodes:

@@ -178,16 +178,27 @@ fn prop(ctx: &RenderCtx, key: &str) -> String {
     }
 }
 
-fn coverage(v: &HierarchyView, lang: &str) -> String {
+/// A property's display name in the page language, else its key as words.
+fn prop_name(ctx: &RenderCtx, key: &str) -> String {
+    ctx.defs
+        .iter()
+        .find(|d| d.key == key && !d.name.trim().is_empty())
+        .map_or_else(
+            || words(key),
+            |d| super::localized(&d.name, &d.names, ctx.lang).to_string(),
+        )
+}
+
+fn coverage(ctx: &RenderCtx, v: &HierarchyView) -> String {
     let mut parts: Vec<String> = v
         .counts
         .iter()
-        .map(|c| format!("{} {}", label(&c.value, &c.labels, lang), c.count))
+        .map(|c| format!("{} {}", label(&c.value, &c.labels, ctx.lang), c.count))
         .collect();
     parts.extend(
         v.totals
             .iter()
-            .map(|t| format!("{} {}", words(&t.property), t.total)),
+            .map(|t| format!("{} {}", prop_name(ctx, &t.property), t.total)),
     );
     if v.has_coverage {
         parts.push(format!("white space {}", v.white_space));
@@ -225,7 +236,7 @@ fn fill(ctx: &RenderCtx, p: &str) -> Option<String> {
         ["links", t] => links(ctx, t, false),
         ["links", t, "in"] => links(ctx, t, true),
         ["tree", k] => tree(tree_of(k)?, ctx.lang),
-        ["coverage", k] => coverage(tree_of(k)?, ctx.lang),
+        ["coverage", k] => coverage(ctx, tree_of(k)?),
         ["white_space", k] => white_space(tree_of(k)?),
         _ => return None,
     })
@@ -286,13 +297,13 @@ mod tests {
         let me = r("m", "Mecachrome France");
         let links = vec![
             link(
-                "utilise_solution",
+                "uses_solution",
                 me.clone(),
                 r("c", "Concurrent SA"),
-                json!({"depuis": "2024-01-01"}),
+                json!({"since": "2024-01-01"}),
             ),
             link(
-                "signal_sur",
+                "signal_about",
                 r("s", "Ouverture usine"),
                 me.clone(),
                 json!({}),
@@ -306,8 +317,8 @@ mod tests {
             link: String::new(),
             also_under: vec![],
             marks: vec![NodeMark {
-                property: "statut_compte".into(),
-                value: "client".into(),
+                property: "account_status".into(),
+                value: "customer".into(),
                 color: "green".into(),
                 labels: [("fr".to_string(), "Client actif".to_string())].into(),
             }],
@@ -319,25 +330,28 @@ mod tests {
                 node("t", "Toulouse", 1, true),
             ],
             counts: vec![MarkCount {
-                property: "statut_compte".into(),
-                value: "client".into(),
+                property: "account_status".into(),
+                value: "customer".into(),
                 color: "green".into(),
                 labels: Default::default(),
                 count: 2,
             }],
             totals: vec![PropertyTotal {
-                property: "utilisateurs_actuels".into(),
+                property: "current_users".into(),
                 total: 50.0,
             }],
             has_coverage: true,
             white_space: 1,
             ..Default::default()
         };
-        let trees = HashMap::from([("groupe_commercial".to_string(), view)]);
-        let props = json!({"siren": "429853351", "ca_dernier": {"amount": 343838577.0, "currency": "EUR"}, "statut_compte": "client"});
+        let trees = HashMap::from([("sales_group".to_string(), view)]);
+        let props = json!({"siren": "429853351", "last_revenue": {"amount": 343838577.0, "currency": "EUR"}, "account_status": "customer"});
         let defs: Vec<PropertyDef> = serde_json::from_value(json!([{
-            "key": "statut_compte", "kind": "enum", "values": ["client", "cible"],
-            "labels": {"client": {"en": "Customer", "fr": "Client actif"}}
+            "key": "account_status", "kind": "enum", "values": ["customer", "target"],
+            "labels": {"customer": {"en": "Customer", "fr": "Client actif"}}
+        }, {
+            "key": "current_users", "name": "Current users",
+            "names": {"fr": "Utilisateurs actuels"}, "kind": "number"
         }]))
         .unwrap();
         let ctx = RenderCtx {
@@ -350,12 +364,12 @@ mod tests {
             links: &links,
             trees: &trees,
         };
-        let body = "# Plan — {{title}} ({{today}})\nSIREN {{prop:siren}}, CA {{prop:ca_dernier}}, {{prop:statut_compte}}\n{{links:utilise_solution}}\n{{links:signal_sur:in}}\n{{tree:groupe_commercial}}\n{{coverage:groupe_commercial}}\n{{white_space:groupe_commercial}}\n{{nope}} {{links:knows}}";
-        assert_eq!(hierarchies(body), vec!["groupe_commercial"]);
+        let body = "# Plan — {{title}} ({{today}})\nSIREN {{prop:siren}}, CA {{prop:last_revenue}}, {{prop:account_status}}\n{{links:uses_solution}}\n{{links:signal_about:in}}\n{{tree:sales_group}}\n{{coverage:sales_group}}\n{{white_space:sales_group}}\n{{nope}} {{links:knows}}";
+        assert_eq!(hierarchies(body), vec!["sales_group"]);
         let out = render(body, &ctx);
         assert_eq!(
             out,
-            "# Plan — Mecachrome France (2026-10-22)\nSIREN 429853351, CA 343838577.0 EUR, Client actif\n- Concurrent SA — depuis: 2024-01-01\n- Ouverture usine\n- Mecachrome France [Client actif]\n  - Toulouse [Client actif]\nclient 2 · utilisateurs actuels 50 · white space 1\n- Toulouse\n{{nope}} —"
+            "# Plan — Mecachrome France (2026-10-22)\nSIREN 429853351, CA 343838577.0 EUR, Client actif\n- Concurrent SA — since: 2024-01-01\n- Ouverture usine\n- Mecachrome France [Client actif]\n  - Toulouse [Client actif]\ncustomer 2 · Utilisateurs actuels 50 · white space 1\n- Toulouse\n{{nope}} —"
         );
     }
 }

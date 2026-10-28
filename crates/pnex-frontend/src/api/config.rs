@@ -86,7 +86,7 @@ mod tests {
     /// Native without config: empty base (the desktop target will provide the URL).
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
-    fn base_native_sans_config_vide() {
+    fn native_base_without_config_is_empty() {
         std::env::remove_var("PNEX_API_BASE_URL");
         assert_eq!(api_base(), "");
     }

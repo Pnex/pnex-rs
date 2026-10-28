@@ -7,7 +7,7 @@ mod common;
 use std::time::Duration;
 
 #[test]
-fn sigusr1_recharge_le_graphe_sans_redemarrage() {
+fn sigusr1_reloads_the_graph_without_restart() {
     let home = common::tmp_home("redeploy");
     let flows = home.join("flows.json");
     std::fs::write(&flows, common::inject_debug_flows("version-1")).unwrap();

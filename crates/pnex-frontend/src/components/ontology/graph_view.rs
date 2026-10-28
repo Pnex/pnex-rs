@@ -1,4 +1,4 @@
-//! Local graph of an object (D186, lot L4 "vue graphe Dioxus"): the object
+//! Local graph of an object (D186, lot L4 "Dioxus graph view"): the object
 //! in the centre, its neighbours on a ring, their neighbours on an outer
 //! ring. Plain SVG (no layout engine): a neighbourhood is small and a
 //! radial layout reads well. Clicking a node opens its object page, or

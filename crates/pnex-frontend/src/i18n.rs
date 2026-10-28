@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn parite_cles_fr_en() {
+    fn fr_en_key_parity() {
         let mut en = keys(include_str!("../locales/en-US.ftl"));
         let mut fr = keys(include_str!("../locales/fr-FR.ftl"));
         en.sort();
@@ -251,12 +251,12 @@ mod tests {
         assert!(diff.is_empty(), "variables differ: {diff:#?}");
     }
 
-    /// Cross-check (i18n chantier): every machine code registered in
+    /// Cross-check (i18n work): every machine code registered in
     /// `pnex_core::err_codes::ALL` must have its `err-<kebab>` key in BOTH
     /// locales — the backend guard `error_codes.rs` enforces the converse
     /// (every ErrorDetail code in ALL).
     #[test]
-    fn err_codes_resolvent_en_fr() {
+    fn err_codes_resolve_in_en_fr() {
         let en = keys(include_str!("../locales/en-US.ftl"));
         let fr = keys(include_str!("../locales/fr-FR.ftl"));
         for code in pnex_core::err_codes::ALL {
@@ -432,7 +432,7 @@ mod tests {
     /// `common-create` missing → panic "App panicked" when clicking
     /// "add a notification channel" on /notifications).
     #[test]
-    fn cles_litterales_t_presentes_dans_les_locales() {
+    fn literal_t_keys_present_in_locales() {
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut used = BTreeSet::new();
         collect_t_keys(&src, &mut used);
@@ -457,7 +457,7 @@ mod tests {
     /// The crash message must stay resolvable in both locales with
     /// the exact argument `MetricForm` now passes.
     #[test]
-    fn flows_metric_labels_help_resout_avec_son_argument_id() {
+    fn flows_metric_labels_help_resolves_with_its_id_argument() {
         for (locale, source) in [
             (langid!("en-US"), include_str!("../locales/en-US.ftl")),
             (langid!("fr-FR"), include_str!("../locales/fr-FR.ftl")),
@@ -470,7 +470,7 @@ mod tests {
             bundle.set_use_isolating(false);
             let message = bundle
                 .get_message("flows-metric-labels-help")
-                .expect("key defined (see test parite_cles_fr_en)");
+                .expect("key defined (see test fr_en_key_parity)");
             let pattern = message.value().expect("message without attribute");
             let mut args = FluentArgs::new();
             args.set("id", FluentValue::from(7_i64));
@@ -486,7 +486,7 @@ mod tests {
     /// `flows-deploy-stale-notify { $count }` (D50 deploy toast) must
     /// resolve with its exact argument in both locales.
     #[test]
-    fn flows_deploy_stale_notify_resout_avec_son_argument_count() {
+    fn flows_deploy_stale_notify_resolves_with_its_count_argument() {
         for (locale, source) in [
             (langid!("en-US"), include_str!("../locales/en-US.ftl")),
             (langid!("fr-FR"), include_str!("../locales/fr-FR.ftl")),
@@ -499,7 +499,7 @@ mod tests {
             bundle.set_use_isolating(false);
             let message = bundle
                 .get_message("flows-deploy-stale-notify")
-                .expect("key defined (see test parite_cles_fr_en)");
+                .expect("key defined (see test fr_en_key_parity)");
             let pattern = message.value().expect("message without attribute");
             let mut args = FluentArgs::new();
             args.set("count", FluentValue::from(2_i64));
@@ -519,7 +519,7 @@ mod tests {
     /// Notification node). They must use fluent string literals (`{'{{'}`)
     /// and resolve error-free, showing the `{msg.x}`-style syntax.
     #[test]
-    fn notify_var_syntax_hints_resolvent_sans_erreur() {
+    fn notify_var_syntax_hints_resolve_without_error() {
         for (locale, source) in [
             (langid!("en-US"), include_str!("../locales/en-US.ftl")),
             (langid!("fr-FR"), include_str!("../locales/fr-FR.ftl")),
@@ -546,7 +546,7 @@ mod tests {
     /// `flows-notify-antispam-hint { $max } / { $window }` must resolve
     /// with its two exact arguments in both locales.
     #[test]
-    fn flows_notify_antispam_hint_resout_avec_ses_arguments() {
+    fn flows_notify_antispam_hint_resolves_with_its_arguments() {
         for (locale, source) in [
             (langid!("en-US"), include_str!("../locales/en-US.ftl")),
             (langid!("fr-FR"), include_str!("../locales/fr-FR.ftl")),
@@ -559,7 +559,7 @@ mod tests {
             bundle.set_use_isolating(false);
             let message = bundle
                 .get_message("flows-notify-antispam-hint")
-                .expect("key defined (see test parite_cles_fr_en)");
+                .expect("key defined (see test fr_en_key_parity)");
             let pattern = message.value().expect("message without attribute");
             let mut args = FluentArgs::new();
             args.set("max", FluentValue::from(3_i64));

@@ -1,7 +1,7 @@
 //! `pnex-metric` node (Phase 6 ETL) — writes the pipeline result into
 //! OpenObserve **as a metric on a par with sensors**:
 //! remote-write on the same ingestion pipeline, identical labels
-//! (`device_id` = device virtuel `flow_{id}`, `pred_dev="virtual_device"`,
+//! (`device_id` = virtual device `flow_{id}`, `pred_dev="virtual_device"`,
 //! `source_type="etl"`), name auto-prefixed with `etl_`. The series thus shows up
 //! on its own in the Visualization catalogue (dynamic discovery of
 //! metrics streams).

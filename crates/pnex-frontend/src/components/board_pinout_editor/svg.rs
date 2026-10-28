@@ -275,7 +275,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
     }
 }
 
-/// Pastille d'avertissement (strapping / input_only / reserved / screen).
+/// Warning badge (strapping / input_only / reserved / screen).
 fn badge_circle(y: f64, badge: &str, bx: &mut f64) -> Element {
     let cx = *bx;
     *bx -= 10.0;

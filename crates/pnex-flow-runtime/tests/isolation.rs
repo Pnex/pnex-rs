@@ -51,12 +51,12 @@ fn two_flows(tab2_payload: &str, tab2_broken: bool) -> String {
     v.to_string()
 }
 
-fn enfant_vivant(rt: &mut RuntimeProc) -> bool {
+fn child_alive(rt: &mut RuntimeProc) -> bool {
     rt.child.try_wait().expect("try_wait").is_none()
 }
 
 #[test]
-fn tab_invalide_ne_tue_pas_les_autres_flows() {
+fn invalid_tab_does_not_kill_the_other_flows() {
     let home = common::tmp_home("iso-1");
     let flows = home.join("flows.json");
     std::fs::write(&flows, two_flows("ok-2", true)).unwrap();
@@ -92,13 +92,13 @@ fn tab_invalide_ne_tue_pas_les_autres_flows() {
     );
     std::thread::sleep(Duration::from_secs(1));
     assert!(
-        enfant_vivant(&mut rt),
+        child_alive(&mut rt),
         "the runtime must survive the invalid tab"
     );
 }
 
 #[test]
-fn reload_d_un_seul_tab_epargne_l_autre() {
+fn reloading_one_tab_spares_the_other() {
     let home = common::tmp_home("iso-2");
     let flows = home.join("flows.json");
     std::fs::write(&flows, two_flows("ok-2", true)).unwrap();
@@ -153,7 +153,7 @@ fn reload_d_un_seul_tab_epargne_l_autre() {
 }
 
 #[test]
-fn echec_de_swap_preserve_le_last_good() {
+fn swap_failure_preserves_the_last_good() {
     let home = common::tmp_home("iso-3");
     let flows = home.join("flows.json");
     std::fs::write(&flows, two_flows("ok-2", false)).unwrap();
@@ -195,7 +195,7 @@ fn echec_de_swap_preserve_le_last_good() {
         Duration::from_secs(30),
     );
     assert!(
-        enfant_vivant(&mut rt),
+        child_alive(&mut rt),
         "the runtime must survive the swap failure"
     );
 }

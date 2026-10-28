@@ -13,7 +13,7 @@ use crate::components::icons;
 pub fn FloatingPanel(
     /// Panel header ("Floors"…).
     title: String,
-    /// Fermeture (croix).
+    /// Close (cross).
     on_close: Callback<()>,
     /// Body (floor list, studio tools…).
     children: Element,

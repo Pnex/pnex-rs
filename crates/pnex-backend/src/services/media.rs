@@ -263,7 +263,7 @@ mod tests {
     /// Key format: org_{id}/media/{asset}/{version}_{filename} with
     /// the file name sanitized (outside [A-Za-z0-9._-] → `_`).
     #[test]
-    fn cle_de_stockage_sanitize() {
+    fn storage_key_sanitize() {
         let asset = Uuid::new_v4();
         let key = MediaSettings::storage_key(7, asset, 3, "mon panorama (1).jpg");
         assert_eq!(key, format!("org_7/media/{asset}/3_mon_panorama__1_.jpg"));

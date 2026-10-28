@@ -61,7 +61,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 // ───────────────────────── Helpers CRUD ─────────────────────────
@@ -135,7 +135,7 @@ async fn del(
 
 #[tokio::test]
 #[serial]
-async fn wifi_cycle_upsert_et_delete() {
+async fn wifi_cycle_upsert_and_delete() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -229,7 +229,7 @@ async fn wifi_validations_400() {
 
 #[tokio::test]
 #[serial]
-async fn hosts_cycle_upsert_et_validation() {
+async fn hosts_cycle_upsert_and_validation() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -291,7 +291,7 @@ async fn hosts_cycle_upsert_et_validation() {
 
 #[tokio::test]
 #[serial]
-async fn isolation_org_et_auth_401() {
+async fn org_isolation_and_auth_401() {
     with_app(|server, env| async move {
         let org_a = personal_org(&server, &env.alice).await;
         let org_b = personal_org(&server, &env.bob).await;

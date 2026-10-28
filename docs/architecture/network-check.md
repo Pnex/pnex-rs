@@ -141,7 +141,7 @@ Il faut savoir **quand** un site est parcouru, et **pourquoi** une page est
 pertinente. C'est le flow qui porte ces deux réponses :
 
 ```
-inject (hebdo) → ontology_query (réseau, with_links a_pour_site, habilite_pour)
+inject (hebdo) → ontology_query (réseau, with_links has_website, accredited_for)
  → qw_cibles (une cible par site : url + match + contexte)
  → site_crawl → règles WEB-* → object_upsert (ecart) → liens
 ```

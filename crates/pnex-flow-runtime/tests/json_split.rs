@@ -39,7 +39,7 @@ fn legacy_split_flows() -> String {
 }
 
 #[test]
-fn json_split_emet_un_msg_par_cle() {
+fn json_split_emits_one_msg_per_key() {
     let home = common::tmp_home("jsplit");
     let flows = home.join("flows.json");
     std::fs::write(&flows, legacy_split_flows()).unwrap();
@@ -96,7 +96,7 @@ fn named_split_flows() -> String {
 }
 
 #[test]
-fn json_split_ports_nommes_routent_par_port() {
+fn json_split_named_ports_route_per_port() {
     let home = common::tmp_home("jsplitnamed");
     let flows = home.join("flows.json");
     std::fs::write(&flows, named_split_flows()).unwrap();
@@ -147,7 +147,7 @@ fn array_split_flows() -> String {
 }
 
 #[test]
-fn json_split_array_passe_sur_port_zero() {
+fn json_split_array_goes_to_port_zero() {
     let home = common::tmp_home("jsplitarray");
     let flows = home.join("flows.json");
     std::fs::write(&flows, array_split_flows()).unwrap();

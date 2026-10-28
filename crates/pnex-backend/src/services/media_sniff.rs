@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn jpeg_gpano_devient_panorama() {
+    fn jpeg_gpano_becomes_panorama() {
         let xmp = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
             <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
             <rdf:Description GPano:ProjectionType="equirectangular"/>
@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn jpeg_sans_gpano_reste_photo() {
+    fn jpeg_without_gpano_stays_photo() {
         let bytes = jpeg_with_xmp("<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"/>");
         let sniff = detect("photo.jpg", &bytes).unwrap();
         assert_eq!(sniff.kind, "photo");
@@ -438,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn gpano_insensible_casse() {
+    fn gpano_case_insensitive() {
         let xmp = r#"<rdf:Description gpano:projectiontype="EQUIRECTANGULAR"/>"#;
         let bytes = jpeg_with_xmp(xmp);
         assert_eq!(kind("p.jpg", &bytes), Some("panorama"));

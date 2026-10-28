@@ -6,7 +6,7 @@ mod common;
 use std::time::Duration;
 
 #[test]
-fn inject_debug_tourne_headless() {
+fn inject_debug_runs_headless() {
     let home = common::tmp_home("injdbg");
     let flows = home.join("flows.json");
     std::fs::write(&flows, common::inject_debug_flows("bonjour")).unwrap();
@@ -26,7 +26,7 @@ fn inject_debug_tourne_headless() {
 }
 
 #[test]
-fn arret_propose_code_zero() {
+fn stop_proposes_exit_code_zero() {
     let home = common::tmp_home("sigint");
     let flows = home.join("flows.json");
     std::fs::write(&flows, common::inject_debug_flows("x")).unwrap();

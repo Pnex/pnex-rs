@@ -73,7 +73,7 @@ pub(super) fn start_reverse_wiring(
     });
 }
 
-// ─────────────────────────────── Gestes ───────────────────────────────
+// ─────────────────────────────── Gestures ───────────────────────────────
 
 /// Client (screen px) → tuple.
 pub(super) fn client_of(event: &PointerEvent) -> (f64, f64) {

@@ -126,7 +126,7 @@ pub async fn create_function(
     }
     .insert(&txn)
     .await
-    .map_err(|e| FunctionWriteError::Db(format!("insert fonction : {e}")))?;
+    .map_err(|e| FunctionWriteError::Db(format!("insert function: {e}")))?;
 
     let version = function_versions::ActiveModel {
         function_id: Set(created.id),
@@ -148,7 +148,7 @@ pub async fn create_function(
     let created = active
         .update(&txn)
         .await
-        .map_err(|e| FunctionWriteError::Db(format!("liaison version courante : {e}")))?;
+        .map_err(|e| FunctionWriteError::Db(format!("link current version: {e}")))?;
     txn.commit()
         .await
         .map_err(|e| FunctionWriteError::Db(format!("commit : {e}")))?;
@@ -197,7 +197,7 @@ pub async fn save_new_version(
     // version it read; a save in between is a conflict, never overwritten.
     let latest_number = latest_version(&txn, function_row.id)
         .await
-        .map_err(|e| FunctionWriteError::Db(format!("lecture version max : {e}")))?
+        .map_err(|e| FunctionWriteError::Db(format!("read max version: {e}")))?
         .map(|v| v.version_number)
         .unwrap_or(0);
     if latest_number != input.expected_version_number {
@@ -215,14 +215,14 @@ pub async fn save_new_version(
     let updated = active
         .update(&txn)
         .await
-        .map_err(|e| FunctionWriteError::Db(format!("update fonction : {e}")))?;
+        .map_err(|e| FunctionWriteError::Db(format!("update function: {e}")))?;
 
     let mut new_version = None;
     if let Some(code) = &input.code {
         let (inputs, outputs) = sig.expect("signature computed above");
         let previous = latest_version(&txn, function_row.id)
             .await
-            .map_err(|e| FunctionWriteError::Db(format!("lecture version max : {e}")))?
+            .map_err(|e| FunctionWriteError::Db(format!("read max version: {e}")))?
             .map(|v| v.version_number)
             .unwrap_or(0);
         let version = function_versions::ActiveModel {
@@ -242,7 +242,7 @@ pub async fn save_new_version(
         link.current_version_id = Set(Some(version.id));
         link.update(&txn)
             .await
-            .map_err(|e| FunctionWriteError::Db(format!("liaison version courante : {e}")))?;
+            .map_err(|e| FunctionWriteError::Db(format!("link current version: {e}")))?;
         new_version = Some(version);
     }
     txn.commit()
@@ -398,7 +398,7 @@ pub async fn spawn_function_test(
     let function_row = functions::Entity::find_by_id(function_id)
         .one(db)
         .await
-        .map_err(|e| format!("lecture fonction : {e}"))?
+        .map_err(|e| format!("read function: {e}"))?
         .ok_or_else(|| "function not found".to_string())?;
     if function_row.org_id != org_id {
         return Err("function not found".to_string());
@@ -420,7 +420,7 @@ pub async fn spawn_function_test(
                 function_versions::Entity::find_by_id(current)
                     .one(db)
                     .await
-                    .map_err(|e| format!("lecture version courante : {e}"))?
+                    .map_err(|e| format!("read current version: {e}"))?
                     .ok_or_else(|| "current version not found".to_string())?
                     .version_number
             }
@@ -430,10 +430,10 @@ pub async fn spawn_function_test(
             .filter(function_versions::Column::VersionNumber.eq(version_number))
             .one(db)
             .await
-            .map_err(|e| format!("lecture version : {e}"))?
+            .map_err(|e| format!("version read: {e}"))?
             .ok_or_else(|| format!("version v{version_number} not found"))?;
         let language =
-            parse_language(&function_row.language).ok_or_else(|| "langage inconnu".to_string())?;
+            parse_language(&function_row.language).ok_or_else(|| "unknown language".to_string())?;
         (
             language,
             version.code.clone(),
@@ -491,7 +491,7 @@ pub async fn spawn_function_test(
             } else {
                 format!("exit {status}")
             };
-            Err(format!("runtime de test : {detail}"))
+            Err(format!("test runtime: {detail}"))
         }
     }
 }
@@ -538,9 +538,9 @@ async fn run_runtime_with_request(
             let mut pipe = pipe;
             pipe.read_to_string(&mut stdout)
                 .await
-                .map_err(|e| format!("lecture stdout : {e}"))?;
+                .map_err(|e| format!("read stdout: {e}"))?;
         }
-        let status = child.wait().await.map_err(|e| format!("attente : {e}"))?;
+        let status = child.wait().await.map_err(|e| format!("wait: {e}"))?;
         Ok::<(std::process::ExitStatus, String), String>((status, stdout))
     };
     let (status, stdout) =
@@ -579,7 +579,7 @@ pub async fn spawn_function_check(
             } else {
                 format!("exit {status}")
             };
-            Err(format!("runtime de validation : {detail}"))
+            Err(format!("validation runtime: {detail}"))
         }
     }
 }

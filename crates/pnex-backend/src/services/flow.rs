@@ -25,7 +25,7 @@ pub struct FlowSettings {
     pub state_dir: String,
     /// Initial restart backoff after a crash (exponential, bounded).
     pub restart_backoff_secs: u64,
-    /// Backoff maximal de relance.
+    /// Maximum restart backoff.
     pub restart_backoff_max_secs: u64,
     /// SIGTERM → SIGKILL delay when stopping the runtime.
     pub terminate_secs: u64,
@@ -200,7 +200,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defauts_et_partiel() {
+    fn defaults_and_partial() {
         let d = FlowSettings::default();
         assert!(!d.enabled, "the engine is off by default");
         assert_eq!(d.runtime_cmd, "pnex-flow-runtime");

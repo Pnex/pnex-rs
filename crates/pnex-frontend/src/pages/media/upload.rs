@@ -37,14 +37,11 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                                 }
                                 // Read bytes immediately (consumed on
                                 // submit) — FileData::read_bytes.
+                                let read_error = t!("media-file-read-error");
                                 spawn(async move {
                                     match file.read_bytes().await {
                                         Ok(bytes) => store_file_bytes(bytes.to_vec()),
-                                        Err(err) => {
-                                            toasts::error(
-                                                format!("{}: {err:?}", t!("media-file-read-error")),
-                                            )
-                                        }
+                                        Err(err) => toasts::error(format!("{read_error}: {err:?}")),
                                     }
                                 });
                             }
@@ -88,6 +85,7 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                         class: BTN_PRIMARY,
                         disabled: submitting() || file_name().is_empty(),
                         onclick: move |_| {
+                            let added = t!("media-upload-added");
                             spawn(async move {
                                 submitting.set(true);
                                 let params = UploadParams {
@@ -115,7 +113,7 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                                     Some(bytes) => {
                                         match api::media::upload(&params, bytes).await {
                                             Ok(_) => {
-                                                toasts::success(t!("media-upload-added"));
+                                                toasts::success(added);
                                                 on_uploaded.call(());
                                             }
                                             Err(err) => {

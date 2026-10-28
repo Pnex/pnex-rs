@@ -51,12 +51,12 @@ pub trait KeyValueStorage {
     }
 }
 
-/// Stockage persistant (tokens, org, locale).
+/// Persistent storage (tokens, org, locale).
 pub fn local() -> impl KeyValueStorage {
     LocalStorage
 }
 
-/// Stockage volatil onglet (verifier PKCE).
+/// Volatile per-tab storage (PKCE verifier).
 pub fn session() -> impl KeyValueStorage {
     SessionStorage
 }

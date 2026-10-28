@@ -11,7 +11,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub org_id: i64,
-    /// websocket | webhook — enum ouverte (extension ntfy/smtp/…).
+    /// websocket | webhook — open enum (extension ntfy/smtp/…).
     pub kind: String,
     pub name: String,
     /// Typed by kind; `secret` fields hold vault references

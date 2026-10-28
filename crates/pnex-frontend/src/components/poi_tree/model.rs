@@ -49,7 +49,7 @@ pub(super) struct TreeModel {
     pub(super) contained: HashSet<(String, String)>,
 }
 
-// ─────────────────────────── helpers graphe ───────────────────────────
+// ─────────────────────────── graph helpers ───────────────────────────
 
 /// Descendants (all kinds) of a folder — anti-cycle guard of the drag.
 pub(super) fn descendants_of(

@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn ids_auto_incrementes_et_uniques() {
+    fn ids_auto_incremented_and_unique() {
         let mut doc = doc_with_one();
         let id1 = place_item(&mut doc, "asset-1", 20.0, 0.0);
         let id2 = place_item(&mut doc, "asset-1", 30.0, 5.0);
@@ -374,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn pose_et_repositionne_clampes() {
+    fn place_and_reposition_clamped() {
         let mut doc = doc_with_one();
         let id = place_item(&mut doc, "asset-1", 999.0, -400.0);
         let it = doc.items.iter().find(|it| it.id == id).unwrap();
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    fn cible_note_vers_device() {
+    fn note_target_to_device() {
         let mut doc = doc_with_one();
         let id = doc.items[0].id.clone();
         set_item_target(
@@ -422,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn items_plats_place_et_deplace_clampes() {
+    fn flat_items_place_and_move_clamped() {
         let mut doc = AnnotationDoc::default();
         let id = place_item_flat(&mut doc, "asset-p", 1.5, -0.2);
         let it = doc.items.iter().find(|it| it.id == id).unwrap();
@@ -443,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn suppression_et_rows_filtrees_par_media() {
+    fn delete_and_rows_filtered_by_media() {
         let mut doc = doc_with_one();
         place_item(&mut doc, "asset-2", 0.0, 0.0);
         let first = doc.items[0].id.clone();

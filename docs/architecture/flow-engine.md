@@ -354,7 +354,7 @@ changerait.
 ## 4. Vérification d'acceptance (Phase 0 + 1)
 
 - (a) `inject → debug` headless lancé/arrêté par Loco —
-  `tests/flows.rs::cycle_deploy_edit_rollback_avec_runtime` +
+  `tests/flows.rs::deploy_edit_rollback_cycle_with_runtime` +
   `pnex-flow-runtime/tests/inject_debug.rs` ;
 - (b) flow créé via API (v1 persistée) → déployé → exécuté par le runtime —
   à l'origine une vraie requête SQL (`tests/sql_query.rs`), retirée avec le

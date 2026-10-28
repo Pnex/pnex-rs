@@ -7,14 +7,13 @@
 *.csv                          # fixtures
 *.ics                          # fixtures
 *.txt                          # fixtures, ASR references
-*.html                         # fixtures and static pages
 *.svg                          # drawings
 vendor/*                       # third-party code
 research/*                     # notes, not code
 graphify-out/*                 # generated
 docs/*                         # French by rule
 firmware/.venv/*               # third-party
-crates/pnex-backend/packs/*    # fr: translations live inline; pack comments are checked by review
+crates/pnex-backend/packs/* [comments]  # fr: values and page templates are data; whole-line # comments are checked
 crates/pnex-backend/assistant-kb/*  # knowledge sheets (docs)
 crates/pnex-frontend/src/i18n_guard.rs     # French strings on purpose (detector data)
 crates/pnex-frontend/src/lexicon_guard.rs  # French lexicon on purpose

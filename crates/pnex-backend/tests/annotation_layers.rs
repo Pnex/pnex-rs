@@ -61,7 +61,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 fn gpano_jpeg() -> Vec<u8> {
@@ -138,7 +138,7 @@ async fn save_layer(
 
 /// Three items: device (equirect on pano), pin (flat on photo), note
 /// (equirect on pano) — targets `pac-01`.
-fn doc_avec_items(pano_id: &str, photo_id: &str, device: &str) -> serde_json::Value {
+fn doc_with_items(pano_id: &str, photo_id: &str, device: &str) -> serde_json::Value {
     serde_json::json!({
         "items": [
             {"id": "a1", "media_asset_id": pano_id, "kind": "device",
@@ -266,24 +266,24 @@ async fn cycle_creation_save_versions_409() {
         assert_eq!(listed["count"], 0);
 
         // Save v2 with items.
-        let doc = doc_avec_items(&pano_id, &photo_id, "pac-01");
+        let doc = doc_with_items(&pano_id, &photo_id, "pac-01");
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc).await;
         assert_eq!(res.status_code(), 200, "save v2 : {}", res.text());
         let saved: serde_json::Value = res.json();
         assert_eq!(saved["doc_version_number"], 2);
         assert_eq!(saved["doc"]["items"].as_array().unwrap().len(), 3);
 
-        // Save perime (expected 1) -> 409.
+        // Stale save (expected 1) -> 409.
         let res = save_layer(
             &server,
             &env.alice,
             org,
             &layer_id,
             1,
-            doc_avec_items(&pano_id, &photo_id, "pac-01"),
+            doc_with_items(&pano_id, &photo_id, "pac-01"),
         )
         .await;
-        assert_eq!(res.status_code(), 409, "save perime -> 409");
+        assert_eq!(res.status_code(), 409, "stale save -> 409");
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "annot-version-conflict");
 
@@ -359,7 +359,7 @@ async fn cycle_creation_save_versions_409() {
 
 #[tokio::test]
 #[serial]
-async fn validation_doc_assets_et_devices() {
+async fn validation_doc_assets_and_devices() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let pano_id = upload(
@@ -389,11 +389,11 @@ async fn validation_doc_assets_et_devices() {
         let created = create_layer(&server, &env.alice, org, "Validation").await;
         let layer_id = created["id"].as_str().unwrap().to_string();
 
-        // Violation structurelle : id duplique.
-        let mut doc = doc_avec_items(&pano_id, &photo_id, "pac-01");
+        // Structural violation: duplicate id.
+        let mut doc = doc_with_items(&pano_id, &photo_id, "pac-01");
         doc["items"][1]["id"] = "a1".into();
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc).await;
-        assert_eq!(res.status_code(), 400, "id duplique -> 400");
+        assert_eq!(res.status_code(), 400, "duplicate id -> 400");
         let codes: Vec<String> = res.json::<serde_json::Value>()["errors"]["violations"]
             .as_array()
             .unwrap()
@@ -412,16 +412,16 @@ async fn validation_doc_assets_et_devices() {
             org,
             &layer_id,
             1,
-            doc_avec_items("00000000-0000-0000-0000-0000000000bb", &photo_id, "pac-01"),
+            doc_with_items("00000000-0000-0000-0000-0000000000bb", &photo_id, "pac-01"),
         )
         .await;
-        assert_eq!(res.status_code(), 400, "asset inconnu -> 400");
+        assert_eq!(res.status_code(), 400, "unknown asset -> 400");
         let body = res.json::<serde_json::Value>();
         assert_eq!(body["error"], "annotation-layer-invalid");
         assert_eq!(body["errors"]["violations"][0]["code"], "unknown_asset");
 
         // Equirect geometry on a photo asset -> 400 panorama kind required.
-        let doc = doc_avec_items(&photo_id, &photo_id, "pac-01");
+        let doc = doc_with_items(&photo_id, &photo_id, "pac-01");
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc.clone()).await;
         assert_eq!(res.status_code(), 400, "equirect on photo -> 400");
         let violation = &res.json::<serde_json::Value>()["errors"]["violations"][0];
@@ -438,13 +438,13 @@ async fn validation_doc_assets_et_devices() {
             org,
             &layer_id,
             1,
-            doc_avec_items(&pano_id, &photo_id, "ghost"),
+            doc_with_items(&pano_id, &photo_id, "ghost"),
         )
         .await;
-        assert_eq!(res.status_code(), 400, "device inconnu -> 400");
+        assert_eq!(res.status_code(), 400, "unknown device -> 400");
         let violation = &res.json::<serde_json::Value>()["errors"]["violations"][0];
         assert_eq!(violation["code"], "unknown_device");
-        assert_eq!(violation["subject"], "ghost", "message device inconnu");
+        assert_eq!(violation["subject"], "ghost", "unknown device message");
 
         // non-UUID id -> unknown (no panic).
         let res = save_layer(
@@ -453,23 +453,23 @@ async fn validation_doc_assets_et_devices() {
             org,
             &layer_id,
             1,
-            doc_avec_items("pas-un-uuid", &photo_id, "pac-01"),
+            doc_with_items("pas-un-uuid", &photo_id, "pac-01"),
         )
         .await;
         assert_eq!(res.status_code(), 400);
 
         // All valid -> 200 v2 (device pac-01 created, consistent items).
         let _ = create_device(&server, &env.alice, org, "pac-01").await;
-        let doc = doc_avec_items(&pano_id, &photo_id, "pac-01");
+        let doc = doc_with_items(&pano_id, &photo_id, "pac-01");
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc).await;
-        assert_eq!(res.status_code(), 200, "save valide : {}", res.text());
+        assert_eq!(res.status_code(), 200, "valid save: {}", res.text());
     })
     .await;
 }
 
 #[tokio::test]
 #[serial]
-async fn read_model_union_et_dead_device() {
+async fn read_model_union_and_dead_device() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let pano_id = upload(
@@ -508,7 +508,7 @@ async fn read_model_union_et_dead_device() {
             org,
             &a_id,
             1,
-            doc_avec_items(&pano_id, &photo_id, "pac-01"),
+            doc_with_items(&pano_id, &photo_id, "pac-01"),
         )
         .await;
         assert_eq!(res.status_code(), 200, "save A : {}", res.text());
@@ -517,7 +517,7 @@ async fn read_model_union_et_dead_device() {
 
         let b = create_layer(&server, &env.alice, org, "Brouillon").await;
         let b_id = b["id"].as_str().unwrap().to_string();
-        let mut doc_b = doc_avec_items(&pano_id, &photo_id, "pac-01");
+        let mut doc_b = doc_with_items(&pano_id, &photo_id, "pac-01");
         doc_b["items"] = serde_json::json!([
             {"id": "b1", "media_asset_id": pano_id, "kind": "note",
              "geometry": {"type": "equirect", "yaw": 10.0, "pitch": 0.0},
@@ -533,7 +533,7 @@ async fn read_model_union_et_dead_device() {
             .json::<serde_json::Value>();
         assert_eq!(body["media_asset_id"], pano_id.as_str());
         let items = body["items"].as_array().unwrap();
-        assert_eq!(items.len(), 2, "a1 + a3 (B brouillon exclu) : {body}");
+        assert_eq!(items.len(), 2, "a1 + a3 (draft B excluded): {body}");
         assert_eq!(items[0]["id"], "a1");
         assert_eq!(items[0]["layer_name"], "Circulation");
         assert_eq!(items[0]["resolved"]["device_label"], "pac-01");
@@ -571,13 +571,16 @@ async fn read_model_union_et_dead_device() {
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(res.status_code(), 204, "device supprime : {}", res.text());
+        assert_eq!(res.status_code(), 204, "device deleted: {}", res.text());
         let body = read_annotations(&server, &env.alice, org, &pano_id)
             .await
             .json::<serde_json::Value>();
         let items = body["items"].as_array().unwrap();
         assert_eq!(items.len(), 2, "the items survive the device");
-        assert_eq!(items[0]["resolved"]["dead"], true, "device disparu -> dead");
+        assert_eq!(
+            items[0]["resolved"]["dead"], true,
+            "vanished device -> dead"
+        );
         assert!(
             items[0]["resolved"]["device_pk"].is_null(),
             "pk morte = null"
@@ -608,7 +611,7 @@ async fn read_model_union_et_dead_device() {
 
 #[tokio::test]
 #[serial]
-async fn isolation_org_et_roles() {
+async fn org_isolation_and_roles() {
     with_app(|server, env| async move {
         let org1 = personal_org(&server, &env.alice).await;
         let org2 = personal_org(&server, &env.bob).await;
@@ -737,7 +740,7 @@ async fn isolation_org_et_roles() {
 
 #[tokio::test]
 #[serial]
-async fn ensemble_annote_media_associe() {
+async fn annotated_set_linked_to_media() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let pano_id = upload(
@@ -852,7 +855,7 @@ async fn ensemble_annote_media_associe() {
 /// ?tour= filter.
 #[tokio::test]
 #[serial]
-async fn ensemble_annote_tour_associe() {
+async fn annotated_set_linked_to_tour() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let pano_id = upload(

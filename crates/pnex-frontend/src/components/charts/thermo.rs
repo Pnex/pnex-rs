@@ -153,7 +153,7 @@ pub fn ThermoChart(
         }
     }
 
-    // ── Rendu ──
+    // ── Render ──
     let Some(dia) = diagram_sig().clone() else {
         return rsx! {
             div { class: "flex h-full w-full items-center justify-center",
@@ -358,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    fn projections_lineaire_et_log() {
+    fn linear_and_log_projections() {
         // Lin: 0.5 of the range → 0.5.
         assert!((lin_project(5.0, 0.0, 10.0) - 0.5).abs() < 1e-12);
         // Log: 100 in [10, 1000] → 0.5 (1 decade on each side).
@@ -369,12 +369,12 @@ mod tests {
     }
 
     #[test]
-    fn format_axe_bar_et_arrondi() {
+    fn format_axis_bar_and_rounding() {
         // Auto: decimals by the displayed order of magnitude.
         assert_eq!(fmt_axis(452_000.0, None, 1.0), "452000");
         assert_eq!(fmt_axis(16.4173, None, 1.0), "16.42");
         assert_eq!(fmt_axis(0.0147, None, 1.0), "0.015");
-        // bar absolu : Pa ÷ 1e5, arrondi choisi.
+        // absolute bar: Pa ÷ 1e5, chosen rounding.
         assert_eq!(fmt_axis(452_000.0, Some(2), 1.0e5), "4.52");
         assert_eq!(fmt_axis(101_325.0, Some(3), 1.0e5), "1.013");
         // Bounded rounding (corrupt input).
@@ -382,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn derniere_valeur_de_la_serie() {
+    fn last_value_of_the_series() {
         let mut values = HashMap::new();
         values.insert(
             "temperature|dev-1".to_string(),

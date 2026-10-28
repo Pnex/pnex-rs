@@ -466,22 +466,22 @@ mod tests {
             }),
             ..f.clone()
         };
-        assert!(only("statut", &["actif"]).check_deployable().is_none());
+        assert!(only("status", &["active"]).check_deployable().is_none());
         assert!(
-            only("", &["actif"]).check_deployable().is_some(),
+            only("", &["active"]).check_deployable().is_some(),
             "no property"
         );
         assert!(
-            only("statut", &[" "]).check_deployable().is_some(),
+            only("status", &[" "]).check_deployable().is_some(),
             "no value"
         );
         let parsed: IngestConfig = serde_json::from_value(serde_json::json!({
             "step": "rows_filter", "column": "Numero_Fiche", "op": "in_objects",
             "object_type": "certification", "property": "code",
-            "only": {"property": "statut", "values": ["actif"]},
+            "only": {"property": "status", "values": ["active"]},
         }))
         .unwrap();
-        assert_eq!(parsed, only("statut", &["actif"]));
+        assert_eq!(parsed, only("status", &["active"]));
         let empty_in = IngestConfig {
             op: FilterOp::In,
             ..f

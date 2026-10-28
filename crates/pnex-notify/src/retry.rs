@@ -63,7 +63,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reussite_premiere_tentative() {
+    async fn success_on_first_attempt() {
         let calls = Arc::new(AtomicUsize::new(0));
         let c = calls.clone();
         let r = with_retry_delays(tiny(), move || {
@@ -79,7 +79,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn retry_sur_transitoire_puis_succes() {
+    async fn retry_on_transient_then_success() {
         let calls = Arc::new(AtomicUsize::new(0));
         let c = calls.clone();
         let r: Result<&str, _> = with_retry_delays(tiny(), move || {
@@ -98,7 +98,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pas_de_retry_sur_4xx() {
+    async fn no_retry_on_4xx() {
         let calls = Arc::new(AtomicUsize::new(0));
         let c = calls.clone();
         let r: Result<(), _> = with_retry_delays(tiny(), move || {
@@ -114,7 +114,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn epuise_les_trois_retries() {
+    async fn exhausts_the_three_retries() {
         let calls = Arc::new(AtomicUsize::new(0));
         let c = calls.clone();
         let r: Result<(), _> = with_retry_delays(tiny(), move || {

@@ -45,7 +45,7 @@ fn link_keys(s: &OrgSchema, a: &objects::Model, b: &objects::Model) -> Vec<Strin
     keys
 }
 
-/// Refuses the links whose ends match an objection (`prospection-opposed`).
+/// Refuses the links whose ends match an objection (`prospecting-opposed`).
 pub async fn check_links<C: ConnectionTrait>(
     db: &C,
     s: &OrgSchema,
@@ -80,7 +80,7 @@ pub async fn opposed_pairs<C: ConnectionTrait>(
         let rows = db
             .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT fingerprint FROM prospection_oppositions WHERE org_id = $1 AND fingerprint = ANY($2)",
+                "SELECT fingerprint FROM prospecting_oppositions WHERE org_id = $1 AND fingerprint = ANY($2)",
                 vec![org_id.into(), chunk.to_vec().into()],
             ))
             .await?;
@@ -150,7 +150,7 @@ pub async fn record<C: ConnectionTrait>(
     for key in keys {
         db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "INSERT INTO prospection_oppositions (org_id, fingerprint, created_by)
+            "INSERT INTO prospecting_oppositions (org_id, fingerprint, created_by)
              VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
             vec![org_id.into(), key.clone().into(), user_id.into()],
         ))

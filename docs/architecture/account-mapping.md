@@ -113,7 +113,7 @@ Nouveau nœud `org_resolve` : entrée nom + ville (ou code postal) ; il interrog
 > Plafond : 30 captures par jour, **par org et par réseau** (l'agent n'est connu qu'à l'exécution), code `ext-profile-daily-cap`. Le texte capturé est purgé après 30 jours (pruner `profiles`). L'extraction par LLM (flow du pack, « à valider ») reste au lot suivant.
 > **D341, fin (2026-10-26)** : classification, masquage par rôle, base légale, file de rétention, effacement en coquille et opposition au moteur sont décrits et codés dans `crm.md` D442–D447.
 >
-> **D341, minimum livré** : liste `prospection_oppositions` (empreintes `person:<uuid>` et adresses de profil canoniques, qui survivent à la personne). « Enregistrer son opposition » sur la fiche, confirmée deux fois et sans retour arrière dans l'UI, ferme les captures en attente et refuse les suivantes (`prospection-opposed`). La classification D298, la base légale affichée, la file de rétention à 36 mois et l'effacement restent à faire.
+> **D341, minimum livré** : liste `prospecting_oppositions` (empreintes `person:<uuid>` et adresses de profil canoniques, qui survivent à la personne). « Enregistrer son opposition » sur la fiche, confirmée deux fois et sans retour arrière dans l'UI, ferme les captures en attente et refuse les suivantes (`prospecting-opposed`). La classification D298, la base légale affichée, la file de rétention à 36 mois et l'effacement restent à faire.
 
 ### D334 — Changement de poste : registre, recapture humaine et rappel
 
@@ -163,11 +163,11 @@ Export PDF par `page_pdf`.
 ### D341 — Données personnelles : classification, opposition, rétention
 
 Préalable au lot CC3 (pas de capture de profil avant) :
-- **D298 codée** pour les types du pack : nom, poste, URL de profil, e-mail → `personnelle`. Un rôle peut les masquer.
-- **Base légale** affichée sur la fiche (`interet_legitime_prospection_b2b`), réglage de l'org, reprise dans l'export du registre des traitements.
-- **Liste d'opposition** : à la suppression d'une personne sur demande, une empreinte (URL de profil normalisée, et nom + société) entre dans la liste. Imports, captures et rapprochements la consultent et refusent de recréer la fiche (`prospection-opposed`).
+- **D298 codée** pour les types du pack : nom, poste, URL de profil, e-mail → `personal`. Un rôle peut les masquer.
+- **Base légale** affichée sur la fiche (`legitimate_interest_b2b_prospecting`), réglage de l'org, reprise dans l'export du registre des traitements.
+- **Liste d'opposition** : à la suppression d'une personne sur demande, une empreinte (URL de profil normalisée, et nom + société) entre dans la liste. Imports, captures et rapprochements la consultent et refusent de recréer la fiche (`prospecting-opposed`).
 - **Rétention** : une personne sans capture, sans modification ni lien ouvert depuis 36 mois (réglable) est proposée à l'effacement dans une file. L'effacement est une action humaine.
-- **Effacement** : suppression des propriétés `personnelle` et des identifiants ; il reste une coquille sans données, pour que les liens et la provenance des autres objets tiennent (voir Q-CC4).
+- **Effacement** : suppression des propriétés `personal` et des identifiants ; il reste une coquille sans données, pour que les liens et la provenance des autres objets tiennent (voir Q-CC4).
 
 ### D342 — L'assistant et le MCP sans outil nouveau
 
@@ -246,7 +246,7 @@ CC1 et CC2 ne touchent aucune donnée personnelle hors dirigeants (déjà couver
 
 ### CC1 — pack `prospecting_b2b` (2026-10-21, non commité)
 
-Livré : `crates/pnex-backend/packs/prospection_b2b.yaml` (D329), inscrit
+Livré : `crates/pnex-backend/packs/prospecting_b2b.yaml` (D329), inscrit
 dans la liste des packs livrés ; les gardes existantes de validité des
 packs le couvrent.
 
@@ -269,7 +269,7 @@ chaque établissement. Constat CC0 en passant : l'API Recherche
 d'entreprises renvoie `finances` (CA et résultat net par exercice) quand
 la société publie ses comptes ; le mapping de `last_revenue` en dépend.
 
-Socle mondial (D343, 2026-10-21) : `packs/entreprises.yaml` créé ;
+Socle mondial (D343, 2026-10-21) : `packs/companies.yaml` créé ;
 `companies_fr` 2.0.0 ne garde que SIREN, SIRET, NAF, tranche INSEE,
 NDA, Qualiopi et l'import, qui remplit `country`, `activity_code` et
 l'effectif min/max ; `prospecting_b2b` dépend du socle (`lei` et `country` y
@@ -375,7 +375,7 @@ Limites :
     aucun ;
   - fonctions Starlark `pb_criteres` et `pb_score` ; `organization` gagne
     `score_detail` (une ligne par critère rempli) et `scored_on` ;
-  - modèle de flow « Prospection · target score », non déployé à
+  - modèle de flow « Prospecting · target score », non déployé à
     l'installation : toutes les 15 minutes, jusqu'à 500 organisations non
     notées du jour (`scored_on ne $today`) ;
   - test : `pnex-node-starlark/tests/pack_rules.rs`.
@@ -458,7 +458,7 @@ Limites :
   - `state` = `to_validate` posé par `defaults` (à la création seulement) :
     une décision humaine n'est jamais écrasée ;
   - testé contre une imitation : `legal_announcements_become_signals`.
-- **Flow « Prospection · signals digest »** (brouillon) : chaque matin,
+- **Flow « Prospecting · signals digest »** (brouillon) : chaque matin,
   `pb_digest` fait un texte des signaux non notifiés, puis `pb_notifie`
   pose `notified_on`. Le nœud Notification est à ajouter par l'org (canal
   et modèle sont les siens, comme les relances de `quali_watch`).
@@ -484,7 +484,7 @@ Limites :
     `found` / `to_review` / `not_found` coloré, `registry_id`,
     `candidates`) et lien `contact_of` (→ organisation, une cible) ;
   - import fichier « Trade show or association list (file) » ;
-  - flow « Prospection · list contacts to companies » : `org_resolve` ;
+  - flow « Prospecting · list contacts to companies » : `org_resolve` ;
     trouvé → organisation par SIREN + lien `contact_of` **proposé** ;
     ambigu ou introuvable → le contact est marqué.
 - **Pages suivies** (`prospecting_b2b`) :
@@ -493,7 +493,7 @@ Limites :
     quand le texte a changé depuis une visite précédente : la première
     visite est la référence) et `link_to` ;
   - type `watched_page` (`url` unique, `text`, `changed`, `account`) ;
-  - flow « Prospection · watched pages to signals » : toutes les heures,
+  - flow « Prospecting · watched pages to signals » : toutes les heures,
     les pages `changed` → `llm_text` (thèmes de l'org) → `ps_signal` →
     `sales_signal` `page_changed` à valider + `signal_about`, puis
     `changed` remis à faux ;

@@ -1573,7 +1573,7 @@ mod tests {
     }
 
     #[test]
-    fn layout_valide_passe() {
+    fn valid_layout_passes() {
         let mut l = layout(vec![widget("w1", "gauge"), widget("w2", "line")]);
         l.widgets[1].source.push(SourceRef {
             object_property: None,
@@ -1599,7 +1599,7 @@ mod tests {
     }
 
     #[test]
-    fn canvas_hors_bornes_et_type_inconnu() {
+    fn canvas_out_of_bounds_and_unknown_type() {
         let mut l = layout(vec![widget("w1", "psychrometric")]);
         l.canvas.width = 10;
         let v = validate_layout(&l);
@@ -1635,7 +1635,7 @@ mod tests {
     }
 
     #[test]
-    fn thermo_chart_valide_et_rejette() {
+    fn thermo_chart_validates_and_rejects() {
         let mut w = widget("t1", "thermo_chart");
         w.options.thermo = Some(ThermoChartOptions {
             diagram: "ph".into(),
@@ -1687,7 +1687,7 @@ mod tests {
         let v = validate_layout(&layout(vec![w.clone()]));
         assert!(!v.iter().any(|x| x.code.starts_with("thermo_")), "{v:?}");
 
-        // Diagramme inconnu → thermo_bad_diagram.
+        // Unknown diagram → thermo_bad_diagram.
         if let Some(t) = &mut w.options.thermo {
             t.diagram = "mollier".into();
         }
@@ -1696,7 +1696,7 @@ mod tests {
     }
 
     #[test]
-    fn widget_hors_canvas_et_source_absente() {
+    fn widget_off_canvas_and_missing_source() {
         let mut w = widget("w1", "gauge");
         w.x = 1500; // 1500 + 240 > 1600
         w.source.clear();
@@ -1706,7 +1706,7 @@ mod tests {
     }
 
     #[test]
-    fn trait_dangling_et_sur_soit_meme() {
+    fn trait_dangling_and_self_loop() {
         let mut l = layout(vec![widget("w1", "gauge")]);
         l.wires.push(Wire {
             id: "t1".into(),
@@ -1715,7 +1715,7 @@ mod tests {
                 side: WireSide::Right,
             },
             to: WireEndpoint {
-                widget_id: "inconnu".into(),
+                widget_id: "unknown".into(),
                 side: WireSide::Left,
             },
         });
@@ -1736,7 +1736,7 @@ mod tests {
     }
 
     #[test]
-    fn widget_texte_exige_texte_sans_source() {
+    fn text_widget_requires_text_without_source() {
         let mut w = widget("t1", "text");
         w.source = vec![];
         w.options.text = None;
@@ -1788,7 +1788,7 @@ mod tests {
     }
 
     #[test]
-    fn sources_invalide_fenetre_et_device() {
+    fn sources_invalid_window_and_device() {
         let mut w = widget("w1", "stat");
         w.source[0].window = "7j".into();
         w.source[0].device_id = "soil;01".into(); // injection PromQL
@@ -1818,7 +1818,7 @@ mod tests {
     }
 
     #[test]
-    fn presets_fenetres_couverts() {
+    fn window_presets_covered() {
         for (key, secs) in VIZ_WINDOW_PRESETS {
             assert!(valid_window(key));
             assert!(*secs > 0);

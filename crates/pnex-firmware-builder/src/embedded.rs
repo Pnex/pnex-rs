@@ -86,7 +86,7 @@ mod tests {
     /// `lib_extra_dirs = ../lib` — its relative path must resolve in
     /// the extracted workspace), the caches/toolchain are not.
     #[test]
-    fn extraction_preserve_le_layout() {
+    fn extraction_preserves_the_layout() {
         let tmp = tempfile::tempdir().expect("tmp");
         extract(tmp.path()).expect("extraction");
         assert!(tmp.path().join("generic_esp8266/platformio.ini").is_file());

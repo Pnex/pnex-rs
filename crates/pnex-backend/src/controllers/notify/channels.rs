@@ -42,7 +42,7 @@ pub(super) struct PageQuery {
     pub(super) offset: Option<String>,
 }
 
-// ─────────────────────────────── Canaux ───────────────────────────────
+// ─────────────────────────────── Channels ───────────────────────────────
 
 #[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]

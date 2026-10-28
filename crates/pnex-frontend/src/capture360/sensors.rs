@@ -57,7 +57,7 @@ pub fn stop() {
 /// Rows of `M = S·Rᵀ`: (R col1, −R col2, −R col3) — see module docs.
 fn back_camera_matrix(r: Mat3) -> Mat3 {
     Mat3([
-        r.0[0], r.0[3], r.0[6], // droite image = +X device
+        r.0[0], r.0[3], r.0[6], // image right = +X device
         -r.0[1], -r.0[4], -r.0[7], // image down = screen −Y device
         -r.0[2], -r.0[5], -r.0[8], // axe optique = −Z device
     ])
@@ -166,7 +166,7 @@ fn sensor_loop() {
         }
     }
 
-    // 5) Nettoyage.
+    // 5) Cleanup.
     unsafe {
         ndk_sys::ASensorEventQueue_disableSensor(queue, sensor);
         ndk_sys::ASensorManager_destroyEventQueue(manager, queue);

@@ -71,7 +71,7 @@ pub const C6_STRAPPING_HIGH: [u16; 2] = [8, 9];
 /// ADC1 (GPIO0–6) — the C6 has no ADC2.
 pub const C6_ADC1_PINS: [u16; 7] = [0, 1, 2, 3, 4, 5, 6];
 
-// ─────────────────────── ESP32 (classique) ───────────────────────
+// ─────────────────────── ESP32 (classic) ───────────────────────
 // Custom firmware on a classic ESP32 (pio board `esp32dev`) — same rule
 // grid as the C3: protected strapping, ADC1 only, input-only without pull-up.
 
@@ -810,9 +810,9 @@ mod tests {
         }
     }
     #[test]
-    fn regles_chip_caps_esp8266() {
+    fn chip_caps_rules_esp8266() {
         let s = Soc::Esp8266;
-        // flash SPI 6-11 interdits
+        // SPI flash 6-11 forbidden
         let e = validate(s, 8, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::FlashPins(8)));
         assert!(e.reason().contains("flash SPI"));
@@ -824,10 +824,10 @@ mod tests {
         assert!(matches!(e, Violation::AdcOnlyOnA0(17)));
         let e = validate(s, 5, Mode::AdcIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::AnalogOnlyOnA0(5)));
-        // GPIO15 : safe_state high interdit (strapping boot-LOW)
+        // GPIO15: safe_state high forbidden (boot-LOW strapping)
         let e = validate(s, 15, Mode::DigitalOut, &opts(None, Some(SafeState::High))).unwrap_err();
         assert!(matches!(e, Violation::StrappingLow(15)));
-        // GPIO16 : pull-up inexistante
+        // GPIO16: no pull-up
         let e = validate(s, 16, Mode::DigitalIn, &opts(Some(true), None)).unwrap_err();
         assert!(matches!(e, Violation::NoPullUp(16)));
         // GPIO16: no waveform timer — pwm_out refused (digital only)
@@ -839,9 +839,9 @@ mod tests {
     }
 
     #[test]
-    fn regles_chip_caps_esp32c3() {
+    fn chip_caps_rules_esp32c3() {
         let s = Soc::Esp32C3;
-        // flash SPI interne 11-17 interdite
+        // internal SPI flash 11-17 forbidden
         let e = validate(s, 12, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::FlashPins(12)));
         // USB 18/19 reserved (USB-JTAG/serial flash/monitor port)
@@ -868,7 +868,7 @@ mod tests {
         let e = validate(s, 9, Mode::PwmOut, &opts(None, Some(SafeState::Low))).unwrap_err();
         assert!(matches!(e, Violation::StrappingHigh(9)));
         assert!(validate(s, 1, Mode::PwmOut, &opts(None, None)).is_ok());
-        // pins libres : GPIO1, 10, 20, 21
+        // free pins: GPIO1, 10, 20, 21
         assert!(validate(s, 1, Mode::DigitalOut, &opts(None, None)).is_ok());
         assert!(validate(s, 10, Mode::DigitalIn, &opts(None, None)).is_ok());
         assert!(validate(s, 20, Mode::DigitalIn, &opts(None, None)).is_ok());
@@ -876,7 +876,7 @@ mod tests {
     }
 
     #[test]
-    fn soc_depuis_board_soc() {
+    fn soc_from_board_soc() {
         assert_eq!(Soc::from_board_soc("esp8266"), Some(Soc::Esp8266));
         assert_eq!(Soc::from_board_soc("ESP8266"), Some(Soc::Esp8266));
         assert_eq!(Soc::from_board_soc("esp32-c3"), Some(Soc::Esp32C3));
@@ -889,12 +889,12 @@ mod tests {
     }
 
     #[test]
-    fn regles_chip_caps_esp32s3() {
+    fn chip_caps_rules_esp32s3() {
         let s = Soc::Esp32S3;
-        // flash SPI interne 26-32 interdite
+        // internal SPI flash 26-32 forbidden
         let e = validate(s, 28, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::FlashPins(28)));
-        // PSRAM octal 33-37 interdite (modules N8R8)
+        // octal PSRAM 33-37 forbidden (N8R8 modules)
         let e = validate(s, 35, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::PsramPins(35)));
         assert!(e.reason().contains("PSRAM"));
@@ -923,7 +923,7 @@ mod tests {
         // ... but HIGH is allowed, and so are inputs
         assert!(validate(s, 3, Mode::DigitalOut, &opts(None, Some(SafeState::High))).is_ok());
         assert!(validate(s, 0, Mode::DigitalIn, &opts(None, None)).is_ok());
-        // pins libres : 10, 21, 38, 47, 48
+        // free pins: 10, 21, 38, 47, 48
         assert!(validate(s, 10, Mode::DigitalOut, &opts(None, None)).is_ok());
         assert!(validate(s, 21, Mode::DigitalIn, &opts(Some(true), None)).is_ok());
         assert!(validate(s, 38, Mode::DigitalOut, &opts(None, None)).is_ok());
@@ -936,9 +936,9 @@ mod tests {
     }
 
     #[test]
-    fn regles_chip_caps_esp32() {
+    fn chip_caps_rules_esp32() {
         let s = Soc::Esp32;
-        // flash SPI 6-11 interdite
+        // SPI flash 6-11 forbidden
         let e = validate(s, 7, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::FlashPins(7)));
         // GPIOs that do not exist (gapped addressing)
@@ -980,7 +980,7 @@ mod tests {
         let e = validate(s, 0, Mode::PwmOut, &opts(None, Some(SafeState::Low))).unwrap_err();
         assert!(matches!(e, Violation::StrappingHigh(0)));
         assert!(validate(s, 4, Mode::PwmOut, &opts(None, None)).is_ok());
-        // pins libres : 4, 13, 16, 27, 32
+        // free pins: 4, 13, 16, 27, 32
         assert!(validate(s, 4, Mode::DigitalOut, &opts(None, None)).is_ok());
         assert!(validate(s, 13, Mode::DigitalIn, &opts(Some(true), None)).is_ok());
         assert!(validate(s, 16, Mode::DigitalOut, &opts(None, Some(SafeState::High))).is_ok());
@@ -989,7 +989,7 @@ mod tests {
     }
 
     #[test]
-    fn modes_disponibles_esp8266() {
+    fn available_modes_esp8266() {
         let s = Soc::Esp8266;
         // GPIO5: in/out/pwm, no analog
         assert_eq!(
@@ -1003,12 +1003,12 @@ mod tests {
         );
         // A0: analog only
         assert_eq!(available_modes(s, A0_GPIO), vec![Mode::AdcIn]);
-        // flash : rien
+        // flash: nothing
         assert!(available_modes(s, 8).is_empty());
     }
 
     #[test]
-    fn modes_disponibles_esp32c3() {
+    fn available_modes_esp32c3() {
         let s = Soc::Esp32C3;
         // GPIO2 strapping-high: outputs STRUCTURALLY offered (legal
         // with safe_state: high) even if validate(default) would refuse them
@@ -1020,12 +1020,12 @@ mod tests {
             available_modes(s, 5),
             vec![Mode::DigitalIn, Mode::DigitalOut, Mode::PwmOut]
         );
-        // USB 18/19 : rien
+        // USB 18/19: nothing
         assert!(available_modes(s, 19).is_empty());
     }
 
     #[test]
-    fn modes_disponibles_esp32() {
+    fn available_modes_esp32() {
         let s = Soc::Esp32;
         // input-only 34-39: in + analog, never an output
         assert_eq!(available_modes(s, 34), vec![Mode::DigitalIn, Mode::AdcIn]);
@@ -1040,12 +1040,12 @@ mod tests {
             available_modes(s, 21),
             vec![Mode::DigitalIn, Mode::DigitalOut, Mode::PwmOut]
         );
-        // flash : rien
+        // flash: nothing
         assert!(available_modes(s, 9).is_empty());
     }
 
     #[test]
-    fn flags_et_fns_affichage() {
+    fn display_flags_and_fns() {
         assert_eq!(pin_flags(Soc::Esp8266, A0_GPIO), &[PinFlag::InputOnly]);
         assert_eq!(pin_flags(Soc::Esp8266, 15), &[PinFlag::Strapping]);
         assert_eq!(pin_flags(Soc::Esp8266, 1), &[PinFlag::Reserved]);
@@ -1086,7 +1086,7 @@ mod tests {
     }
 
     #[test]
-    fn avertissements_affichage() {
+    fn display_warnings() {
         let w = pin_warnings(Soc::Esp8266, 15);
         assert!(
             w.len() == 1 && w[0].starts_with("caps-strapping-low:"),

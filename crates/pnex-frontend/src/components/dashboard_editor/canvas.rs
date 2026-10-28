@@ -42,7 +42,7 @@ pub(super) fn CanvasView(cx: EditorCx) -> Element {
             onpointermove: move |event| canvas_pointer_move(event, cx),
             onpointerup: move |event| canvas_pointer_up(event, cx),
             onpointerleave: move |_| {
-                // Geste orphelin (curseur sorti) : annulation propre.
+                // Orphan gesture (cursor left): clean cancel.
                 cx.interaction.set(Interaction::Idle);
                 cx.drag_template.set(None);
             },
@@ -61,7 +61,7 @@ pub(super) fn CanvasView(cx: EditorCx) -> Element {
                         cx,
                     }
                 }
-                // ── Traits + accroches (surcouche SVG)
+                // ── Strokes + snap points (SVG overlay)
                 svg {
                     xmlns: "http://www.w3.org/2000/svg",
                     style: "position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;",

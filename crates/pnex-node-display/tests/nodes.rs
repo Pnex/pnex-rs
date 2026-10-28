@@ -5,11 +5,11 @@
 use edgelink_core::runtime::registry::RegistryBuilder;
 
 #[test]
-fn registre_contient_pnex_display() {
+fn registry_contains_pnex_display() {
     // Anti-pruning anchor: without a reference to the crate, the linker may drop the
     // `inventory` submissions (same guard as the runtime binary).
     pnex_node_display::registered();
-    let reg = RegistryBuilder::default().build().expect("registre");
+    let reg = RegistryBuilder::default().build().expect("registry");
     let meta = reg
         .get("pnex-display")
         .unwrap_or_else(|| panic!("pnex-display node missing from the registry"));
@@ -43,7 +43,7 @@ fn display_flows() -> String {
 }
 
 #[test]
-fn build_refuse_sans_pnex_node_id() {
+fn build_refuses_without_pnex_node_id() {
     // The identity is stamped by the projection: an artefact that does not
     // carry it is rejected at deployment (fail-loud).
     let json = serde_json::json!([
@@ -54,7 +54,7 @@ fn build_refuse_sans_pnex_node_id() {
         },
     ])
     .to_string();
-    let reg = RegistryBuilder::default().build().expect("registre");
+    let reg = RegistryBuilder::default().build().expect("registry");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -67,13 +67,13 @@ fn build_refuse_sans_pnex_node_id() {
 }
 
 #[test]
-fn passthrough_et_publication_debug() {
+fn passthrough_and_debug_publication() {
     let home = std::env::temp_dir().join(format!("pnex-display-test-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&home);
     let flows_path = home.join("flows.json");
     std::fs::write(&flows_path, display_flows()).unwrap();
 
-    let reg = RegistryBuilder::default().build().expect("registre");
+    let reg = RegistryBuilder::default().build().expect("registry");
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

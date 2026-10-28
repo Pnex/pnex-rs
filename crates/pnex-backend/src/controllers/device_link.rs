@@ -364,7 +364,7 @@ mod tests {
 
     /// D16: varied writing styles → same canonical name.
     #[test]
-    fn normalisation_noms_de_mesures() {
+    fn measurement_name_normalization() {
         assert_eq!(normalize_measurement_name("soil_moisture"), "soil_moisture");
         assert_eq!(normalize_measurement_name("Soil-Moisture"), "soil_moisture");
         assert_eq!(

@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn validation_rejete_les_compositions_invalides() {
+    fn validation_rejects_invalid_compositions() {
         let mut m = mole(&[("Propane", 0.5), ("Ethane", 0.5)]);
         assert!(m.validate().is_empty());
 
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn conversion_massique_vers_molaire() {
+    fn mass_to_molar_conversion() {
         // 50 % mass water (M=0.018) / 50 % ethanol (M=0.046):
         // moles 27.78/10.87 → x_water ≈ 0.7187.
         let m = FluidMixtureComposition {
@@ -323,7 +323,7 @@ mod tests {
             molar_mass: None,
         };
         let x = m.to_mole_fractions(&[0.01801528, 0.04607]).unwrap();
-        assert!((x[0] - 0.7187).abs() < 1e-3, "x_eau = {x:?}");
+        assert!((x[0] - 0.7187).abs() < 1e-3, "x_water = {x:?}");
         assert!((x[0] + x[1] - 1.0).abs() < 1e-12);
 
         let mm = m.mixture_molar_mass(&[0.01801528, 0.04607]).unwrap();
@@ -331,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn spec_coolprop_depuis_fractions_molaires() {
+    fn coolprop_spec_from_molar_fractions() {
         let m = mole(&[("Propane", 0.5), ("Ethane", 0.5)]);
         assert_eq!(m.to_coolprop_spec().unwrap(), "Propane[0.5]&Ethane[0.5]");
 

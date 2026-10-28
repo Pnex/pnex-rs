@@ -22,10 +22,11 @@
 # proposals on the To validate page since 2.2.0: community data). Sources
 # are never merged.
 # Since 3.0.0 every identifier is English (breaking).
+# Since 4.0.0 the import aliases are English too (breaking).
 key: companies_fr
 name: French companies
 names: {fr: "Entreprises françaises"}
-version: "3.0.0"
+version: "4.0.0"
 requires: [companies]
 description: SIRENE legal units, establishments on the map and officers by mandate, synchronized from the public company registers.
 descriptions: {fr: "Unités légales SIRENE, établissements sur la carte et dirigeants par mandat, synchronisés depuis les registres publics des entreprises."}
@@ -57,7 +58,7 @@ imports:
       rows: results
       per_object: { type: organization, property: siren, param: q }
       objects:
-        - as: ul
+        - as: legal_unit
           type: organization
           key: siren
           create: false
@@ -76,7 +77,7 @@ imports:
             country: { value: FR }
             activity_code: { from: activite_principale, convert: ["left:5"] }
             qualiopi: complements.est_qualiopi
-        - as: siege
+        - as: head_office
           type: map_pin
           key: siret
           title: nom_complet
@@ -88,7 +89,7 @@ imports:
             headcount_band: siege.tranche_effectif_salarie
             headcount_min: { from: siege.tranche_effectif_salarie, convert: [*headcount_min] }
             headcount_max: { from: siege.tranche_effectif_salarie, convert: [*headcount_max] }
-        - as: etab
+        - as: establishment
           type: map_pin
           key: siret
           each: matching_etablissements
@@ -101,7 +102,7 @@ imports:
             headcount_band: tranche_effectif_salarie
             headcount_min: { from: tranche_effectif_salarie, convert: [*headcount_min] }
             headcount_max: { from: tranche_effectif_salarie, convert: [*headcount_max] }
-        - as: personne
+        - as: person
           type: person
           key: registry_id
           each: dirigeants
@@ -118,11 +119,11 @@ imports:
           properties:
             siren: siren
       links:
-        - { type: establishment_of, from: siege, to: ul }
-        - { type: establishment_of, from: etab, to: ul }
+        - { type: establishment_of, from: head_office, to: legal_unit }
+        - { type: establishment_of, from: establishment, to: legal_unit }
         - type: manages
-          from: personne
-          to: ul
+          from: person
+          to: legal_unit
           attributes: &mandate
             role:
               from: qualite
@@ -142,7 +143,7 @@ imports:
             source: { value: "recherche-entreprises.api.gouv.fr" }
         - type: manages
           from: holding
-          to: ul
+          to: legal_unit
           attributes: *mandate
   - name: Legal entity identifiers (GLEIF)
     source: api
@@ -156,7 +157,7 @@ imports:
       rows: data
       per_object: { type: organization, property: siren, param: "filter[entity.registeredAs]" }
       objects:
-        - as: ul
+        - as: legal_unit
           type: organization
           key: siren
           create: false
@@ -166,7 +167,7 @@ imports:
           properties:
             siren: { from: attributes.entity.registeredAs, convert: [digits] }
             lei: id
-        - as: directe
+        - as: direct_parent
           type: organization
           key: lei
           create: false
@@ -174,7 +175,7 @@ imports:
           when: { from: relationships.direct-parent.data.type, equals: lei-records }
           properties:
             lei: relationships.direct-parent.data.id
-        - as: ultime
+        - as: ultimate_parent
           type: organization
           key: lei
           create: false
@@ -184,15 +185,15 @@ imports:
             lei: relationships.ultimate-parent.data.id
       links:
         - type: subsidiary_of
-          from: ul
-          to: directe
+          from: legal_unit
+          to: direct_parent
           attributes:
             nature: { value: direct_consolidation }
             source: { value: "gleif.org" }
           on_conflict: { nature: direct_consolidation }
         - type: subsidiary_of
-          from: ul
-          to: ultime
+          from: legal_unit
+          to: ultimate_parent
           attributes:
             nature: { value: ultimate_consolidation }
             source: { value: "gleif.org" }
@@ -209,7 +210,7 @@ imports:
       rows: data
       per_object: { type: organization, property: lei, param: "filter[owns]" }
       objects:
-        - as: mere_fr
+        - as: parent_fr
           type: organization
           key: siren
           title: attributes.entity.legalName.name
@@ -218,7 +219,7 @@ imports:
             siren: { from: attributes.entity.registeredAs, convert: [digits] }
             lei: id
             country: { value: FR }
-        - as: mere_monde
+        - as: parent_world
           type: organization
           key: lei
           title: attributes.entity.legalName.name
@@ -238,14 +239,14 @@ imports:
       rows: results.bindings
       per_object: { type: organization, property: siren }
       objects:
-        - as: ul
+        - as: legal_unit
           type: organization
           key: siren
           create: false
           missing: skip
           properties:
             siren: self_siren.value
-        - as: mere
+        - as: parent
           type: organization
           key: siren
           title: otherLabel.value
@@ -254,7 +255,7 @@ imports:
           properties:
             siren: other_siren.value
             country: { value: FR }
-        - as: filiale
+        - as: subsidiary
           type: organization
           key: siren
           title: otherLabel.value
@@ -265,14 +266,14 @@ imports:
             country: { value: FR }
       links:
         - type: subsidiary_of
-          from: ul
-          to: mere
+          from: legal_unit
+          to: parent
           propose: true
           attributes: &wikidata
             nature: { value: wikidata }
             source: { value: "wikidata.org" }
         - type: subsidiary_of
-          from: filiale
-          to: ul
+          from: subsidiary
+          to: legal_unit
           propose: true
           attributes: *wikidata

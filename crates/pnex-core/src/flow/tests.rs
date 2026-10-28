@@ -103,7 +103,7 @@ fn node_http_fetch(id: &str, config: HttpFetchNodeConfig) -> FlowNode {
     }
 }
 
-fn http_fetch_complet() -> HttpFetchNodeConfig {
+fn http_fetch_full() -> HttpFetchNodeConfig {
     HttpFetchNodeConfig {
         url: "https://api.exemple.dev/data".into(),
         method: HttpFetchMethod::Post,
@@ -127,7 +127,7 @@ fn http_fetch_complet() -> HttpFetchNodeConfig {
 }
 
 #[test]
-fn validate_http_fetch_defaut_guide_la_saisie() {
+fn validate_http_fetch_default_guides_input() {
     let g = FlowGraph {
         nodes: vec![node_http_fetch("h1", HttpFetchNodeConfig::default())],
     };
@@ -143,17 +143,17 @@ fn validate_http_fetch_defaut_guide_la_saisie() {
 }
 
 #[test]
-fn validate_http_fetch_complet_sans_violation() {
+fn validate_http_fetch_complete_without_violation() {
     let g = FlowGraph {
-        nodes: vec![node_http_fetch("h1", http_fetch_complet())],
+        nodes: vec![node_http_fetch("h1", http_fetch_full())],
     };
     let v = validate_graph(&g);
     assert!(v.is_empty(), "{v:?}");
 }
 
 #[test]
-fn validate_http_fetch_codes_par_violation() {
-    let mut cfg = http_fetch_complet();
+fn validate_http_fetch_codes_per_violation() {
+    let mut cfg = http_fetch_full();
     cfg.url = "ftp://hors-sujet.example".into();
     let codes: Vec<String> = validate_graph(&FlowGraph {
         nodes: vec![node_http_fetch("h1", cfg)],
@@ -166,7 +166,7 @@ fn validate_http_fetch_codes_par_violation() {
         "{codes:?}"
     );
 
-    let mut cfg = http_fetch_complet();
+    let mut cfg = http_fetch_full();
     cfg.headers = vec![HttpFetchHeader {
         name: "  ".into(),
         value: String::new(),
@@ -182,7 +182,7 @@ fn validate_http_fetch_codes_par_violation() {
         "{codes:?}"
     );
 
-    let mut cfg = http_fetch_complet();
+    let mut cfg = http_fetch_full();
     cfg.auth = HttpFetchAuth::Bearer { token: " ".into() };
     let codes: Vec<String> = validate_graph(&FlowGraph {
         nodes: vec![node_http_fetch("h1", cfg)],
@@ -195,7 +195,7 @@ fn validate_http_fetch_codes_par_violation() {
         "{codes:?}"
     );
 
-    let mut cfg = http_fetch_complet();
+    let mut cfg = http_fetch_full();
     cfg.proxy = HttpFetchProxy::Custom {
         url: String::new(),
         username: None,
@@ -212,7 +212,7 @@ fn validate_http_fetch_codes_par_violation() {
         "{codes:?}"
     );
 
-    let mut cfg = http_fetch_complet();
+    let mut cfg = http_fetch_full();
     cfg.timeout_secs = 301;
     let codes: Vec<String> = validate_graph(&FlowGraph {
         nodes: vec![node_http_fetch("h1", cfg)],
@@ -227,7 +227,7 @@ fn validate_http_fetch_codes_par_violation() {
 }
 
 #[test]
-fn value_node_validation_et_projection() {
+fn value_node_validation_and_projection() {
     // Static without a value: guided violation (device/calc/metric school).
     let node = |value: serde_json::Value| FlowNode {
         id: "v1".into(),
@@ -281,7 +281,7 @@ fn value_node_validation_et_projection() {
 }
 
 #[test]
-fn validate_json_merge_cle_defaut_requise() {
+fn validate_json_merge_default_key_required() {
     let node = |default_key: &str| FlowNode {
         id: "m1".into(),
         name: None,
@@ -357,7 +357,7 @@ fn json_split_merge_serde_defaults() {
 }
 
 #[test]
-fn validate_json_split_port_hors_plage() {
+fn validate_json_split_port_out_of_range() {
     // Two declared keys = ports 0-1; the targets must exist
     // (otherwise dangling_target pollutes the violation count).
     let node = |outputs: Vec<FlowWiring>| FlowNode {
@@ -407,7 +407,7 @@ fn validate_json_split_port_hors_plage() {
 }
 
 #[test]
-fn validate_json_merge_entrees_nommees() {
+fn validate_json_merge_named_inputs() {
     let node = |inputs: Vec<String>, annotations: Vec<FlowInputWiring>| FlowNode {
         id: "m1".into(),
         name: None,
@@ -483,7 +483,7 @@ fn validate_json_merge_entrees_nommees() {
 }
 
 #[test]
-fn validate_json_merge_cable_nu_rejete() {
+fn validate_json_merge_bare_wire_rejected() {
     // A bare wire (wired source without annotation) on a merge with
     // named inputs: violation — otherwise the render would "pick" a
     // row instead of the real wiring (wire jumping ports).
@@ -550,7 +550,7 @@ fn validate_json_merge_cable_nu_rejete() {
 }
 
 #[test]
-fn http_fetch_serde_roundtrip_modes_taggues() {
+fn http_fetch_serde_roundtrip_tagged_modes() {
     let raw = r#"{
         "id": "h1",
         "kind": "http_fetch",
@@ -581,7 +581,7 @@ fn http_fetch_serde_roundtrip_modes_taggues() {
     );
     assert_eq!(config.timeout_secs, 45);
     assert_eq!(config.on_error, HttpFetchOnError::Passthrough);
-    // Round-trip complet.
+    // Full round-trip.
     let json = serde_json::to_string(&n).unwrap();
     let back: FlowNode = serde_json::from_str(&json).unwrap();
     assert_eq!(back, n);
@@ -597,9 +597,9 @@ fn http_fetch_minimal_form_deserialise() {
 }
 
 #[test]
-fn projection_http_fetch_champs_aplatis() {
+fn projection_http_fetch_flattened_fields() {
     let g = FlowGraph {
-        nodes: vec![node_http_fetch("h1", http_fetch_complet())],
+        nodes: vec![node_http_fetch("h1", http_fetch_full())],
     };
     let meta = FlowArtifactMeta {
         flow_id: 12,
@@ -654,7 +654,7 @@ fn validate_rejects_structure_errors() {
 }
 
 #[test]
-fn validate_rejects_inject_sans_declencheur() {
+fn validate_rejects_inject_without_trigger() {
     let g = FlowGraph {
         nodes: vec![FlowNode {
             id: "n1".into(),
@@ -691,7 +691,7 @@ fn node_notify(id: &str, targets: &[String], config: NotifyNodeConfig) -> FlowNo
 }
 
 #[test]
-fn validate_notify_rejete_config_incomplete() {
+fn validate_notify_rejects_incomplete_config() {
     // Bare node (editor make_node): no channel, no template, no wired
     // trigger.
     let g = FlowGraph {
@@ -743,7 +743,7 @@ fn notify_serde_roundtrip_minimal() {
 }
 
 #[test]
-fn projection_notify_refs_sans_snapshot() {
+fn projection_notify_refs_without_snapshot() {
     let meta = FlowArtifactMeta {
         flow_id: 12,
         version_number: 3,
@@ -779,7 +779,7 @@ fn projection_notify_refs_sans_snapshot() {
 }
 
 #[test]
-fn projection_notify_stample_vars_et_anti_spam() {
+fn projection_notify_stamps_vars_and_anti_spam() {
     let meta = FlowArtifactMeta {
         flow_id: 33,
         version_number: 1,
@@ -822,7 +822,7 @@ fn projection_notify_stample_vars_et_anti_spam() {
 }
 
 #[test]
-fn projection_notify_tagger_sur_var_template() {
+fn projection_notify_tagger_on_template_var() {
     // inject i1 → notify n1, wire annotated on the stamped var "seuil":
     // the projection must insert a tagger (topic = "seuil") between the
     // two, same semantics as the function input anchors.
@@ -890,7 +890,7 @@ fn projection_notify_tagger_sur_var_template() {
 }
 
 #[test]
-fn projection_notify_trigger_tagger_et_flag() {
+fn projection_notify_trigger_tagger_and_flag() {
     // Wire annotated on the `trigger` gate row → the projection emits a
     // tagger stamping `topic = "trigger"` and stamps the deploy-derived
     // gate flag on the node entry. A sibling notify without the wire
@@ -966,7 +966,7 @@ fn projection_notify_trigger_tagger_et_flag() {
 }
 
 #[test]
-fn validate_notify_trigger_conflit_nom_var() {
+fn validate_notify_trigger_var_name_conflict() {
     // A template var literally named `trigger` collides with the gate
     // row ONLY when the trigger input is actually wired.
     let wired = FlowGraph {
@@ -1014,7 +1014,7 @@ fn validate_notify_trigger_conflit_nom_var() {
 }
 
 #[test]
-fn validate_notify_anti_spam_rejete_zero() {
+fn validate_notify_anti_spam_rejects_zero() {
     let codes_of = |anti: crate::AntiSpamConfig| {
         validate_graph(&FlowGraph {
             nodes: vec![node_notify(
@@ -1093,7 +1093,7 @@ fn projection_flows_json_snapshot() {
 }
 
 #[test]
-fn projection_rende_les_ids_uniques_entre_flows() {
+fn projection_makes_ids_unique_across_flows() {
     // Non-regression: the editor generates short ids per flow ("n1"…),
     // so two deployed flows can carry the same ones. Before prefixing,
     // the concatenated artifact contained colliding ids and the runtime
@@ -1295,7 +1295,7 @@ fn projection_device_write_commands_are_routed_anchors() {
 }
 
 #[test]
-fn validate_calc_casse_des_variables_device() {
+fn validate_calc_device_variable_case() {
     // Non-regression: a calc variable that differs from a device key
     // of the graph only by case is flagged (`proud_puffin_a0` vs
     // `proud_puffin_A0`) — otherwise the error only showed up at
@@ -1533,7 +1533,7 @@ fn coolprop_projection_pads_ports_and_routes_named_inputs() {
 
 #[test]
 fn validate_device_read_write() {
-    // Read : pins vides → device_no_pins.
+    // Read: empty pins → device_no_pins.
     let g = FlowGraph {
         nodes: vec![node_device_read("d1", "fuzzy-zebra", &[])],
     };
@@ -1590,7 +1590,7 @@ fn validate_device_read_write() {
 }
 
 #[test]
-fn write_pin_en_conflit_avec_carte_regulation() {
+fn write_pin_conflicts_with_regulation_card() {
     // A device-write and a control card on the same (device, pin)
     // would fight over the output — same uniqueness as between cards.
     let g = FlowGraph {
@@ -1621,7 +1621,7 @@ fn write_pin_en_conflit_avec_carte_regulation() {
 }
 
 #[test]
-fn device_pin_refs_of_parcourt_les_deux_kinds() {
+fn device_pin_refs_of_walks_both_kinds() {
     let g = FlowGraph {
         nodes: vec![
             node_device_read("d1", "fuzzy-zebra", &["D1", "A0"]),
@@ -1714,7 +1714,7 @@ fn device_write_pin_refs_of_collects_write_sources() {
 }
 
 #[test]
-fn calc_et_metric_valides() {
+fn calc_and_metric_valid() {
     // Calc: invalid expression rejected, variables tolerated.
     let g = FlowGraph {
         nodes: vec![FlowNode {
@@ -1776,7 +1776,7 @@ fn calc_et_metric_valides() {
 }
 
 #[test]
-fn projection_noeuds_phase6_estampilles() {
+fn projection_phase6_nodes_stamped() {
     let g = FlowGraph {
         nodes: vec![
             node_device_read("d1", "fuzzy-zebra", &["D1"]),
@@ -1834,7 +1834,7 @@ fn projection_noeuds_phase6_estampilles() {
 }
 
 #[test]
-fn display_sans_config_est_valide() {
+fn display_without_config_is_valid() {
     // The probe has no user config: default → green graph.
     let g = FlowGraph {
         nodes: vec![node_inject("n1"), node_display("n2", &[])],
@@ -1846,7 +1846,7 @@ fn display_sans_config_est_valide() {
 }
 
 #[test]
-fn projection_noeud_display_estampille() {
+fn projection_display_node_stamped() {
     let g = FlowGraph {
         nodes: vec![
             node_inject("n1"),
@@ -1886,7 +1886,7 @@ fn projection_noeud_display_estampille() {
 }
 
 #[test]
-fn projection_debug_tosidebar_toujours_vrai() {
+fn projection_debug_tosidebar_always_true() {
     // Panel safeguard: without `tosidebar`, the builtin debug node never
     // publishes on the channel — the editor depends on it.
     let g = FlowGraph {
@@ -1915,7 +1915,7 @@ fn projection_debug_tosidebar_toujours_vrai() {
 }
 
 #[test]
-fn contrats_payload_phase6() {
+fn payload_contracts_phase6() {
     // Device output / calc input: numeric object, bool → 1/0.
     let payload = json!({"cap_1_D1": 21.5, "cap_2_D0": true});
     let map = numeric_map_from_payload(Some(&payload), "calc").unwrap();
@@ -2024,7 +2024,7 @@ fn node_reg_pid(id: &str, patch: impl FnOnce(&mut RegPidConfig)) -> FlowNode {
 }
 
 #[test]
-fn reg_configs_serde_roundtrip_et_defauts() {
+fn reg_configs_serde_roundtrip_and_defaults() {
     // Minimal form: secondary fields carry their defaults.
     let g: FlowGraph = serde_json::from_str(
         r#"{"nodes":[{"id":"r1","kind":"reg_tt_heat","config":{"device_id":"d1","sensor_pin":"A0","actuator_pin":"D1","setpoint":19.0,"deadband":0.5}}]}"#,
@@ -2062,7 +2062,7 @@ fn reg_configs_serde_roundtrip_et_defauts() {
 }
 
 #[test]
-fn validate_reg_rejette_les_configs_invalides() {
+fn validate_reg_rejects_invalid_configs() {
     // Incomplete binding + equal pins.
     let g = FlowGraph {
         nodes: vec![node_reg_tt("r1", true, |c| {
@@ -2126,7 +2126,7 @@ fn validate_reg_rejette_les_configs_invalides() {
 }
 
 #[test]
-fn validate_reg_unicite_actuateur_graphe_entier() {
+fn validate_reg_actuator_unique_across_graph() {
     // Two cards on the same output → conflict (even via 2 devices with
     // different labels? no — same device, same pin).
     let g = FlowGraph {
@@ -2165,7 +2165,7 @@ fn validate_reg_unicite_actuateur_graphe_entier() {
 }
 
 #[test]
-fn projection_reg_estampille() {
+fn projection_reg_stamped() {
     let g = FlowGraph {
         nodes: vec![
             node_reg_tt("r1", true, |_| {}),
@@ -2289,7 +2289,7 @@ fn fn_graph() -> FlowGraph {
 }
 
 #[test]
-fn projection_fonction_js_noeud_vendor() {
+fn projection_js_function_vendor_node() {
     let meta = FlowArtifactMeta {
         flow_id: 21,
         version_number: 4,
@@ -2305,7 +2305,7 @@ fn projection_fonction_js_noeud_vendor() {
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("function"))
         .expect("vendor function node missing");
     assert_eq!(node["outputs"], 2);
-    let func = node["func"].as_str().expect("func textuel");
+    let func = node["func"].as_str().expect("textual func");
     assert!(
         func.contains("function handle(inputs, msg)"),
         "code user inline"
@@ -2323,7 +2323,7 @@ fn projection_fonction_js_noeud_vendor() {
 }
 
 #[test]
-fn projection_fonction_starlark() {
+fn projection_starlark_function() {
     let meta = FlowArtifactMeta {
         flow_id: 21,
         version_number: 4,
@@ -2344,7 +2344,7 @@ fn projection_fonction_starlark() {
 }
 
 #[test]
-fn projection_fonction_introuvable_comment_noop() {
+fn projection_missing_function_comment_noop() {
     let meta = FlowArtifactMeta {
         flow_id: 21,
         version_number: 4,
@@ -2367,7 +2367,7 @@ fn projection_fonction_introuvable_comment_noop() {
 }
 
 #[test]
-fn projection_fonction_tagger_sur_ancre_entree() {
+fn projection_function_tagger_on_input_anchor() {
     let meta = FlowArtifactMeta {
         flow_id: 21,
         version_number: 4,
@@ -2585,7 +2585,7 @@ fn projection_device_write_tagger_on_wired_input_anchor() {
 }
 
 #[test]
-fn projection_json_split_noeud_function() {
+fn projection_json_split_function_node() {
     let meta = FlowArtifactMeta {
         flow_id: 21,
         version_number: 4,
@@ -2614,12 +2614,12 @@ fn projection_json_split_noeud_function() {
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("function"))
         .expect("vendor function node missing");
     assert_eq!(node["outputs"], 1);
-    let func = node["func"].as_str().expect("func textuel");
+    let func = node["func"].as_str().expect("textual func");
     assert!(
         func.contains("Object.keys(p).map"),
         "fan-out per key (object)"
     );
-    assert!(func.contains("Array.isArray(p)"), "branche array");
+    assert!(func.contains("Array.isArray(p)"), "array branch");
     assert_eq!(node["pnex_node_id"], "s1");
     assert_eq!(node["pnex_flow_id"], 21);
     assert_eq!(node["pnex_version"], 4);
@@ -2630,7 +2630,7 @@ fn projection_json_split_noeud_function() {
 }
 
 #[test]
-fn projection_json_split_ports_nommes() {
+fn projection_json_split_named_ports() {
     let meta = FlowArtifactMeta {
         flow_id: 21,
         version_number: 4,
@@ -2672,7 +2672,7 @@ fn projection_json_split_ports_nommes() {
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("function"))
         .expect("vendor function node missing");
     assert_eq!(node["outputs"], 2, "one port per declared key");
-    let func = node["func"].as_str().expect("func textuel");
+    let func = node["func"].as_str().expect("textual func");
     assert!(
         func.contains(r#"var keys = ["a","b"]"#),
         "inline key literal: {func}"
@@ -2684,7 +2684,7 @@ fn projection_json_split_ports_nommes() {
 }
 
 #[test]
-fn projection_json_merge_entrees_nommees_taggers() {
+fn projection_json_merge_named_inputs_taggers() {
     let meta = FlowArtifactMeta {
         flow_id: 21,
         version_number: 4,
@@ -2754,7 +2754,7 @@ fn projection_json_merge_entrees_nommees_taggers() {
 }
 
 #[test]
-fn projection_json_merge_noeud_function() {
+fn projection_json_merge_function_node() {
     let meta = FlowArtifactMeta {
         flow_id: 21,
         version_number: 4,
@@ -2786,7 +2786,7 @@ fn projection_json_merge_noeud_function() {
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("function"))
         .expect("vendor function node missing");
     assert_eq!(node["outputs"], 1);
-    let func = node["func"].as_str().expect("func textuel");
+    let func = node["func"].as_str().expect("textual func");
     assert!(
         func.contains("context.get(\"__pnex_merge\")"),
         "accumulator in node context"

@@ -507,7 +507,7 @@ fn check_digital(v: &serde_json::Value) -> Option<String> {
     }
 }
 
-/// PWM : duty % 0..=100, nombre fini.
+/// PWM: duty % 0..=100, finite number.
 fn check_duty(v: &serde_json::Value) -> Option<String> {
     let Some(duty) = v.as_f64() else {
         return Some("invalid pwm value (number 0-100 required)".into());
@@ -518,7 +518,7 @@ fn check_duty(v: &serde_json::Value) -> Option<String> {
     None
 }
 
-/// Mode colonne → Mode fil (miroir provisioning::str_to_mode_local).
+/// Column mode → wire mode (mirror of provisioning::str_to_mode_local).
 fn str_to_mode(s: &str) -> Mode {
     match s {
         "digital_out" => Mode::DigitalOut,

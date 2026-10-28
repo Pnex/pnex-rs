@@ -10,7 +10,7 @@ fn graph_with_two() -> FlowGraph {
 }
 
 #[test]
-fn ids_uniques_meme_apres_suppression() {
+fn ids_unique_even_after_delete() {
     let mut graph = graph_with_two();
     assert_eq!(next_node_id(&graph), "n3");
     remove_node(&mut graph, "n2");
@@ -36,7 +36,7 @@ fn notify_wired(vars: &[&str]) -> FlowGraph {
 }
 
 #[test]
-fn notify_set_input_target_garde_et_prune() {
+fn notify_set_input_target_keeps_and_prunes() {
     let mut graph = notify_wired(&["seuil", "value"]);
     // The real drop first sets the runtime wire (add_target), then
     // the anchor annotation.
@@ -377,7 +377,7 @@ fn write_input_annotations_one_wire_per_pin() {
 }
 
 #[test]
-fn make_node_inject_a_un_declencheur() {
+fn make_node_inject_has_a_trigger() {
     let node = make_node("n9", PaletteKind::Inject, Position { x: 0.0, y: 0.0 });
     match &node.kind {
         FlowNodeKind::Inject { config } => {
@@ -533,7 +533,7 @@ fn make_node_value_ships_json_template() {
 }
 
 #[test]
-fn make_node_display_est_valide() {
+fn make_node_display_is_valid() {
     // The probe has no config to fill in: the default is green right away.
     let node = make_node("n1", PaletteKind::Display, Position { x: 0.0, y: 0.0 });
     assert!(matches!(&node.kind, FlowNodeKind::Display { .. }));
@@ -578,7 +578,7 @@ fn make_node_reg_typed_but_incomplete() {
 }
 
 #[test]
-fn cablage_add_et_remove() {
+fn wiring_add_and_remove() {
     let mut graph = graph_with_two();
     add_target(&mut graph, "n1", 0, "n2");
     add_target(&mut graph, "n1", 0, "n2"); // idempotent
@@ -591,7 +591,7 @@ fn cablage_add_et_remove() {
 }
 
 #[test]
-fn suppression_node_nettoie_les_entrees() {
+fn node_delete_cleans_inputs() {
     let mut graph = graph_with_two();
     add_target(&mut graph, "n1", 0, "n2");
     remove_node(&mut graph, "n2");
@@ -618,7 +618,7 @@ fn split_wired(keys: &[&str]) -> FlowGraph {
 }
 
 #[test]
-fn split_keys_suppression_emporte_le_fil() {
+fn split_keys_delete_takes_the_wire() {
     // Delete "temp" (port 0): its wire goes; "hum" keeps
     // its own **even though its index shifted** (1 → 0) — rewire-by-label
     // pattern. Renaming a key rewires nothing: the port index is
@@ -660,7 +660,7 @@ fn merge_wired(inputs: &[&str]) -> FlowGraph {
 }
 
 #[test]
-fn merge_inputs_rename_suive_annotation() {
+fn merge_inputs_rename_follows_annotation() {
     let mut graph = merge_wired(&["temp"]);
     // Rename the row: same wire, same source, new pin.
     rename_merge_input(&mut graph, "mg", "temp", "humidity");
@@ -683,7 +683,7 @@ fn merge_inputs_rename_suive_annotation() {
 }
 
 #[test]
-fn sync_split_keys_auto_suivant_l_amont() {
+fn sync_split_keys_auto_follows_upstream() {
     // Split in auto mode wired to a merge (value1/value2): the sync
     // regenerates the keys — hence the ports — and rewires by label.
     let mut graph = FlowGraph {
@@ -734,11 +734,11 @@ fn sync_split_keys_auto_suivant_l_amont() {
         FlowNodeKind::JsonSplit { config } => config.keys.clone(),
         _ => vec![],
     };
-    assert_eq!(keys, vec!["libre".to_string()], "manuel = intact");
+    assert_eq!(keys, vec!["libre".to_string()], "manual = intact");
 }
 
 #[test]
-fn claim_input_row_prefere_une_ligne_libre() {
+fn claim_input_row_prefers_a_free_row() {
     // temp is taken by i1: a source i2 aiming at the temp row
     // (cursor over it) gets the nearest free row (hum) —
     // never a silent theft. i1, for its part, takes its own row back.
@@ -752,7 +752,7 @@ fn claim_input_row_prefere_une_ligne_libre() {
     assert_eq!(
         claim_input_row(&graph, "mg", "i1", 19.0),
         Some("temp".to_string()),
-        "sa propre ligne reste visable"
+        "its own row stays targetable"
     );
     // Full board for i3: explicit takeover (the nearest anyway).
     let full = {
@@ -771,7 +771,7 @@ fn claim_input_row_prefere_une_ligne_libre() {
 }
 
 #[test]
-fn merge_inputs_prune_emporte_le_fil_si_non_partage() {
+fn merge_inputs_prune_takes_the_wire_if_not_shared() {
     // Port 0 of i1 feeds the "temp" row only: the prune removes
     // the runtime wire. If it also fed another row (fan-out),
     // the wire would stay set.

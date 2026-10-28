@@ -7,12 +7,12 @@ crates/pnex-frontend/dist
 crates/pnex-frontend/.dx
 **/dist/
 
-# Front — Tailwind v4 (CSS généré), bundle esptool-js et node_modules
+# Front — Tailwind v4 (generated CSS), esptool-js bundle and node_modules
 crates/pnex-frontend/assets/tailwind.css
 crates/pnex-frontend/assets/flasher.js
 crates/pnex-frontend/node_modules/
 
-# Environnement & secrets
+# Environment & secrets
 .env
 .env.*
 !.env.example
@@ -21,24 +21,24 @@ secrets/
 # Source module of the org secrets vault (code, no secret material).
 !crates/pnex-backend/src/services/secrets/
 
-# Éditeurs
+# Editors
 .idea/
 .vscode/
 *.swp
 
-# Firmware PlatformIO (toolchain locale et caches de build pio)
+# PlatformIO firmware (local toolchain and pio build caches)
 firmware/.venv/
 firmware/**/.pio/
 
-# Outillage local
+# Local tooling
 .task/
 .claude/settings.local.json*
 .claude/worktrees/
 
-# Graphe de connaissances graphify (généré, projet et sous-dossiers)
+# graphify knowledge graph (generated, project and subfolders)
 graphify-out/
 
-# Moteur de flow ETL (D18) — état du runtime (flows.json + runtime.json)
+# ETL flow engine (D18) — runtime state (flows.json + runtime.json)
 crates/pnex-backend/flow-state/
 flow-state/
 crates/pnex-frontend/assets/viewers.js
@@ -51,7 +51,7 @@ crates/pnex-frontend/assets/doc.js
 crates/pnex-frontend/assets/graph.js
 
 crates/pnex-backend/storage/
-# Clones de référence (licences incompatibles — concepts seulement, jamais compilés ni commités)
+# Reference clones (incompatible licences — concepts only, never compiled nor committed)
 /Panorama/
 
 # TLS edge (D70) — local CA/leaf material and the generated env file

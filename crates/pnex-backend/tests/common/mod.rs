@@ -52,7 +52,7 @@ pub struct TokenSpec {
     pub email: String,
     pub given_name: String,
     pub family_name: String,
-    /// Expiration (epoch secondes).
+    /// Expiry (epoch seconds).
     pub exp: i64,
     pub issuer: String,
     pub audience: serde_json::Value,
@@ -80,7 +80,7 @@ impl Default for TokenSpec {
     }
 }
 
-/// Signe un access token de test (RS256, kid `test-key-1`).
+/// Signs a test access token (RS256, kid `test-key-1`).
 pub fn mint_token(spec: &TokenSpec) -> String {
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
     header.kid = Some(KID.into());
@@ -127,7 +127,7 @@ pub fn lean_token(base_url: &str, sub: &str, email: &str) -> String {
     let claims = serde_json::json!({
         "sub": sub,
         "email": email,
-        // Slash final obligatoire : issuer Rauthy = `{base}/auth/v1/`.
+        // Trailing slash required: Rauthy issuer = `{base}/auth/v1/`.
         "iss": format!("{base_url}/auth/v1/"),
         "aud": ["account", "pnex"],
         "exp": chrono::Utc::now().timestamp() + TOKEN_LIFETIME_SECS,

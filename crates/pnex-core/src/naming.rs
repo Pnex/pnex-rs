@@ -263,7 +263,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn noms_de_metriques_assainis() {
+    fn metric_names_sanitized() {
         assert_eq!(sanitize_metric_name("soil-moisture"), "soil_moisture");
         assert_eq!(sanitize_metric_name("temp extérieure"), "temp_ext_rieure");
         assert_eq!(sanitize_metric_name("2ph"), "_ph");
@@ -271,7 +271,7 @@ mod tests {
     }
 
     #[test]
-    fn noms_valides_et_labels_devices() {
+    fn valid_names_and_device_labels() {
         assert!(valid_metric_name("soil_moisture"));
         assert!(valid_metric_name("d1"));
         assert!(!valid_metric_name("soil-moisture"));
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn cles_payload_devices() {
+    fn device_payload_keys() {
         assert_eq!(sanitize_key("capteur-1"), "capteur_1");
         assert_eq!(sanitize_key("D1"), "D1");
         assert_eq!(sanitize_key("2hab"), "_hab");
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn metriques_etl_prefixees() {
+    fn etl_metrics_prefixed() {
         assert_eq!(etl_metric_name("moyenne_serre"), "etl_moyenne_serre");
         // Idempotent: the user may already have typed the prefix.
         assert_eq!(etl_metric_name("etl_temp"), "etl_temp");
@@ -310,7 +310,7 @@ mod tests {
 
     #[cfg(feature = "naming")]
     #[test]
-    fn normalisation_mesures() {
+    fn measurement_normalization() {
         assert_eq!(normalize_measurement_name("Soil-Moisture"), "soil_moisture");
         assert_eq!(normalize_measurement_name("soil moisture"), "soil_moisture");
         // Accent folding (D16 contract): é→e,  english-guard: allow (data)

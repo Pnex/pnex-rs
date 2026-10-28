@@ -125,7 +125,7 @@ impl MemoryWriteNode {
             match m.get("payload") {
                 Some(v) => serde_json::to_value(v).map_err(|e| {
                     EdgelinkError::InvalidOperation(format!(
-                        "{WRITE} : non-serializable payload : {e}"
+                        "{WRITE}: non-serializable payload: {e}"
                     ))
                 })?,
                 None => serde_json::Value::Null,

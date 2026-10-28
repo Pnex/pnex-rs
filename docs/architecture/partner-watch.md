@@ -138,7 +138,7 @@ Pack générique (requires `investigation`) :
   (DGEFP). BODACC et RNE (INPI) en V2.
 - **Données personnelles** : nom, prénoms, rôle, dates de mandat ; ni date
   de naissance complète, ni adresse personnelle ; propriétés classées
-  `personnelle` (D298).
+  `personal` (D298).
 
 Pourquoi pas de type « entreprise » : `organization` porte déjà `owns`
 (bénéficiaires effectifs calculés, cases-money K56), `employs`,
@@ -451,7 +451,7 @@ diff, du robots.txt, du nettoyage HTML.
   (premier canal websocket de l'org). Fermeture sur `snapshot` refusée
   aussi quand des lignes sont en erreur.
 - **D304** : les dirigeants sont dédoublonnés par `registry_id`
-  (nom, prénoms, mois de naissance publié) ; la classification `personnelle`
+  (nom, prénoms, mois de naissance publié) ; la classification `personal`
   (D298) viendra avec l'IAM. Mapping livré : Recherche d'entreprises. Les
   mappings DGEFP, France Compétences et catalogue CPF attendent la
   vérification des dictionnaires de données (Q1 du PRD).

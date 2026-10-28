@@ -280,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    fn ids_sans_collision_apres_suppression() {
+    fn ids_without_collision_after_delete() {
         let mut doc = doc_with_floor();
         let s1 = add_scene(&mut doc, "f1", "a".into(), (0.0, 0.0));
         let s2 = add_scene(&mut doc, "f1", "b".into(), (10.0, 0.0));
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn ajout_etage_et_suppression_refusee_si_scenes() {
+    fn add_floor_and_delete_refused_with_scenes() {
         let mut doc = doc_with_floor();
         assert_eq!(add_floor(&mut doc, "1er".into(), 1), "f2");
         assert_eq!(doc.floors.len(), 2);
@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn suppression_scene_purge_les_liens_et_le_depart() {
+    fn scene_delete_purges_links_and_start() {
         let mut doc = doc_with_floor();
         add_scene(&mut doc, "f1", "a".into(), (0.0, 0.0));
         add_scene(&mut doc, "f1", "b".into(), (10.0, 0.0));
@@ -318,14 +318,14 @@ mod tests {
     }
 
     #[test]
-    fn liens_refus_et_kind_derive() {
+    fn links_refusal_and_derived_kind() {
         let mut doc = doc_with_floor();
         assert_eq!(add_floor(&mut doc, "1er".into(), 1), "f2");
         add_scene(&mut doc, "f1", "a".into(), (0.0, 0.0)); // s1 @ f1
         add_scene(&mut doc, "f1", "b".into(), (10.0, 0.0)); // s2 @ f1 — auto-linked to s1
         add_scene(&mut doc, "f2", "c".into(), (0.0, 0.0)); // s3 @ f2 — isolated (no scene on f2)
 
-        assert_eq!(doc.links.len(), 2, "auto-lien s1↔s2 seulement");
+        assert_eq!(doc.links.len(), 2, "auto-link s1↔s2 only");
         assert!(doc
             .links
             .iter()
@@ -344,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_lien_plus_proche_meme_etage_seulement() {
+    fn auto_link_nearest_same_floor_only() {
         let mut doc = doc_with_floor();
         assert_eq!(add_floor(&mut doc, "1er".into(), 1), "f2");
         add_scene(&mut doc, "f1", "a".into(), (0.0, 0.0));
@@ -359,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn connect_scenes_paire_et_angles_auto() {
+    fn connect_scenes_pair_and_auto_angles() {
         let mut doc = doc_with_floor();
         assert_eq!(add_floor(&mut doc, "1er".into(), 1), "f2");
         add_scene(&mut doc, "f1", "a".into(), (10.0, 0.0)); // s1 @ f1 (level 0)
@@ -370,11 +370,8 @@ mod tests {
         let ab = doc.links.iter().find(|l| l.from == "s1").unwrap();
         let ba = doc.links.iter().find(|l| l.from == "s2").unwrap();
         assert_eq!(ab.kind, pnex_core::TOUR_LINK_STAIR);
-        assert!((ab.pitch - STAIR_PITCH_DEG).abs() < 1e-9, "monter : +30°");
-        assert!(
-            (ba.pitch + STAIR_PITCH_DEG).abs() < 1e-9,
-            "descendre : -30°"
-        );
+        assert!((ab.pitch - STAIR_PITCH_DEG).abs() < 1e-9, "up: +30°");
+        assert!((ba.pitch + STAIR_PITCH_DEG).abs() < 1e-9, "down: -30°");
         // Yaw: ENU azimuth of the plan direction (dx=0, dy=+10 = south = 180°).
         assert!((ab.yaw - 180.0).abs() < 1e-9);
         assert!((ba.yaw - 0.0).abs() < 1e-9);
@@ -391,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn patchs_noop_sur_id_inconnu() {
+    fn patches_noop_on_unknown_id() {
         let mut doc = doc_with_floor();
         move_scene(&mut doc, "zz", (1.0, 1.0));
         set_scene_label(&mut doc, "zz", "x".into());

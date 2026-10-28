@@ -2,7 +2,7 @@
 
 use super::*;
 
-// ─────────────────────────── erreurs ───────────────────────────
+// ─────────────────────────── errors ───────────────────────────
 
 /// D43: placement conflict — everything the front needs to offer
 /// the move knowingly (409).

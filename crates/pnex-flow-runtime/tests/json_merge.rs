@@ -67,7 +67,7 @@ fn merge_flows() -> String {
 }
 
 #[test]
-fn json_merge_accumule_par_entree_nommee() {
+fn json_merge_accumulates_per_named_input() {
     let home = common::tmp_home("jmerge");
     let flows = home.join("flows.json");
     std::fs::write(&flows, merge_flows()).unwrap();

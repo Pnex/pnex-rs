@@ -245,7 +245,7 @@ pub fn gauge_arc_geometry(w: f64, h: f64) -> (f64, f64, f64) {
 /// Polar → Cartesian coordinates on the gauge arc — pure.
 pub fn gauge_point(cx: f64, cy: f64, r: f64, ratio: f64) -> (f64, f64) {
     let ratio = ratio.clamp(0.0, 1.0);
-    let angle = std::f64::consts::PI * (1.0 - ratio); // π (gauche) → 0 (droite)
+    let angle = std::f64::consts::PI * (1.0 - ratio); // π (left) → 0 (right)
     (cx + r * angle.cos(), cy - r * angle.sin())
 }
 

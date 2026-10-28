@@ -138,7 +138,7 @@ pub async fn delete_pin(
         .map(|_| ())
 }
 
-// ─────────────────────────── listes + clustering ───────────────────────────
+// ─────────────────────────── lists + clustering ───────────────────────────
 
 /// Common list / cluster filters.
 #[derive(Default)]

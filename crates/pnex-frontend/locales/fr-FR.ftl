@@ -1574,6 +1574,7 @@ notify-field-priority = Priorité
 notify-field-tags = Tags (séparés par des virgules)
 notify-field-bot-token = Bot token
 notify-field-chat-id = Chat ID
+notify-field-chat-id-placeholder = -1001234567890 ou @moncanal
 notify-field-webhook-url = URL du webhook
 notify-field-username = Nom d'utilisateur (optionnel)
 notify-field-host = Hôte SMTP
@@ -6141,7 +6142,7 @@ profile-opposition-confirm = Confirmer l'opposition (définitive)
 profile-opposition-recorded = Opposition enregistrée : plus aucune capture de cette personne.
 err-ext-target-not-profile = Cette adresse n'est pas la page de profil d'une personne sur un réseau connu (recherche, relations ou suggestions refusées).
 err-ext-profile-daily-cap = L'organisation a capturé aujourd'hui autant de profils de ce réseau que permis ({ $max }) : réessayez demain.
-err-prospection-opposed = Cette personne s'est opposée à la prospection : aucune capture de profil, et aucun nouveau lien vers elle chez le même compte.
+err-prospecting-opposed = Cette personne s'est opposée à la prospection : aucune capture de profil, et aucun nouveau lien vers elle chez le même compte.
 err-ontology-erased = Cet objet a été effacé (données personnelles) : il ne peut plus être modifié ni relié.
 
 ## Boîtes mail (mail.md D453–D454)

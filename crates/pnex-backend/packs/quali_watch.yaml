@@ -1,4 +1,5 @@
 # Since 2.0.0 every identifier is English (breaking).
+# Since 3.0.0 the import aliases are English too (breaking).
 # Since 1.3.0 `website` and `has_website` belong to `web_presence`
 # (web-presence.md D363), taken over on upgrade without moving any data.
 # Business pack "Partner network watch" (partner-watch.md D300–D316, product
@@ -42,7 +43,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "2.0.0"
+version: "3.0.0"
 requires: [companies_fr, web_presence]
 extends:
   - type: organization
@@ -470,6 +471,8 @@ hierarchies:
       - { link: has_website }
       - { link: page_of, inverse: true }
 imports:
+  # The `from:` column names and values (raison_sociale, perimetre, les_deux,
+  # oui/non…) are the partner sheet's own French headers: external data, kept as is.
   - name: Partner network (sheet)
     source: file
     mode: snapshot
@@ -640,7 +643,7 @@ imports:
           create: false
           properties:
             code: { from: Numero_Fiche, convert: [trim, upper] }
-        - as: bloc
+        - as: block
           type: skill
           key: ref
           title: { from: Bloc_Competences_Libelle, convert: [trim] }
@@ -651,7 +654,7 @@ imports:
             label: { from: Bloc_Competences_Libelle, convert: [trim] }
             nature: { value: skill_block }
       links:
-        - { type: skill_of, from: bloc, to: cert }
+        - { type: skill_of, from: block, to: cert }
   - name: France Compétences · RS sheets (XML)
     source: file
     mode: snapshot
@@ -731,7 +734,7 @@ imports:
       rows: results
       per_object: { type: organization, property: siren, param: q, linked: [accredited_for, holds], setting: { key: quali_watch.certifications, property: code } }
       objects:
-        - as: ul
+        - as: legal_unit
           type: organization
           key: siren
           create: false
@@ -750,7 +753,7 @@ imports:
             country: { value: FR }
             activity_code: { from: activite_principale, convert: ["left:5"] }
             qualiopi: complements.est_qualiopi
-        - as: siege
+        - as: head_office
           type: map_pin
           key: siret
           title: nom_complet
@@ -762,7 +765,7 @@ imports:
             headcount_band: siege.tranche_effectif_salarie
             headcount_min: { from: siege.tranche_effectif_salarie, convert: [*qw_headcount_min] }
             headcount_max: { from: siege.tranche_effectif_salarie, convert: [*qw_headcount_max] }
-        - as: etab
+        - as: establishment
           type: map_pin
           key: siret
           each: matching_etablissements
@@ -775,7 +778,7 @@ imports:
             headcount_band: tranche_effectif_salarie
             headcount_min: { from: tranche_effectif_salarie, convert: [*qw_headcount_min] }
             headcount_max: { from: tranche_effectif_salarie, convert: [*qw_headcount_max] }
-        - as: personne
+        - as: person
           type: person
           key: registry_id
           each: dirigeants
@@ -792,11 +795,11 @@ imports:
           properties:
             siren: siren
       links:
-        - { type: establishment_of, from: siege, to: ul }
-        - { type: establishment_of, from: etab, to: ul }
+        - { type: establishment_of, from: head_office, to: legal_unit }
+        - { type: establishment_of, from: establishment, to: legal_unit }
         - type: manages
-          from: personne
-          to: ul
+          from: person
+          to: legal_unit
           attributes: &qw_mandate
             role:
               from: qualite
@@ -816,7 +819,7 @@ imports:
             source: { value: "recherche-entreprises.api.gouv.fr" }
         - type: manages
           from: holding
-          to: ul
+          to: legal_unit
           attributes: *qw_mandate
   - name: DGEFP · training organizations (network)
     source: api
@@ -830,7 +833,7 @@ imports:
       rows: results
       per_object: { type: organization, property: siren, linked: [accredited_for, holds], setting: { key: quali_watch.certifications, property: code } }
       objects:
-        - as: of
+        - as: training_org
           type: organization
           key: siren
           create: false
@@ -868,7 +871,7 @@ imports:
           title: { from: nom_of, convert: [trim] }
           properties:
             siren: { from: siret, convert: [digits, "left:9", luhn], invalid: skip }
-        - as: offre
+        - as: offer
           type: cpf_offer
           key: id_action
           title: { concat: [nom_of, intitule_formation], sep: " · " }
@@ -881,8 +884,8 @@ imports:
             remote: { from: nb_session_a_distance, convert: [{ enum: { "0": "false", "*": "true" } }] }
             seen_on: date_extract
       links:
-        - { type: offer_of, from: offre, to: org, attributes: { matched_by: { value: siret } } }
-        - { type: offer_for, from: offre, to: cert }
+        - { type: offer_of, from: offer, to: org, attributes: { matched_by: { value: siret } } }
+        - { type: offer_for, from: offer, to: cert }
   - name: CPF catalogue · RNCP certifications
     source: api
     source_url: "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RNCP&refine=code_rncp:{value}"
@@ -906,7 +909,7 @@ imports:
           title: { from: nom_of, convert: [trim] }
           properties:
             siren: { from: siret, convert: [digits, "left:9", luhn], invalid: skip }
-        - as: offre
+        - as: offer
           type: cpf_offer
           key: id_action
           title: { concat: [nom_of, intitule_formation], sep: " · " }
@@ -919,8 +922,8 @@ imports:
             remote: { from: nb_session_a_distance, convert: [{ enum: { "0": "false", "*": "true" } }] }
             seen_on: date_extract
       links:
-        - { type: offer_of, from: offre, to: org, attributes: { matched_by: { value: siret } } }
-        - { type: offer_for, from: offre, to: cert }
+        - { type: offer_of, from: offer, to: org, attributes: { matched_by: { value: siret } } }
+        - { type: offer_for, from: offer, to: cert }
 functions:
   - name: qw_next_reminder
     language: starlark
@@ -1042,8 +1045,8 @@ functions:
     code: |
       # Registry rules of the network (network-check.md D410): ADM-01, ADM-02,
       # CPF-01, CPF-02, CPF-03, REG-01 and REG-02, from one message holding the
-      # org's certifications with their accreditations (accredited_for), offers
-      # (about) and certifiers (holds). Registry facts: findings `proposed`.
+      # org's certifications with their accreditations (accredited_for), offers (offer_for)
+      # and certifiers (holds). Registry facts: findings `proposed`.
       # @output findings any "The findings, as a list (split them one per message)"
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
               "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
@@ -1530,7 +1533,7 @@ flows:
         - { id: link, kind: pnex_function, config: { function_name: qw_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
         - { id: linked, kind: link_upsert, config: { link_type: concerns } }
   - name: "Quali-Watch · network rules"
-    note: "Each morning the registry facts of your network become findings to review, created once and never reset: ceased partner (ADM-01), Qualiopi missing (ADM-02), CPF offer by a non-accredited organization (CPF-01), out of scope (CPF-02), after the accreditation end (CPF-03), accreditation unknown to France Compétences (REG-01), inactive accreditation still selling (REG-02). Run the network imports first (company register, DGEFP, CPF catalogue). Replaces « rule ADM-01 »: deploy one of the two."
+    note: "Each morning the registry facts of your network become findings to review, created once and never reset: ceased partner (ADM-01), Qualiopi missing (ADM-02), CPF offer by a non-accredited organization (CPF-01), out of scope (CPF-02), after the accreditation end (CPF-03), accreditation unknown to France Compétences (REG-01), inactive accreditation still selling (REG-02). Run the network imports first (company register, DGEFP, CPF catalogue). Replaces 'rule ADM-01': deploy one of the two."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "30 5 * * *" }, outputs: [{ port: 0, targets: [net] }] }

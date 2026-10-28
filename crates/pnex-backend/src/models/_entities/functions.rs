@@ -13,7 +13,7 @@ pub struct Model {
     pub id: i64,
     pub org_id: i64,
     pub name: String,
-    /// `"js" | "starlark"` — VARCHAR applicatif (pnex_core::FunctionLanguage).
+    /// `"js" | "starlark"` — application-level VARCHAR (pnex_core::FunctionLanguage).
     pub language: String,
     pub description: Option<String>,
     pub current_version_id: Option<i64>,

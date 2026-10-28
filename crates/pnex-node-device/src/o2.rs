@@ -43,7 +43,7 @@ impl O2Client {
         .join(", ");
         if !missing.is_empty() {
             return Err(EdgelinkError::InvalidOperation(format!(
-                "pnex-device/metric : missing environment variables: {missing} \
+                "pnex-device/metric: missing environment variables: {missing} \
                  (supervisor allowlist)"
             )));
         }
@@ -103,7 +103,7 @@ impl O2Client {
         let mut encoder = snap::raw::Encoder::new();
         let compressed = encoder
             .compress_vec(&pb)
-            .map_err(|e| format!("snappy : {e}"))?;
+            .map_err(|e| format!("snappy: {e}"))?;
         let resp = self
             .http
             .post(format!("{}/api/{org}/prometheus/api/v1/write", self.base))
@@ -212,7 +212,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_reponse_instantanee() {
+    fn parse_instant_response_value() {
         let body = r#"{"status":"success","data":{"resultType":"vector","result":[
             {"metric":{"__name__":"d1","device_id":"cap-1"},"value":[1786890000.123,"42.5"]}
         ]}}"#;
@@ -222,13 +222,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_serie_absente() {
+    fn parse_missing_series() {
         let body = r#"{"status":"success","data":{"resultType":"vector","result":[]}}"#;
         assert!(parse_instant_response(body).unwrap().is_none());
     }
 
     #[test]
-    fn parse_erreur_promql() {
+    fn parse_promql_error() {
         let body = r#"{"status":"error","error":"parse error"}"#;
         assert!(parse_instant_response(body).is_err());
     }

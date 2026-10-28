@@ -76,7 +76,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 /// Registers a generic device, returns its registry id.
@@ -156,7 +156,7 @@ async fn records(
 /// secrets (WiFi in clear, host base64 — materialised by the fixture).
 #[tokio::test]
 #[serial]
-async fn build_reussi_chemin_complet() {
+async fn successful_build_full_path() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let pk = create_device(&server, &env.alice, org, "capteur-jardin").await;
@@ -224,7 +224,7 @@ async fn build_reussi_chemin_complet() {
 /// string), no extra record.
 #[tokio::test]
 #[serial]
-async fn build_intervalle_429() {
+async fn build_interval_429() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         create_device(&server, &env.alice, org, "dev-a").await;
@@ -305,7 +305,7 @@ async fn self_hosted_ignores_subscription_tiers() {
 /// Device not found in the org → 404, exact error string.
 #[tokio::test]
 #[serial]
-async fn build_device_inconnu_404() {
+async fn build_unknown_device_404() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let res = post_build(&server, &env.alice, org, "fantome", "coloc").await;
@@ -392,7 +392,7 @@ async fn validation_400() {
 /// download 404.
 #[tokio::test]
 #[serial]
-async fn build_echec_outil() {
+async fn build_tool_failure() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let pk = create_device(&server, &env.alice, org, "dev-fail").await;
@@ -406,7 +406,7 @@ async fn build_echec_outil() {
         // Failure reason (O4): code + compiler output, token masked.
         assert_eq!(record["failure_code"], "build_compile", "{record}");
         let detail = record["failure_detail"].as_str().unwrap_or_default();
-        assert!(detail.contains("erreur de compilation simulée"), "{detail}");
+        assert!(detail.contains("simulated compile error"), "{detail}");
         assert!(detail.contains("-DTOKEN=***"), "token not masked: {detail}");
 
         let dl = server
@@ -707,7 +707,7 @@ async fn device_deletion_cleans_its_records() {
 /// builds: a success would block the second via the 429 interval.)
 #[tokio::test]
 #[serial]
-async fn liste_enveloppe_et_filtres() {
+async fn list_envelope_and_filters() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         create_device(&server, &env.alice, org, "dev-f1").await;
@@ -740,7 +740,7 @@ async fn liste_enveloppe_et_filtres() {
 /// a token → 401.
 #[tokio::test]
 #[serial]
-async fn isolation_org_et_auth() {
+async fn org_isolation_and_auth() {
     with_app(|server, env, _ctx| async move {
         let alice_org = personal_org(&server, &env.alice).await;
         let bob_org = personal_org(&server, &env.bob).await;

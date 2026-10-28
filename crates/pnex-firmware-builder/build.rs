@@ -51,7 +51,7 @@ fn main() {
     fs::create_dir_all(&target).expect("create firmware-embed");
 
     if source.is_dir() {
-        copy_filtered(&source, &target).expect("copier firmware/ vers OUT_DIR");
+        copy_filtered(&source, &target).expect("copy firmware/ to OUT_DIR");
         // Cargo recursive scan on the root: catches *new*
         // projects/files (per-file alone left the embedding stale).
         println!("cargo:rerun-if-changed={}", source.display());

@@ -297,7 +297,7 @@ mod tests {
 
     /// wrap_signed: circle bounds.
     #[test]
-    fn wrap_signed_bornes() {
+    fn wrap_signed_bounds() {
         assert!((wrap_signed(190.0) - (-170.0)).abs() < 1e-6);
         assert!((wrap_signed(-170.0) - (-170.0)).abs() < 1e-6);
         assert!((wrap_signed(90.0) - 90.0).abs() < 1e-6);

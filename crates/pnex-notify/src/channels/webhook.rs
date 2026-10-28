@@ -174,7 +174,7 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn poste_subject_body_meta_et_header_secret() {
+    async fn posts_subject_body_meta_and_secret_header() {
         let seen = Arc::new(tokio::sync::Mutex::new(None::<(HeaderMap, Value)>));
         let seen_for_handler = seen.clone();
         let app = axum::Router::new().route(
@@ -263,7 +263,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn http_500_erreur_retryable() {
+    async fn http_500_retryable_error() {
         let app =
             axum::Router::new().route("/ko", post(|| async { StatusCode::INTERNAL_SERVER_ERROR }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -288,7 +288,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_exige_url_http_et_paire_de_secrets() {
+    fn validate_requires_http_url_and_secret_pair() {
         assert!(WebhookChannel
             .validate(&json!({"url": "https://example.com/hook"}))
             .is_ok());

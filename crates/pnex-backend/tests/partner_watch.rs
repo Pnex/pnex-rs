@@ -273,8 +273,8 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
         assert_eq!(owner("siren"), Some(json!("companies_fr")));
         assert_eq!(owner("activity_code"), Some(json!("companies")));
         let (_, l) = call(&server, "GET", "/api/v1/ontology/link-types?limit=100", &env.alice, org, None).await;
-        let dirige = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "manages").cloned();
-        assert_eq!(dirige.map(|d| d["pack_key"].clone()), Some(json!("companies")), "{l}");
+        let manages = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "manages").cloned();
+        assert_eq!(manages.map(|d| d["pack_key"].clone()), Some(json!("companies")), "{l}");
         let aid = a["id"].as_str().unwrap();
         let (_, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{aid}"), &env.alice, org, None).await;
         assert_eq!(o["properties"]["administrative_state"], "active", "{o}");
@@ -311,7 +311,7 @@ async fn group_links_from_gleif_and_wikidata() {
                 id
             }
         };
-        let filiales = |id: &str| {
+        let subsidiaries = |id: &str| {
             let (server, token, id) = (&server, env.alice.clone(), id.to_string());
             async move {
                 let (st, l) = call(server, "GET", &format!("/api/v1/ontology/objects/{id}/links"), &token, org, None).await;
@@ -323,7 +323,7 @@ async fn group_links_from_gleif_and_wikidata() {
         // The LEI first; the parent is not known yet, no link.
         let lei = run("Legal entity identifiers (GLEIF)").await;
         assert_eq!(props_of(&env.db, org, "organization", "siren", "429853351").await["lei"], "969500YMMRBQ5N157D72");
-        assert!(!filiales(meca["id"].as_str().unwrap()).await.contains("subsidiary_of"));
+        assert!(!subsidiaries(meca["id"].as_str().unwrap()).await.contains("subsidiary_of"));
         // The parents GLEIF names are created (French: by SIREN).
         run("Parent companies (GLEIF)").await;
         let mere = props_of(&env.db, org, "organization", "siren", "513149161").await;
@@ -332,7 +332,7 @@ async fn group_links_from_gleif_and_wikidata() {
         run("Legal entity identifiers (GLEIF)").await;
         let edges = sql(format!("SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'subsidiary_of' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(edges.rows_affected(), 1);
-        let l = filiales(meca["id"].as_str().unwrap()).await;
+        let l = subsidiaries(meca["id"].as_str().unwrap()).await;
         assert!(l.contains("direct_consolidation"), "{l}");
 
         // Turns: the cursor stops at the last company queried, then wraps.
@@ -354,7 +354,7 @@ async fn group_links_from_gleif_and_wikidata() {
         let sae = props_of(&env.db, org, "organization", "siren", "414815217").await;
         assert_eq!(sae["country"], "FR", "{sae}");
         let sid = safran["id"].as_str().unwrap();
-        assert!(!filiales(sid).await.contains("subsidiary_of"));
+        assert!(!subsidiaries(sid).await.contains("subsidiary_of"));
         let (st, p) = call(&server, "GET", &format!("/api/v1/proposals?object_id={sid}"), &env.alice, org, None).await;
         assert_eq!((st, p["count"].clone()), (200, json!(2)), "{p}");
         assert!(p.to_string().contains("Agence des participations"), "{p}");
@@ -539,7 +539,7 @@ async fn group_coverage_and_status_colours() {
             "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
             .try_get::<Vec<u8>>("", "snapshot").unwrap();
         let text = String::from_utf8_lossy(&snap);
-        for want in ["Plan de compte — Groupe", "Filiale nue", "current users 50", "potential users 5800"] {
+        for want in ["Plan de compte — Groupe", "Filiale nue", "Utilisateurs actuels 50", "Utilisateurs potentiels 5800"] {
             assert!(text.contains(want), "{want} missing");
         }
         assert!(!text.contains("{{"), "every placeholder filled");
@@ -557,7 +557,7 @@ async fn group_coverage_and_status_colours() {
 /// over from an org on `quali_watch` 1.2.0, objects and links in place.
 #[tokio::test]
 #[serial]
-async fn presence_web_takes_websites_over() {
+async fn web_presence_takes_websites_over() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "quali_watch").await;
@@ -623,8 +623,8 @@ async fn presence_web_takes_websites_over() {
         let (st, up) = call(&server, "POST", "/api/v1/ontology/packs/web_presence/install", &env.alice, org, None).await;
         assert_eq!((st, up["kept"].clone()), (200, json!(["pw_link"])), "the org's own version is named");
         let (_, t3) = call(&server, "GET", "/api/v1/ontology/types/website", &env.alice, org, None).await;
-        let etat = t3["def"]["properties"].as_array().unwrap().iter().find(|p| p["key"] == "crawl_state").unwrap().clone();
-        assert_eq!((etat["labels"]["blocked"]["fr"].clone(), etat["colors"]["blocked"].clone()), (json!("Bloqué par le site"), json!("red")), "kept across the upgrade: {etat}");
+        let state = t3["def"]["properties"].as_array().unwrap().iter().find(|p| p["key"] == "crawl_state").unwrap().clone();
+        assert_eq!((state["labels"]["blocked"]["fr"].clone(), state["colors"]["blocked"].clone()), (json!("Bloqué par le site"), json!("red")), "kept across the upgrade: {state}");
         let shipped = pnex_backend::services::ontology::packs::shipped().into_iter().find(|p| p.key == "web_presence").unwrap();
         let code_of = |name: &str| shipped.functions.iter().find(|f| f.name == name).unwrap().code.clone();
         let latest = |sql: String| {
@@ -714,7 +714,7 @@ async fn legal_announcements_become_signals() {
              'https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records', '{base}/records') \
              WHERE org_id = {org}"))).await.unwrap();
         let (_, meca) = object(&server, &env.alice, org, "organization", "MECACHROME FRANCE", json!({"siren": "429853351", "account_status": "customer"})).await;
-        object(&server, &env.alice, org, "organization", "Inconnue", json!({"siren": "999999999"})).await;
+        object(&server, &env.alice, org, "organization", "Inconnue", json!({"siren": "999999999"})).await;  // english-guard: allow (French source data)
 
         let (id, _) = import_named(&server, &env.alice, org, "Legal announcements (BODACC)").await;
         let run = || async {
@@ -726,10 +726,10 @@ async fn legal_announcements_become_signals() {
         run().await;
         // Followed accounts only: the unknown company is not asked about.
         assert_eq!(asked.lock().unwrap().len(), 1, "{:?}", asked.lock().unwrap());
-        let modif = props_of(&env.db, org, "sales_signal", "ref", "B20260114713").await;
-        assert_eq!((modif["kind"].as_str(), modif["state"].as_str()), (Some("legal_notice"), Some("to_validate")), "{modif}");
-        assert_eq!(modif["excerpt"], "modification survenue sur le capital (augmentation)");
-        assert_eq!(modif["summary"], "Modifications diverses — Avis initial");
+        let notice = props_of(&env.db, org, "sales_signal", "ref", "B20260114713").await;
+        assert_eq!((notice["kind"].as_str(), notice["state"].as_str()), (Some("legal_notice"), Some("to_validate")), "{notice}");
+        assert_eq!(notice["excerpt"], "modification survenue sur le capital (augmentation)");  // english-guard: allow (French source data)
+        assert_eq!(notice["summary"], "Modifications diverses — Avis initial");
         let opening = props_of(&env.db, org, "sales_signal", "ref", "A2026000001").await;
         assert_eq!(opening["kind"], "new_establishment", "{opening}");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", meca["id"].as_str().unwrap()), &env.alice, org, None).await;
@@ -739,8 +739,8 @@ async fn legal_announcements_become_signals() {
         env.db.execute_unprepared(&format!(
             "UPDATE objects SET properties = properties || '{{\"state\": \"retained\"}}' WHERE org_id = {org} AND properties ->> 'ref' = 'B20260114713'")).await.unwrap();
         run().await;
-        let modif = props_of(&env.db, org, "sales_signal", "ref", "B20260114713").await;
-        assert_eq!(modif["state"], "retained");
+        let notice = props_of(&env.db, org, "sales_signal", "ref", "B20260114713").await;
+        assert_eq!(notice["state"], "retained");
     })
     .await;
 }
@@ -867,7 +867,7 @@ async fn mock_registers() -> String {
 /// commercial group follows subsidiaries, under each of their parents.
 #[tokio::test]
 #[serial]
-async fn prospection_pack_maps_a_commercial_group() {
+async fn prospecting_pack_maps_a_commercial_group() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "prospecting_b2b").await;
@@ -1512,12 +1512,12 @@ async fn flow_nodes_write_as_their_deployed_node() {
         // The model's opinion arrives after: same values, the open proposal takes it.
         let mut req2 = req.clone();
         req2["confidence"] = json!(70);
-        req2["evidence"] = json!({"llm_opinion": "OUI, mentions légales"});
+        req2["evidence"] = json!({"llm_opinion": "YES, legal notice"});
         let (st, r2) = internal(&server, "link", req2).await;
         assert_eq!((st, r2["proposal_id"].clone()), (200, Value::Null), "{r2}");
         let (_, got) = call(&server, "GET", &format!("/api/v1/proposals/{}", r["proposal_id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!((got["evidence"]["llm_opinion"].clone(), got["confidence"].clone(), got["status"].clone()),
-            (json!("OUI, mentions légales"), json!(70.0), json!("proposed")), "{got}");
+            (json!("YES, legal notice"), json!(70.0), json!("proposed")), "{got}");
         let open_links = env.db.execute_unprepared(&format!(
             "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'has_website' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(open_links.rows_affected(), 0);
@@ -1685,10 +1685,13 @@ async fn message_recipients_need_an_admin_flag_and_respect_the_caps() {
 
 // ───────────── open-data ingestion (ingestion.md D317–D322) ─────────────
 
-const FC_STANDARD: &str = "\"Id_Fiche\";\"Numero_Fiche\";\"Intitule\";\"Nomenclature_Europe_Niveau\";\"Date_Decision\";\"Date_Fin_Enregistrement\";\"Date_Effet\";\"Actif\"\n\
-    \"1\";\"RS6765\";\"Télépilote de drone\";\"\";\"15/01/2024\";\"15/01/2027\";\"\";\"ACTIVE\"\n\
-    \"2\";\"RS6766\";\"Télépilote confirmé\";\"\";\"16/01/2024\";\"16/01/2027\";\"\";\"INACTIVE\"\n\
-    \"3\";\"RNCP1\";\"Autre\";\"NIV6\";\"01/01/2020\";\"01/01/2025\";\"01/02/2020\";\"ACTIVE\"\n";
+const FC_STANDARD: &str = concat!(
+    "\"Id_Fiche\";\"Numero_Fiche\";\"Intitule\";\"Nomenclature_Europe_Niveau\";\"Date_Decision\";\"Date_Fin_Enregistrement\";\"Date_Effet\";\"Actif\"\n",
+    "\"1\";\"RS6765\";\"Télépilote de drone\";\"\";\"15/01/2024\";\"15/01/2027\";\"\";\"ACTIVE\"\n",
+    // english-guard: allow (France Compétences CSV fixture)
+    "\"2\";\"RS6766\";\"Télépilote confirmé\";\"\";\"16/01/2024\";\"16/01/2027\";\"\";\"INACTIVE\"\n",
+    "\"3\";\"RNCP1\";\"Autre\";\"NIV6\";\"01/01/2020\";\"01/01/2025\";\"01/02/2020\";\"ACTIVE\"\n",
+);
 const FC_CERTIFIERS: &str = "\"Numero_Fiche\";\"Siret_Certificateur\";\"Nom_Certificateur\"\n\
     \"RS6765\";\"\t80259488700019\";\"TELEPILOTE\"\n\
     \"RS6766\";\"\t80259488700019\";\"TELEPILOTE\"\n\
@@ -2021,10 +2024,13 @@ const RS_XML: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 </FICHES>
 "#;
 
-const BLOCS_CSV: &str =
-    "\"Numero_Fiche\";\"Bloc_Competences_Code\";\"Bloc_Competences_Libelle\"\r\n\
-    \"RNCP183\";\"RNCP183BC01\";\"Monter et mettre en service des installations frigorifiques\"\r\n\
-    \"RNCP183\";\"RNCP183BC02\";\"Assurer la maintenance des installations frigorifiques\"\r\n";
+const BLOCS_CSV: &str = concat!(
+    "\"Numero_Fiche\";\"Bloc_Competences_Code\";\"Bloc_Competences_Libelle\"\r\n",
+    // english-guard: allow (France Compétences CSV fixture)
+    "\"RNCP183\";\"RNCP183BC01\";\"Monter et mettre en service des installations frigorifiques\"\r\n",
+    // english-guard: allow (France Compétences CSV fixture)
+    "\"RNCP183\";\"RNCP183BC02\";\"Assurer la maintenance des installations frigorifiques\"\r\n",
+);
 
 /// The pack import of this name.
 async fn import_named(
@@ -2092,7 +2098,7 @@ async fn france_competences_sheet_content() {
             assert_eq!(st, 201, "{r}");
             ids.insert(siren, r["id"].as_str().unwrap().to_string());
         }
-        // Accreditations opened by fc_partenaires: A and B, not C.
+        // Accreditations opened by fc_partners: A and B, not C.
         for siren in ["111111111", "222222222"] {
             let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
                 Some(json!({"link_type": "accredited_for", "source_id": ids[siren], "target_id": ids["RS0101"]}))).await;
@@ -2122,11 +2128,11 @@ async fn france_competences_sheet_content() {
         assert_eq!(r["run"]["state"], "applied", "{r}");
         let c3 = props_of(&env.db, org, "skill", "ref", "RS0101-C3").await;
         assert_eq!(c3["rank"].as_f64(), Some(3.0), "{c3}");
-        assert!(c3["label"].as_str().unwrap().starts_with("Optimiser les différents contenus"), "{c3}");
+        assert!(c3["label"].as_str().unwrap().starts_with("Optimiser les différents contenus"), "{c3}");  // english-guard: allow (French source data)
         assert_eq!(props_of(&env.db, org, "skill", "ref", "RS56-C1").await, Value::Null);
         let cert = props_of(&env.db, org, "certification", "code", "RS0101").await;
         assert_eq!(cert["certified_count"].as_f64(), Some(64.0), "{cert}");
-        assert_eq!(cert["jury"], json!("Le jury de certification est composé de trois personnes."), "{cert}");
+        assert_eq!(cert["jury"], json!("Le jury de certification est composé de trois personnes."), "{cert}");  // english-guard: allow (French source data)
         assert!(cert["objectives"].as_str().unwrap().starts_with("La certification s’adresse"), "{cert}");
         let edges = env.db.query_all_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
@@ -2147,7 +2153,7 @@ async fn france_competences_sheet_content() {
         // A description over its 2,048 characters (`invalid: skip`): a
         // warning, the sheet keeps its value, the run is not refused.
         let long = RS_XML.replace(
-            "▷ Certification « Piloter le référencement d'un site »",
+            "▷ Certification « Piloter le référencement d'un site »",  // english-guard: allow (French source data)
             &"x".repeat(3_000),
         );
         let p = preview(&server, &env.alice, org, &id, &long).await;
@@ -2362,7 +2368,7 @@ async fn mock_training_registers(
                 json!({
                 "date_extract": "2026-10-23", "nom_of": of, "type_referentiel": "RS",
                 "code_inventaire": "0101", "code_rncp": "-1", "siret": siret,
-                "numero_formation": num, "intitule_formation": "Piloter le référencement d'un site",
+                "numero_formation": num, "intitule_formation": "Piloter le référencement d'un site",  // english-guard: allow (French source data)
                 "nombre_heures_total_mean": 7, "frais_ttc_tot_mean": 1650.0, "nb_session_a_distance": 1})
             };
             let rows = if q.contains("code_inventaire%3A0101") || q.contains("code_inventaire:0101")
@@ -2408,7 +2414,7 @@ async fn network_registers_and_query() {
             sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{from}', '{to}') WHERE org_id = {org}")).await.unwrap();
         }
         let (_, cert) = object(&server, &env.alice, org, "certification", "RS0101",
-            json!({"code": "RS0101", "number": "0101", "register": "rs", "official_title": "Piloter le référencement d'un site"})).await;
+            json!({"code": "RS0101", "number": "0101", "register": "rs", "official_title": "Piloter le référencement d'un site"})).await;  // english-guard: allow (French source data)
         // D422: another certification of the network, not in the setting.
         let (_, other_cert) = object(&server, &env.alice, org, "certification", "RS9999",
             json!({"code": "RS9999", "number": "9999", "register": "rs", "official_title": "Autre"})).await;

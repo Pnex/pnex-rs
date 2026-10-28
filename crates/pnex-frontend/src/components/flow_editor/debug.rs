@@ -64,7 +64,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
                             for entry in feed.entries.clone() {
                                 li { key: "{entry.seq}", class: "px-4 py-2.5 space-y-1",
                                     div { class: "flex items-center gap-2",
-                                        span { class: "text-xs font-mono text-gray-500", {heure_label(&entry.ts)} }
+                                        span { class: "text-xs font-mono text-gray-500", {time_label(&entry.ts)} }
                                         span { class: "text-xs font-semibold text-gray-700",
                                             {entry.name.clone().unwrap_or_else(|| entry.node_id.clone())}
                                         }
@@ -150,7 +150,7 @@ fn node_status(source: &str, msg: &serde_json::Value) -> Option<pnex_core::visio
         .filter(|_| source == "pnex-status")
 }
 
-fn heure_label(ts: &str) -> String {
+fn time_label(ts: &str) -> String {
     chrono::DateTime::parse_from_rfc3339(ts)
         .map(|ts| {
             ts.with_timezone(&chrono::Local)
@@ -355,7 +355,7 @@ mod tests {
     }
 
     #[test]
-    fn heure_convertie_en_locale() {
+    fn time_converted_to_local() {
         // The expected value depends on the machine's time zone: we compare
         // it to the same chrono conversion (identical source of truth). A
         // return to the crude UTC slicing would fail this test on any
@@ -365,13 +365,13 @@ mod tests {
             .with_timezone(&chrono::Local)
             .format("%H:%M:%S")
             .to_string();
-        assert_eq!(heure_label("2026-09-05T12:34:56Z"), expected);
+        assert_eq!(time_label("2026-09-05T12:34:56Z"), expected);
         // Unexpected shape: rendered as is (never a panic).
-        assert_eq!(heure_label("bizarre"), "bizarre");
+        assert_eq!(time_label("bizarre"), "bizarre");
     }
 
     #[test]
-    fn badge_tronque_sans_couper_invalidement() {
+    fn badge_truncated_without_invalid_cut() {
         assert_eq!(display_value_label(&serde_json::json!(21.5)), "21.5");
         assert_eq!(
             display_value_label(&serde_json::json!("bonjour")),
@@ -383,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn msg_stringifie_repare_et_scalaire_verbatim() {
+    fn msg_stringified_repaired_and_scalar_verbatim() {
         // JSON string (builtin debug) → pretty.
         let pretty = format_msg(&serde_json::Value::String("{\"k\":1}".into()));
         assert!(pretty.contains('\n'), "{pretty}");
@@ -400,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn pretty_si_objet_tableau_compact_pour_le_replie() {
+    fn pretty_for_object_array_compact_when_collapsed() {
         // Direct object (pnex-display probe) → expandable pretty view.
         let pretty = display_value_pretty(&serde_json::json!({"a": [1, 2]})).unwrap();
         assert!(pretty.contains('\n'), "{pretty}");

@@ -28,10 +28,11 @@
 # with no activity for 14 days (edit `$today-14` in the flow): add the org's
 # notification node on its first port, then deploy.
 # Since 2.0.0 every identifier is English (breaking).
+# Since 3.0.0 the `personal` classification value is English (breaking).
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "2.0.0"
+version: "3.0.0"
 requires: [prospecting_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -58,7 +59,7 @@ link_types:
         kind: enum
         values: [decision_maker, champion, sponsor, influencer, buyer, user, technical, other]
         labels: {decision_maker: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, influencer: {fr: "Prescripteur", en: "Influencer"}, buyer: {fr: "Acheteur", en: "Buyer"}, user: {fr: "Utilisateur", en: "User"}, technical: {fr: "Technique", en: "Technical"}, other: {fr: "Autre", en: "Other"}}
-        classification: personnelle
+        classification: personal
   - key: owned_by
     name: is carried by
     names: {fr: "est portée par"}
@@ -591,7 +592,7 @@ functions:
           return {"payload": {"trigger": True, "count": len(dues) + len(dormant), "text": "\n".join(lines)}}
 flows:
   - name: "CRM · follow-up plan"
-    note: "Every hour, up to 20 opportunities that entered the stage qualification get one activity to do per active step of the org's follow-up plan (objects « Follow-up step »: day, kind, instruction), due on the start day plus the step's day, linked to the opportunity. An opportunity whose people involved all objected is only marked. Add the steps first, then deploy."
+    note: "Every hour, up to 20 opportunities that entered the stage qualification get one activity to do per active step of the org's follow-up plan (objects 'Follow-up step': day, kind, instruction), due on the start day plus the step's day, linked to the opportunity. An opportunity whose people involved all objected is only marked. Add the steps first, then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "5 * * * *" }, outputs: [{ port: 0, targets: [opps] }] }
@@ -642,7 +643,7 @@ flows:
         - { id: init, kind: pnex_function, config: { function_name: crm_init, language: starlark }, outputs: [{ port: 0, targets: [started] }] }
         - { id: started, kind: object_upsert, config: { object_type: opportunity, key: id } }
   - name: "CRM · missing criteria"
-    note: "Every hour, each open opportunity gets the list of the org's active qualification criteria required up to its stage that are not valid on it (link « is qualified on », status valid). Nothing is blocked: a stage changes by a human decision. Add the criteria first (your SPICED, MEDDPICC or own grid), then deploy."
+    note: "Every hour, each open opportunity gets the list of the org's active qualification criteria required up to its stage that are not valid on it (link 'is qualified on', status valid). Nothing is blocked: a stage changes by a human decision. Add the criteria first (your SPICED, MEDDPICC or own grid), then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "10 * * * *" }, outputs: [{ port: 0, targets: [crit] }] }
@@ -753,7 +754,7 @@ flows:
         - { id: linked, kind: link_upsert, config: { link_type: takes_part_in } }
         - { id: proposed, kind: link_upsert, config: { link_type: takes_part_in, propose: true } }
   - name: "CRM · my day"
-    note: "Each morning one digest (payload.text, payload.count) of the activities due today or late and of the open opportunities with no activity for 14 days (edit $today-14 to change the delay). Add your Notification node on the digest port (template with a « text » variable, trigger = payload.trigger), then deploy."
+    note: "Each morning one digest (payload.text, payload.count) of the activities due today or late and of the open opportunities with no activity for 14 days (edit $today-14 to change the delay). Add your Notification node on the digest port (template with a 'text' variable, trigger = payload.trigger), then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "0 7 * * *" }, outputs: [{ port: 0, targets: [due] }] }

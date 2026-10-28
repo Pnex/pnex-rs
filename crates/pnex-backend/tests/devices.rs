@@ -64,7 +64,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 async fn create_device(
@@ -118,7 +118,7 @@ async fn patch_device(
 
 #[tokio::test]
 #[serial]
-async fn sans_token_devices_et_catalogue_refuses() {
+async fn without_token_devices_and_catalog_refused() {
     with_app(|server, _env, _ctx| async move {
         for (method, path) in [
             ("GET", "/api/v1/devices"),
@@ -138,7 +138,7 @@ async fn sans_token_devices_et_catalogue_refuses() {
 
 #[tokio::test]
 #[serial]
-async fn cycle_creation_reactivation_et_refus_device_actif() {
+async fn create_reactivate_cycle_and_active_device_refusal() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -216,7 +216,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
             "token reactivated"
         );
 
-        // Device actif → 400 exact.
+        // Active device → exact 400.
         let res = create_device(&server, &env.alice, org, "esp-001", "temp_sensor").await;
         assert_eq!(res.status_code(), 400);
         assert_eq!(
@@ -239,7 +239,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
 
 #[tokio::test]
 #[serial]
-async fn filtres_de_liste() {
+async fn list_filters() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         for (id, predefined) in [("esp-s1", "temp_sensor"), ("esp-a1", "relay_1ch")] {
@@ -341,7 +341,7 @@ async fn device_has_no_generic_update_route() {
 
 #[tokio::test]
 #[serial]
-async fn quotas_tier_par_type() {
+async fn tier_quotas_per_type() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -355,7 +355,7 @@ async fn quotas_tier_par_type() {
                 "temp_sensor",
             )
             .await;
-            assert_eq!(res.status_code(), 201, "capteur {n}");
+            assert_eq!(res.status_code(), 201, "sensor {n}");
         }
         let res = create_device(&server, &env.alice, org, "esp-s4", "temp_sensor").await;
         assert_eq!(res.status_code(), 400, "4th sensor refused");
@@ -388,7 +388,7 @@ async fn quotas_tier_par_type() {
 
 #[tokio::test]
 #[serial]
-async fn isolation_tenant_et_roles() {
+async fn tenant_isolation_and_roles() {
     with_app(|server, env, ctx| async move {
         let alice_org = personal_org(&server, &env.alice).await;
         let bob_org = personal_org(&server, &env.bob).await;
@@ -513,7 +513,7 @@ async fn isolation_tenant_et_roles() {
 
 #[tokio::test]
 #[serial]
-async fn suppression_nettoie_token_et_build_records() {
+async fn deletion_cleans_token_and_build_records() {
     with_app(|server, env, ctx| async move {
         use pnex_backend::models::_entities::{build_records, device_registries, device_tokens};
         use sea_orm::{
@@ -571,7 +571,7 @@ async fn suppression_nettoie_token_et_build_records() {
 
 #[tokio::test]
 #[serial]
-async fn latest_build_hydrate_liste_et_detail() {
+async fn latest_build_hydrates_list_and_detail() {
     with_app(|server, env, ctx| async move {
         use pnex_backend::models::_entities::build_records;
         use sea_orm::{ActiveModelTrait, Set};
@@ -601,7 +601,7 @@ async fn latest_build_hydrate_liste_et_detail() {
         let s1_row = results
             .iter()
             .find(|d| d["device_id"] == "esp-s1")
-            .expect("esp-s1 en liste");
+            .expect("esp-s1 in the list");
         let build = s1_row["latest_build"].as_object().expect("latest_build");
         assert!(build.get("success").is_none());
         assert_eq!(build["build_phase"], "succeeded");
@@ -609,7 +609,7 @@ async fn latest_build_hydrate_liste_et_detail() {
         let a1_row = results
             .iter()
             .find(|d| d["device_id"] == "esp-a1")
-            .expect("esp-a1 en liste");
+            .expect("esp-a1 in the list");
         assert!(a1_row["latest_build"].is_null(), "without a build → null");
 
         // Detail: same hydration via device_full.
@@ -626,7 +626,7 @@ async fn latest_build_hydrate_liste_et_detail() {
 
 #[tokio::test]
 #[serial]
-async fn catalogue_global_partage() {
+async fn shared_global_catalog() {
     with_app(|server, env, _ctx| async move {
         // Capabilities: exact shapes + mode filter (+ unknown value empty).
         let caps: serde_json::Value = server
@@ -634,7 +634,7 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        let caps = caps["results"].as_array().expect("enveloppe");
+        let caps = caps["results"].as_array().expect("envelope");
         assert!(caps
             .iter()
             .any(|c| c["name"] == "relay" && c["mode"] == "output"));
@@ -654,13 +654,13 @@ async fn catalogue_global_partage() {
             .json();
         assert_eq!(none["results"].as_array().unwrap().len(), 0);
 
-        // Predefined devices : capabilities = noms, filtres combinables.
+        // Predefined devices: capabilities = names, combinable filters.
         let pds: serde_json::Value = server
             .get("/api/v1/predefined-devices")
             .add_header("Authorization", bearer(&env.alice))
             .await
             .json();
-        let pds = pds["results"].as_array().expect("enveloppe");
+        let pds = pds["results"].as_array().expect("envelope");
         assert_eq!(
             pds.len(),
             7,
@@ -744,7 +744,7 @@ async fn catalogue_global_partage() {
 
 #[tokio::test]
 #[serial]
-async fn pagination_des_listes() {
+async fn list_pagination() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         // Free tier: 3 sensors max — perfect for 3 pages of 2.

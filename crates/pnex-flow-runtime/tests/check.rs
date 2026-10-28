@@ -29,7 +29,7 @@ fn event_of(v: &Value) -> Option<&str> {
 }
 
 #[test]
-fn check_rapporte_par_tab_et_exit_1_sur_echec() {
+fn check_reports_per_tab_and_exit_1_on_failure() {
     // Mixed: tab 1 valid (inject → debug), tab 2 broken (ghost wire).
     let dir = common::tmp_home("check-mixte");
     let flows = dir.join("flows.json");
@@ -93,7 +93,7 @@ fn check_rapporte_par_tab_et_exit_1_sur_echec() {
 }
 
 #[test]
-fn check_sur_artefact_valide_exit_0() {
+fn check_on_valid_artifact_exit_0() {
     let dir = common::tmp_home("check-ok");
     let flows = dir.join("flows.json");
     std::fs::write(&flows, common::inject_debug_flows("x")).unwrap();
@@ -110,7 +110,7 @@ fn check_sur_artefact_valide_exit_0() {
 }
 
 #[test]
-fn check_sur_fichier_illisible_exit_1() {
+fn check_on_unreadable_file_exit_1() {
     let dir = common::tmp_home("check-bad");
     let flows = dir.join("flows.json");
     std::fs::write(&flows, "pas-du-json").unwrap();

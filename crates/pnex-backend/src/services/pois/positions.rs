@@ -241,7 +241,7 @@ fn take_gps_half(
     metric: &str,
     value: f64,
 ) -> Option<((f64, f64), GpsHalf)> {
-    let mut pending = GPS_PENDING.lock().expect("verrou GPS_PENDING");
+    let mut pending = GPS_PENDING.lock().expect("GPS_PENDING lock");
     // Bounded memory: halves of devices that never completed their pair
     // are dropped once stale.
     if pending.len() >= GPS_PENDING_PRUNE_AT {
@@ -311,9 +311,9 @@ async fn upsert_position(
         let mut am: device_positions::ActiveModel = row.into();
         am.org_id = Set(org_id);
         am.device_id = Set(device_id.to_string());
-        am.latitude = Set(dec(latitude).ok_or_else(|| DbErr::Custom("latitude invalide".into()))?);
+        am.latitude = Set(dec(latitude).ok_or_else(|| DbErr::Custom("invalid latitude".into()))?);
         am.longitude =
-            Set(dec(longitude).ok_or_else(|| DbErr::Custom("longitude invalide".into()))?);
+            Set(dec(longitude).ok_or_else(|| DbErr::Custom("invalid longitude".into()))?);
         am.accuracy_m = Set(opts.accuracy.and_then(dec));
         am.altitude_m = Set(opts.altitude.and_then(dec));
         am.speed_mps = Set(opts.speed.and_then(dec));
@@ -326,10 +326,8 @@ async fn upsert_position(
             org_id: Set(org_id),
             device_registry_id: Set(device_registry_id),
             device_id: Set(device_id.to_string()),
-            latitude: Set(dec(latitude).ok_or_else(|| DbErr::Custom("latitude invalide".into()))?),
-            longitude: Set(
-                dec(longitude).ok_or_else(|| DbErr::Custom("longitude invalide".into()))?
-            ),
+            latitude: Set(dec(latitude).ok_or_else(|| DbErr::Custom("invalid latitude".into()))?),
+            longitude: Set(dec(longitude).ok_or_else(|| DbErr::Custom("invalid longitude".into()))?),
             accuracy_m: Set(opts.accuracy.and_then(dec)),
             altitude_m: Set(opts.altitude.and_then(dec)),
             speed_mps: Set(opts.speed.and_then(dec)),
@@ -343,7 +341,7 @@ async fn upsert_position(
     Ok(())
 }
 
-/// Position manuelle (POC/tests — endpoint PUT admin).
+/// Manual position (POC/tests — admin PUT endpoint).
 pub async fn set_manual(
     db: &DatabaseConnection,
     org_id: i64,

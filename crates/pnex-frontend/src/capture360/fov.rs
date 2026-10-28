@@ -171,7 +171,7 @@ unsafe fn characteristics_hfov(
             Some(obj)
         };
 
-    // 1) Filtre LENS_FACING == 1 (BACK).
+    // 1) Filter LENS_FACING == 1 (BACK).
     let facing_key = get_key(env, c"LENS_FACING")?;
     let facing = call_get(env, facing_key)?;
     let int_class = ((**env).v1_1.FindClass)(env, c"java/lang/Integer".as_ptr());

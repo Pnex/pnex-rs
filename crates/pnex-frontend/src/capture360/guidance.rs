@@ -278,7 +278,7 @@ mod tests {
     /// fix for the ~33° azimuth gap observed on the 1st HD (continuous V1:
     /// step ~20° × 15 frames).
     #[test]
-    fn ring_plan_ferme_l_anneau_partout() {
+    fn ring_plan_closes_the_ring_everywhere() {
         let mut hfov = 30.0f32;
         while hfov <= 75.0 {
             let plan = ring_plan(hfov);
@@ -310,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn cibles_et_bandes_de_pitch() {
+    fn targets_and_pitch_bands() {
         // Ring 0 level: target pitch 0.
         assert_eq!(ring_pitch(0), 0.0);
         assert_eq!(ring_pitch(1), RING_TILT_DEG);
@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn erreur_et_alignement() {
+    fn error_and_alignment() {
         // On target: zero errors → aligned.
         let err = signed_error(22.5, RING_TILT_DEG, pose(22.5, RING_TILT_DEG, 0.0).unwrap());
         assert!(err.0.abs() < 1e-5 && err.1.abs() < 1e-5 && err.2.abs() < 1e-5);
@@ -339,7 +339,7 @@ mod tests {
     /// Angular rate: still → 0, clear rotation → well beyond
     /// the steadiness threshold.
     #[test]
-    fn vitesse_angulaire() {
+    fn angular_speed() {
         let statique = vec![
             (
                 0,
@@ -503,7 +503,7 @@ mod tests {
 
     /// Advance transitions: step → ring → end, never skipping.
     #[test]
-    fn avance_sans_sauter() {
+    fn advances_without_skipping() {
         assert_eq!(advance(0, 3, 16), Advance::NextStep);
         // Last step of the ring (15/16) → next ring.
         assert_eq!(advance(0, 15, 16), Advance::NextRing);
@@ -514,7 +514,7 @@ mod tests {
     }
 
     #[test]
-    fn point_guideur_clamp() {
+    fn guide_point_clamp() {
         // Direction: err_yaw > 0 (target at higher yaw = physically on the
         // LEFT, ENU azimuth) → NEGATIVE dx (dot on the left, see ROTATION_DIR).
         let (dx, dy) = dot_offset_px((50.0, -50.0, 0.0), 40.0);

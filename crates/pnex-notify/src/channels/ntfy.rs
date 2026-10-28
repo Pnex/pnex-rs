@@ -83,7 +83,7 @@ impl Channel for NtfyChannel {
         }
         let topic =
             str_field(config, "topic").ok_or_else(|| "the topic is required".to_string())?;
-        if !topic_valide(topic) {
+        if !valid_topic(topic) {
             return Err(
                 "the topic can only contain letters, digits, dashes and underscores (64 chars max)"
                     .into(),
@@ -142,7 +142,7 @@ impl Channel for NtfyChannel {
 
 /// ntfy topic: `[-_A-Za-z0-9]{1,64}` — server constraint, checked
 /// on the channel side for a displayable error message.
-fn topic_valide(topic: &str) -> bool {
+fn valid_topic(topic: &str) -> bool {
     !topic.is_empty()
         && topic.len() <= 64
         && topic
@@ -169,7 +169,7 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn poste_topic_titre_priorite_tags_et_bearer() {
+    async fn posts_topic_title_priority_tags_and_bearer() {
         let seen = Arc::new(tokio::sync::Mutex::new(None::<(HeaderMap, Value)>));
         let seen_for_handler = seen.clone();
         let app = axum::Router::new().route(
@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn http_401_non_retryable_et_500_retryable() {
+    async fn http_401_non_retryable_and_500_retryable() {
         // The channel always posts to `{server}/` — a single receiver, a
         // counter to vary the response (401 then 500).
         use std::sync::atomic::{AtomicU32, Ordering};
@@ -260,14 +260,14 @@ mod tests {
     }
 
     #[test]
-    fn validate_exige_serveur_topic_et_priorite_conformes() {
+    fn validate_requires_valid_server_topic_and_priority() {
         let ok = json!({"server": "https://ntfy.sh", "topic": "alertes"});
         assert!(NtfyChannel.validate(&ok).is_ok());
         assert!(NtfyChannel.validate(&json!({})).is_err());
         assert!(NtfyChannel
             .validate(&json!({"server": "ftp://ntfy.sh", "topic": "t"}))
             .is_err());
-        // Topic : refus espace, 65 chars, unicode ; accepte tiret/underscore.
+        // Topic: rejects space, 65 chars, unicode; accepts dash/underscore.
         for topic in ["deux mots", &"a".repeat(65), "café", "ok-topic_1"] {
             let r = NtfyChannel.validate(&json!({"server": "https://n.sh", "topic": topic}));
             assert_eq!(r.is_ok(), topic == "ok-topic_1", "topic {topic:?}");

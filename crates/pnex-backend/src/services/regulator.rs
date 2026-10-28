@@ -249,10 +249,7 @@ pub(crate) async fn sync_and_cast_with(
                 if !pushed {
                     // Lost race: the device just disconnected —
                     // the cast will be replayed at the announce.
-                    tracing::debug!(
-                        device_registry_id = device_id,
-                        "cast perdu (device offline)"
-                    );
+                    tracing::debug!(device_registry_id = device_id, "cast lost (device offline)");
                 }
             }
             Err(e) => {
@@ -386,7 +383,7 @@ fn build_spec(
     }
     if !matches!(sensor.1, Mode::DigitalIn | Mode::AdcIn) {
         return Err(format!(
-            "the sensor pin « {} » is not an input (current mode: {:?})",
+            "the sensor pin \"{}\" is not an input (current mode: {:?})",
             config.sensor_pin(),
             sensor.1
         ));
@@ -410,7 +407,7 @@ fn build_spec(
             safe_state: Some(safe),
         },
     )
-    .map_err(|e| format!("sortie « {} » invalide : {e:?}", config.actuator_pin()))?;
+    .map_err(|e| format!("invalid output \"{}\": {e:?}", config.actuator_pin()))?;
 
     let (deadband, kp, ki, kd, cycle_time_secs, min_on_secs, min_off_secs) = match config {
         RegConfig::TtHeat(c) => (c.deadband, 0.0, 0.0, 0.0, 0, c.min_on_secs, c.min_off_secs),

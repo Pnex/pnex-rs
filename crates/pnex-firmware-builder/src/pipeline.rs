@@ -155,13 +155,13 @@ async fn run_step(
         .stderr(std::process::Stdio::piped());
     let child = cmd
         .spawn()
-        .map_err(|e| BuildError::Tool(format!("{label} : lancement impossible : {e}")))?;
+        .map_err(|e| BuildError::Tool(format!("{label}: cannot start: {e}")))?;
     tokio::select! {
         out = child.wait_with_output() => {
             let out = out.map_err(|e| BuildError::Tool(format!("{label} : {e}")))?;
             if !out.status.success() {
                 return Err(BuildError::Tool(format!(
-                    "{label} : sortie {}\n{}",
+                    "{label}: exit {}\n{}",
                     out.status,
                     tail(&out, 10)
                 )));
@@ -488,7 +488,7 @@ pub async fn compile_check(
         .stderr(std::process::Stdio::piped());
     let child = pio
         .spawn()
-        .map_err(|e| BuildError::Tool(format!("pio run : lancement impossible : {e}")))?;
+        .map_err(|e| BuildError::Tool(format!("pio run: cannot start: {e}")))?;
     let out = tokio::select! {
         out = child.wait_with_output() => out.map_err(|e| BuildError::Tool(format!("pio run : {e}")))?,
         _ = tokio::time::sleep_until(deadline) => return Err(BuildError::Timeout),
@@ -533,7 +533,7 @@ pub async fn run_build_with(
         None => {
             tokio::fs::copy(&firmware, &final_bin)
                 .await
-                .map_err(|e| BuildError::Tool(format!("copie firmware : {e}")))?;
+                .map_err(|e| BuildError::Tool(format!("firmware copy: {e}")))?;
         }
         Some(offsets) => {
             let inputs: Vec<(String, PathBuf)> = offsets
@@ -554,7 +554,7 @@ pub async fn run_build_with(
     // Store the merged/serial image under its D6 key (unchanged).
     let bytes = tokio::fs::read(&final_bin)
         .await
-        .map_err(|e| BuildError::Tool(format!("lecture artefact : {e}")))?;
+        .map_err(|e| BuildError::Tool(format!("read artifact: {e}")))?;
     let key = artifact_key(device.org_id, &device.device_id);
     config.store.put(&key, &bytes).await?;
     tracing::info!(step = ?BuildStep::Upload, key = %key, size = bytes.len(), "artifact stored");
@@ -565,7 +565,7 @@ pub async fn run_build_with(
     // integrity gate before `Update.end(true)` flips the boot slot.
     let ota_bytes = tokio::fs::read(&firmware)
         .await
-        .map_err(|e| BuildError::Tool(format!("lecture image app : {e}")))?;
+        .map_err(|e| BuildError::Tool(format!("read app image: {e}")))?;
     let ota_sha256 = sha2::Sha256::digest(&ota_bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
@@ -685,7 +685,7 @@ mod tests {
     /// The 9 screen vars are ALWAYS set: 0/-1 without screen, gate=1 and
     /// role pins from the spec with a screen.
     #[test]
-    fn screen_env_toujours_posees() {
+    fn screen_env_always_set() {
         // no screen → all gates 0, roles -1
         let vars = super::screen_env(None);
         assert_eq!(vars.len(), 9);
@@ -728,7 +728,7 @@ mod tests {
     /// tree, esp32 SoC: merge concatenates the three images, artifact
     /// stored under the D6 key, secrets propagated (plain WiFi, base64 host).
     #[tokio::test]
-    async fn pipeline_complet_esp32() {
+    async fn full_pipeline_esp32() {
         let tmp = tempfile::tempdir().expect("tmp");
         let (pio, esptool) = fake_toolchain(tmp.path());
         let store = Arc::new(InMemoryStore::default());
@@ -785,7 +785,7 @@ mod tests {
     /// esp8266: single image — esptool is never called (command
     /// deliberately broken).
     #[tokio::test]
-    async fn esp8266_sans_merge() {
+    async fn esp8266_without_merge() {
         let tmp = tempfile::tempdir().expect("tmp");
         let (pio, _) = fake_toolchain(tmp.path());
         let store = Arc::new(InMemoryStore::default());
@@ -809,7 +809,7 @@ mod tests {
 
     /// Compile failure: non-zero exit → Tool with the log tail.
     #[tokio::test]
-    async fn echec_outil_exit_non_nul() {
+    async fn tool_failure_non_zero_exit() {
         let tmp = tempfile::tempdir().expect("tmp");
         let pio = tmp.path().join("fail_pio.sh");
         std::fs::write(&pio, "#!/bin/sh\necho compile error\nexit 1\n").expect("pio");
@@ -833,7 +833,7 @@ mod tests {
 
     /// Hard timeout: sleeping subprocess killed at the deadline (bounded test).
     #[tokio::test]
-    async fn timeout_tue_le_sous_process() {
+    async fn timeout_kills_the_subprocess() {
         let tmp = tempfile::tempdir().expect("tmp");
         // A script that ignores its arguments (pio appends "run" to argv).
         let sleeper = tmp.path().join("sleeper.sh");
@@ -858,7 +858,7 @@ mod tests {
     /// A relative path configured from the monorepo root resolves
     /// even when the cwd is elsewhere (worker: crates/pnex-backend).
     #[test]
-    fn chemin_relatif_resolu_depuis_la_racine_monorepo() {
+    fn relative_path_resolved_from_the_monorepo_root() {
         // Exists from the monorepo root, not from the tests' cwd
         // (crates/pnex-firmware-builder).
         let token = "crates/pnex-firmware-builder/Cargo.toml";
@@ -870,14 +870,14 @@ mod tests {
     /// A path not found (no anchor) passes as is — the subprocess
     /// spawn error remains the signal.
     #[test]
-    fn chemin_introuvable_passe_telquel() {
+    fn missing_path_passes_as_is() {
         let token = "n importe/quelle chemin";
         assert_eq!(resolve_program(token), token);
     }
 
     /// Project missing from the source (predefined name ≠ subdirectory).
     #[tokio::test]
-    async fn projet_introuvable() {
+    async fn missing_project() {
         let store = Arc::new(InMemoryStore::default());
         let config = BuildConfig {
             pio_cmd: "true".into(),
@@ -886,12 +886,12 @@ mod tests {
             store,
         };
         let mut dev = device("esp8266");
-        dev.project = "inconnu".into();
+        dev.project = "unknown-project".into();
         let err = run_build(&config, &secrets(), &dev)
             .await
             .expect_err("source error expected");
         assert!(
-            matches!(err, BuildError::Source(ref m) if m.contains("inconnu")),
+            matches!(err, BuildError::Source(ref m) if m.contains("unknown-project")),
             "{err}"
         );
     }
@@ -911,7 +911,7 @@ mod real_pio_tests {
     /// `cargo test -p pnex-firmware-builder -- --ignored manuel_compile_check`
     #[tokio::test]
     #[ignore = "real PlatformIO toolchain"]
-    async fn manuel_compile_check_custom_sketch() {
+    async fn manual_compile_check_custom_sketch() {
         let secrets = BuildSecrets {
             wifi_ssid: "check".into(),
             wifi_password: "check".into(),
@@ -975,7 +975,7 @@ mod real_pio_tests {
 
     #[tokio::test]
     #[ignore]
-    async fn manuel_pio_reel_generic_esp8266() {
+    async fn manual_real_pio_generic_esp8266() {
         let store = Arc::new(InMemoryStore::default());
         let config = BuildConfig {
             pio_cmd: "pio".into(),
@@ -1009,7 +1009,7 @@ mod real_pio_tests {
         let artifact = run_build(&config, &secrets, &device)
             .await
             .expect("real build must pass");
-        assert!(artifact.size_bytes > 100_000, "bin trop petit ?");
+        assert!(artifact.size_bytes > 100_000, "bin too small?");
     }
 
     /// esp32-c3 mirror (Seeed XIAO): platform espressif32 + riscv toolchain
@@ -1017,7 +1017,7 @@ mod real_pio_tests {
     /// (bootloader+partitions+app) — exact worker path.
     #[tokio::test]
     #[ignore]
-    async fn manuel_pio_reel_generic_esp32c3() {
+    async fn manual_real_pio_generic_esp32c3() {
         let store = Arc::new(InMemoryStore::default());
         let config = BuildConfig {
             pio_cmd: "pio".into(),
@@ -1050,6 +1050,6 @@ mod real_pio_tests {
             .await
             .expect("real C3 build must pass");
         // Merged C3 image = bootloader + partitions + app.
-        assert!(artifact.size_bytes > 400_000, "bin trop petit ?");
+        assert!(artifact.size_bytes > 400_000, "bin too small?");
     }
 }

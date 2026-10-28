@@ -307,35 +307,35 @@ mod tests {
     }
 
     #[test]
-    fn compile_check_ok_handle_defini() {
+    fn compile_check_ok_handle_defined() {
         compile_check("def handle(inputs, msg):\n    return inputs").unwrap();
     }
 
     #[test]
-    fn compile_check_handle_absent() {
+    fn compile_check_handle_missing() {
         let e = compile_check("x = 1\n").unwrap_err();
         assert!(e.contains("not found"), "{e}");
     }
 
     #[test]
-    fn compile_check_syntaxe_invalide() {
+    fn compile_check_invalid_syntax() {
         assert!(compile_check("def handle(:\n    pass").is_err());
     }
 
     #[test]
-    fn compile_check_directives_invalides() {
+    fn compile_check_invalid_directives() {
         let e =
             compile_check("def handle(inputs, msg):\n    return 0\n// @input a float").unwrap_err();
         assert!(e.contains("directives"), "{e}");
     }
 
     #[test]
-    fn check_ok_sans_diagnostics() {
+    fn check_ok_without_diagnostics() {
         assert!(check("def handle(inputs, msg):\n    return inputs").is_empty());
     }
 
     #[test]
-    fn check_syntaxe_avec_position() {
+    fn check_syntax_with_position() {
         let diags = check("def handle(:\n    pass");
         assert_eq!(diags.len(), 1);
         assert!(
@@ -347,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn check_directive_avec_ligne() {
+    fn check_directive_with_line() {
         let diags = check("# @input a float\ndef handle(inputs, msg):\n    return 0\n");
         assert_eq!(diags.len(), 1);
         assert!(
@@ -359,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn check_handle_absent_sans_position() {
+    fn check_handle_missing_without_position() {
         let diags = check("x = 1\n");
         assert_eq!(diags.len(), 1);
         assert!(
@@ -371,18 +371,18 @@ mod tests {
     }
 
     #[test]
-    fn extract_pos_premier_match() {
+    fn extract_pos_first_match_wins() {
         assert_eq!(
             extract_pos("pnex_function.star:2:11: message"),
             (Some(2), Some(11))
         );
-        assert_eq!(extract_pos("aucune position"), (None, None));
+        assert_eq!(extract_pos("no position here"), (None, None));
         assert_eq!(extract_pos(":0:0"), (None, None));
         assert_eq!(extract_pos("fin:12"), (Some(12), None));
     }
 
     #[test]
-    fn execute_valeurs_et_inputs_binds() {
+    fn execute_values_and_input_binds() {
         // Each declared input implicitly reads payload.<name>; missing →
         // declared default (0); otherwise null.
         let out = execute(
@@ -397,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_topic_route_le_payload_vers_l_entree() {
+    fn execute_topic_routes_the_payload_to_the_input() {
         // msg.topic naming the declared input → routed incoming payload
         // (parity with the JS wrapper — tagger inserted by the projection).
         let out = execute(
@@ -423,7 +423,7 @@ mod tests {
     }
 
     #[test]
-    fn execute_null_et_erreur_runtime() {
+    fn execute_null_and_runtime_error() {
         // None → message dropped.
         let out = exec(
             "def handle(inputs, msg):\n    return None",
@@ -443,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn boucle_infinie_tuee_par_deadline() {
+    fn infinite_loop_killed_by_deadline() {
         let err = exec(
             "def handle(inputs, msg):\n    x = 0\n    for i in range(100000000):\n        x = x + 1\n    return x",
             serde_json::json!({}),
@@ -454,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn map_return_contrat_complet() {
+    fn map_return_full_contract() {
         let incoming = serde_json::json!({"payload": 1, "topic": "t"});
         // null → no msg.
         assert!(map_return(&None, &[], &incoming).is_empty());
@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn map_return_route_par_cle_sur_sorties_declarees() {
+    fn map_return_routes_by_key_to_declared_outputs() {
         let out = |name: &str| pnex_core::FunctionOutput {
             name: name.into(),
             ty: pnex_core::FunctionType::Bool,

@@ -89,7 +89,7 @@ mod tests {
 
     /// Encode → decode cycle at exact dimensions.
     #[test]
-    fn aller_retour() {
+    fn round_trip() {
         let (w, h) = (8u32, 4u32);
         let rgb: Vec<u8> = (0..w * h * 3).map(|i| (i % 251) as u8).collect();
         let jpg = encode_jpeg(&rgb, w, h, 90).unwrap();

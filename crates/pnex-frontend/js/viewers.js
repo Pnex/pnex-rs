@@ -16,7 +16,7 @@ try {
   // by esbuild — native inline + web <link>, tailwind.css school).
   require('./hotspots.css');
 } catch (e) {
-  console.warn('[pnex-viewers] pannellum indisponible', e);
+  console.warn('[pnex-viewers] pannellum unavailable', e);
 }
 if (!pannellumLib || typeof pannellumLib.viewer !== 'function') {
   pannellumLib = (typeof window !== 'undefined' && typeof window.pannellum?.viewer === 'function')
@@ -28,7 +28,7 @@ var gsplatLib = null;
 try {
   gsplatLib = require('gsplat');
 } catch (e) {
-  console.warn('[pnex-viewers] gsplat indisponible', e);
+  console.warn('[pnex-viewers] gsplat unavailable', e);
 }
 // Same shape issue for gsplat (pure ESM): the 1.2.x API (`WebGLRenderer`,
 // `Scene`, `Loader`…) must be there — otherwise fall back to a global.
@@ -850,7 +850,7 @@ function mountTour(hostId, sceneJson) {
   try {
     scene = JSON.parse(sceneJson);
   } catch (e) {
-    warn('tour scene JSON illisible', e);
+    warn('tour scene JSON unreadable', e);
     return false;
   }
   if (!scene || !scene.url) {
@@ -1092,7 +1092,7 @@ function setAnnotations(hostId, itemsJson, editable) {
   try {
     items = JSON.parse(itemsJson);
   } catch (e) {
-    warn('annot JSON illisible', e);
+    warn('annot JSON unreadable', e);
     return false;
   }
   if (!Array.isArray(items)) return false;

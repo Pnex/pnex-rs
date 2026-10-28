@@ -480,7 +480,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn candidats_plage_privee_completes() {
+    fn candidates_private_range_complete() {
         let hosts = lan_candidates("192.168.1.");
         assert_eq!(hosts.len(), 254);
         assert_eq!(hosts[0], ["https://192.168.1.1", "http://192.168.1.1:5150"]);
@@ -503,14 +503,14 @@ mod tests {
     }
 
     #[test]
-    fn candidats_plage_non_privee_refusee() {
+    fn candidates_non_private_range_refused() {
         // Never probe a public range by mistake.
         assert!(lan_candidates("8.8.8.").is_empty());
         assert!(lan_candidates("172.32.").is_empty());
     }
 
     #[test]
-    fn candidats_prefixe_invalide_refuse() {
+    fn candidates_invalid_prefix_refused() {
         assert!(lan_candidates("192.168.").is_empty()); // 3 octets
         assert!(lan_candidates("").is_empty());
         assert!(lan_candidates("192.168.1..").is_empty());
@@ -518,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn prefixe_depuis_base_privee() {
+    fn prefix_from_private_base() {
         assert_eq!(
             prefix_from_base("http://192.168.1.16:5150").as_deref(),
             Some("192.168.1.")
@@ -530,7 +530,7 @@ mod tests {
     }
 
     #[test]
-    fn prefixe_depuis_base_non_ip_ou_publique_vide() {
+    fn prefix_from_non_ip_or_public_base_empty() {
         assert_eq!(prefix_from_base("http://pnex.local:5150"), None);
         assert_eq!(prefix_from_base("http://8.8.8.8:5150"), None);
         assert_eq!(prefix_from_base("pas une URL"), None);

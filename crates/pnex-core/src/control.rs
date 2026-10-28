@@ -107,7 +107,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tt_chauffage_hysteresis_asymetrique() {
+    fn tt_heating_asymmetric_hysteresis() {
         // Setpoint 19°, deadband 0.5: ON below 18.5, OFF when back at 19.
         let on = tt_step(true, 19.0, 0.5, false, 18.4);
         assert!(on);
@@ -120,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn tt_clim_inverse() {
+    fn tt_cooling_is_inverted() {
         // Setpoint 26°, deadband 0.5: ON above 26.5, OFF when back ≤ 26.
         assert!(tt_step(false, 26.0, 0.5, false, 26.6));
         assert!(!tt_step(false, 26.0, 0.5, false, 26.4));
@@ -129,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn tt_deadband_invalide_ne_s_allume_jamais() {
+    fn tt_invalid_deadband_never_turns_on() {
         // Fail-safe: zero/negative/non-finite deadband → never ON.
         assert!(!tt_step(true, 19.0, 0.0, false, 10.0));
         assert!(!tt_step(true, 19.0, -1.0, false, 10.0));
@@ -137,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn pid_premier_echantillon_et_convergence() {
+    fn pid_first_sample_and_convergence() {
         let mut st = PidState::new();
         // 1st sample: no derivative (prev absent), I starts.
         let duty = pid_step(20.0, 2.0, 0.5, 0.1, 18.0, 5.0, &mut st);
@@ -153,7 +153,7 @@ mod tests {
     }
 
     #[test]
-    fn pid_anti_windup_borne_l_integrale() {
+    fn pid_anti_windup_bounds_the_integral() {
         let mut st = PidState::new();
         // Repeated huge error: the integral cannot wind up beyond
         // what keeps the output within [0, 100].
@@ -167,19 +167,19 @@ mod tests {
     }
 
     #[test]
-    fn pid_derivee_sur_mesure_sans_kick() {
+    fn pid_derivative_on_measurement_without_kick() {
         // Changing the setpoint does not make the derivative jump: D depends
         // only on the measurement (1st sample: D = 0, prev absent).
         let mut st = PidState::new();
         let d1 = pid_step(20.0, 1.0, 0.0, 5.0, 19.0, 1.0, &mut st);
         assert!((d1 - 1.0).abs() < 1e-9, "{d1}"); // P=1, D=0 (1st sample)
         let d2 = pid_step(30.0, 1.0, 0.0, 5.0, 18.0, 1.0, &mut st);
-        // Δmesure = -1 → D = -5·(-1)/1 = +5 ; P = 12 ; I = 0.
+        // Δmeasurement = -1 → D = -5·(-1)/1 = +5 ; P = 12 ; I = 0.
         assert!((d2 - 17.0).abs() < 1e-9, "{d2}");
     }
 
     #[test]
-    fn relay_window_repart_le_duty() {
+    fn relay_window_spreads_the_duty() {
         // Duty 25 % over a 10 s cycle: ON on [0, 2.5), OFF afterwards.
         assert!(relay_window(25.0, 10.0, 0.0));
         assert!(relay_window(25.0, 10.0, 2.49));
@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn pid_state_serialise_pour_diag() {
+    fn pid_state_serializes_for_diag() {
         // The device can report the integral (RegState diag): roundtrip.
         let mut st = PidState::new();
         pid_step(20.0, 1.0, 1.0, 0.0, 18.0, 2.0, &mut st);

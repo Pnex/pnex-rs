@@ -16,7 +16,7 @@ pub struct DeviceFilters {
     /// Type name ("all" on the server = no-op, here we send nothing).
     pub device_type: Option<String>,
     pub capability: Option<String>,
-    /// Correspondance exacte.
+    /// Exact match.
     pub device_id: Option<String>,
     /// Multi-field OR search (device_id, model, type, capabilities).
     pub search: Option<String>,

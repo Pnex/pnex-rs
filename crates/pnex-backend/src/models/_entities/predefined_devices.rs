@@ -23,7 +23,7 @@ pub struct Model {
     pub stl_files_url: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub description: Option<String>,
-    /// Fluent key resolved client-side (i18n chantier)
+    /// Fluent key resolved client-side (i18n work)
     /// — label_i18n precedent (notify field_specs).
     #[sea_orm(column_type = "Text", nullable)]
     pub description_i18n: Option<String>,

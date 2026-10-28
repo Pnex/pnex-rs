@@ -477,7 +477,7 @@ mod tests {
     /// Unit gain of the pyramid operations: reduce and expand
     /// reproduce a constant image (condition lap = g − expand∘reduce).
     #[test]
-    fn gain_unitaire_pyramide() {
+    fn unit_gain_pyramid() {
         let size = (16u32, 8u32);
         let src: Vec<f32> = vec![42.0; (size.0 * size.1) as usize];
         let small = reduce_1(&src, size, (size.0 / 2, size.1 / 2));
@@ -495,7 +495,7 @@ mod tests {
     /// full content in the overlap, bug of the numerator not weighted
     /// by the mask, finding 2026-09-11).
     #[test]
-    fn recouvrement_constant_sans_double_comptage() {
+    fn constant_overlap_without_double_counting() {
         let (w, h) = (64u32, 32u32);
         let frames: Vec<(f32, Vec<f32>, Vec<f32>)> = (0..2)
             .map(|k| {
@@ -598,7 +598,7 @@ mod tests {
         // the centre = between the two. NEVER ≥ 250 (double counting).
         let at = |i: usize| cur[(16 * w as usize + i) * 3];
         println!(
-            "profil: {}",
+            "profile: {}",
             (0..w as usize)
                 .step_by(4)
                 .map(|i| format!("{:.0}", at(i)))
@@ -629,7 +629,7 @@ mod tests {
     /// rectangular mask (≥ 2^levels from the edge: beyond that, the coarse level's
     /// ratio legitimately pulls towards the visible mean).
     #[test]
-    fn reconstruction_identite() {
+    fn identity_reconstruction() {
         let (w, h) = (64u32, 32u32);
         let mut img = vec![0.0f32; (w * h * 3) as usize];
         let mut mask = vec![0.0f32; (w * h) as usize];

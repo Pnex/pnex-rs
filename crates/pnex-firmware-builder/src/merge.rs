@@ -76,7 +76,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn offsets_par_soc() {
+    fn offsets_per_soc() {
         assert!(merge_offsets("esp8266").is_none());
         assert!(merge_offsets("ESP8266").is_none());
         let esp32 = merge_offsets("esp32").expect("esp32");
@@ -105,7 +105,7 @@ mod tests {
     /// The `mcu_boards.soc` soc ("esp32-c3", hyphenated) → the esptool chip
     /// name ("esp32c3") — `--chip esp32-c3` is refused by esptool.
     #[test]
-    fn nom_chip_esptool_depuis_soc() {
+    fn esptool_chip_name_from_soc() {
         assert_eq!(chip_name("esp8266"), "esp8266");
         assert_eq!(chip_name("esp32"), "esp32");
         assert_eq!(chip_name("esp32-c3"), "esp32c3");
@@ -115,7 +115,7 @@ mod tests {
 
     /// Full esptool line, multi-word commands split.
     #[test]
-    fn ligne_esptool_conforme() {
+    fn esptool_line_is_compliant() {
         let argv = merge_args(
             "python -m esptool",
             "esp32",

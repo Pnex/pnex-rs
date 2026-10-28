@@ -111,7 +111,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::controls::routes())
         // Custom fluid mixtures (in-process CoolProp).
         .add_route(controllers::fluid_mixtures::routes())
-        // Diagrammes thermodynamiques (pnex-coolprop in-process).
+        // Thermodynamic diagrams (pnex-coolprop in-process).
         .add_route(controllers::thermo::routes())
         .add_route(controllers::tours::routes())
         .add_route(controllers::public_tours::routes())

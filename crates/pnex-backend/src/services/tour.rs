@@ -26,7 +26,7 @@ pub enum TourWriteError {
     NameRequired,
     /// Name > 200 characters.
     NameTooLong,
-    /// `validate_tour_doc` non satisfait (structurel).
+    /// `validate_tour_doc` not satisfied (structural).
     Doc(Vec<TourViolation>),
     /// Referenced asset missing from the org (or non-UUID id).
     UnknownAsset { id: String },
@@ -35,7 +35,7 @@ pub enum TourWriteError {
         id: String,
         expected: &'static [&'static str],
     },
-    /// Concurrence optimiste perdue.
+    /// Optimistic concurrency lost.
     Conflict { expected: i64, current: i64 },
     /// Database failure.
     Db,

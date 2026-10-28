@@ -367,7 +367,7 @@ maplibreGl.setWorkerUrl(
             .setLngLat([p.lon, p.lat])
             .addTo(map);
           host._pnexMapMarkers.push(marker);
-        } catch (e) { /* lng/lat invalide : item suivant */ }
+        } catch (e) { /* invalid lng/lat: next item */ }
       });
       return true;
     },

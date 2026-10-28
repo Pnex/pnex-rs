@@ -44,7 +44,7 @@ async fn fk_del_type(db: &sea_orm::DatabaseConnection, table: &str, col: &str) -
 }
 
 #[tokio::test]
-async fn scoping_org_et_catalogue_global_sans_copies() {
+async fn org_scoping_and_global_catalog_without_copies() {
     let url = std::env::var("TEST_DATABASE_URL")
         .unwrap_or_else(|_| "postgres://pnex:pnex@localhost:5432/pnex_test".to_string());
     let db = sea_orm::Database::connect(url).await.unwrap();

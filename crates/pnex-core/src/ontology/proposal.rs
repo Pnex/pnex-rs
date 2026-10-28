@@ -237,7 +237,7 @@ mod tests {
     fn link(target: &str, nature: &str) -> ProposalInput {
         ProposalInput {
             kind: Some(ProposalKind::LinkCreate),
-            type_key: "filiale_de".into(),
+            type_key: "subsidiary_of".into(),
             source_id: Some("a".into()),
             link_target_id: Some(target.into()),
             values: json!({"nature": nature, "source": "wikidata.org"})

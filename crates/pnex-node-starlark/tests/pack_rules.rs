@@ -6,9 +6,9 @@ use pnex_node_starlark::executor::execute;
 use serde_json::json;
 
 const PACK: &str = include_str!("../../pnex-backend/packs/quali_watch.yaml");
-const PROSPECTION: &str = include_str!("../../pnex-backend/packs/prospecting_b2b.yaml");
+const PROSPECTING: &str = include_str!("../../pnex-backend/packs/prospecting_b2b.yaml");
 const PRESENCE: &str = include_str!("../../pnex-backend/packs/web_presence.yaml");
-const PROSPECTION_FR: &str = include_str!("../../pnex-backend/packs/prospecting_b2b_fr.yaml");
+const PROSPECTING_FR: &str = include_str!("../../pnex-backend/packs/prospecting_b2b_fr.yaml");
 const CRM: &str = include_str!("../../pnex-backend/packs/crm.yaml");
 
 /// The `code: |` block of the `quali_watch` function `name`.
@@ -140,7 +140,7 @@ fn target_score_adds_the_points_of_the_criteria_met() {
         "criteria": criteria,
         "today": "2026-10-22"
     });
-    let r = execute(&code_in(PROSPECTION, "pb_score"), &msg, 2000)
+    let r = execute(&code_in(PROSPECTING, "pb_score"), &msg, 2000)
         .unwrap()
         .return_json
         .unwrap();
@@ -149,18 +149,18 @@ fn target_score_adds_the_points_of_the_criteria_met() {
     assert_eq!(r["object_id"], "o1");
     let detail = r["payload"]["score_detail"].as_str().unwrap();
     assert_eq!(detail.lines().count(), 4, "{detail}");
-    assert!(detail.contains("ETI et plus : +20"), "{detail}");
+    assert!(detail.contains("ETI et plus: +20"), "{detail}");
     // A client loses its points; a missing property meets nothing.
     let mut client = msg.clone();
     client["payload"] = json!({"account_status": "customer", "country": "BE"});
-    let r = execute(&code_in(PROSPECTION, "pb_score"), &client, 2000)
+    let r = execute(&code_in(PROSPECTING, "pb_score"), &client, 2000)
         .unwrap()
         .return_json
         .unwrap();
     assert_eq!(r["payload"]["target_score"], -95);
     // The criteria travel with the message.
     let keep = execute(
-        &code_in(PROSPECTION, "pb_criteria"),
+        &code_in(PROSPECTING, "pb_criteria"),
         &json!({"payload": [1, 2]}),
         2000,
     )
@@ -297,17 +297,17 @@ fn model_opinion_becomes_evidence_and_moves_the_confidence() {
             .return_json
             .unwrap()
     };
-    let r = opinion("OUI\nLes mentions citent le SIREN.");
+    let r = opinion("YES\nThe legal notice cites the SIREN.");
     assert_eq!(
         r["payload"]["confidence"], 79,
         "never above the proposal band"
     );
     assert_eq!(
         r["payload"]["evidence"]["llm_opinion"],
-        "OUI\nLes mentions citent le SIREN."
+        "YES\nThe legal notice cites the SIREN."
     );
-    assert_eq!(opinion("non, un annuaire")["payload"]["confidence"], 50);
-    assert_eq!(opinion("PEUT-ETRE")["payload"]["confidence"], 70);
+    assert_eq!(opinion("no, a directory")["payload"]["confidence"], 50);
+    assert_eq!(opinion("MAYBE")["payload"]["confidence"], 70);
 }
 
 #[test]
@@ -318,7 +318,7 @@ fn signals_digest_lists_the_new_ones_newest_first() {
     };
     let msg =
         json!({"payload": [row("ACME · Modif", "2026-10-01"), row("BETA · Vente", "2026-10-20")]});
-    let r = execute(&code_in(PROSPECTION, "pb_digest"), &msg, 2000)
+    let r = execute(&code_in(PROSPECTING, "pb_digest"), &msg, 2000)
         .unwrap()
         .return_json
         .unwrap();
@@ -333,7 +333,7 @@ fn signals_digest_lists_the_new_ones_newest_first() {
     assert!(text.starts_with("- 2026-10-20 BETA · Vente"), "{text}");
     assert_eq!(text.lines().count(), 2);
     assert!(execute(
-        &code_in(PROSPECTION, "pb_digest"),
+        &code_in(PROSPECTING, "pb_digest"),
         &json!({"payload": []}),
         2000
     )
@@ -345,7 +345,7 @@ fn signals_digest_lists_the_new_ones_newest_first() {
 #[test]
 fn list_contacts_ask_their_company_and_keep_the_candidates() {
     let run = |f: &str, msg: serde_json::Value| {
-        execute(&code_in(PROSPECTION_FR, f), &msg, 2000)
+        execute(&code_in(PROSPECTING_FR, f), &msg, 2000)
             .unwrap()
             .return_json
             .unwrap()
@@ -392,7 +392,7 @@ fn list_contacts_ask_their_company_and_keep_the_candidates() {
 #[test]
 fn a_changed_page_becomes_a_signal_only_on_a_listed_topic() {
     let run = |f: &str, msg: serde_json::Value| {
-        execute(&code_in(PROSPECTION, f), &msg, 2000)
+        execute(&code_in(PROSPECTING, f), &msg, 2000)
             .unwrap()
             .return_json
             .unwrap()
@@ -708,8 +708,10 @@ fn website_rules_need_an_explicit_claim_and_the_clients_certifications() {
     }
     // An explicit claim: quoted where the claim is, not where Qualiopi is.
     let claim = format!(
+        // english-guard: allow (French page text the rule reads)
         "Organisme certifié Qualiopi. RS0101 Piloter le référencement d'un site, \
          CERTIF EXEMPLE. {} Cette formation est aussi proposée en contrat d’apprentissage avec notre CFA.",
+        // english-guard: allow (French page text the rule reads)
         "Programme détaillé, modalités, délais d'accès. ".repeat(10)
     );
     let out = page(&claim);

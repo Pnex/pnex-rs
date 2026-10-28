@@ -35,7 +35,7 @@ use crate::services::telemetry::{self, TelemetryPoint};
 use crate::services::{device_liveness, provisioning};
 use pnex_core::{DeviceMsg, Mode, SafeState, ServerMsg};
 
-// ─────────────── Registres de session (downlink + last values) ───────────────
+// ─────────────── Session registries (downlink + last values) ───────────────
 
 /// Device sessions open in THIS process: device_registry_id → downlink
 /// channel. The entry is set BEFORE the loop is spawned and removed on its
@@ -226,7 +226,7 @@ async fn ws_device(
     .into_response()
 }
 
-// ───────────────────────────── Boucle de session ─────────────────────────────
+// ───────────────────────────── Session loop ─────────────────────────────
 
 /// Session loop: `select` between uplink (device frames) and downlink
 /// (REST commands pushed into `DEVICE_SESSIONS`). Exit = disconnection
@@ -328,7 +328,7 @@ async fn session_loop(
                     Err(_) => {
                         tracing::warn!(
                             device = %snap.device_id,
-                            "session muette > {DEVICE_WATCHDOG_SECS} s — fermeture anti-zombie"
+                            "silent session > {DEVICE_WATCHDOG_SECS} s — anti-zombie close"
                         );
                         break;
                     }
@@ -484,7 +484,7 @@ async fn session_loop(
                             );
                         }
                         Err(e) => {
-                            tracing::debug!(device = %snap.device_id, "message non reconnu : {e}");
+                            tracing::debug!(device = %snap.device_id, "unrecognized message: {e}");
                         }
                     }
                 }

@@ -248,7 +248,7 @@ async fn update_profile(
         None => None,
         Some(raw) => {
             let trimmed = raw.trim();
-            // Bornes = colonnes (timezone 50, date_format 20).
+            // Bounds = columns (timezone 50, date_format 20).
             if trimmed.is_empty() || trimmed.len() > 50 {
                 return Ok(field_error("timezone", FIELD_INVALID));
             }

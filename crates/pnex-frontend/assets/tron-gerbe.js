@@ -18,11 +18,11 @@
   var CONFIG = {
     spread: 1.35,  // spread at the bottom
     topw: 0.05,    // tightness at the top
-    curve: 2.25,   // courbure (1 = droit)
+    curve: 2.25,   // curvature (1 = straight)
     count: 24,     // number of beams
     lw: 0.16,      // thickness
     top: 0.82,     // height of the focus
-    len: 1.75,     // longueur
+    len: 1.75,     // length
     speed: 0.15,   // scroll speed of the segments (bottom → focus)
     seg: 3.0,      // segments (dash)
     sway: 0.025,   // souffle (sway)

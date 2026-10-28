@@ -176,10 +176,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn node_enregistre_dans_le_registre() {
+    fn node_is_in_the_registry() {
         let reg = edgelink_core::runtime::registry::RegistryBuilder::default()
             .build()
-            .expect("registre");
+            .expect("registry");
         let meta = reg
             .get("pnex-starlark")
             .expect("pnex-starlark node missing from the registry");
@@ -187,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn registered_ne_panique_pas() {
+    fn registered_does_not_panic() {
         registered();
     }
 }

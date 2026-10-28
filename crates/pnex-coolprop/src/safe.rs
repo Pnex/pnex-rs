@@ -506,7 +506,7 @@ pub fn set_reference_state_d(
 }
 
 // ----------------------------------------------------------------------
-// Utilitaires divers
+// Miscellaneous utilities
 // ----------------------------------------------------------------------
 
 pub fn f2k(t_f: f64) -> f64 {
@@ -1295,9 +1295,9 @@ pub struct PhaseEnvelope {
     pub p: Vec<f64>,
     pub rhomolar_vap: Vec<f64>,
     pub rhomolar_liq: Vec<f64>,
-    /// `x[point][composant]` — composition liquide.
+    /// `x[point][component]` — liquid composition.
     pub x: Vec<Vec<f64>>,
-    /// `y[point][composant]` — composition vapeur.
+    /// `y[point][component]` — vapor composition.
     pub y: Vec<Vec<f64>>,
     pub actual_length: usize,
     pub actual_components: usize,
@@ -1743,7 +1743,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_fluid_spec_accepte_et_rejette() {
+    fn validate_fluid_spec_accepts_and_rejects() {
         assert!(validate_fluid_spec("Water").is_ok());
         assert!(validate_fluid_spec("Propane[0.5]&Ethane[0.5]").is_ok());
         let err = validate_fluid_spec("NOT_A_FLUID").unwrap_err();
@@ -1751,7 +1751,7 @@ mod tests {
     }
 
     #[test]
-    fn molar_masses_sont_coherentes() {
+    fn molar_masses_are_consistent() {
         let masses = molar_masses(&["Water", "Ethanol"]).expect("masses");
         assert!((masses[0] - 0.01801528).abs() < 1e-6, "{masses:?}");
         assert!((masses[1] - 0.04607).abs() < 1e-3, "{masses:?}");

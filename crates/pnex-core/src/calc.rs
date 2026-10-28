@@ -113,7 +113,7 @@ fn finite(x: f64) -> Result<f64, CalcError> {
     }
 }
 
-// ─────────────────────────────── Analyse lexicale ───────────────────────────────
+// ─────────────────────────────── Lexical analysis ───────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
 enum Tok {
@@ -187,7 +187,7 @@ fn lex(src: &str) -> Result<Vec<Token>, CalcError> {
             });
             continue;
         }
-        // Identifiant.
+        // Identifier.
         if c.is_ascii_alphabetic() || c == '_' {
             let start = i;
             while i < chars.len() {
@@ -493,7 +493,7 @@ fn describe(tok: &Tok) -> String {
     }
 }
 
-// ─────────────────────── Analyse statique (validation) ───────────────────────
+// ─────────────────────── Static analysis (validation) ───────────────────────
 
 /// Signature of a function: (name, min arity, max arity) — max None =
 /// variadic. `round(x[,n])` 1..=2; `pow`/`atan2` 2; min/max ≥ 1.
@@ -711,7 +711,7 @@ fn call(name: &str, args: &[f64], pos: usize) -> Result<f64, CalcError> {
     finite(v)
 }
 
-// ─────────────────────────────── API publique ───────────────────────────────
+// ─────────────────────────────── Public API ───────────────────────────────
 
 /// Evaluates the expression with the given variables (device payload keys).
 /// Fails cleanly (`CalcError`) on a missing variable, division by zero,
@@ -818,7 +818,7 @@ mod tests {
     }
 
     #[test]
-    fn arithmetique_et_precedence() {
+    fn arithmetic_and_precedence() {
         let v = vars(&[]);
         assert_eq!(eval_calc("1 + 2 * 3", &v).unwrap(), 7.0);
         assert_eq!(eval_calc("(1 + 2) * 3", &v).unwrap(), 9.0);
@@ -831,7 +831,7 @@ mod tests {
     }
 
     #[test]
-    fn comparaisons_logique_ternaire() {
+    fn comparisons_logic_ternary() {
         let v = vars(&[("t", 21.5)]);
         assert_eq!(eval_calc("t > 20 ? 1 : 0", &v).unwrap(), 1.0);
         assert_eq!(eval_calc("t < 20 ? 1 : 0", &v).unwrap(), 0.0);
@@ -842,7 +842,7 @@ mod tests {
     }
 
     #[test]
-    fn fonctions_et_constantes() {
+    fn functions_and_constants() {
         let v = vars(&[]);
         assert_eq!(eval_calc("abs(-3)", &v).unwrap(), 3.0);
         assert_eq!(eval_calc("round(2.567, 2)", &v).unwrap(), 2.57);
@@ -859,9 +859,9 @@ mod tests {
     }
 
     #[test]
-    fn erreurs_propres_sans_panic() {
+    fn clean_errors_without_panic() {
         let v = vars(&[]);
-        // Variable absente.
+        // Missing variable.
         let e = eval_calc("a + b", &v).unwrap_err();
         assert_eq!(e.kind, CalcErrorKind::UnknownVariable);
         // Division by zero.
@@ -890,7 +890,7 @@ mod tests {
     }
 
     #[test]
-    fn erreurs_lexicales_et_syntaxe() {
+    fn lexical_and_syntax_errors() {
         let v = vars(&[]);
         assert_eq!(
             eval_calc("1 € 2", &v).unwrap_err().kind,
@@ -920,7 +920,7 @@ mod tests {
     }
 
     #[test]
-    fn validation_statique_tolere_les_variables() {
+    fn static_validation_tolerates_variables() {
         // Unknown variables ≠ validation errors (they come from the payload).
         assert!(validate_calc("a + b * 2").is_empty());
         // Unknown function.
@@ -952,7 +952,7 @@ mod tests {
     }
 
     #[test]
-    fn variables_extraites() {
+    fn extracted_variables() {
         assert_eq!(calc_variables("(a + b) / min(a, 2)"), vec!["a", "b"]);
         assert_eq!(calc_variables("pi * r^2"), vec!["r"]);
         assert_eq!(calc_variables("sin(x) + cos(x)"), vec!["x"]);

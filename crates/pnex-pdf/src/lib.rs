@@ -596,6 +596,7 @@ mod tests {
         ];
         for i in 0..120 {
             blocks.push(Block::Paragraph(vec![Span::plain(format!(
+                // english-guard: allow (French wrap test text, accents on purpose)
                 "Ligne {i} d'un long texte qui doit passer à la ligne et remplir plusieurs pages \
                  sans jamais déborder de la marge droite, avec unmotbeaucouptroplongpourunelignequidoitetrecoupe."
             ))]));

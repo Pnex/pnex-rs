@@ -166,7 +166,7 @@ fn wait_debug(rt: &common::RuntimeProc, needle: &str) -> String {
 }
 
 #[test]
-fn http_fetch_get_json_parse_le_payload() {
+fn http_fetch_get_json_parses_the_payload() {
     let home = common::tmp_home("httpfetch-get");
     let flows = home.join("flows.json");
     let (addr, _requests) =
@@ -190,7 +190,7 @@ fn http_fetch_get_json_parse_le_payload() {
 }
 
 #[test]
-fn http_fetch_post_envoie_le_corps_et_enregistre() {
+fn http_fetch_post_sends_the_body_and_records() {
     let home = common::tmp_home("httpfetch-post");
     let flows = home.join("flows.json");
     let (addr, requests) = start_canned_server(|_req| (200, "text/plain", "ok-post".to_string()));

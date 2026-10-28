@@ -14,7 +14,7 @@ pub struct Model {
     pub name: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub description: Option<String>,
-    /// `pnex_core::firmware::ChipFamily` wire id (VARCHAR applicatif).
+    /// `pnex_core::firmware::ChipFamily` wire id (application-level VARCHAR).
     pub chip_family: String,
     pub current_revision_id: Option<i64>,
 }

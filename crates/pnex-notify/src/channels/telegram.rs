@@ -21,14 +21,14 @@ const MAX_CHARS: usize = 4096;
 
 /// Telegram chat_id: `@channelname` (no space) or numeric id (negative
 /// for groups/channels).
-fn chat_id_valide(chat_id: &str) -> bool {
+fn valid_chat_id(chat_id: &str) -> bool {
     if let Some(name) = chat_id.strip_prefix('@') {
         return !name.is_empty() && !name.contains(char::is_whitespace);
     }
     chat_id.parse::<i64>().is_ok()
 }
 
-/// POST `sendMessage` vers `api_base` (prod : `https://api.telegram.org`).
+/// POST `sendMessage` to `api_base` (prod: `https://api.telegram.org`).
 async fn send_to(
     api_base: &str,
     token: &str,
@@ -87,7 +87,7 @@ impl Channel for TelegramChannel {
         }
         let chat_id =
             str_field(config, "chat_id").ok_or_else(|| "the chat_id is required".to_string())?;
-        if !chat_id_valide(chat_id) {
+        if !valid_chat_id(chat_id) {
             return Err("invalid chat_id: @channelname or numeric id (e.g. -1001234567890)".into());
         }
         Ok(())
@@ -114,7 +114,7 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn poste_chat_id_et_texte_compose() {
+    async fn posts_chat_id_and_composed_text() {
         let seen = Arc::new(tokio::sync::Mutex::new(None::<Value>));
         let seen_for_handler = seen.clone();
         let app = axum::Router::new().route(
@@ -165,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn garde_taille_sans_appel_http() {
+    fn size_guard_without_http_call() {
         let text = compose_text(Some("Sujet"), "corps");
         assert_eq!(text, "Sujet\ncorps");
         let err = size_guard(&"x".repeat(MAX_CHARS + 1), MAX_CHARS).unwrap_err();
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_exige_token_et_chat_id_conformes() {
+    fn validate_requires_valid_token_and_chat_id() {
         assert!(TelegramChannel
             .validate(&json!({"bot_token": "123:ABC", "chat_id": "@moncanal"}))
             .is_ok());

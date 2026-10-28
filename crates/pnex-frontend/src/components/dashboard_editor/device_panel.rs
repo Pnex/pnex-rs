@@ -1,4 +1,4 @@
-//! Guided addition "from a device" (parcours §1.2, D124/D125): pick a
+//! Guided addition "from a device" (user journey §1.2, D124/D125): pick a
 //! device, then each output pin proposes its control card (digital output →
 //! switch, PWM → slider) and each published metric its reading (value,
 //! gauge, chart). A pin card creates an org control — never a pin binding

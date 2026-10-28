@@ -200,7 +200,7 @@ bool pnex_wifi_connect(unsigned max_attempts, PnexWaitTickFn tick) {
 #endif
     }
     bool ok = WiFi.status() == WL_CONNECTED;
-    Serial.println(ok ? " OK" : " ECHEC");
+    Serial.println(ok ? " OK" : " FAILED");
     return ok;
 }
 

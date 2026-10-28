@@ -54,7 +54,7 @@ mod tests {
     /// Encode/decode roundtrip of a labeled series (the runtime's `metric`
     /// node writes exactly this form).
     #[test]
-    fn roundtrip_serie_labellisee() {
+    fn roundtrip_labelled_series() {
         let req = WriteRequest {
             timeseries: vec![TimeSeries {
                 labels: vec![

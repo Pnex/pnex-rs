@@ -98,7 +98,7 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn poste_content_username_et_allowed_mentions_vides() {
+    async fn posts_content_username_and_empty_allowed_mentions() {
         let seen = Arc::new(tokio::sync::Mutex::new(None::<Value>));
         let seen_for_handler = seen.clone();
         let app = axum::Router::new().route(
@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn contenu_trop_long_too_large_sans_appel_http() {
+    async fn content_too_long_too_large_without_http_call() {
         let cfg = json!({"webhook_url": "https://discord.com/api/webhooks/1/tok"});
         let long = "x".repeat(MAX_CHARS - 1);
         let err = DiscordChannel
@@ -158,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_exige_url_discord() {
+    fn validate_requires_discord_url() {
         assert!(DiscordChannel
             .validate(&json!({"webhook_url": "https://discord.com/api/webhooks/1/tok"}))
             .is_ok());

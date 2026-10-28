@@ -83,11 +83,11 @@ async fn finish(code: &str) {
     eprintln!("pnex-login: exchange started (redirect={redirect})");
     let outcome: Result<(), crate::api::error::ApiError> = async {
         let tokens = auth::exchange_code(code, &verifier, &redirect).await?;
-        eprintln!("pnex-login: exchange OK, stockage tokens + user_info");
+        eprintln!("pnex-login: exchange OK, storing tokens + user_info");
         auth::store_tokens(&tokens);
         let user = user::get_user_info().await?;
         state::session::login(user);
-        eprintln!("pnex-login: session ouverte");
+        eprintln!("pnex-login: session opened");
         Ok(())
     }
     .await;

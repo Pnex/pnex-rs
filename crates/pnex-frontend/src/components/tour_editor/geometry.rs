@@ -188,7 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn fit_centre_le_plan() {
+    fn fit_centres_the_plan() {
         let ((pan_x, pan_y), zoom) = fit_transform(1000.0, 500.0, 1048.0, 548.0, 24.0);
         assert!((zoom - 1.0).abs() < 1e-9, "plan already at scale: {zoom}");
         assert!((pan_x - 24.0).abs() < 1e-9 && (pan_y - 24.0).abs() < 1e-9);
@@ -199,13 +199,13 @@ mod tests {
     }
 
     #[test]
-    fn fit_degenere_proprement() {
+    fn fit_degenerates_cleanly() {
         let ((px, py), zoom) = fit_transform(0.0, 0.0, 800.0, 600.0, 24.0);
         assert_eq!((px, py, zoom), (0.0, 0.0, 1.0));
     }
 
     #[test]
-    fn conversion_client_vers_plan() {
+    fn client_to_plan_conversion() {
         let rect = (10.0, 20.0, 800.0, 600.0);
         assert_eq!(to_plan((110.0, 70.0), rect, (100.0, 50.0), 1.0), (0.0, 0.0));
         assert_eq!(
@@ -215,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn zoom_conserve_le_point_sous_curseur() {
+    fn zoom_keeps_the_point_under_cursor() {
         let pan = (100.0, 50.0);
         let new_pan = zoom_pan_towards(pan, 1.0, 2.0, (300.0, 250.0));
         let before = to_plan((300.0, 250.0), (0.0, 0.0, 0.0, 0.0), pan, 1.0);
@@ -225,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn dimensions_de_repli() {
+    fn fallback_dimensions() {
         assert_eq!(plan_size(None, None), PLAN_FALLBACK);
         assert_eq!(plan_size(Some(0.0), Some(-5.0)), PLAN_FALLBACK);
         assert_eq!(plan_size(Some(1234.0), None), (1234.0, PLAN_FALLBACK.1));

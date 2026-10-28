@@ -23,7 +23,7 @@ pub(super) fn remove_selected(cx: &mut EditorCx) {
     cx.update_graph(move |graph| state::remove_node(graph, &node_id));
 }
 
-/// `"12"` → `Some(12.0)`, `""` → `None`, invalide → `None`.
+/// `"12"` → `Some(12.0)`, `""` → `None`, invalid → `None`.
 pub(super) fn parse_secs(raw: &str) -> Option<f64> {
     let value = raw.trim().parse::<f64>().ok()?;
     value.is_finite().then_some(value)

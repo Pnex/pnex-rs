@@ -36,7 +36,7 @@ impl Mat3 {
     /// Identity matrix.
     pub const IDENTITY: Mat3 = Mat3([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
 
-    /// Produit matrice-vecteur.
+    /// Matrix-vector product.
     pub fn mul_vec(&self, v: [f32; 3]) -> [f32; 3] {
         let [a, b, c, d, e, f, g, h, i] = self.0;
         [
@@ -68,7 +68,7 @@ impl Mat3 {
     }
 }
 
-/// Produit vectoriel.
+/// Cross product.
 pub fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [
         a[1] * b[2] - a[2] * b[1],
@@ -77,12 +77,12 @@ pub fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     ]
 }
 
-/// Produit scalaire.
+/// Dot product.
 pub fn dot(a: [f32; 3], b: [f32; 3]) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-/// Norme euclidienne.
+/// Euclidean norm.
 pub fn norm(v: [f32; 3]) -> f32 {
     dot(v, v).sqrt()
 }
@@ -193,7 +193,7 @@ mod tests {
 
     /// Identity pose: looking +X, right = −Y, down = −Z (see module docs).
     #[test]
-    fn pose_identite() {
+    fn identity_pose() {
         let m = euler_to_mat(0.0, 0.0, 0.0);
         assert_eq!(
             m,
@@ -213,8 +213,8 @@ mod tests {
         // Identity quaternion: R = I ⇒ M = Rᵀ = I ⇒ camera aligned with the
         // world: looking +Z, right +X, down +Y.
         let (y, p, r) = quat_to_euler([0.0, 0.0, 0.0, 1.0]);
-        let reconstruite = euler_to_mat(y, p, r);
-        for (a, b) in reconstruite.0.iter().zip(Mat3::IDENTITY.0.iter()) {
+        let reconstructed = euler_to_mat(y, p, r);
+        for (a, b) in reconstructed.0.iter().zip(Mat3::IDENTITY.0.iter()) {
             assert!((a - b).abs() < 1e-5, "{a} vs {b}");
         }
         assert!((p - 90.0).abs() < 1e-4, "pitch = {p}, expected 90");
@@ -222,12 +222,12 @@ mod tests {
 
     /// Euler → quaternion → euler round-trip over a grid of poses.
     #[test]
-    fn aller_retour_euler() {
+    fn euler_round_trip() {
         for yaw in [-170.0_f32, -45.0, 0.0, 30.0, 120.0, 179.0] {
             for pitch in [-80.0_f32, -30.0, 0.0, 15.0, 60.0] {
                 for roll in [-90.0_f32, -20.0, 0.0, 10.0, 85.0] {
-                    let attendu = euler_to_mat(yaw, pitch, roll);
-                    let (y2, p2, r2) = quat_to_euler(mat_vers_quat(attendu.transpose()));
+                    let expected = euler_to_mat(yaw, pitch, roll);
+                    let (y2, p2, r2) = quat_to_euler(mat_to_quat(expected.transpose()));
                     assert!(
                         (yaw - y2).abs() < 1e-3
                             && (pitch - p2).abs() < 1e-3
@@ -236,8 +236,8 @@ mod tests {
                     );
                     // And the rebuilt matrix matches (f32 drift from
                     // going through the quaternion tolerated).
-                    let reconstruite = euler_to_mat(y2, p2, r2);
-                    for (a, b) in reconstruite.0.iter().zip(attendu.0.iter()) {
+                    let reconstructed = euler_to_mat(y2, p2, r2);
+                    for (a, b) in reconstructed.0.iter().zip(expected.0.iter()) {
                         assert!((a - b).abs() < 1e-4, "{a} vs {b}");
                     }
                 }
@@ -247,7 +247,7 @@ mod tests {
 
     /// Unit quaternion of a rotation matrix R (device→world) —
     /// round-trip tooling: M = Rᵀ ⇒ we pass R = Mᵀ.
-    fn mat_vers_quat(m: Mat3) -> [f32; 4] {
+    fn mat_to_quat(m: Mat3) -> [f32; 4] {
         let [a, b, c, d, e, f, g, h, i] = m.0;
         let tr = a + e + i;
         let (x, y, z, w);
@@ -282,7 +282,7 @@ mod tests {
     /// Known value: the camera at yaw 90° sees the lon 90° ray at the centre
     /// of its sensor.
     #[test]
-    fn valeur_connue_yaw_90() {
+    fn known_value_yaw_90() {
         let m = euler_to_mat(90.0, 0.0, 0.0);
         let (lon, lat) = (90.0_f32.to_radians(), 0.0_f32);
         let ray = [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];

@@ -17,7 +17,7 @@ fn test_answer(outcome: std::result::Result<(), pnex_notify::NotifyError>) -> Re
     }
 }
 
-/// Message de test built-in (boutons Test — canal existant ou brouillon).
+/// Built-in test message (Test buttons, existing channel or draft).
 fn test_message(name: &str) -> pnex_notify::Message {
     pnex_notify::Message {
         subject: Some(format!("PNeX test — {name}")),

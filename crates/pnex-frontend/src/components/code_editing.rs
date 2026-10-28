@@ -1,6 +1,6 @@
 //! Pure (DOM-free) caret/edit operations for the function code editor:
 //! Tab/Shift+Tab indent-dedent, smart Enter and whole-buffer reindent
-//! ("Formater"). Consumed by `CodeEditor` (code_highlight.rs); unit-tested
+//! ("Format"). Consumed by `CodeEditor` (code_highlight.rs); unit-tested
 //! here — the DOM layer stays thin.
 //!
 //! All offsets in this module are **byte offsets into `code`**. The DOM
@@ -362,7 +362,7 @@ pub fn enter_smart(code: &str, caret: u32, lang: impl Into<CodeLang>) -> CaretEd
 
 // ───────────────────────── Whole-buffer reindent ─────────────────────────
 
-/// "Formater": reindent the whole buffer. Bracket depth (string/comment
+/// "Format": reindent the whole buffer. Bracket depth (string/comment
 /// aware) for both languages plus the Starlark colon rule; `else`/`elif`
 /// and lines starting with a closer dedent first. Blank lines are emptied;
 /// content lines keep their bytes (only leading whitespace is rewritten).

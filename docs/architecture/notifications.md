@@ -369,7 +369,7 @@ slack, discord, smtp.
   exception assumée à D54. Et : les `label_i18n`/`help_i18n` des
   field_spec ne passent pas par `t!("littéral")` — le sweep front ne les
   voit pas (une clé manquante = panic à l'ouverture du formulaire : les 3
-  clés webhook manquaient). Garde : test `cles_field_spec_presentes_dans_les_locales`
+  clés webhook manquaient). Garde : test `field_spec_keys_present_in_the_locales`
   dans `registry.rs` qui inclut les deux .ftl et échoue si une clé du
   field_spec manque (ferme la classe de bug ; la garde ntfy avait d'abord
   montré la lacune).

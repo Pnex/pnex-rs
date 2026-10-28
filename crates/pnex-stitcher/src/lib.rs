@@ -180,7 +180,7 @@ impl Default for QualityParams {
             // sign + numerator not weighted by the mask:
             // double counting of full content in the overlap) —
             // hence saturated white halos, fringes and ghosting diffusion.
-            // Fixed (tests recouvrement_constant_sans_double_comptage +
+            // Fixed (tests constant_overlap_without_double_counting +
             // fine-octave reconstruction), the multi-band does its job
             // : wide feather without ghosting. LEVELS=1 = flat path
             // crossfade + narrow feather (fallback knob).
@@ -354,7 +354,7 @@ fn stitch_inner(
     let (mut rgb, covered, mut mask);
     if params.pipeline == Pipeline::Quality {
         let qp = &params.quality;
-        // 1) gains per-channel grossiers (poses brutes).
+        // 1) coarse per-channel gains (raw poses).
         let gains = render::estimate_gains(&prepared, qp.gain_channels);
         for (pf, g) in prepared.iter_mut().zip(gains) {
             pf.gain = g;
@@ -482,7 +482,7 @@ mod tests {
     /// ≈ hfov/360 (band full in latitude, not in longitude — a single
     /// frame does not make a ring), 2:1 dimensions, GPano at the head.
     #[test]
-    fn frame_unique() {
+    fn single_frame() {
         let (w, h) = (64u32, 48u32);
         let frame = Frame {
             rgb: vec![128; (w * h * 3) as usize],
@@ -519,7 +519,7 @@ mod tests {
     /// standard: u grows when turning right. Locks the output mirror of
     /// [`stitch`] (device finding 2026-09-11: L-R mirror).
     #[test]
-    fn rendu_handedness() {
+    fn render_handedness() {
         let (w, h) = (512u32, 384u32);
         // Left half of the image white (lon > 30), right black (lon < 30).
         let mut rgb = vec![0u8; (w * h * 3) as usize];
@@ -557,13 +557,13 @@ mod tests {
         let noir = at(155);
         assert!(
             blanc > 200 && noir < 60,
-            "handedness : blanc(col145)={blanc} noir(col155)={noir}"
+            "handedness: white(col145)={blanc} black(col155)={noir}"
         );
     }
 
     /// Absurd parameters → named errors.
     #[test]
-    fn parametres_invalides() {
+    fn invalid_parameters() {
         let frame = Frame {
             rgb: vec![0; 64 * 48 * 3],
             width: 64,
@@ -596,7 +596,7 @@ mod tests {
 
     /// Inconsistent frame → `InvalidFrame` with the index.
     #[test]
-    fn frame_incoherente() {
+    fn inconsistent_frame() {
         let frame = Frame {
             rgb: vec![0; 10],
             width: 64,

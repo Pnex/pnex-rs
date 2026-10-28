@@ -205,13 +205,13 @@ mod tests {
 
     /// O2 policy: 8-128 chars, lowercase + uppercase + digit + special.
     #[test]
-    fn mots_de_passe_conformes() {
+    fn passwords_are_compliant() {
         for _ in 0..50 {
             let p = generate_password();
-            assert!((8..=128).contains(&p.len()), "longueur {p}");
+            assert!((8..=128).contains(&p.len()), "length {p}");
             assert!(p.chars().any(char::is_lowercase), "minuscule {p}");
-            assert!(p.chars().any(char::is_uppercase), "majuscule {p}");
-            assert!(p.chars().any(|c| c.is_ascii_digit()), "chiffre {p}");
+            assert!(p.chars().any(char::is_uppercase), "uppercase {p}");
+            assert!(p.chars().any(|c| c.is_ascii_digit()), "digit {p}");
             assert!(p.chars().any(|c| "!_-@#%+".contains(c)), "special {p}");
         }
     }

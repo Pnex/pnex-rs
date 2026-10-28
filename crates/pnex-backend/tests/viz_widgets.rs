@@ -59,10 +59,10 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
-/// Template jauge valide.
+/// Valid gauge template.
 fn gauge_config() -> serde_json::Value {
     serde_json::json!({
         "type": "gauge",
@@ -77,7 +77,7 @@ fn gauge_config() -> serde_json::Value {
 
 #[tokio::test]
 #[serial]
-async fn cycle_crud_unicite_et_validation() {
+async fn crud_cycle_uniqueness_and_validation() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -253,7 +253,7 @@ async fn cycle_crud_unicite_et_validation() {
 
 #[tokio::test]
 #[serial]
-async fn isolation_org_et_viewer() {
+async fn org_isolation_and_viewer() {
     with_app(|server, env| async move {
         let org_a = personal_org(&server, &env.alice).await;
         let org_b = personal_org(&server, &env.bob).await;

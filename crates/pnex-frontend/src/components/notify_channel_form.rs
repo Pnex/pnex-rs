@@ -313,6 +313,11 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
     });
     // Pairs the label with its control (accessible name).
     let control_id = format!("notify-field-{id}");
+    // Worded placeholders go through t!; the others are language-neutral examples.
+    let placeholder = match label_key {
+        "notify-field-chat-id" => t!("notify-field-chat-id-placeholder").to_string(),
+        _ => spec.placeholder.clone().unwrap_or_default(),
+    };
     rsx! {
         div {
             label { class: FIELD_LABEL, r#for: "{control_id}",
@@ -364,7 +369,7 @@ fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
                     input {
                         id: "{control_id}",
                         class: "{INPUT} w-full",
-                        placeholder: spec.placeholder.clone().unwrap_or_default(),
+                        placeholder: "{placeholder}",
                         value: "{value}",
                         oninput: move |e| {
                             values.write().insert(id.clone(), e.value());

@@ -30,7 +30,10 @@ pub mod iam;
 ///
 /// 4 (2026-10-24, web-presence.md D359): the flow node kind `ingest` and
 /// `GET /flows/{id}/ingest-steps` are removed; an import carries its steps.
-pub const CONTRACT: u32 = 4;
+///
+/// 5 (2026-10-28): the data classification enum is English on the wire
+/// (`public`, `internal`, `personal`, `sensitive`).
+pub const CONTRACT: u32 = 5;
 
 /// Identity announced by the meta endpoint — aligned with
 /// `pnex_core::SERVICE_NAME` (the service is `pnex-server`). The LAN scan compares this field to tell a PNEX
@@ -99,14 +102,14 @@ mod tests {
     }
 
     #[test]
-    fn compatibilite_stricte() {
+    fn strict_compatibility() {
         assert!(compatible(CONTRACT, CONTRACT));
         assert!(!compatible(1, 2));
         assert!(!compatible(2, 1));
     }
 
     #[test]
-    fn identite_service_est_pnex_server() {
+    fn service_identity_is_pnex_server() {
         // The LAN scan rejects anything that does not announce itself exactly so.
         assert_eq!(SERVICE, "pnex-server");
     }

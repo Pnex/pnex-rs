@@ -13,7 +13,7 @@ use serial_test::serial;
 /// service identity, current semver version, embedded contract.
 #[tokio::test]
 #[serial]
-async fn meta_version_est_public_et_conforme() {
+async fn meta_version_is_public_and_compliant() {
     let guard = VarGuard::capture("RAUTHY_URL");
     let base = common::spawn_mock_rauthy().await;
     unsafe { std::env::set_var("RAUTHY_URL", &base) };

@@ -4,7 +4,7 @@ title: Sales follow-up — opportunities, activities, follow-up plans, morning d
 kind: feature
 pages:
 nodes: ontology_query, object_upsert, link_upsert, llm_text
-err_codes: prospection-opposed, ontology-link-cardinality
+err_codes: prospecting-opposed, ontology-link-cardinality
 tools:
 tags: crm, sales, vente, suivi commercial, opportunity, opportunité, pipeline, stage, étape, qualification, SPICED, MEDDPICC, criterion, critère, activity, activité, call, appel, mail, e-mail, follow-up, relance, plan de relance, draft, brouillon, morning digest, ma journée, dormant, sans activité, forecast, montant, amount, trade show, salon
 ---
@@ -29,4 +29,4 @@ The flow model **CRM · drafts** writes a *Draft* on the mails and network messa
 The flow model **CRM · my day** makes one text each morning: the activities due today or late, and the open opportunities with no activity for 14 days. Add your **Notification** node on its first port (template with a `text` variable, trigger `payload.trigger`), then deploy. To change the delay, edit `$today-14` in its query node.
 
 ## When a link is refused
-**prospection-opposed** on a link: the person objected to the processing of their data, or was erased, and this link would recreate them at the same account. Do not insist: the objection is kept on purpose. See the card on personal data.
+**prospecting-opposed** on a link: the person objected to the processing of their data, or was erased, and this link would recreate them at the same account. Do not insist: the objection is kept on purpose. See the card on personal data.

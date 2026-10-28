@@ -318,7 +318,7 @@ pub(super) fn MediaDetail(
                                 }
                             }
                             // Versions card — inline list (the drawer is
-                            // gone): "Voir" previews a non-current version,
+                            // gone): "View" previews a non-current version,
                             // restore/delete gated can_write.
                             div { class: "rounded-xl border border-gray-200 bg-white p-4",
                                 div { class: "flex items-center justify-between gap-2",

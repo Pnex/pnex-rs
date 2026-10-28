@@ -64,7 +64,7 @@ pub enum ExtensionError {
     #[error("profile daily cap")]
     ProfileDailyCap { max: i64 },
     /// The person objected to prospecting (D341).
-    #[error("prospection opposed")]
+    #[error("prospecting opposed")]
     Opposed,
     #[error("person not found")]
     PersonNotFound,

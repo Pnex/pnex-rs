@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn titles_are_bounded_and_lossy() {
-        let long = format!("StreamTitle='{}';", "é".repeat(400));
+        let long = format!("StreamTitle='{}';", "é".repeat(400)); // english-guard: allow (multibyte test data)
         let t = stream_title(long.as_bytes()).unwrap();
         assert!(t.len() <= TITLE_MAX_BYTES && t.chars().all(|c| c == 'é'));
         assert_eq!(

@@ -73,7 +73,7 @@ mod tests {
     use std::sync::Arc;
 
     #[tokio::test]
-    async fn poste_text_compose_et_tolere_reponse_plaintext() {
+    async fn posts_composed_text_and_tolerates_plaintext_response() {
         let seen = Arc::new(tokio::sync::Mutex::new(None::<Value>));
         let seen_for_handler = seen.clone();
         let app = axum::Router::new().route(
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_exige_url_hooks_slack() {
+    fn validate_requires_slack_hooks_url() {
         assert!(SlackChannel
             .validate(&json!({"webhook_url": "https://hooks.slack.com/services/T/B/X"}))
             .is_ok());

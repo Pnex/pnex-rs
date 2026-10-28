@@ -1209,11 +1209,11 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         let (_, o) = call(&server, "GET", &opposition, &env.bob, org, None).await;
         assert_eq!(o["opposed"], true);
         let (s, e) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://x.com/ada"))).await;
-        assert_eq!((s, e["error"].as_str()), (409, Some("prospection-opposed")));
+        assert_eq!((s, e["error"].as_str()), (409, Some("prospecting-opposed")));
         let (s, eve) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({ "type_key": "person", "title": "Eve", "properties": {} }))).await;
         assert_eq!(s, 201);
         let (s, e) = call(&server, "POST", &format!("/api/v1/extension/people/{}/profile-captures", eve["id"].as_str().unwrap()), &env.alice, org, Some(ask("https://www.linkedin.com/in/ada-l"))).await;
-        assert_eq!((s, e["error"].as_str()), (409, Some("prospection-opposed")), "Ada's address stays refused");
+        assert_eq!((s, e["error"].as_str()), (409, Some("prospecting-opposed")), "Ada's address stays refused");
 
         // Daily cap per network.
         let eve_captures = format!("/api/v1/extension/people/{}/profile-captures", eve["id"].as_str().unwrap());

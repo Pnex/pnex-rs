@@ -300,7 +300,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn classification_des_echecs_de_save() {
+    fn save_failure_classification() {
         let conflict = ApiError::http(
             409,
             r#"{"error":"conflict","description":"version périmée"}"#,

@@ -121,13 +121,10 @@ mod tests {
     }
 
     #[test]
-    fn kill_switch_par_defaut_actif_et_coupre_si_false() {
+    fn kill_switch_on_by_default_and_cuts_if_false() {
         let c = minimal_config(serde_json::json!({}));
         assert!(AiSettings::from_config(&c).enabled, "default: enabled");
         let c = minimal_config(serde_json::json!({ "ai": { "enabled": false } }));
-        assert!(
-            !AiSettings::from_config(&c).enabled,
-            "kill-switch explicite"
-        );
+        assert!(!AiSettings::from_config(&c).enabled, "explicit kill-switch");
     }
 }

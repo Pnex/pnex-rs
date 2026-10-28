@@ -194,7 +194,7 @@ pub(crate) async fn reproject_candidate(
     let mut pairs: Vec<(flows::Model, flow_versions::Model)> = Vec::new();
     for (f, version) in deployed_flows {
         if Some(f.id) == exclude {
-            continue; // Stop : le tab quitte l'artefact (ack flow_stopped)
+            continue; // Stop: the tab leaves the artifact (ack flow_stopped)
         }
         if override_ids.contains(&f.id) {
             continue; // replaced by the candidate version (added below)

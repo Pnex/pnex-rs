@@ -57,7 +57,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 async fn series(
@@ -84,7 +84,7 @@ async fn series(
 /// stays required.
 #[tokio::test]
 #[serial]
-async fn telemetry_degrade_et_validation_sans_o2() {
+async fn telemetry_degrades_and_validates_without_o2() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -168,7 +168,7 @@ async fn telemetry_degrade_et_validation_sans_o2() {
 /// is a real 400 (call error, not missing data).
 #[tokio::test]
 #[serial]
-async fn series_batch_degrade_par_item_sans_o2() {
+async fn series_batch_degrades_per_item_without_o2() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 

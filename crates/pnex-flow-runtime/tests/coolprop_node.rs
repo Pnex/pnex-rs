@@ -40,7 +40,7 @@ fn coolprop_flows() -> String {
 }
 
 #[test]
-fn inject_coolprop_debug_renvoie_les_proprietes() {
+fn inject_coolprop_debug_returns_the_properties() {
     let home = common::tmp_home("coolprop");
     let flows = home.join("flows.json");
     std::fs::write(&flows, coolprop_flows()).unwrap();
@@ -69,7 +69,7 @@ fn inject_coolprop_debug_renvoie_les_proprietes() {
         .expect("numeric Dmolar in the debug");
     assert!(
         (25.0..35.0).contains(&dmolar),
-        "Dmolar hors plage physique : {dmolar}"
+        "Dmolar out of physical range: {dmolar}"
     );
 }
 

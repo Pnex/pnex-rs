@@ -3,7 +3,7 @@
 //! (or belong to the GENERIC allowlist below — legacy sites still awaiting
 //! their specific code). This guarantees the frontend can resolve
 //! `err-<kebab>` for any server error the UI may display, with verbatim
-//! fallback otherwise (i18n chantier — see `crates/pnex-core/src/err_codes.rs`).
+//! fallback otherwise (i18n effort — see `crates/pnex-core/src/err_codes.rs`).
 
 use std::path::PathBuf;
 

@@ -168,7 +168,7 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
         )),
         ExtensionError::Opposed => coded(
             StatusCode::CONFLICT,
-            err_codes::PROSPECTION_OPPOSED,
+            err_codes::PROSPECTING_OPPOSED,
             "This person objected to prospecting: no capture.",
         ),
         ExtensionError::PersonNotFound => coded(
@@ -1260,7 +1260,7 @@ struct OppositionView {
         (status = 201, body = pnex_core::browser_agent::Mission),
         (status = 400, description = "`ext-target-not-profile`: not one person's profile page; `field-invalid` (`url`): not a known network", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`prospection-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`prospecting-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]

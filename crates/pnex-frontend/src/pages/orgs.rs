@@ -273,7 +273,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                         }
                     }
 
-                    // Renommage (owner/admin)
+                    // Rename (owner/admin)
                     if can_write {
                         form {
                             class: "p-4 border-b border-gray-200 flex gap-2 md:p-6",

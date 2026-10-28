@@ -36,7 +36,7 @@ fn dome_ph_water() {
     let vap = dome.iter().find(|c| c.id == "sat_vap").unwrap();
     let p_liq = liq.points.first().unwrap()[1];
     let p_vap = vap.points.first().unwrap()[1];
-    assert!((p_liq - p_vap).abs() / p_liq < 0.02, "Psat divergentes");
+    assert!((p_liq - p_vap).abs() / p_liq < 0.02, "Psat diverge");
     let latent = vap.points.first().unwrap()[0] - liq.points.first().unwrap()[0];
     assert!(
         (latent - 2_500_000.0).abs() < 30_000.0,
@@ -45,7 +45,7 @@ fn dome_ph_water() {
 }
 
 #[test]
-fn psychrometrique_air_humide() {
+fn psychrometric_humid_air() {
     let req = DiagramRequest {
         fluid: "Water".into(),
         diagram: DiagramKind::Psychro,
@@ -92,7 +92,7 @@ fn psychrometrique_air_humide() {
 }
 
 #[test]
-fn cycle_points_cohérents_avec_props_si() {
+fn cycle_points_consistent_with_props_si() {
     // Point (400 K, 1 bar): AbstractState props converge with PropsSI.
     let pts = cycle_points(
         "Water",
@@ -117,7 +117,7 @@ fn cycle_points_cohérents_avec_props_si() {
 }
 
 #[test]
-fn ph_r410a_axes_et_traits_de_base() {
+fn ph_r410a_axes_and_base_traces() {
     // User feedback 2026-09-18: R410A p-h unreadable — linear
     // auto-fit → negative y_min on a log axis, and no lines without
     // explicit iso-lines.

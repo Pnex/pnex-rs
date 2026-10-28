@@ -61,7 +61,7 @@ fn bearer(token: &str) -> String {
 
 #[tokio::test]
 #[serial]
-async fn patch_profil_maj_partielle_puis_user_info_reflete() {
+async fn patch_profile_partial_update_then_user_info_reflects() {
     with_app(|server, token| async move {
         // JIT provisioning (user + default profile + personal org).
         server
@@ -80,7 +80,10 @@ async fn patch_profil_maj_partielle_puis_user_info_reflete() {
         let patched: serde_json::Value = res.json();
         assert_eq!(patched["language"], "fr", "short form normalised");
         assert_eq!(patched["theme"], "dark");
-        assert_eq!(patched["timezone"], "UTC", "champ non fourni intact");
+        assert_eq!(
+            patched["timezone"], "UTC",
+            "field not provided is untouched"
+        );
 
         // GET /user-info reflects the update.
         let info: serde_json::Value = server
@@ -108,7 +111,7 @@ async fn patch_profil_maj_partielle_puis_user_info_reflete() {
 
 #[tokio::test]
 #[serial]
-async fn patch_profil_rejette_valeurs_invalides_et_corps_vides() {
+async fn patch_profile_rejects_invalid_values_and_empty_bodies() {
     with_app(|server, token| async move {
         server
             .get("/api/v1/user-info")

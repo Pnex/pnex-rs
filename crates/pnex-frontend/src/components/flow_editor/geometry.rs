@@ -658,7 +658,7 @@ mod tests {
     }
 
     #[test]
-    fn snap_sur_la_grille() {
+    fn snap_to_the_grid() {
         assert_eq!(snap(7.0), 0.0);
         assert_eq!(snap(13.0), 20.0);
         assert_eq!(snap(-7.0), 0.0);
@@ -666,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn ancres_de_ports() {
+    fn port_anchors() {
         let pos = Position { x: 100.0, y: 60.0 };
         assert_eq!(port_in(pos, NODE_H), (100.0, 84.0));
         // The output anchor is computed via `port_out_at` (multi-port aware).
@@ -674,7 +674,7 @@ mod tests {
     }
 
     #[test]
-    fn fil_nu_nuit_jamais_une_rangee() {
+    fn bare_wire_never_blocks_a_row() {
         // A bare wire on a node with named rows lands at mid-height:
         // never "closest row" (the wire jumped ports at the
         // slightest move). Stable point, independent of near_y.
@@ -706,7 +706,7 @@ mod tests {
     }
 
     #[test]
-    fn ports_multiples_repartis() {
+    fn multiple_ports_spread() {
         let pos = Position { x: 100.0, y: 60.0 };
         // 2 ports: node grown to 60 px (3 × PORT_PITCH), step of 20 px;
         // port 1 = "device name" of the device-read.
@@ -719,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn hauteur_dynamique_selon_ports() {
+    fn dynamic_height_by_ports() {
         // Single port: historical height.
         assert_eq!(node_height(1, 0), NODE_H);
         // Grows one step per extra port, never below NODE_H.
@@ -731,7 +731,7 @@ mod tests {
     }
 
     #[test]
-    fn comptes_de_ports_par_kind() {
+    fn port_counts_per_kind() {
         use pnex_core::{DeviceReadConfig, DeviceWriteConfig};
         let read = FlowNode {
             id: "r".into(),
@@ -962,7 +962,7 @@ mod tests {
     }
 
     #[test]
-    fn port_sortie_la_plus_proche() {
+    fn nearest_output_port() {
         // device-read 2 ports at (100, 60), h = 60: ports at y 80 and 100.
         let pos = Position { x: 100.0, y: 60.0 };
         let h = node_height(2, 0);
@@ -1008,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn conversion_client_vers_graphe() {
+    fn client_to_graph_conversion() {
         let rect = (10.0, 20.0, 800.0, 600.0);
         let pan = (100.0, 50.0);
         assert_eq!(to_graph((110.0, 70.0), rect, pan, 1.0), (0.0, 0.0));
@@ -1016,7 +1016,7 @@ mod tests {
     }
 
     #[test]
-    fn zoom_conserve_le_point_sous_curseur() {
+    fn zoom_keeps_the_point_under_cursor() {
         let pan = (100.0, 50.0);
         let zoom = 1.0;
         let new_zoom = 2.0;
@@ -1030,7 +1030,7 @@ mod tests {
     }
 
     #[test]
-    fn positions_manquantes_remplies() {
+    fn missing_positions_filled() {
         let mut graph = FlowGraph {
             nodes: vec![inject("a", 0.0, 0.0)],
         };

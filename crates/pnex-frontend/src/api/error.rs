@@ -152,7 +152,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn detail_dabord() {
+    fn detail_first() {
         let body = r#"{"detail":"vous n'êtes pas membre de cette organisation"}"#;
         assert_eq!(
             extract_message(403, body),
@@ -161,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn bloc_erreur_idp() {
+    fn idp_error_block() {
         let body = r#"{"error":"invalid_grant","error_description":"Code expired"}"#;
         assert_eq!(extract_message(400, body), "invalid_grant : Code expired");
     }
@@ -176,12 +176,12 @@ mod tests {
     }
 
     #[test]
-    fn code_sans_description() {
+    fn code_without_description() {
         assert_eq!(extract_message(400, r#"{"error":"upstream"}"#), "upstream");
     }
 
     #[test]
-    fn chaine_nue_puis_fallback() {
+    fn bare_string_then_fallback() {
         assert_eq!(extract_message(400, r#""oups""#), "oups");
         assert_eq!(extract_message(500, "pas du json"), "HTTP 500");
     }
@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn http_conserve_statut_et_corps() {
+    fn http_keeps_status_and_body() {
         let err = ApiError::http(
             409,
             r#"{"error":"conflict","description":"version périmée"}"#,
@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn http_extrait_code_et_args() {
+    fn http_extracts_code_and_args() {
         let err = ApiError::http(
             409,
             r#"{"error":"org-name-duplicate","description":"an organization already uses this name","errors":{"args":{"name":"demo"}}}"#,
@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn local_pose_code_et_args() {
+    fn local_sets_code_and_args() {
         let err = ApiError::local(
             pnex_core::err_codes::CLIENT_NETWORK,
             "network error: offline",

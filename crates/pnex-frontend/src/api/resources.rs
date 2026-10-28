@@ -37,7 +37,7 @@ pub struct Folder {
     updated_at: String,
 }
 
-/// Recherche cross-kind (labels effectifs).
+/// Cross-kind search (effective labels).
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchHit {
     pub kind: String,
@@ -121,7 +121,7 @@ pub async fn put_labels(kind: &str, id: &str, labels: &LabelSet) -> Result<Label
 pub struct RefNode {
     pub kind: String,
     pub id: String,
-    /// Nom d'affichage (folders uniquement).
+    /// Display name (folders only).
     pub name: Option<String>,
     pub emoji: Option<String>,
     pub sort_key: Option<String>,
@@ -130,7 +130,7 @@ pub struct RefNode {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Containment {
     pub parent: Option<RefNode>,
-    /// Chemin feuille → racine (parent exclu).
+    /// Path leaf → root (parent excluded).
     pub path: Vec<RefNode>,
     pub children: Vec<RefNode>,
 }

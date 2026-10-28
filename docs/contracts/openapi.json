@@ -3780,10 +3780,10 @@
       "Classification": {
         "description": "Closed classification list of a property, a link attribute or a type's\ntitle (iam.md D298).",
         "enum": [
-          "publique",
-          "interne",
-          "personnelle",
-          "sensible"
+          "public",
+          "internal",
+          "personal",
+          "sensitive"
         ],
         "type": "string"
       },
@@ -18768,7 +18768,7 @@
             ]
           },
           "description_i18n": {
-            "description": "Fluent key resolved client-side (i18n chantier); `description`\nstays the English fallback + server-side search field.",
+            "description": "Fluent key resolved client-side (i18n work); `description`\nstays the English fallback + server-side search field.",
             "type": [
               "string",
               "null"
@@ -18992,7 +18992,7 @@
             "properties": {
               "classification": {
                 "$ref": "#/components/schemas/Classification",
-                "description": "Data classification (iam.md D298, crm.md D442): `personnelle` and\n`sensible` values are hidden from a role without the matching read\npermission and removed by an erasure."
+                "description": "Data classification (iam.md D298, crm.md D442): `personal` and\n`sensitive` values are hidden from a role without the matching read\npermission and removed by an erasure."
               },
               "colors": {
                 "additionalProperties": {
@@ -41509,7 +41509,7 @@
                 }
               }
             },
-            "description": "`prospection-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached"
+            "description": "`prospecting-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached"
           }
         },
         "security": [
@@ -60075,7 +60075,7 @@
                 }
               }
             },
-            "description": "`ontology-link-cardinality` (an open link already takes this place), `ontology-already-exists`, `ontology-erased` (an end was erased), `prospection-opposed`"
+            "description": "`ontology-link-cardinality` (an open link already takes this place), `ontology-already-exists`, `ontology-erased` (an end was erased), `prospecting-opposed`"
           }
         },
         "security": [

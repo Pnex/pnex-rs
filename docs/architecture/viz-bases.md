@@ -490,7 +490,7 @@ Frontend (unitaires purs, wasm32) : `geometry`/`canvas_math` (transforms,
 hit tests, snap, zoom-toward-cursor), reducers d'éditeurs, undo/redo,
 **sérialiseur `.excalidraw`** (fixtures import→export round-trip sur le
 sous-ensemble documenté), composants `charts` (génération de paths).
-Parité i18n fr/en (test existant `i18n::tests::parite_cles_fr_en`).
+Parité i18n fr/en (test existant `i18n::tests::fr_en_key_parity`).
 
 Manuel/scripté : matrice web + Android (émulateur `Medium_Phone_API_36.1`,
 `10.0.2.2:5150`) par phase — spot checks chromium headless pour les viewers

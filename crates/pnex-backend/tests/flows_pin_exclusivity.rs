@@ -278,7 +278,7 @@ async fn write_pin(
 /// actuator (400 `pin-already-assigned` naming the owning flow).
 #[tokio::test]
 #[serial]
-async fn deploy_conflit_cross_flows_rejete_400() {
+async fn deploy_cross_flow_conflict_rejected_400() {
     with_app(|server, auth, ctx| async move {
         let org = personal_org(&server, &auth).await;
         let _dev = create_generic(&server, &auth, "gen-excl").await;
@@ -334,7 +334,7 @@ async fn deploy_conflit_cross_flows_rejete_400() {
 /// (reservation wins over the offline check, no session required).
 #[tokio::test]
 #[serial]
-async fn write_manuelle_pin_reservee_409() {
+async fn manual_write_reserved_pin_409() {
     with_app(|server, auth, ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-manuel").await;
@@ -364,7 +364,7 @@ async fn write_manuelle_pin_reservee_409() {
 /// blocking — reads are shareable).
 #[tokio::test]
 #[serial]
-async fn write_manuelle_pin_lue_seulement_autorisee() {
+async fn manual_write_read_only_pin_allowed() {
     with_app(|server, auth, ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-lu").await;
@@ -387,7 +387,7 @@ async fn write_manuelle_pin_lue_seulement_autorisee() {
 /// through the gate (503 = engine off, gate passed).
 #[tokio::test]
 #[serial]
-async fn arret_flow_libere_pin() {
+async fn flow_stop_releases_pin() {
     with_app(|server, auth, ctx| async move {
         let org = personal_org(&server, &auth).await;
         let _dev = create_generic(&server, &auth, "gen-libere").await;
@@ -410,7 +410,7 @@ async fn arret_flow_libere_pin() {
 /// Redeploy/rollback of the OWNING flow never conflicts with itself.
 #[tokio::test]
 #[serial]
-async fn redeploy_owner_pas_bloque() {
+async fn redeploy_owner_not_blocked() {
     with_app(|server, auth, ctx| async move {
         let org = personal_org(&server, &auth).await;
         let _dev = create_generic(&server, &auth, "gen-owner").await;

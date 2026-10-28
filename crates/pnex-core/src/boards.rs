@@ -334,7 +334,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn overlay_parse_depuis_details_jsonb() {
+    fn overlay_parse_from_details_jsonb() {
         let json = r#"{"board":"nodemcu","pins":[{"label":"D1","gpio":5,"kind":"digital"},{"label":"A0","gpio":17,"kind":"analog"}]}"#;
         let o: BoardOverlay = serde_json::from_str(json).unwrap();
         assert_eq!(o.board, "nodemcu");
@@ -369,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn board_details_v2_parse_et_roundtrip() {
+    fn board_details_v2_parse_and_roundtrip() {
         let d: BoardDetails = serde_json::from_str(&v2_json()).unwrap();
         let profile = &d;
         assert_eq!(profile.board, "nodemcu_oled");
@@ -390,13 +390,13 @@ mod tests {
     }
 
     #[test]
-    fn board_details_sentinelle_invalide_echoue() {
+    fn board_details_invalid_sentinel_fails() {
         let res: Result<BoardDetails, _> = serde_json::from_str(r#"{"no":"details"}"#);
         assert!(res.is_err(), "the sentinel must not parse");
     }
 
     #[test]
-    fn admission_pins_exclut_flash_illegaux_garde_a0() {
+    fn admission_pins_excludes_flash_and_illegal_keeps_a0() {
         // esp8266: A0 (17) is illegal in DigitalIn but legal in AdcIn → kept;
         // 3V3/GND (null gpio) excluded.
         let d: BoardDetails = serde_json::from_str(&v2_json()).unwrap();
@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn reservation_ecran_conditionnelle_a_l_activation() {
+    fn screen_reservation_depends_on_activation() {
         let d: BoardDetails = serde_json::from_str(&v2_json()).unwrap();
         let off = DevicePeripherals {
             screen: ScreenChoice::None,
@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[test]
-    fn device_peripherals_default_desactive() {
+    fn device_peripherals_default_disabled() {
         let p = DevicePeripherals::default();
         assert_eq!(p.screen, ScreenChoice::None);
         let parsed: DevicePeripherals = serde_json::from_str(r#"{}"#).unwrap();

@@ -48,19 +48,19 @@ static SINK: RwLock<Option<Arc<dyn TelemetrySink>>> = RwLock::new(None);
 /// Active sink (NoopSink until one is installed).
 pub fn sink() -> Arc<dyn TelemetrySink> {
     SINK.read()
-        .expect("verrou sink")
+        .expect("sink lock")
         .clone()
         .unwrap_or_else(|| Arc::new(NoopSink))
 }
 
 /// Installs the sink (boot: OpenObserve batcher; tests: recording sink).
 pub fn set_sink(new: Arc<dyn TelemetrySink>) {
-    *SINK.write().expect("verrou sink") = Some(new);
+    *SINK.write().expect("sink lock") = Some(new);
 }
 
 /// Removes the installed sink (restores NoopSink) — test hygiene.
 pub fn reset_sink() {
-    *SINK.write().expect("verrou sink") = None;
+    *SINK.write().expect("sink lock") = None;
 }
 
 /// Default sink as an `Arc` — lets the boot composition install a real chain

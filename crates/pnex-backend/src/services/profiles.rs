@@ -44,7 +44,7 @@ async fn opposed_any(
 ) -> Result<bool, ExtensionError> {
     Ok(db
         .query_one_raw(stmt(
-            "SELECT 1 AS x FROM prospection_oppositions WHERE org_id = $1 AND fingerprint = ANY($2)",
+            "SELECT 1 AS x FROM prospecting_oppositions WHERE org_id = $1 AND fingerprint = ANY($2)",
             vec![org_id.into(), keys.to_vec().into()],
         ))
         .await?
@@ -127,7 +127,7 @@ async fn oppose_by(
     }
     for key in keys {
         db.execute_raw(stmt(
-            "INSERT INTO prospection_oppositions (org_id, fingerprint, created_by)
+            "INSERT INTO prospecting_oppositions (org_id, fingerprint, created_by)
              VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
             vec![org_id.into(), key.into(), user_id.into()],
         ))

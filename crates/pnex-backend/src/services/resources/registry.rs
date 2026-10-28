@@ -224,7 +224,7 @@ impl KindResolver for FolderKind {
     }
 }
 
-// ─────────────────────────── registre ───────────────────────────
+// ─────────────────────────── registry ───────────────────────────
 
 pub struct KindEntry {
     /// Type definition, data from `pnex_core::ontology` (D176).

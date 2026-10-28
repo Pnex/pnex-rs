@@ -165,7 +165,7 @@ pub struct ControlSpec {
     pub safe_state: SafeState,
 }
 
-/// Device → serveur.
+/// Device → server.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum DeviceMsg {
@@ -732,7 +732,7 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_messages_taguees_t() {
+    fn roundtrip_messages_tagged_t() {
         let m: DeviceMsg = serde_json::from_str(
             r#"{"t":"announce","chip":"esp8266","board":"nodemcu","fw":"0.1.0"}"#,
         )
@@ -746,7 +746,7 @@ mod tests {
     /// Custom firmware: pins declared by the sketch — `pins` is additive
     /// (a legacy wire without this field stays valid).
     #[test]
-    fn announce_avec_pins_declarees_roundtrip() {
+    fn announce_with_declared_pins_roundtrip() {
         let m: DeviceMsg = serde_json::from_str(
             r#"{"t":"announce","chip":"esp32-c3","board":"mon_carte_maison","fw":"1.0.0",
                 "pins":[{"gpio":2,"label":"pump","mode":"digital_out","safe_state":"low"},
@@ -785,7 +785,7 @@ mod tests {
     /// D47: announced manifest, optional fields at defaults (unit absent,
     /// version=1).
     #[test]
-    fn announce_avec_manifeste_caps_roundtrip() {
+    fn announce_with_caps_manifest_roundtrip() {
         let m: DeviceMsg = serde_json::from_str(
             r#"{"t":"announce","chip":"esp8266","board":"nodemcu","fw":"1.0.0",
                 "caps":[{"id":"digital_state","family":"state"},
@@ -866,7 +866,7 @@ mod tests {
     }
 
     #[test]
-    fn state_report_et_ack_roundtrip() {
+    fn state_report_and_ack_roundtrip() {
         // Historical wire without extended fields: stays valid (additive D46/D47).
         let m: DeviceMsg =
             serde_json::from_str(r#"{"t":"state_report","gpio":5,"value":true}"#).unwrap();
@@ -914,7 +914,7 @@ mod tests {
             if cmd_id == "c2" && value == Value::Bool(true)));
     }
     #[test]
-    fn provision_ack_et_reject_roundtrip() {
+    fn provision_ack_and_reject_roundtrip() {
         let m: ServerMsg = serde_json::from_str(
             r#"{"t":"provision_ack","caps":[{"gpio":5,"label":"D1","mode":"digital_out","safe_state":"low"}]}"#,
         )
@@ -941,7 +941,7 @@ mod tests {
         let wire = serde_json::to_string(&m).unwrap();
         assert!(wire.contains(r#""pullup":true"#), "{wire}");
         // opts=None does not embed an empty object (skip_serializing_if).
-        let sans = ServerMsg::ProvisionAck {
+        let without_opts = ServerMsg::ProvisionAck {
             caps: vec![PinSpec {
                 gpio: 2,
                 label: "D0".into(),
@@ -950,7 +950,7 @@ mod tests {
                 opts: None,
             }],
         };
-        let wire = serde_json::to_string(&sans).unwrap();
+        let wire = serde_json::to_string(&without_opts).unwrap();
         assert!(!wire.contains("opts"), "{wire}");
 
         let m: ServerMsg =
@@ -960,7 +960,7 @@ mod tests {
     }
 
     #[test]
-    fn role_of_derive_le_role_du_mode() {
+    fn role_of_derives_role_from_mode() {
         assert_eq!(role_of(Mode::DigitalIn), "sensor");
         assert_eq!(role_of(Mode::AdcIn), "sensor");
         assert_eq!(role_of(Mode::DigitalOut), "actuator");
@@ -1027,7 +1027,7 @@ mod tests {
     }
 
     #[test]
-    fn control_config_vide_remplace_tout() {
+    fn empty_control_config_replaces_all() {
         // `[]` = clear: puts all the controlled outputs back in safe.
         let m: ServerMsg =
             serde_json::from_str(r#"{"t":"control_config","cmd_id":"c8","configs":[]}"#).unwrap();
@@ -1059,7 +1059,7 @@ mod tests {
     /// deserializes to NaN (before this fix, a "sensor unreadable" RegState
     /// was dropped at parse).
     #[test]
-    fn reg_state_sensor_null_devient_nan() {
+    fn reg_state_sensor_null_becomes_nan() {
         let m: DeviceMsg = serde_json::from_str(
             r#"{"t":"reg_state","entries":[
                 {"node_id":"r1","kind":"pid","setpoint":21.0,"sensor_value":null,

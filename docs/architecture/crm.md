@@ -25,9 +25,9 @@ Suivre une affaire de la liste cible au contrat dans le même graphe que le comp
 
 ### D442 — Classification D298 codée
 
-`PropertyDef` gagne `classification` : `publique`, `interne` (défaut, omis), `personnelle`, `sensible` (liste fermée, iam.md D298). Les attributs de type de lien sont des `PropertyDef` : même champ.
+`PropertyDef` gagne `classification` : `public`, `internal` (défaut, omis), `personal`, `sensitive` (liste fermée, iam.md D298). Les attributs de type de lien sont des `PropertyDef` : même champ.
 
-`ObjectTypeDef` gagne `title_classification` (même liste, défaut `interne`) : le titre d'une personne est son nom.
+`ObjectTypeDef` gagne `title_classification` (même liste, défaut `internal`) : le titre d'une personne est son nom.
 
 Packs livrés classés : `investigation` (personne : alias, rôle, notes, titre ; `employs.position`), `prospecting_b2b` (personne : persona), `companies` (dirigeant : `manages` sans attribut personnel ajouté). Une valeur hors liste est refusée à l'installation (`field-invalid`).
 
@@ -37,8 +37,8 @@ Deux permissions de lecture, inscrites au registre IAM :
 
 | Permission | Plus bas rôle | Ce qu'elle laisse voir |
 |---|---|---|
-| `ontology.personal:read` | Lecteur | propriétés, attributs et titres `personnelle` |
-| `ontology.sensitive:read` | Administrateur | propriétés, attributs et titres `sensible` |
+| `ontology.personal:read` | Lecteur | propriétés, attributs et titres `personal` |
+| `ontology.sensitive:read` | Administrateur | propriétés, attributs et titres `sensitive` |
 
 Un rôle personnalisé sans la permission reçoit les objets **caviardés** : propriétés et attributs de lien retirés, titre remplacé par `•••• <8 caractères de l'id>` (neutre, sans traduction), et la liste `redacted` des clés retirées sur l'objet. Points d'application : lecture d'un objet, résolution, liens, voisinage, chemin, impact, nœuds de la hiérarchie, requête D185, historique, flux des changements (D435), ensembles d'objets (D434), propositions (leurs objets), outils `query_ontology` et `get_object` de l'assistant ; le MCP passe par les mêmes routes. Les écritures ne changent pas.
 
@@ -48,7 +48,7 @@ Un rôle personnalisé sans la permission reçoit les objets **caviardés** : pr
 
 Deux réglages D368 de `prospecting_b2b` :
 
-- `legal_basis` (texte, défaut `interet_legitime_prospection_b2b`) : affichée sur la fiche d'une personne ;
+- `legal_basis` (texte, défaut `legitimate_interest_b2b_prospecting`) : affichée sur la fiche d'une personne ;
 - `retention_months` (nombre, défaut 36, de 6 à 120).
 
 ### D445 — File de rétention : des propositions d'effacement
@@ -63,7 +63,7 @@ Chaque nuit, pour chaque org où `prospecting_b2b` est installé : une personne 
 
 `POST /ontology/objects/{id}/erase` (permission `ontology:delete`), générique :
 
-- propriétés `personnelle` et `sensible` supprimées, titre `personnelle`/`sensible` remplacé par `∅ <8 caractères de l'id>`, attributs personnels de ses liens supprimés ;
+- propriétés `personal` et `sensitive` supprimées, titre `personal`/`sensitive` remplacé par `∅ <8 caractères de l'id>`, attributs personnels de ses liens supprimés ;
 - colonne `objects.erased_at` posée ; l'objet reste (coquille), ses liens et la provenance des autres objets tiennent ; **la coquille est en lecture seule** : toute modification et tout nouveau lien sont refusés (`ontology-erased`, 409), un import en masse laisse le lien de côté (constaté à l'essai du 2026-10-26 : un `PUT` remettait le nom effacé) ;
 - l'historique d'un objet effacé est relu caviardé (propriétés classées et titre) ; le journal O2 garde l'ancien contenu jusqu'à sa rétention (D72), sans le servir ;
 - journalisé `object.erase`, sans le contenu effacé.
@@ -76,7 +76,7 @@ Le MCP ne l'expose pas (motif destructif).
 
 - `oppose` pose aussi la propriété `opposed_on` (date, pack `prospecting_b2b`) sur la personne : les flows de relance la filtrent.
 - La liste d'opposition gagne une empreinte **nom + compte** : `title:<nom normalisé>@<id de l'purpose lié>`, posée pour chaque organisation liée à la personne au moment de l'opposition ou de l'effacement.
-- **Le moteur refuse tout nouveau lien** entre un objet dont le titre est `personnelle` et un objet de l'empreinte quand le nom normalisé correspond (`prospection-opposed`, 409) : un rapprochement qui recrée « la même personne chez le même compte » échoue. Dans un import en masse, le lien est laissé de côté et le reste du lot passe (un refus ne fait pas échouer l'import). Générique : aucune clé de type ou de lien n'est nommée.
+- **Le moteur refuse tout nouveau lien** entre un objet dont le titre est `personal` et un objet de l'empreinte quand le nom normalisé correspond (`prospecting-opposed`, 409) : un rapprochement qui recrée « la même personne chez le même compte » échoue. Dans un import en masse, le lien est laissé de côté et le reste du lot passe (un refus ne fait pas échouer l'import). Générique : aucune clé de type ou de lien n'est nommée.
 - Nom normalisé : minuscules, accents latins repliés (« Élodie » = « elodie » = « ELODIE », `œ` → `oe`, apostrophe typographique), lettres et chiffres seulement, un espace entre les mots.
 - **Une seule table de repli** (`pnex_core::fold`) sert aux empreintes, au texte de la recherche globale et de la requête D185 (titre et filtre `contains`) : la colonne y est repliée en SQL par `translate(lower(…))`, majuscules accentuées comprises. Aucune extension Postgres (`unaccent`), aucune dépendance. Les deux copies qui existaient (`taxonomy`, `browser_agent`) y délèguent. Coût : la recherche par sous-chaîne n'utilisait déjà aucun index.
 
@@ -144,7 +144,7 @@ Rempli depuis l'opportunité (D340) : compte, étape, montant, contacts impliqu�
 ## 7. Questions ouvertes
 
 1. **Q-CRM1 — Purge O2** : faut-il aussi supprimer du journal O2 les lignes d'un objet effacé avant la fin de la rétention, si O2 le permet ?
-2. **Q-CRM2 — Titres dans le graphe** : en attendant I5, masquer aussi les titres `personnelle` dans le graphe, la hiérarchie et les chemins ?
+2. **Q-CRM2 — Titres dans le graphe** : en attendant I5, masquer aussi les titres `personal` dans le graphe, la hiérarchie et les chemins ?
 3. ~~**Q-CRM3 — Mail**~~ : IMAP retenu (Shan, 2026-10-26), OAuth2 XOAUTH2 ensuite pour Microsoft 365 et Google ; conception générique dans `mail.md`.
 
 Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennent — pas de purge O2 (journal borné par sa rétention, jamais relu en clair) ; masquage actuel (voisinage, chemins, impact, nœuds de hiérarchie), le reste avec I5.

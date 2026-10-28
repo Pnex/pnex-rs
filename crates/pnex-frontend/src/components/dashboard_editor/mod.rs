@@ -472,7 +472,7 @@ pub fn DashboardEditor(
             inspector: inspector_slot,
             empty_hint: if cx.layout.cloned().widgets.is_empty() && !mobile_format { Some(t!("eshell-empty-hint").to_string()) } else { None },
         }
-        // ── Modales / tiroir versions
+        // ── Modals / versions drawer
         if conflict() {
             ConflictModal { cx, on_changed }
         }

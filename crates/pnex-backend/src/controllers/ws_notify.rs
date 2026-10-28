@@ -106,7 +106,7 @@ async fn session_loop(
                     break;
                 }
             }
-            // ── Heartbeat protocole ──
+            // ── Heartbeat protocol ──
             _ = heartbeat.tick() => {
                 if socket.send(Message::Ping(vec![].into())).await.is_err() {
                     break;
@@ -118,7 +118,7 @@ async fn session_loop(
                     Ok(Some(Ok(_))) => {}
                     Ok(Some(Err(_))) | Ok(None) => break,
                     Err(_) => {
-                        tracing::debug!(org_id, "ws/notify : session muette > {WATCHDOG_SECS} s");
+                        tracing::debug!(org_id, "ws/notify: silent session > {WATCHDOG_SECS} s");
                         break;
                     }
                 }

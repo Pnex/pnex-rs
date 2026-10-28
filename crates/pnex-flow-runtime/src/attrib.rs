@@ -40,7 +40,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn node_map_determine_le_hex_et_deprefixe() {
+    fn node_map_determines_the_hex_and_strips_prefix() {
         // Non-hex projected ids `pnexflow{fid}_{raw}`: DefaultHasher
         // deterministic within the process — parse_red_id_str returns the same
         // hash as the engine.
@@ -57,7 +57,7 @@ mod tests {
     }
 
     #[test]
-    fn tab_vide_donne_une_map_vide() {
+    fn empty_tab_gives_an_empty_map() {
         assert!(node_map(&[json!({"id": "pnexflow1", "type": "tab"})]).is_empty());
         assert!(node_map(&[json!({"z": "x"}), json!({"id": "y"})]).is_empty());
     }

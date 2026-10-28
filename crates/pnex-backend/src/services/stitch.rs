@@ -139,7 +139,7 @@ mod tests {
     /// Defaults: enabled, 4096, models in deploy/models, 2 jobs max —
     /// even without a settings block.
     #[test]
-    fn defauts_stitch_settings() {
+    fn default_stitch_settings() {
         let config = Config::new(&Environment::Test).unwrap();
         let settings = StitchSettings::from_config(&config);
         assert!(settings.enabled);
@@ -151,7 +151,7 @@ mod tests {
     /// Partial `settings.stitch` block: only `out_width` present → the
     /// other fields keep their default.
     #[test]
-    fn partiel_out_width_seul() {
+    fn partial_out_width_only() {
         let mut config = Config::new(&Environment::Test).unwrap();
         config.settings = Some(serde_json::json!({ "stitch": { "out_width": 2048 } }));
         let settings = StitchSettings::from_config(&config);

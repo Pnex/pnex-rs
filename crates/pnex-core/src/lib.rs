@@ -236,7 +236,7 @@ pub mod selftest;
 pub mod telemetry;
 pub use telemetry::*;
 
-/// Couche d'organisation transverse (D42) : labels / containment / edges.
+/// Cross-cutting organization layer (D42): labels / containment / edges.
 pub mod resources;
 pub use resources::*;
 

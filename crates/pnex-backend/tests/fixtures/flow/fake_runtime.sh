@@ -68,7 +68,7 @@ if [ "$CHECK" = 1 ]; then
   exit $(printf '%s\n' "$out" | grep -c '"ok":false')
 fi
 
-# ── Mode serveur ─────────────────────────────────────────────────────────
+# ── Server mode ─────────────────────────────────────────────────────────
 count=0
 write_state() {
   printf '{"pid":%s,"running":true,"started_at":0,"redeploys":%s,"flow_rev":null}\n' \
@@ -89,7 +89,7 @@ emit_flow_started_all() {
 }
 
 # Tabs known at the previous cycle (persisted in STATE_DIR): emit
-# flow_stopped for the vanished ids, like the real runtime (ferme —
+# flow_stopped for the vanished ids, like the real runtime (closed —
 # removing a tab from the artifact stops that engine, the others go on).
 sync_tabs() {
   if [ -f "$STATE_DIR/tabs.prev" ]; then

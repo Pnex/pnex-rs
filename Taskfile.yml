@@ -22,7 +22,7 @@ vars:
     sh: test -x "{{.ROOT_DIR}}/firmware/.venv/bin/pio" && echo "{{.ROOT_DIR}}/firmware/.venv/bin/pio" || echo pio
   ESPTOOL_CMD:
     sh: test -x "{{.ROOT_DIR}}/firmware/.venv/bin/esptool" && echo "{{.ROOT_DIR}}/firmware/.venv/bin/esptool" || echo esptool
-  # Outillage Android (build:frontend:android) — surcharges via l'env shell.
+  # Android tooling (build:frontend:android), overridable from the shell env.
   ANDROID_HOME:
     sh: echo "${ANDROID_HOME:-$HOME/Android/Sdk}"
   NDK_HOME:

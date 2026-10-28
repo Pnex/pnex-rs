@@ -50,7 +50,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn etat_roundtrip_et_ecriture_atomique() {
+    fn state_roundtrip_and_atomic_write() {
         let dir = std::env::temp_dir().join(format!("pnex-flow-state-test-{}", std::process::id()));
         let st = RuntimeState {
             pid: 42,

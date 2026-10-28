@@ -1,7 +1,7 @@
 //! Erasure as a shell (crm.md D446): the personal data of an object goes,
 //! the object stays so the links and provenance of other objects hold.
-//! Generic: what goes is what the schema classifies `personnelle` or
-//! `sensible` (D442). The history of an erased object is read redacted.
+//! Generic: what goes is what the schema classifies `personal` or
+//! `sensitive` (D442). The history of an erased object is read redacted.
 
 use loco_rs::app::AppContext;
 use pnex_core::ontology::api::ObjectView;

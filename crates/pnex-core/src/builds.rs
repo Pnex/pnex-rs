@@ -228,7 +228,7 @@ mod tests {
 
     /// Creation response: without backend/job_name (Rust adaptation).
     #[test]
-    fn create_response_sans_champs_k8s() {
+    fn create_response_without_k8s_fields() {
         let res = CreateBuildResponse {
             build_id: 5,
             status: BuildPhase::Queued,

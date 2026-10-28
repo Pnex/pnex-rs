@@ -321,7 +321,7 @@ mod tests {
     /// RANSAC on 40 correspondences of which 30 % are outliers (random 10°)
     /// : recovers the rotation to < 0.1° and isolates the inliers.
     #[test]
-    fn ransac_robuste() {
+    fn ransac_robust() {
         let mut rng = Rng(42);
         let r = euler_to_mat(-17.0, 9.0, -4.0);
         let mut a = Vec::new();
@@ -362,7 +362,7 @@ mod tests {
     /// RANSAC: clean inliers pass the gate, outliers (1.75°)
     /// are excluded — locks tolerance and counting on noisy data.
     #[test]
-    fn ransac_inliers_propres() {
+    fn ransac_clean_inliers() {
         let mut rng = Rng(42);
         let r = euler_to_mat(-17.0, 9.0, -4.0);
         let mut a = Vec::new();
@@ -399,7 +399,7 @@ mod tests {
             .collect();
         errs.sort_by(f32::total_cmp);
         eprintln!(
-            "erreurs propres med={:.4} max={:.4}\u{b0} (tol {:.4}\u{b0})",
+            "clean errors med={:.4} max={:.4}\u{b0} (tol {:.4}\u{b0})",
             errs[errs.len() / 2],
             errs[errs.len() - 1],
             crate::geom::to_deg(0.005)

@@ -161,7 +161,7 @@ fn widget_panel(
 
     rsx! {
         div { class: "space-y-3",
-            // Titre
+            // Title
             field_label {
                 label_key: "title",
                 label: t!("insp-widget-title").to_string(),

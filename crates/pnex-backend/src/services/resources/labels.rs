@@ -316,7 +316,7 @@ pub async fn catalog(
         .collect())
 }
 
-// ─────────────────────────── hydratation batch ───────────────────────────
+// ─────────────────────────── batch hydration ───────────────────────────
 
 /// Labels of a batch of resources (1 query, no N+1 — media list pattern).
 pub async fn labels_for_many(

@@ -7,7 +7,7 @@
 
 use crate::capture::attach_env;
 
-/// Constante `WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON`.
+/// Constant `WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON`.
 const FLAG_KEEP_SCREEN_ON: i32 = 0x0000_0080;
 
 /// Enables/disables keeping the screen awake.

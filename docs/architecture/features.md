@@ -208,7 +208,7 @@ router = ["dioxus/router"]
   `npm run css:build`) dans le job `dx build`.
 - **i18n Fluent** (`dioxus-i18n`) : locales `locales/{fr-FR,en-US}.ftl`
   embarquées, zéro libellé en dur, parité des clés testée
-  (`i18n::tests::parite_cles_fr_en`).
+  (`i18n::tests::fr_en_key_parity`).
 
 ## Serving du front
 

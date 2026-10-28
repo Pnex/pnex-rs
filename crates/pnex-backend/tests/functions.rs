@@ -78,7 +78,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 // ───────────────────────── Helpers CRUD ─────────────────────────
@@ -191,7 +191,7 @@ fn function_flow_graph(fid: i64, fn_id: i64) -> serde_json::Value {
 
 #[tokio::test]
 #[serial]
-async fn cycle_create_save_delete_avec_versions() {
+async fn create_save_delete_cycle_with_versions() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -216,7 +216,7 @@ async fn cycle_create_save_delete_avec_versions() {
         assert_eq!(body["inputs"][0]["ty"], "number");
         let id = body["id"].as_i64().expect("id returned");
 
-        // Save v2 (nouvelle version append-only).
+        // Save v2 (new append-only version).
         let (status, body) = patch_fn(
             &server,
             &env.alice,
@@ -233,7 +233,7 @@ async fn cycle_create_save_delete_avec_versions() {
         assert_eq!(body["current_version_number"], 2);
         assert_eq!(body["code"], starlark_code());
 
-        // Versions en DESC [2, 1].
+        // Versions in DESC order [2, 1].
         let versions = server
             .get(&format!("/api/v1/functions/{id}/versions"))
             .add_header("Authorization", bearer(&env.alice))
@@ -265,7 +265,7 @@ async fn cycle_create_save_delete_avec_versions() {
 
 #[tokio::test]
 #[serial]
-async fn isolation_cross_org_404() {
+async fn cross_org_isolation_404() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org_a = personal_org(&server, &env.alice).await;
         let org_b = personal_org(&server, &env.bob).await;
@@ -303,7 +303,7 @@ async fn isolation_cross_org_404() {
 
 #[tokio::test]
 #[serial]
-async fn viewer_lit_sans_ecrire() {
+async fn viewer_reads_without_writing() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         // Bob must have "logged in" at least once before the invitation
@@ -357,7 +357,7 @@ async fn viewer_lit_sans_ecrire() {
 
 #[tokio::test]
 #[serial]
-async fn validations_400_et_conflit_409() {
+async fn validations_400_and_conflict_409() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -409,7 +409,7 @@ async fn validations_400_et_conflit_409() {
 
 #[tokio::test]
 #[serial]
-async fn delete_409_si_flow_deployed_reference() {
+async fn delete_409_if_a_deployed_flow_references_it() {
     with_app_flow_engine(false, |server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let (_, created) = post_fn(
@@ -466,7 +466,7 @@ async fn delete_409_si_flow_deployed_reference() {
 
 #[tokio::test]
 #[serial]
-async fn test_live_200_avec_fixture() {
+async fn test_live_200_with_fixture() {
     with_app_flow_engine(true, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let (_, created) = post_fn(
@@ -511,7 +511,7 @@ async fn test_live_200_avec_fixture() {
 
 #[tokio::test]
 #[serial]
-async fn test_live_503_moteur_coupe() {
+async fn test_live_503_engine_off() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let (_, created) = post_fn(
@@ -533,7 +533,7 @@ async fn test_live_503_moteur_coupe() {
 
 #[tokio::test]
 #[serial]
-async fn validate_200_avec_fixture() {
+async fn validate_200_with_fixture() {
     with_app_flow_engine(true, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -556,7 +556,7 @@ async fn validate_200_avec_fixture() {
 
 #[tokio::test]
 #[serial]
-async fn validate_503_moteur_coupe() {
+async fn validate_503_engine_off() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let (status, body) = post_validate(

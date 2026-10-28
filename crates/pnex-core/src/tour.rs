@@ -548,7 +548,7 @@ mod tests {
     }
 
     #[test]
-    fn doc_tolerant_aux_champs_manquants() {
+    fn doc_tolerates_missing_fields() {
         // An old doc without start_scene/links or plan options loads.
         let doc: TourDoc = serde_json::from_str(
             r#"{"mode":"panorama","floors":[{"id":"f1","name":"RDC","plan":{"media_asset_id":"00000000-0000-0000-0000-000000000001"}}],
@@ -561,13 +561,13 @@ mod tests {
     }
 
     #[test]
-    fn doc_minimal_valide() {
+    fn minimal_doc_is_valid() {
         assert!(validate_tour_doc(&TourDoc::minimal()).is_empty());
         assert!(validate_tour_doc(&TourDoc::default()).is_empty());
     }
 
     #[test]
-    fn validation_structurelle() {
+    fn structural_validation() {
         let mut doc = sample_doc();
         assert!(
             validate_tour_doc(&doc).is_empty(),
@@ -619,7 +619,7 @@ mod tests {
         assert!(codes.contains(&"invalid_fov"));
         assert!(codes.contains(&"unknown_start_scene"));
 
-        // Mode inconnu.
+        // Unknown mode.
         let mut doc = sample_doc();
         doc.mode = "hologramme".into();
         let violations = validate_tour_doc(&doc);

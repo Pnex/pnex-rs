@@ -49,7 +49,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 async fn post_diagram(
@@ -69,7 +69,7 @@ async fn post_diagram(
 
 #[tokio::test]
 #[serial]
-async fn diagram_water_ph_et_cycle_points() {
+async fn diagram_water_ph_and_cycle_points() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
@@ -132,7 +132,7 @@ async fn diagram_water_ph_et_cycle_points() {
 
 #[tokio::test]
 #[serial]
-async fn diagram_resout_melange_org_et_rejette_inconnu() {
+async fn diagram_resolves_org_mixture_and_rejects_unknown() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 

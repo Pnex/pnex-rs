@@ -141,7 +141,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 async fn with_app_ai<F, Fut>(enabled: bool, with_provider: bool, f: F)
@@ -276,7 +276,7 @@ async fn send_in(
 /// (1) Kill-switch OFF → status enabled:false, chat 403, no request to the mock LLM.
 #[tokio::test]
 #[serial]
-async fn kill_switch_coupe_tout() {
+async fn kill_switch_cuts_everything() {
     with_app_ai(false, false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         reset_mock();
@@ -578,7 +578,7 @@ async fn the_org_default_provider_drives_the_assistant() {
     .await;
 }
 
-/// Graphe canonique inject→device→calc→metric.
+/// Canonical graph inject→device→calc→metric.
 fn graph_adc_metric() -> serde_json::Value {
     serde_json::json!({
         "nodes": [
@@ -599,7 +599,7 @@ fn graph_adc_metric() -> serde_json::Value {
 /// deploy, the 2nd LLM call carries the tool_result.
 #[tokio::test]
 #[serial]
-async fn tour_complet_cree_un_flow_sans_deployer() {
+async fn full_turn_creates_a_flow_without_deploying() {
     with_app_ai(true, true, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         reset_mock();
@@ -657,7 +657,7 @@ async fn tour_complet_cree_un_flow_sans_deployer() {
 /// (6) The agent asks for a forbidden tool → ok:false, flow never deployed.
 #[tokio::test]
 #[serial]
-async fn l_agent_ne_peut_pas_deployer() {
+async fn the_agent_cannot_deploy() {
     with_app_ai(true, true, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         reset_mock();
@@ -816,7 +816,7 @@ async fn update_flow_only_on_a_stopped_flow() {
 /// (7) Provider 401 → 502 with an actionable message.
 #[tokio::test]
 #[serial]
-async fn echec_auth_repond_actionnable() {
+async fn auth_failure_answers_actionable() {
     with_app_ai(true, true, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         reset_mock();
@@ -868,7 +868,7 @@ async fn without_provider_the_assistant_is_not_configured() {
 /// forced text answer (no tools), never an endless loop (O48).
 #[tokio::test]
 #[serial]
-async fn borne_iterations_force_la_reponse_finale() {
+async fn iteration_bound_forces_the_final_answer() {
     with_app_ai(true, true, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         reset_mock();

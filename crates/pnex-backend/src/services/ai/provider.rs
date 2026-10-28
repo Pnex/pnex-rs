@@ -50,7 +50,7 @@ impl Provider {
 
 // ───────────────── Normalized types (the agent loop only sees these) ─────────────────
 
-/// Message de conversation, format interne neutre.
+/// Conversation message, neutral internal format.
 #[derive(Clone, Debug)]
 pub enum Msg {
     User {
@@ -693,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn anthropic_outil_simple_et_regroupement_tool_result() {
+    fn anthropic_simple_tool_and_tool_result_grouping() {
         // user → assistant(tool_use ×2) → tool_result ×2: the Anthropic
         // contract requires ONE user message with the 2 tool_results.
         let msgs = vec![
@@ -731,7 +731,7 @@ mod tests {
     }
 
     #[test]
-    fn anthropic_assistant_sans_texte_et_erreurs_is_error() {
+    fn anthropic_assistant_without_text_and_is_error_errors() {
         let msgs = vec![
             Msg::Assistant {
                 text: None,
@@ -754,7 +754,7 @@ mod tests {
     }
 
     #[test]
-    fn openai_tool_result_un_message_par_outil() {
+    fn openai_tool_result_one_message_per_tool() {
         let msgs = vec![
             user("create the flow"),
             Msg::Assistant {
@@ -794,7 +794,7 @@ mod tests {
     }
 
     #[test]
-    fn reponse_anthropic_deserialisee() {
+    fn anthropic_response_deserialized() {
         let raw = r#"{
             "content": [
                 {"type": "text", "text": "voici le flow"},
@@ -810,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn reponse_openai_arguments_chaine_json() {
+    fn openai_response_arguments_json_string() {
         let raw = r#"{
             "choices": [{
                 "message": {
@@ -840,7 +840,7 @@ mod tests {
             .unwrap();
         assert_eq!(f.name.as_deref(), Some("validate_flow_graph"));
         let args: Value =
-            serde_json::from_str(f.arguments.as_deref().unwrap_or_default()).expect("JSON valide");
+            serde_json::from_str(f.arguments.as_deref().unwrap_or_default()).expect("valid JSON");
         assert_eq!(args["graph"]["nodes"].as_array().unwrap().len(), 0);
     }
 
@@ -869,7 +869,7 @@ mod tests {
     }
 
     #[test]
-    fn erreurs_http_mappees() {
+    fn http_errors_mapped() {
         let e = map_http_error(401, r#"{"error":{"message":"invalid x-api-key"}}"#, None);
         assert!(matches!(e, AiError::AuthRejected(ref m) if m.contains("invalid x-api-key")));
         let e = map_http_error(429, "{}", Some(17));
@@ -881,7 +881,7 @@ mod tests {
     }
 
     #[test]
-    fn message_erreur_extrait_de_toutes_les_formes() {
+    fn error_message_extracted_from_every_shape() {
         assert_eq!(
             extract_error_message(r#"{"error":{"message":"boom"}}"#),
             "boom"
@@ -893,7 +893,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_parse_et_noms_db() {
+    fn provider_parse_and_db_names() {
         assert_eq!(Provider::parse("anthropic"), Provider::Anthropic);
         assert_eq!(Provider::parse("openai_compat"), Provider::OpenAiCompat);
         assert_eq!(Provider::parse("OPENAI_COMPAT"), Provider::OpenAiCompat);

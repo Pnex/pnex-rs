@@ -64,7 +64,7 @@ Deux possibilités ont été pesées :
 - **A. Déclencheur seulement** : PneX ne garde que ce qu'un flow écrit. Simple, minimal en données, mais : rien à lister pour un flow ou un agent (« les nouveaux mails »), pas de fil de discussion, rien à rejouer après un redéploiement, l'historique client dépend d'un flow bien écrit.
 - **B. Stockage + déclencheur** (retenu) : chaque message relevé est une ligne d'une table native, exposée dans l'ontologie comme **type système `mail_message`** (comme `media_asset` ou `doc`, D177).
 
-Ce que B apporte sans code propre à un usage : la liste et la recherche (requête D185, `ontology_query` dans un flow), les liens vers les personnes, comptes, opportunités, demandes SAV (les packs les déclarent), le masquage par rôle et l'effacement (D442–D446 : expéditeur, destinataires et texte sont `personnelle`), la rétention (D461), le fil (`in_reply_to`, `references`).
+Ce que B apporte sans code propre à un usage : la liste et la recherche (requête D185, `ontology_query` dans un flow), les liens vers les personnes, comptes, opportunités, demandes SAV (les packs les déclarent), le masquage par rôle et l'effacement (D442–D446 : expéditeur, destinataires et texte sont `personal`), la rétention (D461), le fil (`in_reply_to`, `references`).
 
 Champs : boîte, dossier, `message_id`, `in_reply_to`, `references`, expéditeur, destinataires (plafonnés), sujet, date, texte (D458), extrait, résultat d'authentification (D458), pièces jointes (liste de noms et tailles en M2 ; médias en M5), `direction` (`in`/`out`), drapeaux (`auto_submitted`, `from_pneX`). Pas de HTML stocké.
 
@@ -115,7 +115,7 @@ Une boucle naît quand un mail déclenche un envoi qui déclenche un mail. Garde
 ### D461 — Conservation et données personnelles
 
 - `retention_days` par boîte (défaut 90, de 7 à 3650) : au-delà, le message est supprimé ; ce qu'un flow en a tiré (activité, signal) reste.
-- Expéditeur, destinataires, sujet et texte sont `personnelle` (D442) : masqués par rôle, retirés par un effacement.
+- Expéditeur, destinataires, sujet et texte sont `personal` (D442) : masqués par rôle, retirés par un effacement.
 - Effacer une personne (D446) efface aussi les messages dont elle est l'expéditeur ou un destinataire (par ses adresses connues), en coquille.
 - Une personne en opposition (D447) : ses messages entrent (on ne peut pas refuser un mail reçu), mais ne sont jamais rattachés automatiquement à elle ni à ses comptes.
 

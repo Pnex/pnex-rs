@@ -245,7 +245,7 @@ pub async fn latest_measurements(
             match res {
                 Ok(resp) => samples.extend(resp.data.result.into_iter().map(|s| (s, seen.clone()))),
                 Err(e) => {
-                    tracing::debug!(org_id, metric = %name, erreur = %e, "stream not queried")
+                    tracing::debug!(org_id, metric = %name, error = %e, "stream not queried")
                 }
             }
         }
@@ -255,7 +255,7 @@ pub async fn latest_measurements(
     let samples = match fetch {
         Ok(Ok(samples)) => samples,
         Ok(Err(e)) => {
-            tracing::warn!(org_id, erreur = %e, "dashboard: O2 failed, telemetry degraded");
+            tracing::warn!(org_id, error = %e, "dashboard: O2 failed, telemetry degraded");
             return degraded;
         }
         Err(_) => {

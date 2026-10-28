@@ -270,7 +270,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn validate_couvre_toutes_les_regles() {
+    fn validate_covers_every_rule() {
         let base = json!({
             "host": "smtp.example.com",
             "from": "PNeX <no-reply@example.com>",
@@ -308,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn default_port_selon_tls() {
+    fn default_port_per_tls() {
         assert_eq!(default_port("starttls"), 587);
         assert_eq!(default_port("tls"), 465);
         assert_eq!(default_port("none"), 25);
@@ -316,7 +316,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn email_from_to_sujet_via_builder() {
+    async fn email_from_to_subject_via_builder() {
         let cfg = json!({
             "host": "smtp.example.com",
             "from": "PNeX <no-reply@example.com>",
@@ -328,12 +328,12 @@ mod tests {
             meta: json!({}),
         };
         let email = build_email(&cfg, &msg, &[]).unwrap();
-        let rendu = String::from_utf8_lossy(&email.formatted()).to_string();
-        assert!(rendu.contains("no-reply@example.com"), "{rendu}");
-        assert!(rendu.contains("a@example.com"), "{rendu}");
-        assert!(rendu.contains("b@example.com"), "{rendu}");
-        assert!(rendu.contains("Alerte seuil"), "{rendu}");
-        assert!(rendu.contains("v=42"), "{rendu}");
+        let rendered = String::from_utf8_lossy(&email.formatted()).to_string();
+        assert!(rendered.contains("no-reply@example.com"), "{rendered}");
+        assert!(rendered.contains("a@example.com"), "{rendered}");
+        assert!(rendered.contains("b@example.com"), "{rendered}");
+        assert!(rendered.contains("Alerte seuil"), "{rendered}");
+        assert!(rendered.contains("v=42"), "{rendered}");
         // Without subject: no email subject, body intact.
         let email = build_email(
             &cfg,
@@ -345,9 +345,9 @@ mod tests {
             &[],
         )
         .unwrap();
-        let rendu = String::from_utf8_lossy(&email.formatted()).to_string();
-        assert!(!rendu.contains("Subject:"), "{rendu}");
-        assert!(rendu.contains("v=42"), "{rendu}");
+        let rendered = String::from_utf8_lossy(&email.formatted()).to_string();
+        assert!(!rendered.contains("Subject:"), "{rendered}");
+        assert!(rendered.contains("v=42"), "{rendered}");
     }
 
     #[test]
@@ -372,7 +372,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn email_invalide_erreur_config() {
+    async fn invalid_email_config_error() {
         let cfg = json!({"host": "h", "from": "x@y.z", "to": "a@b.c, adresse_ko"});
         let err = build_email(
             &cfg,

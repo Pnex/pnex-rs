@@ -1,4 +1,4 @@
-# Reference pack "Maintenance augmentée" (ontology.md D190, use-cases.md):
+# Reference pack "Augmented maintenance" (ontology.md D190, use-cases.md):
 # sites, production lines, machines and pumps, with their sensors bound to
 # object series (D181). Installing it creates org types: they stay editable
 # by the org; a newer pack version appends new type versions.

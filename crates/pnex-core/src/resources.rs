@@ -35,7 +35,7 @@ impl std::fmt::Display for ResourceRef {
     }
 }
 
-// ─────────────────────────── kinds vivants ───────────────────────────
+// ─────────────────────────── live kinds ───────────────────────────
 
 /// Registered concepts. A new system type = 1 constant + 1 entry in
 /// `ontology::system_object_types` + 1 backend resolver.
@@ -187,7 +187,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn refs_et_kinds() {
+    fn refs_and_kinds() {
         let r = ResourceRef::new(7, KIND_MEDIA_ASSET, "3f2e…-uuid");
         assert_eq!(r.kind, KIND_MEDIA_ASSET);
         assert_eq!(r.to_string(), "media_asset/3f2e…-uuid");
@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn filtres_labels() {
+    fn label_filters() {
         let (f, err) = parse_label_filter("site:serre");
         assert_eq!(f, Some(("site".into(), Some("serre".into()))));
         assert!(err.is_none());

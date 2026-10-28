@@ -295,7 +295,7 @@ pub fn kind_drives_pins(kind: pnex_core::ui_control::ControlKind) -> bool {
     )
 }
 
-/// Draft graph of "Create the flow" (D127, parcours §1.3): a
+/// Draft graph of "Create the flow" (D127, user journey §1.3): a
 /// `control-source` on `control_id` (replayed at start) wired to a
 /// `device-write` of one pin or one firmware command. A switch (on/off) or a
 /// slider (0..100) drives a digital output or a PWM duty as is.

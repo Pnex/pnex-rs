@@ -478,7 +478,7 @@ mod tests {
     /// JSON contract of the `js/flasher.js` glue — any divergence will break
     /// these decodings (the JS is not covered by the Rust tests).
     #[test]
-    fn decode_evenements_flasher_js() {
+    fn decode_flasher_js_events() {
         assert_eq!(
             serde_json::from_str::<FlashEvent>(r#"{"type":"stage","stage":"write"}"#).unwrap(),
             FlashEvent::Stage {

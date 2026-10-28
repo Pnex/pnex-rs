@@ -127,7 +127,7 @@ reprojection ETL : le sync/cast est **indépendant du runtime** (jamais de
 ⚠ Cas delete : la cascade FK efface les lignes de projection **avant** le
 sync — le contrôleur capture donc les devices du flow **avant** delete et
 les passe en `extra_devices` (sinon le clear `[]` ne part jamais ; test
-`suppression_caste_liste_vide`).
+`deletion_casts_empty_list`).
 
 ## 6. Sémantique de régulation (contrat firmware)
 

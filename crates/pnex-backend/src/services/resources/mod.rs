@@ -26,7 +26,7 @@ pub mod labels;
 pub mod location;
 pub mod registry;
 
-// ─────────────────────────── erreurs ───────────────────────────
+// ─────────────────────────── errors ───────────────────────────
 
 #[derive(Debug)]
 pub enum ResourceError {

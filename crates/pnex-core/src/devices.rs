@@ -100,7 +100,7 @@ pub struct PredefinedDevice {
     pub image_source_url: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
-    /// Fluent key resolved client-side (i18n chantier); `description`
+    /// Fluent key resolved client-side (i18n work); `description`
     /// stays the English fallback + server-side search field.
     #[serde(default)]
     pub description_i18n: Option<String>,
@@ -120,7 +120,7 @@ pub struct PredefinedDevice {
     pub screen_kind: Option<String>,
 }
 
-// ─────────────────────── Registre devices (org) ───────────────────────
+// ─────────────────────── Device registry (org) ───────────────────────
 
 /// Device token, returned to writers for provisioning (the device encrypts
 /// with `encryption_key`).

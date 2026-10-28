@@ -239,9 +239,9 @@ impl StitchPanoramaWorker {
             job.org_id,
             &asset,
             IncomingVersion {
-                filename: format!("panorama-serveur-{out_width}.jpg"),
+                filename: format!("panorama-server-{out_width}.jpg"),
                 content_type: "image/jpeg".to_string(),
-                note: Some(format!("assemblage serveur {out_width} (Take 360 V2)")),
+                note: Some(format!("server stitch {out_width} (Take 360 V2)")),
                 bytes: stitched.jpeg.into(),
             },
             &self.media,
@@ -312,7 +312,7 @@ impl BackgroundWorker<StitchPanoramaArgs> for StitchPanoramaWorker {
             Err(msg) => {
                 // Short message in the `error` column (read by the front) —
                 // the full message stays in the server logs.
-                tracing::error!(job = %args.job_id, erreur = %msg, "stitch job failed");
+                tracing::error!(job = %args.job_id, error = %msg, "stitch job failed");
                 StitchPanoramaWorker::set_state(
                     &self.ctx.db,
                     job.id,

@@ -459,7 +459,7 @@ pub async fn series_catalog(
     let (mut catalog, mut label_sets) = match fetch {
         Ok(Ok(found)) => found,
         Ok(Err(e)) => {
-            tracing::warn!(org_id, erreur = %e, "catalog: O2 failed, telemetry degraded");
+            tracing::warn!(org_id, error = %e, "catalog: O2 failed, telemetry degraded");
             return degraded;
         }
         Err(_) => {
@@ -550,7 +550,7 @@ pub async fn series_points(
     let samples = match fetch {
         Ok(Ok(samples)) => samples,
         Ok(Err(e)) => {
-            tracing::warn!(org_id, metric, erreur = %e, "series: O2 failed, degraded");
+            tracing::warn!(org_id, metric, error = %e, "series: O2 failed, degraded");
             return Ok(degraded(metric, device_id));
         }
         Err(_) => {

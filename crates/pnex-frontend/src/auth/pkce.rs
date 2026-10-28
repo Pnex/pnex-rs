@@ -16,7 +16,7 @@ pub struct Pkce {
 /// Generates a verifier/challenge pair (S256 method).
 pub fn generate() -> Pkce {
     let mut bytes = [0u8; 32];
-    getrandom::getrandom(&mut bytes).expect("entropie PKCE indisponible");
+    getrandom::getrandom(&mut bytes).expect("PKCE entropy unavailable");
     let verifier = URL_SAFE_NO_PAD.encode(bytes);
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     Pkce {
@@ -45,14 +45,14 @@ mod tests {
 
     /// Vector from appendix B of RFC 7636.
     #[test]
-    fn challenge_vecteur_rfc7636() {
+    fn challenge_vector_rfc7636() {
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
         let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
         assert_eq!(challenge, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
     }
 
     #[test]
-    fn verifier_taille_et_alphabet() {
+    fn verifier_size_and_alphabet() {
         let pkce = generate();
         assert_eq!(pkce.verifier.len(), 43);
         assert!(pkce
@@ -62,7 +62,7 @@ mod tests {
     }
 
     #[test]
-    fn urlencode_pieces_jointes() {
+    fn urlencode_joined_pieces() {
         assert_eq!(urlencode("aZ09-_.~"), "aZ09-_.~");
         assert_eq!(urlencode("é &?"), "%C3%A9%20%26%3F");
     }

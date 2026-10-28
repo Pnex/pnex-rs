@@ -68,7 +68,7 @@ pub fn estimate_gains(frames: &[PreparedFrame], channels: u32) -> Vec<[f32; 3]> 
     };
 
     for c in 0..if per_channel { 3 } else { 1 } {
-        // Per-pair accumulators (a < b): (somme_a, somme_b, compte).
+        // Per-pair accumulators (a < b): (sum_a, sum_b, count).
         let mut pair: std::collections::HashMap<(usize, usize), (f64, f64, u32)> =
             std::collections::HashMap::new();
 
@@ -645,7 +645,7 @@ pub(crate) fn lat_of(j: u32, out_h: u32) -> f32 {
 /// INTERNAL convention (align + probe: u grows with ENU longitude).
 /// The standard display handedness (u grows when turning RIGHT,
 /// clockwise seen from the sky) is applied on return from [`render`] by
-/// mirroring the rows — see `mirror_rows` + probe `rendu_handedness`.
+/// mirroring the rows — see `mirror_rows` + probe `render_handedness`.
 /// Without this output mirror, the render was MIRRORED left-right:
 /// self-consistent (clean seams) but inverted vs. the real scene,
 /// device finding 2026-09-11.
@@ -700,7 +700,7 @@ mod tests {
     /// Sphere conventions (internal): row 0 = north pole, lon increasing
     /// from left to right on the grid (−180 → +180). The display
     /// handedness is applied at the boundary by `mirror_rows` (see
-    /// probe `rendu_handedness`).
+    /// probe `render_handedness`).
     #[test]
     fn conventions_sphere() {
         assert!((lat_of(0, 1024) - 89.9).abs() < 0.1);
@@ -714,7 +714,7 @@ mod tests {
     /// Per-channel gains: a ×1.4 frame must be brought back ≈ ×1/1.4 by
     /// the overlap equalisation (independent channels).
     #[test]
-    fn gains_per_channel_egalise() {
+    fn gains_per_channel_equalize() {
         use crate::geom::euler_to_mat;
         use crate::project::{f_px_from_hfov, lat_band, PreparedFrame};
         fn frame(k: usize, expo: f32) -> PreparedFrame {
@@ -781,7 +781,7 @@ mod tests {
 
     /// Band coverage: full, partially holed, empty.
     #[test]
-    fn couverture_bande() {
+    fn band_coverage_ratio() {
         let w = 100u32;
         assert!((band_coverage(w, &[0, 10, 100, 100, 100, 10, 0]) - 0.64).abs() < 1e-6);
         assert!((band_coverage(w, &[100, 100, 92, 100]) - 0.98).abs() < 1e-6);

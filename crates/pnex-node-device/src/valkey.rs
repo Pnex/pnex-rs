@@ -48,7 +48,7 @@ impl ValkeyLastClient {
         )
         .map_err(|e| {
             EdgelinkError::InvalidOperation(format!(
-                "pnex-device-read : cannot create valkey client: {e}"
+                "pnex-device-read: cannot create valkey client: {e}"
             ))
         })?;
         Ok(Self { conn })

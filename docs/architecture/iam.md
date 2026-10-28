@@ -256,7 +256,7 @@ d'`i18n_guard`).
 |---|---|---|---|
 | **Type** | lire `Pompe`, écrire `Intervention` | `type_key IN (…)` dans le prédicat | schéma exporté, contexte de l'assistant, comptes par type |
 | **Objet** | par id, par étiquette (`site=lyon`), par valeur de propriété indexée (`statut = public`) | prédicat SQL (jointure `resource_labels`) | totaux de pagination, plafond de 5000 arêtes du graphe, titres dans la recherche |
-| **Propriété** | masquer `salaire`, `telephone` ; ou toute propriété classée `personnelle` | masquage dans `objects::view` (`objects.rs:25`) | filtre ou tri sur propriété masquée = oracle → refusé ; historique O2 caviardé ; séries, agrégats, exports, gels |
+| **Propriété** | masquer `salaire`, `telephone` ; ou toute propriété classée `personal` | masquage dans `objects::view` (`objects.rs:25`) | filtre ou tri sur propriété masquée = oracle → refusé ; historique O2 caviardé ; séries, agrégats, exports, gels |
 | **Lien** | traverser `possède` mais pas `finance` | prédicat sur `relation` dans les liens, la CTE, les sauts de D185 | lien vers un objet invisible : supprimé ou bout caviardé (« objet non accessible ») |
 | **Action D183** | proposer sans invoquer | `actions::invoke` (`actions.rs:100`) et `propose_action` | — |
 
@@ -266,7 +266,7 @@ prédicat est appliqué dans la CTE récursive, pas après. Un chemin qui
 n'existe qu'à travers un objet invisible n'existe pas pour le principal.
 
 **D298 — Classification des propriétés.** `PropertyDef` gagne un champ
-`classification` (`publique`, `interne`, `personnelle`, `sensible`, liste
+`classification` (`public`, `internal`, `personal`, `sensitive`, liste
 fermée). Un rôle peut masquer une classification entière plutôt que
 nommer chaque propriété ; les packs (D190) livrent leurs types classés.
 La base légale des données personnelles des dossiers (existante) s'y
@@ -493,8 +493,8 @@ qu'une opération n'a pas son filtre de liste, le registre la marque
 
 - **Refus explicites** dans les rôles personnalisés (« tout sauf le site
   Paris ») : permis ; le simulateur affiche l'énoncé qui a refusé.
-- **Classification** : liste fermée `publique`, `interne`,
-  `personnelle`, `sensible` (D298), étendue seulement si un pack métier
+- **Classification** : liste fermée `public`, `internal`,
+  `personal`, `sensitive` (D298), étendue seulement si un pack métier
   en a besoin.
 - **Clés côté navigateur** : non en V1 ; une application externe passe
   toujours par son serveur (Next.js, Dioxus fullstack).

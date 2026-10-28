@@ -150,8 +150,8 @@ pub struct PropertyDef {
     /// The value itself is a stable key, never renamed to translate it.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub labels: std::collections::BTreeMap<String, super::Names>,
-    /// Data classification (iam.md D298, crm.md D442): `personnelle` and
-    /// `sensible` values are hidden from a role without the matching read
+    /// Data classification (iam.md D298, crm.md D442): `personal` and
+    /// `sensitive` values are hidden from a role without the matching read
     /// permission and removed by an erasure.
     #[serde(default, skip_serializing_if = "Classification::is_internal")]
     pub classification: Classification,
@@ -163,21 +163,21 @@ pub struct PropertyDef {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Classification {
-    Publique,
+    Public,
     #[default]
-    Interne,
-    Personnelle,
-    Sensible,
+    Internal,
+    Personal,
+    Sensitive,
 }
 
 impl Classification {
     pub fn is_internal(&self) -> bool {
-        *self == Self::Interne
+        *self == Self::Internal
     }
 
     /// Personal data: hidden by role, removed by an erasure (D443, D446).
     pub fn is_personal(&self) -> bool {
-        matches!(self, Self::Personnelle | Self::Sensible)
+        matches!(self, Self::Personal | Self::Sensitive)
     }
 }
 
@@ -803,16 +803,16 @@ mod tests {
                 .map(|(v, c)| (v.to_string(), c.to_string()))
                 .collect(),
             ..def(
-                "statut",
+                "status",
                 PropertyKind::Enum {
-                    values: vec!["client".into(), "cible".into()],
+                    values: vec!["client".into(), "target".into()],
                 },
             )
         };
         assert!(check_defs(&[status(&[("client", "green")])], "p", &known).is_ok());
         for bad in [
             status(&[("client", "#00ff00")]),
-            status(&[("autre", "green")]),
+            status(&[("other", "green")]),
         ] {
             assert_eq!(check_defs(&[bad], "p", &known).unwrap_err().0, "p.0.colors");
         }
@@ -826,7 +826,7 @@ mod tests {
             Some("green")
         );
         assert_eq!(
-            status(&[("client", "green")]).color_of(&json!("cible")),
+            status(&[("client", "green")]).color_of(&json!("target")),
             None
         );
     }
@@ -835,9 +835,9 @@ mod tests {
     fn labels_translate_enum_values_without_renaming_them() {
         let known = |_: &str| true;
         let mut d = def(
-            "statut",
+            "status",
             PropertyKind::Enum {
-                values: vec!["client".into(), "cible".into()],
+                values: vec!["client".into(), "target".into()],
             },
         );
         d.labels.insert(
@@ -851,9 +851,9 @@ mod tests {
         assert!(check_defs(&[d.clone()], "p", &known).is_ok());
         assert_eq!(d.label_of("client", "fr-FR"), Some("Client"));
         assert_eq!(d.label_of("client", "de"), Some("Customer"));
-        assert_eq!(d.label_of("cible", "fr"), None);
+        assert_eq!(d.label_of("target", "fr"), None);
         let mut bad = d.clone();
-        bad.labels.insert("autre".into(), Default::default());
+        bad.labels.insert("other".into(), Default::default());
         assert_eq!(check_defs(&[bad], "p", &known).unwrap_err().0, "p.0.labels");
         let back: PropertyDef = serde_json::from_value(serde_json::to_value(&d).unwrap()).unwrap();
         assert_eq!(back, d);

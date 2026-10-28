@@ -357,7 +357,7 @@ mod tests {
     }
 
     #[test]
-    fn payload_expose_a_la_racine() {
+    fn payload_exposed_at_the_root() {
         let m = render(
             None,
             "⚠️ {{ device }} : {{ value }} {{ unit }}",
@@ -370,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn vars_deux_niveaux_litteral_ou_reference() {
+    fn vars_two_levels_literal_or_reference() {
         // "80" = literal; "{{ msg.value }}" = pre-rendered reference.
         let m = render(
             None,
@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn collision_cle_explicite_gagne() {
+    fn collision_explicit_key_wins() {
         // A payload carrying a "meta" key: the explicit context wins.
         let m = render(
             None,
@@ -398,7 +398,7 @@ mod tests {
     }
 
     #[test]
-    fn var_explicite_gagne_sur_payload_racine() {
+    fn explicit_var_wins_over_root_payload() {
         let m = render(
             None,
             "{{ value }}",
@@ -420,7 +420,7 @@ mod tests {
     }
 
     #[test]
-    fn payload_non_objet_access_via_msg() {
+    fn non_object_payload_access_via_msg() {
         let m = render(
             None,
             "v={{ msg }}",
@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[test]
-    fn var_rendue_exposee_a_la_racine() {
+    fn rendered_var_exposed_at_the_root() {
         // UI regression 2026-09-14: the template editor allows writing
         // `{{ test }}` without prefix — a declared var must resolve on its own.
         let m = render(
@@ -448,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn precedence_payload_puis_var_puis_namespace() {
+    fn precedence_payload_then_var_then_namespace() {
         let m = render(
             None,
             "{{ value }}|{{ vars.value }}|{{ meta.ts }}",
@@ -463,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn sujet_rendu_si_present() {
+    fn subject_rendered_if_present() {
         let m = render(
             Some("[{{ meta.org }}] {{ device }}"),
             "corps",
@@ -476,20 +476,20 @@ mod tests {
     }
 
     #[test]
-    fn syntaxe_template_invalide_erreur() {
+    fn invalid_template_syntax_error() {
         let e = render(None, "{% if %}", &vars(&[]), json!({}), json!({})).unwrap_err();
         assert!(matches!(e, NotifyError::Render(_)));
     }
 
     #[test]
-    fn borne_64kib() {
-        let gros = "x".repeat(70_000);
-        let e = render(None, &gros, &vars(&[]), json!({}), json!({})).unwrap_err();
+    fn bound_64kib() {
+        let big = "x".repeat(70_000);
+        let e = render(None, &big, &vars(&[]), json!({}), json!({})).unwrap_err();
         assert!(matches!(e, NotifyError::TooLarge(70_000)));
     }
 
     #[test]
-    fn vars_detectees_nues_et_vars_leaf_dans_lordre() {
+    fn vars_detected_bare_and_vars_leaf_in_order() {
         let out = template_vars(
             Some("[{{ device }}] {{ vars.seuil }}"),
             "v={{ value }} seuil={{ vars.seuil }} 2e={{ second }}",
@@ -595,7 +595,7 @@ mod tests {
     }
 
     #[test]
-    fn vars_expression_non_fermee_ignoree() {
+    fn vars_unclosed_expression_ignored() {
         assert_eq!(
             template_vars(None, "incomplet {{ value"),
             Vec::<String>::new()

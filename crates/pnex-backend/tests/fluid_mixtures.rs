@@ -59,10 +59,10 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
-/// Composition molaire valide (example README CoolProp).
+/// Valid molar composition (CoolProp README example).
 fn composition_mole() -> serde_json::Value {
     serde_json::json!({
         "basis": "mole",
@@ -105,7 +105,7 @@ async fn seed_mixture(server: &axum_test::TestServer, token: &str, org: i64, nam
 /// → update (stored mass conversion) → delete → 404 after delete.
 #[tokio::test]
 #[serial]
-async fn crud_et_isolation_org() {
+async fn crud_and_org_isolation() {
     with_app(|server, env| async move {
         let org_a = personal_org(&server, &env.alice).await;
         let org_b = personal_org(&server, &env.bob).await;
@@ -163,7 +163,7 @@ async fn crud_et_isolation_org() {
         let x0 = comp["mole_fractions"][0].as_f64().expect("x0");
         assert!(
             (x0 - 0.7187).abs() < 1e-3,
-            "x_eau attendu ≈0.7187, obtenu {x0}"
+            "x_water expected ≈0.7187, got {x0}"
         );
         assert!(comp["molar_mass"].as_f64().is_some());
 
@@ -188,7 +188,7 @@ async fn crud_et_isolation_org() {
 /// message), duplicate name, write without can_write.
 #[tokio::test]
 #[serial]
-async fn rejets_validation_et_unicite() {
+async fn validation_rejections_and_uniqueness() {
     with_app(|server, env| async move {
         let org_a = personal_org(&server, &env.alice).await;
 

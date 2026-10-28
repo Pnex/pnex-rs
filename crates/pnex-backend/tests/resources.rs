@@ -121,7 +121,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 /// Media asset (UUID) inserted via the upload API.
@@ -145,7 +145,7 @@ async fn create_media(server: &axum_test::TestServer, token: &str, org: i64, nam
 
 #[tokio::test]
 #[serial]
-async fn labels_roundtrip_validation_et_isolation() {
+async fn labels_roundtrip_validation_and_isolation() {
     with_app(|server, _db, env| async move {
         let org_a = personal_org(&server, &env.alice).await;
         let org_b = personal_org(&server, &env.bob).await;
@@ -275,7 +275,7 @@ async fn labels_are_never_inherited_through_folders() {
 
 #[tokio::test]
 #[serial]
-async fn containment_parent_unique_cycle_et_reparent() {
+async fn containment_unique_parent_cycle_and_reparent() {
     with_app(|server, db, env| async move {
         let _ = &db;
         let org = personal_org(&server, &env.alice).await;
@@ -347,7 +347,7 @@ async fn containment_parent_unique_cycle_et_reparent() {
         assert_eq!(body["parent"]["id"], b.to_string());
         assert_eq!(body["children"].as_array().unwrap().len(), 0);
         // A is INSIDE B: the media's path (placed in B) = [B] only.
-        assert_eq!(body["path"].as_array().unwrap().len(), 1, "chemin media>B");
+        assert_eq!(body["path"].as_array().unwrap().len(), 1, "path media>B");
 
         // Detach: null parent → root (subtree intact, nothing deleted).
         let res = jput(
@@ -382,7 +382,7 @@ async fn containment_parent_unique_cycle_et_reparent() {
 /// children carry their display name for all kinds (registry hydration).
 #[tokio::test]
 #[serial]
-async fn map_pin_contient_folders_pas_objets() {
+async fn map_pin_contains_folders_not_objects() {
     with_app(|server, db, env| async move {
         let _ = db;
         let org = personal_org(&server, &env.alice).await;
@@ -476,7 +476,7 @@ async fn map_pin_contient_folders_pas_objets() {
 
 #[tokio::test]
 #[serial]
-async fn edges_validite_doublon_et_purge_symetrique() {
+async fn edges_validity_duplicate_and_symmetric_purge() {
     with_app(|server, db, env| async move {
         let _ = &db;
         let org = personal_org(&server, &env.alice).await;
@@ -541,7 +541,7 @@ async fn edges_validite_doublon_et_purge_symetrique() {
         assert_eq!(res.status_code(), 201, "{}", res.text());
         let edge_id = res.json::<serde_json::Value>()["id"].as_i64().unwrap();
 
-        // Doublon → 409.
+        // Duplicate → 409.
         let res = jpost(
             &server,
             &env.alice,
@@ -591,7 +591,7 @@ async fn edges_validite_doublon_et_purge_symetrique() {
             }),
         )
         .await;
-        assert_eq!(res.status_code(), 404, "dashboard inconnu");
+        assert_eq!(res.status_code(), 404, "unknown dashboard");
 
         // Symmetric purge: deleting the MEDIA (target) purges the edge.
         let res = jdelete(&server, &env.alice, org, &format!("/api/v1/media/{media}")).await;
@@ -632,11 +632,11 @@ async fn create_poi(server: &axum_test::TestServer, token: &str, org: i64) -> St
         .to_string()
 }
 
-// ─────────────────────────── recherche cross-kind ───────────────────────────
+// ─────────────────────────── cross-kind search ───────────────────────────
 
 #[tokio::test]
 #[serial]
-async fn recherche_effective_cross_kind_et_folders() {
+async fn effective_search_cross_kind_and_folders() {
     with_app(|server, db, env| async move {
         let _ = &db;
         let org = personal_org(&server, &env.alice).await;

@@ -3,7 +3,7 @@
 //! the full editing panel (inspector, versions) comes with the
 //! studio integration (slice 4).
 
-/// Inspecteur d'item (cible, label, couleur, suppression).
+/// Item inspector (target, label, colour, delete).
 pub mod inspector;
 /// Editing panel (layer + items + placement + save + conflict).
 pub mod panel;

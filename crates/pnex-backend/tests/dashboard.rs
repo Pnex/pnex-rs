@@ -62,7 +62,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .await
         .json::<serde_json::Value>()["orgs"][0]["id"]
         .as_i64()
-        .expect("org personnelle")
+        .expect("personal org")
 }
 
 async fn summary(
@@ -82,7 +82,7 @@ async fn summary(
 /// X-Org-Id required (400).
 #[tokio::test]
 #[serial]
-async fn dashboard_summary_degrade_sans_o2() {
+async fn dashboard_summary_degrades_without_o2() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         server
@@ -142,7 +142,7 @@ async fn dashboard_summary_degrade_sans_o2() {
             }
         }
         let body: serde_json::Value = summary(&server, &env.alice, org).await.json();
-        assert_eq!(body["liveness"]["total"], 13, "compteur complet");
+        assert_eq!(body["liveness"]["total"], 13, "full counter");
         assert_eq!(body["liveness"]["live"], 0);
         let list = body["liveness"]["devices"].as_array().unwrap();
         assert_eq!(list.len(), 10, "list capped at ~10");
@@ -174,7 +174,7 @@ async fn dashboard_summary_degrade_sans_o2() {
 /// (D2 partitioning — devices of alice's org absent).
 #[tokio::test]
 #[serial]
-async fn dashboard_summary_cloisonne_par_org() {
+async fn dashboard_summary_partitioned_per_org() {
     with_app(|server, env, _ctx| async move {
         let org_alice = personal_org(&server, &env.alice).await;
         server
@@ -194,7 +194,7 @@ async fn dashboard_summary_cloisonne_par_org() {
             .await
             .json::<serde_json::Value>()["orgs"][0]["id"]
             .as_i64()
-            .expect("org perso bob");
+            .expect("bob personal org");
 
         let body: serde_json::Value = summary(&server, &env.bob, org_bob).await.json();
         assert_eq!(body["liveness"]["total"], 0, "bob's org empty");

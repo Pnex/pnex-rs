@@ -176,7 +176,7 @@ Esquisse (syntaxe des packs existants) :
 ```yaml
 key: finance
 version: "0.1.0"
-requires: [investigation, entreprises_fr]
+requires: [investigation, companies_fr]
 types:
   - key: fiscal_period          # D470
   - key: third_party            # tiers issu d'un compte auxiliaire, fusionnable avec une organization

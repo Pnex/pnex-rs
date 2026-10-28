@@ -366,7 +366,7 @@ async fn save_version(
     Ok(format::json(detail_dto(&f, &version)).into_response())
 }
 
-/// `GET /api/v1/functions/{id}/versions` — historique (version DESC).
+/// `GET /api/v1/functions/{id}/versions` — history (version DESC).
 #[utoipa::path(
     get,
     path = "/api/v1/functions/{id}/versions",

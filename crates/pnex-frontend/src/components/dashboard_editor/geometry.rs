@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn to_canvas_et_snap() {
+    fn to_canvas_and_snap() {
         let p = to_canvas((130.0, 250.0), (30.0, 50.0), (0.0, 0.0), 1.0);
         assert_eq!(p, (100.0, 200.0));
         // zoom 2: a client point twice as far on the canvas.
@@ -189,7 +189,7 @@ mod tests {
     }
 
     #[test]
-    fn zoom_toward_cursor_ne_deplace_pas_le_point() {
+    fn zoom_toward_cursor_keeps_the_point() {
         let (z, pan) = zoom_pan_towards(1.0, (0.0, 0.0), (200.0, 100.0), 1.25);
         assert!((z - 1.25).abs() < 1e-9);
         // The document point under the cursor stays under the cursor.
@@ -201,14 +201,14 @@ mod tests {
     }
 
     #[test]
-    fn hit_et_resize() {
+    fn hit_and_resize() {
         let w = widget(100, 100, 240, 200);
         assert!(resize_handle_at(&w, (340.0, 300.0), 6.0));
         assert!(!resize_handle_at(&w, (300.0, 300.0), 6.0));
     }
 
     #[test]
-    fn accroches_aux_milieux_des_cotes() {
+    fn anchors_at_side_midpoints() {
         let w = widget(100, 100, 240, 200);
         assert_eq!(anchor_point(&w, WireSide::Top), (220.0, 100.0));
         assert_eq!(anchor_point(&w, WireSide::Bottom), (220.0, 300.0));
@@ -217,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn coude_orthogonal_entre_deux_accroches() {
+    fn orthogonal_elbow_between_two_anchors() {
         let a = widget(100, 100, 240, 200);
         let mut b = widget(500, 100, 240, 200);
         b.id = "w2".into();
@@ -225,11 +225,11 @@ mod tests {
         let path = wire_path(&l, "w1", WireSide::Right, "w2", WireSide::Left).unwrap();
         assert!(path.starts_with("M 340.0 200.0"), "{path}");
         assert!(path.ends_with("L 500.0 200.0"), "{path}");
-        assert!(wire_path(&l, "w1", WireSide::Right, "inconnu", WireSide::Left).is_none());
+        assert!(wire_path(&l, "w1", WireSide::Right, "unknown", WireSide::Left).is_none());
     }
 
     #[test]
-    fn tailles_par_defaut_couvertes() {
+    fn default_sizes_covered() {
         for kind in pnex_core::VIZ_WIDGET_TYPES {
             let (w, h) = default_size(kind);
             assert!(w >= pnex_core::WIDGET_MIN && h >= pnex_core::WIDGET_MIN);

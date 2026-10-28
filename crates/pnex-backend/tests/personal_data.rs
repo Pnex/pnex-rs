@@ -520,7 +520,7 @@ async fn an_erased_person_is_a_shell_never_recreated_at_its_account() {
         let (st, e) = employs(&server, &env.alice, org, &acme, &again).await;
         assert_eq!(
             (st, e["error"].as_str()),
-            (409, Some("prospection-opposed")),
+            (409, Some("prospecting-opposed")),
             "{e}"
         );
         let (st, e) = employs(&server, &env.alice, org, &other, &again).await;
@@ -531,7 +531,7 @@ async fn an_erased_person_is_a_shell_never_recreated_at_its_account() {
             .db
             .query_one_raw(sea_orm::Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
-                format!("SELECT count(*) AS n FROM prospection_oppositions WHERE org_id = {org}"),
+                format!("SELECT count(*) AS n FROM prospecting_oppositions WHERE org_id = {org}"),
             ))
             .await
             .unwrap()

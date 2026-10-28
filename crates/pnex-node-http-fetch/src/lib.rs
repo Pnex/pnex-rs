@@ -89,7 +89,7 @@ fn build_client(cfg: &HttpFetchNodeConfig, proxy_password: &str) -> Result<reqwe
         }
     }
     Ok(builder.build().map_err(|e| {
-        EdgelinkError::BadFlowsJson(format!("pnex-http-fetch: HTTP client impossible: {e}"))
+        EdgelinkError::BadFlowsJson(format!("pnex-http-fetch: cannot build HTTP client: {e}"))
     })?)
 }
 
@@ -345,7 +345,7 @@ impl PnexHttpFetchNode {
                     other => Some((
                         serde_json::to_string(&other).map_err(|e| {
                             EdgelinkError::InvalidOperation(format!(
-                                "pnex-http-fetch [{}]: JSON body impossible: {e}",
+                                "pnex-http-fetch [{}]: cannot serialize JSON body: {e}",
                                 self.name()
                             ))
                         })?,
@@ -536,8 +536,8 @@ mod tests {
     use pnex_core::{HttpFetchHeader, HttpFetchProxy};
 
     #[test]
-    fn node_enregistre_dans_le_registre() {
-        let reg = RegistryBuilder::default().build().expect("registre");
+    fn node_is_in_the_registry() {
+        let reg = RegistryBuilder::default().build().expect("registry");
         let meta = reg
             .get("pnex-http-fetch")
             .expect("pnex-http-fetch node missing from the registry");
@@ -545,14 +545,14 @@ mod tests {
     }
 
     #[test]
-    fn registered_ne_panique_pas() {
+    fn registered_does_not_panic() {
         registered();
     }
 
     /// The projected config (flattened fields, tagged modes) is deserializable
     /// as is by the node — the projection → runtime contract.
     #[test]
-    fn config_accepte_projection_aplatie() {
+    fn config_accepts_flattened_projection() {
         let cfg: HttpFetchNodeConfig = serde_json::from_str(
             r#"{
                 "url": "https://api.exemple.dev/x",
@@ -573,7 +573,7 @@ mod tests {
     /// Unknown tagged mode → explicit rejection at build (pre-flight 400
     /// engine_load with the real error).
     #[test]
-    fn config_rejete_mode_auth_inconnu() {
+    fn config_rejects_unknown_auth_mode() {
         let err = serde_json::from_str::<HttpFetchNodeConfig>(
             r#"{"url": "https://x", "auth": {"mode": "digest", "user": "u"}}"#,
         )
@@ -584,7 +584,7 @@ mod tests {
     /// Defaults: timeout 30 (not 0 — otherwise a spurious violation in the editor
     /// and timeout disabled in the runtime).
     #[test]
-    fn config_defaut_timeout_trente() {
+    fn config_default_timeout_thirty() {
         let cfg: HttpFetchNodeConfig = serde_json::from_str(r#"{"url": "https://x"}"#).unwrap();
         assert_eq!(cfg.timeout_secs, 30);
         assert_eq!(HttpFetchNodeConfig::default().timeout_secs, 30);
@@ -592,10 +592,10 @@ mod tests {
 
     /// Invalid proxy → client refused at build (pre-flight fail-fast).
     #[test]
-    fn client_rejete_proxy_invalide() {
+    fn client_rejects_invalid_proxy() {
         let cfg = HttpFetchNodeConfig {
             proxy: HttpFetchProxy::Custom {
-                url: "://pas-une-url".into(),
+                url: "://not-a-url".into(),
                 username: None,
                 password: pnex_core::SecretSlot::Unset,
             },
