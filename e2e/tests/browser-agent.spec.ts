@@ -93,8 +93,10 @@ test.describe('browser agent', { tag: ['@extension'] }, () => {
       await expect.poll(() => state(value), { timeout: 120_000 }).toBe('running:');
       await expect.poll(() => state(kept), { timeout: 120_000 }).toBe('running:');
       await expect.poll(() => state(denied), { timeout: 120_000 }).toBe('blocked:ext-permission-missing');
-      const docs = await api.get('/media?kind=document&limit=100');
-      expect(docs.results.some((d: { name: string }) => d.name === `${prefix} page`)).toBe(true);
+      // The kept page may land after the state flip; filter by name so other docs don't page it out.
+      const search = encodeURIComponent(`${prefix} page`);
+      await expect.poll(async () => (await api.get(`/media?kind=document&search=${search}&limit=100`)).results
+        .some((d: { name: string }) => d.name === `${prefix} page`), { timeout: 30_000 }).toBe(true);
     } finally {
       for (const id of created) await api.delete(`/extension/missions/${id}`).catch(() => {});
       for (const a of (await api.get('/extension/agents?limit=100')).results) {
