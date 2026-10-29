@@ -1164,6 +1164,19 @@ transaction tant que D188 manque. Premier lot de valeur sans LLM : DD1
 (parseur FEC) + DD2 (moteur et comparatif). Relecture du 2026-10-27
 (§14) : la file de propositions et l'import BODACC existent déjà.
 
+### P2.33 — Jurisprudence vérifiable pour assistants tiers (ajout 2026-10-28) — **PRD proposé, rien d'implémenté**
+
+Doc : `legal-research.md` (D485–D496, lots LR0–LR6). Collecte de l'open
+data juridique français (Cour de cassation, textes consolidés,
+juridictions administratives, Conseil constitutionnel) dans un pack
+`case_law` + `case_law_fr`, découpage des décisions, références → liens,
+localisation d'un passage cité. Une application séparée (`pnex-juris`)
+expose en lecture seule un serveur MCP et une API (clé gratuite, quotas)
+que chacun branche sur son propre assistant ; outil central
+`verify_citation`. Pas de chat fourni, synthèse IA à la demande et
+marquée, aucune analyse des magistrats. Premier lot de valeur sans LLM :
+LR1 → LR5 sur la Cour de cassation.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -1539,3 +1552,6 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   D468–D483, lots DD0–DD7) : dossier de transaction, grand livre FEC,
   faits financiers normalisés, moteur de ratios, flux, pro forma. PRD
   rédigé en D329–D344, renuméroté (plage prise par `account-mapping.md`).
+- **2026-10-28 (jurisprudence)** — Ajout de P2.33 (`legal-research.md`,
+  D485–D496, lots LR0–LR6) : open data juridique français, vérificateur
+  de citations, façade MCP/API `pnex-juris` pour assistants tiers.
