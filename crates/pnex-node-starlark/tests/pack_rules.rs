@@ -989,8 +989,8 @@ fn my_day_lists_due_activities_and_dormant_opportunities() {
         .unwrap()
         .return_json
         .unwrap();
-    assert_eq!(r["payload"]["count"], 2);
-    let text = r["payload"]["text"].as_str().unwrap();
+    assert_eq!(r["digest"]["count"], 2);
+    let text = r["digest"]["text"].as_str().unwrap();
     assert!(
         text.contains("2026-10-26 mail D3 · Acme")
             && text.contains("Beta 2027 (last activity 2026-09-30)"),

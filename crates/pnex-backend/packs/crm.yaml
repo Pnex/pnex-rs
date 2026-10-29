@@ -32,7 +32,7 @@
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "3.0.0"
+version: "3.0.1"
 requires: [prospecting_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -589,7 +589,7 @@ functions:
               for r in dormant:
                   last = (r["properties"].get("last_activity", "") or "")[:10]
                   lines.append("- " + r["title"] + " (last activity " + last + ")")
-          return {"payload": {"trigger": True, "count": len(dues) + len(dormant), "text": "\n".join(lines)}}
+          return {"digest": {"trigger": True, "count": len(dues) + len(dormant), "text": "\n".join(lines)}}
 flows:
   - name: "CRM · follow-up plan"
     note: "Every hour, up to 20 opportunities that entered the stage qualification get one activity to do per active step of the org's follow-up plan (objects 'Follow-up step': day, kind, instruction), due on the start day plus the step's day, linked to the opportunity. An opportunity whose people involved all objected is only marked. Add the steps first, then deploy."
