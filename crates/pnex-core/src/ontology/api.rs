@@ -913,6 +913,31 @@ pub struct CaseWorkspace {
     /// Sub-cases (GS16).
     #[serde(default)]
     pub children: Vec<CaseChild>,
+    /// Watch checks feeding the case (network-check.md D430).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checks: Vec<CaseCheck>,
+}
+
+/// One watch check of a case (D430): its worst latest result over the
+/// subjects and scopes of the case, its rules, when it last ran and changed.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CaseCheck {
+    /// Machine code of the check (`quali_watch.network`).
+    pub check: String,
+    /// `ok` | `unknown` | `finding`.
+    pub result: String,
+    pub rules: Vec<super::check::CheckRule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
+    pub last_run_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
+    pub changed_at: Option<String>,
+    /// Runs since the result last changed.
+    pub runs_since_change: i64,
+    /// `flow:<id>@<version>` or `import:<name>` of the last run.
+    pub source_ref: String,
 }
 
 /// A located member of a case.

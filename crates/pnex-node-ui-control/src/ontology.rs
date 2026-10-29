@@ -1,5 +1,5 @@
 //! Ontology nodes (partner-watch.md D312): `pnex-ontology-query`,
-//! `pnex-object-upsert`, `pnex-link-upsert`. The runtime has no database
+//! `pnex-object-upsert`, `pnex-link-upsert`, `pnex-check-record`. The runtime has no database
 //! access: each node calls `/internal/flow/ontology/{query,upsert,link}`
 //! naming itself (org, flow, version, node); the backend reads the node
 //! config from the deployed version and writes through the ontology
@@ -25,6 +25,7 @@ use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
 use pnex_core::ontology::api::PropertyFilter;
+use pnex_core::ontology::check::{CheckRecordAck, CheckRecordRequest, CheckRun};
 use pnex_core::ontology::flow::{
     resolve_value, FlowLinkRequest, FlowNodeRef, FlowQueryReply, FlowQueryRequest, FlowUpsertAck,
     FlowUpsertRequest, QueryOutput,
@@ -87,7 +88,14 @@ impl Backend {
                 node_id: c.pnex_node_id,
             },
             http,
-            url: format!("{}/{path}", base.trim_end_matches('/')),
+            // `/x` is a sibling route of `/internal/flow/ontology` (D416).
+            url: match path.strip_prefix('/') {
+                Some(p) => format!(
+                    "{}/{p}",
+                    base.trim_end_matches('/').trim_end_matches("/ontology")
+                ),
+                None => format!("{}/{path}", base.trim_end_matches('/')),
+            },
             token,
             last_error: Mutex::new(None),
         })
@@ -367,6 +375,137 @@ impl ObjectUpsertNode {
     }
 }
 
+// ───────────────────────────── check-record ─────────────────────────────
+
+/// Records a watch check run (network-check.md D426); `msg.check` = the
+/// server's answer.
+#[flow_node("pnex-check-record", red_name = "pnex-check-record")]
+struct CheckRecordNode {
+    base: BaseFlowNodeState,
+    backend: Backend,
+}
+
+impl CheckRecordNode {
+    fn build(
+        _flow: &Flow,
+        base_node: BaseFlowNodeState,
+        config: &RedFlowNodeConfig,
+        _options: Option<&config::Config>,
+    ) -> Result<Box<dyn FlowNodeBehavior>> {
+        let name = "pnex-check-record";
+        let common = Common::deserialize(&config.rest)
+            .map_err(|e| EdgelinkError::BadFlowsJson(format!("{name} : invalid config : {e}")))?;
+        Ok(Box::new(CheckRecordNode {
+            base: base_node,
+            backend: Backend::build(name, common, "check")?,
+        }))
+    }
+
+    async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
+        let payload = to_json(msg.read().await.get("payload"));
+        let Ok(run) = serde_json::from_value::<CheckRun>(payload) else {
+            log::warn!(
+                "pnex-check-record [{}] : message dropped — payload is not a check run (check, subject_id, rules)",
+                self.name()
+            );
+            return Ok(());
+        };
+        let req = CheckRecordRequest {
+            node: self.backend.node.clone(),
+            run,
+        };
+        let who = format!("pnex-check-record [{}]", self.name());
+        let Some(ack) = self
+            .backend
+            .call::<CheckRecordAck, _>(self, &who, &req)
+            .await
+        else {
+            return Ok(());
+        };
+        msg.write().await.set(
+            "check".into(),
+            Variant::from(serde_json::to_value(&ack).unwrap_or(Value::Null)),
+        );
+        self.fan_out_one(Envelope { port: 0, msg }, cancel).await
+    }
+}
+
+// ───────────────────────────── office ─────────────────────────────
+
+/// `msg.payload` = the server's answer (text of a document, workbook
+/// written): `pnex-document-text`, `pnex-sheet-write` (D416, D420).
+macro_rules! payload_node {
+    ($t:ident, $name:literal, $path:literal, $req:expr) => {
+        #[flow_node($name, red_name = $name)]
+        struct $t {
+            base: BaseFlowNodeState,
+            backend: Backend,
+        }
+
+        impl $t {
+            fn build(
+                _flow: &Flow,
+                base_node: BaseFlowNodeState,
+                config: &RedFlowNodeConfig,
+                _options: Option<&config::Config>,
+            ) -> Result<Box<dyn FlowNodeBehavior>> {
+                let common = Common::deserialize(&config.rest).map_err(|e| {
+                    EdgelinkError::BadFlowsJson(format!("{} : invalid config : {e}", $name))
+                })?;
+                Ok(Box::new($t {
+                    base: base_node,
+                    backend: Backend::build($name, common, $path)?,
+                }))
+            }
+
+            async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
+                let payload = to_json(msg.read().await.get("payload"));
+                let Some(req) = ($req)(self.backend.node.clone(), payload) else {
+                    log::warn!(
+                        "{} [{}] : message dropped — unexpected payload",
+                        $name,
+                        self.name()
+                    );
+                    return Ok(());
+                };
+                let who = format!("{} [{}]", $name, self.name());
+                let Some(reply) = self.backend.call::<Value, _>(self, &who, &req).await else {
+                    return Ok(());
+                };
+                msg.write()
+                    .await
+                    .set("payload".into(), Variant::from(reply));
+                self.fan_out_one(Envelope { port: 0, msg }, cancel).await
+            }
+        }
+    };
+}
+
+payload_node!(
+    DocumentTextNode,
+    "pnex-document-text",
+    "/document-text",
+    |node, p: Value| {
+        p.get("media_id")
+            .and_then(Value::as_str)
+            .map(|m| pnex_core::office::DocumentTextRequest {
+                node,
+                media_id: m.to_string(),
+            })
+    }
+);
+
+payload_node!(
+    SheetWriteNode,
+    "pnex-sheet-write",
+    "/sheet-write",
+    |node, p: Value| {
+        serde_json::from_value::<pnex_core::office::Workbook>(p)
+            .ok()
+            .map(|workbook| pnex_core::office::SheetWriteRequest { node, workbook })
+    }
+);
+
 // ───────────────────────────── link-upsert ─────────────────────────────
 
 #[flow_node("pnex-link-upsert", red_name = "pnex-link-upsert")]
@@ -455,6 +594,9 @@ macro_rules! run_each {
 run_each!(OntologyQueryNode);
 run_each!(ObjectUpsertNode);
 run_each!(LinkUpsertNode);
+run_each!(CheckRecordNode);
+run_each!(DocumentTextNode);
+run_each!(SheetWriteNode);
 
 #[cfg(test)]
 mod tests {

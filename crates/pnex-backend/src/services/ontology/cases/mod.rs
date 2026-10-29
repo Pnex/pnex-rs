@@ -18,6 +18,7 @@ mod reads;
 mod signals;
 mod snapshots;
 mod tracks;
+pub mod watch;
 
 use std::collections::HashSet;
 
@@ -290,6 +291,7 @@ pub async fn workspace(
         places,
         parents,
         children,
+        checks: watch::case_checks(db, org_id, case_id).await?,
     })
 }
 

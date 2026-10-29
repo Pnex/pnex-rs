@@ -347,6 +347,14 @@ const RULES: &[Rule] = &[
         use_instead: "plan de relance (D450)",
         allowed_keys: &[],
     },
+    // network-check.md D426: a recorded watch run is a « vérification »;
+    // a « contrôle » is a control surface (D123).
+    Rule {
+        scope: Scope::Fr,
+        term: "contrôle de veille",
+        use_instead: "vérification (D426)",
+        allowed_keys: &[],
+    },
     // mail.md D453: what PneX relève is a « boîte mail » / « mailbox ».
     Rule {
         scope: Scope::Fr,

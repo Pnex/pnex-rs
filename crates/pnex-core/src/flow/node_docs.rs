@@ -508,6 +508,24 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "msg.payload = {source_id, target_id, attributes?, valid_from?} (object ids). Closing keeps the link in the history. Output: msg.link = the link (valid_to set when skip_closed answered a closed one). Cardinality rules of the link type apply (a second open link where only one is allowed is refused).",
     },
     NodeDoc {
+        kind: "check_record",
+        summary: "Records one run of a watch check on a subject (a partner) within a scope (a certification): a dated line in the check_runs journal at every run, and an event in the subject's watch case only when the result changes. No setting. One output port.",
+        config: &[],
+        notes: "msg.payload = {check: machine code (\"quali_watch.network\"), subject_id: object id, scope_ids: [object ids], rules: [{code, version, result: ok|unknown|finding, reason?: machine code, finding_id?: object id, finding_ref?: natural key of a finding written in the same run}], finding_type?, finding_key?: the type and unique property finding_ref names (the findings already written join the evidence), objects?: [object ids shown as context], case?: {key, title, parent_key?, parent_title?}}. The run's result is the worst of its rules (finding > unknown > ok). A run identical to the previous one (same rules, versions, results, reasons and findings) writes no object: it only counts. When it changes, the open event of the check is closed and a new one opens (origin flow), with the subject as actor, the scope and findings as evidence, the objects as context. The case is found by its key (watch_key), else opened with title, under the parent case when parent_key is given; a case archived by hand is never reopened. Every id must exist in the organization, else the run is refused (node status) and the message dropped. Output: msg.check = {result, changed, case_id, event_id}. Shares the 600 writes a minute budget of object_upsert.",
+    },
+    NodeDoc {
+        kind: "document_text",
+        summary: "Reads the text of the current version of a document of the media library (PDF with text, DOCX, XLSX, text). No setting. One output port.",
+        config: &[],
+        notes: "msg.payload.media_id = the media id (a document of the organization). Output msg.payload = {media_id, version, text (200,000 characters at most, sections separated by blank lines), pages, truncated}. A scanned PDF or an image has no text: the node refuses it (document-text-no-text, node status) until an OCR model exists; an unreadable file is refused too (document-text-unreadable).",
+    },
+    NodeDoc {
+        kind: "sheet_write",
+        summary: "Writes an xlsx workbook into the media library: one media per node and file name, a new version at each write. No setting. One output port.",
+        config: &[],
+        notes: "msg.payload = {name: file name, sheets: [{name (31 characters at most), cells: [{ref: \"B8\", value: text, bold?, wrap?}], merges: [\"B1:E1\"], widths: {B: 60}}]}. Every cell is text (no formula); 16 sheets and 20,000 cells at most. Output msg.payload = {media_id, version, filename}; link the media to an object with link_upsert (e.g. observed_in) to find it again.",
+    },
+    NodeDoc {
         kind: "site_recipe",
         summary: "Plays a saved website navigation rule (Web sites page) on the server browser at each message: one site, one rule, its steps journaled like a run started from the studio (trigger flow). Ports: 0 passed, 1 failed again, 2 broke (failed right after a passing run: wire it to a notify node to hear once when a site changes).",
         config: &[

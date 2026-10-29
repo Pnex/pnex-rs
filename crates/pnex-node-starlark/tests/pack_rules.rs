@@ -551,6 +551,57 @@ fn network_rules_read_registry_facts() {
             .all(|x| !x["props"]["ref"].as_str().unwrap().contains("100000009")),
         "OF EXEMPLE is clean: {out}"
     );
+    // D431: one check run per partner of the certification, every rule
+    // there; the clean partner is ok, a finding names its rule by key.
+    let runs = out["passages"].as_array().unwrap();
+    assert_eq!(runs.len(), 5, "{out}");
+    let run = |subject: &str| runs.iter().find(|r| r["subject_id"] == subject).unwrap();
+    let clean = run("ok");
+    assert_eq!(clean["case"]["key"], "qw:RS0101:100000009");
+    assert_eq!(clean["case"]["parent_key"], "qw:RS0101");
+    assert_eq!(clean["scope_ids"], json!(["c1"]));
+    assert!(clean["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|r| r["result"] == "ok"));
+    assert_eq!(clean["rules"].as_array().unwrap().len(), 6);
+    let eval = run("eval");
+    let bad: Vec<&str> = eval["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| r["result"] == "finding")
+        .map(|r| r["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(bad, vec!["ADM-02", "CPF-02"], "{eval}");
+    assert_eq!(eval["finding_key"], "ref");
+    // A finding a human rejected counts as ok in the run.
+    let mut msg2 = msg.clone();
+    let reviewed = joined(
+        "f1",
+        "ADM-01",
+        json!({"ref": "ADM-01:111111111:RS0101", "state": "rejected"}),
+        json!({}),
+    );
+    msg2["payload"][0]["links"]["finding_on"] = json!([reviewed]);
+    let out2 = execute(&code_of("qw_network_rules"), &msg2, 5000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    let ceased = out2["passages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["subject_id"] == "ceased")
+        .unwrap();
+    let adm01 = ceased["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["code"] == "ADM-01")
+        .unwrap();
+    assert_eq!(adm01["result"], "ok", "{ceased}");
 }
 
 /// The partner message of the website check: a partner reached from a
@@ -581,8 +632,8 @@ fn crawl_targets_carry_codes_titles_and_the_partner() {
     assert_eq!(out["payload"]["link_to"], "site1");
     let rules = out["payload"]["match"].to_string();
     assert!(
-        rules.contains("RS\\\\s?7511")
-            && rules.contains("référencement naturel")
+        rules.contains("RS\\\\s?0101")
+            && rules.contains("référencement d'un site")
             && rules.contains("CERTIF EXEMPLE"),
         "{rules}"
     );
@@ -655,9 +706,7 @@ fn website_rules_quote_the_page() {
         (json!("c9"), json!("po1"))
     );
     // The title without its code (WEB-02).
-    let no_code = page(
-        "Notre parcours Piloter le référencement d'un site, par CERTIF EXEMPLE.",
-    );
+    let no_code = page("Notre parcours Piloter le référencement d'un site, par CERTIF EXEMPLE.");
     assert_eq!(rules_of(&no_code), vec!["WEB-02"], "{no_code}");
     // The site summary: nothing relevant (COL-01), a finding to propose.
     let mut m = msg.clone();
@@ -668,6 +717,36 @@ fn website_rules_quote_the_page() {
         .unwrap();
     assert_eq!(rules_of(&col), vec!["COL-01"]);
     assert_eq!(col["findings"][0]["props"]["state"], "proposed");
+    // D431: the website's check run, COL-01 a finding named by its key.
+    let run = &col["passages"];
+    assert_eq!(run["check"], "quali_watch.website", "{col}");
+    let c = run["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["code"] == "COL-01")
+        .unwrap();
+    assert_eq!(
+        (c["result"].clone(), c["finding_ref"].clone()),
+        (json!("finding"), col["findings"][0]["props"]["ref"].clone())
+    );
+    // A site that could not be read is unknown, not a finding.
+    m["payload"]["blocked"] = json!("crawl-unreachable");
+    let blocked = execute(&code_of("qw_web_rules"), &m, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    let c = blocked["passages"]["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["code"] == "COL-01")
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (c["result"].clone(), c["reason"].clone()),
+        (json!("unknown"), json!("site-unreachable"))
+    );
 }
 
 /// WEB-06 needs an explicit Qualiopi category claim, quoted word for word,
@@ -1122,4 +1201,193 @@ fn an_invitation_becomes_a_meeting_with_its_people() {
         .unwrap();
     assert!(r[0].is_null());
     assert_eq!(r[1]["payload"]["confidence"], 40);
+}
+
+/// A reference programme and a partner's (fictitious, network-check.md
+/// D419), as their documents read.
+const REFERENCE_TEXT: &str = "Programme de référence\n\
+Cadrer le projet de référencement naturel (C1) (2h)\n\
+- Fixer la cible et les objectifs du site.\n\
+- Choisir une stratégie de référencement.\n\
+- Lister les ressources à mobiliser : outils, intervenants internes et externes.\n\
+- Estimer le budget.\n\
+- Relier le référencement à la stratégie globale de communication.\n\
+Réaliser un audit des intentions de recherches de sa cible (C2) (4h)\n\
+- Repérer les intentions de recherches pertinentes au regard de la stratégie.\n\
+- Outils et méthodes pour conduire un audit d'intentions de recherches.\n\
+Optimiser les différents contenus web de son site (C3) (6h)\n\
+- Balises title et meta.\n\
+- Contenus, images, vidéos et fichiers joints.\n\
+- Adresses URL, navigation et maillage interne.\n\
+- Usage mobile et temps de chargement.\n\
+- Sobriété et sécurité numérique.\n\
+- Suivi de l'indexation du site.\n\
+- Mettre en place une veille.\n\
+Elaborer une stratégie éditoriale orientée référencement (C4) (4h)\n\
+- Rédiger une charte éditoriale.\n\
+- Planifier un calendrier de publication des contenus.\n\
+- Structurer un contenu performant pour le référencement.\n\
+- Cohérence sémantique des contenus.\n\
+- Réduire l'impact environnemental des contenus.\n\
+- Accessibilité des contenus.\n\
+Mettre en place une stratégie de netlinking (C5) (3h)\n\
+- Les indicateurs de popularité.\n\
+- Identifier les sites partenaires utiles au référencement.\n\
+- Mettre en place et suivre les partenariats.\n\
+Auditer les résultats de sa stratégie de référencement naturel (C6) (2h)\n\
+- Auditer les performances du référencement : indicateurs et outils de contrôle.\n\
+- Identifier les points bloquants et proposer des axes d'amélioration.\n\
+- Suivre les retombées et mesurer le ROI dans un tableau de bord.\n";
+
+const PARTNER_TEXT: &str = "OF EXEMPLE — programme\n\
+Chapitre 01 : Cadrer le projet et auditer les intentions de recherche (2 h)\n\
+Parties répondant à C1 :\n\
+- Votre cible, vos objectifs et votre stratégie.\n\
+- Les ressources : outils, intervenants internes et externes.\n\
+- Votre budget.\n\
+Atelier : la note de cadrage du projet.\n\
+Chapitre 02 : Cadrer le projet et auditer les intentions de recherche (2 h)\n\
+- Repérer les intentions de recherche pertinentes pour la stratégie.\n\
+- Outils et méthodes pour mener l'audit.\n\
+Atelier : audit des intentions de recherche de la cible, avec des outils adaptés au budget.\n\
+Chapitre 03 : Optimiser les différents contenus web de son site (5 h)\n\
+- Title, meta, contenus, images et vidéos.\n\
+- URL, navigation et maillage interne.\n\
+- Mobile, temps de chargement, indexation.\n\
+- Sobriété et sécurité numérique.\n\
+- Mettre en place une veille.\n\
+Chapitre 04 : Élaborer une stratégie éditoriale orientée référencement (3 h)\n\
+- Une charte éditoriale.\n\
+- Un calendrier de publication.\n\
+- Structurer un contenu performant et sémantiquement cohérent.\n\
+- Impact environnemental et accessibilité des contenus.\n\
+Chapitre 5 complémentaire : Robots d'indexation et réponses générées (2 h)\n\
+- Lire son fichier robots.txt agent par agent.\n\
+- Écrire des passages courts, réponse en tête.\n\
+- Intertitres en questions, chiffres datés et sourcés.\n\
+Chapitre 06 : Netlinking et présence hors site (5 h)\n\
+- Lire les indicateurs de popularité et identifier les sites.\n\
+- Être cité dans les comparatifs, forums, annuaires et avis.\n\
+- Relations presse et netlinking classique.\n\
+Chapitre 07 : Auditer les résultats de sa stratégie de référencement naturel (2 h)\n\
+- Auditer les performances avec les bons indicateurs et outils.\n\
+- Identifier les points bloquants et les axes d'amélioration.\n\
+- Suivre les retombées et le ROI.\n";
+
+fn cross_table_msg(role: &str, text: &str, programmes: serde_json::Value) -> serde_json::Value {
+    let skills: Vec<serde_json::Value> = (1..=6)
+        .map(|i| json!({"id": format!("k{i}"), "ref": format!("RS0101-C{i}"), "label": format!("Competency {i}")}))
+        .collect();
+    json!({
+        "syllabus": {"id": format!("s-{role}"), "ref": format!("RS0101:{role}"), "role": role, "title": role,
+                     "props": {"role": role},
+                     "cert": {"id": "c1", "code": "RS0101", "title": "Piloter le référencement d'un site"},
+                     "org": {"id": "org-1", "siren": "100000009", "title": "OF EXEMPLE"}},
+        "text": text, "skills": skills, "payload": programmes,
+        "now": "2026-10-28T09:00:00+00:00"
+    })
+}
+
+#[test]
+fn cross_table_reads_the_pilot_like_a_human() {
+    let code = code_of("qw_cross_table");
+    // The reference first: its modules quote their competency.
+    let reference = execute(
+        &code,
+        &cross_table_msg("reference", REFERENCE_TEXT, json!([])),
+        5000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    let mods = reference["modules"].as_array().unwrap();
+    assert_eq!(mods.len(), 6, "{reference}");
+    assert_eq!(mods[1]["payload"]["hours"], json!(4.0));
+    assert_eq!(mods[1]["covers"][0]["skill_id"], "k2");
+    assert_eq!(
+        mods[1]["covers"][0]["attributes"]["matched_by"],
+        "code_cited"
+    );
+    assert!(reference.get("workbook").is_none());
+    // The partner, against the reference modules as stored.
+    let module_of: Vec<serde_json::Value> = mods
+        .iter()
+        .map(|m| json!({"direction": "in", "other": {"id": "m", "title": "", "properties": m["payload"]}}))
+        .collect();
+    let programmes = json!([{"id": "s-reference", "title": "ref", "properties": {"role": "reference"},
+                             "links": {"module_of": module_of}}]);
+    let out = execute(
+        &code,
+        &cross_table_msg("partner", PARTNER_TEXT, programmes),
+        5000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    let covers = |rank: usize| -> Vec<String> {
+        out["modules"][rank]["covers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["skill_id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(covers(0), vec!["k1"], "chapter 1 quotes C1");
+    assert_eq!(
+        covers(1),
+        vec!["k2"],
+        "chapter 2 by its words: {}",
+        out["modules"][1]
+    );
+    assert_eq!(
+        covers(4),
+        Vec::<String>::new(),
+        "chapter 5 is outside the framework"
+    );
+    assert_eq!(
+        covers(5),
+        vec!["k5"],
+        "chapter 6 by its words: {}",
+        out["modules"][5]
+    );
+    let mut found: Vec<String> = out["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["props"]["ref"].as_str().unwrap().to_string())
+        .collect();
+    found.sort();
+    assert_eq!(
+        found,
+        vec![
+            "PROG-02:100000009:RS0101:C2",
+            "PROG-02:100000009:RS0101:C3",
+            "PROG-02:100000009:RS0101:C4",
+            "PROG-03:100000009:RS0101:5",
+        ],
+        "{out}"
+    );
+    // C3 is matched by its words only: its PROG-02 waits for a human.
+    let c3 = out["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["props"]["ref"] == "PROG-02:100000009:RS0101:C3")
+        .unwrap();
+    assert_eq!(c3["props"]["state"], "to_validate");
+    assert_eq!(c3["link_targets"]["observed_in"], "s-partner");
+    // The workbook: one row per competency, then the extra chapter.
+    let cells = out["workbook"]["sheets"][0]["cells"].as_array().unwrap();
+    let at = |r: &str| {
+        cells
+            .iter()
+            .find(|c| c["ref"] == r)
+            .map(|c| c["value"].as_str().unwrap().to_string())
+            .unwrap_or_default()
+    };
+    assert!(at("B9").starts_with("C1."), "{}", at("B9"));
+    assert!(at("D10").starts_with("Chapitre 02"), "{}", at("D10"));
+    assert!(at("E10").contains("2 h in the programme"), "{}", at("E10"));
+    assert!(at("D15").starts_with("Chapitre 5"), "{}", at("D15"));
+    assert_eq!(out["workbook"]["sheets"][0]["merges"], json!(["B1:E1"]));
 }

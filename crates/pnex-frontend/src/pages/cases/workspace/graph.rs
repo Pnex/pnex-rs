@@ -1386,6 +1386,7 @@ mod tests {
             places: Vec::new(),
             parents: Vec::new(),
             children: Vec::new(),
+            checks: Vec::new(),
         }
     }
 

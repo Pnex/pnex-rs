@@ -250,6 +250,7 @@ impl Hooks for App {
         // Notify delivery journal → O2 (D86): background writer.
         crate::services::notify_journal::spawn_writer(ctx);
         crate::services::ontology::changes::spawn_writer(ctx);
+        crate::services::ontology::cases::watch::init_journal(ctx);
         // Change feed compaction (external-apps.md D435).
         crate::services::ontology::feed::spawn_compactor(ctx);
         // Access audit → O2 (iam.md D294).

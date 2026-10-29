@@ -62,6 +62,15 @@ fn filter_sql(
         return Err(invalid(field("key"), FIELD_INVALID));
     }
     let k = &f.key;
+    // `id eq`: one object by its id (a flow reading the object of an action).
+    if k == "id" && f.op == FilterOp::Eq {
+        let id = f
+            .value
+            .as_str()
+            .and_then(|v| uuid::Uuid::parse_str(v.trim()).ok())
+            .ok_or_else(|| invalid(field("value"), pnex_core::err_codes::FIELD_INVALID_UUID))?;
+        return Ok(format!("o.id = {}", sql.bind(id)));
+    }
     let text = |v: &Value| {
         v.as_str()
             .map(str::to_string)

@@ -858,6 +858,10 @@ async fn write_locked(
     .await?;
     let out = write(db, imp.org_id, actor, diff).await;
     lock.release().await;
+    // D431: the watched objects it updated count a check run.
+    if out.is_ok() {
+        super::cases::watch::record_import(db, imp.org_id, actor, &imp.name, &diff.updated).await;
+    }
     out
 }
 

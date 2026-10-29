@@ -1,3 +1,7 @@
+# Since 3.2.0 a programme is analyzed into a cross-table (D415–D420), and
+# the documents a relevant page links are kept as media (D421).
+# Since 3.1.0 the network and website flows record their check runs
+# (network-check.md D431): one watch case per partner and certification.
 # Since 2.0.0 every identifier is English (breaking).
 # Since 3.0.0 the import aliases are English too (breaking).
 # Since 1.3.0 `website` and `has_website` belong to `web_presence`
@@ -43,7 +47,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "3.0.0"
+version: "3.2.0"
 requires: [companies_fr, web_presence]
 extends:
   - type: organization
@@ -81,6 +85,13 @@ settings:
     descriptions: {fr: "Codes des règles qui n'écrivent aucun écart, séparés par des virgules (WEB-05, COL-01)."}
     kind: text
     default: ""
+  - key: tolerance_hours
+    name: Hours tolerance
+    names: {fr: "Tolérance des heures"}
+    description: Hours a partner programme may lack on a competency before PROG-02 (network-check.md Q-N7); 0 = every missing hour is a finding.
+    descriptions: {fr: "Heures qu'un programme partenaire peut avoir en moins sur une compétence avant PROG-02 (network-check.md Q-N7) ; 0 = toute heure manquante est un écart."}
+    kind: number
+    default: 0
   - key: whole_site
     name: Whole website checked
     names: {fr: "Site entier contrôlé"}
@@ -284,6 +295,11 @@ types:
       - { key: prep_hours, name: Preparation hours, names: {fr: "Heures de préparation"}, kind: number, unit: h, min: 0 }
       - { key: total_hours, name: Total hours, names: {fr: "Heures au total"}, kind: number, unit: h, min: 0 }
       - { key: received_on, name: Received on, names: {fr: "Reçu le"}, kind: date }
+      - { key: source, name: Document, names: {fr: "Document"}, kind: ref, to_type: media_asset }
+    actions:
+      - key: analyze
+        name: Analyze
+        names: {fr: "Analyser"}
   - key: module
     name: Module
     names: {fr: "Module"}
@@ -341,6 +357,18 @@ link_types:
       - { key: captured_at, name: Captured at, names: {fr: "Capturée le"}, kind: date_time }
       - { key: sha256_manifest, name: Manifest SHA-256, names: {fr: "SHA-256 du manifeste"}, kind: text, max_len: 64 }
       - { key: kind, name: Part, names: {fr: "Partie"}, kind: enum, values: [capture, html, text], labels: {capture: {fr: "Capture", en: "Screenshot"}, html: {fr: "HTML", en: "HTML"}, text: {fr: "Texte", en: "Text"}} }
+  - key: has_document
+    name: links the document
+    names: {fr: "renvoie au document"}
+    inverse_name: is linked from
+    inverse_names: {fr: "est lié depuis"}
+    from_types: [observed_page]
+    to_types: [media_asset]
+    attributes:
+      - { key: url, name: Address, names: {fr: "Adresse"}, kind: url }
+      - { key: first_seen, name: First seen, names: {fr: "Vu la première fois"}, kind: date }
+      - { key: seen_on, name: Seen on, names: {fr: "Vu le"}, kind: date }
+      - { key: sha256, name: SHA-256, names: {fr: "SHA-256"}, kind: text, max_len: 64 }
   - key: offer_of
     name: is an offer of
     names: {fr: "est une offre de"}
@@ -1047,7 +1075,11 @@ functions:
       # CPF-01, CPF-02, CPF-03, REG-01 and REG-02, from one message holding the
       # org's certifications with their accreditations (accredited_for), offers (offer_for)
       # and certifiers (holds). Registry facts: findings `proposed`.
+      # One check run per watched partner and certification (D431) on the
+      # second output: every partner rule, ok when it wrote no finding; a
+      # finding a human rejected or closed counts as ok.
       # @output findings any "The findings, as a list (split them one per message)"
+      # @output passages any "One check run per partner and certification, as a list (split them, then Check record)"
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
               "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
               "œ": "oe", "æ": "ae", "’": "'"}
@@ -1089,9 +1121,62 @@ functions:
           }
 
       VERSION = 1
+      PARTNER_RULES = ["ADM-01", "ADM-02", "REG-01", "CPF-02", "CPF-03", "REG-02"]
 
       def links(row, key):
           return [l for l in row.get("links", {}).get(key, []) if l.get("direction") == "in"]
+
+      def reviewed(cert):
+          out = {}
+          for l in links(cert, "finding_on"):
+              p = l["other"]["properties"]
+              if p.get("state", "") in ("rejected", "closed"):
+                  out[p.get("ref", "")] = True
+          return out
+
+      def passages(certs, found):
+          # Findings of this run by partner and certification ("*" = any).
+          hits = {}
+          for f in found:
+              t = f["link_targets"]
+              if not t.get("concerns", ""):
+                  continue
+              k = t["concerns"] + "|" + (t.get("finding_on", "") or "*")
+              hits[k] = hits.get(k, []) + [f["props"]["ref"]]
+          out = []
+          for cert in certs:
+              code = (cert["properties"].get("code", "") or "").upper()
+              done = reviewed(cert)
+              seen = {}
+              for l in links(cert, "accredited_for"):
+                  org = l["other"]
+                  siren = org["properties"].get("siren", "") or ""
+                  if not siren or siren in seen:
+                      continue
+                  seen[siren] = True
+                  mine = hits.get(org["id"] + "|" + cert["id"], []) + hits.get(org["id"] + "|*", [])
+                  rules = []
+                  for rule in PARTNER_RULES:
+                      if not active(rule):
+                          continue
+                      refs = [r for r in mine if r.split(":")[0] == rule and r not in done][:8]
+                      for r in refs:
+                          rules.append({"code": rule, "version": VERSION, "result": "finding", "finding_ref": r})
+                      if not refs:
+                          rules.append({"code": rule, "version": VERSION, "result": "ok"})
+                  if not rules:
+                      continue
+                  out.append({
+                      "check": "quali_watch.network",
+                      "subject_id": org["id"],
+                      "scope_ids": [cert["id"]],
+                      "rules": rules,
+                      "finding_type": "finding",
+                      "finding_key": "ref",
+                      "case": {"key": "qw:" + code + ":" + siren, "title": "Watch " + code + " · " + org["title"],
+                               "parent_key": "qw:" + code, "parent_title": "Watch " + code},
+                  })
+          return out
 
       def watched(rows):
           codes = setting_list("quali_watch.certifications")
@@ -1176,7 +1261,7 @@ functions:
                           "No activity on an inactive accreditation",
                           "Accreditation inactive at France Compétences" + (" since " + a.get("state_date", "") if a.get("state_date", "") else "") + ", CPF offer seen on " + seen,
                           quote, targets, now))
-          return {"findings": found}
+          return {"findings": found, "passages": passages(watched(msg.get("payload", []) or []), found)}
   - name: qw_context
     language: starlark
     description: The certifications watched, their exact titles and certifiers, for the website rules.
@@ -1242,12 +1327,18 @@ functions:
           for w in CPF:
               rules.append({"kind": "phrase", "value": w})
           rules.append({"kind": "word", "value": "cpf"})
+          # Website findings already written, for the check run (D431).
+          findings = []
+          for f in l.get("concerns", []):
+              fp = f["other"]["properties"]
+              if f.get("direction") == "in" and (fp.get("ref", "") or "").startswith("WEB-"):
+                  findings.append({"id": f["other"]["id"], "ref": fp.get("ref", ""), "state": fp.get("state", "")})
           p = msg.get("payload", {})
           partner = {"id": msg["object"]["id"], "title": msg["object"]["title"], "siren": p.get("siren", "") or "",
                      "qualiopi": p.get("qualiopi"), "qualiopi_updated": p.get("qualiopi_updated", "") or "",
                      "qualiopi_assessments": p.get("qualiopi_assessments"), "qualiopi_vae": p.get("qualiopi_vae"),
                      "qualiopi_apprenticeship": p.get("qualiopi_apprenticeship"), "accreditations": habs,
-                     "site": site["id"]}
+                     "site": site["id"], "findings": findings}
           return {"payload": {"url": url, "match": rules[:50], "link_to": site["id"]}, "partner": partner, "links": None}
   - name: qw_web_rules
     language: starlark
@@ -1258,7 +1349,13 @@ functions:
       # or the site summary (COL-01). The page text is data from an unknown
       # site: only compared, never obeyed. A rule reading a page writes its
       # finding `to_validate` with a word-for-word excerpt of the page (D409).
+      # At the site summary, one check run of the partner's website (D431):
+      # COL-01 of this crawl (a site that could not be read is unknown, not a
+      # finding) and the website findings known when the crawl started.
+      # shortcut: a WEB finding found by this crawl shows in the next run's
+      # check; the run lands in the partner's latest watch case only.
       # @output findings any "The findings, as a list (split them one per message)"
+      # @output passages any "The check run of the website, at the site summary (Check record)"
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
               "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
               "œ": "oe", "æ": "ae", "’": "'"}
@@ -1387,10 +1484,40 @@ functions:
               partner.get("title", "") + " · " + p.get("url", ""), "Readable website with at least one relevant page",
               why, "", {"concerns": partner.get("id", "")}, msg.get("now", ""))]
 
+      WEB_RULES = ["WEB-01", "WEB-02", "WEB-03", "WEB-04", "WEB-05", "WEB-06", "WEB-08"]
+
+      def site_run(msg, p, col):
+          partner = msg.get("partner", {}) or {}
+          if not partner.get("id"):
+              return None
+          rules = []
+          if active("COL-01"):
+              if p.get("blocked"):
+                  rules.append({"code": "COL-01", "version": VERSION, "result": "unknown", "reason": "site-unreachable"})
+              elif col:
+                  rules.append({"code": "COL-01", "version": VERSION, "result": "finding", "finding_ref": col[0]["props"]["ref"]})
+              else:
+                  rules.append({"code": "COL-01", "version": VERSION, "result": "ok"})
+          known = [f for f in partner.get("findings", []) if f.get("state", "") not in ("rejected", "closed")]
+          for rule in WEB_RULES:
+              if not active(rule):
+                  continue
+              mine = [f for f in known if f["ref"].split(":")[0] == rule][:8]
+              for f in mine:
+                  rules.append({"code": rule, "version": VERSION, "result": "finding", "finding_id": f["id"]})
+              if not mine:
+                  rules.append({"code": rule, "version": VERSION, "result": "ok"})
+          if not rules:
+              return None
+          return {"check": "quali_watch.website", "subject_id": partner["id"], "rules": rules,
+                  "objects": [partner["site"]] if partner.get("site") else [],
+                  "finding_type": "finding", "finding_key": "ref"}
+
       def handle(inputs, msg):
           p = msg.get("payload", {}) or {}
           if "mission_id" in p:
-              return {"findings": summary(msg, p)}
+              col = summary(msg, p)
+              return {"findings": col, "passages": site_run(msg, p, col)}
           text = p.get("text", "") or ""
           if not text:
               return None
@@ -1493,6 +1620,359 @@ functions:
               if l.get(k, ""):
                   out[k] = {"source_id": o["id"], "target_id": l[k]}
           return out
+  - name: qw_syllabus_prep
+    language: starlark
+    description: "The programme an Analyze action names: its document, certification and organization."
+    code: |
+      # The programme an Analyze action names, for the cross-table flow: its
+      # document, certification and organization; nothing without a document.
+      def handle(inputs, msg):
+          o = msg.get("object", {}) or {}
+          p = msg.get("payload", {}) or {}
+          l = msg.get("links", {}) or {}
+          cert = [x for x in l.get("syllabus_for", []) if x.get("direction") == "out"]
+          org = [x for x in l.get("syllabus_of", []) if x.get("direction") == "out"]
+          if not p.get("source") or not cert:
+              return None
+          c = cert[0]["other"]
+          g = org[0]["other"] if org else {}
+          return {"payload": {"media_id": p["source"]}, "links": None, "syllabus": {
+              "id": o["id"], "ref": p.get("ref", "") or "", "role": p.get("role", "") or "partner",
+              "title": o.get("title", "") or "", "props": p,
+              "cert": {"id": c["id"], "code": c["properties"].get("code", "") or "",
+                       "title": c["properties"].get("official_title", "") or c["title"]},
+              "org": {"id": g.get("id", ""), "siren": (g.get("properties", {}) or {}).get("siren", "") or "",
+                      "title": g.get("title", "")}}}
+  - name: qw_keep_text
+    language: starlark
+    description: "Keeps the document's text aside for the cross-table."
+    code: |
+      # Keeps the document's text aside while the next queries read the
+      # certification.
+      def handle(inputs, msg):
+          p = msg.get("payload", {}) or {}
+          return {"payload": {}, "text": p.get("text", "") or ""}
+  - name: qw_skills
+    language: starlark
+    description: "Keeps the certification's competencies aside for the cross-table."
+    code: |
+      # Keeps the certification's competencies aside (msg.skills).
+      def handle(inputs, msg):
+          rows = msg.get("payload", []) or []
+          skills = []
+          for r in rows:
+              for l in r.get("links", {}).get("skill_of", []):
+                  if l.get("direction") == "in":
+                      p = l["other"]["properties"]
+                      skills.append({"id": l["other"]["id"], "ref": p.get("ref", "") or "", "label": p.get("label", "") or "",
+                                     "rank": p.get("rank")})
+          return {"payload": {}, "skills": skills}
+  - name: qw_cross_table
+    language: starlark
+    description: "Cross-table of a programme: modules, competencies covered, PROG-00 to PROG-04 findings and the workbook in the client's layout."
+    code: |
+      # Cross-table of a programme (network-check.md D417–D420), from one
+      # message: msg.syllabus (the programme analyzed, its certification and
+      # organization), msg.text (its document's text), msg.skills (the
+      # certification's competencies) and msg.payload (the programmes of the
+      # certification with their modules). Splits the text into modules on a
+      # closed list of heading shapes, attaches each module to competencies
+      # (code quoted: valid; title and content words: to validate), then, for
+      # a partner programme, the PROG rules and the workbook in the client's
+      # format. Hours a module does not state never raise PROG-02: PROG-00.
+      # @output modules any "The modules, as a list (split them, then the module write)"
+      # @output findings any "The PROG findings, as a list (split them one per message)"
+      # @output workbook any "The cross-table workbook (Workbook write), partner programme only"
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
+              "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
+              "œ": "oe", "æ": "ae", "’": "'"}
+      PUNCT = [",", ".", ";", ":", "!", "?", "(", ")", "[", "]", "«", "»", "\"", "/", "-", "–", "—", "_", "'", "&", "+", "*", "|", "\t"]
+      STOP = ["avec", "dans", "pour", "sans", "vers", "votre", "notre", "leur", "leurs", "vous", "nous", "cette", "ces", "sont", "afin",
+              "tout", "tous", "toute", "toutes", "plus", "moins", "entre", "chapitre", "module", "partie", "parties", "repondant",
+              "pratique", "livrable", "stagiaire", "with", "from", "that", "this", "your"]
+      VERSION = 1
+      # A title match: the best competency shares this part of its words with
+      # the module, and leads the second by MARGIN.
+      TITLE_SHARE = 0.4
+      MARGIN = 0.15
+
+      def fold(s):
+          s = s.lower()
+          for k, v in FOLD.items():
+              s = s.replace(k, v)
+          return s
+
+      def tokens(s):
+          s = fold(s)
+          for c in PUNCT:
+              s = s.replace(c, " ")
+          return s.split()
+
+      def words(s):
+          out = {}
+          for w in tokens(s):
+              if len(w) >= 4 and w not in STOP and not w.isdigit() and not is_code(w):
+                  out[w[:5]] = True
+          return out
+
+      def is_code(t):
+          return len(t) >= 2 and len(t) <= 3 and t[0] == "c" and t[1:].isdigit()
+
+      def codes_in(s):
+          out = {}
+          for t in tokens(s):
+              if is_code(t):
+                  out[t.upper()] = True
+          return sorted(out.keys())
+
+      def hours_of(w):
+          k = w.find("h")
+          if k > 0 and w[:k].isdigit() and (w[k + 1:] == "" or w[k + 1:].isdigit()):
+              return int(w[:k]) + (int(w[k + 1:]) / 60.0 if w[k + 1:] else 0.0)
+          return None
+
+      def hours_in(s):
+          t = tokens(s)
+          for i in range(len(t)):
+              h = hours_of(t[i])
+              if h != None:
+                  return h
+              if t[i].isdigit() and i + 1 < len(t) and t[i + 1] in ("h", "heure", "heures"):
+                  return float(int(t[i]))
+          return None
+
+      def is_heading(line):
+          low = fold(line).strip()
+          if not low or low[0] in "-•–*":
+              return False
+          if low.startswith("chapitre ") or low.startswith("module "):
+              return True
+          tail = low.rstrip(" .")
+          if tail.endswith(")") and tail.rfind("(") >= 0:
+              inner = tail[tail.rfind("(") + 1:len(tail) - 1].replace(" ", "")
+              return is_code(inner) or hours_of(inner) != None
+          return False
+
+      def split_modules(text):
+          mods = []
+          for line in text.split("\n"):
+              line = line.strip()
+              if is_heading(line):
+                  mods.append({"heading": line, "lines": []})
+              elif mods and line:
+                  mods[-1]["lines"].append(line)
+          out = []
+          for i in range(len(mods)):
+              m = mods[i]
+              content = "\n".join(m["lines"])
+              out.append({"rank": i + 1, "heading": m["heading"][:500], "content": content[:20000],
+                          "hours": hours_in(m["heading"]), "codes": codes_in(m["heading"] + "\n" + content)})
+          return out
+
+      def code_of(skill_ref):
+          return skill_ref.split("-")[-1].upper()
+
+      def quote(m, code):
+          for line in [m["heading"]] + m["content"].split("\n"):
+              if code in codes_in(line):
+                  return line[:2000]
+          return m["heading"][:2000]
+
+      def attach(m, profiles, skills):
+          if m["codes"]:
+              return [{"code": c, "matched_by": "code_cited", "valid": True, "confidence": 1.0, "excerpt": quote(m, c)}
+                      for c in m["codes"] if c in skills]
+          w = words(m["heading"] + "\n" + m["content"])
+          scores = []
+          for code, ref in profiles.items():
+              if ref:
+                  n = len([x for x in ref.keys() if x in w])
+                  scores.append((n * 1.0 / len(ref), code))
+          scores = sorted(scores, reverse = True)
+          if scores and scores[0][0] >= TITLE_SHARE and (len(scores) == 1 or scores[0][0] - scores[1][0] >= MARGIN):
+              return [{"code": scores[0][1], "matched_by": "official_title", "valid": False,
+                       "confidence": int(scores[0][0] * 100) / 100.0, "excerpt": m["heading"][:2000]}]
+          return []
+
+      def setting_list(key):
+          raw = pack_setting(key, "") or ""
+          return [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()]
+
+      def active(code):
+          return code not in setting_list("quali_watch.disabled_rules")
+
+      def finding(rule, severity, state, key, title, expected, observed, excerpt, targets, now):
+          return {
+              "props": {"ref": (rule + ":" + key)[:255], "expected": expected[:2000], "observed": observed[:2000],
+                        "excerpt": excerpt[:2000], "severity": severity, "state": state, "detected_on": now,
+                        "rule_version": VERSION},
+              "title": (rule + " · " + title)[:250],
+              "link_targets": targets,
+          }
+
+      def total(xs):
+          n = 0.0
+          for x in xs:
+              n += x
+          return n
+
+      def hours_text(h):
+          if h == None:
+              return "?"
+          if h == int(h):
+              return str(int(h)) + " h"
+          return str(int(h)) + " h " + str(int((h - int(h)) * 60 + 0.5))
+
+      def module_text(m):
+          return m["heading"] + ("\n" + m["content"] if m["content"] else "")
+
+      def handle(inputs, msg):
+          s = msg.get("syllabus", {}) or {}
+          text = msg.get("text", "") or ""
+          if not s.get("id") or not text:
+              return None
+          now = msg.get("now", "")
+          cert = s.get("cert", {}) or {}
+          org = s.get("org", {}) or {}
+          skills = {}
+          for k in msg.get("skills", []) or []:
+              skills[code_of(k.get("ref", "") or "")] = k
+          mods = split_modules(text)
+          # The reference programme: its modules by competency (codes quoted).
+          ref_mods = {}
+          ref_props = {}
+          for row in msg.get("payload", []) or []:
+              if row.get("id") == s["id"] or (row.get("properties", {}) or {}).get("role", "") != "reference":
+                  continue
+              ref_props = row.get("properties", {}) or {}
+              for l in row.get("links", {}).get("module_of", []):
+                  if l.get("direction") != "in":
+                      continue
+                  p = l["other"]["properties"]
+                  m = {"heading": p.get("heading", "") or "", "content": p.get("content", "") or "", "hours": p.get("hours")}
+                  for c in codes_in(m["heading"] + "\n" + m["content"]):
+                      ref_mods[c] = ref_mods.get(c, []) + [m]
+          profiles = {}
+          for code, k in skills.items():
+              src = [module_text(m) for m in ref_mods.get(code, [])] or [k.get("label", "") or ""]
+              profiles[code] = words("\n".join(src))
+          out_mods = []
+          for m in mods:
+              covers = attach(m, profiles, skills) if s.get("role") != "reference" or m["codes"] else []
+              props = {"ref": (s.get("ref", "") + ":" + str(m["rank"]))[:255], "rank": m["rank"],
+                       "heading": m["heading"], "content": m["content"]}
+              if m["hours"] != None:
+                  props["hours"] = m["hours"]
+              m["covers"] = covers
+              out_mods.append({"payload": props, "title": m["heading"][:250], "syllabus_id": s["id"],
+                               "covers": [{"skill_id": skills[c["code"]]["id"], "attributes": {
+                                   "matched_by": c["matched_by"], "valid": c["valid"], "confidence": c["confidence"],
+                                   "excerpt": c["excerpt"]}} for c in covers]})
+          if s.get("role") == "reference":
+              return {"modules": out_mods}
+          code_cert = cert.get("code", "") or ""
+          targets = {"concerns": org.get("id", ""), "finding_on": cert.get("id", ""), "observed_in": s["id"]}
+          key = (org.get("siren", "") or "") + ":" + code_cert
+          name = (org.get("title", "") or "") + " · " + code_cert
+          tolerance = float(pack_setting("quali_watch.tolerance_hours", 0) or 0)
+          found = []
+          by_title = len([m for m in mods if [c for c in m["covers"] if c["matched_by"] == "official_title"]]) > 0
+          rows = []
+          for code in sorted(skills.keys()):
+              k = skills[code]
+              mine = [m for m in mods if [c for c in m["covers"] if c["code"] == code]]
+              refs = ref_mods.get(code, [])
+              rows.append({"code": code, "skill": k, "mine": mine, "refs": refs})
+              if not mine:
+                  if active("PROG-01"):
+                      found.append(finding("PROG-01", "major", "to_validate", key + ":" + code, name + " · " + code,
+                          "Competency " + code + " covered by the programme", "No module of the programme covers " + code +
+                          (" (other competencies matched by their text)" if by_title else ""), k.get("label", "") or "", targets, now))
+                  continue
+              ref_h = [m["hours"] for m in refs]
+              got_h = [m["hours"] for m in mine]
+              if not refs:
+                  continue
+              if None in ref_h or None in got_h:
+                  if active("PROG-00"):
+                      found.append(finding("PROG-00", "info", "to_validate", key + ":" + code, name + " · " + code,
+                          "Hours of " + code + " compared with the reference", "Hours not read on a module", "", targets, now))
+                  continue
+              need = total(ref_h)
+              have = total(got_h)
+              if have < need - tolerance and active("PROG-02"):
+                  sure = len([m for m in mine if [c for c in m["covers"] if c["code"] == code and not c["valid"]]]) == 0
+                  found.append(finding("PROG-02", "major", "proposed" if sure else "to_validate", key + ":" + code,
+                      name + " · " + code, hours_text(need) + " on " + code + " (reference programme)",
+                      hours_text(have) + " in the programme", "\n".join([m["heading"] for m in mine]), targets, now))
+          extra = [m for m in mods if not m["covers"]]
+          for m in extra:
+              if active("PROG-03"):
+                  found.append(finding("PROG-03", "info", "to_validate", key + ":" + str(m["rank"]), name + " · " + m["heading"][:80],
+                      "Every module tied to a competency of the framework", "Module without a competency", m["heading"], targets, now))
+          for prop, label in [("format", "delivery"), ("live_hours", "live hours"), ("prep_hours", "preparation hours")]:
+              mine_v = (s.get("props", {}) or {}).get(prop)
+              ref_v = ref_props.get(prop)
+              if mine_v != None and ref_v != None and mine_v != ref_v and active("PROG-04"):
+                  found.append(finding("PROG-04", "major", "proposed", key + ":" + prop, name + " · " + label,
+                      "Reference " + label + ": " + str(ref_v), "Programme " + label + ": " + str(mine_v), "", targets, now))
+          # The workbook, in the client's layout.
+          cells = [{"ref": "B1", "value": "Tableau de correspondance \"" + (cert.get("title", "") or code_cert) + "\"", "bold": True}]
+          for r, label, v in [("2", "Programme : ", s.get("title", "")),
+                              ("4", "Format de la formation : ", (s.get("props", {}) or {}).get("format", "")),
+                              ("5", "Heures de suivi synchrone : ", (s.get("props", {}) or {}).get("live_hours", "")),
+                              ("6", "Heures de préparation à la certification : ", (s.get("props", {}) or {}).get("prep_hours", ""))]:
+              cells.append({"ref": "B" + r, "value": label, "bold": True})
+              cells.append({"ref": "C" + r, "value": str(v if v != None else "")})
+          for i, h in enumerate(["Compétences du référentiel", "Programme pédagogique de référence",
+                                 "Programme pédagogique du partenaire", "Écarts constatés & recommandations"]):
+              cells.append({"ref": "BCDE"[i] + "8", "value": h, "bold": True, "wrap": True})
+          line = 9
+          for row in rows:
+              notes = [f["props"]["observed"] + " (" + f["props"]["expected"] + ")" for f in found
+                       if f["props"]["ref"].startswith("PROG-") and f["props"]["ref"].endswith(":" + row["code"])]
+              cells.append({"ref": "B" + str(line), "value": row["code"] + ". " + (row["skill"].get("label", "") or ""), "wrap": True})
+              cells.append({"ref": "C" + str(line), "value": "\n\n".join([module_text(m) for m in row["refs"]]), "wrap": True})
+              cells.append({"ref": "D" + str(line), "value": "\n\n".join([module_text(m) for m in row["mine"]]), "wrap": True})
+              cells.append({"ref": "E" + str(line), "value": "\n".join(notes), "wrap": True})
+              line += 1
+          if extra:
+              cells.append({"ref": "B" + str(line), "value": "Chapitre complémentaire, sans compétence associée au référentiel.", "wrap": True})
+              cells.append({"ref": "C" + str(line), "value": "Sans équivalent dans le programme de référence.", "wrap": True})
+              cells.append({"ref": "D" + str(line), "value": "\n\n".join([module_text(m) for m in extra]), "wrap": True})
+          sheet = {"name": code_cert[:31] or "Programme", "cells": cells, "merges": ["B1:E1"],
+                   "widths": {"B": 50, "C": 60, "D": 60, "E": 45}}
+          workbook = {"name": ("Tableau croisé " + code_cert + " " + (org.get("title", "") or ""))[:100].strip(), "sheets": [sheet]}
+          return {"modules": out_mods, "findings": found, "workbook": workbook}
+  - name: qw_module
+    language: starlark
+    description: "One module of the cross-table, as the message the module write takes."
+    code: |
+      # One module of the cross-table as the message the module write takes.
+      def handle(inputs, msg):
+          e = msg.get("payload", {}) or {}
+          if not e.get("payload"):
+              return None
+          return {"payload": e["payload"], "title": e.get("title", ""), "covers": e.get("covers", []),
+                  "syllabus_id": e.get("syllabus_id", ""), "object": None, "object_id": None, "links": None}
+  - name: qw_module_links
+    language: starlark
+    description: "Links of a module just written to its programme and its competencies."
+    code: |
+      # Links of the module just written: to its programme, and to the
+      # competencies it covers (a list: split it).
+      # @output module_of any "Module → programme"
+      # @output covers any "Module → competencies, as a list"
+      def handle(inputs, msg):
+          o = msg.get("object", {}) or {}
+          if not o.get("id"):
+              return None
+          covers = [{"source_id": o["id"], "target_id": c["skill_id"], "attributes": c.get("attributes", {})}
+                    for c in msg.get("covers", []) or []]
+          out = {"module_of": {"source_id": o["id"], "target_id": msg.get("syllabus_id", "")}}
+          if covers:
+              out["covers"] = covers
+          return out
 flows:
   - name: "Quali-Watch · reminders"
     note: "Each morning the procedures whose due date passed move to the next reminder. For the automatic levels, add a Notification node after the reminder write (e-mail channel allowing recipients from flows, recipient field: recipient, report PDF attached), then deploy."
@@ -1539,9 +2019,12 @@ flows:
         - { id: tick, kind: inject, config: { cron: "30 5 * * *" }, outputs: [{ port: 0, targets: [net] }] }
         - id: net
           kind: ontology_query
-          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, output: array, with_links: [accredited_for, offer_for, holds] }
+          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, output: array, with_links: [accredited_for, offer_for, holds, finding_on] }
           outputs: [{ port: 0, targets: [rules] }]
-        - { id: rules, kind: pnex_function, config: { function_name: qw_network_rules, language: starlark }, outputs: [{ port: 0, targets: [split] }] }
+        - { id: rules, kind: pnex_function, config: { function_name: qw_network_rules, language: starlark }, outputs: [{ port: 0, targets: [split] }, { port: 1, targets: [split_runs] }] }
+        # One check run per partner and certification: its watch case (D431).
+        - { id: split_runs, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [check] }] }
+        - { id: check, kind: check_record }
         - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [one] }] }
         - { id: one, kind: pnex_function, config: { function_name: qw_finding, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
         - { id: finding, kind: object_upsert, config: { object_type: finding, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
@@ -1561,7 +2044,7 @@ flows:
         - { id: context, kind: pnex_function, config: { function_name: qw_context, language: starlark }, outputs: [{ port: 0, targets: [partners] }] }
         - id: partners
           kind: ontology_query
-          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, traverse: [{ link_type: accredited_for, direction: in }], with_links: [has_website, accredited_for] }
+          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, traverse: [{ link_type: accredited_for, direction: in }], with_links: [has_website, accredited_for, concerns] }
           outputs: [{ port: 0, targets: [targets] }]
         - { id: targets, kind: pnex_function, config: { function_name: qw_targets, language: starlark }, outputs: [{ port: 0, targets: [crawl] }] }
         - id: crawl
@@ -1573,8 +2056,11 @@ flows:
               properties: { url: url, title: heading, first_seen: first_seen, last_seen: last_seen, text_hash: text_fingerprint, relevant: relevant, state: state }
               link_type: page_of
               proof_link: proven_by
+              document_link: has_document
           outputs: [{ port: 0, targets: [rules] }, { port: 1, targets: [rules] }]
-        - { id: rules, kind: pnex_function, config: { function_name: qw_web_rules, language: starlark }, outputs: [{ port: 0, targets: [split] }] }
+        - { id: rules, kind: pnex_function, config: { function_name: qw_web_rules, language: starlark }, outputs: [{ port: 0, targets: [split] }, { port: 1, targets: [check] }] }
+        # The website's check run, in the partner's watch case (D431).
+        - { id: check, kind: check_record }
         - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [one] }] }
         - { id: one, kind: pnex_function, config: { function_name: qw_finding, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
         - { id: finding, kind: object_upsert, config: { object_type: finding, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
@@ -1582,6 +2068,44 @@ flows:
         - { id: l_org, kind: link_upsert, config: { link_type: concerns } }
         - { id: l_cert, kind: link_upsert, config: { link_type: finding_on } }
         - { id: l_seen, kind: link_upsert, config: { link_type: observed_in } }
+  - name: "Quali-Watch · cross-table"
+    note: "Analyze on a programme (Programme page) reads its document (PDF with text, DOCX), splits it into modules, ties each module to the competencies it covers (a code quoted is sure, a title match is to validate), then for a partner programme compares it with the reference programme of the certification: competency not covered (PROG-01), hours missing (PROG-02), module outside the framework (PROG-03), delivery or hours differing (PROG-04), hours not read (PROG-00); and writes the cross-table workbook in the media library. Analyze the reference programme first. A scanned PDF has no text: enter its modules by hand."
+    graph:
+      nodes:
+        - { id: act, kind: action_trigger, config: { object_type: syllabus, action: analyze }, outputs: [{ port: 0, targets: [prog] }] }
+        - id: prog
+          kind: ontology_query
+          config: { object_type: syllabus, filters: [{ key: id, op: eq, value: "$msg.object.id" }], limit: 1, with_links: [syllabus_for, syllabus_of] }
+          outputs: [{ port: 0, targets: [prep] }]
+        - { id: prep, kind: pnex_function, config: { function_name: qw_syllabus_prep, language: starlark }, outputs: [{ port: 0, targets: [doc] }] }
+        - { id: doc, kind: document_text, outputs: [{ port: 0, targets: [keep] }] }
+        - { id: keep, kind: pnex_function, config: { function_name: qw_keep_text, language: starlark }, outputs: [{ port: 0, targets: [cert] }] }
+        - id: cert
+          kind: ontology_query
+          config: { object_type: certification, filters: [{ key: id, op: eq, value: "$msg.syllabus.cert.id" }], limit: 1, output: array, with_links: [skill_of] }
+          outputs: [{ port: 0, targets: [skills] }]
+        - { id: skills, kind: pnex_function, config: { function_name: qw_skills, language: starlark }, outputs: [{ port: 0, targets: [progs] }] }
+        - id: progs
+          kind: ontology_query
+          config: { object_type: certification, filters: [{ key: id, op: eq, value: "$msg.syllabus.cert.id" }], limit: 50, output: array, traverse: [{ link_type: syllabus_for, direction: in }], with_links: [module_of] }
+          outputs: [{ port: 0, targets: [table] }]
+        - { id: table, kind: pnex_function, config: { function_name: qw_cross_table, language: starlark }, outputs: [{ port: 0, targets: [split_m] }, { port: 1, targets: [split] }, { port: 2, targets: [sheet] }] }
+        - { id: split_m, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [one_m] }] }
+        - { id: one_m, kind: pnex_function, config: { function_name: qw_module, language: starlark }, outputs: [{ port: 0, targets: [module] }] }
+        - { id: module, kind: object_upsert, config: { object_type: module, key: ref }, outputs: [{ port: 0, targets: [m_links] }] }
+        - { id: m_links, kind: pnex_function, config: { function_name: qw_module_links, language: starlark }, outputs: [{ port: 0, targets: [l_prog] }, { port: 1, targets: [split_c] }] }
+        - { id: l_prog, kind: link_upsert, config: { link_type: module_of } }
+        - { id: split_c, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [l_cov] }] }
+        # A sure match (confidence 1) is never lowered by a weaker one.
+        - { id: l_cov, kind: link_upsert, config: { link_type: covers, keep_best: confidence } }
+        - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [one] }] }
+        - { id: one, kind: pnex_function, config: { function_name: qw_finding, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
+        - { id: finding, kind: object_upsert, config: { object_type: finding, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
+        - { id: links, kind: pnex_function, config: { function_name: qw_links, language: starlark }, outputs: [{ port: 0, targets: [l_org] }, { port: 1, targets: [l_cert] }, { port: 2, targets: [l_seen] }] }
+        - { id: l_org, kind: link_upsert, config: { link_type: concerns } }
+        - { id: l_cert, kind: link_upsert, config: { link_type: finding_on } }
+        - { id: l_seen, kind: link_upsert, config: { link_type: observed_in } }
+        - { id: sheet, kind: sheet_write }
 page_templates:
   - key: finding_report
     name: Finding report

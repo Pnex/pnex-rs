@@ -15,6 +15,10 @@ const ENGINE_WORDS: &[(&str, &str)] = &[
     ("about", "about: URLs in the browser guard"),
     ("before", "the journal's before/after documents"),
     (
+        "finding",
+        "result of a watch check, ok | unknown | finding (network-check.md D426)",
+    ),
+    (
         "meeting",
         "mail category of a calendar invitation (mail/invitations.rs)",
     ),

@@ -1846,3 +1846,20 @@ décisions ci-dessous.
   passage CI à surveiller (`PNEX_DEVICE_REQUIRE_TLS=false` dans
   `compose.ci.yaml`).
 - **Statut** : ⏳ en attente de la campagne.
+
+### O95 — Un déploiement perd les messages en vol des flows des autres orgs
+
+- **Constat (e2e `partner-watch`, 2026-10-28)** : un seul runtime de flows
+  porte les flows de toutes les orgs du pod ; un déploiement le recharge en
+  entier (SIGUSR1 → `Engine::redeploy_flows`). Les messages en cours d'un
+  flow d'une autre org sont perdus : l'action Analyser d'une org a écrit
+  3 modules sur 6 pendant qu'une autre org déployait.
+- **Effet** : un utilisateur peut voir un traitement s'arrêter au milieu
+  sans erreur, du fait d'un autre client. Les écritures des packs sont
+  idempotentes (clé naturelle, `skip_existing`) : relancer suffit, mais
+  rien ne le dit.
+- **Options** : A) redéploiement partiel dans edgelinkd (seuls les onglets
+  de l'org qui déploie) ; B) un runtime par org (D106, sharding) sur un
+  même pod ; C) vider les files avant le rechargement (attente bornée).
+- **Contournement e2e** : la spec relance Analyser si le compte stagne.
+- **Statut** : ouvert.

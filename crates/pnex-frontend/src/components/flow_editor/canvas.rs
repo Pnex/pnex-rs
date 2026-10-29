@@ -402,6 +402,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::OntologyQuery { .. } => kind_labels(PaletteKind::OntologyQuery),
         pnex_core::FlowNodeKind::ObjectUpsert { .. } => kind_labels(PaletteKind::ObjectUpsert),
         pnex_core::FlowNodeKind::LinkUpsert { .. } => kind_labels(PaletteKind::LinkUpsert),
+        pnex_core::FlowNodeKind::CheckRecord { .. } => kind_labels(PaletteKind::CheckRecord),
+        pnex_core::FlowNodeKind::DocumentText { .. } => kind_labels(PaletteKind::DocumentText),
+        pnex_core::FlowNodeKind::SheetWrite { .. } => kind_labels(PaletteKind::SheetWrite),
         pnex_core::FlowNodeKind::SiteRecipe { .. } => kind_labels(PaletteKind::SiteRecipe),
         pnex_core::FlowNodeKind::WebSearch { .. } => kind_labels(PaletteKind::WebSearch),
         pnex_core::FlowNodeKind::OrgResolve { .. } => kind_labels(PaletteKind::OrgResolve),
@@ -491,6 +494,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::OntologyQuery { .. }
         | pnex_core::FlowNodeKind::ObjectUpsert { .. }
         | pnex_core::FlowNodeKind::LinkUpsert { .. }
+        | pnex_core::FlowNodeKind::CheckRecord { .. }
+        | pnex_core::FlowNodeKind::DocumentText { .. }
+        | pnex_core::FlowNodeKind::SheetWrite { .. }
         | pnex_core::FlowNodeKind::SiteRecipe { .. }
         | pnex_core::FlowNodeKind::WebSearch { .. }
         | pnex_core::FlowNodeKind::OrgResolve { .. }
@@ -1366,6 +1372,9 @@ fn node_subtitle(node: &FlowNode) -> String {
         }
         pnex_core::FlowNodeKind::WebVisit { config } if config.legal_page => "+ legal".into(),
         pnex_core::FlowNodeKind::WebVisit { .. } => String::new(),
+        pnex_core::FlowNodeKind::CheckRecord { .. }
+        | pnex_core::FlowNodeKind::DocumentText { .. }
+        | pnex_core::FlowNodeKind::SheetWrite { .. } => String::new(),
         pnex_core::FlowNodeKind::SiteCrawl { config } => format!("{} max", config.max_pages),
         pnex_core::FlowNodeKind::SiteRecipe { config } if config.recipe_id.is_empty() => "—".into(),
         pnex_core::FlowNodeKind::SiteRecipe { config } => config

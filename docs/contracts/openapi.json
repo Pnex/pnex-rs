@@ -2944,6 +2944,56 @@
         ],
         "type": "object"
       },
+      "CaseCheck": {
+        "description": "One watch check of a case (D430): its worst latest result over the\nsubjects and scopes of the case, its rules, when it last ran and changed.",
+        "properties": {
+          "changed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "check": {
+            "description": "Machine code of the check (`quali_watch.network`).",
+            "type": "string"
+          },
+          "last_run_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "description": "`ok` | `unknown` | `finding`.",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/CheckRule"
+            },
+            "type": "array"
+          },
+          "runs_since_change": {
+            "description": "Runs since the result last changed.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "source_ref": {
+            "description": "`flow:<id>@<version>` or `import:<name>` of the last run.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check",
+          "result",
+          "rules",
+          "runs_since_change",
+          "source_ref"
+        ],
+        "type": "object"
+      },
       "CaseChild": {
         "description": "A sub-case, as its parent's workspace lists it (GS16).",
         "properties": {
@@ -3577,6 +3627,13 @@
           "case": {
             "$ref": "#/components/schemas/ObjectView"
           },
+          "checks": {
+            "description": "Watch checks feeding the case (network-check.md D430).",
+            "items": {
+              "$ref": "#/components/schemas/CaseCheck"
+            },
+            "type": "array"
+          },
           "children": {
             "description": "Sub-cases (GS16).",
             "items": {
@@ -3731,6 +3788,48 @@
         "required": [
           "check_id",
           "status"
+        ],
+        "type": "object"
+      },
+      "CheckRule": {
+        "description": "One rule of a run.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "finding_id": {
+            "description": "The finding object the rule wrote.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finding_ref": {
+            "description": "The finding by its natural key, when the rule writes it in the same\nrun (its id is not known yet): resolved through the run's\n`finding_type` / `finding_key` once it exists.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "description": "Machine code of an `unknown` (`site-unreachable`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "result": {
+            "description": "`ok` | `unknown` | `finding`.",
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "result"
         ],
         "type": "object"
       },
@@ -14083,6 +14182,13 @@
       "PageRecord": {
         "description": "Relevant pages written as objects of an org type: registry field →\nproperty key (`url` → the type's unique property). Optional link of\neach page object to one object (its site).",
         "properties": {
+          "document_link": {
+            "description": "Link type from the page object to each document it links (PDF,\nDOCX), kept as a media of the org (network-check.md D421), with\n`url`, `seen_on`, `first_seen` and `sha256` when the link type\ndeclares them.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "link_to": {
             "format": "uuid",
             "type": [

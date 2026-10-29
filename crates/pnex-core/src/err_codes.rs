@@ -746,6 +746,11 @@ pub const SITE_CRAWL_URL_INVALID: &str = "site-crawl-url-invalid";
 /// The crawl the message describes is refused (too many rules, a rule too
 /// long, a bad regular expression); `args.field`.
 pub const SITE_CRAWL_INVALID: &str = "site-crawl-invalid";
+/// `document_text`: the document has no text layer (a scan, an image) and
+/// the organization has no OCR model (network-check.md D416).
+pub const DOCUMENT_TEXT_NO_TEXT: &str = "document-text-no-text";
+/// `document_text`: the media is not a readable document (format, damage).
+pub const DOCUMENT_TEXT_UNREADABLE: &str = "document-text-unreadable";
 /// A proposal already decided the other way, or superseded (proposals.md D373).
 pub const PROPOSAL_DECIDED: &str = "proposal-decided";
 /// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
@@ -994,6 +999,8 @@ pub const ALL: &[&str] = &[
     WEB_VISIT_QUOTA,
     SITE_CRAWL_URL_INVALID,
     SITE_CRAWL_INVALID,
+    DOCUMENT_TEXT_NO_TEXT,
+    DOCUMENT_TEXT_UNREADABLE,
     PROPOSAL_DECIDED,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,

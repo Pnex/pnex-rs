@@ -24,8 +24,8 @@
 - Seule la règle ADM-01 existe, et elle lit toutes les organisations cessées
   de l'org, réseau ou non.
 - Les données ouvertes manquantes existent, vérifiées le 2026-10-24 :
-  - DGEFP (liste publique des OF, opendatasoft) s'interroge par SIREN. OF EXEMPLE (100000009) y figure : NDA 11000000000, Qualiopi « Actions de
-    formations ».
+  - DGEFP (liste publique des OF, opendatasoft) s'interroge par SIREN. Un partenaire du
+    pilote y figure : NDA, catégories Qualiopi.
   - Le catalogue Mon Compte Formation (Caisse des Dépôts, opendatasoft)
     **porte le SIRET** de l'organisme (Q1 du PRD tranchée). Il s'interroge
     par certification : RS0101 = 83 lignes, 26 formations, 20 organismes,
@@ -528,6 +528,9 @@ la règle CPF-01 ne relie pas l'écart à l'organisme (l'offre, oui).
 > au MVP, à partir de programmes **déposés** (QW3b). Codé **après la
 > recette sur dev** de R1–R5, pour ne pas mélanger.
 
+> **Statut : implémenté hors OCR et LLM (2026-10-28, non commité)**, voir
+> « État » en fin de section.
+
 Exemple à reproduire : `tableau croisé du pilote`, une
 feuille.
 
@@ -540,7 +543,8 @@ feuille.
   son contenu), programme du partenaire (« Chapitre 01 : … »), écarts et
   recommandations.
 - Il compte une ligne par compétence C1…C6, puis une dernière ligne
-  « Chapitre complémentaire, sans compétence associée » (le chapitre 5 de OF EXEMPLE).
+  « Chapitre complémentaire, sans compétence associée » (le chapitre 5 du
+  partenaire).
 
 ### D415 — Dépôt d'un programme
 
@@ -612,7 +616,7 @@ programme, et l'ancienne reste.
    mots vides, recouvrent au moins 60 % de ceux du libellé de la compétence,
    et le meilleur candidat dépasse le second de 15 points :
    `matched_by: official_title`, `confidence`, **`valid: false`**. Cela couvre
-   les chapitres de OF EXEMPLE, qui reprennent le libellé sans le code.
+   les chapitres d'OF EXEMPLE, qui reprennent le libellé sans le code.
 3. **LLM** (optionnel, org avec fournisseur) : sur les modules restés sans
    rattachement, avec la liste des compétences. La réponse est un code et une
    citation, et la citation est retrouvée dans le contenu du module (D316) :
@@ -690,6 +694,73 @@ vidéos.
   - le choix automatique (titre ou contenu « programme » et code de la
     certification) est en V2 avec D413.
 
+### État (2026-10-28, non commité)
+
+Livré (pack `quali_watch` 3.2.0) :
+
+- **D415** : `syllabus.source` (référence vers le média), action
+  **Analyser** (`analyze`), flow « Quali-Watch · cross-table » (déclenché
+  par l'action). `ontology_query` accepte le filtre `id eq` (générique :
+  un flow d'action lit l'objet qu'elle vise).
+- **D416** : nœud `document_text` (cœur `pnex_core::office`, runtime
+  `pnex-document-text`, route `/internal/flow/document-text`, NodeDoc,
+  palette, ftl) ; accepte l'id du média ou celui de son objet d'ontologie ;
+  codes `document-text-no-text` et `document-text-unreadable`.
+- **D417–D419** : une seule fonction `qw_cross_table` (découpage,
+  rattachements, PROG-00 à PROG-04, mise en page), puis `qw_module` /
+  `qw_module_links` pour les écritures ; réglage `tolerance_hours`.
+- **D420** : nœud `sheet_write` (xlsx écrit avec `zip` du backend, texte en
+  ligne, 4 styles, sans formule) ; un média `table` par flow, nœud et nom de
+  fichier, une version par écriture.
+- Tests : `pack_rules` `cross_table_reads_the_pilot_like_a_human` (le test
+  d'acceptation ci-dessus : PROG-02 sur C2, C3, C4, PROG-03 sur le
+  chapitre 5, aucun PROG-01, C5 élargi sans écart) ; `partner_watch`
+  `programme_text_in_and_cross_table_out` (filtre `id`, texte d'un média,
+  média d'une autre org, nœud d'un autre type, classeur versionné, cellule
+  invalide) ; relecture du xlsx par `doc_extract` (test unitaire).
+
+Écarts au texte :
+
+- **Pourquoi une seule fonction** : un flow ne relit pas ce qu'il vient
+  d'écrire dans le même passage (les branches avancent en parallèle). Les
+  rattachements, règles et classeur sont donc calculés avant les écritures,
+  à partir du texte, des compétences et des modules de référence déjà
+  écrits ; les modules et liens `covers` sont écrits ensuite.
+- **Rattachement par les mots** : le module est comparé au programme de
+  référence de chaque compétence (titre et contenu de ses modules), à
+  défaut au libellé de la compétence ; mots normalisés, préfixe de 5
+  lettres. Seuil **40 %** des mots de la référence (et non 60 %) avec
+  15 points d'avance : à 60 %, le chapitre 6 du pilote (« Netlinking,
+  présence hors site… », C5 sans le code) ne se rattachait pas (mesuré).
+- **Heures d'un module couvrant deux compétences** : comptées entières
+  pour chacune (raccourci).
+- **Classeur** : en-têtes du client en français (données), pas de lien
+  `observed_in` vers le média (le classeur se retrouve dans la médiathèque
+  par son nom).
+
+- **D421** : `record.document_link` (cœur `PageRecord`) ; le crawl lit les
+  PDF et DOCX liés par une page pertinente (même site, robots.txt, rythme du
+  crawl, 20 Mo au plus, 5 par page, 50 par crawl ; un fichier coupé n'est pas
+  gardé) ; un média `document` par adresse, une version par SHA-256 ; lien
+  `has_document` (page observée → média, `url`, `first_seen`, `seen_on`,
+  `sha256`), branché dans le flow « website check ». Test : `site_crawl`
+  `flow_node_crawls_the_site_of_its_message` (un lien, une version au
+  second passage). Le programme se choisit parmi ces médias par la
+  propriété `source` du programme (sélecteur de référence).
+
+Reste :
+
+- **D421** : fermer le lien d'un document que la page ne lie plus ; « en
+  faire le programme » en un geste depuis la page observée.
+- **OCR** (D416, famille `paddleocr`) : non fait ; un scan est refusé
+  `document-text-no-text`. Poids et licence du modèle à vérifier d'abord.
+- **LLM** (D418, 3ᵉ niveau) : non fait.
+- **Action `valider_rattachement`** : non faite ; un rattachement se valide
+  en éditant l'attribut `valid` du lien `covers` dans l'UI.
+- **Nouvelle version du programme à chaque dépôt** (D417) : non faite ; une
+  nouvelle analyse met à jour les modules de même rang, un module disparu
+  reste.
+
 ### Questions pour Shan (défaut en attendant)
 
 - **Q-N6 — Programmes scannés** : **tranché (Shan)** : OCR par un modèle de
@@ -708,7 +779,8 @@ vidéos.
 
 ## 9. Trace des contrôles et dossiers de veille (D426–D431)
 
-> **Statut : proposé (2026-10-25)**, demande de Shan relayée par la session
+> **Statut : implémenté (2026-10-28, non commité)**, voir « État » en fin de
+> section. Demande de Shan relayée par la session
 > `pnex-quali-watch` : « rendre visible, partenaire par partenaire, tout le
 > déroulement de Quali-Watch dans un case, avec la chronologie de chaque
 > contrôle et son résultat ». Cible montée à la main sur l'org 4 : case
@@ -904,6 +976,66 @@ version du flow. Seul `check_record` écrit cette origine en V1.
 | **T2** | D426–D427 : nœud `check_record` (cœur, runtime, route interne, NodeDoc, palette, ftl, fiche), table `check_states`, stream `check_runs`, repli et fermeture d'événement | intégration : 3 passages identiques = 1 événement ; changement = fermeture + nouvel événement ; 2 passages simultanés = 1 case ; identifiant d'une autre org refusé |
 | **T3** | D430 `checks` dans l'espace de travail, panneau « Contrôles » | intégration + e2e du panneau |
 | **T4** | D431 : `qw_passage`, flows 15, 17 et 18, imports en fin de run, packs montés | `pack_rules.rs` (regroupement par partenaire), `partner_watch.rs` (case ouvert et alimenté de bout en bout) |
+
+### État (2026-10-28, non commité)
+
+Q-N9 à Q-N12 : les défauts. Livré :
+
+- **T1** : `EVENT_ORIGINS` gagne `flow` ; `case` gagne `watch_key` (unique,
+  indexé) et `watch_state` (`ok` | `unknown` | `finding`).
+- **T2** : nœud `check_record` (cœur, runtime `pnex-check-record`, route
+  `/internal/flow/ontology/check`, NodeDoc, palette, ftl) ; table
+  `check_states` (migration 000062) ; service
+  `services/ontology/cases/watch.rs` (verrous consultatifs parent → case →
+  état, repli, fermeture de l'événement ouvert, attaches, `watch_state`) ;
+  stream O2 `check_runs` (envoi en tâche de fond, initialisé au boot).
+- **T3** : `checks` dans `GET /cases/{id}/workspace` (lu dans
+  `check_states`) et panneau « Vérifications » au-dessus de la frise.
+- **T4** : `qw_network_rules` et `qw_web_rules` (pack 3.1.0) émettent les
+  passages sur une seconde sortie ; flows « network rules » et « website
+  check » câblés ; imports : `write_locked` consigne `import:<nom>` pour
+  les objets mis à jour qui sont sujets d'un case de veille.
+- Tests : `partner_watch` `check_runs_feed_watch_cases_only_on_change`
+  (3 passages = 1 événement, changement = fermeture + nouvel événement,
+  2 passages simultanés = 1 case, id d'une autre org refusé, nœud périmé
+  refusé, import consigné) ; `pack_rules` (passages réseau et site).
+
+Écarts au texte, choisis en route :
+
+- **Lexique** : « Contrôles » désigne déjà les surfaces pilotables (D123).
+  Le panneau et le nœud disent **Vérifications** / **Checks** (ligne au
+  lexique, règle dans `lexicon_guard`).
+- **`qw_passage`** n'est pas une fonction à part : les fonctions de règles
+  ont une seconde sortie `passages`, moins de câblage, les mêmes données.
+- **Écart écrit dans le même run** : son id n'est pas encore connu. Une
+  règle le cite par sa clé (`finding_ref`, avec `finding_type` /
+  `finding_key` du run, donc générique, D441) ; le serveur l'attache s'il
+  existe déjà, sinon l'empreinte le compte quand même.
+- **Run sans `case`** (import, pack générique) : il rejoint le case de veille
+  que le sujet a déjà par un autre contrôle ; hors veille, il est seulement
+  compté.
+- **Import** : seuls les objets *mis à jour* par le run passent (un run sans
+  changement n'est pas compté) ; l'empreinte porte sur les valeurs écrites.
+
+Raccourcis notés :
+
+- Titre d'événement de forme machine (`quali_watch.network · finding
+  (ADM-02)`), pas traduit à l'affichage.
+- Site web : un écart WEB trouvé par ce crawl n'entre dans la vérification
+  qu'au passage suivant ; le passage va dans le dernier case de veille du
+  partenaire (un partenaire habilité sur deux certifications suivies : un
+  seul des deux).
+- ADM-02 revu (rejeté, clos) : pas vu par le regroupement (il n'est pas
+  relié à la certification), il reste `finding`.
+- Route de l'historique brut `check_runs` : non faite (le panneau lit
+  `check_states`) ; à ouvrir si le besoin se confirme (lecture `Org`, MCP).
+
+Reste :
+
+- **Flow 15** (« Web presence · find websites », `web_presence.site`) : un
+  passage par organisation cherchée demande de regrouper les candidats
+  d'un fan-out (recherche puis visites) ; pas de point unique dans le flow
+  actuel. À faire avec un nœud de regroupement ou un repli côté pack.
 
 ### Questions pour Shan (défaut en attendant)
 

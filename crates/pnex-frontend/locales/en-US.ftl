@@ -3643,6 +3643,25 @@ flows-object-upsert-key-id = Its id (msg.object_id or msg.object.id)
 flows-object-upsert-skip-existing = Create only: leave an existing object as it is
 flows-object-upsert-propose = Propose the object or its changes to a human (To validate page) instead of writing them
 flows-link-upsert-help = msg.payload = source_id, target_id (object ids), and optionally attributes and valid_from.
+flows-palette-check-record = Check record
+flows-palette-check-record-help = Records a watch check run; an event in the case only when the result changes
+flows-check-record-help = msg.payload = check, subject_id, scope_ids, rules (code, version, result ok/unknown/finding, reason, finding_id), objects and case (key, title, parent_key, parent_title). A run identical to the previous one only counts; a change closes the open event and opens a new one in the case.
+flows-palette-document-text = Document text
+flows-palette-document-text-help = Reads the text of a document of the media library
+flows-document-text-help = msg.payload.media_id = a document of the media library (PDF with text, DOCX, XLSX, text). Output msg.payload = media_id, version, text, pages. A scan has no text and is refused.
+flows-palette-sheet-write = Workbook write
+flows-palette-sheet-write-help = Writes an xlsx workbook into the media library, a new version each time
+flows-sheet-write-help = msg.payload = name and sheets (name, cells with ref, value, bold, wrap; merges; widths). Output msg.payload = media_id, version, filename.
+cases-checks-title = Checks
+cases-checks-last-run = Last run { $at }
+cases-checks-since = { $runs ->
+    [one] Unchanged since { $at } (1 run)
+   *[other] Unchanged since { $at } ({ $runs } runs)
+}
+cases-checks-result-ok = OK
+cases-checks-result-unknown = Unknown
+cases-checks-result-finding = Finding
+cases-checks-source = Source: { $source }
 flows-link-upsert-type = Link type
 flows-link-upsert-close = Close the link instead of opening it
 flows-link-upsert-skip-closed = Never reopen a link already closed between these two objects (a rejected candidate is not proposed again)
@@ -6064,6 +6083,8 @@ err-web-visit-blocked = The site's robots.txt forbids reading this page.
 err-web-visit-quota = Daily cap of website visits reached for this organisation.
 err-site-crawl-url-invalid = The site to crawl is not a web address (http or https).
 err-site-crawl-invalid = The crawl asked by the flow is refused ({ $field }): too many relevance rules, a rule too long, or an invalid regular expression.
+err-document-text-no-text = The document has no text layer (a scan or an image): enter its content by hand, or upload a PDF with text.
+err-document-text-unreadable = The document cannot be read: upload a PDF with text, a DOCX or a text file.
 err-proposal-decided = This proposal was already decided, or a newer one replaced it.
 web-sites-delete-recipe = Delete the rule
 web-sites-delete-confirm = The rule is deleted; its runs stay in the journal.

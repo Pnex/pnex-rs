@@ -205,6 +205,23 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ontology::flow::LinkUpsertConfig,
     },
+    /// Records one run of a watch check; an event only when the result
+    /// changes (network-check.md D426).
+    CheckRecord {
+        #[serde(default)]
+        config: crate::ontology::check::CheckRecordConfig,
+    },
+    /// Text of the current version of a document of the media library
+    /// (network-check.md D416).
+    DocumentText {
+        #[serde(default)]
+        config: crate::office::DocumentTextConfig,
+    },
+    /// Writes an xlsx workbook into the media library (D420).
+    SheetWrite {
+        #[serde(default)]
+        config: crate::office::SheetWriteConfig,
+    },
     /// Plays a saved site navigation rule on the server browser
     /// (site-recipes.md D327).
     SiteRecipe {
@@ -408,6 +425,15 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "link_upsert" => Ok(Self::LinkUpsert {
+                    config: opt_config(config)?,
+                }),
+                "check_record" => Ok(Self::CheckRecord {
+                    config: opt_config(config)?,
+                }),
+                "document_text" => Ok(Self::DocumentText {
+                    config: opt_config(config)?,
+                }),
+                "sheet_write" => Ok(Self::SheetWrite {
                     config: opt_config(config)?,
                 }),
                 "site_recipe" => Ok(Self::SiteRecipe {

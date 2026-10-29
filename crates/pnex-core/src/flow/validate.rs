@@ -194,6 +194,10 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
             }
             // Nothing to check: one bool.
             FlowNodeKind::WebVisit { .. } => {}
+            // The payload is checked by the server at each run (D426).
+            FlowNodeKind::CheckRecord { .. } => {}
+            // No setting: the message is checked by the server (D416, D420).
+            FlowNodeKind::DocumentText { .. } | FlowNodeKind::SheetWrite { .. } => {}
             FlowNodeKind::SiteCrawl { config } => {
                 if let Some((code, message)) = config.check() {
                     v.push(FlowViolation::new(Some(&n.id), code, message));

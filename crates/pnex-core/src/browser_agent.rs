@@ -815,6 +815,12 @@ pub struct PageRecord {
     /// `text`) when the link type declares them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proof_link: Option<String>,
+    /// Link type from the page object to each document it links (PDF,
+    /// DOCX), kept as a media of the org (network-check.md D421), with
+    /// `url`, `seen_on`, `first_seen` and `sha256` when the link type
+    /// declares them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_link: Option<String>,
 }
 
 /// `crawl_site` (D307): walk one declared site, list its pages, keep the
@@ -1476,7 +1482,10 @@ mod tests {
 
     #[test]
     fn a_site_key_ignores_scheme_and_www() {
-        assert_eq!(site_key("https://www.Of-Exemple.example"), "web:site:of-exemple.example");
+        assert_eq!(
+            site_key("https://www.Of-Exemple.example"),
+            "web:site:of-exemple.example"
+        );
         assert_eq!(
             site_key("http://of-exemple.example"),
             site_key("https://of-exemple.example")

@@ -3,6 +3,7 @@
 //! palette, the links graph and the map with the undated pieces, and the
 //! inspector. Every gesture is one server call returning the workspace.
 
+mod checks;
 mod frame;
 mod graph;
 mod imports;
@@ -685,6 +686,9 @@ fn CaseWorkspaceOf(id: String) -> Element {
                         if inspector_open {
                             inspector::Inspector {}
                         }
+                    }
+                    if !w.checks.is_empty() {
+                        checks::Checks { checks: w.checks.clone() }
                     }
                     timeline::Timeline {}
                 }

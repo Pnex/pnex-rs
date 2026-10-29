@@ -1,7 +1,7 @@
 use super::*;
 
 /// Canonical list of the kinds offered for adding (mockup order).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 48] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 51] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -37,6 +37,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 48] = [
     PaletteKind::OntologyQuery,
     PaletteKind::ObjectUpsert,
     PaletteKind::LinkUpsert,
+    PaletteKind::CheckRecord,
     PaletteKind::SiteRecipe,
     PaletteKind::WebSearch,
     PaletteKind::OrgResolve,
@@ -44,6 +45,8 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 48] = [
     PaletteKind::SiteCrawl,
     PaletteKind::PageWrite,
     PaletteKind::PagePdf,
+    PaletteKind::DocumentText,
+    PaletteKind::SheetWrite,
     PaletteKind::EventLog,
     PaletteKind::MemoryWrite,
     PaletteKind::MemoryRead,
@@ -85,6 +88,8 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::LlmText => "llm-text",
         PaletteKind::PageWrite => "page-write",
         PaletteKind::PagePdf => "page-pdf",
+        PaletteKind::DocumentText => "document-text",
+        PaletteKind::SheetWrite => "sheet-write",
         PaletteKind::TextDecide => "text-decide",
         PaletteKind::EventLog => "event-log",
         PaletteKind::MemoryWrite => "memory-write",
@@ -95,6 +100,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::OntologyQuery => "ontology-query",
         PaletteKind::ObjectUpsert => "object-upsert",
         PaletteKind::LinkUpsert => "link-upsert",
+        PaletteKind::CheckRecord => "check-record",
         PaletteKind::SiteRecipe => "site-recipe",
         PaletteKind::WebSearch => "web-search",
         PaletteKind::OrgResolve => "org-resolve",
@@ -149,6 +155,8 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::LlmText => (PaletteIcon::Braces, "bg-violet-50 text-violet-800"),
         PaletteKind::PageWrite => (PaletteIcon::Layers, "bg-amber-50 text-amber-700"),
         PaletteKind::PagePdf => (PaletteIcon::Layers, "bg-amber-50 text-amber-800"),
+        PaletteKind::DocumentText => (PaletteIcon::Layers, "bg-amber-50 text-amber-700"),
+        PaletteKind::SheetWrite => (PaletteIcon::Database, "bg-amber-50 text-amber-800"),
         PaletteKind::TextDecide => (PaletteIcon::Gauge, "bg-violet-50 text-violet-700"),
         PaletteKind::EventLog => (PaletteIcon::History, "bg-slate-100 text-slate-600"),
         PaletteKind::MemoryWrite => (PaletteIcon::Database, "bg-lime-50 text-lime-700"),
@@ -159,6 +167,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::OntologyQuery => (PaletteIcon::Database, "bg-teal-50 text-teal-700"),
         PaletteKind::ObjectUpsert => (PaletteIcon::Database, "bg-teal-50 text-teal-800"),
         PaletteKind::LinkUpsert => (PaletteIcon::Layers, "bg-teal-50 text-teal-700"),
+        PaletteKind::CheckRecord => (PaletteIcon::Gauge, "bg-teal-50 text-teal-800"),
         PaletteKind::SiteRecipe => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-800"),
         PaletteKind::WebSearch => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-700"),
         PaletteKind::OrgResolve => (PaletteIcon::Database, "bg-cyan-50 text-cyan-800"),
@@ -206,6 +215,8 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::LlmText { .. } => PaletteKind::LlmText,
         FlowNodeKind::PageWrite { .. } => PaletteKind::PageWrite,
         FlowNodeKind::PagePdf { .. } => PaletteKind::PagePdf,
+        FlowNodeKind::DocumentText { .. } => PaletteKind::DocumentText,
+        FlowNodeKind::SheetWrite { .. } => PaletteKind::SheetWrite,
         FlowNodeKind::TextDecide { .. } => PaletteKind::TextDecide,
         FlowNodeKind::EventLog { .. } => PaletteKind::EventLog,
         FlowNodeKind::MemoryWrite { .. } => PaletteKind::MemoryWrite,
@@ -216,6 +227,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::OntologyQuery { .. } => PaletteKind::OntologyQuery,
         FlowNodeKind::ObjectUpsert { .. } => PaletteKind::ObjectUpsert,
         FlowNodeKind::LinkUpsert { .. } => PaletteKind::LinkUpsert,
+        FlowNodeKind::CheckRecord { .. } => PaletteKind::CheckRecord,
         FlowNodeKind::SiteRecipe { .. } => PaletteKind::SiteRecipe,
         FlowNodeKind::WebSearch { .. } => PaletteKind::WebSearch,
         FlowNodeKind::OrgResolve { .. } => PaletteKind::OrgResolve,
@@ -289,10 +301,13 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::RangeUpsert
         | PaletteKind::PageWrite
         | PaletteKind::PagePdf
+        | PaletteKind::DocumentText
+        | PaletteKind::SheetWrite
         | PaletteKind::EventLog => PaletteCategory::Storage,
-        PaletteKind::OntologyQuery | PaletteKind::ObjectUpsert | PaletteKind::LinkUpsert => {
-            PaletteCategory::Ontology
-        }
+        PaletteKind::OntologyQuery
+        | PaletteKind::ObjectUpsert
+        | PaletteKind::LinkUpsert
+        | PaletteKind::CheckRecord => PaletteCategory::Ontology,
         PaletteKind::SiteRecipe
         | PaletteKind::WebSearch
         | PaletteKind::OrgResolve
@@ -506,6 +521,18 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::LinkUpsert => (
             t!("flows-palette-link-upsert").to_string(),
             t!("flows-palette-link-upsert-help").to_string(),
+        ),
+        PaletteKind::CheckRecord => (
+            t!("flows-palette-check-record").to_string(),
+            t!("flows-palette-check-record-help").to_string(),
+        ),
+        PaletteKind::DocumentText => (
+            t!("flows-palette-document-text").to_string(),
+            t!("flows-palette-document-text-help").to_string(),
+        ),
+        PaletteKind::SheetWrite => (
+            t!("flows-palette-sheet-write").to_string(),
+            t!("flows-palette-sheet-write-help").to_string(),
         ),
         PaletteKind::SiteRecipe => (
             t!("flows-palette-site-recipe").to_string(),

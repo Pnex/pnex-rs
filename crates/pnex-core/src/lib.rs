@@ -246,6 +246,9 @@ pub mod ontology;
 /// Document extraction + chunking of the media library search (doc-search.md).
 pub mod doc_extract;
 
+/// Office documents read and written by flows (network-check.md D416, D420).
+pub mod office;
+
 /// Machine error codes shared backend ↔ frontend (i18n) — doctrine and
 /// `ALL` registry; `err-<kebab>` resolution happens client-side at render
 /// time.

@@ -104,6 +104,9 @@ fn port_type(node: &FlowNode, port: usize) -> PortType {
         | FlowNodeKind::OntologyQuery { .. }
         | FlowNodeKind::ObjectUpsert { .. }
         | FlowNodeKind::LinkUpsert { .. }
+        | FlowNodeKind::CheckRecord { .. }
+        | FlowNodeKind::DocumentText { .. }
+        | FlowNodeKind::SheetWrite { .. }
         | FlowNodeKind::SiteRecipe { .. }
         | FlowNodeKind::WebSearch { .. }
         | FlowNodeKind::OrgResolve { .. }

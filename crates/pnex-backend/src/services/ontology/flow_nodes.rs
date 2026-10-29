@@ -89,7 +89,7 @@ fn actor(r: &FlowNodeRef) -> Actor {
 // if flows of one org ever run on several pods at once.
 static BUDGET: Mutex<Option<HashMap<i64, (i64, u32)>>> = Mutex::new(None);
 
-fn spend(org_id: i64) -> std::result::Result<(), NodeError> {
+pub(crate) fn spend(org_id: i64) -> std::result::Result<(), NodeError> {
     let minute = chrono::Utc::now().timestamp() / 60;
     let mut guard = BUDGET.lock().unwrap_or_else(|p| p.into_inner());
     let map = guard.get_or_insert_with(HashMap::new);
@@ -375,6 +375,25 @@ pub async fn upsert(
             Ok(ack(true, object))
         }
     }
+}
+
+/// `check_record`: one run of a watch check (network-check.md D426).
+pub async fn check(
+    db: &DatabaseConnection,
+    req: &pnex_core::ontology::check::CheckRecordRequest,
+) -> std::result::Result<super::cases::watch::Recorded, NodeError> {
+    let FlowNodeKind::CheckRecord { .. } = deployed(db, &req.node).await? else {
+        return Err(NodeError::NotDeployed);
+    };
+    spend(req.node.org_id)?;
+    Ok(super::cases::watch::record(
+        db,
+        req.node.org_id,
+        &actor(&req.node),
+        pnex_core::ontology::EVENT_ORIGIN_FLOW,
+        &req.run,
+    )
+    .await?)
 }
 
 /// Title of an object created from a message: the message's, else its key.

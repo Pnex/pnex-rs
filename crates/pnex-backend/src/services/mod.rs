@@ -59,6 +59,8 @@ pub mod notify;
 pub mod notify_journal;
 pub mod notify_recipients;
 pub mod notify_templates;
+/// Office documents read and written by flows (network-check.md D416, D420).
+pub mod office;
 pub mod ontology;
 pub mod openobserve;
 pub mod org_resolve;

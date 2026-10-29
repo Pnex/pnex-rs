@@ -100,7 +100,11 @@ fn site(state: Arc<Mutex<bool>>) -> axum::Router {
         )
         .route(
             "/formations/rncp",
-            get(|| async { Html("<html><head><title>Titre pro</title></head><body><h1>Titre RNCP12345</h1><p>Éligible CPF</p></body></html>") }),
+            get(|| async { Html("<html><head><title>Titre pro</title></head><body><h1>Titre RNCP12345</h1><p>Éligible CPF</p><a href=\"/docs/programme.pdf\">Programme</a></body></html>") }),
+        )
+        .route(
+            "/docs/programme.pdf",
+            get(|| async { ([("content-type", "application/pdf")], b"%PDF-1.4\n1 0 obj << >> endobj\n%%EOF\n".to_vec()) }),
         )
         .route(
             "/formations/rs",
@@ -339,7 +343,8 @@ async fn flow_node_crawls_the_site_of_its_message() {
             version_number: Set(1),
             graph: Set(json!({"nodes": [{"id": "crawl", "kind": "site_crawl", "config": {
                 "max_pages": 20, "proofs": false,
-                "record": {"type": "observed_page", "properties": {"url": "url", "title": "heading"}, "link_type": "page_of"}
+                "record": {"type": "observed_page", "properties": {"url": "url", "title": "heading"}, "link_type": "page_of",
+                           "document_link": "has_document"}
             }}]})),
             ..Default::default()
         }
@@ -373,6 +378,10 @@ async fn flow_node_crawls_the_site_of_its_message() {
         let linked = ctx.db.execute_unprepared(&format!(
             "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'page_of' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(linked.rows_affected(), 1);
+        // D421: the PDF the page links is a media of the org, linked once.
+        let docs = ctx.db.execute_unprepared(&format!(
+            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'has_document' AND valid_to IS NULL")).await.unwrap();
+        assert_eq!(docs.rows_affected(), 1);
         // One disabled mission for the flows; a second pass reuses it.
         let (st, r2) = crawl(ask.clone()).await;
         assert_eq!(st, 200);
@@ -380,6 +389,11 @@ async fn flow_node_crawls_the_site_of_its_message() {
         let missions = ctx.db.execute_unprepared(&format!(
             "SELECT 1 FROM extension_missions WHERE org_id = {org} AND kind = 'crawl_site' AND NOT enabled")).await.unwrap();
         assert_eq!(missions.rows_affected(), 1);
+        // The same bytes again: no second version, still one link.
+        let versions = ctx.db.execute_unprepared(&format!(
+            "SELECT 1 FROM media_versions v JOIN media_assets a ON a.id = v.asset_id \
+             WHERE a.org_id = {org} AND a.metadata->>'source' = 'site_crawl'")).await.unwrap();
+        assert_eq!(versions.rows_affected(), 1);
 
         // Refusals on the failure port, with their code.
         let mut bad = ask.clone();

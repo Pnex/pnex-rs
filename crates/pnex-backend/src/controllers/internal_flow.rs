@@ -60,6 +60,11 @@ pub fn routes() -> Routes {
         .add("/internal/flow/ontology/query", post(flow_ontology_query))
         .add("/internal/flow/ontology/upsert", post(flow_ontology_upsert))
         .add("/internal/flow/ontology/link", post(flow_ontology_link))
+        // Watch check runs of check_record nodes (network-check.md D426).
+        .add("/internal/flow/ontology/check", post(flow_ontology_check))
+        // Office documents of document_text / sheet_write nodes (D416, D420).
+        .add("/internal/flow/document-text", post(flow_document_text))
+        .add("/internal/flow/sheet-write", post(flow_sheet_write))
         // Stored mails replayed to mail_received nodes (mail.md D464).
         .add("/internal/flow/mail/replay", post(flow_mail_replay))
         .add("/internal/flow/mail/ack", post(flow_mail_ack))
@@ -899,6 +904,90 @@ async fn flow_ontology_link(
     }
     let r = crate::services::ontology::flow_nodes::link(&ctx.db, &req).await;
     ontology_reply(req.node.org_id, r)
+}
+
+async fn flow_ontology_check(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::ontology::check::CheckRecordRequest>,
+) -> Result<Response> {
+    use crate::services::ontology::cases::watch;
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let r = crate::services::ontology::flow_nodes::check(&ctx.db, &req)
+        .await
+        .map(|rec| {
+            watch::journal(req.node.org_id, rec.line);
+            rec.ack
+        });
+    ontology_reply(req.node.org_id, r)
+}
+
+/// Answer of an office node call; refusals are runtime diagnostics with
+/// their machine code (node status).
+fn office_reply<T: serde::Serialize>(
+    org_id: i64,
+    r: std::result::Result<T, crate::services::office::OfficeError>,
+) -> Result<Response> {
+    use crate::services::office::OfficeError;
+    let refused = |status: StatusCode, body: serde_json::Value| {
+        tracing::warn!(org_id, %body, "flow office call refused");
+        Ok((status, axum::Json(body)).into_response())
+    };
+    match r {
+        Ok(v) => Ok(axum::Json(v).into_response()),
+        Err(OfficeError::Node(e)) => ontology_reply::<()>(org_id, Err(e)),
+        Err(OfficeError::NotFound) => refused(
+            StatusCode::NOT_FOUND,
+            serde_json::json!({ "code": pnex_core::err_codes::ONTOLOGY_NOT_FOUND }),
+        ),
+        Err(OfficeError::Invalid(field)) => refused(
+            StatusCode::BAD_REQUEST,
+            serde_json::json!({ "code": pnex_core::err_codes::FIELD_INVALID, "args": { "field": field } }),
+        ),
+        Err(OfficeError::Coded(code)) => refused(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            serde_json::json!({ "code": code }),
+        ),
+        Err(OfficeError::Internal(e)) => {
+            tracing::warn!(org_id, error = %e, "flow office call failed");
+            Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
+}
+
+async fn flow_document_text(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::office::DocumentTextRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let r = crate::services::office::document_text(&ctx, &req).await;
+    office_reply(req.node.org_id, r)
+}
+
+async fn flow_sheet_write(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::office::SheetWriteRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let r = crate::services::office::sheet_write(&ctx, &req).await;
+    office_reply(req.node.org_id, r)
 }
 
 async fn flow_page_write(

@@ -8,6 +8,7 @@
 
 pub mod action;
 pub mod api;
+pub mod check;
 pub mod flow;
 pub mod graph;
 pub mod import;
@@ -449,6 +450,17 @@ fn case_properties() -> Vec<PropertyDef> {
                 to_type: crate::resources::KIND_DOC.into(),
             },
         ),
+        PropertyDef {
+            indexed: true,
+            unique: true,
+            ..prop(CASE_WATCH_KEY, PropertyKind::Text { max_len: Some(255) })
+        },
+        prop(
+            CASE_WATCH_STATE,
+            PropertyKind::Enum {
+                values: CHECK_RESULTS.iter().map(|v| v.to_string()).collect(),
+            },
+        ),
     ]
 }
 
@@ -469,6 +481,12 @@ pub const CASE_STOP_MIN_S: &str = "stop_min_s";
 pub const CASE_SIGNAL_GAP_S: &str = "signal_gap_s";
 /// The page holding the conclusion (K8), versioned when the case concludes.
 pub const CASE_CONCLUSION_PAGE: &str = "conclusion_page";
+/// Key by which a check run finds its watch case (D429), unique per org.
+pub const CASE_WATCH_KEY: &str = "watch_key";
+/// Worst latest result of every check of a watch case (D429).
+pub const CASE_WATCH_STATE: &str = "watch_state";
+/// Result of a check or of one of its rules, best to worst (D426).
+pub const CHECK_RESULTS: [&str; 3] = ["ok", "unknown", "finding"];
 /// An event of the case, or an undated piece of it (K22): any object →
 /// case; removing it closes the link. Roles live on `involves`.
 pub const REL_IN_CASE: &str = "in_case";
@@ -481,7 +499,9 @@ pub const EVENT_OCCURRED: &str = "occurred";
 pub const EVENT_NOTE: &str = "note";
 /// How the event entered the case.
 pub const EVENT_ORIGIN: &str = "origin";
-pub const EVENT_ORIGINS: [&str; 4] = ["manual", "detection", "signal", "import"];
+pub const EVENT_ORIGINS: [&str; 5] = ["manual", "detection", "signal", "import", EVENT_ORIGIN_FLOW];
+/// Written by a deployed flow's `check_record` (D428), provenance `flow:<id>@<version>`.
+pub const EVENT_ORIGIN_FLOW: &str = "flow";
 /// Place set by hand when no attached object locates the event.
 pub const EVENT_LOCATION: &str = "location";
 /// Money moved by the event: with `payer` and `payee` attachments, the

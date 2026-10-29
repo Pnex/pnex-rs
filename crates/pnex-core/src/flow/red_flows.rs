@@ -342,6 +342,27 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            FlowNodeKind::DocumentText { .. } => serde_json::json!({
+                "type": "pnex-document-text",
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
+            FlowNodeKind::SheetWrite { .. } => serde_json::json!({
+                "type": "pnex-sheet-write",
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
+            FlowNodeKind::CheckRecord { .. } => serde_json::json!({
+                "type": "pnex-check-record",
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             // The backend reads the recipe from the deployed graph (D327).
             FlowNodeKind::SiteRecipe { .. } => {
                 padded_ports = Some(crate::site_recipe::NODE_PORT_COUNT);

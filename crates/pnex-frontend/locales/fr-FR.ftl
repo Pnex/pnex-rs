@@ -3642,6 +3642,25 @@ flows-object-upsert-key-id = Son identifiant (msg.object_id ou msg.object.id)
 flows-object-upsert-skip-existing = Créer seulement : laisser tel quel un objet existant
 flows-object-upsert-propose = Proposer l'objet ou ses changements à un humain (page « À valider ») au lieu de les écrire
 flows-link-upsert-help = msg.payload = source_id, target_id (identifiants d'objets), et au besoin attributes et valid_from.
+flows-palette-check-record = Consigner une vérification
+flows-palette-check-record-help = Consigne le passage d'une veille ; un événement dans le dossier seulement quand le résultat change
+flows-check-record-help = msg.payload = check, subject_id, scope_ids, rules (code, version, result ok/unknown/finding, reason, finding_id), objects et case (key, title, parent_key, parent_title). Un passage identique au précédent est seulement compté ; un changement ferme l'événement ouvert et en ouvre un nouveau dans le dossier.
+flows-palette-document-text = Texte d'un document
+flows-palette-document-text-help = Lit le texte d'un document de la médiathèque
+flows-document-text-help = msg.payload.media_id = un document de la médiathèque (PDF avec texte, DOCX, XLSX, texte). Sortie msg.payload = media_id, version, text, pages. Un scan n'a pas de texte et est refusé.
+flows-palette-sheet-write = Écriture de classeur
+flows-palette-sheet-write-help = Écrit un classeur xlsx dans la médiathèque, une nouvelle version à chaque fois
+flows-sheet-write-help = msg.payload = name et sheets (name, cells avec ref, value, bold, wrap ; merges ; widths). Sortie msg.payload = media_id, version, filename.
+cases-checks-title = Vérifications
+cases-checks-last-run = Dernier passage { $at }
+cases-checks-since = { $runs ->
+    [one] Inchangé depuis { $at } (1 passage)
+   *[other] Inchangé depuis { $at } ({ $runs } passages)
+}
+cases-checks-result-ok = Conforme
+cases-checks-result-unknown = Inconnu
+cases-checks-result-finding = Écart
+cases-checks-source = Source : { $source }
 flows-link-upsert-type = Type de lien
 flows-link-upsert-close = Fermer le lien au lieu de l'ouvrir
 flows-link-upsert-skip-closed = Ne jamais rouvrir un lien déjà fermé pour ces deux objets (un candidat rejeté n'est pas reproposé)
@@ -6060,6 +6079,8 @@ err-web-visit-blocked = Le robots.txt du site interdit de lire cette page.
 err-web-visit-quota = Plafond quotidien de visites de sites atteint pour cette organisation.
 err-site-crawl-url-invalid = Le site à parcourir n'est pas une adresse web (http ou https).
 err-site-crawl-invalid = Le parcours demandé par le flow est refusé ({ $field }) : trop de règles de pertinence, une règle trop longue ou une expression régulière invalide.
+err-document-text-no-text = Le document n'a pas de texte (un scan ou une image) : saisissez son contenu à la main, ou déposez un PDF avec du texte.
+err-document-text-unreadable = Le document est illisible : déposez un PDF avec du texte, un DOCX ou un fichier texte.
 err-proposal-decided = Cette proposition a déjà été tranchée, ou une plus récente l'a remplacée.
 web-sites-delete-recipe = Supprimer la règle
 web-sites-delete-confirm = La règle est supprimée ; ses passages restent au journal.

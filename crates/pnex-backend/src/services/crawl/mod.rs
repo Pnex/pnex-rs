@@ -14,6 +14,7 @@
 //! two complete crawls in a row is `gone`. Relevant pages may be written as
 //! objects of an org type (`record`), through the ontology services.
 
+pub mod documents;
 pub mod html;
 pub mod robots;
 
@@ -548,6 +549,22 @@ pub(crate) struct Fetched {
 
 /// GET with same-origin redirects only (5 hops), size capped.
 pub(crate) async fn fetch(origin: &str, url: &reqwest::Url) -> Result<Fetched, &'static str> {
+    let (url, status, content_type, body, _) = fetch_bytes(origin, url, PAGE_MAX_BYTES).await?;
+    Ok(Fetched {
+        url,
+        status,
+        content_type,
+        body: String::from_utf8_lossy(&body).into_owned(),
+    })
+}
+
+/// `fetch` as bytes, cut at `max`: (final url, status, content type,
+/// body, whether it was cut).
+pub(crate) async fn fetch_bytes(
+    origin: &str,
+    url: &reqwest::Url,
+    max: usize,
+) -> Result<(reqwest::Url, u16, String, Vec<u8>, bool), &'static str> {
     let mut current = url.clone();
     for _ in 0..=5 {
         if pnex_core::egress::check_url(&current).is_some() {
@@ -568,12 +585,7 @@ pub(crate) async fn fetch(origin: &str, url: &reqwest::Url) -> Result<Fetched, &
                 .ok_or(err_codes::CRAWL_UNREACHABLE)?;
             if pnex_core::browser_agent::site_origin(next.as_str()).as_deref() != Some(origin) {
                 // Off the site: not followed (D307).
-                return Ok(Fetched {
-                    url: current,
-                    status: status.as_u16(),
-                    content_type: String::new(),
-                    body: String::new(),
-                });
+                return Ok((current, status.as_u16(), String::new(), Vec::new(), false));
             }
             current = next;
             continue;
@@ -590,17 +602,12 @@ pub(crate) async fn fetch(origin: &str, url: &reqwest::Url) -> Result<Fetched, &
             .await
             .map_err(|_| err_codes::CRAWL_UNREACHABLE)?
         {
-            if body.len() + chunk.len() > PAGE_MAX_BYTES {
-                break;
+            if body.len() + chunk.len() > max {
+                return Ok((current, status.as_u16(), content_type, body, true));
             }
             body.extend_from_slice(&chunk);
         }
-        return Ok(Fetched {
-            url: current,
-            status: status.as_u16(),
-            content_type,
-            body: String::from_utf8_lossy(&body).into_owned(),
-        });
+        return Ok((current, status.as_u16(), content_type, body, false));
     }
     Err(err_codes::CRAWL_UNREACHABLE)
 }
@@ -715,6 +722,7 @@ pub async fn crawl(
     }
     push(base.clone(), 0, &mut queue);
     let mut seen_urls: Vec<String> = Vec::new();
+    let mut docs_done: HashSet<String> = HashSet::new();
     let mut first = true;
     while let Some((u, depth)) = queue.pop_front() {
         if out.pages >= params.max_pages as usize {
@@ -768,6 +776,22 @@ pub async fn crawl(
                     }
                 }
                 seen_urls.push(seen.url.clone());
+                // D421: the documents a relevant page links, as media.
+                let page_object = p.object_id.as_deref().and_then(|o| Uuid::parse_str(o).ok());
+                if let (Some(record), Some(object), true) = (
+                    params.record.as_ref().filter(|r| r.document_link.is_some()),
+                    page_object,
+                    p.state != "listed",
+                ) {
+                    for d in documents::links_of(&origin, &page.links, &robots, &docs_done) {
+                        if docs_done.len() >= documents::PER_CRAWL {
+                            break;
+                        }
+                        docs_done.insert(d.to_string());
+                        tokio::time::sleep(delay).await;
+                        documents::keep(ctx, &c, record, object, &origin, &d).await;
+                    }
+                }
             }
             Err(code) => {
                 out.blocked = Some(code);

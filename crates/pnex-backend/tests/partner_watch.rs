@@ -164,14 +164,14 @@ async fn natural_keys_extensions_and_hierarchy() {
                     .unwrap()
             }
         };
-        // quali_watch 9 + web_presence 6 functions; 4 + 1 flows (the
-        // ingestion flow is retired, D359).
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 15);
+        // quali_watch 15 + web_presence 6 functions; 5 + 1 flows (the
+        // ingestion flow is retired, D359; the cross-table one, D420).
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 21);
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND status = 'draft'")).await,
-            5
+            6
         );
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 5);
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 6);
         // SIRENE, GLEIF ×2, Wikidata, the partner sheet, the five France
         // Compétences imports, and the network's SIRENE, DGEFP and CPF ×2.
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 14);
@@ -2509,6 +2509,227 @@ async fn network_registers_and_query() {
         let (_, r) = internal(&server, "query", json!({"node": node("watched")})).await;
         assert_eq!(r["count"], json!(2), "{r}");
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}
+
+/// A deployed flow of `org` holding one `check_record` node `k`.
+async fn deploy_check_record(db: &DatabaseConnection, org: i64) -> i64 {
+    use pnex_backend::models::_entities::{flow_versions, flows};
+    use sea_orm::{ActiveModelTrait, Set};
+    let flow = flows::ActiveModel {
+        name: Set("checks".into()),
+        status: Set(pnex_core::FLOW_STATUS_DEPLOYED.into()),
+        org_id: Set(org),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let version = flow_versions::ActiveModel {
+        flow_id: Set(flow.id),
+        version_number: Set(1),
+        graph: Set(json!({ "nodes": [{"id": "k", "kind": "check_record"}] })),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let id = flow.id;
+    let mut am: flows::ActiveModel = flow.into();
+    am.deployed_version_id = Set(Some(version.id));
+    am.update(db).await.unwrap();
+    id
+}
+
+#[tokio::test]
+#[serial]
+async fn check_runs_feed_watch_cases_only_on_change() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pw-1") };
+        let flow = deploy_check_record(&env.db, org).await;
+        let node = json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": "k"});
+        let (_, cert) = object(&server, &env.alice, org, "certification", "RS0101", json!({"code": "RS0101"})).await;
+        let (_, acme) = object(&server, &env.alice, org, "organization", "ACME", json!({"siren": "123456789"})).await;
+        let (_, beta) = object(&server, &env.alice, org, "organization", "Beta", json!({"siren": "987654321"})).await;
+        let run = |subject: &Value, siren: &str, rules: Value| json!({"node": node, "run": {
+            "check": "quali_watch.network", "subject_id": subject["id"], "scope_ids": [cert["id"]],
+            "rules": rules, "objects": [cert["id"]],
+            "case": {"key": format!("qw:RS0101:{siren}"), "title": format!("Watch RS0101 · {siren}"),
+                     "parent_key": "qw:RS0101", "parent_title": "Watch RS0101"}}});
+        let ok = json!([{"code": "ADM-02", "version": 1, "result": "ok"}]);
+
+        // Three identical runs: one case, one event, the next two only count.
+        let (st, first) = internal(&server, "check", run(&acme, "123456789", ok.clone())).await;
+        assert_eq!((st, first["changed"].clone(), first["result"].clone()), (200, json!(true), json!("ok")), "{first}");
+        let case_id = first["case_id"].as_str().unwrap().to_string();
+        for _ in 0..2 {
+            let (st, same) = internal(&server, "check", run(&acme, "123456789", ok.clone())).await;
+            assert_eq!((st, same["changed"].clone(), same["event_id"].clone()), (200, json!(false), first["event_id"].clone()), "{same}");
+        }
+        let (st, ws) = call(&server, "GET", &format!("/api/v1/cases/{case_id}/workspace"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{ws}");
+        assert_eq!(ws["events"].as_array().unwrap().len(), 1, "{ws}");
+        assert_eq!(ws["events"][0]["event"]["properties"]["origin"], "flow");
+        assert_eq!(ws["case"]["properties"]["watch_state"], "ok");
+        assert_eq!(ws["parents"][0]["title"], "Watch RS0101", "opened under its parent");
+        assert_eq!(ws["checks"][0]["runs_since_change"], 3, "{ws}");
+        assert_eq!(ws["checks"][0]["source_ref"], format!("flow:{flow}@1"));
+
+        // A change closes the open event and opens a new one.
+        let finding = json!([{"code": "ADM-02", "version": 1, "result": "finding", "finding_id": beta["id"]}]);
+        let (st, changed) = internal(&server, "check", run(&acme, "123456789", finding)).await;
+        assert_eq!((st, changed["changed"].clone(), changed["case_id"].as_str()), (200, json!(true), Some(case_id.as_str())), "{changed}");
+        let (_, ws) = call(&server, "GET", &format!("/api/v1/cases/{case_id}/workspace"), &env.alice, org, None).await;
+        let events = ws["events"].as_array().unwrap();
+        assert_eq!(events.len(), 2, "{ws}");
+        let old = events.iter().find(|e| e["event"]["id"] == first["event_id"]).unwrap();
+        assert_eq!(old["event"]["properties"]["occurred"]["precision"], "range");
+        assert_eq!(ws["case"]["properties"]["watch_state"], "finding");
+        assert_eq!(ws["checks"][0]["result"], "finding");
+
+        // Two simultaneous first runs of a new subject open one case.
+        let (a, b) = tokio::join!(
+            internal(&server, "check", run(&beta, "987654321", ok.clone())),
+            internal(&server, "check", run(&beta, "987654321", ok.clone())),
+        );
+        assert_eq!((a.0, b.0), (200, 200), "{} {}", a.1, b.1);
+        assert_eq!(a.1["case_id"], b.1["case_id"]);
+        let cases = env.db.execute_unprepared(&format!(
+            "SELECT 1 FROM objects WHERE org_id = {org} AND type_key = 'case' \
+             AND properties->>'watch_key' = 'qw:RS0101:987654321'")).await.unwrap();
+        assert_eq!(cases.rows_affected(), 1);
+
+        // An id of another org is refused, nothing recorded.
+        let bob_org = personal_org(&server, &env.bob).await;
+        install(&server, &env.bob, bob_org, "quali_watch").await;
+        let (_, foreign) = object(&server, &env.bob, bob_org, "organization", "Other", json!({"siren": "111111111"})).await;
+        let (st, e) = internal(&server, "check", run(&foreign, "111111111", ok.clone())).await;
+        assert_eq!(st, 400, "{e}");
+        // A stale node is refused.
+        let mut stale = run(&acme, "123456789", ok);
+        stale["node"]["version"] = json!(2);
+        let (st, _) = internal(&server, "check", stale).await;
+        assert_eq!(st, 403);
+
+        // D431: an import updating a watched partner counts a run in its case.
+        let (st, imp) = call(&server, "POST", "/api/v1/ontology/imports", &env.alice, org,
+            Some(json!({"name": "Network sheet", "mapping": MAPPING, "mode": "incremental"}))).await;
+        assert_eq!(st, 201, "{imp}");
+        let id = imp["id"].as_str().unwrap().to_string();
+        let csv = "siret;raison_sociale;code_certification;perimetre;date_debut_habilitation;declaree_france_competences\n\
+                   123456789 00012;ACME SAS;RS0101;les_deux;01/02/2024;oui\n";
+        let p = preview(&server, &env.alice, org, &id, csv).await;
+        let (st, r) = apply(&server, &env.alice, org, &id, &p, &imp["version"]).await;
+        assert_eq!((st, r["run"]["state"].as_str()), (202, Some("applied")), "{r}");
+        let (_, ws) = call(&server, "GET", &format!("/api/v1/cases/{case_id}/workspace"), &env.alice, org, None).await;
+        assert!(
+            ws["checks"].as_array().unwrap().iter().any(|c| c["check"] == "import:network-sheet"),
+            "{ws}"
+        );
+    })
+    .await;
+}
+
+/// A deployed flow of `org` holding `nodes`; returns its id.
+async fn deploy_nodes(db: &DatabaseConnection, org: i64, nodes: Value) -> i64 {
+    use pnex_backend::models::_entities::{flow_versions, flows};
+    use sea_orm::{ActiveModelTrait, Set};
+    let flow = flows::ActiveModel {
+        name: Set("office".into()),
+        status: Set(pnex_core::FLOW_STATUS_DEPLOYED.into()),
+        org_id: Set(org),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let version = flow_versions::ActiveModel {
+        flow_id: Set(flow.id),
+        version_number: Set(1),
+        graph: Set(json!({ "nodes": nodes })),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let id = flow.id;
+    let mut am: flows::ActiveModel = flow.into();
+    am.deployed_version_id = Set(Some(version.id));
+    am.update(db).await.unwrap();
+    id
+}
+
+async fn flow_call(server: &axum_test::TestServer, path: &str, body: Value) -> (u16, Value) {
+    let res = server
+        .post(&format!("/internal/flow/{path}"))
+        .add_header("x-pnex-flow-token", "tok-pw-1")
+        .json(&body)
+        .await;
+    let status = res.status_code().as_u16();
+    (
+        status,
+        serde_json::from_str(&res.text()).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+#[serial]
+async fn programme_text_in_and_cross_table_out() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pw-1") };
+        let flow = deploy_nodes(&env.db, org, json!([
+            {"id": "q", "kind": "ontology_query", "config": {"object_type": "certification",
+              "filters": [{"key": "id", "op": "eq", "value": "$msg.object.id"}]}},
+            {"id": "d", "kind": "document_text"},
+            {"id": "w", "kind": "sheet_write"}
+        ])).await;
+        let node = |id: &str| json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": id});
+        let (_, cert) = object(&server, &env.alice, org, "certification", "RS0101", json!({"code": "RS0101"})).await;
+        object(&server, &env.alice, org, "certification", "RS1", json!({"code": "RS1"})).await;
+
+        // D415: an action's flow reads the object it names, by id.
+        let (st, q) = flow_call(&server, "ontology/query", json!({"node": node("q"), "values": [cert["id"]]})).await;
+        assert_eq!((st, q["count"].clone()), (200, json!(1)), "{q}");
+        assert_eq!(q["rows"][0]["object"]["id"], cert["id"]);
+
+        // D416: the text of a document of the media library.
+        let res = server
+            .post("/api/v1/media?filename=programme.txt")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/octet-stream")
+            .bytes(b"Chapitre 01 : Cadrer le projet (2 h)\nParties repondant a C1".to_vec().into())
+            .await;
+        assert_eq!(res.status_code().as_u16(), 201, "{}", res.text());
+        let media = res.json::<Value>()["id"].as_str().unwrap().to_string();
+        let (st, t) = flow_call(&server, "document-text", json!({"node": node("d"), "media_id": media})).await;
+        assert_eq!(st, 200, "{t}");
+        assert!(t["text"].as_str().unwrap().contains("Chapitre 01"), "{t}");
+        assert_eq!(t["version"], 1);
+        // Another org's media is not found; a write node cannot read.
+        let (st, _) = flow_call(&server, "document-text", json!({"node": node("d"), "media_id": uuid::Uuid::new_v4().to_string()})).await;
+        assert_eq!(st, 404);
+        let (st, _) = flow_call(&server, "document-text", json!({"node": node("w"), "media_id": media})).await;
+        assert_eq!(st, 403);
+
+        // D420: a workbook, a new version at each write of the same name.
+        let book = json!({"name": "Cross table RS0101", "sheets": [{"name": "RS0101",
+            "cells": [{"ref": "B1", "value": "Tableau", "bold": true}, {"ref": "B9", "value": "C1. Cadrer", "wrap": true}],
+            "merges": ["B1:E1"], "widths": {"B": 50}}]});
+        let (st, w1) = flow_call(&server, "sheet-write", json!({"node": node("w"), "workbook": book})).await;
+        assert_eq!(st, 200, "{w1}");
+        assert_eq!((w1["version"].clone(), w1["filename"].clone()), (json!(1), json!("Cross table RS0101.xlsx")));
+        let (_, w2) = flow_call(&server, "sheet-write", json!({"node": node("w"), "workbook": book})).await;
+        assert_eq!((w2["media_id"].clone(), w2["version"].clone()), (w1["media_id"].clone(), json!(2)));
+        let mut bad = book.clone();
+        bad["sheets"][0]["cells"][0]["ref"] = json!("b1");
+        let (st, e) = flow_call(&server, "sheet-write", json!({"node": node("w"), "workbook": bad})).await;
+        assert_eq!((st, e["args"]["field"].clone()), (400, json!("cells")), "{e}");
     })
     .await;
 }

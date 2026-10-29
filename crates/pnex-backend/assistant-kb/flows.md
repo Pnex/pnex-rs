@@ -3,8 +3,8 @@ id: flows
 title: Flows
 kind: feature
 pages: /flows
-nodes: inject, device_read, device_write, calc, metric, pnex_notify, debug, display, ontology_query, object_upsert, link_upsert
-err_codes: access-denied, pin-already-assigned, flow-stale-version, flow-debug-disabled, flow-start-not-stopped, flow-no-deployed-version, ai-flow-running, ontology-node-unknown
+nodes: inject, device_read, device_write, calc, metric, pnex_notify, debug, display, ontology_query, object_upsert, link_upsert, check_record, document_text, sheet_write
+err_codes: access-denied, pin-already-assigned, flow-stale-version, flow-debug-disabled, flow-start-not-stopped, flow-no-deployed-version, ai-flow-running, ontology-node-unknown, document-text-no-text, document-text-unreadable
 tools: 
 tags: flow, flows, etl, automation, node-red, deploy, pipeline, nodes, debug, automatisation, déployer
 ---
@@ -25,6 +25,8 @@ The Flows page (Automation menu) lists the organization's flows: visual pipeline
 - **Object write** creates or updates an object from the message, found by a unique property of its type or by its id; *Create only* leaves an existing object as it is (a finding a human reviewed is never reset). Never on a system type (device, flow, media…).
 - **Link write** opens, updates or closes a link between two objects.
 - The writes follow the same rules as the ontology pages (validations, roles: a type reserved to admins stays out of reach) and are marked as made by the flow in the object's *Provenance*; 600 writes a minute per organization at most. Deploying a node naming a type, key or link type that does not exist is refused (*ontology-node-unknown*).
+- **Check record** keeps the trace of a watch: each run of a check on a subject (a partner, a machine) is counted, and an event lands in the subject's watch case only when the result changes (OK, unknown, finding). The case is opened by the first run, under its parent case when the flow gives one; its *Checks* panel shows the last run and since when the result holds.
+- **Document text** reads the text of a document of the media library (PDF with text, DOCX, XLSX, text); a scanned PDF has no text and is refused (*document-text-no-text*): upload a PDF with text or enter the content by hand. **Workbook write** writes an xlsx workbook into the media library, a new version each time the flow writes the same name (Media page).
 - Packs may ship flow models (for example *Quali-Watch · reminders*): they arrive as drafts; complete them (a Notification node for the e-mails) and deploy them yourself.
 
 ## Good to know

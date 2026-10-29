@@ -49,6 +49,9 @@ pub enum PaletteKind {
     OntologyQuery,
     ObjectUpsert,
     LinkUpsert,
+    CheckRecord,
+    DocumentText,
+    SheetWrite,
     SiteRecipe,
     WebSearch,
     OrgResolve,
@@ -268,6 +271,15 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                 config: Default::default(),
             },
             PaletteKind::LinkUpsert => FlowNodeKind::LinkUpsert {
+                config: Default::default(),
+            },
+            PaletteKind::CheckRecord => FlowNodeKind::CheckRecord {
+                config: Default::default(),
+            },
+            PaletteKind::DocumentText => FlowNodeKind::DocumentText {
+                config: Default::default(),
+            },
+            PaletteKind::SheetWrite => FlowNodeKind::SheetWrite {
                 config: Default::default(),
             },
             PaletteKind::SiteRecipe => FlowNodeKind::SiteRecipe {

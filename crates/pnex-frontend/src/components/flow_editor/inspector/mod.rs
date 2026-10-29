@@ -205,6 +205,15 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::LinkUpsert { config } => rsx! {
             LinkUpsertForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::CheckRecord { .. } => rsx! {
+            p { class: "text-xs text-gray-500", {t!("flows-check-record-help")} }
+        },
+        FlowNodeKind::DocumentText { .. } => rsx! {
+            p { class: "text-xs text-gray-500", {t!("flows-document-text-help")} }
+        },
+        FlowNodeKind::SheetWrite { .. } => rsx! {
+            p { class: "text-xs text-gray-500", {t!("flows-sheet-write-help")} }
+        },
         FlowNodeKind::SiteRecipe { config } => rsx! {
             SiteRecipeForm { cx, initial: config.clone(), can_write }
         },
