@@ -1177,6 +1177,17 @@ que chacun branche sur son propre assistant ; outil central
 marquée, aucune analyse des magistrats. Premier lot de valeur sans LLM :
 LR1 → LR5 sur la Cour de cassation.
 
+### P2.34 — Applications construites dans PneX : écrans métier sur l'ontologie (ajout 2026-10-29) — **PRD validé, rien d'implémenté**
+
+Doc : `app-builder.md` (D506–D513, lots AB0–AB5). L'application D433
+(périmètre, ensembles d'objets, actions permises) gagne une interface
+construite sans code dans PneX, à côté de l'interface externe par le
+SDK : écrans, navigation, lanceur, variables, widgets tableau, fiche,
+compteur, saisie, formulaire et bouton d'action, avec les droits du
+lecteur intersectés avec le périmètre de l'application. Le dashboard
+reste l'outil de supervision. Ni connecteur externe, ni code, ni HTML.
+Premier lot de valeur : AB0 → AB2 (application de consultation).
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
