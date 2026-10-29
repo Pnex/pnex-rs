@@ -262,6 +262,10 @@ les règles plus anciennes qui les contredisent.
 | Groupe de menu : tout ce qui alimente PNeX (appareils, agents navigateur, sites web) | Sources | Sources | pas « Appareils » pour le groupe |
 | Source continue (pistes audio et/ou vidéo : caméra IP, direct, fichier) | Flux | Stream | une caméra-appareil |
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
+| Réglage de transcription d'un flux : modèle, langue, détection de voix, diarisation (D164) | Profil de transcription | Transcription profile | pas « modèle » (= le fichier importé) |
+| Profil de transcription pris quand rien d'autre n'est choisi, un par org | Profil par défaut | Default profile | pas « modèle par défaut », pas « profil principal » |
+| Utilitaire de bureau, dans la barre des tâches, qui capte l'audio vers PNeX (call-recording.md R1) | Enregistreur PNeX | PNeX recorder | pas « agent » (= agent navigateur, agent edge), pas « dictaphone » |
+| Essai de 5 s qui vérifie que le serveur transcrit, depuis l'enregistreur | Test de transcription | Transcription test | pas « test STT », pas « speech to text » |
 | État sauvegardé d'un objet | Version | Version | — |
 | Programme externe construit sur les données d'une org, par un compte de service (D433) | Application | Application | ni « intégration », ni « connecteur » (= fournisseur) |
 | Vue d'un dossier : chaque acteur est un fil dans le temps (storyline) | Histoire | Story | ni l'historique des versions, ni la frise |

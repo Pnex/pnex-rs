@@ -368,6 +368,20 @@ const RULES: &[Rule] = &[
         use_instead: "mailbox (D453)",
         allowed_keys: &[],
     },
+    // The fallback of a capture without its own choice is a profile (model
+    // + language), never a bare model.
+    Rule {
+        scope: Scope::Fr,
+        term: "modèle par défaut",
+        use_instead: "profil par défaut",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "default model",
+        use_instead: "default profile",
+        allowed_keys: &[],
+    },
 ];
 
 /// Fluent placeables (`{ $label }`, selectors) are code, not words.

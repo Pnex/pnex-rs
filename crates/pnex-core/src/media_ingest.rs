@@ -583,6 +583,10 @@ pub struct AsrProfile {
     pub language: String,
     pub beam: i32,
     pub word_timestamps: bool,
+    /// The org's default profile: used by a capture without its own choice
+    /// (tray recorder). At most one per org.
+    #[serde(default)]
+    pub is_default: bool,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
@@ -612,6 +616,10 @@ pub struct AsrProfileInput {
     pub beam: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub word_timestamps: Option<bool>,
+    /// `true` makes it the org's default (the previous one is unset);
+    /// a create without it is the default when the org has none yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_default: Option<bool>,
 }
 
 /// Registry task of an audio model (D167), read from its files.

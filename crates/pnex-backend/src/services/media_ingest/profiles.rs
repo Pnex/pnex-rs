@@ -46,6 +46,7 @@ pub fn view(r: &asr_profiles::Model) -> AsrProfile {
         language: r.language.clone(),
         beam: r.beam,
         word_timestamps: r.word_timestamps,
+        is_default: r.is_default,
         created_at: r.created_at.to_rfc3339(),
         updated_at: r.updated_at.to_rfc3339(),
     }
@@ -193,7 +194,31 @@ async fn apply<C: ConnectionTrait>(
     if let Some(w) = input.word_timestamps {
         am.word_timestamps = Set(w);
     }
+    if let Some(d) = input.is_default {
+        am.is_default = Set(d);
+    }
     Ok(())
+}
+
+/// Unsets the org's current default before another profile takes it (the
+/// partial unique index allows one).
+async fn clear_default<C: ConnectionTrait>(db: &C, org_id: i64) -> Result<(), DbErr> {
+    asr_profiles::Entity::update_many()
+        .col_expr(asr_profiles::Column::IsDefault, false.into())
+        .filter(asr_profiles::Column::OrgId.eq(org_id))
+        .filter(asr_profiles::Column::IsDefault.eq(true))
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
+async fn has_default<C: ConnectionTrait>(db: &C, org_id: i64) -> Result<bool, DbErr> {
+    Ok(asr_profiles::Entity::find()
+        .filter(asr_profiles::Column::OrgId.eq(org_id))
+        .filter(asr_profiles::Column::IsDefault.eq(true))
+        .one(db)
+        .await?
+        .is_some())
 }
 
 pub async fn create(
@@ -220,11 +245,16 @@ pub async fn create(
         language: Set("fr".into()),
         beam: Set(1),
         word_timestamps: Set(true),
+        // The org's first profile is its default.
+        is_default: Set(!has_default(&txn, org_id).await?),
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()
     };
     apply(&txn, org_id, &mut am, input).await?;
+    if input.is_default == Some(true) {
+        clear_default(&txn, org_id).await?;
+    }
     let row = am.insert(&txn).await?;
     txn.commit().await?;
     Ok(row)
@@ -245,6 +275,9 @@ pub async fn update(
     }
     let mut am: asr_profiles::ActiveModel = row.into();
     apply(&txn, org_id, &mut am, input).await?;
+    if input.is_default == Some(true) {
+        clear_default(&txn, org_id).await?;
+    }
     am.updated_at = Set(chrono::Utc::now().into());
     let row = am.update(&txn).await?;
     txn.commit().await?;

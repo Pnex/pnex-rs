@@ -1111,7 +1111,7 @@ déclencheurs par événement, évaluation avant promotion, audit chaîné.
 Premier lot :
 A0 (passerelle LLM), qui ne dépend que de D212.
 
-### P2.30 — Enregistrement des appels et visios (ajout 2026-10-24) — **proposition, rien d'implémenté**
+### P2.30 — Enregistrement des appels et visios (ajout 2026-10-24) — **R1.0 codé 2026-10-29** (enregistreur PNeX : connexion, activation, test de transcription), reste en proposition
 
 Doc : `call-recording.md` (lots R1–R4, décisions à numéroter au PRD).
 Usages : commerciaux (compte rendu de `meeting`, P2.28), SAV

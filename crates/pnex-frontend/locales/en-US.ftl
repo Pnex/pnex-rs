@@ -4549,6 +4549,9 @@ asr-profiles-tag-diarization = diarization
 asr-profiles-language = Language (fr, en… or auto)
 asr-profiles-add = Add the profile
 asr-profiles-saved = Profile saved
+asr-profiles-default = Default profile
+asr-profiles-make-default = Make default
+asr-profiles-make-default-help = Used when nothing else is chosen: the PNeX recorder, among others
 asr-profiles-delete-message = Delete the profile “{ $name }”? Its streams stop being transcribed.
 
 ## Ontology errors (D176–D191)

@@ -1,0 +1,25 @@
+[package]
+name = "pnex-recorder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PNeX audio recorder (call-recording.md R1): tray utility, sign-in, capture on/off, 5 s speech-to-text check against the server"
+
+[[bin]]
+name = "pnex-recorder"
+path = "src/main.rs"
+
+[dependencies]
+pnex-core = { workspace = true }
+pnex-api-contract = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+dioxus = { version = "0.7", features = ["desktop"] }
+dioxus-i18n = "0.5"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "1", features = ["rt"] }
+# Microphone capture on WASAPI / CoreAudio / ALSA (Apache-2.0).
+cpal = "0.16"
+hound = "3.5"
+# Decodes the PNeX mark for the tray and window icons.
+png = "0.17"

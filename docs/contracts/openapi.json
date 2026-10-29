@@ -1670,6 +1670,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "is_default": {
+            "description": "The org's default profile: used by a capture without its own choice\n(tray recorder). At most one per org.",
+            "type": "boolean"
+          },
           "language": {
             "description": "ISO 639-1 code, or `auto`.",
             "type": "string"
@@ -1731,6 +1735,13 @@
             "description": "Segmentation model of the diarization; empty string clears it.",
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "is_default": {
+            "description": "`true` makes it the org's default (the previous one is unset);\na create without it is the default when the org has none yet.",
+            "type": [
+              "boolean",
               "null"
             ]
           },

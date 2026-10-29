@@ -130,9 +130,28 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
                                 key: "{p.id}",
                                 class: "flex items-center justify-between gap-2 px-4 py-2 text-sm",
                                 div {
-                                    p { class: "font-medium text-gray-900", "{p.name}" }
+                                    p { class: "font-medium text-gray-900",
+                                        "{p.name}"
+                                        if p.is_default {
+                                            span { class: "ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600",
+                                                {t!("asr-profiles-default")}
+                                            }
+                                        }
+                                    }
                                     p { class: "text-xs text-gray-500",
                                         {profile_line(&p, &model_name)}
+                                    }
+                                }
+                                if can_write && !p.is_default {
+                                    button {
+                                        class: BTN,
+                                        r#type: "button",
+                                        title: t!("asr-profiles-make-default-help"),
+                                        onclick: {
+                                            let id = p.id.clone();
+                                            move |_| make_default(id.clone(), reload)
+                                        },
+                                        {t!("asr-profiles-make-default")}
                                     }
                                 }
                                 if can_write {
@@ -335,6 +354,20 @@ fn ModelRow(
             }
         }
     }
+}
+
+/// Makes `id` the org's default profile, then reloads the lists.
+fn make_default(id: String, mut reload: Signal<u32>) {
+    spawn(async move {
+        let input = AsrProfileInput {
+            is_default: Some(true),
+            ..Default::default()
+        };
+        match api::media_streams::update_profile(&id, &input).await {
+            Ok(_) => reload.with_mut(|r| *r += 1),
+            Err(err) => toasts::error(err),
+        }
+    });
 }
 
 /// "model · language · VAD · diarization" of a profile row.

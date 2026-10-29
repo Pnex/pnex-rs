@@ -54,6 +54,8 @@ members = [
     "crates/pnex-cli",
     "crates/pnex-extension",
     "crates/pnex-mirror",
+    # Tray audio recorder (call-recording.md R1).
+    "crates/pnex-recorder",
 ]
 # Vendored EdgeLinkd (submodule) stays a separate workspace — without exclude,
 # Cargo would attach its crates to the PNEX workspace and the

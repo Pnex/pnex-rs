@@ -99,6 +99,16 @@ pub async fn create_profile(input: &AsrProfileInput) -> Result<AsrProfile, ApiEr
     .await
 }
 
+/// `PATCH /api/v1/asr/profiles/{id}`.
+pub async fn update_profile(id: &str, input: &AsrProfileInput) -> Result<AsrProfile, ApiError> {
+    client::request(
+        reqwest::Method::PATCH,
+        &format!("/api/v1/asr/profiles/{id}"),
+        Some(serde_json::to_value(input).unwrap_or_default()),
+    )
+    .await
+}
+
 /// `DELETE /api/v1/asr/profiles/{id}`.
 pub async fn delete_profile(id: &str) -> Result<Option<()>, ApiError> {
     client::request_opt(

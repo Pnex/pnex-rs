@@ -21,6 +21,8 @@ pub struct Model {
     pub language: String,
     pub beam: i32,
     pub word_timestamps: bool,
+    /// The org's default profile (at most one, partial unique index).
+    pub is_default: bool,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

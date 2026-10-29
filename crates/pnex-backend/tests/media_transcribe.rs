@@ -345,6 +345,8 @@ async fn model_import_check_and_transcription_chain() {
             assert_eq!(full["vad_model_id"], vad_id.as_str());
             assert_eq!(full["diarization_embedding_model_id"], emb_id.as_str());
             let full_id = full["id"].as_str().unwrap().to_string();
+            // The org's first profile is its default.
+            assert_eq!(full["is_default"], true, "{full}");
 
             // O77: a model used by a profile is not deleted silently; the
             // forced delete clears it from the profile's optional slot.
@@ -357,7 +359,25 @@ async fn model_import_check_and_transcription_chain() {
             )
             .await;
             assert_eq!(res.status_code(), 201, "{}", res.text());
-            let doomed_id = res.json::<Value>()["id"].as_str().unwrap().to_string();
+            let doomed = res.json::<Value>();
+            assert_eq!(doomed["is_default"], false, "{doomed}");
+            let doomed_id = doomed["id"].as_str().unwrap().to_string();
+            // Making another profile the default unsets the previous one.
+            let res = server
+                .patch(&format!("/api/v1/asr/profiles/{doomed_id}"))
+                .add_header("Authorization", auth.clone())
+                .add_header("X-Org-Id", org.to_string())
+                .json(&json!({ "is_default": true }))
+                .await;
+            assert_eq!(res.status_code(), 200, "{}", res.text());
+            assert_eq!(res.json::<Value>()["is_default"], true);
+            let full = server
+                .get(&format!("/api/v1/asr/profiles/{full_id}"))
+                .add_header("Authorization", auth.clone())
+                .add_header("X-Org-Id", org.to_string())
+                .await
+                .json::<Value>();
+            assert_eq!(full["is_default"], false, "{full}");
             let delete = |force: bool| {
                 server
                     .delete(&format!("/api/v1/asr/models/{vad2_id}?force={force}"))

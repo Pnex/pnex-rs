@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Proposition (2026-10-24), rien d'implémenté** — roadmap P2.30 |
+| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 codé 2026-10-29** : enregistreur PNeX (connexion, activation, test de transcription), sans capture continue |
 | Numérotation | décisions à numéroter au passage en PRD, lots **R1…R4** |
 | Dépend de | ingestion média (`media-ingest.md`, P2.13), ASR (`pnex-asr`), locuteurs (`voice-id.md`), rendez-vous et compte rendu (P2.28), desktop natif |
 
@@ -58,6 +58,27 @@ Toutes les briques alimentent le **même pipeline serveur**.
 ## 4. R1 — Desktop (logiciel seul)
 
 Dans l'application desktop native (Rust, sans driver virtuel).
+
+**R1.0 — Enregistreur PNeX (codé 2026-10-29)** : crate `pnex-recorder`,
+utilitaire Dioxus desktop dans la barre des tâches (Windows, Linux, macOS),
+séparé de l'application desktop complète.
+
+- Ouverture : serveur, e-mail, mot de passe (grant `password` via
+  `/api/v1/oauth2/token`, contrat d'API vérifié sur `/api/v1/meta/version`).
+  Session gardée (`<config>/pnex/recorder.json`, 0600, refresh token seul,
+  jamais le mot de passe).
+- **Enregistrement activé** : interrupteur dans la fenêtre et coché dans le
+  menu de l'icône ; il ne pilote encore aucune capture (lot R1.1).
+- **Test de transcription** : 5 s de micro (`cpal`, mono 16 bits WAV) envoyées
+  à `POST /api/v1/asr/models/{id}/test`, rien de conservé. Le modèle et la
+  langue viennent du **profil par défaut** de l'org (`asr_profiles.is_default`,
+  un par org, le premier profil créé l'est d'office, « Mettre par défaut »
+  dans Flux › Modèles et profils). **Mode avancé** : choix parmi les modèles
+  de transcription de l'org qui ont passé leur vérification, langue `auto`.
+  Messages explicites : aucun modèle enregistré, aucun modèle vérifié, aucun
+  profil par défaut.
+- Reste R1.1 : double flux micro + loopback, détection d'appel, envoi des
+  segments vers le pipeline (§3).
 
 **Capture**
 - Windows : WASAPI loopback (`cpal`) ; loopback par process (`wasapi`,
