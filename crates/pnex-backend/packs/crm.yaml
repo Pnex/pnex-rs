@@ -32,7 +32,7 @@
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "3.0.1"
+version: "3.0.2"
 requires: [prospecting_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -218,9 +218,10 @@ functions:
   - name: crm_cadence_start
     language: starlark
     description: An opportunity entering qualification is marked started, and goes on to the plan unless every person involved objected.
+    outputs:
+      - {name: mark, ty: any, desc: "The opportunity, marked started today"}
+      - {name: plan, ty: any, desc: "The opportunity, carried to the follow-up plan"}
     code: |
-      # @output mark any "The opportunity, marked started today"
-      # @output plan any "The opportunity, carried to the follow-up plan"
       def handle(inputs, msg):
           o = msg["object"]
           links = msg.get("links", {})
@@ -298,9 +299,10 @@ functions:
   - name: crm_report
     language: starlark
     description: "A done activity moves the last activity of its opportunity forward, then is marked reported."
+    outputs:
+      - {name: opportunity, ty: any, desc: "The opportunity, its last activity moved forward"}
+      - {name: reported, ty: any, desc: "The activity, marked reported"}
     code: |
-      # @output opportunity any "The opportunity, its last activity moved forward"
-      # @output reported any "The activity, marked reported"
       def handle(inputs, msg):
           p = msg["payload"]
           at = p.get("done_at") or msg.get("now", "")
@@ -438,9 +440,10 @@ functions:
   - name: crm_mail_link
     language: starlark
     description: "The links from the activity to the person (or the account found by domain) and their open opportunities (payload = the list): written when the sender is trusted, proposed otherwise or when found by domain."
+    outputs:
+      - {name: link, ty: any, desc: "Trusted sender: the links are written"}
+      - {name: proposal, ty: any, desc: "Sender not authenticated: the links are proposed"}
     code: |
-      # @output link any "Trusted sender: the links are written"
-      # @output proposal any "Sender not authenticated: the links are proposed"
       def handle(inputs, msg):
           act = msg["object"]["id"]
           targets = [msg["person"]["id"]] + msg.get("opportunities", [])
@@ -553,9 +556,10 @@ functions:
   - name: crm_meeting_link
     language: starlark
     description: "The person found takes part in the meeting: written when the sender is trusted, proposed otherwise."
+    outputs:
+      - {name: link, ty: any, desc: "Trusted sender: the person takes part"}
+      - {name: proposal, ty: any, desc: "Sender not authenticated: the link is proposed"}
     code: |
-      # @output link any "Trusted sender: the person takes part"
-      # @output proposal any "Sender not authenticated: the link is proposed"
       def handle(inputs, msg):
           link = {"source_id": msg["object"]["id"], "target_id": msg["meeting"]["id"]}
           if msg.get("trusted"):
@@ -572,8 +576,9 @@ functions:
   - name: crm_day
     language: starlark
     description: "The morning digest: activities due or late, then open opportunities with no recent activity."
+    outputs:
+      - {name: digest, ty: any, desc: "The digest (payload.text), when there is something to do"}
     code: |
-      # @output digest any "The digest (payload.text), when there is something to do"
       def handle(inputs, msg):
           dues = sorted(msg.get("dues", []), key = lambda r: r["properties"].get("due_on", ""))
           dormant = sorted(msg["payload"], key = lambda r: r["properties"].get("last_activity", ""))

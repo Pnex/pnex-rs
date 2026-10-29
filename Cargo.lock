@@ -9238,6 +9238,7 @@ dependencies = [
  "log 0.4.34",
  "pnex-core",
  "serde",
+ "serde-saphyr",
  "serde_json",
  "smallvec",
  "starlark",

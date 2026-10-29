@@ -14,29 +14,20 @@ pub struct ExecOutcome {
     /// Raw return value of `handle` (JSON) — `None` = `handle`
     /// returned `None` (message dropped, no port).
     pub return_json: Option<serde_json::Value>,
-    /// Declared outputs (`@output`) — drive the key→port routing of the
-    /// object return (same contract as the JS wrapper).
+    /// Declared outputs — drive the key→port routing of the object return
+    /// (same contract as the JS wrapper).
     pub outputs: Vec<pnex_core::FunctionOutput>,
     pub logs: Vec<String>,
     pub duration_ms: u64,
 }
 
-/// Structured compile-only validation (editor error bar):
-/// directives → syntax (position extracted from the Display `file:line:col`)
-/// → `compile_check` (missing handle / module evaluation error).
+/// Structured compile-only validation (editor error bar): syntax
+/// (position extracted from the Display `file:line:col`) → `compile_check` (missing handle / module evaluation error).
 /// No execution of user code beyond the evaluation of the
 /// defs-only module (already the contract of `compile_check`).
 pub fn check(code: &str) -> Vec<pnex_core::FunctionDiagnostic> {
     use pnex_core::FunctionDiagnostic;
     let mut diagnostics = Vec::new();
-    if let Err(e) = pnex_core::parse_directives(code) {
-        diagnostics.push(FunctionDiagnostic {
-            line: Some(e.line),
-            col: None,
-            message: format!("directives: {e}"),
-        });
-        return diagnostics;
-    }
     match AstModule::parse("pnex_function.star", code.to_owned(), &Dialect::Standard) {
         Err(e) => {
             let text = format!("syntax: {e}");
@@ -69,8 +60,6 @@ const SETTING_STUB: &str = "def pack_setting(key, default = None):\n    return d
 /// Called at **node build**: an error here = tab rejected at the deploy's
 /// `--check` pre-flight (400 `engine_load`).
 pub fn compile_check(code: &str) -> Result<(), String> {
-    let sig = pnex_core::parse_directives(code).map_err(|e| format!("directives: {e}"))?;
-    let _ = sig;
     // `pack_setting` exists at run time (driver): declared here too, after the
     // code so positions are unchanged.
     let script = format!("{}\n{SETTING_STUB}", code.trim_end());
@@ -94,29 +83,30 @@ pub fn compile_check(code: &str) -> Result<(), String> {
     })
 }
 
-/// Runs `handle(inputs, msg)` sandboxed: directive parsing, `inputs`
-/// object built from the declared inputs (each reads
+/// Runs `handle(inputs, msg)` sandboxed: `inputs` object built from the
+/// declared inputs of `sig` (D497: never read from the code; each reads
 /// `payload.<name>`), Starlark driver that JSON-encodes the return (text
 /// bridge — no Value ↔ JSON conversion in Rust), Evaluator limits with a
 /// wall-time deadline.
 pub fn execute(
     code: &str,
+    sig: &pnex_core::FunctionSignature,
     msg: &serde_json::Value,
     timeout_ms: u64,
 ) -> anyhow::Result<ExecOutcome> {
-    execute_with(code, msg, timeout_ms, &serde_json::Map::new())
+    execute_with(code, sig, msg, timeout_ms, &serde_json::Map::new())
 }
 
 /// [`execute`] with the org's pack settings (D368), read by the code with
 /// `pack_setting("pack.key", default)` inside its functions.
 pub fn execute_with(
     code: &str,
+    sig: &pnex_core::FunctionSignature,
     msg: &serde_json::Value,
     timeout_ms: u64,
     settings: &serde_json::Map<String, serde_json::Value>,
 ) -> anyhow::Result<ExecOutcome> {
     let started = Instant::now();
-    let sig = pnex_core::parse_directives(code)?;
     let inputs_obj = pnex_core::build_inputs(&sig.inputs, msg);
     let script = build_script(code, &inputs_obj, msg, settings);
 
@@ -143,7 +133,7 @@ pub fn execute_with(
         };
         Ok(ExecOutcome {
             return_json,
-            outputs: sig.outputs,
+            outputs: sig.outputs.clone(),
             logs: Vec::new(),
             duration_ms: started.elapsed().as_millis() as u64,
         })
@@ -303,7 +293,20 @@ mod tests {
     use super::*;
 
     fn exec(code: &str, msg: serde_json::Value, timeout_ms: u64) -> anyhow::Result<ExecOutcome> {
-        execute(code, &msg, timeout_ms)
+        execute(code, &Default::default(), &msg, timeout_ms)
+    }
+
+    /// One declared number input `t`, default 0.
+    fn sig_t() -> pnex_core::FunctionSignature {
+        pnex_core::FunctionSignature {
+            inputs: vec![pnex_core::FunctionInput {
+                name: "t".into(),
+                ty: pnex_core::FunctionType::Number,
+                default: Some(serde_json::json!(0)),
+                desc: None,
+            }],
+            outputs: vec![],
+        }
     }
 
     #[test]
@@ -323,13 +326,6 @@ mod tests {
     }
 
     #[test]
-    fn compile_check_invalid_directives() {
-        let e =
-            compile_check("def handle(inputs, msg):\n    return 0\n// @input a float").unwrap_err();
-        assert!(e.contains("directives"), "{e}");
-    }
-
-    #[test]
     fn check_ok_without_diagnostics() {
         assert!(check("def handle(inputs, msg):\n    return inputs").is_empty());
     }
@@ -344,18 +340,6 @@ mod tests {
             diags[0].message
         );
         assert_eq!(diags[0].line, Some(1), "{:?}", diags[0]);
-    }
-
-    #[test]
-    fn check_directive_with_line() {
-        let diags = check("# @input a float\ndef handle(inputs, msg):\n    return 0\n");
-        assert_eq!(diags.len(), 1);
-        assert!(
-            diags[0].message.starts_with("directives: "),
-            "{}",
-            diags[0].message
-        );
-        assert_eq!(diags[0].line, Some(1));
     }
 
     #[test]
@@ -386,7 +370,8 @@ mod tests {
         // Each declared input implicitly reads payload.<name>; missing →
         // declared default (0); otherwise null.
         let out = execute(
-            "# @input t number=0\ndef handle(inputs, msg):\n    return {\"sum\": inputs[\"t\"] + 1, \"topic\": msg[\"topic\"]}",
+            "def handle(inputs, msg):\n    return {\"sum\": inputs[\"t\"] + 1, \"topic\": msg[\"topic\"]}",
+            &sig_t(),
             &serde_json::json!({"payload": {"t": 41}, "topic": "s1"}),
             1000,
         )
@@ -401,7 +386,8 @@ mod tests {
         // msg.topic naming the declared input → routed incoming payload
         // (parity with the JS wrapper — tagger inserted by the projection).
         let out = execute(
-            "# @input t number=0\ndef handle(inputs, msg):\n    return {\"v\": inputs[\"t\"]}",
+            "def handle(inputs, msg):\n    return {\"v\": inputs[\"t\"]}",
+            &sig_t(),
             &serde_json::json!({"topic": "t", "payload": 41}),
             1000,
         )
@@ -416,9 +402,9 @@ mod tests {
         compile_check(code).unwrap();
         let mut s = serde_json::Map::new();
         s.insert("p.confirm".into(), serde_json::json!(70));
-        let r = execute_with(code, &serde_json::json!({}), 1000, &s).unwrap();
+        let r = execute_with(code, &Default::default(), &serde_json::json!({}), 1000, &s).unwrap();
         assert_eq!(r.return_json, Some(serde_json::json!({"c": 70, "o": 1})));
-        let r = execute(code, &serde_json::json!({}), 1000).unwrap();
+        let r = execute(code, &Default::default(), &serde_json::json!({}), 1000).unwrap();
         assert_eq!(r.return_json, Some(serde_json::json!({"c": 80, "o": 1})));
     }
 

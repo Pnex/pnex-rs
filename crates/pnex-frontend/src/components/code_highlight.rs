@@ -117,8 +117,7 @@ fn literals(lang: CodeLang) -> &'static [&'static str] {
 
 /// Canonical comment prefix of the language (JS: `//` only — `#` is
 /// a syntax error; Starlark: `#` only — `//` is integer
-/// division). The pnex-core directive parser tolerates both, the
-/// highlighting follows the language rule.
+/// division).
 fn comment_prefix(lang: CodeLang) -> &'static str {
     match lang {
         CodeLang::Js | CodeLang::Cpp => "//",
@@ -151,8 +150,7 @@ fn is_ident(c: char) -> bool {
 }
 
 /// Tokenises a line: strings, numbers, identifiers (keyword / literal /
-/// function call), comments (`@input`/`@output` directives
-/// sub-coloured). Pragmatic: unclosed quotes = end of line.
+/// function call), comments. Pragmatic: unclosed quotes = end of line.
 fn highlight_line(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
     // C++ preprocessor line: `#directive` highlighted, `<header>` as a
     // string, the rest tokenized normally.
@@ -298,68 +296,17 @@ fn highlight_code(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
     }
 }
 
-/// Comment: grey prefix, `@input`/`@output` directive highlighted,
-/// input/output name in green, rest grey.
+/// Comment: grey prefix and body.
 fn emit_comment(text: &str, prefix: &str, out: &mut Vec<Tok>) {
     let body = text.strip_prefix(prefix).unwrap_or(text);
     out.push(Tok {
         class: "text-gray-500",
         text: prefix.to_string(),
     });
-    let trimmed = body.trim_start();
-    let is_directive = trimmed.starts_with("@input") || trimmed.starts_with("@output");
-    if !is_directive {
-        out.push(Tok {
-            class: "text-gray-500",
-            text: body.to_string(),
-        });
-        return;
-    }
-    // Spaces before the directive.
-    let lead = body.len() - trimmed.len();
-    if lead > 0 {
-        out.push(Tok {
-            class: "",
-            text: body[..lead].to_string(),
-        });
-    }
-    let after_dir = trimmed
-        .trim_start_matches("@input")
-        .trim_start_matches("@output");
-    let dir_word = &trimmed[..trimmed.len() - after_dir.len()];
     out.push(Tok {
-        class: "text-sky-600 font-semibold",
-        text: dir_word.to_string(),
+        class: "text-gray-500",
+        text: body.to_string(),
     });
-    let rest = after_dir;
-    let rest_trim = rest.trim_start();
-    let lead2 = rest.len() - rest_trim.len();
-    if lead2 > 0 {
-        out.push(Tok {
-            class: "",
-            text: rest[..lead2].to_string(),
-        });
-    }
-    // Name then rest **with the separating space kept** (the splitn
-    // split swallows the separator — the text roundtrip must stay exact,
-    // otherwise the overlay drifts: "temperaturenumber").
-    let split_at = rest_trim
-        .find(char::is_whitespace)
-        .unwrap_or(rest_trim.len());
-    let name = &rest_trim[..split_at];
-    let tail = &rest_trim[split_at..];
-    if !name.is_empty() {
-        out.push(Tok {
-            class: "text-emerald-600 font-medium",
-            text: name.to_string(),
-        });
-    }
-    if !tail.is_empty() {
-        out.push(Tok {
-            class: "",
-            text: tail.to_string(),
-        });
-    }
 }
 
 // ───────────────────────── Notification templates ─────────────────────────
@@ -672,7 +619,7 @@ mod tests {
 
     #[test]
     fn roundtrip_full_text() {
-        let code = "// @input a number\ndef handle(inputs, msg):\n    return inputs[\"a\"]\n";
+        let code = "# a comment\ndef handle(inputs, msg):\n    return inputs[\"a\"]\n";
         assert_eq!(text_of(&highlight(code, FunctionLanguage::Starlark)), code);
         let js = "function handle(inputs, msg) {\n  return msg.payload; // commentaire\n}\n";
         assert_eq!(text_of(&highlight(js, FunctionLanguage::Js)), js);
@@ -710,16 +657,6 @@ mod tests {
     }
 
     #[test]
-    fn roundtrip_directives_space_preserved() {
-        // Regression (user screenshot): the name/type split swallowed
-        // the space → "temperaturenumber" and overlay misalignment.
-        let star = "# @input temperature number \"Température mesurée (°C)\"\n# @input threshold number=20 \"Seuil d'alerte\"\n# @output heating number \"1 si chauffage\"\n";
-        assert_eq!(text_of(&highlight(star, FunctionLanguage::Starlark)), star);
-        let js = "// @input temperature number \"T\"\n// @output heating number\nfunction handle(inputs, msg) { return 0; }\n";
-        assert_eq!(text_of(&highlight(js, FunctionLanguage::Js)), js);
-    }
-
-    #[test]
     fn comment_prefix_per_language() {
         // In Starlark, `//` is NOT a comment (integer division):
         // the line stays tokenised as code, not swallowed as a comment.
@@ -733,20 +670,6 @@ mod tests {
         // In JS, `//` swallows the end of line as a comment.
         let toks = highlight("let x = 1 // init\n", FunctionLanguage::Js);
         assert!(toks.iter().any(|t| t.class == "text-gray-500"));
-    }
-
-    #[test]
-    fn sub_directives_colored() {
-        let toks = highlight(
-            "// @input temperature number \"Température\"\n",
-            FunctionLanguage::Js,
-        );
-        assert!(toks
-            .iter()
-            .any(|t| t.class.contains("sky") && t.text == "@input"));
-        assert!(toks
-            .iter()
-            .any(|t| t.class.contains("emerald") && t.text == "temperature"));
     }
 
     #[test]

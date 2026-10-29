@@ -169,20 +169,18 @@ borné jugé insuffisant).
 
 Choix structurants :
 
-- **Détection des variables = directives en commentaire**, source de vérité
-  versionnée avec le code : `// @input temperature number "desc"`,
-  `// @input mode string="auto"`, `# @output heating number` (préfixe `//`
-  ou `#` toléré pour les deux langages). Parseur maison dans
-  `pnex_core::functions` (wasm-safe — le front appelle `parse_directives`
-  en wasm pour la preview live de la signature) ; extraction au save,
-  stockée structurée sur `function_versions.inputs/outputs` (JSON).
+- **Interface = signature structurée, hors du code (D497, 2026-10-29)** :
+  `inputs`/`outputs` typés (`number|string|bool|any`, défaut, description)
+  portés par la version de fonction (`function_versions.inputs/outputs`),
+  édités dans le panneau Entrées/Sorties, envoyés tels quels par l'API et
+  déclarés en clés `inputs:`/`outputs:` dans les packs. Le code ne contient
+  que `handle`. Les anciennes directives en commentaire `@input`/`@output`
+  sont **retirées** (voir §11).
 - **Contrat d'exécution** : le code définit `handle` — JS
   `function handle(inputs, msg)`, Starlark `def handle(inputs, msg):`.
-  `inputs` = objet construit depuis les **bindings** du nœud
-  (`input → chemin msg`, défaut `payload.<name>`), `msg` = message entrant.
-  Retour : `null` → message jeté ; objet → msg sortant = msg entrant avec
-  `payload` remplacé (fusionné si l'objet porte une clé `payload`) ;
-  tableau → un élément par port (`@output`), élément `null` = port muet.
+  `inputs` = objet construit depuis les entrées déclarées (fil posé sur
+  l'ancre → payload entrant, sinon `payload.<name>`, sinon défaut),
+  `msg` = message entrant. Retour : voir le mode du nœud (§11).
 - **JS = le nœud `function` QuickJS du vendor, réutilisé tel quel**
   (réutilisation maximale, doctrine « ne jamais patcher ») : la projection
   génère un **wrapper** (`build_js_wrapper` dans pnex-core) — helpers
@@ -240,7 +238,7 @@ Limitations documentées (acceptées, décision 2026-09-15) :
   registre sont inchangés) ;
 - le pré-flight reste **aveugle aux erreurs de syntaxe JS** (le vendor
   évalue au 1er message, pas au build) — la validation passe par le test en
-  live et l'extraction de directives au save ;
+  live ;
 - Starlark : pas de capture `print` dans `logs` v1 ; `inputs`/`msg` sont des
   dicts Starlark (accès `inputs["t"]`, pas d'attribut).
 
@@ -580,3 +578,48 @@ rien, un modèle `payload` opaque pour un non-développeur.
   ne sont plus relayés.
 - **Reste** (roadmap P2.21) : groupes de nœuds, valeur déclarée affichée
   sur le canevas.
+
+## 11. Signature des fonctions hors du code (D497) — 2026-10-29
+
+**Constat** : les ports d'une fonction étaient déclarés par des commentaires
+`# @input …` / `# @output …` dans le code. Trois sources lisaient la même
+chose différemment : le parseur de directives, l'analyse statique de
+l'éditeur (qui devinait des « sorties non déclarées » à partir des clés d'un
+dict retourné) et le runtime (`map_return`, qui distingue message et ports
+nommés selon la présence de `@output`). Résultat observé : `qw_finding`
+(quali_watch) affichait 6 « sorties à déclarer » qui étaient les champs de
+son message ; « Déclarer les 6 » aurait changé le nœud en 6 ports et cassé
+l'écriture des findings. `crm_day` déclarait `@output digest` mais retournait
+`{"payload": …}` : port muet au runtime, sans que rien ne le signale.
+
+**Décision D497** : l'interface d'une fonction est une **donnée structurée**
+de sa version, jamais du texte dans le code.
+
+- `FunctionSignature { inputs, outputs }` (pnex-core) est la source de vérité.
+  Elle est stockée sur `function_versions.inputs/outputs`, validée côté
+  serveur (`FunctionSignature::validate` : nom `[a-z_][a-z0-9_]*`, unique,
+  défaut conforme au type ; erreurs de champ `inputs.<i>.name`…), envoyée
+  par l'API (`CreateFunction`, `SaveFunctionVersion`, test ad hoc) et
+  déclarée dans les packs (`inputs:`/`outputs:` à côté de `code:`).
+- **Le mode du nœud se lit dans la signature, pas dans le code** :
+  - aucune sortie déclarée = **mode message** : une entrée, une sortie ; la
+    valeur retournée est le message (`None` → jeté ; dict avec `payload` →
+    fusionné dans le message ; autre valeur → `payload`) ;
+  - au moins une sortie = **mode ports** : un port par sortie, dans l'ordre ;
+    un dict retourné est routé par clé (clé absente ou `None` = port muet),
+    une liste par position.
+  Le mode est dérivé, pas stocké : un champ `mode` à côté de `outputs`
+  pourrait contredire la liste (mode ports sans sortie).
+- Le runtime ne lit plus jamais le code pour connaître les ports : la
+  projection passe `inputs` **et** `outputs` au nœud `pnex-starlark` (comme
+  au wrapper JS), le test en live les reçoit dans la requête.
+- L'éditeur édite la signature dans le panneau (grilles Entrées/Sorties,
+  bascule message ↔ ports nommés) ; l'aperçu du nœud et le canevas des
+  flows lisent la même signature. L'analyse statique ne fait plus
+  qu'**avertir** (port lu ou retourné mais non déclaré) et ne propose
+  d'ajouter une sortie qu'en mode ports.
+- Migration : les colonnes `inputs/outputs` étaient déjà remplies au save ;
+  la migration retire seulement les lignes de directive du code des
+  versions existantes. Les packs sont convertis (version patch).
+- Rupture d'API : `feat(api)!`, `CONTRACT` incrémenté ; le code
+  `function-directive-invalid` disparaît (erreurs de champ à la place).

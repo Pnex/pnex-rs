@@ -282,10 +282,19 @@ pub async fn test_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutc
     let settings = runtime_settings(deps)?;
     let f = find_function(deps, i64_arg(args, "function_id")?).await?;
     let ad_hoc = match args.get("code").and_then(Value::as_str) {
-        Some(code) => Some(pnex_core::FunctionTestAdHoc {
-            language: crate::services::functions::parse_language(&f.language).unwrap_or_default(),
-            code: code.to_string(),
-        }),
+        // Unsaved code runs with the interface of the saved version.
+        Some(code) => {
+            let latest = crate::services::functions::latest_version(deps.db, f.id)
+                .await
+                .map_err(internal("reading the function"))?;
+            Some(pnex_core::FunctionTestAdHoc {
+                language: crate::services::functions::parse_language(&f.language)
+                    .unwrap_or_default(),
+                code: code.to_string(),
+                inputs: crate::services::functions::ports_of(latest.as_ref().map(|v| &v.inputs)),
+                outputs: crate::services::functions::ports_of(latest.as_ref().map(|v| &v.outputs)),
+            })
+        }
         None => None,
     };
     let inputs: BTreeMap<String, Value> = args
@@ -314,6 +323,20 @@ pub async fn test_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutc
     outcome(serde_json::to_value(resp).unwrap_or_default())
 }
 
+/// Declared ports of a function (D497) from the tool arguments: absent =
+/// None, malformed = refusal.
+fn ports_arg<T: serde::de::DeserializeOwned>(
+    args: &Value,
+    key: &str,
+) -> Result<Option<Vec<T>>, ToolError> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => serde_json::from_value(v.clone())
+            .map(Some)
+            .map_err(|e| format!("`{key}`: {e}").into()),
+    }
+}
+
 pub async fn create_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let input = pnex_core::CreateFunction {
         name: str_arg(args, "name")?,
@@ -323,6 +346,8 @@ pub async fn create_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOu
             .and_then(Value::as_str)
             .map(str::to_string),
         code: str_arg(args, "code")?,
+        inputs: ports_arg(args, "inputs")?.unwrap_or_default(),
+        outputs: ports_arg(args, "outputs")?.unwrap_or_default(),
         note: Some("created by the assistant".into()),
     };
     let (f, v) = crate::services::functions::create_function(deps.db, deps.org_id, &input)
@@ -339,6 +364,8 @@ pub async fn update_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOu
     let input = pnex_core::SaveFunctionVersion {
         expected_version_number: i64_arg(args, "expected_version")?,
         code: args.get("code").and_then(Value::as_str).map(str::to_string),
+        inputs: ports_arg(args, "inputs")?,
+        outputs: ports_arg(args, "outputs")?,
         name: args.get("name").and_then(Value::as_str).map(str::to_string),
         description: args
             .get("description")

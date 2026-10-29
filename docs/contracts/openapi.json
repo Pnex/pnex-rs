@@ -4858,6 +4858,13 @@
               "null"
             ]
           },
+          "inputs": {
+            "description": "Declared inputs (one input anchor each); none = one plain input.",
+            "items": {
+              "$ref": "#/components/schemas/FunctionInput"
+            },
+            "type": "array"
+          },
           "language": {
             "$ref": "#/components/schemas/FunctionLanguage"
           },
@@ -4869,6 +4876,13 @@
               "string",
               "null"
             ]
+          },
+          "outputs": {
+            "description": "Declared outputs (one port each); none = message mode (D497).",
+            "items": {
+              "$ref": "#/components/schemas/FunctionOutput"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -7658,7 +7672,7 @@
         "type": "object"
       },
       "FunctionInput": {
-        "description": "Input declared by `// @input name type[=default] [\"description\"]`.",
+        "description": "Declared input: one input anchor of the flow node.",
         "properties": {
           "default": {
             "description": "Default value when the binding path is absent from the incoming msg."
@@ -7691,7 +7705,7 @@
         "type": "string"
       },
       "FunctionOutput": {
-        "description": "Output declared by `// @output name type [\"description\"]`.",
+        "description": "Declared output: one output port of the flow node.",
         "properties": {
           "desc": {
             "type": [
@@ -7765,8 +7779,20 @@
           "code": {
             "type": "string"
           },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/FunctionInput"
+            },
+            "type": "array"
+          },
           "language": {
             "$ref": "#/components/schemas/FunctionLanguage"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/FunctionOutput"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -20765,7 +20791,7 @@
         "type": "object"
       },
       "SaveFunctionVersion": {
-        "description": "Saves a new version (append-only). Optimistic concurrency:\n`expected_version_number` must be the current version, else 409.\n`name`/`description` update the metadata; with `code`, the save\ncreates a new version.",
+        "description": "Saves a new version (append-only). Optimistic concurrency:\n`expected_version_number` must be the current version, else 409.\n`name`/`description` update the metadata; with `code`, `inputs` or\n`outputs`, the save creates a new version (missing parts are carried\nfrom the current version).",
         "properties": {
           "code": {
             "type": [
@@ -20783,6 +20809,15 @@
             "format": "int64",
             "type": "integer"
           },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/FunctionInput"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "name": {
             "type": [
               "string",
@@ -20792,6 +20827,15 @@
           "note": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/FunctionOutput"
+            },
+            "type": [
+              "array",
               "null"
             ]
           }
@@ -45306,7 +45350,7 @@
         ]
       },
       "post": {
-        "description": "Creates a function and its version 1 from the code; the `@input`/`@output` directives of the code define its interface. Requires owner, admin or member role.",
+        "description": "Creates a function and its version 1 from its code and declared interface (`inputs`, `outputs`; no output = message mode: one input, one output, the returned value is the message). Requires owner, admin or member role.",
         "operationId": "functions_create",
         "parameters": [
           {
@@ -45349,7 +45393,7 @@
                 }
               }
             },
-            "description": "`field-invalid` (`errors.fields`: `name`) or `function-directive-invalid` (`args.line`, `args.detail`)"
+            "description": "`field-invalid` (`errors.fields`: `name`, `inputs.<i>.name`, `inputs.<i>.default`, `outputs.<i>.name`)"
           },
           "401": {
             "content": {
@@ -45621,7 +45665,7 @@
         ]
       },
       "patch": {
-        "description": "With `code`, appends a new version (history is append-only); `name`/`description` update metadata. Optimistic concurrency: `expected_version_number` must equal the current version, else 409 `function-version-conflict`. Deployed flows keep the version they pinned. Requires owner, admin or member role.",
+        "description": "With `code`, `inputs` or `outputs`, appends a new version (parts not sent are carried from the current version) (history is append-only); `name`/`description` update metadata. Optimistic concurrency: `expected_version_number` must equal the current version, else 409 `function-version-conflict`. Deployed flows keep the version they pinned. Requires owner, admin or member role.",
         "operationId": "functions_save_version",
         "parameters": [
           {
@@ -45674,7 +45718,7 @@
                 }
               }
             },
-            "description": "`field-invalid` (`errors.fields`: `name`) or `function-directive-invalid` (`args.line`, `args.detail`)"
+            "description": "`field-invalid` (`errors.fields`: `name`, `inputs.<i>.name`, `inputs.<i>.default`, `outputs.<i>.name`)"
           },
           "401": {
             "content": {

@@ -1561,10 +1561,11 @@ async fn assistant_writes_templates_on_top_of_what_it_read() {
 async fn assistant_versions_functions_on_top_of_what_it_read() {
     with_app_ai(true, true, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
-        let code = "# @input x number\n# @output y number\ndef main(x):\n    return {\"y\": x * 2}\n";
+        let code = "def main(x):\n    return {\"y\": x * 2}\n";
         let trace = run_tools(&server, &env.alice, org, vec![(
             "create_function",
-            serde_json::json!({"name": "double", "language": "starlark", "code": code}),
+            serde_json::json!({"name": "double", "language": "starlark", "code": code,
+                "inputs": [{"name": "x", "ty": "number"}], "outputs": [{"name": "y", "ty": "number"}]}),
         )])
         .await;
         assert_eq!(trace[0]["ok"], true, "{trace:?}");

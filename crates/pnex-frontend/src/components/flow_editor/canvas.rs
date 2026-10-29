@@ -590,7 +590,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
     let node_h = geometry::node_height_for(&node);
     // Port labels shown as soon as there are several ports, and always
     // for a function (a single named output must show its name;
-    // a function without @output keeps its single unlabelled port).
+    // a function without declared output keeps its single unlabelled port).
     let show_port_labels = out_count > 1
         || matches!(&node.kind, pnex_core::FlowNodeKind::PnexFunction { .. })
         || matches!(&node.kind, pnex_core::FlowNodeKind::JsonSplit { config } if !config.keys.is_empty());

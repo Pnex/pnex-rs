@@ -21,7 +21,7 @@
 key: web_presence
 name: Web presence
 names: {fr: "Présence web"}
-version: "3.0.0"
+version: "3.0.1"
 requires: [companies]
 description: "The website of each organization: candidates found by search or from e-mail domains, checked on the site itself, confirmed by a human before any crawl."
 descriptions: {fr: "Le site web de chaque organisation : candidats trouvés par recherche ou par le domaine des e-mails, vérifiés sur le site lui-même, confirmés par un humain avant tout parcours."}
@@ -93,13 +93,14 @@ functions:
   - name: pw_prepare
     language: starlark
     description: "Website search of an organization: the query, the organization marked as searched, a candidate from the domain of its e-mails."
+    outputs:
+      - {name: search, ty: any, desc: "Query for the web search"}
+      - {name: mark, ty: any, desc: "The organization, marked as searched today"}
+      - {name: email, ty: any, desc: "Candidate from the domain of an e-mail"}
     code: |
       # D365: free candidates first. An e-mail of the organization on its
       # own domain (not a webmail) names its website; the web search is
       # asked with the organization's name. msg.org travels to the end.
-      # @output search any "Query for the web search"
-      # @output mark any "The organization, marked as searched today"
-      # @output email any "Candidate from the domain of an e-mail"
       WEBMAIL = ["gmail.com", "googlemail.com", "hotmail.com", "hotmail.fr", "outlook.com",
                  "outlook.fr", "live.com", "live.fr", "msn.com", "yahoo.com", "yahoo.fr",
                  "orange.fr", "wanadoo.fr", "free.fr", "sfr.fr", "neuf.fr", "laposte.net",
@@ -133,11 +134,12 @@ functions:
   - name: pw_results
     language: starlark
     description: The first three web search results, one candidate each.
+    outputs:
+      - {name: c1, ty: any, desc: "First result"}
+      - {name: c2, ty: any, desc: "Second result"}
+      - {name: c3, ty: any, desc: "Third result"}
     code: |
       # One message per result (three at most), with where it came from.
-      # @output c1 any "First result"
-      # @output c2 any "Second result"
-      # @output c3 any "Third result"
       def handle(inputs, msg):
           p = msg["payload"]
           out = []
@@ -149,11 +151,12 @@ functions:
   - name: pw_score
     language: starlark
     description: "Score of a visited candidate (D365): SIREN 60, declaration number 30, own e-mail domain 30, name 10; 80 confirms, 40 proposes."
+    outputs:
+      - {name: confirmed, ty: any, desc: "A website proved by what it says: written"}
+      - {name: propose, ty: any, desc: "A website to check: proposed to a human"}
     code: |
       # Deterministic score of what the site says about itself; the text is
       # data from an unknown site, only searched, never obeyed.
-      # @output confirmed any "A website proved by what it says: written"
-      # @output propose any "A website to check: proposed to a human"
       CONFIRM = 80
       PROPOSE = 40
 
@@ -223,9 +226,10 @@ functions:
   - name: pw_link_opinion
     language: starlark
     description: The proposed link, and what the org's model is asked about it.
+    outputs:
+      - {name: propose, ty: any, desc: "The link to propose now"}
+      - {name: opinion, ty: any, desc: "The question for the org's model"}
     code: |
-      # @output propose any "The link to propose now"
-      # @output opinion any "The question for the org's model"
       def handle(inputs, msg):
           org = msg["org"]
           link = {"source_id": org["id"], "target_id": msg["object"]["id"],

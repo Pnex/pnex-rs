@@ -25,12 +25,9 @@ const DEMO_PNG: &[u8] = &[
     135, 1, 128, 235, 71, 186, 146, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
 ];
 
-/// JS code of a demo function (complete directives — the server save is
-/// not used: direct inserts).
-const DEMO_JS: &str = r#"// @input temperature number "Measured temperature (°C)"
-// @input threshold number=20 "Alert threshold"
-// @output heating number "1 when heating is requested, 0 otherwise"
-function handle(inputs, msg) {
+/// JS code of a demo function; its interface is inserted with the version
+/// (direct inserts, the server save is not used).
+const DEMO_JS: &str = r#"function handle(inputs, msg) {
   const heat = inputs.temperature < inputs.threshold ? 1 : 0;
   return { heating: heat };
 }"#;
@@ -149,8 +146,13 @@ impl Task for SeedDemo {
                 org_id: Set(org_id),
                 version_number: Set(1),
                 code: Set(DEMO_JS.to_string()),
-                inputs: Set(serde_json::json!([])),
-                outputs: Set(serde_json::json!([])),
+                inputs: Set(serde_json::json!([
+                    {"name": "temperature", "ty": "number", "desc": "Measured temperature (°C)"},
+                    {"name": "threshold", "ty": "number", "default": 20, "desc": "Alert threshold"},
+                ])),
+                outputs: Set(serde_json::json!([
+                    {"name": "heating", "ty": "number", "desc": "1 when heating is requested, 0 otherwise"},
+                ])),
                 note: Set(Some("seed_demo".to_string())),
                 ..Default::default()
             }

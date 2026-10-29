@@ -165,8 +165,6 @@ pub const MEDIA_ANALYSIS_DETECT_FAILED: &str = "media-analysis-detect-failed";
 pub const FUNCTIONS_RUNTIME_DISABLED: &str = "functions-runtime-disabled";
 /// Delete refused: deployed flows use the function (`args.flows`).
 pub const FUNCTION_IN_USE: &str = "function-in-use";
-/// Malformed `@input`/`@output` directive (`args.line`, `args.detail`).
-pub const FUNCTION_DIRECTIVE_INVALID: &str = "function-directive-invalid";
 pub const ANNOT_VERSION_CONFLICT: &str = "annot-version-conflict";
 
 // ── Controller codes (batch devices/pins/flows/resources/edge_refs/builds/stitch/fluid/viz/ai/notify) + board/caps display codes ──
@@ -1106,7 +1104,6 @@ pub const ALL: &[&str] = &[
     MEDIA_ANALYSIS_DETECT_FAILED,
     FUNCTIONS_RUNTIME_DISABLED,
     FUNCTION_IN_USE,
-    FUNCTION_DIRECTIVE_INVALID,
     ANNOT_VERSION_CONFLICT,
     DEVICE_BOARD_UNKNOWN,
     DEVICE_BOARD_SOC_MISMATCH,

@@ -58,7 +58,7 @@
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "3.0.0"
+version: "3.0.1"
 requires: [companies, web_presence]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -459,10 +459,11 @@ functions:
   - name: pb_digest
     language: starlark
     description: One text of the new commercial signals, for the org's notification node.
+    outputs:
+      - {name: digest, ty: any, desc: "The digest (payload.text), when there is a new signal"}
+      - {name: mark, ty: any, desc: "Then mark them notified"}
     code: |
       # Daily digest (D335): one line per new signal, newest first.
-      # @output digest any "The digest (payload.text), when there is a new signal"
-      # @output mark any "Then mark them notified"
       def handle(inputs, msg):
           rows = msg["payload"]
           if len(rows) == 0:
@@ -488,11 +489,12 @@ functions:
   - name: ps_signal
     language: starlark
     description: "The model's answer about a watched page: a signal when it names a topic of the list, and the page cleared."
+    outputs:
+      - {name: signal, ty: any, desc: "A signal about the account (to validate)"}
+      - {name: read, ty: any, desc: "The page, marked read"}
     code: |
       # The org's topics (D335): edit this list to the org's own, the
       # prompt of the LLM node names the same keys.
-      # @output signal any "A signal about the account (to validate)"
-      # @output read any "The page, marked read"
       TOPICS = ["new_site", "investment", "hiring", "new_line", "takeover",
                 "retirements", "quality", "multi_site", "school", "new_offer", "prices"]
 

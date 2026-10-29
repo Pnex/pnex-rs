@@ -23,7 +23,7 @@ pub(super) fn FunctionTestModal(
     let msg_value = test_msg();
 
     // Rows per port precomputed (no `let` in rsx): (label,
-    // muted, pretty value). The order = order of the declared @output.
+    // muted, pretty value). The order = order of the declared outputs.
     let port_rows: Vec<(String, bool, String)> = match &result {
         Some(resp) if resp.ok => resp
             .outputs

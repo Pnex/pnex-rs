@@ -219,11 +219,11 @@ async fn list(
     tag = "functions",
     operation_id = "functions_create",
     summary = "Create a function",
-    description = "Creates a function and its version 1 from the code; the `@input`/`@output` directives of the code define its interface. Requires owner, admin or member role.",
+    description = "Creates a function and its version 1 from its code and declared interface (`inputs`, `outputs`; no output = message mode: one input, one output, the returned value is the message). Requires owner, admin or member role.",
     request_body = CreateFunction,
     responses(
         (status = 201, body = FunctionDetail),
-        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `function-directive-invalid` (`args.line`, `args.detail`)", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`, `inputs.<i>.name`, `inputs.<i>.default`, `outputs.<i>.name`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -239,18 +239,10 @@ async fn create(
     Ok((StatusCode::CREATED, format::json(detail_dto(&f, &version))).into_response())
 }
 
-/// Write errors: `field-invalid` 400 (field tokens), 400
-/// `function-directive-invalid` (`args.line`, `args.detail`), 409, 500.
+/// Write errors: `field-invalid` 400 (field tokens), 409, 500.
 fn write_error_response(e: FunctionWriteError) -> Response {
     match e {
         FunctionWriteError::Field(field, token) => super::field_error(&field, &token),
-        FunctionWriteError::Directive(e) => super::coded_error(
-            StatusCode::BAD_REQUEST,
-            pnex_core::err_codes::FUNCTION_DIRECTIVE_INVALID,
-            "An @input/@output directive of the code is invalid.",
-            Some(serde_json::json!({ "line": e.line.to_string(), "detail": e.message })),
-        )
-        .into_response(),
         FunctionWriteError::Db(_) => Error::InternalServerError.into_response(),
         FunctionWriteError::Conflict { .. } => crate::controllers::coded_error(
             StatusCode::CONFLICT,
@@ -317,12 +309,12 @@ async fn detail(
     tag = "functions",
     operation_id = "functions_save_version",
     summary = "Save a new version of a function",
-    description = "With `code`, appends a new version (history is append-only); `name`/`description` update metadata. Optimistic concurrency: `expected_version_number` must equal the current version, else 409 `function-version-conflict`. Deployed flows keep the version they pinned. Requires owner, admin or member role.",
+    description = "With `code`, `inputs` or `outputs`, appends a new version (parts not sent are carried from the current version) (history is append-only); `name`/`description` update metadata. Optimistic concurrency: `expected_version_number` must equal the current version, else 409 `function-version-conflict`. Deployed flows keep the version they pinned. Requires owner, admin or member role.",
     params(("id" = i64, Path, description = "Function id")),
     request_body = SaveFunctionVersion,
     responses(
         (status = 200, body = FunctionDetail),
-        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `function-directive-invalid` (`args.line`, `args.detail`)", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`, `inputs.<i>.name`, `inputs.<i>.default`, `outputs.<i>.name`)", body = crate::openapi::ErrorDetail),
         (status = 404, body = crate::openapi::ErrorDetail),
         (status = 409, description = "`function-version-conflict`", body = crate::openapi::ErrorDetail)
     ),

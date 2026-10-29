@@ -24,8 +24,6 @@ use pnex_core::{
 pub enum FunctionWriteError {
     /// (field, machine token: `required`, `max_length:200`).
     Field(String, String),
-    /// Malformed `@input`/`@output` directive.
-    Directive(pnex_core::DirectiveError),
     /// DB outage (turned into 500 by the controller).
     Db(String),
     /// Optimistic concurrency lost: `expected_version_number` is no longer
@@ -37,7 +35,6 @@ impl std::fmt::Display for FunctionWriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             FunctionWriteError::Field(field, msg) => write!(f, "{field} : {msg}"),
-            FunctionWriteError::Directive(e) => write!(f, "code : {e}"),
             FunctionWriteError::Db(s) => write!(f, "{s}"),
             FunctionWriteError::Conflict { current } => {
                 write!(
@@ -49,9 +46,9 @@ impl std::fmt::Display for FunctionWriteError {
     }
 }
 
-impl From<pnex_core::DirectiveError> for FunctionWriteError {
-    fn from(e: pnex_core::DirectiveError) -> Self {
-        FunctionWriteError::Directive(e)
+impl From<pnex_core::SignatureError> for FunctionWriteError {
+    fn from(e: pnex_core::SignatureError) -> Self {
+        FunctionWriteError::Field(e.field, e.code)
     }
 }
 
@@ -91,16 +88,24 @@ fn clean_optional(value: &Option<String>) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Declared interface serialized for the `inputs`/`outputs` JSON columns.
+/// Declared interface (D497), validated then serialized for the
+/// `inputs`/`outputs` JSON columns.
 fn signature_json(
-    code: &str,
+    sig: &pnex_core::FunctionSignature,
 ) -> Result<(serde_json::Value, serde_json::Value), FunctionWriteError> {
-    let sig = pnex_core::parse_directives(code)?;
+    sig.validate()?;
     let inputs = serde_json::to_value(&sig.inputs)
         .map_err(|e| FunctionWriteError::Db(format!("inputs serialization: {e}")))?;
     let outputs = serde_json::to_value(&sig.outputs)
         .map_err(|e| FunctionWriteError::Db(format!("outputs serialization: {e}")))?;
     Ok((inputs, outputs))
+}
+
+/// Declared ports read back from a version's `inputs`/`outputs` column
+/// (none or unreadable = no port).
+pub(crate) fn ports_of<T: serde::de::DeserializeOwned>(col: Option<&serde_json::Value>) -> Vec<T> {
+    col.and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
 }
 
 /// Creation: function + version 1 in one transaction (CreateFlow pattern).
@@ -110,7 +115,10 @@ pub async fn create_function(
     input: &CreateFunction,
 ) -> Result<(functions::Model, function_versions::Model), FunctionWriteError> {
     let name = validate_name(Some(&input.name))?;
-    let (inputs, outputs) = signature_json(&input.code)?;
+    let (inputs, outputs) = signature_json(&pnex_core::FunctionSignature {
+        inputs: input.inputs.clone(),
+        outputs: input.outputs.clone(),
+    })?;
     let description = clean_optional(&input.description);
 
     let txn = db
@@ -184,10 +192,8 @@ pub async fn save_new_version(
         .description
         .as_ref()
         .map(|_| clean_optional(&input.description));
-    let sig = match &input.code {
-        Some(code) => Some(signature_json(code)?),
-        None => None,
-    };
+    let new_version_asked =
+        input.code.is_some() || input.inputs.is_some() || input.outputs.is_some();
 
     let txn = db
         .begin()
@@ -218,18 +224,33 @@ pub async fn save_new_version(
         .map_err(|e| FunctionWriteError::Db(format!("update function: {e}")))?;
 
     let mut new_version = None;
-    if let Some(code) = &input.code {
-        let (inputs, outputs) = sig.expect("signature computed above");
-        let previous = latest_version(&txn, function_row.id)
+    if new_version_asked {
+        // Parts not sent are carried from the current version.
+        let current = latest_version(&txn, function_row.id)
             .await
-            .map_err(|e| FunctionWriteError::Db(format!("read max version: {e}")))?
-            .map(|v| v.version_number)
-            .unwrap_or(0);
+            .map_err(|e| FunctionWriteError::Db(format!("read max version: {e}")))?;
+        let previous = current.as_ref().map(|v| v.version_number).unwrap_or(0);
+        let code = match (&input.code, &current) {
+            (Some(c), _) => c.clone(),
+            (None, Some(v)) => v.code.clone(),
+            (None, None) => String::new(),
+        };
+        let sig = pnex_core::FunctionSignature {
+            inputs: input
+                .inputs
+                .clone()
+                .unwrap_or_else(|| ports_of(current.as_ref().map(|v| &v.inputs))),
+            outputs: input
+                .outputs
+                .clone()
+                .unwrap_or_else(|| ports_of(current.as_ref().map(|v| &v.outputs))),
+        };
+        let (inputs, outputs) = signature_json(&sig)?;
         let version = function_versions::ActiveModel {
             function_id: Set(function_row.id),
             org_id: Set(function_row.org_id),
             version_number: Set(previous + 1),
-            code: Set(code.clone()),
+            code: Set(code),
             inputs: Set(inputs),
             outputs: Set(outputs),
             note: Set(clean_optional(&input.note)),
@@ -407,9 +428,12 @@ pub async fn spawn_function_test(
     // Code resolution: ad-hoc (test before save) or pinned version
     // (default = current version).
     let (language, code, inputs_decl, outputs_decl) = if let Some(adhoc) = &req.ad_hoc {
-        let sig = pnex_core::parse_directives(&adhoc.code)
-            .map_err(|e| format!("directives: line {}: {}", e.line, e.message))?;
-        (adhoc.language, adhoc.code.clone(), sig.inputs, sig.outputs)
+        (
+            adhoc.language,
+            adhoc.code.clone(),
+            adhoc.inputs.clone(),
+            adhoc.outputs.clone(),
+        )
     } else {
         let version_number = match req.version_number {
             Some(n) => n,
@@ -468,6 +492,7 @@ pub async fn spawn_function_test(
             FunctionLanguage::Js => None,
         },
         inputs: inputs_decl,
+        outputs: outputs_decl,
         msg,
         timeout_ms: 5000,
     };

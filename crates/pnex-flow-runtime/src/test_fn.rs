@@ -38,8 +38,12 @@ pub async fn run(request_path: &str) -> std::process::ExitCode {
             let code = req.code.clone().unwrap_or_default();
             let msg = req.msg.clone();
             let timeout_ms = req.timeout_ms;
+            let sig = pnex_core::FunctionSignature {
+                inputs: req.inputs.clone(),
+                outputs: req.outputs.clone(),
+            };
             let res = tokio::task::spawn_blocking(move || {
-                pnex_node_starlark::executor::execute(&code, &msg, timeout_ms)
+                pnex_node_starlark::executor::execute(&code, &sig, &msg, timeout_ms)
             })
             .await
             .unwrap_or_else(|e| Err(anyhow::anyhow!("execution task: {e}")));
@@ -82,7 +86,7 @@ fn starlark_response(
             FunctionTestResponse {
                 ok: true,
                 // Slots kept: null = silent port (the declared
-                // port↔@output alignment is the info shown in the panel).
+                // port↔declared output alignment is the info shown in the panel).
                 outputs: outs
                     .into_iter()
                     .map(|o| o.unwrap_or(serde_json::Value::Null))

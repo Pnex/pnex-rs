@@ -2,8 +2,39 @@
 //! D314, D316) and the target score of `prospecting_b2b`
 //! (account-mapping.md D336) run as the flow runtime runs them.
 
-use pnex_node_starlark::executor::execute;
+use pnex_node_starlark::executor::ExecOutcome;
 use serde_json::json;
+
+/// The shipped pack function whose code (or name) matches.
+fn pack_function(
+    found: impl Fn(&pnex_core::ontology::api::PackFunction) -> bool,
+) -> pnex_core::FunctionSignature {
+    [PACK, PROSPECTING, PRESENCE, PROSPECTING_FR, CRM]
+        .iter()
+        .flat_map(|y| {
+            serde_saphyr::from_str::<pnex_core::ontology::api::Pack>(y)
+                .expect("shipped pack")
+                .functions
+        })
+        .find(|f| found(f))
+        .map(|f| pnex_core::FunctionSignature {
+            inputs: f.inputs,
+            outputs: f.outputs,
+        })
+        .expect("a shipped pack function")
+}
+
+/// Interface the pack declares for function `name` (D497: not in the code).
+fn sig_of(name: &str) -> pnex_core::FunctionSignature {
+    pack_function(|f| f.name == name)
+}
+
+/// Runs a shipped pack function with the interface its pack declares,
+/// found by its code.
+fn execute(code: &str, msg: &serde_json::Value, timeout_ms: u64) -> anyhow::Result<ExecOutcome> {
+    let sig = pack_function(|f| f.code.trim_end() == code.trim_end());
+    pnex_node_starlark::executor::execute(code, &sig, msg, timeout_ms)
+}
 
 const PACK: &str = include_str!("../../pnex-backend/packs/quali_watch.yaml");
 const PROSPECTING: &str = include_str!("../../pnex-backend/packs/prospecting_b2b.yaml");
@@ -271,6 +302,7 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
     settings.insert("web_presence.confirm_threshold".into(), json!(40));
     let r = pnex_node_starlark::executor::execute_with(
         &code_in(PRESENCE, "pw_score"),
+        &sig_of("pw_score"),
         &msg,
         2000,
         &settings,
@@ -765,6 +797,7 @@ fn website_rules_need_an_explicit_claim_and_the_clients_certifications() {
         m["payload"] = json!({"url": "https://www.of-exemple.example/seo", "title": "SEO", "text": text, "page_id": "p1", "object_id": "po1", "changed": true});
         pnex_node_starlark::executor::execute_with(
             &code_of("qw_web_rules"),
+            &sig_of("qw_web_rules"),
             &m,
             5000,
             settings.as_object().unwrap(),

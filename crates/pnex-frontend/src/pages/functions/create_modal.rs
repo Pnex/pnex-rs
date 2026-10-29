@@ -29,6 +29,8 @@ pub(super) fn CreateFunctionModal(on_close: Callback<()>, on_created: Callback<i
                 (!value.is_empty()).then_some(value)
             },
             code: crate::components::function_templates::template_code(template(), lang),
+            inputs: crate::components::function_templates::template_signature(template()).inputs,
+            outputs: crate::components::function_templates::template_signature(template()).outputs,
             note: None,
         };
         spawn(async move {

@@ -43,9 +43,12 @@ fn default_timeout_ms() -> u64 {
 pub(crate) struct StarlarkNodeConfig {
     /// Starlark code inlined by the projection (pinned version).
     code: String,
-    /// The declared interface (`inputs` present in the artefact, informative)
-    /// is NOT declared here: the executor reparses the code's directives —
-    /// source of truth; each input implicitly reads `payload.<name>`.
+    /// Declared interface of the pinned version (D497), stamped by the
+    /// projection: the code is never read for ports.
+    #[serde(default)]
+    inputs: Vec<pnex_core::FunctionInput>,
+    #[serde(default)]
+    outputs: Vec<pnex_core::FunctionOutput>,
     /// Wall-time deadline per message (bound against infinite loops).
     #[serde(default = "default_timeout_ms")]
     timeout_ms: u64,
@@ -103,8 +106,12 @@ impl StarlarkNode {
         let incoming_exec = incoming.clone();
         let timeout_ms = self.config.timeout_ms;
         let settings = self.config.settings.clone();
+        let sig = pnex_core::FunctionSignature {
+            inputs: self.config.inputs.clone(),
+            outputs: self.config.outputs.clone(),
+        };
         let exec = tokio::task::spawn_blocking(move || {
-            executor::execute_with(&code, &incoming_exec, timeout_ms, &settings)
+            executor::execute_with(&code, &sig, &incoming_exec, timeout_ms, &settings)
         });
         let outcome = tokio::select! {
             res = exec => res.map_err(|e| {

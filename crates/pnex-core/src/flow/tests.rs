@@ -2339,6 +2339,8 @@ fn projection_starlark_function() {
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("pnex-starlark"))
         .expect("pnex-starlark node missing");
     assert_eq!(node["code"], "def handle(inputs, msg):");
+    // D497: the node gets its ports from the version, never from the code.
+    assert_eq!(node["outputs"].as_array().map(Vec::len), Some(2));
     assert_eq!(node["pnex_function_id"], 9);
     assert_eq!(node["pnex_function_version"], 2);
 }

@@ -1,93 +1,45 @@
-//! Editable port grids for the function editor — the code stays the single
-//! source of truth: every cell edit REWRITES the port's directive line in
-//! the code (no backend schema change). Uses `pnex_core::directive_spans`
-//! to locate each directive line.
+//! Editable port grids for the function editor. The interface is structured
+//! data of the version (D497), never text in the code: every cell edit
+//! produces a new `FunctionSignature` through `onedit`.
 
 use dioxus::prelude::*;
 use pnex_core::{FunctionInput, FunctionOutput, FunctionSignature, FunctionType};
 
 use dioxus_i18n::t;
 
-/// Fields of one `@input`/`@output` directive line.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DirectiveFields {
-    pub name: String,
-    pub ty: FunctionType,
-    pub default: Option<String>,
-    pub desc: Option<String>,
-}
-
-/// Port name rule — mirrors the pnex-core `is_valid_name` rule.
-pub fn is_valid_port_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    match chars.next() {
-        Some(c) if c == '_' || c.is_ascii_lowercase() => {
-            chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
-        }
-        _ => false,
-    }
-}
-
-/// Replaces ONLY the directive line at `line` (1-based) with the canonical
-/// rendering of `fields`. Returns None when the line is not the expected
-/// directive (safety net against stale grid keys).
-pub fn set_directive_fields(
-    code: &str,
-    line: u32,
-    is_input: bool,
-    fields: &DirectiveFields,
-) -> Option<String> {
-    let mut lines: Vec<&str> = code.split('\n').collect();
-    let idx = (line - 1) as usize;
-    if idx >= lines.len() {
+/// Default typed in a cell → value of the declared type. Text that does not
+/// fit the type is kept as a string: the cell turns red and the server
+/// refuses it (`inputs.<i>.default`).
+pub fn parse_default(ty: FunctionType, text: &str) -> Option<serde_json::Value> {
+    let text = text.trim();
+    if text.is_empty() {
         return None;
     }
-    // Safety net: the line must still be a directive of the expected kind
-    // (stale grid key guard). Renames rely on the line identity only.
-    let expected = if is_input { "@input" } else { "@output" };
-    if !lines[idx].contains(expected) {
-        return None;
-    }
-    let prefix = comment_prefix(lines[idx]);
-    let rendered = render_directive(is_input, fields, &prefix);
-    lines[idx] = &rendered;
-    Some(lines.join("\n"))
+    let raw = || serde_json::Value::String(text.to_string());
+    Some(match ty {
+        FunctionType::Number => text
+            .parse::<serde_json::Number>()
+            .map(serde_json::Value::Number)
+            .unwrap_or_else(|_| raw()),
+        FunctionType::Bool => match text {
+            "true" => serde_json::Value::Bool(true),
+            "false" => serde_json::Value::Bool(false),
+            _ => raw(),
+        },
+        FunctionType::String => raw(),
+        FunctionType::Any => serde_json::from_str(text).unwrap_or_else(|_| raw()),
+    })
 }
 
-/// Canonical rendering `// @input name type[=default] "desc"` with the
-/// line's own comment prefix (`//` or `#`).
-fn render_directive(is_input: bool, f: &DirectiveFields, prefix: &str) -> String {
-    let word = if is_input { "@input" } else { "@output" };
-    let mut s = format!("{prefix} {word} {} {}", f.name, type_token(f.ty));
-    if is_input {
-        if let Some(d) = &f.default {
-            let d = d.trim();
-            if !d.is_empty() {
-                s.push('=');
-                s.push_str(d);
-            }
-        }
-    }
-    if let Some(desc) = &f.desc {
-        let desc = desc.trim();
-        if !desc.is_empty() {
-            s.push_str(&format!(" \"{desc}\""));
-        }
-    }
-    s
-}
-
-/// Comment prefix of an existing directive line (`//` or `#`).
-fn comment_prefix(line: &str) -> String {
-    let t = line.trim_start();
-    if t.starts_with("//") {
-        "//".to_string()
-    } else {
-        "#".to_string()
+/// Default shown in its cell (strings without quotes).
+fn default_text(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
     }
 }
 
-/// Token of a declared type in directives.
+/// Token of a declared type (select values).
 fn type_token(ty: FunctionType) -> &'static str {
     match ty {
         FunctionType::Number => "number",
@@ -97,334 +49,320 @@ fn type_token(ty: FunctionType) -> &'static str {
     }
 }
 
-/// Inserts a new directive line after the last directive (or at the very
-/// top when none exists).
-pub fn insert_directive(code: &str, is_input: bool, fields: &DirectiveFields) -> String {
-    let last = pnex_core::directive_spans(code)
-        .last()
-        .map(|s| s.line)
-        .unwrap_or(0);
-    let line = render_directive(
-        is_input,
-        fields,
-        if code.trim_start().starts_with('#') && !code.trim_start().starts_with("//") {
-            "#"
-        } else {
-            "//"
-        },
-    );
-    let mut lines: Vec<String> = code.split('\n').map(String::from).collect();
-    lines.insert(last as usize, line);
-    lines.join("\n")
+fn type_of(token: &str) -> FunctionType {
+    match token {
+        "string" => FunctionType::String,
+        "bool" => FunctionType::Bool,
+        "any" => FunctionType::Any,
+        _ => FunctionType::Number,
+    }
 }
 
-/// Removes the directive line at `line` (1-based).
-pub fn delete_directive(code: &str, line: u32) -> String {
-    code.split('\n')
-        .enumerate()
-        .filter(|(idx, _)| (*idx as u32) + 1 != line)
-        .map(|(_, l)| l)
-        .collect::<Vec<_>>()
-        .join("\n")
+/// First free `<base>_<n>` name among the declared ports.
+pub fn free_port_name(sig: &FunctionSignature, base: &str) -> String {
+    let taken =
+        |c: &str| sig.inputs.iter().any(|i| i.name == c) || sig.outputs.iter().any(|o| o.name == c);
+    (0..)
+        .map(|n| format!("{base}_{n}"))
+        .find(|c| !taken(c))
+        .expect("an unbounded range")
 }
+
+/// Port edit applied to the signature: (is_input, row index, change).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PortEdit {
+    Name(String),
+    Type(FunctionType),
+    Default(String),
+    Desc(String),
+    Delete,
+}
+
+/// The signature with one row edited.
+pub fn edit_port(
+    sig: &FunctionSignature,
+    is_input: bool,
+    row: usize,
+    edit: PortEdit,
+) -> FunctionSignature {
+    let mut next = sig.clone();
+    let desc = |s: String| Some(s).filter(|s| !s.trim().is_empty());
+    if is_input {
+        if row >= next.inputs.len() {
+            return next;
+        }
+        let port = &mut next.inputs[row];
+        match edit {
+            PortEdit::Name(v) => port.name = v,
+            PortEdit::Type(ty) => {
+                port.ty = ty;
+                port.default = port
+                    .default
+                    .as_ref()
+                    .and_then(|d| parse_default(ty, &default_text(d)));
+            }
+            PortEdit::Default(v) => port.default = parse_default(port.ty, &v),
+            PortEdit::Desc(v) => port.desc = desc(v),
+            PortEdit::Delete => {
+                next.inputs.remove(row);
+            }
+        }
+    } else {
+        if row >= next.outputs.len() {
+            return next;
+        }
+        let port = &mut next.outputs[row];
+        match edit {
+            PortEdit::Name(v) => port.name = v,
+            PortEdit::Type(ty) => port.ty = ty,
+            PortEdit::Default(_) => {}
+            PortEdit::Desc(v) => port.desc = desc(v),
+            PortEdit::Delete => {
+                next.outputs.remove(row);
+            }
+        }
+    }
+    next
+}
+
+/// The signature with a new port named `name` (type `ty`).
+pub fn add_port(
+    sig: &FunctionSignature,
+    is_input: bool,
+    name: String,
+    ty: FunctionType,
+) -> FunctionSignature {
+    let mut next = sig.clone();
+    if is_input {
+        next.inputs.push(FunctionInput {
+            name,
+            ty,
+            default: None,
+            desc: None,
+        });
+    } else {
+        next.outputs.push(FunctionOutput {
+            name,
+            ty,
+            desc: None,
+        });
+    }
+    next
+}
+
 // ───────────────────────── Panel component ─────────────────────────
 
-/// Editable port grids — mockup layout. Every cell edit rewrites the
-/// directive line in `code` (single source of truth) via `onedit`.
+/// Inputs and outputs grids. No output = message mode (one output, the
+/// returned value is the message); adding an output switches to named ports.
 #[component]
 pub fn FunctionPortsPanel(
-    code: String,
     sig: FunctionSignature,
     readonly: bool,
-    onedit: EventHandler<String>,
+    onedit: EventHandler<FunctionSignature>,
 ) -> Element {
-    let spans = pnex_core::directive_spans(&code);
     rsx! {
-        if sig.inputs.is_empty() && sig.outputs.is_empty() {
-            div { class: "text-sm text-gray-500 italic", {t!("functions-ports-none")} }
+        PortsSection {
+            sig: sig.clone(),
+            is_input: true,
+            readonly,
+            onedit,
         }
-        if !sig.inputs.is_empty() {
-            InputsSection {
-                code: code.clone(),
-                spans: spans.clone(),
-                sig: sig.clone(),
-                readonly,
-                onedit,
-            }
-        }
-        if !sig.outputs.is_empty() {
-            OutputsSection {
-                code: code.clone(),
-                spans,
-                sig,
-                readonly,
-                onedit,
-            }
+        PortsSection {
+            sig,
+            is_input: false,
+            readonly,
+            onedit,
         }
     }
 }
 
-/// Inputs grid (name / type / default / label / delete).
+/// One grid (inputs: name / type / default / label / delete; outputs: no
+/// default).
 #[component]
-fn InputsSection(
-    code: String,
-    spans: Vec<pnex_core::DirectiveSpan>,
+fn PortsSection(
     sig: FunctionSignature,
+    is_input: bool,
     readonly: bool,
-    onedit: EventHandler<String>,
+    onedit: EventHandler<FunctionSignature>,
 ) -> Element {
-    let rows: Vec<(u32, pnex_core::FunctionInput)> = sig
-        .inputs
-        .iter()
-        .enumerate()
-        .map(|(n, i)| (span_line(&spans, true, n), i.clone()))
-        .collect();
+    let rows: Vec<(String, FunctionType, Option<String>, Option<String>)> = if is_input {
+        sig.inputs
+            .iter()
+            .map(|i| {
+                (
+                    i.name.clone(),
+                    i.ty,
+                    Some(i.default.as_ref().map(default_text).unwrap_or_default()),
+                    i.desc.clone(),
+                )
+            })
+            .collect()
+    } else {
+        sig.outputs
+            .iter()
+            .map(|o| (o.name.clone(), o.ty, None, o.desc.clone()))
+            .collect()
+    };
+    let bad_default: Vec<bool> = if is_input {
+        sig.inputs
+            .iter()
+            .map(|i| i.default.as_ref().is_some_and(|d| !i.ty.accepts(d)))
+            .collect()
+    } else {
+        vec![false; rows.len()]
+    };
+    let grid = if is_input {
+        "grid grid-cols-[112px_84px_64px_minmax(0,1fr)_28px] gap-1.5 items-center"
+    } else {
+        "grid grid-cols-[112px_84px_minmax(0,1fr)_28px] gap-1.5 items-center"
+    };
+    let title = if is_input {
+        t!("functions-ports-in-title")
+    } else {
+        t!("functions-ports-out-title")
+    };
+    let dot = if is_input {
+        "border-teal-700"
+    } else {
+        "border-amber-600"
+    };
+    let message_mode = !is_input && rows.is_empty();
+    let count = rows.len();
     rsx! {
         section { class: "rounded-xl border border-gray-200 bg-white p-3.5 flex flex-col gap-2",
             div { class: "flex items-center gap-2",
-                span { class: "w-2.5 h-2.5 rounded-full border-2 border-teal-700" }
-                h3 { class: "text-base font-semibold", {t!("functions-ports-in-title")} }
+                span { class: "w-2.5 h-2.5 rounded-full border-2 {dot}" }
+                h3 { class: "text-base font-semibold", {title} }
                 span { class: "text-xs text-gray-600 bg-gray-100 rounded-full px-2",
-                    "{rows.len()}"
+                    "{count}"
+                }
+                if !is_input {
+                    span { class: "ml-auto text-xs font-medium text-gray-600",
+                        if message_mode {
+                            {t!("functions-mode-message")}
+                        } else {
+                            {t!("functions-mode-ports")}
+                        }
+                    }
                 }
             }
-            div { class: "grid grid-cols-[112px_84px_64px_minmax(0,1fr)_28px] gap-1.5 items-center text-xs text-gray-600",
-                span { {t!("functions-ports-name")} }
-                span { {t!("functions-ports-type")} }
-                span { {t!("functions-ports-default")} }
-                span { {t!("functions-ports-label")} }
-                span {}
+            if message_mode {
+                p { class: "text-sm text-gray-500", {t!("functions-ports-none")} }
+            } else if count > 0 {
+                div { class: "{grid} text-xs text-gray-600",
+                    span { {t!("functions-ports-name")} }
+                    span { {t!("functions-ports-type")} }
+                    if is_input {
+                        span { {t!("functions-ports-default")} }
+                    }
+                    span { {t!("functions-ports-label")} }
+                    span {}
+                }
             }
-            for (line, input) in rows {
+            for (row, (name, ty, default, desc)) in rows.into_iter().enumerate() {
                 PortRow {
-                    code: code.clone(),
-                    line,
-                    is_input: true,
-                    fields: fields_of_input(&input),
+                    key: "{row}",
+                    sig: sig.clone(),
+                    is_input,
+                    row,
+                    name,
+                    ty,
+                    default,
+                    desc,
+                    bad_default: bad_default[row],
                     readonly,
                     onedit,
                 }
             }
             if !readonly {
-                AddPortButton {
-                    code,
-                    sig,
-                    is_input: true,
-                    onedit,
-                }
+                AddPortButton { sig, is_input, onedit }
             }
         }
     }
 }
 
-/// Outputs grid (name / type / label / delete).
-#[component]
-fn OutputsSection(
-    code: String,
-    spans: Vec<pnex_core::DirectiveSpan>,
-    sig: FunctionSignature,
-    readonly: bool,
-    onedit: EventHandler<String>,
-) -> Element {
-    let rows: Vec<(u32, pnex_core::FunctionOutput)> = sig
-        .outputs
-        .iter()
-        .enumerate()
-        .map(|(n, o)| (span_line(&spans, false, n), o.clone()))
-        .collect();
-    rsx! {
-        section { class: "rounded-xl border border-gray-200 bg-white p-3.5 flex flex-col gap-2",
-            div { class: "flex items-center gap-2",
-                span { class: "w-2.5 h-2.5 rounded-full border-2 border-amber-600" }
-                h3 { class: "text-base font-semibold", {t!("functions-ports-out-title")} }
-                span { class: "text-xs text-gray-600 bg-gray-100 rounded-full px-2",
-                    "{rows.len()}"
-                }
-            }
-            div { class: "grid grid-cols-[112px_84px_minmax(0,1fr)_28px] gap-1.5 items-center text-xs text-gray-600",
-                span { {t!("functions-ports-name")} }
-                span { {t!("functions-ports-type")} }
-                span { {t!("functions-ports-label")} }
-                span {}
-            }
-            for (line, output) in rows {
-                PortRow {
-                    code: code.clone(),
-                    line,
-                    is_input: false,
-                    fields: fields_of_output(&output),
-                    readonly,
-                    onedit,
-                }
-            }
-            if !readonly {
-                AddPortButton {
-                    code,
-                    sig,
-                    is_input: false,
-                    onedit,
-                }
-            }
-        }
-    }
-}
-
-/// Directive line (1-based) of the n-th input/output.
-fn span_line(spans: &[pnex_core::DirectiveSpan], is_input: bool, n: usize) -> u32 {
-    spans
-        .iter()
-        .filter(|s| s.is_input == is_input)
-        .nth(n)
-        .map(|s| s.line)
-        .unwrap_or(0)
-}
-
-/// DirectiveFields from a parsed input/output row.
-fn fields_of_input(i: &FunctionInput) -> DirectiveFields {
-    DirectiveFields {
-        name: i.name.clone(),
-        ty: i.ty,
-        default: i.default.as_ref().map(default_text),
-        desc: i.desc.clone(),
-    }
-}
-
-fn fields_of_output(o: &FunctionOutput) -> DirectiveFields {
-    DirectiveFields {
-        name: o.name.clone(),
-        ty: o.ty,
-        default: None,
-        desc: o.desc.clone(),
-    }
-}
-
-/// Default value rendered as directive text (quoted only when it has spaces).
-fn default_text(v: &serde_json::Value) -> String {
-    match v {
-        serde_json::Value::String(s) => {
-            if s.contains(' ') {
-                format!("\"{s}\"")
-            } else {
-                s.clone()
-            }
-        }
-        other => other.to_string(),
-    }
-}
-
-/// One port row. Cells rewrite the directive line on input.
+/// One port row; each cell emits the edited signature.
 #[component]
 fn PortRow(
-    code: String,
-    line: u32,
+    sig: FunctionSignature,
     is_input: bool,
-    fields: DirectiveFields,
+    row: usize,
+    name: String,
+    ty: FunctionType,
+    default: Option<String>,
+    desc: Option<String>,
+    bad_default: bool,
     readonly: bool,
-    onedit: EventHandler<String>,
+    onedit: EventHandler<FunctionSignature>,
 ) -> Element {
-    let name_valid = is_valid_port_name(&fields.name);
     let cell = "h-8 rounded-md border border-gray-300 px-2 font-mono text-sm min-w-0";
     let cell_bad =
         "h-8 rounded-md border-2 border-red-400 bg-red-50 px-2 font-mono text-sm min-w-0";
-
-    // Rewrite the directive line with one field replaced — one closure per
-    // cell (each takes its own clone of the current fields).
-    macro_rules! rewrite_with {
-        ($field:expr, $assign:expr) => {{
-            let code = code.clone();
-            let fields = fields.clone();
-            move |ev: Event<FormData>| {
-                let mut f = fields.clone();
-                $assign(&mut f, ev.value());
-                if let Some(next) = set_directive_fields(&code, line, is_input, &f) {
-                    onedit.call(next);
-                }
-            }
-        }};
-    }
-    let apply_name = rewrite_with!("name", |f: &mut DirectiveFields, v: String| f.name = v);
-    let apply_default = rewrite_with!("default", |f: &mut DirectiveFields, v: String| {
-        f.default = Some(v);
-    });
-    let apply_desc = rewrite_with!("desc", |f: &mut DirectiveFields, v: String| {
-        f.desc = Some(v);
-    });
-
+    let name_class = if pnex_core::is_valid_port_name(&name) {
+        cell
+    } else {
+        cell_bad
+    };
+    let default_class = if bad_default { cell_bad } else { cell };
+    let grid = if is_input {
+        "grid grid-cols-[112px_84px_64px_minmax(0,1fr)_28px] gap-1.5 items-center"
+    } else {
+        "grid grid-cols-[112px_84px_minmax(0,1fr)_28px] gap-1.5 items-center"
+    };
+    let emit = move |edit: PortEdit| onedit.call(edit_port(&sig, is_input, row, edit));
+    // One clone of the emitter per cell handler.
+    let (on_name, on_type, on_default, on_desc, on_delete) =
+        (emit.clone(), emit.clone(), emit.clone(), emit.clone(), emit);
     rsx! {
-        div { class: if is_input { "grid grid-cols-[112px_84px_64px_minmax(0,1fr)_28px] gap-1.5 items-center" } else { "grid grid-cols-[112px_84px_minmax(0,1fr)_28px] gap-1.5 items-center" },
+        div { class: "{grid}",
             input {
-                class: if name_valid { cell } else { cell_bad },
-                value: "{fields.name}",
+                class: "{name_class}",
+                value: "{name}",
                 disabled: readonly,
-                oninput: apply_name,
+                oninput: move |ev| on_name(PortEdit::Name(ev.value())),
             }
             select {
                 class: "{cell}",
-                value: "{type_token(fields.ty)}",
+                value: "{type_token(ty)}",
                 disabled: readonly,
-                onchange: {
-                    let code = code.clone();
-                    let fields = fields.clone();
-                    move |ev: Event<FormData>| {
-                        let ty = match ev.value().as_str() {
-                            "string" => FunctionType::String,
-                            "bool" => FunctionType::Bool,
-                            "any" => FunctionType::Any,
-                            _ => FunctionType::Number,
-                        };
-                        let mut f = fields.clone();
-                        f.ty = ty;
-                        if let Some(next) = set_directive_fields(&code, line, is_input, &f) {
-                            onedit.call(next);
-                        }
-                    }
-                },
+                onchange: move |ev| on_type(PortEdit::Type(type_of(&ev.value()))),
                 option { value: "number", "number" }
                 option { value: "string", "string" }
                 option { value: "bool", "bool" }
                 option { value: "any", "any" }
             }
-            if is_input {
+            if let Some(d) = default {
                 input {
-                    class: "{cell}",
-                    value: fields.default.clone().unwrap_or_default(),
+                    class: "{default_class}",
+                    value: "{d}",
                     disabled: readonly,
                     placeholder: "—",
-                    oninput: apply_default,
+                    oninput: move |ev| on_default(PortEdit::Default(ev.value())),
                 }
-            } else {
-                input { class: "hidden" }
             }
             input {
                 class: "{cell} not-mono",
-                value: fields.desc.clone().unwrap_or_default(),
+                value: desc.unwrap_or_default(),
                 disabled: readonly,
-                oninput: apply_desc,
+                oninput: move |ev| on_desc(PortEdit::Desc(ev.value())),
             }
             button {
                 class: "text-gray-500 hover:text-red-600 text-lg leading-none",
                 disabled: readonly,
                 title: t!("functions-ports-delete-title"),
-                onclick: {
-                    let code = code.clone();
-                    move |_| {
-                        let next = delete_directive(&code, line);
-                        onedit.call(next);
-                    }
-                },
+                onclick: move |_| on_delete(PortEdit::Delete),
                 "×"
             }
         }
     }
 }
 
-/// Dashed add-port button — inserts a new directive after the last one.
+/// Dashed add-port button.
 #[component]
 fn AddPortButton(
-    code: String,
     sig: FunctionSignature,
     is_input: bool,
-    onedit: EventHandler<String>,
+    onedit: EventHandler<FunctionSignature>,
 ) -> Element {
     let add_label = if is_input {
         t!("functions-ports-add-in")
@@ -435,28 +373,8 @@ fn AddPortButton(
         button {
             class: "h-9 rounded-lg border border-dashed border-gray-300 bg-white text-sm font-medium text-signal-700 hover:bg-signal-50",
             onclick: move |_| {
-                let mut n = 0;
-                let base = if is_input { "input" } else { "output" };
-                loop {
-                    let candidate = format!("{base}_{n}");
-                    if !sig.inputs.iter().any(|i| i.name == candidate)
-                        && !sig.outputs.iter().any(|o| o.name == candidate)
-                    {
-                        break;
-                    }
-                    n += 1;
-                }
-                let next = insert_directive(
-                    &code,
-                    is_input,
-                    &DirectiveFields {
-                        name: format!("{base}_{n}"),
-                        ty: FunctionType::Number,
-                        default: None,
-                        desc: None,
-                    },
-                );
-                onedit.call(next);
+                let name = free_port_name(&sig, if is_input { "input" } else { "output" });
+                onedit.call(add_port(&sig, is_input, name, FunctionType::Number));
             },
             {add_label}
         }
@@ -466,87 +384,40 @@ fn AddPortButton(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn rewrite_each_field_and_roundtrip() {
-        let code = "// @input temperature number \"Measured temperature\"\n// @output heating number\ndef handle(inputs, msg):\n    return {\"heating\": 1}\n";
-        // Rename
-        let next = set_directive_fields(
-            code,
-            1,
+    fn edits_apply_to_the_signature() {
+        let sig = add_port(
+            &FunctionSignature::default(),
             true,
-            &DirectiveFields {
-                name: "temp".into(),
-                ty: FunctionType::Number,
-                default: None,
-                desc: None,
-            },
-        )
-        .unwrap();
-        assert_eq!(next.lines().next().unwrap(), "// @input temp number");
-        assert_eq!(next.lines().nth(1).unwrap(), "// @output heating number");
-        // Roundtrip: parse reflects the new fields
-        let sig = pnex_core::parse_directives(&next).unwrap();
-        assert_eq!(sig.inputs[0].name, "temp");
-        // Default + desc
-        let next = set_directive_fields(
-            code,
-            1,
-            true,
-            &DirectiveFields {
-                name: "temperature".into(),
-                ty: FunctionType::Number,
-                default: Some("20".into()),
-                desc: Some("Measured (°C)".into()),
-            },
-        )
-        .unwrap();
-        assert_eq!(
-            next.lines().next().unwrap(),
-            "// @input temperature number=20 \"Measured (°C)\""
+            "t".into(),
+            FunctionType::Number,
         );
-    }
-    #[test]
-    fn rewrite_respects_line_prefix() {
-        let code = "# @input a number\n# @input b string\nx = 1";
-        let next = set_directive_fields(
-            code,
-            2,
-            true,
-            &DirectiveFields {
-                name: "b".into(),
-                ty: FunctionType::String,
-                default: Some("auto".into()),
-                desc: None,
-            },
-        )
-        .unwrap();
-        assert_eq!(next, "# @input a number\n# @input b string=auto\nx = 1");
+        let sig = edit_port(&sig, true, 0, PortEdit::Default("20".into()));
+        assert_eq!(sig.inputs[0].default, Some(json!(20)));
+        // A default that does not fit the type stays visible (red cell).
+        let bad = edit_port(&sig, true, 0, PortEdit::Default("abc".into()));
+        assert!(!bad.inputs[0]
+            .ty
+            .accepts(bad.inputs[0].default.as_ref().unwrap()));
+        // Type change converts the default when it can.
+        let s = edit_port(&sig, true, 0, PortEdit::Type(FunctionType::String));
+        assert_eq!(s.inputs[0].default, Some(json!("20")));
+        let s = edit_port(&sig, true, 0, PortEdit::Desc("  ".into()));
+        assert_eq!(s.inputs[0].desc, None);
+        assert!(edit_port(&sig, true, 0, PortEdit::Delete).inputs.is_empty());
     }
 
     #[test]
-    fn insert_after_last_directive() {
-        let code = "// @input a number\ndef handle(inputs, msg):\n    return 1";
-        let next = insert_directive(
-            code,
-            false,
-            &DirectiveFields {
-                name: "out".into(),
-                ty: FunctionType::Number,
-                default: None,
-                desc: None,
-            },
-        );
-        let first = next.lines().next().unwrap();
-        let second = next.lines().nth(1).unwrap();
-        assert_eq!(first, "// @input a number");
-        assert_eq!(second, "// @output out number");
-    }
-
-    #[test]
-    fn delete_removes_only_target_line() {
-        let code = "// @input a number\n// @input b string\nx = 1";
-        let next = delete_directive(code, 1);
-        assert_eq!(next, "// @input b string\nx = 1");
+    fn outputs_switch_message_and_ports_mode() {
+        let sig = FunctionSignature::default();
+        assert!(sig.is_message());
+        let name = free_port_name(&sig, "output");
+        let ports = add_port(&sig, false, name, FunctionType::Any);
+        assert_eq!(ports.outputs[0].name, "output_0");
+        assert!(!ports.is_message());
+        assert_eq!(free_port_name(&ports, "output"), "output_1");
+        assert!(edit_port(&ports, false, 0, PortEdit::Delete).is_message());
     }
 }

@@ -1,10 +1,12 @@
 //! Versioned user functions ("Functions" registry, "Automation"
 //! group) — types shared backend ↔ frontend ↔ runtime (test
-//! CLI), interface directive parser and JS wrapper codegen.
+//! CLI), signature validation and JS wrapper codegen.
 //!
 //! Constraints (crate rules): pure serde + `serde_json`, no native
-//! dependency — compiles native and `wasm32` (the front calls
-//! `parse_directives` in wasm for the live signature preview).
+//! dependency — compiles native and `wasm32`.
+//!
+//! The interface (`FunctionSignature`) is structured data of the version,
+//! never text in the code (D497).
 //!
 //! Common JS/Starlark execution contract: user code defines
 //! `handle` — JS `function handle(inputs, msg)`, Starlark
@@ -13,7 +15,7 @@
 //! incoming payload; otherwise implicit read of `payload.<name>`), `msg` =
 //! incoming Node-RED message. Return value (key→value contract):
 //! - `null`/`None` → message dropped (Node-RED semantics);
-//! - **object + declared `@output` → key→port routing**: each key naming
+//! - **object + declared outputs → key→port routing**: each key naming
 //!   a declared output emits a msg on that port (payload = the value);
 //!   missing or `null` key = silent port;
 //! - object without declared outputs → outgoing msg = incoming msg with
@@ -44,7 +46,7 @@ pub enum FunctionLanguage {
 
 impl FunctionLanguage {
     /// Number of output ports of the matching flow node: at least 1
-    /// port (Node-RED: a node always has ≥ 1 output), even without `@output`.
+    /// port (Node-RED: a node always has ≥ 1 output), even without a declared output.
     pub fn output_count(outputs: &[FunctionOutput]) -> usize {
         std::cmp::max(1, outputs.len())
     }
@@ -71,7 +73,7 @@ pub enum FunctionType {
     Any,
 }
 
-/// Input declared by `// @input name type[=default] ["description"]`.
+/// Declared input: one input anchor of the flow node.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionInput {
@@ -84,7 +86,7 @@ pub struct FunctionInput {
     pub desc: Option<String>,
 }
 
-/// Output declared by `// @output name type ["description"]`.
+/// Declared output: one output port of the flow node.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionOutput {
@@ -94,8 +96,8 @@ pub struct FunctionOutput {
     pub desc: Option<String>,
 }
 
-/// Declared interface of a function — extracted from the directives on save,
-/// stored structured in `function_versions.inputs` / `.outputs`.
+/// Declared interface of a function version (D497), stored in
+/// `function_versions.inputs` / `.outputs`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FunctionSignature {
     #[serde(default)]
@@ -104,243 +106,98 @@ pub struct FunctionSignature {
     pub outputs: Vec<FunctionOutput>,
 }
 
-/// Directive parse error (400 on save, line error in the editor).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DirectiveError {
-    /// 1-based line in the source code.
-    pub line: u32,
-    pub message: String,
+/// Invalid signature field: `field` = path (`inputs.0.name`), `code` =
+/// machine token (`invalid`, `unique`, `required`) — a 400 field error.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignatureError {
+    pub field: String,
+    pub code: String,
 }
 
-impl std::fmt::Display for DirectiveError {
+impl std::fmt::Display for SignatureError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "line {}: {}", self.line, self.message)
+        write!(f, "{}: {}", self.field, self.code)
     }
 }
 
-impl std::error::Error for DirectiveError {}
+impl std::error::Error for SignatureError {}
 
-// ───────────────────────── Directive parser ─────────────────────────
-
-/// Variable name matching `[a-z_][a-z0-9_]*` (valid identifiers in
-/// both target languages).
-fn is_valid_name(s: &str) -> bool {
+/// Port name matching `[a-z_][a-z0-9_]*` (valid identifiers in both
+/// target languages).
+pub fn is_valid_port_name(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {
         Some(c) if c == '_' || c.is_ascii_lowercase() => {
-            chars.all(|c| c == '_' || c.is_ascii_alphanumeric())
+            chars.all(|c| c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit())
         }
         _ => false,
     }
 }
 
-fn parse_type(tok: &str, line: u32) -> Result<FunctionType, DirectiveError> {
-    match tok {
-        "number" => Ok(FunctionType::Number),
-        "string" => Ok(FunctionType::String),
-        "bool" => Ok(FunctionType::Bool),
-        "any" => Ok(FunctionType::Any),
-        other => Err(DirectiveError {
-            line,
-            message: format!("unknown type \"{other}\" (number|string|bool|any)"),
-        }),
-    }
-}
-
-/// Converts the default text according to the declared type (no spaces in
-/// a default: one directive = one line, fields separated by spaces).
-fn parse_default(
-    ty: FunctionType,
-    text: &str,
-    line: u32,
-) -> Result<serde_json::Value, DirectiveError> {
-    let bad = |message: String| DirectiveError { line, message };
-    match ty {
-        FunctionType::Number => text
-            .parse::<f64>()
-            .map(|n| serde_json::json!(n))
-            .map_err(|_| bad(format!("default \"{text}\": number expected"))),
-        FunctionType::String => Ok(serde_json::Value::String(
-            text.trim_matches('"').to_string(),
-        )),
-        FunctionType::Bool => match text {
-            "true" => Ok(serde_json::Value::Bool(true)),
-            "false" => Ok(serde_json::Value::Bool(false)),
-            _ => Err(bad(format!(
-                "default \"{text}\": bool expected (true|false)"
-            ))),
-        },
-        FunctionType::Any => serde_json::from_str(text)
-            .map_err(|e| bad(format!("default \"{text}\": invalid JSON ({e})"))),
-    }
-}
-
-/// Strips the enclosing quotes of an optional description.
-fn clean_desc(s: &str) -> Option<String> {
-    let s = s.trim();
-    if s.is_empty() {
-        return None;
-    }
-    let unquoted = if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
-        &s[1..s.len() - 1]
-    } else {
-        s
-    };
-    if unquoted.is_empty() {
-        None
-    } else {
-        Some(unquoted.to_string())
-    }
-}
-
-/// Extracts the signature declared by the `@input`/`@output` directives in
-/// comments (`//` or `#`, tolerant for both languages). Lines
-/// that are not directives are ignored; typed errors with the
-/// offending line (400 on save, preview in the front).
-pub fn parse_directives(code: &str) -> Result<FunctionSignature, DirectiveError> {
-    let mut sig = FunctionSignature::default();
-    let mut seen_inputs: std::collections::BTreeSet<String> = Default::default();
-    let mut seen_outputs: std::collections::BTreeSet<String> = Default::default();
-
-    for (idx, raw) in code.lines().enumerate() {
-        let line_no = (idx as u32) + 1;
-        let trimmed = raw.trim();
-        let Some(body) = trimmed
-            .strip_prefix("//")
-            .or_else(|| trimmed.strip_prefix('#'))
-            .map(str::trim_start)
-        else {
-            continue;
-        };
-        if let Some(rest) = body.strip_prefix("@input") {
-            // Strict boundary: `@inputs`/`@input_x` are not
-            // directives (the word must be followed by whitespace or end of line).
-            if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
-                continue;
-            }
-            let rest = rest.trim_start();
-            let mut words = rest.splitn(2, char::is_whitespace);
-            let name = words.next().unwrap_or("");
-            let rest2 = words.next().unwrap_or("").trim();
-            if !is_valid_name(name) {
-                return Err(DirectiveError {
-                    line: line_no,
-                    message: format!(
-                        "@input \"{name}\": snake_case name expected ([a-z_][a-z0-9_]*)"
-                    ),
-                });
-            }
-            let mut words2 = rest2.splitn(2, char::is_whitespace);
-            let ty_word = words2.next().unwrap_or("");
-            let desc_part = words2.next().unwrap_or("");
-            let (ty_tok, dflt_text) = match ty_word.split_once('=') {
-                Some((t, d)) => (t, Some(d)),
-                None => (ty_word, None),
-            };
-            let ty = if ty_tok.is_empty() {
-                return Err(DirectiveError {
-                    line: line_no,
-                    message: format!("@input {name}: type required (number|string|bool|any)"),
-                });
-            } else {
-                parse_type(ty_tok, line_no)?
-            };
-            let default = match dflt_text {
-                Some(text) => Some(parse_default(ty, text, line_no)?),
-                None => None,
-            };
-            if !seen_inputs.insert(name.to_string()) {
-                return Err(DirectiveError {
-                    line: line_no,
-                    message: format!("@input {name}: duplicate input"),
-                });
-            }
-            sig.inputs.push(FunctionInput {
-                name: name.to_string(),
-                ty,
-                default,
-                desc: clean_desc(desc_part),
-            });
-        } else if let Some(rest) = body.strip_prefix("@output") {
-            if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
-                continue;
-            }
-            let rest = rest.trim_start();
-            let mut words = rest.splitn(2, char::is_whitespace);
-            let name = words.next().unwrap_or("");
-            let rest2 = words.next().unwrap_or("").trim();
-            if !is_valid_name(name) {
-                return Err(DirectiveError {
-                    line: line_no,
-                    message: format!(
-                        "@output \"{name}\": snake_case name expected ([a-z_][a-z0-9_]*)"
-                    ),
-                });
-            }
-            let mut words2 = rest2.splitn(2, char::is_whitespace);
-            let ty_word = words2.next().unwrap_or("");
-            let desc_part = words2.next().unwrap_or("");
-            let ty = parse_type(ty_word, line_no)?;
-            if !seen_outputs.insert(name.to_string()) {
-                return Err(DirectiveError {
-                    line: line_no,
-                    message: format!("@output {name}: duplicate output"),
-                });
-            }
-            sig.outputs.push(FunctionOutput {
-                name: name.to_string(),
-                ty,
-                desc: clean_desc(desc_part),
-            });
-        }
-        // Any other comment: ignored.
-    }
-    Ok(sig)
-}
-
-/// Position of an `@input`/`@output` directive in the code (1-based line).
-/// Used by the editable port grids: the line identifies the directive to
-/// rewrite when the user edits a cell.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DirectiveSpan {
-    pub is_input: bool,
-    pub name: String,
-    pub line: u32,
-}
-
-/// Positions of all directives, tolerant to errors and
-/// duplicates (unlike [`parse_directives`], which fails): the editor
-/// needs to locate the directives even in invalid code.
-pub fn directive_spans(code: &str) -> Vec<DirectiveSpan> {
-    let mut spans = Vec::new();
-    for (idx, raw) in code.lines().enumerate() {
-        let trimmed = raw.trim();
-        let Some(body) = trimmed
-            .strip_prefix("//")
-            .or_else(|| trimmed.strip_prefix('#'))
-            .map(str::trim_start)
-        else {
-            continue;
-        };
-        for (word, is_input) in [("@input", true), ("@output", false)] {
-            if let Some(rest) = body.strip_prefix(word) {
-                // Same strict boundary as `parse_directives`: the word
-                // must be followed by whitespace or end of line.
-                if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
-                    continue;
-                }
-                if let Some(name) = rest.split_whitespace().next() {
-                    spans.push(DirectiveSpan {
-                        is_input,
-                        name: name.to_string(),
-                        line: (idx as u32) + 1,
-                    });
-                }
-                break;
-            }
+impl FunctionType {
+    /// Whether `v` is a value of this type (`any` accepts everything).
+    pub fn accepts(self, v: &serde_json::Value) -> bool {
+        match self {
+            FunctionType::Number => v.is_number(),
+            FunctionType::String => v.is_string(),
+            FunctionType::Bool => v.is_boolean(),
+            FunctionType::Any => true,
         }
     }
-    spans
+}
+
+impl FunctionSignature {
+    /// Message mode (D497): no declared output → one input, one output, the
+    /// returned value is the message. Otherwise one port per output.
+    pub fn is_message(&self) -> bool {
+        self.outputs.is_empty()
+    }
+
+    /// Server-side check of the declared interface: valid unique names,
+    /// defaults matching their type.
+    pub fn validate(&self) -> Result<(), SignatureError> {
+        let bad = |field: String, code: &str| SignatureError {
+            field,
+            code: code.to_string(),
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        for (i, input) in self.inputs.iter().enumerate() {
+            if !is_valid_port_name(&input.name) {
+                return Err(bad(
+                    format!("inputs.{i}.name"),
+                    crate::err_codes::FIELD_INVALID,
+                ));
+            }
+            if !seen.insert(input.name.as_str()) {
+                return Err(bad(
+                    format!("inputs.{i}.name"),
+                    crate::err_codes::FIELD_UNIQUE,
+                ));
+            }
+            if input.default.as_ref().is_some_and(|d| !input.ty.accepts(d)) {
+                return Err(bad(
+                    format!("inputs.{i}.default"),
+                    crate::err_codes::FIELD_INVALID,
+                ));
+            }
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for (i, output) in self.outputs.iter().enumerate() {
+            if !is_valid_port_name(&output.name) {
+                return Err(bad(
+                    format!("outputs.{i}.name"),
+                    crate::err_codes::FIELD_INVALID,
+                ));
+            }
+            if !seen.insert(output.name.as_str()) {
+                return Err(bad(
+                    format!("outputs.{i}.name"),
+                    crate::err_codes::FIELD_UNIQUE,
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 // ───────────────────────── Bindings & msg paths ─────────────────────────
@@ -437,7 +294,7 @@ pub fn build_inputs(
 /// + user code (defining `handle`) + tail that builds `inputs`
 ///   (each input implicitly reads `payload.<name>`, declared defaults
 ///   included) and maps the return value to ports — **key→value object routed by
-///   declared `@output`** (missing key = silent port) when outputs are
+///   declared outputs** (missing key = silent port) when outputs are
 ///   declared, historical contract otherwise. Strings are inserted as
 ///   escaped JS literals (serde_json).
 pub fn build_js_wrapper(
@@ -618,8 +475,8 @@ pub struct FunctionNodeConfig {
     pub version_number: i64,
     #[serde(default)]
     pub language: FunctionLanguage,
-    /// Snapshot of the declared inputs/outputs (directives of the pinned
-    /// version) — drives the inspector and the test panel.
+    /// Snapshot of the declared inputs/outputs of the pinned version —
+    /// drives the inspector and the test panel.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<FunctionInput>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -716,20 +573,31 @@ pub struct CreateFunction {
     #[serde(default)]
     pub description: Option<String>,
     pub code: String,
+    /// Declared inputs (one input anchor each); none = one plain input.
+    #[serde(default)]
+    pub inputs: Vec<FunctionInput>,
+    /// Declared outputs (one port each); none = message mode (D497).
+    #[serde(default)]
+    pub outputs: Vec<FunctionOutput>,
     #[serde(default)]
     pub note: Option<String>,
 }
 
 /// Saves a new version (append-only). Optimistic concurrency:
 /// `expected_version_number` must be the current version, else 409.
-/// `name`/`description` update the metadata; with `code`, the save
-/// creates a new version.
+/// `name`/`description` update the metadata; with `code`, `inputs` or
+/// `outputs`, the save creates a new version (missing parts are carried
+/// from the current version).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SaveFunctionVersion {
     pub expected_version_number: i64,
     #[serde(default)]
     pub code: Option<String>,
+    #[serde(default)]
+    pub inputs: Option<Vec<FunctionInput>>,
+    #[serde(default)]
+    pub outputs: Option<Vec<FunctionOutput>>,
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
@@ -744,6 +612,10 @@ pub struct SaveFunctionVersion {
 pub struct FunctionTestAdHoc {
     pub language: FunctionLanguage,
     pub code: String,
+    #[serde(default)]
+    pub inputs: Vec<FunctionInput>,
+    #[serde(default)]
+    pub outputs: Vec<FunctionOutput>,
 }
 
 /// Live test request: a pinned version of the function (default: the
@@ -790,6 +662,10 @@ pub struct FunctionExecRequest {
     pub code: Option<String>,
     #[serde(default)]
     pub inputs: Vec<FunctionInput>,
+    /// Declared outputs: route the Starlark return (the JS wrapper already
+    /// embeds them).
+    #[serde(default)]
+    pub outputs: Vec<FunctionOutput>,
     pub msg: serde_json::Value,
     pub timeout_ms: u64,
 }
@@ -833,106 +709,47 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn parse_directives_complete() {
-        let code = r#"// english-guard: allow (French example on the next line)
-// @input temperature number "Température mesurée"
-// @input mode string="auto" Mode de marche
-// @input enabled bool=true
-# @output heating number
-# @output alarm bool "Alarme process"
-function handle(inputs, msg) { return inputs.temperature; }
-"#;
-        let sig = parse_directives(code).unwrap();
-        assert_eq!(sig.inputs.len(), 3);
-        assert_eq!(sig.outputs.len(), 2);
-        assert_eq!(sig.inputs[0].name, "temperature");
-        assert_eq!(sig.inputs[0].ty, FunctionType::Number);
-        assert_eq!(sig.inputs[0].desc.as_deref(), Some("Température mesurée"));
-        assert_eq!(sig.inputs[1].ty, FunctionType::String);
-        assert_eq!(sig.inputs[1].default, Some(json!("auto")));
-        assert_eq!(sig.inputs[1].desc.as_deref(), Some("Mode de marche"));
-        assert_eq!(sig.inputs[2].default, Some(json!(true)));
-        assert_eq!(sig.outputs[0].name, "heating");
-        assert_eq!(sig.outputs[1].desc.as_deref(), Some("Alarme process"));
-    }
-
-    #[test]
-    fn parse_directives_empty_and_without_directive() {
-        assert!(parse_directives("").unwrap().inputs.is_empty());
-        assert!(parse_directives("// nothing here\nlet x = 1;")
-            .unwrap()
-            .outputs
-            .is_empty());
-    }
-
-    #[test]
-    fn parse_directives_errors() {
-        // unknown type
-        let e = parse_directives("// @input a float").unwrap_err();
-        assert_eq!(e.line, 1);
-        assert!(e.message.contains("unknown type"), "{}", e.message);
-        // non-convertible default
-        let e = parse_directives("// @input a number=abc").unwrap_err();
-        assert!(e.message.contains("number expected"), "{}", e.message);
-        // duplicated
-        let e = parse_directives("// @input a number\n// @input a string").unwrap_err();
-        assert!(e.message.contains("duplicate"), "{}", e.message);
-        // invalid name
-        let e = parse_directives("# @input 1abc number").unwrap_err();
-        assert!(e.message.contains("snake_case"), "{}", e.message);
-        // missing type
-        let e = parse_directives("// @input a").unwrap_err();
-        assert!(e.message.contains("type required"), "{}", e.message);
-    }
-
-    #[test]
-    fn parse_directives_default_any_json() {
-        let sig = parse_directives("// @input cfg any={\"limit\":5}").unwrap();
-        assert_eq!(sig.inputs[0].default, Some(json!({"limit": 5})));
-    }
-
-    #[test]
-    fn directive_spans_positions() {
-        let code = "def handle(inputs, msg):\n\
-                    # @input temperature number\n\
-                    return inputs[\"temperature\"]\n\
-                    // @output heating number\n\
-                    // @output delta any\n\
-                    // not a directive\n\
-                    # @inputs nope";
-        let spans = directive_spans(code);
+    fn signature_validation() {
+        let input = |name: &str, ty, default| FunctionInput {
+            name: name.into(),
+            ty,
+            default,
+            desc: None,
+        };
+        let output = |name: &str| FunctionOutput {
+            name: name.into(),
+            ty: FunctionType::Any,
+            desc: None,
+        };
+        let ok = FunctionSignature {
+            inputs: vec![input("t", FunctionType::Number, Some(json!(20)))],
+            outputs: vec![output("heating")],
+        };
+        assert!(ok.validate().is_ok());
+        assert!(!ok.is_message());
+        assert!(FunctionSignature::default().is_message());
+        let err = |sig: FunctionSignature| sig.validate().unwrap_err();
+        let e = err(FunctionSignature {
+            inputs: vec![input("1abc", FunctionType::Any, None)],
+            outputs: vec![],
+        });
         assert_eq!(
-            spans,
-            vec![
-                DirectiveSpan {
-                    is_input: true,
-                    name: "temperature".into(),
-                    line: 2
-                },
-                DirectiveSpan {
-                    is_input: false,
-                    name: "heating".into(),
-                    line: 4
-                },
-                DirectiveSpan {
-                    is_input: false,
-                    name: "delta".into(),
-                    line: 5
-                },
-            ]
+            (e.field.as_str(), e.code.as_str()),
+            ("inputs.0.name", "invalid")
         );
-    }
-
-    #[test]
-    fn directive_spans_tolerant() {
-        // Invalid directives still yield spans (the editor needs positions
-        // even on broken code); `@inputs` strict boundary is skipped.
-        let spans = directive_spans("// @input temp\n// @input\n// @inputs x number");
-        assert_eq!(spans.len(), 1);
-        assert_eq!(spans[0].line, 1);
-        assert_eq!(spans[0].name, "temp");
-        assert!(directive_spans("").is_empty());
-        assert!(directive_spans("x = 1").is_empty());
+        let e = err(FunctionSignature {
+            inputs: vec![input("a", FunctionType::Number, Some(json!("x")))],
+            outputs: vec![],
+        });
+        assert_eq!(e.field, "inputs.0.default");
+        let e = err(FunctionSignature {
+            inputs: vec![],
+            outputs: vec![output("a"), output("a")],
+        });
+        assert_eq!(
+            (e.field.as_str(), e.code.as_str()),
+            ("outputs.1.name", "unique")
+        );
     }
 
     #[test]
@@ -1072,7 +889,7 @@ function handle(inputs, msg) { return inputs.temperature; }
         };
         let code = "function handle(inputs, msg) { return {out_bool: true}; }";
         let js = build_js_wrapper(code, &[], &[fout("out_bool"), fout("out_temp")]);
-        // Key→value object routed per port, in @output order.
+        // Key→value object routed per port, in declared output order.
         assert!(
             js.contains(
                 "return [__pnex_port(msg, __pnex_r[\"out_bool\"]), __pnex_port(msg, __pnex_r[\"out_temp\"])];"
@@ -1083,7 +900,7 @@ function handle(inputs, msg) { return inputs.temperature; }
         let js = build_js_wrapper(code, &[], &[]);
         assert!(
             !js.contains("__pnex_port(msg, __pnex_r["),
-            "no routing without @output"
+            "no routing without declared outputs"
         );
         assert!(
             js.contains("return [__pnex_out(msg, __pnex_r)];"),

@@ -2,15 +2,15 @@ use super::*;
 use crate::components::gerbe::Gerbe;
 
 /// Version history drawer — list (version_number DESC, note, date). Every
-/// row carries a "Load" action: the version code ships in the summary, so
-/// ANY past version can be restored into the editor as a local draft
-/// (saving then creates a new version — append-only).
+/// row carries a "Load" action: the version code and interface ship in the
+/// summary, so ANY past version can be restored into the editor as a local
+/// draft (saving then creates a new version — append-only).
 #[component]
 pub(super) fn FunctionVersionsDrawer(
     fn_id: i64,
     current_version: i64,
     on_close: Callback<()>,
-    on_load: Callback<String>,
+    on_load: Callback<(String, pnex_core::FunctionSignature)>,
 ) -> Element {
     let versions =
         use_resource(move || async move { api::functions::versions(fn_id, 50, 0).await });
@@ -56,8 +56,11 @@ pub(super) fn FunctionVersionsDrawer(
                                         button {
                                             class: "px-2 py-1 text-xs text-signal-700 bg-signal-50 border border-signal-200 rounded-lg hover:bg-signal-100 transition-colors",
                                             onclick: move |_| {
-                                                let code = version.code.clone();
-                                                on_load.call(code);
+                                                let sig = pnex_core::FunctionSignature {
+                                                    inputs: version.inputs.clone(),
+                                                    outputs: version.outputs.clone(),
+                                                };
+                                                on_load.call((version.code.clone(), sig));
                                             },
                                             {t!("functions-versions-load")}
                                         }

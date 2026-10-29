@@ -47,7 +47,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "3.3.0"
+version: "3.3.1"
 requires: [companies_fr, web_presence]
 extends:
   - type: organization
@@ -959,12 +959,13 @@ functions:
   - name: qw_next_reminder
     language: starlark
     description: Next reminder of an open procedure whose due date passed (r1 to r4 every 15 days, r3 and r4 wait for a human).
+    outputs:
+      - {name: procedure, ty: any, desc: "The procedure moved on (object write by id)"}
+      - {name: reminder, ty: any, desc: "The reminder (object write by its key)"}
     code: |
       # Next reminder of an open procedure whose due date passed (D314):
       # r1, r2, r3, r4 every 15 days; r3 and r4 wait for a human
       # (`to_validate`, sent by the `approve_send` action).
-      # @output procedure any "The procedure moved on (object write by id)"
-      # @output reminder any "The reminder (object write by its key)"
 
       STEPS = ["none", "r1", "r2", "r3", "r4"]
       HUMAN = ["r3", "r4"]
@@ -1073,6 +1074,9 @@ functions:
   - name: qw_network_rules
     language: starlark
     description: "Registry rules of the network: ADM-01, ADM-02, CPF-01, CPF-02, CPF-03, REG-01, REG-02 (findings to review)."
+    outputs:
+      - {name: findings, ty: any, desc: "The findings, as a list (split them one per message)"}
+      - {name: passages, ty: any, desc: "One check run per partner and certification, as a list (split them, then Check record)"}
     code: |
       # Registry rules of the network (network-check.md D410): ADM-01, ADM-02,
       # CPF-01, CPF-02, CPF-03, REG-01 and REG-02, from one message holding the
@@ -1081,8 +1085,6 @@ functions:
       # One check run per watched partner and certification (D431) on the
       # second output: every partner rule, ok when it wrote no finding; a
       # finding a human rejected or closed counts as ok.
-      # @output findings any "The findings, as a list (split them one per message)"
-      # @output passages any "One check run per partner and certification, as a list (split them, then Check record)"
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
               "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
               "œ": "oe", "æ": "ae", "’": "'"}
@@ -1346,6 +1348,9 @@ functions:
   - name: qw_web_rules
     language: starlark
     description: "Website rules on crawled pages: WEB-01, WEB-02, WEB-03, WEB-04, WEB-05, WEB-06, WEB-08, and COL-01 on the site summary."
+    outputs:
+      - {name: findings, ty: any, desc: "The findings, as a list (split them one per message)"}
+      - {name: passages, ty: any, desc: "The check run of the website, at the site summary (Check record)"}
     code: |
       # Website rules (network-check.md D410) on what site_crawl sends: a
       # relevant page (WEB-01, WEB-02, WEB-03, WEB-04, WEB-05, WEB-06, WEB-08)
@@ -1357,8 +1362,6 @@ functions:
       # finding) and the website findings known when the crawl started.
       # shortcut: a WEB finding found by this crawl shows in the next run's
       # check; the run lands in the partner's latest watch case only.
-      # @output findings any "The findings, as a list (split them one per message)"
-      # @output passages any "The check run of the website, at the site summary (Check record)"
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
               "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
               "œ": "oe", "æ": "ae", "’": "'"}
@@ -1607,12 +1610,13 @@ functions:
   - name: qw_links
     language: starlark
     description: Links of a finding just written to its partner, certification and evidence.
+    outputs:
+      - {name: concerns, ty: any, desc: "Finding → organization"}
+      - {name: finding_on, ty: any, desc: "Finding → certification"}
+      - {name: observed_in, ty: any, desc: "Finding → page or offer"}
     code: |
       # Links of the finding just written: to its partner, its certification
       # and where it was seen (page or CPF offer); an absent end stays silent.
-      # @output concerns any "Finding → organization"
-      # @output finding_on any "Finding → certification"
-      # @output observed_in any "Finding → page or offer"
       def handle(inputs, msg):
           o = msg.get("object", {}) or {}
           l = msg.get("link_targets", {}) or {}
@@ -1673,6 +1677,10 @@ functions:
   - name: qw_cross_table
     language: starlark
     description: "Cross-table of a programme: modules, competencies covered, PROG-00 to PROG-04 findings and the workbook in the client's layout."
+    outputs:
+      - {name: modules, ty: any, desc: "The modules, as a list (split them, then the module write)"}
+      - {name: findings, ty: any, desc: "The PROG findings, as a list (split them one per message)"}
+      - {name: workbook, ty: any, desc: "The cross-table workbook (Workbook write), partner programme only"}
     code: |
       # Cross-table of a programme (network-check.md D417–D420), from one
       # message: msg.syllabus (the programme analyzed, its certification and
@@ -1683,9 +1691,6 @@ functions:
       # (code quoted: valid; title and content words: to validate), then, for
       # a partner programme, the PROG rules and the workbook in the client's
       # format. Hours a module does not state never raise PROG-02: PROG-00.
-      # @output modules any "The modules, as a list (split them, then the module write)"
-      # @output findings any "The PROG findings, as a list (split them one per message)"
-      # @output workbook any "The cross-table workbook (Workbook write), partner programme only"
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
               "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
               "œ": "oe", "æ": "ae", "’": "'"}
@@ -1961,11 +1966,12 @@ functions:
   - name: qw_module_links
     language: starlark
     description: "Links of a module just written to its programme and its competencies."
+    outputs:
+      - {name: module_of, ty: any, desc: "Module → programme"}
+      - {name: covers, ty: any, desc: "Module → competencies, as a list"}
     code: |
       # Links of the module just written: to its programme, and to the
       # competencies it covers (a list: split it).
-      # @output module_of any "Module → programme"
-      # @output covers any "Module → competencies, as a list"
       def handle(inputs, msg):
           o = msg.get("object", {}) or {}
           if not o.get("id"):

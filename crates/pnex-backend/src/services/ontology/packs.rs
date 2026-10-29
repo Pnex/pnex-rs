@@ -127,6 +127,23 @@ async fn edited(
     Ok((out, imports.into_iter().collect()))
 }
 
+/// The org's saved version differs from the pack's function: code or
+/// declared interface (D497: ports live outside the code).
+fn pack_function_differs(
+    f: &pnex_core::ontology::api::PackFunction,
+    code: &str,
+    inputs: &Value,
+    outputs: &Value,
+) -> bool {
+    let same = |saved: &Value, shipped: Value| *saved == shipped;
+    f.code != code
+        || !same(inputs, serde_json::to_value(&f.inputs).unwrap_or_default())
+        || !same(
+            outputs,
+            serde_json::to_value(&f.outputs).unwrap_or_default(),
+        )
+}
+
 async fn automation_edited(
     db: &DatabaseConnection,
     org_id: i64,
@@ -140,8 +157,8 @@ async fn automation_edited(
     let rows = db
         .query_all_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "SELECT f.name, l.code FROM functions f \
-             JOIN LATERAL (SELECT code, note FROM function_versions v WHERE v.function_id = f.id \
+            "SELECT f.name, l.code, l.inputs, l.outputs FROM functions f \
+             JOIN LATERAL (SELECT code, inputs, outputs, note FROM function_versions v WHERE v.function_id = f.id \
                            ORDER BY version_number DESC LIMIT 1) l ON true \
              WHERE f.org_id = $1 AND f.name IN (SELECT jsonb_array_elements_text($2)) \
                AND left(coalesce(l.note, ''), length($3)) <> $3 \
@@ -159,8 +176,10 @@ async fn automation_edited(
         .filter_map(|r| {
             let name: String = r.try_get("", "name").ok()?;
             let code: String = r.try_get("", "code").ok()?;
+            let inputs: Value = r.try_get("", "inputs").ok()?;
+            let outputs: Value = r.try_get("", "outputs").ok()?;
             let f = pack.functions.iter().find(|f| f.name.trim() == name)?;
-            (f.code != code).then_some(name)
+            pack_function_differs(f, &code, &inputs, &outputs).then_some(name)
         })
         .collect();
     let rows = db
@@ -920,7 +939,7 @@ async fn install_automation(
             Some(row) => {
                 let v = crate::services::functions::latest_version(db, row.id).await?;
                 let pristine = v.as_ref().is_some_and(|v| {
-                    v.code != f.code
+                    pack_function_differs(f, &v.code, &v.inputs, &v.outputs)
                         && (pack_wrote(v.note.as_deref(), &pack.key) || take.contains(&f.name))
                 });
                 if !pristine {
@@ -933,6 +952,8 @@ async fn install_automation(
                         &pnex_core::SaveFunctionVersion {
                             expected_version_number: v.map_or(0, |v| v.version_number),
                             code: Some(f.code.clone()),
+                            inputs: Some(f.inputs.clone()),
+                            outputs: Some(f.outputs.clone()),
                             name: None,
                             description: None,
                             note: Some(note),
@@ -955,6 +976,8 @@ async fn install_automation(
                         language: f.language,
                         description: Some(f.description.clone()).filter(|d| !d.is_empty()),
                         code: f.code.clone(),
+                        inputs: f.inputs.clone(),
+                        outputs: f.outputs.clone(),
                         note: Some(note),
                     },
                 )
@@ -1337,21 +1360,24 @@ mod tests {
             let mut link_defs = pnex_core::ontology::system_link_types();
             link_defs.extend(chain.iter().flat_map(|d| d.link_types.iter().cloned()));
             // Flow models are valid once their functions are resolved, and
-            // every function of the pack declares well-formed rows.
+            // every function of the pack declares a valid interface.
             for f in &p.functions {
-                pnex_core::parse_directives(&f.code)
-                    .unwrap_or_else(|e| panic!("{}: function {}: {e:?}", p.key, f.name));
+                pnex_core::FunctionSignature {
+                    inputs: f.inputs.clone(),
+                    outputs: f.outputs.clone(),
+                }
+                .validate()
+                .unwrap_or_else(|e| panic!("{}: function {}: {e:?}", p.key, f.name));
             }
             for f in &p.flows {
                 let mut g = f.graph.clone();
                 resolve_functions(&mut g, |name| {
                     p.functions.iter().find(|x| x.name == name).map(|x| {
-                        let sig = pnex_core::parse_directives(&x.code).unwrap();
                         (
                             1,
                             1,
-                            serde_json::to_value(sig.inputs).unwrap(),
-                            serde_json::to_value(sig.outputs).unwrap(),
+                            serde_json::to_value(&x.inputs).unwrap(),
+                            serde_json::to_value(&x.outputs).unwrap(),
                         )
                     })
                 });

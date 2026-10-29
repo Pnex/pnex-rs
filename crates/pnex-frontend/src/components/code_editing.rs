@@ -510,9 +510,9 @@ mod tests {
 
     #[test]
     fn reindent_starlark_fixture() {
-        let messy = "# @input t number\ndef handle(inputs, msg):\nx = inputs[\"t\"]\nif x:\nx = x + 1\nelse:\nx = 0\nreturn {\"v\": x}\n";
+        let messy = "# t is an input\ndef handle(inputs, msg):\nx = inputs[\"t\"]\nif x:\nx = x + 1\nelse:\nx = 0\nreturn {\"v\": x}\n";
         let formatted = reindent(messy, FunctionLanguage::Starlark);
-        let expected = "# @input t number\ndef handle(inputs, msg):\n    x = inputs[\"t\"]\n    if x:\n        x = x + 1\n    else:\n        x = 0\n        return {\"v\": x}\n";
+        let expected = "# t is an input\ndef handle(inputs, msg):\n    x = inputs[\"t\"]\n    if x:\n        x = x + 1\n    else:\n        x = 0\n        return {\"v\": x}\n";
         assert_eq!(formatted, expected);
         // Idempotent.
         assert_eq!(reindent(&formatted, FunctionLanguage::Starlark), formatted);

@@ -567,6 +567,7 @@ pub fn to_red_flows_json_with(
                             "type": "pnex-starlark",
                             "code": s.code,
                             "inputs": s.inputs,
+                            "outputs": s.outputs,
                             "pnex_node_id": n.id,
                             "pnex_flow_id": meta.flow_id,
                             "pnex_version": meta.version_number,

@@ -344,7 +344,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "get_function",
-            description: "Latest code and declared @input/@output interface of a function, its version count, and the deployed flows that use it (with their pinned version).",
+            description: "Latest code and declared interface (inputs, outputs) of a function, its version count, and the deployed flows that use it (with their pinned version).",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"function_id":{"type":"integer"}},"required":["function_id"]}"#).expect("static schema"),
         },
         ToolSpec {
@@ -359,13 +359,13 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "create_function",
-            description: "Creates a JS or Starlark function (version 1). Declare its interface with @input/@output directives; check it with validate_function first.",
-            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"name":{"type":"string"},"language":{"type":"string","enum":["js","starlark"]},"code":{"type":"string"},"description":{"type":"string"}},"required":["name","language","code"]}"#).expect("static schema"),
+            description: "Creates a JS or Starlark function (version 1). Its ports are declared in `inputs`/`outputs`, never in the code; without outputs the node has one output and the returned value is the message. Check the code with validate_function first.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"name":{"type":"string"},"language":{"type":"string","enum":["js","starlark"]},"code":{"type":"string"},"description":{"type":"string"},"inputs":{"type":"array","description":"Declared inputs: one input anchor each","items":{"type":"object","properties":{"name":{"type":"string","description":"snake_case"},"ty":{"type":"string","enum":["number","string","bool","any"]},"default":{},"desc":{"type":"string"}},"required":["name","ty"]}},"outputs":{"type":"array","description":"Declared outputs: one port each, the returned dict is routed by key. Omit for message mode (one output, the returned value is the message)","items":{"type":"object","properties":{"name":{"type":"string","description":"snake_case"},"ty":{"type":"string","enum":["number","string","bool","any"]},"desc":{"type":"string"}},"required":["name","ty"]}}},"required":["name","language","code"]}"#).expect("static schema"),
         },
         ToolSpec {
             name: "update_function",
-            description: "Saves a new version of a function (code and/or name/description) on top of the version read with get_function (expected_version = its latest_version). Deployed flows keep their pinned version until the user selects the new one and redeploys.",
-            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"function_id":{"type":"integer"},"expected_version":{"type":"integer"},"code":{"type":"string"},"name":{"type":"string"},"description":{"type":"string"},"note":{"type":"string"}},"required":["function_id","expected_version"]}"#).expect("static schema"),
+            description: "Saves a new version of a function (code, declared `inputs`/`outputs`, and/or name/description; parts not sent are kept) on top of the version read with get_function (expected_version = its latest_version). Deployed flows keep their pinned version until the user selects the new one and redeploys.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"function_id":{"type":"integer"},"expected_version":{"type":"integer"},"code":{"type":"string"},"inputs":{"type":"array","description":"Declared inputs: one input anchor each","items":{"type":"object","properties":{"name":{"type":"string","description":"snake_case"},"ty":{"type":"string","enum":["number","string","bool","any"]},"default":{},"desc":{"type":"string"}},"required":["name","ty"]}},"outputs":{"type":"array","description":"Declared outputs: one port each, the returned dict is routed by key. Omit for message mode (one output, the returned value is the message)","items":{"type":"object","properties":{"name":{"type":"string","description":"snake_case"},"ty":{"type":"string","enum":["number","string","bool","any"]},"desc":{"type":"string"}},"required":["name","ty"]}},"name":{"type":"string"},"description":{"type":"string"},"note":{"type":"string"}},"required":["function_id","expected_version"]}"#).expect("static schema"),
         },
         ToolSpec {
             name: "list_annotation_sets",

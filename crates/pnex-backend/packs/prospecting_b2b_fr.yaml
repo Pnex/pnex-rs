@@ -30,7 +30,7 @@
 key: prospecting_b2b_fr
 name: B2B prospecting, France layer
 names: {fr: "Prospection B2B, couche France"}
-version: "3.0.0"
+version: "3.0.1"
 requires: [companies_fr, prospecting_b2b]
 description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
 descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
@@ -156,9 +156,10 @@ functions:
   - name: pl_found
     language: starlark
     description: A company found for a list contact, and the contact marked.
+    outputs:
+      - {name: company, ty: any, desc: "The company to create or update, by SIREN"}
+      - {name: contact, ty: any, desc: "The contact, marked found"}
     code: |
-      # @output company any "The company to create or update, by SIREN"
-      # @output contact any "The contact, marked found"
       def handle(inputs, msg):
           p = msg["payload"]
           best = p["candidates"][0]

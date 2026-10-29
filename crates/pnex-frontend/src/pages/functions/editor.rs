@@ -1,8 +1,8 @@
 use super::*;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY_SM};
 
-/// Editor of a function: metadata, code, signature preview (wasm extraction
-/// of the directives), live test, history. Remounted by `key` on
+/// Editor of a function: metadata, code, interface (ports panel, D497), live
+/// test, history. Remounted by `key` on
 /// `fn_id`; the `generation` counter reloads the detail after save (and
 /// resets the fields — the server truth replaces the local state).
 #[component]
@@ -21,6 +21,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
     let mut name = use_signal(String::new);
     let mut description = use_signal(String::new);
     let mut code = use_signal(String::new);
+    let mut sig = use_signal(FunctionSignature::default);
     let mut loaded = use_signal(|| None::<FunctionDetail>);
     let mut init_done = use_signal(|| None::<u32>);
     use_effect(move || {
@@ -34,12 +35,11 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         name.set(d.name.clone());
         description.set(d.description.clone().unwrap_or_default());
         code.set(d.code.clone());
+        sig.set(signature_of(d));
         loaded.set(Some(d.clone()));
         init_done.set(Some(gen));
     });
 
-    // Signature preview: the same extraction as the server save, in wasm.
-    let signature = parse_directives(&code());
     let mut versions_open = use_signal(|| false);
     let mut test_open = use_signal(|| false);
 
@@ -90,6 +90,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
     // kept up to date — brick0 lesson "zero set in render").
     let dirty = loaded().is_some_and(|d| {
         code() != d.code
+            || sig() != signature_of(&d)
             || name().trim() != d.name
             || description().trim() != d.description.clone().unwrap_or_default()
     });
@@ -100,6 +101,8 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         if code() != base.code {
             params_code = Some(code());
         }
+        let current = sig();
+        let ports_changed = current != signature_of(&base);
         let mut params_name = None;
         if name().trim() != base.name {
             params_name = Some(name().trim().to_string());
@@ -109,7 +112,11 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
             let value = description().trim().to_string();
             params_description = Some(if value.is_empty() { None } else { Some(value) });
         }
-        if params_code.is_none() && params_name.is_none() && params_description.is_none() {
+        if params_code.is_none()
+            && !ports_changed
+            && params_name.is_none()
+            && params_description.is_none()
+        {
             return;
         }
         let expected = base.current_version_number;
@@ -117,6 +124,8 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
             let params = pnex_core::SaveFunctionVersion {
                 expected_version_number: expected,
                 code: params_code,
+                inputs: ports_changed.then(|| current.inputs.clone()),
+                outputs: ports_changed.then(|| current.outputs.clone()),
                 name: params_name,
                 // Some(empty) = reset of the description on the server.
                 description: params_description.map(|v| v.unwrap_or_default()),
@@ -143,12 +152,9 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
     // Test run: typed conversion of the raw values, ad-hoc code =
     // current content of the textarea (testable before save).
     let run_test = move |_| {
-        let Ok(sig) = parse_directives(&code()) else {
-            toasts::error(t!("functions-test-directives-invalid").to_string());
-            return;
-        };
+        let declared = sig();
         let mut inputs = BTreeMap::new();
-        for input in &sig.inputs {
+        for input in &declared.inputs {
             let raw = test_inputs
                 .read()
                 .get(&input.name)
@@ -198,6 +204,8 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                 ad_hoc: Some(FunctionTestAdHoc {
                     language,
                     code: code(),
+                    inputs: declared.inputs,
+                    outputs: declared.outputs,
                 }),
                 inputs,
                 msg: Some(msg),
@@ -221,41 +229,33 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         }
     };
 
-    // Insertion of the directives of an undeclared port (chips + add all).
-    let declare_ports = |names: Vec<(String, bool)>, base: String| {
+    // Declaration of undeclared ports (chips + add all), type `any`.
+    let declare_ports = move |names: Vec<(String, bool)>| {
         move |_| {
-            let mut next = base.clone();
+            let mut next = sig();
             for (name, is_input) in names.iter() {
-                let fields = crate::components::function_ports::DirectiveFields {
-                    name: name.clone(),
-                    ty: FunctionType::Any,
-                    default: None,
-                    desc: None,
-                };
-                next =
-                    crate::components::function_ports::insert_directive(&next, *is_input, &fields);
+                next = crate::components::function_ports::add_port(
+                    &next,
+                    *is_input,
+                    name.clone(),
+                    FunctionType::Any,
+                );
             }
-            code.set(next);
+            sig.set(next);
         }
     };
     let detail_version = loaded().map(|d| d.current_version_number).unwrap_or(0);
     let description_value = description();
     let code_value = code();
-    let signature_inputs = match &signature {
-        Ok(sig) => sig.inputs.clone(),
-        Err(_) => Vec::new(),
-    };
-    let signature_outputs = match &signature {
-        Ok(sig) => sig.outputs.clone(),
-        Err(_) => Vec::new(),
-    };
-    let signature_error = signature.as_ref().err().map(|e| e.to_string());
-    let sig_ok = signature.as_ref().ok().cloned().unwrap_or_default();
-    let undeclared = crate::components::function_analysis::analyze(&code_value, detail_language)
-        .unwrap_or_default();
-    let marks: Vec<LineMark> = if signature_error.is_some() {
-        Vec::new()
-    } else {
+    let sig_value = sig();
+    let signature_inputs = sig_value.inputs.clone();
+    let signature_outputs = sig_value.outputs.clone();
+    let undeclared = crate::components::function_analysis::analyze_undeclared(
+        &code_value,
+        detail_language,
+        &sig_value,
+    );
+    let marks: Vec<LineMark> = {
         let mut m: Vec<LineMark> = Vec::new();
         for d in server_diags() {
             if let Some(line) = d.line {
@@ -371,11 +371,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                         insert_request: insert_req,
                         area: editor_area,
                     }
-                    if let Some(err) = &signature_error {
-                        div { class: "flex items-center gap-2 px-3.5 py-2 rounded-b-xl border border-t-0 border-red-200 bg-red-50 text-sm text-red-800",
-                            {err.clone()}
-                        }
-                    } else if !server_diags().is_empty() {
+                    if !server_diags().is_empty() {
                         for d in server_diags() {
                             div { class: "flex items-center gap-2 px-3.5 py-2 rounded-b-xl border border-t-0 border-red-200 bg-red-50 text-sm text-red-800",
                                 if let Some(line) = d.line {
@@ -397,7 +393,6 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                                     class: "text-signal-700 font-semibold hover:underline shrink-0",
                                     onclick: declare_ports(
                                         undeclared.iter().map(|u| (u.name.clone(), u.kind == PortKind::Input)).collect(),
-                                        code_value.clone(),
                                     ),
                                     {t!("functions-fix-all", count : undeclared.len())}
                                 }
@@ -413,7 +408,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                         inputs: signature_inputs.clone(),
                         outputs: signature_outputs.clone(),
                     }
-                    if !undeclared.is_empty() && signature_error.is_none() {
+                    if !undeclared.is_empty() {
                         div { class: "rounded-xl border border-amber-200 bg-amber-50 p-3",
                             div { class: "flex items-center gap-2",
                                 span { class: "text-sm text-amber-900 flex-grow",
@@ -424,7 +419,6 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                                         class: "text-sm font-semibold text-signal-700 hover:underline",
                                         onclick: declare_ports(
                                             undeclared.iter().map(|u| (u.name.clone(), u.kind == PortKind::Input)).collect(),
-                                            code_value.clone(),
                                         ),
                                         {t!("functions-add-all")}
                                     }
@@ -434,7 +428,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                                 for u in undeclared.clone() {
                                     button {
                                         class: if u.kind == PortKind::Input { "h-8 px-3 rounded-full border border-teal-700 bg-teal-50 text-teal-800 font-mono text-sm" } else { "h-8 px-3 rounded-full border border-amber-600 bg-amber-100 text-amber-900 font-mono text-sm" },
-                                        onclick: declare_ports(vec![(u.name.clone(), u.kind == PortKind::Input)], code_value.clone()),
+                                        onclick: declare_ports(vec![(u.name.clone(), u.kind == PortKind::Input)]),
                                         "+ {u.name}"
                                     }
                                 }
@@ -442,10 +436,9 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                         }
                     }
                     FunctionPortsPanel {
-                        code: code_value.clone(),
-                        sig: sig_ok,
+                        sig: sig_value,
                         readonly: !can_write,
-                        onedit: move |v: String| code.set(v),
+                        onedit: move |v: FunctionSignature| sig.set(v),
                     }
                 }
             }
@@ -480,12 +473,21 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                     fn_id,
                     current_version: detail_version,
                     on_close: move |_| versions_open.set(false),
-                    on_load: move |loaded_code: String| {
+                    on_load: move |(loaded_code, loaded_sig): (String, FunctionSignature)| {
                         code.set(loaded_code);
+                        sig.set(loaded_sig);
                         versions_open.set(false);
                     },
                 }
             }
         }
+    }
+}
+
+/// Declared interface of the loaded version.
+fn signature_of(d: &FunctionDetail) -> FunctionSignature {
+    FunctionSignature {
+        inputs: d.inputs.clone(),
+        outputs: d.outputs.clone(),
     }
 }

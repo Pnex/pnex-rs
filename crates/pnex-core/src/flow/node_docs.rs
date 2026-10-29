@@ -248,7 +248,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("inputs", "snapshot of the declared inputs (input rows)"),
             ("outputs", "snapshot of the declared outputs (output ports)"),
         ],
-        notes: "Find the function with list_functions / get_function (its inputs and outputs give the node rows and ports). A new function version does not change deployed flows: the node pins version_number, the user selects the new version and redeploys.",
+        notes: "Find the function with list_functions / get_function (its inputs and outputs give the node rows and ports). No declared output = message mode: one output port 0, the returned value is the message. Declared outputs = one port per output in declared order, the returned dict routed by key. A new function version does not change deployed flows: the node pins version_number, the user selects the new version and redeploys.",
     },
     NodeDoc {
         kind: "json_split",

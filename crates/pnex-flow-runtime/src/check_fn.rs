@@ -4,7 +4,7 @@
 //! The backend writes the request into a temp file, spawns this binary and reads
 //! **one JSON line** `FunctionValidateResponse` (same contract as a line
 //! for `--test-function`). No execution of user code:
-//! - Starlark: `pnex_node_starlark::executor::check` (directives, syntax
+//! - Starlark: `pnex_node_starlark::executor::check` (syntax
 //!   with position, presence of `handle`);
 //! - JS: compiles the raw code in a fresh VM via `new AsyncFunction`
 //!   (same semantics as the runtime wrap — sloppy + legal `await`), without

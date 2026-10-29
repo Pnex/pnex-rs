@@ -54,7 +54,7 @@ test.describe('functions', { tag: '@functions' }, () => {
     await fns.open();
     const editor = await fns.create(`${prefix} broken`, 'js');
     await editor.setCode(
-      ['// @input value number "Measured value"', '// @output result number "Result"', 'function handle(inputs, msg) {', '  return { result: inputs.value.nope.deeper };', '}'].join('\n'),
+      ['function handle(inputs, msg) {', '  return { result: inputs.value.nope.deeper };', '}'].join('\n'),
     );
     const res = await editor.testRun({ value: 1 });
     expect(res.ok).toBe(false);

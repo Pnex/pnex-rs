@@ -1,5 +1,6 @@
 //! Client-side static analysis for the function editor — finds names used
-//! in the code but not declared as `@input`/`@output` directives. Best-effort
+//! in the code but not declared in the function's signature (D497: the
+//! ports live outside the code; this only warns). Best-effort
 //! single pass over a **masked** copy of the code (string contents and
 //! comments blanked to spaces, same offsets as the source), supports both
 //! function languages.
@@ -84,8 +85,8 @@ fn is_ident(c: char) -> bool {
 
 /// Analyzes the code for undeclared port uses: `inputs["k"]` / `inputs.k` /
 /// `inputs.get("k"` → input reads; depth-1 keys of a `return { … }` group →
-/// output writes, unless that dict is a message (carries `payload`, no
-/// `@output` declared). Names already declared are filtered out; dedup per
+/// output writes, in named-ports mode only: in message mode a returned dict
+/// is the message, never ports. Names already declared are filtered out; dedup per
 /// (kind, name), ordered inputs first then outputs (first appearance).
 pub fn analyze_undeclared(
     code: &str,
@@ -154,13 +155,10 @@ pub fn analyze_undeclared(
             // A helper's return builds a value, not the node's output.
             let in_helper = enclosing_fn(&mchars, i, lang).is_some_and(|f| f != "handle");
             if !in_helper && j < mchars.len() && mchars[j] == '{' {
-                let mut keys = Vec::new();
-                collect_dict_keys(&mchars, &chars, j, &mut keys);
-                // Same rule as the runtime (`map_return`): without declared
-                // outputs, a dict carrying `payload` is the outgoing message
-                // (merged into msg on the single port), not named outputs.
-                if !(sig.outputs.is_empty() && keys.iter().any(|(k, _)| k == "payload")) {
-                    outputs.extend(keys);
+                // Same rule as the runtime (`map_return`): routing by key
+                // exists only once outputs are declared.
+                if !sig.is_message() {
+                    collect_dict_keys(&mchars, &chars, j, &mut outputs);
                 }
             }
         }
@@ -386,17 +384,36 @@ fn build_result(
     out
 }
 
-/// Convenience: parse_directives + analyze in one call (None = directive
-/// parse failed — the caller shows the directive error instead).
-pub fn analyze(code: &str, lang: FunctionLanguage) -> Option<Vec<UndeclaredUse>> {
-    let sig = pnex_core::parse_directives(code).ok()?;
-    Some(analyze_undeclared(code, lang, &sig))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use pnex_core::FunctionLanguage as Lang;
+
+    /// Named-ports mode with these outputs.
+    fn ports(names: &[&str]) -> FunctionSignature {
+        FunctionSignature {
+            inputs: vec![],
+            outputs: names
+                .iter()
+                .map(|n| pnex_core::FunctionOutput {
+                    name: n.to_string(),
+                    ty: pnex_core::FunctionType::Any,
+                    desc: None,
+                })
+                .collect(),
+        }
+    }
+
+    fn message() -> FunctionSignature {
+        FunctionSignature::default()
+    }
+
+    fn names(uses: &[UndeclaredUse], kind: PortKind) -> Vec<&str> {
+        uses.iter()
+            .filter(|u| u.kind == kind)
+            .map(|u| u.name.as_str())
+            .collect()
+    }
 
     #[test]
     fn masking_preserves_offsets_and_blanks_strings() {
@@ -412,63 +429,47 @@ mod tests {
     #[test]
     fn detects_inputs_reads_both_forms() {
         let code = "def handle(inputs, msg):\n    a = inputs[\"temperature\"]\n    b = inputs.threshold\n    c = inputs.get(\"offset\", 0)\n";
-        let uses = analyze(code, Lang::Starlark).unwrap();
-        let names: Vec<&str> = uses
-            .iter()
-            .filter(|u| u.kind == PortKind::Input)
-            .map(|u| u.name.as_str())
-            .collect();
-        assert!(names.contains(&"temperature"));
-        assert!(names.contains(&"threshold"));
-        assert!(names.contains(&"offset"));
+        let uses = analyze_undeclared(code, Lang::Starlark, &message());
+        let ins = names(&uses, PortKind::Input);
+        assert!(ins.contains(&"temperature"));
+        assert!(ins.contains(&"threshold"));
+        assert!(ins.contains(&"offset"));
     }
 
     #[test]
-    fn detects_return_dict_keys_as_outputs() {
+    fn return_dict_keys_are_outputs_in_ports_mode_only() {
         let code = "def handle(inputs, msg):\n    return {\"heating\": 1, \"delta\": 2}\n";
-        let uses = analyze(code, Lang::Starlark).unwrap();
-        let outs: Vec<&str> = uses
-            .iter()
-            .filter(|u| u.kind == PortKind::Output)
-            .map(|u| u.name.as_str())
-            .collect();
-        assert_eq!(outs, vec!["heating", "delta"]);
+        let uses = analyze_undeclared(code, Lang::Starlark, &ports(&["heating"]));
+        assert_eq!(names(&uses, PortKind::Output), vec!["delta"]);
+        // Message mode (D497): the returned dict is the message.
+        assert!(analyze_undeclared(code, Lang::Starlark, &message()).is_empty());
     }
 
     #[test]
     fn returned_message_dict_is_not_outputs() {
-        // qw_finding shape: a dict carrying `payload` is the message.
+        // qw_finding shape: the dict is the message.
         let code = "def handle(inputs, msg):\n    e = msg.get(\"payload\", {}) or {}\n    if not e.get(\"props\"): return None\n    return {\"payload\": e[\"props\"], \"title\": e.get(\"title\", \"\"), \"link_targets\": e.get(\"link_targets\", {}),\n            \"object\": None, \"object_id\": None, \"links\": None}\n";
-        assert!(analyze(code, Lang::Starlark).unwrap().is_empty());
+        assert!(analyze_undeclared(code, Lang::Starlark, &message()).is_empty());
         let js = "function handle(inputs, msg) {\n  return { payload: 1, topic: \"t\" };\n}";
-        assert!(analyze(js, Lang::Js).unwrap().is_empty());
+        assert!(analyze_undeclared(js, Lang::Js, &message()).is_empty());
         // With declared outputs the runtime routes by key: still flagged.
-        let routed =
-            "# @output a any\ndef handle(inputs, msg):\n    return {\"a\": 1, \"payload\": 2}\n";
-        let uses = analyze(routed, Lang::Starlark).unwrap();
-        assert_eq!(uses.len(), 1);
-        assert_eq!(uses[0].name, "payload");
+        let routed = "def handle(inputs, msg):\n    return {\"a\": 1, \"payload\": 2}\n";
+        let uses = analyze_undeclared(routed, Lang::Starlark, &ports(&["a"]));
+        assert_eq!(names(&uses, PortKind::Output), vec!["payload"]);
     }
 
     #[test]
     fn helper_returns_are_not_outputs() {
         let star = "def finding(t):\n    if t:\n        return {\"props\": t, \"title\": t}\n    return None\n\ndef handle(inputs, msg):\n    return {\"out\": finding(1)}\n";
-        let names: Vec<String> = analyze(star, Lang::Starlark)
-            .unwrap()
-            .into_iter()
-            .map(|u| u.name)
-            .collect();
-        assert_eq!(names, vec!["out".to_string()]);
+        let uses = analyze_undeclared(star, Lang::Starlark, &ports(&["x"]));
+        assert_eq!(names(&uses, PortKind::Output), vec!["out"]);
         let js = "function helper(x) {\n  return { props: x };\n}\nfunction handle(inputs, msg) {\n  const f = (y) => { return { inner: y }; };\n  return { out: helper(1) };\n}";
-        let names: Vec<String> = analyze(js, Lang::Js)
-            .unwrap()
-            .into_iter()
-            .map(|u| u.name)
-            .collect();
-        assert_eq!(names, vec!["inner".to_string(), "out".to_string()]);
+        let uses = analyze_undeclared(js, Lang::Js, &ports(&["x"]));
+        assert_eq!(names(&uses, PortKind::Output), vec!["inner", "out"]);
     }
 
-    /// Pack functions must not show phantom "undeclared" outputs.
+    /// Pack functions, with the outputs their pack declares, show no phantom
+    /// "undeclared" output.
     #[test]
     fn pack_functions_have_no_phantom_outputs() {
         let packs = [
@@ -480,19 +481,25 @@ mod tests {
         ];
         let mut checked = 0;
         for pack in packs {
-            // Every pack function is Starlark, its `code: |` block indented 6.
-            for block in pack.split("code: |\n").skip(1) {
+            // Every pack function is Starlark: `outputs:` rows
+            // (`- {name: x, …}`) then its `code: |` block indented 6.
+            for function in pack.split("\n  - name: ").skip(1) {
+                let Some((head, block)) = function.split_once("    code: |\n") else {
+                    continue;
+                };
+                let declared: Vec<&str> = head
+                    .lines()
+                    .filter_map(|l| l.trim().strip_prefix("- {name: "))
+                    .filter_map(|l| l.split(',').next())
+                    .collect();
                 let code = block
                     .lines()
                     .take_while(|l| l.is_empty() || l.starts_with("      "))
                     .map(|l| l.get(6..).unwrap_or(""))
                     .collect::<Vec<_>>()
                     .join("\n");
-                let outs: Vec<_> = analyze(&code, Lang::Starlark)
-                    .unwrap()
-                    .into_iter()
-                    .filter(|u| u.kind == PortKind::Output)
-                    .collect();
+                let uses = analyze_undeclared(&code, Lang::Starlark, &ports(&declared));
+                let outs = names(&uses, PortKind::Output);
                 assert!(outs.is_empty(), "{outs:?} in:\n{code}");
                 checked += 1;
             }
@@ -503,34 +510,31 @@ mod tests {
     #[test]
     fn js_bare_keys_and_multiline_return() {
         let code = "function handle(inputs, msg) {\n  if (inputs.temp > 0) {\n    return {\n      heat: 1,\n      mode: inputs[\"mode\"],\n    };\n  }\n  return { idle: true };\n}";
-        let sig = pnex_core::parse_directives(code).unwrap();
-        let uses = analyze_undeclared(code, Lang::Js, &sig);
-        let outs: Vec<&str> = uses
-            .iter()
-            .filter(|u| u.kind == PortKind::Output)
-            .map(|u| u.name.as_str())
-            .collect();
+        let uses = analyze_undeclared(code, Lang::Js, &ports(&["other"]));
+        let outs = names(&uses, PortKind::Output);
         assert!(outs.contains(&"heat"));
         assert!(outs.contains(&"idle"));
-        assert!(uses
-            .iter()
-            .any(|u| u.name == "mode" && u.kind == PortKind::Input));
-        assert!(uses
-            .iter()
-            .any(|u| u.name == "temp" && u.kind == PortKind::Input));
+        let ins = names(&uses, PortKind::Input);
+        assert!(ins.contains(&"mode") && ins.contains(&"temp"));
     }
 
     #[test]
     fn declared_names_are_filtered() {
-        let code = "// @input temperature number\n// @output heating number\ndef handle(inputs, msg):\n    return {\"heating\": inputs[\"temperature\"]}\n";
-        assert!(analyze(code, Lang::Starlark).unwrap().is_empty());
+        let code = "def handle(inputs, msg):\n    return {\"heating\": inputs[\"temperature\"]}\n";
+        let mut sig = ports(&["heating"]);
+        sig.inputs.push(pnex_core::FunctionInput {
+            name: "temperature".into(),
+            ty: pnex_core::FunctionType::Number,
+            default: None,
+            desc: None,
+        });
+        assert!(analyze_undeclared(code, Lang::Starlark, &sig).is_empty());
     }
 
     #[test]
     fn strings_and_comments_are_not_scanned() {
         let code = "def handle(inputs, msg):\n    s = \"inputs[\\\"ghost\\\"]\"\n    # inputs[\"in_comment\"]\n    return inputs[\"real\"]\n";
-        let uses = analyze(code, Lang::Starlark).unwrap();
-        let names: Vec<String> = uses.iter().map(|u| u.name.clone()).collect();
-        assert_eq!(names, vec!["real".to_string()]);
+        let uses = analyze_undeclared(code, Lang::Starlark, &message());
+        assert_eq!(names(&uses, PortKind::Input), vec!["real"]);
     }
 }

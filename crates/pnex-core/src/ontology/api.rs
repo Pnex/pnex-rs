@@ -584,6 +584,11 @@ pub struct PackFunction {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
     pub code: String,
+    /// Declared interface (D497): none = message mode.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<crate::functions::FunctionInput>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outputs: Vec<crate::functions::FunctionOutput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

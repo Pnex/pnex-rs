@@ -13,13 +13,12 @@ test.describe('flow alerting', { tag: ['@flows', '@notifications'] }, () => {
     const fn = await api.post<{ id: number; name: string }>('/functions', {
       name: `${prefix} over threshold`,
       language: 'starlark',
-      code: [
-        '# @input value number "Measured value"',
-        '# @input threshold number=20 "Alarm threshold"',
-        '# @output alarm bool "True above the threshold"',
-        'def handle(inputs, msg):',
-        '    return {"alarm": inputs["value"] > inputs["threshold"]}',
-      ].join('\n'),
+      code: ['def handle(inputs, msg):', '    return {"alarm": inputs["value"] > inputs["threshold"]}'].join('\n'),
+      inputs: [
+        { name: 'value', ty: 'number', desc: 'Measured value' },
+        { name: 'threshold', ty: 'number', default: 20, desc: 'Alarm threshold' },
+      ],
+      outputs: [{ name: 'alarm', ty: 'bool', desc: 'True above the threshold' }],
     });
     const channel = await api.post<{ name: string }>('/notify/channels', {
       kind: 'smtp',

@@ -33,7 +33,12 @@ pub mod iam;
 ///
 /// 5 (2026-10-28): the data classification enum is English on the wire
 /// (`public`, `internal`, `personal`, `sensitive`).
-pub const CONTRACT: u32 = 5;
+///
+/// 6 (2026-10-29, flow-engine.md D497): a function's interface is sent as
+/// `inputs`/`outputs` (create, save, ad-hoc test), never read from `@input`/
+/// `@output` comments in the code; `function-directive-invalid` is replaced
+/// by field errors (`inputs.<i>.name`…).
+pub const CONTRACT: u32 = 6;
 
 /// Identity announced by the meta endpoint — aligned with
 /// `pnex_core::SERVICE_NAME` (the service is `pnex-server`). The LAN scan compares this field to tell a PNEX

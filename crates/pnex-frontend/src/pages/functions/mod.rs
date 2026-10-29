@@ -4,18 +4,17 @@
 //! client (`X-Org-Id`), writing is reserved to owner/admin (the server
 //! enforces, the UI hides).
 //!
-//! The signature preview is computed **in the browser** via
-//! `pnex_core::parse_directives` (pnex-core is wasm32): the same extraction
-//! as the server save, shown live (directive errors line by
-//! line). The live test goes through the API (`POST /{id}/test`, ad-hoc code =
-//! textarea content — testable **before** save).
+//! The interface (inputs, outputs) is structured data of the version (D497),
+//! edited in the ports panel and sent with the code. The live test goes
+//! through the API (`POST /{id}/test`, ad-hoc code and interface = the
+//! editor's — testable **before** save).
 
 use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::{
-    parse_directives, CreateFunction, FunctionDetail, FunctionLanguage, FunctionSummary,
+    CreateFunction, FunctionDetail, FunctionLanguage, FunctionSignature, FunctionSummary,
     FunctionTestAdHoc, FunctionTestRequest, FunctionTestResponse, FunctionType,
 };
 

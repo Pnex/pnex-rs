@@ -30,7 +30,9 @@ test.describe('mcp', { tag: ['@mcp'] }, () => {
       body: {
         name,
         language: 'js',
-        code: '// @input value number "Value"\n// @output result number "Result"\nfunction handle(inputs, msg) {\n  return { result: inputs.value };\n}',
+        code: 'function handle(inputs, msg) {\n  return { result: inputs.value };\n}',
+        inputs: [{ name: 'value', ty: 'number', desc: 'Value' }],
+        outputs: [{ name: 'result', ty: 'number', desc: 'Result' }],
       },
     });
     expect(created.isError, created.content[0].text).toBe(false);

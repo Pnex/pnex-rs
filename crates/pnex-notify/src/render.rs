@@ -212,8 +212,8 @@ fn tag_idents(expr: &str, out: &mut Vec<String>) {
     }
 }
 
-/// snake_case `[a-z_][a-z0-9_]*` — same pattern as the function
-/// directives `@input`/`@output` (pnex-core/src/functions.rs).
+/// snake_case `[a-z_][a-z0-9_]*` — same pattern as the function port
+/// names (`pnex_core::is_valid_port_name`).
 fn is_snake_ident(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {

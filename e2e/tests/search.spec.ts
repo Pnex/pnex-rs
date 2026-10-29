@@ -8,7 +8,9 @@ test.describe('search', { tag: ['@search', '@i18n'] }, () => {
     await api.post('/functions', {
       name,
       language: 'js',
-      code: '// @input value number "Value"\n// @output result number "Result"\nfunction handle(inputs, msg) {\n  return { result: inputs.value };\n}',
+      code: 'function handle(inputs, msg) {\n  return { result: inputs.value };\n}',
+      inputs: [{ name: 'value', ty: 'number', desc: 'Value' }],
+      outputs: [{ name: 'result', ty: 'number', desc: 'Result' }],
     });
 
     await app.goto('/');

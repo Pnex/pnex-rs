@@ -55,7 +55,7 @@ pub async fn detail(id: i64) -> Result<FunctionDetail, ApiError> {
 
 /// `PATCH /api/v1/functions/{id}` — saves a **new version**
 /// (append-only) and/or the metadata; 409 if `expected_version_number`
-/// is stale, 400 `field-invalid` or `function-directive-invalid`.
+/// is stale, 400 `field-invalid`.
 pub async fn save_version(
     id: i64,
     params: SaveFunctionVersion,

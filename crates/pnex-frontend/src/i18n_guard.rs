@@ -49,8 +49,6 @@ const ACCENTS: &str = "àâäçéèêëîïôöùûüÿœ«»";
 /// Allowlist: (path substring, literal substring) with justification.
 /// Each entry documents why the French text is data, not UI chrome.
 const ALLOWLIST: &[(&str, &str)] = &[
-    // Starter-code data (user-editable generated code, not UI chrome).
-    ("pages/functions.rs", "@input temperature"),
     // Language endonyms are shown in their own language (standard i18n
     // practice) — the locale picker labels.
     ("pages/login.rs", "Français"),

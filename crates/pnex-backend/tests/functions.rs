@@ -164,9 +164,14 @@ async fn del_fn(
         .status_code()
 }
 
-/// Minimal Starlark code with one directive + output.
+/// Minimal Starlark code reading the input `t` (see `t_input`).
 fn starlark_code() -> String {
-    "# @input t number\ndef handle(inputs, msg):\n    return {\"v\": inputs[\"t\"] + 1}".to_string()
+    "def handle(inputs, msg):\n    return {\"v\": inputs[\"t\"] + 1}".to_string()
+}
+
+/// The declared input of `starlark_code` (D497: interface outside the code).
+fn t_input() -> serde_json::Value {
+    json!([{"name": "t", "ty": "number"}])
 }
 
 /// Minimal flow graph with a function node referencing (fid, v1).
@@ -205,6 +210,7 @@ async fn create_save_delete_cycle_with_versions() {
                 "language": "starlark",
                 "description": "Règle de chauffage",
                 "code": starlark_code(),
+                "inputs": t_input(),
             }),
         )
         .await;
@@ -232,6 +238,8 @@ async fn create_save_delete_cycle_with_versions() {
         assert_eq!(status, 200, "{body}");
         assert_eq!(body["current_version_number"], 2);
         assert_eq!(body["code"], starlark_code());
+        // Interface not sent: carried from v1.
+        assert_eq!(body["inputs"][0]["name"], "t", "{body}");
 
         // Versions in DESC order [2, 1].
         let versions = server
@@ -372,17 +380,33 @@ async fn validations_400_and_conflict_409() {
         assert_eq!(status, 400, "{body}");
         assert_eq!(body["errors"]["fields"]["name"], "required", "{body}");
 
-        // Invalid directive: 400 function-directive-invalid, line in args.
+        // Invalid signature (D497): field errors on the declared ports.
         let (status, body) = post_fn(
             &server,
             &env.alice,
             org,
-            json!({"name": "f", "language": "js", "code": "// @input a float"}),
+            json!({"name": "f", "language": "js", "code": "function handle(i, m) { return i; }",
+                   "inputs": [{"name": "A", "ty": "number"}]}),
         )
         .await;
         assert_eq!(status, 400, "{body}");
-        assert_eq!(body["error"], "function-directive-invalid", "{body}");
-        assert_eq!(body["errors"]["args"]["line"], "1", "{body}");
+        assert_eq!(
+            body["errors"]["fields"]["inputs.0.name"], "invalid",
+            "{body}"
+        );
+        let (status, body) = post_fn(
+            &server,
+            &env.alice,
+            org,
+            json!({"name": "f", "language": "js", "code": "function handle(i, m) { return i; }",
+                   "outputs": [{"name": "a", "ty": "any"}, {"name": "a", "ty": "any"}]}),
+        )
+        .await;
+        assert_eq!(status, 400, "{body}");
+        assert_eq!(
+            body["errors"]["fields"]["outputs.1.name"], "unique",
+            "{body}"
+        );
 
         // Version conflict: expected ≠ current → 409.
         let (_, created) = post_fn(
@@ -473,7 +497,7 @@ async fn test_live_200_with_fixture() {
             &server,
             &env.alice,
             org,
-            json!({"name": "live", "language": "starlark", "code": starlark_code()}),
+            json!({"name": "live", "language": "starlark", "code": starlark_code(), "inputs": t_input()}),
         )
         .await;
         let id = created["id"].as_i64().unwrap();
