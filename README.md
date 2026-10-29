@@ -11,7 +11,7 @@
 
 <p align="center">
   Self-hosted data platform on an industrial IoT foundation, written in Rust end to end.<br>
-  Boards, cameras, audio and video streams, files and APIs land in one organization,
+  Boards, cameras, audio and video streams, mailboxes, websites, files and APIs land in one organization,
   linked by an ontology, processed by flows, read in dashboards — <a href="https://pnex.io">pnex.io</a>
 </p>
 
@@ -52,13 +52,18 @@ SCADA dashboards — and grew into a data platform built on that foundation. Eve
 organization collects lives in one place and one model:
 
 - **Sources**: ESP boards and edge agents, IP and ESP32 cameras, live audio and video
-  streams, files of the media library (video, audio, photos, documents), external HTTP APIs.
+  streams, files of the media library (video, audio, photos, documents), mailboxes (IMAP),
+  websites (crawls, navigation rules, browser agents), open-data files and external HTTP APIs.
 - **One model**: an ontology of typed objects, relations, actions and time ranges links
-  devices, media, transcripts, documents, places and investigation cases.
+  devices, media, transcripts, mails, documents, places, companies, people and investigation
+  cases. What a machine finds is *proposed* to one inbox before it becomes a fact.
 - **Processing**: a flow runtime (Node-RED style, in Rust) for the light ETL; queue workers
   for the heavy work (firmware builds, speech-to-text, vision inference and training).
 - **Reading**: SCADA and home dashboards, map, timelines, investigation workspaces, pages
   rendered to PDF, full-text and semantic search, and an AI assistant on the org's own LLM.
+- **Opening up**: the API is a public OpenAPI contract, from which an MCP server for AI
+  clients and the `pnex` admin CLI are derived; applications built on the ontology get a
+  change feed and an offline mirror.
 
 The whole stack — server, web/desktop/Android app, flow runtime, nodes, vision, ASR glue,
 thermodynamics — is one Rust workspace. No Python at runtime.
@@ -74,7 +79,9 @@ flowchart LR
         cam["Cameras<br/>ESP32-CAM · RTSP"]
         stream["Audio / video streams<br/>Icecast · HLS · DASH · RTMP · RTSP · DVB"]
         files["Media library uploads<br/>video · audio · photos · documents"]
-        apis["External APIs<br/>weather · geo · HTTP"]
+        mail["Mailboxes<br/>IMAP"]
+        web["Websites<br/>crawl · rules · browser agents"]
+        apis["External APIs · open data<br/>weather · geo · registries · HTTP"]
     end
 
     subgraph server["pnex-server (Loco · axum)"]
@@ -93,6 +100,7 @@ flowchart LR
     end
 
     app["PNeX app<br/>web · desktop · Android"]
+    ext["MCP clients · pnex CLI<br/>applications (mirror)"]
     idp["Rauthy<br/>OIDC"]
     llm["Org's LLM"]
 
@@ -101,8 +109,11 @@ flowchart LR
     cam --> api
     stream -- "filtered fetcher → confined ffmpeg" --> work
     files --> api
+    mail -- "IMAP poll" --> api
+    web -- "egress guard · Noise link" --> api
     apis -- "egress allowlist" --> flows
     app -- "HTTPS · WS" --> api
+    ext -- "OpenAPI · OAuth" --> api
     api <--> flows
     api --> work
     server --> store
@@ -113,8 +124,10 @@ flowchart LR
 ### Boundaries
 
 - **The organization is the security boundary.** Every row carries an `org_id` taken from the
-  authenticated principal, never from the request. Every write handler checks the role first.
-  The rules (R1–R20) and the findings register are in
+  authenticated principal, never from the request. Every operation carries a `service:verb`
+  permission ([`iam.md`](docs/architecture/iam.md): custom roles, teams, service accounts),
+  enforced by one extractor before the handler runs. The rules (R1–R23) and the findings
+  register are in
   [`docs/architecture/security.md`](docs/architecture/security.md).
 - **User code is untrusted.** Flows, JavaScript and Starlark functions run in a sandbox with an
   allowlisted node registry and no environment access. Outbound HTTP goes through one egress
@@ -131,6 +144,9 @@ flowchart LR
 | Cameras | Binary WebSocket (ESP32-CAM) or an IP stream joining the camera bus; recordings, detection, tracking and zones as flow nodes. |
 | Streams | A `media_streams` entity: one supervisor per stream, a Rust fetcher (redirects and HLS sub-URLs re-checked) piping into an ffmpeg without network; 30 s PCM segments, speech-to-text, diarization, speaker profiles; text to OpenObserve, events to flows. |
 | Files | Media library with versions and an upload allowlist; video frames to the Vision Lab, documents chunked and indexed (`tsvector` + `pgvector`) for search and the assistant. |
+| Mailboxes | IMAP accounts read on a schedule; a `mail_received` flow trigger that replays what it missed; attachments to the media library, invitations to the calendar, unknown senders proposed to the CRM. |
+| Websites | Crawls and site navigation rules (studio, live view of the server browser), `web_visit` / `site_crawl` / `web_search` nodes, and Chrome/Firefox browser agents paired over a Noise link. |
+| Open data | Imports declared in ontology packs (files or network registries), with their own steps, run on a schedule and written in bulk, each run journaled. |
 | APIs | Flow nodes (`http-fetch`, `weather`) and geo providers, all through the egress guard. |
 
 ### Ontology
@@ -138,15 +154,33 @@ flowchart LR
 The data model of an organization is itself data
 ([`ontology.md`](docs/architecture/ontology.md), D176–D189):
 
-- **Object types are versioned data**, installed from YAML packs (maintenance, investigation…):
-  typed properties, temporal properties included. User objects live in one generic table;
-  system objects (devices, media, POIs…) stay in their own tables and are exposed as types.
+- **Object types are versioned data**, installed from YAML packs (maintenance, investigation,
+  companies, CRM, B2B prospecting, web presence, media coverage, quality watch…): typed
+  properties, temporal properties included, labels in French and English. A pack also ships
+  imports, flows, functions and page templates; an org's own edits survive pack upgrades.
+  User objects live in one generic table; system objects (devices, media, POIs…) stay in
+  their own tables and are exposed as types.
 - **Links are typed, temporal and carry attributes**; containment (site → building → room) is
   a separate tree. Time belongs to objects: named time ranges apply to any object.
 - **Actions are declared on types and executed by flows**, traced like any write. Every fact
   records its provenance (user, flow, import, model).
+- **Proposals**: case detections, recognized voices, flows and models propose facts to one
+  to-validate inbox; an org rule may accept some without a human.
+- **Personal data** is classified per property, masked and erasable.
 - One query API serves the generic explorer, dashboards, reports, investigation cases and the
-  AI assistant, which reasons on the same graph.
+  AI assistant, which reasons on the same graph. Applications declared in an org read a
+  gap-free change feed scoped to them, and `pnex-mirror` keeps an offline SQLite copy.
+
+### API, MCP and CLI
+
+The HTTP API is a contract ([`api-contract.md`](docs/architecture/api-contract.md)): every
+route is annotated and published in [`docs/contracts/openapi.json`](docs/contracts/openapi.json),
+checked by blocking tests. From that one spec:
+
+- **MCP** at `/api/v1/mcp` ([`mcp.md`](docs/architecture/mcp.md)), OAuth sign-in, the caller's
+  own rights. Deletes, device commands and deploy/stop are never exposed.
+- **`pnex` CLI** ([`cli.md`](docs/architecture/cli.md)): every operation as
+  `pnex <tag> <action>`, dangerous ones behind `--yes`.
 
 ### Vision Lab: from footage to a deployed model
 
@@ -195,8 +229,11 @@ Design records (in French): [`docs/architecture/`](docs/architecture) — start 
 |---|---|
 | `crates/pnex-backend` | Server: Loco + axum, SeaORM, WebSocket ingestion, queue workers, migrations, assistant knowledge base |
 | `crates/pnex-frontend` | Dioxus 0.7 app — web (wasm), desktop, Android |
-| `crates/pnex-core`, `pnex-api-contract` | Shared domain types and API contract (native + wasm) |
-| `crates/pnex-flow-runtime`, `pnex-node-*` | Flow engine on the vendored EdgeLinkd fork, and its nodes (device, camera, vision, predict, memory, notify, weather, Starlark…) |
+| `crates/pnex-core`, `pnex-api-contract` | Shared domain types, API contract, MCP exposure and IAM registers (native + wasm) |
+| `crates/pnex-cli` | `pnex` admin CLI generated from the OpenAPI spec |
+| `crates/pnex-extension` | Browser agent (Chrome / Firefox), compiled to wasm |
+| `crates/pnex-mirror` | Offline copy of an org for applications (change feed, SQLite, media by hash) |
+| `crates/pnex-flow-runtime`, `pnex-node-*` | Flow engine on the vendored EdgeLinkd fork, and its nodes (device, control, camera, vision, predict, memory, notify, events, weather, Starlark…) |
 | `crates/pnex-media-capture`, `pnex-asr` | Stream capture chain (fetcher, RTSP, confined ffmpeg, segmenter) and speech-to-text |
 | `crates/pnex-vision`, `pnex-decide` | ONNX detectors and typed decisions on `tract` |
 | `crates/pnex-edge-agent` | Edge agent: local ingestion API, disk queue, encrypted uplink |
@@ -207,6 +244,7 @@ Design records (in French): [`docs/architecture/`](docs/architecture) — start 
 | `deploy/` | Dockerfiles, TLS edge, edge agent distribution |
 | `vendor/` | EdgeLinkd fork, CoolProp, patched crates |
 | `docs/architecture/` | Design and decision records |
+| `docs/contracts/` | Public OpenAPI spec |
 
 ## Install
 
