@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 codé 2026-10-29** : enregistreur PNeX (connexion, activation, test de transcription), sans capture continue |
+| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 + R1.1 Linux codés 2026-10-29** : enregistreur PNeX (connexion, activation, test de transcription, capture des appels, envoi et transcription) ; Windows/macOS à faire |
 | Numérotation | décisions à numéroter au passage en PRD, lots **R1…R4** |
 | Dépend de | ingestion média (`media-ingest.md`, P2.13), ASR (`pnex-asr`), locuteurs (`voice-id.md`), rendez-vous et compte rendu (P2.28), desktop natif |
 
@@ -91,8 +91,51 @@ séparé de l'application desktop complète.
   défaut », test en mode avancé puis par défaut (extrait FLEURS français
   joué dans une source PipeWire virtuelle, transcription exacte en ≈ 335 ms).
   Pilotage par WebKitWebDriver (feature `e2e`, comme l'app desktop).
-- Reste R1.1 : double flux micro + loopback, détection d'appel, envoi des
-  segments vers le pipeline (§3).
+
+**R1.1 — Capture des appels, Linux (codé 2026-10-29)**
+
+- **Capture** : deux flux libpulse (PipeWire via pipewire-pulse, présent sur
+  toute distribution récente ; aucun outil en ligne de commande requis) —
+  micro (`@DEFAULT_SOURCE@`) et moniteur de la sortie (`@DEFAULT_MONITOR@`),
+  16 kHz mono chacun, même horloge serveur donc alignés sans rééchantillonnage.
+  Un **WAV stéréo** sur disque, écrit au fil de l'eau : canal gauche = moi,
+  droit = l'interlocuteur ; en-tête réécrit chaque seconde (fichier lisible
+  après un plantage). `PNEX_RECORDER_MIC` / `PNEX_RECORDER_OUTPUT` choisissent
+  d'autres sources (tests, postes à plusieurs cartes son).
+- **Détection** : toutes les 2 s, liste des applis qui enregistrent (source
+  outputs libpulse, binaire et nom d'appli) ; une appli d'appel (Teams, Zoom,
+  Slack, Webex, Discord, Skype, Signal, WhatsApp, Jitsi, navigateurs) qui tient
+  le micro lance l'enregistrement, **45 s** après qu'elle l'a relâché il
+  s'arrête. Bouton « Enregistrer maintenant » pour le reste (arrêt à la main).
+  Désactiver l'enregistrement arrête un enregistrement automatique en cours.
+- **Consentement** : au démarrage la fenêtre remonte avec « Arrêter et
+  envoyer » / « Arrêter sans envoyer » et le rappel de prévenir
+  l'interlocuteur ; l'icône de la barre passe au rouge, entrée « Arrêter et
+  supprimer l'enregistrement » dans son menu.
+- **Envoi** : à l'arrêt, `POST /api/v1/media` (audio, nom « Appel <appli> du
+  <date> ») puis analyse `transcribe` (`POST /api/v1/media/{id}/analyses`),
+  qui tourne avec le **profil par défaut** de l'org (`runnable_profile`
+  préfère désormais le défaut au premier par ordre alphabétique). Le fichier
+  local n'est supprimé qu'une fois stocké par le serveur ; sinon il attend
+  (`<data>/pnex/recordings`) et repart au lancement suivant, puis toutes les
+  2 min.
+- **Une seule instance** : verrou système sur `recordings/recorder.lock`
+  (libéré par l'OS même après un plantage) ; deux instances capteraient le
+  même appel dans le même fichier.
+- Validé le 2026-10-29 sur la stack docker locale (edge HTTPS), tout en
+  périphériques PipeWire virtuels : fausse appli d'appel (`parec
+  --client-name=zoom`), voix « moi » et « interlocuteur » sur deux sorties
+  virtuelles. Départ 2 s après la prise du micro, arrêt 47 s après le
+  relâchement, fichier de 62 s exactement aligné (gauche 0–10 s, droite
+  10–17 s), stocké, transcrit (`done` en 12 s).
+- **Limite constatée** : le pipeline ASR transcrit la fenêtre de 30 s d'un
+  seul tenant ; avec deux énoncés séparés par un silence, Canary et Parakeet
+  en perdent un. À corriger côté `pnex-asr` : transcrire par plage de parole
+  quand le profil a une détection de voix.
+- Reste : Windows (WASAPI loopback) et macOS (process tap), transcription
+  séparée par canal (« moi / l'autre » sans diarisation), notification
+  système, envoi en flux pour les appels très longs (le WAV est lu en mémoire,
+  ≈ 230 Mo par heure).
 
 **Capture**
 - Windows : WASAPI loopback (`cpal`) ; loopback par process (`wasapi`,

@@ -337,6 +337,75 @@ impl Session {
     }
 }
 
+impl Session {
+    /// Stores a recording in the org's media library; returns its asset id.
+    // shortcut: the WAV is read whole into memory (about 230 MB for an hour
+    // of stereo 16 kHz); stream the body when calls get longer.
+    pub async fn upload_recording(
+        &mut self,
+        org: i64,
+        path: &std::path::Path,
+        name: &str,
+    ) -> Result<String, ApiError> {
+        let file = path.to_path_buf();
+        let bytes = tokio::task::spawn_blocking(move || std::fs::read(file))
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .ok_or(ApiError::Server(0, Some("recording-unreadable".into())))?;
+        let filename = path
+            .file_name()
+            .and_then(|f| f.to_str())
+            .unwrap_or("call.wav")
+            .to_string();
+        let bearer = self.bearer().await?;
+        let res = self
+            .http()
+            .post(format!("{}/api/v1/media", self.url))
+            .query(&[("name", name), ("filename", &filename), ("kind", "audio")])
+            .bearer_auth(bearer)
+            .header("X-Org-Id", org.to_string())
+            .header("Content-Type", "audio/wav")
+            .timeout(std::time::Duration::from_secs(600))
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|_| ApiError::Unreachable)?;
+        if !res.status().is_success() {
+            return Err(error_of(res).await);
+        }
+        let asset: Value = res.json().await.map_err(|_| ApiError::NotPnex)?;
+        asset["id"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or(ApiError::NotPnex)
+    }
+
+    /// Starts the transcription of a stored recording (the org's default
+    /// transcription profile runs it).
+    pub async fn transcribe(
+        &mut self,
+        org: i64,
+        asset: &str,
+        locale: &str,
+    ) -> Result<(), ApiError> {
+        let bearer = self.bearer().await?;
+        let res = self
+            .http()
+            .post(format!("{}/api/v1/media/{asset}/analyses", self.url))
+            .bearer_auth(bearer)
+            .header("X-Org-Id", org.to_string())
+            .json(&json!({"steps": ["transcribe"], "locale": locale}))
+            .send()
+            .await
+            .map_err(|_| ApiError::Unreachable)?;
+        if !res.status().is_success() {
+            return Err(error_of(res).await);
+        }
+        Ok(())
+    }
+}
+
 /// Only models that passed their check can be tested (409 otherwise).
 pub fn usable(model: &AsrModel) -> bool {
     model.check.status == ModelCheckStatus::Valid

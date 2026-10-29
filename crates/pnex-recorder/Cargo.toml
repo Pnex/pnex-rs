@@ -17,7 +17,9 @@ serde_json = { workspace = true }
 dioxus = { version = "0.7", features = ["desktop"] }
 dioxus-i18n = "0.5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["rt", "time"] }
+# Local date in the name of a recording.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # Microphone capture on WASAPI / CoreAudio / ALSA (Apache-2.0).
 cpal = "0.16"
 hound = "3.5"
@@ -31,6 +33,11 @@ base64 = "0.22"
 # WebKitWebDriver drive the window (and only with PNEX_E2E_AUTOMATION set).
 [target.'cfg(target_os = "linux")'.dependencies]
 wry = { version = "0.53", default-features = false, optional = true }
+# Call capture on PulseAudio / PipeWire (pipewire-pulse): microphone and the
+# monitor of the output, plus the list of apps recording (MIT OR Apache-2.0;
+# links the system libpulse).
+libpulse-binding = "2.30"
+libpulse-simple-binding = "2.29"
 
 [features]
 e2e = ["wry/pnex-automation"]

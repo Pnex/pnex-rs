@@ -49,3 +49,29 @@ trust-ca-message = { $base } uses a certificate signed by its own authority (loc
 trust-ca-fingerprint = SHA-256 fingerprint
 trust-ca-cancel = Cancel
 trust-ca-accept = Trust and connect
+
+tray-discard = Stop and discard the recording
+tray-recording = PNeX: recording a call
+rec-title = Recording
+rec-unsupported = Call recording is only available on Linux for now.
+rec-off = Recording is off: switch it on above to record calls automatically.
+rec-waiting = Waiting for a call: a call app (Teams, Zoom, Meet in the browser…) taking the microphone starts the recording.
+rec-recording = Recording { $app } — { $time }
+rec-manual = by hand
+rec-consent = Tell the other party that the call is recorded.
+rec-start = Record now
+rec-stop = Stop and send
+rec-discard = Stop and discard
+rec-sending = Sending { $name }…
+rec-sent = { $name } sent: its transcription has started in PNeX.
+rec-untranscribed = { $name } sent, but its transcription did not start: { $error }
+rec-pending = { $count ->
+    [one] 1 recording waits to be sent.
+   *[other] { $count } recordings wait to be sent.
+}
+rec-send = Send now
+rec-name = Call { $app } { $date }
+rec-name-manual = Recording { $date }
+err-capture = Recording error: { $detail }
+err-media-analysis-no-asr = No usable transcription profile in this organization: add one in PNeX (Media › Streams › Models and profiles).
+err-recording-unreadable = The recording file cannot be read.

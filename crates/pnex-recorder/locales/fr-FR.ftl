@@ -49,3 +49,29 @@ trust-ca-message = { $base } utilise un certificat signé par sa propre autorit�
 trust-ca-fingerprint = Empreinte SHA-256
 trust-ca-cancel = Annuler
 trust-ca-accept = Faire confiance et se connecter
+
+tray-discard = Arrêter et supprimer l'enregistrement
+tray-recording = PNeX : appel en cours d'enregistrement
+rec-title = Enregistrement
+rec-unsupported = L'enregistrement des appels n'est disponible que sous Linux pour l'instant.
+rec-off = L'enregistrement est désactivé : activez-le plus haut pour enregistrer les appels automatiquement.
+rec-waiting = En attente d'un appel : une appli d'appel (Teams, Zoom, Meet dans le navigateur…) qui prend le micro lance l'enregistrement.
+rec-recording = Enregistrement { $app } — { $time }
+rec-manual = à la main
+rec-consent = Prévenez votre interlocuteur que l'appel est enregistré.
+rec-start = Enregistrer maintenant
+rec-stop = Arrêter et envoyer
+rec-discard = Arrêter sans envoyer
+rec-sending = Envoi de { $name }…
+rec-sent = { $name } envoyé : sa transcription a démarré dans PNeX.
+rec-untranscribed = { $name } envoyé, mais sa transcription n'a pas démarré : { $error }
+rec-pending = { $count ->
+    [one] 1 enregistrement attend d'être envoyé.
+   *[other] { $count } enregistrements attendent d'être envoyés.
+}
+rec-send = Envoyer maintenant
+rec-name = Appel { $app } du { $date }
+rec-name-manual = Enregistrement du { $date }
+err-capture = Erreur d'enregistrement : { $detail }
+err-media-analysis-no-asr = Aucun profil de transcription utilisable dans cette organisation : ajoutez-en un dans PNeX (Médias › Flux › Modèles et profils).
+err-recording-unreadable = Le fichier de l'enregistrement est illisible.

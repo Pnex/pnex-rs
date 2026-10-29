@@ -490,16 +490,17 @@ async fn profile_valid<C: ConnectionTrait>(
     Ok(valid)
 }
 
-/// First ASR profile of the org (by name) whose models are all valid: the
-/// profile of a file analysis (D211).
-// shortcut: no profile picker on the analysis, the first valid one is
-// taken; add a choice when an org runs several profiles.
+/// The org's default ASR profile when its models are all valid, else the
+/// first valid one by name: the profile of a file analysis (D211).
+// shortcut: no profile picker on the analysis; add a choice when an org
+// needs another profile than its default for one file.
 pub async fn runnable_profile<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
 ) -> Result<Option<Uuid>, DbErr> {
     let profiles = asr_profiles::Entity::find()
         .filter(asr_profiles::Column::OrgId.eq(org_id))
+        .order_by_desc(asr_profiles::Column::IsDefault)
         .order_by_asc(asr_profiles::Column::Name)
         .all(db)
         .await?;

@@ -687,6 +687,14 @@ async fn file_analysis_transcribes_in_batch() {
             )
             .await;
             assert_eq!(res.status_code(), 201, "{}", res.text());
+            let default_profile = res.json::<Value>()["id"].as_str().unwrap().to_string();
+            // First by name but not the default: the analysis must not take it.
+            let res = post(
+                "/api/v1/asr/profiles".into(),
+                json!({ "name": "AA", "asr_model_id": model_id, "language": "en" }),
+            )
+            .await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
 
             // The file is days old: its segments land days in the past.
             let version_id = pnex_backend::models::_entities::media_assets::Entity::find_by_id(
@@ -721,6 +729,11 @@ async fn file_analysis_transcribes_in_batch() {
                 .unwrap()
                 .expect("batch stream");
             assert_eq!(stream.pace, "batch");
+            assert_eq!(
+                stream.asr_profile_id.map(|p| p.to_string()),
+                Some(default_profile),
+                "the analysis runs the default profile"
+            );
             assert!(stream.enabled && stream.run_id.is_some(), "{stream:?}");
             assert!(stream.slug.starts_with("file_"), "{}", stream.slug);
             let list = get("/api/v1/media/streams".into()).await.json::<Value>();

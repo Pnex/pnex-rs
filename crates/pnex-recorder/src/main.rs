@@ -1,9 +1,14 @@
 //! PNeX recorder (call-recording.md R1): a tray utility that signs in to a
-//! PNeX server, switches the audio capture on and off, and checks with a
-//! 5 s transcription test that the server transcribes.
+//! PNeX server, records calls while recording is enabled, sends them to the
+//! org's media library for transcription, and checks with a 5 s
+//! transcription test that the server transcribes.
 
 mod api;
 mod audio;
+mod calls;
+mod capture;
+mod detect;
+mod queue;
 
 use dioxus::desktop::trayicon::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{init_tray_icon, Icon as TrayIcon};
@@ -41,6 +46,8 @@ button:disabled { opacity: .5; cursor: default; }
 .row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .check { display: flex; align-items: center; gap: 8px; color: #111827; font-size: 14px; margin: 0; }
 .result { white-space: pre-wrap; background: #f3f4f6; border-radius: 6px; padding: 8px; margin: 0; }
+.recording { color: #b91c1c; font-weight: 600; margin: 0; }
+.recording::before { content: "\25CF  "; }
 "#;
 
 /// RGBA pixels of the PNeX mark.
@@ -52,7 +59,32 @@ fn mark_rgba() -> (Vec<u8>, u32, u32) {
     (buf, info.width, info.height)
 }
 
+/// The mark with a red dot: the tray icon while a call is recorded.
+fn recording_rgba() -> (Vec<u8>, u32, u32) {
+    let (mut buf, w, h) = mark_rgba();
+    let (cx, cy, r) = (w as f32 * 0.72, h as f32 * 0.72, w as f32 * 0.26);
+    for y in 0..h {
+        for x in 0..w {
+            let d = ((x as f32 - cx).powi(2) + (y as f32 - cy).powi(2)).sqrt();
+            if d <= r {
+                let i = ((y * w + x) * 4) as usize;
+                let px = if d > r - w as f32 * 0.04 {
+                    [255, 255, 255, 255]
+                } else {
+                    [220, 38, 38, 255]
+                };
+                buf[i..i + 4].copy_from_slice(&px);
+            }
+        }
+    }
+    (buf, w, h)
+}
+
 fn main() {
+    if !queue::single_instance() {
+        eprintln!("pnex-recorder is already running (see the tray icon)");
+        return;
+    }
     let (rgba, w, h) = mark_rgba();
     let icon = tao::window::Icon::from_rgba(rgba, w, h).expect("window icon");
     dioxus::LaunchBuilder::desktop()
@@ -74,7 +106,7 @@ fn main() {
 /// OS language, French or English.
 // shortcut: reads LANG-style variables only (Linux, macOS terminals), so
 // Windows and macOS GUI launches start in English; read the OS API when needed.
-fn system_locale() -> LanguageIdentifier {
+pub(crate) fn system_locale() -> LanguageIdentifier {
     let tag = ["LC_ALL", "LC_MESSAGES", "LANG"]
         .iter()
         .filter_map(|k| std::env::var(k).ok())
@@ -88,7 +120,7 @@ fn system_locale() -> LanguageIdentifier {
 }
 
 /// Translated text of an API failure.
-fn error_text(e: &ApiError) -> String {
+pub(crate) fn error_text(e: &ApiError) -> String {
     match e {
         ApiError::Unreachable => t!("err-unreachable"),
         ApiError::NotPnex => t!("err-not-pnex"),
@@ -102,6 +134,8 @@ fn error_text(e: &ApiError) -> String {
             Some("media-asr-model-invalid") => t!("err-media-asr-model-invalid"),
             Some("asr-test-failed") => t!("err-asr-test-failed"),
             Some("asr-model-not-found") => t!("err-asr-model-not-found"),
+            Some("media-analysis-no-asr") => t!("err-media-analysis-no-asr"),
+            Some("recording-unreadable") => t!("err-recording-unreadable"),
             code => t!("err-server", status: *status, code: code.unwrap_or("-")),
         },
     }
@@ -116,9 +150,10 @@ fn App() -> Element {
             .with_fallback(langid!("en-US"))
     });
     let mut session = use_signal(|| Session::load().unwrap_or_default());
+    let calls = calls::use_calls(session);
 
-    // Tray: open, recording switch, quit.
-    let enabled_item = use_hook(|| {
+    // Tray: open, recording switch, discard the recording, quit.
+    let (enabled_item, discard_item, tray) = use_hook(|| {
         let open = MenuItem::with_id("open", t!("tray-open"), true, None);
         let enabled = CheckMenuItem::with_id(
             "enabled",
@@ -127,12 +162,19 @@ fn App() -> Element {
             session.peek().enabled,
             None,
         );
+        let discard = MenuItem::with_id("discard", t!("tray-discard"), false, None);
         let quit = MenuItem::with_id("quit", t!("tray-quit"), true, None);
         let menu = Menu::new();
-        let _ = menu.append_items(&[&open, &enabled, &PredefinedMenuItem::separator(), &quit]);
+        let _ = menu.append_items(&[
+            &open,
+            &enabled,
+            &discard,
+            &PredefinedMenuItem::separator(),
+            &quit,
+        ]);
         let (rgba, w, h) = mark_rgba();
-        init_tray_icon(menu, TrayIcon::from_rgba(rgba, w, h).ok());
-        enabled
+        let tray = init_tray_icon(menu, TrayIcon::from_rgba(rgba, w, h).ok());
+        (enabled, discard, tray)
     });
     use_tray_menu_event_handler(move |event| match event.id.0.as_str() {
         "open" => {
@@ -144,11 +186,30 @@ fn App() -> Element {
             s.enabled = !s.enabled;
             s.save();
         }
+        "discard" => calls.discard(),
         "quit" => std::process::exit(0),
         _ => {}
     });
     // The tray check mark follows the window switch, and the reverse.
     use_effect(move || enabled_item.set_checked(session.read().enabled));
+    // A red dot and the discard entry while a call is recorded.
+    let tray_state = tray.clone();
+    use_effect(move || {
+        let recording = calls.recording();
+        let (rgba, w, h) = if recording {
+            recording_rgba()
+        } else {
+            mark_rgba()
+        };
+        let _ = tray_state.set_icon(TrayIcon::from_rgba(rgba, w, h).ok());
+        let tip = if recording {
+            t!("tray-recording")
+        } else {
+            t!("app-title")
+        };
+        let _ = tray_state.set_tooltip(Some(tip));
+        discard_item.set_enabled(recording);
+    });
 
     rsx! {
         document::Title { {t!("app-title")} }
@@ -295,6 +356,14 @@ fn Signed(session: Signal<Session>) -> Element {
         .org
         .filter(|id| orgs.iter().any(|o| o.id == *id))
         .or_else(|| orgs.first().map(|o| o.id));
+    // Recordings go to this org: keep it in the session.
+    use_effect(use_reactive((&org,), move |(resolved,)| {
+        if resolved.is_some() && session.peek().org != resolved {
+            let mut s = session.write();
+            s.org = resolved;
+            s.save();
+        }
+    }));
     let (email, server, enabled) = {
         let s = session.read();
         (s.email.clone(), s.url.clone(), s.enabled)
@@ -344,6 +413,7 @@ fn Signed(session: Signal<Session>) -> Element {
             }
             p { class: "muted", {t!("main-enabled-help")} }
         }
+        calls::CallsCard {}
         if let Some(org) = org {
             TranscriptionTest { key: "{org}", session, org }
         }
