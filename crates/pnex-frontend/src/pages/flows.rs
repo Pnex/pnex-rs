@@ -344,7 +344,7 @@ pub fn Flows(id: String) -> Element {
 }
 
 /// Status badge — full literal classes (Tailwind scan).
-fn status_badge(status: &str) -> (&'static str, String) {
+pub(crate) fn status_badge(status: &str) -> (&'static str, String) {
     let label = match status {
         "deployed" => t!("flows-status-deployed"),
         "stopped" => t!("flows-status-stopped"),

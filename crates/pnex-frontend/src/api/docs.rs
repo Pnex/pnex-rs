@@ -23,6 +23,16 @@ pub async fn list_filtered(
     client::request_all(&format!("/api/v1/docs{query}")).await
 }
 
+/// One page of the most recently edited docs (server order: `updated_at` desc).
+pub async fn recent(limit: u32) -> Result<pnex_core::pagination::Paginated<DocSummary>, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/docs?limit={limit}"),
+        None,
+    )
+    .await
+}
+
 pub async fn create(title: String, template: Option<String>) -> Result<DocSummary, ApiError> {
     client::request(
         reqwest::Method::POST,
