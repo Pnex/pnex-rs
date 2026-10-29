@@ -43,3 +43,9 @@ err-media-asr-model-invalid = The transcription model is missing or has not pass
 err-asr-test-failed = The server could not transcribe the clip.
 err-asr-model-not-found = Transcription model not found.
 err-server = Server error { $status } ({ $code }).
+
+trust-ca-title = Trust this server's certificate?
+trust-ca-message = { $base } uses a certificate signed by its own authority (local PNeX edge). Check that the fingerprint below matches the one shown by the server (web app, Profile → About) before trusting it.
+trust-ca-fingerprint = SHA-256 fingerprint
+trust-ca-cancel = Cancel
+trust-ca-accept = Trust and connect

@@ -94,6 +94,8 @@ fn error_text(e: &ApiError) -> String {
         ApiError::NotPnex => t!("err-not-pnex"),
         ApiError::Incompatible(contract) => t!("err-incompatible", contract: *contract),
         ApiError::BadCredentials => t!("err-bad-credentials"),
+        // Shown as the trust card, not as an error line.
+        ApiError::UntrustedCa { .. } => t!("err-unreachable"),
         ApiError::SessionExpired => t!("err-session-expired"),
         ApiError::Server(status, code) => match code.as_deref() {
             Some("access-denied") => t!("err-access-denied"),
@@ -168,12 +170,13 @@ fn Login(session: Signal<Session>) -> Element {
     let mut password = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(|| None::<ApiError>);
-    let submit = move |e: FormEvent| {
-        e.prevent_default();
+    // `ca`: a root CA the user just trusted, else the one pinned for this server.
+    let mut connect = move |ca: Option<String>| {
         busy.set(true);
         error.set(None);
         spawn(async move {
-            match Session::sign_in(&url(), &email(), &password()).await {
+            let ca = ca.or_else(|| session.peek().pinned_ca(&url()));
+            match Session::sign_in(&url(), &email(), &password(), ca).await {
                 Ok(mut s) => {
                     // Keep the capture switch across sign-ins.
                     s.enabled = session.peek().enabled;
@@ -186,8 +189,36 @@ fn Login(session: Signal<Session>) -> Element {
             busy.set(false);
         });
     };
+    let submit = move |e: FormEvent| {
+        e.prevent_default();
+        connect(None);
+    };
     rsx! {
         h1 { {t!("login-title")} }
+        if let Some(ApiError::UntrustedCa { pem, fingerprint }) = error() {
+            div { class: "card", role: "alertdialog",
+                h2 { {t!("trust-ca-title")} }
+                p { class: "muted", {t!("trust-ca-message", base : url())} }
+                label { {t!("trust-ca-fingerprint")} }
+                p {
+                    class: "result",
+                    style: "font-family: monospace; font-size: 12px; word-break: break-all;",
+                    "{fingerprint}"
+                }
+                div { class: "row",
+                    button { r#type: "button", onclick: move |_| error.set(None),
+                        {t!("trust-ca-cancel")}
+                    }
+                    button {
+                        id: "trust-ca",
+                        class: "primary",
+                        r#type: "button",
+                        onclick: move |_| connect(Some(pem.clone())),
+                        {t!("trust-ca-accept")}
+                    }
+                }
+            }
+        }
         form { class: "card", onsubmit: submit,
             div {
                 label { r#for: "server", {t!("login-server")} }
@@ -217,7 +248,7 @@ fn Login(session: Signal<Session>) -> Element {
                     oninput: move |e| password.set(e.value()),
                 }
             }
-            if let Some(e) = error() {
+            if let Some(e) = error().filter(|e| !matches!(e, ApiError::UntrustedCa { .. })) {
                 p { class: "error", role: "alert", {error_text(&e)} }
             }
             button {

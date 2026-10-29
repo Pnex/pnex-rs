@@ -9472,6 +9472,7 @@ dependencies = [
 name = "pnex-recorder"
 version = "0.2.0"
 dependencies = [
+ "base64 0.22.1",
  "cpal",
  "dioxus",
  "dioxus-i18n",
@@ -9482,7 +9483,9 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
+ "wry",
 ]
 
 [[package]]

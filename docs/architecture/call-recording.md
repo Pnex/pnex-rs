@@ -67,6 +67,10 @@ séparé de l'application desktop complète.
   `/api/v1/oauth2/token`, contrat d'API vérifié sur `/api/v1/meta/version`).
   Session gardée (`<config>/pnex/recorder.json`, 0600, refresh token seul,
   jamais le mot de passe).
+- Serveur HTTPS signé par sa propre autorité (edge local, D70) : même
+  confiance au premier usage que l'application desktop — `/api/v1/meta/ca`
+  lu sans vérification, empreinte SHA-256 affichée, CA épinglé dans la
+  session après accord explicite.
 - **Enregistrement activé** : interrupteur dans la fenêtre et coché dans le
   menu de l'icône ; il ne pilote encore aucune capture (lot R1.1).
 - **Test de transcription** : 5 s de micro (`cpal`, mono 16 bits WAV) envoyées
@@ -77,6 +81,16 @@ séparé de l'application desktop complète.
   de transcription de l'org qui ont passé leur vérification, langue `auto`.
   Messages explicites : aucun modèle enregistré, aucun modèle vérifié, aucun
   profil par défaut.
+- Modèle conseillé pour un poste léger : **Canary 180M flash int8**
+  (sherpa-onnx, CC-BY-4.0, fr/en/es/de, 153 Mo en `.tar.bz2`, WER 9,6 %
+  FLEURS, ≈ 18 flux temps réel CPU). Parakeet TDT 0.6B v3 int8 est meilleur
+  (8,7 %) mais son archive (486 Mo) dépasse la limite d'upload par défaut de
+  la médiathèque (`PNEX_MEDIA_MAX_BYTES`, 256 Mo).
+- Validé de bout en bout le 2026-10-29 sur la stack docker locale (edge
+  HTTPS) : connexion + CA, messages « aucun modèle » / « aucun profil par
+  défaut », test en mode avancé puis par défaut (extrait FLEURS français
+  joué dans une source PipeWire virtuelle, transcription exacte en ≈ 335 ms).
+  Pilotage par WebKitWebDriver (feature `e2e`, comme l'app desktop).
 - Reste R1.1 : double flux micro + loopback, détection d'appel, envoi des
   segments vers le pipeline (§3).
 

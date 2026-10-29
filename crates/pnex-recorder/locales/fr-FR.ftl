@@ -43,3 +43,9 @@ err-media-asr-model-invalid = Le modèle de transcription est absent ou n'a pas 
 err-asr-test-failed = Le serveur n'a pas pu transcrire l'extrait.
 err-asr-model-not-found = Modèle de transcription introuvable.
 err-server = Erreur du serveur { $status } ({ $code }).
+
+trust-ca-title = Faire confiance au certificat de ce serveur ?
+trust-ca-message = { $base } utilise un certificat signé par sa propre autorité (edge PNeX local). Vérifiez que l'empreinte ci-dessous correspond à celle affichée par le serveur (application web, Profil → À propos) avant de lui faire confiance.
+trust-ca-fingerprint = Empreinte SHA-256
+trust-ca-cancel = Annuler
+trust-ca-accept = Faire confiance et se connecter

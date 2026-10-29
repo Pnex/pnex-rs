@@ -21,6 +21,12 @@ pub enum ApiError {
     /// Server contract number.
     Incompatible(u32),
     BadCredentials,
+    /// HTTPS server signed by its own root CA (local edge, D70): the user
+    /// compares the fingerprint before the CA is pinned.
+    UntrustedCa {
+        pem: String,
+        fingerprint: String,
+    },
     SessionExpired,
     /// HTTP status and `ErrorDetail.error` code when the server sent one.
     Server(u16, Option<String>),
@@ -40,6 +46,9 @@ pub struct Session {
     access_token: String,
     #[serde(default)]
     expires_at: u64,
+    /// Root CA pinned after the user confirmed its fingerprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ca_pem: Option<String>,
 }
 
 fn path() -> Option<PathBuf> {
@@ -56,15 +65,61 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-fn http() -> &'static reqwest::Client {
-    static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    HTTP.get_or_init(|| {
-        reqwest::Client::builder()
-            .user_agent(concat!("pnex-recorder/", env!("CARGO_PKG_VERSION")))
-            .timeout(std::time::Duration::from_secs(60))
-            .build()
-            .expect("reqwest client")
-    })
+/// Client trusting the webpki roots plus the pinned CA, if any.
+fn client(ca: Option<&str>) -> reqwest::Client {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(concat!("pnex-recorder/", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(60));
+    // An unparsable PEM is skipped: the handshake then fails, the safe outcome.
+    if let Some(cert) = ca.and_then(|pem| reqwest::Certificate::from_pem(pem.as_bytes()).ok()) {
+        builder = builder.add_root_certificate(cert);
+    }
+    builder.build().expect("reqwest client")
+}
+
+/// The server's root CA, read before any trust exists: accepts any
+/// certificate, so it only fetches this public file and never carries tokens.
+async fn discover_ca(url: &str) -> Option<String> {
+    let pem = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .ok()?
+        .get(format!("{url}{}", pnex_api_contract::META_CA_PATH))
+        .send()
+        .await
+        .ok()?
+        .error_for_status()
+        .ok()?
+        .text()
+        .await
+        .ok()?;
+    pem.contains("-----BEGIN CERTIFICATE-----").then_some(pem)
+}
+
+/// SHA-256 fingerprint of the first certificate of `pem`, uppercase hex pairs
+/// joined by `:` (same format as the PNeX app and `openssl x509 -fingerprint`).
+pub fn fingerprint(pem: &str) -> Option<String> {
+    use base64::Engine;
+    use sha2::Digest;
+    let body: String = pem
+        .lines()
+        .skip_while(|line| !line.starts_with("-----BEGIN CERTIFICATE-----"))
+        .skip(1)
+        .take_while(|line| !line.starts_with("-----END CERTIFICATE-----"))
+        .map(str::trim)
+        .collect();
+    let der = base64::engine::general_purpose::STANDARD
+        .decode(body)
+        .ok()?;
+    if der.is_empty() {
+        return None;
+    }
+    let hex: Vec<String> = sha2::Sha256::digest(&der)
+        .iter()
+        .map(|b| format!("{b:02X}"))
+        .collect();
+    Some(hex.join(":"))
 }
 
 async fn error_of(res: reqwest::Response) -> ApiError {
@@ -98,12 +153,20 @@ impl Session {
         }
     }
 
+    /// The CA pinned for `url`, kept across sign-outs of the same server.
+    pub fn pinned_ca(&self, url: &str) -> Option<String> {
+        (self.url == url.trim().trim_end_matches('/'))
+            .then(|| self.ca_pem.clone())
+            .flatten()
+    }
+
     pub fn signed_in(&self) -> bool {
         !self.refresh_token.is_empty()
     }
 
     /// Forgets the tokens, keeps server and email to prefill the sign-in.
     pub fn sign_out(&mut self) {
+        // The pinned CA stays: it belongs to the server, not to the account.
         self.refresh_token.clear();
         self.access_token.clear();
         self.expires_at = 0;
@@ -116,17 +179,35 @@ impl Session {
         self.expires_at = now() + tokens.expires_in.max(0) as u64;
     }
 
-    /// Checks the server is a compatible PNeX, then signs in with the password grant.
-    pub async fn sign_in(url: &str, email: &str, password: &str) -> Result<Self, ApiError> {
+    fn http(&self) -> reqwest::Client {
+        client(self.ca_pem.as_deref())
+    }
+
+    /// Checks the server is a compatible PNeX, then signs in with the password
+    /// grant. `ca` is a root CA the user just confirmed (or the pinned one).
+    pub async fn sign_in(
+        url: &str,
+        email: &str,
+        password: &str,
+        ca: Option<String>,
+    ) -> Result<Self, ApiError> {
         let url = url.trim().trim_end_matches('/').to_string();
-        let info: pnex_api_contract::ServerInfo = http()
+        let probe = client(ca.as_deref())
             .get(format!("{url}{}", pnex_api_contract::META_VERSION_PATH))
             .send()
-            .await
-            .map_err(|_| ApiError::Unreachable)?
-            .json()
-            .await
-            .map_err(|_| ApiError::NotPnex)?;
+            .await;
+        let probe = match probe {
+            Ok(res) => res,
+            // TLS refused by an unknown authority: offer the server's own CA.
+            Err(_) if ca.is_none() && url.starts_with("https://") => {
+                let pem = discover_ca(&url).await.ok_or(ApiError::Unreachable)?;
+                let fingerprint = fingerprint(&pem).ok_or(ApiError::Unreachable)?;
+                return Err(ApiError::UntrustedCa { pem, fingerprint });
+            }
+            Err(_) => return Err(ApiError::Unreachable),
+        };
+        let info: pnex_api_contract::ServerInfo =
+            probe.json().await.map_err(|_| ApiError::NotPnex)?;
         if info.service != pnex_api_contract::SERVICE {
             return Err(ApiError::NotPnex);
         }
@@ -135,13 +216,16 @@ impl Session {
         }
         let body =
             json!({"grant_type": "password", "username": email.trim(), "password": password});
-        let tokens = token(&url, &body).await.map_err(|e| match e {
-            ApiError::Server(400 | 401, _) => ApiError::BadCredentials,
-            e => e,
-        })?;
+        let tokens = token(&client(ca.as_deref()), &url, &body)
+            .await
+            .map_err(|e| match e {
+                ApiError::Server(400 | 401, _) => ApiError::BadCredentials,
+                e => e,
+            })?;
         let mut session = Self {
             url,
             email: email.trim().to_string(),
+            ca_pem: ca,
             ..Self::default()
         };
         session.set_tokens(tokens);
@@ -153,7 +237,7 @@ impl Session {
     async fn bearer(&mut self) -> Result<String, ApiError> {
         if self.expires_at.saturating_sub(now()) < REFRESH_WINDOW {
             let body = json!({"grant_type": "refresh_token", "refresh_token": self.refresh_token});
-            match token(&self.url, &body).await {
+            match token(&self.http(), &self.url, &body).await {
                 Ok(tokens) => {
                     self.set_tokens(tokens);
                     self.save();
@@ -169,7 +253,8 @@ impl Session {
 
     pub async fn orgs(&mut self) -> Result<Vec<OrgMembership>, ApiError> {
         let bearer = self.bearer().await?;
-        let res = http()
+        let res = self
+            .http()
             .get(format!("{}/api/v1/user-info", self.url))
             .bearer_auth(bearer)
             .send()
@@ -186,7 +271,8 @@ impl Session {
     /// transcribe).
     pub async fn models(&mut self, org: i64) -> Result<Vec<AsrModel>, ApiError> {
         let bearer = self.bearer().await?;
-        let res = http()
+        let res = self
+            .http()
             .get(format!("{}/api/v1/asr/models?limit=100", self.url))
             .bearer_auth(bearer)
             .header("X-Org-Id", org.to_string())
@@ -207,7 +293,8 @@ impl Session {
     /// The org's default transcription profile, if one is set.
     pub async fn default_profile(&mut self, org: i64) -> Result<Option<AsrProfile>, ApiError> {
         let bearer = self.bearer().await?;
-        let res = http()
+        let res = self
+            .http()
             .get(format!("{}/api/v1/asr/profiles?limit=100", self.url))
             .bearer_auth(bearer)
             .header("X-Org-Id", org.to_string())
@@ -230,7 +317,8 @@ impl Session {
         wav: Vec<u8>,
     ) -> Result<AsrTestResult, ApiError> {
         let bearer = self.bearer().await?;
-        let res = http()
+        let res = self
+            .http()
             .post(format!(
                 "{}/api/v1/asr/models/{model}/test?name=clip.wav&language={language}",
                 self.url
@@ -254,8 +342,8 @@ pub fn usable(model: &AsrModel) -> bool {
     model.check.status == ModelCheckStatus::Valid
 }
 
-async fn token(url: &str, body: &Value) -> Result<TokenResponse, ApiError> {
-    let res = http()
+async fn token(http: &reqwest::Client, url: &str, body: &Value) -> Result<TokenResponse, ApiError> {
+    let res = http
         .post(format!("{url}/api/v1/oauth2/token"))
         .json(body)
         .send()
@@ -265,4 +353,17 @@ async fn token(url: &str, body: &Value) -> Result<TokenResponse, ApiError> {
         return Err(error_of(res).await);
     }
     res.json().await.map_err(|_| ApiError::NotPnex)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn fingerprint_hashes_the_der_body() {
+        // DER = b"hello" -> SHA-256 2CF24DBA...
+        let pem = "junk\n-----BEGIN CERTIFICATE-----\naGVs\nbG8=\n-----END CERTIFICATE-----\n";
+        let fp = super::fingerprint(pem).expect("fingerprint");
+        assert!(fp.starts_with("2C:F2:4D:BA:5F:B0:A3:0E"), "{fp}");
+        assert_eq!(fp.split(':').count(), 32);
+        assert_eq!(super::fingerprint("not a certificate"), None);
+    }
 }

@@ -23,3 +23,14 @@ cpal = "0.16"
 hound = "3.5"
 # Decodes the PNeX mark for the tray and window icons.
 png = "0.17"
+# Fingerprint of a self-hosted root CA before it is pinned.
+sha2 = "0.10"
+base64 = "0.22"
+
+# Linux e2e only (feature `e2e`): turns on the vendored wry patch that lets
+# WebKitWebDriver drive the window (and only with PNEX_E2E_AUTOMATION set).
+[target.'cfg(target_os = "linux")'.dependencies]
+wry = { version = "0.53", default-features = false, optional = true }
+
+[features]
+e2e = ["wry/pnex-automation"]
