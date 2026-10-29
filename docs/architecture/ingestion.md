@@ -34,7 +34,7 @@ flowchart LR
   D --> X[archive_extract]
   X --> I1[table_inspect Certificateurs] --> F1[rows_filter SIRET client] --> M1[ontology_import fc_certifiers]
   M1 --> I2[table_inspect Standard] --> F2[rows_filter fiches connues] --> M2[ontology_import fc_sheets]
-  M2 --> I3[table_inspect Partenaires] --> F3[rows_filter fiches connues] --> M3[ontology_import fc_partners]
+  M2 --> I3[table_inspect Partenaires] --> F3[rows_filter fiches connues actives] --> M3[ontology_import fc_partners]
   M3 --> S[ontology_import SIRENE] --> C[staging_cleanup]
 ```
 
@@ -156,6 +156,17 @@ séparateur, donc la première colonne non vide — `Date_Effet` est vide sur
 les fiches RS) ; périmètre `ORGA_FORM → both`, `FORMER → preparation`,
 `ORGANISER → assessment`. Le brouillon ne se déploie pas tant que le filtre
 « Certificateurs » n'a pas de SIRET (Q-I1).
+
+**Pack 3.3.0 (2026-10-29)** : `fc_partners` ne garde que les partenaires des
+fiches **actives** connues (`in_objects` + `only: status = active`, statut
+posé par `fc_sheets`). Réglage `certifiers` vide = toutes les fiches de
+l'open data : 396 923 lignes partenaires > `ROWS_MAX` (250 000), l'import
+échouait sur une org neuve ; actives seules = 140 758. Les autres imports
+FC tiennent sans ce filtre (Certificateurs 42 877, Standard 36 228, Blocs
+54 932, XML RS 4 930 fiches ≈ 302 000 objets prévus < `PLANNED_MAX`).
+Une fiche qui devient inactive ferme les habilitations de ses partenaires
+(snapshot). Une org neuve dont `fc_partners` passe avant `fc_sheets` la
+première nuit n'importe rien ce soir-là, puis rattrape la nuit suivante.
 
 ### Contenu des fiches (pack 1.2.0, 2026-10-20)
 

@@ -47,7 +47,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "3.2.0"
+version: "3.3.0"
 requires: [companies_fr, web_presence]
 extends:
   - type: organization
@@ -619,7 +619,10 @@ imports:
         - { step: file_download }
         - { step: archive_extract, entries: ["*Partenaires*.csv"] }
         - { step: table_inspect, entry: "*Partenaires*.csv", expected_columns: [Numero_Fiche, Nom_Partenaire, Siret_Partenaire, Habilitation_Partenaire] }
-        - { step: rows_filter, entry: "*Partenaires*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
+        # Active sheets only: every certification of the open data (empty
+        # `certifiers` setting) brings ~397k partner rows, over ROWS_MAX;
+        # the active ones ~141k (2026-10-29). Needs fc_sheets' `status`.
+        - { step: rows_filter, entry: "*Partenaires*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, only: { property: status, values: [active] }, convert: [trim, upper] }
       key: fc_partners
       name: France Compétences partners
       names: {fr: "Partenaires France Compétences"}

@@ -1725,10 +1725,17 @@ fn fc_partners(drop: &[&str]) -> String {
             "HABILITATION_ORGANISER",
         ),
         (
-            "RS6766",
+            "RS6765",
             "PARTENAIRE TROIS",
             "33333333400006",
             "HABILITATION_ORGANISER",
+        ),
+        // An inactive sheet: its partners are filtered out.
+        (
+            "RS6766",
+            "PARTENAIRE QUATRE",
+            "44444444200007",
+            "HABILITATION_FORMER",
         ),
         ("RNCP1", "AILLEURS", "13002526500013", "HABILITATION_FORMER"),
         // As shipped by France Compétences: its SIREN (305405046) fails the
@@ -1866,7 +1873,11 @@ async fn open_data_ingestion_chain() {
         assert_eq!(step(&rs, "rows_filter")["rows_out"], 2, "only the client's sheets");
         let rp = run(partners).await;
         assert_eq!(rp["run"]["state"], "applied", "{rp}");
+        // RNCP1 is not held, RS6766 is inactive: RS6765's six rows only.
         assert_eq!(step(&rp, "rows_filter")["rows_out"], 6, "{rp}");
+        let quatre = format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
+            AND type_key = 'organization' AND properties ->> 'siren' = '444444442'");
+        assert_eq!(count(q(quatre).await.unwrap()), 0, "partner of an inactive sheet");
 
         // The ontology: certifications of the client with their sheet,
         // its `holds` links, the partners' accreditations and scopes.
@@ -1912,7 +1923,8 @@ async fn open_data_ingestion_chain() {
         assert_eq!(count(q(links("accredited_for")).await.unwrap()), 3);
 
         // A partner gone from the open data: its accreditation closes.
-        *zip.lock().unwrap() = fc_zip(&fc_partners(&["333"]));
+        // (AFTRAL out too: left out by its key, it would hold RS6765's links.)
+        *zip.lock().unwrap() = fc_zip(&fc_partners(&["333", "305"]));
         let r3 = run(partners).await;
         assert_eq!(r3["run"]["counts"]["closed"], 1, "{r3}");
         assert_eq!(count(q(links("accredited_for")).await.unwrap()), 2);
