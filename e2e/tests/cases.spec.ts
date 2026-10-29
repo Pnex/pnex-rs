@@ -130,6 +130,7 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     api,
     prefix,
     capture,
+    uiLocale,
   }) => {
     const run = Date.now().toString(36);
     const c = await api.post('/ontology/objects', {
@@ -145,7 +146,8 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
 
     const editor = new DocEditor(app, page);
     await editor.waitSynced();
-    await expect(editor.content.locator('h2').first()).toHaveText('Problem');
+    // D370: the template body is written in the interface language.
+    await expect(editor.content.locator('h2').first()).toHaveText(uiLocale === 'fr-FR' ? 'Problème' : 'Problem');  // english-guard: allow (French heading of the template)
     const docId = editor.id;
 
     await app.goto(`/cases/${c.id}`);

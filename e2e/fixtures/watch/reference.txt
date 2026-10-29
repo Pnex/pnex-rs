@@ -1,0 +1,33 @@
+Programme de référence
+Cadrer le projet de référencement naturel (C1) (2h)
+- Fixer la cible et les objectifs du site.
+- Choisir une stratégie de référencement.
+- Lister les ressources à mobiliser : outils, intervenants internes et externes.
+- Estimer le budget.
+- Relier le référencement à la stratégie globale de communication.
+Réaliser un audit des intentions de recherches de sa cible (C2) (4h)
+- Repérer les intentions de recherches pertinentes au regard de la stratégie.
+- Outils et méthodes pour conduire un audit d'intentions de recherches.
+Optimiser les différents contenus web de son site (C3) (6h)
+- Balises title et meta.
+- Contenus, images, vidéos et fichiers joints.
+- Adresses URL, navigation et maillage interne.
+- Usage mobile et temps de chargement.
+- Sobriété et sécurité numérique.
+- Suivi de l'indexation du site.
+- Mettre en place une veille.
+Elaborer une stratégie éditoriale orientée référencement (C4) (4h)
+- Rédiger une charte éditoriale.
+- Planifier un calendrier de publication des contenus.
+- Structurer un contenu performant pour le référencement.
+- Cohérence sémantique des contenus.
+- Réduire l'impact environnemental des contenus.
+- Accessibilité des contenus.
+Mettre en place une stratégie de netlinking (C5) (3h)
+- Les indicateurs de popularité.
+- Identifier les sites partenaires utiles au référencement.
+- Mettre en place et suivre les partenariats.
+Auditer les résultats de sa stratégie de référencement naturel (C6) (2h)
+- Auditer les performances du référencement : indicateurs et outils de contrôle.
+- Identifier les points bloquants et proposer des axes d'amélioration.
+- Suivre les retombées et mesurer le ROI dans un tableau de bord.

@@ -1,0 +1,34 @@
+OF EXEMPLE — programme
+Chapitre 01 : Cadrer le projet et auditer les intentions de recherche (2 h)
+Parties répondant à C1 :
+- Votre cible, vos objectifs et votre stratégie.
+- Les ressources : outils, intervenants internes et externes.
+- Votre budget.
+Atelier : la note de cadrage du projet.
+Chapitre 02 : Cadrer le projet et auditer les intentions de recherche (2 h)
+- Repérer les intentions de recherche pertinentes pour la stratégie.
+- Outils et méthodes pour mener l'audit.
+Atelier : audit des intentions de recherche de la cible, avec des outils adaptés au budget.
+Chapitre 03 : Optimiser les différents contenus web de son site (5 h)
+- Title, meta, contenus, images et vidéos.
+- URL, navigation et maillage interne.
+- Mobile, temps de chargement, indexation.
+- Sobriété et sécurité numérique.
+- Mettre en place une veille.
+Chapitre 04 : Élaborer une stratégie éditoriale orientée référencement (3 h)
+- Une charte éditoriale.
+- Un calendrier de publication.
+- Structurer un contenu performant et sémantiquement cohérent.
+- Impact environnemental et accessibilité des contenus.
+Chapitre 5 complémentaire : Robots d'indexation et réponses générées (2 h)
+- Lire son fichier robots.txt agent par agent.
+- Écrire des passages courts, réponse en tête.
+- Intertitres en questions, chiffres datés et sourcés.
+Chapitre 06 : Netlinking et présence hors site (5 h)
+- Lire les indicateurs de popularité et identifier les sites.
+- Être cité dans les comparatifs, forums, annuaires et avis.
+- Relations presse et netlinking classique.
+Chapitre 07 : Auditer les résultats de sa stratégie de référencement naturel (2 h)
+- Auditer les performances avec les bons indicateurs et outils.
+- Identifier les points bloquants et les axes d'amélioration.
+- Suivre les retombées et le ROI.
