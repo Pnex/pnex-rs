@@ -32,7 +32,10 @@ fn mask_strings_comments(code: &str, lang: FunctionLanguage) -> String {
             match c {
                 '\\' => {
                     out.push(' ');
-                    chars.next();
+                    // Blank the escaped char too: offsets must stay aligned.
+                    if chars.next().is_some() {
+                        out.push(' ');
+                    }
                 }
                 q if q == quote => {
                     out.push(' ');
@@ -81,7 +84,8 @@ fn is_ident(c: char) -> bool {
 
 /// Analyzes the code for undeclared port uses: `inputs["k"]` / `inputs.k` /
 /// `inputs.get("k"` → input reads; depth-1 keys of a `return { … }` group →
-/// output writes. Names already declared are filtered out; dedup per
+/// output writes, unless that dict is a message (carries `payload`, no
+/// `@output` declared). Names already declared are filtered out; dedup per
 /// (kind, name), ordered inputs first then outputs (first appearance).
 pub fn analyze_undeclared(
     code: &str,
@@ -141,18 +145,89 @@ pub fn analyze_undeclared(
             && (i == 0 || !is_ident(mchars[i - 1]))
             && (i + 6 == mchars.len() || !is_ident(mchars[i + 6]))
         {
-            // First `{` after `return` (whitespace/newlines skipped).
+            // `return {`: only a dict literal returned as is (a list or a call
+            // holding a dict is a positional or computed return).
             let mut j = i + 6;
-            while j < mchars.len() && mchars[j] != '{' && mchars[j] != ';' && mchars[j] != '\n' {
+            while j < mchars.len() && mchars[j].is_whitespace() && mchars[j] != '\n' {
                 j += 1;
             }
-            if j < mchars.len() && mchars[j] == '{' {
-                collect_dict_keys(&mchars, &chars, j, &mut outputs);
+            // A helper's return builds a value, not the node's output.
+            let in_helper = enclosing_fn(&mchars, i, lang).is_some_and(|f| f != "handle");
+            if !in_helper && j < mchars.len() && mchars[j] == '{' {
+                let mut keys = Vec::new();
+                collect_dict_keys(&mchars, &chars, j, &mut keys);
+                // Same rule as the runtime (`map_return`): without declared
+                // outputs, a dict carrying `payload` is the outgoing message
+                // (merged into msg on the single port), not named outputs.
+                if !(sig.outputs.is_empty() && keys.iter().any(|(k, _)| k == "payload")) {
+                    outputs.extend(keys);
+                }
             }
         }
         i += 1;
     }
     build_result(sig, inputs, outputs)
+}
+
+/// Name of the innermost named function enclosing masked position `pos`
+/// (Starlark `def` by indentation, JS `function name(…) { … }` by braces).
+/// None at top level. Anonymous JS closures are not names: they count as
+/// their enclosing function.
+fn enclosing_fn(mchars: &[char], pos: usize, lang: FunctionLanguage) -> Option<String> {
+    // ASCII-only copy: byte offsets equal char offsets.
+    let text: String = mchars
+        .iter()
+        .map(|c| if c.is_ascii() { *c } else { ' ' })
+        .collect();
+    let ident_after = |s: &str| -> String { s.chars().take_while(|c| is_ident(*c)).collect() };
+    match lang {
+        FunctionLanguage::Starlark => {
+            let line_start = text[..pos].rfind('\n').map_or(0, |n| n + 1);
+            let indent = |l: &str| l.len() - l.trim_start().len();
+            let mut cur = indent(&text[line_start..]);
+            for line in text[..line_start].lines().rev() {
+                if line.trim().is_empty() || indent(line) >= cur {
+                    continue;
+                }
+                if let Some(rest) = line.trim_start().strip_prefix("def ") {
+                    return Some(ident_after(rest.trim_start()));
+                }
+                cur = indent(line);
+            }
+            None
+        }
+        FunctionLanguage::Js => {
+            let mut best: Option<(usize, String)> = None;
+            for (start, _) in text.match_indices("function") {
+                let after = &text[start + 8..];
+                if (start > 0 && is_ident(mchars[start - 1]))
+                    || !after.starts_with(char::is_whitespace)
+                {
+                    continue;
+                }
+                let name = ident_after(after.trim_start());
+                let Some(open) = text[start..].find('{').map(|o| start + o) else {
+                    continue;
+                };
+                if name.is_empty() || open > pos {
+                    continue;
+                }
+                let mut depth = 0i32;
+                let close = (open..mchars.len()).find(|&k| {
+                    match mchars[k] {
+                        '{' => depth += 1,
+                        '}' => depth -= 1,
+                        _ => {}
+                    }
+                    depth == 0
+                });
+                if close.is_none_or(|c| c > pos) && best.as_ref().is_none_or(|(o, _)| open > *o) {
+                    best = Some((open, name));
+                }
+            }
+            best.map(|(_, n)| n)
+        }
+    }
 }
 
 /// Extracts the string between `chars[k]` (expected quote) and its matching
@@ -358,6 +433,71 @@ mod tests {
             .map(|u| u.name.as_str())
             .collect();
         assert_eq!(outs, vec!["heating", "delta"]);
+    }
+
+    #[test]
+    fn returned_message_dict_is_not_outputs() {
+        // qw_finding shape: a dict carrying `payload` is the message.
+        let code = "def handle(inputs, msg):\n    e = msg.get(\"payload\", {}) or {}\n    if not e.get(\"props\"): return None\n    return {\"payload\": e[\"props\"], \"title\": e.get(\"title\", \"\"), \"link_targets\": e.get(\"link_targets\", {}),\n            \"object\": None, \"object_id\": None, \"links\": None}\n";
+        assert!(analyze(code, Lang::Starlark).unwrap().is_empty());
+        let js = "function handle(inputs, msg) {\n  return { payload: 1, topic: \"t\" };\n}";
+        assert!(analyze(js, Lang::Js).unwrap().is_empty());
+        // With declared outputs the runtime routes by key: still flagged.
+        let routed =
+            "# @output a any\ndef handle(inputs, msg):\n    return {\"a\": 1, \"payload\": 2}\n";
+        let uses = analyze(routed, Lang::Starlark).unwrap();
+        assert_eq!(uses.len(), 1);
+        assert_eq!(uses[0].name, "payload");
+    }
+
+    #[test]
+    fn helper_returns_are_not_outputs() {
+        let star = "def finding(t):\n    if t:\n        return {\"props\": t, \"title\": t}\n    return None\n\ndef handle(inputs, msg):\n    return {\"out\": finding(1)}\n";
+        let names: Vec<String> = analyze(star, Lang::Starlark)
+            .unwrap()
+            .into_iter()
+            .map(|u| u.name)
+            .collect();
+        assert_eq!(names, vec!["out".to_string()]);
+        let js = "function helper(x) {\n  return { props: x };\n}\nfunction handle(inputs, msg) {\n  const f = (y) => { return { inner: y }; };\n  return { out: helper(1) };\n}";
+        let names: Vec<String> = analyze(js, Lang::Js)
+            .unwrap()
+            .into_iter()
+            .map(|u| u.name)
+            .collect();
+        assert_eq!(names, vec!["inner".to_string(), "out".to_string()]);
+    }
+
+    /// Pack functions must not show phantom "undeclared" outputs.
+    #[test]
+    fn pack_functions_have_no_phantom_outputs() {
+        let packs = [
+            include_str!("../../../pnex-backend/packs/quali_watch.yaml"),
+            include_str!("../../../pnex-backend/packs/web_presence.yaml"),
+            include_str!("../../../pnex-backend/packs/crm.yaml"),
+            include_str!("../../../pnex-backend/packs/prospecting_b2b.yaml"),
+            include_str!("../../../pnex-backend/packs/prospecting_b2b_fr.yaml"),
+        ];
+        let mut checked = 0;
+        for pack in packs {
+            // Every pack function is Starlark, its `code: |` block indented 6.
+            for block in pack.split("code: |\n").skip(1) {
+                let code = block
+                    .lines()
+                    .take_while(|l| l.is_empty() || l.starts_with("      "))
+                    .map(|l| l.get(6..).unwrap_or(""))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let outs: Vec<_> = analyze(&code, Lang::Starlark)
+                    .unwrap()
+                    .into_iter()
+                    .filter(|u| u.kind == PortKind::Output)
+                    .collect();
+                assert!(outs.is_empty(), "{outs:?} in:\n{code}");
+                checked += 1;
+            }
+        }
+        assert!(checked > 20);
     }
 
     #[test]

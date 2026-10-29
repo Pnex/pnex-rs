@@ -26,6 +26,10 @@ pub fn FunctionNodePreview(
             div { class: "mb-3 text-sm text-gray-500", {t!("functions-preview-hint")} }
             div { class: "flex items-center justify-center gap-2",
                 div { class: "flex flex-col gap-3 items-end",
+                    // No @input: the canvas keeps one unnamed input anchor.
+                    if inputs.is_empty() {
+                        span { class: "h-3 w-3 rounded-full border-2 border-teal-500" }
+                    }
                     for input in inputs {
                         div { class: "flex items-center gap-2 font-mono text-sm",
                             span {
@@ -46,6 +50,10 @@ pub fn FunctionNodePreview(
                     span { class: "text-xs text-gray-500", "{lang_label} v{version}" }
                 }
                 div { class: "flex flex-col gap-3",
+                    // No @output: one unnamed port carries the returned message.
+                    if outputs.is_empty() {
+                        span { class: "h-3 w-3 rounded-full border-2 border-amber-500" }
+                    }
                     for output in outputs {
                         div { class: "flex items-center gap-2 font-mono text-sm",
                             span { class: "h-3 w-3 rounded-full border-2 border-amber-500" }
