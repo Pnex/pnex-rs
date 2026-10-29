@@ -1164,9 +1164,9 @@ transaction tant que D188 manque. Premier lot de valeur sans LLM : DD1
 (parseur FEC) + DD2 (moteur et comparatif). Relecture du 2026-10-27
 (§14) : la file de propositions et l'import BODACC existent déjà.
 
-### P2.33 — Jurisprudence vérifiable pour assistants tiers (ajout 2026-10-28) — **PRD proposé, rien d'implémenté**
+### P2.33 — Recherche juridique composable (ajout 2026-10-28, élargi 2026-10-29) — **PRD proposé, rien d'implémenté**
 
-Doc : `legal-research.md` (D485–D496, lots LR0–LR6). Collecte de l'open
+Doc : `legal-research.md` (D485–D496 et D498–D505, lots LR0–LR11). Collecte de l'open
 data juridique français (Cour de cassation, textes consolidés,
 juridictions administratives, Conseil constitutionnel) dans un pack
 `case_law` + `case_law_fr`, découpage des décisions, références → liens,
@@ -1176,6 +1176,16 @@ que chacun branche sur son propre assistant ; outil central
 `verify_citation`. Pas de chat fourni, synthèse IA à la demande et
 marquée, aucune analyse des magistrats. Premier lot de valeur sans LLM :
 LR1 → LR5 sur la Cour de cassation.
+
+Élargissement du 2026-10-29 (D498–D505, LR7–LR11) : la vérification de
+citations devient la première brique d'une famille de packs. Corpus dans
+une org de référence lue par toutes par clé naturelle (`external_ref`,
+exception à la frontière d'org soumise à revue), couches UE, CEDH et
+international, pack `legal_practice` (affaire reliée au dossier, moyens
+reliés aux faits et aux sources, délais à confirmer), veille par
+requêtes nommées et flows, doctrine interne dans la même recherche avec
+la source de chaque extrait marquée, instance autonome par
+synchronisation.
 
 ### P2.34 — Applications construites dans PneX : écrans métier sur l'ontologie (ajout 2026-10-29) — **PRD validé, rien d'implémenté**
 
@@ -1566,3 +1576,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 - **2026-10-28 (jurisprudence)** — Ajout de P2.33 (`legal-research.md`,
   D485–D496, lots LR0–LR6) : open data juridique français, vérificateur
   de citations, façade MCP/API `pnex-juris` pour assistants tiers.
+- **2026-10-29 (recherche juridique composable)** — P2.33 élargi
+  (D498–D505, lots LR7–LR11) : famille de packs (corpus, pratique,
+  veille), org de référence + `external_ref`, couches `_eu`, `_echr`,
+  `_intl`, pack `legal_practice`, doctrine interne.

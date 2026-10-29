@@ -1,7 +1,16 @@
-# Jurisprudence vérifiable pour assistants tiers (D485–D496)
+# Recherche juridique composable (D485–D496, D498–D505)
 
-> Statut : **proposé** (2026-10-28), rien d'implémenté · Décisions
-> **D485–D496** · Lots **LR0–LR6** · Périmètre V1 : **droit français**.
+> Statut : **proposé** (2026-10-28, élargi le 2026-10-29), rien
+> d'implémenté · Décisions **D485–D496** (vérification de citations) et
+> **D498–D505** (famille de packs, §7) · Lots **LR0–LR11** · Périmètre
+> V1 : **droit français**, puis UE, CEDH, international (D499).
+>
+> Le 2026-10-29, la cible s'élargit : la vérification de citations
+> (§1–§6) n'est plus le produit mais la **première brique** d'une famille
+> de packs composables : corpus public de référence, pratique d'un
+> cabinet (affaires, délais, moyens reliés aux faits et aux sources),
+> veille par flows, doctrine interne. Chaque étage s'installe seul ;
+> l'utilisateur assemble son outil (§7).
 >
 > Le besoin : des avocats emploient des assistants conversationnels
 > généralistes, qui citent parfois des décisions inexistantes, ou des
@@ -223,9 +232,157 @@ Cour de cassation.
 - **Q-LR3 — Copie locale** : la façade appelle PneX sur réseau privé ;
   servir depuis `pnex-mirror` (D439) isolerait davantage, mais demande
   la recherche plein texte côté miroir.
-- **Q-LR4 — Droit de l'UE** : EUR-Lex / CJUE et CEDH, après la France.
+- ~~**Q-LR4 — Droit de l'UE**~~ : tranché par D499 (couches `case_law_eu`,
+  `case_law_echr`, après la France).
+- **Q-LR5 — Corpus partagé ou copié** : D500 propose une org de
+  référence lue par toutes les orgs d'une instance ; une instance
+  auto-hébergée la remplit par synchronisation (D505). Reste à chiffrer
+  la copie complète contre une copie filtrée (juridictions, période).
+- **Q-LR6 — Calcul des délais** : règles déclarées par la couche pays
+  (D501) ; quelle couverture minimale (délais d'appel, de pourvoi,
+  d'opposition) avant de proposer le type `deadline` ?
+- **Q-LR7 — Sentences arbitrales** : peu sont publiées ; quelles
+  institutions publient sous une licence réutilisable (LR0 étendu) ?
+- **Q-LR8 — Exception à la frontière d'org** : D500 introduit une lecture
+  d'une org de plateforme par les autres ; à inscrire au registre
+  `security.md` §7 et à valider en revue avant LR7.
 
-## 7. Récapitulatif des décisions
+## 7. Élargissement : la famille de packs juridiques (D498–D505)
+
+```mermaid
+flowchart LR
+  subgraph REF["Org de référence (D500), données publiques seulement"]
+    C["case_law + couches _fr _eu _echr _intl (D499)"]
+  end
+  subgraph CAB["Org d'un cabinet (privée)"]
+    P["legal_practice : affaire, délai, acte, moyen (D501)"]
+    K["Dossier (cases.md) : pièces, chronologie, argent"]
+    D["Doctrine interne : notes, modèles, consultations (D503)"]
+    V["Veille : requêtes nommées + flows (D502)"]
+  end
+  J["pnex-juris : MCP / API publics (D492)"]
+  P -- "référence par clé naturelle" --> C
+  P --> K
+  V -- "lit" --> C
+  V -- "alerte" --> P
+  D -. "recherche commune, source marquée" .- C
+  J -- "compte de service, lecture" --> C
+```
+
+### D498 — Le juridique est une famille de packs, pas un produit
+
+- Trois étages indépendants : **corpus** (sources publiques, §3, D499,
+  D500), **pratique** (le travail d'un cabinet, D501, D503), **veille**
+  (D502). Chacun s'installe seul ; aucun ne suppose les autres.
+- `pnex-juris` (D485) n'est qu'un consommateur du corpus parmi d'autres ;
+  l'interface du cabinet est l'UI de PneX elle-même.
+- Garde D441 inchangée : le moteur ne gagne que des briques génériques
+  (références externes D500, règles de calcul de dates D501, recherche
+  multi-sources D503). Tout le vocabulaire juridique vit dans les packs.
+
+### D499 — Ordres juridiques en couches
+
+- Le pack générique `case_law` reste sans juridiction ; il gagne `treaty`
+  (traité, convention) et `award` (sentence) aux côtés de `decision`.
+- Couches, une par ordre juridique, chacune ne contenant que ce qui lui
+  est propre : `case_law_fr` (§3), `case_law_eu` (EUR-Lex, CJUE et
+  Tribunal ; clé CELEX ou ECLI), `case_law_echr` (arrêts et décisions de
+  la CEDH ; numéro de requête, ECLI), `case_law_intl` (traités publiés,
+  décisions d'organes internationaux, sentences arbitrales **publiées par
+  leur institution**).
+- Le suffixe d'une couche désigne un ordre juridique et pas toujours un
+  pays (`_eu`, `_echr`, `_intl`) ; la règle « la couche ne contient que
+  ce qui lui est propre » s'applique à l'identique.
+- D487 (open data officiel, lien officiel obligatoire, licence vérifiée
+  avant collecte), D495 et D496 s'appliquent à chaque couche.
+
+### D500 — Corpus de référence : une org de plateforme lue par toutes
+
+- Le corpus vit dans une **org de référence** désignée par l'admin
+  plateforme (D72). Elle ne contient que des données publiques et n'est
+  écrite que par ses flows d'import.
+- Les autres orgs ne la voient pas comme une org : leurs objets la
+  **référencent par clé naturelle** (ECLI, CELEX, ELI, numéro de
+  requête), avec une propriété de type `external_ref` (brique
+  générique : type cible, clé, libellé figé à la création). Aucun lien
+  ne traverse la frontière d'org ; une référence non résolue reste
+  affichée comme telle.
+- La résolution passe par une route de lecture de plateforme : entrée =
+  clé ou requête, sortie = l'objet du corpus et son lien officiel. Elle
+  ne reçoit rien d'autre de l'org appelante et ne journalise ni la clé
+  ni la requête au-delà du comptage (comme D493).
+- Exception explicite à la frontière d'org (Q-LR8) : lecture seule, une
+  seule org désignée, aucune donnée d'org à l'intérieur.
+
+### D501 — Pack `legal_practice` : affaires, délais, actes, moyens
+
+- Types : `matter` (affaire), `party_role` (rôle d'un objet de l'org
+  dans l'affaire), `deadline` (délai), `filing` (acte, conclusions,
+  mémoire), `argument` (moyen).
+- Le pack ne réinvente pas le dossier : une `matter` ouvre un dossier
+  `cases.md` (pièces, chronologie, argent, preuves D437) et s'y rattache.
+- **Le droit et les faits au même endroit** : un `argument` relie des
+  faits du dossier (événements, pièces, passages localisés D490) à des
+  sources (`external_ref` vers une décision, un article à la date des
+  faits). Une source modifiée (nouvelle version d'article, décision
+  cassée via `overturns`) signale chaque moyen qui s'y appuie.
+- `deadline` : date de départ, durée, règle de calcul **déclarée par la
+  couche pays** (jours francs, jours fériés, prorogation). Brique
+  générique : règles de calcul de dates déclarées par un pack. La date
+  calculée affiche sa règle et reste **à confirmer par l'avocat** ;
+  jamais présentée comme certaine.
+
+### D502 — Veille composable
+
+- Un abonnement est une **requête D185 nommée** (D434) sur le corpus :
+  juridiction, article visé, motif de référence, texte, formation.
+- Un flow la lit au rythme des synchronisations et produit une
+  notification ou un digest (`notifications.md`). Le pack fournit des
+  flows d'exemple ; le cabinet les modifie ou en compose d'autres.
+- Veille liée à une affaire : une décision nouvelle qui vise un article
+  cité par un `argument` ouvert alerte l'affaire.
+
+### D503 — Doctrine interne et recherche multi-sources
+
+- Notes, consultations, modèles d'actes du cabinet sont des documents de
+  son org, indexés par doc-search.
+- Une recherche couvre l'org et le corpus de référence ; chaque résultat
+  porte sa source : **officiel** (corpus, lien officiel), **interne**
+  (org), **synthèse générée** (D491). Les trois ne se mélangent jamais
+  dans un même extrait.
+- Un modèle d'acte peut citer des sources par `external_ref` : la veille
+  (D502) signale le modèle quand une source change.
+
+### D504 — Composer sans développer
+
+- Un cabinet ajoute ses propres types, propriétés, liens, vues et flows
+  depuis l'UI (ontologie D176, packs D190), au-dessus des packs
+  juridiques, sans toucher au moteur.
+- Un pack d'un cabinet (spécialité, procédure propre) s'exporte et se
+  partage comme tout pack ; le partage public suit le hub quand il
+  sortira du gel.
+
+### D505 — Secret professionnel et auto-hébergement
+
+- Aucune donnée de cabinet n'entre dans l'org de référence ; aucune
+  requête d'un cabinet n'y laisse de trace de contenu (D500).
+- Une instance auto-hébergée remplit sa propre org de référence par
+  synchronisation (`pnex-mirror`, D439, ou mêmes flows d'import) et
+  fonctionne sans appel sortant pour la recherche.
+- LLM : celui de l'org seulement (D119) ; conversations de l'assistant
+  privées utilisateur × org (D145).
+
+### Lots de l'élargissement
+
+| Lot | Contenu | Tests |
+|---|---|---|
+| **LR7** | Org de référence + `external_ref` + route de résolution (D500), revue de sécurité (Q-LR8) | lecture seule ; aucune écriture depuis une autre org ; aucune journalisation du contenu ; référence non résolue |
+| **LR8** | `legal_practice` (D501) : affaire ↔ dossier, moyens reliés aux faits et aux sources, signal de source modifiée | ontologie inventée pour la brique ; moyen signalé sur `overturns` |
+| **LR9** | Veille (D502) + recherche multi-sources marquée (D503) | requête nommée → notification ; source de chaque extrait |
+| **LR10** | Couches `case_law_eu` et `case_law_echr` (D499) | import idempotent ; clés CELEX, ECLI, numéro de requête |
+| **LR11** | `deadline` et règles de calcul de dates (D501, Q-LR6), `case_law_intl` (Q-LR7) | jours francs, fériés, prorogation ; règle affichée |
+
+## 8. Récapitulatif des décisions
 
 | Décision | Résumé |
 |---|---|
@@ -241,3 +398,11 @@ Cour de cassation.
 | D494 | Page de connexion statique, pas de chat |
 | D495 | Aucune analyse des magistrats (loi 2019-222, art. 33), gardée par test |
 | D496 | Pas de ré-identification des parties ; occultations appliquées |
+| D498 | Famille de packs : corpus, pratique, veille, installables séparément ; `pnex-juris` = un consommateur |
+| D499 | Couches par ordre juridique : `_fr`, `_eu`, `_echr`, `_intl` ; `treaty`, `award` au générique |
+| D500 | Org de référence lue par toutes ; objets d'org → corpus par `external_ref` (clé naturelle) |
+| D501 | Pack `legal_practice` : affaire ↔ dossier, moyens reliés aux faits et aux sources, délais à confirmer |
+| D502 | Veille = requête nommée + flow → notification ; alerte d'affaire |
+| D503 | Doctrine interne + corpus dans une recherche, source de chaque extrait marquée |
+| D504 | Le cabinet compose ses types, vues et flows depuis l'UI ; packs partageables |
+| D505 | Secret professionnel : rien du cabinet dans le corpus ; instance autonome par synchronisation |
