@@ -3,6 +3,9 @@
 //! org's media library for transcription, and checks with a 5 s
 //! transcription test that the server transcribes.
 
+// A tray app: no console window behind it on Windows.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod api;
 mod audio;
 mod calls;

@@ -254,6 +254,27 @@ tasks:
           mkdir -p target/dist && rm -f target/dist/pnex-desktop-windows-x86_64.zip
           cd "$app/.." && rm -rf pnex && cp -r app pnex && zip -qr "{{.ROOT_DIR}}/target/dist/pnex-desktop-windows-x86_64.zip" pnex && rm -rf pnex
 
+  # PNeX recorder (call-recording.md R1): a plain cargo binary (no asset!(),
+  # so no dx). Linux needs libpulse and webkit2gtk at run time; Windows ships
+  # WebView2Loader.dll next to the exe, like the desktop UI.
+  build:recorder:linux:
+    desc: Build the PNeX recorder for Linux x86_64 → target/dist/pnex-recorder-linux-x86_64.tar.gz
+    cmds:
+      - '{{.G}} cargo build --release -p pnex-recorder'
+      - mkdir -p target/dist && tar -C target/release -czf target/dist/pnex-recorder-linux-x86_64.tar.gz pnex-recorder
+
+  build:recorder:windows:
+    desc: Cross-build the PNeX recorder for Windows x86_64 → target/dist/pnex-recorder-windows-x86_64.zip (apt mingw-w64)
+    cmds:
+      - '{{.G}} cargo build --release -p pnex-recorder --target x86_64-pc-windows-gnu'
+      - cmd: |
+          loader=$(ls -d "$HOME"/.cargo/registry/src/*/webview2-com-sys-*/x64/WebView2Loader.dll | sort -V | tail -1)
+          test -f "$loader" || { echo "WebView2Loader.dll not found in the cargo registry" >&2; exit 1; }
+          out=target/dist/pnex-recorder
+          rm -rf "$out" && mkdir -p "$out"
+          cp target/x86_64-pc-windows-gnu/release/pnex-recorder.exe "$loader" "$out/"
+          cd target/dist && rm -f pnex-recorder-windows-x86_64.zip && zip -qr pnex-recorder-windows-x86_64.zip pnex-recorder && rm -rf pnex-recorder
+
   # Edge agent distribution (D95), served by pnex-server at
   # /api/v1/agent/download/{target} (PNEX_AGENT_DIST_DIR, dev default
   # target/agent-dist). Linux targets are static musl linked through zig

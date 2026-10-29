@@ -147,6 +147,11 @@ séparé de l'application desktop complète.
   (applis empaquetées par nom de famille, applis de bureau sous
   `NonPackaged` par leur chemin) : entrée en cours si `LastUsedTimeStop` = 0.
   Le job CI `recorder` compile la cible `x86_64-pc-windows-gnu` (clippy).
+- **Paquets** : `task build:recorder:linux` → `target/dist/pnex-recorder-linux-x86_64.tar.gz`
+  (binaire seul ; libpulse et webkit2gtk du système), `task build:recorder:windows`
+  → `target/dist/pnex-recorder-windows-x86_64.zip` (`.exe` en sous-système GUI +
+  `WebView2Loader.dll`, comme l'app desktop) ; cargo simple, pas de `dx`
+  (aucun `asset!()`).
 - Reste : essai Windows réel, macOS (process tap), transcription
   séparée par canal (« moi / l'autre » sans diarisation), notification
   système, envoi en flux pour les appels très longs (le WAV est lu en mémoire,
