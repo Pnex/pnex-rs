@@ -152,7 +152,7 @@ settings:
   media:
     # Upload cap: clean 413 JSON beyond; the axum limit (max+1 MB, see
     # routes()) stays the safety net.
-    max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="268435456") %>
+    max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="2147483648") %>
   # Server-side stitching (Take 360 V2) — HD assembly of 360° takes in the
   # `stitch_panorama` worker. Frames go through the MediaStore
   # (settings.media, no storage config of its own). enabled=false:

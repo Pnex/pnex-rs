@@ -50,8 +50,11 @@ vieux clients).
   **raw bytes octet-stream** (premier chemin body-bytes du repo ; pas de
   multipart — reqwest front sans feature, marche identique wasm + Android).
   `DefaultBodyLimit` posé par handler (env `PNEX_MEDIA_MAX_BYTES` défaut
-  256 Mo + 1 Mo de marge ; le 413 JSON propre part du handler via
-  `content_length()`).
+  2 Gio + 1 Mo de marge depuis le 2026-10-29, pour les modèles de
+  transcription et de vision lourds ; le 413 JSON propre part du handler via
+  `content_length()`). Le corps est lu en mémoire : au pire
+  `PNEX_UPLOAD_MAX_CONCURRENT` (4) × 2 Gio de RAM ; l'edge nginx laisse
+  passer 2100 Mo.
 - `GET /api/v1/media` (D14 : `kind`, `search`, pagination envelope),
   `GET/PATCH/DELETE /{id}`, versions : `GET/POST /{id}/versions`,
   `GET/DELETE /{id}/versions/{n}`, `POST /{id}/versions/{n}/restore`,

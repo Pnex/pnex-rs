@@ -146,7 +146,7 @@ settings:
   media:
     # Upload cap: clean 413 JSON beyond; the axum limit (max+1 MB, see
     # routes()) stays the safety net.
-    max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="268435456") %>
+    max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="2147483648") %>
   # Flow engine (D18) — the supervisor spawns pnex-flow-runtime (found on
   # PATH in the server image). Debug tools stay off in production.
   flow:

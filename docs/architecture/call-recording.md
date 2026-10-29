@@ -84,8 +84,8 @@ séparé de l'application desktop complète.
 - Modèle conseillé pour un poste léger : **Canary 180M flash int8**
   (sherpa-onnx, CC-BY-4.0, fr/en/es/de, 153 Mo en `.tar.bz2`, WER 9,6 %
   FLEURS, ≈ 18 flux temps réel CPU). Parakeet TDT 0.6B v3 int8 est meilleur
-  (8,7 %) mais son archive (486 Mo) dépasse la limite d'upload par défaut de
-  la médiathèque (`PNEX_MEDIA_MAX_BYTES`, 256 Mo).
+  (8,7 %), archive de 486 Mo : importable depuis que la limite de la
+  médiathèque est passée à 2 Gio (`PNEX_MEDIA_MAX_BYTES`).
 - Validé de bout en bout le 2026-10-29 sur la stack docker locale (edge
   HTTPS) : connexion + CA, messages « aucun modèle » / « aucun profil par
   défaut », test en mode avancé puis par défaut (extrait FLEURS français

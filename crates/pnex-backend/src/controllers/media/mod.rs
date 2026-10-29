@@ -76,7 +76,7 @@ pub(crate) use store::{write_version, IncomingVersion};
 
 pub fn routes() -> Routes {
     use crate::services::compute_limits;
-    // Upload limit: env (default 256 MB) + 1 MB slack; the coded 413 comes
+    // Upload limit: env (default 2 GiB) + 1 MB slack; the coded 413 comes
     // from the handler (settings.media.max_bytes), the axum limit is the net.
     let max = std::env::var("PNEX_MEDIA_MAX_BYTES")
         .ok()

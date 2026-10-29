@@ -21,7 +21,7 @@ use crate::services::artifact_store::S3Config;
 /// Media upload cap — raised explicitly on the POST routes
 /// (`DefaultBodyLimit`; no precedent in the repo, first
 /// body-bytes path).
-pub const DEFAULT_MAX_BYTES: usize = 256 * 1024 * 1024;
+pub const DEFAULT_MAX_BYTES: usize = 2 * 1024 * 1024 * 1024;
 
 /// Media settings — `settings.media` (env `PNEX_MEDIA_MAX_BYTES`); the
 /// bytes go to the object store of `settings.storage`.
@@ -218,7 +218,7 @@ mod tests {
     use super::*;
     use loco_rs::environment::Environment;
 
-    /// Default upload cap: 256 MB; the test S3 builds a store.
+    /// Default upload cap: 2 GiB; the test S3 builds a store.
     #[test]
     fn defaults_media_settings() {
         let config = Config::new(&Environment::Test).unwrap();
