@@ -206,16 +206,25 @@ struct Pipeline {
 
 impl Pipeline {
     fn run(&mut self, samples: &[f32], resp: &mut Response) -> Result<(), String> {
+        let mut spans = None;
         if let Some(vad) = self.vad.as_mut() {
-            let speech = vad.speech_ms(samples).map_err(|e| e.to_string())?;
+            let found = vad.spans(samples).map_err(|e| e.to_string())?;
+            let speech = pnex_asr::speech_ms_of(&found);
             resp.speech_ms = Some(speech);
             if speech == 0 {
                 // Silent segment: no transcription, no diarization (D166).
                 return Ok(());
             }
+            spans = Some(found);
         }
         if let Some(asr) = self.asr.as_mut() {
-            let t = asr.transcribe(samples).map_err(|e| e.to_string())?;
+            // Utterances apart by a long silence are transcribed alone: in one
+            // window the model loses one of them.
+            let t = match spans.as_deref() {
+                Some(s) if s.len() > 1 => pnex_asr::transcribe_spans(asr.as_mut(), samples, s),
+                _ => asr.transcribe(samples),
+            }
+            .map_err(|e| e.to_string())?;
             let t = pnex_asr::collapse_repeats(t);
             resp.text = Some(t.text);
             resp.words = t

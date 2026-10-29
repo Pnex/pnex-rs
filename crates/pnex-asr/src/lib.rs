@@ -62,8 +62,71 @@ pub trait Transcriber: Send {
 
 /// A loaded voice activity detector (task `vad`).
 pub trait VoiceDetector: Send {
+    /// Speech spans of the samples, `(start, end)` sample indexes in order;
+    /// empty = silent.
+    fn spans(&mut self, samples: &[f32]) -> Result<Vec<(usize, usize)>, AsrError>;
+
     /// Speech found in the samples, ms; 0 = silent.
-    fn speech_ms(&mut self, samples: &[f32]) -> Result<u32, AsrError>;
+    fn speech_ms(&mut self, samples: &[f32]) -> Result<u32, AsrError> {
+        Ok(speech_ms_of(&self.spans(samples)?))
+    }
+}
+
+/// Total length of speech spans, ms.
+pub fn speech_ms_of(spans: &[(usize, usize)]) -> u32 {
+    let n: usize = spans.iter().map(|(s, e)| e.saturating_sub(*s)).sum();
+    (n as u64 * 1000 / u64::from(SAMPLE_RATE)) as u32
+}
+
+/// Silence between two speech spans that makes them separate utterances,
+/// samples (2 s). Shorter pauses (breaths, a music bed the VAD misses) stay
+/// in one window: cutting there loses words.
+const UTTERANCE_GAP: usize = 2 * SAMPLE_RATE as usize;
+
+/// Transcribes the segment in parts cut in the middle of every long
+/// silence ([`UTTERANCE_GAP`]); the parts cover the whole segment, so
+/// nothing the VAD missed is dropped. Without a long silence it is one
+/// plain transcription. A window holding utterances separated by silence
+/// otherwise loses one of them: measured on Canary and Parakeet
+/// (call-recording.md, R1.1). Word times stay on the segment clock.
+pub fn transcribe_spans(
+    asr: &mut dyn Transcriber,
+    samples: &[f32],
+    spans: &[(usize, usize)],
+) -> Result<Transcript, AsrError> {
+    let mut cuts = vec![0];
+    cuts.extend(
+        spans
+            .windows(2)
+            .filter(|w| w[1].0.saturating_sub(w[0].1) >= UTTERANCE_GAP)
+            .map(|w| (w[0].1 + w[1].0) / 2),
+    );
+    if cuts.len() == 1 {
+        return asr.transcribe(samples);
+    }
+    cuts.push(samples.len());
+    let mut out = Transcript::default();
+    for part in cuts.windows(2) {
+        let (s, e) = (part[0], part[1].min(samples.len()));
+        if s >= e {
+            continue;
+        }
+        let t = asr.transcribe(&samples[s..e])?;
+        let offset = (s as u64 * 1000 / u64::from(SAMPLE_RATE)) as u32;
+        let text = t.text.trim();
+        if !text.is_empty() {
+            if !out.text.is_empty() {
+                out.text.push(' ');
+            }
+            out.text.push_str(text);
+        }
+        out.words.extend(t.words.into_iter().map(|w| Word {
+            start_ms: w.start_ms + offset,
+            end_ms: w.end_ms + offset,
+            ..w
+        }));
+    }
+    Ok(out)
 }
 
 /// Speaker turns of one segment: local speaker indexes (0, 1…) and one
@@ -224,6 +287,53 @@ pub fn collapse_repeats(mut t: Transcript) -> Transcript {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Says how many samples it got, with one word over its whole input.
+    struct Counter(Vec<usize>);
+
+    impl Transcriber for Counter {
+        fn name(&self) -> &str {
+            "counter"
+        }
+        fn transcribe(&mut self, samples: &[f32]) -> Result<Transcript, AsrError> {
+            self.0.push(samples.len());
+            let end_ms = (samples.len() as u64 * 1000 / 16_000) as u32;
+            Ok(Transcript {
+                text: format!("w{}", self.0.len()),
+                words: vec![Word {
+                    w: format!("w{}", self.0.len()),
+                    start_ms: 0,
+                    end_ms,
+                    p: None,
+                }],
+            })
+        }
+    }
+
+    #[test]
+    fn utterances_apart_by_a_long_silence_are_transcribed_alone() {
+        let samples = vec![0.0f32; 30 * 16_000];
+        // Speech 1-3 s and 10-12 s (7 s of silence): cut at 6.5 s, the two
+        // parts cover the whole segment, words on the segment clock.
+        let mut asr = Counter(Vec::new());
+        let t =
+            transcribe_spans(&mut asr, &samples, &[(16_000, 48_000), (160_000, 192_000)]).unwrap();
+        assert_eq!(t.text, "w1 w2");
+        assert_eq!(asr.0, [104_000, 480_000 - 104_000]);
+        assert_eq!((t.words[0].start_ms, t.words[0].end_ms), (0, 6500));
+        assert_eq!((t.words[1].start_ms, t.words[1].end_ms), (6500, 30_000));
+        // Short pauses (1.5 s): one plain transcription of the whole segment.
+        let mut asr = Counter(Vec::new());
+        let t = transcribe_spans(
+            &mut asr,
+            &samples,
+            &[(16_000, 48_000), (72_000, 100_000), (124_000, 130_000)],
+        )
+        .unwrap();
+        assert_eq!(asr.0, [480_000]);
+        assert_eq!(t.text, "w1");
+        assert_eq!(speech_ms_of(&[(0, 16_000), (32_000, 40_000)]), 1500);
+    }
 
     #[test]
     fn tokens_are_grouped_into_words() {

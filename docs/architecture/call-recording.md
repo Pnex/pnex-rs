@@ -130,8 +130,12 @@ séparé de l'application desktop complète.
   10–17 s), stocké, transcrit (`done` en 12 s).
 - **Limite constatée** : le pipeline ASR transcrit la fenêtre de 30 s d'un
   seul tenant ; avec deux énoncés séparés par un silence, Canary et Parakeet
-  en perdent un. À corriger côté `pnex-asr` : transcrire par plage de parole
-  quand le profil a une détection de voix.
+  en perdent un (instabilité du modèle : un écart d'un bit sur l'échantillon
+  suffit à faire tomber la première phrase de Canary). Corrigé dans
+  `pnex-asr` quand le profil a une **détection de voix** : le segment est
+  coupé au milieu des silences d'au moins 2 s et chaque morceau transcrit
+  seul (media-ingest.md, VAD). Un profil d'enregistrement d'appels doit donc
+  avoir une détection de voix (Silero).
 - Reste : Windows (WASAPI loopback) et macOS (process tap), transcription
   séparée par canal (« moi / l'autre » sans diarisation), notification
   système, envoi en flux pour les appels très longs (le WAV est lu en mémoire,

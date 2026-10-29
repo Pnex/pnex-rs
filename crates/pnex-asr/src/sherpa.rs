@@ -189,19 +189,21 @@ impl SherpaVad {
 }
 
 impl VoiceDetector for SherpaVad {
-    fn speech_ms(&mut self, samples: &[f32]) -> Result<u32, AsrError> {
+    fn spans(&mut self, samples: &[f32]) -> Result<Vec<(usize, usize)>, AsrError> {
         self.vad.reset();
         for chunk in samples.chunks(VAD_WINDOW) {
             self.vad.accept_waveform(chunk);
         }
         self.vad.flush();
-        let mut n: u64 = 0;
+        let mut spans = Vec::new();
         while let Some(seg) = self.vad.front() {
-            n += u64::try_from(seg.n()).unwrap_or(0);
+            let start = usize::try_from(seg.start()).unwrap_or(0);
+            let n = usize::try_from(seg.n()).unwrap_or(0);
+            spans.push((start, (start + n).min(samples.len())));
             drop(seg);
             self.vad.pop();
         }
-        Ok((n * 1000 / u64::from(SAMPLE_RATE)) as u32)
+        Ok(spans)
     }
 }
 
