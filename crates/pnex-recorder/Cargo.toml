@@ -39,5 +39,9 @@ wry = { version = "0.53", default-features = false, optional = true }
 libpulse-binding = "2.30"
 libpulse-simple-binding = "2.29"
 
+# Call detection on Windows: the microphone consent registry (MIT OR Apache-2.0).
+[target.'cfg(windows)'.dependencies]
+windows-registry = "0.6"
+
 [features]
 e2e = ["wry/pnex-automation"]

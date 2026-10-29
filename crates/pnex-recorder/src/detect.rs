@@ -1,6 +1,7 @@
 //! Call detection (call-recording.md R1.1): a call app holding the
 //! microphone. Linux: the PulseAudio record streams (source outputs) and the
-//! app behind each one.
+//! app behind each one. Windows: the microphone entries of the privacy
+//! registry that are in use.
 
 /// Call apps, matched in the lowercase binary or app name. Browsers are in:
 /// Meet, Teams web and the like run there.
@@ -86,7 +87,45 @@ pub fn recording_apps() -> Result<Vec<String>, String> {
     Ok(names)
 }
 
-#[cfg(not(target_os = "linux"))]
+/// A microphone consent entry is in use: started and not stopped yet.
+#[cfg(any(windows, test))]
+pub fn in_use(last_start: u64, last_stop: u64) -> bool {
+    last_start != 0 && last_stop == 0
+}
+
+/// Apps holding the microphone right now, from the Windows privacy
+/// registry (`ConsentStore\microphone`): packaged apps by family name,
+/// desktop apps under `NonPackaged` by their path (`#` for `\`).
+#[cfg(windows)]
+pub fn recording_apps() -> Result<Vec<String>, String> {
+    use windows_registry::{Key, CURRENT_USER};
+
+    const STORE: &str = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone";
+    let base = CURRENT_USER.open(STORE).map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    let mut visit = |key: &Key, name: String| {
+        let start = key.get_u64("LastUsedTimeStart").unwrap_or(0);
+        let stop = key.get_u64("LastUsedTimeStop").unwrap_or(1);
+        if in_use(start, stop) {
+            out.push(name);
+        }
+    };
+    for name in base.keys().map_err(|e| e.to_string())? {
+        let Ok(key) = base.open(&name) else { continue };
+        if name == "NonPackaged" {
+            for app in key.keys().map_err(|e| e.to_string())? {
+                if let Ok(k) = key.open(&app) {
+                    visit(&k, app);
+                }
+            }
+        } else {
+            visit(&key, name);
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 pub fn recording_apps() -> Result<Vec<String>, String> {
     Ok(Vec::new())
 }
@@ -107,5 +146,15 @@ mod tests {
         assert_eq!(call_app(&apps(&["pnex-recorder"])), None);
         assert_eq!(call_app(&apps(&["obs", "audacity"])), None);
         assert_eq!(call_app(&[]), None);
+        // Windows names: a desktop app path, a packaged app family.
+        let win = apps(&[
+            "C:#Program Files#Zoom#bin#Zoom.exe",
+            "MSTeams_8wekyb3d8bbwe",
+        ]);
+        assert_eq!(call_app(&win), Some("Zoom"));
+        assert_eq!(call_app(&apps(&["C:#Users#a#pnex-recorder.exe"])), None);
+        assert!(super::in_use(133_000, 0));
+        assert!(!super::in_use(133_000, 133_100));
+        assert!(!super::in_use(0, 0));
     }
 }

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 + R1.1 Linux codés 2026-10-29** : enregistreur PNeX (connexion, activation, test de transcription, capture des appels, envoi et transcription) ; Windows/macOS à faire |
+| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 + R1.1 codés 2026-10-29** : enregistreur PNeX (connexion, activation, test de transcription, capture des appels, envoi et transcription) — Linux validé de bout en bout, Windows codé et compilé (pas encore essayé sur une vraie machine), macOS à faire |
 | Numérotation | décisions à numéroter au passage en PRD, lots **R1…R4** |
 | Dépend de | ingestion média (`media-ingest.md`, P2.13), ASR (`pnex-asr`), locuteurs (`voice-id.md`), rendez-vous et compte rendu (P2.28), desktop natif |
 
@@ -136,7 +136,18 @@ séparé de l'application desktop complète.
   coupé au milieu des silences d'au moins 2 s et chaque morceau transcrit
   seul (media-ingest.md, VAD). Un profil d'enregistrement d'appels doit donc
   avoir une détection de voix (Silero).
-- Reste : Windows (WASAPI loopback) et macOS (process tap), transcription
+- **Windows (codé 2026-10-30, non essayé sur une vraie machine)** : WASAPI
+  via cpal — micro par défaut, sortie par défaut ouverte en entrée (loopback
+  WASAPI) ; chaque flux est ramené en mono puis rééchantillonné à 16 kHz
+  (interpolation linéaire, passe-bas 7 kHz avant décimation), un écrivain
+  entrelace les deux canaux toutes les 100 ms. Le loopback ne livre rien
+  quand rien ne joue : canal droit complété de silence ; s'il prend de
+  l'avance (dérive d'horloge), au plus 1 s est gardée. Détection : registre
+  de confidentialité `CapabilityAccessManager\ConsentStore\microphone`
+  (applis empaquetées par nom de famille, applis de bureau sous
+  `NonPackaged` par leur chemin) : entrée en cours si `LastUsedTimeStop` = 0.
+  Le job CI `recorder` compile la cible `x86_64-pc-windows-gnu` (clippy).
+- Reste : essai Windows réel, macOS (process tap), transcription
   séparée par canal (« moi / l'autre » sans diarisation), notification
   système, envoi en flux pour les appels très longs (le WAV est lu en mémoire,
   ≈ 230 Mo par heure).
