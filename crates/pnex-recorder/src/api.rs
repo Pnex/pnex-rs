@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use pnex_core::media_ingest::{AsrModel, AsrProfile, AsrTask, AsrTestResult};
 use pnex_core::vision::ModelCheckStatus;
-use pnex_core::voice_id::{VoiceProfileInput, VoiceProfileView, VoiceTestResult};
+use pnex_core::voice_id::{VoiceProfileInput, VoiceProfileView, VoiceTestResult, PERSON_TYPE};
 use pnex_core::{OrgMembership, Paginated, TokenResponse, UserInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -506,7 +506,7 @@ impl Session {
                 let person: Value = self
                     .org_json(org, |h, u| {
                         h.post(format!("{u}/api/v1/ontology/objects"))
-                            .json(&json!({"type_key": "person", "title": title}))
+                            .json(&json!({"type_key": PERSON_TYPE, "title": title}))
                     })
                     .await?;
                 let object_id = person["id"].as_str().ok_or(ApiError::NotPnex)?.to_owned();
