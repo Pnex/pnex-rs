@@ -41,6 +41,7 @@ test.describe('dashboards', { tag: '@dashboards' }, () => {
   });
 
   test('thermo-hygro card and value widget read a telemetry series', async ({ app, api, prefix, capture }) => {
+    test.setTimeout(3 * 60_000);
     const flowName = `${prefix} room climate`;
     const { flow, device, series } = await deployMetricFlow(app, api, {
       name: flowName,
@@ -65,7 +66,8 @@ test.describe('dashboards', { tag: '@dashboards' }, () => {
     }
     await editor.save();
     await editor.back();
-    await expect(app.page.getByRole('main').getByText('21.5')).toBeVisible({ timeout: 30_000 });
+    // A new series can take a few 15 s refreshes to come back from the range query.
+    await expect(app.page.getByRole('main').getByText('21.5')).toBeVisible({ timeout: 90_000 });
     await expect(app.page.getByRole('main').getByText(app.tr('hcard-humidity'))).toBeVisible();
     await capture('dashboard-thermo-hygro', { caption: 'Thermo-hygro card fed by a telemetry series' });
     await dashboards.backToList();
@@ -79,7 +81,8 @@ test.describe('dashboards', { tag: '@dashboards' }, () => {
     await desk.field('insp-metric').selectOption({ value: series.temperature });
     await desk.save();
     await desk.back();
-    await expect(app.page.getByRole('main').getByText('21.5')).toBeVisible({ timeout: 30_000 });
+    // A new series can take a few 15 s refreshes to come back from the range query.
+    await expect(app.page.getByRole('main').getByText('21.5')).toBeVisible({ timeout: 90_000 });
     await dashboards.backToList();
     await dashboards.delete(`${prefix} desk`);
 
