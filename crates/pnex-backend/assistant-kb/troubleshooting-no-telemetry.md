@@ -6,7 +6,7 @@ pages: /devices, /visualisation, /flows
 nodes: device_read
 err_codes: pin_not_subscribed
 tools: 
-tags: no data, no telemetry, empty chart, telemetry unavailable, subscribe, read interval, pas de données, mesures, capteur muet
+tags: no data, no telemetry, my device sends nothing, empty chart, telemetry unavailable, subscribe, read interval, pas de données, mesures, capteur muet
 ---
 A generic board shows as connected but no measurement ever arrives: charts stay empty, flows reading it get an empty payload. The usual cause is that no input pin has a read interval, so the board publishes nothing.
 
