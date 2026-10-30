@@ -21,6 +21,8 @@ use tokio_tungstenite::tungstenite::Message;
 
 /// Longest wait for one command's answer.
 const CALL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Longest wait for the close frame to leave.
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 type Pending = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>;
 
@@ -32,20 +34,22 @@ pub struct Event {
     pub params: Value,
 }
 
-/// A connection to a browser. Dropping it closes the socket.
+/// A connection to a browser. Dropping it closes the socket with a
+/// WebSocket close frame: Obscura counts a connection reset without one
+/// against `--max-connections` for good (2026-10-30, every slot taken).
 pub struct Cdp {
     out: mpsc::UnboundedSender<String>,
     pending: Pending,
     events: broadcast::Sender<Event>,
     next: AtomicU64,
     reader: tokio::task::JoinHandle<()>,
-    writer: tokio::task::JoinHandle<()>,
 }
 
 impl Drop for Cdp {
     fn drop(&mut self) {
+        // The writer ends on its own once `out` is dropped, after the
+        // close frame.
         self.reader.abort();
-        self.writer.abort();
     }
 }
 
@@ -67,12 +71,17 @@ impl Cdp {
         let (out, mut rx) = mpsc::unbounded_channel::<String>();
         let pending: Pending = Arc::default();
         let (events, _) = broadcast::channel(1024);
-        let writer = tokio::spawn(async move {
+        tokio::spawn(async move {
             while let Some(text) = rx.recv().await {
                 if sink.send(Message::Text(text.into())).await.is_err() {
-                    break;
+                    return;
                 }
             }
+            let _ = tokio::time::timeout(CLOSE_TIMEOUT, async {
+                let _ = sink.send(Message::Close(None)).await;
+                let _ = sink.close().await;
+            })
+            .await;
         });
         let reader = {
             let pending = pending.clone();
@@ -118,7 +127,6 @@ impl Cdp {
             events,
             next: AtomicU64::new(1),
             reader,
-            writer,
         }))
     }
 
@@ -286,5 +294,32 @@ impl Tab {
                 Duration::from_secs(10),
             )
             .await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A dropped connection says goodbye: the browser gets a close frame,
+    /// not a reset it may never count back.
+    #[tokio::test]
+    async fn dropping_the_connection_sends_a_close_frame() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (tcp, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(tcp).await.unwrap();
+            ws.next().await
+        });
+        let cdp = Cdp::connect(&format!("ws://{addr}/devtools/browser/x"), None)
+            .await
+            .unwrap();
+        drop(cdp);
+        let got = tokio::time::timeout(Duration::from_secs(5), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(got, Some(Ok(Message::Close(_)))), "{got:?}");
     }
 }
