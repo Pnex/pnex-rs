@@ -291,9 +291,9 @@ pub(crate) async fn unknown_actions_for_deploy(
     Ok(violations)
 }
 
-/// Mailboxes gate (mail.md D454): a `mail_received` names mailboxes, all
-/// of which the person deploying reads; a flow never listens to someone
-/// else's mailbox.
+/// Mailboxes gate (mail.md D454): a `mail_received` or a `mail_send`
+/// names mailboxes, all of which the person deploying reads; a flow never
+/// listens to, nor writes from, someone else's mailbox.
 pub(crate) async fn mailboxes_for_deploy(
     ctx: &AppContext,
     org: &OrgContext,
@@ -308,10 +308,18 @@ pub(crate) async fn mailboxes_for_deploy(
     };
     let mut violations = Vec::new();
     for n in &candidate_graph.nodes {
-        let pnex_core::FlowNodeKind::MailReceived { config } = &n.kind else {
-            continue;
+        // A mail_send writes from one mailbox: same rule as listening to it.
+        let (mailboxes, checked) = match &n.kind {
+            pnex_core::FlowNodeKind::MailReceived { config } => {
+                (config.mailboxes.clone(), config.check_deployable())
+            }
+            pnex_core::FlowNodeKind::MailSend { config } => (
+                vec![config.mailbox.trim().to_string()],
+                config.check_deployable(),
+            ),
+            _ => continue,
         };
-        if let Some((code, message)) = config.check_deployable() {
+        if let Some((code, message)) = checked {
             violations.push(pnex_core::FlowViolation::new(
                 Some(n.id.as_str()),
                 code,
@@ -319,14 +327,14 @@ pub(crate) async fn mailboxes_for_deploy(
             ));
             continue;
         }
-        let refused = mail::unreadable_for(&ctx.db, org.org.id, caller, &config.mailboxes)
+        let refused = mail::unreadable_for(&ctx.db, org.org.id, caller, &mailboxes)
             .await
             .map_err(|_| Error::InternalServerError)?;
         if let Some((mailbox, code)) = refused {
             violations.push(pnex_core::FlowViolation::with_args(
                 Some(n.id.as_str()),
                 code,
-                "mail_received names a mailbox the person deploying does not read",
+                "the node names a mailbox the person deploying does not read",
                 serde_json::json!({ "mailbox": mailbox }),
             ));
         }

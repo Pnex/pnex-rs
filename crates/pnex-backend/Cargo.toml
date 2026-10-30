@@ -63,6 +63,17 @@ mail-auth = { version = "=0.13.3", default-features = false, features = ["rust-c
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 rustls-native-certs = "0.8"
+# Sending from mailboxes (mail.md D518), as pnex-notify: rustls, system CAs.
+lettre = { version = "0.11", default-features = false, features = [
+  "builder",
+  "hostname",
+  "smtp-transport",
+  "tokio1",
+  "tokio1-rustls",
+  "rustls",
+  "ring",
+  "rustls-native-certs",
+] }
 # URL-encoded client certificate forwarded by the edge (MIT OR Apache-2.0).
 percent-encoding = "2"
 time = "0.3"

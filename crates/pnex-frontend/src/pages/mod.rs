@@ -37,6 +37,7 @@ pub mod lab;
 pub mod lan_scan;
 pub mod login;
 pub mod mailbox_messages;
+pub mod mailbox_outbox;
 pub mod mailboxes;
 pub mod map;
 pub mod media;

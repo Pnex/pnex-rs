@@ -190,6 +190,12 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::mail::MailReceivedConfig,
     },
+    /// A mail written from a mailbox: a draft in its outbox, or sent when
+    /// the mailbox sends on its own (mail.md D456, D518).
+    MailSend {
+        #[serde(default)]
+        config: crate::mail::MailSendConfig,
+    },
     /// Objects of one type matching filters (partner-watch.md D312).
     OntologyQuery {
         #[serde(default)]
@@ -416,6 +422,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "mail_received" => Ok(Self::MailReceived {
+                    config: opt_config(config)?,
+                }),
+                "mail_send" => Ok(Self::MailSend {
                     config: opt_config(config)?,
                 }),
                 "ontology_query" => Ok(Self::OntologyQuery {

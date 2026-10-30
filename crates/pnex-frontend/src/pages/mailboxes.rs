@@ -414,6 +414,15 @@ fn MailboxForm(
             .to_string()
     });
     let user = use_signal(|| field(|m| m.imap_user.clone()));
+    let smtp_host = use_signal(|| field(|m| m.smtp_host.clone()));
+    let smtp_port = use_signal(|| {
+        existing
+            .as_ref()
+            .map(|m| m.smtp_port)
+            .unwrap_or(pnex_core::mail::SMTPS_PORT)
+            .to_string()
+    });
+    let mut send_mode = use_signal(|| existing.as_ref().map(|m| m.send_mode).unwrap_or_default());
     let folders = use_signal(|| {
         existing
             .as_ref()
@@ -485,6 +494,14 @@ fn MailboxForm(
             imap_host: host().trim().to_string(),
             imap_port: port().trim().parse().ok(),
             imap_user: user().trim().to_string(),
+            smtp_host: smtp_host().trim().to_string(),
+            smtp_port: smtp_port().trim().parse().ok(),
+            // Sending on its own: never from a member's own mailbox (D518).
+            send_mode: if ownership() == Ownership::Mine || smtp_host().trim().is_empty() {
+                pnex_core::mail::SendMode::Draft
+            } else {
+                send_mode()
+            },
             password: password().to_input(),
             folders: folders()
                 .split(',')
@@ -622,6 +639,47 @@ fn MailboxForm(
             }
             if has_password {
                 p { class: FIELD_HELP, {t!("mailboxes-password-keep")} }
+            }
+            div { class: "grid grid-cols-3 gap-3",
+                div { class: "col-span-2",
+                    TextField {
+                        id: "mailbox-smtp-host",
+                        label: t!("mailboxes-field-smtp-host"),
+                        value: smtp_host,
+                        help: t!("mailboxes-field-smtp-host-help"),
+                    }
+                }
+                TextField {
+                    id: "mailbox-smtp-port",
+                    label: t!("mailboxes-field-smtp-port"),
+                    value: smtp_port,
+                    kind: "number",
+                }
+            }
+            if ownership() != Ownership::Mine && !smtp_host().trim().is_empty() {
+                div {
+                    label { r#for: "mailbox-send-mode", class: FIELD_LABEL,
+                        {t!("mailboxes-field-send-mode")}
+                    }
+                    select {
+                        id: "mailbox-send-mode",
+                        class: "{INPUT} w-full",
+                        onchange: move |e: Event<FormData>| {
+                            send_mode.set(pnex_core::mail::SendMode::parse(&e.value()).unwrap_or_default())
+                        },
+                        option {
+                            value: "draft",
+                            selected: send_mode() == pnex_core::mail::SendMode::Draft,
+                            {t!("mailboxes-send-mode-draft")}
+                        }
+                        option {
+                            value: "send",
+                            selected: send_mode() == pnex_core::mail::SendMode::Send,
+                            {t!("mailboxes-send-mode-send")}
+                        }
+                    }
+                    p { class: FIELD_HELP, {t!("mailboxes-field-send-mode-help")} }
+                }
             }
             TextField {
                 id: "mailbox-folders",

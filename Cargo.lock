@@ -8888,6 +8888,7 @@ dependencies = [
  "image",
  "include_dir",
  "jsonwebtoken",
+ "lettre",
  "libc",
  "loco-rs",
  "mail-auth",

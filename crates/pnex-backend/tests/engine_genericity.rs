@@ -22,6 +22,10 @@ const ENGINE_WORDS: &[(&str, &str)] = &[
         "meeting",
         "mail category of a calendar invitation (mail/invitations.rs)",
     ),
+    (
+        "quote",
+        "block quote of the doc editor, quoted text of a media citation",
+    ),
 ];
 
 /// Existing couplings to a shipped pack, frozen: each is debt to move to

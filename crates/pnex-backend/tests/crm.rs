@@ -161,7 +161,7 @@ async fn an_opportunity_lives_in_the_account_graph() {
         );
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND name LIKE 'CRM · %' AND status = 'draft'")).await,
-            7
+            10
         );
 
         let acme = object(&server, &env.alice, org, "organization", "Acme", json!({"account_status": "prospect"})).await;
@@ -201,6 +201,52 @@ async fn an_opportunity_lives_in_the_account_graph() {
         let text = String::from_utf8_lossy(&snap);
         for want in ["Acme 2027", "Acme", "Ann Smith", "Budget confirmed", "Global Industrie"] {
             assert!(text.contains(want), "{want} missing");
+        }
+
+        // A lead (D514): its status from a closed list, one account.
+        let lead = object(&server, &env.alice, org, "lead", "Gamma · Lee", json!({
+            "status": "new", "source": "trade_show", "company": "Gamma", "email": "lee@gamma.test"
+        })).await;
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org,
+            Some(json!({"type_key": "lead", "title": "X", "properties": {"status": "won"}}))).await;
+        assert_eq!(st, 400);
+        let (st, e) = link(&server, &env.alice, org, "lead_of", &lead, &acme, json!({})).await;
+        assert_eq!(st, 201, "{e}");
+        let (st, _) = link(&server, &env.alice, org, "lead_of", &lead, &beta, json!({})).await;
+        assert_eq!(st, 409, "one account per lead");
+        let (st, e) = link(&server, &env.alice, org, "comes_from", &deal, &lead, json!({})).await;
+        assert_eq!(st, 201, "{e}");
+        // Convert needs its flow deployed.
+        let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/objects/{lead}/actions/convert"), &env.alice, org,
+            Some(json!({"params": {"organization": acme}}))).await;
+        assert!(matches!(st, 409 | 503), "no deployed flow, refused: {st}");
+
+        // Quotes and invoices (D516): numbers are unique, one opportunity per quote.
+        let quote = object(&server, &env.alice, org, "quote", "Acme 2027 — phase 1", json!({
+            "ref": "D-2026-012", "state": "sent", "amount": {"amount": 40000, "currency": "EUR"},
+            "issued_on": "2026-10-20", "valid_until": "2026-11-20", "content": "Audit and pilot"
+        })).await;
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org,
+            Some(json!({"type_key": "quote", "title": "Y", "properties": {"ref": "D-2026-012", "state": "draft"}}))).await;
+        assert_eq!(st, 400, "a quote number is unique");
+        let (st, e) = link(&server, &env.alice, org, "quote_for", &quote, &deal, json!({})).await;
+        assert_eq!(st, 201, "{e}");
+        let invoice = object(&server, &env.alice, org, "invoice", "F-2026-031", json!({
+            "ref": "F-2026-031", "state": "issued", "amount": {"amount": 48000, "currency": "EUR"}, "due_on": "2026-11-30"
+        })).await;
+        for (lt, to) in [("invoice_for", &deal), ("invoice_for", &acme), ("invoices_quote", &quote)] {
+            let (st, e) = link(&server, &env.alice, org, lt, &invoice, to, json!({})).await;
+            assert_eq!(st, 201, "{lt}: {e}");
+        }
+        let (st, page) = call(&server, "POST", &format!("/api/v1/ontology/objects/{quote}/pages"), &env.alice, org,
+            Some(json!({"template": "quote_sheet"}))).await;
+        assert_eq!(st, 201, "{page}");
+        let snap = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
+            "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
+            .try_get::<Vec<u8>>("", "snapshot").unwrap();
+        let text = String::from_utf8_lossy(&snap);
+        for want in ["D-2026-012", "Acme 2027", "Audit and pilot", "2026-11-20"] {
+            assert!(text.contains(want), "{want} missing from the quote");
         }
     })
     .await;

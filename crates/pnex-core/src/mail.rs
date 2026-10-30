@@ -11,6 +11,16 @@ use serde_json::Value;
 
 /// IMAPS port (TLS from the first byte; STARTTLS is not offered).
 pub const IMAPS_PORT: u16 = 993;
+/// SMTP over implicit TLS; any other port must upgrade with STARTTLS (D518).
+pub const SMTPS_PORT: u16 = 465;
+/// Sends per mailbox and per hour (D457.4).
+pub const SENDS_PER_HOUR: i64 = 30;
+/// Sends of flows and agents to one correspondent per day (D457.4).
+pub const REPLIES_PER_DAY: i64 = 3;
+/// Drafts written by flows and agents per mailbox and per hour.
+pub const DRAFTS_PER_HOUR: i64 = 100;
+pub const SEND_TO_MAX: usize = 20;
+pub const SEND_KEY_MAX: usize = 255;
 pub const NAME_MAX: usize = 120;
 pub const ADDRESS_MAX: usize = 320;
 pub const HOST_MAX: usize = 253;
@@ -98,6 +108,13 @@ pub struct Mailbox {
     pub imap_host: String,
     pub imap_port: u16,
     pub imap_user: String,
+    /// SMTP server (same user and password as IMAP); empty = does not send (D518).
+    #[serde(default)]
+    pub smtp_host: String,
+    #[serde(default = "smtps")]
+    pub smtp_port: u16,
+    #[serde(default)]
+    pub send_mode: SendMode,
     /// A password is stored in the vault.
     pub has_password: bool,
     pub folders: Vec<String>,
@@ -135,6 +152,14 @@ pub struct MailboxInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub imap_port: Option<u16>,
     pub imap_user: String,
+    /// Empty = the mailbox does not send.
+    #[serde(default)]
+    pub smtp_host: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smtp_port: Option<u16>,
+    /// `send` only on a shared or service-account mailbox (D518).
+    #[serde(default)]
+    pub send_mode: SendMode,
     /// A vault secret or a typed value; absent on update keeps the current.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub password: Option<crate::SecretFieldInput>,
@@ -517,6 +542,221 @@ pub fn is_from_pnex(headers: &[(String, String)], from: &str, own: &[String]) ->
 
 // ─────────────────────────── forwards (D463) ───────────────────────────
 
+fn smtps() -> u16 {
+    SMTPS_PORT
+}
+
+/// What a flow or an agent's mail becomes (D456, D518): a draft in the
+/// outbox that a reader sends, or sent at once (shared and service-account
+/// mailboxes only, set by a manager of shared mailboxes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum SendMode {
+    #[default]
+    Draft,
+    Send,
+}
+
+impl SendMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Send => "send",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        [Self::Draft, Self::Send]
+            .into_iter()
+            .find(|k| k.as_str() == s)
+    }
+}
+
+/// A mail of the outbox (D519).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum OutboxState {
+    Draft,
+    /// Claimed by one send; never sent twice.
+    Sending,
+    Sent,
+    Failed,
+    Discarded,
+}
+
+impl OutboxState {
+    pub const ALL: [Self; 5] = [
+        Self::Draft,
+        Self::Sending,
+        Self::Sent,
+        Self::Failed,
+        Self::Discarded,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Sending => "sending",
+            Self::Sent => "sent",
+            Self::Failed => "failed",
+            Self::Discarded => "discarded",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.as_str() == s)
+    }
+}
+
+/// `POST /mailboxes/{id}/messages`: a mail to write from the mailbox.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MailSendInput {
+    pub to: Vec<String>,
+    pub subject: String,
+    pub text: String,
+    /// `Message-ID` of a stored mail of this mailbox being answered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_reply_to: Option<String>,
+    /// The caller's key: a second call with the same key answers the same mail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// Send now (the caller is the one sending); otherwise a draft.
+    #[serde(default)]
+    pub send_now: bool,
+}
+
+/// `POST /mailboxes/{id}/outbox/{mail}/send`: the draft as reviewed.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OutboxSendInput {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OutboxMail {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub id: String,
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub mailbox_id: String,
+    pub state: OutboxState,
+    pub to: Vec<String>,
+    pub subject: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_reply_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// `user:<id>` or `flow:<id>@<version>`.
+    pub origin: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<MailboxError>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub sent_at: Option<String>,
+}
+
+/// The recipients, subject and text of an outgoing mail, checked: no line
+/// break in the subject (header injection), bounded sizes.
+pub fn check_outgoing(
+    to: &[String],
+    subject: &str,
+    text: &str,
+) -> Result<(Vec<MailAddress>, String), (String, &'static str)> {
+    use crate::err_codes::{FIELD_INVALID, FIELD_REQUIRED};
+    if to.is_empty() {
+        return Err(("to".into(), FIELD_REQUIRED));
+    }
+    if to.len() > SEND_TO_MAX {
+        return Err(("to".into(), FIELD_INVALID));
+    }
+    let mut addrs = Vec::new();
+    for (i, raw) in to.iter().enumerate() {
+        match parse_address(raw) {
+            Some(a) if !a.name.chars().any(char::is_control) => addrs.push(a),
+            _ => return Err((format!("to.{i}"), FIELD_INVALID)),
+        }
+    }
+    let subject = subject.trim();
+    if subject.is_empty() {
+        return Err(("subject".into(), FIELD_REQUIRED));
+    }
+    if subject.len() > SUBJECT_MAX || subject.chars().any(char::is_control) {
+        return Err(("subject".into(), FIELD_INVALID));
+    }
+    if text.trim().is_empty() {
+        return Err(("text".into(), FIELD_REQUIRED));
+    }
+    if text.len() > TEXT_MAX {
+        return Err(("text".into(), FIELD_INVALID));
+    }
+    Ok((addrs, subject.to_string()))
+}
+
+/// `mail_send` node (D456): the mailbox it writes from; what the mail
+/// becomes is the mailbox's `send_mode`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct MailSendConfig {
+    #[serde(default)]
+    pub mailbox: String,
+}
+
+impl MailSendConfig {
+    pub fn check_deployable(&self) -> Option<(&'static str, &'static str)> {
+        if self.mailbox.trim().is_empty() {
+            return Some((
+                crate::err_codes::MAIL_NO_MAILBOX,
+                "mail_send names no mailbox",
+            ));
+        }
+        if uuid::Uuid::parse_str(self.mailbox.trim()).is_err() {
+            return Some((
+                crate::err_codes::MAIL_MAILBOX_UNKNOWN,
+                "mail_send names an invalid mailbox id",
+            ));
+        }
+        None
+    }
+}
+
+pub const SEND_PORT_OK: usize = 0;
+pub const SEND_PORT_REFUSED: usize = 1;
+pub const SEND_PORT_COUNT: usize = 2;
+
+/// `POST /internal/flow/mail/send`: one mail of a deployed `mail_send`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MailSendNodeRequest {
+    pub node: crate::ontology::flow::FlowNodeRef,
+    pub to: Vec<String>,
+    pub subject: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub in_reply_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct MailSendNodeReply {
+    pub port: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(default)]
+    pub args: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mail: Option<OutboxMail>,
+}
+
 /// `Name <a@b.fr>`, `a@b.fr`, `Name [mailto:a@b.fr]`, `"Name" <a@b.fr>`.
 pub fn parse_address(raw: &str) -> Option<MailAddress> {
     let raw = raw.trim();
@@ -813,6 +1053,51 @@ pub fn clean_text(s: &str, max: usize) -> (String, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_outgoing_mail_is_checked_before_it_is_built() {
+        let to = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let (a, subject) = check_outgoing(&to(&["Ann <Ann@Acme.fr>"]), "  Hello ", "Body").unwrap();
+        assert_eq!(
+            (a[0].address.as_str(), subject.as_str()),
+            ("ann@acme.fr", "Hello")
+        );
+        let field = |r: Result<_, (String, &str)>| r.err().map(|e| e.0);
+        assert_eq!(field(check_outgoing(&[], "s", "t")), Some("to".into()));
+        assert_eq!(
+            field(check_outgoing(&to(&["a@b.fr", "nope"]), "s", "t")),
+            Some("to.1".into())
+        );
+        // A line break in the subject would add a header.
+        assert_eq!(
+            field(check_outgoing(&to(&["a@b.fr"]), "Hi\r\nBcc: x@y.fr", "t")),
+            Some("subject".into())
+        );
+        assert_eq!(
+            field(check_outgoing(&to(&["a@b.fr"]), "s", " ")),
+            Some("text".into())
+        );
+        let many: Vec<String> = (0..=SEND_TO_MAX).map(|i| format!("a{i}@b.fr")).collect();
+        assert_eq!(field(check_outgoing(&many, "s", "t")), Some("to".into()));
+    }
+
+    #[test]
+    fn a_mail_send_node_names_one_mailbox() {
+        assert!(MailSendConfig::default().check_deployable().is_some());
+        let bad = MailSendConfig {
+            mailbox: "x".into(),
+        };
+        assert_eq!(
+            bad.check_deployable().unwrap().0,
+            crate::err_codes::MAIL_MAILBOX_UNKNOWN
+        );
+        let ok = MailSendConfig {
+            mailbox: uuid::Uuid::nil().to_string(),
+        };
+        assert!(ok.check_deployable().is_none());
+        assert_eq!(SendMode::parse("send"), Some(SendMode::Send));
+        assert_eq!(OutboxState::parse("sending"), Some(OutboxState::Sending));
+    }
 
     fn h(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs

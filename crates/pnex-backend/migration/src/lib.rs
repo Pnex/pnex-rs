@@ -71,6 +71,7 @@ mod m20261028_000061_prospecting_oppositions;
 mod m20261028_000062_check_states;
 mod m20261029_000063_function_signature_out_of_code;
 mod m20261029_000064_asr_profile_default;
+mod m20261029_000065_mail_send;
 
 pub struct Migrator;
 
@@ -138,6 +139,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261028_000062_check_states::Migration),
             Box::new(m20261029_000063_function_signature_out_of_code::Migration),
             Box::new(m20261029_000064_asr_profile_default::Migration),
+            Box::new(m20261029_000065_mail_send::Migration),
         ]
     }
 }

@@ -25,6 +25,7 @@ pub enum PaletteKind {
     RegTtCool,
     RegPid,
     PnexNotify,
+    MailSend,
     HttpFetch,
     Function,
     JsonSplit,
@@ -287,6 +288,9 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             },
             PaletteKind::WebSearch => FlowNodeKind::WebSearch {
                 config: pnex_core::web_search::WebSearchConfig::default(),
+            },
+            PaletteKind::MailSend => FlowNodeKind::MailSend {
+                config: pnex_core::mail::MailSendConfig::default(),
             },
             PaletteKind::OrgResolve => FlowNodeKind::OrgResolve {
                 config: pnex_core::org_resolve::OrgResolveConfig::default(),

@@ -5,7 +5,7 @@
 | Statut | **Proposition — 2026-10-26**, code en cours (lots DP puis CRM1…CRM3) |
 | Déclencheur | Outillage commercial (P2.28) : après la cartographie et les signaux, le suivi des opportunités, des activités et des relances, sans ressaisie dans un second outil. Avant de vendre : D341 fini |
 | Repose sur | `account-mapping.md` (D329–D343, pack `prospecting_b2b`), `proposals.md` (D367, D371–D377), `ontology.md` (D176–D191, D368 réglages de pack, D370 libellés d'énumération), `iam.md` (D298 classification, D296 portées), `partner-watch.md` (nœuds ontologie D312) |
-| Numérotation | **D442…D452**, lots **DP**, **CRM1…CRM3** |
+| Numérotation | **D442…D452**, lots **DP**, **CRM1…CRM3** ; **D514…D517**, lot **CRM4** ; **D522** (2026-10-29) |
 | Revient sur | le non-objectif « Pas de CRM » d'`account-mapping.md` §2 (D448) |
 
 ## 1. Le besoin en une phrase
@@ -14,7 +14,7 @@ Suivre une affaire de la liste cible au contrat dans le même graphe que le comp
 
 ## 2. Non-objectifs
 
-- **Pas de devis, de facturation ni de contrat** : un PDF de page suffit en V1 ; la facturation reste ailleurs.
+- **Pas d'émission de facture légale ni de contrat** : la facture (numérotation sans trou, inaltérabilité, Factur-X, plateforme agréée de la réforme 2026) est émise par l'outil de facturation de l'org ; PneX suit les devis et les factures (D516, revu le 2026-10-29).
 - **Aucun envoi automatique** de mail ni de message sur un réseau social : la plateforme prépare, l'humain envoie et coche (règle des tickets, CGU des réseaux).
 - **Pas de surveillance automatique des personnes** (D254, D333 inchangés).
 - **Pas de playbook dans le pack** : étapes, critères de qualification, plan de relance et personas sont des données de l'org (règle « le pack donne la forme, l'org donne le playbook »).
@@ -125,13 +125,43 @@ Brique générique pour cela : les jetons `$today-<n>` et `$today+<n>` (jours, 0
 
 Rempli depuis l'opportunité (D340) : compte, étape, montant, contacts impliqués, critères et leur statut, activités, rendez-vous, puis les prochaines étapes en texte libre. Export PDF par `page_pdf`.
 
-## 5. Lots
+## 4 bis. Pistes, devis et factures (lot CRM4, 2026-10-29)
+
+Demande de Shan (2026-10-29) : « la partie CRM / facturation / gestion des leads ». Arbitrage : devis et suivi des factures dans le pack, pas d'émission légale.
+
+### D514 — La piste (`lead`) avant l'opportunité
+
+Type `lead` : `ref` (unique, facultative : clé d'import d'un fichier de salon), `status` (`new`, `contacted`, `qualified`, `disqualified`, `converted`), `source` et `source_detail` (mêmes valeurs que l'opportunité), `company`, `contact_name`, `email`, `phone`, `message`, `received_on`, `disqualify_reason`. Titre et coordonnées classés `personal` (D442) : une piste nomme une personne qui n'est pas encore dans le graphe.
+
+Liens : `lead_of` (→ `organization`, un seul ouvert), `lead_contact` (→ `person`, un seul), `owned_by` et `activity_on` acceptent la piste, `comes_from` accepte la piste comme origine d'une opportunité.
+
+Entrées : saisie à la main, import (Ontologie › Imports, fichier de salon). Pas de création depuis les mails reçus (le pourriel deviendrait des pistes) ni de formulaire public en V1.
+
+### D515 — Convertir : une action, un flow livré
+
+Action `convert` sur la piste (`organization` exigé, `person` et `name` facultatifs), servie par le flow modèle « CRM · convert a lead » (D183, `action_trigger`) : opportunité en `discovery`, source reprise, titre = nom donné, sinon la société, jamais le nom du contact ; liens `opportunity_with`, `comes_from`, `lead_of`, `lead_contact`, `involved_in` ; piste `converted`. L'opportunité porte une nouvelle propriété `ref` = `lead:<id de la piste>` (unique) : une seconde conversion retrouve la même. Le compte est choisi par l'humain (créé avant au besoin) : pas de rapprochement automatique au moment de la conversion. Aucune donnée personnelle n'est recopiée sur l'opportunité.
+
+### D516 — Devis et factures suivis, émis ailleurs
+
+Revient en partie sur le non-objectif §2. Type `quote` : `ref` (numéro, unique, exigé), `state` (`draft`, `sent`, `accepted`, `refused`, `expired`), `amount` (HT), `issued_on`, `valid_until`, `content` ; lien `quote_for` (→ opportunité, une seule). Modèle de page `quote_sheet` (lignes à compléter, export PDF par `page_pdf`) : le devis peut naître dans PneX. Type `invoice` : `ref` (numéro de l'outil de facturation, unique, exigé), `state` (`issued`, `partially_paid`, `paid`, `overdue`, `cancelled`), `amount` (TTC), `paid_amount`, `issued_on`, `due_on`, `paid_on`, `url` (la facture dans l'outil) ; liens `invoice_for` (→ opportunité, compte) et `invoices_quote` (→ devis). La facture entre à la main ou par import ; la synchro avec l'outil attend les connecteurs D369.
+
+Rien n'est automatique entre devis, facture et étape : un devis accepté ne fait pas gagner l'opportunité (D449, le passage d'étape reste humain).
+
+### D517 — Échéances et digest
+
+Flow modèle « CRM · quotes and invoices due » (6 h 30) : devis `sent` dont `valid_until` est passée → `expired` ; facture `issued` ou `partially_paid` dont `due_on` est passée → `overdue` et une activité `task` à faire aujourd'hui (`ref` `invoice:<id>:overdue`, une seule par facture) sur ce qu'elle facture. « CRM · my day » liste aussi les pistes `new`.
+
+### D522 — Brouillons de relance dans la boîte d'envoi
+
+Flow modèle « CRM · drafts to the outbox » (toutes les heures, 20 au plus) : une activité `mail` à faire qui a un brouillon (D451) devient un mail de la boîte d'envoi (nœud `mail_send`, `mail.md` D518–D521) de la boîte choisie au déploiement. Destinataires : les identifiants `email` des personnes impliquées dans l'opportunité de l'activité, sauf celles qui se sont opposées (`opposed_on`, D447) ; objet : le nom de l'opportunité ; clé `crm:<ref>` (jamais deux mails pour une activité). L'activité garde l'id du mail (`outbox_mail`), ou `none` quand personne n'a d'adresse. Une personne relit, envoie ou écarte dans Boîtes mail › Boîte d'envoi, puis passe l'activité à faite : rien n'est envoyé sans elle, sauf boîte partagée réglée sur l'envoi direct (D520). Les messages réseau restent des brouillons sur l'activité.
+
 
 | Lot | Décisions | Sortie |
 |---|---|---|
 | DP | D442–D447 | D341 fini : classification, masquage, base légale, file de rétention, effacement, opposition au moteur |
 | CRM1 | D448, D449, D452 | pack installable : opportunités, qualification, fiche |
 | CRM2 | D450, D451 | activités, cadence, brouillons, digest du matin |
+| CRM4 | D514–D517, D522 | pistes et conversion, devis et factures suivis, échéances, brouillons vers la boîte d'envoi |
 | CRM3 | — | mail entrant rattaché à la fiche : devient le lot M6 de `mail.md` (boîtes mail génériques, D453–D462) ; tableaux de bord (ROI par salon, taux par étape de relance) à part |
 
 ## 6. Sécurité et conformité
@@ -164,6 +194,11 @@ Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennen
 | D450 | Activités, plan de relance, brouillons relus |
 | D451 | Digest « ma journée », jetons `$today±n` |
 | D452 | Modèle de page `opportunity_sheet` |
+| D514 | Type `lead`, coordonnées `personal` |
+| D515 | Action `convert` et son flow modèle, opportunité clé `lead:<id>` |
+| D516 | Devis et factures suivis, émission légale hors PneX, modèle `quote_sheet` |
+| D517 | Devis expirés, factures en retard avec relance, pistes au digest |
+| D522 | Brouillons de relance mail dans la boîte d'envoi, sans les personnes opposées |
 
 ## 9. État d'implémentation
 
@@ -185,3 +220,9 @@ Reste : l'export du registre des traitements (pas de registre dans PneX aujourd'
 ### Lots CRM1–CRM2 — 2026-10-26, non commité
 
 Pack `crm` 1.0.0 (`packs/crm.yaml`) : types, liens, hiérarchie `opportunities`, modèle `opportunity_sheet`, 11 fonctions Starlark, 5 flows modèles (plan de relance, dernière activité, critères manquants, brouillons, ma journée). Tests : `pnex-node-starlark/tests/pack_rules.rs` (échéances à travers les fins de mois et années bissextiles, opposition, critères, dernière activité, digest) et `tests/crm.rs` (installation, brouillons de flows, cardinalité, hiérarchie, fiche). Fiches de l'assistant `sales-follow-up` et `personal-data` ; lexique §7 + garde.
+
+### Lot CRM4 — 2026-10-29, non commité
+
+Pack `crm` 3.1.0 : types `lead`, `quote`, `invoice`, propriété `opportunity.ref`, liens `lead_of`, `lead_contact`, `quote_for`, `invoice_for`, `invoices_quote`, action `convert`, modèle `quote_sheet`, 6 fonctions Starlark, 2 flows modèles (9 au total). Tests : `pack_rules.rs` (`a_converted_lead_becomes_an_opportunity_of_its_account`, `an_overdue_invoice_is_marked_and_reminded`, digest avec pistes) et `tests/crm.rs` (piste, cardinalités, numéros uniques, page devis, action refusée sans flow déployé).
+
+Limites : la file de rétention (D445) ne propose pas encore l'effacement des pistes (personnes seulement) ; une piste s'efface à la main (D446). Pas de piste créée depuis un mail ou un formulaire public. Brouillons de relance branchés sur la boîte d'envoi (D522) : objet = nom de l'opportunité, non modifiable avant envoi ; une adresse ajoutée après le marquage `none` n'est pas reprise. Restent pour le CRM : tableaux de bord (ROI par salon, conversion par étape) et écrans métier, qui attendent les applications AB0–AB2 (`app-builder.md`).

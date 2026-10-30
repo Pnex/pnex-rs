@@ -29,10 +29,16 @@
 # notification node on its first port, then deploy.
 # Since 2.0.0 every identifier is English (breaking).
 # Since 3.0.0 the `personal` classification value is English (breaking).
+# Since 3.1.0 (crm.md D514–D517): leads, converted into an opportunity of
+# an account by the `convert` action; quotes and invoices followed on the
+# opportunity. Invoices are issued by the org's billing tool: PneX keeps
+# their number, amounts and dates, marks the overdue ones and plans a
+# reminder activity; an expired quote is marked. The morning digest lists
+# the new leads too.
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "3.0.2"
+version: "3.1.0"
 requires: [prospecting_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -65,7 +71,7 @@ link_types:
     names: {fr: "est portée par"}
     inverse_name: carries
     inverse_names: {fr: "porte"}
-    from_types: [opportunity]
+    from_types: [opportunity, lead]
     to_types: [person]
     one_target: true
   - key: comes_from
@@ -74,7 +80,7 @@ link_types:
     inverse_name: led to
     inverse_names: {fr: "a donné"}
     from_types: [opportunity]
-    to_types: [sales_signal, meeting]
+    to_types: [sales_signal, meeting, lead]
   - key: meeting_for
     name: is a meeting for
     names: {fr: "est un rendez-vous pour"}
@@ -104,14 +110,52 @@ link_types:
     inverse_name: has as activity
     inverse_names: {fr: "a pour activité"}
     from_types: [activity]
-    to_types: [opportunity, organization, person]
+    to_types: [opportunity, organization, person, lead]
   - key: sheet_of
     name: is the sheet of
     names: {fr: "est la fiche de"}
     inverse_name: has as sheet
     inverse_names: {fr: "a pour fiche"}
     from_types: [doc]
+    to_types: [opportunity, quote]
+  - key: lead_of
+    name: is a lead of
+    names: {fr: "est une piste de"}
+    inverse_name: has as lead
+    inverse_names: {fr: "a pour piste"}
+    from_types: [lead]
+    to_types: [organization]
+    one_target: true
+  - key: lead_contact
+    name: has as contact
+    names: {fr: "a pour contact"}
+    inverse_name: is the contact of
+    inverse_names: {fr: "est le contact de"}
+    from_types: [lead]
+    to_types: [person]
+    one_target: true
+  - key: quote_for
+    name: is a quote for
+    names: {fr: "est un devis pour"}
+    inverse_name: has as quote
+    inverse_names: {fr: "a pour devis"}
+    from_types: [quote]
     to_types: [opportunity]
+    one_target: true
+  - key: invoice_for
+    name: is an invoice for
+    names: {fr: "est une facture pour"}
+    inverse_name: has as invoice
+    inverse_names: {fr: "a pour facture"}
+    from_types: [invoice]
+    to_types: [opportunity, organization]
+  - key: invoices_quote
+    name: invoices
+    names: {fr: "facture"}
+    inverse_name: is invoiced by
+    inverse_names: {fr: "est facturé par"}
+    from_types: [invoice]
+    to_types: [quote]
 hierarchies:
   # From an account, its opportunities; the band counts them by stage.
   - key: opportunities
@@ -149,6 +193,89 @@ types:
       - { key: last_activity, name: Last activity, names: {fr: "Dernière activité"}, kind: date_time, indexed: true }
       - { key: missing_criteria, name: Missing criteria, names: {fr: "Critères manquants"}, kind: text, max_len: 2000 }
       - { key: follow_up_started_on, name: Follow-up started on, names: {fr: "Relances lancées le"}, kind: date, indexed: true }
+      # Written by the convert flow (`lead:<lead id>`): a second convert finds it.
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
+  - key: lead
+    name: Lead
+    names: {fr: "Piste"}
+    icon: user
+    # The title usually names the contact.
+    title_classification: personal
+    properties:
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
+      - key: status
+        name: Status
+        names: {fr: "Statut"}
+        kind: enum
+        values: [new, contacted, qualified, disqualified, converted]
+        labels: {new: {fr: "Nouvelle", en: "New"}, contacted: {fr: "Contactée", en: "Contacted"}, qualified: {fr: "Qualifiée", en: "Qualified"}, disqualified: {fr: "Écartée", en: "Disqualified"}, converted: {fr: "Convertie", en: "Converted"}}
+        colors: { new: blue, contacted: amber, qualified: violet, disqualified: gray, converted: green }
+        required: true
+        indexed: true
+      - key: source
+        name: Source
+        names: {fr: "Source"}
+        kind: enum
+        values: [trade_show, buying_group, inbound, outbound, referral, network, other]
+        labels: {trade_show: {fr: "Salon", en: "Trade show"}, buying_group: {fr: "Groupement", en: "Buying group"}, inbound: {fr: "Entrant", en: "Inbound"}, outbound: {fr: "Sortant", en: "Outbound"}, referral: {fr: "Recommandation", en: "Referral"}, network: {fr: "Réseau", en: "Network"}, other: {fr: "Autre", en: "Other"}}
+        indexed: true
+      - { key: source_detail, name: Source detail, names: {fr: "Détail de la source"}, kind: text, max_len: 255 }
+      - { key: company, name: Company, names: {fr: "Société"}, kind: text, max_len: 255 }
+      - { key: contact_name, name: Contact, names: {fr: "Contact"}, kind: text, max_len: 255, classification: personal }
+      - { key: email, name: E-mail, names: {fr: "E-mail"}, kind: text, max_len: 255, classification: personal }
+      - { key: phone, name: Phone, names: {fr: "Téléphone"}, kind: text, max_len: 64, classification: personal }
+      - { key: message, name: Message, names: {fr: "Message"}, kind: text, max_len: 4000, classification: personal }
+      - { key: received_on, name: Received on, names: {fr: "Reçue le"}, kind: date, indexed: true }
+      - { key: disqualify_reason, name: Reason disqualified, names: {fr: "Motif d'écart"}, kind: text, max_len: 1000 }
+    actions:
+      - key: convert
+        name: Convert to opportunity
+        names: {fr: "Convertir en opportunité"}
+        confirm: true
+        params:
+          - { key: organization, name: Account, names: {fr: "Compte"}, kind: ref, to_type: organization, required: true }
+          - { key: person, name: Contact, names: {fr: "Contact"}, kind: ref, to_type: person }
+          - { key: name, name: Opportunity name, names: {fr: "Nom de l'opportunité"}, kind: text, max_len: 255 }
+  - key: quote
+    name: Quote
+    names: {fr: "Devis"}
+    icon: file-text
+    properties:
+      - { key: ref, name: Number, names: {fr: "Numéro"}, kind: text, max_len: 64, required: true, unique: true }
+      - key: state
+        name: State
+        names: {fr: "État"}
+        kind: enum
+        values: [draft, sent, accepted, refused, expired]
+        labels: {draft: {fr: "Brouillon", en: "Draft"}, sent: {fr: "Envoyé", en: "Sent"}, accepted: {fr: "Accepté", en: "Accepted"}, refused: {fr: "Refusé", en: "Refused"}, expired: {fr: "Expiré", en: "Expired"}}
+        colors: { draft: gray, sent: blue, accepted: green, refused: red, expired: amber }
+        required: true
+        indexed: true
+      - { key: amount, name: Amount excl. tax, names: {fr: "Montant HT"}, kind: money }
+      - { key: issued_on, name: Issued on, names: {fr: "Émis le"}, kind: date }
+      - { key: valid_until, name: Valid until, names: {fr: "Valable jusqu'au"}, kind: date, indexed: true }
+      - { key: content, name: Content, names: {fr: "Contenu"}, kind: text, max_len: 4000 }
+  - key: invoice
+    name: Invoice
+    names: {fr: "Facture"}
+    icon: landmark
+    properties:
+      - { key: ref, name: Number, names: {fr: "Numéro"}, kind: text, max_len: 64, required: true, unique: true }
+      - key: state
+        name: State
+        names: {fr: "État"}
+        kind: enum
+        values: [issued, partially_paid, paid, overdue, cancelled]
+        labels: {issued: {fr: "Émise", en: "Issued"}, partially_paid: {fr: "Payée en partie", en: "Partially paid"}, paid: {fr: "Payée", en: "Paid"}, overdue: {fr: "En retard", en: "Overdue"}, cancelled: {fr: "Annulée", en: "Cancelled"}}
+        colors: { issued: blue, partially_paid: amber, paid: green, overdue: red, cancelled: gray }
+        required: true
+        indexed: true
+      - { key: amount, name: Amount incl. tax, names: {fr: "Montant TTC"}, kind: money }
+      - { key: paid_amount, name: Paid, names: {fr: "Payé"}, kind: money }
+      - { key: issued_on, name: Issued on, names: {fr: "Émise le"}, kind: date }
+      - { key: due_on, name: Due on, names: {fr: "Échéance"}, kind: date, indexed: true }
+      - { key: paid_on, name: Paid on, names: {fr: "Payée le"}, kind: date }
+      - { key: url, name: In the billing tool, names: {fr: "Dans l'outil de facturation"}, kind: url }
   - key: qualification_criterion
     name: Qualification criterion
     names: {fr: "Critère de qualification"}
@@ -213,6 +340,7 @@ types:
       - { key: content, name: Content, names: {fr: "Contenu"}, kind: text, max_len: 4000 }
       - { key: context, name: Context, names: {fr: "Contexte"}, kind: text, max_len: 1000 }
       - { key: draft, name: Draft, names: {fr: "Brouillon"}, kind: text, max_len: 4000 }
+      - { key: outbox_mail, name: Outbox mail, names: {fr: "Mail en boîte d'envoi"}, kind: text, max_len: 64 }
       - { key: reported, name: Reported, names: {fr: "Reportée"}, kind: bool, indexed: true }
 functions:
   - name: crm_cadence_start
@@ -372,6 +500,43 @@ functions:
           if not text:
               return None
           return {"payload": {"draft": text[:4000]}, "object_id": msg["act"]["id"]}
+  - name: crm_outbox_prep
+    language: starlark
+    description: A drafted mail activity kept aside, to find the people of its opportunity.
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          o = msg["object"]
+          return {"payload": {}, "act": {"id": o["id"], "ref": p.get("ref", ""), "title": o.get("title", ""), "draft": p.get("draft", "")}}
+  - name: crm_outbox_mail
+    language: starlark
+    description: "The draft addressed to the e-mail identifiers of the people involved who did not object; without any address the activity is only marked."
+    outputs:
+      - {name: send, ty: any, desc: "The mail for the outbox"}
+      - {name: skip, ty: any, desc: "The activity marked: nobody to write to"}
+    code: |
+      def handle(inputs, msg):
+          act = msg["act"]
+          to = []
+          for row in msg["payload"]:
+              if row.get("properties", {}).get("opposed_on"):
+                  continue
+              for l in row.get("links", {}).get("uses_identifier", []):
+                  i = l.get("other", {}).get("properties", {})
+                  v = (i.get("value") or "").strip().lower()
+                  if l.get("direction") == "out" and i.get("kind") == "email" and v and v not in to:
+                      to.append(v)
+          if not to:
+              return [None, {"payload": {"outbox_mail": "none"}, "object_id": act["id"]}]
+          # The title is "<step> · <opportunity>": the opportunity is the subject.
+          subject = act["title"].split(" · ")[-1].strip() or act["title"]
+          return [{"payload": {"to": to[:20], "subject": subject, "text": act["draft"], "key": "crm:" + act["ref"]}}, None]
+  - name: crm_outbox_mark
+    language: starlark
+    description: The activity marked with the outbox mail written for it.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {"outbox_mail": msg["mail"]["id"]}, "object_id": msg["act"]["id"]}
   - name: crm_mail_prep
     language: starlark
     description: "A new mail: its correspondent's address, and whether its sender may be trusted to link it on its own."
@@ -567,22 +732,127 @@ functions:
           link["confidence"] = 40
           link["evidence"] = {"reason": "sender not authenticated", "meeting": msg["meeting"]["purpose"]}
           return [None, {"payload": link}]
+  - name: crm_lead_params
+    language: starlark
+    description: Keeps the parameters of a convert action while the lead is read.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {}, "convert": msg.get("payload", {}) or {}}
+  - name: crm_lead_convert
+    language: starlark
+    description: "The opportunity a lead becomes: stage discovery, the lead's source, keyed by the lead so a second convert finds it."
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          o = msg["object"]
+          c = msg.get("convert", {})
+          if not c.get("organization"):
+              return None
+          payload = {"ref": "lead:" + o["id"], "stage": "discovery"}
+          for k in ["source", "source_detail"]:
+              if p.get(k):
+                  payload[k] = p[k]
+          # The company rather than the lead's title, which may name a person.
+          return {
+              "payload": payload,
+              "title": c.get("name") or p.get("company") or o["title"],
+              "lead": {"id": o["id"], "account": c["organization"], "person": c.get("person") or ""},
+          }
+  - name: crm_lead_links
+    language: starlark
+    description: "The links of a converted lead: the opportunity's account and origin, the lead's account and contact, the contact involved; then the lead marked converted."
+    outputs:
+      - {name: account, ty: any, desc: "Opportunity is an opportunity with the account"}
+      - {name: origin, ty: any, desc: "Opportunity comes from the lead"}
+      - {name: lead_of, ty: any, desc: "Lead is a lead of the account"}
+      - {name: contact, ty: any, desc: "Lead has as contact the person, when given"}
+      - {name: involved, ty: any, desc: "The person is involved in the opportunity, when given"}
+      - {name: converted, ty: any, desc: "The lead, marked converted"}
+    code: |
+      def handle(inputs, msg):
+          opp = msg["object"]["id"]
+          lead = msg["lead"]
+          def link(a, b):
+              return {"payload": {"source_id": a, "target_id": b}}
+          person = lead.get("person", "")
+          return [
+              link(opp, lead["account"]),
+              link(opp, lead["id"]),
+              link(lead["id"], lead["account"]),
+              link(lead["id"], person) if person else None,
+              link(person, opp) if person else None,
+              {"payload": {"status": "converted"}, "object_id": lead["id"]},
+          ]
+  - name: crm_quote_expired
+    language: starlark
+    description: A sent quote past its validity date is marked expired.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {"state": "expired"}, "object_id": msg["object"]["id"]}
+  - name: crm_invoice_overdue
+    language: starlark
+    description: "An unpaid invoice past its due date: marked overdue, and a reminder task due today on what it invoices."
+    outputs:
+      - {name: mark, ty: any, desc: "The invoice, marked overdue"}
+      - {name: reminder, ty: any, desc: "The reminder activity to do, with the objects it is about"}
+    code: |
+      def money(v):
+          if not v:
+              return "-"
+          a = v.get("amount", 0)
+          return (str(int(a)) if a == int(a) else str(a)) + " " + v.get("currency", "")
+
+      def handle(inputs, msg):
+          p = msg["payload"]
+          o = msg["object"]
+          about = [l["other"]["id"] for l in msg.get("links", {}).get("invoice_for", []) if l.get("direction") == "out"]
+          mark = {"payload": {"state": "overdue"}, "object_id": o["id"]}
+          num = p.get("ref", "")
+          reminder = {
+              "payload": {
+                  "ref": "invoice:" + o["id"] + ":overdue",
+                  "kind": "task",
+                  "state": "to_do",
+                  "due_on": msg.get("today", ""),
+                  "direction": "outbound",
+                  "content": "Invoice " + num + " was due on " + p.get("due_on", "") + ": amount " + money(p.get("amount")) + ", paid " + money(p.get("paid_amount")) + ".",
+              },
+              "title": "Overdue invoice " + num,
+              "about": about,
+          }
+          return [mark, reminder]
+  - name: crm_about
+    language: starlark
+    description: "Link payloads (payload = the list) from the activity just written to the objects it is about."
+    code: |
+      def handle(inputs, msg):
+          about = msg.get("about", [])
+          if not about:
+              return None
+          return {"payload": [{"source_id": msg["object"]["id"], "target_id": t} for t in about]}
   - name: crm_day_due
     language: starlark
     description: Keeps the activities due on the message for the morning digest.
     code: |
       def handle(inputs, msg):
           return {"payload": {}, "dues": msg["payload"]}
+  - name: crm_day_dormant
+    language: starlark
+    description: Keeps the dormant opportunities on the message for the morning digest.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {}, "dormant": msg["payload"]}
   - name: crm_day
     language: starlark
-    description: "The morning digest: activities due or late, then open opportunities with no recent activity."
+    description: "The morning digest: activities due or late, open opportunities with no recent activity, then the new leads."
     outputs:
       - {name: digest, ty: any, desc: "The digest (payload.text), when there is something to do"}
     code: |
       def handle(inputs, msg):
           dues = sorted(msg.get("dues", []), key = lambda r: r["properties"].get("due_on", ""))
-          dormant = sorted(msg["payload"], key = lambda r: r["properties"].get("last_activity", ""))
-          if not dues and not dormant:
+          dormant = sorted(msg.get("dormant", []), key = lambda r: r["properties"].get("last_activity", ""))
+          leads = sorted(msg["payload"], key = lambda r: r["properties"].get("received_on", ""))
+          if not dues and not dormant and not leads:
               return None
           lines = []
           if dues:
@@ -594,7 +864,12 @@ functions:
               for r in dormant:
                   last = (r["properties"].get("last_activity", "") or "")[:10]
                   lines.append("- " + r["title"] + " (last activity " + last + ")")
-          return {"digest": {"trigger": True, "count": len(dues) + len(dormant), "text": "\n".join(lines)}}
+          if leads:
+              lines.append("New leads:")
+              for r in leads:
+                  p = r["properties"]
+                  lines.append("- " + r["title"] + " (" + " · ".join([x for x in [p.get("received_on", ""), p.get("source_detail", "")] if x]) + ")")
+          return {"digest": {"trigger": True, "count": len(dues) + len(dormant) + len(leads), "text": "\n".join(lines)}}
 flows:
   - name: "CRM · follow-up plan"
     note: "Every hour, up to 20 opportunities that entered the stage qualification get one activity to do per active step of the org's follow-up plan (objects 'Follow-up step': day, kind, instruction), due on the start day plus the step's day, linked to the opportunity. An opportunity whose people involved all objected is only marked. Add the steps first, then deploy."
@@ -671,7 +946,7 @@ flows:
         - { id: missing, kind: pnex_function, config: { function_name: crm_missing, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - { id: write, kind: object_upsert, config: { object_type: opportunity, key: id } }
   - name: "CRM · drafts"
-    note: "Every hour, up to 20 mails and network messages to do, due by tomorrow and without a draft, get one written by the organization's LLM from the step's instruction and the account. Nothing is sent: a person reads the draft, sends it and marks the activity done. Needs an AI provider."
+    note: "Every hour, up to 20 mails and network messages to do, due by tomorrow and without a draft, get one written by the organization's LLM from the step's instruction and the account. Nothing is sent: a person reads the draft, sends it and marks the activity done (flow CRM · drafts to the outbox puts the mail drafts in the outbox of a mailbox). Needs an AI provider."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "20 * * * *" }, outputs: [{ port: 0, targets: [todo] }] }
@@ -696,6 +971,37 @@ flows:
           outputs: [{ port: 0, targets: [keep] }]
         - { id: keep, kind: pnex_function, config: { function_name: crm_draft, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - { id: write, kind: object_upsert, config: { object_type: activity, key: id } }
+  - name: "CRM · drafts to the outbox"
+    note: "Every hour, up to 20 mails to do that have a draft (flow CRM · drafts) are written in the outbox of the mailbox you pick (node Send mail: choose it, you must read it, it needs an SMTP server), addressed to the e-mail identifiers (identifier kind email) of the people involved in the opportunity who did not object; the opportunity is the subject. A person reads it in Mailboxes › Outbox, sends or discards it, then marks the activity done. A mailbox set to send on its own sends at once: keep it on draft unless you mean it. An activity with nobody to write to is only marked. Pick the mailbox, then deploy."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "40 * * * *" }, outputs: [{ port: 0, targets: [todo] }] }
+        - id: todo
+          kind: ontology_query
+          config:
+            object_type: activity
+            filters:
+              - { key: kind, op: eq, value: mail }
+              - { key: state, op: eq, value: to_do }
+              - { key: draft, op: exists }
+              - { key: outbox_mail, op: missing }
+            limit: 20
+          outputs: [{ port: 0, targets: [prep] }]
+        - { id: prep, kind: pnex_function, config: { function_name: crm_outbox_prep, language: starlark }, outputs: [{ port: 0, targets: [who] }] }
+        - id: who
+          kind: ontology_query
+          config:
+            object_type: activity
+            filters: [{ key: ref, op: eq, value: "$msg.act.ref" }]
+            traverse: [{ link_type: activity_on, direction: out }, { link_type: involved_in, direction: in }]
+            limit: 20
+            with_links: [uses_identifier]
+            output: array
+          outputs: [{ port: 0, targets: [address] }]
+        - { id: address, kind: pnex_function, config: { function_name: crm_outbox_mail, language: starlark }, outputs: [{ port: 0, targets: [send] }, { port: 1, targets: [mark] }] }
+        - { id: send, kind: mail_send, config: { mailbox: "" }, outputs: [{ port: 0, targets: [sent] }] }
+        - { id: sent, kind: pnex_function, config: { function_name: crm_outbox_mark, language: starlark }, outputs: [{ port: 0, targets: [mark] }] }
+        - { id: mark, kind: object_upsert, config: { object_type: activity, key: id } }
   - name: "CRM · mails received"
     note: "Each new mail of the mailboxes you pick (node Mail received: choose them, you must read them) becomes a done incoming activity of its correspondent and of their open opportunities (it moves their last activity) — the original sender of a forward made by a member, else the sender — found by an e-mail identifier of a person (identifier kind email, value in lower case). A sender whose authentication fails is only proposed for the link, on the To validate page. A sender no person uses, writing from an own domain (not a webmail), is proposed as an activity of the account whose website has that domain (Web presence pack), and of its open opportunities. Automatic replies, lists and the organization's own mails are left out. Pick the mailboxes, then deploy."
     graph:
@@ -759,7 +1065,7 @@ flows:
         - { id: linked, kind: link_upsert, config: { link_type: takes_part_in } }
         - { id: proposed, kind: link_upsert, config: { link_type: takes_part_in, propose: true } }
   - name: "CRM · my day"
-    note: "Each morning one digest (payload.text, payload.count) of the activities due today or late and of the open opportunities with no activity for 14 days (edit $today-14 to change the delay). Add your Notification node on the digest port (template with a 'text' variable, trigger = payload.trigger), then deploy."
+    note: "Each morning one digest (payload.text, payload.count) of the activities due today or late, of the open opportunities with no activity for 14 days (edit $today-14 to change the delay) and of the new leads. Add your Notification node on the digest port (template with a 'text' variable, trigger = payload.trigger), then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "0 7 * * *" }, outputs: [{ port: 0, targets: [due] }] }
@@ -781,8 +1087,64 @@ flows:
               - { key: last_activity, op: lt, value: "$today-14" }
             limit: 200
             output: array
+          outputs: [{ port: 0, targets: [keep_dormant] }]
+        - { id: keep_dormant, kind: pnex_function, config: { function_name: crm_day_dormant, language: starlark }, outputs: [{ port: 0, targets: [leads] }] }
+        - id: leads
+          kind: ontology_query
+          config:
+            object_type: lead
+            filters: [{ key: status, op: eq, value: new }]
+            limit: 200
+            output: array
           outputs: [{ port: 0, targets: [digest] }]
         - { id: digest, kind: pnex_function, config: { function_name: crm_day, language: starlark } }
+  - name: "CRM · convert a lead"
+    note: "Convert on a lead (Lead page: pick its account, optionally its contact and the opportunity's name) makes an opportunity at stage discovery with the lead's source, linked to the account, coming from the lead, with the contact involved; the lead gets the account and contact and becomes converted. Converting twice keeps the same opportunity. Deploy it to enable the action."
+    graph:
+      nodes:
+        - { id: act, kind: action_trigger, config: { object_type: lead, action: convert }, outputs: [{ port: 0, targets: [params] }] }
+        - { id: params, kind: pnex_function, config: { function_name: crm_lead_params, language: starlark }, outputs: [{ port: 0, targets: [lead] }] }
+        - id: lead
+          kind: ontology_query
+          config: { object_type: lead, filters: [{ key: id, op: eq, value: "$msg.object.id" }], limit: 1 }
+          outputs: [{ port: 0, targets: [convert] }]
+        - { id: convert, kind: pnex_function, config: { function_name: crm_lead_convert, language: starlark }, outputs: [{ port: 0, targets: [opp] }] }
+        - { id: opp, kind: object_upsert, config: { object_type: opportunity, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
+        - { id: links, kind: pnex_function, config: { function_name: crm_lead_links, language: starlark }, outputs: [{ port: 0, targets: [l_account] }, { port: 1, targets: [l_origin] }, { port: 2, targets: [l_lead] }, { port: 3, targets: [l_contact] }, { port: 4, targets: [l_involved] }, { port: 5, targets: [converted] }] }
+        - { id: l_account, kind: link_upsert, config: { link_type: opportunity_with } }
+        - { id: l_origin, kind: link_upsert, config: { link_type: comes_from } }
+        - { id: l_lead, kind: link_upsert, config: { link_type: lead_of } }
+        - { id: l_contact, kind: link_upsert, config: { link_type: lead_contact } }
+        - { id: l_involved, kind: link_upsert, config: { link_type: involved_in } }
+        - { id: converted, kind: object_upsert, config: { object_type: lead, key: id } }
+  - name: "CRM · quotes and invoices due"
+    note: "Each morning a sent quote past its validity date becomes expired, and an issued or partly paid invoice past its due date becomes overdue with a reminder task due today on the opportunity or account it invoices (link 'is an invoice for'); the reminder appears in My day. Invoices are issued by your billing tool: enter their number, amounts and due date here (by hand or through an import), then deploy."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "30 6 * * *" }, outputs: [{ port: 0, targets: [quotes, invoices] }] }
+        - id: quotes
+          kind: ontology_query
+          config:
+            object_type: quote
+            filters: [{ key: state, op: eq, value: sent }, { key: valid_until, op: lt, value: "$today" }]
+            limit: 200
+          outputs: [{ port: 0, targets: [expired] }]
+        - { id: expired, kind: pnex_function, config: { function_name: crm_quote_expired, language: starlark }, outputs: [{ port: 0, targets: [mark_quote] }] }
+        - { id: mark_quote, kind: object_upsert, config: { object_type: quote, key: id } }
+        - id: invoices
+          kind: ontology_query
+          config:
+            object_type: invoice
+            filters: [{ key: state, op: in, value: [issued, partially_paid] }, { key: due_on, op: lt, value: "$today" }]
+            limit: 200
+            with_links: [invoice_for]
+          outputs: [{ port: 0, targets: [overdue] }]
+        - { id: overdue, kind: pnex_function, config: { function_name: crm_invoice_overdue, language: starlark }, outputs: [{ port: 0, targets: [mark_invoice] }, { port: 1, targets: [reminder] }] }
+        - { id: mark_invoice, kind: object_upsert, config: { object_type: invoice, key: id } }
+        - { id: reminder, kind: object_upsert, config: { object_type: activity, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [about] }] }
+        - { id: about, kind: pnex_function, config: { function_name: crm_about, language: starlark }, outputs: [{ port: 0, targets: [each] }] }
+        - { id: each, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: activity_on } }
 page_templates:
   - key: opportunity_sheet
     name: Opportunity sheet
@@ -876,3 +1238,55 @@ page_templates:
         ## Prochaines étapes
 
         - À compléter
+  - key: quote_sheet
+    name: Quote
+    names: {fr: "Devis"}
+    description: The quote as a document to complete and export as PDF, from its number, amount, dates and opportunity.
+    descriptions: {fr: "Le devis en document à compléter et exporter en PDF, depuis son numéro, son montant, ses dates et son opportunité."}
+    subject: quote
+    link: sheet_of
+    body: |
+      # Quote {{prop:ref}} — {{title}}
+
+      Issued on {{prop:issued_on}} · valid until {{prop:valid_until}}.
+
+      ## For
+
+      {{links:quote_for}}
+
+      ## Lines
+
+      {{prop:content}}
+
+      | Item | Quantity | Unit price excl. tax | Total excl. tax |
+      |---|---|---|---|
+      | To fill in | | | |
+
+      Total excl. tax: {{prop:amount}}
+
+      ## Terms
+
+      - To fill in: payment terms, VAT, your legal mentions
+    bodies:
+      fr: |
+        # Devis {{prop:ref}} — {{title}}
+
+        Émis le {{prop:issued_on}} · valable jusqu'au {{prop:valid_until}}.
+
+        ## Pour
+
+        {{links:quote_for}}
+
+        ## Lignes
+
+        {{prop:content}}
+
+        | Désignation | Quantité | Prix unitaire HT | Total HT |
+        |---|---|---|---|
+        | À compléter | | | |
+
+        Total HT : {{prop:amount}}
+
+        ## Conditions
+
+        - À compléter : conditions de paiement, TVA, vos mentions légales

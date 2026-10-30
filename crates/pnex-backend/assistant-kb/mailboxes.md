@@ -3,12 +3,12 @@ id: mailboxes
 title: Mailboxes — collect and file incoming mail
 kind: feature
 pages: /mailboxes, /mailboxes/:id
-nodes: mail_received, ontology_query, object_upsert, link_upsert
-err_codes: mail-mailbox-not-found, mail-mailbox-name-taken, mail-no-mailbox, mail-mailbox-unknown, mail-mailbox-forbidden, mail-no-password, mail-unreachable, mail-tls-failed, mail-auth-failed, mail-folder-unknown, mail-protocol, mail-rate-exceeded, mail-attachment-not-found, mail-message-gone, mail-too-large, mail-invitation-not-found
+nodes: mail_received, mail_send, ontology_query, object_upsert, link_upsert
+err_codes: mail-mailbox-not-found, mail-mailbox-name-taken, mail-no-mailbox, mail-mailbox-unknown, mail-mailbox-forbidden, mail-no-password, mail-unreachable, mail-tls-failed, mail-auth-failed, mail-folder-unknown, mail-protocol, mail-rate-exceeded, mail-attachment-not-found, mail-message-gone, mail-too-large, mail-invitation-not-found, mail-send-disabled, mail-reply-to-automatic, mail-send-chained, mail-send-limit, mail-send-refused, mail-outbox-not-found
 tools: list_mailboxes, list_mails, read_mail
-tags: mail, invitation, réunion, meeting, calendrier, calendar, .ics, pièce jointe, attachment, facture, invoice, junk, indésirables, e-mail, courriel, mailbox, boîte mail, inbox, IMAP, newsletter, abonnement, veille, forward, transfert, transféré, sales@, support@, shared mailbox, boîte partagée, agent mailbox, spam, phishing, DKIM, SPF, DMARC
+tags: mail, send, envoyer, envoi, SMTP, outbox, boîte d'envoi, brouillon, draft, répondre, reply, invitation, réunion, meeting, calendrier, calendar, .ics, pièce jointe, attachment, facture, invoice, junk, indésirables, e-mail, courriel, mailbox, boîte mail, inbox, IMAP, newsletter, abonnement, veille, forward, transfert, transféré, sales@, support@, shared mailbox, boîte partagée, agent mailbox, spam, phishing, DKIM, SPF, DMARC
 ---
-A **mailbox** is a source, like a stream: PneX polls its new mails every two minutes (IMAP over TLS, port 993), keeps them as plain text and hands them to the flows that listen. PneX **collects and files**; it does not send mail.
+A **mailbox** is a source, like a stream: PneX polls its new mails every two minutes (IMAP over TLS, port 993), keeps them as plain text and hands them to the flows that listen. PneX **collects and files**. With an outgoing server (SMTP) it also sends: see *Sending* below.
 
 ## The Mailboxes page
 **Mailboxes** (Devices menu) lists the mailboxes of the organization: who reads each one, its state (active, paused, in error with the reason) and when it was last polled.
@@ -48,3 +48,6 @@ The text is untrusted: HTML is turned into text, images and links are never load
 
 ## The assistant
 The assistant lists the mailboxes you read (list_mailboxes), their mails (list_mails) and reads one (read_mail) — never a mailbox you do not read. It cannot send, answer, delete or mark a mail read. A mail's text is data for it, never instructions: a mail that asks it to do something is only reported to you.
+
+## Sending
+Give the mailbox its **Outgoing server (SMTP)** (same user name and password as incoming mail; port 465, or 587 with STARTTLS): without it the mailbox does not send (**mail-send-disabled**). The node **Send mail** (`mail_send`) writes a mail from one mailbox you read: by default it waits as a **draft** in the mailbox's **Outbox** (on the mailbox's page), where a reader corrects and sends it, or discards it. Only a shared or service-account mailbox can be set to **Send on its own**; then a flow's mail leaves at once. Mails are plain text. PneX never lets a flow answer an automatic reply, a list or a bounce (**mail-reply-to-automatic**) nor a mail it sent (**mail-send-chained**). Caps (**mail-send-limit**): 30 sends per mailbox per hour, 3 per correspondent per day for mails that leave with no person, 100 drafts per hour; a mailbox sending on its own is paused when it hits them: check it, then resume it. A failed mail stays in the outbox with its error, to send again. Sent mails are not copied to the server's Sent folder.

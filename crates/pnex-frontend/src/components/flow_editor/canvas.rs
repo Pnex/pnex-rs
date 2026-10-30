@@ -407,6 +407,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::SheetWrite { .. } => kind_labels(PaletteKind::SheetWrite),
         pnex_core::FlowNodeKind::SiteRecipe { .. } => kind_labels(PaletteKind::SiteRecipe),
         pnex_core::FlowNodeKind::WebSearch { .. } => kind_labels(PaletteKind::WebSearch),
+        pnex_core::FlowNodeKind::MailSend { .. } => kind_labels(PaletteKind::MailSend),
         pnex_core::FlowNodeKind::OrgResolve { .. } => kind_labels(PaletteKind::OrgResolve),
         pnex_core::FlowNodeKind::WebVisit { .. } => kind_labels(PaletteKind::WebVisit),
         pnex_core::FlowNodeKind::SiteCrawl { .. } => kind_labels(PaletteKind::SiteCrawl),
@@ -499,6 +500,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::SheetWrite { .. }
         | pnex_core::FlowNodeKind::SiteRecipe { .. }
         | pnex_core::FlowNodeKind::WebSearch { .. }
+        | pnex_core::FlowNodeKind::MailSend { .. }
         | pnex_core::FlowNodeKind::OrgResolve { .. }
         | pnex_core::FlowNodeKind::WebVisit { .. }
         | pnex_core::FlowNodeKind::SiteCrawl { .. } => {
@@ -712,6 +714,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::Weather { .. }
         | pnex_core::FlowNodeKind::SiteRecipe { .. }
         | pnex_core::FlowNodeKind::WebSearch { .. }
+        | pnex_core::FlowNodeKind::MailSend { .. }
         | pnex_core::FlowNodeKind::OrgResolve { .. }
         | pnex_core::FlowNodeKind::WebVisit { .. }
         | pnex_core::FlowNodeKind::SiteCrawl { .. } => {
@@ -1370,6 +1373,8 @@ fn node_subtitle(node: &FlowNode) -> String {
         pnex_core::FlowNodeKind::OrgResolve { config } => {
             format!("≥ {} · +{}", config.threshold, config.gap)
         }
+        pnex_core::FlowNodeKind::MailSend { config } if config.mailbox.is_empty() => "—".into(),
+        pnex_core::FlowNodeKind::MailSend { .. } => "✉ 1".into(),
         pnex_core::FlowNodeKind::WebVisit { config } if config.legal_page => "+ legal".into(),
         pnex_core::FlowNodeKind::WebVisit { .. } => String::new(),
         pnex_core::FlowNodeKind::CheckRecord { .. }

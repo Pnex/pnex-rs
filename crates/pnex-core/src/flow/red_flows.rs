@@ -271,6 +271,17 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            // The backend reads the mailbox from the deployed graph (D518).
+            FlowNodeKind::MailSend { .. } => {
+                padded_ports = Some(crate::mail::SEND_PORT_COUNT);
+                serde_json::json!({
+                    "type": "pnex-mail-send",
+                    "pnex_node_id": n.id,
+                    "pnex_flow_id": meta.flow_id,
+                    "pnex_version": meta.version_number,
+                    "pnex_org_id": meta.org_id,
+                })
+            }
             FlowNodeKind::ActionTrigger { config } => serde_json::json!({
                 "type": "pnex-action-trigger",
                 "object_type": config.object_type,

@@ -1,7 +1,7 @@
 use super::*;
 
 /// Canonical list of the kinds offered for adding (mockup order).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 51] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 52] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -18,6 +18,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 51] = [
     PaletteKind::RegTtCool,
     PaletteKind::RegPid,
     PaletteKind::PnexNotify,
+    PaletteKind::MailSend,
     PaletteKind::HttpFetch,
     PaletteKind::Function,
     PaletteKind::JsonSplit,
@@ -71,6 +72,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::RegTtCool => "reg-tt-cool",
         PaletteKind::RegPid => "reg-pid",
         PaletteKind::PnexNotify => "notify",
+        PaletteKind::MailSend => "mail-send",
         PaletteKind::HttpFetch => "http-fetch",
         PaletteKind::Function => "function",
         PaletteKind::JsonSplit => "json-split",
@@ -138,6 +140,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::RegTtCool => (PaletteIcon::Snowflake, "bg-sky-50 text-sky-600"),
         PaletteKind::RegPid => (PaletteIcon::Gauge, "bg-indigo-50 text-indigo-600"),
         PaletteKind::PnexNotify => (PaletteIcon::Bell, "bg-purple-50 text-purple-600"),
+        PaletteKind::MailSend => (PaletteIcon::Bell, "bg-sky-50 text-sky-700"),
         PaletteKind::HttpFetch => (PaletteIcon::Globe, "bg-sky-50 text-sky-600"),
         PaletteKind::Function => (PaletteIcon::Braces, "bg-teal-50 text-teal-600"),
         PaletteKind::JsonSplit => (PaletteIcon::Layers, "bg-cyan-50 text-cyan-700"),
@@ -198,6 +201,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::RegTtCool { .. } => PaletteKind::RegTtCool,
         FlowNodeKind::RegPid { .. } => PaletteKind::RegPid,
         FlowNodeKind::PnexNotify { .. } => PaletteKind::PnexNotify,
+        FlowNodeKind::MailSend { .. } => PaletteKind::MailSend,
         FlowNodeKind::HttpFetch { .. } => PaletteKind::HttpFetch,
         FlowNodeKind::PnexFunction { .. } => PaletteKind::Function,
         FlowNodeKind::JsonSplit { .. } => PaletteKind::JsonSplit,
@@ -322,7 +326,9 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::TextDecide
         | PaletteKind::Anomaly
         | PaletteKind::Forecast => PaletteCategory::Ai,
-        PaletteKind::PnexNotify | PaletteKind::HttpFetch => PaletteCategory::Integrations,
+        PaletteKind::PnexNotify | PaletteKind::MailSend | PaletteKind::HttpFetch => {
+            PaletteCategory::Integrations
+        }
         // Display is an inline probe, not a device node (O49).
         PaletteKind::Debug | PaletteKind::Display => PaletteCategory::Debug,
     }
@@ -509,6 +515,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::MailReceived => (
             t!("flows-palette-mail-received").to_string(),
             t!("flows-palette-mail-received-help").to_string(),
+        ),
+        PaletteKind::MailSend => (
+            t!("flows-palette-mail-send").to_string(),
+            t!("flows-palette-mail-send-help").to_string(),
         ),
         PaletteKind::OntologyQuery => (
             t!("flows-palette-ontology-query").to_string(),

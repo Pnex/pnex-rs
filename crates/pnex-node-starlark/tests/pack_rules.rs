@@ -1016,20 +1016,22 @@ fn a_done_activity_only_moves_the_last_activity_forward() {
 fn my_day_lists_due_activities_and_dormant_opportunities() {
     let msg = json!({
         "dues": [{"title": "mail D3 · Acme", "properties": {"due_on": "2026-10-26"}}],
-        "payload": [{"title": "Beta 2027", "properties": {"last_activity": "2026-09-30T10:00:00Z"}}]
+        "dormant": [{"title": "Beta 2027", "properties": {"last_activity": "2026-09-30T10:00:00Z"}}],
+        "payload": [{"title": "Gamma · Lee", "properties": {"received_on": "2026-10-25", "source_detail": "Global Industrie"}}]
     });
     let r = execute(&code_in(CRM, "crm_day"), &msg, 2000)
         .unwrap()
         .return_json
         .unwrap();
-    assert_eq!(r["digest"]["count"], 2);
+    assert_eq!(r["digest"]["count"], 3);
     let text = r["digest"]["text"].as_str().unwrap();
     assert!(
         text.contains("2026-10-26 mail D3 · Acme")
-            && text.contains("Beta 2027 (last activity 2026-09-30)"),
+            && text.contains("Beta 2027 (last activity 2026-09-30)")
+            && text.contains("New leads:\n- Gamma · Lee (2026-10-25 · Global Industrie)"),
         "{text}"
     );
-    let empty = json!({"dues": [], "payload": []});
+    let empty = json!({"dues": [], "dormant": [], "payload": []});
     assert!(execute(&code_in(CRM, "crm_day"), &empty, 2000)
         .unwrap()
         .return_json
@@ -1423,4 +1425,139 @@ fn cross_table_reads_the_pilot_like_a_human() {
     assert!(at("E10").contains("2 h in the programme"), "{}", at("E10"));
     assert!(at("D15").starts_with("Chapitre 5"), "{}", at("D15"));
     assert_eq!(out["workbook"]["sheets"][0]["merges"], json!(["B1:E1"]));
+}
+
+/// `crm` « convert a lead » (crm.md D515): the opportunity keyed by its
+/// lead, titled by the company, and every link of the conversion.
+#[test]
+fn a_converted_lead_becomes_an_opportunity_of_its_account() {
+    let msg = json!({
+        "payload": {"status": "qualified", "source": "trade_show", "source_detail": "Global Industrie", "company": "Gamma", "email": "lee@gamma.test"},
+        "object": {"id": "l1", "title": "Gamma · Lee"},
+        "convert": {"organization": "g1", "person": "p1"}
+    });
+    let r = execute(&code_in(CRM, "crm_lead_convert"), &msg, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r["payload"]["ref"], "lead:l1");
+    assert_eq!(r["payload"]["stage"], "discovery");
+    assert_eq!(r["payload"]["source_detail"], "Global Industrie");
+    assert!(
+        r["payload"].get("email").is_none(),
+        "no personal data copied"
+    );
+    assert_eq!(r["title"], "Gamma", "the company, not the contact's name");
+
+    let written = json!({"object": {"id": "o1"}, "lead": r["lead"]});
+    let l = execute(&code_in(CRM, "crm_lead_links"), &written, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    let pair = |i: usize| {
+        (
+            l[i]["payload"]["source_id"].clone(),
+            l[i]["payload"]["target_id"].clone(),
+        )
+    };
+    assert_eq!(pair(0), (json!("o1"), json!("g1")));
+    assert_eq!(pair(1), (json!("o1"), json!("l1")));
+    assert_eq!(pair(2), (json!("l1"), json!("g1")));
+    assert_eq!(pair(3), (json!("l1"), json!("p1")));
+    assert_eq!(pair(4), (json!("p1"), json!("o1")));
+    assert_eq!(l[5]["payload"]["status"], "converted");
+    assert_eq!(l[5]["object_id"], "l1");
+
+    // Without a contact: no contact links, the rest unchanged.
+    let alone =
+        json!({"object": {"id": "o1"}, "lead": {"id": "l1", "account": "g1", "person": ""}});
+    let l = execute(&code_in(CRM, "crm_lead_links"), &alone, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert!(l[3].is_null() && l[4].is_null());
+    assert_eq!(l[5]["payload"]["status"], "converted");
+}
+
+/// `crm` « quotes and invoices due » (crm.md D517): an overdue invoice is
+/// marked and gets one reminder on what it invoices.
+#[test]
+fn an_overdue_invoice_is_marked_and_reminded() {
+    let msg = json!({
+        "payload": {"ref": "F-2026-031", "state": "issued", "due_on": "2026-10-20",
+                    "amount": {"amount": 1200, "currency": "EUR"}, "paid_amount": {"amount": 400.5, "currency": "EUR"}},
+        "object": {"id": "i1", "title": "F-2026-031"},
+        "today": "2026-10-29",
+        "links": {"invoice_for": [{"direction": "out", "other": {"id": "o1"}}, {"direction": "out", "other": {"id": "g1"}}]}
+    });
+    let r = execute(&code_in(CRM, "crm_invoice_overdue"), &msg, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r[0]["payload"]["state"], "overdue");
+    assert_eq!(r[0]["object_id"], "i1");
+    let p = &r[1]["payload"];
+    assert_eq!(p["ref"], "invoice:i1:overdue");
+    assert_eq!(
+        (p["state"].as_str(), p["due_on"].as_str()),
+        (Some("to_do"), Some("2026-10-29"))
+    );
+    assert_eq!(
+        p["content"],
+        "Invoice F-2026-031 was due on 2026-10-20: amount 1200 EUR, paid 400.5 EUR."
+    );
+    assert_eq!(r[1]["about"], json!(["o1", "g1"]));
+
+    let links = execute(
+        &code_in(CRM, "crm_about"),
+        &json!({"object": {"id": "a1"}, "about": ["o1", "g1"]}),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert_eq!(
+        links["payload"][1],
+        json!({"source_id": "a1", "target_id": "g1"})
+    );
+    assert!(execute(
+        &code_in(CRM, "crm_about"),
+        &json!({"object": {"id": "a1"}, "about": []}),
+        2000
+    )
+    .unwrap()
+    .return_json
+    .is_none());
+}
+
+/// `crm` « drafts to the outbox » (crm.md D522): the draft goes to the
+/// people of the opportunity who did not object, keyed by the activity.
+#[test]
+fn a_mail_draft_goes_to_the_people_who_did_not_object() {
+    let email = |v: &str| json!({"direction": "out", "other": {"properties": {"kind": "email", "value": v}}});
+    let msg = json!({
+        "act": {"id": "a1", "ref": "cadence:o1:s1", "title": "Relance J+3 · Acme 2027", "draft": "Bonjour"},
+        "payload": [
+            {"properties": {}, "links": {"uses_identifier": [email("Ann@Acme.test"), {"direction": "out", "other": {"properties": {"kind": "phone", "value": "+33"}}}]}},
+            {"properties": {"opposed_on": "2026-10-01"}, "links": {"uses_identifier": [email("bob@acme.test")]}},
+            {"properties": {}, "links": {"uses_identifier": [email("ann@acme.test")]}}
+        ]
+    });
+    let r = execute(&code_in(CRM, "crm_outbox_mail"), &msg, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r[0]["payload"]["to"], json!(["ann@acme.test"]));
+    assert_eq!(r[0]["payload"]["subject"], "Acme 2027");
+    assert_eq!(r[0]["payload"]["key"], "crm:cadence:o1:s1");
+    assert!(r[1].is_null());
+
+    let nobody = json!({"act": msg["act"], "payload": [msg["payload"][1]]});
+    let r = execute(&code_in(CRM, "crm_outbox_mail"), &nobody, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert!(r[0].is_null());
+    assert_eq!(r[1]["payload"]["outbox_mail"], "none");
+    assert_eq!(r[1]["object_id"], "a1");
 }

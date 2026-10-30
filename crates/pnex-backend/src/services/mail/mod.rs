@@ -10,6 +10,7 @@ pub mod invitations;
 pub mod parse;
 pub mod poller;
 pub mod replay;
+pub mod send;
 pub mod verify;
 
 use std::collections::HashMap;
@@ -17,9 +18,9 @@ use std::collections::HashMap;
 use pnex_core::err_codes;
 use pnex_core::mail::{
     MailAddress, MailAttachment, MailAuth, MailFolderCount, MailForward, MailMessage, Mailbox,
-    MailboxError, MailboxInput, MailboxOwner, MailboxState, MailboxTestResult, ADDRESS_MAX,
-    FOLDERS_MAX, HOST_MAX, IMAPS_PORT, NAME_MAX, RETENTION_DAYS_DEFAULT, RETENTION_DAYS_MAX,
-    RETENTION_DAYS_MIN, TEAMS_MAX,
+    MailboxError, MailboxInput, MailboxOwner, MailboxState, MailboxTestResult, SendMode,
+    ADDRESS_MAX, FOLDERS_MAX, HOST_MAX, IMAPS_PORT, NAME_MAX, RETENTION_DAYS_DEFAULT,
+    RETENTION_DAYS_MAX, RETENTION_DAYS_MIN, SMTPS_PORT, TEAMS_MAX,
 };
 use pnex_core::SecretFieldInput;
 use sea_orm::prelude::DateTimeWithTimeZone;
@@ -56,9 +57,17 @@ pub struct Caller {
 
 #[derive(Debug)]
 pub enum MailError {
-    Invalid { field: String, token: String },
+    Invalid {
+        field: String,
+        token: String,
+    },
     NotFound,
     NameTaken,
+    /// A coded refusal of a send (D457, D518): its HTTP status and error.
+    Refused {
+        status: u16,
+        error: MailboxError,
+    },
     Store(StoreError),
 }
 
@@ -92,6 +101,9 @@ pub struct Row {
     pub imap_host: String,
     pub imap_port: i32,
     pub imap_user: String,
+    pub smtp_host: String,
+    pub smtp_port: i32,
+    pub send_mode: String,
     pub secret_id: Option<Uuid>,
     pub folders: Vec<String>,
     pub state: String,
@@ -105,12 +117,16 @@ pub struct Row {
 }
 
 const COLUMNS: &str = "id, org_id, name, address, owner_user_id, teams, imap_host, imap_port, \
-     imap_user, secret_id, folders, state, last_error_code, last_error_args, last_sync_at, \
+     imap_user, smtp_host, smtp_port, send_mode, secret_id, folders, state, last_error_code, last_error_args, last_sync_at, \
      retention_days, version, created_at, updated_at";
 
 impl Row {
     pub fn state(&self) -> MailboxState {
         MailboxState::parse(&self.state).unwrap_or_default()
+    }
+
+    pub fn send_mode(&self) -> SendMode {
+        SendMode::parse(&self.send_mode).unwrap_or_default()
     }
 }
 
@@ -265,6 +281,9 @@ pub async fn views<C: ConnectionTrait>(
             imap_host: r.imap_host.clone(),
             imap_port: r.imap_port as u16,
             imap_user: r.imap_user.clone(),
+            smtp_host: r.smtp_host.clone(),
+            smtp_port: r.smtp_port as u16,
+            send_mode: r.send_mode(),
             has_password: r.secret_id.is_some(),
             folders: r.folders.clone(),
             state: r.state(),
@@ -289,9 +308,28 @@ struct Checked {
     host: String,
     port: u16,
     user: String,
+    smtp_host: String,
+    smtp_port: u16,
     folders: Vec<String>,
     retention: i32,
     teams: Vec<Uuid>,
+}
+
+/// A server name as typed: lower case, no trailing dot, allowed by the
+/// egress policy (R8).
+fn host_of(field: &str, raw: &str) -> Result<String, MailError> {
+    let host = raw.trim().trim_end_matches('.').to_ascii_lowercase();
+    if host.len() > HOST_MAX
+        || !host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
+    {
+        return Err(invalid(field, err_codes::FIELD_INVALID));
+    }
+    if let Some(code) = pnex_core::egress::check_host(&host, pnex_core::egress::policy()) {
+        return Err(invalid(field, code));
+    }
+    Ok(host)
 }
 
 fn too_long(field: &str, max: usize) -> MailError {
@@ -313,23 +351,21 @@ async fn check<C: ConnectionTrait>(
     let address = pnex_core::mail::parse_address(&input.address)
         .ok_or_else(|| invalid("address", err_codes::FIELD_INVALID))?
         .address;
-    let host = input
-        .imap_host
-        .trim()
-        .trim_end_matches('.')
-        .to_ascii_lowercase();
-    if host.is_empty() {
+    if input.imap_host.trim().is_empty() {
         return Err(invalid("imap_host", err_codes::FIELD_REQUIRED));
     }
-    if host.len() > HOST_MAX
-        || !host
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
-    {
-        return Err(invalid("imap_host", err_codes::FIELD_INVALID));
+    let host = host_of("imap_host", &input.imap_host)?;
+    // No SMTP server: the mailbox only reads (D518).
+    let smtp_host = match input.smtp_host.trim() {
+        "" => String::new(),
+        h => host_of("smtp_host", h)?,
+    };
+    let smtp_port = input.smtp_port.unwrap_or(SMTPS_PORT);
+    if smtp_port == 0 {
+        return Err(invalid("smtp_port", err_codes::FIELD_INVALID));
     }
-    if let Some(code) = pnex_core::egress::check_host(&host, pnex_core::egress::policy()) {
-        return Err(invalid("imap_host", code));
+    if input.send_mode == SendMode::Send && smtp_host.is_empty() {
+        return Err(invalid("send_mode", err_codes::FIELD_INVALID));
     }
     let port = input.imap_port.unwrap_or(IMAPS_PORT);
     if port == 0 {
@@ -390,6 +426,8 @@ async fn check<C: ConnectionTrait>(
         host,
         port,
         user: user.to_string(),
+        smtp_host,
+        smtp_port,
         folders,
         retention,
         teams,
@@ -440,6 +478,22 @@ fn password_allowed(
     }
 }
 
+/// `send` (D518): a mail leaves without a person reviewing it, so only from
+/// a shared or a service-account mailbox, never from a member's own. Who
+/// manages those is already a shared manager (`Access::manages`).
+async fn check_send_mode<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    owner: Option<i64>,
+    mode: SendMode,
+) -> Result<(), MailError> {
+    match (mode, owner) {
+        (SendMode::Draft, _) | (SendMode::Send, None) => Ok(()),
+        (SendMode::Send, Some(u)) if service_users(db, org_id).await?.contains(&u) => Ok(()),
+        _ => Err(invalid("send_mode", err_codes::FIELD_INVALID)),
+    }
+}
+
 fn writer(org_id: i64, caller: Caller) -> Writer {
     Writer {
         org_id: Some(org_id),
@@ -478,6 +532,7 @@ pub async fn create(
         return Err(invalid("password", err_codes::FIELD_REQUIRED));
     };
     let may_write = password_allowed(caller, owner, Some(password))?;
+    check_send_mode(db, org_id, owner, input.send_mode).await?;
     let txn = db.begin().await?;
     if name_taken(&txn, org_id, &c.name, None).await? {
         return Err(MailError::NameTaken);
@@ -495,8 +550,9 @@ pub async fn create(
     .await?;
     txn.execute_raw(stmt(
         "INSERT INTO mailboxes (id, org_id, name, address, owner_user_id, teams, imap_host, imap_port, \
-           imap_user, secret_id, folders, state, retention_days, created_by) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
+           imap_user, secret_id, folders, state, retention_days, created_by, smtp_host, smtp_port, \
+           send_mode) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
         vec![
             id.into(),
             org_id.into(),
@@ -512,6 +568,9 @@ pub async fn create(
             if input.paused { "paused" } else { "active" }.into(),
             c.retention.into(),
             caller.user_id.into(),
+            c.smtp_host.into(),
+            (c.smtp_port as i32).into(),
+            input.send_mode.as_str().into(),
         ],
     ))
     .await?;
@@ -549,10 +608,13 @@ pub async fn update(
     if name_taken(&txn, org_id, &c.name, Some(id)).await? {
         return Err(MailError::NameTaken);
     }
+    check_send_mode(&txn, org_id, row.owner_user_id, input.send_mode).await?;
     let moved =
         row.imap_host != c.host || row.imap_port != c.port as i32 || row.imap_user != c.user;
+    // The password would go to another SMTP server (R9).
+    let smtp_moved = row.smtp_host != c.smtp_host || row.smtp_port != c.smtp_port as i32;
     let may_write = password_allowed(caller, row.owner_user_id, input.password.as_ref())?;
-    if moved && input.password.is_none() && !caller.can_write_secrets {
+    if (moved || smtp_moved) && input.password.is_none() && !caller.can_write_secrets {
         return Err(invalid("password", err_codes::FIELD_REQUIRED));
     }
     let secret = match &input.password {
@@ -577,6 +639,7 @@ pub async fn update(
            imap_user = $8, secret_id = $9, folders = $10, retention_days = $11, state = $12, \
            last_error_code = CASE WHEN $12 = 'active' THEN NULL ELSE last_error_code END, \
            last_error_args = CASE WHEN $12 = 'active' THEN NULL ELSE last_error_args END, \
+           smtp_host = $13, smtp_port = $14, send_mode = $15, \
            version = version + 1, updated_at = now() \
          WHERE org_id = $1 AND id = $2",
         vec![
@@ -592,6 +655,9 @@ pub async fn update(
             c.folders.into(),
             c.retention.into(),
             state.into(),
+            c.smtp_host.into(),
+            (c.smtp_port as i32).into(),
+            input.send_mode.as_str().into(),
         ],
     ))
     .await?;

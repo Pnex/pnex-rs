@@ -712,6 +712,18 @@ pub const MAIL_MESSAGE_GONE: &str = "mail-message-gone";
 pub const MAIL_TOO_LARGE: &str = "mail-too-large";
 /// The mail carries no meeting invitation (mail.md D466).
 pub const MAIL_INVITATION_NOT_FOUND: &str = "mail-invitation-not-found";
+/// The mailbox has no SMTP server: it does not send (mail.md D518).
+pub const MAIL_SEND_DISABLED: &str = "mail-send-disabled";
+/// A flow or an agent may not answer an automatic message (mail.md D457.1).
+pub const MAIL_REPLY_TO_AUTOMATIC: &str = "mail-reply-to-automatic";
+/// A send triggered by a mail that was itself sent from a mail (mail.md D457.5).
+pub const MAIL_SEND_CHAINED: &str = "mail-send-chained";
+/// More sends than allowed (per hour, or to one correspondent per day); `args.max` (mail.md D457.4).
+pub const MAIL_SEND_LIMIT: &str = "mail-send-limit";
+/// The SMTP server refused the message; `args.host`.
+pub const MAIL_SEND_REFUSED: &str = "mail-send-refused";
+/// No such mail in the outbox, or not a draft any more (mail.md D519).
+pub const MAIL_OUTBOX_NOT_FOUND: &str = "mail-outbox-not-found";
 /// Web search provider not found (or not in the org).
 pub const WEB_SEARCH_PROVIDER_NOT_FOUND: &str = "web-search-provider-not-found";
 /// A web search provider of the org already has this name.
@@ -982,6 +994,12 @@ pub const ALL: &[&str] = &[
     MAIL_MESSAGE_GONE,
     MAIL_TOO_LARGE,
     MAIL_INVITATION_NOT_FOUND,
+    MAIL_SEND_DISABLED,
+    MAIL_REPLY_TO_AUTOMATIC,
+    MAIL_SEND_CHAINED,
+    MAIL_SEND_LIMIT,
+    MAIL_SEND_REFUSED,
+    MAIL_OUTBOX_NOT_FOUND,
     WEB_SEARCH_PROVIDER_NOT_FOUND,
     WEB_SEARCH_PROVIDER_NAME_TAKEN,
     WEB_SEARCH_NO_PROVIDER,

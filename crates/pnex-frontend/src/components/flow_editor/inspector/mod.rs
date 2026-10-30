@@ -220,6 +220,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::WebSearch { config } => rsx! {
             WebSearchForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::MailSend { config } => rsx! {
+            MailSendForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::OrgResolve { config } => rsx! {
             OrgResolveForm { cx, initial: config.clone(), can_write }
         },
@@ -331,7 +334,7 @@ use helpers::{patch_selected, remove_selected};
 use http_fetch::HttpFetchForm;
 use inject::InjectForm;
 use json::{JsonMergeForm, JsonSplitForm};
-use mail_received::MailReceivedForm;
+use mail_received::{MailReceivedForm, MailSendForm};
 use media_source::MediaSourceForm;
 use memory::{MemoryReadForm, MemoryWriteForm};
 use notify::NotifyForm;

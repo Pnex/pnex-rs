@@ -125,6 +125,7 @@ pub fn MailboxMessages(id: String) -> Element {
                     p { class: "text-sm text-gray-500 mt-2", {t!("mailboxes-messages-empty-hint")} }
                 },
                 div { class: "space-y-4",
+                    crate::pages::mailbox_outbox::Outbox { mailbox: id.clone() }
                     DataTable {
                         columns,
                         rows,

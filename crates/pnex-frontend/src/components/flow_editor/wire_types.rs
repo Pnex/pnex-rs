@@ -109,6 +109,7 @@ fn port_type(node: &FlowNode, port: usize) -> PortType {
         | FlowNodeKind::SheetWrite { .. }
         | FlowNodeKind::SiteRecipe { .. }
         | FlowNodeKind::WebSearch { .. }
+        | FlowNodeKind::MailSend { .. }
         | FlowNodeKind::OrgResolve { .. }
         | FlowNodeKind::WebVisit { .. }
         | FlowNodeKind::SiteCrawl { .. }

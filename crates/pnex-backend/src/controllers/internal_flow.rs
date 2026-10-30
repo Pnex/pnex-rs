@@ -68,6 +68,7 @@ pub fn routes() -> Routes {
         // Stored mails replayed to mail_received nodes (mail.md D464).
         .add("/internal/flow/mail/replay", post(flow_mail_replay))
         .add("/internal/flow/mail/ack", post(flow_mail_ack))
+        .add("/internal/flow/mail/send", post(flow_mail_send))
         // Website navigation rules played by flows (site-recipes.md D327).
         .add("/internal/flow/site-recipe", post(flow_site_recipe))
         // Web search candidates of web_search nodes (web-presence.md D361).
@@ -686,6 +687,28 @@ async fn flow_mail_replay(
     let r = crate::services::mail::replay::replay(&ctx.db, &req)
         .await
         .map(|messages| pnex_core::mail::MailReplayReply { messages });
+    ontology_reply(req.node.org_id, r)
+}
+
+/// `POST /internal/flow/mail/send` — one mail of a deployed `mail_send`
+/// (mail.md D456): a draft in the outbox, or sent when the mailbox sends on
+/// its own. A refusal answers 200 on port 1.
+async fn flow_mail_send(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::mail::MailSendNodeRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let ring = match crate::controllers::secrets::keyring(&ctx) {
+        Ok(r) => r,
+        Err(e) => return crate::controllers::secrets::store_error(e),
+    };
+    let r = crate::services::mail::send::flow_node(&ctx.db, &ring, &req).await;
     ontology_reply(req.node.org_id, r)
 }
 

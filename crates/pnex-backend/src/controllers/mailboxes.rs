@@ -11,7 +11,10 @@ use axum::Json;
 use loco_rs::controller::format;
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
-use pnex_core::mail::{MailAttachment, MailMessage, Mailbox, MailboxInput, MailboxTestResult};
+use pnex_core::mail::{
+    MailAttachment, MailMessage, MailSendInput, Mailbox, MailboxInput, MailboxTestResult,
+    OutboxMail, OutboxSendInput,
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -19,6 +22,7 @@ use crate::auth::OrgContext;
 use crate::controllers::pagination::{self, PageParams};
 use crate::services::mail::attachments::SaveError;
 use crate::services::mail::invitations::InviteError;
+use crate::services::mail::send::Sender;
 use crate::services::mail::{self as mail, Access, Caller, MailError};
 
 pub fn routes() -> Routes {
@@ -28,7 +32,13 @@ pub fn routes() -> Routes {
         .add("/mailboxes/{id}", axum::routing::put(update).delete(remove))
         .add("/mailboxes/{id}/state", post(set_state))
         .add("/mailboxes/{id}/test", post(test))
-        .add("/mailboxes/{id}/messages", get(messages))
+        .add("/mailboxes/{id}/messages", get(messages).post(send_message))
+        .add("/mailboxes/{id}/outbox", get(outbox))
+        .add("/mailboxes/{id}/outbox/{mail}/send", post(outbox_send))
+        .add(
+            "/mailboxes/{id}/outbox/{mail}/discard",
+            post(outbox_discard),
+        )
         .add(
             "/mailboxes/{id}/messages/{message}/attachments/{index}/media",
             post(save_attachment),
@@ -62,6 +72,12 @@ fn mail_error(e: MailError) -> Result<Response> {
             err_codes::MAIL_MAILBOX_NAME_TAKEN,
             "A mailbox with this name already exists.",
             None,
+        )),
+        MailError::Refused { status, error } => Err(super::coded_error(
+            StatusCode::from_u16(status).unwrap_or(StatusCode::CONFLICT),
+            &error.code,
+            "The mail was not sent.",
+            Some(error.args),
         )),
         MailError::Store(e) => crate::controllers::secrets::store_error(e),
     }
@@ -441,6 +457,168 @@ async fn add_invitation(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/mailboxes/{id}/messages",
+    tag = "mail",
+    operation_id = "mailboxes_messages_send",
+    summary = "Write a mail from a mailbox",
+    description = "Writes a plain-text mail from the mailbox to at most 20 recipients: a draft in its outbox, or sent at once with `send_now` (the caller is the one sending). `in_reply_to` answers a stored mail of this mailbox (threaded with its references). The same `key` answers the mail already written. Caps: 30 sends per mailbox and hour (`mail-send-limit`, 429). Only a reader of the mailbox (404 for anyone else). Requires the send permission and the mail content read permission.",
+    params(("id" = String, Path, format = "uuid", description = "Mailbox id")),
+    request_body = MailSendInput,
+    responses(
+        (status = 201, body = OutboxMail),
+        (status = 400, description = "Invalid field: `to`, `subject`, `text`, `in_reply_to`, `key`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`mail-mailbox-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`mail-send-disabled` (no SMTP server)", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`mail-send-limit` (`args.max`)", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "The SMTP server refused or failed: `mail-send-refused`, `mail-unreachable`, `mail-tls-failed`, `mail-auth-failed`, `mail-no-password`; the mail stays in the outbox as failed", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn send_message(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<MailSendInput>,
+) -> Result<Response> {
+    let ring = match crate::controllers::secrets::keyring(&ctx) {
+        Ok(r) => r,
+        Err(e) => return crate::controllers::secrets::store_error(e),
+    };
+    match mail::send::write(
+        &ctx.db,
+        &ring,
+        org.org.id,
+        id,
+        Sender::User(caller(&org)),
+        &input,
+    )
+    .await
+    {
+        Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
+        Err(e) => mail_error(e),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/mailboxes/{id}/outbox",
+    tag = "mail",
+    operation_id = "mailboxes_outbox_list",
+    summary = "List the outbox of a mailbox",
+    description = "Mails written from the mailbox, newest first: drafts waiting for a person (written by flows), sent, failed (with the error) and discarded. Readable like the mailbox's messages: never by an admin for a member's personal mailbox (404). Requires the mail content read permission.",
+    params(("id" = String, Path, format = "uuid", description = "Mailbox id"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<OutboxMail>),
+        (status = 404, description = "`mail-mailbox-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn outbox(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    match mail::send::list(
+        &ctx.db,
+        org.org.id,
+        caller(&org),
+        id,
+        page.limit as u64,
+        page.offset as u64,
+    )
+    .await
+    {
+        Ok((rows, count)) => format::json(pagination::envelope(
+            &format!("/api/v1/mailboxes/{id}/outbox"),
+            &[],
+            page,
+            count as i64,
+            rows,
+        )),
+        Err(e) => mail_error(e),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mailboxes/{id}/outbox/{mail}/send",
+    tag = "mail",
+    operation_id = "mailboxes_outbox_send",
+    summary = "Send a draft of the outbox",
+    description = "A person sends a draft (or retries a failed mail), optionally with its subject and text as reviewed. Sent once: a second click answers `mail-outbox-not-found`. Sent by a person, the mail carries no Auto-Submitted header. Only a reader of the mailbox. Requires the send permission and the mail content read permission.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Mailbox id"),
+        ("mail" = String, Path, format = "uuid", description = "Outbox mail id")
+    ),
+    request_body = OutboxSendInput,
+    responses(
+        (status = 200, body = OutboxMail),
+        (status = 400, description = "Invalid `subject` or `text`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`mail-mailbox-not-found`, `mail-outbox-not-found` (not a draft any more)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`mail-send-disabled`", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`mail-send-limit` (`args.max`): the draft stays", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "The SMTP server refused or failed; the mail is failed and may be retried", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn outbox_send(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, mail_id)): Path<(Uuid, Uuid)>,
+    Json(input): Json<OutboxSendInput>,
+) -> Result<Response> {
+    let ring = match crate::controllers::secrets::keyring(&ctx) {
+        Ok(r) => r,
+        Err(e) => return crate::controllers::secrets::store_error(e),
+    };
+    match mail::send::send_draft(
+        &ctx.db,
+        &ring,
+        org.org.id,
+        caller(&org),
+        id,
+        mail_id,
+        &input,
+    )
+    .await
+    {
+        Ok(m) => format::json(m),
+        Err(e) => mail_error(e),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/mailboxes/{id}/outbox/{mail}/discard",
+    tag = "mail",
+    operation_id = "mailboxes_outbox_discard",
+    summary = "Discard a draft of the outbox",
+    description = "Drops a draft or a failed mail: it stays listed as discarded and is never sent. Only a reader of the mailbox. Requires the send permission and the mail content read permission.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Mailbox id"),
+        ("mail" = String, Path, format = "uuid", description = "Outbox mail id")
+    ),
+    responses(
+        (status = 200, body = OutboxMail),
+        (status = 404, description = "`mail-mailbox-not-found`, `mail-outbox-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn outbox_discard(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, mail_id)): Path<(Uuid, Uuid)>,
+) -> Result<Response> {
+    match mail::send::discard(&ctx.db, org.org.id, caller(&org), id, mail_id).await {
+        Ok(m) => format::json(m),
+        Err(e) => mail_error(e),
+    }
+}
+
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
@@ -452,6 +630,10 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             remove,
             test,
             messages,
+            send_message,
+            outbox,
+            outbox_send,
+            outbox_discard,
             save_attachment,
             add_invitation
         ),

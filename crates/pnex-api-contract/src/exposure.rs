@@ -352,6 +352,7 @@ pub const EXPOSED: &[&str] = &[
     "mailboxes_invitations_add",
     "mailboxes_list",
     "mailboxes_messages_list",
+    "mailboxes_outbox_list",
     "mailboxes_state",
     "proposals_list",
     "proposals_get",
@@ -367,6 +368,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "ontology_imports_delete",
             "web_search_providers_delete",
             "mailboxes_delete",
+            "mailboxes_outbox_discard",
             "ai_conversations_delete_all",
             "ai_providers_delete",
             "annotation_layers_delete",
@@ -516,6 +518,8 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     (
         "outward: sends a real message or opens a public link",
         &[
+            "mailboxes_messages_send",
+            "mailboxes_outbox_send",
             "extension_missions_create",
             "extension_missions_update",
             "extension_profile_captures_create",

@@ -1,6 +1,9 @@
 //! Mailboxes of the org (mail.md D453).
 
-use pnex_core::mail::{MailAttachment, MailMessage, Mailbox, MailboxInput, MailboxTestResult};
+use pnex_core::mail::{
+    MailAttachment, MailMessage, Mailbox, MailboxInput, MailboxTestResult, OutboxMail,
+    OutboxSendInput,
+};
 use pnex_core::Paginated;
 
 use crate::api::client;
@@ -101,6 +104,40 @@ pub async fn add_invitation(
     client::request(
         reqwest::Method::POST,
         &format!("/api/v1/mailboxes/{id}/messages/{message}/invitation/calendar"),
+        None,
+    )
+    .await
+}
+
+/// `GET /api/v1/mailboxes/{id}/outbox`, newest first (D519).
+pub async fn outbox(id: &str, limit: i64, offset: i64) -> Result<Paginated<OutboxMail>, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/mailboxes/{id}/outbox?limit={limit}&offset={offset}"),
+        None,
+    )
+    .await
+}
+
+/// `POST /api/v1/mailboxes/{id}/outbox/{mail}/send`: the draft as reviewed.
+pub async fn outbox_send(
+    id: &str,
+    mail: &str,
+    input: &OutboxSendInput,
+) -> Result<OutboxMail, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/mailboxes/{id}/outbox/{mail}/send"),
+        Some(serde_json::to_value(input).unwrap_or_default()),
+    )
+    .await
+}
+
+/// `POST /api/v1/mailboxes/{id}/outbox/{mail}/discard`.
+pub async fn outbox_discard(id: &str, mail: &str) -> Result<OutboxMail, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/mailboxes/{id}/outbox/{mail}/discard"),
         None,
     )
     .await

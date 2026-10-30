@@ -37,6 +37,7 @@ use edgelink_macro::*;
 
 mod action;
 mod mail;
+mod mail_send;
 mod ontology;
 mod org_resolve;
 mod site_crawl;

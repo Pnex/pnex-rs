@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| Statut | **M1, M2, M6 codés — 2026-10-26**, écran `/mailboxes` le 2026-10-27 (menu Appareils, à côté des sites web) : serveur mail classique (IMAP, mot de passe) ; Microsoft reporté (§10). PneX **collecte et range** ; l'envoi (M3) passe après (Shan) |
+| Statut | **M1, M2, M6 codés — 2026-10-26**, écran `/mailboxes` le 2026-10-27 (menu Appareils, à côté des sites web) : serveur mail classique (IMAP, mot de passe) ; Microsoft reporté (§10). PneX **collecte et range** ; envoi (M3) codé le 2026-10-29, non commité (§9) |
 | Déclencheur | Lot CRM3 de `crm.md` (mail entrant rattaché à la fiche), élargi : le mail est une source comme les flux et les sites web, utile bien au-delà du commercial |
 | Repose sur | `iam.md` (principaux, comptes de service, équipes, D286–D299), `autonomous-agents.md` (agent = compte de service, D379, D381, D398), `secrets` (coffre D110–D118), `ontology.md` (types système D176–D177), `crm.md` (D442–D447 données personnelles), `security.md` (R8, R11–R13) |
-| Numérotation | **D453…D463**, lots **M1…M6** |
+| Numérotation | **D453…D463**, lots **M1…M6** ; envoi (M3) : **D518…D521** (2026-10-29) |
 
 ## 1. Le besoin en une phrase
 
@@ -225,6 +225,10 @@ Limites : une annulation envoyée à un seul participant retiré de la réunion 
 | D466 | Une invitation de réunion lue à la relève va au calendrier de l'org à la demande d'un lecteur ; clé = `UID` (mise à jour, annulation), participants rattachés aux personnes par identifiant e-mail |
 | D467 | Un expéditeur inconnu d'un domaine propre est proposé (jamais lié) sous le compte dont le site web confirmé a ce domaine ; webmails exclus |
 | D484 | Une invitation reçue devient un `meeting` clé = `UID` (flow du pack `crm`), ses participants connus y participent (proposé si l'expéditeur n'est pas authentifié) ; annulation = statut `cancelled` ; personne n'est créé |
+| D518 | Serveur SMTP sur la boîte (mêmes identifiants qu'IMAP, TLS implicite sur 465, STARTTLS exigé ailleurs, garde de sortie) ; mode `draft` par défaut, `send` sur boîte partagée ou de service seulement |
+| D519 | Les brouillons vivent dans la boîte d'envoi de la boîte, lue avec D454, pas dans « À valider » (revient sur D456) |
+| D520 | Garde-fous d'envoi au serveur : réponse à un mail automatique ou envoyé par PneX refusée aux flows, plafonds, pause d'une boîte qui envoie seule, `Auto-Submitted` seulement sans humain |
+| D521 | Permission `mail:send` (Membre) ; liste de la boîte d'envoi au MCP, envoi et abandon exclus |
 
 ## 9. État
 
@@ -247,6 +251,29 @@ Arbitrages pris par défaut (recommandations du §7, réversibles) : messages st
 | Effacement d'une personne → ses mails (D461) | `services/profiles.rs` | — |
 
 Reste : l'écran de la liste des boîtes (CRUD) et le test réel sur une boîte jetable o2switch ; `mail_message` comme type système de l'ontologie (D455, liens et recherche depuis l'ontologie) ; l'envoi (M3) ; OAuth (M4, §10) ; les pièces jointes en médias (M5).
+
+### 2026-10-29 — M3 : envoi (D518–D521), non commité
+
+Demande de Shan (2026-10-29), avec le choix recommandé de Q-M3 : envoi direct autorisé pour les boîtes partagées et de service, désactivé par défaut.
+
+**D518 — SMTP sur la boîte, mode d'envoi.** La boîte gagne `smtp_host` (vide = elle n'envoie pas), `smtp_port` (465 par défaut) et `send_mode`. Mêmes identifiant et mot de passe qu'IMAP (le cas des hébergeurs classiques). Le serveur et chaque adresse résolue passent la garde de sortie (R8), puis la connexion se fait sur l'adresse retenue, le certificat vérifié sur le nom (TLS implicite sur 465, STARTTLS exigé sur tout autre port, jamais en clair). Changer le serveur SMTP exige de retaper le mot de passe (R9, comme IMAP). `send_mode` : `draft` (défaut) ou `send` ; `send` refusé sur la boîte personnelle d'un membre (`send_mode` invalide), donc posé par un gestionnaire des boîtes partagées. Une boîte en pause ne prend rien des flows.
+
+**D519 — La boîte d'envoi, pas « À valider ».** D456 voulait un brouillon en proposition D367. Mais la boîte « À valider » est lue par quiconque décide des propositions : le brouillon d'une boîte personnelle y serait lu par d'autres, contre D454. Chaque boîte a donc sa **boîte d'envoi** (`mail_outbox`), lue avec les règles de la boîte : brouillons des flows, envoyés, échoués, écartés. Un lecteur relit, corrige le sujet ou le texte, envoie ou écarte. Un envoi réclame d'abord la ligne (`sending`) : deux clics, ou un clic et un flow, n'envoient jamais deux fois. Un échec garde le mail (`failed`, avec l'erreur), à renvoyer. La clé (`key`) de l'appelant rend l'écriture idempotente.
+
+**D520 — Garde-fous, au serveur.** Le runtime n'est pas cru : la profondeur de D457.5 devient une règle sur `in_reply_to`, qui doit nommer un mail stocké de la boîte ; un flow qui répond à un mail `automatic` est refusé (`mail-reply-to-automatic`), à un mail `from_pnex` aussi (`mail-send-chained`). Un membre peut répondre à ce qu'il veut. Plafonds (D457.4) : 30 envois par boîte et par heure pour tous ; pour un mail qui part sans humain, 3 par correspondant et par jour ; 100 brouillons de flows par boîte et par heure. Plafond atteint : sans humain, le mail échoue et la boîte passe en pause (`mail-send-limit`) ; envoyé par un membre, 429 et le brouillon reste. En-têtes : `X-PneX-Origin` toujours (le mail revenu ne déclenche rien), `Auto-Submitted: auto-generated` seulement sans humain (un brouillon relu puis envoyé par un membre est son mail), `Message-ID` sur le domaine de la boîte, `In-Reply-To` et `References` pour le fil. Texte seul.
+
+**D521 — Droits et exposition.** Nouvelle permission `mail:send` (Membre) pour écrire, envoyer et écarter, en plus de lire la boîte (`mail.content:read`, D454). Nœud `mail_send` : la boîte doit être lue par la personne qui déploie (même garde que `mail_received`) ; le runtime ne porte ni boîte ni mot de passe, il appelle `POST /internal/flow/mail/send` qui relit la config déployée. MCP : liste de la boîte d'envoi exposée ; écriture et envoi exclus (sortant), abandon exclu (destructif).
+
+| Brique | Où | Tests |
+|---|---|---|
+| Types, contrôles (destinataires, sujet sans saut de ligne, bornes), config du nœud | `pnex-core` `mail.rs` | 2 unitaires |
+| Colonnes SMTP, table `mail_outbox` | migration 000065 | — |
+| Service : écriture, liste, envoi réclamé, abandon, plafonds, construction du message, session SMTP (`lettre`, rustls, CA système) | `services/mail/send.rs` | 3 unitaires (en-têtes, fil, marque reconnue au retour) |
+| Routes `POST /mailboxes/{id}/messages`, `GET …/outbox`, `POST …/outbox/{mail}/send`, `POST …/outbox/{mail}/discard` ; IAM, exposition, contrat | `controllers/mailboxes.rs`, `pnex-api-contract` | `tests/mail.rs` `a_mail_waits_in_the_outbox_until_a_reader_sends_it` |
+| Nœud `mail_send` (2 ports), garde de déploiement | `pnex-core` `flow/*`, `pnex-node-ui-control/src/mail_send.rs`, `controllers/internal_flow.rs`, `controllers/flows/lifecycle.rs` | 1 unitaire ; `tests/mail.rs` (déploiement refusé sur la boîte d'un autre) |
+| Écran : SMTP et mode dans le formulaire, boîte d'envoi sur la page de la boîte, nœud dans l'éditeur | `pnex-frontend` `pages/mailboxes.rs`, `pages/mailbox_outbox.rs`, `flow_editor/*` | compilation |
+
+Limites : **pas essayé contre un vrai serveur SMTP** (le test couvre un serveur injoignable) : l'essai sur la boîte o2switch reste à faire. Le mail envoyé n'est pas copié dans le dossier « Envoyés » du serveur (pas d'`APPEND` IMAP) : il n'apparaît que dans la boîte d'envoi de PneX (à ajouter si les utilisateurs le réclament). Pas de pièce jointe, pas de HTML. Le bouton Tester ne teste pas encore SMTP. Restent l'outil `mail_reply` des agents (attend D380), Microsoft (M4) et le branchement du pack `crm` (brouillon de relance → boîte d'envoi).
 
 ### 2026-10-27 — M5, premier volet : pièces jointes en médias (D465)
 

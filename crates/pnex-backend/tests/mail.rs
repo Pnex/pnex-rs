@@ -331,6 +331,20 @@ async fn a_flow_listens_only_to_mailboxes_its_deployer_reads() {
             (400, json!("mail-no-mailbox")),
             "{d}"
         );
+        // Nor does Bob's flow write from Alice's mailbox (mail_send, D456).
+        let sender = json!({"nodes": [
+            {"id": "in", "kind": "inject", "config": {"cron": "0 7 * * *"}, "outputs": [{"port": 0, "targets": ["ms"]}]},
+            {"id": "ms", "kind": "mail_send", "config": {"mailbox": alice_box}}
+        ]});
+        let (st, f) = call(&server, "POST", "/api/v1/flows", &env.bob, org,
+            Some(json!({"name": "Spam", "graph": sender}))).await;
+        assert_eq!(st, 201, "{f}");
+        let (st, d) = call(&server, "POST", &format!("/api/v1/flows/{}/deploy", f["id"]), &env.bob, org, Some(json!({}))).await;
+        assert_eq!(
+            (st, d["errors"]["violations"][0]["code"].clone()),
+            (400, json!("mail-mailbox-forbidden")),
+            "{d}"
+        );
     })
     .await;
 }
@@ -717,6 +731,110 @@ async fn an_invitation_reaches_the_calendar_when_a_reader_adds_it() {
             (404, json!("mail-invitation-not-found")),
             "{e}"
         );
+    })
+    .await;
+}
+
+/// Sending (mail.md D456–D457, D518–D521): a member's draft waits in the
+/// outbox that only the mailbox's readers see, a key answers the same
+/// mail, `send` stays off a member's own mailbox, a flow never answers an
+/// automatic mail nor one PneX sent, a server that cannot be reached leaves
+/// the mail failed, to retry, and a discarded draft is never sent.
+#[tokio::test]
+#[serial]
+async fn a_mail_waits_in_the_outbox_until_a_reader_sends_it() {
+    use pnex_backend::services::mail::send::{self, Sender};
+    use sea_orm::ConnectionTrait;
+    with_app(|server, env| async move {
+        let (org, _, _) = setup(&server, &env).await;
+        // Without an SMTP server the mailbox does not send.
+        let (_, quiet) = call(&server, "POST", "/api/v1/mailboxes", &env.alice, org,
+            Some(input("Quiet", "q@example.com", json!({})))).await;
+        let draft = json!({"to": ["ann@acme.fr"], "subject": "Devis", "text": "Bonjour Ann", "key": "k1"});
+        let (st, e) = call(&server, "POST", &format!("/api/v1/mailboxes/{}/messages", quiet["id"].as_str().unwrap()),
+            &env.alice, org, Some(draft.clone())).await;
+        assert_eq!((st, e["error"].as_str()), (409, Some("mail-send-disabled")), "{e}");
+
+        // `send` is refused on a member's own mailbox.
+        let (st, _) = call(&server, "POST", "/api/v1/mailboxes", &env.alice, org,
+            Some(input("Own", "own@example.com", json!({"smtp_host": "smtp.nowhere.invalid", "send_mode": "send"})))).await;
+        assert_eq!(st, 400);
+
+        let (st, b) = call(&server, "POST", "/api/v1/mailboxes", &env.alice, org,
+            Some(input("Alice", "alice@example.com", json!({"smtp_host": "smtp.nowhere.invalid", "smtp_port": 587})))).await;
+        assert_eq!(st, 201, "{b}");
+        assert_eq!((b["smtp_port"].as_i64(), b["send_mode"].as_str()), (Some(587), Some("draft")));
+        let id = b["id"].as_str().unwrap().to_string();
+        let msgs = format!("/api/v1/mailboxes/{id}/messages");
+
+        let (st, m) = call(&server, "POST", &msgs, &env.alice, org, Some(draft.clone())).await;
+        assert_eq!(st, 201, "{m}");
+        assert_eq!(m["state"], "draft");
+        let (st, again) = call(&server, "POST", &msgs, &env.alice, org, Some(draft.clone())).await;
+        assert_eq!((st, &again["id"]), (201, &m["id"]), "the same key answers the same mail");
+        // A line break in the subject would add a header.
+        let (st, _) = call(&server, "POST", &msgs, &env.alice, org,
+            Some(json!({"to": ["ann@acme.fr"], "subject": "Hi\r\nBcc: x@evil.test", "text": "t"}))).await;
+        assert_eq!(st, 400);
+
+        // Bob does not read Alice's mailbox: neither its outbox nor a send.
+        let (st, _) = call(&server, "GET", &format!("/api/v1/mailboxes/{id}/outbox"), &env.bob, org, None).await;
+        assert_eq!(st, 404);
+        let mail_id = m["id"].as_str().unwrap();
+        let (st, _) = call(&server, "POST", &format!("/api/v1/mailboxes/{id}/outbox/{mail_id}/send"),
+            &env.bob, org, Some(json!({}))).await;
+        assert_eq!(st, 404);
+
+        // The server cannot be reached: failed, kept, and retried as it was reviewed.
+        let (st, e) = call(&server, "POST", &format!("/api/v1/mailboxes/{id}/outbox/{mail_id}/send"),
+            &env.alice, org, Some(json!({"text": "Bonjour Ann, corrigé"}))).await;
+        assert_eq!((st, e["error"].as_str()), (502, Some("mail-unreachable")), "{e}");
+        let (_, out) = call(&server, "GET", &format!("/api/v1/mailboxes/{id}/outbox"), &env.alice, org, None).await;
+        assert_eq!(out["count"], 1, "{out}");
+        assert_eq!(out["results"][0]["state"], "failed");
+        assert_eq!(out["results"][0]["error"]["code"], "mail-unreachable");
+
+        // Discarded: never sent afterwards.
+        let (st, d) = call(&server, "POST", &format!("/api/v1/mailboxes/{id}/outbox/{mail_id}/discard"),
+            &env.alice, org, None).await;
+        assert_eq!((st, d["state"].as_str()), (200, Some("discarded")), "{d}");
+        let (st, e) = call(&server, "POST", &format!("/api/v1/mailboxes/{id}/outbox/{mail_id}/send"),
+            &env.alice, org, Some(json!({}))).await;
+        assert_eq!((st, e["error"].as_str()), (404, Some("mail-outbox-not-found")), "{e}");
+
+        // A flow never answers an automatic mail nor one PneX sent (D457).
+        let box_id = uuid::Uuid::parse_str(&id).unwrap();
+        for (mid, automatic, from_pnex) in [("<auto@acme.fr>", true, false), ("<ours@example.com>", false, true), ("<ann@acme.fr>", false, false)] {
+            env.db.execute_raw(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,
+                "INSERT INTO mail_messages (id, org_id, mailbox_id, folder, uid, message_id, from_address, subject, automatic, from_pnex) \
+                 VALUES ($1, $2, $3, 'INBOX', 1, $4, 'ann@acme.fr', 'Re', $5, $6)",
+                vec![uuid::Uuid::new_v4().into(), org.into(), box_id.into(), mid.into(), automatic.into(), from_pnex.into()])).await.unwrap();
+        }
+        let ring = pnex_backend::services::secrets::Keyring::from_config(&env.config).unwrap();
+        let flow = Sender::Flow { flow_id: 1, version: 1 };
+        let reply = |to: &str| pnex_core::mail::MailSendInput {
+            to: vec!["ann@acme.fr".into()], subject: "Re".into(), text: "Merci".into(),
+            in_reply_to: Some(to.into()), key: None, send_now: false,
+        };
+        let code = |r: Result<pnex_core::mail::OutboxMail, mail::MailError>| match r {
+            Err(mail::MailError::Refused { error, .. }) => error.code,
+            other => format!("{other:?}"),
+        };
+        assert_eq!(code(send::write(&env.db, &ring, org, box_id, flow, &reply("<auto@acme.fr>")).await), "mail-reply-to-automatic");
+        assert_eq!(code(send::write(&env.db, &ring, org, box_id, flow, &reply("<ours@example.com>")).await), "mail-send-chained");
+        let ok = send::write(&env.db, &ring, org, box_id, flow, &reply("<ann@acme.fr>")).await.unwrap();
+        assert_eq!((ok.state, ok.in_reply_to.as_deref()), (pnex_core::mail::OutboxState::Draft, Some("<ann@acme.fr>")));
+        assert_eq!(ok.origin, "flow:1@1");
+        // A member answering an automatic mail is their own call.
+        let mut by_hand = reply("<auto@acme.fr>");
+        by_hand.key = Some("hand".into());
+        let (st, _) = call(&server, "POST", &msgs, &env.alice, org, Some(serde_json::to_value(&by_hand).unwrap())).await;
+        assert_eq!(st, 201);
+
+        // Paused: flows write nothing from it.
+        let (st, _) = call(&server, "POST", &format!("/api/v1/mailboxes/{id}/state"), &env.alice, org, Some(json!({"paused": true}))).await;
+        assert_eq!(st, 200);
+        assert_eq!(code(send::write(&env.db, &ring, org, box_id, flow, &reply("<ann@acme.fr>")).await), "mail-send-disabled");
     })
     .await;
 }

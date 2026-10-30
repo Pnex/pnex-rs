@@ -10706,6 +10706,47 @@
         ],
         "type": "object"
       },
+      "MailSendInput": {
+        "description": "`POST /mailboxes/{id}/messages`: a mail to write from the mailbox.",
+        "properties": {
+          "in_reply_to": {
+            "description": "`Message-ID` of a stored mail of this mailbox being answered.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "description": "The caller's key: a second call with the same key answers the same mail.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "send_now": {
+            "description": "Send now (the caller is the one sending); otherwise a draft.",
+            "type": "boolean"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "text"
+        ],
+        "type": "object"
+      },
       "Mailbox": {
         "description": "A mailbox as read: never its password, only whether one is stored.",
         "properties": {
@@ -10763,6 +10804,18 @@
           },
           "retention_days": {
             "format": "int32",
+            "type": "integer"
+          },
+          "send_mode": {
+            "$ref": "#/components/schemas/SendMode"
+          },
+          "smtp_host": {
+            "description": "SMTP server (same user and password as IMAP); empty = does not send (D518).",
+            "type": "string"
+          },
+          "smtp_port": {
+            "format": "int32",
+            "minimum": 0,
             "type": "integer"
           },
           "state": {
@@ -10875,8 +10928,24 @@
               "null"
             ]
           },
+          "send_mode": {
+            "$ref": "#/components/schemas/SendMode",
+            "description": "`send` only on a shared or service-account mailbox (D518)."
+          },
           "shared": {
             "type": "boolean"
+          },
+          "smtp_host": {
+            "description": "Empty = the mailbox does not send.",
+            "type": "string"
+          },
+          "smtp_port": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "teams": {
             "items": {
@@ -14046,6 +14115,109 @@
         ],
         "type": "object"
       },
+      "OutboxMail": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "$ref": "#/components/schemas/MailboxError"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "in_reply_to": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mailbox_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "message_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "description": "`user:<id>` or `flow:<id>@<version>`.",
+            "type": "string"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/OutboxState"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "mailbox_id",
+          "state",
+          "to",
+          "subject",
+          "text",
+          "origin",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "OutboxSendInput": {
+        "description": "`POST /mailboxes/{id}/outbox/{mail}/send`: the draft as reviewed.",
+        "properties": {
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "OutboxState": {
+        "description": "A mail of the outbox (D519).",
+        "enum": [
+          "draft",
+          "sending",
+          "sent",
+          "failed",
+          "discarded"
+        ],
+        "type": "string"
+      },
       "PackSetting": {
         "description": "A point of a pack the org may set (ontology.md D368).",
         "properties": {
@@ -16908,6 +17080,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/OrgSystemRow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_OutboxMail": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/OutboxMail"
             },
             "type": "array"
           }
@@ -21156,6 +21364,14 @@
           "failed",
           "skipped_silence",
           "skipped_backlog"
+        ],
+        "type": "string"
+      },
+      "SendMode": {
+        "description": "What a flow or an agent's mail becomes (D456, D518): a draft in the\noutbox that a reader sends, or sent at once (shared and service-account\nmailboxes only, set by a manager of shared mailboxes).",
+        "enum": [
+          "draft",
+          "send"
         ],
         "type": "string"
       },
@@ -51437,6 +51653,133 @@
         "tags": [
           "mail"
         ]
+      },
+      "post": {
+        "description": "Writes a plain-text mail from the mailbox to at most 20 recipients: a draft in its outbox, or sent at once with `send_now` (the caller is the one sending). `in_reply_to` answers a stored mail of this mailbox (threaded with its references). The same `key` answers the mail already written. Caps: 30 sends per mailbox and hour (`mail-send-limit`, 429). Only a reader of the mailbox (404 for anyone else). Requires the send permission and the mail content read permission.",
+        "operationId": "mailboxes_messages_send",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mailbox id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailSendInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxMail"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid field: `to`, `subject`, `text`, `in_reply_to`, `key`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `mail:send`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-mailbox-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-send-disabled` (no SMTP server)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-send-limit` (`args.max`)"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The SMTP server refused or failed: `mail-send-refused`, `mail-unreachable`, `mail-tls-failed`, `mail-auth-failed`, `mail-no-password`; the mail stays in the outbox as failed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Write a mail from a mailbox",
+        "tags": [
+          "mail"
+        ]
       }
     },
     "/api/v1/mailboxes/{id}/messages/{message}/attachments/{index}/media": {
@@ -51672,6 +52015,331 @@
           }
         ],
         "summary": "Add a mail's meeting invitation to the calendar",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{id}/outbox": {
+      "get": {
+        "description": "Mails written from the mailbox, newest first: drafts waiting for a person (written by flows), sent, failed (with the error) and discarded. Readable like the mailbox's messages: never by an admin for a member's personal mailbox (404). Requires the mail content read permission.",
+        "operationId": "mailboxes_outbox_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mailbox id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_OutboxMail"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `mail.content:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-mailbox-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the outbox of a mailbox",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{id}/outbox/{mail}/discard": {
+      "post": {
+        "description": "Drops a draft or a failed mail: it stays listed as discarded and is never sent. Only a reader of the mailbox. Requires the send permission and the mail content read permission.",
+        "operationId": "mailboxes_outbox_discard",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mailbox id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Outbox mail id",
+            "in": "path",
+            "name": "mail",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxMail"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `mail:send`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-mailbox-not-found`, `mail-outbox-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Discard a draft of the outbox",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{id}/outbox/{mail}/send": {
+      "post": {
+        "description": "A person sends a draft (or retries a failed mail), optionally with its subject and text as reviewed. Sent once: a second click answers `mail-outbox-not-found`. Sent by a person, the mail carries no Auto-Submitted header. Only a reader of the mailbox. Requires the send permission and the mail content read permission.",
+        "operationId": "mailboxes_outbox_send",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mailbox id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Outbox mail id",
+            "in": "path",
+            "name": "mail",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutboxSendInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutboxMail"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `subject` or `text`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `mail:send`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-mailbox-not-found`, `mail-outbox-not-found` (not a draft any more)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-send-disabled`"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-send-limit` (`args.max`): the draft stays"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The SMTP server refused or failed; the mail is failed and may be retried"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send a draft of the outbox",
         "tags": [
           "mail"
         ]
