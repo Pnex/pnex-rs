@@ -134,12 +134,58 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # PNeX recorder (call-recording.md R1): tray utility, plain cargo (no dx,
+  # no asset!). Linux built on 24.04 (system webkit2gtk and libpulse),
+  # Windows cross-built with WebView2Loader.dll.
+  recorder:
+    name: recorder ${{ matrix.os }}-x86_64
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            apt: libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev libssl-dev libasound2-dev libpulse-dev
+            target: x86_64-unknown-linux-gnu
+            file: tar.gz
+          - os: windows
+            apt: mingw-w64 zip
+            target: x86_64-pc-windows-gnu
+            file: zip
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          submodules: true
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ${{ matrix.apt }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: recorder-${{ matrix.os }}
+          cache-targets: false
+      - uses: arduino/setup-task@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: task build:recorder:${{ matrix.os }}
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pnex-recorder-${{ matrix.os }}-x86_64
+          path: target/dist/pnex-recorder-${{ matrix.os }}-x86_64.${{ matrix.file }}
+          if-no-files-found: error
+          retention-days: 30
+
   # The cross-built exe has never run on a real Windows before release:
   # start it on windows-latest (WebView2 runtime preinstalled) and require
   # it to stay up — catches missing DLLs, a bad subsystem or an early panic.
   windows-smoke:
     name: windows smoke test
-    needs: windows
+    needs: [windows, recorder]
     runs-on: windows-latest
     steps:
       - uses: actions/download-artifact@v7
@@ -158,6 +204,19 @@ jobs:
           Start-Sleep -Seconds 20
           if ($p.HasExited) { throw "app exited early with code $($p.ExitCode)" }
           Write-Host "app still running after 20 s (pid $($p.Id))"
+          Stop-Process -Id $p.Id -Force
+      - uses: actions/download-artifact@v7
+        with:
+          name: pnex-recorder-windows-x86_64
+      - name: Start the recorder and keep it up for 20 s
+        shell: pwsh
+        run: |
+          Expand-Archive pnex-recorder-windows-x86_64.zip -DestinationPath recorder
+          $exe = Get-Item recorder\pnex-recorder\pnex-recorder.exe
+          $p = Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) { throw "recorder exited early with code $($p.ExitCode)" }
+          Write-Host "recorder still running after 20 s (pid $($p.Id))"
           Stop-Process -Id $p.Id -Force
 
   # Admin CLI (D251): static musl binaries for Linux, cross-built Windows,
@@ -301,7 +360,7 @@ jobs:
   # versioned release on tags. Only runs from main or a tag (never a fork).
   release:
     name: publish release assets
-    needs: [linux, windows, windows-smoke, android, cli]
+    needs: [linux, windows, windows-smoke, android, cli, recorder]
     if: >-
       github.event_name == 'push' ||
       (github.event_name == 'workflow_run' &&
@@ -346,7 +405,7 @@ jobs:
         if: "!startsWith(github.ref, 'refs/tags/v')"
         run: |
           title="Nightly (main ${SHA::7})"
-          notes="Latest green \`main\` build (${SHA}). Desktop apps for Linux x86_64 / aarch64 and Windows x86_64, Android APK (arm64, debug-signed), pnex admin CLI (Linux, Windows, macOS). Not a stable release."
+          notes="Latest green \`main\` build (${SHA}). Desktop apps for Linux x86_64 / aarch64 and Windows x86_64, Android APK (arm64, debug-signed), pnex admin CLI (Linux, Windows, macOS), PNeX recorder (Linux, Windows x86_64). Not a stable release."
           # Updated in place, never deleted and recreated: recreating the tag
           # right after deleting it was refused by GitHub (403) and left no
           # nightly at all until the next green main. Asset names are stable,

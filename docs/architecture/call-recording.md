@@ -151,7 +151,10 @@ séparé de l'application desktop complète.
   (binaire seul ; libpulse et webkit2gtk du système), `task build:recorder:windows`
   → `target/dist/pnex-recorder-windows-x86_64.zip` (`.exe` en sous-système GUI +
   `WebView2Loader.dll`, comme l'app desktop) ; cargo simple, pas de `dx`
-  (aucun `asset!()`).
+  (aucun `asset!()`). Construits par le job `recorder` du workflow `Apps`
+  et publiés avec les autres paquets : release `nightly` à chaque `main` vert,
+  release versionnée sur tag `v*` ; le `.exe` est lancé 20 s sur un vrai
+  Windows (`windows-smoke`) avant publication.
 - Reste : essai Windows réel, macOS (process tap), transcription
   séparée par canal (« moi / l'autre » sans diarisation), notification
   système, envoi en flux pour les appels très longs (le WAV est lu en mémoire,
