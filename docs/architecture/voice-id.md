@@ -39,6 +39,8 @@ anonyme), `secrets.md` D112 (scellement), `security.md` R1–R20.
 
 Codes : `voice-id-*` (10, `err_codes::ALL` + `.ftl`) ; `voice-id-not-enough-speech` porte `args.found` / `args.min_windows`.
 
+Auto-enrôlement depuis l'enregistreur PNeX (2026-10-30, `call-recording.md` R1.2) : mêmes routes, la personne consent pour elle-même dans la fenêtre ; preuve `PNeX recorder: self-enrolment of <e-mail>`.
+
 ## 3. Limites connues
 
 - Porte de parole par énergie, pas un modèle VAD : un enregistrement bruité surestime la parole (le score LOO écarte toutefois les passages de bruit).

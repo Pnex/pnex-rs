@@ -12,6 +12,7 @@ mod calls;
 mod capture;
 mod detect;
 mod queue;
+mod voice;
 
 use dioxus::desktop::trayicon::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{init_tray_icon, Icon as TrayIcon};
@@ -48,6 +49,8 @@ button:disabled { opacity: .5; cursor: default; }
 .error { color: #b91c1c; font-size: 13px; margin: 0; }
 .row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 .check { display: flex; align-items: center; gap: 8px; color: #111827; font-size: 14px; margin: 0; }
+.score { font-size: 28px; font-weight: 600; margin: 0; }
+meter { width: 100%; height: 14px; }
 .result { white-space: pre-wrap; background: #f3f4f6; border-radius: 6px; padding: 8px; margin: 0; }
 .recording { color: #b91c1c; font-weight: 600; margin: 0; }
 .recording::before { content: "\25CF  "; }
@@ -345,6 +348,7 @@ macro_rules! with_session {
         out
     }};
 }
+pub(crate) use with_session;
 
 #[component]
 fn Signed(session: Signal<Session>) -> Element {
@@ -419,6 +423,9 @@ fn Signed(session: Signal<Session>) -> Element {
         calls::CallsCard {}
         if let Some(org) = org {
             TranscriptionTest { key: "{org}", session, org }
+        }
+        if let Some(org) = org {
+            voice::VoiceCard { key: "{org}", session, org }
         }
     }
 }

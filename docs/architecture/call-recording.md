@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 + R1.1 codés 2026-10-29** : enregistreur PNeX (connexion, activation, test de transcription, capture des appels, envoi et transcription) — Linux validé de bout en bout, Windows codé et compilé (pas encore essayé sur une vraie machine), macOS à faire |
+| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 + R1.1 codés 2026-10-29, R1.2 2026-10-30** : enregistreur PNeX (connexion, activation, test de transcription, capture des appels, envoi et transcription, « Ma voix » : empreinte vocale et score) — Linux validé de bout en bout, Windows codé et compilé (pas encore essayé sur une vraie machine), macOS à faire |
 | Numérotation | décisions à numéroter au passage en PRD, lots **R1…R4** |
 | Dépend de | ingestion média (`media-ingest.md`, P2.13), ASR (`pnex-asr`), locuteurs (`voice-id.md`), rendez-vous et compte rendu (P2.28), desktop natif |
 
@@ -156,6 +156,30 @@ séparé de l'application desktop complète.
   séparée par canal (« moi / l'autre » sans diarisation), notification
   système, envoi en flux pour les appels très longs (le WAV est lu en mémoire,
   ≈ 230 Mo par heure).
+
+**R1.2 — « Ma voix » : empreinte vocale depuis l'enregistreur (codé 2026-10-30)**
+- But : un utilisateur sans connaissance des écrans Empreintes vocales
+  apprend sa propre voix et voit le score, dans la fenêtre de l'enregistreur.
+- Apprendre : case de consentement (la personne consent pour elle-même),
+  puis 40 s de lecture de **6 phrases tirées au hasard** dans la langue de
+  l'utilisateur (24 phrases par langue, `voice-sentence-N` des `.ftl` de
+  l'enregistreur), affichées pendant l'enregistrement pour que personne ne
+  reste à chercher quoi dire. Au premier usage l'enregistreur crée l'objet
+  Personne (titre = e-mail) et le profil (`voice-id.md`), preuve de
+  consentement `PNeX recorder: self-enrolment of <e-mail>` : c'est par elle
+  qu'il retrouve ensuite le profil, sans état local. « Réenregistrer » remplace
+  les extraits et régénère.
+- Tester : 8 s (deux phrases tirées au hasard), vérification 1:1
+  (`/voice-id/test?object_id=`) ; score cosinus affiché en %, jauge et seuil
+  du profil, « C'est bien vous » / « Voix non reconnue ». Rien n'est conservé.
+- Prérequis, avec un message clair sinon : modèle d'empreinte vérifié dans
+  l'org, droit `voice-id:write` (owner/admin, donc l'org perso), type
+  Personne (pack Investigation). Retrait : page Empreintes vocales.
+- Validé 2026-10-30 sur la stack locale (micro virtuel, voix de synthèse) :
+  profil prêt (4 passages, seuil 80 %), même voix 90–92 %, voix humaine
+  différente 12 % rejetée ; réenregistrement OK.
+- Pas encore : l'étiquette « moi » dans la transcription des appels (le
+  profil ne nomme pas les locuteurs des flux, `voice-id.md` V1).
 
 **Capture**
 - Windows : WASAPI loopback (`cpal`) ; loopback par process (`wasapi`,

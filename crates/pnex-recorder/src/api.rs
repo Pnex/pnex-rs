@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use pnex_core::media_ingest::{AsrModel, AsrProfile, AsrTask, AsrTestResult};
 use pnex_core::vision::ModelCheckStatus;
+use pnex_core::voice_id::{VoiceProfileInput, VoiceProfileView, VoiceTestResult};
 use pnex_core::{OrgMembership, Paginated, TokenResponse, UserInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -270,23 +271,20 @@ impl Session {
     /// Speech-to-text models saved in the org (the other audio tasks cannot
     /// transcribe).
     pub async fn models(&mut self, org: i64) -> Result<Vec<AsrModel>, ApiError> {
-        let bearer = self.bearer().await?;
-        let res = self
-            .http()
-            .get(format!("{}/api/v1/asr/models?limit=100", self.url))
-            .bearer_auth(bearer)
-            .header("X-Org-Id", org.to_string())
-            .send()
-            .await
-            .map_err(|_| ApiError::Unreachable)?;
-        if !res.status().is_success() {
-            return Err(error_of(res).await);
-        }
-        let page: Paginated<AsrModel> = res.json().await.map_err(|_| ApiError::NotPnex)?;
+        self.models_of(org, AsrTask::Asr).await
+    }
+
+    /// Audio models of the org for one task.
+    async fn models_of(&mut self, org: i64, task: AsrTask) -> Result<Vec<AsrModel>, ApiError> {
+        let page: Paginated<AsrModel> = self
+            .org_json(org, |h, u| {
+                h.get(format!("{u}/api/v1/asr/models?limit=100"))
+            })
+            .await?;
         Ok(page
             .results
             .into_iter()
-            .filter(|m| m.task == AsrTask::Asr)
+            .filter(|m| m.task == task)
             .collect())
     }
 
@@ -403,6 +401,165 @@ impl Session {
             return Err(error_of(res).await);
         }
         Ok(())
+    }
+}
+
+/// Consent proof written on the voice profile the recorder creates: the
+/// recorder finds the user's own profile again by it.
+fn self_proof(email: &str) -> String {
+    format!("PNeX recorder: self-enrolment of {email}")
+}
+
+/// What the user's own voice enrolment needs in the org.
+#[derive(Clone, PartialEq)]
+pub struct VoiceSetup {
+    /// The user's profile, created by the recorder.
+    pub profile: Option<VoiceProfileView>,
+    /// Checked speaker embedding model of the org.
+    pub model: Option<String>,
+    /// May enrol (owner/admin: `voice-id:write`).
+    pub can_enrol: bool,
+}
+
+impl Session {
+    /// Sends `req` in `org`; the response of a success.
+    async fn org_send(
+        &mut self,
+        org: i64,
+        req: impl FnOnce(&reqwest::Client, &str) -> reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, ApiError> {
+        let bearer = self.bearer().await?;
+        let res = req(&self.http(), &self.url)
+            .bearer_auth(bearer)
+            .header("X-Org-Id", org.to_string())
+            .send()
+            .await
+            .map_err(|_| ApiError::Unreachable)?;
+        if !res.status().is_success() {
+            return Err(error_of(res).await);
+        }
+        Ok(res)
+    }
+
+    async fn org_json<T: serde::de::DeserializeOwned>(
+        &mut self,
+        org: i64,
+        req: impl FnOnce(&reqwest::Client, &str) -> reqwest::RequestBuilder,
+    ) -> Result<T, ApiError> {
+        let res = self.org_send(org, req).await?;
+        res.json().await.map_err(|_| ApiError::NotPnex)
+    }
+
+    pub async fn voice_setup(&mut self, org: i64) -> Result<VoiceSetup, ApiError> {
+        let me: Value = self
+            .org_json(org, |h, u| h.get(format!("{u}/api/v1/iam/me/permissions")))
+            .await?;
+        let can_enrol = me["permissions"]
+            .as_array()
+            .is_some_and(|p| p.iter().any(|p| p == "voice-id:write"));
+        // shortcut: the first 100 profiles only; page when an org enrols more.
+        let page: Paginated<VoiceProfileView> = self
+            .org_json(org, |h, u| {
+                h.get(format!("{u}/api/v1/voice-id/profiles?limit=100"))
+            })
+            .await?;
+        let proof = self_proof(&self.email);
+        let profile = page.results.into_iter().find(|p| p.consent_proof == proof);
+        let model = self
+            .models_of(org, AsrTask::SpeakerEmbedding)
+            .await?
+            .into_iter()
+            .find(usable)
+            .map(|m| m.id);
+        Ok(VoiceSetup {
+            profile,
+            model,
+            can_enrol,
+        })
+    }
+
+    /// Enrols the user's voice from `wav`: creates the Person object and the
+    /// profile on first use (the user gives the consent in the window), else
+    /// replaces the profile's clips; then generates the voice profile.
+    pub async fn enrol_voice(
+        &mut self,
+        org: i64,
+        model: &str,
+        profile: Option<VoiceProfileView>,
+        wav: Vec<u8>,
+    ) -> Result<VoiceProfileView, ApiError> {
+        let id = match profile {
+            Some(p) => {
+                for s in &p.samples {
+                    self.org_send(org, |h, u| {
+                        h.delete(format!(
+                            "{u}/api/v1/voice-id/profiles/{}/samples/{}",
+                            p.id, s.id
+                        ))
+                    })
+                    .await?;
+                }
+                p.id
+            }
+            None => {
+                let title = self.email.clone();
+                let person: Value = self
+                    .org_json(org, |h, u| {
+                        h.post(format!("{u}/api/v1/ontology/objects"))
+                            .json(&json!({"type_key": "person", "title": title}))
+                    })
+                    .await?;
+                let object_id = person["id"].as_str().ok_or(ApiError::NotPnex)?.to_owned();
+                let input = VoiceProfileInput {
+                    object_id,
+                    model_id: model.to_owned(),
+                    consent_at: chrono::Local::now().format("%Y-%m-%d").to_string(),
+                    consent_scope: "Recognise my own voice in my PNeX recordings, until I \
+                                    withdraw it."
+                        .into(),
+                    consent_proof: self_proof(&self.email),
+                    consent_confirmed: true,
+                };
+                let created: VoiceProfileView = self
+                    .org_json(org, |h, u| {
+                        h.post(format!("{u}/api/v1/voice-id/profiles")).json(&input)
+                    })
+                    .await?;
+                created.id
+            }
+        };
+        self.org_send(org, |h, u| {
+            h.post(format!(
+                "{u}/api/v1/voice-id/profiles/{id}/samples?name=my-voice.wav&content_type=audio/wav"
+            ))
+            .header("Content-Type", "audio/wav")
+            .timeout(std::time::Duration::from_secs(120))
+            .body(wav)
+        })
+        .await?;
+        self.org_json(org, |h, u| {
+            h.post(format!("{u}/api/v1/voice-id/profiles/{id}/generate"))
+                .timeout(std::time::Duration::from_secs(300))
+        })
+        .await
+    }
+
+    /// Compares `wav` with the user's voice profile; nothing is stored.
+    pub async fn test_voice(
+        &mut self,
+        org: i64,
+        object_id: &str,
+        wav: Vec<u8>,
+    ) -> Result<VoiceTestResult, ApiError> {
+        self.org_json(org, |h, u| {
+            h.post(format!(
+                "{u}/api/v1/voice-id/test?name=clip.wav&content_type=audio/wav&object_id={object_id}"
+            ))
+            .header("Content-Type", "audio/wav")
+            .timeout(std::time::Duration::from_secs(120))
+            .body(wav)
+        })
+        .await
     }
 }
 
