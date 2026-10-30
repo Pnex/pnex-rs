@@ -250,8 +250,16 @@ impl Tab {
         Ok(r.pointer("/result/value").cloned().unwrap_or(Value::Null))
     }
 
-    /// Address of the tab, from the browser (answers while a page loads).
+    /// Address of the tab: the page's own `location.href`, else the
+    /// browser's view of the target (answers while a page loads). Obscura
+    /// reports a child frame's address as the target's (an invisible
+    /// reCAPTCHA iframe made a run look off-site, 2026-10-30).
     pub async fn url(&self) -> String {
+        if let Ok(Value::String(href)) = self.eval("location.href", Duration::from_secs(2)).await {
+            if !href.is_empty() {
+                return href;
+            }
+        }
         self.cdp
             .call_within(
                 None,
