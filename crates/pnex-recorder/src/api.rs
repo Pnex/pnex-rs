@@ -422,7 +422,8 @@ impl Session {
         let stamp = |t: chrono::DateTime<chrono::Utc>| t.format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let body = json!({
             "title": title,
-            "origin": "recorder",
+            // Event origins are a closed set: a call captured by a tool is an import.
+            "origin": "import",
             "occurred": {"from": stamp(from), "to": stamp(to), "precision": "range"},
             "attach": attach,
         });
