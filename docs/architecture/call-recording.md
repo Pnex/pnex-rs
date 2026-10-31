@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 + R1.1 codés 2026-10-29, R1.2 2026-10-30, R1.3 2026-10-31** : enregistreur PNeX (connexion, activation, test de transcription, capture des appels, envoi et transcription, « Ma voix » : empreinte vocale et score) — Linux validé de bout en bout, Windows codé et compilé (pas encore essayé sur une vraie machine), macOS à faire |
+| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 + R1.1 codés 2026-10-29, R1.2 2026-10-30, R1.3 et R1.4 2026-10-31** : enregistreur PNeX (connexion, activation, test de transcription, capture des appels, envoi et transcription, « Ma voix » : empreinte vocale et score) — Linux validé de bout en bout, Windows codé et compilé (pas encore essayé sur une vraie machine), macOS à faire |
 | Numérotation | décisions à numéroter au passage en PRD, lots **R1…R4** |
 | Dépend de | ingestion média (`media-ingest.md`, P2.13), ASR (`pnex-asr`), locuteurs (`voice-id.md`), rendez-vous et compte rendu (P2.28), desktop natif |
 
@@ -198,6 +198,22 @@ séparé de l'application desktop complète.
   différente 12 % rejetée ; réenregistrement OK.
 - Pas encore : l'étiquette « moi » dans la transcription des appels (le
   profil ne nomme pas les locuteurs des flux, `voice-id.md` V1).
+
+**R1.4 — Dossier de l'utilisateur (codé 2026-10-31)**
+- Chaque appel envoyé est classé dans le dossier de l'utilisateur,
+  « Appels de <e-mail> » (type système `case`), créé au premier envoi et
+  retrouvé par ses étiquettes `source: recorder`, `recorder-owner: <e-mail>`
+  (`POST /api/v1/ontology/query`, `type_key` + `label`) : un **événement
+  daté** par appel (`POST /api/v1/cases/{id}/events`, `occurred` en plage
+  `from` → `to` : fin = dernière écriture du WAV, début = fin − durée), avec
+  le média de chaque partie rattaché comme pièce (objet résolu par
+  `GET /api/v1/ontology/resolve/media_asset/{id}` : l'id d'un média n'est
+  pas celui de son objet). Aucune route ni table nouvelle.
+- Un échec de classement ne bloque ni l'envoi ni la transcription : la
+  fenêtre le signale (« Envoyé et transcrit, mais pas classé… »).
+- Pas encore : la Personne de l'utilisateur n'est pas rattachée aux
+  événements — rattacher une personne exige une base légale déclarée sur le
+  dossier (`guard_person`), à décider avant de l'activer.
 
 **R1.3 — Fenêtre de l'enregistreur (codé 2026-10-31)**
 - Connexion : la composition de la page de connexion web — faisceau animé

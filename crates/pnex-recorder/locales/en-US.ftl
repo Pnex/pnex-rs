@@ -128,3 +128,5 @@ web-recordings = Recordings
 web-profile = Profile
 about-version = PNeX recorder { $version }
 web-open = Open in PNeX
+rec-case-title = Calls of { $email }
+rec-not-filed = Sent and transcribed, but not filed in your case: { $error }

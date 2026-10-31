@@ -43,6 +43,9 @@ pub struct Calls {
     pub pending: Signal<usize>,
     /// Re-render tick for the recording clock.
     pub tick: Signal<u64>,
+    /// Why the last call could not be filed in the user's case (it was
+    /// sent and transcribed all the same).
+    pub filing: Signal<Option<String>>,
     released: Signal<Option<Instant>>,
     sending: Signal<bool>,
     session: Signal<Session>,
@@ -118,6 +121,7 @@ impl Calls {
                 plain(&t!("rec-name", app: app.clone(), date: date))
             };
             self.status.set(Status::Sending(name.clone()));
+            let span = call_span(&file);
             let wav = file.clone();
             let parts =
                 tokio::task::spawn_blocking(move || encode::ogg_parts(&wav, encode::PART_SECS))
@@ -168,6 +172,19 @@ impl Calls {
             }
             let _ = std::fs::remove_file(&file);
             self.pending.with_mut(|n| *n = n.saturating_sub(1));
+            let case_title = plain(&t!("rec-case-title", email: session.email.clone()));
+            let filed = match span {
+                Some((from, to)) => {
+                    session
+                        .file_call(org, &case_title, &name, from, to, &assets)
+                        .await
+                }
+                None => Err(crate::api::ApiError::Server(
+                    0,
+                    Some("recording-unreadable".into()),
+                )),
+            };
+            self.filing.set(filed.err().map(|e| crate::error_text(&e)));
             let mut started = Ok(());
             for asset in &assets {
                 started = started.and(session.transcribe(org, asset, &locale).await);
@@ -272,6 +289,7 @@ pub fn use_calls(session: Signal<Session>) -> Calls {
         status: use_signal(|| Status::Idle),
         pending: use_signal(|| queue::pending(None).len()),
         tick: use_signal(|| 0),
+        filing: use_signal(|| None),
         released: use_signal(|| None),
         sending: use_signal(|| false),
         session,
@@ -297,6 +315,18 @@ pub fn use_calls(session: Signal<Session>) -> Calls {
         }
     });
     use_context_provider(|| calls)
+}
+
+/// Start and end of a closed recording: it ends when the file was last
+/// written, and lasts as long as its samples.
+fn call_span(
+    wav: &std::path::Path,
+) -> Option<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)> {
+    let reader = hound::WavReader::open(wav).ok()?;
+    let spec = reader.spec();
+    let secs = reader.duration() as i64 / i64::from(spec.sample_rate.max(1));
+    let end: chrono::DateTime<chrono::Utc> = std::fs::metadata(wav).ok()?.modified().ok()?.into();
+    Some((end - chrono::Duration::seconds(secs), end))
 }
 
 /// Text without the Unicode isolation marks Fluent puts around arguments:
@@ -403,7 +433,7 @@ fn Activity() -> Element {
     let calls = use_context::<Calls>();
     let pending = (calls.pending)();
     let status = (calls.status)();
-    if status == Status::Idle && pending == 0 {
+    if status == Status::Idle && pending == 0 && calls.filing.read().is_none() {
         return rsx! {};
     }
     rsx! {
@@ -434,6 +464,9 @@ fn Activity() -> Element {
                 Status::Failed(why) => rsx! {
                     p { class: "error", role: "alert", "{why}" }
                 },
+            }
+            if let Some(why) = (calls.filing)() {
+                p { class: "muted", role: "status", {t!("rec-not-filed", error : why)} }
             }
             if pending > 0 {
                 div { class: "row",

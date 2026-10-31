@@ -128,3 +128,5 @@ web-recordings = Enregistrements
 web-profile = Profil
 about-version = Enregistreur PNeX { $version }
 web-open = Ouvrir dans PNeX
+rec-case-title = Appels de { $email }
+rec-not-filed = Envoyé et transcrit, mais pas classé dans votre dossier : { $error }

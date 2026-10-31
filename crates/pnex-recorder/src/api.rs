@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use pnex_core::media_analysis::{AnalysisStep, MediaAnalysis};
 use pnex_core::media_ingest::{AsrModel, AsrProfile, AsrTask, AsrTestResult};
+use pnex_core::ontology::api::{ObjectView, QueryResult};
 use pnex_core::vision::ModelCheckStatus;
 use pnex_core::voice_id::{VoiceProfileInput, VoiceProfileView, VoiceTestResult, PERSON_TYPE};
 use pnex_core::{OrgMembership, Paginated, TokenResponse, UserInfo};
@@ -394,6 +395,71 @@ impl Session {
             return Err(error_of(res).await);
         }
         Ok(())
+    }
+
+    /// Files a sent call in the user's case ("Calls of <email>", created on
+    /// first use and found again by its labels): one dated event, `from` →
+    /// `to`, with the media of every part attached as evidence.
+    pub async fn file_call(
+        &mut self,
+        org: i64,
+        case_title: &str,
+        title: &str,
+        from: chrono::DateTime<chrono::Utc>,
+        to: chrono::DateTime<chrono::Utc>,
+        assets: &[String],
+    ) -> Result<(), ApiError> {
+        let case = self.own_case(org, case_title).await?;
+        let mut attach = Vec::new();
+        for asset in assets {
+            let object: ObjectView = self
+                .org_json(org, |h, u| {
+                    h.get(format!("{u}/api/v1/ontology/resolve/media_asset/{asset}"))
+                })
+                .await?;
+            attach.push(json!({"object_id": object.id}));
+        }
+        let stamp = |t: chrono::DateTime<chrono::Utc>| t.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let body = json!({
+            "title": title,
+            "origin": "recorder",
+            "occurred": {"from": stamp(from), "to": stamp(to), "precision": "range"},
+            "attach": attach,
+        });
+        self.org_send(org, |h, u| {
+            h.post(format!("{u}/api/v1/cases/{case}/events"))
+                .json(&body)
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// The user's own case in `org`: labelled `recorder-owner: <email>`.
+    async fn own_case(&mut self, org: i64, title: &str) -> Result<String, ApiError> {
+        let label = format!("recorder-owner:{}", self.email);
+        let found: QueryResult = self
+            .org_json(org, |h, u| {
+                h.post(format!("{u}/api/v1/ontology/query"))
+                    .json(&json!({"type_key": "case", "label": label, "limit": 1}))
+            })
+            .await?;
+        if let Some(row) = found.rows.into_iter().next() {
+            return Ok(row.object.id);
+        }
+        let case: ObjectView = self
+            .org_json(org, |h, u| {
+                h.post(format!("{u}/api/v1/cases"))
+                    .json(&json!({"title": title}))
+            })
+            .await?;
+        let labels = json!({"labels": {"source": "recorder", "recorder-owner": self.email}});
+        let native = case.native_id.clone();
+        self.org_send(org, |h, u| {
+            h.put(format!("{u}/api/v1/resources/case/{native}/labels"))
+                .json(&labels)
+        })
+        .await?;
+        Ok(case.id)
     }
 
     /// Starts the transcription of a stored recording (the org's default
