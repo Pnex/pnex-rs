@@ -11,14 +11,14 @@ mod audio;
 mod calls;
 mod capture;
 mod detect;
+mod encode;
 mod queue;
 mod voice;
 
 use dioxus::desktop::trayicon::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{init_tray_icon, Icon as TrayIcon};
 use dioxus::desktop::{
-    tao, use_tray_menu_event_handler, window, Config, LogicalSize, WindowBuilder,
-    WindowCloseBehaviour,
+    tao, use_muda_event_handler, window, Config, LogicalSize, WindowBuilder, WindowCloseBehaviour,
 };
 use dioxus::prelude::*;
 use dioxus_i18n::prelude::*;
@@ -33,27 +33,96 @@ use api::{ApiError, Session};
 const TEST_SECS: u64 = 5;
 
 const MARK: &[u8] = include_bytes!("../../pnex-frontend/assets/logo-mark.png");
+/// The wordmark of the web app's login card.
+const WORDMARK: &[u8] = include_bytes!("../../pnex-frontend/assets/logo.png");
+/// The web app's animated beam sheaf (login page), shared rather than copied.
+const GERBE_JS: &str = include_str!("../../pnex-frontend/assets/tron-gerbe.js");
 
 const STYLE: &str = r#"
-body { font-family: system-ui, sans-serif; margin: 0; background: #f9fafb; color: #111827; font-size: 14px; }
-main { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-h1 { font-size: 16px; margin: 0; }
-h2 { font-size: 14px; margin: 0; }
-label { display: block; font-size: 12px; color: #4b5563; margin-bottom: 4px; }
-input[type=text], input[type=email], input[type=password], select { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
-button { padding: 8px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: #fff; cursor: pointer; font-size: 14px; }
-button.primary { background: #111827; color: #fff; border-color: #111827; }
+:root {
+  color-scheme: light dark;
+  --bg: #f3f5f7; --surface: #ffffff; --ink: #1c2630; --muted: #5b6873;
+  --line: #d4dbe1; --rec: #c8243a; --armed: #0f7472; --off: #9aa5ae;
+  --error: #b3261e; --soft: #e9edf0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151b21; --surface: #1d252d; --ink: #e6ebef; --muted: #9aa7b2;
+    --line: #2e3943; --rec: #f0566a; --armed: #3fb5b0; --off: #66727c;
+    --error: #ff8a80; --soft: #26303a;
+  }
+}
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #151b21; --surface: #1d252d; --ink: #e6ebef; --muted: #9aa7b2;
+    --line: #2e3943; --rec: #f0566a; --armed: #3fb5b0; --off: #66727c;
+    --error: #ff8a80; --soft: #26303a;
+}
+:root[data-theme="light"] { color-scheme: light; }
+.theme { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border-radius: 50%; flex: none; }
+.theme svg { width: 16px; height: 16px; }
+.login-top { position: fixed; top: 10px; right: 12px; z-index: 2; }
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; margin: 0; background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.4; }
+main { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 12px; min-height: 100vh; }
+h1 { font-size: 17px; margin: 0; font-weight: 600; }
+h2 { font-size: 14px; margin: 0; font-weight: 600; }
+p { margin: 0; }
+label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+input[type=text], select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; background: var(--surface); color: var(--ink); }
+button { padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; font-size: 14px; }
+button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+button.link { border: 0; background: none; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12px; white-space: nowrap; }
 button:disabled { opacity: .5; cursor: default; }
-.card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.muted { color: #6b7280; font-size: 12px; margin: 0; }
-.error { color: #b91c1c; font-size: 13px; margin: 0; }
+:focus-visible { outline: 2px solid var(--armed); outline-offset: 2px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.muted { color: var(--muted); font-size: 12px; }
+.error { color: var(--error); font-size: 13px; }
 .row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
-.check { display: flex; align-items: center; gap: 8px; color: #111827; font-size: 14px; margin: 0; }
-.score { font-size: 28px; font-weight: 600; margin: 0; }
-meter { width: 100%; height: 14px; }
-.result { white-space: pre-wrap; background: #f3f4f6; border-radius: 6px; padding: 8px; margin: 0; }
-.recording { color: #b91c1c; font-weight: 600; margin: 0; }
-.recording::before { content: "\25CF  "; }
+.check { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 14px; margin: 0; }
+.score { font-size: 28px; font-weight: 600; }
+meter, progress { width: 100%; height: 8px; accent-color: var(--armed); }
+.result { white-space: pre-wrap; background: var(--soft); border-radius: 6px; padding: 8px; }
+.account { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; }
+.account span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The status block: the one loud element of the window. */
+.status { background: var(--surface); border: 1px solid var(--line); border-left: 6px solid var(--off); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.status.armed { border-left-color: var(--armed); }
+.status.live { border-left-color: var(--rec); }
+.lamp { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; color: var(--ink); margin: 0; }
+.lamp::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--off); flex: none; }
+.armed .lamp::before { background: var(--armed); }
+.live .lamp::before { background: var(--rec); box-shadow: 0 0 0 4px color-mix(in srgb, var(--rec) 25%, transparent); }
+.clock { font-size: 34px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .02em; color: var(--rec); }
+.switch { appearance: none; width: 38px; height: 22px; border-radius: 11px; background: var(--off); position: relative; cursor: pointer; flex: none; margin: 0; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch:checked { background: var(--armed); }
+.switch:checked::after { transform: translateX(16px); }
+.activity { display: flex; flex-direction: column; gap: 6px; padding: 0 2px; }
+details.checks { border-top: 1px solid var(--line); padding-top: 10px; }
+details.checks > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+details.checks[open] > summary { margin-bottom: 10px; }
+/* Login: the web app's sign-in page, beam sheaf behind a light card. */
+.login-bg { position: fixed; inset: 0; background: linear-gradient(135deg, #040d10 0%, #0b2830 100%); }
+.login { position: relative; min-height: calc(100vh - 34px); display: flex; flex-direction: column; justify-content: center; }
+.panel { color-scheme: light; --bg: #ffffff; --surface: #ffffff; --ink: #1c2630; --muted: #5b6873; --line: #d4dbe1; --soft: #e9edf0; --error: #b3261e;
+  background: rgba(255, 255, 255, .95); color: var(--ink); border-radius: 16px; padding: 24px 20px; display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .45); }
+.panel .card { border: 0; padding: 0; background: none; }
+.wordmark { display: block; margin: 0 auto; height: 52px; width: auto; }
+.center { text-align: center; }
+.tools { display: flex; gap: 6px; flex: none; }
+/* Pages of the web app, pinned to the bottom of the window. */
+.dock { margin-top: auto; position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 10px 0 2px; display: flex; flex-direction: column; gap: 8px; }
+.dock .row > button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.dock svg { width: 18px; height: 18px; color: var(--muted); }
+.about { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 12px; }
+button.quiet { border: 0; background: none; padding: 2px 4px; color: var(--muted); font-size: 12px; }
+button.quiet:hover { color: var(--ink); }
+.panel .about { border-top: 1px solid var(--line); padding-top: 12px; }
+
+details.checks > div { display: flex; flex-direction: column; gap: 12px; }
+@media (prefers-reduced-motion: reduce) { .switch::after { transition: none; } }
 "#;
 
 /// RGBA pixels of the PNeX mark.
@@ -131,7 +200,7 @@ pub(crate) fn error_text(e: &ApiError) -> String {
         ApiError::Unreachable => t!("err-unreachable"),
         ApiError::NotPnex => t!("err-not-pnex"),
         ApiError::Incompatible(contract) => t!("err-incompatible", contract: *contract),
-        ApiError::BadCredentials => t!("err-bad-credentials"),
+        ApiError::LoginTimedOut => t!("err-login-timed-out"),
         // Shown as the trust card, not as an error line.
         ApiError::UntrustedCa { .. } => t!("err-unreachable"),
         ApiError::SessionExpired => t!("err-session-expired"),
@@ -182,7 +251,9 @@ fn App() -> Element {
         let tray = init_tray_icon(menu, TrayIcon::from_rgba(rgba, w, h).ok());
         (enabled, discard, tray)
     });
-    use_tray_menu_event_handler(move |event| match event.id.0.as_str() {
+    // muda keeps the first menu event handler only (a OnceCell), and dioxus
+    // registers the menubar one first: tray clicks arrive as menubar events.
+    use_muda_event_handler(move |event| match event.id.0.as_str() {
         "open" => {
             window().set_visible(true);
             window().set_focus();
@@ -217,6 +288,14 @@ fn App() -> Element {
         discard_item.set_enabled(recording);
     });
 
+    // The picked theme on <html>; none = the system's.
+    use_effect(move || {
+        let theme = session.read().theme.clone().unwrap_or_default();
+        document::eval(&format!(
+            "document.documentElement.setAttribute('data-theme', {theme:?})"
+        ));
+    });
+
     rsx! {
         document::Title { {t!("app-title")} }
         style { {STYLE} }
@@ -232,9 +311,16 @@ fn App() -> Element {
 
 #[component]
 fn Login(session: Signal<Session>) -> Element {
+    let mark = use_hook(|| {
+        use base64::Engine;
+        let png = base64::engine::general_purpose::STANDARD.encode(WORDMARK);
+        format!("data:image/png;base64,{png}")
+    });
+    // Frees the canvas and its GL context once signed in.
+    use_drop(|| {
+        document::eval("window.pnexTronGerbe && window.pnexTronGerbe.unmount()");
+    });
     let mut url = use_signal(|| session.peek().url.clone());
-    let mut email = use_signal(|| session.peek().email.clone());
-    let mut password = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut error = use_signal(|| None::<ApiError>);
     // `ca`: a root CA the user just trusted, else the one pinned for this server.
@@ -243,12 +329,11 @@ fn Login(session: Signal<Session>) -> Element {
         error.set(None);
         spawn(async move {
             let ca = ca.or_else(|| session.peek().pinned_ca(&url()));
-            match Session::sign_in(&url(), &email(), &password(), ca).await {
+            match Session::sign_in(&url(), ca).await {
                 Ok(mut s) => {
                     // Keep the capture switch across sign-ins.
                     s.enabled = session.peek().enabled;
                     s.save();
-                    password.set(String::new());
                     session.set(s);
                 }
                 Err(e) => error.set(Some(e)),
@@ -261,7 +346,27 @@ fn Login(session: Signal<Session>) -> Element {
         connect(None);
     };
     rsx! {
-        h1 { {t!("login-title")} }
+        // The web app's login: the beam sheaf over the whole window, the
+        // sign-in on a light card in front of it.
+        div {
+            id: "gerbe",
+            class: "login-bg",
+                // Loads the script once per process, then mounts the canvas.
+                onmounted: move |_| {
+                    document::eval(
+                        &format!(
+                            "if (!window.pnexTronGerbe) {{ {GERBE_JS} }}\nwindow.pnexTronGerbe.mount('gerbe');",
+                        ),
+                    );
+                },
+        }
+        div { class: "login-top",
+            ThemeToggle { session }
+        }
+        div { class: "login",
+        div { class: "panel",
+        img { class: "wordmark", src: "{mark}", alt: "PNeX" }
+        p { class: "muted center", {t!("login-title")} }
         if let Some(ApiError::UntrustedCa { pem, fingerprint }) = error() {
             div { class: "card", role: "alertdialog",
                 h2 { {t!("trust-ca-title")} }
@@ -297,38 +402,99 @@ fn Login(session: Signal<Session>) -> Element {
                     oninput: move |e| url.set(e.value()),
                 }
             }
-            div {
-                label { r#for: "email", {t!("login-email")} }
-                input {
-                    id: "email",
-                    r#type: "email",
-                    value: "{email}",
-                    oninput: move |e| email.set(e.value()),
-                }
-            }
-            div {
-                label { r#for: "password", {t!("login-password")} }
-                input {
-                    id: "password",
-                    r#type: "password",
-                    value: "{password}",
-                    oninput: move |e| password.set(e.value()),
-                }
-            }
             if let Some(e) = error().filter(|e| !matches!(e, ApiError::UntrustedCa { .. })) {
                 p { class: "error", role: "alert", {error_text(&e)} }
             }
             button {
                 class: "primary",
                 r#type: "submit",
-                disabled: busy() || url().trim().is_empty() || email().trim().is_empty()
-                    || password().is_empty(),
+                disabled: busy() || url().trim().is_empty(),
                 if busy() {
                     {t!("login-busy")}
                 } else {
                     {t!("login-submit")}
                 }
             }
+        }
+        About {}
+        }
+        }
+    }
+}
+
+/// Opens a page of the PNeX web app in the system browser.
+pub(crate) fn open_web(server: &str, path: &str) {
+    if let Err(e) = webbrowser::open(&format!("{server}{path}")) {
+        eprintln!("browser opening failed: {e}");
+    }
+}
+
+/// Version of the recorder and the PNeX site.
+#[component]
+fn About() -> Element {
+    rsx! {
+        div { class: "about",
+            span { {t!("about-version", version : env!("CARGO_PKG_VERSION"))} }
+            button {
+                class: "quiet",
+                r#type: "button",
+                onclick: move |_| open_web("https://pnex.io", ""),
+                "pnex.io"
+            }
+        }
+    }
+}
+
+/// Light / dark switch. The first click from the system theme flips what
+/// the system shows.
+#[component]
+fn ThemeToggle(session: Signal<Session>) -> Element {
+    let flip = move |_| {
+        spawn(async move {
+            let dark = match session.peek().theme.as_deref() {
+                Some(t) => t == "dark",
+                None => document::eval(
+                    "return window.matchMedia('(prefers-color-scheme: dark)').matches",
+                )
+                .join::<bool>()
+                .await
+                .unwrap_or(false),
+            };
+            let mut s = session.write();
+            s.theme = Some(if dark { "light" } else { "dark" }.into());
+            s.save();
+        });
+    };
+    rsx! {
+        button {
+            class: "theme",
+            r#type: "button",
+            title: t!("theme-toggle"),
+            aria_label: t!("theme-toggle"),
+            onclick: flip,
+            Icon { d: MOON }
+        }
+    }
+}
+
+const MOON: &str = "M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z";
+const WAVEFORM: &str = "M3 12h2M7 8v8M11 4v16M15 8v8M19 11v2";
+const PERSON: &str = "M12 4a4 4 0 1 1 0 8a4 4 0 1 1 0-8M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6";
+const SIGN_OUT: &str = "M10 4H5v16h5M14 8l4 4-4 4M18 12H9";
+
+/// A 24 px line icon drawn from one SVG path.
+#[component]
+fn Icon(d: &'static str) -> Element {
+    rsx! {
+        svg {
+            view_box: "0 0 24 24",
+            fill: "none",
+            stroke: "currentColor",
+            stroke_width: "2",
+            stroke_linecap: "round",
+            stroke_linejoin: "round",
+            "aria-hidden": "true",
+            path { d }
         }
     }
 }
@@ -371,17 +537,23 @@ fn Signed(session: Signal<Session>) -> Element {
             s.save();
         }
     }));
-    let (email, server, enabled) = {
+    let (email, server) = {
         let s = session.read();
-        (s.email.clone(), s.url.clone(), s.enabled)
+        (s.email.clone(), s.url.clone())
     };
     rsx! {
-        div { class: "row",
-            p { class: "muted", {t!("main-signed-in", email : email, server : server)} }
-            button {
-                r#type: "button",
-                onclick: move |_| session.write().sign_out(),
-                {t!("main-sign-out")}
+        div { class: "account",
+            span { {t!("main-signed-in", email : email, server : server)} }
+            div { class: "tools",
+                ThemeToggle { session }
+                button {
+                    class: "theme",
+                    r#type: "button",
+                    title: t!("main-sign-out"),
+                    aria_label: t!("main-sign-out"),
+                    onclick: move |_| session.write().sign_out(),
+                    Icon { d: SIGN_OUT }
+                }
             }
         }
         if orgs.len() > 1 {
@@ -405,27 +577,34 @@ fn Signed(session: Signal<Session>) -> Element {
                 }
             }
         }
-        div { class: "card",
-            label { class: "check",
-                input {
-                    r#type: "checkbox",
-                    checked: enabled,
-                    onchange: move |e| {
-                        let mut s = session.write();
-                        s.enabled = e.checked();
-                        s.save();
-                    },
-                }
-                {t!("main-enabled")}
-            }
-            p { class: "muted", {t!("main-enabled-help")} }
-        }
         calls::CallsCard {}
         if let Some(org) = org {
-            TranscriptionTest { key: "{org}", session, org }
+            details { class: "checks",
+                summary { {t!("checks-title")} }
+                div {
+                    TranscriptionTest { key: "{org}", session, org }
+                    voice::VoiceCard { key: "{org}", session, org }
+                }
+            }
         }
-        if let Some(org) = org {
-            voice::VoiceCard { key: "{org}", session, org }
+        nav { class: "dock", aria_label: t!("web-open"),
+            div { class: "row",
+                button {
+                    r#type: "button",
+                    title: t!("web-open"),
+                    onclick: move |_| open_web(&session.peek().url, "/media"),
+                    Icon { d: WAVEFORM }
+                    {t!("web-recordings")}
+                }
+                button {
+                    r#type: "button",
+                    title: t!("web-open"),
+                    onclick: move |_| open_web(&session.peek().url, "/profile"),
+                    Icon { d: PERSON }
+                    {t!("web-profile")}
+                }
+            }
+            About {}
         }
     }
 }

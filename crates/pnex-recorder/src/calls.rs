@@ -12,7 +12,7 @@ use dioxus_i18n::t;
 
 use crate::api::Session;
 use crate::capture::{self, Recording};
-use crate::{detect, queue};
+use crate::{detect, encode, queue};
 
 /// Poll period of the call detection.
 const POLL: Duration = Duration::from_secs(2);
@@ -20,13 +20,18 @@ const POLL: Duration = Duration::from_secs(2);
 const RELEASE: Duration = Duration::from_secs(45);
 /// Waiting recordings are retried this often.
 const RETRY: Duration = Duration::from_secs(120);
+/// Poll period of a running transcription.
+const FOLLOW: Duration = Duration::from_secs(3);
 
 #[derive(Clone, PartialEq)]
 pub enum Status {
     Idle,
     Sending(String),
-    Sent(String),
-    /// Stored, but the transcription did not start (the reason).
+    /// Stored; the server transcribes it (progress 0–100).
+    Transcribing(String, i16),
+    /// Transcribed: name and the first part's asset id (its review page).
+    Transcribed(String, String),
+    /// Stored, but the transcription did not start or failed (the reason).
     Untranscribed(String, String),
     Failed(String),
 }
@@ -113,26 +118,119 @@ impl Calls {
                 plain(&t!("rec-name", app: app, date: date))
             };
             self.status.set(Status::Sending(name.clone()));
-            let mut session = self.session.peek().clone();
-            let stored = session.upload_recording(org, &file, &name).await;
-            let asset = match stored {
-                Ok(asset) => asset,
-                Err(e) => {
-                    self.session.set(session);
-                    self.status.set(Status::Failed(crate::error_text(&e)));
-                    break;
-                }
+            let wav = file.clone();
+            let parts =
+                tokio::task::spawn_blocking(move || encode::ogg_parts(&wav, encode::PART_SECS))
+                    .await
+                    .ok()
+                    .and_then(Result::ok);
+            let Some(parts) = parts else {
+                self.status.set(Status::Failed(crate::error_text(
+                    &crate::api::ApiError::Server(0, Some("recording-unreadable".into())),
+                )));
+                break;
             };
+            let stem = file.file_stem().and_then(|f| f.to_str()).unwrap_or("call");
+            let count = parts.len();
+            let mut session = self.session.peek().clone();
+            let mut assets = Vec::new();
+            let mut failed = None;
+            // shortcut: a part that fails sends the whole call again on the
+            // next try (earlier parts are duplicated); track sent parts if
+            // calls over 2 h become common.
+            for (i, part) in parts.into_iter().enumerate() {
+                let (title, filename) = if count == 1 {
+                    (name.clone(), format!("{stem}.ogg"))
+                } else {
+                    (
+                        format!("{name} ({}/{count})", i + 1),
+                        format!("{stem}_{}.ogg", i + 1),
+                    )
+                };
+                match session.upload_recording(org, part, &filename, &title).await {
+                    Ok(asset) => assets.push(asset),
+                    Err(e) => {
+                        failed = Some(e);
+                        break;
+                    }
+                }
+            }
+            if let Some(e) = failed {
+                self.session.set(session);
+                self.status.set(Status::Failed(crate::error_text(&e)));
+                break;
+            }
             let _ = std::fs::remove_file(&file);
             self.pending.with_mut(|n| *n = n.saturating_sub(1));
-            let started = session.transcribe(org, &asset, &locale).await;
+            let mut started = Ok(());
+            for asset in &assets {
+                started = started.and(session.transcribe(org, asset, &locale).await);
+            }
             self.session.set(session);
-            self.status.set(match started {
-                Ok(()) => Status::Sent(name),
-                Err(e) => Status::Untranscribed(name, crate::error_text(&e)),
-            });
+            match started {
+                Ok(()) => {
+                    self.status.set(Status::Transcribing(name.clone(), 0));
+                    spawn(self.follow(org, name, assets));
+                }
+                Err(e) => self
+                    .status
+                    .set(Status::Untranscribed(name, crate::error_text(&e))),
+            }
         }
         self.sending.set(false);
+    }
+
+    /// Follows the transcription of a sent call until every part is done or
+    /// one failed; the status shows its progress meanwhile.
+    async fn follow(mut self, org: i64, name: String, assets: Vec<String>) {
+        use pnex_core::media_analysis::AnalysisState;
+        loop {
+            tokio::time::sleep(FOLLOW).await;
+            let mut session = self.session.peek().clone();
+            let mut progress = 0i32;
+            let mut done = 0;
+            let mut failure = None;
+            for asset in &assets {
+                match session.transcription(org, asset).await {
+                    Ok(Some(a)) => match a.state {
+                        AnalysisState::Done => {
+                            done += 1;
+                            progress += 100;
+                        }
+                        AnalysisState::Failed => {
+                            let code = a.error_code.or(Some("asr-test-failed".into()));
+                            failure = Some(crate::api::ApiError::Server(0, code));
+                        }
+                        _ => progress += i32::from(a.progress),
+                    },
+                    Ok(None) => {}
+                    // A network blip: try again on the next round.
+                    Err(crate::api::ApiError::Unreachable) => {}
+                    Err(e) => failure = Some(e),
+                }
+            }
+            self.session.set(session);
+            // Another call took the status line over: stop following this one.
+            let current = match &*self.status.peek() {
+                Status::Transcribing(n, _) => n == &name,
+                _ => false,
+            };
+            if !current {
+                return;
+            }
+            if let Some(e) = failure {
+                self.status
+                    .set(Status::Untranscribed(name, crate::error_text(&e)));
+                return;
+            }
+            if done == assets.len() {
+                self.status
+                    .set(Status::Transcribed(name, assets[0].clone()));
+                return;
+            }
+            let pct = (progress / assets.len().max(1) as i32) as i16;
+            self.status.set(Status::Transcribing(name.clone(), pct));
+        }
     }
 
     /// One detection round: starts, keeps or stops the automatic capture.
@@ -212,23 +310,27 @@ fn clock(d: Duration) -> String {
 pub fn CallsCard() -> Element {
     let calls = use_context::<Calls>();
     let _ = (calls.tick)();
-    let enabled = calls.session.read().enabled;
+    let mut session = calls.session;
+    let enabled = session.read().enabled;
     let rec = calls
         .rec
         .read()
         .as_ref()
         .map(|r| (r.app.clone(), clock(r.started.elapsed())));
-    let pending = (calls.pending)();
-    let status = (calls.status)();
+    if !capture::supported() {
+        return rsx! {
+            div { class: "status",
+                p { class: "lamp", {t!("rec-unsupported")} }
+            }
+        };
+    }
     rsx! {
-        div { class: "card",
-            h2 { {t!("rec-title")} }
-            if !capture::supported() {
-                p { class: "muted", {t!("rec-unsupported")} }
-            } else if let Some((app, time)) = rec {
-                p { class: "recording", role: "status",
-                    {t!("rec-recording", app : app.unwrap_or_else(|| t!("rec-manual")), time : time)}
+        if let Some((app, time)) = rec {
+            div { class: "status live", role: "status",
+                p { class: "lamp",
+                    {t!("rec-recording", app : app.unwrap_or_else(|| t!("rec-manual")))}
                 }
+                p { class: "clock", "{time}" }
                 p { class: "muted", {t!("rec-consent")} }
                 div { class: "row",
                     button {
@@ -245,12 +347,36 @@ pub fn CallsCard() -> Element {
                         {t!("rec-stop")}
                     }
                 }
-            } else {
+            }
+        } else {
+            div { class: if enabled { "status armed" } else { "status" },
+                div { class: "row",
+                    label { class: "lamp", r#for: "rec-auto",
+                        if enabled {
+                            {t!("rec-armed")}
+                        } else {
+                            {t!("rec-off")}
+                        }
+                    }
+                    input {
+                        id: "rec-auto",
+                        class: "switch",
+                        r#type: "checkbox",
+                        role: "switch",
+                        aria_label: t!("rec-auto"),
+                        checked: enabled,
+                        onchange: move |e| {
+                            let mut s = session.write();
+                            s.enabled = e.checked();
+                            s.save();
+                        },
+                    }
+                }
                 p { class: "muted",
                     if enabled {
                         {t!("rec-waiting")}
                     } else {
-                        {t!("rec-off")}
+                        {t!("rec-off-help")}
                     }
                 }
                 button {
@@ -260,13 +386,41 @@ pub fn CallsCard() -> Element {
                     {t!("rec-start")}
                 }
             }
+        }
+        Activity {}
+    }
+}
+
+/// The last call sent and the recordings still waiting for the server.
+#[component]
+fn Activity() -> Element {
+    let calls = use_context::<Calls>();
+    let pending = (calls.pending)();
+    let status = (calls.status)();
+    if status == Status::Idle && pending == 0 {
+        return rsx! {};
+    }
+    rsx! {
+        div { class: "activity",
             match status {
                 Status::Idle => rsx! {},
                 Status::Sending(name) => rsx! {
                     p { class: "muted", {t!("rec-sending", name : name)} }
                 },
-                Status::Sent(name) => rsx! {
-                    p { class: "muted", role: "status", {t!("rec-sent", name : name)} }
+                Status::Transcribing(name, progress) => rsx! {
+                    p { class: "muted", role: "status", {t!("rec-transcribing", name : name)} }
+                    progress { max: "100", value: "{progress}" }
+                },
+                Status::Transcribed(name, asset) => rsx! {
+                    div { class: "row",
+                        p { role: "status", {t!("rec-transcribed", name : name)} }
+                        button {
+                            r#type: "button",
+                            title: t!("web-open"),
+                            onclick: move |_| crate::open_web(&calls.session.peek().url, &format!("/media/{asset}/review")),
+                            {t!("rec-open")}
+                        }
+                    }
                 },
                 Status::Untranscribed(name, why) => rsx! {
                     p { class: "error", role: "alert", {t!("rec-untranscribed", name : name, error : why)} }

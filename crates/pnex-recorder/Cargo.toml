@@ -23,11 +23,18 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # Microphone capture on WASAPI / CoreAudio / ALSA (Apache-2.0).
 cpal = "0.16"
 hound = "3.5"
+# Calls are sent as Ogg/Opus (~14 MB per hour instead of 230 MB of WAV):
+# libopus built from source by cmake (BSD-3-Clause), Ogg muxing (BSD-3-Clause).
+opus = "0.4"
+ogg = "0.9"
 # Decodes the PNeX mark for the tray and window icons.
 png = "0.17"
 # Fingerprint of a self-hosted root CA before it is pinned.
 sha2 = "0.10"
 base64 = "0.22"
+# Browser sign-in: PKCE verifier entropy and the system browser (vendored patch).
+getrandom = "0.2"
+webbrowser = "1"
 
 # Linux e2e only (feature `e2e`): turns on the vendored wry patch that lets
 # WebKitWebDriver drive the window (and only with PNEX_E2E_AUTOMATION set).

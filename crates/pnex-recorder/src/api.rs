@@ -1,10 +1,11 @@
-//! PNeX server calls: password sign-in, org list, speech-to-text models and
+//! PNeX server calls: browser sign-in, org list, speech-to-text models and
 //! the model test endpoint. The session (refresh token) is kept on disk so the
 //! tray utility starts signed in.
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use pnex_core::media_analysis::{AnalysisStep, MediaAnalysis};
 use pnex_core::media_ingest::{AsrModel, AsrProfile, AsrTask, AsrTestResult};
 use pnex_core::vision::ModelCheckStatus;
 use pnex_core::voice_id::{VoiceProfileInput, VoiceProfileView, VoiceTestResult, PERSON_TYPE};
@@ -21,7 +22,8 @@ pub enum ApiError {
     NotPnex,
     /// Server contract number.
     Incompatible(u32),
-    BadCredentials,
+    /// The browser sign-in was not completed within ten minutes.
+    LoginTimedOut,
     /// HTTPS server signed by its own root CA (local edge, D70): the user
     /// compares the fingerprint before the CA is pinned.
     UntrustedCa {
@@ -47,6 +49,10 @@ pub struct Session {
     access_token: String,
     #[serde(default)]
     expires_at: u64,
+    /// "light" or "dark" once the user picked one; the system's otherwise.
+    /// Kept across sign-outs, like the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
     /// Root CA pinned after the user confirmed its fingerprint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ca_pem: Option<String>,
@@ -184,14 +190,11 @@ impl Session {
         client(self.ca_pem.as_deref())
     }
 
-    /// Checks the server is a compatible PNeX, then signs in with the password
-    /// grant. `ca` is a root CA the user just confirmed (or the pinned one).
-    pub async fn sign_in(
-        url: &str,
-        email: &str,
-        password: &str,
-        ca: Option<String>,
-    ) -> Result<Self, ApiError> {
+    /// Checks the server is a compatible PNeX, then signs in through the
+    /// system browser (PKCE code flow, relayed by the server's native bridge
+    /// like the desktop app). `ca` is a root CA the user just confirmed (or
+    /// the pinned one).
+    pub async fn sign_in(url: &str, ca: Option<String>) -> Result<Self, ApiError> {
         let url = url.trim().trim_end_matches('/').to_string();
         let probe = client(ca.as_deref())
             .get(format!("{url}{}", pnex_api_contract::META_VERSION_PATH))
@@ -215,21 +218,16 @@ impl Session {
         if !pnex_api_contract::compatible(info.contract, pnex_api_contract::CONTRACT) {
             return Err(ApiError::Incompatible(info.contract));
         }
-        let body =
-            json!({"grant_type": "password", "username": email.trim(), "password": password});
-        let tokens = token(&client(ca.as_deref()), &url, &body)
-            .await
-            .map_err(|e| match e {
-                ApiError::Server(400 | 401, _) => ApiError::BadCredentials,
-                e => e,
-            })?;
+        let http = client(ca.as_deref());
+        let tokens = browser_login(&http, &url).await?;
         let mut session = Self {
             url,
-            email: email.trim().to_string(),
             ca_pem: ca,
             ..Self::default()
         };
         session.set_tokens(tokens);
+        // The email names the voice profile and its consent proof.
+        session.email = session.user_info().await?.email.unwrap_or_default();
         session.save();
         Ok(session)
     }
@@ -253,6 +251,10 @@ impl Session {
     }
 
     pub async fn orgs(&mut self) -> Result<Vec<OrgMembership>, ApiError> {
+        Ok(self.user_info().await?.orgs)
+    }
+
+    async fn user_info(&mut self) -> Result<UserInfo, ApiError> {
         let bearer = self.bearer().await?;
         let res = self
             .http()
@@ -264,8 +266,7 @@ impl Session {
         if !res.status().is_success() {
             return Err(error_of(res).await);
         }
-        let info: UserInfo = res.json().await.map_err(|_| ApiError::NotPnex)?;
-        Ok(info.orgs)
+        res.json().await.map_err(|_| ApiError::NotPnex)
     }
 
     /// Speech-to-text models saved in the org (the other audio tasks cannot
@@ -336,34 +337,23 @@ impl Session {
 }
 
 impl Session {
-    /// Stores a recording in the org's media library; returns its asset id.
-    // shortcut: the WAV is read whole into memory (about 230 MB for an hour
-    // of stereo 16 kHz); stream the body when calls get longer.
+    /// Stores one Ogg/Opus part of a recording in the org's media library;
+    /// returns its asset id.
     pub async fn upload_recording(
         &mut self,
         org: i64,
-        path: &std::path::Path,
+        bytes: Vec<u8>,
+        filename: &str,
         name: &str,
     ) -> Result<String, ApiError> {
-        let file = path.to_path_buf();
-        let bytes = tokio::task::spawn_blocking(move || std::fs::read(file))
-            .await
-            .ok()
-            .and_then(Result::ok)
-            .ok_or(ApiError::Server(0, Some("recording-unreadable".into())))?;
-        let filename = path
-            .file_name()
-            .and_then(|f| f.to_str())
-            .unwrap_or("call.wav")
-            .to_string();
         let bearer = self.bearer().await?;
         let res = self
             .http()
             .post(format!("{}/api/v1/media", self.url))
-            .query(&[("name", name), ("filename", &filename), ("kind", "audio")])
+            .query(&[("name", name), ("filename", filename), ("kind", "audio")])
             .bearer_auth(bearer)
             .header("X-Org-Id", org.to_string())
-            .header("Content-Type", "audio/wav")
+            .header("Content-Type", "audio/ogg")
             .timeout(std::time::Duration::from_secs(600))
             .body(bytes)
             .send()
@@ -401,6 +391,38 @@ impl Session {
             return Err(error_of(res).await);
         }
         Ok(())
+    }
+}
+
+impl Session {
+    /// State of the transcription of a stored recording: `None` until the
+    /// server lists the step.
+    pub async fn transcription(
+        &mut self,
+        org: i64,
+        asset: &str,
+    ) -> Result<Option<MediaAnalysis>, ApiError> {
+        #[derive(Deserialize)]
+        struct State {
+            analyses: Vec<MediaAnalysis>,
+        }
+        let bearer = self.bearer().await?;
+        let res = self
+            .http()
+            .get(format!("{}/api/v1/media/{asset}/analyses", self.url))
+            .bearer_auth(bearer)
+            .header("X-Org-Id", org.to_string())
+            .send()
+            .await
+            .map_err(|_| ApiError::Unreachable)?;
+        if !res.status().is_success() {
+            return Err(error_of(res).await);
+        }
+        let state: State = res.json().await.map_err(|_| ApiError::NotPnex)?;
+        Ok(state
+            .analyses
+            .into_iter()
+            .find(|a| a.step == AnalysisStep::Transcribe))
     }
 }
 
@@ -566,6 +588,57 @@ impl Session {
 /// Only models that passed their check can be tested (409 otherwise).
 pub fn usable(model: &AsrModel) -> bool {
     model.check.status == ModelCheckStatus::Valid
+}
+
+/// Opens the server's SSO page in the system browser and waits (ten minutes
+/// at most) for the code the server's native bridge relays, then exchanges it
+/// with the PKCE verifier, which never leaves this process.
+async fn browser_login(http: &reqwest::Client, url: &str) -> Result<TokenResponse, ApiError> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+    use sha2::{Digest, Sha256};
+
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes).map_err(|_| ApiError::Unreachable)?;
+    let verifier = URL_SAFE_NO_PAD.encode(bytes);
+    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let redirect = format!("{url}/api/v1/oauth2/native");
+    let sso = reqwest::Url::parse_with_params(
+        &format!("{url}/api/v1/oauth2/sso"),
+        [
+            ("code_challenge", challenge.as_str()),
+            ("code_challenge_method", "S256"),
+            ("redirect_uri", redirect.as_str()),
+            // The challenge is unique per flow: it is also the bridge key.
+            ("state", challenge.as_str()),
+        ],
+    )
+    .map_err(|_| ApiError::Unreachable)?;
+    // A failed open is not fatal: the user can still be slow or retry.
+    if let Err(e) = webbrowser::open(sso.as_str()) {
+        eprintln!("browser opening failed: {e}");
+    }
+    for _ in 0..1200 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let Ok(res) = http
+            .get(format!("{url}/api/v1/oauth2/native/{challenge}"))
+            .send()
+            .await
+        else {
+            continue;
+        };
+        let poll: Value = res.json().await.unwrap_or(Value::Null);
+        if let Some(code) = poll["code"].as_str() {
+            let body = json!({
+                "grant_type": "authorization_code",
+                "code": code,
+                "code_verifier": verifier,
+                "redirect_uri": redirect,
+            });
+            return token(http, url, &body).await;
+        }
+    }
+    Err(ApiError::LoginTimedOut)
 }
 
 async fn token(http: &reqwest::Client, url: &str, body: &Value) -> Result<TokenResponse, ApiError> {

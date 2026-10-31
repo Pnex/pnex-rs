@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 + R1.1 codés 2026-10-29, R1.2 2026-10-30** : enregistreur PNeX (connexion, activation, test de transcription, capture des appels, envoi et transcription, « Ma voix » : empreinte vocale et score) — Linux validé de bout en bout, Windows codé et compilé (pas encore essayé sur une vraie machine), macOS à faire |
+| Statut | **Proposition (2026-10-24)** — roadmap P2.30 ; **R1.0 + R1.1 codés 2026-10-29, R1.2 2026-10-30, R1.3 2026-10-31** : enregistreur PNeX (connexion, activation, test de transcription, capture des appels, envoi et transcription, « Ma voix » : empreinte vocale et score) — Linux validé de bout en bout, Windows codé et compilé (pas encore essayé sur une vraie machine), macOS à faire |
 | Numérotation | décisions à numéroter au passage en PRD, lots **R1…R4** |
 | Dépend de | ingestion média (`media-ingest.md`, P2.13), ASR (`pnex-asr`), locuteurs (`voice-id.md`), rendez-vous et compte rendu (P2.28), desktop natif |
 
@@ -63,10 +63,14 @@ Dans l'application desktop native (Rust, sans driver virtuel).
 utilitaire Dioxus desktop dans la barre des tâches (Windows, Linux, macOS),
 séparé de l'application desktop complète.
 
-- Ouverture : serveur, e-mail, mot de passe (grant `password` via
-  `/api/v1/oauth2/token`, contrat d'API vérifié sur `/api/v1/meta/version`).
-  Session gardée (`<config>/pnex/recorder.json`, 0600, refresh token seul,
-  jamais le mot de passe).
+- Ouverture : l'adresse du serveur seule, puis **connexion dans le
+  navigateur** (2026-10-31, remplace le grant `password`, que Rauthy refuse
+  sur une instance qui ne l'a pas activé) : code PKCE S256, page
+  `/api/v1/oauth2/sso` ouverte dans le navigateur système, code relayé par
+  le pont natif (`/api/v1/oauth2/native/{state}`, comme l'application
+  desktop) puis échangé sur `/api/v1/oauth2/token` ; contrat d'API vérifié
+  sur `/api/v1/meta/version`, e-mail lu sur `/api/v1/user-info`. Session
+  gardée (`<config>/pnex/recorder.json`, 0600, refresh token seul).
 - Serveur HTTPS signé par sa propre autorité (edge local, D70) : même
   confiance au premier usage que l'application desktop — `/api/v1/meta/ca`
   lu sans vérification, empreinte SHA-256 affichée, CA épinglé dans la
@@ -112,13 +116,23 @@ séparé de l'application desktop complète.
   envoyer » / « Arrêter sans envoyer » et le rappel de prévenir
   l'interlocuteur ; l'icône de la barre passe au rouge, entrée « Arrêter et
   supprimer l'enregistrement » dans son menu.
-- **Envoi** : à l'arrêt, `POST /api/v1/media` (audio, nom « Appel <appli> du
-  <date> ») puis analyse `transcribe` (`POST /api/v1/media/{id}/analyses`),
+- **Envoi** : à l'arrêt, le WAV local est encodé en **Ogg/Opus 32 kbit/s**
+  (stéréo conservé, ≈ 14 Mo par heure au lieu de 230 ; libopus via `opus`,
+  `ogg`, BSD-3) et coupé en parties de **2 h au plus** (≈ 29 Mo) : chaque
+  requête reste sous la limite de 100 Mo des proxys (Cloudflare, constatée
+  sur dev.pnex.io le 2026-10-31). Chaque partie = un média
+  (`POST /api/v1/media`, nom « Appel <appli> du <date> », suffixe « (i/n) »
+  s'il y en a plusieurs) puis analyse `transcribe` (`POST /api/v1/media/{id}/analyses`),
   qui tourne avec le **profil par défaut** de l'org (`runnable_profile`
   préfère désormais le défaut au premier par ordre alphabétique). Le fichier
-  local n'est supprimé qu'une fois stocké par le serveur ; sinon il attend
-  (`<data>/pnex/recordings`) et repart au lancement suivant, puis toutes les
-  2 min.
+  local n'est supprimé qu'une fois toutes les parties stockées ; sinon il
+  attend (`<data>/pnex/recordings`) et repart au lancement suivant, puis
+  toutes les 2 min (une partie en échec renvoie tout l'appel : doublons
+  possibles au-delà de 2 h). La fenêtre **suit la transcription**
+  (`GET /api/v1/media/{id}/analyses` toutes les 3 s) : barre de
+  progression, puis « transcription terminée » avec un lien vers la
+  relecture (`/media/{id}/review`). Le modèle reste côté serveur : changer
+  de modèle ou de profil ne demande aucune mise à jour de l'enregistreur.
 - **Une seule instance** : verrou système sur `recordings/recorder.lock`
   (libéré par l'OS même après un plantage) ; deux instances capteraient le
   même appel dans le même fichier.
@@ -157,8 +171,7 @@ séparé de l'application desktop complète.
   Windows (`windows-smoke`) avant publication.
 - Reste : essai Windows réel, macOS (process tap), transcription
   séparée par canal (« moi / l'autre » sans diarisation), notification
-  système, envoi en flux pour les appels très longs (le WAV est lu en mémoire,
-  ≈ 230 Mo par heure).
+  système.
 
 **R1.2 — « Ma voix » : empreinte vocale depuis l'enregistreur (codé 2026-10-30)**
 - But : un utilisateur sans connaissance des écrans Empreintes vocales
@@ -183,6 +196,25 @@ séparé de l'application desktop complète.
   différente 12 % rejetée ; réenregistrement OK.
 - Pas encore : l'étiquette « moi » dans la transcription des appels (le
   profil ne nomme pas les locuteurs des flux, `voice-id.md` V1).
+
+**R1.3 — Fenêtre de l'enregistreur (codé 2026-10-31)**
+- Connexion : la composition de la page de connexion web — faisceau animé
+  (`assets/tron-gerbe.js` du front, inclus tel quel) sur toute la fenêtre,
+  carte claire avec le logo, version de l'enregistreur et lien pnex.io.
+- Vue connectée : un seul bloc d'état à voyant (gris désactivé, sarcelle en
+  attente d'un appel, rouge + chrono en cours) qui porte l'interrupteur
+  « Enregistrement automatique » (même mot dans le menu de l'icône) ; test
+  de transcription et « Ma voix » repliés sous « Vérifications » ; liens
+  barre fixe en bas, ouverte dans le navigateur : « Enregistrements »
+  (médiathèque `/media`) et « Profil » (`/profile` : langue, thème…), puis
+  version et pnex.io ; thème et déconnexion en boutons à icône dans la
+  barre du compte.
+- Thème clair / sombre : celui du système par défaut, bascule gardée dans la
+  session.
+- Corrigé : le menu de l'icône ne réagissait à aucun clic — `muda` garde le
+  premier gestionnaire d'événements de menu (`OnceCell`) et dioxus pose
+  celui de la barre de menus avant celui de l'icône ; l'enregistreur écoute
+  donc `use_muda_event_handler`.
 
 **Capture**
 - Windows : WASAPI loopback (`cpal`) ; loopback par process (`wasapi`,
