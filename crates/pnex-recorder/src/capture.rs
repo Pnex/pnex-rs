@@ -15,8 +15,24 @@ use std::time::Instant;
 /// resample.
 pub const RATE: u32 = 16_000;
 
+/// Peak of the last 100 ms per channel (0 = microphone, 1 = what the
+/// computer plays), as absolute 16-bit sample values: the window's meters.
+pub type Levels = std::sync::Arc<[std::sync::atomic::AtomicU16; 2]>;
+
+/// Stores the peak of each channel of interleaved stereo `frames`.
+pub fn store_peaks(levels: &[std::sync::atomic::AtomicU16; 2], frames: &[i16]) {
+    let mut peak = [0u16; 2];
+    for (i, s) in frames.iter().enumerate() {
+        peak[i % 2] = peak[i % 2].max(s.unsigned_abs());
+    }
+    for (level, p) in levels.iter().zip(peak) {
+        level.store(p, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 pub struct Recording {
     pub path: PathBuf,
+    pub levels: Levels,
     /// Call app that triggered it, `None` when started by hand.
     pub app: Option<String>,
     pub started: Instant,
@@ -133,6 +149,8 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
     let file = path.to_path_buf();
     let flag = stop.clone();
+    let levels = Levels::default();
+    let meters = levels.clone();
     let thread = std::thread::spawn(move || {
         let open = |dev: &str, what: &str| {
             Simple::new(
@@ -176,7 +194,9 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
         while !flag.load(Ordering::Relaxed) {
             mic.read(&mut mic_buf).map_err(|e| format!("{e}"))?;
             out.read(&mut out_buf).map_err(|e| format!("{e}"))?;
-            for s in interleave(&mic_buf, &out_buf) {
+            let frames = interleave(&mic_buf, &out_buf);
+            store_peaks(&meters, &frames);
+            for s in frames {
                 writer.write_sample(s).map_err(|e| e.to_string())?;
             }
             blocks += 1;
@@ -190,6 +210,7 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
     match ready_rx.recv() {
         Ok(Ok(())) => Ok(Recording {
             path: path.to_path_buf(),
+            levels,
             app,
             started: Instant::now(),
             stop,
@@ -267,6 +288,8 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
     let file = path.to_path_buf();
     let flag = stop.clone();
+    let levels = Levels::default();
+    let meters = levels.clone();
     // WASAPI streams are not Send: they live and die in this thread.
     let thread = std::thread::spawn(move || {
         let mic_q: Queue = Arc::default();
@@ -313,10 +336,14 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
                 q.drain(..n).collect::<Vec<i16>>()
             };
             // Loopback delivers nothing while nothing plays: silence.
-            for (i, m) in mic.iter().enumerate() {
-                for s in [*m, other.get(i).copied().unwrap_or(0)] {
-                    writer.write_sample(s).map_err(|e| e.to_string())?;
-                }
+            let frames: Vec<i16> = mic
+                .iter()
+                .enumerate()
+                .flat_map(|(i, m)| [*m, other.get(i).copied().unwrap_or(0)])
+                .collect();
+            store_peaks(&meters, &frames);
+            for s in frames {
+                writer.write_sample(s).map_err(|e| e.to_string())?;
             }
             ticks += 1;
             if ticks.is_multiple_of(10) {
@@ -328,6 +355,7 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
     match ready_rx.recv() {
         Ok(Ok(())) => Ok(Recording {
             path: path.to_path_buf(),
+            levels,
             app,
             started: Instant::now(),
             stop,
@@ -369,6 +397,14 @@ mod tests {
         let mut out = Vec::new();
         super::Resampler::new(44_100).push(&[0.0; 44_100], &mut out);
         assert!((15_999..=16_001).contains(&out.len()), "{}", out.len());
+    }
+
+    #[test]
+    fn peaks_are_per_channel() {
+        let levels = super::Levels::default();
+        super::store_peaks(&levels, &[100, -3000, -200, 50]);
+        let get = |i: usize| levels[i].load(std::sync::atomic::Ordering::Relaxed);
+        assert_eq!((get(0), get(1)), (200, 3000));
     }
 
     #[test]

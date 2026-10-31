@@ -229,6 +229,16 @@ séparé de l'application desktop complète.
   barre du compte.
 - Thème clair / sombre : celui du système par défaut, bascule gardée dans la
   session.
+- Vu-mètres pendant un enregistrement : « Micro » et « Son de l'ordinateur »,
+  crête de chaque canal toutes les 100 ms publiée par le fil de capture
+  (atomiques partagés), échelle −50 → 0 dBFS, 24 segments, rouge près de la
+  saturation ; l'utilisateur voit que les deux côtés sont captés.
+- **Modèle pour les appels : Parakeet, pas Canary** (constaté 2026-10-31 sur
+  un débat télévisé avec public, 22 s sans silence de 2 s) : Canary rend
+  « Oui. » sur la fenêtre entière et des fragments sur des fenêtres de
+  8–15 s (arrêt prématuré du décodeur sur fond bruité), alors que Parakeet
+  TDT 0.6B v3 transcrit les 22 s en entier (2,3 s de calcul). Le profil
+  d'appels conseillé est Parakeet + Silero.
 - Corrigé : le menu de l'icône ne réagissait à aucun clic — `muda` garde le
   premier gestionnaire d'événements de menu (`OnceCell`) et dioxus pose
   celui de la barre de menus avant celui de l'icône ; l'enregistreur écoute

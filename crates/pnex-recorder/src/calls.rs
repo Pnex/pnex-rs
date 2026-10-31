@@ -352,7 +352,7 @@ pub fn CallsCard() -> Element {
         .rec
         .read()
         .as_ref()
-        .map(|r| (r.app.clone(), clock(r.started.elapsed())));
+        .map(|r| (r.app.clone(), clock(r.started.elapsed()), r.levels.clone()));
     if !capture::supported() {
         return rsx! {
             div { class: "status",
@@ -361,12 +361,13 @@ pub fn CallsCard() -> Element {
         };
     }
     rsx! {
-        if let Some((app, time)) = rec {
+        if let Some((app, time, levels)) = rec {
             div { class: "status live", role: "status",
                 p { class: "lamp",
                     {t!("rec-recording", app : app.unwrap_or_else(|| t!("rec-manual")))}
                 }
                 p { class: "clock", "{time}" }
+                Meters { levels: Source(levels) }
                 p { class: "muted", {t!("rec-consent")} }
                 div { class: "actions",
                     button {
@@ -430,6 +431,70 @@ pub fn CallsCard() -> Element {
     }
 }
 
+/// Segments of a meter.
+const SEGMENTS: usize = 24;
+
+/// Lit share of a meter for a 16-bit peak: −50 dBFS empty, 0 dBFS full.
+fn meter_share(peak: u16) -> f32 {
+    let db = 20.0 * (f32::from(peak.max(1)) / f32::from(i16::MAX)).log10();
+    ((db + 50.0) / 50.0).clamp(0.0, 1.0)
+}
+
+/// The levels of one recording; equal when they are the same recording's.
+#[derive(Clone)]
+struct Source(crate::capture::Levels);
+
+impl PartialEq for Source {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+/// Live levels of the microphone and of what the computer plays, while a
+/// call is recorded: the user sees both sides are captured.
+#[component]
+fn Meters(levels: Source) -> Element {
+    let mut shown = use_signal(|| [0.0f32; 2]);
+    use_future(move || {
+        let levels = levels.clone();
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(80)).await;
+                let now = [0, 1]
+                    .map(|i| meter_share(levels.0[i].load(std::sync::atomic::Ordering::Relaxed)));
+                // Fast attack, slow release: a meter that reads like one.
+                let before = *shown.peek();
+                shown.set([0, 1].map(|i| now[i].max(before[i] - 0.06)));
+            }
+        }
+    });
+    let [mic, pc] = shown();
+    rsx! {
+        div { class: "meters", "aria-hidden": "true",
+            MeterRow { label: t!("rec-meter-mic"), share: mic }
+            MeterRow { label: t!("rec-meter-pc"), share: pc }
+        }
+    }
+}
+
+#[component]
+fn MeterRow(label: String, share: f32) -> Element {
+    let lit = (share * SEGMENTS as f32).round() as usize;
+    rsx! {
+        div { class: "meter",
+            span { "{label}" }
+            div { class: "segments",
+                for i in 0..SEGMENTS {
+                    i {
+                        key: "{i}",
+                        class: if i < lit { if i >= SEGMENTS - 3 { "on hot" } else { "on" } } else { "" },
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The last call sent and the recordings still waiting for the server.
 #[component]
 fn Activity() -> Element {
@@ -490,6 +555,14 @@ fn Activity() -> Element {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_meter_spans_minus_50_to_0_dbfs() {
+        assert_eq!(super::meter_share(0), 0.0);
+        assert_eq!(super::meter_share(i16::MAX as u16), 1.0);
+        let half = super::meter_share(259); // about -42 dBFS
+        assert!(half > 0.1 && half < 0.2, "{half}");
+    }
+
     #[test]
     fn plain_drops_the_fluent_isolation_marks() {
         assert_eq!(

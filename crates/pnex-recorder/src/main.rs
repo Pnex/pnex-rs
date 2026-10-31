@@ -114,6 +114,13 @@ details.checks[open] > summary { margin-bottom: 10px; }
 .tools { display: flex; gap: 6px; flex: none; }
 /* Pages of the web app, pinned to the bottom of the window. */
 .dock { margin-top: auto; position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 10px 0 2px; display: flex; flex-direction: column; gap: 8px; }
+/* Live meters of a recording: microphone and computer audio. */
+.meters { display: flex; flex-direction: column; gap: 6px; }
+.meter { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.segments { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 12px; }
+.segments i { background: var(--soft); border-radius: 1px; }
+.segments i.on { background: var(--armed); }
+.segments i.hot { background: var(--rec); }
 /* Buttons with a pictogram: the bottom bar and the recording actions. */
 .dock .row > button, .status .actions > button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .dock svg, .status button svg { width: 18px; height: 18px; flex: none; }

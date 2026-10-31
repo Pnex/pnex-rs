@@ -130,3 +130,5 @@ about-version = Enregistreur PNeX { $version }
 web-open = Ouvrir dans PNeX
 rec-case-title = Appels de { $email }
 rec-not-filed = Envoyé et transcrit, mais pas classé dans votre dossier : { $error }
+rec-meter-mic = Micro
+rec-meter-pc = Son de l'ordinateur
