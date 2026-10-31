@@ -114,8 +114,14 @@ details.checks[open] > summary { margin-bottom: 10px; }
 .tools { display: flex; gap: 6px; flex: none; }
 /* Pages of the web app, pinned to the bottom of the window. */
 .dock { margin-top: auto; position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 10px 0 2px; display: flex; flex-direction: column; gap: 8px; }
-.dock .row > button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.dock svg { width: 18px; height: 18px; color: var(--muted); }
+/* Buttons with a pictogram: the bottom bar and the recording actions. */
+.dock .row > button, .status .actions > button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.dock svg, .status button svg { width: 18px; height: 18px; flex: none; }
+.dock svg { color: var(--muted); }
+.status .actions { display: flex; gap: 8px; }
+.status button.primary svg { color: var(--bg); }
+#rec-start svg { color: var(--rec); }
+#rec-start { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .about { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 12px; }
 button.quiet { border: 0; background: none; padding: 2px 4px; color: var(--muted); font-size: 12px; }
 button.quiet:hover { color: var(--ink); }
@@ -484,10 +490,17 @@ const MOON: &str = "M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z";
 const WAVEFORM: &str = "M3 12h2M7 8v8M11 4v16M15 8v8M19 11v2";
 const PERSON: &str = "M12 4a4 4 0 1 1 0 8a4 4 0 1 1 0-8M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6";
 const SIGN_OUT: &str = "M10 4H5v16h5M14 8l4 4-4 4M18 12H9";
+/// Record: a dot in a ring.
+pub(crate) const RECORD: &str =
+    "M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0-18M12 9a3 3 0 1 1 0 6a3 3 0 1 1 0-6";
+/// Send: a paper plane.
+pub(crate) const SEND: &str = "M21 3L10 14M21 3l-7 18-4-7-7-4z";
+/// Discard: a bin.
+pub(crate) const DISCARD: &str = "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6";
 
 /// A 24 px line icon drawn from one SVG path.
 #[component]
-fn Icon(d: &'static str) -> Element {
+pub(crate) fn Icon(d: &'static str) -> Element {
     rsx! {
         svg {
             view_box: "0 0 24 24",

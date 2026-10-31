@@ -368,11 +368,12 @@ pub fn CallsCard() -> Element {
                 }
                 p { class: "clock", "{time}" }
                 p { class: "muted", {t!("rec-consent")} }
-                div { class: "row",
+                div { class: "actions",
                     button {
                         id: "rec-discard",
                         r#type: "button",
                         onclick: move |_| calls.discard(),
+                        crate::Icon { d: crate::DISCARD }
                         {t!("rec-discard")}
                     }
                     button {
@@ -380,6 +381,7 @@ pub fn CallsCard() -> Element {
                         class: "primary",
                         r#type: "button",
                         onclick: move |_| calls.stop_and_send(),
+                        crate::Icon { d: crate::SEND }
                         {t!("rec-stop")}
                     }
                 }
@@ -419,6 +421,7 @@ pub fn CallsCard() -> Element {
                     id: "rec-start",
                     r#type: "button",
                     onclick: move |_| calls.start(None),
+                    crate::Icon { d: crate::RECORD }
                     {t!("rec-start")}
                 }
             }
