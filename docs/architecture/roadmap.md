@@ -1199,6 +1199,18 @@ lecteur intersectés avec le périmètre de l'application. Le dashboard
 reste l'outil de supervision. Ni connecteur externe, ni code, ni HTML.
 Premier lot de valeur : AB0 → AB2 (application de consultation).
 
+### P2.35 — Recherche et décision d'investissement (ajout 2026-10-31) — **PRD proposé, rien d'implémenté**
+
+Doc : `markets-research.md` (D523–D536, lots MK0–MK6). Pack `markets`
+(instrument, cotation, émetteur = organisation existante), référentiels
+GLEIF / OpenFIGI / FIRDS, cours de clôture bruts dans O2 avec opérations
+sur titres, articles et filings collectés par les pipelines et les règles
+de sites, événements de marché extraits à citation vérifiée et passés en
+« À valider », étude d'événement pure (`pnex_core::markets`), dossier
+thèse avec journal et positions fictives, test de règle point-in-time
+(`known_at`). Ni temps réel actions, ni ordre passé, ni signal diffusé.
+Premier ensemble utile sans LLM : MK0 → MK2 + MK4.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -1581,3 +1593,6 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   (D498–D505, lots LR7–LR11) : famille de packs (corpus, pratique,
   veille), org de référence + `external_ref`, couches `_eu`, `_echr`,
   `_intl`, pack `legal_practice`, doctrine interne.
+- **2026-10-31 (investissement)** — Ajout de P2.35 (`markets-research.md`,
+  D523–D536, lots MK0–MK6) : veille d'émetteurs, événements sourcés,
+  étude d'événement, thèses et journal, tests point-in-time.
