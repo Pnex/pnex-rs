@@ -352,7 +352,7 @@ pub fn CallsCard() -> Element {
         .rec
         .read()
         .as_ref()
-        .map(|r| (r.app.clone(), clock(r.started.elapsed()), r.levels.clone()));
+        .map(|r| (r.app.clone(), clock(r.started.elapsed())));
     if !capture::supported() {
         return rsx! {
             div { class: "status",
@@ -361,13 +361,12 @@ pub fn CallsCard() -> Element {
         };
     }
     rsx! {
-        if let Some((app, time, levels)) = rec {
+        if let Some((app, time)) = rec {
             div { class: "status live", role: "status",
                 p { class: "lamp",
                     {t!("rec-recording", app : app.unwrap_or_else(|| t!("rec-manual")))}
                 }
                 p { class: "clock", "{time}" }
-                Meters { levels: Source(levels) }
                 p { class: "muted", {t!("rec-consent")} }
                 div { class: "actions",
                     button {
@@ -442,7 +441,7 @@ fn meter_share(peak: u16) -> f32 {
 
 /// The levels of one recording; equal when they are the same recording's.
 #[derive(Clone)]
-struct Source(crate::capture::Levels);
+pub struct Source(pub crate::capture::Levels);
 
 impl PartialEq for Source {
     fn eq(&self, other: &Self) -> bool {
@@ -450,10 +449,10 @@ impl PartialEq for Source {
     }
 }
 
-/// Live levels of the microphone and of what the computer plays, while a
-/// call is recorded: the user sees both sides are captured.
+/// Live levels of the microphone and of what the computer plays, shown at
+/// all times: the user sees both sides would be captured before a call.
 #[component]
-fn Meters(levels: Source) -> Element {
+pub fn Meters(levels: Source) -> Element {
     let mut shown = use_signal(|| [0.0f32; 2]);
     use_future(move || {
         let levels = levels.clone();

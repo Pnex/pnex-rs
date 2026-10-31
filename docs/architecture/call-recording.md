@@ -229,10 +229,15 @@ séparé de l'application desktop complète.
   barre du compte.
 - Thème clair / sombre : celui du système par défaut, bascule gardée dans la
   session.
-- Vu-mètres pendant un enregistrement : « Micro » et « Son de l'ordinateur »,
-  crête de chaque canal toutes les 100 ms publiée par le fil de capture
-  (atomiques partagés), échelle −50 → 0 dBFS, 24 segments, rouge près de la
-  saturation ; l'utilisateur voit que les deux côtés sont captés.
+- Vu-mètres **permanents** (en bas, au-dessus des boutons) : « Micro » et
+  « Son de l'ordinateur », mesurés par une capture sans fichier qui tourne
+  tant que l'utilisateur est connecté (`capture::monitor`, mêmes flux que
+  l'enregistrement, rien n'est écrit ni envoyé) ; crête de chaque canal
+  toutes les 100 ms, échelle −50 → 0 dBFS, 24 segments, rouge près de la
+  saturation : on voit que les deux côtés seraient captés avant l'appel.
+  Effet : l'indicateur « micro utilisé » du système reste allumé tant que
+  l'enregistreur est connecté ; la détection d'appel ignore ses propres
+  flux (nom « pnex-recorder »).
 - **Modèle pour les appels : Parakeet, pas Canary** (constaté 2026-10-31 sur
   un débat télévisé avec public, 22 s sans silence de 2 s) : Canary rend
   « Oui. » sur la fenêtre entière et des fragments sur des fenêtres de

@@ -115,9 +115,9 @@ details.checks[open] > summary { margin-bottom: 10px; }
 /* Pages of the web app, pinned to the bottom of the window. */
 .dock { margin-top: auto; position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--line); padding: 10px 0 2px; display: flex; flex-direction: column; gap: 8px; }
 /* Live meters of a recording: microphone and computer audio. */
-.meters { display: flex; flex-direction: column; gap: 6px; }
-.meter { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-.segments { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 12px; }
+.meters { display: flex; flex-direction: column; gap: 4px; }
+.meter { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+.segments { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 6px; }
 .segments i { background: var(--soft); border-radius: 1px; }
 .segments i.on { background: var(--armed); }
 .segments i.hot { background: var(--rec); }
@@ -564,6 +564,9 @@ fn Signed(session: Signal<Session>) -> Element {
         let s = session.read();
         (s.email.clone(), s.url.clone())
     };
+    // Measures both devices while the window lives (nothing is written):
+    // the meters move before any call. Stops on sign-out.
+    let monitor = use_hook(|| std::rc::Rc::new(capture::monitor().ok()));
     rsx! {
         div { class: "account",
             span { {t!("main-signed-in", email : email, server : server)} }
@@ -611,6 +614,9 @@ fn Signed(session: Signal<Session>) -> Element {
             }
         }
         nav { class: "dock", aria_label: t!("web-open"),
+            if let Some(m) = monitor.as_ref() {
+                calls::Meters { levels: calls::Source(m.levels.clone()) }
+            }
             div { class: "row",
                 button {
                     r#type: "button",

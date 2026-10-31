@@ -32,7 +32,6 @@ pub fn store_peaks(levels: &[std::sync::atomic::AtomicU16; 2], frames: &[i16]) {
 
 pub struct Recording {
     pub path: PathBuf,
-    pub levels: Levels,
     /// Call app that triggered it, `None` when started by hand.
     pub app: Option<String>,
     pub started: Instant,
@@ -126,11 +125,12 @@ pub fn interleave(mic: &[u8], out: &[u8]) -> Vec<i16> {
         .collect()
 }
 
-/// Starts recording into `path`; both devices are open when it returns.
+/// Captures both devices into `file` (or only measures them, without a
+/// file); both devices are open when it returns.
 /// `PNEX_RECORDER_MIC` / `PNEX_RECORDER_OUTPUT` pick other devices than the
 /// defaults (a PulseAudio source name; the output is a monitor source).
 #[cfg(target_os = "linux")]
-pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
+fn run(file: Option<PathBuf>) -> Result<Running, String> {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
@@ -147,7 +147,7 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
     };
     let stop = Arc::new(AtomicBool::new(false));
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
-    let file = path.to_path_buf();
+    let target = file.clone();
     let flag = stop.clone();
     let levels = Levels::default();
     let meters = levels.clone();
@@ -173,7 +173,9 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
             sample_format: hound::SampleFormat::Int,
         };
         let opened = streams.and_then(|s| {
-            hound::WavWriter::create(&file, wav)
+            file.as_ref()
+                .map(|f| hound::WavWriter::create(f, wav))
+                .transpose()
                 .map(|w| (s, w))
                 .map_err(|e| e.to_string())
         });
@@ -196,6 +198,9 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
             out.read(&mut out_buf).map_err(|e| format!("{e}"))?;
             let frames = interleave(&mic_buf, &out_buf);
             store_peaks(&meters, &frames);
+            let Some(writer) = writer.as_mut() else {
+                continue;
+            };
             for s in frames {
                 writer.write_sample(s).map_err(|e| e.to_string())?;
             }
@@ -205,29 +210,29 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
                 writer.flush().map_err(|e| e.to_string())?;
             }
         }
-        writer.finalize().map_err(|e| e.to_string())
+        writer.map_or(Ok(()), |w| w.finalize().map_err(|e| e.to_string()))
     });
     match ready_rx.recv() {
-        Ok(Ok(())) => Ok(Recording {
-            path: path.to_path_buf(),
+        Ok(Ok(())) => Ok(Running {
             levels,
-            app,
-            started: Instant::now(),
             stop,
             thread,
         }),
         Ok(Err(e)) => {
             let _ = thread.join();
-            let _ = std::fs::remove_file(path);
+            if let Some(f) = target {
+                let _ = std::fs::remove_file(f);
+            }
             Err(e)
         }
         Err(_) => Err("capture thread ended before opening the devices".into()),
     }
 }
 
-/// Starts recording into `path`; both devices are open when it returns.
+/// Captures both devices into `file` (or only measures them, without a
+/// file); both devices are open when it returns.
 #[cfg(windows)]
-pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
+fn run(file: Option<PathBuf>) -> Result<Running, String> {
     use std::collections::VecDeque;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
@@ -286,7 +291,7 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
 
     let stop = Arc::new(AtomicBool::new(false));
     let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
-    let file = path.to_path_buf();
+    let target = file.clone();
     let flag = stop.clone();
     let levels = Levels::default();
     let meters = levels.clone();
@@ -310,7 +315,11 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
                 bits_per_sample: 16,
                 sample_format: hound::SampleFormat::Int,
             };
-            let writer = hound::WavWriter::create(&file, spec).map_err(|e| e.to_string())?;
+            let writer = file
+                .as_ref()
+                .map(|f| hound::WavWriter::create(f, spec))
+                .transpose()
+                .map_err(|e| e.to_string())?;
             Ok::<_, String>((a, b, writer))
         })();
         let (_mic, _out, mut writer) = match opened {
@@ -342,6 +351,9 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
                 .flat_map(|(i, m)| [*m, other.get(i).copied().unwrap_or(0)])
                 .collect();
             store_peaks(&meters, &frames);
+            let Some(writer) = writer.as_mut() else {
+                continue;
+            };
             for s in frames {
                 writer.write_sample(s).map_err(|e| e.to_string())?;
             }
@@ -350,20 +362,19 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
                 writer.flush().map_err(|e| e.to_string())?;
             }
         }
-        writer.finalize().map_err(|e| e.to_string())
+        writer.map_or(Ok(()), |w| w.finalize().map_err(|e| e.to_string()))
     });
     match ready_rx.recv() {
-        Ok(Ok(())) => Ok(Recording {
-            path: path.to_path_buf(),
+        Ok(Ok(())) => Ok(Running {
             levels,
-            app,
-            started: Instant::now(),
             stop,
             thread,
         }),
         Ok(Err(e)) => {
             let _ = thread.join();
-            let _ = std::fs::remove_file(path);
+            if let Some(f) = target {
+                let _ = std::fs::remove_file(f);
+            }
             Err(e)
         }
         Err(_) => Err("capture thread ended before opening the devices".into()),
@@ -371,8 +382,56 @@ pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
 }
 
 #[cfg(not(any(target_os = "linux", windows)))]
-pub fn start(_path: &Path, _app: Option<String>) -> Result<Recording, String> {
+fn run(_file: Option<PathBuf>) -> Result<Running, String> {
     Err("call capture is not available on this system yet".into())
+}
+
+/// A capture thread and what it shares with the window.
+struct Running {
+    levels: Levels,
+    #[cfg(any(target_os = "linux", windows))]
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    #[cfg(any(target_os = "linux", windows))]
+    thread: std::thread::JoinHandle<Result<(), String>>,
+}
+
+/// Starts recording into `path`; both devices are open when it returns.
+pub fn start(path: &Path, app: Option<String>) -> Result<Recording, String> {
+    let r = run(Some(path.to_path_buf()))?;
+    Ok(Recording {
+        path: path.to_path_buf(),
+        app,
+        started: Instant::now(),
+        #[cfg(any(target_os = "linux", windows))]
+        stop: r.stop,
+        #[cfg(any(target_os = "linux", windows))]
+        thread: r.thread,
+    })
+}
+
+/// Measures the microphone and what the computer plays, without writing
+/// anything: the window's meters while no call is recorded. Stops when
+/// dropped.
+pub struct Monitor {
+    pub levels: Levels,
+    #[cfg(any(target_os = "linux", windows))]
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+pub fn monitor() -> Result<Monitor, String> {
+    let r = run(None)?;
+    Ok(Monitor {
+        levels: r.levels,
+        #[cfg(any(target_os = "linux", windows))]
+        stop: r.stop,
+    })
+}
+
+impl Drop for Monitor {
+    fn drop(&mut self) {
+        #[cfg(any(target_os = "linux", windows))]
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 #[cfg(test)]
