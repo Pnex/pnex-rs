@@ -54,8 +54,9 @@ pub enum Route {
         #[route("/dashboards?:id&:mode")]
         Dashboards { id: String, mode: String },
 
-        #[route("/media")]
-        Media {},
+        // `?label=` pre-fills the label filter (links from the PNeX recorder).
+        #[route("/media?:label")]
+        Media { label: String },
 
         // Review of an audio or video file: media, transcript, speakers (media-review.md D271).
         #[route("/media/:id/review")]

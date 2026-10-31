@@ -49,8 +49,10 @@ fn format_size(bytes: i64) -> String {
     }
 }
 
+/// `label`: initial label filter from the URL (`/media?label=source:recorder`,
+/// opened by the PNeX recorder).
 #[component]
-pub fn Media() -> Element {
+pub fn Media(label: String) -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut selected = use_signal(|| None::<String>);
 
@@ -70,8 +72,13 @@ pub fn Media() -> Element {
     let mut filter_kind = use_signal(|| "all".to_string());
     let search = use_signal(String::new);
     // D42: effective label filter ("name" or "name:value").
-    let filter_label = use_signal(String::new);
+    let mut filter_label = use_signal(String::new);
     let mut page = use_signal(|| 0i64);
+    // A label in the URL becomes the filter, also when the route changes in place.
+    use_effect(use_reactive((&label,), move |(label,)| {
+        filter_label.set(label);
+        page.set(0);
+    }));
     let mut upload_open = use_signal(|| false);
     // Camera capture in flight (detached upload) — waiting indicator.
     let mut capture_running = use_signal(crate::capture::capture_in_progress);

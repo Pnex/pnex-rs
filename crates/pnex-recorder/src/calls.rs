@@ -115,7 +115,7 @@ impl Calls {
             let name = if app == queue::MANUAL {
                 plain(&t!("rec-name-manual", date: date))
             } else {
-                plain(&t!("rec-name", app: app, date: date))
+                plain(&t!("rec-name", app: app.clone(), date: date))
             };
             self.status.set(Status::Sending(name.clone()));
             let wav = file.clone();
@@ -148,7 +148,13 @@ impl Calls {
                     )
                 };
                 match session.upload_recording(org, part, &filename, &title).await {
-                    Ok(asset) => assets.push(asset),
+                    Ok(asset) => {
+                        // A missing label only hides the call from the filtered link.
+                        if let Err(e) = session.label_recording(org, &asset, &app).await {
+                            eprintln!("recording label failed: {e:?}");
+                        }
+                        assets.push(asset);
+                    }
                     Err(e) => {
                         failed = Some(e);
                         break;

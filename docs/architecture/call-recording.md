@@ -122,7 +122,9 @@ séparé de l'application desktop complète.
   requête reste sous la limite de 100 Mo des proxys (Cloudflare, constatée
   sur dev.pnex.io le 2026-10-31). Chaque partie = un média
   (`POST /api/v1/media`, nom « Appel <appli> du <date> », suffixe « (i/n) »
-  s'il y en a plusieurs) puis analyse `transcribe` (`POST /api/v1/media/{id}/analyses`),
+  s'il y en a plusieurs), étiqueté `source: recorder` et `app: <appli>`
+  (le bouton « Enregistrements » ouvre `/media?label=source:recorder`, la
+  médiathèque lit le filtre d'étiquette dans l'URL), puis analyse `transcribe` (`POST /api/v1/media/{id}/analyses`),
   qui tourne avec le **profil par défaut** de l'org (`runnable_profile`
   préfère désormais le défaut au premier par ordre alphabétique). Le fichier
   local n'est supprimé qu'une fois toutes les parties stockées ; sinon il

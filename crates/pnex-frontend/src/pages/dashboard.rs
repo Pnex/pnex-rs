@@ -217,7 +217,7 @@ pub fn Dashboard() -> Element {
             div { class: "{PANEL} mb-6 grid grid-cols-2 divide-line md:grid-cols-5 md:divide-x",
                 {readout(t!("home-open-cases"), cases_label, Route::Cases {})}
                 {readout(t!("nav-docs"), docs_label, Route::Docs { id: String::new() })}
-                {readout(t!("nav-library"), media_label, Route::Media {})}
+                {readout(t!("nav-library"), media_label, Route::Media { label: String::new() })}
                 {
                     readout(
                         t!("home-flows-deployed"),
@@ -262,7 +262,7 @@ pub fn Dashboard() -> Element {
                     crate::components::icons::BookOpen { class: "h-5 w-5" }
                 }
                 Space {
-                    to: Route::Media {},
+                    to: Route::Media { label: String::new() },
                     title: t!("nav-group-media"),
                     desc: t!("home-space-media"),
                     crate::components::icons::Image { class: "h-5 w-5" }

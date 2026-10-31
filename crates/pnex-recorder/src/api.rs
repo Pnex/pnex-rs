@@ -369,6 +369,33 @@ impl Session {
             .ok_or(ApiError::NotPnex)
     }
 
+    /// Labels a stored recording (`source: recorder`, `app: <call app>`): the
+    /// recorder's "Recordings" link filters the media library on them.
+    pub async fn label_recording(
+        &mut self,
+        org: i64,
+        asset: &str,
+        app: &str,
+    ) -> Result<(), ApiError> {
+        let bearer = self.bearer().await?;
+        let res = self
+            .http()
+            .put(format!(
+                "{}/api/v1/resources/media_asset/{asset}/labels",
+                self.url
+            ))
+            .bearer_auth(bearer)
+            .header("X-Org-Id", org.to_string())
+            .json(&json!({"labels": {"source": "recorder", "app": app.to_lowercase()}}))
+            .send()
+            .await
+            .map_err(|_| ApiError::Unreachable)?;
+        if !res.status().is_success() {
+            return Err(error_of(res).await);
+        }
+        Ok(())
+    }
+
     /// Starts the transcription of a stored recording (the org's default
     /// transcription profile runs it).
     pub async fn transcribe(

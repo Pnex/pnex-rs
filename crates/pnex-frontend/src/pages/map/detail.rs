@@ -224,7 +224,7 @@ pub(super) fn PoiDetail(
                                         nav.push(Route::Studio {});
                                     }
                                     _ => {
-                                        nav.push(Route::Media {});
+                                        nav.push(Route::Media { label: String::new() });
                                     }
                                 }
                             });

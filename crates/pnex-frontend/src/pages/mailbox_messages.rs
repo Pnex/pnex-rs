@@ -214,7 +214,7 @@ fn MessageText(message: MailMessage, on_saved: EventHandler<()>) -> Element {
                                     class: BTN_GHOST,
                                     onclick: move |_| {
                                         OPEN_MEDIA.with_mut(|v| *v = Some(media.clone()));
-                                        navigator.push(Route::Media {});
+                                        navigator.push(Route::Media { label: String::new() });
                                     },
                                     {t!("mailboxes-attachment-open")}
                                 }

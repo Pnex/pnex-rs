@@ -477,6 +477,9 @@ fn ThemeToggle(session: Signal<Session>) -> Element {
     }
 }
 
+/// The media library filtered on the recorder's label.
+const RECORDINGS: &str = "/media?label=source:recorder";
+
 const MOON: &str = "M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z";
 const WAVEFORM: &str = "M3 12h2M7 8v8M11 4v16M15 8v8M19 11v2";
 const PERSON: &str = "M12 4a4 4 0 1 1 0 8a4 4 0 1 1 0-8M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6";
@@ -592,7 +595,7 @@ fn Signed(session: Signal<Session>) -> Element {
                 button {
                     r#type: "button",
                     title: t!("web-open"),
-                    onclick: move |_| open_web(&session.peek().url, "/media"),
+                    onclick: move |_| open_web(&session.peek().url, RECORDINGS),
                     Icon { d: WAVEFORM }
                     {t!("web-recordings")}
                 }

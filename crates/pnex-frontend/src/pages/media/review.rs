@@ -381,7 +381,7 @@ pub fn MediaReview(id: String) -> Element {
         ListLayout {
             title: t!("media-review-title", name : name.clone()).to_string(),
             on_back: move |_| {
-                navigator.push(Route::Media {});
+                navigator.push(Route::Media { label: String::new() });
             },
             can_write,
             if let Some(t) = data.as_ref().filter(|t| t.runs.len() > 1) {

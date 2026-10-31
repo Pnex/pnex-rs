@@ -312,7 +312,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             | Route::CaseWorkspace { .. }
             | Route::Calendar {}
     );
-    let media = at(Route::Media {})
+    let media = matches!(route, Route::Media { .. })
         || at(Route::Cameras {})
         || at(Route::Streams {})
         || at(Route::VoiceId {})
@@ -446,9 +446,9 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     crate::components::icons::Image { class: icon }
                 },
                 NavItem {
-                    to: Route::Media {},
+                    to: Route::Media { label: String::new() },
                     label: t!("nav-library"),
-                    active: at(Route::Media {}),
+                    active: matches!(route, Route::Media { .. }),
                     on_navigate,
                 }
                 NavItem {
@@ -1043,7 +1043,9 @@ fn open_hit(
         "media" | "document" => {
             let id = hit.id.clone();
             crate::state::media::OPEN_MEDIA.with_mut(|v| *v = Some(id));
-            navigator.push(Route::Media {});
+            navigator.push(Route::Media {
+                label: String::new(),
+            });
         }
         "layer" => {
             let id = hit.id.clone();
