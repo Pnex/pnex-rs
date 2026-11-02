@@ -18,8 +18,9 @@ use super::tools::{self, ToolDeps, ToolOutcome, ToolTrace};
 pub const MAX_ITERATIONS: usize = 6;
 /// max_tokens per LLM call.
 pub const MAX_TOKENS: u32 = 4096;
-/// Timeout of ONE LLM call.
-pub const REQUEST_TIMEOUT_SECS: u64 = 90;
+/// Ceiling of ONE LLM call; each request sets its provider's own timeout
+/// (`ResolvedAiConfig::timeout`), which overrides this one.
+pub const REQUEST_TIMEOUT_SECS: u64 = pnex_core::LLM_TIMEOUT_MAX_SECS as u64;
 
 /// Process-wide HTTP client of the agent loop (connection pool + TLS
 /// session reuse across turns; cheap `Arc` clone).

@@ -378,8 +378,22 @@ pub struct LlmProvider {
     /// Usages this provider serves instead of the default (D212).
     #[serde(default)]
     pub usages: Vec<LlmUsage>,
+    /// Timeout of one LLM call, in seconds.
+    #[serde(default = "llm_timeout_default")]
+    pub timeout_secs: u32,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
+}
+
+/// Default timeout of one LLM call (hosted APIs answer well within it).
+pub const LLM_TIMEOUT_DEFAULT_SECS: u32 = 90;
+/// Accepted range of a provider's timeout; the upper bound covers a
+/// CPU-only local model writing a long answer.
+pub const LLM_TIMEOUT_MIN_SECS: u32 = 10;
+pub const LLM_TIMEOUT_MAX_SECS: u32 = 900;
+
+fn llm_timeout_default() -> u32 {
+    LLM_TIMEOUT_DEFAULT_SECS
 }
 
 /// LLM protocol of a provider.
@@ -455,6 +469,10 @@ pub struct LlmProviderInput {
     /// Usages to route to this provider; taken away from any other one.
     #[serde(default)]
     pub usages: Vec<LlmUsage>,
+    /// Timeout of one LLM call in seconds (10–900); `None` = 90 on create,
+    /// unchanged on update.
+    #[serde(default)]
+    pub timeout_secs: Option<u32>,
 }
 
 /// `POST …/providers/{id}/test` — one-shot ping of a provider.

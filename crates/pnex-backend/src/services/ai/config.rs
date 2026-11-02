@@ -51,6 +51,8 @@ pub struct ResolvedAiConfig {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    /// Timeout of one call to this provider.
+    pub timeout: std::time::Duration,
 }
 
 impl std::fmt::Debug for ResolvedAiConfig {
@@ -60,6 +62,7 @@ impl std::fmt::Debug for ResolvedAiConfig {
             .field("name", &self.name)
             .field("base_url", &self.base_url)
             .field("model", &self.model)
+            .field("timeout", &self.timeout)
             .field("api_key", &"<secret>")
             .finish()
     }

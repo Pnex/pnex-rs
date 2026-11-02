@@ -22,6 +22,8 @@ pub struct Model {
     /// Vault secret holding the API key.
     pub secret_id: Option<Uuid>,
     pub is_default: bool,
+    /// Timeout of one LLM call, in seconds.
+    pub timeout_secs: i32,
     pub created_by: Option<i64>,
     pub updated_by: Option<i64>,
     pub created_at: DateTimeWithTimeZone,

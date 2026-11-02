@@ -59,6 +59,7 @@ struct Clean {
     kind: Provider,
     base_url: Option<String>,
     model: String,
+    timeout_secs: Option<i32>,
 }
 
 fn invalid(field: &'static str, token: impl Into<String>) -> ProviderError {
@@ -110,11 +111,21 @@ fn validate(input: &LlmProviderInput) -> Result<Clean, ProviderError> {
         // openai_compat: the version root is mandatory (no public default).
         return Err(invalid("base_url", err_codes::FIELD_REQUIRED));
     }
+    let timeout_secs = match input.timeout_secs {
+        None => None,
+        Some(t)
+            if (pnex_core::LLM_TIMEOUT_MIN_SECS..=pnex_core::LLM_TIMEOUT_MAX_SECS).contains(&t) =>
+        {
+            Some(t as i32)
+        }
+        Some(_) => return Err(invalid("timeout_secs", err_codes::FIELD_INVALID)),
+    };
     Ok(Clean {
         name: name.to_string(),
         kind,
         base_url,
         model: model.to_string(),
+        timeout_secs,
     })
 }
 
@@ -282,6 +293,9 @@ pub async fn create(
         model: Set(clean.model),
         secret_id: Set(secret),
         is_default: Set(is_default),
+        timeout_secs: Set(clean
+            .timeout_secs
+            .unwrap_or(pnex_core::LLM_TIMEOUT_DEFAULT_SECS as i32)),
         created_by: Set(by.user_id),
         updated_by: Set(by.user_id),
         created_at: Set(now),
@@ -331,6 +345,9 @@ pub async fn update(
     am.model = Set(clean.model);
     am.secret_id = Set(secret);
     am.is_default = Set(input.is_default);
+    if let Some(t) = clean.timeout_secs {
+        am.timeout_secs = Set(t);
+    }
     am.updated_by = Set(by.user_id);
     let row = am.update(&txn).await?;
     set_usages(&txn, org_id, id, &input.usages).await?;
@@ -391,6 +408,7 @@ fn view(
         api_key_set: r.secret_id.is_some(),
         is_default: r.is_default,
         usages,
+        timeout_secs: u32::try_from(r.timeout_secs).unwrap_or(pnex_core::LLM_TIMEOUT_DEFAULT_SECS),
         updated_at: r.updated_at.to_rfc3339(),
     }
 }
@@ -441,6 +459,9 @@ pub async fn resolved<C: ConnectionTrait>(
         base_url,
         api_key,
         model: row.model.clone(),
+        timeout: std::time::Duration::from_secs(
+            u64::try_from(row.timeout_secs).unwrap_or(pnex_core::LLM_TIMEOUT_DEFAULT_SECS.into()),
+        ),
     }))
 }
 
@@ -514,6 +535,22 @@ mod tests {
             api_key: None,
             is_default: false,
             usages: Vec::new(),
+            timeout_secs: None,
+        }
+    }
+
+    #[test]
+    fn timeout_must_stay_in_range() {
+        let mut i = input("anthropic", None, "m");
+        for (t, ok) in [
+            (None, true),
+            (Some(10), true),
+            (Some(900), true),
+            (Some(9), false),
+            (Some(901), false),
+        ] {
+            i.timeout_secs = t;
+            assert_eq!(validate(&i).is_ok(), ok, "timeout {t:?}");
         }
     }
 

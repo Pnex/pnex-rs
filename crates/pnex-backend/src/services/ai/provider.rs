@@ -294,6 +294,7 @@ async fn anthropic_chat(
     egress_check(&url)?;
     let resp = http
         .post(&url)
+        .timeout(cfg.timeout)
         .header("x-api-key", &cfg.api_key)
         .header("anthropic-version", "2023-06-01")
         .json(&body)
@@ -595,6 +596,7 @@ async fn openai_chat(
     egress_check(&url)?;
     let resp = http
         .post(&url)
+        .timeout(cfg.timeout)
         .bearer_auth(&cfg.api_key)
         .json(&body)
         .send()

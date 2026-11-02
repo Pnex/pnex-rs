@@ -149,7 +149,10 @@ impl VisionCaptionNode {
         let url = format!("{}/caption", env("PNEX_FLOW_AI_URL")?.trim_end_matches('/'));
         let token = env("PNEX_FLOW_WRITE_TOKEN")?;
         let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
+            // The backend applies the provider's own timeout; never cut it first.
+            .timeout(Duration::from_secs(
+                u64::from(pnex_core::LLM_TIMEOUT_MAX_SECS) + 60,
+            ))
             .build()
             .map_err(|e| EdgelinkError::InvalidOperation(format!("{NODE} : http client: {e}")))?;
         Ok(Box::new(VisionCaptionNode {

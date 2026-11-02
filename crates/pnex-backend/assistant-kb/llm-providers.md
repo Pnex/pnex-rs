@@ -4,7 +4,7 @@ title: LLM providers (assistant, flows, file analyses)
 kind: feature
 pages: /orgs/current
 nodes: 
-err_codes: access-denied, llm-provider-not-found, llm-provider-name-taken
+err_codes: access-denied, llm-provider-not-found, llm-provider-name-taken, ai-timeout
 tools: 
 tags: llm, ai, assistant, used for, usage, flows llm, separate llm, anthropic, claude, openai, api key, model, provider, ia, configure assistant, bring your own llm, byo
 ---
@@ -12,7 +12,7 @@ The assistant runs on an LLM that your organization provides: PNeX itself suppli
 
 ## What you can do
 In the **LLM providers** section of the organization detail (Owner or Admin):
-- **Add a provider**: fill **Name**, **Type** (Anthropic or OpenAI-compatible), **Base URL** for OpenAI-compatible (the version root, e.g. https://api.openai.com/v1, no trailing slash), **Model**, and the **API key**, then **Save**.
+- **Add a provider**: fill **Name**, **Type** (Anthropic or OpenAI-compatible), **Base URL** for OpenAI-compatible (the version root, e.g. https://api.openai.com/v1, no trailing slash), **Model**, **Timeout per call (seconds)** and the **API key**, then **Save**.
   - The API key is a secret field: **Type a value** (stored encrypted as a dedicated secret) or **Pick an existing secret** from the Secrets page.
   - Tick **Default provider** for the one used by everything not routed elsewhere.
   - **Used for**: tick **Assistant**, **Flows and file analyses (text)** or **Images (captions)** to give that usage to this provider instead of the default. This keeps, for example, a local model for flows and Claude for the assistant. Ticking a usage takes it away from the provider that had it.
@@ -29,3 +29,4 @@ The table shows **Name**, **Type**, **Model**, **API key** (set, with the secret
 - The server refuses provider addresses that point at itself or at its internal services (loopback, link-local, cloud metadata, single-word host names such as `ollama`): use the LAN address of the machine running the model (for example `http://192.168.1.20:11434`). The platform administrator can allow a specific host name.
 - The key is never shown again; replace it from the provider form or from the Secrets page. Its usage appears in the Secrets page **Used by** column as "LLM provider".
 - Provider names are unique within the organization.
+- **Timeout per call** (10 to 900 s, default 90) bounds how long the server waits for one answer, for the assistant, flow nodes and file analyses alike. "The LLM provider did not answer in time" on long answers = raise it on that provider; a local model running on CPU often needs 300 or more.

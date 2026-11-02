@@ -209,6 +209,7 @@ async fn org_provider(ctx: &loco_rs::app::AppContext, org: i64, url: &str) {
             }),
             is_default: true,
             usages: Vec::new(),
+            timeout_secs: None,
         },
     )
     .await
@@ -1080,11 +1081,13 @@ async fn one_turn_at_a_time() {
         let org = personal_org(&server, &env.alice).await;
         let conv = new_conversation(&server, &env.alice, org).await;
         let id = uuid::Uuid::parse_str(&conv).expect("uuid");
-        assert!(
-            pnex_backend::services::ai::conversations::acquire(&ctx.db, id)
-                .await
-                .expect("acquire")
-        );
+        assert!(pnex_backend::services::ai::conversations::acquire(
+            &ctx.db,
+            id,
+            std::time::Duration::from_secs(90),
+        )
+        .await
+        .expect("acquire"));
         reset_mock();
         let busy = send_in(&server, &env.alice, org, &conv, "hi").await;
         assert_eq!(busy.status_code(), 409, "{}", busy.text());

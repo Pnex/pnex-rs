@@ -263,6 +263,11 @@ fn ProviderForm(
     });
     let mut model = use_signal(|| init.as_ref().map(|p| p.model.clone()).unwrap_or_default());
     let mut is_default = use_signal(|| init.as_ref().is_some_and(|p| p.is_default));
+    let mut timeout = use_signal(|| {
+        init.as_ref()
+            .map_or(pnex_core::LLM_TIMEOUT_DEFAULT_SECS, |p| p.timeout_secs)
+            .to_string()
+    });
     let mut usages = use_signal(|| init.as_ref().map(|p| p.usages.clone()).unwrap_or_default());
     let key = use_signal(|| SecretDraft::from_view(init.as_ref().and_then(|p| p.api_key.clone())));
     let mut busy = use_signal(|| false);
@@ -277,6 +282,8 @@ fn ProviderForm(
             api_key: key.read().to_input(),
             is_default: is_default(),
             usages: usages(),
+            // Empty or unparsable keeps the stored value; the server checks the range.
+            timeout_secs: timeout().trim().parse().ok(),
         };
         busy.set(true);
         spawn(async move {
@@ -363,6 +370,23 @@ fn ProviderForm(
                         value: "{model}",
                         oninput: move |e| model.set(e.value()),
                     }
+                }
+                div {
+                    label {
+                        r#for: "llm-providers-field-5",
+                        class: "block text-xs text-gray-600 mb-1",
+                        {t!("llm-timeout")}
+                    }
+                    input {
+                        id: "llm-providers-field-5",
+                        class: INPUT,
+                        r#type: "number",
+                        min: "{pnex_core::LLM_TIMEOUT_MIN_SECS}",
+                        max: "{pnex_core::LLM_TIMEOUT_MAX_SECS}",
+                        value: "{timeout}",
+                        oninput: move |e| timeout.set(e.value()),
+                    }
+                    p { class: "text-xs text-gray-500 mt-1", {t!("llm-timeout-hint")} }
                 }
             }
             SecretField {
