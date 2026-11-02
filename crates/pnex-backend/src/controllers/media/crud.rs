@@ -136,7 +136,7 @@ pub(super) struct ListQuery {
     kind: Option<String>,
     search: Option<String>,
     /// **Effective** label filter `name` or `name:value` (D42: own labels or
-    /// inherited from a containment ancestor).
+    /// inherited from a containment ancestor); several comma-separated terms all required.
     label: Option<String>,
     #[param(value_type = Option<i64>)]
     limit: Option<String>,
@@ -152,7 +152,7 @@ pub(super) struct ListQuery {
     tag = "media",
     operation_id = "media_list",
     summary = "List the media assets of the organisation",
-    description = "Paginated (`limit` default 10, max 100; `offset`), most recently updated first. Filters: `kind` (comma-separated list), `search` (name contains), `label` (effective label `name` or `name:value`, inherited ones included).",
+    description = "Paginated (`limit` default 10, max 100; `offset`), most recently updated first. Filters: `kind` (comma-separated list), `search` (name contains), `label` (effective label `name` or `name:value`, several comma-separated terms all required, inherited ones included).",
     params(ListQuery),
     responses(
         (status = 200, body = pnex_core::Paginated<MediaAssetDto>),

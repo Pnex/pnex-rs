@@ -132,7 +132,7 @@ struct CheckQueued {
 #[derive(serde::Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 struct ListQuery {
-    /// Label filter `name` / `name:value` (D218).
+    /// Label filter `name` / `name:value` (D218), several comma-separated terms all required.
     label: Option<String>,
     #[param(value_type = Option<i64>)]
     limit: Option<String>,

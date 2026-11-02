@@ -77,7 +77,7 @@ pub(super) struct ListFlowsQuery {
     search: Option<String>,
     /// `draft`, `deployed` or `stopped`.
     status: Option<String>,
-    /// D42: effective label (`name` or `name:value`, inherited included).
+    /// D42: effective label (`name` or `name:value`, several comma-separated terms all required, inherited included).
     label: Option<String>,
     #[param(value_type = Option<i64>)]
     limit: Option<String>,

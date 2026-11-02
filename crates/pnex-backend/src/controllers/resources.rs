@@ -1039,7 +1039,7 @@ async fn delete_folder(
 #[derive(Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 struct SearchQuery {
-    /// Label filter `name` or `name:value` (own labels, D218).
+    /// Label filter `name` or `name:value` (own labels, D218), several comma-separated terms all required.
     label: String,
     /// Comma-separated kinds to search (absent = every labelable kind).
     kinds: Option<String>,
@@ -1063,7 +1063,7 @@ struct SearchResultItem {
     tag = "resources",
     operation_id = "resources_search",
     summary = "Find resources by label",
-    description = "Resources of the org carrying the label filter (`name` or `name:value`), optionally restricted to some kinds (`kinds`, comma-separated), paginated (`limit`/`offset`). Read-only.",
+    description = "Resources of the org carrying the label filter (`name` or `name:value`, several comma-separated terms all required), optionally restricted to some kinds (`kinds`, comma-separated), paginated (`limit`/`offset`). Read-only.",
     params(SearchQuery),
     responses(
         (status = 200, body = pnex_core::Paginated<SearchResultItem>),

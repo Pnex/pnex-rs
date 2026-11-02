@@ -123,32 +123,52 @@ pub fn valid_label_value(value: &str) -> bool {
     !value.is_empty() && value.chars().count() <= LABEL_VALUE_MAX
 }
 
-/// List filter `"site:serre"` / `"critique"` (bare tag).
+/// One label filter term: `name` alone (bare tag) or `name:value`.
+pub type LabelFilter = (String, Option<String>);
+
+/// List filter `"site:serre"` / `"critique"` (bare tag), several terms
+/// comma-separated and AND-combined (`"source:recorder,app:zoom"`).
+/// A comma starts a new term only when what follows reads as a label name
+/// (`name` or `name:…`), so `"city:Paris, France"` stays one value.
 /// `(None, Some(token))` = invalid, with the field token (`required` for an
 /// empty filter, else `invalid`).
-pub fn parse_label_filter(raw: &str) -> (Option<(String, Option<String>)>, Option<String>) {
+pub fn parse_label_filter(raw: &str) -> (Option<Vec<LabelFilter>>, Option<String>) {
     let raw = raw.trim();
     if raw.is_empty() {
         return (None, Some(crate::err_codes::FIELD_REQUIRED.into()));
     }
-    match raw.split_once(':') {
-        Some((name, value)) => {
-            let value = value.trim();
-            if !valid_label_name(name) {
-                return (None, Some(crate::err_codes::FIELD_INVALID.into()));
+    // shortcut: a value containing ", <bare-name>" is split into two terms; escape the separator if that bites.
+    let mut terms: Vec<String> = Vec::new();
+    for segment in raw.split(',') {
+        let head = segment.trim();
+        let name = head.split_once(':').map_or(head, |(n, _)| n);
+        match terms.last_mut() {
+            Some(last) if !valid_label_name(name) => {
+                last.push(',');
+                last.push_str(segment);
             }
-            if !valid_label_value(value) {
-                return (None, Some(crate::err_codes::FIELD_INVALID.into()));
-            }
-            (Some((name.to_string(), Some(value.to_string()))), None)
-        }
-        None => {
-            if !valid_label_name(raw) {
-                return (None, Some(crate::err_codes::FIELD_INVALID.into()));
-            }
-            (Some((raw.to_string(), None)), None)
+            _ => terms.push(head.to_string()),
         }
     }
+    if terms.len() > LABELS_MAX {
+        return (None, Some(crate::err_codes::FIELD_INVALID.into()));
+    }
+    let mut out = Vec::with_capacity(terms.len());
+    for term in terms {
+        let parsed = match term.split_once(':') {
+            Some((name, value)) => {
+                let value = value.trim();
+                (valid_label_name(name) && valid_label_value(value))
+                    .then(|| (name.to_string(), Some(value.to_string())))
+            }
+            None => valid_label_name(&term).then(|| (term.clone(), None)),
+        };
+        match parsed {
+            Some(f) => out.push(f),
+            None => return (None, Some(crate::err_codes::FIELD_INVALID.into())),
+        }
+    }
+    (Some(out), None)
 }
 
 // ─────────────────────────── tests ───────────────────────────
@@ -213,11 +233,24 @@ mod tests {
     #[test]
     fn label_filters() {
         let (f, err) = parse_label_filter("site:serre");
-        assert_eq!(f, Some(("site".into(), Some("serre".into()))));
+        assert_eq!(f, Some(vec![("site".into(), Some("serre".into()))]));
         assert!(err.is_none());
         let (f, err) = parse_label_filter("critique");
-        assert_eq!(f, Some(("critique".into(), None)));
+        assert_eq!(f, Some(vec![("critique".into(), None)]));
         assert!(err.is_none());
+        let (f, _) = parse_label_filter("source:recorder, app:zoom,critique");
+        assert_eq!(
+            f,
+            Some(vec![
+                ("source".into(), Some("recorder".into())),
+                ("app".into(), Some("zoom".into())),
+                ("critique".into(), None),
+            ])
+        );
+        let (f, _) = parse_label_filter("city:Paris, France");
+        assert_eq!(f, Some(vec![("city".into(), Some("Paris, France".into()))]));
+        let (f, err) = parse_label_filter(",site");
+        assert!(f.is_none() && err.is_some(), "empty term rejected");
         let (f, err) = parse_label_filter("");
         assert!(f.is_none() && err.is_some());
         let (f, err) = parse_label_filter("Site:Serre");

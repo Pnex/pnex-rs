@@ -7,6 +7,10 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::components::icons;
+use crate::components::labels_editor::parse_entry;
+use crate::components::ui::LabelTag;
+use crate::state::toasts;
+use pnex_core::resources::parse_label_filter;
 
 /// Filter container — same class as the `filters` slot of
 /// [`super::layout::ListLayout`], to place the bar in the page body
@@ -63,7 +67,10 @@ pub fn SearchInput(
     }
 }
 
-/// Label filter (`name` or `name:value`) with the org's labels suggested.
+/// Label filter: one chip per term (`name` or `name:value`), all terms
+/// required (AND). `value` holds the comma-joined terms sent as the `label`
+/// list parameter (and accepted by `?label=` links). Enter adds the typed
+/// term, × or Backspace on an empty field removes one; each change submits.
 #[component]
 pub fn LabelFilterInput(
     placeholder: String,
@@ -71,23 +78,91 @@ pub fn LabelFilterInput(
     on_submit: Callback<()>,
 ) -> Element {
     let mut value = value;
+    let mut draft = use_signal(String::new);
+    let raw = value();
+    // An unparsable value (hand-edited link) stays visible as one removable chip.
+    let terms: Vec<(String, Option<String>)> = match parse_label_filter(&raw) {
+        (Some(terms), _) => terms,
+        _ if raw.trim().is_empty() => Vec::new(),
+        _ => vec![(raw.trim().to_string(), None)],
+    };
+    let mut commit = move |terms: Vec<(String, Option<String>)>| {
+        value.set(join_label_terms(&terms));
+        on_submit.call(());
+    };
+    let for_keys = terms.clone();
     rsx! {
         crate::components::labels_editor::LabelSuggestions { id: "pnex-labels-filter" }
-        input {
-            class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-gray-500 focus:border-signal focus:outline-none focus:ring-3 focus:ring-signal-200",
-            r#type: "search",
-            list: "pnex-labels-filter",
-            placeholder: "{placeholder}",
-            value: "{value}",
-            oninput: move |event| value.set(event.value()),
-            onkeydown: move |event| {
-                if event.key() == Key::Enter {
-                    event.prevent_default();
-                    on_submit.call(());
+        div { class: "order-first w-full sm:order-none sm:w-auto sm:flex-1 sm:min-w-48 flex flex-wrap items-center gap-1 rounded-md border border-line-strong bg-surface px-2 py-1.5 focus-within:border-signal focus-within:ring-3 focus-within:ring-signal-200",
+            for (i, (name, term_value)) in terms.iter().cloned().enumerate() {
+                LabelTag { key: "{name}", name: name.clone(), value: term_value,
+                    button {
+                        class: "border-l border-line-strong px-1.5 text-slate hover:bg-red-50 hover:text-alarm",
+                        r#type: "button",
+                        aria_label: t!("resources-label-remove", name : name.clone()),
+                        onclick: {
+                            let terms = terms.clone();
+                            move |_| {
+                                let mut terms = terms.clone();
+                                terms.remove(i);
+                                commit(terms);
+                            }
+                        },
+                        {"×"}
+                    }
                 }
-            },
+            }
+            input {
+                class: "min-w-24 flex-1 border-0 bg-transparent p-0.5 text-sm text-ink placeholder:text-gray-500 focus:outline-none focus:ring-0",
+                r#type: "search",
+                list: "pnex-labels-filter",
+                placeholder: "{placeholder}",
+                aria_label: "{placeholder}",
+                value: "{draft}",
+                oninput: move |event| draft.set(event.value()),
+                onkeydown: move |event| {
+                    let mut terms = for_keys.clone();
+                    match event.key() {
+                        Key::Enter => {
+                            event.prevent_default();
+                            if draft.peek().trim().is_empty() {
+                                on_submit.call(());
+                                return;
+                            }
+                            let entry = parse_entry(&draft.peek());
+                            match entry {
+                                Ok((name, term_value)) => {
+                                    // One value per name: a resource carries a single value per label name.
+                                    terms.retain(|(n, _)| *n != name);
+                                    terms.push((name, term_value));
+                                    draft.set(String::new());
+                                    commit(terms);
+                                }
+                                Err(msg) => toasts::error(msg),
+                            }
+                        }
+                        Key::Backspace if draft.peek().is_empty() && !terms.is_empty() => {
+                            terms.pop();
+                            commit(terms);
+                        }
+                        _ => {}
+                    }
+                },
+            }
         }
     }
+}
+
+/// Comma-joined filter terms, the `label` list parameter format.
+fn join_label_terms(terms: &[(String, Option<String>)]) -> String {
+    terms
+        .iter()
+        .map(|(n, v)| match v {
+            Some(v) => format!("{n}:{v}"),
+            None => n.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Manual refresh button — icon-only everywhere (single idiom).
@@ -105,5 +180,21 @@ pub fn RefreshButton(on_click: Callback<()>) -> Element {
             onclick: move |_| on_click.call(()),
             icons::RefreshCw { class: "h-5 w-5" }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn joined_terms_parse_back() {
+        let terms = vec![
+            ("source".to_string(), Some("recorder".to_string())),
+            ("critique".to_string(), None),
+        ];
+        let joined = join_label_terms(&terms);
+        assert_eq!(joined, "source:recorder,critique");
+        assert_eq!(parse_label_filter(&joined).0, Some(terms));
     }
 }

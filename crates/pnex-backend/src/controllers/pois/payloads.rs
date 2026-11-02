@@ -80,7 +80,7 @@ pub(super) struct PoiListQuery {
     /// `true` = only POIs whose device reports a GPS position.
     #[param(value_type = Option<bool>)]
     pub(super) has_position: Option<String>,
-    /// Label filter `name` / `name:value` (D218).
+    /// Label filter `name` / `name:value` (D218), several comma-separated terms all required.
     pub(super) label: Option<String>,
     #[param(value_type = Option<i64>)]
     pub(super) limit: Option<String>,

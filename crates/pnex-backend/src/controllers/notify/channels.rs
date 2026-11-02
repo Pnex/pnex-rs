@@ -51,7 +51,7 @@ pub(super) struct ListQuery {
     pub(super) limit: Option<String>,
     #[param(value_type = Option<i64>)]
     pub(super) offset: Option<String>,
-    /// Label filter `name` / `name:value` (D218).
+    /// Label filter `name` / `name:value` (D218), several comma-separated terms all required.
     pub(super) label: Option<String>,
     /// Name contains (case-insensitive).
     pub(super) search: Option<String>,

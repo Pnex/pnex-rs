@@ -194,7 +194,7 @@ pub fn use_row_labels(
 }
 
 /// Normalises `name:value` or `name` (bare tag) — server charset re-checked.
-fn parse_entry(raw: &str) -> Result<(String, Option<String>), String> {
+pub(crate) fn parse_entry(raw: &str) -> Result<(String, Option<String>), String> {
     let raw = raw.trim();
     let (name, value) = match raw.split_once(':') {
         Some((n, v)) => (n.trim(), Some(v.trim().to_string())),

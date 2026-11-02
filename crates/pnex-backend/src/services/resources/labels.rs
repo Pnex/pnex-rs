@@ -248,22 +248,31 @@ pub async fn search_labeled(
 
 // ─────────────────────────── filtering ───────────────────────────
 
-/// Every resource of the org carrying the label (exact value, or the bare
-/// name for `name` alone): `(kind, id)`, optionally for one kind.
+/// Every resource of the org carrying ALL the labels (exact value, or the
+/// bare name for `name` alone): `(kind, id)`, optionally for one kind.
 pub async fn ids_with_label(
     db: &DatabaseConnection,
     org_id: i64,
-    filter: &(String, Option<String>),
+    filters: &[pnex_core::resources::LabelFilter],
     kind: Option<&str>,
 ) -> Result<Vec<(String, String)>, DbErr> {
-    let (name, value) = filter;
-    let mut params: Vec<sea_orm::Value> = vec![org_id.into(), name.clone().into()];
-    let predicate = match value {
-        Some(v) => {
-            params.push(v.clone().into());
-            "labels @> jsonb_build_object($2::text, $3::text)".to_string()
-        }
-        None => "labels ? $2::text".to_string(),
+    let mut params: Vec<sea_orm::Value> = vec![org_id.into()];
+    let mut predicates = Vec::with_capacity(filters.len());
+    for (name, value) in filters {
+        params.push(name.clone().into());
+        let n = params.len();
+        predicates.push(match value {
+            Some(v) => {
+                params.push(v.clone().into());
+                format!("labels @> jsonb_build_object(${n}::text, ${}::text)", n + 1)
+            }
+            None => format!("labels ? ${n}::text"),
+        });
+    }
+    let predicate = if predicates.is_empty() {
+        "TRUE".to_string()
+    } else {
+        predicates.join(" AND ")
     };
     let kind_clause = match kind {
         Some(k) => {

@@ -236,7 +236,7 @@ async fn create(
 struct ListToursQuery {
     /// Case-insensitive substring of the name.
     search: Option<String>,
-    /// D42: effective label (`name` or `name:value`, inherited included).
+    /// D42: effective label (`name` or `name:value`, several comma-separated terms all required, inherited included).
     label: Option<String>,
     /// Exact tour mode (e.g. `panorama`).
     mode: Option<String>,

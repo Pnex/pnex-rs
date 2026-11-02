@@ -411,6 +411,7 @@ async fn fetch_dashboards(
 ) -> Fetched {
     let rows = dashboards::Entity::find()
         .filter(dashboards::Column::OrgId.eq(org_id))
+        .filter(dashboards::Column::AppId.is_null())
         .filter(match_tokens!(patterns, dashboards, [Name, Description]))
         .order_by_desc(dashboards::Column::UpdatedAt)
         .limit(candidate_limit)

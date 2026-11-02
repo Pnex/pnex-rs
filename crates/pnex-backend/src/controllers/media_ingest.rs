@@ -355,7 +355,7 @@ struct PageQuery {
     limit: Option<String>,
     offset: Option<String>,
     state: Option<String>,
-    /// Label filter `name` / `name:value` (D218), streams list only.
+    /// Label filter `name` / `name:value` (D218), several comma-separated terms all required, streams list only.
     label: Option<String>,
     /// Name contains (case-insensitive), streams list only.
     search: Option<String>,
@@ -371,7 +371,7 @@ struct PageQuery {
     operation_id = "media_streams_list",
     summary = "List the media streams of the organisation",
     description = "Paginated captured streams (radio, HLS, RTSP camera, replayed file…) with capture state and health. Secret values are never returned, only whether one is set and its vault reference.",
-    params(("limit" = Option<i64>, Query, description = "Page size (default 10, max 100)"), ("offset" = Option<i64>, Query, description = "Page offset"), ("search" = Option<String>, Query, description = "Name contains (case-insensitive)"), ("label" = Option<String>, Query, description = "Label filter `name` or `name:value`")),
+    params(("limit" = Option<i64>, Query, description = "Page size (default 10, max 100)"), ("offset" = Option<i64>, Query, description = "Page offset"), ("search" = Option<String>, Query, description = "Name contains (case-insensitive)"), ("label" = Option<String>, Query, description = "Label filter `name` or `name:value`, several comma-separated terms all required")),
     responses(
         (status = 200, body = pnex_core::Paginated<pnex_core::media_ingest::MediaStream>),
         (status = 400, description = "Invalid `label` filter (`field-invalid`)", body = crate::openapi::ErrorDetail)

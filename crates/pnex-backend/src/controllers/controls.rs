@@ -159,7 +159,7 @@ struct ListControlsQuery {
     search: Option<String>,
     /// Control kind filter (`switch`, `slider`…).
     kind: Option<String>,
-    /// Label filter `name` / `name:value` (D218).
+    /// Label filter `name` / `name:value` (D218), several comma-separated terms all required.
     label: Option<String>,
     #[param(value_type = Option<i64>)]
     limit: Option<String>,
@@ -175,7 +175,7 @@ struct ListControlsQuery {
     tag = "controls",
     operation_id = "controls_list",
     summary = "List the controls of the organisation",
-    description = "Sorted by label, paginated (`limit`/`offset`). Filters: `search` (label or key), `kind`, `label` (`name` or `name:value`). Each row lists the deployed flows listening to it and, for a control declared by a dashboard or annotation widget, its origin. Any member.",
+    description = "Sorted by label, paginated (`limit`/`offset`). Filters: `search` (label or key), `kind`, `label` (`name` or `name:value`, several comma-separated terms all required). Each row lists the deployed flows listening to it and, for a control declared by a dashboard or annotation widget, its origin. Any member.",
     params(ListControlsQuery),
     responses(
         (status = 200, body = pnex_core::Paginated<pnex_core::ui_control::UiControl>),

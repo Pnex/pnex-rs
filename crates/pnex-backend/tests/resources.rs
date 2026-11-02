@@ -678,9 +678,23 @@ async fn effective_search_cross_kind_and_folders() {
             &env.alice,
             org,
             &format!("/api/v1/resources/device/{dev_id}/labels"),
-            serde_json::json!({"labels": {"site": "serre"}}),
+            serde_json::json!({"labels": {"site": "serre", "critique": null}}),
         )
         .await;
+
+        // Several comma-separated terms are AND-combined: only the device
+        // carries both.
+        let res = jget(
+            &server,
+            &env.alice,
+            org,
+            "/api/v1/resources/search?label=site:serre,critique",
+        )
+        .await;
+        assert_eq!(res.status_code(), 200, "{}", res.text());
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["count"], 1, "{body}");
+        assert_eq!(body["results"][0]["kind"], "device");
 
         // Recherche cross-kind.
         let res = jget(
