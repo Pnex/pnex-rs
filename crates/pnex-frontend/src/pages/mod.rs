@@ -7,6 +7,7 @@
 pub mod access;
 pub mod admin_status;
 pub mod annotations;
+pub mod apps;
 pub mod auth_callback;
 /// Cameras: live view, capture settings and recordings (camera-video.md D80).
 pub mod calendar;

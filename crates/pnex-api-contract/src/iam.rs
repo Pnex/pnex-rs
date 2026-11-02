@@ -47,6 +47,7 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("ai.providers:write", Level::Admin),
     ("ai.settings:read", Level::Viewer),
     ("ai.settings:write", Level::Admin),
+    ("apps:build", Level::Member),
     ("apps:delete", Level::Admin),
     ("apps:read", Level::Viewer),
     ("apps:write", Level::Admin),
@@ -92,6 +93,9 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("extension:delete", Level::Member),
     ("extension:enroll", Level::Member),
     ("extension:read", Level::Viewer),
+    // Makes a browser common (runs every member's missions) and disconnects
+    // anyone's: a personal browser is otherwise its owner's alone (SEC-56).
+    ("extension:share", Level::Admin),
     ("extension:write", Level::Member),
     ("firmware-projects:delete", Level::Member),
     ("firmware-projects:read", Level::Viewer),
@@ -242,12 +246,16 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("ai_retention_get", Access::Org("ai.settings:read")),
     ("ai_retention_update", Access::Org("ai.settings:write")),
     ("ai_status", Access::Org("ai.settings:read")),
+    ("apps_build", Access::Org("apps:build")),
     ("apps_create", Access::Org("apps:write")),
     ("apps_delete", Access::Org("apps:delete")),
     ("apps_get", Access::Org("apps:read")),
     ("apps_list", Access::Org("apps:read")),
     ("apps_me", Access::Org("apps:read")),
     ("apps_me_object_sets_run", Access::Org("ontology:read")),
+    ("apps_object_sets_run", Access::Org("ontology:read")),
+    ("apps_publish", Access::Org("apps:build")),
+    ("apps_screens_get", Access::Org("apps:read")),
     ("apps_update", Access::Org("apps:write")),
     (
         "annotation_layers_create",
@@ -451,6 +459,10 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         Access::Org("extension:write"),
     ),
     ("extension_opposition_get", Access::Org("extension:read")),
+    (
+        "extension_profile_captures_list",
+        Access::Org("extension:read"),
+    ),
     (
         "extension_profile_captures_create",
         Access::Org("extension:write"),
@@ -716,6 +728,13 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ),
     ("ontology_objects_links", Access::Org("ontology:read")),
     ("ontology_objects_series", Access::Org("ontology:read")),
+    (
+        "ontology_objects_observations",
+        Access::Org("ontology:read"),
+    ),
+    ("markets_event_study", Access::Org("ontology:read")),
+    ("markets_rule_test", Access::Org("ontology:read")),
+    ("markets_position_result", Access::Org("ontology:read")),
     ("ontology_objects_update", Access::Org("ontology:write")),
     (
         "ontology_packs_install",
@@ -937,6 +956,10 @@ pub const OPERATIONS: &[(&str, Access)] = &[
 /// beyond the operation's own: a field gate, a redacted field, a case of
 /// the operation. Only those no operation needs are listed here.
 pub const GATES: &[(&str, &str)] = &[
+    (
+        "extension:share",
+        "makes one's browser common and disconnects a colleague's (SEC-56)",
+    ),
     ("docs:moderate", "delete or edit another member's comment"),
     (
         "notify:broadcast",
@@ -1014,6 +1037,8 @@ pub const TOOLS: &[(&str, Option<&str>)] = &[
     ("query_telemetry", Some("telemetry:read")),
     ("read_chunk", Some("docs:read")),
     ("read_knowledge", None),
+    ("market_figures", Some("ontology:read")),
+    ("market_rule_test", Some("ontology:read")),
     ("read_memory", Some("memory:read")),
     ("save_object_type", Some("ontology.schema:write")),
     ("search_docs", Some("docs:read")),

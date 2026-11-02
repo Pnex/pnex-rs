@@ -665,7 +665,7 @@ async fn conversation_send(
     else {
         return Err(crate::services::ai::AiError::NotConfigured.into());
     };
-    if !conversations::acquire(&ctx.db, conv.id)
+    if !conversations::acquire(&ctx.db, conv.id, cfg.timeout)
         .await
         .map_err(db_error)?
     {

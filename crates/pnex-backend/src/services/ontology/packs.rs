@@ -40,6 +40,8 @@ const SHIPPED: &[&str] = &[
     include_str!("../../../packs/prospecting_b2b.yaml"),
     include_str!("../../../packs/prospecting_b2b_fr.yaml"),
     include_str!("../../../packs/crm.yaml"),
+    include_str!("../../../packs/markets.yaml"),
+    include_str!("../../../packs/investment_thesis.yaml"),
 ];
 
 /// Parsed once per process: an install reads them for every type and link
@@ -631,18 +633,24 @@ async fn install_locked(
             differs: Default::default(),
         });
     }
+    // A pack is written against the shipped version of what it builds on:
+    // an older dependency is upgraded first (a no-op when it is current).
     for key in &pack.requires {
-        let present = packs::Entity::find()
-            .filter(packs::Column::OrgId.eq(org_id))
-            .filter(packs::Column::Key.eq(key))
-            .one(db)
-            .await?
-            .is_some();
-        if !present {
-            let Some(dep) = shipped().into_iter().find(|p| &p.key == key) else {
-                return Err(invalid("requires", pnex_core::err_codes::FIELD_INVALID));
-            };
-            Box::pin(install_locked(db, org_id, user_id, &dep)).await?;
+        match shipped().into_iter().find(|p| &p.key == key) {
+            Some(dep) => {
+                Box::pin(install_locked(db, org_id, user_id, &dep)).await?;
+            }
+            None => {
+                let present = packs::Entity::find()
+                    .filter(packs::Column::OrgId.eq(org_id))
+                    .filter(packs::Column::Key.eq(key))
+                    .one(db)
+                    .await?
+                    .is_some();
+                if !present {
+                    return Err(invalid("requires", pnex_core::err_codes::FIELD_INVALID));
+                }
+            }
         }
     }
     let s = schema(db, org_id).await?;
@@ -712,6 +720,14 @@ async fn install_locked(
     super::imports::install_from_pack(db, org_id, user_id, pack, &[]).await?;
     install_automation(db, org_id, user_id, pack, &[]).await?;
     drop_unshipped_flows(db, org_id, pack).await?;
+    for app in &pack.apps {
+        crate::services::apps::install_shipped(db, org_id, user_id, app)
+            .await
+            .map_err(|e| {
+                tracing::error!(pack = %pack.key, app = %app.key, error = %e, "shipped application refused");
+                invalid(format!("apps.{}", app.key), pnex_core::err_codes::FIELD_INVALID)
+            })?;
+    }
     let (kept, differs) = edited(db, org_id, pack).await?;
     let row = packs::Entity::find()
         .filter(packs::Column::OrgId.eq(org_id))
@@ -1194,6 +1210,7 @@ fn union(pack: &TypeSet, local: &TypeSet) -> TypeSet {
 pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
     let s = schema(db, org_id).await?;
     let pack = Pack {
+        apps: Vec::new(),
         descriptions: Default::default(),
         names: Default::default(),
         key: "org".into(),

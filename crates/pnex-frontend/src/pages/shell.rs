@@ -296,8 +296,10 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
     let is_platform_admin = session::user().is_some_and(|u| u.platform_admin);
     let at = |r: Route| route == r;
 
-    let monitor = matches!(route, Route::Dashboards { .. })
-        || at(Route::Visualisation {})
+    let monitor = matches!(
+        route,
+        Route::Dashboards { .. } | Route::Apps {} | Route::AppBuild { .. } | Route::AppRun { .. }
+    ) || at(Route::Visualisation {})
         || at(Route::Map {})
         || at(Route::Sites {})
         || at(Route::Events {});
@@ -365,6 +367,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     },
                     label: t!("nav-dashboards"),
                     active: matches!(route, Route::Dashboards { .. }),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Apps {},
+                    label: t!("nav-apps"),
+                    active: matches!(route, Route::Apps {} | Route::AppBuild { .. } | Route::AppRun { .. }),
                     on_navigate,
                 }
                 NavItem {
@@ -446,7 +454,9 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     crate::components::icons::Image { class: icon }
                 },
                 NavItem {
-                    to: Route::Media { label: String::new() },
+                    to: Route::Media {
+                        label: String::new(),
+                    },
                     label: t!("nav-library"),
                     active: matches!(route, Route::Media { .. }),
                     on_navigate,

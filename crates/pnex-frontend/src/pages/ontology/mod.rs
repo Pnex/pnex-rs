@@ -6,8 +6,10 @@
 
 pub mod imports;
 pub mod object;
+mod observations;
 pub mod packs;
 pub mod profile_capture;
+mod reaction;
 pub mod schema;
 pub mod type_editor;
 
@@ -308,6 +310,9 @@ fn TypePickerItem(type_view: ObjectTypeView, on_pick: Callback<String>) -> Eleme
 pub fn ObjectForm(
     type_view: ObjectTypeView,
     initial: Option<ObjectView>,
+    /// The application whose screen opens this form (app-builder.md D511).
+    #[props(default)]
+    app_id: Option<String>,
     on_close: Callback<()>,
     on_saved: Callback<ObjectView>,
 ) -> Element {
@@ -396,11 +401,14 @@ pub fn ObjectForm(
                     expected_version: initial.as_ref().map(|o| o.version),
                 };
                 let id = initial.as_ref().map(|o| o.id.clone());
+                let app = app_id.clone();
                 busy.set(true);
                 spawn(async move {
                     let res = match id {
-                        Some(id) => api::ontology::update_object(&id, &input).await,
-                        None => api::ontology::create_object(&input).await,
+                        Some(id) => {
+                            api::ontology::update_object_via(&id, &input, app.as_deref()).await
+                        }
+                        None => api::ontology::create_object_via(&input, app.as_deref()).await,
                     };
                     busy.set(false);
                     match res {

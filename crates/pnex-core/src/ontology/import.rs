@@ -311,6 +311,35 @@ pub struct PerObject {
     pub setting: Option<PerObjectSetting>,
 }
 
+/// Who a press feed watches and how much it brings. Records: `ref`, `title`,
+/// `summary`, `url`, `source`, `date`, `lang`, `tone`, and `via` + `account`,
+/// the unique property that finds the company again.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PressFeed {
+    #[serde(rename = "type")]
+    pub type_key: String,
+    /// Only the companies whose property holds one of these values.
+    pub only: PerObjectOnly,
+    /// Property holding other names of a company, comma-separated, besides
+    /// its title.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub aliases: String,
+    /// Unique properties that identify a company, tried in order. A company
+    /// with none of them cannot be linked and is not watched.
+    pub keys: Vec<String>,
+    /// Hours of the feed each run reads.
+    #[serde(default = "press_hours")]
+    pub hours: u32,
+}
+
+fn press_hours() -> u32 {
+    26
+}
+
+/// Longest window of a press feed, in hours.
+pub const PRESS_HOURS_MAX: u32 = 72;
+
 /// A pack setting read as a comma-separated list of codes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -334,7 +363,7 @@ impl PerObjectSetting {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PerObjectOnly {
@@ -503,6 +532,33 @@ pub struct Mapping {
     /// queried by identifier).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub per_object: Option<PerObject>,
+    /// API: the articles of the GDELT press feed naming these companies,
+    /// instead of pages (account-mapping.md D539).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub press_feed: Option<PressFeed>,
+    /// How the response becomes records, for a source no dot path can read
+    /// (markets-research.md D540).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<crate::markets::ResponseShape>,
+    /// `<pack>.<setting>` of a contact sent in the `User-Agent`: some public
+    /// sources refuse an undeclared client. The run is refused while empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contact_setting: Option<String>,
+    /// A source that needs a key: its name in `markets::KEYED_SOURCES`. The
+    /// vault secret and the only host it goes to are fixed there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keyed_source: Option<String>,
+    /// API: one request per code of this `<pack>.<setting>`, in place of
+    /// `{value}` in the URL, when no object holds the code yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub per_setting_code: Option<String>,
+    /// Only the records whose field holds a code of this setting; an empty
+    /// setting keeps none (a whole register is never the wanted list).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rows_in_setting: Option<PerObjectSetting>,
+    /// The records are dated values of this object (D541).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observations: Option<crate::markets::ObservationTarget>,
     /// Pipeline steps run by the server before the mapping (data-pipelines.md
     /// D344): resolve, download, extract, inspect, filter; the records are
     /// read from the file they leave staged.
@@ -597,8 +653,42 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
     if m.name.trim().is_empty() {
         return Err(ferr("name", FIELD_REQUIRED));
     }
-    if m.objects.is_empty() {
+    if m.objects.is_empty() && m.observations.is_none() {
         return Err(ferr("objects", FIELD_REQUIRED));
+    }
+    let setting_ok = |k: &str| {
+        k.split_once('.')
+            .is_some_and(|(a, b)| valid_key(a) && valid_key(b))
+    };
+    if m.contact_setting.as_deref().is_some_and(|k| !setting_ok(k)) {
+        return Err(ferr("contact_setting", FIELD_INVALID));
+    }
+    if m.keyed_source
+        .as_deref()
+        .is_some_and(|k| crate::markets::keyed_source(k).is_none())
+    {
+        return Err(ferr("keyed_source", FIELD_INVALID));
+    }
+    if m.per_setting_code
+        .as_deref()
+        .is_some_and(|k| !setting_ok(k))
+        || (m.per_setting_code.is_some() && m.per_object.is_some())
+    {
+        return Err(ferr("per_setting_code", FIELD_INVALID));
+    }
+    if m.rows_in_setting
+        .as_ref()
+        .is_some_and(|r| !setting_ok(&r.key) || r.property.is_empty())
+    {
+        return Err(ferr("rows_in_setting", FIELD_INVALID));
+    }
+    if let Some(o) = &m.observations {
+        let unique = s
+            .object_type(&o.type_key)
+            .is_some_and(|t| t.properties.iter().any(|d| d.key == o.property && d.unique));
+        if !unique || (m.per_object.is_none() && m.per_setting_code.is_none()) {
+            return Err(ferr("observations", FIELD_INVALID));
+        }
     }
     if m.objects.len() + m.links.len() > ENTRIES_MAX {
         return Err(ferr("objects", format!("{FIELD_MAX_LENGTH}:{ENTRIES_MAX}")));
@@ -641,6 +731,22 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             if st.key.split_once('.').is_none_or(|(a, b)| bad(a) || bad(b)) || bad(&st.property) {
                 return Err(ferr("per_object.setting", FIELD_INVALID));
             }
+        }
+    }
+    if let Some(p) = &m.press_feed {
+        let has = |k: &str| {
+            s.object_type(&p.type_key)
+                .is_some_and(|t| t.properties.iter().any(|d| d.key == k))
+        };
+        if m.per_object.is_some()
+            || !has(&p.only.property)
+            || p.only.values.is_empty()
+            || p.keys.is_empty()
+            || !p.keys.iter().all(|k| has(k))
+            || (!p.aliases.is_empty() && !has(&p.aliases))
+            || !(1..=PRESS_HOURS_MAX).contains(&p.hours)
+        {
+            return Err(ferr("press_feed", FIELD_INVALID));
         }
     }
     for (i, o) in m.objects.iter().enumerate() {
@@ -1719,6 +1825,8 @@ pub struct ImportCounts {
     pub links_updated: usize,
     pub errors: usize,
     pub warnings: usize,
+    #[serde(default)]
+    pub observations: usize,
 }
 
 /// One run: a preview waiting for its application, or a finished run.
@@ -1890,6 +1998,9 @@ pub struct ImportDiff {
     pub links_updated: Vec<DiffLinkUpdate>,
     pub errors: Vec<RowIssue>,
     pub warnings: Vec<RowIssue>,
+    /// Dated values read (D541); those already known are skipped at writing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observations: Vec<crate::markets::PlannedObservation>,
 }
 
 impl ImportDiff {
@@ -1902,6 +2013,7 @@ impl ImportDiff {
             links_updated: self.links_updated.len(),
             errors: self.errors.len(),
             warnings: self.warnings.len(),
+            observations: self.observations.len(),
         }
     }
 }

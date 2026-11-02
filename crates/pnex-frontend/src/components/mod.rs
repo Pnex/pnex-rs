@@ -8,6 +8,7 @@ pub mod annotated_media;
 /// Annotations on media (D55–D60) — shared live popover + studio
 /// editing panel (slice 4).
 pub mod annotation_editor;
+pub mod app_widgets;
 pub mod assistant;
 pub mod badges;
 pub mod board_pinout_editor;

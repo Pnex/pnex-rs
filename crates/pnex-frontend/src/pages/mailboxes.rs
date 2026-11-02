@@ -328,6 +328,11 @@ fn TestResultDialog(
     result: Result<MailboxTestResult, ApiError>,
     on_close: Callback<()>,
 ) -> Element {
+    let smtp_failed = result
+        .as_ref()
+        .ok()
+        .and_then(|r| r.smtp_error.as_ref())
+        .map(|e| crate::api::error_i18n::localize_code(&e.code, Some(&e.args), &e.code));
     let body = match &result {
         Ok(r) if r.ok => rsx! {
             StateMark {
@@ -346,6 +351,19 @@ fn TestResultDialog(
             if let Some(junk) = r.junk_folder.clone() {
                 p { class: "mt-3 text-sm text-warn-text",
                     {t!("mailboxes-test-junk", folder : junk)}
+                }
+            }
+            if let Some(reason) = smtp_failed.clone() {
+                p {
+                    class: "mt-3 text-sm text-warn-text",
+                    "data-testid": "mailbox-test-smtp",
+                    {t!("mailboxes-test-smtp-failed", reason : reason)}
+                }
+            } else if r.smtp_tested {
+                p {
+                    class: "mt-3 text-sm text-gray-700",
+                    "data-testid": "mailbox-test-smtp",
+                    {t!("mailboxes-test-smtp-ok")}
                 }
             }
         },

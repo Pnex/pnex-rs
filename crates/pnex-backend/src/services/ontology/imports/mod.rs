@@ -460,6 +460,7 @@ async fn load_diff<C: ConnectionTrait>(
                 "links_updated",
                 "errors",
                 "warnings",
+                "observations",
             ]
             .map(|k| {
                 format!(
@@ -564,7 +565,22 @@ async fn records<C: ConnectionTrait>(
     file: Option<(&[u8], &str)>,
 ) -> std::result::Result<Vec<Value>, (&'static str, Value)> {
     let coded = |code: &'static str| (code, Value::Null);
-    match (imp.source(), file) {
+    let contact = match &m.contact_setting {
+        Some(key) => match setting_text(db, imp.org_id, key).await {
+            Some(c) if !c.trim().is_empty() => Some(c.trim().to_string()),
+            _ => return Err(coded(err_codes::IMPORT_CONTACT_REQUIRED)),
+        },
+        None => None,
+    };
+    let by = source::Declared {
+        contact,
+        authorization: match keyed_authorization(db, imp, m).await {
+            Ok(a) => a,
+            Err(code) => return Err(coded(code)),
+        },
+    };
+    let by = &by;
+    let rows = match (imp.source(), file) {
         // Hostile input (R8 §5): parsed on a blocking thread, where a parser
         // panic only fails this run.
         (ImportSource::File, Some((bytes, name))) => {
@@ -578,26 +594,162 @@ async fn records<C: ConnectionTrait>(
         }
         (ImportSource::File, None) => Err(coded(source::UNREADABLE)),
         (ImportSource::Url, _) => {
-            source::fetch_file(imp.source_url.as_deref().unwrap_or_default(), m)
+            source::fetch_file(imp.source_url.as_deref().unwrap_or_default(), m, by)
                 .await
                 .map_err(coded)
         }
         (ImportSource::Api, _) => {
             let url = imp.source_url.as_deref().unwrap_or_default();
+            if let Some(feed) = &m.press_feed {
+                let watched = press_watched(db, imp, feed)
+                    .await
+                    .map_err(|_| coded(source::UNREACHABLE))?;
+                return source::fetch_press(url, feed, watched).await.map_err(coded);
+            }
             let pages = imp.max_pages.map_or(DEFAULT_PAGES, |p| p as u32);
+            if let Some(key) = &m.per_setting_code {
+                let codes = setting_codes(db, imp.org_id, key).await;
+                let since = since_days(db, imp, m, url).await;
+                return source::fetch_per_object(url, m, &codes, by, &since)
+                    .await
+                    .map_err(coded);
+            }
             match &m.per_object {
                 None => source::fetch_api(url, m, pages).await.map_err(coded),
                 Some(p) => {
                     let values = per_object_values(db, imp, p, pages)
                         .await
                         .map_err(|_| coded(source::UNREACHABLE))?;
-                    source::fetch_per_object(url, m, &values)
+                    let since = since_days(db, imp, m, url).await;
+                    source::fetch_per_object(url, m, &values, by, &since)
                         .await
                         .map_err(coded)
                 }
             }
         }
+    }?;
+    Ok(match &m.rows_in_setting {
+        None => rows,
+        Some(f) => {
+            let codes = setting_codes(db, imp.org_id, &f.key).await;
+            rows.into_iter()
+                .filter(|r| {
+                    r.get(&f.property)
+                        .and_then(Value::as_str)
+                        .is_some_and(|v| codes.contains(&v.trim().to_uppercase()))
+                })
+                .collect()
+        }
+    })
+}
+
+/// The `Authorization` of a source that takes a key: from the vault, to that
+/// source's host only. The mapping cannot name another secret or host (R9).
+async fn keyed_authorization<C: ConnectionTrait>(
+    db: &C,
+    imp: &ImportRow,
+    m: &Mapping,
+) -> std::result::Result<Option<String>, &'static str> {
+    let Some(key) = &m.keyed_source else {
+        return Ok(None);
+    };
+    let Some(src) = pnex_core::markets::keyed_source(key) else {
+        return Err(source::UNREACHABLE);
+    };
+    let url = imp.source_url.as_deref().unwrap_or_default();
+    let host_ok = reqwest::Url::parse(url)
+        .is_ok_and(|u| u.scheme() == "https" && u.host_str() == Some(src.host))
+        // The test's mock of the source.
+        || crate::services::markets::test_host_allowed(url);
+    if !host_ok {
+        return Err(err_codes::IMPORT_KEY_HOST);
     }
+    use crate::services::secrets::store;
+    let required = err_codes::IMPORT_KEY_REQUIRED;
+    let row = store::find_by_name(db, Some(imp.org_id), src.secret)
+        .await
+        .map_err(|_| required)?
+        .ok_or(required)?;
+    let ring = crate::services::markets::keyring().ok_or(required)?;
+    let value = store::reveal(db, ring, Some(imp.org_id), row.id)
+        .await
+        .map_err(|_| required)?;
+    Ok(Some(format!("{} {}", src.scheme, value.trim())))
+}
+
+/// The day each object's reading starts from, when the URL asks for it.
+async fn since_days<C: ConnectionTrait>(
+    db: &C,
+    imp: &ImportRow,
+    m: &Mapping,
+    url: &str,
+) -> std::collections::HashMap<String, String> {
+    match &m.observations {
+        Some(t) if url.contains(source::SINCE) => {
+            crate::services::markets::since_days(db, imp.org_id, t)
+                .await
+                .unwrap_or_default()
+        }
+        _ => Default::default(),
+    }
+}
+
+async fn setting_text<C: ConnectionTrait>(db: &C, org_id: i64, key: &str) -> Option<String> {
+    super::packs::setting_value(db, org_id, key)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| v.as_str().map(str::to_string))
+}
+
+async fn setting_codes<C: ConnectionTrait>(db: &C, org_id: i64, key: &str) -> Vec<String> {
+    setting_text(db, org_id, key)
+        .await
+        .map(|v| imp::PerObjectSetting::codes(&v))
+        .unwrap_or_default()
+}
+
+/// The companies a press feed watches: their title and other names, and
+/// the first unique property they hold.
+async fn press_watched<C: ConnectionTrait>(
+    db: &C,
+    imp: &ImportRow,
+    feed: &imp::PressFeed,
+) -> std::result::Result<Vec<pnex_core::gkg::Watched>, sea_orm::DbErr> {
+    let rows = db
+        .query_all_raw(stmt(
+            "SELECT title, properties FROM objects \
+             WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL \
+               AND properties ->> $3 = ANY($4)",
+            vec![
+                imp.org_id.into(),
+                feed.type_key.clone().into(),
+                feed.only.property.clone().into(),
+                feed.only.values.clone().into(),
+            ],
+        ))
+        .await?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| {
+            let title: String = r.try_get("", "title").ok()?;
+            let props: Value = r.try_get("", "properties").ok()?;
+            let key = feed.keys.iter().find_map(|k| {
+                let v = props.get(k)?.as_str()?.trim();
+                (!v.is_empty()).then(|| (k.clone(), v.to_string()))
+            })?;
+            let mut names = vec![title];
+            if let Some(more) = props.get(&feed.aliases).and_then(Value::as_str) {
+                names.extend(
+                    more.split(',')
+                        .map(str::trim)
+                        .filter(|n| !n.is_empty())
+                        .map(str::to_string),
+                );
+            }
+            Some(pnex_core::gkg::Watched { names, key })
+        })
+        .collect())
 }
 
 /// Values of `per_object` to query: in value order, starting after the
@@ -856,7 +1008,22 @@ async fn write_locked(
         Duration::from_secs(600),
     )
     .await?;
-    let out = write(db, imp.org_id, actor, diff).await;
+    let mut out = write(db, imp.org_id, actor, diff).await;
+    // After the objects: a series created by this run must exist. A failure
+    // here is repaired by the next run, which skips what is already stored.
+    if out.is_ok() {
+        if let Some(target) = imp.mapping().ok().and_then(|m| m.observations) {
+            out = crate::services::markets::store(
+                db,
+                imp.org_id,
+                &target,
+                &diff.observations,
+                &actor.source_ref,
+            )
+            .await
+            .map_err(OntologyError::from);
+        }
+    }
     lock.release().await;
     // D431: the watched objects it updated count a check run.
     if out.is_ok() {
@@ -1296,7 +1463,12 @@ pub async fn run_staged(
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(&m, &rows);
     // A per-object batch may find nothing: not a lost source.
-    let lost = rows.is_empty() && previous > 0 && m.per_object.is_none();
+    let lost = rows.is_empty()
+        && previous > 0
+        && m.per_object.is_none()
+        && m.press_feed.is_none()
+        && m.per_setting_code.is_none()
+        && m.rows_in_setting.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()
@@ -1448,7 +1620,12 @@ async fn scheduled(
     let missing = imp::missing_columns(m, &rows);
     // D303: an unexpected shape writes nothing.
     // A per-object batch may find nothing: not a lost source.
-    let lost = rows.is_empty() && previous > 0 && m.per_object.is_none();
+    let lost = rows.is_empty()
+        && previous > 0
+        && m.per_object.is_none()
+        && m.press_feed.is_none()
+        && m.per_setting_code.is_none()
+        && m.rows_in_setting.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()

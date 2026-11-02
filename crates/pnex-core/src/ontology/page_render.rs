@@ -200,6 +200,13 @@ fn coverage(ctx: &RenderCtx, v: &HierarchyView) -> String {
             .iter()
             .map(|t| format!("{} {}", prop_name(ctx, &t.property), t.total)),
     );
+    parts.extend(v.tallies.iter().map(|t| {
+        let link = name_in(&t.names, ctx.lang).unwrap_or(&t.name);
+        match &t.value {
+            Some(val) => format!("{link} {} {}", label(val, &t.labels, ctx.lang), t.count),
+            None => format!("{link} {}", t.count),
+        }
+    }));
     if v.has_coverage {
         parts.push(format!("white space {}", v.white_space));
     }
@@ -294,7 +301,7 @@ mod tests {
 
     #[test]
     fn placeholders_fill_from_the_object_its_links_and_its_tree() {
-        let me = r("m", "Mecachrome France");
+        let me = r("m", "Mecaworks France");
         let links = vec![
             link(
                 "uses_solution",
@@ -326,7 +333,7 @@ mod tests {
         };
         let view = HierarchyView {
             nodes: vec![
-                node("m", "Mecachrome France", 0, false),
+                node("m", "Mecaworks France", 0, false),
                 node("t", "Toulouse", 1, true),
             ],
             counts: vec![MarkCount {
@@ -356,7 +363,7 @@ mod tests {
         .unwrap();
         let ctx = RenderCtx {
             id: "m",
-            title: "Mecachrome France",
+            title: "Mecaworks France",
             properties: props.as_object().unwrap(),
             defs: &defs,
             lang: "fr-FR",
@@ -369,7 +376,7 @@ mod tests {
         let out = render(body, &ctx);
         assert_eq!(
             out,
-            "# Plan — Mecachrome France (2026-10-22)\nSIREN 429853351, CA 343838577.0 EUR, Client actif\n- Concurrent SA — since: 2024-01-01\n- Ouverture usine\n- Mecachrome France [Client actif]\n  - Toulouse [Client actif]\ncustomer 2 · Utilisateurs actuels 50 · white space 1\n- Toulouse\n{{nope}} —"
+            "# Plan — Mecaworks France (2026-10-22)\nSIREN 429853351, CA 343838577.0 EUR, Client actif\n- Concurrent SA — since: 2024-01-01\n- Ouverture usine\n- Mecaworks France [Client actif]\n  - Toulouse [Client actif]\ncustomer 2 · Utilisateurs actuels 50 · white space 1\n- Toulouse\n{{nope}} —"
         );
     }
 }

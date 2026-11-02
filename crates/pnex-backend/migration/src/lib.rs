@@ -72,6 +72,10 @@ mod m20261028_000062_check_states;
 mod m20261029_000063_function_signature_out_of_code;
 mod m20261029_000064_asr_profile_default;
 mod m20261029_000065_mail_send;
+mod m20261031_000066_llm_provider_timeout;
+mod m20261102_000067_app_screens;
+mod m20261102_000068_extension_agent_common;
+mod m20261102_000069_market_observations;
 
 pub struct Migrator;
 
@@ -140,6 +144,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20261029_000063_function_signature_out_of_code::Migration),
             Box::new(m20261029_000064_asr_profile_default::Migration),
             Box::new(m20261029_000065_mail_send::Migration),
+            Box::new(m20261031_000066_llm_provider_timeout::Migration),
+            Box::new(m20261102_000067_app_screens::Migration),
+            Box::new(m20261102_000068_extension_agent_common::Migration),
+            Box::new(m20261102_000069_market_observations::Migration),
         ]
     }
 }

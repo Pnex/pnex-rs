@@ -9,6 +9,7 @@
 //! configuration.
 
 use crate::pages::access::Access;
+use crate::pages::apps::{AppBuild, AppRun, Apps};
 use crate::pages::browser_agents::BrowserAgents;
 use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::mailbox_messages::MailboxMessages;
@@ -53,6 +54,17 @@ pub enum Route {
 
         #[route("/dashboards?:id&:mode")]
         Dashboards { id: String, mode: String },
+
+        // Applications built on the ontology (app-builder.md D513).
+        #[route("/apps")]
+        Apps {},
+
+        #[route("/apps/:app/build")]
+        AppBuild { app: String },
+
+        // `?v.<name>=<value>` fills a variable (D509).
+        #[route("/apps/:app/:screen?:..query")]
+        AppRun { app: String, screen: String, query: String },
 
         // `?label=` pre-fills the label filter (links from the PNeX recorder).
         #[route("/media?:label")]

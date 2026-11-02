@@ -235,7 +235,7 @@ pub struct OntologyQuery {
     pub text: Option<String>,
     #[serde(default)]
     pub filters: Vec<PropertyFilter>,
-    /// `name` or `name:value`, effective labels (D42).
+    /// `name` or `name:value`, effective labels (D42); several comma-separated terms all required.
     #[serde(default)]
     pub label: Option<String>,
     /// Descendants of this object in the containment tree.
@@ -483,6 +483,10 @@ pub struct Pack {
     /// Named trees computed on links (D305).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hierarchies: Vec<Hierarchy>,
+    /// Applications created at install when the org has none of that key,
+    /// ready to use (app-builder.md D513).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apps: Vec<crate::apps::PackApp>,
     /// Imports created in the org at install (D301), never overwritten.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub imports: Vec<super::import::PackImport>,
@@ -621,6 +625,40 @@ pub struct Hierarchy {
     /// space (D330).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coverage: Option<HierarchyCoverage>,
+    /// What the tree's nodes are linked to, counted (D330: contacts by
+    /// persona, open signals).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tallies: Vec<HierarchyTally>,
+}
+
+/// Counts the distinct objects at the other end of the open links `link`
+/// of the tree's nodes, those whose properties match `only`, per value of
+/// the property `by` when set.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HierarchyTally {
+    pub link: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by: Option<String>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub only: std::collections::BTreeMap<String, Vec<String>>,
+}
+
+/// One count of a [`HierarchyTally`]; no `value` = the whole count (no
+/// breakdown, or a breakdown the caller may not read).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TallyCount {
+    pub link: String,
+    /// The link's name seen from the tree's node.
+    pub name: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub names: super::Names,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub labels: super::Names,
+    pub count: u32,
 }
 
 /// A node is covered when it has an open link of one of `links` (a contact
@@ -717,6 +755,8 @@ pub struct HierarchyView {
     pub counts: Vec<MarkCount>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub totals: Vec<PropertyTotal>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tallies: Vec<TallyCount>,
     /// Distinct nodes not covered (`white_space` on each of them).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub has_coverage: bool,
@@ -1426,4 +1466,27 @@ pub struct CaseSnapshotInput {
 pub struct CaseSnapshotFull {
     pub snapshot: CaseSnapshot,
     pub content: String,
+}
+
+/// A dated value of an object, as known at the moment asked
+/// (markets-research.md D541).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ObservationView {
+    pub metric: String,
+    /// Empty when the source gives none.
+    pub unit: String,
+    #[cfg_attr(feature = "openapi", schema(format = "date"))]
+    pub period_start: String,
+    #[cfg_attr(feature = "openapi", schema(format = "date"))]
+    pub period_end: String,
+    /// When this value became known: end of its publication day, or the
+    /// moment it was stored when the source gives no date.
+    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
+    pub known_at: String,
+    pub value: f64,
+    /// The filing that published it, or the import run that read it.
+    pub source_ref: String,
+    /// Publication date lost: read when the source was first imported.
+    pub backfilled: bool,
 }

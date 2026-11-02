@@ -760,16 +760,26 @@ pub async fn test(db: &DatabaseConnection, ring: &Keyring, row: &Row) -> Mailbox
             .await
             .filter(|j| !row.folders.iter().any(|f| f.eq_ignore_ascii_case(j)));
         imap::logout(s).await;
-        Ok((folders, junk))
+        // Incoming mail works without it: a refused SMTP only reports.
+        let smtp_error = if row.smtp_host.is_empty() {
+            None
+        } else {
+            send::probe(&row.smtp_host, row.smtp_port as u16, &row.imap_user, &pw)
+                .await
+                .err()
+        };
+        Ok((folders, junk, smtp_error))
     }
     .await;
     let latency_ms = started.elapsed().as_millis() as u64;
     match result {
-        Ok((folders, junk_folder)) => MailboxTestResult {
+        Ok((folders, junk_folder, smtp_error)) => MailboxTestResult {
             ok: true,
             error: None,
             folders,
             junk_folder,
+            smtp_tested: !row.smtp_host.is_empty(),
+            smtp_error,
             latency_ms,
         },
         Err(e) => MailboxTestResult {
@@ -777,6 +787,8 @@ pub async fn test(db: &DatabaseConnection, ring: &Keyring, row: &Row) -> Mailbox
             error: Some(e),
             folders: Vec::new(),
             junk_folder: None,
+            smtp_tested: false,
+            smtp_error: None,
             latency_ms,
         },
     }

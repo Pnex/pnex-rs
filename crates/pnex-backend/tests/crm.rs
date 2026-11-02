@@ -252,6 +252,156 @@ async fn an_opportunity_lives_in_the_account_graph() {
     .await;
 }
 
+/// The pack ships its application, ready to use (app-builder.md D513).
+#[tokio::test]
+#[serial]
+async fn the_pack_ships_its_screens() {
+    with_app(|server, env| async move {
+        let org = me(&server, &env.alice).await["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let (st, e) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/crm/install",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{e}");
+        let (_, apps) = call(&server, "GET", "/api/v1/apps", &env.alice, org, None).await;
+        let app = apps["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["key"] == "sales_follow_up")
+            .unwrap();
+        assert_eq!(app["names"]["fr"], "Suivi commercial");
+        let id = app["id"].as_str().unwrap();
+        let screens: Vec<&str> = app["screens"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["key"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            screens,
+            ["pipeline", "opportunity", "leads", "activities", "billing"]
+        );
+        for key in screens {
+            let (st, s) = call(
+                &server,
+                "GET",
+                &format!("/api/v1/apps/{id}/screens/{key}"),
+                &env.alice,
+                org,
+                None,
+            )
+            .await;
+            assert_eq!(st, 200, "{s}");
+        }
+        object(
+            &server,
+            &env.alice,
+            org,
+            "opportunity",
+            "Acme 2027",
+            json!({"stage": "proposal"}),
+        )
+        .await;
+        for (set, count) in [
+            ("open_opportunities", 1),
+            ("stage_proposal", 1),
+            ("stage_won", 0),
+            ("new_leads", 0),
+        ] {
+            let (st, r) = call(
+                &server,
+                "GET",
+                &format!("/api/v1/apps/{id}/object-sets/{set}"),
+                &env.alice,
+                org,
+                None,
+            )
+            .await;
+            assert_eq!((st, r["count"].clone()), (200, json!(count)), "{set}: {r}");
+        }
+        // Not a dashboard of the org.
+        let (_, list) = call(&server, "GET", "/api/v1/dashboards", &env.alice, org, None).await;
+        assert_eq!(list["count"], 0, "{list}");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn a_stale_lead_is_proposed_for_erasure() {
+    with_app(|server, env| async move {
+        let org = me(&server, &env.alice).await["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let (st, _) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/crm/install",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200);
+        let lead = object(
+            &server,
+            &env.alice,
+            org,
+            "lead",
+            "Gamma · Lee",
+            json!({"status": "new", "email": "lee@gamma.test"}),
+        )
+        .await;
+        env.db
+            .execute_unprepared(&format!(
+                "UPDATE objects SET updated_at = now() - interval '40 months' WHERE id = '{lead}'"
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            pnex_backend::services::profiles::propose_erasures_in(&env.db, org, 36)
+                .await
+                .unwrap(),
+            1
+        );
+        let (_, l) = call(&server, "GET", "/api/v1/proposals", &env.alice, org, None).await;
+        assert_eq!(l["results"][0]["refs"][0]["id"], lead.as_str(), "{l}");
+        let (st, p) = call(
+            &server,
+            "POST",
+            &format!(
+                "/api/v1/proposals/{}/decision",
+                l["results"][0]["id"].as_str().unwrap()
+            ),
+            &env.alice,
+            org,
+            Some(json!({"decision": "accept"})),
+        )
+        .await;
+        assert_eq!(st, 200, "{p}");
+        let (_, o) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{lead}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(o["erased_at"].is_string(), "{o}");
+        assert!(o["properties"].get("email").is_none(), "{o}");
+    })
+    .await;
+}
+
 /// « elodie » finds « Élodie » (query and global search), and an objection
 /// recorded on « Élodie » blocks « ELODIE » at the same account (crm.md D447).
 #[tokio::test]

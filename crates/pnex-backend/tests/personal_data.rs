@@ -248,6 +248,35 @@ async fn a_role_without_personal_read_sees_masked_people() {
             "{o}"
         );
 
+        // SEC-55: saving what the mask showed keeps what it hid.
+        let (st, saved) = call(
+            &server,
+            "PUT",
+            &format!("/api/v1/ontology/objects/{ann}"),
+            &env.bob,
+            org,
+            Some(json!({"title": o["title"], "expected_version": o["version"], "properties": {"wikidata": "Q2", "notes": "overwritten"}})),
+        )
+        .await;
+        assert_eq!(st, 200, "{saved}");
+        // What the save kept must not come back in its response.
+        assert_ne!(saved["title"], "Ann Smith", "{saved}");
+        assert!(saved["properties"].get("notes").is_none(), "{saved}");
+        assert!(saved["properties"].get("persona").is_none(), "{saved}");
+        let (_, full) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{ann}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(full["title"], "Ann Smith", "{full}");
+        assert_eq!(full["properties"]["notes"], "met at the fair", "{full}");
+        assert_eq!(full["properties"]["persona"], "decision_maker", "{full}");
+        assert_eq!(full["properties"]["wikidata"], "Q2", "{full}");
+
         let (_, links) = call(
             &server,
             "GET",
@@ -259,6 +288,30 @@ async fn a_role_without_personal_read_sees_masked_people() {
         .await;
         let l = &links["results"][0];
         assert_eq!(l["attributes"], json!({"source": "registry"}), "{links}");
+        let (st, e) = call(
+            &server,
+            "PUT",
+            &format!("/api/v1/ontology/links/{}", l["id"]),
+            &env.bob,
+            org,
+            Some(json!({"attributes": {"source": "registry", "position": "overwritten"}})),
+        )
+        .await;
+        assert_eq!(st, 200, "{e}");
+        assert!(e["attributes"].get("position").is_none(), "{e}");
+        let (_, full_links) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{acme}/links"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_ne!(
+            full_links["results"][0]["attributes"]["position"], "overwritten",
+            "{full_links}"
+        );
         assert_eq!(l["target"]["title"], format!("•••• {}", &ann[..8]));
 
         let (_, q) = call(

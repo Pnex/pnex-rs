@@ -267,7 +267,10 @@ les règles plus anciennes qui les contredisent.
 | Utilitaire de bureau, dans la barre des tâches, qui capte l'audio vers PNeX (call-recording.md R1) | Enregistreur PNeX | PNeX recorder | pas « agent » (= agent navigateur, agent edge), pas « dictaphone » |
 | Essai de 5 s qui vérifie que le serveur transcrit, depuis l'enregistreur | Test de transcription | Transcription test | pas « test STT », pas « speech to text » |
 | État sauvegardé d'un objet | Version | Version | — |
-| Programme externe construit sur les données d'une org, par un compte de service (D433) | Application | Application | ni « intégration », ni « connecteur » (= fournisseur) |
+| Programme construit sur les données d'une org : par un compte de service (D433), ou par ses écrans dans PneX (D506) | Application | Application | ni « intégration », ni « connecteur » (= fournisseur) |
+| Vue d'une application, avec sa version publiée (D507) | Écran | Screen | ni « page d'application » |
+| Valeur passée entre les widgets d'une application, le temps de la session (D509) | Variable | Variable | — |
+| Requête nommée d'une application (D434) | Ensemble d'objets | Object set | — |
 | Vue d'un dossier : chaque acteur est un fil dans le temps (storyline) | Histoire | Story | ni l'historique des versions, ni la frise |
 | Événement d'un dossier qui déplace de l'argent (montant + payeur + bénéficiaire) | Versement | Payment | ni « paiement », ni « transaction » |
 | Vue d'un dossier : diagramme de Sankey des versements | Argent | Money | pas « Flux » (= streams) |
@@ -285,6 +288,7 @@ les règles plus anciennes qui les contredisent.
 | Os d'un modèle 3D qu'on fait tourner | Articulation | Joint | pas « os », pas « bone » |
 | Média produit par un fournisseur de génération (D235) | Généré | Generated | — |
 | Extension de navigateur appairée qui exécute des missions, une par ordinateur (D255) | Agent navigateur | Browser agent | pas « collecteur », pas « extension » seule (= le logiciel à installer) |
+| Agent navigateur qui exécute les missions de tous les membres sans le leur, posé par un admin (extension-collector.md D550) ; sinon il est personnel | Agent commun | Common agent | pas « partagé » (= mode d'exécution, D269) |
 | Ce qu'un agent navigateur exécute : une page, un compte, un live (D256) | Mission | Mission | pas « règle », pas « tâche » |
 | Ensemble nommé de permissions, attribuable (iam.md D287) | Rôle | Role | le rôle d'un acteur dans un dossier |
 | Rôle donné à un membre ou à une équipe (D288) | Attribution | Assignment | pas « affectation », pas un partage |

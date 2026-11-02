@@ -17,6 +17,9 @@ pub fn ActionDialog(
     object_id: String,
     action_key: String,
     #[props(default)] initial: Map<String, Value>,
+    /// The application whose screen invokes (app-builder.md D511).
+    #[props(default)]
+    app_id: Option<String>,
     on_close: Callback<()>,
     #[props(default)] on_done: Option<Callback<()>>,
 ) -> Element {
@@ -80,9 +83,11 @@ pub fn ActionDialog(
                 let id = object_id.clone();
                 let key = action_key.clone();
                 let body = doc.read().clone();
+                let app = app_id.clone();
                 busy.set(true);
                 spawn(async move {
-                    let res = api::ontology::invoke_action(&id, &key, &body).await;
+                    let res = api::ontology::invoke_action(&id, &key, &body, app.as_deref())
+                        .await;
                     busy.set(false);
                     match res {
                         Ok(r) => {

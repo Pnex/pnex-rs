@@ -582,7 +582,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("gap", "0..=100, default 10: lead the best candidate needs over the second one"),
             ("limit", "1..=5 candidates returned, default 5"),
         ],
-        notes: "Input: msg.payload = {name, city?, postcode?} (a string = the name). msg.payload becomes {query, siren (port 0 only), candidates: [{siren, name, score, city, postcode, naf, headcount_band, active}]}. Score: name likeness 70, same postcode 20 or same city 15, still active 10; a name alone tops at 80, so give a place whenever the list has one. A match is a proposal: write the link with link_upsert propose: true and let a human confirm; send port 1 to a review list, never pick the first candidate yourself. Each message is one call to the register and counts against the org's daily cap (org-resolve-quota). On port 2 msg.error = {code, args}: org-resolve-unavailable, org-resolve-quota, org-resolve-query-invalid.",
+        notes: "Input: msg.payload = {name, city?, postcode?} (a string = the name). msg.payload becomes {query, siren (port 0 only), candidates: [{siren, name, score, city, postcode, naf, headcount_band, active}]}. Score: name likeness 70, same postcode 20, or the head office in that city 15 (another site 5), still active 10; a name alone tops at 80, so give a place whenever the list has one. A match is a proposal: write the link with link_upsert propose: true and let a human confirm; send port 1 to a review list, never pick the first candidate yourself. Each message is one call to the register and counts against the org's daily cap (org-resolve-quota). On port 2 msg.error = {code, args}: org-resolve-unavailable, org-resolve-quota, org-resolve-query-invalid.",
     },
     NodeDoc {
         kind: "control_source",

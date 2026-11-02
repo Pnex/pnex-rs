@@ -1326,9 +1326,57 @@
         ],
         "type": "object"
       },
+      "AppBuildInput": {
+        "description": "What the builder of an application changes (Q-B1): the scope and the\npermitted actions stay with [`AppInput`].",
+        "properties": {
+          "expected_version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "home": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "object_sets": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ObjectSetDef"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "screens": {
+            "description": "In display order. A new key adds a screen, a missing key removes\nit; `dashboard_id` and `published_version` are the server's.",
+            "items": {
+              "$ref": "#/components/schemas/AppScreenInput"
+            },
+            "type": "array"
+          },
+          "variables": {
+            "items": {
+              "$ref": "#/components/schemas/AppVariable"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "type": "object"
+      },
       "AppInput": {
         "description": "Creating (`expected_version` absent) or replacing an application.",
         "properties": {
+          "actions": {
+            "description": "Actions its screens may invoke, `<type>.<action>` (D440).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "description": {
             "type": "string"
           },
@@ -1371,6 +1419,19 @@
         ],
         "type": "object"
       },
+      "AppPublishInput": {
+        "description": "`POST /apps/{id}/publish`: readers now see the current version of every\nscreen, on the application version it was read on.",
+        "properties": {
+          "expected_version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "type": "object"
+      },
       "AppScope": {
         "description": "What an application reads. The change feed and the object sets keep to\nit (D433, Q-A1); the media fields tell its copy what to download.",
         "properties": {
@@ -1405,14 +1466,149 @@
         },
         "type": "object"
       },
+      "AppScreen": {
+        "description": "One screen of an application (D507): a dashboard it owns.",
+        "properties": {
+          "dashboard_id": {
+            "description": "The dashboard holding its versions, edited like any dashboard.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "names": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Its name per language, for a screen a pack ships."
+          },
+          "published_version": {
+            "description": "The version readers see (Q-B2); `None` = never published.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "dashboard_id"
+        ],
+        "type": "object"
+      },
+      "AppScreenInput": {
+        "properties": {
+          "icon": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "type": "object"
+      },
+      "AppScreenView": {
+        "description": "A screen as its readers see it: the published version.",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "layout": {
+            "$ref": "#/components/schemas/DashboardLayout"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "version",
+          "layout"
+        ],
+        "type": "object"
+      },
+      "AppVariable": {
+        "description": "A value shared by the widgets of an application (D509). Its value lives\nin the reader's session, never in the database; it is a value, never an\nexpression (D512).",
+        "properties": {
+          "default": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/VariableKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "property": {
+            "description": "The enum property whose values an `enum` variable takes.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type_key": {
+            "description": "Type of an `object` variable, or owner of the property of an `enum`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "AppView": {
         "properties": {
+          "actions": {
+            "description": "Actions its screens may invoke, `<type>.<action>` (D440).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
           },
           "description": {
             "type": "string"
+          },
+          "home": {
+            "description": "Key of the first screen shown; the first one when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "id": {
             "format": "uuid",
@@ -1423,6 +1619,10 @@
           },
           "name": {
             "type": "string"
+          },
+          "names": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Its name per language, for an application a pack ships."
           },
           "object_sets": {
             "additionalProperties": {
@@ -1437,6 +1637,13 @@
           "scope": {
             "$ref": "#/components/schemas/AppScope"
           },
+          "screens": {
+            "description": "Screens built in PneX, in display order (D507).",
+            "items": {
+              "$ref": "#/components/schemas/AppScreen"
+            },
+            "type": "array"
+          },
           "service_account_id": {
             "description": "The service account the application signs in with.",
             "format": "uuid",
@@ -1448,6 +1655,12 @@
           "updated_at": {
             "format": "date-time",
             "type": "string"
+          },
+          "variables": {
+            "items": {
+              "$ref": "#/components/schemas/AppVariable"
+            },
+            "type": "array"
           },
           "version": {
             "format": "int32",
@@ -1463,6 +1676,68 @@
           "created_at",
           "updated_at"
         ],
+        "type": "object"
+      },
+      "AppWidgetOptions": {
+        "description": "What a widget of a screen reads and writes (D508, D510, D511). Which\nfields apply depends on the widget type.",
+        "properties": {
+          "action": {
+            "description": "`action_button`: `<type>.<action>`, in the application's list.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "columns": {
+            "description": "`object_table`, `object_fields`: the properties shown.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "object_set": {
+            "description": "`object_table`, `object_count`: the object set read.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "object_type": {
+            "description": "`object_fields`, `object_form`: the type shown or created.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Parameter of the set → variable that fills it.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "screen": {
+            "description": "`object_table`: the screen a row opens.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "titles": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "The widget's title per language, for a screen a pack ships."
+          },
+          "variable": {
+            "description": "The variable written (`input`, a row of `object_table`) or read\n(`object_fields`, `object_form`, `action_button`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "AsrCarrierCheck": {
@@ -2329,6 +2604,10 @@
       "BrowserAgent": {
         "description": "A browser agent of the org (a device of the `browser_agent` model).",
         "properties": {
+          "common": {
+            "description": "Runs the missions of every member; otherwise only its owner's.",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -2344,6 +2623,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "mine": {
+            "description": "Paired by the caller.",
+            "type": "boolean"
+          },
           "mode": {
             "description": "`shared` or `dedicated:<platform>` (D269).",
             "type": "string"
@@ -2353,6 +2636,13 @@
           },
           "online": {
             "type": "boolean"
+          },
+          "owner": {
+            "description": "Display name of the member who paired it.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "updated_at": {
             "format": "date-time",
@@ -2374,6 +2664,13 @@
       "BrowserAgentPatch": {
         "description": "Partial update of an agent.",
         "properties": {
+          "common": {
+            "description": "Admin on their own browser; its owner may always take it back.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "mode": {
             "description": "`shared` or `dedicated:<platform>` (D269).",
             "type": [
@@ -5946,6 +6243,47 @@
         ],
         "type": "string"
       },
+      "Distribution": {
+        "description": "Distribution of a window's abnormal return over a set of events.",
+        "properties": {
+          "count": {
+            "description": "Events measured: always shown, a mean of five says little.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mean": {
+            "format": "double",
+            "type": "number"
+          },
+          "mean_high": {
+            "format": "double",
+            "type": "number"
+          },
+          "mean_low": {
+            "description": "95% bootstrap interval of the mean.",
+            "format": "double",
+            "type": "number"
+          },
+          "median": {
+            "format": "double",
+            "type": "number"
+          },
+          "positive": {
+            "description": "Share of the events with a positive abnormal return, 0 to 1.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "mean",
+          "median",
+          "positive",
+          "mean_low",
+          "mean_high"
+        ],
+        "type": "object"
+      },
       "DocComment": {
         "description": "One comment (P12). A thread root has `parent_id = None` and carries the\nanchor; replies point to their root.",
         "properties": {
@@ -6271,6 +6609,40 @@
           "ts_us",
           "stream",
           "level"
+        ],
+        "type": "object"
+      },
+      "EventStudy": {
+        "properties": {
+          "beta": {
+            "format": "double",
+            "type": "number"
+          },
+          "day_zero": {
+            "description": "The first trading day at or after the event date.",
+            "format": "date",
+            "type": "string"
+          },
+          "relative_volume": {
+            "description": "Volume of day zero against the 30 days before; `None` without volume.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "windows": {
+            "description": "Only the windows the prices fully cover.",
+            "items": {
+              "$ref": "#/components/schemas/WindowResult"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "day_zero",
+          "beta",
+          "windows"
         ],
         "type": "object"
       },
@@ -8305,6 +8677,13 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "tallies": {
+            "description": "What the tree's nodes are linked to, counted (D330: contacts by\npersona, open signals).",
+            "items": {
+              "$ref": "#/components/schemas/HierarchyTally"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -8405,6 +8784,36 @@
         ],
         "type": "object"
       },
+      "HierarchyTally": {
+        "description": "Counts the distinct objects at the other end of the open links `link`\nof the tree's nodes, those whose properties match `only`, per value of\nthe property `by` when set.",
+        "properties": {
+          "by": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "link": {
+            "type": "string"
+          },
+          "only": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "link"
+        ],
+        "type": "object"
+      },
       "HierarchyView": {
         "description": "`GET /ontology/objects/{id}/hierarchy`: the hierarchies of the installed\npacks, and the tree of the one asked (the first by default).",
         "properties": {
@@ -8432,6 +8841,12 @@
           "nodes": {
             "items": {
               "$ref": "#/components/schemas/HierarchyNode"
+            },
+            "type": "array"
+          },
+          "tallies": {
+            "items": {
+              "$ref": "#/components/schemas/TallyCount"
             },
             "type": "array"
           },
@@ -8676,6 +9091,10 @@
             "minimum": 0,
             "type": "integer"
           },
+          "observations": {
+            "minimum": 0,
+            "type": "integer"
+          },
           "updated": {
             "minimum": 0,
             "type": "integer"
@@ -8726,6 +9145,13 @@
           "links_updated": {
             "items": {
               "$ref": "#/components/schemas/DiffLinkUpdate"
+            },
+            "type": "array"
+          },
+          "observations": {
+            "description": "Dated values read (D541); those already known are skipped at writing.",
+            "items": {
+              "$ref": "#/components/schemas/PlannedObservation"
             },
             "type": "array"
           },
@@ -10279,6 +10705,12 @@
           "name": {
             "type": "string"
           },
+          "timeout_secs": {
+            "description": "Timeout of one LLM call, in seconds.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -10324,6 +10756,15 @@
           },
           "name": {
             "type": "string"
+          },
+          "timeout_secs": {
+            "description": "Timeout of one LLM call in seconds (10–900); `None` = 90 on create,\nunchanged on update.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "usages": {
             "description": "Usages to route to this provider; taken away from any other one.",
@@ -11018,6 +11459,14 @@
             "type": "integer"
           },
           "ok": {
+            "type": "boolean"
+          },
+          "smtp_error": {
+            "$ref": "#/components/schemas/MailboxError",
+            "description": "Why the outgoing server refused; incoming mail still works."
+          },
+          "smtp_tested": {
+            "description": "The outgoing server was tried (login only, nothing sent).",
             "type": "boolean"
           }
         },
@@ -13524,6 +13973,54 @@
         ],
         "type": "object"
       },
+      "ObservationView": {
+        "description": "A dated value of an object, as known at the moment asked\n(markets-research.md D541).",
+        "properties": {
+          "backfilled": {
+            "description": "Publication date lost: read when the source was first imported.",
+            "type": "boolean"
+          },
+          "known_at": {
+            "description": "When this value became known: end of its publication day, or the\nmoment it was stored when the source gives no date.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "type": "string"
+          },
+          "source_ref": {
+            "description": "The filing that published it, or the import run that read it.",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Empty when the source gives none.",
+            "type": "string"
+          },
+          "value": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "metric",
+          "unit",
+          "period_start",
+          "period_end",
+          "known_at",
+          "value",
+          "source_ref",
+          "backfilled"
+        ],
+        "type": "object"
+      },
       "OntologyQuery": {
         "description": "Declarative ontology query (D185): select, then traverse, then page.",
         "properties": {
@@ -13554,7 +14051,7 @@
             "type": "boolean"
           },
           "label": {
-            "description": "`name` or `name:value`, effective labels (D42).",
+            "description": "`name` or `name:value`, effective labels (D42); several comma-separated terms all required.",
             "type": [
               "string",
               "null"
@@ -16946,6 +17443,42 @@
         ],
         "type": "object"
       },
+      "Paginated_ObservationView": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/ObservationView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_OrgMember": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -17332,6 +17865,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/PredefinedDevice"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_ProfileCapture": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/ProfileCapture"
             },
             "type": "array"
           }
@@ -18821,6 +19390,53 @@
         },
         "type": "object"
       },
+      "PlannedObservation": {
+        "description": "One value of a dated metric, as a source gave it (D541).",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "known_on": {
+            "description": "The day the source says it published this value; `None` = unknown,\nthe value counts as known from the moment it is stored.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metric": {
+            "type": "string"
+          },
+          "period_end": {
+            "type": "string"
+          },
+          "period_start": {
+            "description": "Equal to `period_end` for a value at a date.",
+            "type": "string"
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit": {
+            "description": "Empty when the source gives none.",
+            "type": "string"
+          },
+          "value": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "metric",
+          "period_start",
+          "period_end",
+          "value"
+        ],
+        "type": "object"
+      },
       "PnexHost": {
         "description": "Saved PNeX server host of the org (`GET /api/v1/edge/hosts`).",
         "properties": {
@@ -19084,6 +19700,51 @@
         ],
         "type": "object"
       },
+      "PositionResult": {
+        "description": "A fictitious position measured on closing prices (D534).",
+        "properties": {
+          "entry_close": {
+            "format": "double",
+            "type": "number"
+          },
+          "entry_on": {
+            "format": "date",
+            "type": "string"
+          },
+          "last_close": {
+            "format": "double",
+            "type": "number"
+          },
+          "last_on": {
+            "format": "date",
+            "type": "string"
+          },
+          "open": {
+            "description": "False when an exit day is set: the result no longer moves.",
+            "type": "boolean"
+          },
+          "result": {
+            "description": "`quantity` shares at the entry close, times that return.",
+            "format": "double",
+            "type": "number"
+          },
+          "total_return": {
+            "description": "Total return in the position's direction: dividends and splits count.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "entry_on",
+          "entry_close",
+          "last_on",
+          "last_close",
+          "total_return",
+          "result",
+          "open"
+        ],
+        "type": "object"
+      },
       "PositionSource": {
         "description": "Origin of a device position.",
         "enum": [
@@ -19208,6 +19869,49 @@
         },
         "required": [
           "body"
+        ],
+        "type": "object"
+      },
+      "ProfileCapture": {
+        "description": "A profile capture asked for a person, with where it stands (D333).",
+        "properties": {
+          "captured": {
+            "description": "The page was read. Its text is deleted after 30 days, this stays.",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "open": {
+            "description": "Still to run; closed either captured or stopped by an objection.",
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MissionState"
+          },
+          "state_code": {
+            "description": "Code of the last obstacle (`ext-no-agent`, `ext-login-required`…).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "state",
+          "open",
+          "captured",
+          "created_at"
         ],
         "type": "object"
       },
@@ -20772,6 +21476,62 @@
           "row",
           "column",
           "token"
+        ],
+        "type": "object"
+      },
+      "RuleResult": {
+        "properties": {
+          "benchmark_missing": {
+            "description": "No benchmark prices: nothing can be measured.",
+            "type": "boolean"
+          },
+          "filings": {
+            "description": "Filings matching the rule; `events` of a window can be fewer, when the\nprices do not cover it.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "instruments": {
+            "description": "Instruments with both filings and prices.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "windows": {
+            "description": "Followed instruments only: those the org stopped following or that\ndisappeared are missing, which flatters a result.",
+            "items": {
+              "$ref": "#/components/schemas/RuleWindow"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "filings",
+          "instruments",
+          "windows",
+          "benchmark_missing"
+        ],
+        "type": "object"
+      },
+      "RuleWindow": {
+        "description": "One window of a rule: the events against the drawn dates.",
+        "properties": {
+          "baseline": {
+            "$ref": "#/components/schemas/Distribution"
+          },
+          "events": {
+            "$ref": "#/components/schemas/Distribution"
+          },
+          "from": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "to": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to"
         ],
         "type": "object"
       },
@@ -22838,6 +23598,41 @@
           "server_version",
           "deployment_mode",
           "generated_at"
+        ],
+        "type": "object"
+      },
+      "TallyCount": {
+        "description": "One count of a [`HierarchyTally`]; no `value` = the whole count (no\nbreakdown, or a breakdown the caller may not read).",
+        "properties": {
+          "count": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "labels": {
+            "$ref": "#/components/schemas/BTreeMap"
+          },
+          "link": {
+            "type": "string"
+          },
+          "name": {
+            "description": "The link's name seen from the tree's node.",
+            "type": "string"
+          },
+          "names": {
+            "$ref": "#/components/schemas/BTreeMap"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "link",
+          "name",
+          "count"
         ],
         "type": "object"
       },
@@ -24938,6 +25733,17 @@
         ],
         "type": "object"
       },
+      "VariableKind": {
+        "description": "What a variable holds (D509).",
+        "enum": [
+          "text",
+          "number",
+          "date",
+          "object",
+          "enum"
+        ],
+        "type": "string"
+      },
       "VideoSegment": {
         "description": "Recorded video segment (`video_segments` row, API DTO).",
         "properties": {
@@ -25049,6 +25855,14 @@
       "VizDashboard": {
         "description": "A dashboard with the layout of its current version.",
         "properties": {
+          "app_id": {
+            "description": "The application this dashboard is a screen of (app-builder.md D507).",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -25944,6 +26758,10 @@
             "$ref": "#/components/schemas/AggregateWidgetOptions",
             "description": "Per range / per time slice bars (present iff type is `range_bars`,\nD182)."
           },
+          "app": {
+            "$ref": "#/components/schemas/AppWidgetOptions",
+            "description": "Data of a widget of an application screen (D510, D511), present iff\nthe type is one of [`APP_WIDGET_TYPES`]."
+          },
           "control": {
             "$ref": "#/components/schemas/ControlRef",
             "description": "Org control driven by a control widget (only on\n[`CONTROL_WIDGET_TYPES`]; absent = the server provisions the widget's\nown control at save, D131)."
@@ -26123,6 +26941,36 @@
         },
         "required": [
           "ssid"
+        ],
+        "type": "object"
+      },
+      "WindowResult": {
+        "properties": {
+          "abnormal": {
+            "description": "Sum of the daily returns less what the benchmark explains.",
+            "format": "double",
+            "type": "number"
+          },
+          "from": {
+            "description": "First trading day of the window, relative to the event.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "raw": {
+            "description": "Compounded total return over the window.",
+            "format": "double",
+            "type": "number"
+          },
+          "to": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "raw",
+          "abnormal"
         ],
         "type": "object"
       },
@@ -27828,7 +28676,7 @@
             }
           },
           {
-            "description": "Label filter `name` / `name:value` (D218).",
+            "description": "Label filter `name` / `name:value` (D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -28706,7 +29554,7 @@
                 }
               }
             },
-            "description": "`field-invalid`: `key` (`required`, `invalid`, `unique`), `name` (`required`, `max_length:120`), `description` (`max_length:2000`), `service_account_id` (`invalid-uuid`, `not-found`, `unique`), `scope.types` / `scope.link_types` (`invalid`, `not-found`), `scope.media_kinds` / `scope.media_max_bytes` (`invalid`), `expected_version` (`required`, on a replace)"
+            "description": "`field-invalid`: `key` (`required`, `invalid`, `unique`), `name` (`required`, `max_length:120`), `description` (`max_length:2000`), `service_account_id` (`invalid-uuid`, `not-found`, `unique`), `scope.types` / `scope.link_types` (`invalid`, `not-found`), `scope.media_kinds` / `scope.media_max_bytes` (`invalid`), `actions` (`out-of-scope`), `expected_version` (`required`, on a replace)"
           },
           "401": {
             "content": {
@@ -28811,7 +29659,7 @@
     },
     "/api/v1/apps/me/object-sets/{name}": {
       "get": {
-        "description": "Runs a named query of the application whose service account signs the request (D434). Every query parameter other than `limit` and `offset` fills the set's parameter of that name (`$code` in a filter value or the text); a missing one answers 400 with that field `required`. The set keeps to the application's scope (checked when it is saved). Answers like `POST /ontology/query`. Service accounts of an application.",
+        "description": "Runs a named query of the application whose service account signs the request (D434). Every query parameter other than `limit`, `offset`, `sort` and `desc` fills the set's parameter of that name (`$code` in a filter value or the text); a missing one answers 400 with that field `required`. The set keeps to the application's scope (checked when it is saved). Answers like `POST /ontology/query`. Service accounts of an application.",
         "operationId": "apps_me_object_sets_run",
         "parameters": [
           {
@@ -28851,6 +29699,24 @@
             "schema": {
               "format": "int64",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Property to sort on, instead of the set's order",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "With `sort`: descending",
+            "in": "query",
+            "name": "desc",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           }
         ],
@@ -28919,7 +29785,7 @@
     },
     "/api/v1/apps/{id}": {
       "delete": {
-        "description": "Removes the declaration; its service account and keys stay (delete them on the Access page). Owner or admin.",
+        "description": "Removes the declaration and its screens; its service account and keys stay (delete them on the Access page). Owner or admin.",
         "operationId": "apps_delete",
         "parameters": [
           {
@@ -29119,7 +29985,7 @@
                 }
               }
             },
-            "description": "`field-invalid`: `key` (`required`, `invalid`, `unique`), `name` (`required`, `max_length:120`), `description` (`max_length:2000`), `service_account_id` (`invalid-uuid`, `not-found`, `unique`), `scope.types` / `scope.link_types` (`invalid`, `not-found`), `scope.media_kinds` / `scope.media_max_bytes` (`invalid`), `expected_version` (`required`, on a replace)"
+            "description": "`field-invalid`: `key` (`required`, `invalid`, `unique`), `name` (`required`, `max_length:120`), `description` (`max_length:2000`), `service_account_id` (`invalid-uuid`, `not-found`, `unique`), `scope.types` / `scope.link_types` (`invalid`, `not-found`), `scope.media_kinds` / `scope.media_max_bytes` (`invalid`), `actions` (`out-of-scope`), `expected_version` (`required`, on a replace)"
           },
           "401": {
             "content": {
@@ -29168,6 +30034,448 @@
           }
         ],
         "summary": "Replace an application",
+        "tags": [
+          "apps"
+        ]
+      }
+    },
+    "/api/v1/apps/{id}/build": {
+      "put": {
+        "description": "What a builder changes (app-builder.md Q-B1), on the version it was read on: screens in display order (a new key creates its screen, a missing key deletes it with its versions), home screen, variables, object sets kept to the application's scope. The scope and the permitted actions stay with the owner or admin. Needs the build permission.",
+        "operationId": "apps_build",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Application id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppBuildInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `screens.<i>.key`, `screens.<i>.name`, `home`, `variables.<i>.*`, `object_sets.<name>.*`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `apps:build`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`app-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`app-version-conflict`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change the screens, variables and object sets of an application",
+        "tags": [
+          "apps"
+        ]
+      }
+    },
+    "/api/v1/apps/{id}/object-sets/{name}": {
+      "get": {
+        "description": "For a screen of the application (app-builder.md D508): runs a named query with the caller's own rights, masked by classification. An application gives no right, it only narrows: the set keeps to its scope, checked when it is saved. Every query parameter other than `limit`, `offset`, `sort` and `desc` fills the set's parameter of that name, as a value only. Answers like `POST /ontology/query`. Needs the ontology read permission.",
+        "operationId": "apps_object_sets_run",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Application id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Object set name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rows per page (default 50, at most 500)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Rows to skip",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Property to sort on, instead of the set's order",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "With `sort`: descending",
+            "in": "query",
+            "name": "desc",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResult"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "A parameter of the set is missing (`<name>`: `required`), or the query is invalid"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`app-not-found`: no such application or set"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run an object set of an application",
+        "tags": [
+          "apps"
+        ]
+      }
+    },
+    "/api/v1/apps/{id}/publish": {
+      "post": {
+        "description": "Readers now see the current version of every screen (app-builder.md Q-B2), each checked against the application as it is now. Needs the build permission.",
+        "operationId": "apps_publish",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Application id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppPublishInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dashboard-invalid`: a screen names what the application does not have"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `apps:build`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`app-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`app-version-conflict`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Publish the screens of an application",
+        "tags": [
+          "apps"
+        ]
+      }
+    },
+    "/api/v1/apps/{id}/screens/{key}": {
+      "get": {
+        "description": "The published version of a screen, as its readers see it (app-builder.md D507, Q-B2). 404 before its first publication. Any org member.",
+        "operationId": "apps_screens_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Application id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Screen key",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppScreenView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `apps:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`app-not-found`: no such application or published screen"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a published screen of an application",
         "tags": [
           "apps"
         ]
@@ -34959,7 +36267,7 @@
     },
     "/api/v1/controls": {
       "get": {
-        "description": "Sorted by label, paginated (`limit`/`offset`). Filters: `search` (label or key), `kind`, `label` (`name` or `name:value`). Each row lists the deployed flows listening to it and, for a control declared by a dashboard or annotation widget, its origin. Any member.",
+        "description": "Sorted by label, paginated (`limit`/`offset`). Filters: `search` (label or key), `kind`, `label` (`name` or `name:value`, several comma-separated terms all required). Each row lists the deployed flows listening to it and, for a control declared by a dashboard or annotation widget, its origin. Any member.",
         "operationId": "controls_list",
         "parameters": [
           {
@@ -34991,7 +36299,7 @@
             }
           },
           {
-            "description": "Label filter `name` / `name:value` (D218).",
+            "description": "Label filter `name` / `name:value` (D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -35682,7 +36990,7 @@
     },
     "/api/v1/dashboards": {
       "get": {
-        "description": "Newest first, paginated (`limit`/`offset`). Filters: `search` (name) and `label` (`name` or `name:value`, inherited labels included). Each row carries the format (desktop/mobile) of its current version. Any member.",
+        "description": "Newest first, paginated (`limit`/`offset`). Filters: `search` (name) and `label` (`name` or `name:value`, several comma-separated terms all required, inherited labels included). Each row carries the format (desktop/mobile) of its current version. Any member.",
         "operationId": "dashboards_list",
         "parameters": [
           {
@@ -35705,7 +37013,7 @@
             }
           },
           {
-            "description": "D42: effective label (`name` or `name:value`, inherited included).",
+            "description": "D42: effective label (`name` or `name:value`, several comma-separated terms all required, inherited included).",
             "in": "query",
             "name": "label",
             "required": false,
@@ -36605,7 +37913,7 @@
             }
           },
           {
-            "description": "D42: effective label (`name` or `name:value`, inherited included).",
+            "description": "D42: effective label (`name` or `name:value`, several comma-separated terms all required, inherited included).",
             "in": "query",
             "name": "label",
             "required": false,
@@ -38377,7 +39685,7 @@
             }
           },
           {
-            "description": "Label filter `name` / `name:value` (D218).",
+            "description": "Label filter `name` / `name:value` (D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -40801,7 +42109,7 @@
     },
     "/api/v1/extension/agents": {
       "get": {
-        "description": "Browser agents paired with the org, newest first, with their fingerprint and whether they are connected now. Paginated (`limit`/`offset`). Any member.",
+        "description": "Browser agents the caller may see, newest first, with their fingerprint and whether they are connected now: their own and the common ones, every one with the `extension:share` permission. Paginated (`limit`/`offset`). Any member.",
         "operationId": "extension_agents_list",
         "parameters": [
           {
@@ -40876,7 +42184,7 @@
         ]
       },
       "post": {
-        "description": "Called by the extension right after the user signs in: the install key signs the org and a timestamp (proof of possession). Creates the browser agent of this install, or rotates the credentials of its existing agent in this org (any former session is cut). Returns the device token and Noise key once. Requires owner, admin or member role.",
+        "description": "Called by the extension right after the user signs in: the install key signs the org and a timestamp (proof of possession). Creates the browser agent of this install, or rotates the credentials of its existing agent in this org (any former session is cut). A new agent is personal: it runs only the missions of the member who paired it. Signing in on someone else's personal browser makes it the caller's; a common one needs the `extension:share` permission. Returns the device token and Noise key once. Requires owner, admin or member role.",
         "operationId": "extension_agents_pair",
         "parameters": [
           {
@@ -40939,7 +42247,7 @@
                 }
               }
             },
-            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:enroll`): the caller's role does not grant it"
+            "description": "`access-denied`: common browser without the `extension:share` permission · `access-denied` (`args.permission` = `extension:enroll`): the caller's role does not grant it"
           },
           "409": {
             "content": {
@@ -40965,7 +42273,7 @@
     },
     "/api/v1/extension/agents/{id}": {
       "patch": {
-        "description": "Renames a browser agent and/or sets its mode: `shared` (every platform but the exclusive ones) or `dedicated:<platform>` (that platform only, D269); absent fields unchanged, the mode applies at the agent's next connection. Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
+        "description": "Renames a browser agent and/or sets its mode: `shared` (every platform but the exclusive ones) or `dedicated:<platform>` (that platform only, D269); and/or `common`: a common browser runs the missions of every member without their own, a personal one only its owner's. Absent fields unchanged, the mode applies at the agent's next connection. Allowed on one's own browser, or on a common one with `extension:share`; sharing needs `extension:share`, taking one's own back does not. Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
         "operationId": "extension_agents_update",
         "parameters": [
           {
@@ -41038,7 +42346,7 @@
                 }
               }
             },
-            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:write`): the caller's role does not grant it"
+            "description": "`access-denied`: someone else's browser, or sharing without `extension:share` · `access-denied` (`args.permission` = `extension:write`): the caller's role does not grant it"
           },
           "404": {
             "content": {
@@ -41056,7 +42364,7 @@
             "bearer": []
           }
         ],
-        "summary": "Rename a browser agent or change its mode",
+        "summary": "Rename a browser agent, change its mode or share it",
         "tags": [
           "extension"
         ]
@@ -41792,8 +43100,103 @@
       }
     },
     "/api/v1/extension/people/{id}/profile-captures": {
+      "get": {
+        "description": "The latest profile captures asked for this person, newest first, with where each stands: waiting for a browser (`state_code` `ext-no-agent`), blocked, captured or stopped. Paginated (`limit`/`offset`). Any member.",
+        "operationId": "extension_profile_captures_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ProfileCapture"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the profile captures of a person",
+        "tags": [
+          "extension"
+        ]
+      },
       "post": {
-        "description": "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): a browser agent of the org opens it once in its signed-in session; the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
+        "description": "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session; the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
         "operationId": "extension_profile_captures_create",
         "parameters": [
           {
@@ -42864,7 +44267,7 @@
             }
           },
           {
-            "description": "Label filter `name` / `name:value` (D218).",
+            "description": "Label filter `name` / `name:value` (D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -43683,7 +45086,7 @@
             }
           },
           {
-            "description": "D42: effective label (`name` or `name:value`, inherited included).",
+            "description": "D42: effective label (`name` or `name:value`, several comma-separated terms all required, inherited included).",
             "in": "query",
             "name": "label",
             "required": false,
@@ -45515,7 +46918,7 @@
             }
           },
           {
-            "description": "Label filter `name` / `name:value` (D218).",
+            "description": "Label filter `name` / `name:value` (D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -52436,7 +53839,7 @@
     },
     "/api/v1/mailboxes/{id}/test": {
       "post": {
-        "description": "From the server: logs in and counts the messages of each folder, read-only; nothing is fetched, marked read nor stored. Its manager only. Requires the mail write permission.",
+        "description": "From the server: logs in and counts the messages of each folder, read-only; nothing is fetched, marked read nor stored. With an outgoing server, also logs in to it and sends nothing. Its manager only. Requires the mail write permission.",
         "operationId": "mailboxes_test",
         "parameters": [
           {
@@ -52513,6 +53916,301 @@
         ]
       }
     },
+    "/api/v1/markets/instruments/{id}/event-study": {
+      "get": {
+        "description": "Raw and abnormal return around the date, against the org's benchmark, with a market model estimated before the event, and the relative volume. `null` without a benchmark or enough prices. An aid to analysis, not investment advice. Any org member.",
+        "operationId": "markets_event_study",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Instrument object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Day of the event (`YYYY-MM-DD`).",
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventStudy"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `date` (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Measure how an instrument moved around a date",
+        "tags": [
+          "markets"
+        ]
+      }
+    },
+    "/api/v1/markets/positions/{id}/result": {
+      "get": {
+        "description": "Result of a `paper_position` from the first close at or after its entry day to its exit day or the latest close, dividends and splits counted. `null` without an instrument or prices. Fictitious: no order exists in PNEX. Any org member.",
+        "operationId": "markets_position_result",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Position object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionResult"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Measure a fictitious position on closing prices",
+        "tags": [
+          "markets"
+        ]
+      }
+    },
+    "/api/v1/markets/rule-test": {
+      "get": {
+        "description": "Distribution of the abnormal return after every matching filing of the followed instruments, next to the same measure on drawn dates, with the number of events. Each filing is dated by its filing day. Instruments no longer followed are missing, which can flatter a result. An aid to analysis, not investment advice. Any org member.",
+        "operationId": "markets_rule_test",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Form of the filings (`8-K`, `10-Q`…).",
+            "in": "query",
+            "name": "form",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "One item of the form (`2.02` = results in an 8-K).",
+            "in": "query",
+            "name": "item",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "First filing day (`YYYY-MM-DD`).",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Last filing day (`YYYY-MM-DD`).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleResult"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `form`, `from` or `to` (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`server-busy`: too many rule tests at once"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Test how instruments moved after a kind of filing",
+        "tags": [
+          "markets"
+        ]
+      }
+    },
     "/api/v1/mcp": {
       "post": {
         "description": "Model Context Protocol endpoint (Streamable HTTP, JSON answers, stateless): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are the operations of this spec listed as exposed (D245); a call runs with the caller's token and rights. `X-Org-Id` on this request is the default organisation of the calls. Notifications answer 202.",
@@ -52561,7 +54259,7 @@
     },
     "/api/v1/media": {
       "get": {
-        "description": "Paginated (`limit` default 10, max 100; `offset`), most recently updated first. Filters: `kind` (comma-separated list), `search` (name contains), `label` (effective label `name` or `name:value`, inherited ones included).",
+        "description": "Paginated (`limit` default 10, max 100; `offset`), most recently updated first. Filters: `kind` (comma-separated list), `search` (name contains), `label` (effective label `name` or `name:value`, several comma-separated terms all required, inherited ones included).",
         "operationId": "media_list",
         "parameters": [
           {
@@ -52591,7 +54289,7 @@
             }
           },
           {
-            "description": "**Effective** label filter `name` or `name:value` (D42: own labels or\ninherited from a containment ancestor).",
+            "description": "**Effective** label filter `name` or `name:value` (D42: own labels or\ninherited from a containment ancestor); several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -53227,7 +54925,7 @@
             }
           },
           {
-            "description": "Label filter `name` or `name:value`",
+            "description": "Label filter `name` or `name:value`, several comma-separated terms all required",
             "in": "query",
             "name": "label",
             "required": false,
@@ -56567,7 +58265,7 @@
             }
           },
           {
-            "description": "Label filter `name` / `name:value` (D218).",
+            "description": "Label filter `name` / `name:value` (D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -57463,7 +59161,7 @@
             }
           },
           {
-            "description": "Label filter `name` / `name:value` (D218).",
+            "description": "Label filter `name` / `name:value` (D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -58295,7 +59993,7 @@
             }
           },
           {
-            "description": "Label filter `name` / `name:value` (D218).",
+            "description": "Label filter `name` / `name:value` (D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -60920,7 +62618,7 @@
     },
     "/api/v1/ontology/links/{id}": {
       "put": {
-        "description": "Replaces the attributes of a link, open or closed, validated against its link type (a source added, a note corrected). Ends, type and validity do not change: close the link and create another. Not for `measures` or `depicts` bindings. Journaled as `link.update` with the previous version. Needs a writer role.",
+        "description": "Replaces the attributes of a link, open or closed, validated against its link type (a source added, a note corrected). Ends, type and validity do not change: close the link and create another. Not for `measures` or `depicts` bindings. Attributes the caller may not read stay as stored. Journaled as `link.update` with the previous version. Needs a writer role.",
         "operationId": "ontology_links_update",
         "parameters": [
           {
@@ -61130,6 +62828,16 @@
               "format": "int64",
               "type": "integer"
             }
+          },
+          {
+            "description": "The application whose screen sends this write.",
+            "in": "query",
+            "name": "app",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -61181,7 +62889,7 @@
                 }
               }
             },
-            "description": "`ontology-write-forbidden` · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
+            "description": "`ontology-write-forbidden`, `app-out-of-scope` · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
           },
           "404": {
             "content": {
@@ -61374,7 +63082,7 @@
         ]
       },
       "put": {
-        "description": "Replaces the title and properties of an object (for a system object, only the org's extra properties are writable). `expected_version` must match the current version when set. Journaled. Needs a writer role and the type's write role.",
+        "description": "Replaces the title and properties of an object (for a system object, only the org's extra properties are writable). What the caller may not read stays as stored. `expected_version` must match the current version when set. Journaled. Needs a writer role and the type's write role.",
         "operationId": "ontology_objects_update",
         "parameters": [
           {
@@ -61392,6 +63100,16 @@
             "in": "path",
             "name": "id",
             "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The application whose screen sends this write.",
+            "in": "query",
+            "name": "app",
+            "required": false,
             "schema": {
               "format": "uuid",
               "type": "string"
@@ -61447,7 +63165,7 @@
                 }
               }
             },
-            "description": "`ontology-write-forbidden` · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
+            "description": "`ontology-write-forbidden`, `app-out-of-scope` · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
           },
           "404": {
             "content": {
@@ -61514,6 +63232,16 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "The application whose screen sends this write.",
+            "in": "query",
+            "name": "app",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -61565,7 +63293,7 @@
                 }
               }
             },
-            "description": "`ontology-write-forbidden` · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
+            "description": "`ontology-write-forbidden`, `app-out-of-scope` · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
           },
           "404": {
             "content": {
@@ -62414,6 +64142,141 @@
           }
         ],
         "summary": "List the links of an object",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/objects/{id}/observations": {
+      "get": {
+        "description": "Values read from primary sources for this object (reported figures of a company, a macroeconomic series), latest period first. For each period, the last value known at `as_of`: a restated figure does not rewrite what was known before. Paginated (`limit`/`offset`). Any org member.",
+        "operationId": "ontology_objects_observations",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "One metric only.",
+            "in": "query",
+            "name": "metric",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The values as known at this instant (RFC 3339); default now.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Also the values whose publication date is lost. Default: true\nwithout `as_of`, false with it.",
+            "in": "query",
+            "name": "include_backfilled",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ObservationView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `as_of` (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the dated values of an object",
         "tags": [
           "ontology"
         ]
@@ -64606,7 +66469,7 @@
             }
           },
           {
-            "description": "Label filter `name` / `name:value` (D218).",
+            "description": "Label filter `name` / `name:value` (D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": false,
@@ -66883,7 +68746,7 @@
     },
     "/api/v1/resources/search": {
       "get": {
-        "description": "Resources of the org carrying the label filter (`name` or `name:value`), optionally restricted to some kinds (`kinds`, comma-separated), paginated (`limit`/`offset`). Read-only.",
+        "description": "Resources of the org carrying the label filter (`name` or `name:value`, several comma-separated terms all required), optionally restricted to some kinds (`kinds`, comma-separated), paginated (`limit`/`offset`). Read-only.",
         "operationId": "resources_search",
         "parameters": [
           {
@@ -66897,7 +68760,7 @@
             }
           },
           {
-            "description": "Label filter `name` or `name:value` (own labels, D218).",
+            "description": "Label filter `name` or `name:value` (own labels, D218), several comma-separated terms all required.",
             "in": "query",
             "name": "label",
             "required": true,
@@ -72345,7 +74208,7 @@
             }
           },
           {
-            "description": "D42: effective label (`name` or `name:value`, inherited included).",
+            "description": "D42: effective label (`name` or `name:value`, several comma-separated terms all required, inherited included).",
             "in": "query",
             "name": "label",
             "required": false,

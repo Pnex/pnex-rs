@@ -100,12 +100,35 @@ pub async fn resolve(kind: &str, native_id: &str) -> Result<ObjectView, ApiError
     .await
 }
 
+/// The application whose screen writes (app-builder.md D511), as a query.
+fn through(app: Option<&str>) -> String {
+    app.map(|a| format!("?app={}", urlencode(a)))
+        .unwrap_or_default()
+}
+
 pub async fn create_object(input: &ObjectInput) -> Result<ObjectView, ApiError> {
-    client::request(Method::POST, &format!("{BASE}/objects"), body(input)).await
+    create_object_via(input, None).await
 }
 
 pub async fn update_object(id: &str, input: &ObjectInput) -> Result<ObjectView, ApiError> {
-    client::request(Method::PUT, &format!("{BASE}/objects/{id}"), body(input)).await
+    update_object_via(id, input, None).await
+}
+
+pub async fn create_object_via(
+    input: &ObjectInput,
+    app: Option<&str>,
+) -> Result<ObjectView, ApiError> {
+    let url = format!("{BASE}/objects{}", through(app));
+    client::request(Method::POST, &url, body(input)).await
+}
+
+pub async fn update_object_via(
+    id: &str,
+    input: &ObjectInput,
+    app: Option<&str>,
+) -> Result<ObjectView, ApiError> {
+    let url = format!("{BASE}/objects/{id}{}", through(app));
+    client::request(Method::PUT, &url, body(input)).await
 }
 
 /// Invokes an action of the object's type (D183): the flows it was sent to.
@@ -113,10 +136,15 @@ pub async fn invoke_action(
     id: &str,
     action: &str,
     params: &serde_json::Map<String, serde_json::Value>,
+    app: Option<&str>,
 ) -> Result<pnex_core::ontology::action::ActionInvocation, ApiError> {
     client::request(
         Method::POST,
-        &format!("{BASE}/objects/{id}/actions/{}", urlencode(action)),
+        &format!(
+            "{BASE}/objects/{id}/actions/{}{}",
+            urlencode(action),
+            through(app)
+        ),
         Some(serde_json::json!({ "params": params })),
     )
     .await
@@ -124,6 +152,11 @@ pub async fn invoke_action(
 
 pub async fn archive_object(id: &str) -> Result<Option<()>, ApiError> {
     client::request_opt(Method::DELETE, &format!("{BASE}/objects/{id}"), None).await
+}
+
+/// Erases the personal data of an object (crm.md D446): irreversible.
+pub async fn erase_object(id: &str) -> Result<ObjectView, ApiError> {
+    client::request(Method::POST, &format!("{BASE}/objects/{id}/erase"), None).await
 }
 
 /// Links of an object: valid at `as_of` (RFC 3339, default now), or every
@@ -238,6 +271,18 @@ pub async fn series(id: &str, property: &str, window: &str) -> Result<SeriesView
         None,
     )
     .await
+}
+
+/// Dated values of an object as known at `as_of` (markets-research.md D541).
+pub async fn observations(
+    id: &str,
+    as_of: Option<&str>,
+) -> Result<Vec<pnex_core::ontology::api::ObservationView>, ApiError> {
+    let mut path = format!("{BASE}/objects/{id}/observations");
+    if let Some(t) = as_of {
+        path.push_str(&format!("?as_of={}", urlencode(t)));
+    }
+    client::request_all(&path).await
 }
 
 /// Current sensor of each bound series property (type dashboards, D187).

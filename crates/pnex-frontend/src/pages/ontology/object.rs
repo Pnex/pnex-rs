@@ -50,10 +50,12 @@ pub fn OntologyObject(id: String) -> Element {
     let mut tab = use_signal(|| "properties".to_string());
     let mut editing = use_signal(|| false);
     let mut archiving = use_signal(|| false);
+    let mut erasing = use_signal(|| false);
     // Action being invoked (D183).
     let mut invoking = use_signal(|| None::<String>);
     // Profile capture of a person (D333).
     let mut capturing = use_signal(|| false);
+    let mut captures_reload = use_signal(|| 0u32);
     let can_capture = crate::state::access::can("extension:write");
     let can_write = crate::state::access::can("ontology:write");
 
@@ -79,6 +81,20 @@ pub fn OntologyObject(id: String) -> Element {
         };
     };
     let archived = o.valid_to.is_some();
+    // D446: an erased object is a read-only shell, like an archived one.
+    let erased = o.erased_at.clone();
+    let closed = archived || erased.is_some();
+    let can_erase = erased.is_none()
+        && can_write
+        && crate::state::access::can("ontology:delete")
+        && (tv.def.title_classification.is_personal()
+            || tv
+                .def
+                .properties
+                .iter()
+                .any(|p| p.classification.is_personal()));
+    let masked_notice = erased.is_none() && !o.redacted.is_empty();
+    let erase_id = id.clone();
     let mut tabs = vec![
         ("properties", t!("onto-tab-properties")),
         ("links", t!("onto-tab-links")),
@@ -86,6 +102,19 @@ pub fn OntologyObject(id: String) -> Element {
         ("time", t!("onto-tab-time")),
         ("provenance", t!("onto-tab-provenance")),
     ];
+    // Reported figures or a macroeconomic series (markets-research.md D541).
+    if o.type_key == "macro_series"
+        || o.type_key == "instrument"
+        || o.properties.contains_key("cik")
+    {
+        tabs.insert(4, ("figures", t!("onto-tab-figures")));
+    }
+    if o.type_key == "instrument" {
+        tabs.insert(5, ("reaction", t!("onto-tab-reaction")));
+    }
+    if o.type_key == "paper_position" {
+        tabs.insert(4, ("position", t!("onto-tab-position")));
+    }
     // Consented voice profile of a person (voice-id.md).
     if o.type_key == pnex_core::voice_id::PERSON_TYPE {
         tabs.push(("voice", t!("onto-tab-voice")));
@@ -120,7 +149,7 @@ pub fn OntologyObject(id: String) -> Element {
             },
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             actions: rsx! {
-                if can_write && !archived && (!tv.def.native() || !tv.def.properties.is_empty()) {
+                if can_write && !closed && (!tv.def.native() || !tv.def.properties.is_empty()) {
                     button {
                         class: BTN,
                         "data-testid": "onto-edit",
@@ -128,7 +157,7 @@ pub fn OntologyObject(id: String) -> Element {
                         {t!("onto-edit")}
                     }
                 }
-                if can_write && !archived {
+                if can_write && !closed {
                     for a in tv.def.actions.clone() {
                         button {
                             key: "{a.key}",
@@ -139,7 +168,7 @@ pub fn OntologyObject(id: String) -> Element {
                         }
                     }
                 }
-                if can_capture && !archived && o.type_key == pnex_core::voice_id::PERSON_TYPE {
+                if can_capture && !closed && o.type_key == pnex_core::voice_id::PERSON_TYPE {
                     button {
                         class: BTN,
                         "data-testid": "profile-capture",
@@ -147,14 +176,22 @@ pub fn OntologyObject(id: String) -> Element {
                         {t!("profile-capture-open")}
                     }
                 }
-                if can_write && !archived && o.type_key != pnex_core::ontology::KIND_CASE {
+                if can_write && !closed && o.type_key != pnex_core::ontology::KIND_CASE {
                     crate::components::ontology::add_to_case::AddToCase { object_id: o.id.clone() }
                 }
-                if can_write && !archived {
+                if can_write && !closed {
                     crate::components::ontology::page_from_template::PageFromTemplate { object_id: o.id.clone(), type_key: o.type_key.clone() }
                 }
-                if can_write && !archived && !tv.def.native() {
+                if can_write && !closed && !tv.def.native() {
                     button { class: DANGER_BTN, onclick: move |_| archiving.set(true), {t!("onto-archive")} }
+                }
+                if can_erase {
+                    button {
+                        class: DANGER_BTN,
+                        "data-testid": "onto-erase",
+                        onclick: move |_| erasing.set(true),
+                        {t!("onto-erase")}
+                    }
                 }
             },
             div { class: "space-y-4",
@@ -163,7 +200,7 @@ pub fn OntologyObject(id: String) -> Element {
                     status: pnex_core::ontology::proposal::ProposalStatus::Proposed,
                     hide_empty: true,
                 }
-                if !archived && !all_links.is_empty() {
+                if !closed && !all_links.is_empty() {
                     IntroFinder { id: o.id.clone(), link_types: all_links.clone() }
                 }
                 div { class: "flex flex-wrap items-center gap-2 text-sm",
@@ -179,6 +216,20 @@ pub fn OntologyObject(id: String) -> Element {
                     if archived {
                         span { class: "rounded bg-amber-50 px-2 py-0.5 text-amber-700",
                             {t!("onto-archived")}
+                        }
+                    }
+                    if let Some(at) = &erased {
+                        span {
+                            class: "rounded bg-red-50 px-2 py-0.5 text-red-700",
+                            "data-testid": "onto-erased",
+                            {t!("onto-erased", at : short_time(at))}
+                        }
+                    }
+                    if masked_notice {
+                        span {
+                            class: "rounded bg-amber-50 px-2 py-0.5 text-amber-700",
+                            "data-testid": "onto-masked-notice",
+                            {t!("onto-masked-notice")}
                         }
                     }
                     span { class: "text-xs text-gray-500", {t!("onto-version", version : o.version)} }
@@ -202,7 +253,7 @@ pub fn OntologyObject(id: String) -> Element {
                         object: o.clone(),
                         types: all_types.clone(),
                         link_types: all_links.clone(),
-                        can_write: can_write && !archived,
+                        can_write: can_write && !closed,
                     }
                 } else if tab() == "graph" {
                     GraphPanel {
@@ -220,16 +271,29 @@ pub fn OntologyObject(id: String) -> Element {
                     TimePanel {
                         object: o.clone(),
                         type_view: tv.clone(),
-                        can_write: can_write && !archived,
+                        can_write: can_write && !closed,
                     }
+                } else if tab() == "position" {
+                    super::reaction::PositionPanel { id: o.id.clone() }
+                } else if tab() == "reaction" {
+                    super::reaction::ReactionPanel { id: o.id.clone() }
+                } else if tab() == "figures" {
+                    super::observations::ObservationsPanel { id: o.id.clone() }
                 } else if tab() == "provenance" {
                     ProvenancePanel { id: o.id.clone() }
                 } else if tab() == "gallery" {
-                    crate::components::ontology::gallery::Gallery { object: o.clone(), can_write: can_write && !archived }
+                    crate::components::ontology::gallery::Gallery { object: o.clone(), can_write: can_write && !closed }
                 } else if tab() == "voice" {
                     crate::components::voice_id::VoiceProfilePanel { object_id: o.id.clone() }
                 } else {
                     PropertiesPanel { object: o.clone(), type_view: tv.clone() }
+                    if o.type_key == pnex_core::voice_id::PERSON_TYPE {
+                        super::profile_capture::ProfileCaptures {
+                            key: "{o.id}",
+                            person_id: o.id.clone(),
+                            reload: captures_reload,
+                        }
+                    }
                     // D218: labels stay discreet, after type and properties
                     // (the labels API keys an object by its type and native id).
                     div { class: "mt-6",
@@ -237,7 +301,7 @@ pub fn OntologyObject(id: String) -> Element {
                             key: "{o.id}",
                             kind: o.type_key.clone(),
                             id: o.native_id.clone(),
-                            can_write: can_write && !archived,
+                            can_write: can_write && !closed,
                         }
                     }
                 }
@@ -256,7 +320,10 @@ pub fn OntologyObject(id: String) -> Element {
             if capturing() {
                 super::profile_capture::ProfileCaptureDialog {
                     person_id: o.id.clone(),
-                    on_close: move |_| capturing.set(false),
+                    on_close: move |_| {
+                        capturing.set(false);
+                        captures_reload.with_mut(|r| *r += 1);
+                    },
                 }
             }
             if let Some(key) = invoking() {
@@ -264,6 +331,28 @@ pub fn OntologyObject(id: String) -> Element {
                     object_id: o.id.clone(),
                     action_key: key,
                     on_close: move |_| invoking.set(None),
+                }
+            }
+            if erasing() {
+                ConfirmDialog {
+                    title: t!("onto-erase").to_string(),
+                    message: t!("onto-erase-confirm", title : o.title.clone()).to_string(),
+                    confirm_label: t!("onto-erase").to_string(),
+                    on_confirm: move |_| {
+                        let id = erase_id.clone();
+                        let done = t!("onto-erased-toast").to_string();
+                        spawn(async move {
+                            match api::ontology::erase_object(&id).await {
+                                Ok(_) => {
+                                    toasts::success(done);
+                                    reload.with_mut(|r| *r += 1);
+                                }
+                                Err(e) => toasts::error(e),
+                            }
+                            erasing.set(false);
+                        });
+                    },
+                    on_cancel: move |_| erasing.set(false),
                 }
             }
             if archiving() {
@@ -320,6 +409,13 @@ fn PropertiesPanel(object: ObjectView, type_view: ObjectTypeView) -> Element {
             .map(|p| crate::components::ontology::tr(&p.name, &p.names))
             .unwrap_or_else(|| key.to_string())
     };
+    // D444: the org's legal basis, on what names a person.
+    let legal_basis = type_view
+        .def
+        .title_classification
+        .is_personal()
+        .then(|| legal_basis_of(packs.read().iter().flatten()))
+        .flatten();
     rsx! {
         div { class: SECTION,
             if props.is_empty() {
@@ -338,9 +434,13 @@ fn PropertiesPanel(object: ObjectView, type_view: ObjectTypeView) -> Element {
                         div { key: "{p.key}", "data-prop": "{p.key}",
                             dt { class: "text-xs font-medium text-gray-500", {prop_label(&p)} }
                             dd { class: "text-sm text-gray-900",
-                                PropertyValue {
-                                    value: object.properties.get(&p.key).cloned(),
-                                    def: p.clone(),
+                                if object.redacted.contains(&p.key) {
+                                    span { class: "text-gray-500", {t!("onto-masked")} }
+                                } else {
+                                    PropertyValue {
+                                        value: object.properties.get(&p.key).cloned(),
+                                        def: p.clone(),
+                                    }
                                 }
                             }
                         }
@@ -352,8 +452,30 @@ fn PropertiesPanel(object: ObjectView, type_view: ObjectTypeView) -> Element {
                 if !source.is_empty() {
                     p { {t!("onto-last-source", source : source)} }
                 }
+                if let Some(basis) = legal_basis {
+                    p { "data-testid": "onto-legal-basis", {t!("onto-legal-basis", basis : basis)} }
+                }
             }
         }
+    }
+}
+
+/// The value of the `legal_basis` setting of an installed pack; its shipped
+/// default is a key, shown in the reader's language.
+fn legal_basis_of<'a>(
+    packs: impl Iterator<Item = &'a pnex_core::ontology::api::PackView>,
+) -> Option<String> {
+    let value = packs
+        .flat_map(|p| &p.settings)
+        .find(|s| s.def.key == "legal_basis")?
+        .value
+        .as_str()?
+        .trim()
+        .to_string();
+    match value.as_str() {
+        "" => None,
+        "legitimate_interest_b2b_prospecting" => Some(t!("onto-legal-basis-b2b").to_string()),
+        _ => Some(value),
     }
 }
 

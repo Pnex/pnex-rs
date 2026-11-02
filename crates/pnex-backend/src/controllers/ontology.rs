@@ -21,6 +21,7 @@ use uuid::Uuid;
 use super::coded_error;
 use super::pagination::{envelope, PageParams};
 use crate::auth::OrgContext;
+use crate::models::_entities::resource_edges;
 use crate::services::ontology::redact::Redaction;
 use crate::services::ontology::{
     self as onto, changes, graph, link_types, links, objects, packs, query, series, types, Actor,
@@ -54,6 +55,7 @@ pub fn routes() -> Routes {
         .add("/objects/{id}/hierarchy", get(object_hierarchy))
         .add("/objects/{id}/impact", get(object_impact))
         .add("/objects/{id}/series/{property}", get(object_series))
+        .add("/objects/{id}/observations", get(object_observations))
         .add("/objects/{id}/bindings", get(object_bindings))
         .add("/objects/{id}/changes", get(object_changes))
         .add("/objects/{id}/evidence", get(object_evidence))
@@ -108,6 +110,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         object_impact,
         path,
         object_series,
+        object_observations,
         object_bindings,
         object_changes,
         object_evidence,
@@ -246,6 +249,17 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             Err(crate::services::compute_limits::db_busy(&e).unwrap_or(Error::InternalServerError))
         }
     }
+}
+
+/// A write sent by a screen names its application: the server keeps it to
+/// the application's scope and action list (app-builder.md D511). It adds no
+/// right to the caller's own.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ThroughApp {
+    /// The application whose screen sends this write.
+    #[param(format = "uuid", value_type = Option<String>)]
+    app: Option<Uuid>,
 }
 
 /// The caller's masking by classification (crm.md D443) with the schema it
@@ -609,11 +623,12 @@ async fn delete_link_type(
     operation_id = "ontology_objects_create",
     summary = "Create an object",
     description = "Creates an object of an org type with a title and properties validated against the type; the change is journaled. Needs a writer role and the type's write role. System objects are created from their own pages, not here.",
+    params(ThroughApp),
     request_body = pnex_core::ontology::api::ObjectInput,
     responses(
         (status = 201, body = pnex_core::ontology::api::ObjectView),
         (status = 400, description = "Invalid field (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`, `app-out-of-scope`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found` (unknown type)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-system-read-only`", body = crate::openapi::ErrorDetail)
     ),
@@ -622,8 +637,16 @@ async fn delete_link_type(
 async fn create_object(
     State(ctx): State<AppContext>,
     org: OrgContext,
+    Query(through): Query<ThroughApp>,
     Json(input): Json<ObjectInput>,
 ) -> Result<Response> {
+    if let Some(app) = through.app {
+        if let Err(e) =
+            crate::services::apps::guard_type(&ctx.db, org.org.id, app, &input.type_key).await
+        {
+            return super::apps::app_error(e);
+        }
+    }
     let r: onto::Result<_> = changes::deferred(async {
         let txn = ctx.db.begin().await?;
         let v = objects::create(&txn, org.org.id, &actor(&org), &input).await?;
@@ -654,13 +677,14 @@ struct InvokeBody {
     description = "Publishes an invocation of an action declared on the object's type to the deployed flows that hold a matching action trigger; the server itself executes nothing. Journaled in the object's history. Needs a writer role and the type's write role. Answers 202 with the flows it was dispatched to.",
     params(
         ("id" = String, Path, format = "uuid", description = "Object id (UUID)"),
-        ("key" = String, Path, description = "Action key declared on the type")
+        ("key" = String, Path, description = "Action key declared on the type"),
+        ThroughApp
     ),
     request_body = InvokeBody,
     responses(
         (status = 202, body = pnex_core::ontology::action::ActionInvocation),
         (status = 400, description = "Invalid parameter (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`, `app-out-of-scope`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found` (object or action)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-action-no-flow`: no deployed flow handles the action", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`ontology-action-unavailable`: the action bus is down, nothing was sent", body = crate::openapi::ErrorDetail)
@@ -671,8 +695,21 @@ async fn invoke_action(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path((id, key)): Path<(String, String)>,
+    Query(through): Query<ThroughApp>,
     Json(body): Json<InvokeBody>,
 ) -> Result<Response> {
+    if let Some(app) = through.app {
+        let guard = match objects::find(&ctx.db, org.org.id, parse_uuid(&id)?).await {
+            Ok(o) => {
+                crate::services::apps::guard_action(&ctx.db, org.org.id, app, &o.type_key, &key)
+                    .await
+            }
+            Err(e) => return onto_error(e),
+        };
+        if let Err(e) = guard {
+            return super::apps::app_error(e);
+        }
+    }
     let user = &org.auth.user;
     let by = user
         .full_name
@@ -726,13 +763,13 @@ async fn get_object(
     tag = "ontology",
     operation_id = "ontology_objects_update",
     summary = "Update an object",
-    description = "Replaces the title and properties of an object (for a system object, only the org's extra properties are writable). `expected_version` must match the current version when set. Journaled. Needs a writer role and the type's write role.",
-    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)")),
+    description = "Replaces the title and properties of an object (for a system object, only the org's extra properties are writable). What the caller may not read stays as stored. `expected_version` must match the current version when set. Journaled. Needs a writer role and the type's write role.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), ThroughApp),
     request_body = pnex_core::ontology::api::ObjectInput,
     responses(
         (status = 200, body = pnex_core::ontology::api::ObjectView),
         (status = 400, description = "Invalid field (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`, `app-out-of-scope`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-version-conflict` (args.current), `ontology-system-read-only`, `ontology-erased` (an erased object is a read-only shell)", body = crate::openapi::ErrorDetail)
     ),
@@ -742,9 +779,33 @@ async fn update_object(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<String>,
-    Json(input): Json<ObjectInput>,
+    Query(through): Query<ThroughApp>,
+    Json(mut input): Json<ObjectInput>,
 ) -> Result<Response> {
-    reply(objects::update(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
+    let id = parse_uuid(&id)?;
+    if let Some(app) = through.app {
+        let guard = match objects::find(&ctx.db, org.org.id, id).await {
+            Ok(o) => crate::services::apps::guard_type(&ctx.db, org.org.id, app, &o.type_key).await,
+            Err(e) => return onto_error(e),
+        };
+        if let Err(e) = guard {
+            return super::apps::app_error(e);
+        }
+    }
+    let kept: onto::Result<()> = async {
+        if let Some(Masking(m, s)) = masking(&ctx, &org).await? {
+            let stored = objects::get(&ctx.db, org.org.id, id).await?;
+            m.keep_hidden(&s, &stored, &mut input);
+        }
+        Ok(())
+    }
+    .await;
+    if let Err(e) = kept {
+        return onto_error(e);
+    }
+    let r = objects::update(&ctx.db, org.org.id, &actor(&org), id, &input).await;
+    // `keep_hidden` restored what the caller cannot read: never send it back.
+    reply(masked(&ctx, &org, r, |Masking(m, s), v| m.object(s, v)).await)
 }
 
 #[utoipa::path(
@@ -1109,6 +1170,81 @@ async fn path(
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
+struct ObservationsQuery {
+    /// One metric only.
+    metric: Option<String>,
+    /// The values as known at this instant (RFC 3339); default now.
+    #[param(format = DateTime)]
+    as_of: Option<String>,
+    /// Also the values whose publication date is lost. Default: true
+    /// without `as_of`, false with it.
+    include_backfilled: Option<bool>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/observations",
+    tag = "ontology",
+    operation_id = "ontology_objects_observations",
+    summary = "Read the dated values of an object",
+    description = "Values read from primary sources for this object (reported figures of a company, a macroeconomic series), latest period first. For each period, the last value known at `as_of`: a restated figure does not rewrite what was known before. Paginated (`limit`/`offset`). Any org member.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Object id (UUID)"),
+        ObservationsQuery,
+        PageQuery
+    ),
+    responses(
+        (status = 200, body = pnex_core::pagination::Paginated<pnex_core::ontology::api::ObservationView>),
+        (status = 400, description = "Invalid `as_of` (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn object_observations(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<String>,
+    Query(q): Query<ObservationsQuery>,
+    Query(page): Query<PageQuery>,
+) -> Result<Response> {
+    let as_of = match onto::parse_instant("as_of", q.as_of.as_deref()) {
+        Ok(t) => t,
+        Err(e) => return onto_error(e),
+    };
+    let object = parse_uuid(&id)?;
+    if let Err(e) = objects::find(&ctx.db, org.org.id, object).await {
+        return onto_error(e);
+    }
+    let rows = crate::services::markets::read(
+        &ctx.db,
+        org.org.id,
+        object,
+        q.metric.as_deref(),
+        as_of,
+        q.include_backfilled,
+    )
+    .await
+    .map_err(OntologyError::from);
+    let mut filters = Vec::new();
+    if let Some(m) = q.metric {
+        filters.push(("metric".to_string(), m));
+    }
+    if let Some(t) = q.as_of {
+        filters.push(("as_of".to_string(), t));
+    }
+    if let Some(b) = q.include_backfilled {
+        filters.push(("include_backfilled".to_string(), b.to_string()));
+    }
+    paged(
+        &format!("/api/v1/ontology/objects/{id}/observations"),
+        &filters,
+        &page,
+        rows,
+    )
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct SeriesQuery {
     /// `5m` | `15m` | `30m` | `1h` | `6h` | `24h` (default) | `7d` | `30d`.
     window: Option<String>,
@@ -1336,7 +1472,7 @@ async fn create_link(
     tag = "ontology",
     operation_id = "ontology_links_update",
     summary = "Update a link's attributes",
-    description = "Replaces the attributes of a link, open or closed, validated against its link type (a source added, a note corrected). Ends, type and validity do not change: close the link and create another. Not for `measures` or `depicts` bindings. Journaled as `link.update` with the previous version. Needs a writer role.",
+    description = "Replaces the attributes of a link, open or closed, validated against its link type (a source added, a note corrected). Ends, type and validity do not change: close the link and create another. Not for `measures` or `depicts` bindings. Attributes the caller may not read stay as stored. Journaled as `link.update` with the previous version. Needs a writer role.",
     params(("id" = i64, Path, description = "Link id")),
     request_body = pnex_core::ontology::api::LinkUpdate,
     responses(
@@ -1351,17 +1487,26 @@ async fn update_link(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<i64>,
-    Json(input): Json<LinkUpdate>,
+    Json(mut input): Json<LinkUpdate>,
 ) -> Result<Response> {
     let r: onto::Result<_> = changes::deferred(async {
         let txn = ctx.db.begin().await?;
+        if let Some(Masking(m, s)) = masking(&ctx, &org).await? {
+            let stored = resource_edges::Entity::find_by_id(id)
+                .filter(resource_edges::Column::OrgId.eq(org.org.id))
+                .one(&txn)
+                .await?
+                .ok_or(onto::OntologyError::NotFound)?;
+            let attributes = stored.attributes.as_object().cloned().unwrap_or_default();
+            m.keep_hidden_attributes(&s, &stored.relation, &attributes, &mut input.attributes);
+        }
         let v = links::update(&txn, org.org.id, &actor(&org), id, &input.attributes).await?;
         txn.commit().await?;
         changes::flush();
         Ok(v)
     })
     .await;
-    reply(r)
+    reply(masked(&ctx, &org, r, |Masking(m, s), v| m.link(s, v)).await)
 }
 
 #[utoipa::path(

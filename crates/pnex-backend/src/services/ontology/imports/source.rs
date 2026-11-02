@@ -53,7 +53,32 @@ pub fn read_refusal(e: ReadError) -> (&'static str, Value) {
 }
 
 async fn get(url: &reqwest::Url) -> Result<Vec<u8>, &'static str> {
-    let mut resp = http().get(url.clone()).send().await.map_err(|e| {
+    get_as(url, &Declared::default()).await
+}
+
+/// What a source wants to know of the caller.
+#[derive(Default)]
+pub struct Declared {
+    /// Who answers for these requests, sent in the `User-Agent`.
+    pub contact: Option<String>,
+    /// A key, sent in `Authorization`: the client drops it on a redirect to
+    /// another host, and it is never part of a URL or a log.
+    pub authorization: Option<String>,
+}
+
+pub async fn get_as(url: &reqwest::Url, by: &Declared) -> Result<Vec<u8>, &'static str> {
+    let mut req = http().get(url.clone());
+    // An invalid header value fails the request, it never goes out raw.
+    if let Some(c) = &by.contact {
+        req = req.header(
+            reqwest::header::USER_AGENT,
+            format!("PNEX-Import/{} {c}", env!("CARGO_PKG_VERSION")),
+        );
+    }
+    if let Some(a) = &by.authorization {
+        req = req.header(reqwest::header::AUTHORIZATION, a);
+    }
+    let mut resp = req.send().await.map_err(|e| {
         tracing::info!(url = %url, error = %e, "import source unreachable");
         UNREACHABLE
     })?;
@@ -71,17 +96,27 @@ async fn get(url: &reqwest::Url) -> Result<Vec<u8>, &'static str> {
 }
 
 /// Records of a file at `url`.
-pub async fn fetch_file(url: &str, m: &Mapping) -> Result<Vec<Value>, &'static str> {
+pub async fn fetch_file(url: &str, m: &Mapping, by: &Declared) -> Result<Vec<Value>, &'static str> {
     let u = check_url(url).map_err(|_| UNREACHABLE)?;
-    let bytes = get(&u).await?;
+    let bytes = get_as(&u, by).await?;
     let (name, m) = (u.path().to_string(), m.clone());
-    tokio::task::spawn_blocking(move || read_records(&bytes, &name, &m).map_err(read_error))
-        .await
-        .unwrap_or(Err(UNREADABLE))
+    tokio::task::spawn_blocking(move || match m.shape {
+        Some(shape) => pnex_core::markets::records(shape, &bytes).ok_or(UNREADABLE),
+        None => read_records(&bytes, &name, &m).map_err(read_error),
+    })
+    .await
+    .unwrap_or(Err(UNREADABLE))
 }
+
+/// Placeholder of the day to read from: a few days before the last value the
+/// object holds, the whole history the first time. Keeps a daily read small.
+pub const SINCE: &str = "{since}";
+const HISTORY_START: &str = "2000-01-01";
 
 /// Placeholder of the per-object value in a source URL.
 pub const VALUE: &str = "{value}";
+/// Field of a per-object record holding the value it was queried with.
+pub const QUERIED: &str = pnex_core::markets::QUERIED;
 
 /// An identifier safe to splice into a URL path or a query text (SIREN,
 /// LEI, Wikidata id): letters, digits, `-`, `_`, `.`.
@@ -99,31 +134,55 @@ pub async fn fetch_per_object(
     url: &str,
     m: &Mapping,
     values: &[String],
+    by: &Declared,
+    since: &std::collections::HashMap<String, String>,
 ) -> Result<Vec<Value>, &'static str> {
     let base = check_url(url).map_err(|_| UNREACHABLE)?;
-    let Some(p) = &m.per_object else {
-        return Ok(Vec::new());
-    };
+    let param = m.per_object.as_ref().map_or("", |p| p.param.as_str());
     let mut rows = Vec::new();
     let mut failures = 0usize;
     for v in values {
-        let u = if p.param.is_empty() {
+        let u = if param.is_empty() {
             // Inside a path or a query text: only plain identifiers go in
             // (unreserved characters, nothing to encode).
             if !plain(v) {
                 failures += 1;
                 continue;
             }
-            check_url(&url.replace(VALUE, v)).map_err(|_| UNREACHABLE)?
+            let path_value = pnex_core::markets::url_value(m.shape, v);
+            let from = since.get(v).map_or(HISTORY_START, String::as_str);
+            check_url(&url.replace(VALUE, &path_value).replace(SINCE, from))
+                .map_err(|_| UNREACHABLE)?
         } else {
             let mut u = base.clone();
-            u.query_pairs_mut().append_pair(&p.param, v);
+            u.query_pairs_mut().append_pair(param, v);
             u
         };
-        match get(&u).await {
+        match get_as(&u, by).await {
             Ok(bytes) => {
-                let doc: Value = serde_json::from_slice(&bytes).map_err(|_| UNREADABLE)?;
-                rows.extend(json_rows(&doc, &m.rows).ok_or(UNREADABLE)?);
+                let mut found = match m.shape {
+                    Some(shape) => {
+                        // Hostile input, and a large filer's facts weigh megabytes.
+                        tokio::task::spawn_blocking(move || {
+                            pnex_core::markets::records(shape, &bytes)
+                        })
+                        .await
+                        .map_err(|_| UNREADABLE)?
+                        .ok_or(UNREADABLE)?
+                    }
+                    None => {
+                        let doc: Value = serde_json::from_slice(&bytes).map_err(|_| UNREADABLE)?;
+                        json_rows(&doc, &m.rows).ok_or(UNREADABLE)?
+                    }
+                };
+                // A record may not repeat what it was asked for (the parent
+                // of a list of subsidiaries): the mapping reads it here.
+                for r in &mut found {
+                    if let Some(o) = r.as_object_mut() {
+                        o.insert(QUERIED.to_string(), Value::String(v.clone()));
+                    }
+                }
+                rows.extend(found);
             }
             Err(TOO_LARGE) => return Err(TOO_LARGE),
             Err(_) => failures += 1,
@@ -138,6 +197,66 @@ pub async fn fetch_per_object(
         return Err(UNREACHABLE);
     }
     Ok(rows)
+}
+
+/// One slice of the press feed as text; `None` = absent (the manifest of
+/// the feed announces files that are not there yet, or never come).
+async fn press_file(base: &reqwest::Url, name: &str) -> Result<Option<String>, &'static str> {
+    let url = base.join(name).map_err(|_| UNREACHABLE)?;
+    let bytes = match get(&url).await {
+        Ok(b) => b,
+        Err(TOO_LARGE) => return Err(TOO_LARGE),
+        Err(_) => return Ok(None),
+    };
+    tokio::task::spawn_blocking(move || {
+        use std::io::Read;
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).ok()?;
+        let entry = archive.by_index(0).ok()?;
+        let mut raw = Vec::new();
+        entry.take(UNZIPPED_MAX).read_to_end(&mut raw).ok()?;
+        Some(String::from_utf8_lossy(&raw).into_owned())
+    })
+    .await
+    .map_err(|_| UNREADABLE)
+}
+
+/// The articles of the press feed naming `watched`, over its window: the
+/// server reads the world's press once, whatever the number of companies.
+pub async fn fetch_press(
+    url: &str,
+    feed: &pnex_core::ontology::import::PressFeed,
+    watched: Vec<pnex_core::gkg::Watched>,
+) -> Result<Vec<Value>, &'static str> {
+    if watched.is_empty() {
+        return Ok(Vec::new());
+    }
+    let raw = format!("{}/", url.trim_end_matches('/'));
+    let base = check_url(&raw).map_err(|_| UNREACHABLE)?;
+    let matcher = std::sync::Arc::new(pnex_core::gkg::Matcher::new(watched));
+    let names = pnex_core::gkg::file_names(chrono::Utc::now(), feed.hours);
+    let mut rows = Vec::new();
+    let mut read = 0usize;
+    for name in &names {
+        if let Some(text) = press_file(&base, name).await? {
+            read += 1;
+            let m = matcher.clone();
+            let found = tokio::task::spawn_blocking(move || m.records(&text))
+                .await
+                .map_err(|_| UNREADABLE)?;
+            rows.extend(found);
+        }
+    }
+    tracing::info!(
+        files = names.len(),
+        read,
+        articles = rows.len(),
+        "press feed read"
+    );
+    // Some files are always missing; all of them is the feed being down.
+    if read == 0 {
+        return Err(UNREACHABLE);
+    }
+    Ok(pnex_core::gkg::digest(rows))
 }
 
 /// Records of a paginated JSON API: `page_param` (1, 2…) until a page is

@@ -127,7 +127,11 @@ pub fn HierarchyPanel(id: String, initial: HierarchyView, types: Vec<ObjectTypeV
 /// Coverage of the tree (D330): statuses counted, sums, white space.
 #[component]
 fn Coverage(view: HierarchyView, types: Vec<ObjectTypeView>, gaps_only: Signal<bool>) -> Element {
-    if view.counts.is_empty() && view.totals.is_empty() && !view.has_coverage {
+    if view.counts.is_empty()
+        && view.totals.is_empty()
+        && view.tallies.is_empty()
+        && !view.has_coverage
+    {
         return rsx! {};
     }
     rsx! {
@@ -145,6 +149,15 @@ fn Coverage(view: HierarchyView, types: Vec<ObjectTypeView>, gaps_only: Signal<b
             }
             for s in view.totals.iter() {
                 span { key: "{s.property}", "{property_name(&types, &s.property)} : {s.total}" }
+            }
+            for c in view.tallies.iter() {
+                span { key: "{c.link}-{c.value:?}", "data-tally": "{c.link}",
+                    if let Some(v) = &c.value {
+                        "{crate::components::ontology::tr(&c.name, &c.names)} · {mark_label(v, &c.labels)} : {c.count}"
+                    } else {
+                        "{crate::components::ontology::tr(&c.name, &c.names)} : {c.count}"
+                    }
+                }
             }
             if view.has_coverage {
                 label { class: "inline-flex items-center gap-1",

@@ -273,7 +273,7 @@ async fn remove(
     tag = "mail",
     operation_id = "mailboxes_test",
     summary = "Test a mailbox",
-    description = "From the server: logs in and counts the messages of each folder, read-only; nothing is fetched, marked read nor stored. Its manager only. Requires the mail write permission.",
+    description = "From the server: logs in and counts the messages of each folder, read-only; nothing is fetched, marked read nor stored. With an outgoing server, also logs in to it and sends nothing. Its manager only. Requires the mail write permission.",
     params(("id" = String, Path, format = "uuid", description = "Mailbox id")),
     responses(
         (status = 200, body = MailboxTestResult),

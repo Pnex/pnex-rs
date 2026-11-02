@@ -32,6 +32,19 @@ struct Rule {
 const RULES: &[Rule] = &[
     // external-apps.md D433: an external program built on an org's data
     // is an « application »; a « connecteur » is a provider (geo, LLM).
+    // A view of an application is a screen (app-builder.md D507).
+    Rule {
+        scope: Scope::Fr,
+        term: "page d'application",
+        use_instead: "écran",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "application page",
+        use_instead: "screen",
+        allowed_keys: &[],
+    },
     Rule {
         scope: Scope::Fr,
         term: "intégration externe",

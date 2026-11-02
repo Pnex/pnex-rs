@@ -11,6 +11,9 @@ pub mod agent;
 /// Edge agent contract (D95).
 /// Applications declared in an org (external-apps.md D433).
 pub mod apps;
+pub mod gkg;
+pub mod market_study;
+pub mod markets;
 
 pub mod api;
 pub use api::*;

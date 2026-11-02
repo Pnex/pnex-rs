@@ -602,6 +602,9 @@ pub const CHANGES_CURSOR_EXPIRED: &str = "changes-cursor-expired";
 pub const APP_NOT_FOUND: &str = "app-not-found";
 /// The application changed since it was read (`args.current`).
 pub const APP_VERSION_CONFLICT: &str = "app-version-conflict";
+/// A screen wrote outside what its application permits: a type out of its
+/// scope, or an action not in its list (app-builder.md D511).
+pub const APP_OUT_OF_SCOPE: &str = "app-out-of-scope";
 /// No route of the API at this path (404, never the app's HTML page).
 pub const API_ROUTE_NOT_FOUND: &str = "api-route-not-found";
 /// An `action-trigger` names a type or action absent from the org schema;
@@ -642,6 +645,13 @@ pub const IMPORT_SOURCE_UNREACHABLE: &str = "import-source-unreachable";
 pub const IMPORT_SOURCE_TOO_LARGE: &str = "import-source-too-large";
 /// An import source that cannot be read in its format (D301).
 pub const IMPORT_SOURCE_UNREADABLE: &str = "import-source-unreadable";
+/// The source refuses undeclared clients and the pack setting holding the
+/// contact to declare is empty.
+pub const IMPORT_CONTACT_REQUIRED: &str = "import-contact-required";
+/// The source takes a key and the org's vault does not hold it.
+pub const IMPORT_KEY_REQUIRED: &str = "import-key-required";
+/// An import that uses a key points at another host than the key's.
+pub const IMPORT_KEY_HOST: &str = "import-key-host";
 /// The org's staging area is full (2 GB, D318): nothing was downloaded.
 pub const INGEST_STAGING_QUOTA: &str = "ingest-staging-quota";
 /// The object storage holding the staging area is not reachable (D318).
@@ -940,6 +950,7 @@ pub const ALL: &[&str] = &[
     CHANGES_CURSOR_EXPIRED,
     APP_NOT_FOUND,
     APP_VERSION_CONFLICT,
+    APP_OUT_OF_SCOPE,
     API_ROUTE_NOT_FOUND,
     ONTOLOGY_ACTION_UNKNOWN,
     MEDIA_DIFF_UNSUPPORTED,
@@ -963,6 +974,9 @@ pub const ALL: &[&str] = &[
     IMPORT_SOURCE_UNREACHABLE,
     IMPORT_SOURCE_TOO_LARGE,
     IMPORT_SOURCE_UNREADABLE,
+    IMPORT_CONTACT_REQUIRED,
+    IMPORT_KEY_REQUIRED,
+    IMPORT_KEY_HOST,
     INGEST_STAGING_QUOTA,
     INGEST_STAGING_UNAVAILABLE,
     INGEST_NO_RESOURCE,

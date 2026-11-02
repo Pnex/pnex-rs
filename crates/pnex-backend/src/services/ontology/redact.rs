@@ -4,8 +4,8 @@
 //! controllers build a [`Redaction`] from the principal.
 
 use pnex_core::ontology::api::{
-    ChangeFeed, ChangeView, HierarchyView, LinkView, Neighborhood, ObjectRef, ObjectView,
-    QueryResult,
+    ChangeFeed, ChangeView, HierarchyView, LinkView, Neighborhood, ObjectInput, ObjectRef,
+    ObjectView, QueryResult,
 };
 use pnex_core::ontology::schema::Classification;
 use serde_json::{Map, Value};
@@ -129,6 +129,42 @@ impl Redaction {
             hidden.push(TITLE.into());
         }
         v.redacted = hidden;
+    }
+
+    /// A masked caller writes back what it was shown: what it may not read
+    /// stays as stored, or the mask would overwrite the real value (SEC-55).
+    pub fn keep_hidden(&self, s: &OrgSchema, stored: &ObjectView, input: &mut ObjectInput) {
+        if self.hides_title(s, &stored.type_key) {
+            input.title = stored.title.clone();
+        }
+        if let Some(def) = s.object_type(&stored.type_key) {
+            for p in def
+                .properties
+                .iter()
+                .filter(|p| self.hides(p.classification))
+            {
+                restore(&mut input.properties, &stored.properties, &p.key);
+            }
+        }
+    }
+
+    /// [`Self::keep_hidden`] for the attributes of a link.
+    pub fn keep_hidden_attributes(
+        &self,
+        s: &OrgSchema,
+        link_type: &str,
+        stored: &Map<String, Value>,
+        input: &mut Map<String, Value>,
+    ) {
+        if let Some(def) = s.link_type(link_type) {
+            for a in def
+                .attributes
+                .iter()
+                .filter(|a| self.hides(a.classification))
+            {
+                restore(input, stored, &a.key);
+            }
+        }
     }
 
     pub fn object_ref(&self, s: &OrgSchema, r: &mut ObjectRef) {
@@ -281,6 +317,13 @@ impl Redaction {
 
 /// The title shown in place of a hidden one: neutral, translated by
 /// nobody, still telling two objects apart.
+fn restore(input: &mut Map<String, Value>, stored: &Map<String, Value>, key: &str) {
+    match stored.get(key) {
+        Some(v) => input.insert(key.to_string(), v.clone()),
+        None => input.remove(key),
+    };
+}
+
 pub fn masked(id: &str) -> String {
     format!("•••• {}", short(id))
 }

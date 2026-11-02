@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use pnex_core::ontology::api::{
-    Hierarchy, HierarchyNode, HierarchyView, MarkCount, NodeMark, PropertyTotal,
+    Hierarchy, HierarchyNode, HierarchyView, MarkCount, NodeMark, PropertyTotal, TallyCount,
 };
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter};
@@ -185,6 +185,7 @@ pub async fn tree(
         })
         .collect();
     let white_space = distinct.iter().filter(|n| n.white_space).count() as u32;
+    let tallies = tallies(db, org_id, &h, &ids, at, &s, hide).await?;
     Ok(HierarchyView {
         hierarchies,
         has_coverage: h.coverage.is_some(),
@@ -193,6 +194,7 @@ pub async fn tree(
         truncated: cut,
         counts,
         totals,
+        tallies,
         white_space,
     })
 }
@@ -225,6 +227,108 @@ async fn covered(
         .flat_map(|e| [e.source_object_id, e.target_object_id])
         .flatten()
         .collect())
+}
+
+/// What the nodes are linked to, counted (D330): each object at the other
+/// end once, however many nodes it touches. A breakdown or filter on a
+/// property the caller may not read would reveal it (D443): the breakdown
+/// collapses into the whole count, the filtered count is left out.
+async fn tallies(
+    db: &DatabaseConnection,
+    org_id: i64,
+    h: &Hierarchy,
+    ids: &HashSet<Uuid>,
+    at: DateTimeWithTimeZone,
+    s: &super::OrgSchema,
+    hide: super::redact::Redaction,
+) -> Result<Vec<TallyCount>> {
+    let mut out = Vec::new();
+    let nodes: Vec<Uuid> = ids.iter().copied().collect();
+    for t in &h.tallies {
+        let Some(lt) = s.link_type(&t.link) else {
+            continue;
+        };
+        let edges = resource_edges::Entity::find()
+            .filter(resource_edges::Column::OrgId.eq(org_id))
+            .filter(resource_edges::Column::Relation.eq(t.link.clone()))
+            .filter(links::valid_at(at))
+            .filter(
+                Condition::any()
+                    .add(resource_edges::Column::SourceObjectId.is_in(nodes.clone()))
+                    .add(resource_edges::Column::TargetObjectId.is_in(nodes.clone())),
+            )
+            .all(db)
+            .await?;
+        let (mut others, mut from_source) = (HashSet::new(), false);
+        for e in &edges {
+            match (e.source_object_id, e.target_object_id) {
+                (Some(a), Some(b)) if ids.contains(&a) && !ids.contains(&b) => {
+                    from_source = true;
+                    others.insert(b);
+                }
+                (Some(a), Some(b)) if ids.contains(&b) && !ids.contains(&a) => {
+                    others.insert(a);
+                }
+                _ => {}
+            }
+        }
+        let rows = links::refs(db, org_id, others).await?;
+        let def_of = |r: &crate::models::_entities::objects::Model, key: &str| {
+            s.object_type(&r.type_key)
+                .and_then(|d| d.properties.iter().find(|p| p.key == key).cloned())
+        };
+        let hidden = |r: &crate::models::_entities::objects::Model, key: &str| {
+            def_of(r, key).is_some_and(|p| hide.hides(p.classification))
+        };
+        if rows.values().any(|r| t.only.keys().any(|k| hidden(r, k))) {
+            continue;
+        }
+        let kept: Vec<_> = rows
+            .values()
+            .filter(|r| {
+                t.only.iter().all(|(k, vs)| {
+                    r.properties
+                        .get(k)
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|v| vs.iter().any(|x| x == v))
+                })
+            })
+            .collect();
+        let (name, names) = if from_source {
+            (lt.name.clone(), lt.names.clone())
+        } else {
+            (lt.inverse_name.clone(), lt.inverse_names.clone())
+        };
+        let by =
+            t.by.as_deref()
+                .filter(|k| !kept.iter().any(|r| hidden(r, k)));
+        let mut counts: Vec<TallyCount> = Vec::new();
+        for r in &kept {
+            let value = by
+                .and_then(|k| r.properties.get(k))
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            match counts.iter_mut().find(|c| c.value == value) {
+                Some(c) => c.count += 1,
+                None => counts.push(TallyCount {
+                    link: t.link.clone(),
+                    name: name.clone(),
+                    names: names.clone(),
+                    labels: value
+                        .as_ref()
+                        .zip(by)
+                        .and_then(|(v, k)| def_of(r, k)?.labels.get(v).cloned())
+                        .unwrap_or_default(),
+                    value,
+                    count: 1,
+                }),
+            }
+        }
+        // Stable order: a band that reshuffles at each read is unreadable.
+        counts.sort_by(|a, b| a.value.cmp(&b.value));
+        out.append(&mut counts);
+    }
+    Ok(out)
 }
 
 type Children = HashMap<Uuid, Vec<(Uuid, String)>>;

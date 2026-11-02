@@ -39,9 +39,15 @@ const TRACE_ARGS_MAX_CHARS: usize = 2_000;
 const TRACE_SUMMARY_MAX_CHARS: usize = 500;
 /// Message length accepted from the user.
 pub const CONTENT_MAX_CHARS: usize = 20_000;
-/// One-turn lease: longer than the agent's worst case (provider timeout
-/// × bounded iterations is cut by the agent before that).
-const BUSY_LEASE: Duration = Duration::from_secs(300);
+/// Floor of the one-turn lease.
+const BUSY_LEASE_MIN: Duration = Duration::from_secs(300);
+
+/// One-turn lease: covers the agent's worst case, every LLM call of the
+/// turn running to the provider's timeout (tools add seconds, not calls).
+fn busy_lease(call_timeout: Duration) -> Duration {
+    let calls = u32::try_from(super::agent::MAX_ITERATIONS).unwrap_or(u32::MAX);
+    (call_timeout.saturating_mul(calls) + Duration::from_secs(60)).max(BUSY_LEASE_MIN)
+}
 
 /// `system_settings` key of the platform retention of inactive
 /// conversations, in days.
@@ -221,11 +227,15 @@ pub async fn detail(
     })
 }
 
-/// Takes the one-turn lease; `false` when a turn is already running.
+/// Takes the one-turn lease (sized on the provider's `call_timeout`); `false` when a turn is already running.
 /// Atomic on both engines (conditional update), valid across replicas.
-pub async fn acquire(db: &DatabaseConnection, id: Uuid) -> Result<bool, DbErr> {
+pub async fn acquire(
+    db: &DatabaseConnection,
+    id: Uuid,
+    call_timeout: Duration,
+) -> Result<bool, DbErr> {
     let at = now();
-    let until = at + chrono::Duration::from_std(BUSY_LEASE).expect("lease fits");
+    let until = at + chrono::Duration::from_std(busy_lease(call_timeout)).expect("lease fits");
     let res = ai_conversations::Entity::update_many()
         .col_expr(
             ai_conversations::Column::BusyUntil,
@@ -581,6 +591,13 @@ pub fn audit(ctx: &AppContext, event: AuditEvent) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn busy_lease_covers_every_call_of_a_turn() {
+        assert_eq!(busy_lease(Duration::from_secs(10)), BUSY_LEASE_MIN);
+        let slow = Duration::from_secs(600);
+        assert!(busy_lease(slow) >= slow * 6);
+    }
 
     #[test]
     fn title_is_the_first_non_empty_line_bounded() {

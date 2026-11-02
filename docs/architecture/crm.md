@@ -40,7 +40,7 @@ Deux permissions de lecture, inscrites au registre IAM :
 | `ontology.personal:read` | Lecteur | propriétés, attributs et titres `personal` |
 | `ontology.sensitive:read` | Administrateur | propriétés, attributs et titres `sensitive` |
 
-Un rôle personnalisé sans la permission reçoit les objets **caviardés** : propriétés et attributs de lien retirés, titre remplacé par `•••• <8 caractères de l'id>` (neutre, sans traduction), et la liste `redacted` des clés retirées sur l'objet. Points d'application : lecture d'un objet, résolution, liens, voisinage, chemin, impact, nœuds de la hiérarchie, requête D185, historique, flux des changements (D435), ensembles d'objets (D434), propositions (leurs objets), outils `query_ontology` et `get_object` de l'assistant ; le MCP passe par les mêmes routes. Les écritures ne changent pas.
+Un rôle personnalisé sans la permission reçoit les objets **caviardés** : propriétés et attributs de lien retirés, titre remplacé par `•••• <8 caractères de l'id>` (neutre, sans traduction), et la liste `redacted` des clés retirées sur l'objet. Points d'application : lecture d'un objet, résolution, liens, voisinage, chemin, impact, nœuds de la hiérarchie, requête D185, historique, flux des changements (D435), ensembles d'objets (D434), propositions (leurs objets), outils `query_ontology` et `get_object` de l'assistant ; le MCP passe par les mêmes routes. Une écriture ne touche jamais ce que son auteur ne peut pas lire : le titre, les propriétés et les attributs masqués restent tels quels (SEC-55).
 
 Étendu le 2026-10-26 : les autres parents d'un nœud de hiérarchie (`also_under`, masqués à la construction) et toutes les lectures des dossiers d'enquête (espace de travail, tableau, signaux, traces, propositions, relations, export, instantanés, journal des lectures, et les outils de l'assistant qui les lisent) passent par le même masque, un parcours du JSON qui masque tout objet (`id` + `type_key`) et tout lien qu'il nomme. Une page générée depuis un objet est remplie avec le masque de son auteur (SEC-53, 2026-10-27). Limite restante : elle garde le texte que son auteur pouvait lire ; la masquer pour ses lecteurs suivants demande la visibilité par objet (iam.md I5).
 
@@ -53,7 +53,7 @@ Deux réglages D368 de `prospecting_b2b` :
 
 ### D445 — File de rétention : des propositions d'effacement
 
-Chaque nuit, pour chaque org où `prospecting_b2b` est installé : une personne sans modification, sans lien ouvert ou fermé et sans capture depuis `retention_months` devient une **proposition d'effacement** (nouveau genre `object_erase` de D371) dans la boîte « à valider », avec sa dernière activité en preuve.
+Chaque nuit, pour chaque org où `prospecting_b2b` est installé : une personne (ou une piste, D514) sans modification, sans lien ouvert ou fermé et sans capture depuis `retention_months` devient une **proposition d'effacement** (nouveau genre `object_erase` de D371) dans la boîte « à valider », avec sa dernière activité en preuve.
 
 - **Jamais acceptée par une règle d'org** (D377 refusé pour ce genre) : l'effacement est une action humaine.
 - Accepter = effacer (D446). Refuser = garder ; la date du refus compte comme une activité, la personne ne revient pas avant une nouvelle période.
@@ -215,7 +215,9 @@ Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennen
 | Repli des accents (D447) | `pnex-core` `fold.rs` ; `opposition.rs`, `query.rs`, `controllers/global_search.rs` | unitaires `fold` ; `tests/crm.rs` `names_match_without_accents_or_case` |
 | Jetons `$today±n` (D451) | `pnex-core` `ontology/flow.rs`, doc du nœud `ontology_query` | unitaire `today_offsets_resolve` |
 
-Reste : l'export du registre des traitements (pas de registre dans PneX aujourd'hui), le masquage des titres dans les dossiers et les pages générées (I5), l'écran (bouton « Effacer », base légale affichée sur la fiche, masques).
+Écran livré le 2026-11-02 sur la fiche d'un objet : bouton « Effacer les données personnelles » (permission `ontology:delete`, type qui porte des données classées), date d'effacement et fiche en lecture seule, « Masqué » à la place d'une propriété cachée, base légale de l'org en pied de fiche d'une personne ou d'une piste. Essayé dans un navigateur le 2026-11-02 (effacement d'une piste, base légale) ; affichage « Masqué » et bandeau vus en réel pour un rôle restreint le même jour.
+
+Reste : l'export du registre des traitements (pas de registre dans PneX aujourd'hui), le masquage des titres dans les pages générées pour leurs lecteurs suivants (I5).
 
 ### Lots CRM1–CRM2 — 2026-10-26, non commité
 
@@ -225,4 +227,4 @@ Pack `crm` 1.0.0 (`packs/crm.yaml`) : types, liens, hiérarchie `opportunities`,
 
 Pack `crm` 3.1.0 : types `lead`, `quote`, `invoice`, propriété `opportunity.ref`, liens `lead_of`, `lead_contact`, `quote_for`, `invoice_for`, `invoices_quote`, action `convert`, modèle `quote_sheet`, 6 fonctions Starlark, 2 flows modèles (9 au total). Tests : `pack_rules.rs` (`a_converted_lead_becomes_an_opportunity_of_its_account`, `an_overdue_invoice_is_marked_and_reminded`, digest avec pistes) et `tests/crm.rs` (piste, cardinalités, numéros uniques, page devis, action refusée sans flow déployé).
 
-Limites : la file de rétention (D445) ne propose pas encore l'effacement des pistes (personnes seulement) ; une piste s'efface à la main (D446). Pas de piste créée depuis un mail ou un formulaire public. Brouillons de relance branchés sur la boîte d'envoi (D522) : objet = nom de l'opportunité, non modifiable avant envoi ; une adresse ajoutée après le marquage `none` n'est pas reprise. Restent pour le CRM : tableaux de bord (ROI par salon, conversion par étape) et écrans métier, qui attendent les applications AB0–AB2 (`app-builder.md`).
+Limites : pas de piste créée depuis un mail ou un formulaire public. Brouillons de relance branchés sur la boîte d'envoi (D522) : objet = nom de l'opportunité par défaut, corrigeable à la relecture ; une adresse ajoutée après le marquage `none` n'est pas reprise. La file de rétention (D445) propose aussi les pistes depuis le 2026-11-02 (`RETENTION_TYPES`). Écrans métier : application « Suivi commercial » livrée par le pack `crm` 3.2.0 (`app-builder.md` §11), nombres par étape compris. Restent pour le CRM : les agrégats (ROI par salon, taux de conversion), qui demandent un widget d'agrégat et une spec.

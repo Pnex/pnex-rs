@@ -35,10 +35,12 @@
 # their number, amounts and dates, marks the overdue ones and plans a
 # reminder activity; an expired quote is marked. The morning digest lists
 # the new leads too.
+# Since 3.2.0 (app-builder.md D513): the application "Sales follow-up", its
+# screens ready to use: stages, leads, activities to do, quotes and invoices.
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "3.1.0"
+version: "3.2.0"
 requires: [prospecting_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -156,6 +158,99 @@ link_types:
     inverse_names: {fr: "est facturé par"}
     from_types: [invoice]
     to_types: [quote]
+apps:
+  - key: sales_follow_up
+    name: Sales follow-up
+    names: {fr: "Suivi commercial"}
+    description: Opportunities, leads, activities to do, quotes and invoices.
+    scope:
+      types: [opportunity, lead, activity, quote, invoice]
+    actions: [lead.convert]
+    home: pipeline
+    variables:
+      - {name: opportunity, kind: object, type_key: opportunity}
+      - {name: lead, kind: object, type_key: lead}
+    object_sets:
+      open_opportunities:
+        query:
+          type_key: opportunity
+          filters: [{key: stage, op: in, value: [discovery, qualification, proposal, negotiation]}]
+          order_by: expected_close
+      stage_discovery: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: discovery}]}}
+      stage_qualification: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: qualification}]}}
+      stage_proposal: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: proposal}]}}
+      stage_negotiation: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: negotiation}]}}
+      stage_won: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: won}]}}
+      stage_lost: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: lost}]}}
+      new_leads:
+        query:
+          type_key: lead
+          filters: [{key: status, op: in, value: [new, contacted, qualified]}]
+          order_by: received_on
+          descending: true
+      activities_to_do:
+        query:
+          type_key: activity
+          filters: [{key: state, op: eq, value: to_do}]
+          order_by: due_on
+      quotes_sent:
+        query:
+          type_key: quote
+          filters: [{key: state, op: eq, value: sent}]
+          order_by: valid_until
+      invoices_due:
+        query:
+          type_key: invoice
+          filters: [{key: state, op: in, value: [issued, partially_paid, overdue]}]
+          order_by: due_on
+    screens:
+      - key: pipeline
+        name: Pipeline
+        names: {fr: "Pipeline"}
+        layout:
+          canvas: {width: 1600, height: 900}
+          widgets:
+            - {id: c1, type: object_count, x: 16, y: 16, w: 250, h: 130, options: {app: {object_set: stage_discovery, titles: {fr: "Découverte", en: "Discovery"}}}}
+            - {id: c2, type: object_count, x: 280, y: 16, w: 250, h: 130, options: {app: {object_set: stage_qualification, titles: {fr: "Qualification", en: "Qualification"}}}}
+            - {id: c3, type: object_count, x: 544, y: 16, w: 250, h: 130, options: {app: {object_set: stage_proposal, titles: {fr: "Proposition", en: "Proposal"}}}}
+            - {id: c4, type: object_count, x: 808, y: 16, w: 250, h: 130, options: {app: {object_set: stage_negotiation, titles: {fr: "Négociation", en: "Negotiation"}}}}
+            - {id: c5, type: object_count, x: 1072, y: 16, w: 250, h: 130, options: {app: {object_set: stage_won, titles: {fr: "Gagnées", en: "Won"}}}}
+            - {id: c6, type: object_count, x: 1336, y: 16, w: 248, h: 130, options: {app: {object_set: stage_lost, titles: {fr: "Perdues", en: "Lost"}}}}
+            - {id: t1, type: object_table, x: 16, y: 164, w: 1568, h: 720, options: {app: {object_set: open_opportunities, columns: [title, stage, amount, expected_close, last_activity, missing_criteria], variable: opportunity, screen: opportunity, titles: {fr: "Opportunités ouvertes", en: "Open opportunities"}}}}
+      - key: opportunity
+        name: Opportunity
+        names: {fr: "Opportunité"}
+        layout:
+          canvas: {width: 1600, height: 900}
+          widgets:
+            - {id: f1, type: object_fields, x: 16, y: 16, w: 1100, h: 620, options: {app: {variable: opportunity, columns: [stage, amount, probability, expected_close, source, source_detail, last_activity, missing_criteria, loss_reason]}}}
+            - {id: e1, type: object_form, x: 1132, y: 16, w: 240, h: 100, options: {app: {object_type: opportunity, variable: opportunity}}}
+      - key: leads
+        name: Leads
+        names: {fr: "Pistes"}
+        layout:
+          canvas: {width: 1600, height: 900}
+          widgets:
+            - {id: t1, type: object_table, x: 16, y: 16, w: 1000, h: 868, options: {app: {object_set: new_leads, columns: [title, status, company, source, received_on], variable: lead, titles: {fr: "Pistes à traiter", en: "Leads to handle"}}}}
+            - {id: f1, type: object_fields, x: 1032, y: 16, w: 552, h: 620, options: {app: {variable: lead, columns: [status, company, contact_name, email, phone, source, source_detail, received_on, message]}}}
+            - {id: n1, type: object_form, x: 1032, y: 652, w: 150, h: 100, options: {app: {object_type: lead}}}
+            - {id: e1, type: object_form, x: 1192, y: 652, w: 150, h: 100, options: {app: {object_type: lead, variable: lead}}}
+            - {id: a1, type: action_button, x: 1352, y: 652, w: 232, h: 100, options: {app: {variable: lead, action: lead.convert}}}
+      - key: activities
+        name: Activities
+        names: {fr: "Activités"}
+        layout:
+          canvas: {width: 1600, height: 900}
+          widgets:
+            - {id: t1, type: object_table, x: 16, y: 16, w: 1568, h: 868, options: {app: {object_set: activities_to_do, columns: [title, kind, due_on, reported, context], titles: {fr: "Activités à faire", en: "Activities to do"}}}}
+      - key: billing
+        name: Quotes and invoices
+        names: {fr: "Devis et factures"}
+        layout:
+          canvas: {width: 1600, height: 900}
+          widgets:
+            - {id: t1, type: object_table, x: 16, y: 16, w: 776, h: 868, options: {app: {object_set: quotes_sent, columns: [title, ref, amount, valid_until], titles: {fr: "Devis envoyés", en: "Quotes sent"}}}}
+            - {id: t2, type: object_table, x: 808, y: 16, w: 776, h: 868, options: {app: {object_set: invoices_due, columns: [title, ref, state, amount, paid_amount, due_on], titles: {fr: "Factures à encaisser", en: "Invoices to collect"}}}}
 hierarchies:
   # From an account, its opportunities; the band counts them by stage.
   - key: opportunities

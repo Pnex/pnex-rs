@@ -1188,7 +1188,7 @@ requêtes nommées et flows, doctrine interne dans la même recherche avec
 la source de chaque extrait marquée, instance autonome par
 synchronisation.
 
-### P2.34 — Applications construites dans PneX : écrans métier sur l'ontologie (ajout 2026-10-29) — **PRD validé, rien d'implémenté**
+### P2.34 — Applications construites dans PneX : écrans métier sur l'ontologie (ajout 2026-10-29) — **AB0–AB5 codés le 2026-11-02, à commiter, essai navigateur hors dépôt, pas de spec e2e**
 
 Doc : `app-builder.md` (D506–D513, lots AB0–AB5). L'application D433
 (périmètre, ensembles d'objets, actions permises) gagne une interface
@@ -1199,7 +1199,7 @@ lecteur intersectés avec le périmètre de l'application. Le dashboard
 reste l'outil de supervision. Ni connecteur externe, ni code, ni HTML.
 Premier lot de valeur : AB0 → AB2 (application de consultation).
 
-### P2.35 — Recherche et décision d'investissement (ajout 2026-10-31) — **PRD proposé, rien d'implémenté**
+### P2.35 — Recherche et décision d'investissement (ajout 2026-10-31) — **codé en grande partie (D540–D546), reste : `markets-research.md` §7 bis**
 
 Doc : `markets-research.md` (D523–D536, lots MK0–MK6). Pack `markets`
 (instrument, cotation, émetteur = organisation existante), référentiels

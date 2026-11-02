@@ -624,13 +624,12 @@ pub fn build(o: &Outgoing) -> Result<Message, MailboxError> {
 /// One SMTP session: the host and every resolved address through the
 /// egress policy (R8), then TLS checked against the host name — implicit on
 /// 465, STARTTLS required on any other port, never in clear (D518).
-async fn transmit(
+async fn transport(
     host: &str,
     port: u16,
     user: &str,
     password: &str,
-    message: Message,
-) -> Result<(), MailboxError> {
+) -> Result<AsyncSmtpTransport<Tokio1Executor>, MailboxError> {
     let unreachable = || error(err_codes::MAIL_UNREACHABLE, json!({"host": host}));
     let policy = pnex_core::egress::policy();
     if pnex_core::egress::check_host(host, policy).is_some() {
@@ -648,36 +647,78 @@ async fn transmit(
     };
     let tls = TlsParameters::new(host.to_string())
         .map_err(|_| error(err_codes::MAIL_TLS_FAILED, json!({"host": host})))?;
-    let transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(addr.ip().to_string())
-        .port(port)
-        .tls(if port == SMTPS_PORT {
-            Tls::Wrapper(tls)
-        } else {
-            Tls::Required(tls)
-        })
-        .credentials(Credentials::new(user.to_string(), password.to_string()))
-        .timeout(Some(TIMEOUT))
-        .build();
-    match transport.send(message).await {
-        Ok(_) => Ok(()),
-        Err(e) if e.is_tls() => Err(error(err_codes::MAIL_TLS_FAILED, json!({"host": host}))),
-        Err(e) if e.status().is_some_and(|c| c.to_string() == "535") => {
-            Err(error(err_codes::MAIL_AUTH_FAILED, Value::Null))
-        }
-        Err(e) if e.is_permanent() => {
-            tracing::info!(host, error = %e, "smtp refused the message");
-            Err(error(err_codes::MAIL_SEND_REFUSED, json!({"host": host})))
-        }
-        Err(e) => {
-            tracing::info!(host, error = %e, "smtp failed");
-            Err(unreachable())
-        }
+    Ok(
+        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(addr.ip().to_string())
+            .port(port)
+            .tls(if port == SMTPS_PORT {
+                Tls::Wrapper(tls)
+            } else {
+                Tls::Required(tls)
+            })
+            .credentials(Credentials::new(user.to_string(), password.to_string()))
+            .timeout(Some(TIMEOUT))
+            .build(),
+    )
+}
+
+fn smtp_error(host: &str, e: lettre::transport::smtp::Error) -> MailboxError {
+    if e.is_tls() {
+        error(err_codes::MAIL_TLS_FAILED, json!({"host": host}))
+    } else if e.status().is_some_and(|c| c.to_string() == "535") {
+        error(err_codes::MAIL_AUTH_FAILED, Value::Null)
+    } else if e.is_permanent() {
+        tracing::info!(host, error = %e, "smtp refused the message");
+        error(err_codes::MAIL_SEND_REFUSED, json!({"host": host}))
+    } else {
+        tracing::info!(host, error = %e, "smtp failed");
+        error(err_codes::MAIL_UNREACHABLE, json!({"host": host}))
+    }
+}
+
+async fn transmit(
+    host: &str,
+    port: u16,
+    user: &str,
+    password: &str,
+    message: Message,
+) -> Result<(), MailboxError> {
+    transport(host, port, user, password)
+        .await?
+        .send(message)
+        .await
+        .map(|_| ())
+        .map_err(|e| smtp_error(host, e))
+}
+
+/// Connects and logs in as a send would, and sends nothing (the mailbox test).
+pub(super) async fn probe(
+    host: &str,
+    port: u16,
+    user: &str,
+    password: &str,
+) -> Result<(), MailboxError> {
+    match transport(host, port, user, password)
+        .await?
+        .test_connection()
+        .await
+    {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(error(err_codes::MAIL_UNREACHABLE, json!({"host": host}))),
+        Err(e) => Err(smtp_error(host, e)),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_probe_reports_an_unknown_host_without_sending() {
+        let e = probe("no-such-host.invalid", SMTPS_PORT, "u", "p")
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, err_codes::MAIL_UNREACHABLE);
+    }
 
     fn text(o: &Outgoing) -> String {
         String::from_utf8(build(o).unwrap().formatted()).unwrap()

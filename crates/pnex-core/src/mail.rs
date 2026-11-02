@@ -187,6 +187,12 @@ pub struct MailboxTestResult {
     /// of a customer filed as spam would never reach PneX.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub junk_folder: Option<String>,
+    /// The outgoing server was tried (login only, nothing sent).
+    #[serde(default)]
+    pub smtp_tested: bool,
+    /// Why the outgoing server refused; incoming mail still works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smtp_error: Option<MailboxError>,
     pub latency_ms: u64,
 }
 
