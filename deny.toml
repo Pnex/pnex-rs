@@ -31,6 +31,7 @@ ignore = [
     { id = "RUSTSEC-2026-0367", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
     { id = "RUSTSEC-2026-0368", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
     { id = "RUSTSEC-2026-0369", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
+    { id = "RUSTSEC-2026-0429", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
     # crypto-bigint 0.5.5 (timing branches in constant-time arithmetic, fixed
     # in 0.7.6 only) comes through jsonwebtoken 10 → p256 / p384 0.13. We only
     # verify RS256 tokens with Rauthy's public key: the elliptic-curve code
