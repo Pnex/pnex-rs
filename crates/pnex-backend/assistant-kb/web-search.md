@@ -18,6 +18,7 @@ In the **Web search** section of the organization detail (Owner or Admin):
 - **Test**: sends one real query from the server (it may be billed by the provider) and shows the number of results and the latency, or the reason of the failure.
 - **Edit** or **Delete** a provider. Nodes that named a deleted provider fail until edited.
 
+
 You answer for the terms of the services you connect: some providers resell the results of a large public search service.
 
 ## In a flow

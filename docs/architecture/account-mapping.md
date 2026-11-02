@@ -283,21 +283,21 @@ par valeur de propriété (D339).
 
 ### CC0 — spike des sources (2026-10-22)
 
-Appels réels sur Safran (562082909) et Mecachrome France (429853351) :
+Appels réels sur Globex (732829320) et Mecaworks France (429853351) :
 
 - **API Recherche d'entreprises** : aucune structure de groupe (ni mère ni
   filiales) ; les seules personnes morales dirigeantes sont les commissaires
   aux comptes. Elle donne CA (`finances`), tranche par SIREN et par site.
-  Recherche par nom bruitée (« safran » : 2 010 résultats) : D332 est un
+  Recherche par nom bruitée (« globex » : 2 010 résultats) : D332 est un
   préalable. Filtres de ciblage utilisables (`activite_principale`,
   `tranche_effectif_salarie`, `section_activite_principale`) ; plafond
   `page × per_page ≤ 10 000`. Ordres de grandeur : 8 codes NAF visés ×
   ≥ 100 salariés = 330 unités légales ; section C × ≥ 100 = 4 353.
-- **GLEIF** : très bon sur une ETI (Mecachrome : mère MECA DEV, filiale
-  canadienne), presque aveugle sur un grand groupe (Safran : 7 filiales
-  directes déclarées ; Safran Aircraft Engines ne déclare aucune mère).
+- **GLEIF** : très bon sur une ETI (Mecaworks : mère MECA DEV, filiale
+  canadienne), presque aveugle sur un grand groupe (Globex : 7 filiales
+  directes déclarées ; Globex Aircraft Engines ne déclare aucune mère).
   `registeredAs` contient parfois des espaces.
-- **Wikidata** : Safran = 20 filiales, dont 12 avec SIREN ; donne aussi
+- **Wikidata** : Globex = 20 filiales, dont 12 avec SIREN ; donne aussi
   l'Agence des participations de l'État comme mère, d'où l'état « à
   valider ».
 - Verdict : GLEIF **et** Wikidata, côte à côte (D331 confirmé) ; saisie
@@ -338,8 +338,8 @@ Appels réels sur Safran (562082909) et Mecachrome France (429853351) :
   sans lui. N'écrit rien ; plafond 2 000 appels par jour et par org
   (`settings.org_resolve.daily_calls`) ; registre surchargeable par
   `PNEX_COMPANY_SEARCH_URL` (tests). Fiche `assistant-kb/company-groups.md`.
-- Tests : `partner_watch::group_links_from_gleif_and_wikidata` (Mecachrome
-  par GLEIF, Safran par Wikidata, tour de rôle et rebouclage),
+- Tests : `partner_watch::group_links_from_gleif_and_wikidata` (Mecaworks
+  par GLEIF, Globex par Wikidata, tour de rôle et rebouclage),
   `org_resolve::node_scores_register_candidates`, unitaires du score.
 
 Limites :
@@ -410,8 +410,10 @@ Limites :
   utilisateurs actuels et potentiels, couvert par `employs` ou un statut
   `customer`. Bandeau au-dessus de l'arbre, case « Espace blanc seulement ».
   Mot ajouté au lexique (garde : « zone blanche » refusé).
-- Restent de D330 : contacts par persona et signaux ouverts (le type
-  signal arrive avec CC4).
+- Fin de D330 (2026-11-02) : `tallies` d'une hiérarchie (lien, `by`,
+  `only`) comptés à la lecture, chaque objet une fois. `sales_group` :
+  contacts par persona et signaux à valider ou retenus, dans le bandeau et
+  `{{coverage:…}}`. Un rôle masqué voit le total sans la répartition.
 - Test : `partner_watch::group_coverage_and_status_colours` ;
   unitaires `colours_name_enum_values_from_the_palette`,
   `last_segment_takes_the_latest_key_or_element`.
@@ -567,3 +569,31 @@ Limites :
   - proposition automatique des critères abordés à partir de la
     transcription (`text_decide` sur la liste de l'org) ;
   - ratio de temps de parole par côté (diarisation).
+
+### Collecte : groupes vers le bas, actualités, profils capturés (2026-11-02, non commité)
+
+Demande de Shan (2026-11-02) : d'abord la collecte d'informations, grandes entreprises, liens, actualités, LinkedIn. Relevé réel sur Globex : GLEIF déclare 9 filiales (dont Inde, Belgique, Royaume-Uni), Wikidata en nomme 39, dont 15 sans SIREN, que l'import écartait.
+
+- **Groupes vers le bas** (`prospecting_b2b_fr` 3.2.0, depuis les comptes suivis seulement : client, prospect, cible) : *Filiales directes* et *Filiales du groupe* (GLEIF, par LEI, liens confirmés, 200 par société au plus), *Mères et filiales étrangères* (Wikidata, créées par LEI ou élément, liens proposés). Sans ce filtre, l'essai réel sur Globex partait dans les filiales de ses commissaires aux comptes (Mazars USA, Mazars Romania). Moteur : un enregistrement d'un import par objet porte `@queried`, la valeur demandée. `wikidata` devient unique sur `organization` (`investigation` 2.1.0) pour servir de clé.
+- **D539 — Actualités par le GKG de GDELT** (Shan, 2026-11-02 : un cycle de vente ou d'investissement est lent, pas besoin de temps réel) : import *Presse (GDELT)* de `prospecting_b2b_fr`, à lancer ou à planifier (un jour suffit). Il lit les fichiers `gkg` et `translation.gkg` publiés toutes les 15 minutes sur les dernières 26 heures, garde les articles dont une organisation citée commence par le nom d'un compte suivi (titre + `press_names`) et dont le titre le nomme, et écrit **un signal `press` à valider par compte et par jour** (clé = `press:<clé>:<valeur>:<date>`) : le titre français ou anglais le plus proche des autres en tête, les autres titres du jour dans le résumé. Mesuré sur 12 h réelles de GDELT : les titres d'un même événement ne partagent presque aucun mot (« plunges », « crashes », « shares fall 26 % »), un regroupement par similarité n'aurait pas tenu ; les simples mentions sont des revues de marché ou des homonymes. Limite : une actualité passée sous silence dans les titres, ou arrivée après le run du jour, n'a pas de signal ce jour-là. Le coût ne dépend pas du nombre de comptes : le monde est lu une fois. Le flow « news to topics » trie ensuite avec le LLM de l'org. **D537 abandonnée** : plus de flow d'actualités par moteur de recherche, ni de fournisseur `gdelt`. Serper et SearXNG restent les moteurs de recherche (identification des sites). Le flux RSS de Google Actualités est écarté : ses conditions interdisent l'usage commercial.
+- **D538 — Lecture d'un profil capturé** (`prospecting_b2b_fr` 3.1.0, le lot laissé ouvert par D333) : la capture humaine pose `profile_to_read` sur la personne ; le flow lit le document, écrit poste et société sur la personne (`personal`), et propose le lien `employs` quand le registre trouve la société. D254 tient : aucune personne créée, aucun parcours de réseau, une personne opposée n'est pas lue.
+- **`org_resolve`** : le siège dans la ville vaut 15, un autre établissement 5. Avant, un homonyme ayant un bureau à Paris faisait jeu égal avec Globex, et un grand groupe restait « à revoir ».
+
+Essai réel le 2026-11-02 sur une pile isolée (moteur de flows, registre, GLEIF, Wikidata et LLM réels) : signaux reliés aux comptes, compte exclu ignoré, pas de doublon à la seconde recherche, thèmes et écartés, profil lu, lien proposé, personne opposée non lue. GLEIF et Wikidata réels interrogés par les URL livrées. Tests : `group_links_from_gleif_and_wikidata`, `the_press_feed_writes_signals_on_the_accounts_followed`, `a_press_signal_is_triaged_without_losing_news`, `pnex-core` `gkg`, `a_captured_profile_proposes_its_employer`, `tests/web_search.rs`.
+
+Prompts évalués sur des cas réels (homonymes, mentions en passant, injection, profil sans employeur actuel) : `gpt-oss-120b`, `GLM-5.3-Flash`, `MiniMax-M3.1-Flash` à 8/8 et 4/4 ; un petit modèle (`qwen-2-1.5b`) tombe dans l'injection, d'où la liste fermée, la réponse hors liste gardée pour un humain (`other`) et la validation humaine du lien.
+
+Homonymes : « GLOBEX » a trois sièges à Paris (dont deux PME), le registre reste ambigu à raison. Le flow ne devine pas par la taille : il propose un candidat seulement s'il est déjà connu dans le graphe.
+
+Essai réel du GKG le 2026-11-02 sur 13 grandes sociétés, après relecture de tous les écartés : 87 articles en 56 s, le tri par `gpt-oss-120b` en garde 35. Deux corrections issues de cette relecture : le plafond par compte préfère un titre qui nomme la société (sinon « Orange Democratic Movement » prenait les places d'Orange, et les résultats d'Hooli sautaient), et le thème `incident` (la cyberattaque contre Carrefour était écartée faute de thème) ; `contract` couvre aussi un marché disputé. Faux positifs restants : un stage chez Hooli, une promotion sur de l'huile, un boycott classé `incident`. Une même nouvelle reprise reste plusieurs signaux (Initech : 9 places sur 10).
+
+Conditions GDELT lues le 2026-11-02 (gdeltproject.org/about.html) : usage commercial libre et gratuit, à condition de citer le projet avec un lien. D'où la propriété `credit` sur chaque signal. Fichiers mesurés sur 26 h : 203 sur 208 présents, les absents datant tous de la dernière heure ; 974 Mo par run.
+
+Montée de version : un pack amène désormais ses dépendances à la version livrée avant de s'installer (`install_locked`). Sans cela, monter `prospecting_b2b_fr` sur une org existante échouait sur `imports.0.mapping.objects.3.key`. Deux organisations partageant un élément Wikidata bloquent la montée avec `ontology-unique-duplicates`, qui nomme la valeur ; c'est voulu. Test `upgrading_the_layer_on_an_older_base`.
+
+Limites : environ 1 Go téléchargé par run et par org (rien de conservé ; shortcut : pas de partage entre orgs) ; pas de texte d'article, le tri se fait sur le titre ; un compte sans SIREN, LEI ni élément Wikidata n'est pas suivi ; un nom commun (Orange, Vinci) remonte des homonymes, écartés par le tri LLM ; une société ambiguë et inconnue reste sur la personne ; pas de capture de page entreprise LinkedIn (`profile_of` n'accepte que `/in/`), ni de pourcentage de détention.
+
+Essai de la capture avec le vrai agent (2026-11-02) : une capture bloquée sur l'autorisation du site était replanifiée à 24 h, son intervalle, et le clic « Autoriser » n'y changeait rien ; elle est retentée après 15 s. Le parcours demandait aussi d'aller chercher ce bouton dans les options de l'extension : les six réseaux de `PROFILE_NETWORKS` sont désormais déclarés dans `host_permissions`, acceptés une fois à l'installation. Les autres sites restent autorisés un par un.
+
+Parcours complet validé le même jour, avec le vrai agent dans un navigateur connecté, le vrai LLM et le vrai registre : profil capturé, poste et société lus, société créée par son SIREN, lien `employs` proposé à valider. Limite vue : environ 1 800 caractères, le haut de la page seulement ; l'agent ne fait pas défiler le profil, les sections chargées plus bas (expérience, formation) ne sont pas lues.
+

@@ -293,13 +293,14 @@ async fn group_links_from_gleif_and_wikidata() {
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "companies_fr").await;
         install(&server, &env.alice, org, "prospecting_b2b").await;
+        install(&server, &env.alice, org, "prospecting_b2b_fr").await;
         let base = mock_registers().await;
         let sql = |s: String| env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, s));
         for (from, to) in [("https://api.gleif.org/api/v1", format!("{base}/gleif")), ("https://query.wikidata.org", format!("{base}/wd"))] {
             sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{from}', '{to}') WHERE org_id = {org}")).await.unwrap();
         }
-        let (_, meca) = object(&server, &env.alice, org, "organization", "MECACHROME FRANCE", json!({"siren": "429853351"})).await;
-        let (_, safran) = object(&server, &env.alice, org, "organization", "SAFRAN", json!({"siren": "562082909"})).await;
+        let (_, meca) = object(&server, &env.alice, org, "organization", "MECAWORKS FRANCE", json!({"siren": "429853351"})).await;
+        let (_, globex) = object(&server, &env.alice, org, "organization", "GLOBEX", json!({"siren": "732829320"})).await;
         let run = |name: &'static str| {
             let (server, token) = (&server, env.alice.clone());
             async move {
@@ -341,7 +342,7 @@ async fn group_links_from_gleif_and_wikidata() {
                 format!("SELECT per_object_cursor AS c FROM object_imports WHERE id = '{lei}'")))
                 .await.unwrap().unwrap().try_get::<Option<String>>("", "c").unwrap()
         };
-        assert_eq!(cursor().await.as_deref(), Some("562082909"));
+        assert_eq!(cursor().await.as_deref(), Some("732829320"));
         sql(format!("UPDATE object_imports SET max_pages = 1 WHERE id = '{lei}'")).await.unwrap();
         run("Legal entity identifiers (GLEIF)").await;
         assert_eq!(cursor().await.as_deref(), Some("429853351"));
@@ -353,13 +354,13 @@ async fn group_links_from_gleif_and_wikidata() {
         run("Parents and subsidiaries (Wikidata)").await;
         let sae = props_of(&env.db, org, "organization", "siren", "414815217").await;
         assert_eq!(sae["country"], "FR", "{sae}");
-        let sid = safran["id"].as_str().unwrap();
+        let sid = globex["id"].as_str().unwrap();
         assert!(!subsidiaries(sid).await.contains("subsidiary_of"));
         let (st, p) = call(&server, "GET", &format!("/api/v1/proposals?object_id={sid}"), &env.alice, org, None).await;
         assert_eq!((st, p["count"].clone()), (200, json!(2)), "{p}");
         assert!(p.to_string().contains("Agence des participations"), "{p}");
         let to_sae = p["results"].as_array().unwrap().iter()
-            .find(|r| r.to_string().contains("Safran Aircraft Engines")).cloned().unwrap();
+            .find(|r| r.to_string().contains("Globex Aircraft Engines")).cloned().unwrap();
         let (st, _) = call(&server, "POST", &format!("/api/v1/proposals/{}/decision", to_sae["id"].as_str().unwrap()),
             &env.alice, org, Some(json!({"decision": "accept"}))).await;
         assert_eq!(st, 200);
@@ -367,9 +368,35 @@ async fn group_links_from_gleif_and_wikidata() {
         run("Parents and subsidiaries (Wikidata)").await;
         let (_, p) = call(&server, "GET", &format!("/api/v1/proposals?object_id={sid}"), &env.alice, org, None).await;
         assert_eq!(p["count"], 1, "{p}");
-        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/hierarchy?key=sales_group", safran["id"].as_str().unwrap()), &env.alice, org, None).await;
+        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/hierarchy?key=sales_group", globex["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
-        assert!(h.to_string().contains("Safran Aircraft Engines"), "{h}");
+        assert!(h.to_string().contains("Globex Aircraft Engines"), "{h}");
+
+        // Downwards, only from an account followed: its auditor is not one.
+        env.db.execute_unprepared(&format!(
+            "UPDATE objects SET properties = properties || '{{\"lei\": \"969500UIC89GT3UL7L24\"}}' WHERE id = '{sid}'"
+        )).await.unwrap();
+        run("Direct subsidiaries (GLEIF)").await;
+        assert!(!subsidiaries(sid).await.contains("GLOBEX WORKS"), "not followed yet");
+        env.db.execute_unprepared(&format!(
+            "UPDATE objects SET properties = properties || '{{\"account_status\": \"target\"}}' WHERE id = '{sid}'"
+        )).await.unwrap();
+        run("Direct subsidiaries (GLEIF)").await;
+        let fr = props_of(&env.db, org, "organization", "siren", "592027312").await;
+        assert_eq!(fr["lei"], "9695009SWRDI8V543M27", "{fr}");
+        let be = props_of(&env.db, org, "organization", "lei", "549300R3ARWT4SSSRB09").await;
+        assert_eq!(be["country"], "BE", "{be}");
+        let l = subsidiaries(sid).await;
+        assert!(l.contains("GLOBEX WORKS FRANCE") && l.contains("GLOBEX BOOSTERS") && l.contains("direct_consolidation"), "{l}");
+        // Foreign ones of Wikidata: created, with or without a LEI, the links proposed.
+        run("Foreign parents and subsidiaries (Wikidata)").await;
+        let us = props_of(&env.db, org, "organization", "wikidata", "Q111").await;
+        assert_eq!(us["country"], "US", "{us}");
+        let ca = props_of(&env.db, org, "organization", "lei", "5493001KJTIIGC8Y1R12").await;
+        assert_eq!(ca["wikidata"], "Q222", "{ca}");
+        assert!(!subsidiaries(sid).await.contains("GX Engines"), "proposed, not linked");
+        let (_, p) = call(&server, "GET", &format!("/api/v1/proposals?object_id={sid}"), &env.alice, org, None).await;
+        assert!(p.to_string().contains("GX Engines") && p.to_string().contains("Globex Canada"), "{p}");
     })
     .await;
 }
@@ -394,8 +421,8 @@ async fn target_list_enters_new_accounts_as_targets() {
             "siege": {"siret": format!("{siren}00011"), "latitude": "47.41", "longitude": "0.98",
                       "etat_administratif": "A", "tranche_effectif_salarie": "41"}});
         let pages = vec![
-            vec![hit("429853351", "MECACHROME FRANCE"), hit("329936793", "MECACHROME TOULOUSE")],
-            vec![hit("931711311", "MECACHROME SAINT ANDRE")],
+            vec![hit("429853351", "MECAWORKS FRANCE"), hit("329936793", "MECAWORKS TOULOUSE")],
+            vec![hit("931711311", "MECAWORKS SAINT ANDRE")],
         ];
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
@@ -411,7 +438,7 @@ async fn target_list_enters_new_accounts_as_targets() {
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
             "UPDATE object_imports SET source_url = replace(source_url, 'https://recherche-entreprises.api.gouv.fr', '{base}') WHERE org_id = {org}"))).await.unwrap();
-        let (st, c) = object(&server, &env.alice, org, "organization", "Mecachrome France", json!({"siren": "429853351", "account_status": "customer"})).await;
+        let (st, c) = object(&server, &env.alice, org, "organization", "Mecaworks France", json!({"siren": "429853351", "account_status": "customer"})).await;
         assert_eq!(st, 201, "{c}");
 
         let (id, _) = import_named(&server, &env.alice, org, "Target list (company register search)").await;
@@ -469,6 +496,26 @@ async fn group_coverage_and_status_colours() {
             .map(|t| (t["property"].as_str().unwrap().to_string(), t["total"].as_f64().unwrap())).collect();
         assert_eq!(totals, [("current_users".to_string(), 50.0), ("potential_users".to_string(), 5800.0)]);
         assert_eq!(h["counts"].as_array().unwrap().len(), 3, "{h}");
+        // D330: contacts by persona, and the open signals of the group.
+        let (_, sig) = object(&server, &env.alice, org, "sales_signal", "New plant", json!({"ref": "s1", "kind": "other", "state": "retained"})).await;
+        let (_, old_sig) = object(&server, &env.alice, org, "sales_signal", "Old news", json!({"ref": "s2", "kind": "other", "state": "dismissed"})).await;
+        let (_, champion) = object(&server, &env.alice, org, "person", "Champion", json!({"persona": "champion"})).await;
+        for body in [
+            link("signal_about", sig["id"].as_str().unwrap(), &gap),
+            link("signal_about", old_sig["id"].as_str().unwrap(), &gap),
+            link("employs", &gap, champion["id"].as_str().unwrap()),
+        ] {
+            let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
+            assert_eq!(st, 201, "{r}");
+        }
+        let (_, h2) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/hierarchy?key=sales_group"), &env.alice, org, None).await;
+        let tally: Vec<(String, Value, i64)> = h2["tallies"].as_array().unwrap().iter()
+            .map(|t| (t["link"].as_str().unwrap().to_string(), t["value"].clone(), t["count"].as_i64().unwrap())).collect();
+        assert_eq!(tally, [
+            ("employs".to_string(), Value::Null, 1),
+            ("employs".to_string(), json!("champion"), 1),
+            ("signal_about".to_string(), Value::Null, 1),
+        ], "{h2}");
 
         let (st, g) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/graph"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{g}");
@@ -691,12 +738,12 @@ async fn legal_announcements_become_signals() {
                 seen.lock().unwrap().push(w.clone());
                 let results = if w.contains("\"429853351\"") {
                     vec![
-                        json!({"id": "B20260114713", "registre": ["429853351", "429 853 351"], "commercant": "MECACHROME FRANCE",
+                        json!({"id": "B20260114713", "registre": ["429853351", "429 853 351"], "commercant": "MECAWORKS FRANCE",
                                "familleavis": "modification", "familleavis_lib": "Modifications diverses", "typeavis_lib": "Avis initial",
                                "dateparution": "2026-06-18", "url_complete": "https://www.bodacc.fr/a/B20260114713",
                                "modificationsgenerales": "{\"descriptif\": \"modification survenue sur le capital (augmentation)\"}",
                                "jugement": null, "acte": null}),
-                        json!({"id": "A2026000001", "registre": ["429853351"], "commercant": "MECACHROME FRANCE",
+                        json!({"id": "A2026000001", "registre": ["429853351"], "commercant": "MECAWORKS FRANCE",
                                "familleavis": "creation", "familleavis_lib": "Créations", "typeavis_lib": "Avis initial",
                                "dateparution": "2026-09-01", "url_complete": "https://www.bodacc.fr/a/A2026000001",
                                "modificationsgenerales": null, "jugement": null, "acte": null}),
@@ -713,7 +760,7 @@ async fn legal_announcements_become_signals() {
             "UPDATE object_imports SET source_url = replace(source_url, \
              'https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records', '{base}/records') \
              WHERE org_id = {org}"))).await.unwrap();
-        let (_, meca) = object(&server, &env.alice, org, "organization", "MECACHROME FRANCE", json!({"siren": "429853351", "account_status": "customer"})).await;
+        let (_, meca) = object(&server, &env.alice, org, "organization", "MECAWORKS FRANCE", json!({"siren": "429853351", "account_status": "customer"})).await;
         object(&server, &env.alice, org, "organization", "Inconnue", json!({"siren": "999999999"})).await;  // english-guard: allow (French source data)
 
         let (id, _) = import_named(&server, &env.alice, org, "Legal announcements (BODACC)").await;
@@ -821,7 +868,7 @@ async fn mock_registers() -> String {
     );
     let meca = record(
         "969500YMMRBQ5N157D72",
-        "MECACHROME FRANCE",
+        "MECAWORKS FRANCE",
         "429853351",
         json!({"direct-parent": parent("969500ST98AQCLGNQS21"), "ultimate-parent": parent("969500ST98AQCLGNQS21")}),
     );
@@ -840,15 +887,47 @@ async fn mock_registers() -> String {
             axum::Json(json!({"data": data}))
         }
     };
+    // The children of a group: one French, one foreign.
+    let child = |lei: &str, name: &str, siren: &str, country: &str| {
+        json!({"type": "lei-records", "id": lei,
+        "attributes": {"lei": lei, "entity": {"legalName": {"name": name}, "registeredAs": siren,
+            "jurisdiction": country, "legalAddress": {"country": country}}}})
+    };
+    let children = json!({"data": [
+        child("9695009SWRDI8V543M27", "GLOBEX WORKS FRANCE", "592 027 312", "FR"),
+        child("549300R3ARWT4SSSRB09", "GLOBEX BOOSTERS", "0432.618.812", "BE"),
+    ]});
+    let direct_children = move |axum::extract::Path(lei): axum::extract::Path<String>| {
+        let children = children.clone();
+        async move {
+            axum::Json(if lei == "969500UIC89GT3UL7L24" {
+                children
+            } else {
+                json!({"data": []})
+            })
+        }
+    };
     let b = |dir: &str, siren: &str, label: &str| {
         json!({
-        "dir": {"value": dir}, "self_siren": {"value": "562082909"},
+        "dir": {"value": dir}, "self_siren": {"value": "732829320"},
         "other_siren": {"value": siren}, "otherLabel": {"value": label}})
     };
     let wd = move |Query(q): Query<HashMap<String, String>>| async move {
-        let rows = if q.get("query").is_some_and(|t| t.contains("\"562082909\"")) {
+        let text = q.get("query").cloned().unwrap_or_default();
+        let rows = if text.contains("lane") {
+            if text.contains("\"732829320\"") {
+                vec![
+                    json!({"lane": {"value": "child_item"}, "self_siren": {"value": "732829320"},
+                        "qid": {"value": "Q111"}, "otherLabel": {"value": "GX Engines"}, "iso": {"value": "US"}}),
+                    json!({"lane": {"value": "child_lei"}, "self_siren": {"value": "732829320"}, "qid": {"value": "Q222"},
+                        "lei": {"value": "5493001KJTIIGC8Y1R12"}, "otherLabel": {"value": "Globex Canada"}, "iso": {"value": "CA"}}),
+                ]
+            } else {
+                vec![]
+            }
+        } else if text.contains("\"732829320\"") {
             vec![
-                b("child", "414815217", "Safran Aircraft Engines"),
+                b("child", "414815217", "Globex Aircraft Engines"),
                 b("parent", "130004989", "Agence des participations de l'État"),
             ]
         } else {
@@ -858,6 +937,14 @@ async fn mock_registers() -> String {
     };
     let app = axum::Router::new()
         .route("/gleif/lei-records", get(gleif))
+        .route(
+            "/gleif/lei-records/{lei}/direct-children",
+            get(direct_children),
+        )
+        .route(
+            "/gleif/lei-records/{lei}/ultimate-children",
+            get(|| async { axum::Json(json!({"data": []})) }),
+        )
         .route("/wd/sparql", get(wd));
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     base
@@ -2742,6 +2829,165 @@ async fn programme_text_in_and_cross_table_out() {
         bad["sheets"][0]["cells"][0]["ref"] = json!("b1");
         let (st, e) = flow_call(&server, "sheet-write", json!({"node": node("w"), "workbook": bad})).await;
         assert_eq!((st, e["args"]["field"].clone()), (400, json!("cells")), "{e}");
+    })
+    .await;
+}
+
+/// One slice of the press feed, zipped as GDELT serves it.
+fn gkg_zip() -> Vec<u8> {
+    use std::io::Write;
+    let line = |url: &str, orgs: &str, lang: &str, title: &str| {
+        let mut c = vec![String::new(); 27];
+        c[1] = "20261102121500".into();
+        c[3] = "news.example.org".into();
+        c[4] = url.into();
+        c[13] = orgs.into();
+        c[15] = "-2.5,1,2".into();
+        c[25] = lang.into();
+        c[26] = format!("<PAGE_TITLE>{title}</PAGE_TITLE>");
+        c.join("\t")
+    };
+    let text = [
+        line(
+            "https://news.example.org/a",
+            "globex,10;hooli,40",
+            "srclc:fra;eng:Moses",
+            "Globex &#xE9;tend son usine",
+        ),
+        line(
+            "https://news.example.org/b",
+            "meca dev,5",
+            "",
+            "Meca Dev recrute",
+        ),
+        line(
+            "https://news.example.org/c",
+            "ignored co,5",
+            "",
+            "Ignored Co ferme",
+        ),
+        line(
+            "https://news.example.org/d",
+            "no key co,5",
+            "",
+            "No Key Co ouvre",
+        ),
+    ]
+    .join("\n");
+    let mut out = std::io::Cursor::new(Vec::new());
+    let mut z = zip::ZipWriter::new(&mut out);
+    z.start_file("x.gkg.csv", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    z.write_all(text.as_bytes()).unwrap();
+    z.finish().unwrap();
+    out.into_inner()
+}
+
+/// account-mapping.md D539: the world's press read once, kept for the
+/// accounts followed, one signal per article however many runs.
+#[tokio::test]
+#[serial]
+async fn the_press_feed_writes_signals_on_the_accounts_followed() {
+    with_app(|server, env| async move {
+        use axum::response::IntoResponse;
+        use axum::routing::get;
+        use sea_orm::Statement;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "companies_fr").await;
+        install(&server, &env.alice, org, "prospecting_b2b").await;
+        install(&server, &env.alice, org, "prospecting_b2b_fr").await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        // The translated twin is absent, like the files the manifest announces too early.
+        let app = axum::Router::new().route("/gdelt/{file}", get(|axum::extract::Path(f): axum::extract::Path<String>| async move {
+            if f.contains("translation") {
+                axum::http::StatusCode::NOT_FOUND.into_response()
+            } else {
+                gkg_zip().into_response()
+            }
+        }));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
+            format!("UPDATE object_imports SET source_url = '{base}/gdelt', mapping_yaml = replace(mapping_yaml, 'hours: 26', 'hours: 1') WHERE org_id = {org} AND name = 'Press (GDELT)'"))).await.unwrap();
+        let mk = |title: &'static str, props: Value| {
+            let (server, token) = (&server, env.alice.clone());
+            async move {
+                let (st, o) = object(server, &token, org, "organization", title, props).await;
+                assert_eq!(st, 201, "{o}");
+                o["id"].as_str().unwrap().to_string()
+            }
+        };
+        let globex = mk("GLOBEX", json!({"siren": "732829320", "account_status": "target"})).await;
+        // Known by another name in the press, and by its LEI only.
+        let meca = mk("MECAWORKS", json!({"lei": "969500YMMRBQ5N157D72", "account_status": "customer", "press_names": "Meca Dev, MD"})).await;
+        mk("IGNORED CO", json!({"siren": "111111111", "account_status": "excluded"})).await;
+        mk("NO KEY CO", json!({"account_status": "target"})).await;
+
+        let (id, _) = import_named(&server, &env.alice, org, "Press (GDELT)").await;
+        for _ in 0..2 {
+            let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
+            assert_eq!(st, 202, "{r}");
+            let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 120).await;
+            assert_eq!(r["run"]["state"], "applied", "{r}");
+        }
+        let (_, q) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({"type_key": "sales_signal"}))).await;
+        assert_eq!(q["count"], 2, "two articles, twice the run, nothing else: {q}");
+        let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{globex}/links"), &env.alice, org, None).await;
+        assert!(l.to_string().contains("signal_about") && l.to_string().contains("Globex étend son usine"), "{l}");
+        let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{meca}/links"), &env.alice, org, None).await;
+        assert!(l.to_string().contains("Meca Dev recrute"), "{l}");
+        let s = props_of(&env.db, org, "sales_signal", "ref", "press:siren:732829320:2026-11-02").await;
+        assert_eq!((s["kind"].as_str(), s["state"].as_str(), s["lang"].as_str()), (Some("press"), Some("to_validate"), Some("fra")), "{s}");
+        assert_eq!(s["date"], "2026-11-02");
+    })
+    .await;
+}
+
+/// An org that installed these packs before `wikidata` became unique on
+/// `organization`: upgrading the layer must not break on its dependency,
+/// even with two companies sharing an item.
+#[tokio::test]
+#[serial]
+async fn upgrading_the_layer_on_an_older_base() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "companies_fr").await;
+        install(&server, &env.alice, org, "prospecting_b2b").await;
+        install(&server, &env.alice, org, "prospecting_b2b_fr").await;
+        let sql = |s: String| { let db = env.db.clone(); async move { db.execute_unprepared(&s).await.unwrap(); } };
+        // As the older packs left it: the property not unique, older versions,
+        // no downward import yet, two companies on one item.
+        sql(format!("UPDATE object_type_versions v SET definition = jsonb_set(v.definition, '{{properties}}', \
+             (SELECT jsonb_agg(CASE WHEN p ->> 'key' = 'wikidata' THEN p - 'unique' ELSE p END) FROM jsonb_array_elements(v.definition -> 'properties') p)) \
+             FROM object_types t WHERE v.object_type_id = t.id AND t.org_id = {org} AND t.key = 'organization' AND v.version = t.current_version")).await;
+        sql(format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key IN ('investigation', 'companies', 'companies_fr', 'prospecting_b2b', 'prospecting_b2b_fr')")).await;
+        sql(format!("DELETE FROM object_imports WHERE org_id = {org} AND name IN ('Direct subsidiaries (GLEIF)', 'Group subsidiaries (GLEIF)', 'Foreign parents and subsidiaries (Wikidata)', 'Press (GDELT)')")).await;
+        for t in ["A", "B"] {
+            let (st, o) = object(&server, &env.alice, org, "organization", t, json!({"wikidata": "Q1"})).await;
+            assert_eq!(st, 201, "{o}");
+        }
+        // The layer alone, as a person clicks it on the Packs tab: a real
+        // duplicate is named, nothing half written behind a cryptic field.
+        let up = "/api/v1/ontology/packs/prospecting_b2b_fr/install";
+        let (st, r) = call(&server, "POST", up, &env.alice, org, None).await;
+        assert_eq!((st, r["error"].as_str(), r["errors"]["args"]["values"].as_str()), (409, Some("ontology-unique-duplicates"), Some("Q1")), "{r}");
+
+        // The duplicate merged, the upgrade goes through its dependencies.
+        sql(format!("UPDATE objects SET properties = properties - 'wikidata' WHERE org_id = {org} AND title = 'B'")).await;
+        let (st, r) = call(&server, "POST", up, &env.alice, org, None).await;
+        assert_eq!(st, 200, "{r}");
+        let (_, list) = call(&server, "GET", "/api/v1/ontology/imports?limit=50", &env.alice, org, None).await;
+        for name in ["Direct subsidiaries (GLEIF)", "Foreign parents and subsidiaries (Wikidata)", "Press (GDELT)"] {
+            assert!(list.to_string().contains(name), "{name}: {list}");
+        }
+        let (_, packs) = call(&server, "GET", "/api/v1/ontology/packs", &env.alice, org, None).await;
+        let stale: Vec<&Value> = packs["results"].as_array().unwrap().iter()
+            .filter(|p| p["installed_version"] == "1.0.0").collect();
+        assert!(stale.is_empty(), "dependencies upgraded too: {stale:?}");
+        // The item is now a key: a second company on it is refused.
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org,
+            Some(json!({"type_key": "organization", "title": "C", "properties": {"wikidata": "Q1"}}))).await;
+        assert_eq!(st, 400, "unique");
     })
     .await;
 }

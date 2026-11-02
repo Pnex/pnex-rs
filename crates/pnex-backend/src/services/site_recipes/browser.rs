@@ -906,10 +906,10 @@ impl Run {
             tokio::time::sleep(Duration::from_millis(ms.into())).await;
             return Ok(StepOk::default());
         }
-        let want = fold(&self.fill(w.text.as_deref().unwrap_or_default()));
+        let want = self.fill(w.text.as_deref().unwrap_or_default());
         let until = Instant::now() + Duration::from_millis(w.timeout_ms.unwrap_or(10_000).into());
         while Instant::now() < until {
-            if fold(&self.text().await).contains(&want) {
+            if contains_loose(&self.text().await, &want) {
                 return Ok(StepOk::default());
             }
             tokio::time::sleep(Duration::from_millis(300)).await;
@@ -1043,7 +1043,7 @@ impl Run {
 
     async fn assert(&mut self, a: &AssertSpec) -> StepResult {
         let ok = if let Some(t) = &a.page_contains {
-            fold(&self.text().await).contains(&fold(&self.fill(t)))
+            contains_loose(&self.text().await, &self.fill(t))
         } else if let Some(n) = &a.not_empty {
             self.extracts
                 .iter()
@@ -1085,24 +1085,54 @@ async fn pdf_text(bytes: Vec<u8>) -> String {
     }
 }
 
-/// Text between the first `a` and the next `b` after it (case and accents
-/// ignored); `None` when `a` is missing. Without `b`, up to the end.
+/// Folded text without any whitespace (U+00A0, U+202F, U+2009 included),
+/// each folded char paired with the index of the original char it comes
+/// from: "RS 7511" and "RS7511" compare equal, and a ligature folded to two
+/// chars keeps both of them.
+fn squash(text: &str) -> Vec<(char, usize)> {
+    text.chars()
+        .enumerate()
+        .filter(|(_, c)| !c.is_whitespace())
+        .flat_map(|(i, c)| {
+            fold(&c.to_string())
+                .chars()
+                .map(move |f| (f, i))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Folded char stream index where `needle` starts, from stream index `from`.
+fn find_squashed(hay: &[(char, usize)], needle: &str, from: usize) -> Option<usize> {
+    let n: Vec<char> = squash(needle).into_iter().map(|(c, _)| c).collect();
+    if n.is_empty() || hay.len() < n.len() || from > hay.len() - n.len() {
+        return None;
+    }
+    (from..=hay.len() - n.len()).find(|&i| {
+        hay[i..i + n.len()]
+            .iter()
+            .map(|(c, _)| *c)
+            .eq(n.iter().copied())
+    })
+}
+
+/// `needle` in `text`, ignoring case, accents and whitespace.
+fn contains_loose(text: &str, needle: &str) -> bool {
+    find_squashed(&squash(text), needle, 0).is_some()
+}
+
+/// Text between the first `a` and the next `b` after it (case, accents and
+/// whitespace ignored); `None` when `a` is missing. Without `b`, up to the end.
 fn between(text: &str, a: &str, b: &str) -> Option<String> {
-    // Fold char by char so folded and original positions line up.
     let chars: Vec<char> = text.chars().collect();
-    let folded: Vec<char> = chars
-        .iter()
-        .map(|c| fold(&c.to_string()).chars().next().unwrap_or(*c))
-        .collect();
-    let find = |needle: &str, from: usize| -> Option<usize> {
-        let n: Vec<char> = fold(needle).chars().collect();
-        if n.is_empty() || folded.len() < n.len() {
-            return None;
-        }
-        (from..=folded.len() - n.len()).find(|&i| folded[i..i + n.len()] == n[..])
-    };
-    let start = find(a, 0)? + a.chars().count();
-    let end = find(b, start).unwrap_or(chars.len());
+    let hay = squash(text);
+    let a_len = squash(a).len();
+    let k = find_squashed(&hay, a, 0)?;
+    // Original index right after the last char of the matched marker.
+    let start = hay[k + a_len - 1].1 + 1;
+    let end = find_squashed(&hay, b, k + a_len)
+        .map(|j| hay[j].1)
+        .unwrap_or(chars.len());
     Some(
         chars[start..end]
             .iter()
@@ -1128,6 +1158,23 @@ mod tests {
             between(t, "Module 1", "nothing").as_deref(),
             Some("(4 h)\nModalités : présentiel")
         );
+    }
+
+    #[test]
+    fn matching_ignores_no_break_spaces_and_ligatures() {
+        // U+00A0 in the page and in the marker, U+202F before the colon.
+        let t = "Accueil\nContenu\u{a0}de la formation\nPartie 1\nCertification RS\u{a0}7511\u{202f}: oui";
+        assert_eq!(
+            between(t, "Contenu de\u{a0}la formation", "Certification").as_deref(),
+            Some("Partie 1")
+        );
+        assert!(contains_loose(t, "RS7511"));
+        assert!(contains_loose(t, "rs 7511 : OUI"));
+        assert!(!contains_loose(t, "RS7512"));
+        // Ligatures fold to two chars on both sides; the cut lands after the marker.
+        let l = "Le cœur du métier\nSuite";
+        assert_eq!(between(l, "COEUR", "suite").as_deref(), Some("du métier"));
+        assert_eq!(between(l, "cœur du", "").as_deref(), Some("métier\nSuite"));
     }
 
     /// Live probe of a CDP endpoint: `PNEX_BROWSER_URL=http://127.0.0.1:9222

@@ -32,7 +32,7 @@
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "2.0.0"
+version: "2.1.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -59,7 +59,8 @@ types:
         kind: enum
         values: [company, public_body, association, party, media, group, other]
         labels: {company: {fr: "Entreprise", en: "Company"}, public_body: {fr: "Organisme public", en: "Public body"}, association: {fr: "Association", en: "Association"}, party: {fr: "Parti", en: "Party"}, media: {fr: "Média", en: "Media"}, group: {fr: "Groupe", en: "Group"}, other: {fr: "Autre", en: "Other"}}
-      - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
+      # One company per item: the key an import finds a foreign company by.
+      - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true, unique: true }
       - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: place
     name: Place

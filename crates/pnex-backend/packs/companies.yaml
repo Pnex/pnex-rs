@@ -27,7 +27,7 @@
 key: companies
 name: Companies
 names: {fr: "Entreprises"}
-version: "2.0.0"
+version: "2.1.0"
 requires: [investigation]
 description: Legal units of any country, their establishments on the map and their officers by mandate; country packs add the local registers.
 descriptions: {fr: "Unités légales de tout pays, leurs établissements sur la carte et leurs dirigeants par mandat ; les packs par pays ajoutent les registres locaux."}

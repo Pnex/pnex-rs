@@ -18,6 +18,8 @@ pub const NAME_MAX: usize = 255;
 const NAME_POINTS: f64 = 70.0;
 const POSTCODE_POINTS: u32 = 20;
 const CITY_POINTS: u32 = 15;
+/// Same city, on a site that is not the head office.
+const SITE_CITY_POINTS: u32 = 5;
 const ACTIVE_POINTS: u32 = 10;
 
 fn default_threshold() -> u32 {
@@ -188,8 +190,16 @@ pub fn score(q: &OrgQuery, e: &RegisterEntry) -> u32 {
     let city = tokens(&q.city);
     if !postcode.is_empty() && e.places.iter().any(|(p, _)| p == postcode) {
         s += POSTCODE_POINTS;
-    } else if !city.is_empty() && e.places.iter().any(|(_, c)| tokens(c) == city) {
-        s += CITY_POINTS;
+    } else if !city.is_empty() {
+        // The head office is listed first. A site in that city is weaker: a
+        // small namesake with an office in Paris must not tie with a group
+        // headquartered there.
+        let here = |(_, c): &(String, String)| tokens(c) == city;
+        if e.places.first().is_some_and(here) {
+            s += CITY_POINTS;
+        } else if e.places.iter().any(here) {
+            s += SITE_CITY_POINTS;
+        }
     }
     if e.active {
         s += ACTIVE_POINTS;
@@ -257,8 +267,8 @@ mod tests {
     #[test]
     fn legal_forms_and_accents_do_not_count() {
         assert_eq!(
-            tokens("Mécachrome France S.A.S."),
-            vec!["MECACHROME", "FRANCE"]
+            tokens("Mécaworks France S.A.S."),
+            vec!["MECAWORKS", "FRANCE"]
         );
         assert_eq!(tokens("Société Générale de l'Est"), vec!["GENERALE", "EST"]);
     }
@@ -267,20 +277,50 @@ mod tests {
     fn place_and_state_separate_namesakes() {
         let toulouse = entry(
             "329936793",
-            "MECACHROME TOULOUSE",
+            "MECAWORKS TOULOUSE",
             ("31200", "TOULOUSE"),
             true,
         );
-        let france = entry("429853351", "MECACHROME FRANCE", ("37530", "AMBOISE"), true);
-        let gone = entry("542093166", "SOC MECACHROME", ("37530", "AMBOISE"), false);
-        let query = q("Mecachrome France", "Amboise", "");
+        let france = entry("429853351", "MECAWORKS FRANCE", ("37530", "AMBOISE"), true);
+        let gone = entry("542093166", "SOC MECAWORKS", ("37530", "AMBOISE"), false);
+        let query = q("Mecaworks France", "Amboise", "");
         assert_eq!(score(&query, &france), 95);
         assert!(score(&query, &toulouse) < 60);
         assert!(score(&query, &gone) < score(&query, &france));
         // A postcode beats a city name.
-        assert_eq!(score(&q("Mecachrome France", "", "37530"), &france), 100);
+        assert_eq!(score(&q("Mecaworks France", "", "37530"), &france), 100);
         // A name alone: at most 80.
-        assert_eq!(score(&q("Mecachrome France", "", ""), &france), 80);
+        assert_eq!(score(&q("Mecaworks France", "", ""), &france), 80);
+    }
+
+    #[test]
+    fn a_head_office_outranks_a_namesake_with_a_site_in_that_city() {
+        let entry = |head: &str, site: &str| RegisterEntry {
+            names: vec!["GLOBEX".into()],
+            places: vec![("".into(), head.into()), ("".into(), site.into())],
+            active: true,
+            ..Default::default()
+        };
+        let q = OrgQuery {
+            name: "GLOBEX".into(),
+            city: "Paris".into(),
+            ..Default::default()
+        };
+        let (group, namesake) = (
+            score(&q, &entry("PARIS", "OSNY")),
+            score(&q, &entry("VANNES", "PARIS")),
+        );
+        assert_eq!((group, namesake), (95, 85));
+        let sorted = |a: u32, b: u32| {
+            [a, b].map(|score| OrgCandidate {
+                score,
+                ..Default::default()
+            })
+        };
+        assert_eq!(
+            port_of(&OrgResolveConfig::default(), &sorted(group, namesake)),
+            NODE_PORT_MATCHED
+        );
     }
 
     #[test]

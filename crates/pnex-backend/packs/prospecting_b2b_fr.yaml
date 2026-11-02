@@ -30,11 +30,228 @@
 key: prospecting_b2b_fr
 name: B2B prospecting, France layer
 names: {fr: "Prospection B2B, couche France"}
-version: "3.0.1"
+version: "3.3.0"
 requires: [companies_fr, prospecting_b2b]
 description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
 descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
 imports:
+  - name: Press (GDELT)
+    source: api
+    source_url: "https://data.gdeltproject.org/gdeltv2"
+    mapping:
+      key: press_gdelt
+      name: Press
+      names: {fr: "Presse (GDELT)"}
+      description: The world's press of the last day naming an account followed (customer, prospect, target). Source GDELT Project, gdeltproject.org.
+      format: json
+      press_feed:
+        type: organization
+        only: { property: account_status, values: [customer, prospect, target] }
+        aliases: press_names
+        keys: [siren, lei, wikidata]
+        hours: 26
+      objects:
+        - as: signal
+          type: sales_signal
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: ref
+            kind: { value: press }
+            summary: summary
+            date: date
+            source_url: url
+            lang: lang
+            tone: tone
+            # GDELT's terms: any use cites the project and links to its site.
+            credit: { value: "GDELT Project, https://www.gdeltproject.org/" }
+            state: { value: to_validate }
+        - { as: by_siren, type: organization, key: siren, create: false, missing: skip, when: { from: via, equals: siren }, properties: { siren: account } }
+        - { as: by_lei, type: organization, key: lei, create: false, missing: skip, when: { from: via, equals: lei }, properties: { lei: account } }
+        - { as: by_item, type: organization, key: wikidata, create: false, missing: skip, when: { from: via, equals: wikidata }, properties: { wikidata: account } }
+      links:
+        - { type: signal_about, from: signal, to: by_siren }
+        - { type: signal_about, from: signal, to: by_lei }
+        - { type: signal_about, from: signal, to: by_item }
+  - name: Direct subsidiaries (GLEIF)
+    source: api
+    source_url: "https://api.gleif.org/api/v1/lei-records/{value}/direct-children?page%5Bsize%5D=200"
+    max_pages: 200
+    mapping:
+      key: gleif_direct_children
+      name: Direct subsidiaries
+      names: {fr: "Filiales directes (GLEIF)"}
+      format: json
+      rows: data
+      per_object: { type: organization, property: lei, only: { property: account_status, values: [customer, prospect, target] } }
+      objects:
+        - as: parent
+          type: organization
+          key: lei
+          create: false
+          missing: skip
+          properties:
+            lei: "@queried"
+        - as: child_fr
+          type: organization
+          key: siren
+          title: attributes.entity.legalName.name
+          when: { from: attributes.entity.jurisdiction, equals: FR }
+          properties:
+            siren: { from: attributes.entity.registeredAs, convert: [digits] }
+            lei: id
+            country: { value: FR }
+        - as: child_world
+          type: organization
+          key: lei
+          title: attributes.entity.legalName.name
+          when: { from: attributes.entity.jurisdiction, equals: FR, not: true }
+          properties:
+            lei: id
+            country: attributes.entity.legalAddress.country
+      links:
+        - type: subsidiary_of
+          from: child_fr
+          to: parent
+          attributes: &gleif_direct
+            nature: { value: direct_consolidation }
+            source: { value: "gleif.org" }
+          on_conflict: { nature: direct_consolidation }
+        - type: subsidiary_of
+          from: child_world
+          to: parent
+          attributes: *gleif_direct
+          on_conflict: { nature: direct_consolidation }
+  - name: Group subsidiaries (GLEIF)
+    source: api
+    source_url: "https://api.gleif.org/api/v1/lei-records/{value}/ultimate-children?page%5Bsize%5D=200"
+    max_pages: 200
+    mapping:
+      key: gleif_ultimate_children
+      name: Group subsidiaries
+      names: {fr: "Filiales du groupe (GLEIF)"}
+      format: json
+      rows: data
+      per_object: { type: organization, property: lei, only: { property: account_status, values: [customer, prospect, target] } }
+      objects:
+        - as: parent
+          type: organization
+          key: lei
+          create: false
+          missing: skip
+          properties:
+            lei: "@queried"
+        - as: child_fr
+          type: organization
+          key: siren
+          title: attributes.entity.legalName.name
+          when: { from: attributes.entity.jurisdiction, equals: FR }
+          properties:
+            siren: { from: attributes.entity.registeredAs, convert: [digits] }
+            lei: id
+            country: { value: FR }
+        - as: child_world
+          type: organization
+          key: lei
+          title: attributes.entity.legalName.name
+          when: { from: attributes.entity.jurisdiction, equals: FR, not: true }
+          properties:
+            lei: id
+            country: attributes.entity.legalAddress.country
+      links:
+        - type: subsidiary_of
+          from: child_fr
+          to: parent
+          attributes: &gleif_ultimate
+            nature: { value: ultimate_consolidation }
+            source: { value: "gleif.org" }
+          on_conflict: { nature: direct_consolidation }
+        - type: subsidiary_of
+          from: child_world
+          to: parent
+          attributes: *gleif_ultimate
+          on_conflict: { nature: direct_consolidation }
+  - name: Foreign parents and subsidiaries (Wikidata)
+    source: api
+    source_url: "https://query.wikidata.org/sparql?format=json&query=SELECT%20DISTINCT%20%3Flane%20%3Fself_siren%20%3Fqid%20%3FotherLabel%20%3Fiso%20%3Flei%20WHERE%20{%20BIND%28%22{value}%22%20AS%20%3Fself_siren%29%20%3Fs%20wdt%3AP1616%20%3Fself_siren%20.%20{%20%3Fs%20wdt%3AP749%20%3Fother%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fother%20wdt%3AP355%20%3Fs%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fs%20wdt%3AP355%20%3Fother%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fother%20wdt%3AP749%20%3Fs%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20}%20FILTER%20NOT%20EXISTS%20{%20%3Fother%20wdt%3AP1616%20%3Fany%20}%20BIND%28STRAFTER%28STR%28%3Fother%29%2C%20%22entity%2F%22%29%20AS%20%3Fqid%29%20OPTIONAL%20{%20%3Fother%20wdt%3AP17%2Fwdt%3AP297%20%3Fiso%20}%20OPTIONAL%20{%20%3Fother%20wdt%3AP1278%20%3Flei%20}%20BIND%28CONCAT%28%3Fdir%2C%20IF%28BOUND%28%3Flei%29%2C%20%22_lei%22%2C%20%22_item%22%29%29%20AS%20%3Flane%29%20SERVICE%20wikibase%3Alabel%20{%20bd%3AserviceParam%20wikibase%3Alanguage%20%22fr%2Cen%22.%20}%20}"
+    max_pages: 200
+    mapping:
+      key: wikidata_group_world
+      name: Foreign parents and subsidiaries
+      names: {fr: "Mères et filiales étrangères (Wikidata)"}
+      format: json
+      rows: results.bindings
+      per_object: { type: organization, property: siren, only: { property: account_status, values: [customer, prospect, target] } }
+      objects:
+        - as: legal_unit
+          type: organization
+          key: siren
+          create: false
+          missing: skip
+          properties:
+            siren: self_siren.value
+        - as: child_lei
+          type: organization
+          key: lei
+          title: otherLabel.value
+          update: false
+          when: { from: lane.value, equals: child_lei }
+          properties:
+            lei: lei.value
+            wikidata: qid.value
+            country: iso.value
+        - as: child_item
+          type: organization
+          key: wikidata
+          title: otherLabel.value
+          update: false
+          when: { from: lane.value, equals: child_item }
+          properties:
+            wikidata: qid.value
+            country: iso.value
+        - as: parent_lei
+          type: organization
+          key: lei
+          title: otherLabel.value
+          update: false
+          when: { from: lane.value, equals: parent_lei }
+          properties:
+            lei: lei.value
+            wikidata: qid.value
+            country: iso.value
+        - as: parent_item
+          type: organization
+          key: wikidata
+          title: otherLabel.value
+          update: false
+          when: { from: lane.value, equals: parent_item }
+          properties:
+            wikidata: qid.value
+            country: iso.value
+      links:
+        - type: subsidiary_of
+          from: child_lei
+          to: legal_unit
+          propose: true
+          attributes: &wikidata_world
+            nature: { value: wikidata }
+            source: { value: "wikidata.org" }
+        - type: subsidiary_of
+          from: child_item
+          to: legal_unit
+          propose: true
+          attributes: *wikidata_world
+        - type: subsidiary_of
+          from: legal_unit
+          to: parent_lei
+          propose: true
+          attributes: *wikidata_world
+        - type: subsidiary_of
+          from: legal_unit
+          to: parent_item
+          propose: true
+          attributes: *wikidata_world
   - name: Target list (company register search)
     source: api
     source_url: "https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&tranche_effectif_salarie=22,31,32,41,42,51,52,53&etat_administratif=A&per_page=25"
@@ -187,7 +404,114 @@ functions:
       def handle(inputs, msg):
           return {"payload": {"source_id": msg["contact"]["id"], "target_id": msg["object"]["id"],
                               "attributes": {}}}
+  - name: pcp_ask
+    language: starlark
+    description: A person with a captured profile not yet read, its document asked for.
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          # An objection stops everything about the person (D341).
+          if p.get("opposed_on"):
+              return None
+          return {"payload": {"media_id": p.get("profile_to_read", "")}, "person": msg["object"]["id"]}
+  - name: pcp_read
+    language: starlark
+    description: "The model's lines about a profile: the company to look up, and the person marked read with what the profile says."
+    outputs:
+      - {name: lookup, ty: any, desc: "The company named by the profile"}
+      - {name: read, ty: any, desc: "The person, marked read"}
+    code: |
+      def field(lines, name):
+          for l in lines:
+              if l.lower().startswith(name + ":"):
+                  v = l[len(name) + 1:].strip().strip("`*\"")
+                  return "" if v.lower() in ["none", "unknown", "-", ""] else v
+          return ""
+
+      def handle(inputs, msg):
+          lines = [l.strip() for l in msg["payload"].get("text", "").split("\n")]
+          position = field(lines, "position")[:255]
+          company = field(lines, "company")[:255]
+          city = field(lines, "city")[:100]
+          read = {"payload": {"profile_to_read": "", "profile_position": position,
+                              "profile_company": company, "profile_read_on": msg.get("today", "")},
+                  "object_id": msg["person"]}
+          if not company:
+              return [None, read]
+          return [{"payload": {"name": company, "city": city}, "person": msg["person"], "position": position,
+                   "company": company, "today": msg.get("today", "")}, read]
+  - name: pcp_found
+    language: starlark
+    description: The company found in the register, created if it is new.
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          best = p.get("candidates", [{}])[0]
+          return {"payload": {"siren": p["siren"], "country": "FR"}, "title": best.get("name", p["siren"]),
+                  "person": msg["person"], "position": msg.get("position", ""),
+                  "company": msg.get("company", ""), "today": msg.get("today", "")}
+  - name: pcp_candidates
+    language: starlark
+    description: "An ambiguous company: the candidates tied at the top, to see whether one is already known."
+    code: |
+      def handle(inputs, msg):
+          found = msg["payload"].get("candidates", [])
+          if not found or found[0].get("score", 0) < 70:
+              return None
+          best = found[0]["score"]
+          tied = [{"siren": c["siren"]} for c in found if c.get("score") == best][:3]
+          return {"payload": tied, "person": msg["person"], "position": msg.get("position", ""),
+                  "company": msg.get("company", ""), "today": msg.get("today", "")}
+  - name: pcp_link
+    language: starlark
+    description: The link from the company to the person, as a proposal with what the profile said.
+    code: |
+      def handle(inputs, msg):
+          attrs = {"source": "profile capture", "retrieved_on": msg.get("today", "")}
+          if msg.get("position"):
+              attrs["position"] = msg["position"]
+          return {"payload": {"source_id": msg["object"]["id"], "target_id": msg["person"], "attributes": attrs,
+                              "evidence": {"on the profile": msg.get("company", "")}}}
 flows:
+  - name: "Prospecting · captured profiles"
+    note: "Every hour, up to 20 people whose profile was captured by a person (Capture a profile, on the person's page) are read by the organization's LLM: what the profile says of the position and the company goes on the person, and a company found clearly in the register is created and proposed as their employer on the To validate page. An ambiguous name is proposed only when one of its homonyms is already known here; otherwise it stays on the person, for a human. It creates no person and follows no link of the network. Needs an AI provider."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "20 * * * *" }, outputs: [{ port: 0, targets: [todo] }] }
+        - id: todo
+          kind: ontology_query
+          config:
+            object_type: person
+            filters:
+              - { key: profile_to_read, op: exists }
+              - { key: profile_to_read, op: ne, value: "" }
+            limit: 20
+          outputs: [{ port: 0, targets: [ask] }]
+        - { id: ask, kind: pnex_function, config: { function_name: pcp_ask, language: starlark }, outputs: [{ port: 0, targets: [doc] }] }
+        - { id: doc, kind: document_text, outputs: [{ port: 0, targets: [read] }] }
+        - id: read
+          kind: llm_text
+          config:
+            data_field: text
+            max_chars: 500
+            prompt: "This is the text of one person's professional profile page. Answer with exactly three lines and nothing else: 'position: <their current position>', 'company: <the company of their current position>', 'city: <its city>'. Write none for what the page does not say. Never guess."
+          outputs: [{ port: 0, targets: [parse] }]
+        - { id: parse, kind: pnex_function, config: { function_name: pcp_read, language: starlark }, outputs: [{ port: 0, targets: [lookup] }, { port: 1, targets: [mark] }] }
+        - { id: mark, kind: object_upsert, config: { object_type: person, key: id } }
+        - { id: lookup, kind: org_resolve, outputs: [{ port: 0, targets: [found] }, { port: 1, targets: [tied] }] }
+        - { id: tied, kind: pnex_function, config: { function_name: pcp_candidates, language: starlark }, outputs: [{ port: 0, targets: [each] }] }
+        - { id: each, kind: json_split, config: { auto: false }, outputs: [{ port: 0, targets: [known] }] }
+        - id: known
+          kind: ontology_query
+          config:
+            object_type: organization
+            filters: [{ key: siren, op: eq, value: "$msg.payload.siren" }]
+            limit: 1
+          outputs: [{ port: 0, targets: [link] }]
+        - { id: found, kind: pnex_function, config: { function_name: pcp_found, language: starlark }, outputs: [{ port: 0, targets: [company] }] }
+        - { id: company, kind: object_upsert, config: { object_type: organization, key: siren, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: pcp_link, language: starlark }, outputs: [{ port: 0, targets: [attach] }] }
+        - { id: attach, kind: link_upsert, config: { link_type: employs, skip_closed: true, propose: true } }
   - name: "Prospecting · list contacts to companies"
     note: "Every 15 minutes, up to 100 list contacts not looked up yet get their company's SIREN from the company register (org_resolve): a clear match creates the company and proposes the contact's attachment on the To validate page; an ambiguous one keeps its candidates on the contact (Company found: to_review). Deploy after importing a list."
     graph:

@@ -167,7 +167,7 @@ fn target_score_adds_the_points_of_the_criteria_met() {
         "payload": {"activity_code": "25.62", "headcount_min": 1000, "country": "FR",
                     "last_revenue": {"amount": 343838577.0, "currency": "EUR", "estimated": false},
                     "account_status": "target"},
-        "object": {"id": "o1", "title": "MECACHROME FRANCE", "version": 4},
+        "object": {"id": "o1", "title": "MECAWORKS FRANCE", "version": 4},
         "criteria": criteria,
         "today": "2026-10-22"
     });
@@ -385,21 +385,21 @@ fn list_contacts_ask_their_company_and_keep_the_candidates() {
     let r = run(
         "pl_prepare",
         json!({
-        "payload": {"company": "Mecachrome", "city": "Amboise", "postal_code": "37530"},
+        "payload": {"company": "Mecaworks", "city": "Amboise", "postal_code": "37530"},
         "object": {"id": "c1", "title": "Jeanne Martin", "version": 1}}),
     );
     assert_eq!(
         r["payload"],
-        json!({"name": "Mecachrome", "city": "Amboise", "postcode": "37530"})
+        json!({"name": "Mecaworks", "city": "Amboise", "postcode": "37530"})
     );
     assert_eq!(r["contact"]["id"], "c1");
     let found = json!({"payload": {"siren": "429853351",
-        "candidates": [{"siren": "429853351", "name": "MECACHROME FRANCE", "city": "AMBOISE", "score": 95}]},
+        "candidates": [{"siren": "429853351", "name": "MECAWORKS FRANCE", "city": "AMBOISE", "score": 95}]},
         "contact": {"id": "c1"}});
     let r = run("pl_found", found.clone());
     assert_eq!(
         (r[0]["payload"]["siren"].clone(), r[0]["title"].clone()),
-        (json!("429853351"), json!("MECACHROME FRANCE"))
+        (json!("429853351"), json!("MECAWORKS FRANCE"))
     );
     assert_eq!(
         (
@@ -412,7 +412,7 @@ fn list_contacts_ask_their_company_and_keep_the_candidates() {
     assert_eq!(r["payload"]["matching"], "to_review");
     assert_eq!(
         r["payload"]["candidates"],
-        "MECACHROME FRANCE (429853351, AMBOISE, 95)"
+        "MECAWORKS FRANCE (429853351, AMBOISE, 95)"
     );
     let r = run(
         "pl_review",
@@ -1560,4 +1560,145 @@ fn a_mail_draft_goes_to_the_people_who_did_not_object() {
     assert!(r[0].is_null());
     assert_eq!(r[1]["payload"]["outbox_mail"], "none");
     assert_eq!(r[1]["object_id"], "a1");
+}
+
+/// Press signals (account-mapping.md D539): a model's answer gives a topic,
+/// an explicit none dismisses, anything else stays for a human.
+#[test]
+fn a_press_signal_is_triaged_without_losing_news() {
+    let run = |name: &str, msg: serde_json::Value| {
+        execute(&code_in(PROSPECTING, name), &msg, 2000)
+            .unwrap()
+            .return_json
+            .unwrap_or(serde_json::Value::Null)
+    };
+    let p = run(
+        "pn_prepare",
+        json!({"payload": {"summary": "ACME ouvre une usine", "excerpt": ""},
+        "object": {"id": "s1"}, "links": {"signal_about": [{"other": {"title": "ACME"}}]}}),
+    );
+    assert!(
+        p["payload"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Account: ACME"),
+        "{p}"
+    );
+    let kept = run(
+        "pn_topic",
+        json!({"signal": "s1", "payload": {"text": "new_site"}}),
+    );
+    assert_eq!(
+        (
+            kept["payload"]["topic"].as_str(),
+            kept["object_id"].as_str()
+        ),
+        (Some("new_site"), Some("s1"))
+    );
+    assert!(
+        kept["payload"].get("state").is_none(),
+        "a human decides: {kept}"
+    );
+    let off = run(
+        "pn_topic",
+        json!({"signal": "s1", "payload": {"text": "none"}}),
+    );
+    assert_eq!(off["payload"]["state"], "dismissed");
+    // Off the list (a weak model's "transformation"): kept for a human.
+    let odd = run(
+        "pn_topic",
+        json!({"signal": "s1", "payload": {"text": "transformation"}}),
+    );
+    assert_eq!(odd["payload"]["topic"], "other");
+    assert!(odd["payload"].get("state").is_none(), "{odd}");
+}
+
+/// A captured profile (account-mapping.md D538): read once, an objection
+/// stops it, what the profile leaves out stays empty, and the company is
+/// only proposed, never a person created.
+#[test]
+fn a_captured_profile_proposes_its_employer() {
+    let run = |name: &str, msg: serde_json::Value| {
+        execute(&code_in(PROSPECTING_FR, name), &msg, 2000)
+            .unwrap()
+            .return_json
+            .unwrap_or(serde_json::Value::Null)
+    };
+    let ask = run(
+        "pcp_ask",
+        json!({"payload": {"profile_to_read": "m1"}, "object": {"id": "p1"}}),
+    );
+    assert_eq!(
+        (ask["payload"]["media_id"].as_str(), ask["person"].as_str()),
+        (Some("m1"), Some("p1"))
+    );
+    assert!(run("pcp_ask", json!({"payload": {"profile_to_read": "m1", "opposed_on": "2026-01-01"}, "object": {"id": "p1"}})).is_null());
+
+    let r = run(
+        "pcp_read",
+        json!({"person": "p1", "today": "2026-11-02", "payload": {"text":
+        "position: Directrice des achats\ncompany: ACME Industrie\ncity: Lyon"}}),
+    );
+    assert_eq!(
+        (
+            r[0]["payload"]["name"].as_str(),
+            r[0]["payload"]["city"].as_str()
+        ),
+        (Some("ACME Industrie"), Some("Lyon"))
+    );
+    assert_eq!(r[0]["position"], "Directrice des achats");
+    assert_eq!(r[1]["payload"]["profile_to_read"], "", "read once");
+    assert_eq!(r[1]["payload"]["profile_company"], "ACME Industrie");
+    assert_eq!(r[1]["object_id"], "p1");
+    // The model says nothing, or wraps its answer: still marked read.
+    for text in ["company: none\nposition: none", "I cannot read this page."] {
+        let r = run(
+            "pcp_read",
+            json!({"person": "p1", "payload": {"text": text}}),
+        );
+        assert!(r[0].is_null(), "{text}: {r}");
+        assert_eq!(r[1]["payload"]["profile_company"], "");
+    }
+
+    // Ambiguous: only the candidates tied at the top go and look for a known one.
+    let t = run(
+        "pcp_candidates",
+        json!({"person": "p1", "company": "GLOBEX", "payload": {"candidates": [
+        {"siren": "1", "score": 95}, {"siren": "2", "score": 95}, {"siren": "3", "score": 80}]}}),
+    );
+    assert_eq!(t["payload"], json!([{"siren": "1"}, {"siren": "2"}]));
+    assert_eq!(t["person"], "p1");
+    assert!(run(
+        "pcp_candidates",
+        json!({"person": "p1", "payload": {"candidates": []}})
+    )
+    .is_null());
+    assert!(run(
+        "pcp_candidates",
+        json!({"person": "p1", "payload": {"candidates": [{"siren": "1", "score": 30}]}})
+    )
+    .is_null());
+
+    let f = run(
+        "pcp_found",
+        json!({"person": "p1", "position": "CFO", "today": "2026-11-02",
+        "payload": {"siren": "123456789", "query": "ACME", "candidates": [{"name": "ACME SAS"}]}}),
+    );
+    assert_eq!(
+        (f["payload"]["siren"].as_str(), f["title"].as_str()),
+        (Some("123456789"), Some("ACME SAS"))
+    );
+    let l = run(
+        "pcp_link",
+        json!({"person": "p1", "position": "CFO", "company": "ACME", "object": {"id": "o1"}}),
+    );
+    assert_eq!(
+        (
+            l["payload"]["source_id"].as_str(),
+            l["payload"]["target_id"].as_str()
+        ),
+        (Some("o1"), Some("p1"))
+    );
+    assert_eq!(l["payload"]["attributes"]["position"], "CFO");
+    assert_eq!(l["payload"]["evidence"]["on the profile"], "ACME");
 }

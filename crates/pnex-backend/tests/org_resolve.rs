@@ -62,10 +62,10 @@ async fn spawn_register() -> String {
             q.get("code_postal").map(String::as_str),
         ) {
             (_, Some("99999")) => vec![],
-            (Some(n), _) if n.to_lowercase().contains("chrome") => vec![
-                hit("429853351", "MECACHROME FRANCE", "37530", "AMBOISE", "A"),
-                hit("329936793", "MECACHROME TOULOUSE", "31200", "TOULOUSE", "A"),
-                hit("542093166", "SOC MECACHROME", "37530", "AMBOISE", "C"),
+            (Some(n), _) if n.to_lowercase().contains("works") => vec![
+                hit("429853351", "MECAWORKS FRANCE", "37530", "AMBOISE", "A"),
+                hit("329936793", "MECAWORKS TOULOUSE", "31200", "TOULOUSE", "A"),
+                hit("542093166", "SOC MECAWORKS", "37530", "AMBOISE", "C"),
             ],
             _ => vec![],
         };
@@ -144,20 +144,20 @@ async fn node_scores_register_candidates() {
         let node = |id: &str| json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": id});
 
         // Name and city: one clear match, candidates best first.
-        let (st, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mécachrome France SAS", "city": "Amboise"}})).await;
+        let (st, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mécaworks France SAS", "city": "Amboise"}})).await;
         assert_eq!((st, r["port"].clone(), r["siren"].clone()), (200, json!(0), json!("429853351")), "{r}");
         assert_eq!(r["candidates"].as_array().unwrap().len(), 2, "limit: {r}");
         assert_eq!(r["candidates"][0]["score"], 95);
         assert_eq!(r["candidates"][0]["headcount_band"], "42");
 
         // A name alone: 80 at most, the ceased namesake too close → review.
-        let (_, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mecachrome"}})).await;
+        let (_, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mecaworks"}})).await;
         assert_eq!((r["port"].clone(), r["siren"].clone()), (json!(1), Value::Null), "{r}");
 
         // A wrong postcode is retried without it; the exact name alone,
         // with no close namesake, still reaches the threshold.
         SEEN.lock().unwrap().clear();
-        let (_, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mecachrome France", "postcode": "99999"}})).await;
+        let (_, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mecaworks France", "postcode": "99999"}})).await;
         assert_eq!((r["port"].clone(), r["candidates"][0]["score"].clone()), (json!(0), json!(80)), "{r}");
         let seen = SEEN.lock().unwrap().clone();
         assert_eq!(seen.len(), 2);
@@ -178,7 +178,7 @@ async fn node_scores_register_candidates() {
 
         // The register down: a coded failure.
         unsafe { std::env::set_var("PNEX_COMPANY_SEARCH_URL", "http://127.0.0.1:9/search") };
-        let (_, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mecachrome"}})).await;
+        let (_, r) = node_call(&server, json!({"node": node("r"), "query": {"name": "Mecaworks"}})).await;
         assert_eq!((r["port"].clone(), r["code"].clone()), (json!(2), json!("org-resolve-unavailable")));
         unsafe { std::env::remove_var("PNEX_COMPANY_SEARCH_URL") };
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };

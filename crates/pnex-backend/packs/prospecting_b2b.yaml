@@ -21,6 +21,10 @@
 # stays the org's data; the score is explained line by line in
 # `score_detail`. Organizations only: sites are system objects a flow does
 # not write, the explorer filters them on their own headcount.
+# Account news (D539): the press feed of the France layer writes signals
+# `press` to validate; a flow, with the org's LLM, gives them a topic of the
+# org's list or dismisses those about something else. `press_names` holds
+# the other names of a company in the press, comma-separated.
 # Commercial signals (D335): something that moved on an account, kept with
 # where it came from and the words quoted. `kind` says how it was detected
 # (closed list), `topic` what it is about (the org's own list). A signal
@@ -58,7 +62,7 @@
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "3.0.1"
+version: "3.1.0"
 requires: [companies, web_presence]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -97,6 +101,7 @@ extends:
       - { key: target_score, name: Target score, names: {fr: "Score de ciblage"}, kind: number, indexed: true }
       - { key: score_detail, name: Score detail, names: {fr: "Détail du score"}, kind: text, max_len: 4000 }
       - { key: scored_on, name: Scored on, names: {fr: "Score calculé le"}, kind: date }
+      - { key: press_names, name: Other names in the press, names: {fr: "Autres noms dans la presse"}, kind: text, max_len: 500 }
   - type: map_pin
     properties:
       - key: establishment_status
@@ -110,6 +115,12 @@ extends:
       - { key: current_users, name: Current users, names: {fr: "Utilisateurs actuels"}, kind: number, min: 0 }
   - type: person
     properties:
+      # What a captured profile says (D538), read by a flow: a person's
+      # own page, kept as what it said, never a verified fact.
+      - { key: profile_to_read, name: Captured text to read, names: {fr: "Texte capturé à lire"}, kind: text, max_len: 64 }
+      - { key: profile_position, name: Position on the profile, names: {fr: "Poste sur le profil"}, kind: text, max_len: 255, classification: personal }
+      - { key: profile_company, name: Company on the profile, names: {fr: "Société sur le profil"}, kind: text, max_len: 255, classification: personal }
+      - { key: profile_read_on, name: Profile read on, names: {fr: "Profil lu le"}, kind: date }
       - key: persona
         name: Persona
         names: {fr: "Persona"}
@@ -224,6 +235,10 @@ hierarchies:
     coverage:
       links: [employs]
       values: { establishment_status: [customer], account_status: [customer] }
+    # Contacts by persona and signals still open across the group (D330).
+    tallies:
+      - { link: employs, by: persona }
+      - { link: signal_about, only: { state: [to_validate, retained] } }
   # Coaching: from a playbook criterion, the meetings that covered it and
   # their accounts; the band counts them by status.
   - key: coaching
@@ -284,8 +299,8 @@ types:
         name: Detected by
         names: {fr: "Détecté par"}
         kind: enum
-        values: [new_establishment, establishment_closure, executive_change, legal_notice, page_changed, job_change, other]
-        labels: {new_establishment: {fr: "Nouvel établissement", en: "New site"}, establishment_closure: {fr: "Fermeture d'établissement", en: "Site closed"}, executive_change: {fr: "Changement de dirigeant", en: "New executive"}, legal_notice: {fr: "Annonce légale", en: "Legal notice"}, page_changed: {fr: "Page modifiée", en: "Page changed"}, job_change: {fr: "Changement de poste", en: "Job change"}, other: {fr: "Autre", en: "Other"}}
+        values: [new_establishment, establishment_closure, executive_change, legal_notice, page_changed, job_change, press, other]
+        labels: {new_establishment: {fr: "Nouvel établissement", en: "New site"}, establishment_closure: {fr: "Fermeture d'établissement", en: "Site closed"}, executive_change: {fr: "Changement de dirigeant", en: "New executive"}, legal_notice: {fr: "Annonce légale", en: "Legal notice"}, page_changed: {fr: "Page modifiée", en: "Page changed"}, job_change: {fr: "Changement de poste", en: "Job change"}, press: {fr: "Presse", en: "Press"}, other: {fr: "Autre", en: "Other"}}
         required: true
         indexed: true
       - { key: topic, name: Theme, names: {fr: "Thème"}, kind: text, max_len: 64, indexed: true }
@@ -293,6 +308,9 @@ types:
       - { key: excerpt, name: Quoted excerpt, names: {fr: "Extrait cité"}, kind: text, max_len: 4000 }
       - { key: date, name: Date, names: {fr: "Date"}, kind: date, indexed: true }
       - { key: source_url, name: Source, names: {fr: "Source"}, kind: url }
+      - { key: lang, name: Language of the source, names: {fr: "Langue de la source"}, kind: text, max_len: 8 }
+      - { key: credit, name: Collected through, names: {fr: "Collecté via"}, kind: text, max_len: 255 }
+      - { key: tone, name: Tone of the article, names: {fr: "Tonalité de l'article"}, kind: number }
       - key: state
         name: State
         names: {fr: "État"}
@@ -527,6 +545,34 @@ functions:
     code: |
       def handle(inputs, msg):
           return {"payload": {"source_id": msg["object"]["id"], "target_id": msg["page"]["account"]}}
+  - name: pn_prepare
+    language: starlark
+    description: A press signal not yet read, its text for the model and its account's name.
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          about = [l.get("other", {}).get("title", "") for l in msg.get("links", {}).get("signal_about", [])]
+          text = "Account: " + ", ".join(about) + "\nHeadline: " + p.get("summary", "") + "\n" + p.get("excerpt", "")
+          return {"payload": {"text": text}, "signal": msg["object"]["id"]}
+  - name: pn_topic
+    language: starlark
+    description: "The model's answer about a press signal: its topic, or dismissed when it is about something else."
+    code: |
+      # The org's topics (D335): edit this list to the org's own, the
+      # prompt of the LLM node names the same keys.
+      TOPICS = ["new_site", "investment", "hiring", "new_line", "takeover", "results",
+                "restructuring", "management", "contract", "partnership", "new_offer", "incident"]
+
+      def handle(inputs, msg):
+          lines = [l.strip() for l in msg["payload"].get("text", "").strip().split("\n") if l.strip()]
+          topic = lines[0].strip("`*. ").lower() if lines else "none"
+          # Only an explicit none dismisses: an answer off the list may still
+          # be real news, it stays for a human.
+          if topic == "none":
+              return {"payload": {"topic": "none", "state": "dismissed"}, "object_id": msg["signal"]}
+          if topic not in TOPICS:
+              return {"payload": {"topic": "other"}, "object_id": msg["signal"]}
+          return {"payload": {"topic": topic}, "object_id": msg["signal"]}
   - name: pb_mark_notified
     language: starlark
     description: Marks a signal notified today.
@@ -559,6 +605,32 @@ flows:
         - { id: about, kind: pnex_function, config: { function_name: ps_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
         - { id: linked, kind: link_upsert, config: { link_type: signal_about } }
         - { id: done, kind: object_upsert, config: { object_type: watched_page, key: id } }
+  - name: "Prospecting · news to topics"
+    note: "Every hour, up to 50 press signals not yet read go to the organization's LLM with their account: a topic of the list goes on the signal, an article about something else (a namesake, a passing mention) is dismissed. A human still retains or dismisses the others. Needs an AI provider."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "10 * * * *" }, outputs: [{ port: 0, targets: [unread] }] }
+        - id: unread
+          kind: ontology_query
+          config:
+            object_type: sales_signal
+            filters:
+              - { key: kind, op: eq, value: press }
+              - { key: state, op: eq, value: to_validate }
+              - { key: topic, op: missing }
+            with_links: [signal_about]
+            limit: 50
+          outputs: [{ port: 0, targets: [prep] }]
+        - { id: prep, kind: pnex_function, config: { function_name: pn_prepare, language: starlark }, outputs: [{ port: 0, targets: [read] }] }
+        - id: read
+          kind: llm_text
+          config:
+            data_field: text
+            max_chars: 200
+            prompt: "This is a press headline found for a company (the account). If it is really about that company and announces one of these topics, answer with the topic key only: new_site, investment, hiring, new_line, takeover, results, restructuring, management, contract (won or competed for), partnership, new_offer, incident (a cyberattack, strike, accident, recall or crisis hitting the company). Otherwise (a namesake, a passing mention, another subject), answer none."
+          outputs: [{ port: 0, targets: [topic] }]
+        - { id: topic, kind: pnex_function, config: { function_name: pn_topic, language: starlark }, outputs: [{ port: 0, targets: [done] }] }
+        - { id: done, kind: object_upsert, config: { object_type: sales_signal, key: id } }
   - name: "Prospecting · signals digest"
     note: "Each morning the commercial signals not yet notified make one digest (payload.text, payload.count), then are marked notified. Add your Notification node on the digest port (template with a 'text' variable, trigger = payload.trigger), then deploy."
     graph:

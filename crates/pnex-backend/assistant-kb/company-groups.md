@@ -8,12 +8,15 @@ err_codes: org-resolve-unavailable, org-resolve-quota, org-resolve-query-invalid
 tools: 
 tags: meeting, rendez-vous, debrief, compte rendu, playbook, coaching, participant, recording, enregistrement, account plan, plan de compte, competitor sheet, fiche concurrent, meeting preparation, préparation de rendez-vous, commercial signal, signal commercial, BODACC, legal announcement, annonce légale, digest, résumé, white space, espace blanc, coverage, couverture, colour, couleur, status, statut, target list, liste de ciblage, ideal customer, client idéal, ICP, target score, score de ciblage, criterion, critère, group, groupe, subsidiary, filiale, parent company, société mère, holding, GLEIF, LEI, Wikidata, SIREN, find a company, retrouver une société, company name, nom de société, trade show, salon, account mapping, cartographie commerciale
 ---
-A company's group is built from two public sources, side by side, never merged. Install the **French companies** pack (and **B2B account mapping** for account statuses): it adds three imports next to the company register one, on the **Imports** tab of the ontology.
+A company's group is built from two public sources, side by side, never merged. Install the **French companies** pack (and **B2B account mapping** for account statuses): it adds its group imports next to the company register one, on the **Imports** tab of the ontology.
 
 ## Group links
 - **Legal entity identifiers (GLEIF)**: for each known SIREN, the LEI and the parents the company declares (direct and ultimate). The link **is a subsidiary of** gets the nature *direct_consolidation* or *ultimate_consolidation*. When the direct and the ultimate parent are the same company, one link is kept.
 - **Parent companies (GLEIF)**: creates the parents GLEIF names. A French parent is created by its SIREN, a foreign one by its LEI with its country. The next run of the first import then links the subsidiary to it.
 - **Parents and subsidiaries (Wikidata)**: parents and subsidiaries that have a SIREN in Wikidata. Each link (nature *wikidata*) is a **proposal** on the **To validate** page: it is community data (a state agency can show up as the parent of a listed company). Accept it and it enters the group; reject it and it is never proposed again.
+
+- **Direct subsidiaries** and **Group subsidiaries (GLEIF)**, with the **B2B prospecting, France layer** pack: downwards, from an account you follow (customer, prospect, target) that has a LEI, what it declares consolidating, French or foreign. Give a large group a status, run the first import above for its LEI, then these: its subsidiaries are created and linked. At most 200 per company. A company without a status (an auditor, a subsidiary) is not read downwards.
+- **Foreign parents and subsidiaries (Wikidata)**, same pack, same accounts: those without a SIREN, created by their LEI or their Wikidata item with their country; each link is a **proposal**. Community data: some are a brand or a laboratory, not a company. Reject them.
 
 Each import takes the known companies in turn, up to its page budget per run: a large list is covered over several runs. Run them with **Run now**, or set a recurrence. A run that finds nothing for its batch is normal.
 
@@ -31,6 +34,14 @@ The **B2B prospecting, France layer** pack adds the import **Legal announcements
 
 The flow model **Prospecting · signals digest** makes, each morning, one text of the signals not yet notified (`payload.text`, `payload.count`) and marks them notified. Add your **Notification** node on its first port (a template with a `text` variable, trigger `payload.trigger`), then deploy. The digest goes to the channels you choose; sending to each account's followers is not done yet.
 
+## Account news
+The import **Press (GDELT)**, with the **B2B prospecting, France layer** pack, reads the world's press of the last day (the open GDELT feed, no key): the articles whose headline names an account you follow (customer, prospect, target) give one **Commercial signal** *Press* to validate on it, per account and per day: the headline closest to the others leads, the other headlines of the day are in its summary, with no passing mention. Use **Run now**, or give it a daily recurrence: a run takes about a minute and downloads about a gigabyte, nothing is kept but the signals. Each signal credits the GDELT Project, as its terms ask.
+
+An account needs a SIREN, a LEI or a Wikidata item to be followed. If the press calls it something else, fill *Other names in the press*, comma-separated (VDF for VOLTA DE FRANCE). A common word (Orange) brings namesakes: deploy the flow model **Prospecting · news to topics**, with an AI provider, to give each signal a topic of its list and dismiss those about something else. Only the headline is read, not the article.
+
+## What a captured profile says
+The flow model **Prospecting · captured profiles** reads, with an AI provider, the profiles a person captured from a person's page (**Capture a profile**): *Position on the profile* and *Company on the profile* go on the person, and a company found clearly in the register is created and proposed as their employer on **To validate**. An ambiguous name (three companies are called GLOBEX in Paris) is proposed only when one of them is already known here; otherwise it stays on the person, to link by hand. So collect the group of an account first. It creates no person, follows no link of the network, and skips anyone who objected.
+
 ## Account plan, competitor sheet, meeting preparation
 On an organization's page, **New page** offers the page templates of the installed packs made for organizations: **Account plan** (the account, its group, coverage, white space, contacts, recommendations, followers, signals, solutions in place, next actions), **Competitor sheet** (the accounts known to use it, its signals, defence arguments) and **Meeting preparation** (the account in brief, coverage, known contacts, who can introduce you, recent signals, competition, questions by persona). The page is filled with what PneX knows today, linked to the organization (**is a page about**) and opened in the page editor; it is a snapshot you complete freely, not a live view: create a new one to refresh it.
 
@@ -42,7 +53,7 @@ On the meeting's page, **New page** › **Meeting debrief** fills who was there,
 Coaching is read per criterion, not per person: on a criterion's page, hierarchy **Coaching** lists the meetings that covered it and their accounts, the band counts them by status.
 
 ## Finding a company from its name
-The **Find a company** node (palette, Ingestion) looks up a name in the public company register and scores up to five candidates: name likeness 70 points, same postcode 20 or same city 15, still active 10. Input `msg.payload = {name, city, postcode}`, or the name alone (then 80 points at most). Outputs:
+The **Find a company** node (palette, Ingestion) looks up a name in the public company register and scores up to five candidates: name likeness 70 points, same postcode 20, or the head office in that city 15 (another site 5), still active 10. Input `msg.payload = {name, city, postcode}`, or the name alone (then 80 points at most). Outputs:
 - **matched**: the best candidate reaches the threshold (80 by default) and leads the next one by the gap (10); `msg.payload.siren` is set.
 - **to review**: ambiguous or nothing found; send it to a list a person checks.
 - **failed**: `msg.error`.
