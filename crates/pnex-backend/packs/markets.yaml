@@ -1,0 +1,385 @@
+# Pack "Markets" (markets-research.md D523, D540-D542): the primary sources an
+# analysis starts from, before any press. A company followed by its ticker
+# gets its filings (documents kept and searchable) and its reported figures
+# from SEC EDGAR; a macro series gets its values from FRED. A figure stays
+# dated by the day it was published, so a test reads what was known then.
+# Terms: SEC EDGAR is public, its fair-access rules ask for a declared contact
+# and at most 10 requests per second. Some FRED series belong to third parties
+# (their notes say so): check them before any use outside the org. ECB data
+# are reusable with a citation; filings.xbrl.org is run by XBRL International.
+# Daily prices come from Tiingo with the org's own key (vault secret
+# `markets_tiingo_key`); its free plan is for personal internal use, a
+# commercial use needs its commercial plan.
+key: markets
+name: Markets
+names: {fr: "Marchés"}
+version: "1.0.0"
+requires: [companies]
+description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
+descriptions: {fr: "Sociétés suivies par ticker avec leurs dépôts et chiffres publiés (SEC EDGAR), et séries macroéconomiques (FRED), chaque valeur datée par sa publication. Une aide à l'analyse, pas un conseil en investissement."}
+settings:
+  - key: source_contact
+    name: Contact declared to the sources
+    names: {fr: "Contact déclaré aux sources"}
+    description: "Name and email sent in each request: the SEC refuses a client that does not declare one. Required."
+    descriptions: {fr: "Nom et e-mail envoyés dans chaque requête : la SEC refuse un client qui n'en déclare pas. Obligatoire."}
+    kind: text
+    default: ""
+  - key: covered_tickers
+    name: US tickers followed
+    names: {fr: "Tickers américains suivis"}
+    description: Comma-separated tickers, for example ACME, BETA. Only these companies are created and read.
+    descriptions: {fr: "Tickers séparés par des virgules, par exemple ACME, BETA. Seules ces sociétés sont créées et lues."}
+    kind: text
+    default: ""
+  - key: covered_leis
+    name: European companies followed (LEI)
+    names: {fr: "Sociétés européennes suivies (LEI)"}
+    description: Comma-separated legal entity identifiers. Their annual and half-year reports are read (ESEF).
+    descriptions: {fr: "Identifiants LEI séparés par des virgules. Leurs rapports annuels et semestriels sont lus (ESEF)."}
+    kind: text
+    default: ""
+  - key: benchmark_ticker
+    name: Benchmark of the event studies
+    names: {fr: "Référence des études d'événement"}
+    description: The ticker a price move is compared to.
+    descriptions: {fr: "Le ticker auquel un mouvement de cours est comparé."}
+    kind: text
+    default: "SPY"
+  - key: ecb_series
+    name: European series (ECB)
+    names: {fr: "Séries européennes (BCE)"}
+    description: "Comma-separated ECB series keys: main rate, inflation, euro-dollar by default."
+    descriptions: {fr: "Clés de séries BCE séparées par des virgules : taux directeur, inflation, euro-dollar par défaut."}
+    kind: text
+    default: "FM.D.U2.EUR.4F.KR.MRR_FR.LEV, ICP.M.U2.N.000000.4.ANR, EXR.D.USD.EUR.SP00.A"
+  - key: macro_series
+    name: Macroeconomic series (FRED)
+    names: {fr: "Séries macroéconomiques (FRED)"}
+    description: Comma-separated FRED codes.
+    descriptions: {fr: "Codes FRED séparés par des virgules."}
+    kind: text
+    default: "CPIAUCSL, UNRATE, FEDFUNDS, DGS10, GDPC1"
+extends:
+  - type: organization
+    properties:
+      - { key: cik, name: SEC company number (CIK), names: {fr: "Numéro SEC (CIK)"}, kind: text, max_len: 10, unique: true }
+      - { key: ticker, name: Ticker, names: {fr: "Ticker"}, kind: text, max_len: 16, indexed: true }
+      - key: market_followed
+        name: Followed for markets
+        names: {fr: "Suivie pour les marchés"}
+        kind: enum
+        values: [followed]
+        labels: {followed: {fr: "Suivie", en: "Followed"}}
+        indexed: true
+      - { key: market_names, name: Names in the press, names: {fr: "Noms dans la presse"}, description: "Comma-separated names the press uses, such as Nvidia for NVIDIA CORP.", descriptions: {fr: "Noms utilisés par la presse, séparés par des virgules, par exemple Nvidia pour NVIDIA CORP."}, kind: text, max_len: 500 }
+types:
+  - key: instrument
+    name: Instrument
+    names: {fr: "Instrument"}
+    icon: chart
+    properties:
+      - { key: ticker, name: Ticker, names: {fr: "Ticker"}, kind: text, max_len: 16, unique: true, required: true }
+  - key: filing
+    name: Filing
+    names: {fr: "Dépôt réglementaire"}
+    icon: file-text
+    properties:
+      - { key: accession, name: Accession number, names: {fr: "Numéro de dépôt"}, kind: text, max_len: 64, unique: true, required: true }
+      - { key: form, name: Form, names: {fr: "Formulaire"}, kind: text, max_len: 16, indexed: true }
+      - { key: filed_on, name: Filed on, names: {fr: "Déposé le"}, kind: date, indexed: true }
+      - { key: accepted_at, name: Accepted at, names: {fr: "Accepté à"}, kind: text, max_len: 32 }
+      - { key: report_on, name: Period reported, names: {fr: "Période couverte"}, kind: date }
+      - { key: items, name: Items, names: {fr: "Rubriques"}, kind: text, max_len: 255 }
+      - { key: url, name: Document, names: {fr: "Document"}, kind: url }
+      - key: document_state
+        name: Document
+        names: {fr: "Document"}
+        kind: enum
+        values: [kept, unreadable]
+        labels: {kept: {fr: "Conservé", en: "Kept"}, unreadable: {fr: "Illisible", en: "Unreadable"}}
+  # What the press says (D540): a lead to check, never an input of a figure.
+  - key: market_news
+    name: Press article
+    names: {fr: "Article de presse"}
+    icon: newspaper
+    properties:
+      - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 300, unique: true, required: true }
+      - { key: summary, name: Summary, names: {fr: "Résumé"}, kind: text, max_len: 1000 }
+      - { key: date, name: Date, names: {fr: "Date"}, kind: date, indexed: true }
+      - { key: source_url, name: Source, names: {fr: "Source"}, kind: url }
+      - { key: lang, name: Language of the source, names: {fr: "Langue de la source"}, kind: text, max_len: 8 }
+      - { key: credit, name: Collected through, names: {fr: "Collecté via"}, kind: text, max_len: 255 }
+      - key: state
+        name: State
+        names: {fr: "État"}
+        kind: enum
+        values: [unconfirmed, confirmed, dismissed]
+        labels: {unconfirmed: {fr: "Non confirmé", en: "Unconfirmed"}, confirmed: {fr: "Recoupé par une source primaire", en: "Confirmed by a primary source"}, dismissed: {fr: "Écarté", en: "Dismissed"}}
+        colors: { unconfirmed: amber, confirmed: green, dismissed: gray }
+        indexed: true
+  - key: macro_series
+    name: Macroeconomic series
+    names: {fr: "Série macroéconomique"}
+    icon: chart
+    properties:
+      - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 64, unique: true, required: true }
+link_types:
+  - key: issues
+    name: issues
+    names: {fr: "émet"}
+    inverse_name: is issued by
+    inverse_names: {fr: "est émis par"}
+    from_types: [organization]
+    to_types: [instrument]
+  - key: news_about
+    name: is about
+    names: {fr: "concerne"}
+    inverse_name: is mentioned by
+    inverse_names: {fr: "est citée par"}
+    from_types: [market_news]
+    to_types: [organization]
+  - key: filed_by
+    name: is filed by
+    names: {fr: "est déposé par"}
+    inverse_name: filed
+    inverse_names: {fr: "a déposé"}
+    from_types: [filing]
+    to_types: [organization]
+    one_target: true
+  - key: filing_document
+    name: has as document
+    names: {fr: "a pour document"}
+    inverse_name: is the document of
+    inverse_names: {fr: "est le document de"}
+    from_types: [filing]
+    to_types: [media_asset]
+    attributes:
+      - { key: url, name: Address, names: {fr: "Adresse"}, kind: url }
+      - { key: sha256, name: SHA-256, names: {fr: "SHA-256"}, kind: text, max_len: 64 }
+imports:
+  - name: Companies followed (SEC)
+    source: url
+    source_url: "https://www.sec.gov/files/company_tickers.json"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: week }
+    mapping:
+      key: sec_companies
+      name: Companies followed
+      names: {fr: "Sociétés suivies"}
+      shape: sec_tickers
+      contact_setting: markets.source_contact
+      rows_in_setting: { key: markets.covered_tickers, property: ticker }
+      objects:
+        # Never updated: the names a member added to it stay.
+        - as: company
+          type: organization
+          key: cik
+          title: title
+          update: false
+          properties:
+            cik: cik
+            ticker: ticker
+            market_followed: { value: followed }
+            market_names: press_name
+        - as: instrument
+          type: instrument
+          key: ticker
+          title: ticker
+          properties:
+            ticker: ticker
+      links:
+        - { type: issues, from: company, to: instrument }
+  - name: Filings (SEC EDGAR)
+    source: api
+    source_url: "https://data.sec.gov/submissions/CIK{value}.json"
+    max_pages: 50
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: edgar_filings
+      name: Filings
+      names: {fr: "Dépôts"}
+      shape: edgar_filings
+      contact_setting: markets.source_contact
+      per_object: { type: organization, property: cik }
+      objects:
+        - as: company
+          type: organization
+          key: cik
+          create: false
+          update: false
+          missing: skip
+          properties:
+            cik: cik
+        - as: filing
+          type: filing
+          key: accession
+          title: { concat: [form, filed_on], sep: " " }
+          properties:
+            accession: accession
+            form: form
+            filed_on: filed_on
+            accepted_at: accepted_at
+            report_on: report_on
+            items: items
+            url: url
+      links:
+        - { type: filed_by, from: filing, to: company }
+  - name: Reported figures (SEC EDGAR)
+    source: api
+    source_url: "https://data.sec.gov/api/xbrl/companyfacts/CIK{value}.json"
+    max_pages: 50
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: edgar_figures
+      name: Reported figures
+      names: {fr: "Chiffres publiés"}
+      shape: xbrl_facts
+      contact_setting: markets.source_contact
+      per_object: { type: organization, property: cik }
+      observations: { type: organization, property: cik }
+  - name: Macroeconomic series (FRED)
+    source: api
+    source_url: "https://fred.stlouisfed.org/graph/fredgraph.csv?id={value}"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: fred_series
+      name: Macroeconomic series
+      names: {fr: "Séries macroéconomiques"}
+      shape: dated_csv
+      contact_setting: markets.source_contact
+      per_setting_code: markets.macro_series
+      observations: { type: macro_series, property: code }
+      objects:
+        - as: series
+          type: macro_series
+          key: code
+          title: metric
+          properties:
+            code: metric
+  - name: Daily prices (Tiingo)
+    source: api
+    source_url: "https://api.tiingo.com/tiingo/daily/{value}/prices?startDate={since}"
+    # The free plan allows 50 requests an hour: turns, not all at once.
+    max_pages: 40
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: daily_prices
+      name: Daily prices
+      names: {fr: "Cours quotidiens"}
+      shape: daily_prices
+      keyed_source: tiingo
+      per_object: { type: instrument, property: ticker }
+      observations: { type: instrument, property: ticker }
+  - name: Benchmark prices (Tiingo)
+    source: api
+    source_url: "https://api.tiingo.com/tiingo/daily/{value}/prices?startDate={since}"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: benchmark_prices
+      name: Benchmark prices
+      names: {fr: "Cours de référence"}
+      shape: daily_prices
+      keyed_source: tiingo
+      per_setting_code: markets.benchmark_ticker
+      observations: { type: instrument, property: ticker }
+      objects:
+        - as: instrument
+          type: instrument
+          key: ticker
+          title: "@queried"
+          properties:
+            ticker: "@queried"
+  - name: European series (ECB)
+    source: api
+    source_url: "https://data-api.ecb.europa.eu/service/data/{value}?format=csvdata"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: ecb_series
+      name: European series
+      names: {fr: "Séries européennes"}
+      shape: ecb_csv
+      per_setting_code: markets.ecb_series
+      observations: { type: macro_series, property: code }
+      objects:
+        - as: series
+          type: macro_series
+          key: code
+          title: metric
+          properties:
+            code: "@queried"
+  - name: European reports (ESEF)
+    source: api
+    source_url: "https://filings.xbrl.org/api/filings?filter%5Bentity.identifier%5D={value}&include=entity&page%5Bsize%5D=100"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: week }
+    mapping:
+      key: esef_filings
+      name: European reports
+      names: {fr: "Rapports européens"}
+      shape: esef_filings
+      contact_setting: markets.source_contact
+      per_setting_code: markets.covered_leis
+      objects:
+        - as: company
+          type: organization
+          key: lei
+          title: name
+          properties:
+            lei: "@queried"
+            market_followed: { value: followed }
+        - as: filing
+          type: filing
+          key: accession
+          title: { concat: [form, filed_on], sep: " " }
+          properties:
+            accession: accession
+            form: form
+            filed_on: filed_on
+            report_on: report_on
+            url: url
+      links:
+        - { type: filed_by, from: filing, to: company }
+  - name: Press leads (GDELT)
+    source: api
+    source_url: "https://data.gdeltproject.org/gdeltv2"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: market_press
+      name: Press leads
+      names: {fr: "Pistes presse (GDELT)"}
+      description: The world's press of the last day naming a company followed, to check against primary sources. Source GDELT Project, gdeltproject.org.
+      format: json
+      press_feed:
+        type: organization
+        only: { property: market_followed, values: [followed] }
+        aliases: market_names
+        keys: [cik, lei]
+        hours: 26
+      objects:
+        - as: news
+          type: market_news
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: ref
+            summary: summary
+            date: date
+            source_url: url
+            lang: lang
+            # GDELT's terms: any use cites the project and links to its site.
+            credit: { value: "GDELT Project, https://www.gdeltproject.org/" }
+            state: { value: unconfirmed }
+        - { as: by_cik, type: organization, key: cik, create: false, missing: skip, when: { from: via, equals: cik }, properties: { cik: account } }
+        - { as: by_lei, type: organization, key: lei, create: false, missing: skip, when: { from: via, equals: lei }, properties: { lei: account } }
+      links:
+        - { type: news_about, from: news, to: by_cik }
+        - { type: news_about, from: news, to: by_lei }

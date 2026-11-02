@@ -128,6 +128,10 @@ pub async fn compute<C: ConnectionTrait>(
     };
     let mut diff = ImportDiff {
         rows: rows.len(),
+        observations: match &m.observations {
+            Some(_) => pnex_core::markets::observations(rows),
+            None => Vec::new(),
+        },
         ..Default::default()
     };
     let mut objs: Vec<Agg> = Vec::new();

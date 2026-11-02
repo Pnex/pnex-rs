@@ -1,0 +1,80 @@
+# Pack "Investment thesis" (markets-research.md D533, D534): a case that writes
+# down why before deciding: instrument, direction, dated catalysts, what would
+# prove it wrong, then a review at the end. Case snapshots freeze the thesis at
+# each decision, so it cannot be rewritten afterwards. Positions are fictitious:
+# nothing here ever reaches a broker, and no order can be placed from PNEX.
+key: investment_thesis
+name: Investment thesis
+names: {fr: "Thèse d'investissement"}
+version: "1.0.0"
+requires: [markets, investigation]
+description: A case holding an investment thesis, its dated catalysts and fictitious positions measured on closing prices. An aid to analysis, not investment advice.
+descriptions: {fr: "Un dossier portant une thèse d'investissement, ses catalyseurs datés et des positions fictives mesurées sur les cours de clôture. Une aide à l'analyse, pas un conseil en investissement."}
+extends:
+  - type: case
+    properties:
+      - key: thesis_direction
+        name: Direction
+        names: {fr: "Sens"}
+        kind: enum
+        values: [long, short, watch]
+        labels: {long: {fr: "Achat", en: "Long"}, short: {fr: "Vente", en: "Short"}, watch: {fr: "Surveillance", en: "Watch"}}
+      - { key: thesis_opened_on, name: Opened on, names: {fr: "Ouverte le"}, kind: date }
+      - { key: thesis_horizon, name: Horizon, names: {fr: "Horizon"}, kind: text, max_len: 255 }
+      - { key: thesis_invalidation, name: What would prove it wrong, names: {fr: "Ce qui l'invaliderait"}, kind: text, max_len: 4000 }
+      - { key: thesis_size, name: Planned size, names: {fr: "Taille prévue"}, kind: text, max_len: 255 }
+      - { key: thesis_review, name: Closing review, names: {fr: "Revue de clôture"}, kind: text, max_len: 8000 }
+types:
+  - key: catalyst
+    name: Catalyst
+    names: {fr: "Catalyseur"}
+    icon: calendar
+    properties:
+      - { key: due_on, name: Due on, names: {fr: "Échéance"}, kind: date, indexed: true }
+      - { key: expected, name: Expected, names: {fr: "Attendu"}, kind: text, max_len: 2000 }
+      - { key: outcome, name: Outcome, names: {fr: "Résultat"}, kind: text, max_len: 2000 }
+  - key: paper_position
+    name: Fictitious position
+    names: {fr: "Position fictive"}
+    icon: chart
+    properties:
+      - key: side
+        name: Side
+        names: {fr: "Sens"}
+        kind: enum
+        values: [long, short]
+        labels: {long: {fr: "Achat", en: "Long"}, short: {fr: "Vente", en: "Short"}}
+        required: true
+      - { key: quantity, name: Quantity, names: {fr: "Quantité"}, kind: number, min: 0, required: true }
+      - { key: entry_on, name: Entry on, names: {fr: "Entrée le"}, kind: date, required: true }
+      - { key: exit_on, name: Exit on, names: {fr: "Sortie le"}, kind: date }
+link_types:
+  - key: thesis_on
+    name: is about
+    names: {fr: "porte sur"}
+    inverse_name: is the subject of
+    inverse_names: {fr: "est le sujet de"}
+    from_types: [case]
+    to_types: [instrument]
+  - key: catalyst_of
+    name: is a catalyst of
+    names: {fr: "est un catalyseur de"}
+    inverse_name: has as catalyst
+    inverse_names: {fr: "a pour catalyseur"}
+    from_types: [catalyst]
+    to_types: [case]
+  - key: position_on
+    name: is a position on
+    names: {fr: "est une position sur"}
+    inverse_name: has as position
+    inverse_names: {fr: "a pour position"}
+    from_types: [paper_position]
+    to_types: [instrument]
+    one_target: true
+  - key: position_of
+    name: belongs to the thesis
+    names: {fr: "appartient à la thèse"}
+    inverse_name: holds
+    inverse_names: {fr: "détient"}
+    from_types: [paper_position]
+    to_types: [case]

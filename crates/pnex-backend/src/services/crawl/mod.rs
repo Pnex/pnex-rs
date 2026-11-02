@@ -182,7 +182,7 @@ pub struct CrawlRef<'a> {
     pub relevance: &'a Relevance,
 }
 
-fn sha256_hex(data: &[u8]) -> String {
+pub(crate) fn sha256_hex(data: &[u8]) -> String {
     use sha2::Digest;
     sha2::Sha256::digest(data)
         .iter()

@@ -6,7 +6,16 @@ use ego_tree::NodeRef;
 use scraper::{Html, Node, Selector};
 
 /// Elements whose content is never text.
-const SKIP: [&str; 6] = ["script", "style", "noscript", "template", "svg", "head"];
+const SKIP: [&str; 7] = [
+    "script",
+    "style",
+    "noscript",
+    "template",
+    "svg",
+    "head",
+    // The hidden facts header of an inline XBRL filing.
+    "ix:header",
+];
 /// Elements that start a new line.
 const BLOCK: [&str; 22] = [
     "p", "div", "br", "li", "ul", "ol", "tr", "td", "th", "table", "section", "article", "header",

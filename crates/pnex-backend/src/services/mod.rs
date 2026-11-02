@@ -45,6 +45,7 @@ pub mod lab;
 pub mod lab_train;
 pub mod last_cache;
 pub mod mail;
+pub mod markets;
 pub mod mcp;
 pub mod media;
 pub mod media_analyses;

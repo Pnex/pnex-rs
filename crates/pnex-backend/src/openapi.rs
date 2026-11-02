@@ -85,6 +85,7 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         controllers::stitch_jobs::openapi(),
         controllers::voice_id::openapi(),
         controllers::ontology::openapi(),
+        controllers::markets::openapi(),
         controllers::ontology_imports::openapi(),
         controllers::ontology_feed::openapi(),
         controllers::apps::openapi(),

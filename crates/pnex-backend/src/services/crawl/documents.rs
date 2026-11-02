@@ -98,6 +98,7 @@ pub async fn keep(
     match store(
         ctx,
         c.org_id,
+        "site_crawl",
         url.as_str(),
         &filename,
         content_type,
@@ -127,9 +128,10 @@ pub async fn keep(
 
 /// The media of `url` (created once), with a new version when its bytes
 /// changed.
-async fn store(
+pub(crate) async fn store(
     ctx: &AppContext,
     org_id: i64,
+    source: &str,
     url: &str,
     filename: &str,
     content_type: &str,
@@ -167,7 +169,7 @@ async fn store(
             name: Set(filename.to_string()),
             description: Set(None),
             // D281 provenance.
-            metadata: Set(Some(json!({ "source": "site_crawl", "crawl_url": url }))),
+            metadata: Set(Some(json!({ "source": source, "crawl_url": url }))),
             ..Default::default()
         }
         .insert(db)
@@ -194,7 +196,7 @@ async fn store(
 
 /// Opens the link page → media once; an open link gets `seen_on` and the
 /// current `sha256`.
-async fn link(
+pub(crate) async fn link(
     ctx: &AppContext,
     org_id: i64,
     link_type: &str,

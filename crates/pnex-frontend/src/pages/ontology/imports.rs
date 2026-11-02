@@ -559,6 +559,9 @@ fn DiffView(preview: ImportPreview) -> Element {
                     )
                 }
             }
+            if c.observations > 0 {
+                p { class: "text-gray-700", {t!("onto-imp-observations", count : c.observations)} }
+            }
             p { class: "text-xs text-gray-500", "{state}" }
             if !d.errors.is_empty() {
                 IssueList {
@@ -670,6 +673,11 @@ fn RunsDialog(import: ObjectImportView, on_close: EventHandler<()>) -> Element {
                                     .counts.updated, closed : r.counts.closed, links : r.counts.links_opened + r
                                     .counts.links_updated, errors : r.counts.errors
                                 )
+                            }
+                        }
+                        if r.counts.observations > 0 {
+                            p { class: "text-xs text-gray-600",
+                                {t!("onto-imp-observations", count : r.counts.observations)}
                             }
                         }
                         if open().as_deref() == Some(r.id.as_str()) {

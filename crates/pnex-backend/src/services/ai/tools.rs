@@ -487,6 +487,16 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"def":{"type":"object"},"expected_version":{"type":"integer"}},"required":["def"]}"#).expect("static schema"),
         },
         ToolSpec {
+            name: "market_figures",
+            description: "Dated figures of a company, an instrument or a macroeconomic series, read from primary sources (SEC filings, FRED, ECB, closing prices): metric, period, value, unit, known_at, source_ref. as_of (RFC 3339) gives the values as known at that instant. Cite source_ref. An aid to analysis, never a recommendation. Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"},"metric":{"type":"string"},"as_of":{"type":"string"}},"required":["object_id"]}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "market_rule_test",
+            description: "How the followed instruments moved after a kind of filing (form 8-K, 10-Q…; item such as 2.02 for results), against dates drawn at random: abnormal return per window, with the number of events. Always give the number of events and say that instruments no longer followed are missing. An aid to analysis, never a recommendation. Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"form":{"type":"string"},"item":{"type":"string"}},"required":["form"]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "search_docs",
             description: "Searches the organization's documents and tables (media library: PDF, Word, text, Markdown, CSV, Excel/ODS) by words or exact codes (fault codes, part numbers). Returns passages (chunk_id, document, page or section, excerpt with matches between ⟦ ⟧). Cite the document and page/section of every fact you use; if nothing relevant comes back, say so instead of guessing. Read-only.",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"query":{"type":"string"},"kind":{"type":"string","enum":["document","table"]},"k":{"type":"integer","minimum":1,"maximum":50}},"required":["query"]}"#).expect("static schema"),
@@ -690,6 +700,8 @@ pub async fn execute(
         "propose_occurrence_change" => {
             super::calendar_tools::propose_occurrence_change(deps, args).await
         }
+        "market_figures" => super::market_tools::market_figures(deps, args).await,
+        "market_rule_test" => super::market_tools::market_rule_test(deps, args).await,
         "search_docs" => super::doc_tools::search_docs(deps, args).await,
         "read_chunk" => super::doc_tools::read_chunk(deps, args).await,
         "open_page" => super::doc_tools::open_page(deps, args).await,
@@ -1228,6 +1240,22 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 "ai-trace-ontology-type-saved",
                 json!({"key": k, "version": ver}),
                 format!("type {k} v{ver}"),
+            )
+        }
+        "market_figures" => {
+            let n = count(&v["figures"]);
+            s(
+                "ai-trace-market-figures",
+                json!({"count": n}),
+                format!("{n} market figure(s)"),
+            )
+        }
+        "market_rule_test" => {
+            let n = v["result"]["filings"].as_u64().unwrap_or(0);
+            s(
+                "ai-trace-market-rule",
+                json!({"count": n}),
+                format!("reaction to {n} filing(s)"),
             )
         }
         "search_docs" => {
@@ -1798,6 +1826,8 @@ mod tests {
                 "list_calendar",
                 "propose_occurrence_change",
                 "save_object_type",
+                "market_figures",
+                "market_rule_test",
                 "search_docs",
                 "read_chunk",
                 "open_page",
