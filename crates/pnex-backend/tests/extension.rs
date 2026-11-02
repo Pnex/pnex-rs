@@ -1151,6 +1151,9 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         let a = pair(&server, &env.alice, org, &install).await;
         let (s, _) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
         assert_eq!(s, 200);
+        // The layer that reads captured profiles (account-mapping.md D538).
+        let (s, _) = call(&server, "POST", "/api/v1/ontology/packs/prospecting_b2b/install", &env.alice, org, None).await;
+        assert_eq!(s, 200);
         let (s, ada) = call(
             &server,
             "POST",
@@ -1179,6 +1182,13 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         let (_, again) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://www.linkedin.com/in/ada-l"))).await;
         assert_eq!(again["id"], m["id"]);
 
+        let (s, listed) = call(&server, "GET", &captures, &env.alice, org, None).await;
+        assert_eq!(s, 200, "{listed}");
+        assert_eq!(listed["count"], 1);
+        assert_eq!((&listed["results"][0]["open"], &listed["results"][0]["captured"]), (&json!(true), &json!(false)));
+        let (s, _) = call(&server, "GET", "/api/v1/extension/people/00000000-0000-0000-0000-000000000000/profile-captures", &env.alice, org, None).await;
+        assert_eq!(s, 404);
+
         // The agent uploads the page: a document linked to Ada, the address
         // an account of Ada, and the mission ends.
         let mission_id = m["id"].as_str().unwrap();
@@ -1188,8 +1198,12 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{ada}/links"), &env.alice, org, None).await;
         let links = links.to_string();
         assert!(links.contains("uses_identifier") && links.contains("published_by"), "{links}");
+        let (_, person) = call(&server, "GET", &format!("/api/v1/ontology/objects/{ada}"), &env.alice, org, None).await;
+        assert_eq!(person["properties"]["profile_to_read"].as_str().map(str::len), Some(36), "the document to read: {person}");
         let (_, done) = call(&server, "GET", &format!("/api/v1/extension/missions/{mission_id}"), &env.alice, org, None).await;
         assert_eq!(done["enabled"], false);
+        let (_, listed) = call(&server, "GET", &captures, &env.alice, org, None).await;
+        assert_eq!((&listed["results"][0]["open"], &listed["results"][0]["captured"]), (&json!(false), &json!(true)));
         let (s, _, _) = upload_page(&server, &install, &a, &page).await;
         assert_eq!(s, 404, "a finished capture takes no more pages");
 
@@ -1225,6 +1239,115 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         assert_eq!((s, e["error"].as_str()), (409, Some("ext-profile-daily-cap")), "{e}");
         let (s, _) = call(&server, "POST", &eve_captures, &env.alice, org, Some(ask("https://x.com/eve"))).await;
         assert_eq!(s, 201, "the cap is per network");
+    })
+    .await;
+}
+
+/// D550, SEC-56: a personal browser runs only its owner's missions, an admin
+/// shares only their own, and neither edits nor deletion reach a colleague's.
+#[tokio::test]
+#[serial]
+async fn a_personal_browser_runs_only_its_owners_missions() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        personal_org(&server, &env.bob).await;
+        let (s, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({ "email": "bob@example.com", "role": "member" }))).await;
+        assert!(s == 200 || s == 201, "{s}");
+        let (alice_install, bob_install) = (Install::new(), Install::new());
+        let alice_agent = pair(&server, &env.alice, org, &alice_install).await;
+        let bob_agent = pair(&server, &env.bob, org, &bob_install).await;
+        let auth = |a: &Paired| a.id;
+        let held = |id: i64| {
+            let db = env.db.clone();
+            async move {
+                let agent = pnex_backend::services::extension::agent_by_id(&db, id).await.unwrap().unwrap();
+                let mut names: Vec<String> = pnex_backend::services::extension::candidates(&db, &agent).await.unwrap().into_iter().map(|m| m.id).collect();
+                names.sort();
+                names
+            }
+        };
+        let mission = |token: String, name: &'static str, agent: Option<i64>| {
+            let server = &server;
+            async move {
+                let mut body = mission_body(name);
+                body["agent_id"] = json!(agent);
+                call(server, "POST", "/api/v1/extension/missions", &token, org, Some(body)).await
+            }
+        };
+
+        // Each browser runs its owner's mission and nothing else.
+        let (s, by_alice) = mission(env.alice.clone(), "Of Alice", None).await;
+        assert_eq!(s, 201, "{by_alice}");
+        let by_alice = by_alice["id"].as_str().unwrap().to_string();
+        let (s, by_bob) = mission(env.bob.clone(), "Of Bob", None).await;
+        assert_eq!(s, 201, "{by_bob}");
+        let by_bob = by_bob["id"].as_str().unwrap().to_string();
+        assert_eq!(held(auth(&alice_agent)).await, vec![by_alice.clone()]);
+        assert_eq!(held(auth(&bob_agent)).await, vec![by_bob.clone()]);
+
+        // Bob cannot pin a mission on Alice's browser nor upload to her mission.
+        let (s, e) = mission(env.bob.clone(), "Pinned", Some(alice_agent.id)).await;
+        assert_eq!(s, 400, "{e}");
+        let page = json!({ "mission_id": by_alice, "url": "https://example.org/", "title": "t", "text": "x" });
+        let (s, _, _) = upload_page(&server, &bob_install, &bob_agent, &page).await;
+        assert_eq!(s, 404, "another member's mission");
+
+        // Bob sees his browser only; Alice, an admin, sees both.
+        let (_, list) = call(&server, "GET", "/api/v1/extension/agents", &env.bob, org, None).await;
+        assert_eq!(list["count"], 1, "{list}");
+        assert_eq!(list["results"][0]["mine"], true);
+        let (_, list) = call(&server, "GET", "/api/v1/extension/agents", &env.alice, org, None).await;
+        assert_eq!(list["count"], 2, "{list}");
+
+        // Only an admin shares, and only their own browser.
+        let share = json!({ "common": true });
+        let (s, e) = call(&server, "PATCH", &format!("/api/v1/extension/agents/{}", bob_agent.id), &env.bob, org, Some(share.clone())).await;
+        assert_eq!((s, e["error"].as_str()), (403, Some("access-denied")), "{e}");
+        let (s, _) = call(&server, "PATCH", &format!("/api/v1/extension/agents/{}", bob_agent.id), &env.alice, org, Some(share.clone())).await;
+        assert_eq!(s, 403, "an admin does not share a colleague's browser");
+        let (s, _) = call(&server, "PATCH", &format!("/api/v1/extension/agents/{}", alice_agent.id), &env.bob, org, Some(json!({ "name": "x" }))).await;
+        assert_eq!(s, 403);
+        let (s, _) = call(&server, "DELETE", &format!("/api/v1/devices/{}", alice_agent.id), &env.bob, org, None).await;
+        assert_eq!(s, 403, "a member does not disconnect a colleague");
+
+        // A common browser takes the missions of whoever has no browser of
+        // their own, but not those of a member who has one, even offline.
+        let (s, _) = call(&server, "PATCH", &format!("/api/v1/extension/agents/{}", alice_agent.id), &env.alice, org, Some(share)).await;
+        assert_eq!(s, 200);
+        assert_eq!(held(alice_agent.id).await, vec![by_alice.clone()], "Bob has his browser");
+        let (s, _) = call(&server, "DELETE", &format!("/api/v1/devices/{}", bob_agent.id), &env.bob, org, None).await;
+        assert_eq!(s, 204);
+        let mut both = vec![by_alice.clone(), by_bob.clone()];
+        both.sort();
+        assert_eq!(held(alice_agent.id).await, both, "Bob's mission falls back on the common browser");
+        let (s, _) = call(&server, "PATCH", &format!("/api/v1/extension/agents/{}", alice_agent.id), &env.alice, org, Some(json!({ "common": false }))).await;
+        assert_eq!(s, 200);
+        assert_eq!(held(alice_agent.id).await, vec![by_alice.clone()], "taken back at once");
+
+        // Changing what a colleague's mission does makes it the editor's;
+        // pausing it does not.
+        let bob_browser = pair(&server, &env.bob, org, &bob_install).await;
+        let (_, m) = call(&server, "GET", &format!("/api/v1/extension/missions/{by_alice}"), &env.bob, org, None).await;
+        let (s, m) = call(&server, "PATCH", &format!("/api/v1/extension/missions/{by_alice}"), &env.bob, org, Some(json!({ "expected_version": m["version"], "enabled": false }))).await;
+        assert_eq!(s, 200, "{m}");
+        let (s, m) = call(&server, "PATCH", &format!("/api/v1/extension/missions/{by_alice}"), &env.alice, org, Some(json!({ "expected_version": m["version"], "enabled": true }))).await;
+        assert_eq!(s, 200, "{m}");
+        assert_eq!(held(alice_agent.id).await, vec![by_alice.clone()]);
+        let (s, m) = call(&server, "PATCH", &format!("/api/v1/extension/missions/{by_alice}"), &env.bob, org, Some(json!({ "expected_version": m["version"], "interval_secs": m["interval_secs"].as_i64().unwrap() + 60 }))).await;
+        assert_eq!(s, 200, "{m}");
+        assert!(held(alice_agent.id).await.is_empty(), "no longer Alice's");
+        assert!(held(bob_browser.id).await.contains(&by_alice));
+
+        // A member who leaves takes their browsers with them.
+        let bob_id = {
+            use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+            pnex_backend::models::_entities::users::Entity::find()
+                .filter(pnex_backend::models::_entities::users::Column::Email.eq("bob@example.com"))
+                .one(&env.db).await.unwrap().unwrap().id
+        };
+        let (s, _) = call(&server, "DELETE", &format!("/api/v1/orgs/{org}/members/{bob_id}"), &env.alice, org, None).await;
+        assert_eq!(s, 204);
+        assert!(pnex_backend::services::extension::agent_by_id(&env.db, bob_browser.id).await.unwrap().is_none());
     })
     .await;
 }

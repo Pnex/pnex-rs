@@ -108,6 +108,16 @@ pub async fn verify_proofs() -> Result<pnex_core::browser_agent::ProofChainCheck
     .await
 }
 
+/// `GET /api/v1/extension/people/{id}/profile-captures` (D333).
+pub async fn profile_captures(
+    person_id: &str,
+) -> Result<Vec<pnex_core::browser_agent::ProfileCapture>, ApiError> {
+    client::request_all(&format!(
+        "/api/v1/extension/people/{person_id}/profile-captures"
+    ))
+    .await
+}
+
 /// `POST /api/v1/extension/people/{id}/profile-captures` (D333).
 pub async fn capture_profile(person_id: &str, url: &str) -> Result<Mission, ApiError> {
     client::request(

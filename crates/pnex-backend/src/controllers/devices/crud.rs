@@ -51,7 +51,7 @@ pub(super) struct ListDevicesQuery {
     /// Case-insensitive OR over device_id, model (name, pretty name,
     /// description), type and capabilities.
     search: Option<String>,
-    /// D42: effective label (`name` or `name:value`, inherited included).
+    /// D42: effective label (`name` or `name:value`, several comma-separated terms all required, inherited included).
     label: Option<String>,
     #[param(value_type = Option<i64>)]
     limit: Option<String>,
@@ -678,6 +678,19 @@ pub(super) async fn delete(
     let Some(device) = find_device(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
+    // A browser agent holds its owner's session: theirs or an admin's to cut.
+    let allowed = crate::services::extension::may_disconnect(
+        &ctx.db,
+        org.org.id,
+        device.id,
+        org.auth.user.id,
+        org.can("extension:share"),
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    if !allowed {
+        return Err(crate::auth::access_denied("extension:share"));
+    }
     let cleaned = build_records::Entity::delete_many()
         .filter(
             build_records::Column::OrgId

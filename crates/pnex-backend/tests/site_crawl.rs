@@ -60,6 +60,7 @@ async fn call(
     let req = match method {
         "GET" => server.get(path),
         "POST" => server.post(path),
+        "PATCH" => server.patch(path),
         _ => unreachable!(),
     }
     .add_header("Authorization", format!("Bearer {token}"))
@@ -240,6 +241,9 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
         let install = Install::new();
         let (st, paired) = call(&server, "POST", "/api/v1/extension/agents", &alice, org, Some(install.pair_body(org))).await;
         assert_eq!(st, 201, "{paired}");
+        // Proofs are the server's tasks: a common browser takes them (D550).
+        let (st, _) = call(&server, "PATCH", &format!("/api/v1/extension/agents/{}", paired["agent"]["id"]), &alice, org, Some(json!({"common": true}))).await;
+        assert_eq!(st, 200);
         let (token, device) = (paired["token"].as_str().unwrap().to_string(), paired["agent"]["device_id"].as_str().unwrap().to_string());
         let png = {
             // A real 1×1 PNG: the media store sniffs it.

@@ -236,6 +236,9 @@ thread_local! {
     static RUNNING: RefCell<bool> = const { RefCell::new(false) };
 }
 
+/// Delay before a mission blocked on a site permission asks again.
+const BLOCKED_RETRY_MS: f64 = 15_000.0;
+
 /// Starts the agent loop once per worker life (idempotent: every wake-up
 /// of the service worker calls it).
 #[wasm_bindgen]
@@ -547,6 +550,11 @@ impl Session {
                     host::debug_log(&format!("PNeX agent: {} done: {outcome}", m.target));
                     let mut p = plan.borrow_mut();
                     p.busy.remove(&platform);
+                    // A site allowed since must not wait the mission's interval
+                    // (a day for a capture): a blocked mission asks again soon.
+                    if outcome == err_codes::EXT_PERMISSION_MISSING {
+                        p.next.insert(m.id.clone(), now + BLOCKED_RETRY_MS);
+                    }
                     p.outcome.insert(m.id.clone(), outcome);
                 });
             }

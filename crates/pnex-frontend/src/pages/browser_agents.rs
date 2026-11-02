@@ -118,6 +118,7 @@ enum AgentDialog {
 
 #[component]
 fn AgentsTab(agents: AgentsResource, can_write: bool, reload: Signal<u32>) -> Element {
+    let can_share = crate::state::access::can("extension:share");
     let mut reload = reload;
     let mut dialog = use_signal(|| None::<AgentDialog>);
     let page = use_signal(|| 0i64);
@@ -163,6 +164,20 @@ fn AgentsTab(agents: AgentsResource, can_write: bool, reload: Signal<u32>) -> El
         })
         .with_td_class("text-gray-600")
         .secondary(),
+        Column::new(t!("browser-agents-col-use").to_string(), |a: &BrowserAgent| {
+            let label = if a.common {
+                t!("browser-agents-common")
+            } else if a.mine {
+                t!("browser-agents-personal-mine")
+            } else {
+                t!(
+                    "browser-agents-personal-of", name : a.owner.clone().unwrap_or_default()
+                )
+            };
+            rsx! { "{label}" }
+        })
+        .with_td_class("text-gray-600")
+        .secondary(),
         Column::new(t!("browser-agents-col-paired").to_string(), |a: &BrowserAgent| {
             rsx! { {date_label(&a.created_at)} }
         })
@@ -170,20 +185,27 @@ fn AgentsTab(agents: AgentsResource, can_write: bool, reload: Signal<u32>) -> El
         .secondary(),
         Column::new(t!("common-actions").to_string(), move |a: &BrowserAgent| {
             let (to_rename, to_delete) = (a.clone(), a.clone());
+            // Someone's personal browser: an admin may only disconnect it.
+            let editable = a.mine || (a.common && can_share);
+            let removable = a.mine || can_share;
             rsx! {
                 if can_write {
                     div { class: "flex justify-end gap-2",
-                        button {
-                            class: BTN_SECONDARY_SM,
-                            r#type: "button",
-                            onclick: move |_| dialog.set(Some(AgentDialog::Rename(to_rename.clone()))),
-                            {t!("browser-agents-edit")}
+                        if editable {
+                            button {
+                                class: BTN_SECONDARY_SM,
+                                r#type: "button",
+                                onclick: move |_| dialog.set(Some(AgentDialog::Rename(to_rename.clone()))),
+                                {t!("browser-agents-edit")}
+                            }
                         }
+                        if removable {
                         button {
                             class: DANGER_BTN,
                             r#type: "button",
                             onclick: move |_| dialog.set(Some(AgentDialog::Delete(to_delete.clone()))),
                             {t!("browser-agents-delete")}
+                        }
                         }
                     }
                 }
@@ -264,12 +286,17 @@ fn InstallSteps() -> Element {
 fn RenameAgent(agent: BrowserAgent, on_close: Callback<()>, on_saved: Callback<()>) -> Element {
     let mut name = use_signal(|| agent.name.clone());
     let mut mode = use_signal(|| agent.mode.clone());
+    let mut common = use_signal(|| agent.common);
+    // Sharing is for admins; an owner may always take their browser back.
+    let can_set_common =
+        agent.mine && (agent.common || crate::state::access::can("extension:share"));
     let mut busy = use_signal(|| false);
     let save = move |_| {
         let id = agent.id;
         let patch = BrowserAgentPatch {
             name: Some(name()),
             mode: Some(mode()),
+            common: can_set_common.then_some(common()),
         };
         busy.set(true);
         spawn(async move {
@@ -317,6 +344,19 @@ fn RenameAgent(agent: BrowserAgent, on_close: Callback<()>, on_saved: Callback<(
                 }
                 p { class: FIELD_HELP, {t!("browser-agents-mode-help")} }
             }
+            if can_set_common {
+                div {
+                    label { class: "flex items-center gap-2 text-sm text-ink",
+                        input {
+                            r#type: "checkbox",
+                            checked: common(),
+                            onchange: move |e| common.set(e.checked()),
+                        }
+                        {t!("browser-agents-common-field")}
+                    }
+                    p { class: FIELD_HELP, {t!("browser-agents-common-help")} }
+                }
+            }
         }
     }
 }
@@ -345,13 +385,18 @@ enum MissionDialog {
 
 /// Label of a mission state, with its agent code as a sentence.
 fn state_label(m: &Mission) -> String {
-    let state = match m.state {
+    state_text(m.state, m.state_code.as_deref())
+}
+
+/// A mission state, with its agent code as a sentence.
+pub(crate) fn state_text(state: MissionState, code: Option<&str>) -> String {
+    let state = match state {
         MissionState::Idle => t!("browser-missions-state-idle"),
         MissionState::Running => t!("browser-missions-state-running"),
         MissionState::Blocked => t!("browser-missions-state-blocked"),
         MissionState::Failed => t!("browser-missions-state-failed"),
     };
-    match &m.state_code {
+    match code {
         Some(code) => format!(
             "{state} — {}",
             crate::api::error_i18n::localize_code(code, None, code)
@@ -871,7 +916,7 @@ fn MissionForm(
                         option { value: "", selected: agent().is_empty(),
                             {t!("browser-missions-any-agent")}
                         }
-                        for a in agents.iter() {
+                        for a in agents.iter().filter(|a| a.mine || a.common) {
                             option {
                                 key: "{a.id}",
                                 value: "{a.id}",

@@ -14,6 +14,10 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 
 - **Extension for Chrome** / **Extension for Firefox** (header buttons): the zip already holds this server's address.
 - Install it: Chrome, unzip, open chrome://extensions, turn on Developer mode, click **Load unpacked**; Firefox, open about:debugging, This Firefox, **Load Temporary Add-on**, pick manifest.json. In the extension options, sign in, pick the organization and pair the browser: it appears in the **Browser agents** tab, Online while its browser runs.
+- A browser agent is **personal**: it runs only the missions of the member who paired it, since it browses in that member's signed-in session. A mission waits for its creator's browser, even offline, and says so with *ext-no-agent* when none can run it.
+- An admin can tick **Common agent** on their own browser, in a browser profile without any personal account: it then runs the missions of members without their own browser, and the proofs of the organization. Without a common agent, proofs are taken by the server.
+- Members see their own browser agents and the common ones. An admin sees all of them and can disconnect any, but never sends a mission to a colleague's personal browser.
+- Changing what a colleague's mission does makes it yours: it moves to your browser. When a member leaves the organization, the browser agents they paired are disconnected; edit their missions to take them over.
 - **Rename** or **Delete** a browser agent. Deleting revokes its credentials.
 - **Missions** tab, **New mission**, four kinds:
   - **Read a value**: a page, a CSS selector, a series name, an interval; the value appears on the browser agent in Visualisation.
@@ -25,12 +29,12 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 ## Crawling a site and dated proofs
 - Mission **Crawl a site**: the server (or a browser agent, for pages built by JavaScript) walks one declared site: robots.txt obeyed, sitemaps first, then the site's links, never off the site, one page every 2 seconds at most. Rules (words, phrases, `re:` expressions) mark the **relevant** pages; the others are only listed.
 - **Pages** on the mission lists the registry: listed, relevant, proven, gone (missing from two crawls in a row, often the proof of a fix). The text of each relevant page is kept as a document whose versions can be compared.
-- A relevant page new or changed gets a **proof** taken by a browser agent of the organization: full-page screenshot, the page's HTML without its scripts (download only) and its text, sealed with the server's time and fingerprints, chained to the previous proof. *Check the proof chain* recomputes it: a proof changed afterwards breaks it. The agent needs the right to capture the site (*ext-permission-missing*); without an agent online the proof waits (*ext-no-agent*).
+- A relevant page new or changed gets a **proof** taken by a common browser agent of the organization: full-page screenshot, the page's HTML without its scripts (download only) and its text, sealed with the server's time and fingerprints, chained to the previous proof. *Check the proof chain* recomputes it: a proof changed afterwards breaks it. The agent needs the right to capture the site (*ext-permission-missing*); without a common agent online the proof waits (*ext-no-agent*), then the server takes it.
 - *crawl-robots-disallowed*: the site forbids robots; *crawl-blocked*: it refused the crawler (the crawl stops and never insists); *crawl-unreachable*: the site cannot be reached.
 
 ## Capturing a person's profile
 
-- On a **person** page, **Capture a profile**: paste one profile address (LinkedIn, X, Facebook, Instagram, TikTok, YouTube). A browser agent of the organization opens it once, in the session signed in within the agent, at a human pace. The page text becomes a document of that person (kept 30 days, then deleted) and the address an account identifier of the person.
+- On a **person** page, **Capture a profile**: paste one profile address (LinkedIn, X, Facebook, Instagram, TikTok, YouTube). Your own browser agent (or a common one if you have none) opens it once, in the session signed in within the agent, at a human pace. The person's page then lists each capture and where it stands (waiting, blocked, captured, stopped), and warns when your browser agent is offline. The page text becomes a document of that person (kept 30 days, then deleted) and the address an account identifier of the person.
 - Only a profile page is accepted: searches, relation lists and "people also viewed" pages are refused (error "not one person's profile page"). At most 30 captures per network per day for the organization.
 - The capture is always asked by a person in the app: the assistant cannot start one.
 - **Record their objection to prospecting** (in the same window, confirmed twice): no capture of that person or of their profile addresses anymore, even if the person is deleted later.
@@ -39,7 +43,7 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 ## Good to know
 
 - Sign in to X, YouTube or TikTok in the agent's browser before following an account there.
-- State **Blocked — the site is not allowed yet**: open the extension options and click **Allow** next to the site (X needs x.com and video.twimg.com; TikTok needs tiktok.com and its subdomains).
+- LinkedIn, X, Facebook, Instagram, TikTok and YouTube are accepted once, when the extension is installed. State **Blocked — the site is not allowed yet** on another site: open the extension options and click **Allow** next to the site; the mission starts again within seconds (X needs x.com and video.twimg.com; TikTok needs tiktok.com and its subdomains).
 - **The site asks to sign in** or **shows a verification**: sign in or solve it in the agent's browser, then resume the mission. The agent never bypasses a verification.
 - TikTok pauses its videos in a hidden tab: keep the agent's window in front, screen unlocked, while it reads TikTok.
 - YouTube on a shared agent reads the latest videos and shorts of the account only: a hidden tab loads no more of the list. For the older history, set the agent's mode to dedicated to YouTube: it then brings its tab to the front while it reads.

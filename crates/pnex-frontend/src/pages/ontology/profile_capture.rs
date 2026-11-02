@@ -1,11 +1,14 @@
 //! Profile capture of a person (account-mapping.md D333) and its
 //! prospecting objection (D341): one pasted profile address, captured once
-//! by a browser agent of the org in its signed-in session.
+//! by the caller's browser agent in its signed-in session, and where the
+//! captures of the person stand.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
+use crate::app::Route;
+use crate::components::badges::date_label;
 use crate::components::crud::form::FormDialog;
 use crate::state::toasts;
 
@@ -55,6 +58,7 @@ pub fn ProfileCaptureDialog(person_id: String, on_close: EventHandler<()>) -> El
                     busy.set(false);
                 });
             },
+            BrowserNotice {}
             if opposed {
                 p {
                     class: "rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800",
@@ -108,5 +112,99 @@ pub fn ProfileCaptureDialog(person_id: String, on_close: EventHandler<()>) -> El
                 }
             }
         }
+    }
+}
+
+/// Says when a capture of the caller would wait, like the server decides it:
+/// their own browser if they have one, else a common one (D550).
+#[component]
+fn BrowserNotice() -> Element {
+    let agents = use_resource(|| async { api::extension::agents().await.ok() });
+    let Some(Some(agents)) = agents.read().clone() else {
+        return rsx! {};
+    };
+    let own: Vec<_> = agents.iter().filter(|a| a.mine && !a.common).collect();
+    let pool: Vec<_> = if own.is_empty() {
+        agents.iter().filter(|a| a.mine || a.common).collect()
+    } else {
+        own
+    };
+    if pool.iter().any(|a| a.online) {
+        return rsx! {};
+    }
+    let text = if pool.is_empty() {
+        t!("profile-browser-none")
+    } else {
+        t!("profile-browser-offline")
+    };
+    rsx! {
+        p {
+            class: "rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800",
+            "data-testid": "profile-browser-notice",
+            "{text} "
+            Link { class: "underline", to: Route::BrowserAgents {}, {t!("browser-agents-title")} }
+        }
+    }
+}
+
+/// Captures asked for the person, on its page; empty until one is asked.
+/// Refreshed while one is open: the agent runs it at its own pace.
+#[component]
+pub fn ProfileCaptures(person_id: String, reload: Signal<u32>) -> Element {
+    let mut tick = use_signal(|| 0u32);
+    let id = person_id.clone();
+    let captures = use_resource(move || {
+        let id = id.clone();
+        async move {
+            let _ = (reload(), tick());
+            api::extension::profile_captures(&id).await.ok()
+        }
+    });
+    let rows = captures.read().clone().flatten().unwrap_or_default();
+    let any_open = rows.iter().any(|c| c.open);
+    use_future(move || async move {
+        loop {
+            crate::util::sleep(std::time::Duration::from_secs(15)).await;
+            if captures
+                .peek()
+                .clone()
+                .flatten()
+                .is_some_and(|r| r.iter().any(|c| c.open))
+            {
+                tick.with_mut(|t| *t += 1);
+            }
+        }
+    });
+    if rows.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        div { class: "mt-6 space-y-2", "data-testid": "profile-captures",
+            h3 { class: "text-sm font-medium text-ink", {t!("profile-captures-title")} }
+            if any_open {
+                BrowserNotice {}
+            }
+            ul { class: "space-y-1 text-sm",
+                for c in rows {
+                    li {
+                        key: "{c.id}",
+                        class: "flex flex-wrap items-baseline gap-x-3",
+                        span { class: "break-all text-ink", "{c.url}" }
+                        span { class: "text-gray-600", {capture_label(&c)} }
+                        span { class: "text-xs text-gray-500", {date_label(&c.created_at)} }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn capture_label(c: &pnex_core::browser_agent::ProfileCapture) -> String {
+    if c.open {
+        crate::pages::browser_agents::state_text(c.state, c.state_code.as_deref())
+    } else if c.captured {
+        t!("profile-capture-state-done").to_string()
+    } else {
+        t!("profile-capture-state-stopped").to_string()
     }
 }

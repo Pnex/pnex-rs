@@ -737,6 +737,7 @@ chaque version d'adaptateur (les plateformes changent) :
 | D282 | Vidéos | enregistrement possible sur toutes les plateformes (YouTube compris), jamais de DRM ni de contournement |
 | D283 | Historique | toute l'histoire du compte, profondeur croissante par visite, automatique |
 | D284 | Mission | un compte à suivre ; texte au mieux par défaut, case « forcer la collecte vidéo » |
+| D550 | Agent personnel ou commun (SEC-56) | un agent appairé est personnel : il n'exécute que les missions de `paired_by`, même hors ligne la mission l'attend ; `common`, posé par un admin (`extension:share`) sur son propre navigateur, exécute aussi celles des membres sans navigateur et les tâches du serveur (preuves, sinon prises par le serveur) ; l'admin voit et déconnecte tout agent, sans jamais envoyer de mission sur le navigateur personnel d'un autre ; changer le contenu de la mission d'un collègue la transfère ; départ d'un membre = ses agents supprimés. Limite : le bail reste par cible et par org (D257), deux membres sur la même cible s'attendent |
 | D270 | Distribution | construite avec l'image, `GET /api/v1/extension/download` (zip + `server.json`), chargement non empaqueté en v1 |
 | D269 | Plateformes exclusives (note, réglée par §16.1) | `needs_foreground` par adaptateur, fixé par mesure ; `true` = 1 agent = 1 PC = 1 plateforme, mode `dedicated:<plateforme>`, pause si l'onglet devient caché |
 | D268 | Rétention | par mission, vocabulaire D161 (`none`/`days:N`/`keep`), défaut d'org |

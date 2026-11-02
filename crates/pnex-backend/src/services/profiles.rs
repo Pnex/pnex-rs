@@ -263,7 +263,7 @@ pub async fn request(
         .chars()
         .take(ba::NAME_MAX)
         .collect();
-    let waiting = !crate::services::extension::any_online(db, org_id).await;
+    let waiting = !crate::services::extension::runner_online(db, org_id, Some(user_id)).await;
     let id = Uuid::new_v4();
     db.execute_raw(stmt(
         "INSERT INTO extension_missions (id, org_id, name, kind, spec, target, interval_secs,
@@ -282,6 +282,48 @@ pub async fn request(
     ))
     .await?;
     crate::services::extension::get_mission(db, org_id, id).await
+}
+
+/// Latest captures asked for the person, newest first.
+pub async fn captures(
+    db: &DatabaseConnection,
+    org_id: i64,
+    person_id: Uuid,
+) -> Result<Vec<ba::ProfileCapture>, ExtensionError> {
+    use sea_orm::FromQueryResult;
+    #[derive(FromQueryResult)]
+    struct Row {
+        id: Uuid,
+        url: Option<String>,
+        state: String,
+        state_code: Option<String>,
+        enabled: bool,
+        captured: bool,
+        created_at: chrono::DateTime<chrono::FixedOffset>,
+    }
+    person(db, org_id, person_id).await?;
+    let rows = Row::find_by_statement(stmt(
+        "SELECT id, spec -> 'params' ->> 'url' AS url, state, state_code, enabled,
+                cursor ->> 'asset_id' IS NOT NULL AS captured, created_at
+         FROM extension_missions WHERE org_id = $1 AND kind = 'capture_profile'
+           AND spec -> 'params' ->> 'person_id' = $2
+         ORDER BY created_at DESC LIMIT 20",
+        vec![org_id.into(), person_id.to_string().into()],
+    ))
+    .all(db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| ba::ProfileCapture {
+            id: r.id.to_string(),
+            url: r.url.unwrap_or_default(),
+            state: ba::MissionState::parse(&r.state).unwrap_or_default(),
+            state_code: r.state_code,
+            open: r.enabled,
+            captured: r.captured,
+            created_at: r.created_at.to_rfc3339(),
+        })
+        .collect())
 }
 
 /// Refuses a capture whose person objected since it was asked; the mission
@@ -309,6 +351,46 @@ async fn disable(db: &DatabaseConnection, mission_id: Uuid) -> Result<(), Extens
     Ok(())
 }
 
+/// Property of `prospecting_b2b` naming the captured text a flow has yet to
+/// read (account-mapping.md D538).
+const PROFILE_TO_READ: &str = "profile_to_read";
+
+/// Written in place when the org has the property: a stamp, not an edit of
+/// the person.
+async fn stamp_to_read(
+    ctx: &AppContext,
+    org_id: i64,
+    person_id: &str,
+    asset_id: Uuid,
+) -> Result<(), ExtensionError> {
+    let Ok(person) = Uuid::parse_str(person_id) else {
+        return Ok(());
+    };
+    let known = ontology::schema(&ctx.db, org_id)
+        .await
+        .ok()
+        .and_then(|s| {
+            s.object_type("person")
+                .map(|t| t.properties.iter().any(|p| p.key == PROFILE_TO_READ))
+        })
+        .unwrap_or(false);
+    if known {
+        ctx.db
+            .execute_raw(stmt(
+                "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text)
+                 WHERE org_id = $1 AND id = $2",
+                vec![
+                    org_id.into(),
+                    person.into(),
+                    PROFILE_TO_READ.into(),
+                    asset_id.to_string().into(),
+                ],
+            ))
+            .await?;
+    }
+    Ok(())
+}
+
 /// After the page is stored: the document is linked to the person, the
 /// profile address becomes an account identifier of the person, and the
 /// one-shot mission ends. An org without the investigation pack keeps the
@@ -321,6 +403,7 @@ pub async fn captured(
     asset_id: Uuid,
 ) -> Result<(), ExtensionError> {
     crate::services::extension::link_publisher(ctx, agent, asset_id, &params.person_id).await;
+    stamp_to_read(ctx, agent.org_id, &params.person_id, asset_id).await?;
     let actor = ontology::Actor {
         user_id: None,
         role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
@@ -398,6 +481,9 @@ const RETENTION_SETTING: &str = "prospecting_b2b.retention_months";
 const RETENTION_MONTHS: i64 = 36;
 /// People proposed per org and per run.
 const RETENTION_BATCH: i64 = 200;
+/// Types the queue proposes: a person, and a lead that names one before it
+/// is in the graph (crm.md D514). A type missing from the org matches nothing.
+const RETENTION_TYPES: [&str; 2] = ["person", "lead"];
 
 /// The retention queue (crm.md D445): in each org where the prospecting
 /// pack is installed, a live person with no change, no link opened or
@@ -435,7 +521,7 @@ pub async fn propose_erasures_in(
     let rows = db
         .query_all_raw(stmt(
             "WITH activity AS (
-               SELECT o.id, greatest(
+               SELECT o.id, o.type_key, greatest(
                  o.updated_at,
                  (SELECT max(greatest(l.created_at, l.updated_at, coalesce(l.valid_to, l.valid_from)))
                     FROM resource_edges l
@@ -447,23 +533,29 @@ pub async fn propose_erasures_in(
                      AND p.status = 'rejected')
                ) AS last
                FROM objects o
-              WHERE o.org_id = $1 AND o.type_key = 'person' AND o.valid_to IS NULL
+              WHERE o.org_id = $1 AND o.type_key = ANY($4) AND o.valid_to IS NULL
                 AND o.erased_at IS NULL
                 AND o.updated_at < now() - make_interval(months => $2::int)
                 AND NOT EXISTS (SELECT 1 FROM proposals p
                    WHERE p.org_id = o.org_id AND p.kind = 'object_erase'
                      AND p.target_id = o.id::text AND p.status = 'proposed')
              )
-             SELECT id, to_char(last, 'YYYY-MM-DD') AS last FROM activity
+             SELECT id, type_key, to_char(last, 'YYYY-MM-DD') AS last FROM activity
               WHERE last < now() - make_interval(months => $2::int)
               ORDER BY last LIMIT $3",
-            vec![org_id.into(), (months as i32).into(), RETENTION_BATCH.into()],
+            vec![
+                org_id.into(),
+                (months as i32).into(),
+                RETENTION_BATCH.into(),
+                RETENTION_TYPES.map(String::from).to_vec().into(),
+            ],
         ))
         .await?;
     let mut n = 0;
     for row in rows {
-        let (Ok(id), Ok(last)) = (
+        let (Ok(id), Ok(type_key), Ok(last)) = (
             row.try_get::<Uuid>("", "id"),
+            row.try_get::<String>("", "type_key"),
             row.try_get::<String>("", "last"),
         ) else {
             continue;
@@ -472,7 +564,7 @@ pub async fn propose_erasures_in(
         values.insert("last_activity".into(), last.clone().into());
         let p = pnex_core::ontology::proposal::ProposalInput {
             kind: Some(pnex_core::ontology::proposal::ProposalKind::ObjectErase),
-            type_key: "person".into(),
+            type_key,
             target_id: Some(id.to_string()),
             values,
             evidence: serde_json::json!({"last_activity": last, "retention_months": months}),

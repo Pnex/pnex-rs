@@ -64,7 +64,10 @@ pub fn routes() -> Routes {
         .add("/proofs/verify", get(verify_proofs))
         .add("/proofs/{id}", get(proof))
         .add("/videos", get(videos))
-        .add("/people/{id}/profile-captures", post(capture_profile))
+        .add(
+            "/people/{id}/profile-captures",
+            get(profile_captures).post(capture_profile),
+        )
         .add("/people/{id}/opposition", get(opposition).post(oppose))
         .add("/missions", get(missions).post(create_mission))
         .add(
@@ -99,6 +102,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         create_mission,
         update_mission,
         remove_mission,
+        profile_captures,
         capture_profile,
         opposition,
         oppose
@@ -118,6 +122,7 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
             err_codes::EXTENSION_AGENT_NOT_FOUND,
             "Browser agent not found.",
         ),
+        ExtensionError::NotYourAgent => Err(crate::auth::access_denied("extension:share")),
         ExtensionError::MissionNotFound => coded(
             StatusCode::NOT_FOUND,
             err_codes::EXTENSION_MISSION_NOT_FOUND,
@@ -201,14 +206,14 @@ fn paged<T: serde::Serialize>(path: &str, q: &PageQuery, items: Vec<T>) -> Resul
     format::json(pagination::envelope(path, &[], page, count, results))
 }
 
-/// `GET /api/v1/extension/agents` — every member.
+/// `GET /api/v1/extension/agents` — the caller's and the common ones.
 #[utoipa::path(
     get,
     path = "/api/v1/extension/agents",
     tag = "extension",
     operation_id = "extension_agents_list",
     summary = "List the browser agents",
-    description = "Browser agents paired with the org, newest first, with their fingerprint and whether they are connected now. Paginated (`limit`/`offset`). Any member.",
+    description = "Browser agents the caller may see, newest first, with their fingerprint and whether they are connected now: their own and the common ones, every one with the `extension:share` permission. Paginated (`limit`/`offset`). Any member.",
     params(PageQuery),
     responses((status = 200, body = pnex_core::Paginated<pnex_core::browser_agent::BrowserAgent>)),
     security(("bearer" = [], "org" = []))
@@ -218,7 +223,8 @@ async fn agents(
     org: OrgContext,
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
-    match extension::list_agents(&ctx.db, org.org.id).await {
+    let can_share = org.can("extension:share");
+    match extension::list_agents(&ctx.db, org.org.id, org.auth.user.id, can_share).await {
         Ok(rows) => paged("/api/v1/extension/agents", &q, rows),
         Err(e) => extension_error(e),
     }
@@ -232,11 +238,12 @@ async fn agents(
     tag = "extension",
     operation_id = "extension_agents_pair",
     summary = "Pair a browser extension",
-    description = "Called by the extension right after the user signs in: the install key signs the org and a timestamp (proof of possession). Creates the browser agent of this install, or rotates the credentials of its existing agent in this org (any former session is cut). Returns the device token and Noise key once. Requires owner, admin or member role.",
+    description = "Called by the extension right after the user signs in: the install key signs the org and a timestamp (proof of possession). Creates the browser agent of this install, or rotates the credentials of its existing agent in this org (any former session is cut). A new agent is personal: it runs only the missions of the member who paired it. Signing in on someone else's personal browser makes it the caller's; a common one needs the `extension:share` permission. Returns the device token and Noise key once. Requires owner, admin or member role.",
     request_body = PairRequest,
     responses(
         (status = 201, body = pnex_core::browser_agent::PairResponse),
         (status = 400, description = "`extension-pair-refused`: malformed install key or bad signature", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`: common browser without the `extension:share` permission", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`extension-install-paired-elsewhere`: the install is paired with another org; `extension-limit-reached` (`args.max`): the org holds as many agents as allowed", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -246,25 +253,28 @@ async fn pair(
     org: OrgContext,
     Json(req): Json<PairRequest>,
 ) -> Result<Response> {
-    match extension::pair(&ctx.db, org.org.id, org.auth.user.id, &req).await {
+    let can_share = org.can("extension:share");
+    match extension::pair(&ctx.db, org.org.id, org.auth.user.id, can_share, &req).await {
         Ok(paired) => Ok((StatusCode::CREATED, format::json(paired)).into_response()),
         Err(e) => extension_error(e),
     }
 }
 
-/// `PATCH /api/v1/extension/agents/{id}` — `can_write`: rename.
+/// `PATCH /api/v1/extension/agents/{id}` — `can_write`, its owner or an admin
+/// when common.
 #[utoipa::path(
     patch,
     path = "/api/v1/extension/agents/{id}",
     tag = "extension",
     operation_id = "extension_agents_update",
-    summary = "Rename a browser agent or change its mode",
-    description = "Renames a browser agent and/or sets its mode: `shared` (every platform but the exclusive ones) or `dedicated:<platform>` (that platform only, D269); absent fields unchanged, the mode applies at the agent's next connection. Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
+    summary = "Rename a browser agent, change its mode or share it",
+    description = "Renames a browser agent and/or sets its mode: `shared` (every platform but the exclusive ones) or `dedicated:<platform>` (that platform only, D269); and/or `common`: a common browser runs the missions of every member without their own, a personal one only its owner's. Absent fields unchanged, the mode applies at the agent's next connection. Allowed on one's own browser, or on a common one with `extension:share`; sharing needs `extension:share`, taking one's own back does not. Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
     params(("id" = i64, Path, description = "Agent id (device registry id)")),
     request_body = BrowserAgentPatch,
     responses(
         (status = 200, body = pnex_core::browser_agent::BrowserAgent),
         (status = 400, description = "`field-invalid`: `errors.fields.name` `required` or `max_length:N`, `errors.fields.mode` `invalid`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`: someone else's browser, or sharing without `extension:share`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`extension-agent-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -275,7 +285,10 @@ async fn update_agent(
     Path(id): Path<i64>,
     Json(input): Json<BrowserAgentPatch>,
 ) -> Result<Response> {
-    match extension::update_agent(&ctx.db, org.org.id, id, &input).await {
+    let can_share = org.can("extension:share");
+    match extension::update_agent(&ctx.db, org.org.id, id, org.auth.user.id, can_share, &input)
+        .await
+    {
         Ok(a) => format::json(a),
         Err(e) => extension_error(e),
     }
@@ -1164,7 +1177,7 @@ async fn update_mission(
     Path(id): Path<Uuid>,
     Json(patch): Json<MissionPatch>,
 ) -> Result<Response> {
-    match extension::update_mission(&ctx.db, org.org.id, id, &patch).await {
+    match extension::update_mission(&ctx.db, org.org.id, org.auth.user.id, id, &patch).await {
         Ok(m) => format::json(m),
         Err(e) => extension_error(e),
     }
@@ -1246,6 +1259,37 @@ struct OppositionView {
     opposed: bool,
 }
 
+/// `GET /api/v1/extension/people/{id}/profile-captures` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/people/{id}/profile-captures",
+    tag = "extension",
+    operation_id = "extension_profile_captures_list",
+    summary = "List the profile captures of a person",
+    description = "The latest profile captures asked for this person, newest first, with where each stands: waiting for a browser (`state_code` `ext-no-agent`), blocked, captured or stopped. Paginated (`limit`/`offset`). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::browser_agent::ProfileCapture>),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn profile_captures(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    match crate::services::profiles::captures(&ctx.db, org.org.id, id).await {
+        Ok(rows) => paged(
+            &format!("/api/v1/extension/people/{id}/profile-captures"),
+            &q,
+            rows,
+        ),
+        Err(e) => extension_error(e),
+    }
+}
+
 /// `POST /api/v1/extension/people/{id}/profile-captures` — `can_write`.
 #[utoipa::path(
     post,
@@ -1253,7 +1297,7 @@ struct OppositionView {
     tag = "extension",
     operation_id = "extension_profile_captures_create",
     summary = "Capture a person's profile page",
-    description = "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): a browser agent of the org opens it once in its signed-in session; the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
+    description = "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session; the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
     params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)")),
     request_body = pnex_core::browser_agent::ProfileCaptureRequest,
     responses(

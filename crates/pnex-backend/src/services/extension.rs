@@ -41,6 +41,9 @@ pub enum ExtensionError {
     Invalid { field: String, token: String },
     #[error("agent not found")]
     AgentNotFound,
+    /// Someone else's browser: its session is not the caller's to use.
+    #[error("not this member's browser")]
+    NotYourAgent,
     #[error("mission not found")]
     MissionNotFound,
     #[error("video not found")]
@@ -131,16 +134,35 @@ struct AgentRow {
     name: String,
     fingerprint: serde_json::Value,
     mode: String,
+    paired_by: Option<i64>,
+    common: bool,
+    owner: Option<String>,
     created_at: DateTime<FixedOffset>,
     updated_at: DateTime<FixedOffset>,
 }
 
 const AGENT_SELECT: &str = "SELECT a.device_registry_id, a.org_id, d.device_id, a.install_key,
-    a.encryption_key, a.name, a.fingerprint, a.mode, a.created_at, a.updated_at
-    FROM extension_agents a JOIN device_registries d ON d.id = a.device_registry_id";
+    a.encryption_key, a.name, a.fingerprint, a.mode, a.paired_by, a.common,
+    coalesce(u.full_name, u.email) AS owner, a.created_at, a.updated_at
+    FROM extension_agents a JOIN device_registries d ON d.id = a.device_registry_id
+    LEFT JOIN users u ON u.id = a.paired_by";
+
+/// May agent `{agent}` run mission `m`? A personal browser runs only what its
+/// owner asked (it browses in their session); a common one also runs the
+/// missions of whoever has no personal browser. Read at each check: turning
+/// `common` off applies to a connected agent too.
+fn runs_on(agent: &str) -> String {
+    format!(
+        "EXISTS (SELECT 1 FROM extension_agents a WHERE a.device_registry_id = {agent} AND (
+            (m.agent_id = a.device_registry_id AND (a.common OR m.created_by = a.paired_by))
+            OR (m.agent_id IS NULL AND (m.created_by = a.paired_by OR (a.common AND NOT EXISTS (
+                SELECT 1 FROM extension_agents own
+                WHERE own.org_id = m.org_id AND own.paired_by = m.created_by AND NOT own.common))))))"
+    )
+}
 
 impl AgentRow {
-    fn view(&self, online: bool) -> BrowserAgent {
+    fn view(&self, online: bool, viewer: i64) -> BrowserAgent {
         BrowserAgent {
             id: self.device_registry_id,
             device_id: self.device_id.clone(),
@@ -148,6 +170,9 @@ impl AgentRow {
             fingerprint: serde_json::from_value(self.fingerprint.clone()).unwrap_or_default(),
             mode: self.mode.clone(),
             online,
+            common: self.common,
+            mine: self.paired_by == Some(viewer),
+            owner: self.owner.clone(),
             created_at: self.created_at.to_rfc3339(),
             updated_at: self.updated_at.to_rfc3339(),
         }
@@ -166,11 +191,14 @@ pub struct AgentAuth {
 }
 
 /// Pairs an install with the org (D266): creates its agent, or rotates the
-/// credentials of the install's existing agent in this org.
+/// credentials of the install's existing agent in this org. A new agent is
+/// personal. Signing in again on a personal browser makes it the caller's;
+/// a common one stays common and needs `can_share`.
 pub async fn pair(
     db: &DatabaseConnection,
     org_id: i64,
     user_id: i64,
+    can_share: bool,
     req: &PairRequest,
 ) -> Result<PairResponse, ExtensionError> {
     let key = decode_install_key(&req.install_key).ok_or(ExtensionError::PairRefused)?;
@@ -197,10 +225,12 @@ pub async fn pair(
     let device_registry_id =
         match existing {
             Some(row) if row.org_id != org_id => return Err(ExtensionError::PairedElsewhere),
+            Some(row) if row.common && !can_share => return Err(ExtensionError::NotYourAgent),
             Some(row) => {
                 txn.execute_raw(stmt(
                     "UPDATE extension_agents SET token_hash = $2, encryption_key = $3,
-                    fingerprint = $4, updated_at = now() WHERE device_registry_id = $1",
+                    fingerprint = $4, paired_by = CASE WHEN common THEN paired_by ELSE $5 END,
+                    updated_at = now() WHERE device_registry_id = $1",
                     vec![
                         row.device_registry_id.into(),
                         sha256_hex(token.as_bytes()).into(),
@@ -208,6 +238,7 @@ pub async fn pair(
                         serde_json::to_value(&fingerprint)
                             .unwrap_or_default()
                             .into(),
+                        user_id.into(),
                     ],
                 ))
                 .await?;
@@ -270,7 +301,7 @@ pub async fn pair(
         .ok_or(ExtensionError::AgentNotFound)?;
     txn.commit().await?;
     Ok(PairResponse {
-        agent: row.view(false),
+        agent: row.view(false, user_id),
         token,
         encryption_key,
     })
@@ -289,8 +320,14 @@ async fn agent_row<C: ConnectionTrait>(
     .await
 }
 
-/// Is a browser agent of the org online now?
-pub(crate) async fn any_online(db: &DatabaseConnection, org_id: i64) -> bool {
+/// Is a browser able to run a mission of `creator` online now? Their own
+/// browsers if they have one (even offline: the mission waits for them), else
+/// the common ones. `None`: a task of the server, for the common ones only.
+pub(crate) async fn runner_online(
+    db: &DatabaseConnection,
+    org_id: i64,
+    creator: Option<i64>,
+) -> bool {
     let Ok(rows) = AgentRow::find_by_statement(stmt(
         &format!("{AGENT_SELECT} WHERE a.org_id = $1"),
         vec![org_id.into()],
@@ -300,7 +337,18 @@ pub(crate) async fn any_online(db: &DatabaseConnection, org_id: i64) -> bool {
     else {
         return false;
     };
-    let ids: Vec<i64> = rows.iter().map(|r| r.device_registry_id).collect();
+    let own = |r: &&AgentRow| !r.common && creator.is_some() && r.paired_by == creator;
+    let ids: Vec<i64> = if rows.iter().any(|r| own(&r)) {
+        rows.iter()
+            .filter(own)
+            .map(|r| r.device_registry_id)
+            .collect()
+    } else {
+        rows.iter()
+            .filter(|r| r.common || (creator.is_some() && r.paired_by == creator))
+            .map(|r| r.device_registry_id)
+            .collect()
+    };
     online_of(db, &ids).await.values().any(|on| *on)
 }
 
@@ -311,14 +359,20 @@ async fn online_of(db: &DatabaseConnection, ids: &[i64]) -> std::collections::Ha
         .unwrap_or_default()
 }
 
-/// Agents of the org, newest first.
+/// Agents the caller may see, newest first: their own and the common ones;
+/// every one for an admin, who may disconnect them.
 pub async fn list_agents(
     db: &DatabaseConnection,
     org_id: i64,
+    user_id: i64,
+    can_share: bool,
 ) -> Result<Vec<BrowserAgent>, ExtensionError> {
     let rows = AgentRow::find_by_statement(stmt(
-        &format!("{AGENT_SELECT} WHERE a.org_id = $1 ORDER BY a.created_at DESC"),
-        vec![org_id.into()],
+        &format!(
+            "{AGENT_SELECT} WHERE a.org_id = $1 AND ($3 OR a.common OR a.paired_by = $2)
+             ORDER BY a.created_at DESC"
+        ),
+        vec![org_id.into(), user_id.into(), can_share.into()],
     ))
     .all(db)
     .await?;
@@ -326,26 +380,53 @@ pub async fn list_agents(
     let online = online_of(db, &ids).await;
     Ok(rows
         .iter()
-        .map(|r| r.view(online.get(&r.device_registry_id).copied().unwrap_or(false)))
+        .map(|r| {
+            r.view(
+                online.get(&r.device_registry_id).copied().unwrap_or(false),
+                user_id,
+            )
+        })
         .collect())
 }
 
-/// Renames an agent.
+/// Renames an agent, sets its mode, or moves it between personal and common.
+/// Its owner's, or an admin's when it is common: an admin never reconfigures
+/// a colleague's personal browser. Only an admin shares their own browser;
+/// the owner may always take it back.
 pub async fn update_agent(
     db: &DatabaseConnection,
     org_id: i64,
     id: i64,
+    user_id: i64,
+    can_share: bool,
     patch: &ba::BrowserAgentPatch,
 ) -> Result<BrowserAgent, ExtensionError> {
     let name = patch.name.as_deref().map(ba::check_name).transpose()?;
     let mode = patch.mode.as_deref().map(ba::check_mode).transpose()?;
+    let row = agent_row(db, org_id, id)
+        .await?
+        .ok_or(ExtensionError::AgentNotFound)?;
+    let mine = row.paired_by == Some(user_id);
+    if !mine && !(row.common && can_share) {
+        return Err(ExtensionError::NotYourAgent);
+    }
+    if patch.common == Some(true) && !row.common && !can_share {
+        return Err(ExtensionError::NotYourAgent);
+    }
     // A new mode reaches the agent at its next connection.
     let done = db
         .execute_raw(stmt(
             "UPDATE extension_agents
-             SET name = coalesce($3, name), mode = coalesce($4, mode), updated_at = now()
+             SET name = coalesce($3, name), mode = coalesce($4, mode),
+                 common = coalesce($5, common), updated_at = now()
              WHERE org_id = $1 AND device_registry_id = $2",
-            vec![org_id.into(), id.into(), name.into(), mode.into()],
+            vec![
+                org_id.into(),
+                id.into(),
+                name.into(),
+                mode.into(),
+                patch.common.into(),
+            ],
         ))
         .await?;
     if done.rows_affected() == 0 {
@@ -355,7 +436,41 @@ pub async fn update_agent(
         .await?
         .ok_or(ExtensionError::AgentNotFound)?;
     let online = online_of(db, &[id]).await;
-    Ok(row.view(online.get(&id).copied().unwrap_or(false)))
+    Ok(row.view(online.get(&id).copied().unwrap_or(false), user_id))
+}
+
+/// May this caller disconnect device `id`? Anything that is not a browser
+/// agent is left to the device permission.
+pub async fn may_disconnect(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: i64,
+    user_id: i64,
+    can_share: bool,
+) -> Result<bool, DbErr> {
+    Ok(can_share
+        || agent_row(db, org_id, id)
+            .await?
+            .is_none_or(|row| row.paired_by == Some(user_id)))
+}
+
+/// A member leaves the org: the browsers they paired lose its credentials,
+/// common ones included. Their missions wait for a common browser or for an
+/// admin to take them over.
+// shortcut: labels of the removed agents stay orphaned (`resources::purge_for`
+// per device if anyone ever labels browser agents).
+pub async fn forget_member<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    user_id: i64,
+) -> Result<(), DbErr> {
+    db.execute_raw(stmt(
+        "DELETE FROM device_registries WHERE id IN (
+            SELECT device_registry_id FROM extension_agents WHERE org_id = $1 AND paired_by = $2)",
+        vec![org_id.into(), user_id.into()],
+    ))
+    .await?;
+    Ok(())
 }
 
 /// Agent of a bearer token, if `signature` is its install key's signature
@@ -505,10 +620,12 @@ pub(crate) struct MissionRow {
     updated_at: DateTime<FixedOffset>,
     /// Server-side progress (page digest, history depth), never sent as is.
     cursor: Option<serde_json::Value>,
+    /// Whose browser runs it; `None` for a task of the server.
+    created_by: Option<i64>,
 }
 
 const MISSION_COLUMNS: &str = "id, name, spec, target, interval_secs, agent_id, enabled, state,
-    state_code, version, created_at, updated_at, cursor";
+    state_code, version, created_at, updated_at, cursor, created_by";
 
 /// History progress of a `follow_account` (D283), kept in the cursor.
 fn history_of(cursor: Option<&serde_json::Value>) -> (u32, bool) {
@@ -539,18 +656,20 @@ impl MissionRow {
     }
 }
 
-/// Pinned agent must be a browser agent of the org.
+/// Pinned agent must be a browser agent of the org that runs the missions
+/// of `owner`: theirs or a common one.
 async fn check_agent<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
+    owner: Option<i64>,
     agent_id: Option<i64>,
 ) -> Result<(), ExtensionError> {
     let Some(id) = agent_id else {
         return Ok(());
     };
     match agent_row(db, org_id, id).await? {
-        Some(_) => Ok(()),
-        None => Err(ExtensionError::Invalid {
+        Some(a) if a.common || (owner.is_some() && a.paired_by == owner) => Ok(()),
+        _ => Err(ExtensionError::Invalid {
             field: "agent_id".into(),
             token: err_codes::FIELD_NOT_FOUND.into(),
         }),
@@ -608,7 +727,7 @@ pub async fn create_mission(
     let name = ba::check_name(&input.name)?;
     let (spec, target) = ba::check_spec(&input.spec)?;
     let interval = ba::check_interval(input.interval_secs)?;
-    check_agent(db, org_id, input.agent_id).await?;
+    check_agent(db, org_id, Some(user_id), input.agent_id).await?;
     // shortcut: count then insert is racy by a few rows, fine for an abuse cap.
     let count = db
         .query_one_raw(stmt(
@@ -647,9 +766,13 @@ pub async fn create_mission(
 }
 
 /// Partial update on the version the caller read (optimistic concurrency).
+/// Changing what a colleague's mission does makes it the caller's: it leaves
+/// the colleague's browser, which only runs what they asked themselves. That
+/// is also how a mission of a former member is taken over.
 pub async fn update_mission(
     db: &DatabaseConnection,
     org_id: i64,
+    user_id: i64,
     id: Uuid,
     patch: &MissionPatch,
 ) -> Result<Mission, ExtensionError> {
@@ -688,25 +811,46 @@ pub async fn update_mission(
         Some(i) => ba::check_interval(i)?,
         None => row.interval_secs,
     };
-    let agent_id = patch.agent_id.unwrap_or(row.agent_id);
-    check_agent(&txn, org_id, agent_id).await?;
+    let mut agent_id = patch.agent_id.unwrap_or(row.agent_id);
+    let spec_json = serde_json::to_value(&spec).unwrap_or_default();
+    // Both read through the type: a row older than a new field of the spec
+    // is not a change of the mission.
+    let stored_spec = serde_json::from_value::<MissionSpec>(row.spec.clone())
+        .ok()
+        .and_then(|s| serde_json::to_value(s).ok());
+    let taken_over = row.created_by != Some(user_id)
+        && (stored_spec.as_ref() != Some(&spec_json)
+            || interval != row.interval_secs
+            || agent_id != row.agent_id);
+    let owner = if taken_over {
+        Some(user_id)
+    } else {
+        row.created_by
+    };
+    if agent_id != row.agent_id {
+        check_agent(&txn, org_id, owner, agent_id).await?;
+    } else if taken_over && check_agent(&txn, org_id, owner, agent_id).await.is_err() {
+        // The pin was on the former owner's browser.
+        agent_id = None;
+    }
     let enabled = patch.enabled.unwrap_or(row.enabled);
     // A re-enabled or changed mission starts over: its last state is stale.
     txn.execute_raw(stmt(
         "UPDATE extension_missions SET name = $3, kind = $4, spec = $5, target = $6,
-            interval_secs = $7, agent_id = $8, enabled = $9, state = 'idle', state_code = NULL,
-            version = version + 1, updated_at = now()
+            interval_secs = $7, agent_id = $8, enabled = $9, created_by = $10, state = 'idle',
+            state_code = NULL, version = version + 1, updated_at = now()
          WHERE org_id = $1 AND id = $2",
         vec![
             org_id.into(),
             id.into(),
             name.into(),
             spec.kind().into(),
-            serde_json::to_value(&spec).unwrap_or_default().into(),
+            spec_json.into(),
             target.into(),
             interval.into(),
             agent_id.into(),
             enabled.into(),
+            owner.into(),
         ],
     ))
     .await?;
@@ -732,17 +876,18 @@ pub async fn delete_mission(
     Ok(())
 }
 
-/// Enabled missions an agent may run (pinned on it or on no agent), oldest
-/// first: candidates of the lease.
+/// Enabled missions an agent may run (`runs_on`), oldest first: candidates of
+/// the lease.
 pub async fn candidates(
     db: &DatabaseConnection,
     agent: &AgentAuth,
 ) -> Result<Vec<ba::AssignedMission>, DbErr> {
     let rows = MissionRow::find_by_statement(stmt(
         &format!(
-            "SELECT {MISSION_COLUMNS} FROM extension_missions
-             WHERE org_id = $1 AND enabled AND (agent_id IS NULL OR agent_id = $2)
-             ORDER BY created_at"
+            "SELECT {MISSION_COLUMNS} FROM extension_missions m
+             WHERE org_id = $1 AND enabled AND {}
+             ORDER BY created_at",
+            runs_on("$2")
         ),
         vec![agent.org_id.into(), agent.device_registry_id.into()],
     ))
@@ -957,12 +1102,19 @@ pub(crate) async fn own_mission(
 ) -> Result<(Uuid, MissionRow, MissionSpec), ExtensionError> {
     let id = Uuid::parse_str(mission_id).map_err(|_| ExtensionError::MissionNotFound)?;
     let mission = mission_row(db, agent.org_id, id).await?;
-    let pinned_elsewhere = mission
-        .agent_id
-        .is_some_and(|a| a != agent.device_registry_id);
+    let runs_here = db
+        .query_one_raw(stmt(
+            &format!(
+                "SELECT 1 AS x FROM extension_missions m WHERE m.id = $1 AND {}",
+                runs_on("$2")
+            ),
+            vec![id.into(), agent.device_registry_id.into()],
+        ))
+        .await?
+        .is_some();
     let spec = serde_json::from_value::<MissionSpec>(mission.spec.clone())
         .map_err(|_| ExtensionError::MissionNotFound)?;
-    if !mission.enabled || pinned_elsewhere {
+    if !mission.enabled || !runs_here {
         return Err(ExtensionError::MissionNotFound);
     }
     Ok((id, mission, spec))

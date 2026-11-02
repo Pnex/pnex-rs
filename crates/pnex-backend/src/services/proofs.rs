@@ -71,7 +71,7 @@ pub async fn request(
         .collect();
     // Without an agent online the task waits (D308); the text the server
     // read stays available meanwhile.
-    let waiting = !crate::services::extension::any_online(db, org_id).await;
+    let waiting = !crate::services::extension::runner_online(db, org_id, None).await;
     db.execute_raw(stmt(
         "INSERT INTO extension_missions (id, org_id, name, kind, spec, target, interval_secs, \
             enabled, state_code) VALUES ($1, $2, $3, 'capture_proof', $4, $5, $6, true, $7)",
@@ -861,7 +861,7 @@ pub async fn server_pass(ctx: &AppContext) -> Result<usize, sea_orm::DbErr> {
             continue;
         };
         // An agent came online meanwhile: the task is its own.
-        if crate::services::extension::any_online(&ctx.db, w.org_id).await {
+        if crate::services::extension::runner_online(&ctx.db, w.org_id, None).await {
             continue;
         }
         let shot = tokio::time::timeout(

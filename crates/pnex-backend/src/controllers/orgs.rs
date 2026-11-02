@@ -882,6 +882,9 @@ async fn remove_member(
     crate::services::ai::conversations::delete_all(&txn, user_id, org_id)
         .await
         .map_err(|_| Error::InternalServerError)?;
+    crate::services::extension::forget_member(&txn, org_id, user_id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     // Their teams and roles in this org go too (iam.md D286).
     crate::services::iam::store::forget_member(&txn, org_id, user_id)
         .await

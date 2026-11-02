@@ -157,6 +157,15 @@ pub struct BrowserAgent {
     /// `shared` or `dedicated:<platform>` (D269).
     pub mode: String,
     pub online: bool,
+    /// Runs the missions of every member; otherwise only its owner's.
+    #[serde(default)]
+    pub common: bool,
+    /// Paired by the caller.
+    #[serde(default)]
+    pub mine: bool,
+    /// Display name of the member who paired it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
@@ -183,6 +192,9 @@ pub struct BrowserAgentPatch {
     /// `shared` or `dedicated:<platform>` (D269).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
+    /// Admin on their own browser; its owner may always take it back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common: Option<bool>,
 }
 
 /// Ticket body, sent with the device token.
@@ -497,6 +509,25 @@ pub struct CaptureProfileParams {
     /// The `person` the profile belongs to.
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub person_id: String,
+}
+
+/// A profile capture asked for a person, with where it stands (D333).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ProfileCapture {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub id: String,
+    pub url: String,
+    pub state: MissionState,
+    /// Code of the last obstacle (`ext-no-agent`, `ext-login-required`…).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_code: Option<String>,
+    /// Still to run; closed either captured or stopped by an objection.
+    pub open: bool,
+    /// The page was read. Its text is deleted after 30 days, this stays.
+    pub captured: bool,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub created_at: String,
 }
 
 /// Body of a profile capture request (D333).
