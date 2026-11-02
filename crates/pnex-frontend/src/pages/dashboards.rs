@@ -803,13 +803,32 @@ fn EditorSubView(dashboard_id: String, on_back: EventHandler<()>) -> Element {
     // Clone of the resource state BEFORE the match: the read temporaries
     // do not outlive the arms (GenerationalRef pitfalls approach).
     let state = detail.read().clone();
+    let navigator = use_navigator();
+    // A screen goes back to the builder of its application (app-builder.md D507).
+    let screen_of = state
+        .as_ref()
+        .and_then(|d| d.as_ref())
+        .and_then(|d| d.app_id.clone());
+    let back_to = move |_| match screen_of.clone() {
+        None => on_back.call(()),
+        Some(app_id) => {
+            spawn(async move {
+                match api::apps::get(&app_id).await {
+                    Ok(a) => {
+                        navigator.push(crate::app::Route::AppBuild { app: a.key });
+                    }
+                    Err(e) => crate::state::toasts::error(e),
+                }
+            });
+        }
+    };
     match state {
         Some(Some(d)) => rsx! {
             DashboardEditor {
                 key: "{d.id}-{d.current_version_number}",
                 detail: d.clone(),
                 can_write: true,
-                on_back,
+                on_back: back_to,
                 on_changed: move |_| reload.with_mut(|r| *r += 1),
             }
         },

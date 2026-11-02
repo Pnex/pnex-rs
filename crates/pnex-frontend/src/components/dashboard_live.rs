@@ -251,7 +251,7 @@ fn live_wire(layout: &DashboardLayout, wire: &pnex_core::Wire) -> Element {
 
 /// Points of the primary source of a widget and whether it is degraded
 /// (the key exists but at `None`: O2 unreachable for this series).
-fn widget_points(
+pub fn widget_points(
     w: &Widget,
     values: &HashMap<String, Option<Vec<TelemetryPoint>>>,
 ) -> (Option<Vec<TelemetryPoint>>, bool) {

@@ -216,3 +216,182 @@ async fn an_unknown_api_route_is_a_json_404() {
     })
     .await;
 }
+
+/// Screens built in PneX (app-builder.md AB0–AB4), on an invented ontology:
+/// a builder lays out what the application permits, readers see what was
+/// published, and a screen narrows the caller's rights without adding any.
+#[tokio::test]
+#[serial]
+async fn a_screen_reads_and_writes_inside_its_application() {
+    with_app(|server, alice| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        for key in ["article", "draft"] {
+            let (st, t) = call(&server, "POST", "/api/v1/ontology/types", &alice, org,
+                Some(json!({"def": {"key": key, "name": key,
+                    "properties": [{"key": "lang", "name": "Lang", "kind": "text", "max_len": 8}],
+                    "actions": [{"key": "review", "name": "Review"}]}}))).await;
+            assert_eq!(st, 201, "{t}");
+        }
+        let a = |title: &str, lang: &str| json!({"type_key": "article", "title": title, "properties": {"lang": lang}});
+        let (_, fr) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(a("Moteur", "fr"))).await;
+        call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(a("Engine", "en"))).await;
+        let (st, draft) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org,
+            Some(json!({"type_key": "draft", "title": "Secret"}))).await;
+        assert_eq!(st, 201, "{draft}");
+
+        // Actions are checked at the declaration.
+        let decl = json!({"key": "library", "name": "Library", "scope": {"types": ["article"]}, "actions": ["draft.review"]});
+        let (st, e) = call(&server, "POST", "/api/v1/apps", &alice, org, Some(decl)).await;
+        assert_eq!((st, e["errors"]["fields"]["actions"].as_str()), (400, Some("out-of-scope")), "{e}");
+        let (st, app) = call(&server, "POST", "/api/v1/apps", &alice, org, Some(json!({
+            "key": "library", "name": "Library", "scope": {"types": ["article"]}, "actions": ["article.review"]
+        }))).await;
+        assert_eq!(st, 201, "{app}");
+        let id = app["id"].as_str().unwrap().to_string();
+        let url = format!("/api/v1/apps/{id}");
+
+        // Build: an unknown home, an out-of-scope set, then the real thing.
+        let (st, e) = call(&server, "PUT", &format!("{url}/build"), &alice, org, Some(json!({
+            "screens": [{"key": "list", "name": "List"}], "home": "nope", "expected_version": 1
+        }))).await;
+        assert_eq!((st, e["errors"]["fields"]["home"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, e) = call(&server, "PUT", &format!("{url}/build"), &alice, org, Some(json!({
+            "object_sets": {"drafts": {"query": {"type_key": "draft"}}}, "expected_version": 1
+        }))).await;
+        assert_eq!((st, e["errors"]["fields"]["object_sets.drafts.type_key"].as_str()), (400, Some("out-of-scope")), "{e}");
+        let build = json!({
+            "screens": [{"key": "list", "name": "List"}, {"key": "sheet", "name": "Sheet"}],
+            "home": "list",
+            "variables": [{"name": "lang"}, {"name": "picked", "kind": "object", "type_key": "article"}],
+            "object_sets": {"by_lang": {"query": {"type_key": "article",
+                "filters": [{"key": "lang", "op": "eq", "value": "$lang"}]}}},
+            "expected_version": 1
+        });
+        let (st, built) = call(&server, "PUT", &format!("{url}/build"), &alice, org, Some(build.clone())).await;
+        assert_eq!(st, 200, "{built}");
+        assert_eq!(built["screens"][1]["key"], "sheet");
+        let (st, _) = call(&server, "PUT", &format!("{url}/build"), &alice, org, Some(build)).await;
+        assert_eq!(st, 409, "a build keeps to the version it read");
+        let dash = built["screens"][0]["dashboard_id"].as_str().unwrap().to_string();
+
+        // A screen is not a dashboard of the org, and cannot be deleted as one.
+        let (_, list) = call(&server, "GET", "/api/v1/dashboards", &alice, org, None).await;
+        assert_eq!(list["count"], 0, "{list}");
+        let (st, _) = call(&server, "DELETE", &format!("/api/v1/dashboards/{dash}"), &alice, org, None).await;
+        assert_eq!(st, 404);
+
+        // Readers see nothing before the first publication.
+        let (st, _) = call(&server, "GET", &format!("{url}/screens/list"), &alice, org, None).await;
+        assert_eq!(st, 404);
+
+        let widget = |ty: &str, options: Value| json!({"id": "w1", "type": ty, "x": 0, "y": 0, "w": 400, "h": 300, "source": [], "options": options});
+        let save = |version: i64, w: Value| json!({"expected_version_number": version, "layout": {
+            "canvas": {"width": 1600, "height": 900}, "widgets": [w], "wires": []}});
+        let put = |body: Value| {
+            let (server, alice, dash) = (&server, alice.clone(), dash.clone());
+            async move {
+                let mut r = server.patch(&format!("/api/v1/dashboards/{dash}"))
+                    .add_header("Authorization", format!("Bearer {alice}"))
+                    .add_header("X-Org-Id", org.to_string());
+                r = r.json(&body);
+                let res = r.await;
+                (res.status_code().as_u16(), serde_json::from_str::<Value>(&res.text()).unwrap_or(Value::Null))
+            }
+        };
+        // What a widget names exists in its application.
+        let table = |o: Value| widget("object_table", o);
+        for (options, code) in [
+            (json!({"object_set": "nope"}), "app_set_unknown"),
+            (json!({"object_set": "by_lang"}), "app_param_unset"),
+            (json!({"object_set": "by_lang", "params": {"lang": "ghost"}}), "app_variable_unknown"),
+            (json!({"object_set": "by_lang", "params": {"lang": "lang"}, "columns": ["ghost"]}), "app_column_unknown"),
+            (json!({"object_set": "by_lang", "params": {"lang": "lang"}, "variable": "lang"}), "app_variable_kind"),
+            (json!({"object_set": "by_lang", "params": {"lang": "lang"}, "screen": "ghost"}), "app_screen_unknown"),
+        ] {
+            let (st, e) = put(save(1, table(json!({"app": options})))).await;
+            assert_eq!(st, 400, "{e}");
+            assert_eq!(e["errors"]["violations"][0]["code"], code, "{e}");
+        }
+        let (st, e) = put(save(1, widget("action_button", json!({"app": {"variable": "picked", "action": "draft.review"}})))).await;
+        assert_eq!((st, e["errors"]["violations"][0]["code"].as_str()), (400, Some("app_action_not_permitted")), "{e}");
+        let (st, e) = put(save(1, widget("object_form", json!({"app": {"object_type": "draft"}})))).await;
+        assert_eq!((st, e["errors"]["violations"][0]["code"].as_str()), (400, Some("app_type_out_of_scope")), "{e}");
+        let good = table(json!({"app": {"object_set": "by_lang", "params": {"lang": "lang"},
+            "columns": ["title", "lang"], "variable": "picked", "screen": "sheet"}}));
+        let (st, saved) = put(save(1, good)).await;
+        assert_eq!(st, 200, "{saved}");
+        assert_eq!(saved["app_id"].as_str(), Some(id.as_str()));
+
+        // A dashboard of the org refuses these widgets.
+        let (st, e) = call(&server, "POST", "/api/v1/dashboards", &alice, org, Some(json!({"name": "D", "layout": {
+            "canvas": {"width": 1600, "height": 900},
+            "widgets": [widget("object_count", json!({"app": {"object_set": "by_lang"}}))]}}))).await;
+        assert_eq!((st, e["errors"]["violations"][0]["code"].as_str()), (400, Some("app_widget_outside_app")), "{e}");
+
+        // Publishing pins what readers see.
+        let current = built["version"].as_i64().unwrap();
+        let (st, _) = call(&server, "POST", &format!("{url}/publish"), &alice, org, Some(json!({"expected_version": 1}))).await;
+        assert_eq!(st, 409);
+        let (st, p) = call(&server, "POST", &format!("{url}/publish"), &alice, org, Some(json!({"expected_version": current}))).await;
+        assert_eq!(st, 200, "{p}");
+        assert_eq!(p["screens"][0]["published_version"], 2, "{p}");
+        let (st, shown) = call(&server, "GET", &format!("{url}/screens/list"), &alice, org, None).await;
+        assert_eq!((st, shown["version"].clone()), (200, json!(2)), "{shown}");
+        let (st, _) = put(save(2, table(json!({"app": {"object_set": "by_lang", "params": {"lang": "lang"}}})))).await;
+        assert_eq!(st, 200);
+        let (_, shown) = call(&server, "GET", &format!("{url}/screens/list"), &alice, org, None).await;
+        assert_eq!(shown["version"], 2, "a saved draft does not reach readers");
+
+        // Object sets, as a person, with parameters as values only.
+        let (st, e) = call(&server, "GET", &format!("{url}/object-sets/by_lang"), &alice, org, None).await;
+        assert_eq!((st, e["errors"]["fields"]["lang"].as_str()), (400, Some("required")), "{e}");
+        let (st, r) = call(&server, "GET", &format!("{url}/object-sets/by_lang?lang=fr"), &alice, org, None).await;
+        assert_eq!((st, r["count"].clone()), (200, json!(1)), "{r}");
+        assert_eq!(r["rows"][0]["object"]["title"], "Moteur");
+        let (st, r) = call(&server, "GET", &format!("{url}/object-sets/by_lang?lang=%25"), &alice, org, None).await;
+        assert_eq!((st, r["count"].clone()), (200, json!(0)), "a value, never a pattern: {r}");
+
+        // Writes through a screen keep to the application.
+        let (st, e) = call(&server, "POST", &format!("/api/v1/ontology/objects?app={id}"), &alice, org,
+            Some(json!({"type_key": "draft", "title": "Out"}))).await;
+        assert_eq!((st, e["error"].as_str()), (403, Some("app-out-of-scope")), "{e}");
+        let (st, o) = call(&server, "POST", &format!("/api/v1/ontology/objects?app={id}"), &alice, org, Some(a("In", "fr"))).await;
+        assert_eq!(st, 201, "{o}");
+        let draft_id = draft["id"].as_str().unwrap();
+        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{draft_id}?app={id}"), &alice, org,
+            Some(json!({"type_key": "draft", "title": "Changed", "expected_version": 1}))).await;
+        assert_eq!((st, e["error"].as_str()), (403, Some("app-out-of-scope")), "{e}");
+        let (st, e) = call(&server, "POST", &format!("/api/v1/ontology/objects/{draft_id}/actions/review?app={id}"), &alice, org,
+            Some(json!({"params": {}}))).await;
+        assert_eq!((st, e["error"].as_str()), (403, Some("app-out-of-scope")), "{e}");
+        let fr_id = fr["id"].as_str().unwrap();
+        let (st, e) = call(&server, "POST", &format!("/api/v1/ontology/objects/{fr_id}/actions/review?app={id}"), &alice, org,
+            Some(json!({"params": {}}))).await;
+        assert!(matches!(st, 409 | 503), "permitted, no deployed flow: {st} {e}");
+
+        // Removing a screen removes its versions; deleting the application the rest.
+        let sheet = built["screens"][1]["dashboard_id"].as_str().unwrap().to_string();
+        let (st, b2) = call(&server, "PUT", &format!("{url}/build"), &alice, org, Some(json!({
+            "screens": [{"key": "list", "name": "Articles"}], "home": "list",
+            "variables": [{"name": "lang"}, {"name": "picked", "kind": "object", "type_key": "article"}],
+            "object_sets": {"by_lang": {"query": {"type_key": "article",
+                "filters": [{"key": "lang", "op": "eq", "value": "$lang"}]}}},
+            "expected_version": p["version"]
+        }))).await;
+        assert_eq!(st, 200, "{b2}");
+        assert_eq!(b2["screens"][0]["published_version"], 2, "a kept screen stays published");
+        let (st, _) = call(&server, "GET", &format!("/api/v1/dashboards/{sheet}"), &alice, org, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "DELETE", &url, &alice, org, None).await;
+        assert_eq!(st, 204);
+        let (st, _) = call(&server, "GET", &format!("/api/v1/dashboards/{dash}"), &alice, org, None).await;
+        assert_eq!(st, 404);
+    })
+    .await;
+}

@@ -153,6 +153,7 @@ fn widget_panel(
     // Metric select is inert without write access, a device or a catalog.
     let metric_locked = !can_write || primary.device_id.is_empty() || source_metrics.is_empty();
     let is_control = pnex_core::CONTROL_WIDGET_TYPES.contains(&w.widget_type.as_str());
+    let is_app = pnex_core::APP_WIDGET_TYPES.contains(&w.widget_type.as_str());
     let is_mobile = cx.layout.read().format == pnex_core::DashboardFormat::Mobile;
     // Copy for the source select closure (FnMut/Fn captures trap:
     // `catalog` is also used for rendering, never a shared move).
@@ -222,7 +223,8 @@ fn widget_panel(
             // the state (the old `eff_*` fallback produced saves
             // with "invalid device_id: ''").
             // A static symbol (no source) has no binding either.
-            if w.widget_type != "text" && w.widget_type != "thermo_chart"
+            if !pnex_core::APP_WIDGET_TYPES.contains(&w.widget_type.as_str())
+                && w.widget_type != "text" && w.widget_type != "thermo_chart"
                 && w.widget_type != pnex_core::home::HOME_WIDGET_TYPE
                 && !(w.widget_type == "symbol" && w.source.is_empty())
                 && !(is_control && w.source.is_empty())
@@ -450,6 +452,9 @@ fn widget_panel(
             if reads_series(&w.widget_type) {
                 ObjectSourcePanel { cx, widget: w.clone(), can_write }
             }
+            if pnex_core::APP_WIDGET_TYPES.contains(&w.widget_type.as_str()) {
+                super::app_panel::AppWidgetPanel { cx, widget: w.clone(), can_write }
+            }
             if w.widget_type == pnex_core::RANGE_BARS {
                 RangeBarsPanel { cx, widget: w.clone(), can_write }
             }
@@ -480,7 +485,7 @@ fn widget_panel(
 
             } else if w.widget_type == "symbol" && w.source.is_empty() {
 
-            } else if is_control {
+            } else if is_control || is_app {
 
             } else {
                 div { class: "grid grid-cols-2 gap-2",
@@ -585,7 +590,7 @@ fn widget_panel(
             AppearancePanel { cx, widget: w.clone(), can_write }
             div { class: "pt-2 flex flex-col gap-2 border-t border-gray-100",
                 button {
-                    class: if can_write { "inline-flex items-center justify-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50" } else { "hidden" },
+                    class: if can_write && !is_app { "inline-flex items-center justify-center px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50" } else { "hidden" },
                     onclick: move |_| {
                         let Some(widget_id) = selected_widget_id(&cx) else { return };
                         cx.save_as.set(Some(widget_id));

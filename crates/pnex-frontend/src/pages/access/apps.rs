@@ -157,6 +157,12 @@ fn AppDialog(
             .map(|a| serde_json::to_string_pretty(&a.object_sets).unwrap_or_default())
             .unwrap_or_else(|| "{}".into())
     });
+    let mut actions_text = use_signal(|| {
+        start
+            .as_ref()
+            .map(|a| a.actions.join(", "))
+            .unwrap_or_default()
+    });
     let sets = serde_json::from_str::<BTreeMap<String, ObjectSetDef>>(&sets_json());
     let sets_ok = sets.is_ok();
     let mut busy = use_signal(|| false);
@@ -175,6 +181,11 @@ fn AppDialog(
             service_account_id: Some(account()).filter(|a| !a.is_empty()),
             scope: s,
             object_sets: serde_json::from_str(&sets_json()).unwrap_or_default(),
+            actions: actions_text()
+                .split(',')
+                .map(|a| a.trim().to_string())
+                .filter(|a| !a.is_empty())
+                .collect(),
             expected_version: app.as_ref().map(|a| a.version),
         };
         let id = app.as_ref().map(|a| a.id.clone());
@@ -231,6 +242,14 @@ fn AppDialog(
             }
             AccountPicker { account }
             ScopePicker { scope }
+            label { class: FIELD_LABEL, r#for: "app-field-actions", {t!("access-app-actions")} }
+            input {
+                id: "app-field-actions",
+                class: INPUT,
+                value: "{actions_text}",
+                oninput: move |e| actions_text.set(e.value()),
+            }
+            p { class: FIELD_HELP, {t!("access-app-actions-help")} }
             ObjectSets { sets_json, ok: sets_ok }
             div {
                 label { class: FIELD_LABEL, r#for: "app-field-max", {t!("access-app-media-max")} }

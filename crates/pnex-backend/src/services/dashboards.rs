@@ -56,6 +56,59 @@ fn validate_dashboard_write(
     Ok(())
 }
 
+/// The widgets of an application read its object sets: they have no meaning
+/// on a dashboard of the org (app-builder.md D506).
+fn refuse_app_widgets(layout: &DashboardLayout) -> Result<(), DashboardWriteError> {
+    let v: Vec<VizViolation> = layout
+        .widgets
+        .iter()
+        .filter(|w| pnex_core::APP_WIDGET_TYPES.contains(&w.widget_type.as_str()))
+        .map(|w| {
+            VizViolation::new(
+                Some(&w.id),
+                "app_widget_outside_app",
+                "this widget exists only on a screen of an application",
+            )
+        })
+        .collect();
+    if v.is_empty() {
+        Ok(())
+    } else {
+        Err(DashboardWriteError::Violations(v))
+    }
+}
+
+/// Deletes a dashboard with what hangs on it: its labels and links (D42),
+/// the controls its widgets declared (D131), then its versions (FK CASCADE).
+pub async fn purge(
+    ctx: &loco_rs::app::AppContext,
+    org_id: i64,
+    id: uuid::Uuid,
+) -> Result<(), sea_orm::DbErr> {
+    crate::services::resources::purge_for(
+        &ctx.db,
+        org_id,
+        pnex_core::resources::KIND_DASHBOARD,
+        &id.to_string(),
+    )
+    .await?;
+    let released = crate::services::surface_controls::release_surface(
+        &ctx.db,
+        org_id,
+        pnex_core::ui_control::ORIGIN_DASHBOARD,
+        id,
+    )
+    .await
+    .map_err(|_| sea_orm::DbErr::Custom("controls not released".into()))?;
+    crate::services::surface_controls::forget_deleted(ctx, org_id, &released).await;
+    dashboards::Entity::delete_many()
+        .filter(dashboards::Column::OrgId.eq(org_id))
+        .filter(dashboards::Column::Id.eq(id))
+        .exec(&ctx.db)
+        .await?;
+    Ok(())
+}
+
 /// D131: provisions the controls declared by the control widgets (inside
 /// the save transaction) and returns the layout with every control widget
 /// bound to its control — the version stored and returned to the editor.
@@ -159,12 +212,39 @@ pub async fn create_dashboard(
     };
     let layout = layout.unwrap_or(&default_layout);
     validate_dashboard_write(name, layout)?;
+    refuse_app_widgets(layout)?;
+    insert_dashboard(db, org_id, name, description, layout, author, None).await
+}
+
+/// A screen of an application as a pack ships it (app-builder.md D513): the
+/// application checked what its widgets name.
+pub async fn create_screen(
+    db: &DatabaseConnection,
+    org_id: i64,
+    app_id: uuid::Uuid,
+    name: &str,
+    layout: &DashboardLayout,
+) -> Result<(dashboards::Model, i64), DashboardWriteError> {
+    validate_dashboard_write(name, layout)?;
+    insert_dashboard(db, org_id, name, None, layout, None, Some(app_id)).await
+}
+
+async fn insert_dashboard(
+    db: &DatabaseConnection,
+    org_id: i64,
+    name: &str,
+    description: Option<String>,
+    layout: &DashboardLayout,
+    author: Option<String>,
+    app_id: Option<uuid::Uuid>,
+) -> Result<(dashboards::Model, i64), DashboardWriteError> {
     let txn = db.begin().await.map_err(|_| DashboardWriteError::Db)?;
     let dashboard = dashboards::ActiveModel {
         name: Set(name.trim().to_string()),
         description: Set(description),
         current_version_number: Set(1),
         org_id: Set(org_id),
+        app_id: Set(app_id),
         ..Default::default()
     }
     .insert(&txn)
@@ -245,6 +325,18 @@ pub async fn append_version(
                 "the dashboard format is chosen at creation and never changes",
             ),
         ]));
+    }
+    match dashboard.app_id {
+        None => refuse_app_widgets(layout)?,
+        Some(app_id) => {
+            let violations =
+                crate::services::apps::check_screen_of(db, dashboard.org_id, app_id, layout)
+                    .await
+                    .map_err(|_| DashboardWriteError::Db)?;
+            if !violations.is_empty() {
+                return Err(DashboardWriteError::Violations(violations));
+            }
+        }
     }
     let txn = db.begin().await.map_err(|_| DashboardWriteError::Db)?;
     // The in-memory check above is only a fast path: a concurrent save or

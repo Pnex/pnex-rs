@@ -1,8 +1,8 @@
 # Applications construites dans PneX : écrans métier sur l'ontologie (D506–D513)
 
-> **Statut : PRD validé par Shan le 2026-10-29, rien d'implémenté.**
-> Questions Q-B1 à Q-B6 tranchées : les défauts (§10). Le code attend le
-> feu vert de Shan pour le lot AB0.
+> **Statut : PRD validé par Shan le 2026-10-29, lots AB0–AB5 codés le
+> 2026-11-02, non commité** (§11). Questions Q-B1 à Q-B6 tranchées : les
+> défauts (§10).
 >
 > Demande de Shan (2026-10-29) : faire évoluer la partie supervision
 > (dashboards, surfaces, contrôles), pensée pour l'IoT, vers un builder
@@ -196,3 +196,25 @@ Premier lot de valeur : AB0 → AB2 (application de consultation, sans
 | Q-B4 | Partager une application hors de l'org (lien public) ? | Non en V1 |
 | Q-B5 | Résultat d'une action : D183 est sans retour. Un retour du flow pour l'écran ? | Non en V1 : « envoyé », puis rechargement |
 | Q-B6 | Mobile ? | PC d'abord (AB1–AB4), mobile en AB5 |
+
+## 11. État d'implémentation (2026-11-02, non commité)
+
+Choix pris en codant, sans demande à Shan (réversibles) :
+
+- **Routes** : `PUT /apps/{id}/build` (écrans, accueil, variables, ensembles ; une seule écriture, `apps:build`), `POST /apps/{id}/publish`, `GET /apps/{id}/screens/{key}` (version publiée, `apps:read`), `GET /apps/{id}/object-sets/{name}` (`ontology:read`, masquage D443, paramètres réservés `limit`, `offset`, `sort`, `desc`). `apps:build` = niveau Membre, comme `dashboards:write`.
+- **Écran** : un dashboard avec `app_id`. Son contenu s'édite par les routes dashboards (garde `apps:build`, contrôle de ce que nomment ses widgets, D508) ; il n'apparaît ni dans la liste, ni dans la recherche globale, ni dans les outils de l'assistant ; `DELETE /dashboards/{id}` répond 404.
+- **Écriture** (D511) : `?app=<id>` sur la création, la modification et l'action d'un objet ; 403 `app-out-of-scope`. Un client qui omet le paramètre garde ses droits ordinaires : une application ne donne aucun droit, elle en retire pour ses écrans.
+- **Pack** : `apps:` dans un pack (`PackApp`), créée à l'installation si la clé est libre, écrans publiés, jamais réécrite à la montée. Le pack `crm` 3.2.0 livre « Suivi commercial » (pipeline, opportunité, pistes, activités, devis et factures).
+- **Mobile** (Q-B6) : un écran desktop s'empile par ordre de lecture sur écran étroit, sans mode d'édition mobile dédié.
+
+Tests : `tests/apps.rs` (`a_screen_reads_and_writes_inside_its_application`), `tests/crm.rs` (`the_pack_ships_its_screens`), unitaires `pnex-core` et `pages/apps/run.rs`.
+
+Limites :
+
+- **Pas de spec e2e au dépôt** (§9 en demande une par lot) : essai navigateur scripté le 2026-11-02 hors dépôt, Chromium sans interface sur un serveur isolé (lanceur, pipeline, ligne → écran, fiche, formulaire, création de piste, dialogue d'action, builder, éditeur, publication, écran étroit). Trois défauts corrigés en route : écran qui ne se rechargeait pas au changement de route, requêtes en double, formulaire « Modifier » sans objet. Non essayés en réel : le lien profond `?v.` (test unitaire seulement), une action reçue par un flow déployé (202), le 409 d'un formulaire, un rôle masqué, le mode sombre.
+- La vue reste dans la coquille PneX (barre latérale visible), pas en plein écran.
+- Pas d'aperçu d'un écran non publié : publier pour le voir.
+- Pas de brouillon d'écran proposé par l'assistant (§8).
+- `object_count` compte un ensemble : le pipeline a un ensemble par étape. Les agrégats (ROI par salon, somme des montants) n'existent pas : ils demandent un widget et une spec.
+- Le tri d'un tableau ne porte pas sur le titre (ordre par défaut de la requête).
+

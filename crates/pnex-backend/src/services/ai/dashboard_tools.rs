@@ -193,6 +193,8 @@ fn write_error(e: DashboardWriteError) -> ToolError {
 async fn find(deps: &ToolDeps<'_>, id: Uuid) -> Result<dashboards::Model, ToolError> {
     dashboards::Entity::find_by_id(id)
         .filter(dashboards::Column::OrgId.eq(deps.org_id))
+        // A screen is built in its application, not by this tool.
+        .filter(dashboards::Column::AppId.is_null())
         .one(deps.db)
         .await
         .map_err(internal("reading dashboard"))?
@@ -231,6 +233,7 @@ pub async fn list_dashboards(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolErr
     use sea_orm::QuerySelect;
     let rows = dashboards::Entity::find()
         .filter(dashboards::Column::OrgId.eq(deps.org_id))
+        .filter(dashboards::Column::AppId.is_null())
         .order_by_asc(dashboards::Column::Name)
         .limit(DASHBOARDS_CAP)
         .all(deps.db)

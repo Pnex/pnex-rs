@@ -24,7 +24,7 @@ use axum::routing::{get, post};
 use axum::Json;
 use loco_rs::controller::format;
 use loco_rs::prelude::*;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -52,6 +52,14 @@ async fn find_dashboard(
         .one(db)
         .await
         .map_err(|_| Error::InternalServerError)
+}
+
+/// Editing a screen is building its application (app-builder.md Q-B1).
+fn guard_screen(org: &OrgContext, d: &dashboards::Model) -> Result<()> {
+    if d.app_id.is_some() && !org.can("apps:build") {
+        return Err(crate::auth::access_denied("apps:build"));
+    }
+    Ok(())
 }
 
 /// Layout of a given version (None if the version does not exist).
@@ -131,6 +139,7 @@ async fn detail_dto(db: &DatabaseConnection, d: dashboards::Model) -> Result<Viz
         .unwrap_or_default();
     Ok(VizDashboard {
         id: d.id.to_string(),
+        app_id: d.app_id.map(|a| a.to_string()),
         org_id: d.org_id,
         name: d.name,
         description: d.description,
@@ -194,7 +203,7 @@ pub fn routes() -> Routes {
 struct ListDashboardsQuery {
     /// Case-insensitive search on the name.
     search: Option<String>,
-    /// D42: effective label (`name` or `name:value`, inherited included).
+    /// D42: effective label (`name` or `name:value`, several comma-separated terms all required, inherited included).
     label: Option<String>,
     #[param(value_type = Option<i64>)]
     limit: Option<String>,
@@ -210,7 +219,7 @@ struct ListDashboardsQuery {
     tag = "dashboards",
     operation_id = "dashboards_list",
     summary = "List the dashboards of the organisation",
-    description = "Newest first, paginated (`limit`/`offset`). Filters: `search` (name) and `label` (`name` or `name:value`, inherited labels included). Each row carries the format (desktop/mobile) of its current version. Any member.",
+    description = "Newest first, paginated (`limit`/`offset`). Filters: `search` (name) and `label` (`name` or `name:value`, several comma-separated terms all required, inherited labels included). Each row carries the format (desktop/mobile) of its current version. Any member.",
     params(ListDashboardsQuery),
     responses(
         (status = 200, body = pnex_core::Paginated<pnex_core::VizDashboardSummary>),
@@ -227,6 +236,7 @@ async fn list(
     // Search, COUNT and LIMIT/OFFSET in SQL (org-scoped).
     let mut query = dashboards::Entity::find()
         .filter(dashboards::Column::OrgId.eq(org.org.id))
+        .filter(dashboards::Column::AppId.is_null())
         .order_by_desc(dashboards::Column::Id);
     if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
         query = query.filter(pagination::sql_contains(
@@ -378,6 +388,7 @@ async fn update(
     let Some(dashboard) = find_dashboard(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
+    guard_screen(&org, &dashboard)?;
     match crate::services::dashboards::append_version(
         &ctx.db,
         &dashboard,
@@ -426,29 +437,11 @@ async fn delete(
     let Some(dashboard) = find_dashboard(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    // D42: symmetric purge of the organization layer before the delete.
-    crate::services::resources::purge_for(
-        &ctx.db,
-        org.org.id,
-        pnex_core::resources::KIND_DASHBOARD,
-        &dashboard.id.to_string(),
-    )
-    .await
-    .map_err(|_| Error::InternalServerError)?;
-    // D131: the controls its widgets declared are released (deleted, or
-    // kept standalone while a flow or another surface uses them).
-    let released = crate::services::surface_controls::release_surface(
-        &ctx.db,
-        org.org.id,
-        pnex_core::ui_control::ORIGIN_DASHBOARD,
-        dashboard.id,
-    )
-    .await
-    .map_err(|_| Error::InternalServerError)?;
-    crate::services::surface_controls::forget_deleted(&ctx, org.org.id, &released).await;
-    dashboard
-        .into_active_model()
-        .delete(&ctx.db)
+    // A screen goes with its application (app-builder.md D507).
+    if dashboard.app_id.is_some() {
+        return Err(Error::NotFound);
+    }
+    crate::services::dashboards::purge(&ctx, org.org.id, dashboard.id)
         .await
         .map_err(|_| Error::InternalServerError)?;
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -603,6 +596,7 @@ async fn restore(
     let Some(dashboard) = find_dashboard(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
+    guard_screen(&org, &dashboard)?;
     match crate::services::dashboards::restore_version(&ctx.db, &dashboard, version_number).await {
         Ok(dashboard) => Ok(format::json(detail_dto(&ctx.db, dashboard).await?).into_response()),
         Err(e) => Ok(write_error_response(e)),

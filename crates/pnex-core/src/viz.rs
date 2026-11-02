@@ -42,6 +42,24 @@ pub const VIZ_WIDGET_TYPES: &[&str] = &[
     "color",
     "home_card",
     "range_bars",
+    "object_table",
+    "object_count",
+    "object_fields",
+    "input",
+    "object_form",
+    "action_button",
+];
+
+/// Widgets that read and write the objects of an application: they exist
+/// only on its screens (app-builder.md D510, D511), data in
+/// `WidgetOptions.app`.
+pub const APP_WIDGET_TYPES: &[&str] = &[
+    "object_table",
+    "object_count",
+    "object_fields",
+    "input",
+    "object_form",
+    "action_button",
 ];
 
 /// Per range / per time slice bars widget (D182).
@@ -253,6 +271,10 @@ pub struct WidgetOptions {
     /// D182).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aggregate: Option<crate::aggregate::AggregateWidgetOptions>,
+    /// Data of a widget of an application screen (D510, D511), present iff
+    /// the type is one of [`APP_WIDGET_TYPES`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app: Option<crate::apps::AppWidgetOptions>,
 }
 
 /// Options of the `symbol` widget — a shape of the front-end symbol
@@ -1122,6 +1144,25 @@ pub fn validate_widget(
             "only range bars widgets carry aggregation options".into(),
         );
     }
+    if APP_WIDGET_TYPES.contains(&widget_type) {
+        // What it names is checked against its application (D508).
+        if !source.is_empty() {
+            push("app_widget_source", "this widget reads no series".into());
+        }
+        if options.app.is_none() {
+            push(
+                "app_options_missing",
+                "this widget needs its options".into(),
+            );
+        }
+        return;
+    }
+    if options.app.is_some() {
+        push(
+            "app_options_unexpected",
+            "only widgets of an application screen carry these options".into(),
+        );
+    }
     if widget_type != crate::home::HOME_WIDGET_TYPE && options.home.is_some() {
         push(
             "home_unexpected",
@@ -1365,6 +1406,10 @@ pub struct VizDashboardSummary {
 pub struct VizDashboard {
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
+    /// The application this dashboard is a screen of (app-builder.md D507).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub app_id: Option<String>,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,

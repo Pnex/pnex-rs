@@ -15,6 +15,8 @@ pub struct Model {
     pub current_version_number: i64,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    /// The application this dashboard is a screen of (app-builder.md D507).
+    pub app_id: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

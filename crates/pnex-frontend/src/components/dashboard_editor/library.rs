@@ -47,6 +47,12 @@ pub fn kind_label(kind: &str) -> String {
         "command" => t!("lib-kind-command").to_string(),
         "color" => t!("lib-kind-color").to_string(),
         "home_card" => t!("lib-kind-home_card").to_string(),
+        "object_table" => t!("lib-kind-object_table").to_string(),
+        "object_count" => t!("lib-kind-object_count").to_string(),
+        "object_fields" => t!("lib-kind-object_fields").to_string(),
+        "input" => t!("lib-kind-input").to_string(),
+        "object_form" => t!("lib-kind-object_form").to_string(),
+        "action_button" => t!("lib-kind-action_button").to_string(),
         other => other.to_string(),
     }
 }
@@ -70,6 +76,15 @@ pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
         "stepper" => (PaletteIcon::Thermometer, "bg-teal-50 text-teal-600"),
         "command" => (PaletteIcon::Pointer, "bg-teal-50 text-teal-600"),
         "color" => (PaletteIcon::Image, "bg-teal-50 text-teal-600"),
+        "object_table" => (PaletteIcon::Layers, "bg-signal-50 text-signal-600"),
+        "object_count" => (PaletteIcon::Hash, "bg-signal-50 text-signal-600"),
+        "object_fields" => (PaletteIcon::Info, "bg-signal-50 text-signal-600"),
+        "input" => (
+            PaletteIcon::SlidersHorizontal,
+            "bg-signal-50 text-signal-600",
+        ),
+        "object_form" => (PaletteIcon::CheckCircle, "bg-signal-50 text-signal-600"),
+        "action_button" => (PaletteIcon::Pointer, "bg-signal-50 text-signal-600"),
         _ => (PaletteIcon::Puzzle, "bg-gray-100 text-gray-600"),
     }
 }
@@ -134,6 +149,7 @@ fn group_label(group: &str) -> String {
         "display" => t!("lib-group-display").to_string(),
         "charts" => t!("lib-group-charts").to_string(),
         "industrial" => t!("lib-group-industrial").to_string(),
+        "app" => t!("lib-group-app").to_string(),
         other => other.to_string(),
     }
 }
@@ -153,13 +169,22 @@ fn kind_item(kind: &str, group: &str) -> PaletteItem {
 
 /// Shell palette items — one per widget type (click = add),
 /// grouped by category (D134).
-pub fn palette_items() -> Vec<PaletteItem> {
-    let mut items = vec![
+pub fn palette_items(app_screen: bool) -> Vec<PaletteItem> {
+    let mut items: Vec<PaletteItem> = if app_screen {
+        // The widgets of its objects first: they are why a screen exists.
+        pnex_core::APP_WIDGET_TYPES
+            .iter()
+            .map(|k| kind_item(k, "app"))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    items.extend([
         PaletteItem::new(FROM_DEVICE_KEY, t!("db-from-device").to_string())
             .with_description(t!("db-from-device-desc").to_string())
             .with_icon(PaletteIcon::Cpu, "bg-teal-50 text-teal-700")
             .with_group(group_label("start")),
-    ];
+    ]);
     for (group, cards) in HOME_GROUPS {
         items.extend(cards.iter().map(|card| {
             PaletteItem::new(
@@ -387,8 +412,13 @@ mod tests {
                 .iter()
                 .filter(|(_, kinds)| kinds.contains(kind))
                 .count();
-            // `symbol` and `home_card` are reached through their own entries.
-            let expected = usize::from(*kind != SYMBOLS_KEY && *kind != "home_card");
+            // `symbol` and `home_card` are reached through their own entries,
+            // the widgets of an application only on its screens.
+            let expected = usize::from(
+                *kind != SYMBOLS_KEY
+                    && *kind != "home_card"
+                    && !pnex_core::APP_WIDGET_TYPES.contains(kind),
+            );
             assert_eq!(n, expected, "{kind}");
         }
     }

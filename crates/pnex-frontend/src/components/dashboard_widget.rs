@@ -54,6 +54,13 @@ pub fn WidgetBody(
         };
     }
 
+    // Widgets of an application screen read its object sets (D510, D511).
+    if pnex_core::APP_WIDGET_TYPES.contains(&w.widget_type.as_str()) {
+        return rsx! {
+            crate::components::app_widgets::AppWidgetBody { widget: widget.clone() }
+        };
+    }
+
     // Home cards draw their whole card (D138).
     if w.widget_type == pnex_core::home::HOME_WIDGET_TYPE {
         return rsx! {

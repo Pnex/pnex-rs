@@ -13,6 +13,7 @@
 //! the call; 409 → reload/overwrite modal (flow editor approach).
 
 mod actions;
+mod app_panel;
 mod appearance;
 mod canvas;
 mod control_panel;
@@ -93,6 +94,8 @@ pub struct EditorCx {
     /// Name shown in the shell title, updated by a successful rename.
     pub name: Signal<String>,
     pub layout: Signal<DashboardLayout>,
+    /// The application this dashboard is a screen of (app-builder.md D507).
+    pub app: Signal<Option<pnex_core::apps::AppView>>,
     pub saved_layout: Signal<DashboardLayout>,
     /// **Current server-side** version (the live pointer targeted by the
     /// next save).
@@ -135,6 +138,16 @@ pub fn DashboardEditor(
     on_changed: EventHandler<()>,
 ) -> Element {
     let dashboard_id = use_signal(move || detail.id.clone());
+    let mut app = use_signal(|| None);
+    let app_id = detail.app_id.clone();
+    use_future(move || {
+        let id = app_id.clone();
+        async move {
+            if let Some(id) = id {
+                app.set(crate::api::apps::get(&id).await.ok());
+            }
+        }
+    });
     let name = use_signal(move || detail.name.clone());
     let initial_layout = detail.layout.clone();
     // Seed BEFORE the `layout` closure consumes `initial_layout`.
@@ -170,6 +183,7 @@ pub fn DashboardEditor(
     let mut versions_open = use_signal(|| false);
 
     let mut cx = EditorCx {
+        app,
         dashboard_id,
         name,
         layout,
@@ -445,7 +459,7 @@ pub fn DashboardEditor(
                     add_title: t!("eshell-add-widget").to_string(),
                     title: t!("lib-title").to_string(),
                     search_placeholder: t!("eshell-search").to_string(),
-                    items: library::palette_items(),
+                    items: library::palette_items(cx.app.read().is_some()),
                     on_pick: move |kind: String| {
                         if kind == library::SYMBOLS_KEY {
                             cx.symbols_open.set(true);

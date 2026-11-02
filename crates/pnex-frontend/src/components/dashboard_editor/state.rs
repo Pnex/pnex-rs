@@ -77,7 +77,10 @@ pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x
                 pressure_unit: ThermoPressureUnit::default(),
             }),
         )
-    } else if widget_type == "text" || pnex_core::CONTROL_WIDGET_TYPES.contains(&widget_type) {
+    } else if widget_type == "text"
+        || pnex_core::CONTROL_WIDGET_TYPES.contains(&widget_type)
+        || pnex_core::APP_WIDGET_TYPES.contains(&widget_type)
+    {
         // Control cards: the state source is optional (opt-in from the
         // inspector), the control itself is picked there.
         (vec![], None)
@@ -114,6 +117,9 @@ pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x
         options: WidgetOptions {
             thermo,
             aggregate: (widget_type == pnex_core::RANGE_BARS).then(Default::default),
+            app: pnex_core::APP_WIDGET_TYPES
+                .contains(&widget_type)
+                .then(Default::default),
             ..Default::default()
         },
     });
