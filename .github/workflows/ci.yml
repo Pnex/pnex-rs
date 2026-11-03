@@ -100,6 +100,8 @@ jobs:
     env:
       TEST_DATABASE_URL: postgres://pnex:pnex@localhost:5432/pnex_test
       PNEX_TEST_APP_VALKEY_URL: redis://localhost:6379/0
+      # Without it the Valkey-backed tests return early and pass without checking anything.
+      PNEX_TEST_VALKEY_URL: redis://localhost:6379/0
     steps:
       # Hosted runners ship ~14 GB free; a workspace test build needs more.
       - name: Free disk space
@@ -132,7 +134,8 @@ jobs:
         run: |
           timeout 120 bash -c "until aws --endpoint-url http://localhost:9000 s3 ls >/dev/null 2>&1; do sleep 1; done"
           aws --endpoint-url http://localhost:9000 s3api create-bucket --bucket pnex-test
-      - run: cargo test --workspace --exclude pnex-recorder
+      # One red binary must not hide the verdict of the ones after it.
+      - run: cargo test --workspace --exclude pnex-recorder --no-fail-fast
 
   recorder:
     name: pnex-recorder (clippy + tests)

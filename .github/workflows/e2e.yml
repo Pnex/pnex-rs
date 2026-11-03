@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: e2e
@@ -39,6 +40,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
       - name: Pull the application images
@@ -87,6 +90,18 @@ jobs:
             task e2e -- --grep "$GREP" --grep-invert @hardware
           else
             task e2e -- --grep-invert @hardware
+          fi
+      # A nightly on an old image stays green while main is broken: Images is
+      # skipped when CI is red, and can fail on its own.
+      - name: The tested image is the code of main
+        if: ${{ always() && env.IMAGE_TAG == 'main' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          built=$(gh run list --workflow images.yml --branch main --status success --limit 1 --json headSha --jq '.[0].headSha')
+          if ! git diff --quiet "$built" HEAD -- crates compose.yaml compose.app.yaml; then
+            echo "::error::image main was built from $built, $(git rev-list --count "$built"..HEAD) commits behind: this run did not test main"
+            exit 1
           fi
       - name: Stack logs
         if: failure()

@@ -92,6 +92,7 @@ Rules:
 | `controls` | `@dashboards` | mobile dashboard (creation modal), switch card declaring its own source at save (no control to pick, D131), a deployed control-source → memory-write flow receives the press; deleting the dashboard deletes the unused source |
 | `annotation-controls` | `@studio` | control item on a panorama, operated from the tour preview side panel, reaches a deployed flow |
 | `events` | `@events` | Event log node → OpenObserve → Events page |
+| `packs` | `@packs` | Every pack installed in a throwaway org, each of its flows deployed on the real runtime, then stopped |
 | `notifications` | `@notifications` | SMTP channel tested from its form: the mail lands in mailcrab |
 | `settings` | `@settings` | secrets (value never shown back), organizations create/delete |
 | `search` | `@search @i18n` | sidebar search finds a function and deep-links to its editor |
