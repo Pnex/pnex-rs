@@ -227,7 +227,15 @@ async fn set_default<C: ConnectionTrait>(
         .iter()
         .all(|r| r.id == id || !r.is_default);
     let sql = if wanted || first {
-        "UPDATE web_search_providers SET is_default = (id = $2) WHERE org_id = $1"
+        // Two statements: the unique index on the default is checked row by row
+        // and would refuse the new one while the old one is still set.
+        db.execute_raw(stmt(
+            "UPDATE web_search_providers SET is_default = false \
+             WHERE org_id = $1 AND id <> $2 AND is_default",
+            vec![org_id.into(), id.into()],
+        ))
+        .await?;
+        "UPDATE web_search_providers SET is_default = true WHERE org_id = $1 AND id = $2"
     } else {
         "UPDATE web_search_providers SET is_default = false WHERE org_id = $1 AND id = $2"
     };
