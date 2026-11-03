@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **M1, M2, M6 codés — 2026-10-26**, écran `/mailboxes` le 2026-10-27 (menu Appareils, à côté des sites web) : serveur mail classique (IMAP, mot de passe) ; Microsoft reporté (§10). PneX **collecte et range** ; envoi (M3) codé le 2026-10-29, non commité (§9) |
+| Statut | **M1, M2, M6 codés — 2026-10-26**, écran `/mailboxes` le 2026-10-27 (menu Appareils, à côté des sites web) : serveur mail classique (IMAP, mot de passe) ; Microsoft reporté (§10). PneX **collecte et range** ; envoi (M3) codé le 2026-10-29, essayé sur un vrai serveur le 2026-11-03 (o2switch : SMTP 465, relève IMAP du mail envoyé, marque `from_pnex` reconnue) ; l'essai a mené à corriger `In-Reply-To`/`References` sans chevrons (§9) |
 | Déclencheur | Lot CRM3 de `crm.md` (mail entrant rattaché à la fiche), élargi : le mail est une source comme les flux et les sites web, utile bien au-delà du commercial |
 | Repose sur | `iam.md` (principaux, comptes de service, équipes, D286–D299), `autonomous-agents.md` (agent = compte de service, D379, D381, D398), `secrets` (coffre D110–D118), `ontology.md` (types système D176–D177), `crm.md` (D442–D447 données personnelles), `security.md` (R8, R11–R13) |
 | Numérotation | **D453…D463**, lots **M1…M6** ; envoi (M3) : **D518…D521** (2026-10-29) |

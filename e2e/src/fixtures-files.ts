@@ -22,7 +22,10 @@ export async function makePanorama(browser: Browser, label: string, w = 2048): P
       `display:flex;align-items:center;justify-content:space-around;font:bold 64px sans-serif;color:#0f172a">` +
       `<span>N</span><span>${label}</span><span>S</span><span>W</span></body>`,
   );
-  const png = await page.screenshot({ type: 'png' });
+  // Chromium can refuse one capture under load; this image is only a fixture.
+  const png = await page
+    .screenshot({ type: 'png' })
+    .catch(() => page.screenshot({ type: 'png' }));
   await page.close();
   return png;
 }
