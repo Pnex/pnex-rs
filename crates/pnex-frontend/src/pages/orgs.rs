@@ -57,7 +57,7 @@ fn OrgsPage(initial: Option<i64>) -> Element {
     let mut new_name = use_signal(String::new);
     let mut creating = use_signal(|| false);
     let mut busy = use_signal(|| false);
-    let page = use_signal(|| 0i64);
+    let mut page = use_signal(|| 0i64);
 
     let list = use_resource(move || async move {
         let _ = reload();
@@ -183,6 +183,8 @@ fn OrgsPage(initial: Option<i64>) -> Element {
                             Ok(created) => {
                                 toasts::success("toast-saved");
                                 org::set(created.id);
+                                // The list runs oldest first: the new org is the last row.
+                                page.set(count / PAGE_SIZE);
                                 new_name.set(String::new());
                                 creating.set(false);
                             }

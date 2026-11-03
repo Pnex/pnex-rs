@@ -16,10 +16,10 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use loco_rs::prelude::*;
 use pnex_core::OrgRole;
-use sea_orm::TransactionTrait;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, Set,
 };
+use sea_orm::{QueryOrder, TransactionTrait};
 use serde::Deserialize;
 
 use super::pagination;
@@ -177,6 +177,8 @@ async fn list(
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let memberships = organization_members::Entity::find()
         .filter(organization_members::Column::UserId.eq(auth.user.id))
+        // Oldest first: without an order, pages would move between two reads.
+        .order_by_asc(organization_members::Column::OrgId)
         .find_also_related(organizations::Entity)
         .all(&ctx.db)
         .await
