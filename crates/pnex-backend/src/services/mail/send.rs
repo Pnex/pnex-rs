@@ -162,8 +162,8 @@ async fn answered(
     let found = db
         .query_one_raw(stmt(
             "SELECT refs, automatic, from_pnex FROM mail_messages \
-             WHERE mailbox_id = $1 AND message_id = $2",
-            vec![row.id.into(), in_reply_to.into()],
+             WHERE mailbox_id = $1 AND trim(both '<>' from message_id) = $2",
+            vec![row.id.into(), in_reply_to.trim_matches(['<', '>']).into()],
         ))
         .await?
         .ok_or_else(|| invalid("in_reply_to", err_codes::FIELD_INVALID))?;
@@ -593,6 +593,16 @@ pub struct Outgoing<'a> {
     pub automated: bool,
 }
 
+/// The mail parser strips the angle brackets of a stored id; a header without
+/// them is invalid and breaks the thread in the recipient's client.
+fn bracketed(id: &str) -> String {
+    if id.starts_with('<') {
+        id.to_string()
+    } else {
+        format!("<{id}>")
+    }
+}
+
 /// The message as it leaves: plain text, our marks, the thread.
 pub fn build(o: &Outgoing) -> Result<Message, MailboxError> {
     let bad = |_| error(err_codes::MAIL_SEND_REFUSED, Value::Null);
@@ -604,7 +614,8 @@ pub fn build(o: &Outgoing) -> Result<Message, MailboxError> {
         b = b.to(a.address.parse::<Addr>().map_err(bad)?);
     }
     if let Some(last) = o.refs.last() {
-        b = b.in_reply_to(last.clone()).references(o.refs.join(" "));
+        let refs: Vec<String> = o.refs.iter().map(|r| bracketed(r)).collect();
+        b = b.in_reply_to(bracketed(last)).references(refs.join(" "));
     }
     b = b.raw_header(HeaderValue::new(
         HeaderName::new_from_ascii_str(ORIGIN_HEADER),
@@ -753,6 +764,11 @@ mod tests {
         ] {
             assert!(t.contains(want), "{want} missing in:\n{t}");
         }
+        // Ids as the poller stores them, without brackets, leave with them.
+        let bare = ["a@acme.fr".to_string(), "b@acme.fr".to_string()];
+        let t = text(&Outgoing { refs: &bare, ..o });
+        assert!(t.contains("In-Reply-To: <b@acme.fr>"), "{t}");
+        assert!(t.contains("References: <a@acme.fr> <b@acme.fr>"), "{t}");
         // A mail a person sends is not automatic.
         let by_hand = text(&Outgoing {
             automated: false,
