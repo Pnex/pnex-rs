@@ -24,14 +24,6 @@ ignore = [
     # rrgen (code generator). Our own YAML parsing, incl. user-uploaded ontology
     # packs, uses serde-saphyr (safe Rust).
     { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained (loco-rs config / rrgen), no untrusted input" },
-    # zip < 9 extraction flaws (SUID bits kept, symlinks escaping the target,
-    # permissions applied through symlinks): all in `extract()` to disk. Our
-    # own code is on zip 9; what remains is zip 8.6 via calamine 0.36.1 (xlsx
-    # read in memory, never extracted to disk). Drop when calamine moves to 9.
-    { id = "RUSTSEC-2026-0367", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
-    { id = "RUSTSEC-2026-0368", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
-    { id = "RUSTSEC-2026-0369", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
-    { id = "RUSTSEC-2026-0429", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
     # crypto-bigint 0.5.5 (timing branches in constant-time arithmetic, fixed
     # in 0.7.6 only) comes through jsonwebtoken 10 → p256 / p384 0.13. We only
     # verify RS256 tokens with Rauthy's public key: the elliptic-curve code
@@ -46,6 +38,12 @@ ignore = [
     { id = "RUSTSEC-2026-0391", reason = "zstd 0.13 in sherpa-onnx-sys build script only (SEC-54)" },
     { id = "RUSTSEC-2026-0398", reason = "zstd-safe 7 in sherpa-onnx-sys build script only (SEC-54)" },
     { id = "RUSTSEC-2026-0403", reason = "zstd-safe 7 in sherpa-onnx-sys build script only (SEC-54)" },
+    # zip < 9 flaws in `extract()` (SUID bits, symlink escape and permissions,
+    # abort on a large symlink), same zip 2 in the same build script (SEC-42).
+    { id = "RUSTSEC-2026-0367", reason = "zip 2 in sherpa-onnx-sys build script only (SEC-42)" },
+    { id = "RUSTSEC-2026-0368", reason = "zip 2 in sherpa-onnx-sys build script only (SEC-42)" },
+    { id = "RUSTSEC-2026-0369", reason = "zip 2 in sherpa-onnx-sys build script only (SEC-42)" },
+    { id = "RUSTSEC-2026-0429", reason = "zip 2 in sherpa-onnx-sys build script only (SEC-42)" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained (unic-langid macros, build time)" },
 ]
 

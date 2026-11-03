@@ -47,7 +47,7 @@ tokio = { version = "1", default-features = false, features = ["net"], optional 
 zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
 quick-xml = { version = "0.41", optional = true }
 lopdf = { version = "0.45", default-features = false, optional = true }
-calamine = { version = "0.36", optional = true }
+calamine = { version = "0.38", optional = true }
 
 [dev-dependencies]
 # serde roundtrip of the graph + flows.json projection.

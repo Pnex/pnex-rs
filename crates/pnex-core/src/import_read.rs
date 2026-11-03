@@ -370,6 +370,45 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_first_sheet_is_read_and_garbage_refused() {
+        let parts = [
+            (
+                "[Content_Types].xml",
+                r#"<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>"#,
+            ),
+            (
+                "_rels/.rels",
+                r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#,
+            ),
+            (
+                "xl/workbook.xml",
+                r#"<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>"#,
+            ),
+            (
+                "xl/_rels/workbook.xml.rels",
+                r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
+            ),
+            (
+                "xl/worksheets/sheet1.xml",
+                r#"<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>siret</t></is></c><c r="B1" t="inlineStr"><is><t>nom</t></is></c></row><row r="2"><c r="A2"><v>12</v></c><c r="B2" t="inlineStr"><is><t>Été</t></is></c></row></sheetData></worksheet>"#,
+            ),
+        ];
+        let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        for (name, body) in parts {
+            w.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            w.write_all(body.as_bytes()).unwrap();
+        }
+        let bytes = w.finish().unwrap().into_inner();
+        let rows = read_records(&bytes, "a.xlsx", &mapping(None, "")).unwrap();
+        assert_eq!(rows, vec![json!({"siret": "12", "nom": "Été"})]);
+        // An OLE2 header with a junk body: an error, never a panic.
+        let mut ole = b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1".to_vec();
+        ole.extend(vec![0xFF; 4096]);
+        assert!(read_records(&ole, "a.xlsx", &mapping(None, "")).is_err());
+    }
+
+    #[test]
     fn latin1_csv_and_json_path() {
         let rows = read_records(b"nom\nB\xe9ziers\n", "a.csv", &mapping(None, "")).unwrap();
         assert_eq!(rows[0]["nom"], json!("Béziers"));
