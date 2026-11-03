@@ -119,6 +119,31 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         &["claim"],
         "device session lease, not the investigation claim",
     ),
+    (
+        "pnex-recorder/src/calls.rs",
+        &["activity"],
+        "CSS class of the recorder's panel, not the CRM activity",
+    ),
+    (
+        "pnex-backend/src/services/profiles.rs",
+        &["lead"],
+        "the retention queue also proposes a CRM lead naming a person (crm.md D514)",
+    ),
+    (
+        "pnex-frontend/src/pages/ontology/object.rs",
+        &["macro_series", "instrument", "paper_position"],
+        "object tabs of the markets pack (markets-research.md D541)",
+    ),
+    (
+        "pnex-backend/src/controllers/markets.rs",
+        &["markets", "paper_position"],
+        "market routes built on the markets pack: OpenAPI tag, paper positions",
+    ),
+    (
+        "pnex-backend/src/services/markets/",
+        &["instrument", "filing", "filing_document"],
+        "market services built on the markets pack (markets-research.md)",
+    ),
 ];
 
 fn pack_keys() -> BTreeSet<String> {
