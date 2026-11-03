@@ -40,7 +40,7 @@ Ce PRD **étend** deux chantiers existants, il ne les remplace pas :
 ## 1. Contexte et vision
 
 PNEX glisse d'une plateforme IoT vers une **plateforme data unifiée**
-(vision long terme : type Palantir / ArgonOS ; socle = ontologie 0.2.0).
+(socle = ontologie 0.2.0).
 Après le firmware, les devices, l'ETL, le dashboarding, le Studio
 Panorama 360, les synoptiques SCADA, la caméra (D73–D105) et l'ingestion
 de flux audio (D159–D175), il reste à couvrir **la compréhension des

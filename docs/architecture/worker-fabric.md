@@ -147,6 +147,7 @@ Les deux écrivent via l'API Loco → aucune dérive entre config déclarée et 
 - **Secrets dans le join token / script** : rotation, single-use, révocation.
 - **Tuning du lease** sur jobs longs : trop court = faux zombies requeue ; trop long = zombie réel qui traîne.
 - **Ne pas glisser vers un fleet manager** : la fabric enregistre et route, elle ne provisionne pas.
+  La livraison logicielle est un produit distinct (D562, `operational-platform.md`).
 - **Découverte/adressage du compute** : réduire « rien / LAN / on-prem / partagé » à **un seul champ de config + fallback gracieux** quand aucun compute n'est joignable (sinon 4 chemins de code).
 
 ## 14. Exécuteur de bacs à sable (ajout 2026-10-23, `autonomous-agents.md` D386–D388)

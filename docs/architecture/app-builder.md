@@ -7,8 +7,8 @@
 > Demande de Shan (2026-10-29) : faire évoluer la partie supervision
 > (dashboards, surfaces, contrôles), pensée pour l'IoT, vers un builder
 > d'applications métier générique, sans code, dans l'esprit d'Appsmith.
-> L'état des lieux conclut : oui, mais **sur l'ontologie** (modèle Foundry
-> Workshop), pas sur des bases externes. Arbitrage de Shan sur le mot :
+> L'état des lieux conclut : oui, mais **sur l'ontologie** (écrans liés aux
+> objets), pas sur des bases externes. Arbitrage de Shan sur le mot :
 > « dashboard » fait outil de BI ; la notion est l'**application**.
 >
 > C'est le prolongement de D432–D441 (`external-apps.md`) : l'application
@@ -142,6 +142,9 @@ Valeurs affichées en texte, jamais en HTML (R11–R13).
 ## 7. Ce qui n'entre pas (D512)
 
 ### D512 — Ni source externe, ni code, ni HTML dans une application
+
+> **Amendé le 2026-11-03 (D560, `operational-platform.md`)** : le builder reste
+> sans code ; une application en code est admise sur une origine isolée.
 
 - **Pas de connecteur SQL, REST ou GraphQL** : les données externes
   entrent par l'ingestion et les flows (D317), avec leur provenance

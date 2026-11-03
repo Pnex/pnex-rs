@@ -6,7 +6,7 @@
 >
 > Demande de Shan, relayée par la session `pnex-quali-watch` : un socle
 > pour que n'importe quelle application métier se monte vite au-dessus de
-> l'ontologie PneX, à la manière de l'Ontology SDK de Foundry. Vigie
+> l'ontologie PneX. Vigie
 > (veille.pnex.io) est la première application ; rien ici ne lui est
 > propre.
 >
@@ -19,8 +19,7 @@
 
 ### D432 — Le moteur ne connaît aucun métier ; les applications passent par le SDK
 
-PneX est une plateforme de données opérationnelle générique, de la
-catégorie de Palantir Foundry : capter des sources, les rattacher à des
+PneX est une plateforme de données opérationnelle générique : capter des sources, les rattacher à des
 objets typés, les relier dans le temps, agir, et dire d'où vient chaque
 fait (`ontology.md` §2).
 
@@ -290,6 +289,9 @@ Livré (lot A4) :
 ## 8. Client et exemples (D438)
 
 ### D438 — Le SDK est le client OpenAPI générique, plus des exemples par cas d'usage
+
+> **Amendé le 2026-11-03 (D560, `operational-platform.md`)** : PneX génère aussi
+> des SDK typés par ontologie (TypeScript, Python, Rust).
 
 Décision de Shan (Q-A6) : pas de client généré, ni par type, ni par
 application, ni par pack ; maintenir plusieurs petits clients coûte trop.

@@ -8,7 +8,7 @@
 > (R1, R2, R8), `system-admin.md` (D72), `editor-shell.md`.
 >
 > Contrainte posée par Shan : **tout en Rust, dans pnex**. dlt, Airbyte,
-> Meltano, Starlake, Foundry Pipeline Builder, Kestra, Superset servent
+> Meltano, Starlake, Kestra, Superset servent
 > d'inspiration pour le modèle, jamais de dépendance ni de service à côté
 > (ni Python, ni JVM).
 
@@ -368,6 +368,9 @@ le même résultat.
   nouvelle source.
 
 ### D355 — Studio du pipeline : celui des sites web, pas un nouvel éditeur
+
+> **Amendé le 2026-11-03 (`operational-platform.md` §9)** : canevas de graphe
+> admis pour les pipelines à plusieurs étapes (OP1).
 
 Le studio des règles de navigation (`site-recipes.md` D324, `pages/web_sites/`)
 a déjà tout ce qu'il faut : coquille D222, blocs glissés ou cliqués et

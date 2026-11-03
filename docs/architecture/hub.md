@@ -32,6 +32,7 @@ C'est un frein direct à la stratégie communauté (projets d'un week-end sur In
 ## 3. Non-objectifs (v1)
 
 - Monétisation ou kits payants.
+  Levé au lot OP12 (D562, `operational-platform.md`).
 - Notation, commentaires ou système social (les issues/discussions GitHub suffisent).
 - Synchronisation bidirectionnelle (un kit installé est une copie locale, pas un lien vivant).
 - Partage de données de télémétrie ou de médias lourds.

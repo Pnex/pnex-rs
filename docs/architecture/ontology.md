@@ -29,7 +29,7 @@ façon de se relier aux autres.
 Le noyau qui émerge est le même partout : **capter des sources, les
 ramener sur un axe temporel, les rattacher à des objets du monde réel,
 les analyser, agir.** C'est la forme d'une plateforme de données
-opérationnelle (catégorie Palantir Foundry / ArgonOS), mais PNEX n'en a
+opérationnelle, mais PNEX n'en a
 pas encore la pièce centrale : un **modèle d'objets métier défini par
 l'utilisateur**.
 
@@ -76,13 +76,16 @@ dans le même modèle.
 
 ## 3. Non-objectifs
 
-- La parité fonctionnelle avec Palantir ou ArgonOS.
+- ~~La parité fonctionnelle avec les plateformes opérationnelles.~~ Levé le
+  2026-11-03 (D551, `operational-platform.md`).
 - Une base graphe dédiée : tout reste dans PostgreSQL (CTE récursives,
   JSONB).
 - Un environnement de code de type notebook ou workbook : le calcul
   passe par les flows et les fonctions existants. Amendé le 2026-10-10
   (`pages.md` P7b, décision #21) : le tableau local d'une page est admis
   car une formule ne fait que **lire** (jamais d'écriture ni de code).
+  Amendé le 2026-11-03 : notebooks Python en déploiement séparé, jamais
+  dans le cœur (D559).
 - La fédération inter-orgs (partage d'objets entre organisations) : plus
   tard.
 - La prise de décision par l'IA : l'assistant propose, l'humain ou un
@@ -349,7 +352,7 @@ Règle : une fonctionnalité qui n'a de sens que pour un pack va **dans le
 pack**, jamais dans le noyau.
 
 > **2026-10-25 (`external-apps.md`, D432–D441, proposé)** : PneX est une
-> plateforme de données générique (catégorie Foundry). Le métier vit dans
+> plateforme de données générique. Le métier vit dans
 > les packs **et** dans les applications, qui passent par le SDK
 > d'applications (identité, ensembles d'objets, flux des changements,
 > médias, preuves et provenance, client OpenAPI et exemples, miroir hors ligne,
@@ -480,10 +483,10 @@ implémentation commence après L1.
   correctifs et la finition des piliers existants).
 - **Complexité perçue** par les makers : l'ontologie est invisible tant
   qu'on n'en a pas besoin (D186, D190).
-- **Comparaison commerciale** : ne pas se vendre comme « Palantir
-  open source » tant que l'accompagnement (déploiement, intégration,
-  souveraineté documentée) n'existe pas ; vendre d'abord la maintenance
-  augmentée sur un noyau ontologique.
+- **Comparaison commerciale** : jamais de comparaison à un éditeur nommé
+  (D552). L'accompagnement (déploiement, intégration, souveraineté
+  documentée) reste à construire ; vendre d'abord la maintenance augmentée
+  sur un noyau ontologique.
 
 ## 9. Questions ouvertes
 
@@ -567,14 +570,12 @@ Branchements possibles plus tard, jamais prérequis : **pgRouting**
 identifiants entiers) une fois PostGIS monté, **Apache AGE** (A4) si
 Cypher devient un besoin utilisateur.
 
-**Pourquoi ce choix (comparaison Palantir / ArgonOS, 2026-10-10)** :
-l'ontologie de Palantir Foundry n'est pas une base graphe — objets
-adossés à des tables, liens par clés, parcours bornés (« Search
-Around »), exploration visuelle en surcouche. C'est notre modèle.
-ArgonOS (ChapsVision) vise le renseignement, où le graphe de
-connaissances est central (entités, événements, relations) ; chez nous
-ce besoin ne concerne que la persona analyste média, et c'est le
-déclencheur prévu pour AGE. L'écart réel avec ces plateformes n'est pas
+**Pourquoi ce choix (2026-10-10)** : une ontologie opérationnelle n'exige
+pas de base graphe — objets adossés à des tables, liens par clés, parcours
+bornés, exploration visuelle en surcouche. C'est notre modèle. Le graphe
+de connaissances central (entités, événements, relations) sert surtout
+le renseignement ; chez nous ce besoin ne concerne que la persona analyste
+média, et c'est le déclencheur prévu pour AGE. L'écart réel n'est pas
 le moteur de graphe mais les actions (D183), les droits fins (D188) et
 l'intégration de sources.
 
@@ -621,9 +622,10 @@ changement, testé sur 19beta4).
 
 - 0.2.0 : « **plateforme open source de données industrielles et IoT,
   pilotée par une ontologie** » (du firmware au jumeau numérique).
-- Pas « alternative open source à Palantir / ArgonOS » tant que
-  manquent : intégration massive de sources, gouvernance de niveau
-  défense (classification, permissions ligne/colonne, lignage, audit),
+- Jamais de comparaison à un éditeur nommé (D552). Pour se dire plateforme
+  opérationnelle complète, il manque (`operational-platform.md`) :
+  intégration massive de sources, gouvernance fine
+  (classification, permissions ligne/colonne, lignage, audit),
   actions / writeback, apps par des non-devs, déploiement déconnecté.
 - Plus tard (actions + gouvernance + connecteurs) : « plateforme
   opérationnelle ontologique open source ».

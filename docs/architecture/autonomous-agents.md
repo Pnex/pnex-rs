@@ -445,6 +445,11 @@ arbitré) :
 
 ## 14. Frontière physique et gestes réservés (D391)
 
+> **Amendé le 2026-11-03 (D563, D564, `operational-platform.md`)** : validation
+> générique par agent ou personne ; action physique gouvernée à la livraison
+> du lot OP10. D'ici là, les règles ci-dessous et leurs gardes restent
+> inchangées et bloquantes.
+
 Inchangés et opposables, quel que soit le niveau :
 
 - aucune commande device/OTA/flash, aucune écriture de contrôle ou de

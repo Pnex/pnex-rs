@@ -36,7 +36,7 @@ des personnes issus de fuites de documents ou de décisions de justice.
 | Wiens, Lohmann & Auer, K-CAP 2017 (VOWL) | zoom sémantique : trois niveaux de détail discrets ; meilleure lisibilité mesurée en test utilisateur | K49, K53 |
 | Lissandrini et al., SIGWEB 2020 | exploration d'un graphe de connaissances = profilage, recherche, analyse ; l'analyse exploratoire reste peu outillée | les vues ne remplacent pas les listes et les compteurs |
 | Jigsaw (Stasko, Görg & Liu 2008) | vues coordonnées entités ↔ documents ; en pratique les analystes travaillent surtout dans la vue Liste | K49 : la preuve est une couche, la liste reste un geste de premier rang |
-| Gotham (documentation produit publique, ~2010–2017) | applications (graphe, carte, explorateur d'objets) + « helpers » (frise, histogramme) ; *Search Around* depuis un objet | même partage chez nous : vues + frise commune ; K51 |
+| Logiciels d'enquête du marché (documentation publique) | applications (graphe, carte, explorateur d'objets) + « helpers » (frise, histogramme) ; recherche de voisinage depuis un objet | même partage chez nous : vues + frise commune ; K51 |
 | Linkurious (outil des fuites ICIJ) | étendre, filtrer, requêtes devenues boutons, vues partagées, commentaires | K50 |
 | KeyLines (Cambridge Intelligence) | *combos* : grouper des nœuds pour réduire le bruit, déplier à la demande ; barre de temps qui filtre | K53 ; la barre de temps = notre frise K23/K24 |
 | Aleph / FollowTheMoney (OCCRP, MIT) | modèle d'enquête : entités (personne, société, bien) + **intervalles** datés qui les relient (détention, mandat, versement, sanction) ; croisement d'un nom contre des centaines de jeux | K55, K56, K61, K62 |
@@ -331,7 +331,6 @@ scoring de risque, accès aux registres restreints.
 - [Knowledge graph visualization frameworks review (arXiv 2412.05289)](https://arxiv.org/abs/2412.05289v1)
 - [Visualizing Ontologies with VOWL (Semantic Web Journal)](https://journals.sagepub.com/doi/full/10.3233/SW-150200) ; semantic zooming : DOI 10.1145/3148011.3148015
 - [Jigsaw — évaluation VAST 2009](https://sites.cc.gatech.edu/gvu/ii/talks/vast09-jigsaweval.pdf) ; [Jigsaw — VAST Challenge 2011](https://faculty.cc.gatech.edu/~stasko/papers/vast11-challenge.pdf)
-- [Gotham — description produit](https://s3.documentcloud.org/documents/810526/1035-palantir-product-description-gotham.pdf)
 - [Linkurious et les fuites ICIJ](https://linkurio.us/panama-papers-how-linkurious-enables-icij-to-investigate-the-massive-mossack-fonseca-leaks/) ; [Linkurious Enterprise](https://linkurious.com/blog/introducing-linkurious-enterprise-cloud-graph-visualization-analytics/)
 - [KeyLines — fonctionnalités (combos, time bar)](https://cambridge-intelligence.com/keylines/features)
 - [Aleph — diagrammes de réseau](https://docs.aleph.occrp.org/users/investigations/network-diagrams) ; [FollowTheMoney](https://docs.aleph.occrp.org/developers/followthemoney/)

@@ -53,6 +53,9 @@ Accepter applique la différence par les mêmes services que l'UI (objets, liens
 
 ### D374 — Une boîte « À valider », une permission
 
+> **Amendé le 2026-11-03 (D563, `operational-platform.md`)** : kind `operation`
+> pour toute opération du spec ; un agent désigné peut décider, hors liste réservée.
+
 - **Page** « À valider » : filtres par origine, type et objet ; décision une par une ou en lot. **Pastille** sur la page d'un objet concerné.
 - **Permissions** : `proposals:read` (lecteur) et `proposals:decide` (membre). Décider vérifie en plus le droit d'écrire le type visé (D188).
 - **Assistant et MCP** : lecture exposée ; décision exclue (« sign-off » : un humain décide).

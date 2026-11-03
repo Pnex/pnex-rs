@@ -51,6 +51,11 @@ une même org, des sources hétérogènes et les rend exploitables ensemble.
   nouveau pilier isolé — cohérent avec le gel des nouveaux piliers de la
   0.2.0 (`ontology.md` §9).
 
+**Périmètre élargi le 2026-11-03** (`operational-platform.md`, D551–D568) :
+toute capacité civile d'une plateforme opérationnelle ontologique, militaire
+exclu, cœur en Rust. Les invariants ci-dessus tiennent jusqu'à la livraison du
+lot OP10, qui encadre l'action physique gouvernée (D564).
+
 ## Méthode
 
 - Deux horizons imbriqués : **consolider** (fermer le livré non validé)
@@ -1211,6 +1216,32 @@ thèse avec journal et positions fictives, test de règle point-in-time
 (`known_at`). Ni temps réel actions, ni ordre passé, ni signal diffusé.
 Premier ensemble utile sans LLM : MK0 → MK2 + MK4.
 
+### P2.36 — Plateforme opérationnelle complète (ajout 2026-11-03) — **périmètre validé, rien d'implémenté**
+
+Doc : `operational-platform.md` (D551–D568, lots OP1–OP15). Chaque lot a son
+PRD avant le code. La priorité en cours (robustesse et tests) et P0 passent
+avant ; P0.1 et P0.3 sont des prérequis d'OP10.
+
+| Lot | Contenu |
+|---|---|
+| OP1 | Datasets versionnés, lignage, santé des données, ordonnanceur à dépendances |
+| OP2 | Cadre de connecteurs, SaaS/ERP, stockage cloud, CDC, tables virtuelles, écriture retour |
+| OP3 | Lignes, marquages, habilitations, finalité, données sensibles, pseudonymisation, SAML, droits des personnes |
+| OP4 | Branches transverses, interfaces d'ontologie |
+| OP5 | Agrégats, analyse sans code, SQL en lecture, règles avec rejeu, blocs vivants |
+| OP6 | Tableur et traitement de texte (GridCraft, WordCraft), après POC |
+| OP7 | Notebooks Python en déploiement séparé, SDK d'accès aux données |
+| OP8 | SDK typés, applications en code sur origine isolée, génération par l'IA, hors ligne |
+| OP9 | Validation générique par agent ou personne, sur toute opération |
+| OP10 | Action physique gouvernée : enveloppes, mode fantôme, vérification d'effet, état sûr |
+| OP11 | Agents (P2.29), évaluations LLM, OCR, vecteurs, scénarios, modèles tabulaires |
+| OP12 | Centre de livraison, SBOM de parc, air-gap, hub de kits dégelé |
+| OP13 | Simulation de jumeau, process mining, ordonnancement à contraintes, revue CAD |
+| OP14 | Inférence embarquée, chaînage de modèles, réalité mixte, imagerie satellite civile |
+| OP15 | Packs sectoriels civils |
+
+Ordre : OP1, OP2, OP3, puis OP5 et OP9. Le reste suit la demande client.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -1293,6 +1324,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 23 | Hub de kits : kits hardware-first, dépendances entre kits, hébergement de l'index (`hub.md` §19). Tranché 2026-10-10 (§21) : kit = pack D190 (un seul format), identité = compte GitHub seul | Pendant la 0.2.0 (aligner les schémas), implémentation après |
 | 24 | Dossiers : ~~version cible (C0–C1 en exception au gel ?)~~ (sans objet : C0–C7 sur `main` le 2026-10-12), nom « Dossiers / Cases », ACL par dossier (V2, avec D188), temps flou dans le noyau, pack de base « Acteurs », co-présences GPS, horodatage qualifié des gels, seuil d'écriture automatique des apparitions, identification vocale par enrôlement consenti (K19, avis juridique requis) (`cases.md` §11) | À la validation du PRD |
 | 25 | ~~Stockage `fs` local à côté de S3~~ — tranché 2026-10-12 : **fin du stockage `fs`, toujours RustFS ou un S3 compatible** (médias, firmware, modèles, frames de stitch). Deux backends = trop de code à maintenir ; l'argument Raspberry Pi ne tient pas, RustFS ne consomme quasiment rien pour le volume de données traité. Les nouveaux développements ne gèrent plus `fs` | ✅ |
+| 27 | Plateforme opérationnelle : moteur de calcul et format de table, UI de la bureautique, enquêtes sur des personnes, site pilote du mode fantôme, tenue de RustFS en volume (`operational-platform.md` §10) | Au PRD de chaque lot |
 | 26 | Calendrier GMAO : vue générique des plages (noyau) ou vue du pack ; ~~occurrence = plage D182 ou table dédiée~~ (plage D182, premier lot) ; mode fixe/flottant ; horizon de matérialisation (90 jours au premier lot) ; calendriers ouvrés en v1 ; date prévisionnelle d'un compteur ; hors ligne terrain (`ontology.md` annexe B11) | À la relecture de `modele-cible.md` (B12) |
 
 ## Journal de la roadmap
@@ -1453,7 +1485,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 - **2026-10-10 (retour à PostgreSQL 18)** — 19beta4 abandonné le jour
   même : sans SQL/PGQ, PG 19 n'apporte rien au graphe et retarderait
   PostGIS et pgvector. Graphe de l'ontologie = CTE + `petgraph`
-  (annexe A3, avec la comparaison Palantir Foundry / ArgonOS) ;
+  (annexe A3) ;
   pgRouting et AGE en branchements optionnels. Question « actions D183
   dans la 0.2.0 ? » ouverte dans la décision #17.
 - **2026-10-11 (dossiers)** — Ajout du PRD `cases.md` (P2.19, décision
@@ -1596,3 +1628,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 - **2026-10-31 (investissement)** — Ajout de P2.35 (`markets-research.md`,
   D523–D536, lots MK0–MK6) : veille d'émetteurs, événements sourcés,
   étude d'événement, thèses et journal, tests point-in-time.
+- **2026-11-03 (périmètre élargi)** — Ajout de P2.36 (`operational-platform.md`,
+  D551–D568, lots OP1–OP15). Non-objectifs levés ou amendés (§9 du doc), militaire
+  exclu, cœur en Rust, validation générique et action physique gouvernée. Aucun
+  éditeur de référence nommé dans le repo (D552).
