@@ -130,6 +130,11 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "the retention queue also proposes a CRM lead naming a person (crm.md D514)",
     ),
     (
+        "pnex-pipeline-worker/src/engine.rs",
+        &["lead"],
+        "SQL window function allowed in a pipeline, not the CRM lead",
+    ),
+    (
         "pnex-frontend/src/pages/ontology/object.rs",
         &["macro_series", "instrument", "paper_position"],
         "object tabs of the markets pack (markets-research.md D541)",
