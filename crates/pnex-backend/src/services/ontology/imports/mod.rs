@@ -359,6 +359,7 @@ async fn declare_table_identity(
 pub async fn update(
     db: &DatabaseConnection,
     org_id: i64,
+    user_id: Option<i64>,
     id: Uuid,
     input: &ObjectImportInput,
 ) -> Result<ObjectImportView> {
@@ -378,7 +379,8 @@ pub async fn update(
         .execute_raw(stmt(
             "UPDATE object_imports SET name = $3, mapping_yaml = $4, source = $5, source_url = $6, \
                mode = $7, recurrence = $8, next_run_at = $9, max_pages = $10, \
-               version = version + 1, updated_at = now() \
+               version = version + 1, updated_at = now(), \
+               created_by = coalesce($12, created_by) \
              WHERE id = $1 AND org_id = $2 AND version = $11",
             vec![
                 id.into(),
@@ -392,6 +394,9 @@ pub async fn update(
                 next_run(input.recurrence.clone().flatten().as_ref()).into(),
                 input.max_pages.flatten().map(|p| p as i32).into(),
                 expected.into(),
+                // Unattended runs write with the author's role: whoever changed what
+                // they do answers for it, or a member could borrow an admin's rights.
+                user_id.into(),
             ],
         ))
         .await?;
@@ -2070,7 +2075,9 @@ pub async fn install_from_pack(
                     max_pages: Some(row.max_pages.map(|n| n as u32)),
                     expected_version: Some(row.version),
                 };
-                update(db, org_id, row.id, &input).await.map_err(at(i))?;
+                update(db, org_id, user_id, row.id, &input)
+                    .await
+                    .map_err(at(i))?;
                 // The org's version, kept beside the pack's for a way back.
                 let replaced = serde_json::json!({
                     "mapping_yaml": row.mapping_yaml,

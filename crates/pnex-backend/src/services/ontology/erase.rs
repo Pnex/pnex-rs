@@ -138,6 +138,16 @@ async fn erase_in<C: ConnectionTrait>(
         let keys = super::opposition::title_keys(db, s, org_id, row.id, &row.title).await?;
         super::opposition::record(db, org_id, actor.user_id, &keys).await?;
     }
+    // A diff kept for review holds titles and properties as they were: the preview
+    // is computed again if someone still wants it.
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE object_import_runs SET diff = NULL, \
+           state = CASE WHEN state = 'preview' THEN 'stale' ELSE state END \
+         WHERE org_id = $1 AND diff IS NOT NULL AND state IN ('preview', 'refused')",
+        vec![org_id.into()],
+    ))
+    .await?;
     let mut props = row.properties.as_object().cloned().unwrap_or_default();
     for k in personal_keys(s, &row.type_key) {
         props.remove(&k);

@@ -155,7 +155,14 @@ async fn update(
 ) -> Result<Response> {
     reply(
         StatusCode::OK,
-        imports::update(&ctx.db, org.org.id, parse_uuid(&id)?, &input).await,
+        imports::update(
+            &ctx.db,
+            org.org.id,
+            Some(org.auth.user.id),
+            parse_uuid(&id)?,
+            &input,
+        )
+        .await,
     )
 }
 
