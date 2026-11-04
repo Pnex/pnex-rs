@@ -6,6 +6,7 @@
 | Numérotation | **D378…D401**, lots **A0…A5** |
 | Repose sur | IAM et comptes de service (`iam.md`, D285–D299), MCP (`mcp.md`, D245–D250), assistant (`ai-assistant.md` §9, D142–D145), propositions (`proposals.md`, D367, D371–D377), usages LLM (`media-import-pipeline.md` D212), fabric de workers (`worker-fabric.md`, §14 bacs à sable), coffre (`secrets.md`, D110–D119), egress (`security.md` R8), extension navigateur (`extension-collector.md`) |
 | Sécurité | `security.md` §6 avant tout lot ; finding = ligne SEC-n au §7 |
+| Complété par | `agent-environments.md` (D700–D720) : connecteur de registre, build, environnements, ontologie, audit LLM. Le catalogue de moteurs D394 y devient un usage des environnements (D704) |
 
 ## 0. Ce qui existe déjà (à réutiliser, pas à refaire)
 
@@ -83,6 +84,7 @@ pas un second moteur d'outils, ni un second système de droits.
 | Runner | Runner | Runner | Worker de la fabric doté de l'exécuteur de bacs à sable, installé dans un cluster |
 | Moteur | Moteur | Harness | Agent de code qui mène la boucle d'un agent hébergé (Claude Code, Codex CLI, OpenCode…) |
 | Rôle | Rôle | Role | System prompt versionné + compétences par défaut + politique suggérée ; n'ouvre aucun droit |
+| Personnalité | Personnalité | Personality | Ton et manière de s'exprimer d'un agent, optionnels ; n'ouvre aucun droit |
 | Compétence | Compétence | Skill | Instructions (`SKILL.md`) + fichiers joints, versionnées par org |
 | Passerelle LLM | Passerelle LLM | LLM gateway | Point d'appel unique des modèles de l'org |
 
@@ -141,9 +143,12 @@ flowchart LR
 - L'org vient toujours du principal (R1) ; le backend re-vérifie chaque
   appel comme pour un appel humain. Le token de run n'ouvre aucune route
   `Platform`.
-- Un agent ne voit jamais un secret en clair (R4, R16) : les secrets
-  dont un run a besoin (git, registre) sont livrés au runner, scopés et
-  courts, jamais via une sortie d'outil.
+- Aucun secret en clair dans une sortie d'outil ni une réponse d'API (R4,
+  R16). Les secrets qu'un run hébergé doit utiliser sont listés par la
+  politique, scopés et courts, et livrés au runner, qui les expose au bac
+  à sable (`agent-environments.md` D705) : **l'agent peut les lire**.
+  Un agent interne n'en reçoit aucun. La clé du fournisseur LLM reste
+  hors du bac (D385).
 
 ## 6. Politique de tâche (D380, D381)
 
@@ -231,8 +236,14 @@ OpenCode, Aider, Goose, ou une boucle maison (Agent SDK, LangGraph…).
 - **Un rôle n'ouvre aucun droit** : c'est du contenu (D381). La politique
   suggérée pré-remplit la création d'un agent, elle n'est jamais appliquée
   implicitement.
+- **Personnalité** (optionnelle, ajout du 2026-11-04) : un texte court sur
+  la fiche de l'agent, qui règle le ton et le style. Un même rôle peut
+  ainsi servir à plusieurs agents. C'est du contenu, versionné avec
+  l'agent : elle n'ouvre aucun droit et ne lève aucune consigne.
 - Instructions effectives d'un run = consignes fixes de la plateforme
-  (D391, en tête, non retirables) + rôle + consignes propres à l'agent.
+  (D391, en tête, non retirables) + rôle + consignes propres à l'agent +
+  personnalité. PneX les écrit dans la configuration générée du moteur
+  (D394) et le run les fige.
 - Une équipe (D390) se compose par rôles : par exemple un superviseur
   chef de produit qui délègue à un architecte, un codeur et un relecteur.
 
@@ -245,7 +256,8 @@ fichiers joints optionnels (scripts, gabarits, références).
   attendu par le moteur ; ses scripts ne s'exécutent que dans le bac.
 - Agent interne : instructions seulement, aucun script exécuté dans le
   backend.
-- Import (dépôt git, fichier) : relu et activé par un humain
+- Entrée (intégrée au build, dépôt git, saisie à la main,
+  `agent-environments.md` D711) : relue et activée par un humain
   (`agents:write`), jamais par un agent ni l'assistant.
 - Une compétence ne porte ni droit ni secret : un secret détecté à
   l'import = refus `agent-skill-secret`.

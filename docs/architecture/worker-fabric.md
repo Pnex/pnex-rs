@@ -166,12 +166,12 @@ capabilities (`executor:sandbox`, `isolation:pod|vm`, `runtime:gvisor|kata`,
 
 | Sujet | Règle |
 |---|---|
-| Accès au cluster | Aucun kubeconfig dans PneX (D386). Le runner tourne dans le cluster avec un ServiceAccount limité à **son** namespace (création/suppression de pods, PVC, NetworkPolicy, Secrets) ; manifeste et chart générés par le générateur §7.1 |
+| Accès au cluster | Aucun kubeconfig dans PneX (D386). Le runner tourne dans le cluster avec un ServiceAccount limité à **son** namespace (création/suppression de pods, PVC, NetworkPolicy, Secrets ; lecture de `pods/log`, D719) ; manifeste et chart générés par le générateur §7.1 |
 | Provisionnement | Le runner crée et détruit des **bacs à sable**, pas des workers ni des nœuds : la règle « la fabric ne provisionne pas » (§13) reste vraie pour la flotte |
 | Isolation (D387) | `pod` : RuntimeClass gVisor ou Kata, `runAsNonRoot`, sans capabilities, sans privilèges, rootfs en lecture seule hors espace de travail, aucun montage de socket de l'hôte ; `vm` : KubeVirt dans un cluster, Firecracker ou libvirt sur machine nue |
-| Images de toolchain | Catalogue d'images par org (base Chainguard/Wolfi, cf. `container-images.md`) : rust, node, pio, buildah rootless pour construire des images ; épinglées par digest |
+| Images de toolchain | Environnements versionnés par org (`agent-environments.md` D704, base Chainguard/Wolfi par défaut) ; construits par BuildKit (D700, remplace buildah) ; épinglés par digest |
 | Espace de travail | Volume éphémère par run ; caches de dépendances par org (PVC dédié), jamais partagés entre orgs |
-| Secrets du run | Livrés par PneX au runner au claim (git limité à un dépôt, registre limité à un dépôt d'images), durée = durée du run, montés en fichier, jamais en variable d'environnement visible des sous-processus du LLM |
+| Secrets du run | Livrés par PneX au runner au claim (git limité à un dépôt, registre limité à un dépôt d'images), durée = durée du run ; Secret Kubernetes propre au run, lu en variables d'environnement ou monté en fichier, détruit en fin de run (`agent-environments.md` D705). La clé du fournisseur LLM n'entre jamais dans le bac (D385) |
 | Egress | NetworkPolicy par bac : seulement l'API PneX, la passerelle LLM, et la liste blanche de la politique (forge, registre, miroirs de paquets) |
 | Ressources | Requests/limits du run (CPU, mémoire, disque, GPU), durée murale max ; quotas par org côté PneX, ResourceQuota côté namespace |
 | Fin de vie | Bac détruit en fin de run ou à l'arrêt ; reaper du runner : tout bac sans run vivant au-delà du bail est détruit ; artefacts remontés au MediaStore avant destruction |

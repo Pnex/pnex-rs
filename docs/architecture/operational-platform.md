@@ -157,9 +157,10 @@ image épinglée par digest, registre, secrets et pod par tâche. C'est déjà
 planifié pour les agents (D386–D394), rien n'est codé.
 
 Ajouts : une org construit sa propre image depuis un Dockerfile, dans un bac
-à sable (buildah rootless), vers un registre, puis l'épingle par digest. Les
-secrets restent **montés en fichier** (§14), jamais en variable
-d'environnement lisible par le processus LLM.
+à sable (BuildKit, D700 de `agent-environments.md`, remplace buildah), vers un
+registre, puis l'épingle par digest. Les secrets du run arrivent par un Secret
+Kubernetes propre au run, en variables d'environnement ou en fichier (D705) ; la
+clé du fournisseur LLM reste hors du bac (D385).
 
 ### D563 — Une porte de validation générique, pour toute opération
 

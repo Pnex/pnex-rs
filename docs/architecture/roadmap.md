@@ -1224,6 +1224,11 @@ PRD avant le code. La priorité en cours (robustesse et tests) et P0 passent
 avant ; P0.1 et P0.3 sont des prérequis d'OP10.
 
 | Lot | Contenu |
+Environnements d'agents, validés le 2026-11-04 (`agent-environments.md`,
+D700–D720, lots E0–E6) : préparation et exécution des agents d'OP11. Ils passent
+devant l'ordre OP1 → OP3 par choix explicite, sur une première cible interne ;
+aucun client réel avant OP3 et le masquage (D715).
+
 |---|---|
 | OP1 | Datasets versionnés, lignage, santé des données, ordonnanceur à dépendances |
 | OP2 | Cadre de connecteurs, SaaS/ERP, stockage cloud, CDC, tables virtuelles, écriture retour |
