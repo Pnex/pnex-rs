@@ -1708,6 +1708,9 @@ pub enum ImportSource {
     Url,
     /// A paginated JSON API (`page_param` or `cursor_path`).
     Api,
+    /// A dataset of the org, its id in `source_url` (data-pipelines.md D577).
+    /// Each run compares its current view to the transactions last applied.
+    Dataset,
 }
 
 /// `incremental`: creates and updates. `snapshot`: also closes what this
@@ -1736,6 +1739,7 @@ impl ImportSource {
             Self::File => "file",
             Self::Url => "url",
             Self::Api => "api",
+            Self::Dataset => "dataset",
         }
     }
 }

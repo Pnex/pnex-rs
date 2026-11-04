@@ -3,7 +3,7 @@ id: ontology-imports
 title: Ontology imports — sheets, files and APIs into objects
 kind: feature
 pages: /ontology
-err_codes: ingest-entry-missing, import-source-unreadable, import-source-too-large, import-source-unreachable, import-schema-changed, import-suspicious-drop, import-has-errors, import-run-stale, ontology-unique-duplicates, ontology-version-conflict
+err_codes: import-preview-required, dataset-erasure-pending, dataset-reserved, dataset-name-taken, dataset-not-found, dataset-version-purged, ingest-entry-missing, import-source-unreadable, import-source-too-large, import-source-unreachable, import-schema-changed, import-suspicious-drop, import-has-errors, import-run-stale, ontology-unique-duplicates, ontology-version-conflict
 tags: import, imports, excel, xlsx, csv, json, xml, zip, api, sync, synchronisation, synchronization, mapping, correspondance, column, colonne, preview, aperçu, snapshot, liste complète, schedule, calendrier, siren, siret, unique, clé naturelle, natural key, register, registre, recherche d'entreprises, réseau, partenaires, habilitation, hierarchy, hiérarchie, run now, lancer maintenant, steps, étapes, pipeline, data.gouv
 ---
 Ontology › **Imports** turns the rows of a sheet (Excel, CSV), a file at an address (CSV, XML, JSON, possibly zipped) or a JSON API into objects and links. Nothing is written before you have seen the preview and pressed **Apply**.
@@ -32,10 +32,23 @@ Ontology › **Imports** turns the rows of a sheet (Excel, CSV), a file at an ad
 ## Run now, and imports with their own steps
 - **Run now** (a writer, on an import that has something to fetch) starts a run at once, like a scheduled one: checked, then applied without preview, with the author's role. Follow it in **History**.
 - An import can carry its own **steps** in its YAML, under `steps:` (find the newest file of a data.gouv.fr dataset, download, extract an archive, inspect a table, filter rows; see the open-data ingestion sheet). *Run now* runs them on the server, then applies the mapping to the file they leave. Large files are written in bulk: tens of thousands of rows take about a minute.
-- *import-source-too-large* on *Run now* with steps: the filtered file still holds more than 250,000 rows. Narrow the row filter, for example `only: { property: account_status, values: [customer, prospect, target] }` on an `in_objects` filter keeps the rows of your customers, prospects and targets only.
+- *import-source-too-large* on *Run now* with steps that do not leave a CSV: the filtered file still holds more than 250,000 rows. Narrow the row filter, for example `only: { property: account_status, values: [customer, prospect, target] }` on an `in_objects` filter keeps the rows of your customers, prospects and targets only.
 - **History** shows each run with its outcome and, for a refusal or a failure, the message with its figures (for example how many records the source held against the limit). **Steps** unfolds the steps of a run: outcome, duration, rows read and kept, and the step where it stopped.
 - *import-server-stopping*: the server is restarting and starts no run for a minute; run it again. *import-run-interrupted*: the server stopped during the run, which wrote nothing; run it again.
 - *ingest-entry-missing* on *Run now*: a sheet import has nothing to fetch; send its file with **Preview** instead, or give it steps.
+
+## Imports from a table
+- A **Table** source reads a table of the org, computed by a pipeline or loaded as a CSV; its address field takes the id of the table. The mapping is the same, without `steps` (a filter or a join belongs to the pipeline).
+- Each run compares the table with what was last applied: **a value edited on an object stays until the source changes that value**. A run on an unchanged table writes nothing. An object archived by hand and unchanged in the source stays archived.
+- After a change of the mapping there is nothing to compare with: the run stops at a **preview**, which shows what it would overwrite, and waits to be applied. *import-run-stale*: the table changed since that preview; preview again.
+- An import whose steps leave a CSV fills a table named after the key of its mapping at each run, then works like the above; a pipeline can read that table. The 250,000-row limit no longer applies to it.
+- *import-preview-required*: the mapping changed, so the scheduled run waits for someone to open its preview and apply it.
+- A run from a table writes with a member's rights, whoever wrote the import: a type only admins may write refuses it (*ontology-write-forbidden*). Use an import with its own steps.
+- A mapping that carries a sensitive value does not go through a table, which any viewer can read: refused for a Table source, and its steps keep the 250,000-row limit.
+- Saving an import makes you its author: its scheduled runs then write with your role.
+- *dataset-erasure-pending*: an erasure is being applied to this table; try again in a few minutes.
+- *dataset-reserved*: that table is filled by an import; neither a load nor a pipeline can write it. *dataset-name-taken* on a run: a table of the org already has the name of the mapping key; rename one.
+- *dataset-not-found*: the table was deleted. *dataset-version-purged*: an erasure removed its versions and its pipeline is computing it again; run the import once it is done.
 
 ## Hierarchy
 Objects of a pack with hierarchies (for example *French companies*: group › subsidiaries › establishments, and officers) have a **Hierarchy** tab: a tree computed on the links, at a date. A person who directs several companies appears under each one, marked "also under …".

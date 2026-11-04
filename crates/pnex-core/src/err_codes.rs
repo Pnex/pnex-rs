@@ -628,6 +628,7 @@ pub const NOTIFY_DYNAMIC_RECIPIENTS_ADMIN: &str = "notify-dynamic-recipients-adm
 pub const ONTOLOGY_NODE_UNKNOWN: &str = "ontology-node-unknown";
 /// The preview was already applied, or the import or the data changed since.
 pub const IMPORT_RUN_STALE: &str = "import-run-stale";
+pub const IMPORT_PREVIEW_REQUIRED: &str = "import-preview-required";
 pub const DATASET_UNCHANGED: &str = "dataset-unchanged";
 pub const DATASET_RESERVED: &str = "dataset-reserved";
 pub const DATASET_ERASURE_PENDING: &str = "dataset-erasure-pending";
@@ -1014,6 +1015,7 @@ pub const ALL: &[&str] = &[
     NOTIFY_DYNAMIC_RECIPIENTS_ADMIN,
     ONTOLOGY_NODE_UNKNOWN,
     IMPORT_RUN_STALE,
+    IMPORT_PREVIEW_REQUIRED,
     DATASET_UNCHANGED,
     DATASET_RESERVED,
     DATASET_ERASURE_PENDING,

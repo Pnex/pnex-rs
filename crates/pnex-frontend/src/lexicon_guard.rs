@@ -33,6 +33,14 @@ const RULES: &[Rule] = &[
     // external-apps.md D433: an external program built on an org's data
     // is an « application »; a « connecteur » is a provider (geo, LLM).
     // A view of an application is a screen (app-builder.md D507).
+    // Another concept under the same words: the images of a Vision Lab project
+    // and a data.gouv.fr resource. No rule on "dataset" in English for the same reason.
+    Rule {
+        scope: Scope::Fr,
+        term: "jeu de données",
+        use_instead: "table",
+        allowed_keys: &["err-ingest-no-resource", "lab-", "err-lab-"],
+    },
     Rule {
         scope: Scope::Fr,
         term: "page d'application",

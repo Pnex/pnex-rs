@@ -323,6 +323,9 @@ async fn dry_run(
             Some(org.auth.user.id),
             parse_uuid(&id)?,
             file,
+            crate::services::artifact_store::S3Config::from_config(&ctx.config)
+                .store()
+                .ok(),
         )
         .await,
     )

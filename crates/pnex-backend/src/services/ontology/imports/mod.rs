@@ -13,6 +13,7 @@
 pub mod diff;
 pub mod source;
 pub mod stop;
+mod sync;
 
 use std::time::Duration;
 
@@ -82,6 +83,7 @@ impl ImportRow {
         match self.source.as_str() {
             "url" => ImportSource::Url,
             "api" => ImportSource::Api,
+            "dataset" => ImportSource::Dataset,
             _ => ImportSource::File,
         }
     }
@@ -201,6 +203,7 @@ async fn check_input<C: ConnectionTrait>(
             }
         }
         (_, None) => return Err(invalid("source_url", FIELD_REQUIRED)),
+        (ImportSource::Dataset, Some(u)) => sync::check(db, org_id, u, &m).await?,
         (_, Some(u)) => {
             source::check_url(u).map_err(|t| invalid("source_url", t))?;
         }
@@ -300,7 +303,7 @@ pub async fn create(
     input: &ObjectImportInput,
     pack_key: Option<&str>,
 ) -> Result<ObjectImportView> {
-    check_input(db, org_id, input).await?;
+    let m = check_input(db, org_id, input).await?;
     let count = db
         .query_one_raw(stmt(
             "SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = $1",
@@ -333,7 +336,24 @@ pub async fn create(
         ],
     ))
     .await?;
+    declare_table_identity(db, org_id, input, &m).await?;
     get(db, org_id, id).await
+}
+
+/// The source table of an import learns from its mapping what erasure reaches.
+async fn declare_table_identity(
+    db: &DatabaseConnection,
+    org_id: i64,
+    input: &ObjectImportInput,
+    m: &Mapping,
+) -> Result<()> {
+    let table = input.source_url.clone().flatten();
+    match table.and_then(|t| t.parse().ok()) {
+        Some(id) if input.source == ImportSource::Dataset => {
+            sync::declare_identity(db, org_id, id, m).await
+        }
+        _ => Ok(()),
+    }
 }
 
 pub async fn update(
@@ -353,7 +373,7 @@ pub async fn update(
         max_pages: Some(input.max_pages.unwrap_or(row.max_pages.map(|p| p as u32))),
         ..input.clone()
     };
-    check_input(db, org_id, input).await?;
+    let m = check_input(db, org_id, input).await?;
     let done = db
         .execute_raw(stmt(
             "UPDATE object_imports SET name = $3, mapping_yaml = $4, source = $5, source_url = $6, \
@@ -380,6 +400,7 @@ pub async fn update(
             current: row.version,
         });
     }
+    declare_table_identity(db, org_id, input, &m).await?;
     get(db, org_id, id).await
 }
 
@@ -593,6 +614,8 @@ async fn records<C: ConnectionTrait>(
             .unwrap_or(Err(coded(source::UNREADABLE)))
         }
         (ImportSource::File, None) => Err(coded(source::UNREADABLE)),
+        // Read by `sync`, which never comes through here.
+        (ImportSource::Dataset, _) => Err(coded(source::UNREADABLE)),
         (ImportSource::Url, _) => {
             source::fetch_file(imp.source_url.as_deref().unwrap_or_default(), m, by)
                 .await
@@ -833,6 +856,7 @@ pub async fn dry_run(
     user_id: Option<i64>,
     id: Uuid,
     file: Option<(Vec<u8>, String)>,
+    store: Option<crate::services::artifact_store::S3Store>,
 ) -> Result<ImportRunView> {
     let imp = find_row(db, org_id, id).await?;
     if imp.source() == ImportSource::File && file.as_ref().is_none_or(|(b, _)| b.is_empty()) {
@@ -847,6 +871,10 @@ pub async fn dry_run(
     let db = db.clone();
     tokio::spawn(async move {
         let _held = stop::hold(run.id);
+        if imp.source() == ImportSource::Dataset {
+            run_sync(&db, store, &imp, sync::dataset_id(&imp), &m, &run, false).await;
+            return;
+        }
         let name = file.as_ref().map(|(_, n)| n.clone()).unwrap_or_default();
         let outcome = match records(
             &db,
@@ -924,6 +952,9 @@ pub async fn apply(
     }
     if !diff.errors.is_empty() {
         return Err(coded(err_codes::IMPORT_HAS_ERRORS));
+    }
+    if imp.source() == ImportSource::Dataset && !sync::preview_current(db, &imp, run_id).await? {
+        return Err(coded(err_codes::IMPORT_RUN_STALE));
     }
     // Claim the preview: a second apply of the same run finds it taken.
     let claimed = db
@@ -1320,6 +1351,37 @@ pub async fn start(
     tokio::spawn(async move {
         let _held = stop::hold(run.id);
         let work = async {
+            if imp.source() == ImportSource::Dataset {
+                run_sync(&db, store, &imp, sync::dataset_id(&imp), &m, &run, true).await;
+                return Ok(());
+            }
+            let sensitive = match schema(&db, imp.org_id).await {
+                Ok(s) => sync::maps_sensitive(&s, &m),
+                // Read again and reported by the run itself.
+                Err(_) => true,
+            };
+            if sync::steps_fill_a_table(&m) && !sensitive {
+                let Some(s) = store else {
+                    let code = err_codes::INGEST_STAGING_UNAVAILABLE;
+                    return fail_run(&db, run.id, code, Value::Null).await;
+                };
+                let table = match sync::table_of(&db, imp.org_id, imp.id, &m).await {
+                    Ok(t) => t,
+                    Err(e) => return fail_run(&db, run.id, error_code(&e), Value::Null).await,
+                };
+                let delimiter = m.delimiter.and_then(|c| u8::try_from(c).ok());
+                let filled = crate::services::ingest::pipeline::run_into_table(
+                    &db, &s, imp.org_id, imp.id, run.id, &m.steps, table, delimiter,
+                )
+                .await;
+                return match filled {
+                    Ok(()) => {
+                        run_sync(&db, Some(s), &imp, Some(table), &m, &run, true).await;
+                        Ok(())
+                    }
+                    Err((code, args)) => fail_run(&db, run.id, &code, args).await,
+                };
+            }
             if m.steps.is_empty() {
                 let outcome = scheduled(&db, &imp, &m, run.number).await;
                 let (state, code, args, diff) = match outcome {
@@ -1369,6 +1431,36 @@ pub async fn start(
         }
     });
     Ok(view)
+}
+
+/// A sync run, whose failure is journaled on the run.
+async fn run_sync(
+    db: &DatabaseConnection,
+    store: Option<crate::services::artifact_store::S3Store>,
+    imp: &ImportRow,
+    table: Option<Uuid>,
+    m: &Mapping,
+    run: &RunRow,
+    apply: bool,
+) {
+    let code = match (store, table) {
+        (None, _) => Some(err_codes::DATASET_STORAGE_UNAVAILABLE),
+        (_, None) => Some(err_codes::DATASET_NOT_FOUND),
+        (Some(store), Some(table)) => {
+            match sync::run(db, &store, imp, table, m, run, apply).await {
+                Ok(()) => None,
+                Err(e) => {
+                    tracing::warn!(import = %imp.id, run = %run.id, error = %e, "dataset sync failed");
+                    Some(error_code(&e))
+                }
+            }
+        }
+    };
+    if let Some(code) = code {
+        if let Err(e) = fail_run(db, run.id, code, Value::Null).await {
+            tracing::warn!(run = %run.id, error = %e, "import run not recorded");
+        }
+    }
 }
 
 /// What a run on staged steps got.

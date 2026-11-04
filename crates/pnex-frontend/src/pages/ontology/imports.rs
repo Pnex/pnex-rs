@@ -48,6 +48,7 @@ fn source_label(s: ImportSource) -> String {
         ImportSource::File => t!("onto-imp-source-file").to_string(),
         ImportSource::Url => t!("onto-imp-source-url").to_string(),
         ImportSource::Api => t!("onto-imp-source-api").to_string(),
+        ImportSource::Dataset => t!("onto-imp-source-dataset").to_string(),
     }
 }
 
@@ -343,11 +344,17 @@ fn ImportForm(
                                     match e.value().as_str() {
                                         "url" => ImportSource::Url,
                                         "api" => ImportSource::Api,
+                                        "dataset" => ImportSource::Dataset,
                                         _ => ImportSource::File,
                                     },
                                 );
                         },
-                        for s in [ImportSource::File, ImportSource::Url, ImportSource::Api] {
+                        // A table is chosen by its id for now: not offered until the
+                        // studio (OP1.5) can pick one, only kept on an import that has it.
+                        for s in [ImportSource::File, ImportSource::Url, ImportSource::Api, ImportSource::Dataset]
+                            .into_iter()
+                            .filter(|s| *s != ImportSource::Dataset || source() == ImportSource::Dataset)
+                        {
                             option { value: s.wire(), selected: source() == s, {source_label(s)} }
                         }
                     }

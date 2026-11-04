@@ -261,6 +261,7 @@ les règles plus anciennes qui les contredisent.
 | Suite d'étapes YAML qui parcourt un site web (D323) | Règle (de navigation) | (Navigation) rule | pas « recette » / « recipe » |
 | Groupe de menu : tout ce qui alimente PNeX (appareils, agents navigateur, sites web) | Sources | Sources | pas « Appareils » pour le groupe |
 | Source continue (pistes audio et/ou vidéo : caméra IP, direct, fichier) | Flux | Stream | une caméra-appareil |
+| Lignes versionnées qu'un pipeline lit et écrit (D569, Q-P7) | Table | Table | ni « jeu de données », ni « dataset » à l'écran (sauf images de Vision Lab et ressources data.gouv.fr) |
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | Réglage de transcription d'un flux : modèle, langue, détection de voix, diarisation (D164) | Profil de transcription | Transcription profile | pas « modèle » (= le fichier importé) |
 | Profil de transcription pris quand rien d'autre n'est choisi, un par org | Profil par défaut | Default profile | pas « modèle par défaut », pas « profil principal » |

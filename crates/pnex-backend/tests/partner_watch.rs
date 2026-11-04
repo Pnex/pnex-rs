@@ -1437,6 +1437,11 @@ async fn import_runs_its_own_steps() {
         let steps = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
             AND node_id = 'import:{import_id}' AND run_id = '{}'", run["id"].as_str().unwrap());
         assert_eq!(count(q(steps).await.unwrap()), 5);
+        // The steps left a CSV: it went through a table named after the mapping.
+        let table = format!("SELECT count(*)::bigint AS n FROM dataset_transactions t \
+            JOIN datasets d ON d.id = t.dataset_id \
+            WHERE t.org_id = {org} AND d.name = 'fc_certifiers' AND t.state = 'committed'");
+        assert_eq!(count(q(table).await.unwrap()), 1);
         let live = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
             AND node_id = 'import:{import_id}' AND purged_at IS NULL AND keys <> '[]'::jsonb \
             AND (keep_until IS NULL OR keep_until <= now())");
