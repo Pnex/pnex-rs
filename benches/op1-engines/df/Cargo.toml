@@ -1,0 +1,15 @@
+[package]
+name = "df"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+datafusion = "=55.2.0"
+object_store = { version = "=0.13.2", features = ["aws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+url = "2"
+futures = "0.3"
+
+[dev-dependencies]
+bytes = "1"

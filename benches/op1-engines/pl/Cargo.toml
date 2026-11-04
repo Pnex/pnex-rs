@@ -1,0 +1,8 @@
+[package]
+name = "pl"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+polars = { version = "=0.55.2", features = ["lazy", "sql", "csv", "parquet", "streaming", "strings", "aws", "cloud"] }

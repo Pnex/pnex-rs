@@ -1,0 +1,11 @@
+# OP1.0 engine measurement (D572). Own workspace on purpose: nothing here may
+# reach pnex-server or the main Cargo.lock before the measurement decides.
+[workspace]
+resolver = "2"
+members = ["gen", "df", "pl"]
+
+# Same trade-off as a shipped binary, without the LTO link cost of a bench.
+[profile.release]
+opt-level = 3
+debug = false
+strip = true
