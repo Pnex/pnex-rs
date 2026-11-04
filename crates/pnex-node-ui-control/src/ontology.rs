@@ -304,6 +304,63 @@ impl OntologyQueryNode {
     }
 }
 
+// ─────────────────────────── ontology-aggregate ───────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct AggregateConfig {
+    #[serde(default)]
+    filters: Vec<PropertyFilter>,
+}
+
+#[flow_node("pnex-ontology-aggregate", red_name = "pnex-ontology-aggregate")]
+struct OntologyAggregateNode {
+    base: BaseFlowNodeState,
+    config: AggregateConfig,
+    backend: Backend,
+}
+
+impl OntologyAggregateNode {
+    fn build(
+        _flow: &Flow,
+        base_node: BaseFlowNodeState,
+        config: &RedFlowNodeConfig,
+        _options: Option<&config::Config>,
+    ) -> Result<Box<dyn FlowNodeBehavior>> {
+        let name = "pnex-ontology-aggregate";
+        let cfg = AggregateConfig::deserialize(&config.rest)
+            .map_err(|e| EdgelinkError::BadFlowsJson(format!("{name} : invalid config : {e}")))?;
+        let common = Common::deserialize(&config.rest)
+            .map_err(|e| EdgelinkError::BadFlowsJson(format!("{name} : invalid config : {e}")))?;
+        Ok(Box::new(OntologyAggregateNode {
+            base: base_node,
+            config: cfg,
+            backend: Backend::build(name, common, "aggregate")?,
+        }))
+    }
+
+    async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
+        let req = FlowQueryRequest {
+            node: self.backend.node.clone(),
+            values: values_for(&self.config.filters, &msg_json(&msg).await),
+        };
+        let who = format!("pnex-ontology-aggregate [{}]", self.name());
+        let Some(result) = self.backend.call::<Value, _>(self, &who, &req).await else {
+            return Ok(());
+        };
+        let now = chrono::Utc::now();
+        {
+            let mut m = msg.write().await;
+            m.set("payload".into(), Variant::from(result));
+            m.set(
+                "today".into(),
+                Variant::from(now.format("%Y-%m-%d").to_string()),
+            );
+            m.set("now".into(), Variant::from(now.to_rfc3339()));
+        }
+        self.fan_out_one(Envelope { port: 0, msg }, cancel).await
+    }
+}
+
 // ───────────────────────────── object-upsert ─────────────────────────────
 
 #[flow_node("pnex-object-upsert", red_name = "pnex-object-upsert")]
@@ -592,6 +649,7 @@ macro_rules! run_each {
 }
 
 run_each!(OntologyQueryNode);
+run_each!(OntologyAggregateNode);
 run_each!(ObjectUpsertNode);
 run_each!(LinkUpsertNode);
 run_each!(CheckRecordNode);

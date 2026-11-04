@@ -337,6 +337,14 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            FlowNodeKind::OntologyAggregate { config } => serde_json::json!({
+                "type": "pnex-ontology-aggregate",
+                "filters": config.filters,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::ObjectUpsert { config } => serde_json::json!({
                 "type": "pnex-object-upsert",
                 "key": config.key,

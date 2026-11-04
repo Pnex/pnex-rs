@@ -328,6 +328,7 @@ mod tests {
         use crate::viz::{validate_widget, SourceRef, WidgetOptions};
         let src = SourceRef {
             object_property: None,
+            objects: None,
             role: "primary".into(),
             metric: "etl_mentions".into(),
             device_id: String::new(),

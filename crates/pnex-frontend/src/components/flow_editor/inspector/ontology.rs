@@ -3,7 +3,7 @@ use super::*;
 
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::ontology::flow::{
-    LinkUpsertConfig, ObjectUpsertConfig, OntologyQueryConfig, QueryOutput,
+    LinkUpsertConfig, ObjectUpsertConfig, OntologyAggregateConfig, OntologyQueryConfig, QueryOutput,
 };
 
 // ─────────────── ontology nodes (partner-watch.md D312) ───────────────
@@ -181,6 +181,123 @@ pub(super) fn OntologyQueryForm(
                     },
                 }
                 {t!("flows-ontology-descending")}
+            }
+        }
+    }
+}
+
+/// A list edited as JSON: `on_text` says whether it was understood.
+#[component]
+fn JsonList(
+    label: String,
+    help: String,
+    testid: String,
+    initial: String,
+    can_write: bool,
+    on_text: Callback<String, bool>,
+) -> Element {
+    let mut text = use_signal(move || initial.clone());
+    let mut bad = use_signal(|| false);
+    rsx! {
+        label { class: FIELD_LABEL, "{label}" }
+        textarea {
+            class: "w-full h-24 px-2 py-1 border border-gray-300 rounded-lg text-xs font-mono",
+            "data-testid": "{testid}",
+            disabled: !can_write,
+            value: "{text}",
+            oninput: move |e| text.set(e.value()),
+            onchange: move |e| bad.set(!on_text.call(e.value())),
+        }
+        if bad() {
+            p { class: "text-xs text-red-600", {t!("flows-ontology-aggregate-invalid")} }
+        }
+        p { class: "text-xs text-gray-500", "{help}" }
+    }
+}
+
+fn json_text<T: serde::Serialize>(v: &T) -> String {
+    serde_json::to_string_pretty(v).unwrap_or_else(|_| "[]".into())
+}
+
+/// The metrics and splits stay JSON, like the filters next to them.
+#[component]
+pub(super) fn OntologyAggregateForm(
+    mut cx: EditorCx,
+    initial: OntologyAggregateConfig,
+    can_write: bool,
+) -> Element {
+    let types = use_resource(|| async { api::ontology::types().await.unwrap_or_default() });
+    let choices = type_choices(&types.read().clone().unwrap_or_default(), false);
+    let mut save = move |f: Box<dyn FnOnce(&mut OntologyAggregateConfig)>| {
+        patch_selected(&mut cx, move |node: &mut FlowNode| {
+            if let FlowNodeKind::OntologyAggregate { config } = &mut node.kind {
+                f(config);
+            }
+        });
+    };
+    rsx! {
+        div { class: "space-y-3",
+            p { class: "text-xs text-gray-500", {t!("flows-ontology-aggregate-help")} }
+            label { class: FIELD_LABEL, {t!("flows-ontology-type")} }
+            select {
+                class: SELECT,
+                "data-testid": "ontology-aggregate-type",
+                disabled: !can_write,
+                onchange: move |e| {
+                    let v = e.value();
+                    save(Box::new(move |c| c.object_type = v));
+                },
+                option { value: "", selected: initial.object_type.is_empty(), "—" }
+                for (k, label) in choices {
+                    option {
+                        key: "{k}",
+                        value: "{k}",
+                        selected: k == initial.object_type,
+                        "{label}"
+                    }
+                }
+            }
+            JsonList {
+                label: t!("flows-ontology-filters"),
+                help: t!("flows-ontology-filters-help"),
+                testid: "ontology-aggregate-filters",
+                initial: json_text(&initial.filters),
+                can_write,
+                on_text: move |text: String| match serde_json::from_str(&text) {
+                    Ok(list) => {
+                        save(Box::new(move |c| c.filters = list));
+                        true
+                    }
+                    Err(_) => false,
+                },
+            }
+            JsonList {
+                label: t!("flows-ontology-aggregate-metrics"),
+                help: t!("flows-ontology-aggregate-metrics-help"),
+                testid: "ontology-aggregate-metrics",
+                initial: json_text(&initial.metrics),
+                can_write,
+                on_text: move |text: String| match serde_json::from_str(&text) {
+                    Ok(list) => {
+                        save(Box::new(move |c| c.metrics = list));
+                        true
+                    }
+                    Err(_) => false,
+                },
+            }
+            JsonList {
+                label: t!("flows-ontology-aggregate-split"),
+                help: t!("flows-ontology-aggregate-split-help"),
+                testid: "ontology-aggregate-split",
+                initial: json_text(&initial.group_by),
+                can_write,
+                on_text: move |text: String| match serde_json::from_str(&text) {
+                    Ok(list) => {
+                        save(Box::new(move |c| c.group_by = list));
+                        true
+                    }
+                    Err(_) => false,
+                },
             }
         }
     }

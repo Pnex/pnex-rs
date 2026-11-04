@@ -199,6 +199,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::OntologyQuery { config } => rsx! {
             OntologyQueryForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::OntologyAggregate { config } => rsx! {
+            OntologyAggregateForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::ObjectUpsert { config } => rsx! {
             ObjectUpsertForm { cx, initial: config.clone(), can_write }
         },
@@ -338,7 +341,7 @@ use mail_received::{MailReceivedForm, MailSendForm};
 use media_source::MediaSourceForm;
 use memory::{MemoryReadForm, MemoryWriteForm};
 use notify::NotifyForm;
-use ontology::{LinkUpsertForm, ObjectUpsertForm, OntologyQueryForm};
+use ontology::{LinkUpsertForm, ObjectUpsertForm, OntologyAggregateForm, OntologyQueryForm};
 use org_resolve::OrgResolveForm;
 use page::{PagePdfForm, PageWriteForm};
 use predict::{AnomalyForm, ForecastForm};

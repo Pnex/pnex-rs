@@ -968,6 +968,11 @@ pub const EXT_PROFILE_DAILY_CAP: &str = "ext-profile-daily-cap";
 pub const PROSPECTING_OPPOSED: &str = "prospecting-opposed";
 /// The object was erased: a shell, never edited nor linked again (D446).
 pub const ONTOLOGY_ERASED: &str = "ontology-erased";
+/// An aggregate ran past its time cap (object-aggregates.md D586).
+pub const ONTOLOGY_AGGREGATE_TIMEOUT: &str = "ontology-aggregate-timeout";
+/// A path search stopped at its cap before finding a path: "no path" would
+/// be a guess (ontology.md D589).
+pub const ONTOLOGY_PATH_INCOMPLETE: &str = "ontology-path-incomplete";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -1008,6 +1013,8 @@ pub const ALL: &[&str] = &[
     EXT_PROFILE_DAILY_CAP,
     PROSPECTING_OPPOSED,
     ONTOLOGY_ERASED,
+    ONTOLOGY_AGGREGATE_TIMEOUT,
+    ONTOLOGY_PATH_INCOMPLETE,
     CRAWL_BLOCKED,
     CRAWL_ROBOTS_DISALLOWED,
     CRAWL_UNREACHABLE,

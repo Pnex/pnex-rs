@@ -74,7 +74,7 @@ fn span_text(row: &AggregateRow, with_day: bool) -> String {
 }
 
 /// Bar width in % of the largest value (0 for no data or a non-positive max).
-fn bar_pct(value: Option<f64>, max: f64) -> f64 {
+pub(crate) fn bar_pct(value: Option<f64>, max: f64) -> f64 {
     match value {
         Some(v) if max > 0.0 && v > 0.0 => (v / max * 100.0).clamp(0.0, 100.0),
         _ => 0.0,
@@ -188,6 +188,7 @@ mod tests {
             h: 100,
             source: vec![pnex_core::SourceRef {
                 object_property: None,
+                objects: None,
                 role: "primary".into(),
                 metric: "etl_mentions".into(),
                 device_id: String::new(),

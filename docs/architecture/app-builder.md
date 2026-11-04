@@ -111,13 +111,12 @@ tests sur l'ontologie inventée (`article`, `auteur`, lien `ecrit_par`).
 
 ## 6. Widgets de données (D510, D511)
 
-### D510 — Quatre widgets de lecture et de saisie
+### D510 — Trois widgets de lecture et de saisie
 
 | Widget | Rôle |
 |---|---|
 | `object_table` | Colonnes = titre + propriétés choisies, tri, pages ; un clic sur une ligne écrit la variable `object` et peut ouvrir un autre écran |
 | `object_fields` | Fiche : propriétés choisies d'un objet (variable `object`), lien vers la page objet |
-| `object_count` | Nombre d'objets d'un ensemble (`count` du résultat paginé), seuils comme `stat` |
 | `input` | Champ typé (texte, nombre, date, enum du type) qui écrit une variable |
 
 Valeurs affichées en texte, jamais en HTML (R11–R13).
@@ -218,6 +217,6 @@ Limites :
 - La vue reste dans la coquille PneX (barre latérale visible), pas en plein écran.
 - Pas d'aperçu d'un écran non publié : publier pour le voir.
 - Pas de brouillon d'écran proposé par l'assistant (§8).
-- `object_count` compte un ensemble : le pipeline a un ensemble par étape. Les agrégats (ROI par salon, somme des montants) n'existent pas : ils demandent un widget et une spec.
+- `object_count` retiré le 2026-11-04 : les nombres passent par les widgets `stat`, `gauge`, `indicator`, `line`, `symbol` et `range_bars`, avec une source d'objets (`object-aggregates.md`, D579–D588).
 - Le tri d'un tableau ne porte pas sur le titre (ordre par défaut de la requête).
 

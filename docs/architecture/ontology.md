@@ -558,8 +558,9 @@ lien, source et destination explicites.
 
 | Besoin | Mécanisme |
 |---|---|
-| Parcours (profondeur fixe ou variable, rétroliens, état à une date) | **Jointures et CTE récursives** générées par le cœur Rust, timeout et plafond de lignes |
-| Algorithmes (plus court chemin, impact en cascade, cycles, composantes) | **`petgraph`** (Rust, MIT/Apache-2.0) sur le sous-graphe chargé par CTE |
+| Parcours de la requête D185 (rétroliens, état à une date) | **Jointures et CTE récursives** générées par le cœur Rust, timeout et plafond de lignes |
+| Voisinage, impact, plus court chemin | **Lecture niveau par niveau** (D589) : sans revisite, timeout par niveau, plafond signalé par `truncated` |
+| Algorithmes (cycles, composantes, chemin dans un sous-graphe) | **`petgraph`** (Rust, MIT/Apache-2.0) ou code pur de `pnex-core`, sur le sous-graphe chargé |
 | Filtre temporel | SQL classique sur `valid_from` / `valid_to` |
 
 SQL/PGQ (`CREATE PROPERTY GRAPH` / `GRAPH_TABLE`) n'est **pas dans
@@ -617,6 +618,139 @@ changement, testé sur 19beta4).
 | SurrealDB | Licence BSL (incompatible MIT et fondation), maturité, réécriture complète de la couche données |
 | XTDB | Bitemporel natif, mais JVM : trop lourd pour le Pi |
 | AGE seul | Voir A4 |
+
+### D589 — Graphe à grande échelle : PostgreSQL d'abord, AGE en réserve (2026-11-04)
+
+**Question.** PostgreSQL tient-il de gros volumes de liens face à une base
+graphe, et faut-il ajouter un composant ? Tranché par Shan. **Ne pas rouvrir
+sans l'une des conditions listées plus bas.**
+
+**Décision.**
+
+- PostgreSQL reste la seule source de vérité. A3 et A4 sont confirmées.
+- On corrige d'abord la requête de parcours. Aucun composant n'est ajouté tant
+  que cette correction atteint la cible.
+- Apache AGE reste la seule réserve retenue : une projection en lecture, sur le
+  même serveur, jamais une source de vérité ni une dépendance d'une fonction
+  essentielle.
+- **Contrainte d'exploitation** : ni multiplication des tables, ni base de
+  données en plus à gérer. AGE crée un schéma par graphe et une table par label :
+  si on l'adopte, ce sera un seul graphe à labels génériques (`object`, `link`),
+  jamais un label par type ni un graphe par org. L'org devient alors une
+  propriété, à filtrer dans chaque requête.
+
+**Mesure** (requête actuelle de `services/ontology/graph.rs`, graphe synthétique
+à degrés très inégaux, `shared_buffers` de 128 Mo, machine partagée) :
+
+| Départ | 3 M de liens | 30 M de liens |
+|---|---|---|
+| Objet ordinaire (3 liens) | 3 ms à 2 sauts ; tronqué à 3 ; échec à 4 | ~220 ms jusqu'à 3 sauts ; échec à 4 |
+| Objet moyen (~170 liens) | 4 ms à 1 saut ; tronqué à 2 ; échec à 3 | ~220 ms à 1 saut ; instable à 2 ; échec à 3 |
+| Objet très connecté | 56 780 liens : tronqué à 1 ; échec à 2 | 263 896 liens : tronqué à 1 ; échec à 2 |
+
+« Échec » : délai de 3 s dépassé. « Tronqué » : 5 000 liens rendus sur davantage.
+
+**Constats.**
+
+- Le problème vient des objets très connectés et de la requête, plus que du
+  volume : le parcours revisite un objet à chaque profondeur, et le plafond de
+  5 000 liens coupe après le calcul, arbitrairement et sans le signaler.
+- Conséquence lue dans le code, non reproduite de bout en bout : `path` peut
+  répondre « aucun chemin » à tort, et `impact` rendre une liste incomplète.
+- Le plancher de ~220 ms à 30 M de liens disparaît avec un PostgreSQL réglé
+  (2,5 ms sans JIT, 17 ms avec, à 1 saut depuis un objet ordinaire). La part de
+  chaque réglage n'a pas été isolée.
+
+**Correction mesurée** (2026-11-04, 30 M de liens, 10 M d'objets, conteneur dédié :
+`shared_buffers` 8 Go, 8 CPU, JIT coupé pour ce parcours). Parcours en largeur
+conduit par le client : un objet n'est jamais revisité, chaque niveau est borné par
+un `LIMIT`. Client Python, donc sans le gain éventuel d'un client Rust. Les réponses
+sans plafond sont identiques à celles de la requête actuelle sur le seul objet
+comparé (4 184 liens à 3 sauts).
+
+| Mesure à 3 sauts, 95ᵉ percentile | Index actuels | Avec index couvrants |
+|---|---|---|
+| Plafond de 5 000 liens, objet ordinaire | 25 ms | 10 ms |
+| Plafond de 5 000 liens, objet moyen | 21 ms | 13 ms |
+| Plafond de 5 000 liens, objet très connecté | 9 ms | 5 ms |
+| Sans plafond, objet ordinaire (~555 000 liens) | 2,3 s | 1,2 s |
+| Sans plafond, objet moyen (~4,6 M de liens) | 14 s | 8,6 s |
+| Sans plafond, objet très connecté (~24 M de liens) | Délai de 30 s dépassé par niveau pour un objet sur deux | 89 s |
+
+À titre de comparaison, la requête actuelle échoue encore à 3 sauts sur l'objet moyen
+et sur l'objet très connecté avec les mêmes réglages.
+
+- **Plus court chemin bidirectionnel**, jusqu'à 6 sauts, sans plafond atteint à 2 M de
+  liens : 95ᵉ percentile de 283 ms, 37 chemins trouvés sur 40 paires. Longueurs non
+  recoupées avec une référence. Mesuré avec les index couvrants seulement.
+- **8 clients simultanés** à 3 sauts, plafond de 5 000, 40 écritures par seconde :
+  181 requêtes par seconde, 95ᵉ percentile de 73 ms, pic isolé à 1,6 s, aucun échec.
+  Mesuré avec les index couvrants seulement, `synchronous_commit=off`.
+- **Coût des index couvrants** : 7,9 à 11 Go pour la table et ses index, 227 s de
+  création, coût en écriture non mesuré.
+
+**Lecture.** La cible de travail (moins de 500 ms au 95ᵉ percentile à 3 sauts sur
+30 M de liens) est atteinte **avec un plafond signalé**, même sans index couvrants.
+Sans plafond, elle ne l'est pas dès que le parcours touche des millions de liens :
+aucun écran n'en a l'usage, mais `impact` devra signaler une liste incomplète, ou
+passer par un traitement différé si un besoin de liste complète apparaît. Le plus
+court chemin, lui, n'a pas besoin de ce plafond.
+
+**Limites.** Graphe synthétique, une seule org, sans filtre de relation, sans `as_of`
+ni masquage. Le taux de troncature de ce test est sous-estimé par un défaut du script
+(doublons d'une même arête comptés par le `LIMIT`) : il ne faut pas s'y fier, et le
+code devra signaler la coupe dès que le `LIMIT` est atteint. Les temps restent valides.
+
+**Livré le 2026-11-04** (`services/ontology/graph.rs`, non commité à cette date) :
+
+- voisinage et impact lisent niveau par niveau, plafonnés à 5 000 liens, avec
+  `truncated` dans la réponse et une note dans l'UI. Sans index ajouté ;
+- l'impact suit réellement le sens des liens, dans la limite de `depth`. Avant, il
+  chargeait les liens dans les deux sens puis filtrait, et pouvait dépasser `depth` ;
+- le chemin est cherché depuis les deux extrémités, plafonné à 200 000 liens. Coupé
+  avant d'aboutir : **503 `ontology-path-incomplete`**, jamais un faux 404. Trouvé
+  malgré une coupe : `truncated` à vrai, un chemin plus court peut exister ;
+- un niveau qui dépasse son délai de 3 s termine le parcours comme tronqué, au lieu
+  d'une erreur ;
+- l'UI n'affiche pas encore `truncated` sur un chemin trouvé (l'API et le MCP le
+  rendent). Les parcours de la requête D185 (`query.rs`) n'ont pas été modifiés.
+
+Test : `tests/ontology.rs`, `a_walk_past_its_cap_says_so`.
+
+**Options écartées.**
+
+| Option | Raison |
+|---|---|
+| AgensGraph | Fork de PostgreSQL : il remplace la base de toute la plateforme, retour en arrière coûteux, correctifs dépendants de son équipe. Licence Apache-2.0 et base 18.6 vérifiées : ce n'est pas le motif du rejet |
+| Grafeo, LadybugDB, NeuG | Licences acceptables, mais une base de plus, une copie à synchroniser, et l'isolation par org et le masquage à refaire. À tester seulement si AGE échoue. Grafeo : 10 mois, v0.6.1, un auteur pour l'essentiel des commits |
+| DuckDB + DuckPGQ | Moteur embarqué, dépassements de temps et erreurs dans le comparatif ci-dessous |
+| ArcadeDB, Neo4j | JVM pour le premier ; GPL pour la version Community du second |
+| FalkorDB, TuringDB | Licences refusées : SSPL, BSL |
+
+**Le comparatif public `graph-bench` ne tranche pas.** PostgreSQL n'y figure pas
+dans les résultats actuels, son niveau « medium » s'arrête à 180 000 liens `KNOWS`,
+il tourne sur un seul thread, surtout en mémoire, sans accès concurrents ni droits
+par org, et il est publié par l'éditeur de Grafeo.
+
+**AGE n'est pas une valeur sûre du seul fait d'être chez Apache** (relevé du
+2026-11-04) : aucun commit sur la branche par défaut d'octobre 2024 à avril 2025,
+44 % des commits des 12 derniers mois par une seule personne, 236 issues ouvertes,
+peu de contributions externes selon les rapports au board. Une extension doit
+suivre chaque version majeure de PostgreSQL et peut bloquer notre montée de
+version : d'où une projection qu'on peut retirer sans perdre de données. Le délai
+d'AGE à suivre les versions passées n'a pas été mesuré.
+
+**Conditions pour rouvrir la question.**
+
+1. La requête corrigée rate la cible sur des données réelles ; ou
+2. le déclencheur d'A4 est atteint : parcours de 5 sauts ou plus, en interactif,
+   sur des millions d'objets, devenus un vrai goulot ; ou
+3. Cypher devient un besoin utilisateur.
+
+Dans ce cas, tester AGE en projection, sur les mêmes graphes, avec vérification des
+réponses, disque, 8 clients simultanés, écritures concurrentes et `kill -9`. Une
+autre base n'est envisagée que si AGE échoue et qu'elle fait au moins 10 fois mieux
+sans perte de données.
 
 ### A6. Positionnement
 

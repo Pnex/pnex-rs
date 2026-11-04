@@ -65,6 +65,7 @@ pub mod modal;
 pub mod notify_channel_form;
 pub mod notify_deliveries;
 pub mod notify_template_form;
+pub mod objects_widget;
 pub mod ontology;
 pub mod org_switcher;
 pub mod pager;

@@ -28,6 +28,10 @@ pub fn routes() -> Routes {
         .add("/me/object-sets/{name}", get(me_object_set))
         .add("/{id}", get(one).put(update).delete(remove))
         .add("/{id}/object-sets/{name}", get(object_set))
+        .add(
+            "/{id}/object-sets/{name}/aggregate/query",
+            post(object_set_aggregate),
+        )
         .add("/{id}/screens/{key}", get(screen))
         .add("/{id}/build", axum::routing::put(build))
         .add("/{id}/publish", post(publish))
@@ -42,6 +46,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         me_object_set,
         one,
         object_set,
+        object_set_aggregate,
         screen,
         create,
         update,
@@ -246,6 +251,44 @@ async fn object_set(
 ) -> Result<Response> {
     match apps::get(&ctx.db, org.org.id, id).await {
         Ok(app) => run_set(&ctx, &org, &app, &name, params).await,
+        Err(e) => app_error(e),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/apps/{id}/object-sets/{name}/aggregate/query",
+    tag = "apps",
+    operation_id = "apps_object_sets_aggregate_query",
+    summary = "Aggregate an object set of an application",
+    description = "For a widget of a screen: read-only count, sum, average, minimum, maximum and ratios over the objects of a named set, optionally split by property, date or link, with the reader's rights. A money property answers one value per currency. Refused when it names what the reader may not read. Permission: ontology:read.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Application id"),
+        ("name" = String, Path, description = "Object set name")
+    ),
+    request_body = pnex_core::ontology::aggregate::SetAggregateQuery,
+    responses(
+        (status = 200, body = pnex_core::ontology::aggregate::AggregateResult),
+        (status = 400, description = "Invalid request, or a parameter of the set is missing (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Names what the reader may not read (`access-denied`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`app-not-found`: no such application or set", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "Ran past its time cap (`ontology-aggregate-timeout`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn object_set_aggregate(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, name)): Path<(Uuid, String)>,
+    Json(req): Json<pnex_core::ontology::aggregate::SetAggregateQuery>,
+) -> Result<Response> {
+    let hide = crate::services::ontology::redact::Redaction::of(|p| org.can(p));
+    let run = async {
+        let app = apps::get(&ctx.db, org.org.id, id).await?;
+        apps::aggregate_set(&ctx.db, org.org.id, &app, &name, &req, hide).await
+    };
+    match run.await {
+        Ok(r) => format::json(r),
         Err(e) => app_error(e),
     }
 }

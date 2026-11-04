@@ -161,7 +161,7 @@ async fn an_opportunity_lives_in_the_account_graph() {
         );
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND name LIKE 'CRM · %' AND status = 'draft'")).await,
-            10
+            14
         );
 
         let acme = object(&server, &env.alice, org, "organization", "Acme", json!({"account_status": "prospect"})).await;
@@ -287,7 +287,7 @@ async fn the_pack_ships_its_screens() {
             .collect();
         assert_eq!(
             screens,
-            ["pipeline", "opportunity", "leads", "activities", "billing"]
+            ["pipeline", "figures", "shows", "opportunity", "leads", "activities", "billing"]
         );
         for key in screens {
             let (st, s) = call(
@@ -312,8 +312,8 @@ async fn the_pack_ships_its_screens() {
         .await;
         for (set, count) in [
             ("open_opportunities", 1),
-            ("stage_proposal", 1),
-            ("stage_won", 0),
+            ("all_opportunities", 1),
+            ("won_opportunities", 0),
             ("new_leads", 0),
         ] {
             let (st, r) = call(
@@ -327,6 +327,25 @@ async fn the_pack_ships_its_screens() {
             .await;
             assert_eq!((st, r["count"].clone()), (200, json!(count)), "{set}: {r}");
         }
+        // Every number the screens show is a request the server accepts, and
+        // the bars of the pipeline count what is there.
+        let mut sources = 0;
+        for key in ["pipeline", "figures"] {
+            let (_, screen) = call(&server, "GET", &format!("/api/v1/apps/{id}/screens/{key}"), &env.alice, org, None).await;
+            for w in screen["layout"]["widgets"].as_array().unwrap() {
+                let Some(o) = w["source"][0].get("objects") else { continue };
+                sources += 1;
+                let set = o["object_set"].as_str().unwrap();
+                let body = json!({"group_by": o.get("group_by").cloned().unwrap_or(json!([])), "metrics": o["metrics"]});
+                let (st, r) = call(&server, "POST", &format!("/api/v1/apps/{id}/object-sets/{set}/aggregate/query"), &env.alice, org, Some(body)).await;
+                assert_eq!(st, 200, "{key}/{}: {r}", w["id"]);
+                if w["id"] == "b1" {
+                    assert_eq!(r["groups"][0]["key"][0], "proposal", "{r}");
+                    assert_eq!(r["groups"][0]["values"]["n"]["value"], 1.0, "{r}");
+                }
+            }
+        }
+        assert_eq!(sources, 9);
         // Not a dashboard of the org.
         let (_, list) = call(&server, "GET", "/api/v1/dashboards", &env.alice, org, None).await;
         assert_eq!(list["count"], 0, "{list}");
@@ -409,8 +428,8 @@ async fn a_stale_lead_is_proposed_for_erasure() {
 async fn names_match_without_accents_or_case() {
     with_app(|server, env| async move {
         let org = me(&server, &env.alice).await["orgs"][0]["id"].as_i64().unwrap();
-        let (st, _) = call(&server, "POST", "/api/v1/ontology/packs/crm/install", &env.alice, org, None).await;
-        assert_eq!(st, 200);
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/packs/crm/install", &env.alice, org, None).await;
+        assert_eq!(st, 200, "{e}");
         let acme = object(&server, &env.alice, org, "organization", "Acme", json!({})).await;
         let elodie = object(&server, &env.alice, org, "person", "Élodie Martin", json!({"notes": "Rencontrée à Lyon"})).await;
         object(&server, &env.alice, org, "person", "Bob Durand", json!({})).await;

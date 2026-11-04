@@ -902,7 +902,11 @@ fn GraphPanel(id: String, link_types: Vec<LinkTypeView>, types: Vec<ObjectTypeVi
         let id = iid.clone();
         async move { api::ontology::impact(&id, false).await.unwrap_or_default() }
     });
-    let impacted = impact.read().clone().unwrap_or_default();
+    let pnex_core::ontology::api::ObjectImpact {
+        objects: impacted,
+        truncated: impact_truncated,
+    } = impact.read().clone().unwrap_or_default();
+    let graph_truncated = matches!(&*graph.read(), Some(Ok(n)) if n.truncated);
     let body = match &*graph.read() {
         Some(Ok(n)) if n.links.is_empty() => rsx! {
             p { class: "text-sm text-gray-500", {t!("onto-links-empty")} }
@@ -935,9 +939,23 @@ fn GraphPanel(id: String, link_types: Vec<LinkTypeView>, types: Vec<ObjectTypeVi
                 }
             }
             {body}
+            if graph_truncated {
+                p {
+                    class: "text-xs text-amber-700",
+                    "data-testid": "graph-truncated",
+                    {t!("onto-graph-truncated")}
+                }
+            }
             div {
                 h3 { class: "text-sm font-medium text-gray-900", {t!("onto-impact")} }
                 p { class: "text-xs text-gray-500", {t!("onto-impact-help")} }
+                if impact_truncated {
+                    p {
+                        class: "text-xs text-amber-700",
+                        "data-testid": "impact-truncated",
+                        {t!("onto-impact-truncated")}
+                    }
+                }
                 if impacted.is_empty() {
                     p { class: "text-sm text-gray-500", "—" }
                 }

@@ -95,6 +95,7 @@ pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x
         (
             vec![SourceRef {
                 object_property: None,
+                objects: None,
                 role: "primary".into(),
                 metric: String::new(),
                 device_id: String::new(),
@@ -141,6 +142,7 @@ pub fn new_home_card(
         .filter(|r| r.required)
         .map(|r| SourceRef {
             object_property: None,
+            objects: None,
             role: r.role.to_string(),
             metric: String::new(),
             device_id: String::new(),

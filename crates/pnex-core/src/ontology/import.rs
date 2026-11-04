@@ -309,6 +309,12 @@ pub struct PerObject {
     /// nothing (network-check.md D422).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub setting: Option<PerObjectSetting>,
+    /// Sends the object's title as `param` instead of its property, and keeps
+    /// only the records whose field of this name holds the property: a search
+    /// by name also answers namesakes (a register that lists an entity's
+    /// sites for a name, never for its identifier).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub by_title: String,
 }
 
 /// Who a press feed watches and how much it brings. Records: `ref`, `title`,
@@ -710,6 +716,9 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             .is_some_and(|t| t.properties.iter().any(|d| d.key == p.property));
         if !known || p.param.trim() != p.param || p.param.len() > 64 {
             return Err(ferr("per_object", FIELD_INVALID));
+        }
+        if !p.by_title.is_empty() && p.param.is_empty() {
+            return Err(ferr("per_object.by_title", FIELD_INVALID));
         }
         if let Some(o) = &p.only {
             let known = s

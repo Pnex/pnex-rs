@@ -35,15 +35,28 @@
 # their number, amounts and dates, marks the overdue ones and plans a
 # reminder activity; an expired quote is marked. The morning digest lists
 # the new leads too.
+# Since 3.4.0 (crm.md D590): a trade show naming a list turns the list's
+# contacts into leads, linked by `from_list`: being on a list is not having
+# been met, and it keeps `met_at`, which the show's figures read, for those met.
 # Since 3.2.0 (app-builder.md D513): the application "Sales follow-up", its
 # screens ready to use: stages, leads, activities to do, quotes and invoices.
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "3.2.0"
+version: "3.4.0"
 requires: [prospecting_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
+extends:
+  - type: list_contact
+    properties:
+      - key: lead_state
+        name: Lead
+        names: {fr: "Piste"}
+        kind: enum
+        values: [created, objected]
+        labels: {created: {fr: "Créée", en: "Created"}, objected: {fr: "Opposition", en: "Objected"}}
+        indexed: true
 link_types:
   - key: opportunity_with
     name: is an opportunity with
@@ -158,13 +171,37 @@ link_types:
     inverse_names: {fr: "est facturé par"}
     from_types: [invoice]
     to_types: [quote]
+  - key: met_at
+    name: was met at
+    names: {fr: "rencontrée à"}
+    inverse_name: brought
+    inverse_names: {fr: "a apporté"}
+    from_types: [opportunity, lead]
+    to_types: [trade_show]
+    one_target: true
+  - key: from_list
+    name: is on the list of
+    names: {fr: "figure sur la liste de"}
+    inverse_name: lists
+    inverse_names: {fr: "liste"}
+    from_types: [lead]
+    to_types: [trade_show]
+    one_target: true
+  - key: from_step
+    name: comes from the step
+    names: {fr: "vient de l'étape"}
+    inverse_name: produced
+    inverse_names: {fr: "a produit"}
+    from_types: [activity]
+    to_types: [follow_up_step]
+    one_target: true
 apps:
   - key: sales_follow_up
     name: Sales follow-up
     names: {fr: "Suivi commercial"}
     description: Opportunities, leads, activities to do, quotes and invoices.
     scope:
-      types: [opportunity, lead, activity, quote, invoice]
+      types: [opportunity, lead, activity, quote, invoice, trade_show]
     actions: [lead.convert]
     home: pipeline
     variables:
@@ -176,12 +213,18 @@ apps:
           type_key: opportunity
           filters: [{key: stage, op: in, value: [discovery, qualification, proposal, negotiation]}]
           order_by: expected_close
-      stage_discovery: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: discovery}]}}
-      stage_qualification: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: qualification}]}}
-      stage_proposal: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: proposal}]}}
-      stage_negotiation: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: negotiation}]}}
-      stage_won: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: won}]}}
-      stage_lost: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: lost}]}}
+      all_opportunities: {query: {type_key: opportunity}}
+      won_opportunities: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: won}]}}
+      overdue_activities:
+        query:
+          type_key: activity
+          filters: [{key: state, op: eq, value: to_do}, {key: due_on, op: lt, value: "$today"}]
+      follow_ups_done:
+        query:
+          type_key: activity
+          filters: [{key: state, op: eq, value: done}, {key: direction, op: eq, value: outbound}]
+      trade_shows: {query: {type_key: trade_show, order_by: start_on, descending: true}}
+      all_leads: {query: {type_key: lead}}
       new_leads:
         query:
           type_key: lead
@@ -210,13 +253,102 @@ apps:
         layout:
           canvas: {width: 1600, height: 900}
           widgets:
-            - {id: c1, type: object_count, x: 16, y: 16, w: 250, h: 130, options: {app: {object_set: stage_discovery, titles: {fr: "Découverte", en: "Discovery"}}}}
-            - {id: c2, type: object_count, x: 280, y: 16, w: 250, h: 130, options: {app: {object_set: stage_qualification, titles: {fr: "Qualification", en: "Qualification"}}}}
-            - {id: c3, type: object_count, x: 544, y: 16, w: 250, h: 130, options: {app: {object_set: stage_proposal, titles: {fr: "Proposition", en: "Proposal"}}}}
-            - {id: c4, type: object_count, x: 808, y: 16, w: 250, h: 130, options: {app: {object_set: stage_negotiation, titles: {fr: "Négociation", en: "Negotiation"}}}}
-            - {id: c5, type: object_count, x: 1072, y: 16, w: 250, h: 130, options: {app: {object_set: stage_won, titles: {fr: "Gagnées", en: "Won"}}}}
-            - {id: c6, type: object_count, x: 1336, y: 16, w: 248, h: 130, options: {app: {object_set: stage_lost, titles: {fr: "Perdues", en: "Lost"}}}}
-            - {id: t1, type: object_table, x: 16, y: 164, w: 1568, h: 720, options: {app: {object_set: open_opportunities, columns: [title, stage, amount, expected_close, last_activity, missing_criteria], variable: opportunity, screen: opportunity, titles: {fr: "Opportunités ouvertes", en: "Open opportunities"}}}}
+            - id: c1
+              type: stat
+              x: 16
+              y: 16
+              w: 250
+              h: 130
+              options: {decimals: 0, app: {titles: {fr: "Opportunités ouvertes", en: "Open opportunities"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: open_opportunities, metrics: [{key: n, op: count}], show: n}}]
+            - id: c2
+              type: stat
+              x: 280
+              y: 16
+              w: 420
+              h: 130
+              options: {decimals: 0, app: {titles: {fr: "Montant ouvert", en: "Open amount"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: open_opportunities, metrics: [{key: total, op: sum, property: amount}], show: total}}]
+            - id: c3
+              type: stat
+              x: 714
+              y: 16
+              w: 250
+              h: 130
+              options: {decimals: 0, app: {titles: {fr: "Activités en retard", en: "Overdue activities"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: overdue_activities, metrics: [{key: n, op: count}], show: n}}]
+            - {id: t1, type: object_table, x: 16, y: 164, w: 1048, h: 720, options: {app: {object_set: open_opportunities, columns: [title, stage, amount, expected_close, last_activity, missing_criteria], variable: opportunity, screen: opportunity, titles: {fr: "Opportunités ouvertes", en: "Open opportunities"}}}}
+            - id: b1
+              type: range_bars
+              x: 1080
+              y: 16
+              w: 504
+              h: 428
+              options: {decimals: 0, app: {titles: {fr: "Opportunités par étape", en: "Opportunities by stage"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: open_opportunities, group_by: [{property: stage}], metrics: [{key: n, op: count}], show: n}}]
+            - id: b2
+              type: range_bars
+              x: 1080
+              y: 456
+              w: 504
+              h: 428
+              options: {decimals: 0, app: {titles: {fr: "Montant par étape", en: "Amount by stage"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: open_opportunities, group_by: [{property: stage}], metrics: [{key: total, op: sum, property: amount}], show: total}}]
+      - key: figures
+        name: Figures
+        names: {fr: "Chiffres"}
+        layout:
+          canvas: {width: 1600, height: 900}
+          widgets:
+            - id: f1
+              type: range_bars
+              x: 16
+              y: 16
+              w: 776
+              h: 428
+              options: {decimals: 0, app: {titles: {fr: "CA gagné par salon", en: "Won amount by trade show"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: won_opportunities, group_by: [{hops: [{link_type: met_at, direction: out}]}], metrics: [{key: total, op: sum, property: amount}], show: total}}]
+            - id: f2
+              type: range_bars
+              x: 808
+              y: 16
+              w: 776
+              h: 428
+              options: {decimals: 0, unit: "%", app: {titles: {fr: "Taux de conversion par salon", en: "Conversion rate by trade show"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: all_opportunities, group_by: [{hops: [{link_type: met_at, direction: out}]}], metrics: [{key: won, op: count, where: {key: stage, op: eq, value: won}}, {key: all, op: count}, {key: rate, ratio: [won, all], percent: true}], show: rate}}]
+            - id: f3
+              type: range_bars
+              x: 16
+              y: 456
+              w: 776
+              h: 428
+              options: {decimals: 0, app: {titles: {fr: "Activités en retard par commercial", en: "Overdue activities by owner"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: overdue_activities, group_by: [{hops: [{link_type: activity_on, direction: out}, {link_type: owned_by, direction: out}]}], metrics: [{key: n, op: count}], show: n}}]
+            - id: f4
+              type: range_bars
+              x: 808
+              y: 456
+              w: 776
+              h: 428
+              options: {decimals: 0, unit: "%", app: {titles: {fr: "Taux de réponse par étape de relance", en: "Reply rate by follow-up step"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: follow_ups_done, group_by: [{hops: [{link_type: from_step, direction: out}]}], metrics: [{key: replied, op: count, where: {key: replied, op: eq, value: true}}, {key: all, op: count}, {key: rate, ratio: [replied, all], percent: true}], show: rate}}]
+      - key: shows
+        name: Trade shows
+        names: {fr: "Salons"}
+        layout:
+          canvas: {width: 1600, height: 900}
+          widgets:
+            - {id: t1, type: object_table, x: 16, y: 16, w: 1400, h: 560, options: {app: {object_set: trade_shows, columns: [title, start_on, list, cost, opportunities, won, conversion, won_amount, roi], titles: {fr: "Salons", en: "Trade shows"}}}}
+            - {id: n1, type: object_form, x: 1432, y: 16, w: 152, h: 100, options: {app: {object_type: trade_show}}}
+            - id: l1
+              type: range_bars
+              title: Leads from lists
+              x: 16
+              y: 592
+              w: 1400
+              h: 292
+              options: {app: {titles: {fr: "Pistes issues des listes", en: "Leads from lists"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: all_leads, group_by: [{hops: [{link_type: from_list, direction: out}]}], metrics: [{key: leads, op: count}], show: leads}}]
       - key: opportunity
         name: Opportunity
         names: {fr: "Opportunité"}
@@ -331,6 +463,21 @@ types:
           - { key: organization, name: Account, names: {fr: "Compte"}, kind: ref, to_type: organization, required: true }
           - { key: person, name: Contact, names: {fr: "Contact"}, kind: ref, to_type: person }
           - { key: name, name: Opportunity name, names: {fr: "Nom de l'opportunité"}, kind: text, max_len: 255 }
+  - key: trade_show
+    name: Trade show
+    names: {fr: "Salon"}
+    icon: landmark
+    properties:
+      - { key: start_on, name: Starts on, names: {fr: "Début"}, kind: date, indexed: true }
+      - { key: place, name: Place, names: {fr: "Lieu"}, kind: text, max_len: 255 }
+      - { key: list, name: List to turn into leads, names: {fr: "Liste à transformer en pistes"}, kind: text, max_len: 255, indexed: true }
+      - { key: cost, name: Cost, names: {fr: "Coût"}, kind: money }
+      - { key: opportunities, name: Opportunities, names: {fr: "Opportunités"}, kind: number, min: 0 }
+      - { key: won, name: Won, names: {fr: "Gagnées"}, kind: number, min: 0 }
+      - { key: conversion, name: Conversion rate (%), names: {fr: "Taux de conversion (%)"}, kind: number, min: 0 }
+      - { key: won_amount, name: Won amount, names: {fr: "CA gagné"}, kind: money }
+      - { key: other_currency_wins, name: Wins in another currency, names: {fr: "Gains dans une autre devise"}, kind: number, min: 0 }
+      - { key: roi, name: Return (won amount / cost), names: {fr: "Retour (CA gagné / coût)"}, kind: number, min: 0 }
   - key: quote
     name: Quote
     names: {fr: "Devis"}
@@ -435,6 +582,7 @@ types:
       - { key: content, name: Content, names: {fr: "Contenu"}, kind: text, max_len: 4000 }
       - { key: context, name: Context, names: {fr: "Contexte"}, kind: text, max_len: 1000 }
       - { key: draft, name: Draft, names: {fr: "Brouillon"}, kind: text, max_len: 4000 }
+      - { key: replied, name: Replied, names: {fr: "A obtenu une réponse"}, kind: bool, indexed: true }
       - { key: outbox_mail, name: Outbox mail, names: {fr: "Mail en boîte d'envoi"}, kind: text, max_len: 64 }
       - { key: reported, name: Reported, names: {fr: "Reportée"}, kind: bool, indexed: true }
 functions:
@@ -512,13 +660,79 @@ functions:
               },
               # The step's own title (the org's words), the kind as a fallback.
               "title": (msg["object"].get("title") or kind.replace("_", " ") + " D" + str(day)) + " · " + opp["name"],
+              "step": msg["object"]["id"],
           }
   - name: crm_link
     language: starlark
-    description: Link payload from the activity just written to its opportunity.
+    description: The links from the activity just written to its opportunity and to its step of the plan.
+    outputs:
+      - {name: opportunity, ty: any, desc: "Activity is an activity on the opportunity"}
+      - {name: step, ty: any, desc: "Activity comes from the step"}
     code: |
       def handle(inputs, msg):
-          return {"payload": {"source_id": msg["object"]["id"], "target_id": msg["opp"]["id"]}}
+          me = msg["object"]["id"]
+          return [{"payload": {"source_id": me, "target_id": msg["opp"]["id"]}},
+                  {"payload": {"source_id": me, "target_id": msg["step"]}}]
+  - name: crm_reply_prep
+    language: starlark
+    description: A follow-up done and not answered yet, its opportunity and the moment an answer counts from.
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          opps = [l["other"]["id"] for l in msg.get("links", {}).get("activity_on", [])
+                  if l.get("direction") == "out" and l.get("other", {}).get("type") == "opportunity"]
+          steps = msg.get("links", {}).get("from_step", [])
+          since = p.get("done_at") or p.get("due_on") or ""
+          if not opps or not steps or not since:
+              return None
+          return {"payload": {}, "act": {"id": msg["object"]["id"], "opp": opps[0], "since": since}}
+  - name: crm_reply_found
+    language: starlark
+    description: "A reply is an incoming activity on the same opportunity from the moment the follow-up was done."
+    code: |
+      def handle(inputs, msg):
+          act = msg["act"]
+          for row in msg["payload"]:
+              p = row.get("properties", {})
+              if p.get("direction") == "inbound" and (p.get("done_at") or "") >= act["since"]:
+                  return {"payload": {"replied": True}, "object_id": act["id"]}
+          return None
+  - name: crm_show_figures
+    language: starlark
+    description: "The figures of a trade show from its opportunities: won amount in the currency of its cost, wins in another currency counted apart, never converted."
+    code: |
+      def rounded(x, digits):
+          return int(x * digits + 0.5) / float(digits)
+
+      def handle(inputs, msg):
+          p = msg["payload"]
+          opps = [l["other"].get("properties", {}) for l in msg.get("links", {}).get("met_at", [])
+                  if l.get("direction") == "in" and l.get("other", {}).get("type") == "opportunity"]
+          won = [o for o in opps if o.get("stage") == "won"]
+          cost = p.get("cost") or {}
+          currency = cost.get("currency") or ""
+          amounts = [o["amount"] for o in won if o.get("amount")]
+          if not currency and amounts:
+              currency = amounts[0].get("currency", "")
+          total = 0.0
+          for a in amounts:
+              if a.get("currency") == currency:
+                  total += float(a.get("amount", 0))
+          other = len([a for a in amounts if a.get("currency") != currency])
+          figures = {
+              "opportunities": len(opps),
+              "won": len(won),
+              "conversion": rounded(len(won) * 100.0 / len(opps), 10) if opps else 0,
+              "other_currency_wins": other,
+          }
+          if currency:
+              figures["won_amount"] = {"amount": total, "currency": currency}
+          if cost.get("amount"):
+              figures["roi"] = rounded(total / float(cost["amount"]), 100)
+          # Written only when it changes: no new version every hour.
+          if all([p.get(k) == v for k, v in figures.items()]):
+              return None
+          return {"payload": figures, "object_id": msg["object"]["id"]}
   - name: crm_report
     language: starlark
     description: "A done activity moves the last activity of its opportunity forward, then is marked reported."
@@ -661,6 +875,7 @@ functions:
               "payload": {},
               "addr": addr,
               "mail": {
+                  "name": (frm or {}).get("name", "") or "",
                   "message_id": m.get("message_id", ""),
                   "subject": fwd.get("subject") or m.get("subject", ""),
                   "date": fwd.get("date") or m.get("date") or m.get("received_at", ""),
@@ -668,6 +883,32 @@ functions:
                   "trusted": trusted(m.get("auth", {})),
               },
           }
+  - name: crm_mail_lead
+    language: starlark
+    description: "The lead of a mail from an unknown, authenticated sender, keyed by the address: one lead per sender. The mail's text is data, kept as the lead's message and never acted on."
+    code: |
+      def handle(inputs, msg):
+          mail = msg["mail"]
+          # A known person is followed by the mails received flow; a forged
+          # sender must not be able to fill the list of leads.
+          if msg["payload"] or not mail.get("trusted"):
+              return None
+          addr = msg["addr"]
+          subject = mail.get("subject", "") or ""
+          payload = {
+              "ref": "mail:" + addr,
+              "status": "new",
+              "source": "inbound",
+              "source_detail": subject[:255],
+              "email": addr,
+              "message": mail.get("text", ""),
+          }
+          name = mail.get("name", "")
+          if name:
+              payload["contact_name"] = name[:255]
+          if mail.get("date"):
+              payload["received_on"] = mail["date"][:10]
+          return {"payload": payload, "title": (name or addr)[:255]}
   - name: crm_mail_activity
     language: starlark
     description: The mail as a done incoming activity of the person found; the person and their open opportunities kept for the links.
@@ -843,6 +1084,8 @@ functions:
           c = msg.get("convert", {})
           if not c.get("organization"):
               return None
+          links = msg.get("links", {})
+          shows = [l["other"]["id"] for l in links.get("met_at", []) + links.get("from_list", []) if l.get("direction") == "out"]
           payload = {"ref": "lead:" + o["id"], "stage": "discovery"}
           for k in ["source", "source_detail"]:
               if p.get(k):
@@ -851,7 +1094,7 @@ functions:
           return {
               "payload": payload,
               "title": c.get("name") or p.get("company") or o["title"],
-              "lead": {"id": o["id"], "account": c["organization"], "person": c.get("person") or ""},
+              "lead": {"id": o["id"], "account": c["organization"], "person": c.get("person") or "", "show": shows[0] if shows else ""},
           }
   - name: crm_lead_links
     language: starlark
@@ -863,6 +1106,7 @@ functions:
       - {name: contact, ty: any, desc: "Lead has as contact the person, when given"}
       - {name: involved, ty: any, desc: "The person is involved in the opportunity, when given"}
       - {name: converted, ty: any, desc: "The lead, marked converted"}
+      - {name: show, ty: any, desc: "The opportunity was met at the lead's trade show, when it has one"}
     code: |
       def handle(inputs, msg):
           opp = msg["object"]["id"]
@@ -877,6 +1121,67 @@ functions:
               link(lead["id"], person) if person else None,
               link(person, opp) if person else None,
               {"payload": {"status": "converted"}, "object_id": lead["id"]},
+              link(opp, lead["show"]) if lead.get("show") else None,
+          ]
+  - name: crm_list_show
+    language: starlark
+    description: A trade show naming a list, kept on the message while its contacts are read.
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          o = msg["object"]
+          return {"payload": {"list": p["list"]},
+                  "show": {"id": o["id"], "title": o["title"], "start_on": p.get("start_on", "")}}
+  - name: crm_list_ask
+    language: starlark
+    description: A list contact, kept on the message while its address is looked up among known people.
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          o = msg["object"]
+          return {
+              "payload": {"email": p.get("email", "")},
+              "show": msg["show"],
+              "today": msg.get("today", ""),
+              "contact": {"id": o["id"], "title": o["title"], "company": p.get("company", ""), "email": p.get("email", "")},
+          }
+  - name: crm_list_lead
+    language: starlark
+    description: "The lead of a list contact, or the contact marked when a person known by that address objected. The key is the contact, so a contact never makes two leads."
+    outputs:
+      - {name: lead, ty: any, desc: "The new lead"}
+      - {name: objected, ty: any, desc: "The contact, marked objected"}
+    code: |
+      def handle(inputs, msg):
+          c = msg["contact"]
+          show = msg["show"]
+          for row in msg["payload"]:
+              for l in row.get("links", {}).get("uses_identifier", []):
+                  if l.get("other", {}).get("properties", {}).get("opposed_on"):
+                      return [None, {"payload": {"lead_state": "objected"}, "object_id": c["id"]}]
+          payload = {
+              "ref": "list:" + c["id"],
+              "status": "new",
+              "source": "trade_show",
+              "source_detail": show["title"],
+              "contact_name": c["title"],
+              "received_on": show["start_on"] or msg["today"],
+          }
+          for k in ["company", "email"]:
+              if c[k]:
+                  payload[k] = c[k]
+          return [{"payload": payload, "title": c["title"], "show": show, "contact": c}, None]
+  - name: crm_list_links
+    language: starlark
+    description: "After the lead is written: its link to the trade show, then the contact marked. A failure before this leaves the contact to retry."
+    outputs:
+      - {name: show, ty: any, desc: "The lead is on the list of the trade show"}
+      - {name: done, ty: any, desc: "The contact, marked created"}
+    code: |
+      def handle(inputs, msg):
+          return [
+              {"payload": {"source_id": msg["object"]["id"], "target_id": msg["show"]["id"]}},
+              {"payload": {"lead_state": "created"}, "object_id": msg["contact"]["id"]},
           ]
   - name: crm_quote_expired
     language: starlark
@@ -990,8 +1295,53 @@ flows:
           outputs: [{ port: 0, targets: [act] }]
         - { id: act, kind: pnex_function, config: { function_name: crm_cadence_activity, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - { id: write, kind: object_upsert, config: { object_type: activity, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [about] }] }
-        - { id: about, kind: pnex_function, config: { function_name: crm_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: about, kind: pnex_function, config: { function_name: crm_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }, { port: 1, targets: [stepped] }] }
         - { id: linked, kind: link_upsert, config: { link_type: activity_on } }
+        - { id: stepped, kind: link_upsert, config: { link_type: from_step } }
+  - name: "CRM · replies to follow-ups"
+    note: "Every hour, a follow-up of the plan done without a reply yet is marked replied when an incoming activity (a mail filed by CRM · mails received, or one entered by hand) lands on the same opportunity from the moment it was done. The newest 200 are read at each pass. It feeds the reply rate of the Figures screen."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "25 * * * *" }, outputs: [{ port: 0, targets: [done] }] }
+        - id: done
+          kind: ontology_query
+          config:
+            object_type: activity
+            filters:
+              - { key: state, op: eq, value: done }
+              - { key: direction, op: eq, value: outbound }
+              - { key: replied, op: missing }
+            order_by: done_at
+            descending: true
+            limit: 200
+            with_links: [activity_on, from_step]
+          outputs: [{ port: 0, targets: [prep] }]
+        - { id: prep, kind: pnex_function, config: { function_name: crm_reply_prep, language: starlark }, outputs: [{ port: 0, targets: [others] }] }
+        - id: others
+          kind: ontology_query
+          config:
+            object_type: opportunity
+            filters: [{ key: id, op: eq, value: "$msg.act.opp" }]
+            traverse: [{ link_type: activity_on, direction: in }]
+            limit: 200
+            output: array
+          outputs: [{ port: 0, targets: [found] }]
+        - { id: found, kind: pnex_function, config: { function_name: crm_reply_found, language: starlark }, outputs: [{ port: 0, targets: [mark] }] }
+        - { id: mark, kind: object_upsert, config: { object_type: activity, key: id } }
+  - name: "CRM · trade show figures"
+    note: "Every hour, each trade show (type Trade show: its cost, and the link was met at from a lead or an opportunity) gets its opportunities, won ones, conversion rate, won amount in the currency of its cost, and return (won amount / cost). Wins in another currency are counted apart, never converted."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "35 * * * *" }, outputs: [{ port: 0, targets: [shows] }] }
+        - id: shows
+          kind: ontology_query
+          config:
+            object_type: trade_show
+            limit: 200
+            with_links: [met_at]
+          outputs: [{ port: 0, targets: [figures] }]
+        - { id: figures, kind: pnex_function, config: { function_name: crm_show_figures, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: trade_show, key: id } }
   - name: "CRM · last activity"
     note: "Every 15 minutes, a done activity moves the last activity of its opportunity forward (the date it was done, or now), then is marked reported; an opportunity with no activity yet starts counting from now. The morning digest reads it."
     graph:
@@ -1139,6 +1489,23 @@ flows:
         - { id: linked, kind: link_upsert, config: { link_type: activity_on } }
         - { id: each_proposed, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [proposed] }] }
         - { id: proposed, kind: link_upsert, config: { link_type: activity_on, propose: true } }
+  - name: "CRM · leads from a mailbox"
+    note: "Each new mail of the mailboxes you pick (node Mail received: choose a shared box such as contact@, you must read it) from an authenticated sender no person uses as an address becomes a lead at status new, source inbound, one per address. Automatic replies, forged senders and known people make none. Nothing is answered."
+    graph:
+      nodes:
+        - { id: mail, kind: mail_received, config: { skip_automatic: true }, outputs: [{ port: 0, targets: [prep] }] }
+        - { id: prep, kind: pnex_function, config: { function_name: crm_mail_prep, language: starlark }, outputs: [{ port: 0, targets: [known] }] }
+        - id: known
+          kind: ontology_query
+          config:
+            object_type: identifier
+            filters: [{ key: value, op: eq, value: "$msg.addr" }]
+            traverse: [{ link_type: uses_identifier, direction: in }]
+            limit: 1
+            output: array
+          outputs: [{ port: 0, targets: [decide] }]
+        - { id: decide, kind: pnex_function, config: { function_name: crm_mail_lead, language: starlark }, outputs: [{ port: 0, targets: [lead] }] }
+        - { id: lead, kind: object_upsert, config: { object_type: lead, key: ref, skip_existing: true } }
   - name: "CRM · meetings received"
     note: "Each mail of the mailboxes you pick (node Mail received: choose them, you must read them) that carries a meeting invitation becomes a meeting (Meeting, keyed by the invitation id): date, purpose, place, planned or cancelled; an update of the invitation moves the same meeting. The organizer and each attendee whose address a person uses as e-mail identifier (identifier kind email, value in lower case) take part in it; when the sender's authentication fails the participation is only proposed, on the To validate page. Unknown addresses are left out: nobody is created. Pick the mailboxes, then deploy."
     graph:
@@ -1160,7 +1527,7 @@ flows:
         - { id: linked, kind: link_upsert, config: { link_type: takes_part_in } }
         - { id: proposed, kind: link_upsert, config: { link_type: takes_part_in, propose: true } }
   - name: "CRM · my day"
-    note: "Each morning one digest (payload.text, payload.count) of the activities due today or late, of the open opportunities with no activity for 14 days (edit $today-14 to change the delay) and of the new leads. Add your Notification node on the digest port (template with a 'text' variable, trigger = payload.trigger), then deploy."
+    note: "Each morning one digest (payload.text, payload.count) of the activities due today or late, of the open opportunities with no activity for 14 days (edit $today-14 to change the delay) and of the new leads. Add a JSON Split node on the digest port with the keys trigger and text, then your Notification node (a template with a 'text' variable): the split's trigger port on its trigger row, its text port on its text row. Wired straight to the digest port, the trigger reads no boolean and nothing is sent. Then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "0 7 * * *" }, outputs: [{ port: 0, targets: [due] }] }
@@ -1201,17 +1568,53 @@ flows:
         - { id: params, kind: pnex_function, config: { function_name: crm_lead_params, language: starlark }, outputs: [{ port: 0, targets: [lead] }] }
         - id: lead
           kind: ontology_query
-          config: { object_type: lead, filters: [{ key: id, op: eq, value: "$msg.object.id" }], limit: 1 }
+          config: { object_type: lead, filters: [{ key: id, op: eq, value: "$msg.object.id" }], limit: 1, with_links: [met_at, from_list] }
           outputs: [{ port: 0, targets: [convert] }]
         - { id: convert, kind: pnex_function, config: { function_name: crm_lead_convert, language: starlark }, outputs: [{ port: 0, targets: [opp] }] }
         - { id: opp, kind: object_upsert, config: { object_type: opportunity, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
-        - { id: links, kind: pnex_function, config: { function_name: crm_lead_links, language: starlark }, outputs: [{ port: 0, targets: [l_account] }, { port: 1, targets: [l_origin] }, { port: 2, targets: [l_lead] }, { port: 3, targets: [l_contact] }, { port: 4, targets: [l_involved] }, { port: 5, targets: [converted] }] }
+        - { id: links, kind: pnex_function, config: { function_name: crm_lead_links, language: starlark }, outputs: [{ port: 0, targets: [l_account] }, { port: 1, targets: [l_origin] }, { port: 2, targets: [l_lead] }, { port: 3, targets: [l_contact] }, { port: 4, targets: [l_involved] }, { port: 5, targets: [converted] }, { port: 6, targets: [l_show] }] }
+        - { id: l_show, kind: link_upsert, config: { link_type: met_at } }
         - { id: l_account, kind: link_upsert, config: { link_type: opportunity_with } }
         - { id: l_origin, kind: link_upsert, config: { link_type: comes_from } }
         - { id: l_lead, kind: link_upsert, config: { link_type: lead_of } }
         - { id: l_contact, kind: link_upsert, config: { link_type: lead_contact } }
         - { id: l_involved, kind: link_upsert, config: { link_type: involved_in } }
         - { id: converted, kind: object_upsert, config: { object_type: lead, key: id } }
+  - name: "CRM · leads from trade show lists"
+    note: "Every 15 minutes, the contacts of the list a trade show names (its property List to turn into leads, the name in the column list of the file) become leads at status new, up to 100 per show and per run, linked to the show. A contact whose address belongs to a person who objected makes no lead. Nothing is sent; the account is picked at conversion, and the opportunity then counts in the show's figures."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "*/15 * * * *" }, outputs: [{ port: 0, targets: [shows] }] }
+        - id: shows
+          kind: ontology_query
+          config:
+            object_type: trade_show
+            filters: [{ key: list, op: exists }]
+            limit: 200
+          outputs: [{ port: 0, targets: [show] }]
+        - { id: show, kind: pnex_function, config: { function_name: crm_list_show, language: starlark }, outputs: [{ port: 0, targets: [contacts] }] }
+        - id: contacts
+          kind: ontology_query
+          config:
+            object_type: list_contact
+            filters: [{ key: list, op: eq, value: "$msg.payload.list" }, { key: lead_state, op: missing }]
+            limit: 100
+          outputs: [{ port: 0, targets: [ask] }]
+        - { id: ask, kind: pnex_function, config: { function_name: crm_list_ask, language: starlark }, outputs: [{ port: 0, targets: [known] }] }
+        - id: known
+          kind: ontology_query
+          config:
+            object_type: identifier
+            filters: [{ key: value, op: eq, value: "$msg.payload.email" }]
+            limit: 20
+            output: array
+            with_links: [uses_identifier]
+          outputs: [{ port: 0, targets: [decide] }]
+        - { id: decide, kind: pnex_function, config: { function_name: crm_list_lead, language: starlark }, outputs: [{ port: 0, targets: [lead] }, { port: 1, targets: [mark] }] }
+        - { id: lead, kind: object_upsert, config: { object_type: lead, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
+        - { id: links, kind: pnex_function, config: { function_name: crm_list_links, language: starlark }, outputs: [{ port: 0, targets: [l_show] }, { port: 1, targets: [mark] }] }
+        - { id: l_show, kind: link_upsert, config: { link_type: from_list } }
+        - { id: mark, kind: object_upsert, config: { object_type: list_contact, key: id } }
   - name: "CRM · quotes and invoices due"
     note: "Each morning a sent quote past its validity date becomes expired, and an issued or partly paid invoice past its due date becomes overdue with a reminder task due today on the opportunity or account it invoices (link 'is an invoice for'); the reminder appears in My day. Invoices are issued by your billing tool: enter their number, amounts and due date here (by hand or through an import), then deploy."
     graph:

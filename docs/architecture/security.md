@@ -288,6 +288,7 @@ sans impact exploitable démontré.
 | SEC-59 | HIGH | **Valeurs effacées dans les diffs conservés** (`services/ontology/erase.rs`) — les aperçus et runs refusés gardent titres et propriétés dans `object_import_runs.diff`, lisibles par `ontology:read` après l'effacement. Antérieur à OP1. |
 | SEC-60 | LOW | **Parties multipart orphelines** (`pnex-pipeline-worker`, `datasets/parquet.rs`) — un délai dépassé ou un processus tué laisse des parties d'upload invisibles à `list_prefix`, donc à la purge et à l'effacement. Non corrigé : à couvrir par une règle de cycle de vie du bucket (`AbortIncompleteMultipartUpload`), non vérifiée sur RustFS. |
 | SEC-61 | MEDIUM | **Cloisonnement du worker de pipelines** (`deploy`, chart `pnex-deploy`) — en local le rôle `pnex_pipeline_worker` est pris par `SET ROLE` avec le compte de l'application, sans isolation réseau. Non corrigé : le chart ne déploie pas encore le worker ; login dédié et `NetworkPolicy` à poser avant toute mise en service (`data-pipelines.md` §9.4). |
+| SEC-62 | LOW | **Mémoire d'une recherche de chemin** (`services/ontology/graph.rs`, D589) — une requête charge jusqu'à 200 000 liens en mémoire, chaque identifiant en `String`, sans limite de requêtes simultanées. Pic non mesuré. Non corrigé : à mesurer, puis à borner si plusieurs requêtes parallèles pèsent sur le serveur. |
 
 \* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
 SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).

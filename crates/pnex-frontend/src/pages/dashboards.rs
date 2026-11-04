@@ -776,7 +776,10 @@ fn LiveSubView(
             {
                 match detail_loaded {
                     Some(d) => rsx! {
-                        {live_layout(&pnex_core::bind_object(&d.layout, &bound), &values)}
+                        {
+                            let layout = pnex_core::bind_object_id(&d.layout, &object_id.read());
+                            live_layout(&pnex_core::bind_object(&layout, &bound), &values)
+                        }
                     },
                     None => rsx! {
                         p { class: "text-gray-500 text-center py-12", "…" }

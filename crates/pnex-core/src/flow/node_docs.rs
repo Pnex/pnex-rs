@@ -493,6 +493,18 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "Each output message: payload = the object's properties, msg.object = {id, type, title, version}, msg.links = {link_type: [{direction: out|in, attributes, valid_from, other: {id, type, title, properties}}]} for with_links, msg.today (YYYY-MM-DD) and msg.now (RFC 3339) of the run; with output array, payload = [{id, title, version, properties, links}]. Other fields of the incoming message are kept: an array query then an each query joins two sets in a function. Dates compare as text (ISO dates sort right). Feed object_upsert with msg.object_id = msg.object.id to update what was read.",
     },
     NodeDoc {
+        kind: "ontology_aggregate",
+        summary: "Computes numbers over the live objects of one ontology type, in the database (e.g. total of the open opportunities by stage), without reading the objects one by one. Reads only. Input: any message. One output port.",
+        config: &[
+            ("object_type", "object type key, must exist at deploy"),
+            ("filters", "same as ontology_query: [{key, op, value}], value may be \"$today\", \"$today-14\", \"$now\" or \"$msg.<path>\""),
+            ("group_by", "[] for one line, or up to 2 of {property} | {property, bucket: day|week|month|quarter|year} | {hops: [{link_type, direction: out|in}]}"),
+            ("metrics", "[{key, op: count|count_distinct|sum|avg|min|max, property?, where?: {key, op, value}}] or a ratio {key, ratio: [metric, metric], percent?}, up to 8; property and keys must exist at deploy"),
+            ("limit", "groups kept, 1..=1000, the rest summed in others"),
+        ],
+        notes: "msg.payload = {groups: [{key: [...], labels: [...], values: {metric key: {value, by_currency?}}}], others?, truncated, computed_at}: without group_by, the single line is groups[0]. A money metric has by_currency and no value: currencies are never added together. A filter value is resolved for each message; `where` of a metric is not. msg.today and msg.now as ontology_query. Wire it to a function that writes the digest, then to pnex_notify through JSON Split (keys trigger, text). A refused or timed-out read (5 s) drops the message and turns the node status to error.",
+    },
+    NodeDoc {
         kind: "object_upsert",
         summary: "Creates or updates one ontology object from msg.payload (its properties), matched on the type's unique property (natural key) or on its id. One output port.",
         config: &[

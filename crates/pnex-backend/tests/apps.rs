@@ -331,7 +331,7 @@ async fn a_screen_reads_and_writes_inside_its_application() {
         // A dashboard of the org refuses these widgets.
         let (st, e) = call(&server, "POST", "/api/v1/dashboards", &alice, org, Some(json!({"name": "D", "layout": {
             "canvas": {"width": 1600, "height": 900},
-            "widgets": [widget("object_count", json!({"app": {"object_set": "by_lang"}}))]}}))).await;
+            "widgets": [widget("object_table", json!({"app": {"object_set": "by_lang"}}))]}}))).await;
         assert_eq!((st, e["errors"]["violations"][0]["code"].as_str()), (400, Some("app_widget_outside_app")), "{e}");
 
         // Publishing pins what readers see.

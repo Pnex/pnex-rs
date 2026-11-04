@@ -26,7 +26,7 @@
 key: companies_fr
 name: French companies
 names: {fr: "Entreprises françaises"}
-version: "4.0.0"
+version: "4.2.0"
 requires: [companies]
 description: SIRENE legal units, establishments on the map and officers by mandate, synchronized from the public company registers.
 descriptions: {fr: "Unités légales SIRENE, établissements sur la carte et dirigeants par mandat, synchronisés depuis les registres publics des entreprises."}
@@ -37,6 +37,7 @@ extends:
       - { key: legal_form, name: Legal form, names: {fr: "Forme juridique"}, kind: text, max_len: 255 }
       - { key: naf, name: NAF code, names: {fr: "Code NAF"}, kind: text, max_len: 8, indexed: true }
       - { key: headcount_band, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
+      - { key: open_sites, name: Open sites (register), names: {fr: "Établissements ouverts (registre)"}, kind: number }
       - { key: nda, name: Training declaration number, names: {fr: "Numéro de déclaration d'activité"}, kind: text, max_len: 11, indexed: true }
       - { key: qualiopi, name: Qualiopi, names: {fr: "Qualiopi"}, kind: bool }
       - { key: qualiopi_categories, name: Qualiopi categories, names: {fr: "Catégories Qualiopi"}, kind: text, max_len: 255 }
@@ -44,6 +45,7 @@ extends:
   - type: map_pin
     properties:
       - { key: siret, name: SIRET, names: {fr: "SIRET"}, kind: text, max_len: 14, unique: true }
+      - { key: created_on, name: Created on, names: {fr: "Créé le"}, kind: date, indexed: true }
       - { key: headcount_band, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
 imports:
   - name: Company register (SIRENE)
@@ -77,6 +79,7 @@ imports:
             country: { value: FR }
             activity_code: { from: activite_principale, convert: ["left:5"] }
             qualiopi: complements.est_qualiopi
+            open_sites: nombre_etablissements_ouverts
         - as: head_office
           type: map_pin
           key: siret

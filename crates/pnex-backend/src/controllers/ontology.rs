@@ -66,6 +66,7 @@ pub fn routes() -> Routes {
         .add("/links/{id}", axum::routing::put(update_link))
         .add("/links/{id}/close", post(close_link))
         .add("/query", post(run_query))
+        .add("/aggregate/query", post(run_aggregate))
         .add("/packs", get(list_packs))
         .add("/packs/{key}/install", post(install_pack))
         .add("/packs/{key}/take", post(take_pack_version))
@@ -118,6 +119,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         update_link,
         close_link,
         run_query,
+        run_aggregate,
         list_packs,
         install_pack,
         take_pack_version,
@@ -244,6 +246,22 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             "The import was refused.",
             args,
         )),
+        OntologyError::AggregateHidden { property } => Err(coded_error(
+            StatusCode::FORBIDDEN,
+            err_codes::ACCESS_DENIED,
+            "This aggregate names what you may not read.",
+            Some(serde_json::json!({ "property": property })),
+        )),
+        OntologyError::AggregateTimeout => coded(
+            StatusCode::SERVICE_UNAVAILABLE,
+            err_codes::ONTOLOGY_AGGREGATE_TIMEOUT,
+            "This aggregate took too long: narrow it, or try again.",
+        ),
+        OntologyError::PathIncomplete => coded(
+            StatusCode::SERVICE_UNAVAILABLE,
+            err_codes::ONTOLOGY_PATH_INCOMPLETE,
+            "The search stopped before finding a path: too many links to walk. Restrict the link types, or try again.",
+        ),
         OntologyError::Db(e) => {
             tracing::error!(error = %e, "ontology database error");
             Err(crate::services::compute_limits::db_busy(&e).unwrap_or(Error::InternalServerError))
@@ -967,7 +985,7 @@ struct GraphQuery {
     tag = "ontology",
     operation_id = "ontology_objects_graph",
     summary = "Get the neighbourhood graph of an object",
-    description = "Objects within `depth` hops (clamped to 1–2) through open links, and the links among them. `upstream` is ignored here. Any org member.",
+    description = "Objects within `depth` hops (clamped to 1–2) through open links, and the links among them. `truncated` is true when the walk stopped at its cap of 5,000 links: more links exist than shown. `upstream` is ignored here. Any org member.",
     params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), GraphQuery),
     responses(
         (status = 200, body = pnex_core::ontology::api::Neighborhood),
@@ -1038,7 +1056,7 @@ async fn object_hierarchy(
     tag = "ontology",
     operation_id = "ontology_objects_impact",
     summary = "List the objects impacted by an object",
-    description = "Objects reachable from the object through open links within `depth` hops (1–4, default 4): downstream by default, upstream with `upstream=true`. Any org member.",
+    description = "Objects reachable from the object through open links within `depth` hops (1–4, default 4): downstream by default, upstream with `upstream=true`. `truncated` is true when the walk stopped at its cap of 5,000 links: the list is incomplete. Any org member.",
     params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), GraphQuery),
     responses(
         (status = 200, body = pnex_core::ontology::api::ObjectImpact),
@@ -1063,8 +1081,7 @@ async fn object_impact(
         q.upstream.unwrap_or(false),
         depth,
     )
-    .await
-    .map(|objects| pnex_core::ontology::api::ObjectImpact { objects });
+    .await;
     reply(masked(&ctx, &org, r, |Masking(m, s), i| m.refs(s, &mut i.objects)).await)
 }
 
@@ -1121,12 +1138,13 @@ struct PathQuery {
     tag = "ontology",
     operation_id = "ontology_path",
     summary = "Find a path between two objects",
-    description = "Shortest chain of open links, followed in either direction, within 4 hops, from `from` or from the nearest object at the source of an open link of a `from_links` type (several starts), along the given link types only when `links` is set: the objects along it, ends included. 404 when there is no such path. Any org member.",
+    description = "Shortest chain of open links, followed in either direction, within 4 hops, from `from` or from the nearest object at the source of an open link of a `from_links` type (several starts), along the given link types only when `links` is set: the objects along it, ends included. 404 when there is no such path. When the search stops at its cap, `truncated` is true on a path found (a shorter one may exist), and no path found gives 503 rather than a false 404. Any org member.",
     params(PathQuery),
     responses(
         (status = 200, body = pnex_core::ontology::api::ObjectPath),
         (status = 400, description = "Missing `from` (or `from_links`) or `to`, or more than 20 `links` (`field-invalid`)", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`ontology-not-found` (malformed or unknown id, or no path)", body = crate::openapi::ErrorDetail)
+        (status = 404, description = "`ontology-not-found` (malformed or unknown id, or no path)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`ontology-path-incomplete`: the search stopped at its cap before finding a path", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -1155,7 +1173,7 @@ async fn path(
         return onto_error(onto::invalid("to", err_codes::FIELD_REQUIRED));
     };
     let to = parse_uuid(&to)?;
-    let found = match (q.from, from_links.is_empty()) {
+    let r = match (q.from, from_links.is_empty()) {
         (Some(from), _) => {
             graph::path(&ctx.db, org.org.id, parse_uuid(&from)?, to, depth, &links).await
         }
@@ -1164,7 +1182,6 @@ async fn path(
         }
         (None, true) => return onto_error(onto::invalid("from", err_codes::FIELD_REQUIRED)),
     };
-    let r = found.map(|path| pnex_core::ontology::api::ObjectPath { path });
     reply(masked(&ctx, &org, r, |Masking(m, s), p| m.refs(s, &mut p.path)).await)
 }
 
@@ -1578,6 +1595,31 @@ async fn run_query(
     let hide = onto::redact::Redaction::of(|p| org.can(p));
     let r = query::run(&ctx.db, client.as_ref(), org.org.id, &q, hide).await;
     reply(masked(&ctx, &org, r, |Masking(m, s), r| m.query(s, r)).await)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/aggregate/query",
+    tag = "ontology",
+    operation_id = "ontology_aggregate_query",
+    summary = "Aggregate the objects of an ontology query",
+    description = "Read-only: count, distinct count, sum, average, minimum, maximum and ratios over the objects a query selects, optionally split by property, date or link (two hops). A money property answers one value per currency, never a total across them. An object linked to two targets counts in both groups. Refused when it names a property or title the caller may not read. Permission: ontology:read.",
+    request_body = pnex_core::ontology::aggregate::AggregateQuery,
+    responses(
+        (status = 200, body = pnex_core::ontology::aggregate::AggregateResult),
+        (status = 400, description = "Invalid request (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Names what the caller may not read (`access-denied`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "Ran past its time cap (`ontology-aggregate-timeout`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn run_aggregate(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Json(q): Json<pnex_core::ontology::aggregate::AggregateQuery>,
+) -> Result<Response> {
+    let hide = onto::redact::Redaction::of(|p| org.can(p));
+    reply(onto::aggregate::run(&ctx.db, org.org.id, &q, hide).await)
 }
 
 // ─────────────────────────── packs ───────────────────────────

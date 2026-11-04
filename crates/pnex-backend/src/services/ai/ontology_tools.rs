@@ -62,6 +62,21 @@ fn onto_error(e: OntologyError) -> ToolError {
             format!("version conflict: it is now at version {current} — read it again and redo the change"),
             Some(json!({ "current": current.to_string() })),
         ),
+        OntologyError::AggregateHidden { property } => coded(
+            c::ACCESS_DENIED,
+            "this aggregate names what the user may not read".into(),
+            Some(json!({ "property": property })),
+        ),
+        OntologyError::AggregateTimeout => coded(
+            c::ONTOLOGY_AGGREGATE_TIMEOUT,
+            "this aggregate took too long: narrow it".into(),
+            None,
+        ),
+        OntologyError::PathIncomplete => coded(
+            c::ONTOLOGY_PATH_INCOMPLETE,
+            "the path search stopped before finding a path: restrict the link types".into(),
+            None,
+        ),
         OntologyError::TypeInUse => coded(c::ONTOLOGY_TYPE_IN_USE, "the type is still in use".into(), None),
         OntologyError::WriteForbidden => coded(c::ONTOLOGY_WRITE_FORBIDDEN, "the user's role cannot write objects of this type".into(), None),
         OntologyError::SystemReadOnly => coded(
@@ -194,6 +209,21 @@ pub async fn query_ontology(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
         m.query(&s, &mut r);
     }
     outcome(json!({ "count": r.count, "rows": r.rows }))
+}
+
+/// Numbers over the objects of a query (object-aggregates.md D587): the
+/// route's service, rights and refusals.
+pub async fn aggregate_objects(
+    deps: &ToolDeps<'_>,
+    args: &Value,
+) -> Result<ToolOutcome, ToolError> {
+    let req: pnex_core::ontology::aggregate::AggregateQuery = serde_json::from_value(args.clone())
+        .map_err(|e| ToolError::from(format!("invalid aggregate: {e}")))?;
+    let hide = onto::redact::Redaction::of(|p| deps.grants.can(p));
+    let r = onto::aggregate::run(deps.db, deps.org_id, &req, hide)
+        .await
+        .map_err(onto_error)?;
+    outcome(serde_json::to_value(r).unwrap_or_default())
 }
 
 /// Signals of a case handed to the model (newest kept).

@@ -48,6 +48,7 @@ pub enum PaletteKind {
     ActionTrigger,
     MailReceived,
     OntologyQuery,
+    OntologyAggregate,
     ObjectUpsert,
     LinkUpsert,
     CheckRecord,
@@ -266,6 +267,9 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             },
             // No type picked yet: the violation banner guides the user.
             PaletteKind::OntologyQuery => FlowNodeKind::OntologyQuery {
+                config: Default::default(),
+            },
+            PaletteKind::OntologyAggregate => FlowNodeKind::OntologyAggregate {
                 config: Default::default(),
             },
             PaletteKind::ObjectUpsert => FlowNodeKind::ObjectUpsert {

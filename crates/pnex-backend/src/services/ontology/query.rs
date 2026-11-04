@@ -19,13 +19,14 @@ use crate::models::_entities::objects;
 
 const DEFAULT_LIMIT: u64 = 50;
 
-struct Sql {
-    params: Vec<DbValue>,
+#[derive(Clone)]
+pub(super) struct Sql {
+    pub(super) params: Vec<DbValue>,
 }
 
 impl Sql {
     /// Binds a value, returns its placeholder.
-    fn bind(&mut self, v: impl Into<DbValue>) -> String {
+    pub(super) fn bind(&mut self, v: impl Into<DbValue>) -> String {
         self.params.push(v.into());
         format!("${}", self.params.len())
     }
@@ -52,7 +53,7 @@ fn validity(alias: &str, at: &str, archived: bool) -> String {
     }
 }
 
-fn filter_sql(
+pub(super) fn filter_sql(
     sql: &mut Sql,
     f: &pnex_core::ontology::api::PropertyFilter,
     i: usize,
@@ -140,6 +141,92 @@ pub async fn run(
     q: &OntologyQuery,
     hide: super::redact::Redaction,
 ) -> Result<QueryResult> {
+    let Plan {
+        s,
+        mut sql,
+        with,
+        last,
+        title_hidden,
+        ..
+    } = plan(db, org_id, q, hide).await?;
+    let limit = q.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, QUERY_LIMIT_MAX);
+    let offset = q.offset.unwrap_or(0);
+    let backend = sea_orm::DatabaseBackend::Postgres;
+
+    let count = db
+        .query_one_raw(Statement::from_sql_and_values(
+            backend,
+            format!("WITH {with} SELECT count(*)::bigint AS n FROM {last}"),
+            sql.params.clone(),
+        ))
+        .await?
+        .and_then(|r| r.try_get::<i64>("", "n").ok())
+        .unwrap_or(0);
+    let dir = if q.descending { "DESC" } else { "ASC" };
+    // A hidden value sorts as absent (D443).
+    let mut unless = |col: String, hidden: Vec<String>| {
+        if hidden.is_empty() {
+            col
+        } else {
+            let p = sql.bind(hidden);
+            format!("(CASE WHEN type_key = ANY({p}) THEN NULL ELSE {col} END)")
+        }
+    };
+    let title = unless("title".into(), title_hidden);
+    let order = match q.order_by.as_deref().filter(|k| !k.is_empty()) {
+        // The key enters the text: same charset check as the filters.
+        Some(k) if valid_key(k) => {
+            let col = unless(
+                format!("(properties ->> '{k}')"),
+                hide.property_hidden_types(&s, k),
+            );
+            format!("{col} {dir} NULLS LAST, {title}, id")
+        }
+        Some(_) => return Err(invalid("order_by", FIELD_INVALID)),
+        None => format!("{title} {dir}, id"),
+    };
+    let lim = sql.bind(limit as i64);
+    let off = sql.bind(offset as i64);
+    let rows = objects::Model::find_by_statement(Statement::from_sql_and_values(
+        backend,
+        format!("WITH {with} SELECT * FROM {last} ORDER BY {order} LIMIT {lim} OFFSET {off}"),
+        sql.params,
+    ))
+    .all(db)
+    .await?;
+
+    let mut out: Vec<QueryRow> = rows
+        .iter()
+        .map(|o| QueryRow {
+            object: view(o, &s),
+            latest: Default::default(),
+        })
+        .collect();
+    if !q.latest.is_empty() {
+        super::series::join_latest(db, client, org_id, &s, &q.latest, &mut out).await?;
+    }
+    Ok(QueryResult { count, rows: out })
+}
+
+/// The selection of a query as CTEs, shared by its rows and its aggregates:
+/// same filters, same validity, same masking of what filters may match.
+pub(super) struct Plan {
+    pub(super) s: super::OrgSchema,
+    pub(super) sql: Sql,
+    pub(super) with: String,
+    /// The CTE holding the selected objects.
+    pub(super) last: String,
+    /// Placeholder of the query's instant.
+    pub(super) at: String,
+    title_hidden: Vec<String>,
+}
+
+pub(super) async fn plan(
+    db: &DatabaseConnection,
+    org_id: i64,
+    q: &OntologyQuery,
+    hide: super::redact::Redaction,
+) -> Result<Plan> {
     let s = schema(db, org_id).await?;
     if q.traverse.len() > MAX_HOPS {
         return Err(invalid(
@@ -238,6 +325,14 @@ pub async fn run(
         "h0 AS (SELECT o.* FROM objects o WHERE {})",
         start.join(" AND ")
     )];
+    // Conditions on the objects the last hop reaches, same masking as `filters`.
+    let mut reached = String::new();
+    for (i, f) in q.reached.iter().enumerate() {
+        let cond = filter_sql(&mut sql, f, i)?;
+        let hidden = hide.property_hidden_types(&s, &f.key);
+        reached.push_str(" AND ");
+        reached.push_str(&visible(&mut sql, cond, hidden));
+    }
     for (i, hop) in q.traverse.iter().enumerate() {
         if s.link_type(&hop.link_type).is_none() {
             return Err(invalid(format!("traverse.{i}.link_type"), FIELD_INVALID));
@@ -251,69 +346,23 @@ pub async fn run(
             "h{n} AS (SELECT DISTINCT o.* FROM h{i} h \
                JOIN resource_edges e ON e.{from} = h.id AND e.org_id = {org} AND e.relation = {rel} \
                  AND {ev} \
-               JOIN objects o ON o.id = e.{to} AND {ov})",
+               JOIN objects o ON o.id = e.{to} AND {ov}{last})",
             n = i + 1,
             ev = validity("e", &at, false),
             ov = object_validity(&at, archived),
+            last = if i + 1 == q.traverse.len() {
+                reached.as_str()
+            } else {
+                ""
+            },
         ));
     }
-    let last = format!("h{}", q.traverse.len());
-    let limit = q.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, QUERY_LIMIT_MAX);
-    let offset = q.offset.unwrap_or(0);
-    let with = ctes.join(", ");
-    let backend = sea_orm::DatabaseBackend::Postgres;
-
-    let count = db
-        .query_one_raw(Statement::from_sql_and_values(
-            backend,
-            format!("WITH {with} SELECT count(*)::bigint AS n FROM {last}"),
-            sql.params.clone(),
-        ))
-        .await?
-        .and_then(|r| r.try_get::<i64>("", "n").ok())
-        .unwrap_or(0);
-    let dir = if q.descending { "DESC" } else { "ASC" };
-    // A hidden value sorts as absent (D443).
-    let mut unless = |col: String, hidden: Vec<String>| {
-        if hidden.is_empty() {
-            col
-        } else {
-            let p = sql.bind(hidden);
-            format!("(CASE WHEN type_key = ANY({p}) THEN NULL ELSE {col} END)")
-        }
-    };
-    let title = unless("title".into(), title_hidden);
-    let order = match q.order_by.as_deref().filter(|k| !k.is_empty()) {
-        // The key enters the text: same charset check as the filters.
-        Some(k) if valid_key(k) => {
-            let col = unless(
-                format!("(properties ->> '{k}')"),
-                hide.property_hidden_types(&s, k),
-            );
-            format!("{col} {dir} NULLS LAST, {title}, id")
-        }
-        Some(_) => return Err(invalid("order_by", FIELD_INVALID)),
-        None => format!("{title} {dir}, id"),
-    };
-    let lim = sql.bind(limit as i64);
-    let off = sql.bind(offset as i64);
-    let rows = objects::Model::find_by_statement(Statement::from_sql_and_values(
-        backend,
-        format!("WITH {with} SELECT * FROM {last} ORDER BY {order} LIMIT {lim} OFFSET {off}"),
-        sql.params,
-    ))
-    .all(db)
-    .await?;
-
-    let mut out: Vec<QueryRow> = rows
-        .iter()
-        .map(|o| QueryRow {
-            object: view(o, &s),
-            latest: Default::default(),
-        })
-        .collect();
-    if !q.latest.is_empty() {
-        super::series::join_latest(db, client, org_id, &s, &q.latest, &mut out).await?;
-    }
-    Ok(QueryResult { count, rows: out })
+    Ok(Plan {
+        s,
+        sql,
+        with: ctes.join(", "),
+        last: format!("h{}", q.traverse.len()),
+        at,
+        title_hidden,
+    })
 }

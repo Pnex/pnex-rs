@@ -4,6 +4,7 @@
 
 pub mod action_dialog;
 pub mod add_to_case;
+pub mod filter_row;
 pub mod gallery;
 pub mod graph_view;
 pub mod hierarchy;

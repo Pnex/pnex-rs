@@ -201,6 +201,11 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ontology::flow::OntologyQueryConfig,
     },
+    /// Numbers over objects (object-aggregates.md D587).
+    OntologyAggregate {
+        #[serde(default)]
+        config: crate::ontology::flow::OntologyAggregateConfig,
+    },
     /// Creates or updates an object on its natural key (D302, D312).
     ObjectUpsert {
         #[serde(default)]
@@ -428,6 +433,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "ontology_query" => Ok(Self::OntologyQuery {
+                    config: opt_config(config)?,
+                }),
+                "ontology_aggregate" => Ok(Self::OntologyAggregate {
                     config: opt_config(config)?,
                 }),
                 "object_upsert" => Ok(Self::ObjectUpsert {

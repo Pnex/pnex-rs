@@ -48,7 +48,6 @@ pub fn kind_label(kind: &str) -> String {
         "color" => t!("lib-kind-color").to_string(),
         "home_card" => t!("lib-kind-home_card").to_string(),
         "object_table" => t!("lib-kind-object_table").to_string(),
-        "object_count" => t!("lib-kind-object_count").to_string(),
         "object_fields" => t!("lib-kind-object_fields").to_string(),
         "input" => t!("lib-kind-input").to_string(),
         "object_form" => t!("lib-kind-object_form").to_string(),
@@ -77,7 +76,6 @@ pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
         "command" => (PaletteIcon::Pointer, "bg-teal-50 text-teal-600"),
         "color" => (PaletteIcon::Image, "bg-teal-50 text-teal-600"),
         "object_table" => (PaletteIcon::Layers, "bg-signal-50 text-signal-600"),
-        "object_count" => (PaletteIcon::Hash, "bg-signal-50 text-signal-600"),
         "object_fields" => (PaletteIcon::Info, "bg-signal-50 text-signal-600"),
         "input" => (
             PaletteIcon::SlidersHorizontal,

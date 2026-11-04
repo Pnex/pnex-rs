@@ -130,7 +130,7 @@ pub struct AppWidgetOptions {
     /// The widget's title per language, for a screen a pack ships.
     #[serde(default, skip_serializing_if = "crate::ontology::Names::is_empty")]
     pub titles: crate::ontology::Names,
-    /// `object_table`, `object_count`: the object set read.
+    /// `object_table`: the object set read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object_set: Option<String>,
     /// Parameter of the set → variable that fills it.
@@ -442,7 +442,9 @@ pub fn check(input: &AppInput) -> BTreeMap<String, String> {
 
 /// The parameter a value names: `"$code"` → `code`.
 fn param_of(v: &str) -> Option<&str> {
-    v.strip_prefix('$').filter(|p| valid_key(p))
+    // `$today` and `$now` are resolved by the server, never given.
+    v.strip_prefix('$')
+        .filter(|p| valid_key(p) && !matches!(*p, "today" | "now"))
 }
 
 /// Parameters a query names, sorted.

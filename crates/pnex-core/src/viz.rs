@@ -43,7 +43,6 @@ pub const VIZ_WIDGET_TYPES: &[&str] = &[
     "home_card",
     "range_bars",
     "object_table",
-    "object_count",
     "object_fields",
     "input",
     "object_form",
@@ -55,7 +54,6 @@ pub const VIZ_WIDGET_TYPES: &[&str] = &[
 /// `WidgetOptions.app`.
 pub const APP_WIDGET_TYPES: &[&str] = &[
     "object_table",
-    "object_count",
     "object_fields",
     "input",
     "object_form",
@@ -194,6 +192,10 @@ pub struct SourceRef {
     /// `device_id` are then filled by [`bind_object`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object_property: Option<String>,
+    /// An aggregate of objects instead of a series (object-aggregates.md
+    /// D583): `metric`, `device_id` and `window` are then ignored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objects: Option<crate::ontology::aggregate::ObjectsSource>,
 }
 
 impl SourceRef {
@@ -606,6 +608,7 @@ impl SourceRef {
     /// templates); it is skipped by the validation and the live fetch.
     pub fn is_unset(&self) -> bool {
         self.memory.is_none()
+            && self.objects.is_none()
             && self.object_property.is_none()
             && self.device_id.is_empty()
             && self.labels.is_empty()
@@ -780,6 +783,25 @@ pub fn bind_object(layout: &DashboardLayout, bindings: &[SeriesBinding]) -> Dash
     out
 }
 
+/// The layout with `$object` of its aggregates set to the shown object
+/// (object-aggregates.md D583). Without an object they stay as they are, and
+/// the widget reads nothing.
+pub fn bind_object_id(layout: &DashboardLayout, id: &str) -> DashboardLayout {
+    let mut out = layout.clone();
+    if id.is_empty() {
+        return out;
+    }
+    let queries = out
+        .widgets
+        .iter_mut()
+        .flat_map(|w| &mut w.source)
+        .filter_map(|s| s.objects.as_mut()?.query.as_mut());
+    for q in queries {
+        crate::ontology::aggregate::bind_object(q, id);
+    }
+    out
+}
+
 // ─────────────────────────────── Validation ───────────────────────────────
 
 /// Rules of the `thermo_chart` widget: known diagram, fluid required, at
@@ -862,11 +884,13 @@ fn validate_thermo(
 pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
     let mut v = Vec::new();
     // Type dashboard (D187): object sources need the type they read from.
-    let reads_object = l
-        .widgets
-        .iter()
-        .flat_map(|w| &w.source)
-        .any(|s| s.object_property.is_some());
+    let reads_object = l.widgets.iter().flat_map(|w| &w.source).any(|s| {
+        s.object_property.is_some()
+            || s.objects
+                .as_ref()
+                .and_then(|o| o.query.as_ref())
+                .is_some_and(crate::ontology::aggregate::reads_object)
+    });
     match &l.object_type {
         Some(t) if !crate::ontology::schema::valid_key(t) => {
             v.push(VizViolation::new(
@@ -1157,7 +1181,14 @@ pub fn validate_widget(
         }
         return;
     }
-    if options.app.is_some() {
+    // A widget over objects keeps only the titles a pack ships (D584).
+    let only_titles = source.iter().any(|s| s.objects.is_some())
+        && options.app.as_ref().is_some_and(|a| {
+            let mut rest = a.clone();
+            rest.titles = Default::default();
+            rest == Default::default()
+        });
+    if options.app.is_some() && !only_titles {
         push(
             "app_options_unexpected",
             "only widgets of an application screen carry these options".into(),
@@ -1222,6 +1253,8 @@ pub fn validate_widget(
         }
     } else if widget_type == "thermo_chart" {
         extra_violations = validate_thermo(widget_id, source, options);
+    } else if widget_type == RANGE_BARS && source.first().is_some_and(|s| s.objects.is_some()) {
+        check_sources(widget_type, source, &mut push);
     } else if widget_type == RANGE_BARS {
         // One series, aggregated server side per bucket: no memory value.
         if source.len() != 1 || source.iter().any(|s| s.memory.is_some()) {
@@ -1294,6 +1327,50 @@ pub fn validate_widget(
     v.append(&mut extra_violations);
 }
 
+/// Widgets that show an aggregate of objects (D584).
+pub const OBJECTS_WIDGET_TYPES: &[&str] =
+    &["stat", "gauge", "indicator", "line", "symbol", RANGE_BARS];
+
+/// The shape of an aggregate source; the schema is checked by the server at
+/// save, on the org's types.
+fn check_objects_source<F: FnMut(&str, String)>(
+    widget_type: &str,
+    o: &crate::ontology::aggregate::ObjectsSource,
+    push: &mut F,
+) {
+    if !OBJECTS_WIDGET_TYPES.contains(&widget_type) {
+        push(
+            "objects_widget",
+            "this widget cannot show an aggregate of objects".into(),
+        );
+        return;
+    }
+    if o.object_set.is_some() == o.query.is_some() {
+        push(
+            "objects_selection",
+            "an aggregate reads an object set or a query, one of them".into(),
+        );
+    }
+    let request = o.request(o.query.clone().unwrap_or_default());
+    if let Err((field, _)) = crate::ontology::aggregate::check(&request) {
+        push("objects_invalid", format!("invalid aggregate: {field}"));
+    }
+    if !o.metrics.iter().any(|m| m.key == o.show) {
+        push("objects_show", format!("unknown metric \"{}\"", o.show));
+    }
+    let splits = o.group_by.len();
+    let split_needed = widget_type == RANGE_BARS || widget_type == "line";
+    if split_needed != (splits == 1) && (split_needed || splits != 0) {
+        push(
+            "objects_split",
+            "this widget shows one split, or none for a single value".into(),
+        );
+    }
+    if widget_type == "line" && o.group_by.first().is_some_and(|g| g.bucket.is_none()) {
+        push("objects_split", "a line needs a split by date".into());
+    }
+}
+
 /// Per-source rules shared by instruments, control state sources and
 /// annotation readings (D129).
 pub(crate) fn check_sources<F: FnMut(&str, String)>(
@@ -1302,6 +1379,10 @@ pub(crate) fn check_sources<F: FnMut(&str, String)>(
     push: &mut F,
 ) {
     for s in source {
+        if let Some(o) = &s.objects {
+            check_objects_source(widget_type, o, push);
+            continue;
+        }
         if let Some(p) = &s.object_property {
             // Resolved at read time: only the key and the window are known.
             let key_ok = !p.is_empty()
@@ -1562,6 +1643,7 @@ mod tests {
             h: 160,
             source: vec![SourceRef {
                 object_property: None,
+                objects: None,
                 role: "primary".into(),
                 metric: "soil_moisture".into(),
                 device_id: "soil-01".into(),
@@ -1622,6 +1704,7 @@ mod tests {
         let mut l = layout(vec![widget("w1", "gauge"), widget("w2", "line")]);
         l.widgets[1].source.push(SourceRef {
             object_property: None,
+            objects: None,
             role: "secondary".into(),
             metric: "soil_moisture".into(),
             device_id: "soil-02".into(),
@@ -1712,6 +1795,7 @@ mod tests {
         w.source = vec![
             SourceRef {
                 object_property: None,
+                objects: None,
                 role: "cycle0.v1".into(),
                 metric: "pressure".into(),
                 device_id: "dev-1".into(),
@@ -1721,6 +1805,7 @@ mod tests {
             },
             SourceRef {
                 object_property: None,
+                objects: None,
                 role: "cycle0.v2".into(),
                 metric: "temperature".into(),
                 device_id: "dev-1".into(),
@@ -2162,6 +2247,7 @@ mod tests {
         let mut w = widget("w1", crate::home::HOME_WIDGET_TYPE);
         w.source = vec![SourceRef {
             object_property: None,
+            objects: None,
             role: "state".into(),
             metric: String::new(),
             device_id: String::new(),

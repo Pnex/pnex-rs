@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use pnex_core::flow::{FlowGraph, FlowNodeKind};
+use pnex_core::ontology::aggregate::AggregateResult;
 use pnex_core::ontology::api::{
     LinkInput, ObjectInput, OntologyQuery, PropertyFilter, QueryResult,
 };
@@ -104,17 +105,15 @@ pub(crate) fn spend(org_id: i64) -> std::result::Result<(), NodeError> {
     Ok(())
 }
 
-/// `ontology_query`: the node's filters with the values the runtime
-/// resolved (`$today`, `$msg.…`), positionally.
-pub async fn query(
+/// The node's filters with the values the runtime resolved (`$today`,
+/// `$msg.…`), positionally.
+async fn resolved_filters(
     db: &DatabaseConnection,
     req: &FlowQueryRequest,
-) -> std::result::Result<FlowQueryReply, NodeError> {
-    let FlowNodeKind::OntologyQuery { config } = deployed(db, &req.node).await? else {
-        return Err(NodeError::NotDeployed);
-    };
-    let mut filters = Vec::with_capacity(config.filters.len());
-    for (i, f) in config.filters.iter().enumerate() {
+    declared: &[PropertyFilter],
+) -> std::result::Result<Vec<PropertyFilter>, NodeError> {
+    let mut filters = Vec::with_capacity(declared.len());
+    for (i, f) in declared.iter().enumerate() {
         let mut value = req
             .values
             .get(i)
@@ -135,6 +134,37 @@ pub async fn query(
         }
         filters.push(PropertyFilter { value, ..f.clone() });
     }
+    Ok(filters)
+}
+
+/// `ontology_aggregate` (object-aggregates.md D587). A deployed flow reads
+/// what its deployer's org holds, as `query` does.
+pub async fn aggregate(
+    db: &DatabaseConnection,
+    req: &FlowQueryRequest,
+) -> std::result::Result<AggregateResult, NodeError> {
+    let FlowNodeKind::OntologyAggregate { config } = deployed(db, &req.node).await? else {
+        return Err(NodeError::NotDeployed);
+    };
+    let filters = resolved_filters(db, req, &config.filters).await?;
+    Ok(super::aggregate::run(
+        db,
+        req.node.org_id,
+        &config.request(filters),
+        Redaction::NONE,
+    )
+    .await?)
+}
+
+/// `ontology_query`: the node's filters, then the objects they select.
+pub async fn query(
+    db: &DatabaseConnection,
+    req: &FlowQueryRequest,
+) -> std::result::Result<FlowQueryReply, NodeError> {
+    let FlowNodeKind::OntologyQuery { config } = deployed(db, &req.node).await? else {
+        return Err(NodeError::NotDeployed);
+    };
+    let filters = resolved_filters(db, req, &config.filters).await?;
     let q = OntologyQuery {
         type_key: Some(config.object_type.clone()),
         filters,
@@ -556,6 +586,7 @@ enum Need {
         key: String,
     },
     Link(String),
+    Aggregate(Box<pnex_core::ontology::aggregate::AggregateQuery>),
 }
 
 impl Need {
@@ -569,6 +600,7 @@ impl Need {
                     && (key == "id" || t.properties.iter().any(|p| &p.key == key && p.unique))
             }),
             Self::Link(l) => s.link_type(l).is_some(),
+            Self::Aggregate(q) => super::aggregate::validate(s, q, Redaction::NONE).is_ok(),
         }
     }
 }
@@ -590,6 +622,10 @@ pub async fn deploy_violations(
                     object_type: config.object_type.clone(),
                     links: config.link_types().cloned().collect(),
                 },
+            ),
+            FlowNodeKind::OntologyAggregate { config } => (
+                config.check_deployable(),
+                Need::Aggregate(Box::new(config.request(config.filters.clone()))),
             ),
             FlowNodeKind::ObjectUpsert { config } => (
                 config.check_deployable(),

@@ -155,7 +155,8 @@ pub async fn fetch_live_values(
 ) -> HashMap<String, Option<Vec<TelemetryPoint>>> {
     let mut map: HashMap<String, Option<Vec<TelemetryPoint>>> = sources
         .iter()
-        .filter(|s| !s.is_unset())
+        // An aggregate of objects reads on its own (D584): not a live value.
+        .filter(|s| !s.is_unset() && s.objects.is_none())
         .map(|s| (s.series_key(), None))
         .collect();
     let mut specs = series_specs(&sources);
@@ -331,7 +332,7 @@ fn series_specs(sources: &[pnex_core::SourceRef]) -> Vec<pnex_core::SeriesSpec> 
     let mut by_series: HashMap<SeriesId, String> = HashMap::new();
     for s in sources
         .iter()
-        .filter(|s| s.memory.is_none() && !s.is_unset())
+        .filter(|s| s.memory.is_none() && s.objects.is_none() && !s.is_unset())
     {
         let window = if secs(&s.window).is_some() {
             s.window.clone()
@@ -367,6 +368,7 @@ mod window_tests {
     fn src(metric: &str, window: &str) -> pnex_core::SourceRef {
         pnex_core::SourceRef {
             object_property: None,
+            objects: None,
             role: "primary".into(),
             metric: metric.into(),
             device_id: "dev".into(),

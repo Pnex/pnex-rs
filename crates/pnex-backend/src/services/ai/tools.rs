@@ -422,6 +422,11 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"query":{"type":"object","properties":{"type_key":{"type":"string"},"ids":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"filters":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"op":{"type":"string"},"value":{}},"required":["key","op"]}},"label":{"type":"string"},"within":{"type":"string"},"traverse":{"type":"array","items":{"type":"object","properties":{"link_type":{"type":"string"},"direction":{"type":"string"}},"required":["link_type"]}},"as_of":{"type":"string"},"latest":{"type":"array","items":{"type":"string"}},"limit":{"type":"integer"}}}},"required":["query"]}"#).expect("static schema"),
         },
         ToolSpec {
+            name: "aggregate_objects",
+            description: "Numbers over the objects of an ontology query, without reading them one by one. metrics: {key, op: count|count_distinct|sum|avg|min|max, property, where: {key, op, value}} or a ratio {key, ratio: [a, b], percent}. group_by, two at most: {property}, {property, bucket: day|week|month|quarter|year} or {hops: [{link_type, direction}]}, two hops at most. Filters accept $today-30 and $today+7. A money property answers by_currency: never add currencies. An object linked to two targets counts in both groups. Refused on what the user may not read.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"query":{"type":"object"},"group_by":{"type":"array"},"metrics":{"type":"array"},"limit":{"type":"integer"}},"required":["metrics"]}"#).expect("static schema"),
+        },
+        ToolSpec {
             name: "get_object",
             description: "One ontology object (properties, version) with its links valid now. Read it before update_object.",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"}},"required":["object_id"]}"#).expect("static schema"),
@@ -685,6 +690,7 @@ pub async fn execute(
         "create_taxonomy_version" => super::more_tools::create_taxonomy_version(deps, args).await,
         "describe_ontology" => super::ontology_tools::describe_ontology(deps).await,
         "query_ontology" => super::ontology_tools::query_ontology(deps, args).await,
+        "aggregate_objects" => super::ontology_tools::aggregate_objects(deps, args).await,
         "get_object" => super::ontology_tools::get_object(deps, args).await,
         "case_workspace" => super::ontology_tools::case_workspace(deps, args).await,
         "case_signals" => super::ontology_tools::case_signals(deps, args).await,
@@ -1094,6 +1100,14 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
                 "ai-trace-ontology-query",
                 json!({"count": n}),
                 format!("{n} object(s)"),
+            )
+        }
+        "aggregate_objects" => {
+            let n = v["groups"].as_array().map_or(0, Vec::len).to_string();
+            s(
+                "ai-trace-ontology-aggregate",
+                json!({"count": n}),
+                format!("{n} group(s)"),
             )
         }
         "get_object" => {
@@ -1813,6 +1827,7 @@ mod tests {
                 "create_taxonomy_version",
                 "describe_ontology",
                 "query_ontology",
+                "aggregate_objects",
                 "get_object",
                 "case_workspace",
                 "case_signals",

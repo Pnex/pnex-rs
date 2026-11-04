@@ -7,6 +7,7 @@
 //! database and exported as YAML (D186, D190). serde-only, wasm32-safe.
 
 pub mod action;
+pub mod aggregate;
 pub mod api;
 pub mod check;
 pub mod flow;

@@ -194,6 +194,7 @@ pub(super) fn ControlPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Ele
                                     w.source
                                         .push(SourceRef {
                                             object_property: None,
+                                            objects: None,
                                             role: "state".into(),
                                             metric: String::new(),
                                             device_id: String::new(),

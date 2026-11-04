@@ -58,6 +58,10 @@ pub fn routes() -> Routes {
         .add("/internal/flow/ai/caption", post(flow_ai_caption))
         // Ontology nodes (partner-watch.md D312).
         .add("/internal/flow/ontology/query", post(flow_ontology_query))
+        .add(
+            "/internal/flow/ontology/aggregate",
+            post(flow_ontology_aggregate),
+        )
         .add("/internal/flow/ontology/upsert", post(flow_ontology_upsert))
         .add("/internal/flow/ontology/link", post(flow_ontology_link))
         // Watch check runs of check_record nodes (network-check.md D426).
@@ -668,6 +672,21 @@ async fn flow_ontology_query(
         return Ok(r);
     }
     let r = crate::services::ontology::flow_nodes::query(&ctx.db, &req).await;
+    ontology_reply(req.node.org_id, r)
+}
+
+async fn flow_ontology_aggregate(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::ontology::flow::FlowQueryRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let r = crate::services::ontology::flow_nodes::aggregate(&ctx.db, &req).await;
     ontology_reply(req.node.org_id, r)
 }
 

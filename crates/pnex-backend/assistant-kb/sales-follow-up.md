@@ -3,7 +3,7 @@ id: sales-follow-up
 title: Sales follow-up — opportunities, activities, follow-up plans, morning digest
 kind: feature
 pages:
-nodes: ontology_query, object_upsert, link_upsert, llm_text
+nodes: ontology_query, ontology_aggregate, object_upsert, link_upsert, llm_text
 err_codes: prospecting-opposed, ontology-link-cardinality
 tools:
 tags: crm, sales, lead, piste, prospect, convert, convertir, quote, devis, invoice, facture, overdue, impayé, relance facture, vente, suivi commercial, opportunity, opportunité, pipeline, stage, étape, qualification, SPICED, MEDDPICC, criterion, critère, activity, activité, call, appel, mail, e-mail, follow-up, relance, plan de relance, draft, brouillon, morning digest, ma journée, dormant, sans activité, forecast, montant, amount, trade show, salon
@@ -26,7 +26,7 @@ Your **follow-up plan** is a list of **Follow-up steps**: *Day* after the start,
 The flow model **CRM · drafts** writes a *Draft* on the mails and network messages due by tomorrow, with your organization's LLM, from the step's instruction and the account. **This flow sends nothing**: read the draft, send it yourself from your mailbox or the network, then set the activity to done. To get mail drafts ready in a mailbox, deploy **CRM · drafts to the outbox** with the mailbox to write from (it needs an SMTP server): each drafted mail activity becomes a draft in *Mailboxes › Outbox*, addressed to the e-mail identifiers of the people involved in the opportunity (never to someone who objected), with the opportunity as subject. Review it there, send or discard it, then set the activity to done. Only a shared mailbox set to send on its own would send it at once.
 
 ## My day
-The flow model **CRM · my day** makes one text each morning: the activities due today or late, and the open opportunities with no activity for 14 days. Add your **Notification** node on its first port (template with a `text` variable, trigger `payload.trigger`), then deploy. To change the delay, edit `$today-14` in its query node.
+The flow model **CRM · my day** makes one text each morning: the activities due today or late, and the open opportunities with no activity for 14 days. Add a **JSON Split** node on its first port with the keys `trigger` and `text`, then your **Notification** node (a template with a `text` variable): the split's `trigger` port on the **trigger** row, its `text` port on the `text` row. Wired straight to the first port, the trigger reads no boolean and nothing is sent. Then deploy. To change the delay, edit `$today-14` in its query node.
 
 ## Leads
 A **Lead** is a prospect not yet in your account map: *Status* (new, contacted, qualified, disqualified, converted), *Source* and *Source detail*, *Company*, *Contact*, *E-mail*, *Phone*, *Message*, *Received on*. Enter it by hand or import a trade-show file (Ontology › Imports, *Key* as the natural key). Its contact details are personal data. With the flow model **CRM · convert a lead** deployed, **Convert to opportunity** on the lead's page asks for its account (create it first if needed), optionally its contact and a name: it makes an opportunity at stage discovery with the lead's source, linked to the account and coming from the lead, with the contact involved, and sets the lead to converted. Converting twice keeps the same opportunity. **CRM · my day** lists the new leads.
@@ -36,3 +36,10 @@ A **Quote** has a *Number* (unique), a *State* (draft, sent, accepted, refused, 
 
 ## When a link is refused
 **prospecting-opposed** on a link: the person objected to the processing of their data, or was erased, and this link would recreate them at the same account. Do not insist: the objection is kept on purpose. See the card on personal data.
+
+## Figures and trade shows
+The application **Sales follow-up** has a **Figures** screen: won amount and conversion rate by trade show, overdue activities by owner, reply rate by follow-up step. A **Trade show** holds its cost; link leads and opportunities to it with *was met at*: converting a lead carries the link over. The flow **CRM · trade show figures** writes each show's opportunities, wins, conversion, won amount and return (won amount / cost) in the currency of its cost; wins in another currency are counted apart, never converted. The flow **CRM · replies to follow-ups** marks a follow-up replied when an incoming activity lands on the same opportunity after it was done, which feeds the reply rate. Deploy both for these numbers to appear.
+
+To turn a trade show's list into leads, import the file (**Trade show or association list (file)**), write the list's name in the show's **List to turn into leads**, and deploy the flow model **CRM · leads from trade show lists**. Every 15 minutes, up to 100 contacts per show become leads at status new. A contact whose address belongs to a person who objected makes no lead and is marked **Objected**. Nothing is sent. The name must be exactly the one in the column `list`. The account is picked at **Convert**; the opportunity then counts in the show's figures, while the leads alone appear under **Leads from lists**.
+
+To get leads from a shared mailbox such as contact@, deploy the flow model **CRM · leads from a mailbox** and pick that box in its **Mail received** node. An authenticated mail from an address no person uses becomes a lead at status new, source inbound, one per address, with the mail's text as its message. Automatic replies, forged senders and known people make none. PneX never answers it. Do not pick a personal mailbox: every unknown sender would become a lead.

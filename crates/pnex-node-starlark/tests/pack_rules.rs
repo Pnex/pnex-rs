@@ -375,6 +375,59 @@ fn signals_digest_lists_the_new_ones_newest_first() {
 }
 
 #[test]
+fn a_list_contact_becomes_a_lead_unless_their_address_objected() {
+    let code = code_in(CRM, "crm_list_lead");
+    let run = |payload: serde_json::Value| {
+        execute(
+            &code,
+            &json!({"payload": payload, "today": "2026-11-04",
+                "show": {"id": "s1", "title": "Global Industrie", "start_on": ""},
+                "contact": {"id": "c1", "title": "Ann Lee", "company": "Acme", "email": ""}}),
+            2000,
+        )
+        .unwrap()
+        .return_json
+        .unwrap()
+    };
+    let r = run(json!([]));
+    let lead = &r[0]["payload"];
+    assert_eq!(lead["ref"], "list:c1");
+    // No start date on the show: the day it was read.
+    assert_eq!(lead["received_on"], "2026-11-04");
+    assert_eq!(lead["company"], "Acme");
+    assert!(lead.get("email").is_none(), "an empty value is not written");
+    assert!(r[1].is_null());
+
+    let opposed = json!({"properties": {"opposed_on": "2026-01-01"}});
+    let r = run(json!([{"links": {"uses_identifier": [{"other": opposed}]}}]));
+    assert!(r[0].is_null());
+    assert_eq!(r[1]["payload"]["lead_state"], "objected");
+    assert_eq!(r[1]["object_id"], "c1");
+}
+
+#[test]
+fn only_an_authenticated_stranger_makes_a_lead() {
+    let code = code_in(CRM, "crm_mail_lead");
+    let run = |known: serde_json::Value, trusted: bool| {
+        execute(
+            &code,
+            &json!({"payload": known, "addr": "new@prospect.test",
+                "mail": {"name": "", "subject": "Hello", "text": "body", "date": "2026-10-01T09:00:00Z", "trusted": trusted}}),
+            2000,
+        )
+        .unwrap()
+        .return_json
+    };
+    let lead = run(json!([]), true).unwrap();
+    assert_eq!(lead["payload"]["ref"], "mail:new@prospect.test");
+    assert_eq!(lead["payload"]["received_on"], "2026-10-01");
+    assert_eq!(lead["title"], "new@prospect.test", "no name: the address");
+    assert!(lead["payload"].get("contact_name").is_none());
+    assert!(run(json!([]), false).is_none(), "a forged sender");
+    assert!(run(json!([{"id": "p1"}]), true).is_none(), "a known person");
+}
+
+#[test]
 fn list_contacts_ask_their_company_and_keep_the_candidates() {
     let run = |f: &str, msg: serde_json::Value| {
         execute(&code_in(PROSPECTING_FR, f), &msg, 2000)
@@ -1425,6 +1478,139 @@ fn cross_table_reads_the_pilot_like_a_human() {
     assert!(at("E10").contains("2 h in the programme"), "{}", at("E10"));
     assert!(at("D15").starts_with("Chapitre 5"), "{}", at("D15"));
     assert_eq!(out["workbook"]["sheets"][0]["merges"], json!(["B1:E1"]));
+}
+
+/// `prospecting_b2b_fr` « new establishments »: a recent site of a followed
+/// account is one signal keyed by its SIRET; anyone else's site is none.
+#[test]
+fn a_new_site_of_a_followed_account_is_a_signal() {
+    let site = |status: &str| {
+        json!({
+            "payload": {"siret": "10000000900011", "created_on": "2026-10-20"},
+            "object": {"id": "pin"},
+            "links": {"establishment_of": [{"direction": "out", "other": {
+                "id": "acme", "title": "ACME", "properties": {"account_status": status}}}]}
+        })
+    };
+    let code = code_in(PROSPECTING_FR, "pe_signal");
+    let r = execute(&code, &site("customer"), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r["payload"]["ref"], "siret:10000000900011");
+    assert_eq!(r["payload"]["kind"], "new_establishment");
+    assert_eq!(r["payload"]["date"], "2026-10-20");
+    assert_eq!(r["account"], "acme");
+    assert_eq!(r["title"], "New site · ACME");
+    let ignored = execute(&code, &site("excluded"), 2000).unwrap().return_json;
+    assert!(
+        ignored.is_none_or(|v| v.is_null()),
+        "not a followed account"
+    );
+}
+
+/// `crm` « trade show figures » (object-aggregates.md Q-AG1): the won amount
+/// in the currency of the cost, the others counted apart, never converted.
+#[test]
+fn a_trade_show_gets_its_figures_without_converting_currencies() {
+    let opp = |stage: &str, amount: serde_json::Value| json!({"direction": "in", "other": {"type": "opportunity", "properties": {"stage": stage, "amount": amount}}});
+    let eur = |a: f64| json!({"amount": a, "currency": "EUR"});
+    let msg = json!({
+        "payload": {"cost": eur(1000.0)},
+        "object": {"id": "s1"},
+        "links": {"met_at": [
+            opp("won", eur(2500.0)),
+            opp("won", json!({"amount": 900.0, "currency": "USD"})),
+            opp("proposal", eur(100.0)),
+            opp("lost", eur(100.0)),
+        ]}
+    });
+    let code = code_in(CRM, "crm_show_figures");
+    let r = execute(&code, &msg, 2000).unwrap().return_json.unwrap();
+    assert_eq!(r["object_id"], "s1");
+    let p = &r["payload"];
+    assert_eq!(
+        (p["opportunities"].as_i64(), p["won"].as_i64()),
+        (Some(4), Some(2)),
+        "{r}"
+    );
+    assert_eq!(p["conversion"].as_f64(), Some(50.0), "{r}");
+    assert_eq!(p["won_amount"], eur(2500.0), "{r}");
+    assert_eq!(p["other_currency_wins"].as_i64(), Some(1), "{r}");
+    assert_eq!(p["roi"].as_f64(), Some(2.5), "{r}");
+
+    // No new version when nothing moved.
+    let mut same = msg.clone();
+    for (k, v) in p.as_object().unwrap() {
+        same["payload"][k] = v.clone();
+    }
+    assert!(execute(&code, &same, 2000)
+        .unwrap()
+        .return_json
+        .is_none_or(|v| v.is_null()));
+
+    // No opportunity, no cost: no division.
+    let empty = json!({"payload": {}, "object": {"id": "s2"}, "links": {}});
+    let r = execute(&code, &empty, 2000)
+        .unwrap()
+        .return_json
+        .unwrap_or_default();
+    assert!(r["payload"].get("roi").is_none(), "{r}");
+}
+
+/// `crm` « replies to follow-ups »: only an incoming activity from the moment
+/// the follow-up was done counts.
+#[test]
+fn only_a_later_incoming_activity_is_a_reply() {
+    let follow_up = json!({
+        "payload": {"done_at": "2026-03-10T10:00:00Z"},
+        "object": {"id": "a1"},
+        "links": {
+            "activity_on": [{"direction": "out", "other": {"id": "o1", "type": "opportunity"}}],
+            "from_step": [{"direction": "out", "other": {"id": "st"}}]
+        }
+    });
+    let prep = code_in(CRM, "crm_reply_prep");
+    let r = execute(&prep, &follow_up, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        r["act"],
+        json!({"id": "a1", "opp": "o1", "since": "2026-03-10T10:00:00Z"})
+    );
+    let mut no_step = follow_up.clone();
+    no_step["links"]["from_step"] = json!([]);
+    assert!(
+        execute(&prep, &no_step, 2000)
+            .unwrap()
+            .return_json
+            .is_none_or(|v| v.is_null()),
+        "not of the plan"
+    );
+
+    let found = code_in(CRM, "crm_reply_found");
+    let rows = |direction: &str, at: &str| json!({"act": r["act"], "payload": [{"properties": {"direction": direction, "done_at": at}}]});
+    let hit = execute(&found, &rows("inbound", "2026-03-11T08:00:00Z"), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        (&hit["payload"]["replied"], &hit["object_id"]),
+        (&json!(true), &json!("a1"))
+    );
+    for miss in [
+        rows("inbound", "2026-03-09T08:00:00Z"),
+        rows("outbound", "2026-03-11T08:00:00Z"),
+    ] {
+        assert!(
+            execute(&found, &miss, 2000)
+                .unwrap()
+                .return_json
+                .is_none_or(|v| v.is_null()),
+            "{miss}"
+        );
+    }
 }
 
 /// `crm` « convert a lead » (crm.md D515): the opportunity keyed by its

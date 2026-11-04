@@ -1,12 +1,11 @@
 //! Graph algorithms of the ontology (annex A3): pure Rust over a subgraph
-//! loaded by the backend (recursive CTEs), testable without a database.
+//! loaded by the backend, testable without a database.
 //! The store side is `services::ontology::graph` in the backend.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
-use petgraph::algo::{astar, is_cyclic_directed, kosaraju_scc};
+use petgraph::algo::{is_cyclic_directed, kosaraju_scc};
 use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::visit::{Bfs, EdgeRef, Reversed};
 
 /// A directed edge `source → target` labelled with its link type.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,42 +45,37 @@ impl Subgraph {
     /// Shortest path (fewest links) from `from` to `to`, links followed in
     /// both directions; the ids along the path, ends included.
     pub fn shortest_path(&self, from: &str, to: &str) -> Option<Vec<String>> {
-        let (&a, &b) = (self.index.get(from)?, self.index.get(to)?);
-        // Undirected view: add the reverse of every edge.
-        let mut und = self.graph.clone();
-        let reverse: Vec<_> = self
-            .graph
-            .edge_references()
-            .map(|e| (e.target(), e.source(), e.weight().clone()))
-            .collect();
-        for (s, t, w) in reverse {
-            und.add_edge(s, t, w);
-        }
-        let (_, path) = astar(&und, a, |n| n == b, |_| 1u32, |_| 0)?;
-        Some(path.into_iter().map(|n| self.graph[n].clone()).collect())
+        self.nearest_path(&[from.to_string()], to)
     }
 
-    /// Everything reachable downstream of `from` (cascading impact), `from`
-    /// excluded; `upstream` follows links backwards (what feeds `from`).
-    pub fn impact(&self, from: &str, upstream: bool) -> BTreeSet<String> {
-        let Some(&start) = self.index.get(from) else {
-            return BTreeSet::new();
-        };
-        let mut out = BTreeSet::new();
-        if upstream {
-            let rev = Reversed(&self.graph);
-            let mut bfs = Bfs::new(rev, start);
-            while let Some(n) = bfs.next(rev) {
-                out.insert(self.graph[n].clone());
+    /// Shortest path to `to` from the nearest of `starts`, links followed in
+    /// both directions; the ids along the path, ends included.
+    pub fn nearest_path(&self, starts: &[String], to: &str) -> Option<Vec<String>> {
+        let target = *self.index.get(to)?;
+        let starts: HashSet<NodeIndex> = starts
+            .iter()
+            .filter_map(|s| self.index.get(s).copied())
+            .collect();
+        // Walked from the target, so following the parents gives the path in order.
+        let mut parent = HashMap::from([(target, target)]);
+        let mut queue = VecDeque::from([target]);
+        while let Some(n) = queue.pop_front() {
+            if starts.contains(&n) {
+                let (mut path, mut at) = (vec![self.graph[n].clone()], n);
+                while at != target {
+                    at = parent[&at];
+                    path.push(self.graph[at].clone());
+                }
+                return Some(path);
             }
-        } else {
-            let mut bfs = Bfs::new(&self.graph, start);
-            while let Some(n) = bfs.next(&self.graph) {
-                out.insert(self.graph[n].clone());
+            for next in self.graph.neighbors_undirected(n) {
+                parent.entry(next).or_insert_with(|| {
+                    queue.push_back(next);
+                    n
+                });
             }
         }
-        out.remove(from);
-        out
+        None
     }
 
     pub fn has_cycle(&self) -> bool {
@@ -111,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn paths_and_impact() {
+    fn paths() {
         // pump → valve → tank ; sensor → pump ; tank → line
         let g = Subgraph::new(&[
             e("pump", "valve"),
@@ -126,15 +120,15 @@ mod tests {
         // Undirected: line back to sensor.
         assert_eq!(g.shortest_path("line", "sensor").unwrap().len(), 5);
         assert!(g.shortest_path("pump", "nowhere").is_none());
-        assert_eq!(
-            g.impact("pump", false),
-            ["line", "tank", "valve"].map(String::from).into()
-        );
-        assert_eq!(
-            g.impact("tank", true),
-            ["pump", "sensor", "valve"].map(String::from).into()
-        );
         assert!(!g.has_cycle());
+    }
+
+    #[test]
+    fn nearest_path_starts_from_the_closest_start() {
+        let g = Subgraph::new(&[e("far", "a"), e("a", "b"), e("b", "end"), e("near", "end")]);
+        let starts = ["far", "near", "unknown"].map(String::from);
+        assert_eq!(g.nearest_path(&starts, "end").unwrap(), ["near", "end"]);
+        assert!(g.nearest_path(&["unknown".to_string()], "end").is_none());
     }
 
     #[test]

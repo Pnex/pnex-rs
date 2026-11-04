@@ -243,6 +243,10 @@ pub struct OntologyQuery {
     pub within: Option<String>,
     #[serde(default)]
     pub traverse: Vec<Hop>,
+    /// Filters on the objects `traverse` reaches; `filters` select where it
+    /// starts. Ignored without a traversal.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reached: Vec<PropertyFilter>,
     /// RFC 3339: objects and links valid at that instant (default now).
     #[serde(default)]
     pub as_of: Option<String>,
@@ -296,6 +300,9 @@ pub struct Neighborhood {
     /// Object id → colour token of its coloured status (D339).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub colors: std::collections::BTreeMap<String, String>,
+    /// The walk stopped at its cap: more links exist than shown (D589).
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 /// One point of a recomposed series (D181).
@@ -1323,6 +1330,9 @@ pub struct CaseExport {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ObjectPath {
     pub path: Vec<ObjectRef>,
+    /// The search stopped at its cap: a shorter path may exist (D589).
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 /// Objects reachable from an object through open links (impact analysis).
@@ -1330,6 +1340,9 @@ pub struct ObjectPath {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ObjectImpact {
     pub objects: Vec<ObjectRef>,
+    /// The walk stopped at its cap: the list is incomplete (D589).
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 /// Expansion of a node of the case graph (K31). Without `pick`: the

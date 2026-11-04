@@ -23,7 +23,6 @@ pub fn default_size(widget_type: &str) -> (i64, i64) {
         "range_bars" => (420, 300),
         "object_table" => (720, 400),
         "object_fields" => (420, 300),
-        "object_count" => (200, 140),
         "input" => (280, 110),
         "object_form" | "action_button" => (220, 100),
         "symbol" => (80, 80),
@@ -241,6 +240,7 @@ mod tests {
         }
         let _ = SourceRef {
             object_property: None,
+            objects: None,
             role: "primary".into(),
             metric: "m".into(),
             device_id: "d".into(),

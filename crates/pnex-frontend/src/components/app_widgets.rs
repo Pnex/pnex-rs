@@ -105,9 +105,6 @@ pub fn AppWidgetBody(widget: Widget) -> Element {
                 "object_table" => rsx! {
                     ObjectTable { cx, o }
                 },
-                "object_count" => rsx! {
-                    ObjectCount { cx, o, thresholds: widget.options.thresholds.clone() }
-                },
                 "object_fields" => rsx! {
                     ObjectFields { cx, o }
                 },
@@ -330,42 +327,6 @@ fn CellValue(cx: AppRunCx, object: ObjectView, column: String) -> Element {
     };
     rsx! {
         PropertyValue { value: object.properties.get(&column).cloned(), def }
-    }
-}
-
-#[component]
-fn ObjectCount(
-    cx: AppRunCx,
-    o: AppWidgetOptions,
-    thresholds: Vec<pnex_core::Threshold>,
-) -> Element {
-    let data = use_set(cx, o, 1, use_signal(|| 0), use_signal(|| None));
-    let state = data.read().clone();
-    match state {
-        Some(Some(Ok(r))) => {
-            let color = crate::components::charts::threshold_color(
-                &thresholds,
-                r.count as f64,
-                "var(--color-ink)",
-            );
-            rsx! {
-                div { class: "flex flex-1 items-center justify-center",
-                    span {
-                        class: "text-4xl font-semibold tabular-nums",
-                        style: "color: {color};",
-                        "data-testid": "app-count",
-                        "{r.count}"
-                    }
-                }
-            }
-        }
-        Some(None) => rsx! {
-            Pending { text: t!("apps-filter-pending").to_string() }
-        },
-        Some(Some(Err(e))) => rsx! {
-            Pending { text: crate::api::error_i18n::localize(&e) }
-        },
-        None => rsx! {},
     }
 }
 

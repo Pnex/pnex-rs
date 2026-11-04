@@ -1,7 +1,7 @@
 use super::*;
 
 /// Canonical list of the kinds offered for adding (mockup order).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 52] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 53] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -36,6 +36,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 52] = [
     PaletteKind::TextDecide,
     PaletteKind::RangeUpsert,
     PaletteKind::OntologyQuery,
+    PaletteKind::OntologyAggregate,
     PaletteKind::ObjectUpsert,
     PaletteKind::LinkUpsert,
     PaletteKind::CheckRecord,
@@ -100,6 +101,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::ActionTrigger => "action-trigger",
         PaletteKind::MailReceived => "mail-received",
         PaletteKind::OntologyQuery => "ontology-query",
+        PaletteKind::OntologyAggregate => "ontology-aggregate",
         PaletteKind::ObjectUpsert => "object-upsert",
         PaletteKind::LinkUpsert => "link-upsert",
         PaletteKind::CheckRecord => "check-record",
@@ -168,6 +170,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::ActionTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
         PaletteKind::MailReceived => (PaletteIcon::Gauge, "bg-sky-50 text-sky-700"),
         PaletteKind::OntologyQuery => (PaletteIcon::Database, "bg-teal-50 text-teal-700"),
+        PaletteKind::OntologyAggregate => (PaletteIcon::Gauge, "bg-teal-50 text-teal-700"),
         PaletteKind::ObjectUpsert => (PaletteIcon::Database, "bg-teal-50 text-teal-800"),
         PaletteKind::LinkUpsert => (PaletteIcon::Layers, "bg-teal-50 text-teal-700"),
         PaletteKind::CheckRecord => (PaletteIcon::Gauge, "bg-teal-50 text-teal-800"),
@@ -229,6 +232,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::ActionTrigger { .. } => PaletteKind::ActionTrigger,
         FlowNodeKind::MailReceived { .. } => PaletteKind::MailReceived,
         FlowNodeKind::OntologyQuery { .. } => PaletteKind::OntologyQuery,
+        FlowNodeKind::OntologyAggregate { .. } => PaletteKind::OntologyAggregate,
         FlowNodeKind::ObjectUpsert { .. } => PaletteKind::ObjectUpsert,
         FlowNodeKind::LinkUpsert { .. } => PaletteKind::LinkUpsert,
         FlowNodeKind::CheckRecord { .. } => PaletteKind::CheckRecord,
@@ -309,6 +313,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::SheetWrite
         | PaletteKind::EventLog => PaletteCategory::Storage,
         PaletteKind::OntologyQuery
+        | PaletteKind::OntologyAggregate
         | PaletteKind::ObjectUpsert
         | PaletteKind::LinkUpsert
         | PaletteKind::CheckRecord => PaletteCategory::Ontology,
@@ -523,6 +528,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::OntologyQuery => (
             t!("flows-palette-ontology-query").to_string(),
             t!("flows-palette-ontology-query-help").to_string(),
+        ),
+        PaletteKind::OntologyAggregate => (
+            t!("flows-palette-ontology-aggregate").to_string(),
+            t!("flows-palette-ontology-aggregate-help").to_string(),
         ),
         PaletteKind::ObjectUpsert => (
             t!("flows-palette-object-upsert").to_string(),

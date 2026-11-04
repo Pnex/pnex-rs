@@ -1080,7 +1080,7 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 - Pack de veille autonome : thèmes d'org, page ou actualité → `text_decide` → signal, envoi par suiveur, dédoublonnage, tableau de bord.
 - Pages actualités et carrières par le parcours D307.
 - Diff des pages concurrentes (D311).
-- Signal « nouvel établissement » tiré de la synchro SIRET.
+- ~~Signal « nouvel établissement » tiré de la synchro SIRET~~ : fait le 2026-11-04, avec l'import des établissements des comptes suivis, que l'import par SIREN ne ramenait jamais (`account-mapping.md`, dernière section).
 - Étape LLM pour les scores moyens de présence web + capture (Q-W4).
 - Proposition automatique des critères abordés depuis la transcription + temps de parole par côté.
 - Listes de salon et d'associations (fichier + `org_resolve`).
@@ -1149,8 +1149,9 @@ d'`account-mapping.md` en gardant le CRM dans un pack.
 | DP | D341 fini : classification D298 codée, masquage par rôle (`ontology.personal:read`, `ontology.sensitive:read`), base légale et durée de conservation en réglages de pack, file de rétention (propositions `object_erase`, jamais automatiques), effacement en coquille, opposition appliquée par le moteur aux nouveaux liens | codé + tests |
 | CRM1 | Pack `crm` : opportunités, qualification par les critères de l'org, fiche opportunité, hiérarchie des opportunités d'un compte | codé + tests |
 | CRM2 | Activités, plan de relance, brouillons relus (jamais envoyés par PneX), dernière activité, digest « ma journée » ; jetons `$today±n` | codé + tests |
-| CRM4 | Pistes et conversion (action `convert`), devis (modèle `quote_sheet`) et factures suivis (émises par l'outil de facturation), devis expirés et factures en retard avec relance, pistes au digest (D514–D517) | codé + tests 2026-10-29, à commiter |
-| CRM3 | Mail entrant rattaché à la fiche → lot M6 de `mail.md` (boîtes mail génériques D453–D462, réflexion) ; tableaux de bord (ROI par salon, taux par étape de relance) | M1, M2, M6 codés (2026-10-26) : boîtes IMAP, relève, déclencheur `mail_received`, flow « CRM · mails reçus » ; **essai de bout en bout le 2026-10-26** sur une vraie boîte o2switch (pack `crm` 1.1.0) : 7 défauts trouvés et corrigés (SEC-51 oracle de requête, SEC-52 effacement annulable et en-tête d'authentification forgeable, DKIM vérifié par PneX, date de transfert, chaîne de transferts, refus silencieux des nœuds d'ontologie, mails effacés par correspondant) ; rejeu des mails manqués par un nœud qui redémarre (D464, curseur par nœud, vérifié en réel le 2026-10-26) ; écran `/mailboxes` le 2026-10-27 (ajout, test de connexion qui signale un dossier spam non relevé, pause, suppression, fiche des mails relevés en texte avec la vérification de l'expéditeur, lien depuis le nœud Mail reçu) ; envoi (M3) codé le 2026-10-29 : SMTP sur la boîte, boîte d'envoi relue par un humain, nœud `mail_send`, garde-fous au serveur (D518–D521), essayé sur un vrai serveur le 2026-11-03 ; restent Microsoft, reporté par Shan le 2026-11-03 (`mail.md` §9–§10) et le branchement des relances `crm` |
+| CRM4 | Pistes et conversion (action `convert`), devis (modèle `quote_sheet`) et factures suivis (émises par l'outil de facturation), devis expirés et factures en retard avec relance, pistes au digest (D514–D517) | poussé |
+| CRM3 | Mail entrant rattaché à la fiche → lot M6 de `mail.md` (boîtes mail génériques D453–D462, réflexion) ; tableaux de bord (ROI par salon, taux par étape de relance) | M1, M2, M6 codés (2026-10-26) : boîtes IMAP, relève, déclencheur `mail_received`, flow « CRM · mails reçus » ; **essai de bout en bout le 2026-10-26** sur une vraie boîte o2switch (pack `crm` 1.1.0) : 7 défauts trouvés et corrigés (SEC-51 oracle de requête, SEC-52 effacement annulable et en-tête d'authentification forgeable, DKIM vérifié par PneX, date de transfert, chaîne de transferts, refus silencieux des nœuds d'ontologie, mails effacés par correspondant) ; rejeu des mails manqués par un nœud qui redémarre (D464, curseur par nœud, vérifié en réel le 2026-10-26) ; écran `/mailboxes` le 2026-10-27 (ajout, test de connexion qui signale un dossier spam non relevé, pause, suppression, fiche des mails relevés en texte avec la vérification de l'expéditeur, lien depuis le nœud Mail reçu) ; envoi (M3) codé le 2026-10-29 : SMTP sur la boîte, boîte d'envoi relue par un humain, nœud `mail_send`, garde-fous au serveur (D518–D521), essayé sur un vrai serveur le 2026-11-03 ; relances `crm` branchées sur la boîte d'envoi (D522) ; flows `crm` exécutés sur le vrai runtime en e2e le 2026-11-04 (`e2e/tests/crm.spec.ts`) ; restent Microsoft, reporté par Shan le 2026-11-03 (`mail.md` §9–§10), et le nœud de flow d'agrégat. Tableaux de bord : `object-aggregates.md` (D579–D588, pack `crm` 3.3.0, 2026-11-04) |
+| CRM5 | Pistes depuis une liste de salon (D590) et depuis une boîte partagée (D591), `crm.md` | poussé |
 
 Écrans (bouton « Effacer », base légale affichée, vues dédiées) : hors de ce
 lot, l'application commerciale viendra sur l'API.
@@ -1228,7 +1229,7 @@ avant ; P0.1 et P0.3 sont des prérequis d'OP10.
 | OP2 | Cadre de connecteurs, SaaS/ERP, stockage cloud, CDC, tables virtuelles, écriture retour |
 | OP3 | Lignes, marquages, habilitations, finalité, données sensibles, pseudonymisation, SAML, droits des personnes |
 | OP4 | Branches transverses, interfaces d'ontologie |
-| OP5 | Agrégats, analyse sans code, SQL en lecture, règles avec rejeu, blocs vivants |
+| OP5 | Agrégats (`object-aggregates.md`, D579–D588, validé et codé le 2026-11-04, non commité ; passe avant OP1), analyse sans code, SQL en lecture, règles avec rejeu, blocs vivants |
 | OP6 | Tableur et traitement de texte (GridCraft, WordCraft), après POC |
 | OP7 | Notebooks Python en déploiement séparé, SDK d'accès aux données |
 | OP8 | SDK typés, applications en code sur origine isolée, génération par l'IA, hors ligne |
@@ -1280,7 +1281,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   OTA signée Ed25519 + anti-downgrade, TLS obligatoire, X.509/mTLS par
   device, secret d'edge — D153–D158, banc 8266 + C6) ; V2–V5 non
   commencées. Décision #15.
-- **Apache AGE** (`ontology.md` annexe A4, ajout 2026-10-10) :
+- **Apache AGE** (`ontology.md` annexe A4 et D589, ajout 2026-10-10) :
   projection graphe en lecture par triggers, optionnelle, Postgres
   restant la source de vérité. Déclencheur : parcours profonds (5+
   sauts, plus courts chemins) sur des millions d'objets en interactif.

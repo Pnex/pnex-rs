@@ -123,6 +123,7 @@ fn bind_widget(l: &mut pnex_core::DashboardLayout, widget_id: &str, property: St
             memory: None,
             labels: Default::default(),
             object_property: None,
+            objects: None,
         });
     }
     let s = &mut w.source[0];

@@ -305,6 +305,124 @@ async fn temporal_links_containment_and_graph() {
         let (st, path) = call(&server, "GET", &format!("/api/v1/ontology/path?from={}&to={}", id(&p1), id(&line)), &env.alice, org, None).await;
         assert_eq!(st, 200, "{path}");
         assert_eq!(path["path"].as_array().unwrap().last().unwrap()["title"], "L2");
+        assert_eq!(path["truncated"], false, "{path}");
+        assert_eq!(g["truncated"], false, "{g}");
+        assert_eq!(imp["truncated"], false, "{imp}");
+    })
+    .await;
+}
+
+/// D589: too many starts flag the path as partial, and the search still walks.
+#[tokio::test]
+#[serial]
+async fn a_path_from_too_many_starts_still_walks() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        call(&server, "POST", "/api/v1/ontology/packs/maintenance/install", &env.alice, org, None).await;
+        let id = |o: &Value| o["id"].as_str().unwrap().to_string();
+        let hub = id(&object(&server, &env.alice, org, "pump", "Hub", json!({"serial": "1"})).await);
+        let end = id(&object(&server, &env.alice, org, "pump", "End", json!({"serial": "2"})).await);
+        let (st, r) = link(&server, &env.alice, org, json!({"link_type": "feeds", "source_id": hub, "target_id": end})).await;
+        assert_eq!(st, 201, "{r}");
+        // One start over the cap of 500, each two hops from the target.
+        env.db
+            .execute_unprepared(&format!(
+                "WITH o AS (INSERT INTO objects (org_id, type_key, title, native_id) \
+                   SELECT {org}, 'pump', 'S' || g, gen_random_uuid()::text FROM generate_series(1, 501) g \
+                   RETURNING id) \
+                 INSERT INTO resource_edges (org_id, relation, source_kind, source_id, target_kind, target_id, source_object_id, target_object_id) \
+                 SELECT {org}, 'backup_of', 'pump', o.id::text, 'pump', '{hub}', o.id, '{hub}'::uuid FROM o"
+            ))
+            .await
+            .unwrap();
+        let (st, p) = call(&server, "GET", &format!("/api/v1/ontology/path?from_links=backup_of&to={end}"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{p}");
+        assert_eq!(p["truncated"], true, "{p}");
+        let path = p["path"].as_array().unwrap();
+        assert_eq!(path.len(), 3, "{p}");
+        assert_eq!(path[1]["title"], "Hub");
+        assert_eq!(path[2]["title"], "End");
+    })
+    .await;
+}
+
+/// D589: past the cap, the answer says it is partial; it is never a silent cut.
+#[tokio::test]
+#[serial]
+async fn a_walk_past_its_cap_says_so() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        call(&server, "POST", "/api/v1/ontology/packs/maintenance/install", &env.alice, org, None).await;
+        let id = |o: &Value| o["id"].as_str().unwrap().to_string();
+        let hub = id(&object(&server, &env.alice, org, "pump", "Hub", json!({"serial": "1"})).await);
+        let near = id(&object(&server, &env.alice, org, "pump", "Near", json!({"serial": "2"})).await);
+        let end = id(&object(&server, &env.alice, org, "pump", "End", json!({"serial": "3"})).await);
+        for (source, target) in [(&hub, &near), (&near, &end)] {
+            let (st, r) = link(&server, &env.alice, org, json!({"link_type": "feeds", "source_id": source, "target_id": target})).await;
+            assert_eq!(st, 201, "{r}");
+        }
+        let titles = |v: &Value, key: &str| -> Vec<String> {
+            v[key].as_array().unwrap().iter().map(|o| o["title"].as_str().unwrap().to_string()).collect()
+        };
+
+        // Below the cap: impact follows the link direction, the path is exact.
+        let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/objects/{near}/impact"), &env.alice, org, None).await;
+        assert_eq!(titles(&imp, "objects"), ["End"], "{imp}");
+        assert_eq!(imp["truncated"], false);
+        let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/objects/{near}/impact?upstream=true"), &env.alice, org, None).await;
+        assert_eq!(titles(&imp, "objects"), ["Hub"], "{imp}");
+        let (st, p) = call(&server, "GET", &format!("/api/v1/ontology/path?from={hub}&to={end}"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{p}");
+        assert_eq!(titles(&p, "path"), ["Hub", "Near", "End"]);
+        assert_eq!(p["truncated"], false);
+        // An object is its own path, even with no link at all.
+        let lone = id(&object(&server, &env.alice, org, "pump", "Lone", json!({"serial": "4"})).await);
+        let (st, p) = call(&server, "GET", &format!("/api/v1/ontology/path?from={lone}&to={lone}"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{p}");
+        assert_eq!(titles(&p, "path"), ["Lone"]);
+
+        // 5,100 more targets, inserted directly: faster than the API.
+        env.db
+            .execute_unprepared(&format!(
+                "WITH o AS (INSERT INTO objects (org_id, type_key, title, native_id) \
+                   SELECT {org}, 'pump', 'T' || g, gen_random_uuid()::text FROM generate_series(1, 5100) g \
+                   RETURNING id) \
+                 INSERT INTO resource_edges (org_id, relation, source_kind, source_id, target_kind, target_id, source_object_id, target_object_id) \
+                 SELECT {org}, 'feeds', 'pump', '{hub}', 'pump', o.id::text, '{hub}'::uuid, o.id FROM o"
+            ))
+            .await
+            .unwrap();
+        let (st, g) = call(&server, "GET", &format!("/api/v1/ontology/objects/{hub}/graph"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{g}");
+        assert_eq!(g["truncated"], true);
+        assert_eq!(g["links"].as_array().unwrap().len(), 5000);
+        let (st, imp) = call(&server, "GET", &format!("/api/v1/ontology/objects/{hub}/impact?depth=1"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{imp}");
+        assert_eq!(imp["truncated"], true);
+        assert_eq!(imp["objects"].as_array().unwrap().len(), 5000);
+        // A path has a larger cap, so the hub does not hide it.
+        let (st, p) = call(&server, "GET", &format!("/api/v1/ontology/path?from={hub}&to={end}"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{p}");
+        assert_eq!(p["truncated"], false, "{p}");
+        assert_eq!(titles(&p, "path"), ["Hub", "Near", "End"]);
+        // A search cut before any path is not "no path": 503, never a false 404.
+        let lone_end = id(&object(&server, &env.alice, org, "pump", "Unlinked", json!({"serial": "5"})).await);
+        env.db
+            .execute_unprepared(&format!(
+                "WITH o AS (INSERT INTO objects (org_id, type_key, title, native_id) \
+                   SELECT {org}, 'pump', 'U' || g, gen_random_uuid()::text FROM generate_series(1, 200000) g \
+                   RETURNING id) \
+                 INSERT INTO resource_edges (org_id, relation, source_kind, source_id, target_kind, target_id, source_object_id, target_object_id) \
+                 SELECT {org}, 'feeds', 'pump', '{hub}', 'pump', o.id::text, '{hub}'::uuid, o.id FROM o"
+            ))
+            .await
+            .unwrap();
+        let (st, e) = call(&server, "GET", &format!("/api/v1/ontology/path?from={hub}&to={lone_end}"), &env.alice, org, None).await;
+        assert_eq!((st, e["error"].as_str()), (503, Some("ontology-path-incomplete")), "{e}");
+        // Another org sees nothing of it.
+        let bob = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &format!("/api/v1/ontology/objects/{hub}/graph"), &env.bob, bob, None).await;
+        assert_eq!(st, 404);
     })
     .await;
 }

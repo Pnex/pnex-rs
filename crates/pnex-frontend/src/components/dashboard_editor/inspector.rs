@@ -115,6 +115,7 @@ fn widget_panel(
 
     let primary = w.source.first().cloned().unwrap_or(SourceRef {
         object_property: None,
+        objects: None,
         role: "primary".into(),
         metric: String::new(),
         device_id: String::new(),
@@ -449,6 +450,9 @@ fn widget_panel(
                     }
                 }
             }
+            if pnex_core::OBJECTS_WIDGET_TYPES.contains(&w.widget_type.as_str()) {
+                super::objects_panel::ObjectsSourcePanel { cx, widget: w.clone(), can_write }
+            }
             if reads_series(&w.widget_type) {
                 ObjectSourcePanel { cx, widget: w.clone(), can_write }
             }
@@ -763,6 +767,7 @@ fn set_source(l: &mut pnex_core::DashboardLayout, widget_id: &str, f: impl FnOnc
         if w.source.is_empty() {
             w.source.push(SourceRef {
                 object_property: None,
+                objects: None,
                 role: "primary".into(),
                 metric: String::new(),
                 device_id: String::new(),

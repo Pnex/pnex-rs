@@ -62,7 +62,7 @@
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "3.1.0"
+version: "3.2.0"
 requires: [companies, web_presence]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -345,6 +345,8 @@ types:
     name: List contact
     names: {fr: "Contact de liste"}
     icon: user
+    # The title is a person's name (D442).
+    title_classification: personal
     properties:
       - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 600, required: true, unique: true }
       - { key: list, name: List, names: {fr: "Liste"}, kind: text, max_len: 255, indexed: true }
@@ -352,7 +354,7 @@ types:
       - { key: company, name: Company as written, names: {fr: "Société (telle qu'écrite)"}, kind: text, max_len: 255 }
       - { key: city, name: City, names: {fr: "Ville"}, kind: text, max_len: 255 }
       - { key: postal_code, name: Postcode, names: {fr: "Code postal"}, kind: text, max_len: 10 }
-      - { key: email, name: E-mail, names: {fr: "E-mail"}, kind: text, max_len: 254 }
+      - { key: email, name: E-mail, names: {fr: "E-mail"}, kind: text, max_len: 254, classification: personal }
       - key: persona
         name: Persona
         names: {fr: "Persona"}
@@ -632,7 +634,7 @@ flows:
         - { id: topic, kind: pnex_function, config: { function_name: pn_topic, language: starlark }, outputs: [{ port: 0, targets: [done] }] }
         - { id: done, kind: object_upsert, config: { object_type: sales_signal, key: id } }
   - name: "Prospecting · signals digest"
-    note: "Each morning the commercial signals not yet notified make one digest (payload.text, payload.count), then are marked notified. Add your Notification node on the digest port (template with a 'text' variable, trigger = payload.trigger), then deploy."
+    note: "Each morning the commercial signals not yet notified make one digest (payload.text, payload.count), then are marked notified. Add a JSON Split node on the digest port with the keys trigger and text, then your Notification node (a template with a 'text' variable): the split's trigger port on its trigger row, its text port on its text row. Wired straight to the digest port, the trigger reads no boolean and nothing is sent. Then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "0 7 * * *" }, outputs: [{ port: 0, targets: [new] }] }

@@ -638,7 +638,7 @@ async fn records<C: ConnectionTrait>(
             if let Some(key) = &m.per_setting_code {
                 let codes = setting_codes(db, imp.org_id, key).await;
                 let since = since_days(db, imp, m, url).await;
-                return source::fetch_per_object(url, m, &codes, by, &since)
+                return source::fetch_per_object(url, m, &codes, by, &since, &Default::default())
                     .await
                     .map_err(coded);
             }
@@ -649,7 +649,14 @@ async fn records<C: ConnectionTrait>(
                         .await
                         .map_err(|_| coded(source::UNREACHABLE))?;
                     let since = since_days(db, imp, m, url).await;
-                    source::fetch_per_object(url, m, &values, by, &since)
+                    let titles = if p.by_title.is_empty() {
+                        Default::default()
+                    } else {
+                        per_object_titles(db, imp, p, &values)
+                            .await
+                            .map_err(|_| coded(source::UNREACHABLE))?
+                    };
+                    source::fetch_per_object(url, m, &values, by, &since, &titles)
                         .await
                         .map_err(coded)
                 }
@@ -776,6 +783,36 @@ async fn press_watched<C: ConnectionTrait>(
                 );
             }
             Some(pnex_core::gkg::Watched { names, key })
+        })
+        .collect())
+}
+
+/// Titles of the objects holding `values` of the `per_object` property.
+async fn per_object_titles<C: ConnectionTrait>(
+    db: &C,
+    imp: &ImportRow,
+    p: &imp::PerObject,
+    values: &[String],
+) -> std::result::Result<std::collections::HashMap<String, String>, sea_orm::DbErr> {
+    let rows = db
+        .query_all_raw(stmt(
+            "SELECT properties ->> $3 AS v, title FROM objects \
+             WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ->> $3 = ANY($4)",
+            vec![
+                imp.org_id.into(),
+                p.type_key.clone().into(),
+                p.property.clone().into(),
+                values.to_vec().into(),
+            ],
+        ))
+        .await?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| {
+            Some((
+                r.try_get::<String>("", "v").ok()?,
+                r.try_get::<String>("", "title").ok()?,
+            ))
         })
         .collect())
 }

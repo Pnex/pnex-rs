@@ -82,6 +82,13 @@ pub async fn query(q: &OntologyQuery) -> Result<QueryResult, ApiError> {
     client::request(Method::POST, &format!("{BASE}/query"), body(q)).await
 }
 
+/// `POST /ontology/aggregate/query`: numbers over the objects of a query.
+pub async fn aggregate(
+    q: &pnex_core::ontology::aggregate::AggregateQuery,
+) -> Result<pnex_core::ontology::aggregate::AggregateResult, ApiError> {
+    client::request(Method::POST, &format!("{BASE}/aggregate/query"), body(q)).await
+}
+
 pub async fn object(id: &str) -> Result<ObjectView, ApiError> {
     client::request(Method::GET, &format!("{BASE}/objects/{id}"), None).await
 }
@@ -250,14 +257,13 @@ pub async fn path_from_links(
     Ok(found.path)
 }
 
-pub async fn impact(id: &str, upstream: bool) -> Result<Vec<ObjectRef>, ApiError> {
-    let found: ObjectImpact = client::request(
+pub async fn impact(id: &str, upstream: bool) -> Result<ObjectImpact, ApiError> {
+    client::request(
         Method::GET,
         &format!("{BASE}/objects/{id}/impact?upstream={upstream}"),
         None,
     )
-    .await?;
-    Ok(found.objects)
+    .await
 }
 
 pub async fn series(id: &str, property: &str, window: &str) -> Result<SeriesView, ApiError> {

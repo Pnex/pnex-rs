@@ -162,6 +162,7 @@ pub fn SymbolOptionsPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                                         w.source
                                             .push(SourceRef {
                                                 object_property: None,
+                                                objects: None,
                                                 role: "primary".into(),
                                                 metric: String::new(),
                                                 device_id: String::new(),

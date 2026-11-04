@@ -68,6 +68,19 @@ pub async fn screen(id: &str, key: &str) -> Result<AppScreenView, ApiError> {
     .await
 }
 
+/// `POST /api/v1/apps/{id}/object-sets/{name}/aggregate/query`, reader's rights.
+pub async fn aggregate_set(
+    id: &str,
+    name: &str,
+    req: &pnex_core::ontology::aggregate::SetAggregateQuery,
+) -> Result<pnex_core::ontology::aggregate::AggregateResult, ApiError> {
+    let url = format!(
+        "/api/v1/apps/{id}/object-sets/{}/aggregate/query",
+        urlencode(name)
+    );
+    client::request(reqwest::Method::POST, &url, serde_json::to_value(req).ok()).await
+}
+
 /// `GET /api/v1/apps/{id}/object-sets/{name}` with the reader's rights.
 pub async fn run_set(
     id: &str,

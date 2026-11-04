@@ -30,7 +30,7 @@
 key: prospecting_b2b_fr
 name: B2B prospecting, France layer
 names: {fr: "Prospection B2B, couche France"}
-version: "3.3.0"
+version: "3.5.0"
 requires: [companies_fr, prospecting_b2b]
 description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
 descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
@@ -295,6 +295,55 @@ imports:
             headcount_max: { from: siege.tranche_effectif_salarie, convert: [*headcount_max] }
       links:
         - { type: establishment_of, from: head_office, to: legal_unit }
+  # The register lists an entity's sites for a search by name, never by SIREN
+  # (measured 2026-11-04: 0 of 11 open sites by SIREN, all 16 sites by name).
+  # shortcut: 100 sites per company (the API's cap, its page parameter answers
+  # the same page), upgrade to the INSEE SIRENE API, which needs a key, when a
+  # bigger group must be complete.
+  - name: Establishments (company register)
+    source: api
+    source_url: "https://recherche-entreprises.api.gouv.fr/search?per_page=5&limite_matching_etablissements=100"
+    max_pages: 200
+    mapping:
+      key: company_establishments
+      name: Establishments
+      names: {fr: "Établissements"}
+      description: The open sites of the accounts followed (customer, prospect, target), up to 100 per company, searched by the account's name in the company register.
+      format: json
+      rows: results
+      per_object:
+        type: organization
+        property: siren
+        param: q
+        by_title: siren
+        only: { property: account_status, values: [customer, prospect, target] }
+      objects:
+        - as: legal_unit
+          type: organization
+          key: siren
+          create: false
+          update: true
+          missing: skip
+          properties:
+            siren: siren
+            open_sites: nombre_etablissements_ouverts
+        - as: establishment
+          type: map_pin
+          key: siret
+          each: matching_etablissements
+          when: { from: etat_administratif, equals: A }
+          title: ^nom_complet
+          location: { lat: latitude, lon: longitude }
+          properties:
+            siret: siret
+            head_office: est_siege
+            administrative_state: { value: active }
+            created_on: date_creation
+            headcount_band: tranche_effectif_salarie
+            headcount_min: { from: tranche_effectif_salarie, convert: [*headcount_min] }
+            headcount_max: { from: tranche_effectif_salarie, convert: [*headcount_max] }
+      links:
+        - { type: establishment_of, from: establishment, to: legal_unit }
   - name: Legal announcements (BODACC)
     source: api
     source_url: "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=registre%3D%22{value}%22%20and%20familleavis!%3D%22dpc%22&order_by=dateparution%20desc&limit=20"
@@ -404,6 +453,36 @@ functions:
       def handle(inputs, msg):
           return {"payload": {"source_id": msg["contact"]["id"], "target_id": msg["object"]["id"],
                               "attributes": {}}}
+  - name: pe_signal
+    language: starlark
+    description: "A site created lately on an account followed: a commercial signal about that account, to validate."
+    code: |
+      FOLLOWED = ["customer", "prospect", "target"]
+
+      def handle(inputs, msg):
+          p = msg["payload"]
+          accounts = [l["other"] for l in msg.get("links", {}).get("establishment_of", [])
+                      if l.get("direction") == "out"
+                      and l.get("other", {}).get("properties", {}).get("account_status") in FOLLOWED]
+          if not accounts or not p.get("siret"):
+              return None
+          return {
+              "payload": {
+                  "ref": "siret:" + p["siret"],
+                  "kind": "new_establishment",
+                  "summary": "SIRET " + p["siret"],
+                  "date": p.get("created_on", ""),
+                  "state": "to_validate",
+              },
+              "title": "New site · " + accounts[0]["title"],
+              "account": accounts[0]["id"],
+          }
+  - name: pe_link
+    language: starlark
+    description: Link payload from the signal just written to its account.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {"source_id": msg["object"]["id"], "target_id": msg["account"]}}
   - name: pcp_ask
     language: starlark
     description: A person with a captured profile not yet read, its document asked for.
@@ -473,6 +552,23 @@ functions:
           return {"payload": {"source_id": msg["object"]["id"], "target_id": msg["person"], "attributes": attrs,
                               "evidence": {"on the profile": msg.get("company", "")}}}
 flows:
+  - name: "Prospecting · new establishments"
+    note: "Each morning a site created in the last 30 days on an account followed (customer, prospect, target) becomes a commercial signal to validate, once. Run the import Establishments first: it brings the sites and their creation dates. A BODACC announcement of the same opening stays a signal of its own."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "50 6 * * *" }, outputs: [{ port: 0, targets: [recent] }] }
+        - id: recent
+          kind: ontology_query
+          config:
+            object_type: map_pin
+            filters: [{ key: created_on, op: gte, value: "$today-30" }]
+            limit: 200
+            with_links: [establishment_of]
+          outputs: [{ port: 0, targets: [signal] }]
+        - { id: signal, kind: pnex_function, config: { function_name: pe_signal, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: sales_signal, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [about] }] }
+        - { id: about, kind: pnex_function, config: { function_name: pe_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: signal_about } }
   - name: "Prospecting · captured profiles"
     note: "Every hour, up to 20 people whose profile was captured by a person (Capture a profile, on the person's page) are read by the organization's LLM: what the profile says of the position and the company goes on the person, and a company found clearly in the register is created and proposed as their employer on the To validate page. An ambiguous name is proposed only when one of its homonyms is already known here; otherwise it stays on the person, for a human. It creates no person and follows no link of the network. Needs an AI provider."
     graph:

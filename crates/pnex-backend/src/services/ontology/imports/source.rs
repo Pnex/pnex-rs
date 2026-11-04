@@ -136,9 +136,11 @@ pub async fn fetch_per_object(
     values: &[String],
     by: &Declared,
     since: &std::collections::HashMap<String, String>,
+    titles: &std::collections::HashMap<String, String>,
 ) -> Result<Vec<Value>, &'static str> {
     let base = check_url(url).map_err(|_| UNREACHABLE)?;
     let param = m.per_object.as_ref().map_or("", |p| p.param.as_str());
+    let by_title = m.per_object.as_ref().map_or("", |p| p.by_title.as_str());
     let mut rows = Vec::new();
     let mut failures = 0usize;
     for v in values {
@@ -154,8 +156,16 @@ pub async fn fetch_per_object(
             check_url(&url.replace(VALUE, &path_value).replace(SINCE, from))
                 .map_err(|_| UNREACHABLE)?
         } else {
+            let asked = if by_title.is_empty() {
+                v.as_str()
+            } else if let Some(title) = titles.get(v) {
+                title.as_str()
+            } else {
+                failures += 1;
+                continue;
+            };
             let mut u = base.clone();
-            u.query_pairs_mut().append_pair(param, v);
+            u.query_pairs_mut().append_pair(param, asked);
             u
         };
         match get_as(&u, by).await {
@@ -175,6 +185,9 @@ pub async fn fetch_per_object(
                         json_rows(&doc, &m.rows).ok_or(UNREADABLE)?
                     }
                 };
+                if !by_title.is_empty() {
+                    found.retain(|r| r.get(by_title).and_then(Value::as_str) == Some(v.as_str()));
+                }
                 // A record may not repeat what it was asked for (the parent
                 // of a list of subsidiaries): the mapping reads it here.
                 for r in &mut found {

@@ -46,6 +46,13 @@ pub fn WidgetBody(
         .clone()
         .filter(|u| w.widget_type == "line" && !u.trim().is_empty());
 
+    // An aggregate of objects is read here, then drawn as any value (D584).
+    if points.is_none() && w.source.first().is_some_and(|s| s.objects.is_some()) {
+        return rsx! {
+            crate::components::objects_widget::ObjectsBody { widget: widget.clone() }
+        };
+    }
+
     // Control cards draw their own header (control label, "no effect"
     // badge) and read the state source as the actual value (D125).
     if pnex_core::CONTROL_WIDGET_TYPES.contains(&w.widget_type.as_str()) {

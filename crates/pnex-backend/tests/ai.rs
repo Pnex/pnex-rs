@@ -1729,8 +1729,10 @@ async fn assistant_works_the_ontology_through_the_ui_services() {
         let trace = run_tools(&server, &env.bob, org, vec![
             ("create_object", serde_json::json!({"type_key": "pump", "title": "x", "properties": {"serial": "1"}})),
             ("query_ontology", serde_json::json!({"query": {}})),
+            ("aggregate_objects", serde_json::json!({"query": {"type_key": "pump"}, "metrics": [{"key": "n", "op": "count"}]})),
         ])
         .await;
+        assert_eq!(trace[2]["ok"], true, "a viewer reads numbers: {trace:?}");
         assert_eq!(trace[0]["code"], pnex_core::err_codes::ACCESS_DENIED, "{trace:?}");
         assert_eq!(trace[1]["ok"], true, "a viewer reads");
     })

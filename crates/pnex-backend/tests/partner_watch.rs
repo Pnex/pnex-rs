@@ -792,6 +792,74 @@ async fn legal_announcements_become_signals() {
     .await;
 }
 
+/// The register lists a company's sites for its name, never its SIREN: the
+/// sites of a followed account come from a search by title, namesakes and
+/// closed sites left out.
+#[tokio::test]
+#[serial]
+async fn the_sites_of_a_followed_account_come_from_a_search_by_name() {
+    with_app(|server, env| async move {
+        use axum::extract::Query;
+        use axum::routing::get;
+        use sea_orm::Statement;
+        use std::collections::HashMap;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "prospecting_b2b_fr").await;
+        let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = asked.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let site = |siret: &str, state: &str| json!({
+            "siret": siret, "etat_administratif": state, "est_siege": false, "date_creation": "2026-10-20",
+            "latitude": "45.76", "longitude": "4.83", "tranche_effectif_salarie": "12"});
+        let results = json!({"results": [
+            {"siren": "429853351", "nom_complet": "MECAWORKS FRANCE", "nombre_etablissements_ouverts": 240,
+             "matching_etablissements": [site("42985335100022", "A"), site("42985335100030", "F")]},
+            {"siren": "111111111", "nom_complet": "MECAWORKS FRANCE BIS",
+             "matching_etablissements": [site("11111111100011", "A")]},
+        ]});
+        let search = move |Query(q): Query<HashMap<String, String>>| {
+            seen.lock().unwrap().push(q.get("q").cloned().unwrap_or_default());
+            let results = results.clone();
+            async move { axum::Json(results) }
+        };
+        let app = axum::Router::new().route("/search", get(search));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
+            "UPDATE object_imports SET source_url = replace(source_url, \
+             'https://recherche-entreprises.api.gouv.fr/search', '{base}/search') WHERE org_id = {org}"))).await.unwrap();
+        let (_, account) = object(&server, &env.alice, org, "organization", "MECAWORKS FRANCE",
+            json!({"siren": "429853351", "account_status": "customer"})).await;
+        object(&server, &env.alice, org, "organization", "Unfollowed", json!({"siren": "999999999"})).await;
+
+        let (id, _) = import_named(&server, &env.alice, org, "Establishments (company register)").await;
+        let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
+        assert_eq!(st, 202, "{r}");
+        let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 300).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+
+        assert_eq!(*asked.lock().unwrap(), vec!["MECAWORKS FRANCE".to_string()], "the name, of followed accounts only");
+        let open = props_of(&env.db, org, "map_pin", "siret", "42985335100022").await;
+        assert_eq!((open["created_on"].as_str(), open["administrative_state"].as_str()), (Some("2026-10-20"), Some("active")), "{open}");
+        let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", account["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert!(l.to_string().contains("establishment_of"), "{l}");
+        let pins = |siret: &'static str| {
+            let db = env.db.clone();
+            async move {
+                db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
+                    "SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} AND properties ->> 'siret' = '{siret}'")))
+                    .await.unwrap().unwrap().try_get::<i64>("", "n").unwrap()
+            }
+        };
+        assert_eq!(pins("42985335100030").await, 0, "a closed site is not brought in");
+        // The register's total shows when the 100 sites read are not all of them.
+        let followed = props_of(&env.db, org, "organization", "siren", "429853351").await;
+        assert_eq!((followed["open_sites"].as_f64(), followed["account_status"].as_str()), (Some(240.0), Some("customer")), "{followed}");
+        assert_eq!(pins("11111111100011").await, 0, "a namesake's site is not brought in");
+    })
+    .await;
+}
+
 /// Meetings: a debrief page filled from the meeting, and the coaching tree
 /// of a playbook criterion counting the meetings that covered it.
 #[tokio::test]

@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use super::aggregate::{check as check_aggregate, AggregateQuery, GroupKey, Metric};
 use super::api::{FilterOp, Hop, PropertyFilter, MAX_HOPS, QUERY_LIMIT_MAX};
 use super::schema::valid_key;
 
@@ -60,6 +61,66 @@ pub struct OntologyQueryConfig {
     /// (network-check.md D402).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub with_links: Vec<String>,
+}
+
+/// `ontology_aggregate`: numbers over the objects of one type matching the
+/// filters (object-aggregates.md D587). It reads; it never writes.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct OntologyAggregateConfig {
+    #[serde(default)]
+    pub object_type: String,
+    #[serde(default)]
+    pub filters: Vec<PropertyFilter>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub group_by: Vec<GroupKey>,
+    #[serde(default)]
+    pub metrics: Vec<Metric>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+impl OntologyAggregateConfig {
+    /// The request, over the filters resolved for one message.
+    pub fn request(&self, filters: Vec<PropertyFilter>) -> AggregateQuery {
+        AggregateQuery {
+            query: super::api::OntologyQuery {
+                type_key: Some(self.object_type.clone()),
+                filters,
+                ..Default::default()
+            },
+            group_by: self.group_by.clone(),
+            metrics: self.metrics.clone(),
+            limit: self.limit,
+        }
+    }
+
+    /// Save validation: a node just dropped has no metric yet. Existence in
+    /// the schema is checked at deploy.
+    pub fn check(&self) -> Option<(&'static str, String)> {
+        let filters = OntologyQueryConfig {
+            object_type: self.object_type.clone(),
+            filters: self.filters.clone(),
+            ..Default::default()
+        };
+        if let Some(problem) = filters.check() {
+            return Some(problem);
+        }
+        if self.metrics.is_empty() {
+            return None;
+        }
+        let (field, _) = check_aggregate(&self.request(self.filters.clone())).err()?;
+        Some((
+            "ontology_aggregate_invalid",
+            format!("invalid aggregate: {field}"),
+        ))
+    }
+
+    pub fn check_deployable(&self) -> Option<(&'static str, String)> {
+        if self.object_type.is_empty() || self.metrics.is_empty() {
+            return bad("ontology_node_unset", "pick an object type and a metric");
+        }
+        self.check()
+    }
 }
 
 /// Link types an `ontology_query` may join to its rows.
@@ -352,6 +413,31 @@ pub fn resolve_value(
                 .collect(),
         ),
         other => other.clone(),
+    }
+}
+
+#[cfg(test)]
+mod aggregate_node_tests {
+    use super::*;
+    use crate::ontology::aggregate::MetricOp;
+
+    #[test]
+    fn a_dropped_node_saves_but_does_not_deploy() {
+        let mut c = OntologyAggregateConfig::default();
+        assert_eq!(c.check(), None);
+        assert_eq!(c.check_deployable().unwrap().0, "ontology_node_unset");
+        c.object_type = "article".into();
+        c.metrics = vec![Metric {
+            key: "n".into(),
+            op: Some(MetricOp::Count),
+            property: None,
+            filter: None,
+            ratio: vec![],
+            percent: false,
+        }];
+        assert_eq!(c.check_deployable(), None);
+        c.limit = Some(0);
+        assert_eq!(c.check().unwrap().0, "ontology_aggregate_invalid");
     }
 }
 

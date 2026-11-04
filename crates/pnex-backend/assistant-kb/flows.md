@@ -3,7 +3,7 @@ id: flows
 title: Flows
 kind: feature
 pages: /flows
-nodes: inject, device_read, device_write, calc, metric, pnex_notify, debug, display, ontology_query, object_upsert, link_upsert, check_record, document_text, sheet_write
+nodes: inject, device_read, device_write, calc, metric, pnex_notify, debug, display, ontology_query, ontology_aggregate, object_upsert, link_upsert, check_record, document_text, sheet_write
 err_codes: access-denied, pin-already-assigned, flow-stale-version, flow-debug-disabled, flow-start-not-stopped, flow-no-deployed-version, ai-flow-running, ontology-node-unknown, document-text-no-text, document-text-unreadable
 tools: 
 tags: flow, flows, etl, automation, node-red, deploy, pipeline, nodes, debug, automatisation, déployer

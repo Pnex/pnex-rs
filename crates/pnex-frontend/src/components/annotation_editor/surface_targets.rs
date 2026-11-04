@@ -322,6 +322,7 @@ pub fn ReadingTargetEditor(
                     let next = if let Some(key) = v.strip_prefix("mem:") {
                         SourceRef {
                             object_property: None,
+                            objects: None,
                             role: "primary".into(),
                             metric: String::new(),
                             device_id: String::new(),
@@ -338,6 +339,7 @@ pub fn ReadingTargetEditor(
                     } else { // A memory value has no history: no sparkline.
                         SourceRef {
                             object_property: None,
+                            objects: None,
                             role: "primary".into(),
                             metric: cat_src
                                 .get(&v)

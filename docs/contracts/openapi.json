@@ -448,6 +448,45 @@
           }
         ]
       },
+      "AggregateGroup": {
+        "properties": {
+          "key": {
+            "description": "One stable value per group key (enum key, date, object id); `null`\nfor the objects without one.",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": "array"
+          },
+          "labels": {
+            "description": "Title of the object of a key by link, already masked by the server.",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": "array"
+          },
+          "values": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AggregateValue"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "labels",
+          "values"
+        ],
+        "type": "object"
+      },
       "AggregateOp": {
         "description": "How the values of one bucket are combined.",
         "enum": [
@@ -458,6 +497,40 @@
           "increase"
         ],
         "type": "string"
+      },
+      "AggregateQuery": {
+        "additionalProperties": false,
+        "description": "The query selects the objects, the rest computes on them. `$today±n` is\naccepted in the filters (crm.md D451).",
+        "properties": {
+          "group_by": {
+            "items": {
+              "$ref": "#/components/schemas/GroupKey"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "description": "Groups returned, the others summed in `others`.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/Metric"
+            },
+            "type": "array"
+          },
+          "query": {
+            "$ref": "#/components/schemas/OntologyQuery"
+          }
+        },
+        "required": [
+          "metrics"
+        ],
+        "type": "object"
       },
       "AggregateRequest": {
         "description": "Body of `POST /api/v1/telemetry/aggregate/query`; the series selector follows\nthe `series/query` rules (device and/or free labels, D171).",
@@ -507,6 +580,34 @@
         "required": [
           "available",
           "rows"
+        ],
+        "type": "object"
+      },
+      "AggregateResult": {
+        "properties": {
+          "computed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AggregateGroup"
+            },
+            "type": "array"
+          },
+          "others": {
+            "$ref": "#/components/schemas/AggregateGroup",
+            "description": "What `limit` left out. A sum, count, minimum or maximum stays right;\nan average or a distinct count cannot be merged: absent."
+          },
+          "truncated": {
+            "description": "More groups than could be read: `others` is incomplete.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "groups",
+          "truncated",
+          "computed_at"
         ],
         "type": "object"
       },
@@ -560,6 +661,29 @@
           "end",
           "basis"
         ],
+        "type": "object"
+      },
+      "AggregateValue": {
+        "description": "One value: a number, or one number per currency for a money property\n(D580: currencies are never added together).",
+        "properties": {
+          "by_currency": {
+            "additionalProperties": {
+              "format": "double",
+              "type": "number"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "value": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "AggregateWidgetOptions": {
@@ -1696,7 +1820,7 @@
             "type": "array"
           },
           "object_set": {
-            "description": "`object_table`, `object_count`: the object set read.",
+            "description": "`object_table`: the object set read.",
             "type": [
               "string",
               "null"
@@ -5765,6 +5889,16 @@
         ],
         "type": "string"
       },
+      "DateBucket": {
+        "enum": [
+          "day",
+          "week",
+          "month",
+          "quarter",
+          "year"
+        ],
+        "type": "string"
+      },
       "DecisionKind": {
         "enum": [
           "accept",
@@ -8846,6 +8980,28 @@
           "refresh_token"
         ],
         "type": "string"
+      },
+      "GroupKey": {
+        "additionalProperties": false,
+        "description": "One way to split: by `property` (with `bucket` on a date), or by the\nobject reached through `hops`.",
+        "properties": {
+          "bucket": {
+            "$ref": "#/components/schemas/DateBucket"
+          },
+          "hops": {
+            "items": {
+              "$ref": "#/components/schemas/Hop"
+            },
+            "type": "array"
+          },
+          "property": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
       },
       "HealthLive": {
         "description": "Responses of the `/health/live` endpoint.",
@@ -12700,6 +12856,52 @@
         ],
         "type": "object"
       },
+      "Metric": {
+        "additionalProperties": false,
+        "description": "`op` over the objects meeting `where`, or `ratio`: `[a, b]`, metric `a`\ndivided by metric `b` of the same group.",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "op": {
+            "$ref": "#/components/schemas/MetricOp"
+          },
+          "percent": {
+            "description": "A ratio as a percentage.",
+            "type": "boolean"
+          },
+          "property": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ratio": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "where": {
+            "$ref": "#/components/schemas/PropertyFilter"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "MetricOp": {
+        "enum": [
+          "count",
+          "count_distinct",
+          "sum",
+          "avg",
+          "min",
+          "max"
+        ],
+        "type": "string"
+      },
       "MetricUnit": {
         "description": "Unit of a status metric; the UI formats the value by it.",
         "enum": [
@@ -13359,6 +13561,10 @@
               "$ref": "#/components/schemas/ObjectRef"
             },
             "type": "array"
+          },
+          "truncated": {
+            "description": "The walk stopped at its cap: more links exist than shown (D589).",
+            "type": "boolean"
           }
         },
         "required": [
@@ -13787,6 +13993,10 @@
               "$ref": "#/components/schemas/ObjectRef"
             },
             "type": "array"
+          },
+          "truncated": {
+            "description": "The walk stopped at its cap: the list is incomplete (D589).",
+            "type": "boolean"
           }
         },
         "required": [
@@ -13989,6 +14199,10 @@
               "$ref": "#/components/schemas/ObjectRef"
             },
             "type": "array"
+          },
+          "truncated": {
+            "description": "The search stopped at its cap: a shorter path may exist (D589).",
+            "type": "boolean"
           }
         },
         "required": [
@@ -14245,6 +14459,60 @@
         ],
         "type": "object"
       },
+      "ObjectsSource": {
+        "additionalProperties": false,
+        "description": "A widget reading an aggregate of objects (D583). `query` on a dashboard,\n`object_set` on a screen of an application: never both.",
+        "properties": {
+          "group_by": {
+            "items": {
+              "$ref": "#/components/schemas/GroupKey"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/Metric"
+            },
+            "type": "array"
+          },
+          "object_set": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Parameter of the set → variable that fills it.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "query": {
+            "$ref": "#/components/schemas/OntologyQuery"
+          },
+          "show": {
+            "description": "The metric shown.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metrics",
+          "show"
+        ],
+        "type": "object"
+      },
       "ObservationView": {
         "description": "A dated value of an object, as known at the moment asked\n(markets-research.md D541).",
         "properties": {
@@ -14358,6 +14626,13 @@
               "string",
               "null"
             ]
+          },
+          "reached": {
+            "description": "Filters on the objects `traverse` reaches; `filters` select where it\nstarts. Ignored without a traversal.",
+            "items": {
+              "$ref": "#/components/schemas/PropertyFilter"
+            },
+            "type": "array"
           },
           "text": {
             "description": "Case-insensitive title search.",
@@ -23019,6 +23294,45 @@
         },
         "type": "object"
       },
+      "SetAggregateQuery": {
+        "additionalProperties": false,
+        "description": "`POST /apps/{id}/object-sets/{name}/aggregate/query`: the set selects the\nobjects, `params` fills it.",
+        "properties": {
+          "group_by": {
+            "items": {
+              "$ref": "#/components/schemas/GroupKey"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/Metric"
+            },
+            "type": "array"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "metrics"
+        ],
+        "type": "object"
+      },
       "SettingsPatch": {
         "description": "Partial settings update — every field optional.",
         "properties": {
@@ -23617,6 +23931,10 @@
               "string",
               "null"
             ]
+          },
+          "objects": {
+            "$ref": "#/components/schemas/ObjectsSource",
+            "description": "An aggregate of objects instead of a series (object-aggregates.md\nD583): `metric`, `device_id` and `window` are then ignored."
           },
           "role": {
             "type": "string"
@@ -30887,6 +31205,124 @@
           }
         ],
         "summary": "Run an object set of an application",
+        "tags": [
+          "apps"
+        ]
+      }
+    },
+    "/api/v1/apps/{id}/object-sets/{name}/aggregate/query": {
+      "post": {
+        "description": "For a widget of a screen: read-only count, sum, average, minimum, maximum and ratios over the objects of a named set, optionally split by property, date or link, with the reader's rights. A money property answers one value per currency. Refused when it names what the reader may not read. Permission: ontology:read.",
+        "operationId": "apps_object_sets_aggregate_query",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Application id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Object set name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAggregateQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateResult"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid request, or a parameter of the set is missing (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Names what the reader may not read (`access-denied`) · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`app-not-found`: no such application or set"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Ran past its time cap (`ontology-aggregate-timeout`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aggregate an object set of an application",
         "tags": [
           "apps"
         ]
@@ -62399,6 +62835,95 @@
         ]
       }
     },
+    "/api/v1/ontology/aggregate/query": {
+      "post": {
+        "description": "Read-only: count, distinct count, sum, average, minimum, maximum and ratios over the objects a query selects, optionally split by property, date or link (two hops). A money property answers one value per currency, never a total across them. An object linked to two targets counts in both groups. Refused when it names a property or title the caller may not read. Permission: ontology:read.",
+        "operationId": "ontology_aggregate_query",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggregateQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AggregateResult"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid request (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Names what the caller may not read (`access-denied`) · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Ran past its time cap (`ontology-aggregate-timeout`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aggregate the objects of an ontology query",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
     "/api/v1/ontology/changes": {
       "get": {
         "description": "Objects and links created, updated, closed or deleted in the org after `since`, oldest first, each once per page with its current state. Pass `next` as `since` to resume; `more` = ask again now. `since=0` is a full copy (the log keeps the latest change of every object and link). Order never skips a transaction that commits late. 410 `changes-cursor-expired` when `since` is older than the retention of closes and deletes (30 days): copy again from 0. For an application's service account, only the types and link types of its scope. Any org member, service accounts included.",
@@ -65211,7 +65736,7 @@
     },
     "/api/v1/ontology/objects/{id}/graph": {
       "get": {
-        "description": "Objects within `depth` hops (clamped to 1–2) through open links, and the links among them. `upstream` is ignored here. Any org member.",
+        "description": "Objects within `depth` hops (clamped to 1–2) through open links, and the links among them. `truncated` is true when the walk stopped at its cap of 5,000 links: more links exist than shown. `upstream` is ignored here. Any org member.",
         "operationId": "ontology_objects_graph",
         "parameters": [
           {
@@ -65417,7 +65942,7 @@
     },
     "/api/v1/ontology/objects/{id}/impact": {
       "get": {
-        "description": "Objects reachable from the object through open links within `depth` hops (1–4, default 4): downstream by default, upstream with `upstream=true`. Any org member.",
+        "description": "Objects reachable from the object through open links within `depth` hops (1–4, default 4): downstream by default, upstream with `upstream=true`. `truncated` is true when the walk stopped at its cap of 5,000 links: the list is incomplete. Any org member.",
         "operationId": "ontology_objects_impact",
         "parameters": [
           {
@@ -66353,7 +66878,7 @@
     },
     "/api/v1/ontology/path": {
       "get": {
-        "description": "Shortest chain of open links, followed in either direction, within 4 hops, from `from` or from the nearest object at the source of an open link of a `from_links` type (several starts), along the given link types only when `links` is set: the objects along it, ends included. 404 when there is no such path. Any org member.",
+        "description": "Shortest chain of open links, followed in either direction, within 4 hops, from `from` or from the nearest object at the source of an open link of a `from_links` type (several starts), along the given link types only when `links` is set: the objects along it, ends included. 404 when there is no such path. When the search stops at its cap, `truncated` is true on a path found (a shorter one may exist), and no path found gives 503 rather than a false 404. Any org member.",
         "operationId": "ontology_path",
         "parameters": [
           {
@@ -66453,6 +66978,16 @@
               }
             },
             "description": "`ontology-not-found` (malformed or unknown id, or no path)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-path-incomplete`: the search stopped at its cap before finding a path"
           }
         },
         "security": [

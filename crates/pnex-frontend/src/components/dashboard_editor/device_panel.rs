@@ -61,6 +61,7 @@ pub fn suggested_sources(
 ) -> Vec<SourceRef> {
     let source = |role: &str, metric: &str| SourceRef {
         object_property: None,
+        objects: None,
         role: role.to_string(),
         metric: metric.to_string(),
         device_id: device.to_string(),
@@ -133,6 +134,7 @@ fn state_source(device: &str, pin: &str, metrics: &[String]) -> Option<SourceRef
         .find(|m| m.eq_ignore_ascii_case(pin))
         .map(|m| SourceRef {
             object_property: None,
+            objects: None,
             role: "state".into(),
             metric: m.clone(),
             device_id: device.to_owned(),
@@ -431,6 +433,7 @@ fn ReadingButton(
                         w.source = vec![
                             SourceRef {
                                 object_property: None,
+                                objects: None,
                                 role: "primary".into(),
                                 metric: m,
                                 device_id: d,

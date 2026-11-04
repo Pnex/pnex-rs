@@ -56,6 +56,56 @@ fn validate_dashboard_write(
     Ok(())
 }
 
+/// The aggregate sources of a dashboard: a query the org's schema knows, never
+/// a set, which only a screen of an application has (object-aggregates.md
+/// D583). Checked without masks: the reader's rights apply at each read.
+async fn check_objects_sources(
+    db: &DatabaseConnection,
+    org_id: i64,
+    layout: &DashboardLayout,
+) -> Result<(), DashboardWriteError> {
+    use crate::services::ontology::{aggregate, redact::Redaction, schema};
+    let sources: Vec<_> = layout
+        .widgets
+        .iter()
+        .flat_map(|w| {
+            w.source
+                .iter()
+                .filter_map(move |s| Some((w, s.objects.as_ref()?)))
+        })
+        .collect();
+    if sources.is_empty() {
+        return Ok(());
+    }
+    let s = schema(db, org_id)
+        .await
+        .map_err(|_| DashboardWriteError::Db)?;
+    let mut v = Vec::new();
+    for (w, o) in sources {
+        match &o.query {
+            None => v.push(VizViolation::new(
+                Some(&w.id),
+                "objects_selection",
+                "a dashboard reads a query, not an object set",
+            )),
+            Some(q) => {
+                if let Err(e) = aggregate::validate(&s, &o.request(q.clone()), Redaction::NONE) {
+                    v.push(VizViolation::new(
+                        Some(&w.id),
+                        "objects_invalid",
+                        e.to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    if v.is_empty() {
+        Ok(())
+    } else {
+        Err(DashboardWriteError::Violations(v))
+    }
+}
+
 /// The widgets of an application read its object sets: they have no meaning
 /// on a dashboard of the org (app-builder.md D506).
 fn refuse_app_widgets(layout: &DashboardLayout) -> Result<(), DashboardWriteError> {
@@ -213,6 +263,7 @@ pub async fn create_dashboard(
     let layout = layout.unwrap_or(&default_layout);
     validate_dashboard_write(name, layout)?;
     refuse_app_widgets(layout)?;
+    check_objects_sources(db, org_id, layout).await?;
     insert_dashboard(db, org_id, name, description, layout, author, None).await
 }
 
@@ -327,7 +378,10 @@ pub async fn append_version(
         ]));
     }
     match dashboard.app_id {
-        None => refuse_app_widgets(layout)?,
+        None => {
+            refuse_app_widgets(layout)?;
+            check_objects_sources(db, dashboard.org_id, layout).await?;
+        }
         Some(app_id) => {
             let violations =
                 crate::services::apps::check_screen_of(db, dashboard.org_id, app_id, layout)

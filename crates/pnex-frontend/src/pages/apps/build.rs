@@ -11,13 +11,13 @@ use pnex_core::apps::{
     AppBuildInput, AppScreenInput, AppVariable, AppView, ObjectSetDef, VariableKind,
 };
 use pnex_core::ontology::api::{FilterOp, ObjectTypeView, OntologyQuery, PropertyFilter};
-use serde_json::Value;
 
 use super::use_app_by_key;
 use crate::api;
 use crate::app::Route;
 use crate::components::crud::layout::ListLayout;
 use crate::components::gerbe::Gerbe;
+use crate::components::ontology::filter_row::FilterRow;
 use crate::components::ontology::type_label;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY_SM, FIELD_HELP, FIELD_LABEL, INPUT, PANEL};
 use crate::state::toasts;
@@ -453,60 +453,6 @@ fn VariableRow(
     }
 }
 
-const OPS: [(FilterOp, &str); 10] = [
-    (FilterOp::Eq, "eq"),
-    (FilterOp::Ne, "ne"),
-    (FilterOp::Lt, "lt"),
-    (FilterOp::Lte, "lte"),
-    (FilterOp::Gt, "gt"),
-    (FilterOp::Gte, "gte"),
-    (FilterOp::Contains, "contains"),
-    (FilterOp::In, "in"),
-    (FilterOp::Exists, "exists"),
-    (FilterOp::Missing, "missing"),
-];
-
-fn op_label(op: FilterOp) -> String {
-    match op {
-        FilterOp::Eq => t!("apps-op-eq").to_string(),
-        FilterOp::Ne => t!("apps-op-ne").to_string(),
-        FilterOp::Lt => t!("apps-op-lt").to_string(),
-        FilterOp::Lte => t!("apps-op-lte").to_string(),
-        FilterOp::Gt => t!("apps-op-gt").to_string(),
-        FilterOp::Gte => t!("apps-op-gte").to_string(),
-        FilterOp::Contains => t!("apps-op-contains").to_string(),
-        FilterOp::In => t!("apps-op-in").to_string(),
-        FilterOp::Exists => t!("apps-op-exists").to_string(),
-        FilterOp::Missing => t!("apps-op-missing").to_string(),
-    }
-}
-
-/// A filter's value as typed: a list is comma-separated.
-fn value_text(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Array(a) => a
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<Vec<_>>()
-            .join(", "),
-        Value::Null => String::new(),
-        other => other.to_string(),
-    }
-}
-
-fn value_of(op: FilterOp, text: &str) -> Value {
-    match op {
-        FilterOp::In => Value::Array(
-            text.split(',')
-                .map(|s| Value::String(s.trim().to_string()))
-                .collect(),
-        ),
-        FilterOp::Exists | FilterOp::Missing => Value::Null,
-        _ => Value::String(text.to_string()),
-    }
-}
-
 #[component]
 fn SetsPanel(draft: Signal<AppBuildInput>, types: Vec<ObjectTypeView>) -> Element {
     let sets: BTreeMap<String, ObjectSetDef> = draft.read().object_sets.clone();
@@ -658,11 +604,36 @@ fn SetEditor(
             for (i, f) in filters.into_iter().enumerate() {
                 FilterRow {
                     key: "{i}",
-                    draft,
-                    set: name.clone(),
                     i,
                     filter: f,
                     props: props.clone(),
+                    placeholder: "$parameter",
+                    on_change: {
+                        let set = name.clone();
+                        move |next| {
+                            draft
+                                .with_mut(|d| {
+                                    if let Some(x) = d
+                                        .object_sets
+                                        .get_mut(&set)
+                                        .and_then(|s| s.query.filters.get_mut(i))
+                                    {
+                                        *x = next;
+                                    }
+                                });
+                        }
+                    },
+                    on_remove: {
+                        let set = name.clone();
+                        move |_| {
+                            draft
+                                .with_mut(|d| {
+                                    if let Some(s) = d.object_sets.get_mut(&set) {
+                                        s.query.filters.remove(i);
+                                    }
+                                });
+                        }
+                    },
                 }
             }
             button {
@@ -681,7 +652,7 @@ fn SetEditor(
                                     .push(PropertyFilter {
                                         key: key.clone(),
                                         op: FilterOp::Eq,
-                                        value: Value::String(String::new()),
+                                        value: "".into(),
                                     });
                             },
                         );
@@ -724,98 +695,6 @@ fn SetEditor(
                     }
                     {t!("apps-sort-descending")}
                 }
-            }
-        }
-    }
-}
-
-#[component]
-fn FilterRow(
-    draft: Signal<AppBuildInput>,
-    set: String,
-    i: usize,
-    filter: PropertyFilter,
-    props: Vec<(String, String)>,
-) -> Element {
-    let shows_value = !matches!(filter.op, FilterOp::Exists | FilterOp::Missing);
-    let op = filter.op;
-    let removal_set = set.clone();
-    let value = value_text(&filter.value);
-    let edit = move |f: &mut dyn FnMut(&mut PropertyFilter)| {
-        let set = set.clone();
-        draft.with_mut(|d| {
-            if let Some(x) = d
-                .object_sets
-                .get_mut(&set)
-                .and_then(|s| s.query.filters.get_mut(i))
-            {
-                f(x);
-            }
-        });
-    };
-    let on_key = edit.clone();
-    let on_op = edit.clone();
-    let on_value = edit.clone();
-    let remove_from = removal_set;
-    rsx! {
-        div { class: ROW, "data-filter": "{i}",
-            select {
-                class: "{INPUT} max-w-[12rem]",
-                onchange: move |e| {
-                    let v = e.value();
-                    let mut edit = on_key.clone();
-                    edit(&mut |f| f.key = v.clone());
-                },
-                for (k, l) in props.iter().cloned() {
-                    option { key: "{k}", value: "{k}", selected: k == filter.key, "{l}" }
-                }
-            }
-            select {
-                class: "{INPUT} max-w-[10rem]",
-                onchange: move |e| {
-                    let picked = OPS
-                        .iter()
-                        .find(|(_, k)| *k == e.value())
-                        .map(|(o, _)| *o)
-                        .unwrap_or(FilterOp::Eq);
-                    let mut edit = on_op.clone();
-                    edit(
-                        &mut |f| {
-                            let text = value_text(&f.value);
-                            f.op = picked;
-                            f.value = value_of(picked, &text);
-                        },
-                    );
-                },
-                for (o, k) in OPS {
-                    option { key: "{k}", value: k, selected: o == op, {op_label(o)} }
-                }
-            }
-            if shows_value {
-                input {
-                    class: "{INPUT} max-w-[14rem]",
-                    placeholder: "$parameter",
-                    value: "{value}",
-                    oninput: move |e| {
-                        let text = e.value();
-                        let mut edit = on_value.clone();
-                        edit(&mut |f| f.value = value_of(f.op, &text));
-                    },
-                }
-            }
-            button {
-                r#type: "button",
-                class: BTN_SECONDARY_SM,
-                onclick: move |_| {
-                    let name = remove_from.clone();
-                    draft
-                        .with_mut(|d| {
-                            if let Some(s) = d.object_sets.get_mut(&name) {
-                                s.query.filters.remove(i);
-                            }
-                        });
-                },
-                {t!("common-delete")}
             }
         }
     }

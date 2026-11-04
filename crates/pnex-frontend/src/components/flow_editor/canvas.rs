@@ -400,6 +400,9 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::ActionTrigger { .. } => kind_labels(PaletteKind::ActionTrigger),
         pnex_core::FlowNodeKind::MailReceived { .. } => kind_labels(PaletteKind::MailReceived),
         pnex_core::FlowNodeKind::OntologyQuery { .. } => kind_labels(PaletteKind::OntologyQuery),
+        pnex_core::FlowNodeKind::OntologyAggregate { .. } => {
+            kind_labels(PaletteKind::OntologyAggregate)
+        }
         pnex_core::FlowNodeKind::ObjectUpsert { .. } => kind_labels(PaletteKind::ObjectUpsert),
         pnex_core::FlowNodeKind::LinkUpsert { .. } => kind_labels(PaletteKind::LinkUpsert),
         pnex_core::FlowNodeKind::CheckRecord { .. } => kind_labels(PaletteKind::CheckRecord),
@@ -493,6 +496,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         }
         pnex_core::FlowNodeKind::MemoryRead { .. }
         | pnex_core::FlowNodeKind::OntologyQuery { .. }
+        | pnex_core::FlowNodeKind::OntologyAggregate { .. }
         | pnex_core::FlowNodeKind::ObjectUpsert { .. }
         | pnex_core::FlowNodeKind::LinkUpsert { .. }
         | pnex_core::FlowNodeKind::CheckRecord { .. }
@@ -1345,6 +1349,12 @@ fn node_subtitle(node: &FlowNode) -> String {
             "" => "—".into(),
             t => format!("{t} · {}", config.filters.len()),
         },
+        pnex_core::FlowNodeKind::OntologyAggregate { config } => {
+            match config.object_type.as_str() {
+                "" => "—".into(),
+                t => format!("{t} · {}", config.metrics.len()),
+            }
+        }
         pnex_core::FlowNodeKind::ObjectUpsert { config } => match config.object_type.as_str() {
             "" => "—".into(),
             t => format!("{t} · {}", config.key),

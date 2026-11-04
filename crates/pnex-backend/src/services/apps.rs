@@ -28,7 +28,7 @@ pub enum AppError {
     #[error("version conflict (current {current})")]
     VersionConflict { current: i32 },
     /// A screen names what its application does not have (D508).
-    #[error("invalid screen")]
+    #[error("invalid screen: {0:?}")]
     Violations(Vec<VizViolation>),
     /// Outside the scope or the action list of the application (D511).
     #[error("out of scope")]
@@ -252,6 +252,12 @@ pub async fn run_set(
 ) -> Result<QueryResult> {
     let set = app.object_sets.get(name).ok_or(AppError::NotFound)?;
     let mut q = bind(&set.query, given).map_err(|p| field(&p, FIELD_REQUIRED))?;
+    let clock = chrono::Utc::now();
+    pnex_core::ontology::aggregate::resolve_tokens(
+        &mut q,
+        &clock.format("%Y-%m-%d").to_string(),
+        &clock.to_rfc3339(),
+    );
     q.limit = limit.or(q.limit);
     q.offset = offset.or(q.offset);
     if let Some((key, descending)) = sort {
@@ -259,6 +265,28 @@ pub async fn run_set(
         q.descending = descending;
     }
     Ok(crate::services::ontology::query::run(db, client, org_id, &q, hide).await?)
+}
+
+/// An aggregate over a set, with the reader's rights (object-aggregates.md
+/// D583): the application's scope holds because the set selects the objects.
+pub async fn aggregate_set(
+    db: &DatabaseConnection,
+    org_id: i64,
+    app: &AppView,
+    name: &str,
+    req: &pnex_core::ontology::aggregate::SetAggregateQuery,
+    hide: crate::services::ontology::redact::Redaction,
+) -> Result<pnex_core::ontology::aggregate::AggregateResult> {
+    let set = app.object_sets.get(name).ok_or(AppError::NotFound)?;
+    let given: HashMap<String, String> = req.params.clone().into_iter().collect();
+    let query = bind(&set.query, &given).map_err(|p| field(&p, FIELD_REQUIRED))?;
+    let request = pnex_core::ontology::aggregate::AggregateQuery {
+        query,
+        group_by: req.group_by.clone(),
+        metrics: req.metrics.clone(),
+        limit: req.limit,
+    };
+    Ok(crate::services::ontology::aggregate::run(db, org_id, &request, hide).await?)
 }
 
 async fn key_taken(
@@ -625,6 +653,36 @@ pub fn check_screen(
 ) -> Vec<VizViolation> {
     let mut out = Vec::new();
     for w in &layout.widgets {
+        for o in w.source.iter().filter_map(|s| s.objects.as_ref()) {
+            let mut bad = |code: &str, msg: String| {
+                out.push(VizViolation::new(Some(&w.id), code, msg));
+            };
+            // Only a set keeps a screen inside its application's scope (D508).
+            let Some(set) = o.object_set.as_deref().and_then(|n| app.object_sets.get(n)) else {
+                bad(
+                    "objects_selection",
+                    "a screen reads an object set of its application".into(),
+                );
+                continue;
+            };
+            for p in params_of(&set.query) {
+                match o.params.get(&p) {
+                    None => bad(
+                        "app_param_unset",
+                        format!("parameter \"{p}\" has no variable"),
+                    ),
+                    Some(v) if !app.variables.iter().any(|x| &x.name == v) => {
+                        bad("app_variable_unknown", format!("unknown variable \"{v}\""));
+                    }
+                    Some(_) => {}
+                }
+            }
+            let hide = crate::services::ontology::redact::Redaction::NONE;
+            let request = o.request(set.query.clone());
+            if let Err(e) = crate::services::ontology::aggregate::validate(s, &request, hide) {
+                bad("objects_invalid", e.to_string());
+            }
+        }
         if let Some(o) = &w.options.app {
             check_widget(s, app, &w.widget_type, o, &mut |code: &str, msg: String| {
                 out.push(VizViolation::new(Some(&w.id), code, msg));
@@ -679,7 +737,7 @@ fn check_widget(
         },
     }
     match widget_type {
-        "object_table" | "object_count" => {
+        "object_table" => {
             let Some(set) = o.object_set.as_deref().and_then(|n| app.object_sets.get(n)) else {
                 push("app_set_unknown", "unknown object set".into());
                 return;
@@ -833,7 +891,12 @@ pub async fn install_shipped(
         let (d, version) =
             crate::services::dashboards::create_screen(db, org_id, id, &s.name, &s.layout)
                 .await
-                .map_err(|_| DbErr::Custom("screen not created".into()))?;
+                .map_err(|e| match e {
+                    crate::services::dashboards::DashboardWriteError::Violations(v) => {
+                        AppError::Violations(v)
+                    }
+                    _ => AppError::Db(DbErr::Custom("screen not created".into())),
+                })?;
         screens.push(AppScreen {
             key: s.key.clone(),
             name: s.name.clone(),

@@ -244,6 +244,8 @@ les règles plus anciennes qui les contredisent.
 
 | Notion | FR | EN | N'est pas |
 |---|---|---|---|
+| Nombre, somme ou répartition calculés sur des objets (D579) | Calcul sur des objets | Calculation on objects | — |
+| Événement commercial avec un coût, où l'on rencontre des prospects (Q-AG1) | Salon | Trade show | — |
 | Classement libre d'un objet, pour filtrer et chercher (D42) | Étiquettes | Labels | ni une propriété d'ontologie, ni une annotation |
 | Fait métier typé d'un objet | Propriété | Property | une étiquette |
 | Relation typée entre deux objets | Lien | Link | une étiquette |

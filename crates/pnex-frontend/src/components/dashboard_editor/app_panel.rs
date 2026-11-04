@@ -32,7 +32,7 @@ pub fn AppWidgetPanel(cx: EditorCx, widget: Widget, can_write: bool) -> Element 
             }
         });
     };
-    let reads_set = matches!(kind.as_str(), "object_table" | "object_count");
+    let reads_set = kind == "object_table";
     let set = o.object_set.as_deref().and_then(|n| app.object_sets.get(n));
     let params: Vec<String> = set.map(|s| params_of(&s.query)).unwrap_or_default();
     let vars = app.variables.clone();

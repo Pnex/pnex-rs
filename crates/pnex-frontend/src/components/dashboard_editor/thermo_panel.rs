@@ -31,6 +31,7 @@ fn sync_thermo_sources(w: &mut Widget) {
             [
                 SourceRef {
                     object_property: None,
+                    objects: None,
                     role: format!("cycle{i}.v1"),
                     metric: p.v1.metric.clone(),
                     device_id: p.v1.device_id.clone(),
@@ -40,6 +41,7 @@ fn sync_thermo_sources(w: &mut Widget) {
                 },
                 SourceRef {
                     object_property: None,
+                    objects: None,
                     role: format!("cycle{i}.v2"),
                     metric: p.v2.metric.clone(),
                     device_id: p.v2.device_id.clone(),

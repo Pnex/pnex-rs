@@ -347,7 +347,6 @@ Limites :
   run planifié ou « Lancer maintenant » le fait avancer.
 - Une mère créée par Wikidata ou GLEIF n'a que son nom, son SIREN ou son LEI
   et son pays ; l'import du registre l'enrichit à son tour.
-- `org_resolve` n'est pas encore branché sur les listes de salon (D337).
 
 ### CC5, première partie — listes de ciblage et score (2026-10-22, non commité)
 
@@ -386,7 +385,6 @@ Limites :
     4 300 comptes demandent environ 2 h de tours de 15 minutes ;
   - `revenue_year` n'est pas rempli par la liste (l'année reste une clé de
     l'API) ;
-  - listes de salon (fichier + `org_resolve`) : pas encore faites.
 
 ### CC1, fin — couleurs (D339) et couverture (D330) (2026-10-22, non commité)
 
@@ -467,8 +465,8 @@ Limites :
 - Ligne au lexique « Signal commercial » ; la garde refuse « alerte
   commerciale ».
 - **Pas faits** :
-  - signal « nouvel établissement » tiré d'un SIRET apparu lors d'une
-    synchro ;
+  - ~~signal « nouvel établissement » tiré d'un SIRET apparu lors d'une
+    synchro~~ : fait le 2026-11-04, voir « Établissements des comptes suivis » ;
   - fait depuis : voir « Pages suivies » ci-dessous ;
   - envoi à chaque suiveur (`follows_account`) : le résumé part sur les
     canaux choisis par l'org.
@@ -597,3 +595,12 @@ Essai de la capture avec le vrai agent (2026-11-02) : une capture bloquée sur l
 
 Parcours complet validé le même jour, avec le vrai agent dans un navigateur connecté, le vrai LLM et le vrai registre : profil capturé, poste et société lus, société créée par son SIREN, lien `employs` proposé à valider. Limite vue : environ 1 800 caractères, le haut de la page seulement ; l'agent ne fait pas défiler le profil, les sections chargées plus bas (expérience, formation) ne sont pas lues.
 
+### Établissements des comptes suivis (2026-11-04)
+
+Défaut trouvé en préparant le signal « nouvel établissement » : l'import *Company register (SIRENE)* interroge l'API Recherche d'entreprises par SIREN, et l'API ne renvoie alors **aucun** établissement secondaire (`matching_etablissements` vide). Mesuré sur une ETI : 0 site sur 11 ouverts par SIREN, les 16 par nom ; même résultat sur deux grands comptes. La carte et la couverture (D330) d'un compte ne voyaient donc que le siège, quand il était importé.
+
+- **Moteur** : `per_object.by_title` (générique) : la requête porte le titre de l'objet, seuls les enregistrements dont ce champ vaut la propriété de l'objet sont gardés (les homonymes répondent aussi à une recherche par nom).
+- **Import *Establishments (company register)*** de `prospecting_b2b_fr` 3.4.0 : comptes suivis seulement (client, prospect, cible), établissements ouverts, avec leur date de création (`created_on`, `companies_fr` 4.1.0).
+- **Flow *Prospecting · new establishments*** : chaque matin, un site créé depuis moins de 30 jours sur un compte suivi devient un signal à valider, une seule fois (clé `siret:<siret>`). Le critère est la date au registre, pas la première vue dans PneX : un premier import ne noie pas la boîte « à valider ».
+
+Limites : 100 sites par société (plafond de l'API, son paramètre de page renvoie la même page) ; un groupe plus grand reste incomplet, ce que montre seule la propriété *Établissements ouverts (registre)* du compte (`open_sites`, `companies_fr` 4.2.0, `prospecting_b2b_fr` 3.5.0, le total du registre) ; la sortie de ce plafond est l'API SIRENE de l'INSEE, qui demande une clé. Le titre du compte doit rester le nom du registre : renommé à la main, le compte ne trouve plus rien. Une annonce BODACC de la même ouverture reste un signal à part.

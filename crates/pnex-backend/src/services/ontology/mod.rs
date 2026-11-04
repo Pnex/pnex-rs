@@ -10,6 +10,7 @@
 //! (migration `m20261011_000002_ontology`); this module never inserts them.
 
 pub mod actions;
+pub mod aggregate;
 pub mod cases;
 pub mod changes;
 pub mod erase;
@@ -58,6 +59,15 @@ pub enum OntologyError {
     /// System types, system link types and native titles are read-only here.
     #[error("system read only")]
     SystemReadOnly,
+    /// An aggregate on what the caller may not read would reveal it (D582).
+    #[error("aggregate on hidden {property}")]
+    AggregateHidden { property: String },
+    /// One aggregate ran past its time cap (D586).
+    #[error("aggregate timeout")]
+    AggregateTimeout,
+    /// A path search stopped at its cap before finding a path (D589).
+    #[error("path search incomplete")]
+    PathIncomplete,
     /// The link type does not admit these ends.
     #[error("link not allowed")]
     LinkNotAllowed,

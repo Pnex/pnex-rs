@@ -102,6 +102,7 @@ fn port_type(node: &FlowNode, port: usize) -> PortType {
         | FlowNodeKind::ActionTrigger { .. }
         | FlowNodeKind::MailReceived { .. }
         | FlowNodeKind::OntologyQuery { .. }
+        | FlowNodeKind::OntologyAggregate { .. }
         | FlowNodeKind::ObjectUpsert { .. }
         | FlowNodeKind::LinkUpsert { .. }
         | FlowNodeKind::CheckRecord { .. }

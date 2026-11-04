@@ -24,6 +24,7 @@ pub mod inspector;
 pub mod library;
 mod mobile;
 mod object_panel;
+mod objects_panel;
 mod range_bars_panel;
 pub mod state;
 mod symbol_options;
