@@ -11,6 +11,11 @@
 > Meltano, Starlake, Kestra, Superset servent
 > d'inspiration pour le modèle, jamais de dépendance ni de service à côté
 > (ni Python, ni JVM).
+>
+> **Évolution proposée le 2026-11-04 : §9 (D569–D578), PRD du lot OP1.** Le
+> pipeline ne se termine plus forcément dans l'ontologie : il écrit des
+> datasets versionnés, et l'import devient sa dernière étape. Les §1 à §8 restent
+> la référence de ce qui est livré.
 
 ## 1. Constat mesuré
 
@@ -176,6 +181,9 @@ l'import au lieu du nœud de flow.
 
 ### D344 — Le pipeline est une import étendue, pas un second système
 
+> **Remplacement proposé le 2026-11-04 (D571)** : le pipeline devient le
+> contenant, l'import sa dernière étape.
+
 `object_imports` gagne `steps` (YAML, même fichier que le mapping :
 `source:`, `steps:`, `objects:`, `links:`) et une référence de connexion
 (D352). Les étapes reprennent celles de D317 sans `ontology_import` (c'est
@@ -186,6 +194,9 @@ run) : `source_resolve`, `file_download`, `archive_extract`,
 migré : on est en beta, on casse sans couche de compatibilité.
 
 ### D345 — Exécution par un worker de jobs du backend, file Postgres
+
+> **Non codée. Amendement proposé le 2026-11-04 (D573)** : la file reste,
+> les transformations partent dans un binaire séparé.
 
 - Table `import_jobs` (`id`, `org_id`, `import_id`, `run_id`, `trigger`
   `upload|schedule|manual|replay`, `from_step`, `state`, `heartbeat_at`,
@@ -329,6 +340,9 @@ le même résultat.
 
 ### D353 — Transformations : le mapping D301 d'abord, un moteur SQL plus tard
 
+> **Levée par D557 (`operational-platform.md`)** : le moteur est retenu, son
+> choix se fait par la mesure de D572.
+
 - Lots 1 à 5 : les étapes D317–D321 et les conversions D301 suffisent à
   tous les cas connus (FC, SIRENE, réseau de partenaires).
 - Un moteur SQL arrive **sur un besoin mesuré** (jointure entre deux
@@ -437,6 +451,9 @@ ligne au lexique §7. Côté code, les noms techniques restent
 l'interface et des fiches de l'assistant.
 
 ### D356 — Événement `import.applied` vers les flows
+
+> **Non codée. Remplacement proposé le 2026-11-04 (D578)** : `dataset.committed`
+> et `dataset_trigger`.
 
 Un run appliqué publie `import.applied` : `{import, run, version,
 counts, changed: [ids]}`, ids plafonnés à 10 000 (au-delà, le flow
@@ -682,3 +699,579 @@ puis L4 pour 6 ; 4 et 5 sont des règles à tenir, 9 est fait.
 - **Q-P4** — Historique fantôme du 2026-10-21 (org 4, `import:8b027b8a…@1`) :
   **ignoré** (données de dev), ni vérifié ni purgé. L0 empêche qu'il se
   reproduise.
+
+## 9. Datasets et pipelines de transformation (D569–D578, lot OP1)
+
+> **Statut : accepté (2026-11-04), OP1.0 mesuré (§9.7 bis), OP1.1 et OP1.2 codés.** PRD
+> du lot OP1 de `operational-platform.md` (D554, D557, D561). Questions du §9.8
+> tranchées par Shan le même jour.
+
+### 9.1 Constat, relevé dans le code
+
+- **Les données lourdes ne passent plus par les flows.** Le nœud `ingest` est
+  retiré (D359) ; le serveur exécute les étapes
+  (`services/ingest/pipeline.rs`). Le problème n'est donc plus le moteur de
+  flows.
+- **La seule sortie possible est l'ontologie.** Les fichiers intermédiaires
+  sont supprimés en fin de run : ni jointure entre sources, ni réutilisation
+  d'un résultat par un autre pipeline, ni historique de la donnée brute
+  au-delà de `keep_raw_days`.
+- **Tout passe en mémoire.** Le fichier final est lu entier (`get_bytes`), sous
+  les plafonds `UNZIPPED_MAX` (200 Mo), `ROWS_MAX` (250 000 lignes) et
+  `PLANNED_MAX` (500 000 objets). Le pack `quali_watch` filtre déjà
+  `Partenaires` pour tenir sous `ROWS_MAX` (`ingestion.md`, pack 3.3.0).
+- **Rien n'enchaîne les imports.** `import_jobs`, la reprise par étape et
+  `import_trigger` ne sont pas codés (L2, L4). Les cinq imports France
+  Compétences sont étalés sur la semaine pour garder leur ordre (§7 bis).
+- **Aucune brique colonnaire utile.** `arrow` n'arrive au `Cargo.lock` que par
+  `sea-orm-arrow` ; ni `parquet`, ni `object_store`, ni moteur de calcul.
+
+### 9.2 Modèle
+
+```mermaid
+flowchart LR
+  O[origine : fichier, URL, base, API] --> R[(dataset brut)]
+  R --> T1[transformation SQL]
+  X[(autre dataset)] --> T1
+  T1 --> C[(dataset propre)]
+  C --> S[sync ontologie : delta par propriété]
+  S --> ONT[(ontologie Postgres)]
+  S --> O2[(O2 object_changes)]
+  C --> EV[dataset.committed]
+  EV --> F[flows]
+  C --> A[lecture SQL, analyse D557]
+```
+
+Trois systèmes, trois rôles :
+
+| Système | Fait | Ne fait pas |
+|---|---|---|
+| Pipeline | Calcule des ensembles de lignes, sans code utilisateur en V1 | Aucune action, aucun effet externe |
+| Ontologie | Porte les entités, leurs liens et les éditions humaines | Ne stocke pas chaque ligne d'une source |
+| Flow | Réagit à un événement, message par message, et peut agir | Ne transporte ni ne transforme de volume |
+
+### D569 — Dataset : table versionnée par transactions
+
+Fichiers Parquet sur S3 (`S3Store`, préfixe `org_{id}/datasets/{id}/`),
+catalogue dans PostgreSQL :
+
+- `datasets` : `id`, `org_id`, `name`, `schema` ;
+- `dataset_transactions` : `kind` `snapshot|append|delete`, `state`
+  `open|committed|aborted`, `heartbeat_at`, comptes, résultats des contrôles ;
+- `dataset_files` : fichiers de chaque transaction (`key`, `bytes`, `rows`,
+  `sha256`).
+
+**Vue courante** : on part du dernier `snapshot` commité, puis on applique les
+transactions suivantes dans l'ordre. Le commit est une écriture PostgreSQL :
+une transaction ouverte ou annulée reste invisible. Lire « au temps T », c'est
+calculer la même vue à T.
+
+- **Pas d'`update`** : il casserait l'incrémental en aval, et `snapshot` couvre
+  le besoin.
+- **Purge** : `delete` retire un fichier de la vue, pas de S3. La rétention et
+  l'effacement à la demande (`services/ontology/erase.rs`) suppriment
+  réellement les fichiers et réécrivent ceux qui contiennent une personne
+  effacée. Quota par tier, séparé du staging (D318).
+- **Orphelins** : une transaction sans battement depuis 10 min passe `aborted` ;
+  ses fichiers sont purgés comme les orphelins de D318.
+
+Catalogue maison plutôt qu'Iceberg : trois tables, et le commit transactionnel
+de PostgreSQL. La mesure de D572 peut renverser ce choix ; un export Iceberg
+reste possible, le format de fichiers étant le même. Les branches (D556, OP4)
+s'ajouteront au catalogue, rien n'est prévu d'avance.
+
+### D570 — Une ligne n'est pas forcément un objet
+
+Une entité utile aux écrans, aux droits et aux liens monte dans l'ontologie. Le
+reste demeure dans un dataset, lu en SQL (D557). `Partenaires` (400 798 lignes)
+reste un dataset ; seules les habilitations des fiches actives (140 758 lignes)
+deviennent des liens. Précise D554 : « adossé » veut dire **alimenté par sync**
+dans ce lot. Un type d'objet lu directement dans un dataset, sans copie, n'est
+pas prévu tant qu'aucun besoin réel ne le demande.
+
+### D571 — Le pipeline devient le contenant, l'import sa dernière étape
+
+Un pipeline est un document YAML versionné (D354) : des origines, des
+transformations qui lisent et écrivent des datasets, et zéro ou plusieurs
+`ontology_sync`. **Le pipeline peut s'arrêter à un dataset.** Remplace D344.
+
+- Le mapping D301 ne change pas : `ontology_sync` le porte tel quel.
+- `object_imports` est migrée (beta : sans couche de compatibilité, packs
+  compris). Les runs deviennent ceux du pipeline ; `ingest_steps` reste le
+  journal.
+- `source_resolve`, `file_download` et `archive_extract` alimentent l'origine.
+  `table_inspect` devient le profil de colonnes d'un dataset. `rows_filter`
+  devient un `WHERE` ou une jointure, sans la limite `FILTER_VALUES_MAX`.
+- L'enrichissement API `per_object` reste sur le chemin d'import actuel : il
+  appelle une API objet par objet, ce n'est pas un calcul d'ensemble. À reprendre
+  en lot séparé si le besoin apparaît.
+
+### D572 — Moteur : DataFusion candidat, SQL seul en V1
+
+Choix tranché par la mesure de OP1.0 (Q-O1), sur `Partenaires` et sur un jeu
+synthétique de 50 M de lignes, dans un pod plafonné : poids du binaire, temps de
+build sous `scripts/guarded.sh`, pic mémoire, débordement disque, lecture sur
+RustFS. Polars en comparaison ; DuckDB reste écarté (D353). Licence et
+maintenance vérifiées avant ajout, `task security:deps` vert.
+
+Le SQL utilisateur est une entrée hostile :
+
+- une session par exécution, où seuls les datasets déclarés en entrée sont
+  enregistrés, après vérification des droits ;
+- aucun DDL, DML ni instruction de session, donc ni table externe ni lecture de
+  fichier par chemin ; refus vérifié sur le plan logique, pas sur le texte ;
+- mémoire bornée avec débordement disque, délai et plafond d'octets écrits ;
+- fonctions en liste blanche : celles du moteur retenues une par une, plus les
+  conversions D301 (`digits`, `left`, `luhn`…) exposées en fonctions SQL, depuis
+  le même code.
+
+Les fonctions JS et Starlark ne s'exécutent pas ici en V1. Elles viendront, si un
+cas le demande, comme un job de bac à sable (D561).
+
+### D573 — Exécution : deux jobs, deux zones de confiance
+
+File `pipeline_jobs` (`SELECT … FOR UPDATE SKIP LOCKED`, battement, D345). Un
+job à la fois par org, plafond par pod.
+
+| Job | Exécuté par | Voit | Ne voit pas |
+|---|---|---|---|
+| Origine et `ontology_sync` | Worker du backend, services partagés | Coffre, egress gardé, ontologie | Le SQL utilisateur |
+| Transformation | Binaire `pnex-pipeline-worker`, pod à part | S3, tables du catalogue | Secrets, tables métier, réseau externe |
+
+Le moteur n'entre pas dans `pnex-server`. Le pod du worker a son propre rôle
+PostgreSQL, limité au catalogue et à la file, et une `NetworkPolicy` qui
+n'ouvre que S3 et PostgreSQL. Ses identifiants S3 couvrent tous les préfixes :
+l'isolation entre orgs repose sur D572 (les seules tables de la session),
+**limite à revoir** si un code utilisateur entre un jour dans ce binaire. Il
+s'exécutera à terme comme job de la fabric (D561), qui n'est pas codée ; on ne
+l'attend pas.
+
+La reprise (D346) réutilise les transactions commitées au lieu des sorties de
+staging : reprendre, c'est relancer ce qui n'a pas de transaction valide.
+
+### D574 — Lignage écrit par l'exécution
+
+`dataset_transaction_inputs` (`transaction_id`, `input_transaction_id`,
+`pipeline_version`), remplie au commit. Elle donne :
+
+- le lignage amont et aval, jamais déclaré à la main (D554) ;
+- la **péremption** : une entrée a une transaction plus récente que celle lue ;
+- le **saut** : mêmes entrées et même version, rien à recalculer ;
+- la provenance : `source_ref` des objets synchronisés pointe vers la
+  transaction, ce qui relie un objet à ses lignes d'origine.
+
+Pas de lignage par colonne en V1 : le plan DataFusion pourrait le fournir,
+aucun cas ne le demande.
+
+### D575 — Ordonnanceur à dépendances
+
+On planifie une **cible**. L'ordonnanceur remonte le lignage déclaré par les
+versions de pipeline, et recalcule ce qui est périmé jusqu'aux origines
+planifiées, dans l'ordre. Un cycle est refusé à l'enregistrement. Une entrée en
+échec bloque l'aval, qui garde sa dernière version valide. Une seule exécution
+par cible à la fois ; une demande pendant un run est fusionnée avec la suivante.
+Répond au point 6 du §7 bis : plus d'étalement sur la semaine.
+
+### D576 — Contrôles au commit
+
+Un contrôle bloquant échoue : la transaction passe `aborted`, l'aval continue sur
+la dernière version valide, l'org est notifiée. Reprend les contrôles D303 (forme
+changée, chute suspecte) et `max_closures_pct`, en y ajoutant : clé unique, taux
+de valeurs vides, bornes de lignes. La fraîcheur (pas de transaction depuis N
+heures) est vérifiée par un balayage, puisqu'aucun run n'a lieu. Résultats sur la
+transaction, affichés dans l'historique.
+
+### D577 — Sync ontologie : delta par propriété
+
+**Aujourd'hui** (`imports/diff.rs`), le diff compare la source à l'**état
+courant** de l'objet. Une édition humaine sur une propriété mappée est donc
+écrasée au run suivant, même si la source n'a pas changé. Les propriétés non
+mappées survivent.
+
+**Proposé** : le delta compare deux transactions du dataset, celle de la dernière
+sync appliquée et la nouvelle, par clé puis par propriété. Il est calculé par le
+worker, écrit en Parquet, puis appliqué par le backend avec `create_many_with` et
+`update_many_with` (mêmes validations, D347).
+
+- **Volume** : seul le delta atteint PostgreSQL. `ROWS_MAX` et le chargement
+  complet en mémoire ne concernent plus la taille de la source. Le premier
+  chargement reste limité par ce que tiennent `objects` et `links` : le plafond
+  sera fixé par la mesure de OP1.3.
+- **Lecture du delta** : par lots dans le backend, avec le crate `parquet` seul,
+  sans moteur.
+- **Éditions** : une propriété n'est écrite que si sa valeur **change dans la
+  source** (Q-P6).
+- **Fermetures snapshot** : une clé absente de la nouvelle transaction est fermée,
+  sous `max_closures_pct`.
+- **Aperçu** (D348) : le delta est l'aperçu, et l'application le rejoue sur les
+  mêmes transactions ; sinon `import-preview-stale`.
+- **Mapping modifié** (D354) : pas de transaction de référence valable, donc
+  comparaison complète à l'état courant, avec aperçu obligatoire : c'est le seul
+  chemin qui écrase une édition, et l'écran le dit.
+- **Journal** : après le commit, par lots (L0).
+
+### D578 — Batch, puis incrémental ; les flows reçoivent un événement
+
+- **Batch d'abord** : `snapshot` à chaque run.
+- **Incrémental ensuite** (OP1.6), sur besoin mesuré : une entrée en `append`
+  n'est lue que depuis la dernière transaction traitée. Un `snapshot` ou un
+  `delete` en amont force un recalcul complet.
+- **Pas de streaming** : la télémétrie et les flows couvrent le temps réel. Pas
+  de décision tant qu'aucun cas de latence à la minute n'existe sur un calcul
+  d'ensemble.
+- **Pont unique vers les flows** : `dataset.committed` (`{dataset, transaction,
+  counts}`) et nœud `dataset_trigger`, sur le modèle d'`action_trigger`, à la
+  place de D356. Une sync appliquée publie aussi les ids changés (10 000 au plus).
+  Un flow ne lance ni n'écrit jamais un dataset.
+
+### 9.3 Contrats
+
+Chaque lot suit dans le même commit les règles du dépôt :
+
+- **API** : routes annotées, `task openapi`, `Paginated<T>`, `ErrorDetail`,
+  nouveaux codes dans `err_codes::ALL` et les deux `.ftl` ;
+- **IAM** (`pipelines:read|write|run`, `datasets:read|write`) : plus bas rôle
+  géré, test sans permission → 403 ;
+- **MCP** : lecture exposée (catalogue, lignage, runs, contrôles, échantillon
+  sous droits) ; lancement et écriture `EXCLUDED` (motif « bulk ») ;
+- **Assistant** : fiches `assistant-kb`, proposition de mapping ou de SQL sur la
+  version lue, jamais de lancement. `dataset_trigger` : `NodeDoc` ;
+- **UI** : `t!`, lexique et garde dans le lot qui affiche le concept.
+
+### 9.4 Sécurité (grille `security.md` §6)
+
+- **R1** : org tirée du principal ou du job ; le worker n'enregistre que des
+  datasets de l'org du job, y compris pour les préfixes S3.
+- **R2** : le run écrit avec le rôle de l'auteur du pipeline, revérifié au début
+  de chaque run (D303), et lit seulement les datasets qu'il a le droit de lire.
+- **R4 / R16** : ni secret ni identifiant dans le catalogue, le manifeste ou le
+  journal. Un connecteur matérialise son résultat avant le worker, qui n'y a
+  jamais accès.
+- **R8** : le worker n'a aucun accès externe (`NetworkPolicy`) ; origines par le
+  client gardé du backend.
+- **Fichier d'entrée hostile** : plafonds D319 et D320 à la conversion Parquet ;
+  un Parquet fourni par l'utilisateur est refusé en V1, le format étant une
+  surface de parsing de plus.
+- **Contournement des droits** : un dataset copie des données hors des règles de
+  l'ontologie. **Tant qu'OP3 (droits par ligne, marquages) n'est pas livré, un
+  dataset se protège en entier, par permission d'org**, et le sync vers un type à
+  colonnes sensibles (D442) exige que le dataset source ait le même niveau d'accès.
+  Le lignage servira à propager les marquages.
+
+### 9.5 Studio
+
+D355 amendée : canevas de graphe pour les pipelines à plusieurs entrées, avec la
+coquille D222, le lecteur commun D220 et le tiroir Versions D221. Colonne de
+droite inchangée (traitement sélectionné, correspondance, code). Une liste et une
+page de lignage réutilisent le graphe existant plutôt qu'un second composant. La
+scène montre l'échantillon et le profil de colonnes du nœud sélectionné.
+
+### 9.6 Lots
+
+Le premier lot est une mesure. Ces lots remplacent L2, L4, L6 et L7 ; L5
+(connecteurs) passe à OP2, sur ce socle.
+
+| Lot | Contenu | Livre | Taille |
+|---|---|---|---|
+| **OP1.0** | Mesure D572 : DataFusion et Polars, binaire, build, mémoire, RustFS ; catalogue maison ou Iceberg | Q-O1 tranchée, ou arrêt du PRD | S |
+| **OP1.1** | D569 : catalogue, transactions, conversion CSV → Parquet en flux, lecture d'un échantillon, purge | Fichier de 500 Mo chargé sans passer en mémoire | M |
+| **OP1.2** | D571–D574 : file, worker, SQL, garde-fous, lignage | Jointure entre deux fichiers France Compétences | L |
+| **OP1.3** | D577 : delta, sync, migration des packs | `Partenaires` complet accepté ; une édition survit à un run | L |
+| **OP1.4** | D575, D576, D578 : ordonnanceur, contrôles, `dataset_trigger` | Une seule planification pour les cinq imports France Compétences | M |
+| **OP1.5** | §9.5 : studio en canevas, page de lignage | Autonomie sans YAML | M |
+| **OP1.6** | D578 : incrémental `append` | Sur besoin mesuré seulement | M |
+
+**Avancement OP1.1 (2026-11-04, non commité)** : catalogue et transactions
+(migration 000070, `services/datasets/`), routes `/api/v1/datasets` (liste, création,
+lecture, suppression, transactions, chargement CSV, échantillon, `as_of`), purge.
+Acceptance tenue : 500 Mo de CSV (8,5 M de lignes, 94 Mo de Parquet) en 22 s en
+build debug, pic mémoire + 50 Mo. Le chargement passe par un lecteur CSV incrémental
+à nous (`csv-core`, sans inférence) et le crate `parquet`, sans moteur. Écarts
+assumés au regard de D569, à reprendre :
+
+- **Pas de transaction `delete`** : rien ne l'appelle. L'effacement, lui, est livré
+  (ci-dessous) ;
+- **Quota (20 Go) et conservation (90 jours) sont des constantes**, pas des réglages
+  par tier ou par dataset ;
+- **Types** : un fichier chargé est tout en texte ; les types viennent des
+  transformations (OP1.2) ;
+- **Un seul fichier par transaction**, écrit pendant la requête : la file de jobs
+  arrive en OP1.2. Un client coupé ou un pod tué laisse une transaction `open`,
+  retirée après 10 min sans battement, puis purgée. Une partie d'upload multipart non
+  terminée n'est pas purgée par ce chemin (non vérifié sur RustFS) ;
+- **Encodage** : UTF-8, sinon Latin-1 valeur par valeur (`text_of`), comme les imports ;
+- **Pas d'écran ni de fiche `assistant-kb`** : rien de visible avant OP1.5, qui
+  apporte l'écran, la fiche, la ligne de lexique « Table » et sa garde.
+
+**Avancement OP1.2 (2026-11-04, non commité)** : binaire
+`crates/pnex-pipeline-worker` (DataFusion, image à part, service compose sous profil
+`pipelines`, `task pipeline-worker:up`), routes `/api/v1/pipelines` (document YAML,
+versions, exécutions) et `/datasets/{id}/lineage`, migration 000071. Acceptance tenue
+de bout en bout : `Partenaires` et `Standard` réels envoyés par l'API, joints par le
+binaire du worker, 142 880 lignes, soit le décompte calculé à part en Python ; le
+serveur relit la sortie et le lignage nomme les deux entrées. Tests : SQL hostile,
+autre org, rôle sans accès aux tables métier, délai, saut quand rien n'a changé.
+Écarts assumés :
+
+- **Origines** : un pipeline lit des datasets déjà chargés ; `source_resolve`,
+  `file_download` et `archive_extract` restent sur le chemin des imports. `ontology_sync`
+  vient avec OP1.3. Les imports (`object_imports`) ne sont donc pas encore migrés
+  (D571, Q-P5) ;
+- **Un seul déclencheur** : le lancement manuel, vérifié à l'enfilement. La
+  planification (D575) revérifiera les droits de l'auteur au début du run ;
+- **Rôle et réseau** : le rôle `pnex_pipeline_worker` est créé par la migration, sans
+  mot de passe. En local il est pris par `SET ROLE`, ce qui prouve les droits mais ne
+  protège pas : le compte de connexion reste celui de l'application. Le vrai
+  cloisonnement (login dédié, `NetworkPolicy`) reste à poser dans le chart
+  `pnex-deploy`, **avant toute mise en service** ;
+- **Auteur des versions et des exécutions** (D354) : non enregistré tant qu'aucun écran
+  ne l'affiche ;
+- **`prefer_hash_join=false` pour tout le SQL** : fiable en mémoire, plus lent sur les
+  grosses jointures (§9.7 bis) ; à revoir si un cas réel en souffre ;
+- **Le quota n'est lu qu'au début de chaque transformation**, comme pour un chargement.
+
+**Effacement dans les datasets (2026-11-04, non commité)**, prérequis d'OP1.3 : une
+ligne de dataset n'a aucun lien avec un objet tant qu'on ne le déclare pas. `PUT
+/datasets/{id}/identity` dit donc quelle colonne identifie quel type d'objet, par quelle
+propriété ou par son titre (migration 000072). OP1.3 écrira cette déclaration depuis le
+mapping de `ontology_sync`.
+
+- **Déroulé** : `erase.rs` inscrit les valeurs dans `dataset_erasures` dans la même
+  transaction que l'objet ; une passe serveur (60 s) réécrit tout fichier d'une version
+  encore lisible qui contient la valeur, comparaison sans casse ni accents, remplace la
+  référence par une écriture PostgreSQL, puis retire de S3 ce que le catalogue ne nomme
+  plus. Une passe morte reprend sans perte. La valeur n'est jamais stockée : la file ne
+  garde que son empreinte (sha256 de la forme pliée), et elle la garde après la passe,
+  pour que tout chargement ultérieur de la table écarte la personne, même d'une source qui
+  la contient encore. Une empreinte sans sel se retrouve par dictionnaire sur un nom
+  connu : elle sert à reconnaître, pas à cacher, comme l'empreinte D447.
+- **En aval** : si des lignes ont été retirées, tout dataset qui en dépend par le lignage
+  et ne déclare pas ce type perd toutes ses versions et son pipeline est relancé
+  (déclencheur `erasure`). Il répond 410 jusqu'au recalcul.
+- **Concurrence** : une org avec un run en cours attend, un dataset avec un chargement
+  ouvert aussi ; le worker ne prend aucun run d'une org qui a un effacement en attente.
+  Il voit seulement `org_id` et `done_at` de cette table. Un fichier illisible
+  bloque donc les pipelines de l'org jusqu'à correction : c'est voulu, et journalisé en
+  erreur.
+
+Revue de sécurité du 2026-11-04 (SEC-58 à SEC-61 au registre). Corrigé : échantillon qui
+pouvait tenir 3 Go en mémoire, valeurs effacées conservées dans les aperçus d'import,
+sortie de pipeline qui ramenait une personne effacée (le worker lit les empreintes et
+filtre), colonnes sensibles lisibles par un viewer, élévation en éditant l'import d'un
+admin, texte d'infrastructure ou cellule dans les erreurs de run, file monopolisée par une
+org, table supprimée pendant un effacement.
+
+Limites assumées, à trancher avant de promettre un effacement complet :
+
+- **Non déclaré = non atteint** : un fichier chargé à la main sans déclaration et sans
+  lignage garde la personne. Une recherche de la valeur partout supprimerait des
+  homonymes et, sur une propriété courante (ville), des lignes sans rapport ;
+- **Homonymes** : déclarer le titre retire toute ligne au même nom. Préférer un
+  identifiant (e-mail, SIRET) quand la source en a un ;
+- **Déclaration tardive** : les effacements antérieurs à la déclaration ne sont pas
+  rejoués ;
+- **Durée** : non mesurée sur un gros fichier, chaque fichier touché est relu deux fois ;
+- **Table supprimée** : les empreintes partent avec elle, si bien qu'une table recréée sous le
+  même nom et rechargée ramène la personne ;
+- **Colonne convertie** : `digits`, `left` ou `concat` laissent en base une valeur que la colonne
+  ne contient pas ; le mapping ne la déclare donc pas. Si cette clé était personnelle, un
+  run de comparaison complète ne retrouve plus la coquille effacée et peut recréer l'objet ;
+- **Version amont purgée** : une table n'ayant plus la personne ne déclenche pas la voie aval,
+  et une sortie calculée avant reste en l'état tant qu'elle n'est pas recalculée.
+
+**Avancement OP1.3, première partie (2026-11-04, non commité)** : la synchro par
+entités planifiées (D577, §9.7 ter). Un import peut avoir pour source une table
+(`source: dataset`, l'id de la table dans `source_url`, migration 000073). Chaque run
+planifie les transactions de la vue courante et celles du dernier run appliqué, avec
+`plan_row` et l'agrégation désormais isolée dans `diff::Planned` ; ne vont vers
+l'ontologie que les objets et liens dont une valeur a changé entre les deux. Une édition
+survit donc jusqu'à ce que la source change cette valeur (Q-P6), et une ligne retirée ne
+ferme pas ce que ses lignes sœurs portent encore. Sans référence valable (mapping
+modifié, version purgée), la comparaison se fait à l'état courant et le run s'arrête à un
+aperçu ; un aperçu dont la table a bougé est `import-run-stale`. Le mapping déclare
+lui-même les colonnes d'identité de l'effacement, quand la colonne garde sa forme.
+
+Écarts assumés au regard de D571 et D577, à reprendre :
+
+- **La synchro reste un import**, pas une étape `ontology_sync` du document de pipeline :
+  runs, aperçu, seuils, planification et écran existent déjà. Enchaîner pipeline puis
+  synchro attend `dataset_trigger` (OP1.4). `object_imports` n'est donc pas supprimée ;
+  retirer cette table reste à décider une fois les origines migrées ;
+- **Calcul dans le serveur, pas dans le worker** : le crate `parquet` et `plan_row`
+  suffisent, sans moteur. Deux plans complets tiennent en mémoire pendant le run ; voir la
+  mesure ci-dessous ;
+- **Origines portées par l'import** : un import dont les étapes laissent un CSV remplit à
+  chaque run une table du nom de la clé de son mapping, puis se synchronise depuis elle ;
+  les YAML des packs ne changent pas, et un pipeline peut lire ces tables. `rows_filter`
+  reste une étape serveur, car il lit les réglages et les objets, que le worker ne voit
+  pas. Le plafond de 200 Mo par fichier extrait reste en place. Les autres formats
+  (`fc_rs_xml`, en XML imbriqué) gardent l'ancien chemin et `ROWS_MAX`, et n'ont donc pas
+  la protection des éditions ;
+- **La table d'un import lui appartient** (`datasets.import_id`) : ni un chargement ni un
+  pipeline ne peuvent l'écrire (`dataset-reserved`), et un nom déjà pris fait échouer le run
+  plutôt que de partager la table ;
+- **Une table chargeable n'hérite pas des droits de l'auteur** (R2) : une synchro `source:
+  dataset` écrit avec les droits d'un membre, puisque tout membre peut alimenter la table.
+  Un type réservé aux admins exige un import à étapes ;
+- **Une synchro à la fois par serveur** : un run tient environ 1 Go (limite du pod API :
+  3 Gi), les autres attendent ;
+- **Un `update` humain reste écrasé dans un cas** : l'aperçu appliqué après un changement
+  de mapping, comme D577 le prévoit ;
+- **La source_url porte l'id de la table** : pas de clé étrangère. Une table supprimée
+  fait échouer le run en `dataset-not-found`.
+
+Acceptance tenue sur `Partenaires` complet, fiches inactives comprises (402 489 lignes,
+au-delà de `ROWS_MAX`) : 25 793 organisations et 315 803 liens, soit les décomptes
+calculés à part en Python. Premier run 60 à 79 s, pic mémoire du processus de 308 à
+1 069 Mo ; nouvelle version avec une ligne de moins 34 s, une seule fermeture, une édition
+conservée, pic 1 310 Mo. Build debug, deux mesures : un ordre de grandeur, pas un plafond.
+`PLANNED_MAX` de la
+synchro est fixé à 5 M d'objets planifiés sans mesure à ce niveau.
+
+Corrections trouvées en branchant les packs :
+
+- **Un plan ne dépend pas que de la source.** Une entrée `create: false` dépend aussi de
+  l'ontologie : si l'objet apparaît après le run, la source n'a pas changé et le delta
+  n'aurait jamais rien écrit. Chaque run note ce qu'il a laissé de côté faute d'objet
+  (`skipped_keys`, migration 000074), et le run suivant le replanifie. Ce qu'une personne a
+  archivé n'en fait pas partie ;
+- **Le même fichier n'est pas une nouvelle version** : à 90 jours de rétention, une source
+  quotidienne aurait rempli le quota de copies identiques. Le snapshot dont le fichier a
+  le sha256 de la version courante passe `aborted` (`dataset-unchanged`). Si le découpage
+  en groupes de lignes diffère, le fichier est conservé : le cas raté coûte de la place,
+  pas de la donnée ;
+- **Un run planifié en attente d'aperçu notifie l'org** (`import-preview-required`) : une
+  mise à jour de pack qui change un mapping arrête ses imports jusqu'à un humain.
+
+Bug corrigé en route, sur tous les imports en mode liste complète : archiver un objet
+ferme ses liens, et fermer ensuite le même lien échouait en annulant tout le run.
+
+### 9.7 Non mesuré
+
+Hors §9.7 bis, aucun chiffre de ce PRD ne vient d'un test du moteur : 50 M de
+lignes est une cible d'essai, pas une promesse. Le coût de la conversion Parquet, le temps de
+diff de deux snapshots et la tenue de `objects` au-delà de quelques centaines de
+milliers de lignes restent à établir. Si OP1.0 échoue, D569 et D577 tiennent sans
+moteur pour les fichiers ; seul le SQL de D572 est à revoir.
+
+### 9.7 bis Mesure OP1.0 (2026-11-04, banc `benches/op1-engines`)
+
+DataFusion 55.2 contre Polars 0.55.2, hors du workspace, dans un scope plafonné
+(mémoire, 4 CPU). Lignes de sortie vérifiées ; les durées sont bruitées (un
+build d'image tournait à côté) et tiennent lieu d'ordre de grandeur. RustFS en
+local seulement. Rejouer : `run.sh <dossier-csv> "5000000 50000000"`, puis
+`OP1_ONLY=$PWD/tuning.sh run.sh <dossier-csv>`, puis `memory.sh` et `memory2.sh`
+de la même façon. Les colonnes DataFusion du tableau sont au pool mémoire par
+défaut ; les causes et les réglages qui lèvent ces échecs sont dans « Causes ».
+
+| Mesure | DataFusion | Polars |
+|---|---|---|
+| Binaire release, strippé, sans LTO | 129 Mo | 91 Mo |
+| Build complet (4 jobs) | ≈ 7 min | ≈ 5 min 30 |
+| CSV réel `Partenaires` → Parquet (402 489 lignes) | ok, 60 Mo de pic | ok, 123 Mo de pic |
+| CSV réel `Standard` (30 750 lignes, retours à la ligne dans les champs) | refusé à l'inférence ; ok sans inférence | ok, compte confirmé |
+| Jointure réelle fiches actives (142 880 lignes, 2 Go) | ok, 73 Mo | ok, 64 Mo |
+| 50 M lignes, 3,9 Go CSV → Parquet | 9 s, 294 Mo de pic | 27 s, 3,9 Go de pic |
+| 50 M, jointure + agrégat, 2 Go | ok, 122 Mo | ok, 759 Mo |
+| 50 M, `GROUP BY` 4,5 M valeurs avec tri | 2 Go : refus propre ; 8 Go : ok | 2 Go : ok, 1,8 Go de pic |
+| 5 M, diff de deux snapshots, 2 Go | ok, 686 Mo | ok, 1,1 Go |
+| 50 M, diff de deux snapshots | défaut : échec à 8 Go ; **réglé : ok à 2 Go, 71 à 132 s** | 2 Go : tué ; 8 Go : ok, au plafond, 8,5 s |
+| Lecture S3 (RustFS), 5 M, 2 Go | ok | ok |
+| `read_csv('<chemin>')` en SQL | refusé | **lit le fichier** |
+| DDL, DML, `SET` | refusés sur le plan | refus partiel, `DROP TABLE` accepté |
+
+**Ce que la mesure établit :**
+
+- **DataFusion tient D572, Polars non** : `SQLOptions` refuse sur le plan logique,
+  et le débit de conversion en mémoire bornée est nettement meilleur. Polars lit
+  un fichier arbitraire depuis le SQL et n'a pas de plafond mémoire propre.
+
+**Causes des échecs de DataFusion (établies le même jour) :**
+
+1. **Refus du CSV `Standard` : bug d'`object_store` 0.13.2, pas du moteur.**
+   `LineDelimiter::push` appelle `next_back()` sur un itérateur à état : il
+   balaie le morceau à l'envers avec l'état des guillemets du sens normal. Si un
+   morceau de 8 Ko finit dans un champ entre guillemets, la parité s'inverse et la
+   coupe tombe sur un retour à la ligne **dans** un champ. Seule l'inférence de
+   schéma découpe ainsi. Corrigé dans 0.14 (`last()`, issue #650) ; DataFusion 55.2
+   reste sur 0.13.2, sa branche principale passe à 0.14.2. Sans inférence, les
+   30 750 lignes sont lues (compte vérifié, pas le contenu). **Conséquence : on
+   n'infère jamais avec le moteur** ; le schéma vient du catalogue D569 (profil de
+   colonnes, tout en texte puis conversions). Test du bug : `df/src/main.rs`.
+2. **`GROUP BY` et jointure par fusion refusés à 2 Go : le pool par défaut.**
+   `with_memory_limit` pose un `GreedyMemoryPool` : le premier arrivé prend tout et
+   le suivant échoue. Avec `FairSpillPool`, à plafond égal, le `GROUP BY` à 4,5 M de
+   valeurs passe à 2 Go (517 Mo, 4,8 s) et la jointure par fusion aussi. Vérifié une
+   variable à la fois. **Conséquence : `FairSpillPool` obligatoire.**
+3. **Diff par hachage à 50 M : limite du moteur, par construction.** La table de
+   hachage d'une jointure ne déborde jamais sur disque (`can spill: false`), quel
+   que soit le pool. **Conséquence : `prefer_hash_join=false` pour le diff D577.**
+   Résultat à 50 M sous 2 Go : 1 M de différences, dont 250 000 ajouts, 250 000
+   retraits et 500 000 changements, conformes au jeu généré ; 1,7 Go de pic, 5,8 Go
+   de débordement, 71 à 132 s. Effet sur le SQL utilisateur non mesuré : une
+   jointure par hachage trop grosse y rend une erreur propre.
+4. **OOM killer : marge du pod, cause exacte non établie.** Le diff par
+   `UNION ALL` + `GROUP BY` (plan qu'on ne retient pas) est tué à 2 Go avec un pool
+   à 75 % et à 50 %. Il passe à 2 Go avec un pool à 25 % (1,3 Go de pic, 388 s) et à
+   4 Go avec un pool à 75 % (3,1 Go, 168 s). Le moteur alloue donc hors de son pool,
+   et je n'ai pas isolé quoi ; `MALLOC_ARENA_MAX=2` réduit le pic sans lever le
+   problème, et `spill_compression=lz4_frame` est tué lui aussi à 2 Go sur le diff
+   par fusion. **Conséquence : pod de 4 Go au moins, pool à 75 %, et un job tué est
+   un échec ordinaire (D573).**
+5. **Un job tué laisse ses fichiers de débordement** (20 Go observés, ce qui a
+   faussé la colonne du banc avant correction ; les seuls chiffres de débordement
+   cités ici viennent de répertoires propres). **Conséquence : `emptyDir` par pod,
+   vidé au démarrage de chaque job.**
+
+- **Limite à annoncer** : diff de snapshots mesuré jusqu'à 50 M sous 2 Go, sur des
+  lignes courtes et une seule forme de clé. Les durées restent des ordres de
+  grandeur, et rien n'est mesuré sur RustFS à ce volume.
+- **Identifiants** : DataFusion met en minuscules ce qui n'est pas entre
+  guillemets. Le SQL utilisateur et les propositions de l'assistant doivent citer
+  les colonnes à casse mixte (`"Numero_Fiche"`).
+
+- **Dépendances** : `cargo deny check advisories` échoue pour les deux moteurs :
+  RUSTSEC-2026-0194 et -0195 sur `quick-xml` 0.39.4, tiré par `object_store`
+  0.13.2. `object_store` 0.14.2 tire `quick-xml` ^0.41, version corrigée pour -0195
+  (non vérifié pour -0194) : la montée de DataFusion règlerait donc aussi le point 1
+  des causes. Sa branche principale (57-dev) y est ; 55.2 est la dernière publiée.
+  D'ici là, exception justifiée dans `deny.toml` (`task security:deps` doit rester
+  vert) : ce XML ne vient que de notre S3. Aucune licence copyleft imposée
+  relevée par un filtre sur les licences de l'arbre, sans audit crate par crate.
+
+**Non mesuré** : Iceberg (`iceberg` 0.11), liste blanche de fonctions, binaire
+DataFusion réduit aux seules fonctionnalités utiles, RustFS en réseau réel, tenue
+de `objects` au-delà de quelques centaines de milliers de lignes.
+
+### 9.7 ter Écart de D577 relevé dans le code
+
+D577 compare deux transactions « par clé puis par propriété », ce qui suppose une
+ligne pour une entité. Ce n'est pas le cas : `fc_partners` tire de chaque ligne
+une organisation (clé SIREN, plusieurs SIRET par SIREN) et un lien
+`accredited_for`, dont `scope` est agrégé entre lignes (`on_conflict`), sur une
+certification `create: false`. Retirer une ligne ne doit pas fermer
+l'organisation si une autre ligne la porte encore, et le `scope` d'un lien dépend
+de ses lignes sœurs. Un delta de lignes ne suffit donc pas.
+
+**Proposition** : le delta porte sur les **entités planifiées**. `plan_row` et
+l'agrégation de `diff::compute` produisent, pour chaque transaction, les objets et
+liens planifiés par clé d'entité ; on compare ceux de la dernière sync appliquée à
+ceux de la nouvelle. `plan_row` est déjà dans `pnex-core`, l'agrégation reste à y
+déplacer. Voir Q-P8.
+
+### 9.8 Questions ouvertes
+
+Toutes tranchées par Shan le 2026-11-04 :
+
+- **Q-O1** — Moteur : **DataFusion**, avec les réglages du §9.7 bis. Format :
+  **catalogue maison D569** (Iceberg non mesuré, export possible plus tard).
+- **Dépendance** — `quick-xml` (RUSTSEC-2026-0194, -0195) : **exception justifiée
+  dans `deny.toml`**, ajoutée avec DataFusion (OP1.2) et retirée à sa montée vers
+  `object_store` 0.14.
+- **Q-P5** — D571 remplace D344 : **oui**, en beta, sans compatibilité.
+- **Q-P6** — Édition humaine contre source : **la dernière modification gagne, par
+  propriété** (D577). Une édition survit tant que la source ne change pas cette
+  valeur, sans table de suivi.
+- **Q-P7** — Mot de l'interface : **« Table » / « Table »**, `datasets` reste le nom
+  technique. Lexique et garde dans le lot qui l'affiche.
+- **Q-P8** — Niveau du delta D577 : **entités planifiées** (§9.7 ter).

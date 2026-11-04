@@ -333,7 +333,8 @@ physique, `expected_version`, secrets jamais en sortie d'outil.
 ## 10. Questions ouvertes
 
 - **Q-O1** — Moteur de calcul Rust (DataFusion, Polars) et format
-  (Iceberg, Delta) : à trancher au PRD d'OP1 par un test de charge.
+  (Iceberg, Delta) : à trancher au PRD d'OP1 par un test de charge
+  (`data-pipelines.md` §9, D569–D578, lot OP1.0).
 - **Q-O2** — Bureautique : cadre isolé ou portage de l'UI en Dioxus ? Le POC
   d'OP6 tranche.
 - **Q-O3** — Enquêtes sur des personnes : avis juridique et accès par finalité
