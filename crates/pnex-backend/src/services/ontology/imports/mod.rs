@@ -1180,17 +1180,15 @@ async fn write(
             .map(|l| (l.id, l.attributes.clone()))
             .collect();
         links::update_many_with(&txn, &s, org_id, actor, &changed).await?;
-        for c in &diff.closed {
-            match c.kind.as_str() {
-                "object" => {
-                    let id = Uuid::parse_str(&c.id).map_err(|_| OntologyError::NotFound)?;
-                    objects::archive(&txn, org_id, actor, id).await?;
-                }
-                _ => {
-                    let id: i64 = c.id.parse().map_err(|_| OntologyError::NotFound)?;
-                    links::close(&txn, org_id, actor, id, None).await?;
-                }
-            }
+        // Links first: archiving an object closes its links, and closing one
+        // already closed is refused.
+        for c in diff.closed.iter().filter(|c| c.kind != "object") {
+            let id: i64 = c.id.parse().map_err(|_| OntologyError::NotFound)?;
+            links::close(&txn, org_id, actor, id, None).await?;
+        }
+        for c in diff.closed.iter().filter(|c| c.kind == "object") {
+            let id = Uuid::parse_str(&c.id).map_err(|_| OntologyError::NotFound)?;
+            objects::archive(&txn, org_id, actor, id).await?;
         }
         txn.commit().await?;
         crate::services::ontology::changes::flush();
