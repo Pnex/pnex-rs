@@ -48,11 +48,13 @@ zip = { version = "9", default-features = false, features = ["deflate"], optiona
 quick-xml = { version = "0.41", optional = true }
 lopdf = { version = "0.45", default-features = false, optional = true }
 calamine = { version = "0.38", optional = true }
+# Fingerprints of erased values (`datasets::fingerprint`); also the digest of the
+# chunked frame in the Noise golden vectors. Pure Rust, dropped from the wasm bundle
+# when unused.
+sha2 = "0.10"
 
 [dev-dependencies]
 # serde roundtrip of the graph + flows.json projection.
 serde_json = { workspace = true }
-# Digest of the chunked frame in the Noise golden vectors.
-sha2 = "0.10"
 # Reference signer of the OTA golden vectors (SEC-18), same crate as the server.
 ed25519-dalek = "2"

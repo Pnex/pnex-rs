@@ -628,6 +628,9 @@ pub const NOTIFY_DYNAMIC_RECIPIENTS_ADMIN: &str = "notify-dynamic-recipients-adm
 pub const ONTOLOGY_NODE_UNKNOWN: &str = "ontology-node-unknown";
 /// The preview was already applied, or the import or the data changed since.
 pub const IMPORT_RUN_STALE: &str = "import-run-stale";
+pub const DATASET_UNCHANGED: &str = "dataset-unchanged";
+pub const DATASET_RESERVED: &str = "dataset-reserved";
+pub const DATASET_ERASURE_PENDING: &str = "dataset-erasure-pending";
 /// A flow import run whose server stopped working on it (no heartbeat for
 /// 10 minutes): journaled as failed, nothing of it was written.
 pub const IMPORT_RUN_INTERRUPTED: &str = "import-run-interrupted";
@@ -652,6 +655,51 @@ pub const IMPORT_CONTACT_REQUIRED: &str = "import-contact-required";
 pub const IMPORT_KEY_REQUIRED: &str = "import-key-required";
 /// An import that uses a key points at another host than the key's.
 pub const IMPORT_KEY_HOST: &str = "import-key-host";
+/// No pipeline of the org has this id (D571).
+pub const PIPELINE_NOT_FOUND: &str = "pipeline-not-found";
+/// A pipeline of the org already has this name.
+pub const PIPELINE_NAME_TAKEN: &str = "pipeline-name-taken";
+/// The pipeline changed since it was read (args `current`).
+pub const PIPELINE_VERSION_CONFLICT: &str = "pipeline-version-conflict";
+/// The document cannot run (`errors.violations`).
+pub const PIPELINE_DOCUMENT_INVALID: &str = "pipeline-document-invalid";
+/// A run of this pipeline is queued or running.
+pub const PIPELINE_RUN_ACTIVE: &str = "pipeline-run-active";
+pub const PIPELINE_RUN_NOT_FOUND: &str = "pipeline-run-not-found";
+/// An input names no dataset of the org (args `dataset`).
+pub const PIPELINE_INPUT_MISSING: &str = "pipeline-input-missing";
+/// An input has no committed row yet (args `dataset`).
+pub const PIPELINE_INPUT_EMPTY: &str = "pipeline-input-empty";
+/// The engine refused the query (args `output`, verbatim `detail`).
+pub const PIPELINE_SQL_INVALID: &str = "pipeline-sql-invalid";
+/// The query needs more memory than a run has (args `output`).
+pub const PIPELINE_MEMORY_EXCEEDED: &str = "pipeline-memory-exceeded";
+/// The query outlasted its limit (args `output`, `secs`).
+pub const PIPELINE_TIMEOUT: &str = "pipeline-timeout";
+/// The worker kept dying on this run.
+pub const PIPELINE_WORKER_LOST: &str = "pipeline-worker-lost";
+/// No dataset of the org has this id (D569).
+pub const DATASET_NOT_FOUND: &str = "dataset-not-found";
+/// A dataset of the org already has this name.
+pub const DATASET_NAME_TAKEN: &str = "dataset-name-taken";
+/// Another load of this dataset is running.
+pub const DATASET_TRANSACTION_OPEN: &str = "dataset-transaction-open";
+/// A load lost its heartbeat before it could commit.
+pub const DATASET_TRANSACTION_ABORTED: &str = "dataset-transaction-aborted";
+/// The file is not a CSV the server can read (args `reason`, `line`...).
+pub const DATASET_CSV_INVALID: &str = "dataset-csv-invalid";
+/// An append whose columns are not those of the dataset (args `columns`).
+pub const DATASET_SCHEMA_MISMATCH: &str = "dataset-schema-mismatch";
+/// The org's dataset storage is full (args `max`).
+pub const DATASET_QUOTA: &str = "dataset-quota";
+/// The file is over the size a load accepts (args `max`).
+pub const DATASET_SOURCE_TOO_LARGE: &str = "dataset-source-too-large";
+/// The upload stopped before its end.
+pub const DATASET_SOURCE_INTERRUPTED: &str = "dataset-source-interrupted";
+/// The version asked for has left its retention.
+pub const DATASET_VERSION_PURGED: &str = "dataset-version-purged";
+/// The object storage holding the datasets is not reachable.
+pub const DATASET_STORAGE_UNAVAILABLE: &str = "dataset-storage-unavailable";
 /// The org's staging area is full (2 GB, D318): nothing was downloaded.
 pub const INGEST_STAGING_QUOTA: &str = "ingest-staging-quota";
 /// The object storage holding the staging area is not reachable (D318).
@@ -966,6 +1014,9 @@ pub const ALL: &[&str] = &[
     NOTIFY_DYNAMIC_RECIPIENTS_ADMIN,
     ONTOLOGY_NODE_UNKNOWN,
     IMPORT_RUN_STALE,
+    DATASET_UNCHANGED,
+    DATASET_RESERVED,
+    DATASET_ERASURE_PENDING,
     IMPORT_RUN_INTERRUPTED,
     IMPORT_SERVER_STOPPING,
     IMPORT_HAS_ERRORS,
@@ -977,6 +1028,29 @@ pub const ALL: &[&str] = &[
     IMPORT_CONTACT_REQUIRED,
     IMPORT_KEY_REQUIRED,
     IMPORT_KEY_HOST,
+    PIPELINE_NOT_FOUND,
+    PIPELINE_NAME_TAKEN,
+    PIPELINE_VERSION_CONFLICT,
+    PIPELINE_DOCUMENT_INVALID,
+    PIPELINE_RUN_ACTIVE,
+    PIPELINE_RUN_NOT_FOUND,
+    PIPELINE_INPUT_MISSING,
+    PIPELINE_INPUT_EMPTY,
+    PIPELINE_SQL_INVALID,
+    PIPELINE_MEMORY_EXCEEDED,
+    PIPELINE_TIMEOUT,
+    PIPELINE_WORKER_LOST,
+    DATASET_NOT_FOUND,
+    DATASET_NAME_TAKEN,
+    DATASET_TRANSACTION_OPEN,
+    DATASET_TRANSACTION_ABORTED,
+    DATASET_CSV_INVALID,
+    DATASET_SCHEMA_MISMATCH,
+    DATASET_QUOTA,
+    DATASET_SOURCE_TOO_LARGE,
+    DATASET_SOURCE_INTERRUPTED,
+    DATASET_VERSION_PURGED,
+    DATASET_STORAGE_UNAVAILABLE,
     INGEST_STAGING_QUOTA,
     INGEST_STAGING_UNAVAILABLE,
     INGEST_NO_RESOURCE,

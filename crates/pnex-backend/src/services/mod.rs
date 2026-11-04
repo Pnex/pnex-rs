@@ -16,6 +16,7 @@ pub mod controls;
 pub mod crawl;
 pub mod dashboard;
 pub mod dashboards;
+pub mod datasets;
 /// Cross-pod serialization helpers (advisory locks, unique violations).
 pub mod db_lock;
 pub mod decide;
@@ -68,6 +69,7 @@ pub mod org_resolve;
 pub mod ota;
 pub mod ota_signing;
 pub mod pages;
+pub mod pipelines;
 pub mod pois;
 pub mod profiles;
 pub mod proofs;

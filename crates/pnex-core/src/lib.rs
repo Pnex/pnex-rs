@@ -149,6 +149,10 @@ pub mod fold;
 /// Mailboxes as sources, messages, the `mail_received` trigger (mail.md).
 pub mod mail;
 
+/// Dataset catalogue DTOs (data-pipelines.md D569).
+pub mod datasets;
+/// Pipeline documents and DTOs (data-pipelines.md D571).
+pub mod pipelines;
 /// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
 /// classifier, `topic_classify` node config.
 pub mod taxonomy;

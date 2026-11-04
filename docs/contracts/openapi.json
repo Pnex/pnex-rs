@@ -5520,6 +5520,251 @@
         ],
         "type": "object"
       },
+      "Dataset": {
+        "description": "A dataset and its current view.",
+        "properties": {
+          "bytes": {
+            "description": "Parquet bytes of the current view.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetColumn"
+            },
+            "type": "array"
+          },
+          "committed_at": {
+            "description": "Latest commit, absent before the first one.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "identity": {
+            "description": "Columns through which erasing an object removes its rows.",
+            "items": {
+              "$ref": "#/components/schemas/DatasetIdentityColumn"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "rows": {
+            "description": "Rows of the current view.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "columns",
+          "identity",
+          "rows",
+          "bytes",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "DatasetColumn": {
+        "description": "A column of a dataset.",
+        "properties": {
+          "data_type": {
+            "description": "Stored type. A loaded file is all `text`.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "data_type"
+        ],
+        "type": "object"
+      },
+      "DatasetIdentityColumn": {
+        "description": "A column whose value identifies an object: erasing the object removes the\nrows where the column equals its property, ignoring case and accents.",
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "property": {
+            "description": "Property of that type, or `$title` for the title of the object.",
+            "type": "string"
+          },
+          "type_key": {
+            "description": "Object type it identifies.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "type_key",
+          "property"
+        ],
+        "type": "object"
+      },
+      "DatasetIdentityInput": {
+        "description": "The identity columns of a dataset, replacing the current list.",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetIdentityColumn"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "columns"
+        ],
+        "type": "object"
+      },
+      "DatasetInput": {
+        "description": "Creation of a dataset.",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "DatasetLineage": {
+        "description": "What a dataset reads and what reads it, as written by the runs (D574).",
+        "properties": {
+          "downstream": {
+            "items": {
+              "$ref": "#/components/schemas/LineageLink"
+            },
+            "type": "array"
+          },
+          "stale": {
+            "description": "An input has a transaction newer than the one the current view read.",
+            "type": "boolean"
+          },
+          "upstream": {
+            "items": {
+              "$ref": "#/components/schemas/LineageLink"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "upstream",
+          "downstream",
+          "stale"
+        ],
+        "type": "object"
+      },
+      "DatasetSample": {
+        "description": "First rows of a view, values as text (`null` for a missing one).",
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "columns",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "DatasetTransaction": {
+        "description": "One transaction of a dataset.",
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "code": {
+            "description": "Machine code of the failure of an aborted transaction.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "committed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DatasetTransactionKind"
+          },
+          "rows": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DatasetTransactionState"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "rows",
+          "bytes",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "DatasetTransactionKind": {
+        "description": "What a transaction does to the view: replace it, or add to it.",
+        "enum": [
+          "snapshot",
+          "append"
+        ],
+        "type": "string"
+      },
+      "DatasetTransactionState": {
+        "description": "Only `committed` transactions are visible to readers.",
+        "enum": [
+          "open",
+          "committed",
+          "aborted"
+        ],
+        "type": "string"
+      },
       "DecisionKind": {
         "enum": [
           "accept",
@@ -9290,7 +9535,8 @@
         "enum": [
           "file",
           "url",
-          "api"
+          "api",
+          "dataset"
         ],
         "type": "string"
       },
@@ -10284,6 +10530,32 @@
           "name",
           "pio_spec",
           "header"
+        ],
+        "type": "object"
+      },
+      "LineageLink": {
+        "description": "A dataset linked to another by a pipeline run.",
+        "properties": {
+          "dataset_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "dataset_name": {
+            "type": "string"
+          },
+          "pipeline_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "pipeline_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "dataset_name",
+          "pipeline_id",
+          "pipeline_name"
         ],
         "type": "object"
       },
@@ -15751,6 +16023,78 @@
         ],
         "type": "object"
       },
+      "Paginated_Dataset": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Dataset"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_DatasetTransaction": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/DatasetTransaction"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_Device": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -17767,6 +18111,114 @@
         ],
         "type": "object"
       },
+      "Paginated_Pipeline": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Pipeline"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_PipelineRun": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/PipelineRun"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_PipelineVersion": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/PipelineVersion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_PnexHost": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -19366,6 +19818,162 @@
         "required": [
           "pins",
           "connected"
+        ],
+        "type": "object"
+      },
+      "Pipeline": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "document": {
+            "description": "The document, in YAML.",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "document",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "PipelineInput": {
+        "properties": {
+          "document": {
+            "description": "The document, in YAML.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "document"
+        ],
+        "type": "object"
+      },
+      "PipelineRun": {
+        "description": "One run of a pipeline.",
+        "properties": {
+          "args": {
+            "description": "Arguments of `code`."
+          },
+          "attempts": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "code": {
+            "description": "Machine code of a failure.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/PipelineRunState"
+          },
+          "version": {
+            "description": "Version of the pipeline it runs.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "attempts",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "PipelineRunState": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "PipelineUpdate": {
+        "description": "A new version, written over the version that was read.",
+        "properties": {
+          "document": {
+            "type": "string"
+          },
+          "expected_version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "document",
+          "expected_version"
+        ],
+        "type": "object"
+      },
+      "PipelineVersion": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "document": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "document",
+          "created_at"
         ],
         "type": "object"
       },
@@ -37698,6 +38306,890 @@
         "summary": "Make an older version of a dashboard current",
         "tags": [
           "dashboards"
+        ]
+      }
+    },
+    "/api/v1/datasets": {
+      "get": {
+        "description": "Datasets of the org by name, each with the rows and bytes of its current view. Requires `datasets:read`. Paginated (`limit`/`offset`).",
+        "operationId": "datasets_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Dataset"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the datasets",
+        "tags": [
+          "datasets"
+        ]
+      },
+      "post": {
+        "description": "Creates an empty dataset; load rows with `POST /datasets/{id}/transactions/csv`. Requires `datasets:write`.",
+        "operationId": "datasets_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields.name` token `required` or `max_length:255`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-name-taken`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a dataset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/{id}": {
+      "delete": {
+        "description": "Removes a dataset, its history and its files for good. Requires `datasets:delete`.",
+        "operationId": "datasets_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-transaction-open`, `dataset-reserved`, `dataset-erasure-pending`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a dataset",
+        "tags": [
+          "datasets"
+        ]
+      },
+      "get": {
+        "description": "One dataset with its columns and the rows and bytes of its current view. Requires `datasets:read`.",
+        "operationId": "datasets_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a dataset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/{id}/identity": {
+      "put": {
+        "description": "Replaces the columns through which erasing an object removes its rows from every readable version of this dataset. Erasures already done are not applied again. Requires `datasets:write`.",
+        "operationId": "datasets_identity_set",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetIdentityInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields.columns.<n>.column`, `.type_key` or `.property` token `invalid`, or `errors.fields.columns` token `max_items:32`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-reserved`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Declare the identity columns of a dataset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/{id}/lineage": {
+      "get": {
+        "description": "Datasets it was computed from and datasets computed from it, as written by the runs, and whether an input has changed since. Requires `datasets:read`.",
+        "operationId": "datasets_lineage",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetLineage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the lineage of a dataset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/{id}/sample": {
+      "get": {
+        "description": "First rows of the current view, or of the view at `as_of`, values as text and cut to 1000 characters. Requires `datasets:read`.",
+        "operationId": "datasets_sample",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rows, 200 at most. Default 50.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Reads the view as it was at this instant.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetSample"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-version-purged`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the first rows of a dataset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/{id}/transactions": {
+      "get": {
+        "description": "Transactions of a dataset, newest first, aborted ones with their failure code. Requires `datasets:read`. Paginated (`limit`/`offset`).",
+        "operationId": "datasets_transactions_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_DatasetTransaction"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the transactions of a dataset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/{id}/transactions/csv": {
+      "post": {
+        "description": "Streams a CSV body into a new transaction, as text columns, without holding the file in memory. Readers see it once committed. Requires `datasets:write`.",
+        "operationId": "datasets_transactions_load_csv",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`snapshot` replaces the view, `append` adds to it. Default `snapshot`.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DatasetTransactionKind"
+            }
+          },
+          {
+            "description": "One ASCII character. Default: picked from the first line.",
+            "in": "query",
+            "name": "delimiter",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/csv": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetTransaction"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-csv-invalid` (args `reason`, `line`, `column`, `expected`, `got`), `dataset-source-interrupted`, or `field-invalid` on `delimiter`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-reserved`, `dataset-transaction-open`, `dataset-transaction-aborted`, `dataset-schema-mismatch` (args `columns`), `dataset-quota` (args `max`)"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-source-too-large` (args `max`)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Load a CSV file into a dataset",
+        "tags": [
+          "datasets"
         ]
       }
     },
@@ -66416,6 +67908,806 @@
         "summary": "Download an OTA image (device only)",
         "tags": [
           "ota"
+        ]
+      }
+    },
+    "/api/v1/pipelines": {
+      "get": {
+        "description": "Pipelines of the org by name, with their current document. Requires `pipelines:read`. Paginated (`limit`/`offset`).",
+        "operationId": "pipelines_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Pipeline"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the pipelines",
+        "tags": [
+          "pipelines"
+        ]
+      },
+      "post": {
+        "description": "Creates a pipeline from a YAML document of SQL transforms, each with its input datasets and its output dataset. Requires `pipelines:write`.",
+        "operationId": "pipelines_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pipeline"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-document-invalid` (`errors.violations`: `path`, `token`) or `field-invalid` on `name`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-name-taken`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a pipeline",
+        "tags": [
+          "pipelines"
+        ]
+      }
+    },
+    "/api/v1/pipelines/{id}": {
+      "delete": {
+        "description": "Removes a pipeline, its versions, its runs and the lineage they wrote; the datasets it computed stay. Requires `pipelines:delete`.",
+        "operationId": "pipelines_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pipeline id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-run-active`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a pipeline",
+        "tags": [
+          "pipelines"
+        ]
+      },
+      "get": {
+        "description": "One pipeline with its current document. Requires `pipelines:read`.",
+        "operationId": "pipelines_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pipeline id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pipeline"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a pipeline",
+        "tags": [
+          "pipelines"
+        ]
+      },
+      "put": {
+        "description": "Replaces the document and adds a version, on the version that was read (`expected_version`). A run keeps the version it started with. Requires `pipelines:write`.",
+        "operationId": "pipelines_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pipeline id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pipeline"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-document-invalid` (`errors.violations`: `path`, `token`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-version-conflict` (args `current`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save a new version of a pipeline",
+        "tags": [
+          "pipelines"
+        ]
+      }
+    },
+    "/api/v1/pipelines/{id}/runs": {
+      "get": {
+        "description": "Runs of a pipeline, newest first, failed ones with their code. Requires `pipelines:read`. Paginated (`limit`/`offset`).",
+        "operationId": "pipelines_runs_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pipeline id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_PipelineRun"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the runs of a pipeline",
+        "tags": [
+          "pipelines"
+        ]
+      },
+      "post": {
+        "description": "Queues a run of the current version for the worker; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, and `datasets:read` and `datasets:write` since the run reads and writes datasets.",
+        "operationId": "pipelines_runs_start",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pipeline id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineRun"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:run`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-run-active`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run a pipeline",
+        "tags": [
+          "pipelines"
+        ]
+      }
+    },
+    "/api/v1/pipelines/{id}/runs/{run_id}": {
+      "get": {
+        "description": "State of one run, with its failure code and arguments. Requires `pipelines:read`.",
+        "operationId": "pipelines_runs_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pipeline id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Run id (UUID)",
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PipelineRun"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-run-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a run of a pipeline",
+        "tags": [
+          "pipelines"
+        ]
+      }
+    },
+    "/api/v1/pipelines/{id}/versions": {
+      "get": {
+        "description": "Saved documents, newest first. Requires `pipelines:read`. Paginated (`limit`/`offset`).",
+        "operationId": "pipelines_versions_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pipeline id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_PipelineVersion"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`pipeline-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the versions of a pipeline",
+        "tags": [
+          "pipelines"
         ]
       }
     },

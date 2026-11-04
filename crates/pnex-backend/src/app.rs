@@ -146,6 +146,8 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::media_ingest::internal_routes())
         .add_route(controllers::voice_id::routes())
         .add_route(controllers::taxonomies::routes())
+        .add_route(controllers::datasets::routes())
+        .add_route(controllers::pipelines::routes())
         .add_route(controllers::extension::routes())
         .add_route(controllers::ws_extension::routes())
         .add_route(controllers::time_ranges::routes())
@@ -296,6 +298,9 @@ impl Hooks for App {
         }
         // Ingestion staging purge: TTL, raw retention, orphans (D318).
         crate::services::ingest::spawn_purge(ctx);
+        // Dataset purge: dead transactions, retention (D569).
+        crate::services::datasets::spawn_purge(ctx);
+        crate::services::datasets::erasure::spawn(ctx);
         // Flow execution cluster (D106): this process as a flow worker (one
         // supervised runtime for the orgs placed on it) and as a placement
         // controller candidate — here and not connect_workers (ServerOnly

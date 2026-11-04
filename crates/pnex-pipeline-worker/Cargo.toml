@@ -1,0 +1,51 @@
+[package]
+name = "pnex-pipeline-worker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Runs the SQL transforms of data pipelines with DataFusion, apart from the server (D573)"
+
+[[bin]]
+name = "pnex-pipeline-worker"
+path = "src/main.rs"
+
+[dependencies]
+# Apache-2.0. Features chosen for what the allow list of functions exposes.
+datafusion = { version = "=55.2.0", default-features = false, features = [
+  "parquet",
+  "sql",
+  "datetime_expressions",
+  "math_expressions",
+  "regex_expressions",
+  "string_expressions",
+  "unicode_expressions",
+  "crypto_expressions",
+  "recursive_protection",
+] }
+# The version DataFusion 55 links. Its quick-xml is covered in deny.toml until
+# DataFusion moves to object_store 0.14.
+object_store = { version = "=0.13.2", features = ["aws"] }
+sqlx = { version = "0.9", default-features = false, features = [
+  "runtime-tokio",
+  "tls-rustls-ring-webpki",
+  "postgres",
+  "uuid",
+  "json",
+] }
+pnex-core = { workspace = true }
+serde-saphyr = "1.3"
+serde_json = "1"
+sha2 = "0.10"
+bytes = "1"
+futures = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal", "io-util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+pnex-migration = { path = "../pnex-backend/migration" }
+sea-orm-migration = { version = "2.0", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+serial_test = "3.1"

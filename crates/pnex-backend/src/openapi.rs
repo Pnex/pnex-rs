@@ -107,6 +107,8 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         controllers::thermo::openapi(),
         controllers::fluid_mixtures::openapi(),
         controllers::taxonomies::openapi(),
+        controllers::datasets::openapi(),
+        controllers::pipelines::openapi(),
         controllers::extension::openapi(),
         controllers::pois::openapi(),
         controllers::annotation_layers::openapi(),

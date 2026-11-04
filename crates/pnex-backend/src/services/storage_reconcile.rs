@@ -63,6 +63,13 @@ pub async fn known(db: &DatabaseConnection) -> Result<Known, DbErr> {
             row.try_get::<i64>("", "org_id")?,
         ));
     }
+    // Dataset files (D569): purged by `datasets::purge`, not here.
+    for row in rows("SELECT DISTINCT org_id FROM datasets").await? {
+        known.prefixes.push(format!(
+            "org_{}/datasets/",
+            row.try_get::<i64>("", "org_id")?
+        ));
+    }
     for row in rows("SELECT CAST(id AS TEXT) AS id FROM stitch_jobs").await? {
         known
             .prefixes

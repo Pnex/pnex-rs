@@ -131,6 +131,16 @@ opendal = { version = "0.58", default-features = false, features = [
 ] }
 # Multi-value query-string parsing (repeatable `capabilities` filter)
 form_urlencoded = "1"
+# Datasets (D569): streaming CSV to Parquet on S3, Apache-2.0 (arrow-rs) and
+# MIT/Unlicense (csv-core). Same major as the DataFusion worker (D572), not
+# linked in this server. No `object_store` feature: S3 goes through opendal.
+arrow-array = "59"
+arrow-cast = { version = "59", default-features = false }
+arrow-schema = "59"
+arrow-select = "59"
+parquet = { version = "59", default-features = false, features = ["arrow", "async", "zstd"] }
+csv-core = "0.1"
+bytes = "1"
 # In-process replay of MCP tool calls on the app router (D245); MIT,
 # already in the tree through axum.
 tower = { version = "0.5", features = ["util"] }

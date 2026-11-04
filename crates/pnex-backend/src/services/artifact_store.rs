@@ -223,6 +223,16 @@ impl S3Store {
         self.read(key).await
     }
 
+    /// A byte range of an object.
+    pub async fn get_range(&self, key: &str, range: std::ops::Range<u64>) -> Result<Bytes, String> {
+        self.operator
+            .read_with(key)
+            .range(range)
+            .await
+            .map(|b| b.to_bytes())
+            .map_err(|e| format!("S3 get {key}: {e}"))
+    }
+
     /// Idempotent delete.
     pub async fn delete_key(&self, key: &str) -> Result<(), String> {
         self.remove(key).await

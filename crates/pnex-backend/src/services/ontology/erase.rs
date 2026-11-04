@@ -125,6 +125,14 @@ async fn erase_in<C: ConnectionTrait>(
         .object_type(&row.type_key)
         .ok_or(OntologyError::NotFound)?;
     let title_personal = def.title_classification.is_personal() && !def.native();
+    crate::services::datasets::erasure::enqueue(
+        db,
+        org_id,
+        &row.type_key,
+        &row.title,
+        &row.properties,
+    )
+    .await?;
     // Its accounts keep a fingerprint of the name (D447).
     if title_personal {
         let keys = super::opposition::title_keys(db, s, org_id, row.id, &row.title).await?;

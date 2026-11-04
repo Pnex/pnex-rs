@@ -56,6 +56,8 @@ members = [
     "crates/pnex-mirror",
     # Tray audio recorder (call-recording.md R1).
     "crates/pnex-recorder",
+    # SQL transforms of data pipelines, apart from the server (D573).
+    "crates/pnex-pipeline-worker",
 ]
 # Vendored EdgeLinkd (submodule) stays a separate workspace — without exclude,
 # Cargo would attach its crates to the PNEX workspace and the

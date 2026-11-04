@@ -76,6 +76,13 @@ mod m20261031_000066_llm_provider_timeout;
 mod m20261102_000067_app_screens;
 mod m20261102_000068_extension_agent_common;
 mod m20261102_000069_market_observations;
+mod m20261104_000070_datasets;
+mod m20261104_000071_pipelines;
+mod m20261104_000072_dataset_erasure;
+mod m20261104_000073_import_dataset_transactions;
+mod m20261104_000074_import_skipped_keys;
+mod m20261104_000075_dataset_guards;
+mod m20261104_000076_worker_reads_fingerprints;
 
 pub struct Migrator;
 
@@ -148,6 +155,13 @@ impl MigratorTrait for Migrator {
             Box::new(m20261102_000067_app_screens::Migration),
             Box::new(m20261102_000068_extension_agent_common::Migration),
             Box::new(m20261102_000069_market_observations::Migration),
+            Box::new(m20261104_000070_datasets::Migration),
+            Box::new(m20261104_000071_pipelines::Migration),
+            Box::new(m20261104_000072_dataset_erasure::Migration),
+            Box::new(m20261104_000073_import_dataset_transactions::Migration),
+            Box::new(m20261104_000074_import_skipped_keys::Migration),
+            Box::new(m20261104_000075_dataset_guards::Migration),
+            Box::new(m20261104_000076_worker_reads_fingerprints::Migration),
         ]
     }
 }

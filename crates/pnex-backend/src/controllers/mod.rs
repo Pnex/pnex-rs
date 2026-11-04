@@ -11,6 +11,8 @@ pub mod cases;
 pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
+/// Datasets (data-pipelines.md D569).
+pub mod datasets;
 pub mod device_link;
 pub mod devices;
 pub mod doc_comments;
@@ -57,6 +59,8 @@ pub mod orgs;
 pub mod ota;
 pub mod pagination;
 pub mod pins;
+/// Pipelines (data-pipelines.md D571).
+pub mod pipelines;
 pub mod pois;
 pub mod proposals;
 pub mod public_tours;
