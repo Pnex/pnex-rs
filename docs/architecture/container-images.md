@@ -10,6 +10,7 @@
 | Image | Base | Contenu | Commande |
 |---|---|---|---|
 | `pnex-server` | `cgr.dev/chainguard/glibc-dynamic` — **ni shell ni gestionnaire de paquets**, non-root (65532) | `pnex-server`, `pnex-flow-runtime` (supervisé, trouvé via PATH), front `dist` | `start` (serveur seul) |
+| `pnex-pipeline-worker` | `cgr.dev/chainguard/glibc-dynamic` | binaire seul : transformations SQL des pipelines (DataFusion), ni configuration ni secret applicatif |
 | `pnex-builder` | `cgr.dev/chainguard/wolfi-base` (glibc) | même `pnex-server` + PlatformIO 6.2.0 + esptool 5.4.0 + plateformes/toolchains pré-installées (ESP8266, ESP32, C3, S3) + modèles ONNX | `start --worker` |
 
 Pourquoi deux : le worker de build firmware lance `pio` / `esptool`

@@ -115,5 +115,35 @@ services:
       - pnex-appdata:/data
       - ./deploy/edge/pki-data:/pki:ro
 
+  # SQL transforms of data pipelines (data-pipelines.md D573): `task
+  # pipeline-worker:up`. Only the catalogue role and S3 reach it, none of the
+  # application environment. The pod cap comes with the pool of the worker
+  # (§9.7 bis): 3 GB out of 4. A profile so that `up` does not build the engine.
+  pnex-pipeline-worker:
+    image: pnex-pipeline-worker:${PNEX_IMAGE_TAG:-dev}
+    profiles: [pipelines]
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: pipeline-worker
+    container_name: pnex-pipeline-worker
+    restart: unless-stopped
+    mem_limit: 4g
+    depends_on:
+      pnex-server:
+        condition: service_started
+    environment:
+      PNEX_PIPELINE_DATABASE_URL: ${PNEX_PIPELINE_DATABASE_URL:-postgres://pnex:pnex@postgres:5432/pnex}
+      PNEX_PIPELINE_DATABASE_ROLE: pnex_pipeline_worker
+      PNEX_S3_ENDPOINT: ${PNEX_S3_ENDPOINT:-http://rustfs:9000}
+      PNEX_S3_BUCKET: ${PNEX_S3_BUCKET:-pnex}
+      PNEX_S3_REGION: ${PNEX_S3_REGION:-}
+      PNEX_S3_ACCESS_KEY: ${PNEX_S3_ACCESS_KEY:-rustfsadmin}
+      PNEX_S3_SECRET_KEY: ${PNEX_S3_SECRET_KEY:-rustfsadmin}
+      PNEX_S3_PATH_STYLE: ${PNEX_S3_PATH_STYLE:-true}
+    volumes:
+      - pnex-pipeline-spill:/spill
+
 volumes:
+  pnex-pipeline-spill:
   pnex-appdata:

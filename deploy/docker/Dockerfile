@@ -200,6 +200,35 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-a
  && deploy/agent/build-dist.sh /agent-dist \
  && mv target/.src-manifest.new target/.src-manifest
 
+# ── pipeline worker ──────────────────────────────────────────────────
+# SQL transforms of data pipelines (data-pipelines.md D573). Its own build and
+# image: the engine never enters pnex-server, and this image holds no
+# configuration, no fixture and no front.
+FROM toolchain AS pipeline-worker-build
+ARG TARGETARCH
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=pnex-cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/src/target,id=pnex-target-pipeline-${TARGETARCH} \
+    set -eux; \
+    case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-gnu ;; \
+      arm64) triple=aarch64-unknown-linux-gnu ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    deploy/docker/touch-changed.sh target/.src-manifest; \
+    cargo build --release --locked --target "$triple" -p pnex-pipeline-worker; \
+    mv target/.src-manifest.new target/.src-manifest; \
+    mkdir -p /out/bin /out/spill; \
+    cp "target/$triple/release/pnex-pipeline-worker" /out/bin/
+
+FROM cgr.dev/chainguard/glibc-dynamic:latest AS pipeline-worker
+COPY --from=pipeline-worker-build /out/bin/ /usr/local/bin/
+# A named volume inherits this ownership (nonroot = 65532).
+COPY --from=pipeline-worker-build --chown=65532:65532 /out/spill/ /spill/
+ENV PNEX_PIPELINE_SPILL_DIR=/spill
+USER 65532:65532
+ENTRYPOINT ["pnex-pipeline-worker"]
+
 # ── server ────────────────────────────────────────────────────────────────
 FROM cgr.dev/chainguard/glibc-dynamic:latest AS server
 COPY --from=build /out/bin/ /usr/local/bin/

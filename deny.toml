@@ -44,6 +44,11 @@ ignore = [
     { id = "RUSTSEC-2026-0368", reason = "zip 2 in sherpa-onnx-sys build script only (SEC-42)" },
     { id = "RUSTSEC-2026-0369", reason = "zip 2 in sherpa-onnx-sys build script only (SEC-42)" },
     { id = "RUSTSEC-2026-0429", reason = "zip 2 in sherpa-onnx-sys build script only (SEC-42)" },
+    # quick-xml 0.39 in object_store 0.13, pinned by DataFusion 55: it parses the
+    # answers of our own S3, never a user file. Remove when DataFusion moves to
+    # object_store 0.14, which fixes it (data-pipelines.md §9.8).
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml in object_store 0.13, S3 answers only" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml in object_store 0.13, S3 answers only" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained (unic-langid macros, build time)" },
 ]
 

@@ -431,6 +431,14 @@ tasks:
       - '{{.G}} docker buildx build -f deploy/docker/Dockerfile --target server -t pnex-server:{{.TAG}} --load .'
       - '{{.G}} docker buildx build -f deploy/docker/Dockerfile --target builder -t pnex-builder:{{.TAG}} --load .'
 
+  pipeline-worker:up:
+    desc: Build and start the worker of data pipelines (D573) on the local app stack — TAG=dev by default
+    vars:
+      TAG: '{{.TAG | default "dev"}}'
+    cmds:
+      - '{{.G}} docker buildx build -f deploy/docker/Dockerfile --target pipeline-worker -t pnex-pipeline-worker:{{.TAG}} --load .'
+      - docker compose -f compose.yaml -f compose.app.yaml --profile pipelines up -d --no-deps pnex-pipeline-worker
+
   changelog:
     desc: Release notes from the Conventional Commits (cliff.toml) — unreleased commits by default; `-- --latest` = last tag, `-- -o CHANGELOG.md` = whole history
     cmds:
