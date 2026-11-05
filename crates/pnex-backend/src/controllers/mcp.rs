@@ -37,6 +37,7 @@ devices and deploying or stopping flows are not available here: they stay in the
 async fn rpc(
     State(ctx): State<AppContext>,
     auth: std::result::Result<AuthUser, loco_rs::Error>,
+    replay: Option<axum::Extension<AppRouter>>,
     headers: HeaderMap,
     Json(msg): Json<Value>,
 ) -> Result<Response> {
@@ -71,8 +72,10 @@ async fn rpc(
         }
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": mcp::tool_list() })),
-        "tools/call" => match ctx.shared_store.get::<AppRouter>() {
-            Some(AppRouter(router)) => mcp::call(router, &headers, params).await,
+        "tools/call" => match replay {
+            Some(axum::Extension(AppRouter(router))) => {
+                mcp::call((*router).clone(), &headers, params).await
+            }
             None => Err((-32603, "server not ready".to_string())),
         },
         other => Err((-32601, format!("method `{other}` not found"))),

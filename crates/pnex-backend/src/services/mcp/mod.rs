@@ -14,9 +14,9 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde_json::{json, Map, Value};
 use tower::ServiceExt;
 
-/// Final app router, stored at boot (`App::after_routes`) for the replays.
+/// Final app router, carried by each request (`App::after_routes`) for the replays.
 #[derive(Clone)]
-pub struct AppRouter(pub axum::Router);
+pub struct AppRouter(pub std::sync::Arc<axum::Router>);
 
 /// Protocol revisions this server speaks, newest first.
 pub const PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
