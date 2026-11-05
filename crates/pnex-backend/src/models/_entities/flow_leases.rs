@@ -10,6 +10,10 @@ pub struct Model {
     pub name: String,
     pub holder: String,
     pub expires_at: DateTimeWithTimeZone,
+    /// Server version of the holder (`app_version`), set when it renews.
+    pub holder_version: String,
+    /// When this holder took the lease: unchanged by a renewal.
+    pub taken_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

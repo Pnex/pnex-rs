@@ -83,6 +83,13 @@ async fn bus_nodes(ctx: &AppContext) -> Option<Vec<String>> {
 pub(super) async fn probe(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("topology", OK);
     out.metrics.push(text_metric("cluster_runtime", runtime()));
+    // Sweeps run on one pod whether or not the flow engine does.
+    let leases = live_leases(&ctx.db).await;
+    for l in &leases {
+        let mut m = text_metric("cluster_lease", lease_text(l, chrono::Utc::now()));
+        m.label = Some(l.name.clone());
+        out.metrics.push(m);
+    }
     if !FlowSettings::from_config(&ctx.config).enabled {
         out.status = NOT_CONFIGURED;
         out.detail = Some("flow engine disabled (settings.flow.enabled = false)".into());
@@ -128,8 +135,50 @@ pub(super) async fn probe(ctx: &AppContext) -> ComponentStatus {
     } else if controller.is_none() {
         out.status = DEGRADED;
         out.detail = Some("no placement controller holds the lease".into());
+    } else if let Some(l) = other_version(&leases, &crate::app::app_version()) {
+        out.status = DEGRADED;
+        out.detail = Some(format!(
+            "{} runs on another version: {}",
+            l.name, l.holder_version
+        ));
     }
     out
+}
+
+/// Leases in force, by name. Errors read as none: the database probe reports them.
+async fn live_leases(db: &sea_orm::DatabaseConnection) -> Vec<flow_leases::Model> {
+    use sea_orm::{ColumnTrait, QueryFilter, QueryOrder};
+    flow_leases::Entity::find()
+        .filter(flow_leases::Column::ExpiresAt.gt(chrono::Utc::now()))
+        .order_by_asc(flow_leases::Column::Name)
+        .all(db)
+        .await
+        .unwrap_or_default()
+}
+
+/// `pod · version · age`: technical text, shown as is.
+fn lease_text(l: &flow_leases::Model, now: chrono::DateTime<chrono::Utc>) -> String {
+    let secs = (now - l.taken_at.with_timezone(&chrono::Utc))
+        .num_seconds()
+        .max(0);
+    let age = match secs {
+        s if s < 60 => format!("{s}s"),
+        s if s < 3600 => format!("{}m", s / 60),
+        s if s < 86_400 => format!("{}h", s / 3600),
+        s => format!("{}d", s / 86_400),
+    };
+    format!("{} · {} · {age}", node_name(&l.holder), l.holder_version)
+}
+
+/// A lease held by a pod of another version: a partial rollout left a sweep behind.
+/// Rows written before the version existed say nothing.
+fn other_version<'a>(
+    leases: &'a [flow_leases::Model],
+    mine: &str,
+) -> Option<&'a flow_leases::Model> {
+    leases
+        .iter()
+        .find(|l| !l.holder_version.is_empty() && l.holder_version != mine)
 }
 
 #[cfg(test)]
@@ -138,6 +187,43 @@ mod tests {
 
     fn names(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn lease(name: &str, holder: &str, version: &str, age_secs: i64) -> flow_leases::Model {
+        let now = chrono::Utc::now();
+        flow_leases::Model {
+            name: name.into(),
+            holder: holder.into(),
+            expires_at: (now + chrono::Duration::seconds(60)).into(),
+            holder_version: version.into(),
+            taken_at: (now - chrono::Duration::seconds(age_secs)).into(),
+        }
+    }
+
+    #[test]
+    fn a_lease_names_its_pod_version_and_age() {
+        let l = lease(
+            "task:object-imports",
+            "pnex-api-x:1:1792",
+            "0.3.0 (abc)",
+            7200,
+        );
+        assert_eq!(
+            lease_text(&l, chrono::Utc::now()),
+            "pnex-api-x · 0.3.0 (abc) · 2h"
+        );
+    }
+
+    #[test]
+    fn only_another_known_version_is_reported() {
+        let same = lease("a", "p", "1", 0);
+        let unknown = lease("b", "p", "", 0);
+        let old = lease("c", "p", "0", 0);
+        assert!(other_version(&[same.clone(), unknown.clone()], "1").is_none());
+        assert_eq!(
+            other_version(&[same, unknown, old], "1").map(|l| l.name.as_str()),
+            Some("c")
+        );
     }
 
     #[test]

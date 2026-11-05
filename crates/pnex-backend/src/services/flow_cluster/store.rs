@@ -285,33 +285,48 @@ pub async fn try_lease(
 ) -> Result<bool, DbErr> {
     use sea_orm::ConnectionTrait;
     let ttl_secs = ttl_ms as f64 / 1000.0;
-    let res = flow_leases::Entity::update_many()
-        .col_expr(flow_leases::Column::Holder, Expr::value(holder))
-        .col_expr(
-            flow_leases::Column::ExpiresAt,
-            Expr::cust_with_values("now() + make_interval(secs => $1)", [ttl_secs]),
-        )
-        .filter(flow_leases::Column::Name.eq(name))
-        .filter(
-            sea_orm::Condition::any()
-                .add(flow_leases::Column::Holder.eq(holder))
-                .add(Expr::col(flow_leases::Column::ExpiresAt).lt(Expr::cust("now()"))),
-        )
-        .exec(db)
-        .await?;
-    if res.rows_affected == 1 {
-        return Ok(true);
-    }
-    let ins = db
-        .execute_raw(sea_orm::Statement::from_sql_and_values(
+    let version = crate::app::app_version();
+    let values = || -> Vec<sea_orm::Value> {
+        vec![
+            name.into(),
+            holder.into(),
+            ttl_secs.into(),
+            version.as_str().into(),
+        ]
+    };
+    // `now()` is the start of the statement: only a take-over leaves `taken_at` equal to it.
+    let renewed = db
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "INSERT INTO flow_leases (name, holder, expires_at) \
-             VALUES ($1, $2, now() + make_interval(secs => $3)) \
-             ON CONFLICT (name) DO NOTHING",
-            [name.into(), holder.into(), ttl_secs.into()],
+            "UPDATE flow_leases l SET \
+               taken_at = CASE WHEN l.holder = $2 THEN l.taken_at ELSE now() END, \
+               holder = $2, holder_version = $4, \
+               expires_at = now() + make_interval(secs => $3) \
+             WHERE l.name = $1 AND (l.holder = $2 OR l.expires_at < now()) \
+             RETURNING l.taken_at = now() AS taken",
+            values(),
         ))
         .await?;
-    Ok(ins.rows_affected() == 1)
+    let (mine, taken) = match renewed {
+        Some(row) => (true, row.try_get::<bool>("", "taken")?),
+        None => {
+            let ins = db
+                .execute_raw(sea_orm::Statement::from_sql_and_values(
+                    sea_orm::DatabaseBackend::Postgres,
+                    "INSERT INTO flow_leases (name, holder, expires_at, holder_version) \
+                     VALUES ($1, $2, now() + make_interval(secs => $3), $4) \
+                     ON CONFLICT (name) DO NOTHING",
+                    values(),
+                ))
+                .await?;
+            let won = ins.rows_affected() == 1;
+            (won, won)
+        }
+    };
+    if taken {
+        tracing::info!(lease = name, holder, %version, "lease taken");
+    }
+    Ok(mine)
 }
 
 /// Releases every `task:*` singleton lease held by `holder` (graceful

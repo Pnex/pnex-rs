@@ -564,6 +564,22 @@ async fn leases_have_a_single_holder_expire_and_can_be_released() {
                 .unwrap(),
             "renewed"
         );
+        let lease = || async {
+            pnex_backend::models::_entities::flow_leases::Entity::find_by_id(
+                "task:test".to_string(),
+            )
+            .one(db)
+            .await
+            .unwrap()
+            .unwrap()
+        };
+        let first = lease().await;
+        assert_eq!(first.holder_version, pnex_backend::app::app_version());
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        store::try_lease(db, "task:test", "pod-1", 400)
+            .await
+            .unwrap();
+        assert_eq!(lease().await.taken_at, first.taken_at, "a renewal keeps it");
         tokio::time::sleep(Duration::from_millis(500)).await;
         assert!(
             store::try_lease(db, "task:test", "pod-2", 400)
@@ -571,6 +587,9 @@ async fn leases_have_a_single_holder_expire_and_can_be_released() {
                 .unwrap(),
             "taken over once expired"
         );
+        let taken = lease().await;
+        assert_eq!(taken.holder, "pod-2");
+        assert!(taken.taken_at > first.taken_at, "a take-over moves it");
         assert!(!store::try_lease(db, "task:test", "pod-1", 400)
             .await
             .unwrap());
