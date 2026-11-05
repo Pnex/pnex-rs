@@ -321,11 +321,16 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
         || matches!(route, Route::Lab {} | Route::LabProjectPage { .. })
         || at(Route::Studio {})
         || at(Route::Annotations {});
+    let pipelines = matches!(
+        route,
+        Route::Pipelines {} | Route::PipelineStudio { .. } | Route::PipelineTable { .. }
+    );
     let devices = at(Route::Devices {})
         || at(Route::Catalog {})
         || at(Route::EdgeRefs {})
         || at(Route::BrowserAgents {})
         || matches!(route, Route::WebSites {} | Route::WebSiteStudio { .. })
+        || pipelines
         || matches!(route, Route::Mailboxes {} | Route::MailboxMessages { .. })
         || at(Route::Firmware {});
     let automation = matches!(route, Route::Flows { .. })
@@ -539,6 +544,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::WebSites {},
                     label: t!("nav-web-sites"),
                     active: matches!(route, Route::WebSites {} | Route::WebSiteStudio { .. }),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Pipelines {},
+                    label: t!("nav-pipelines"),
+                    active: pipelines,
                     on_navigate,
                 }
                 NavItem {

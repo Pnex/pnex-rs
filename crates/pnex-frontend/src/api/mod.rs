@@ -56,6 +56,8 @@ pub mod ontology;
 pub mod orgs;
 pub mod ota;
 pub mod pins;
+/// Site navigation rules and their runs (site-recipes.md D323–D326).
+pub mod pipelines;
 pub mod proposals;
 /// Cross-cutting organisation layer (D42).
 pub mod resources;
@@ -63,7 +65,6 @@ pub mod resources;
 pub mod search;
 /// Org secrets vault (D110–D117).
 pub mod secrets;
-/// Site navigation rules and their runs (site-recipes.md D323–D326).
 pub mod site_recipes;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub mod stitch_jobs;

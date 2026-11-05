@@ -1,10 +1,11 @@
 use super::*;
 
 /// Canonical list of the kinds offered for adding (mockup order).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 53] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 54] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
+    PaletteKind::DatasetTrigger,
     PaletteKind::MailReceived,
     PaletteKind::Weather,
     PaletteKind::Value,
@@ -99,6 +100,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::MemoryRead => "memory-read",
         PaletteKind::ControlSource => "control-source",
         PaletteKind::ActionTrigger => "action-trigger",
+        PaletteKind::DatasetTrigger => "dataset-trigger",
         PaletteKind::MailReceived => "mail-received",
         PaletteKind::OntologyQuery => "ontology-query",
         PaletteKind::OntologyAggregate => "ontology-aggregate",
@@ -168,6 +170,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::MemoryRead => (PaletteIcon::Database, "bg-green-50 text-green-700"),
         PaletteKind::ControlSource => (PaletteIcon::Gauge, "bg-signal-50 text-signal-600"),
         PaletteKind::ActionTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
+        PaletteKind::DatasetTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
         PaletteKind::MailReceived => (PaletteIcon::Gauge, "bg-sky-50 text-sky-700"),
         PaletteKind::OntologyQuery => (PaletteIcon::Database, "bg-teal-50 text-teal-700"),
         PaletteKind::OntologyAggregate => (PaletteIcon::Gauge, "bg-teal-50 text-teal-700"),
@@ -230,6 +233,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::MemoryRead { .. } => PaletteKind::MemoryRead,
         FlowNodeKind::ControlSource { .. } => PaletteKind::ControlSource,
         FlowNodeKind::ActionTrigger { .. } => PaletteKind::ActionTrigger,
+        FlowNodeKind::DatasetTrigger { .. } => PaletteKind::DatasetTrigger,
         FlowNodeKind::MailReceived { .. } => PaletteKind::MailReceived,
         FlowNodeKind::OntologyQuery { .. } => PaletteKind::OntologyQuery,
         FlowNodeKind::OntologyAggregate { .. } => PaletteKind::OntologyAggregate,
@@ -287,6 +291,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         PaletteKind::Inject
         | PaletteKind::ControlSource
         | PaletteKind::ActionTrigger
+        | PaletteKind::DatasetTrigger
         | PaletteKind::MailReceived
         | PaletteKind::CameraSource
         | PaletteKind::MediaSource
@@ -516,6 +521,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::ActionTrigger => (
             t!("flows-palette-action-trigger").to_string(),
             t!("flows-palette-action-trigger-help").to_string(),
+        ),
+        PaletteKind::DatasetTrigger => (
+            t!("flows-palette-dataset-trigger").to_string(),
+            t!("flows-palette-dataset-trigger-help").to_string(),
         ),
         PaletteKind::MailReceived => (
             t!("flows-palette-mail-received").to_string(),

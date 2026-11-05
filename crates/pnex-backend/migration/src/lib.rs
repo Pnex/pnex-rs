@@ -83,6 +83,18 @@ mod m20261104_000073_import_dataset_transactions;
 mod m20261104_000074_import_skipped_keys;
 mod m20261104_000075_dataset_guards;
 mod m20261104_000076_worker_reads_fingerprints;
+mod m20261104_000077_data_builds;
+mod m20261104_000078_runners;
+mod m20261105_000078_connectors;
+mod m20261105_000079_lease_version;
+mod m20261105_000080_pipeline_version_author;
+mod m20261105_000090_image_registries;
+mod m20261105_000091_environments;
+mod m20261105_000092_environment_builds;
+mod m20261105_000093_environment_scans;
+mod m20261105_000094_environment_active_build;
+mod m20261105_000095_environment_sbom;
+mod m20261105_000096_dataset_uploads;
 
 pub struct Migrator;
 
@@ -162,6 +174,18 @@ impl MigratorTrait for Migrator {
             Box::new(m20261104_000074_import_skipped_keys::Migration),
             Box::new(m20261104_000075_dataset_guards::Migration),
             Box::new(m20261104_000076_worker_reads_fingerprints::Migration),
+            Box::new(m20261104_000077_data_builds::Migration),
+            Box::new(m20261105_000078_connectors::Migration),
+            Box::new(m20261105_000079_lease_version::Migration),
+            Box::new(m20261105_000080_pipeline_version_author::Migration),
+            Box::new(m20261104_000078_runners::Migration),
+            Box::new(m20261105_000090_image_registries::Migration),
+            Box::new(m20261105_000091_environments::Migration),
+            Box::new(m20261105_000092_environment_builds::Migration),
+            Box::new(m20261105_000093_environment_scans::Migration),
+            Box::new(m20261105_000094_environment_active_build::Migration),
+            Box::new(m20261105_000095_environment_sbom::Migration),
+            Box::new(m20261105_000096_dataset_uploads::Migration),
         ]
     }
 }

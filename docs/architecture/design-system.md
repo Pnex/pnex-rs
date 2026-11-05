@@ -264,6 +264,12 @@ les règles plus anciennes qui les contredisent.
 | Groupe de menu : tout ce qui alimente PNeX (appareils, agents navigateur, sites web) | Sources | Sources | pas « Appareils » pour le groupe |
 | Source continue (pistes audio et/ou vidéo : caméra IP, direct, fichier) | Flux | Stream | une caméra-appareil |
 | Lignes versionnées qu'un pipeline lit et écrit (D569, Q-P7) | Table | Table | ni « jeu de données », ni « dataset » à l'écran (sauf images de Vision Lab et ressources data.gouv.fr) |
+| Chaîne de traitements SQL d'une table à l'autre (D571) | Pipeline | Pipeline | pas « flux », pas « flow », pas « import » |
+| Requête d'un pipeline, de ses tables lues à sa table écrite (D358) | Traitement | Transform | pas « transformation », pas « étape » (= règle de navigation), pas « nœud » (= flow) |
+| Un passage d'un pipeline (D358) | Exécution | Run | pas « passage » (= règle de navigation), pas « job » |
+| Une cible et ce dont elle dépend, exécutés dans l'ordre (D575) | Exécution enchaînée | Chained run | pas « build » (= compilation de firmware) |
+| Condition sur le résultat d'un traitement avant sa validation (D576) | Contrôle | Check | — |
+| Accès enregistré à une base externe, identifiants au coffre (D352) | Connecteur | Connector | pas « connexion » (= se connecter), pas « source » |
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | Réglage de transcription d'un flux : modèle, langue, détection de voix, diarisation (D164) | Profil de transcription | Transcription profile | pas « modèle » (= le fichier importé) |
 | Profil de transcription pris quand rien d'autre n'est choisi, un par org | Profil par défaut | Default profile | pas « modèle par défaut », pas « profil principal » |

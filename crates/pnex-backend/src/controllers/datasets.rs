@@ -8,14 +8,16 @@ use axum::routing::{get, post, put};
 use axum::Json;
 use loco_rs::controller::{format, ErrorDetail};
 use loco_rs::prelude::*;
-use pnex_core::datasets::{DatasetIdentityInput, DatasetInput, DatasetTransactionKind};
+use pnex_core::datasets::{
+    DatasetIdentityInput, DatasetInput, DatasetTransactionKind, DatasetUploadComplete,
+    DatasetUploadInput, UPLOAD_PART_MAX_BYTES,
+};
 use pnex_core::err_codes;
 use uuid::Uuid;
 
 use crate::auth::OrgContext;
 use crate::controllers::pagination::{self, PageParams};
-use crate::services::datasets::csv::CsvError;
-use crate::services::datasets::{self, DatasetError};
+use crate::services::datasets::{self, uploads, DatasetError};
 
 const DEFAULT_SAMPLE_ROWS: usize = 50;
 
@@ -25,10 +27,22 @@ pub fn routes() -> Routes {
         .add("/datasets", get(list).post(create))
         .add("/datasets/{id}", get(one).delete(remove))
         .add("/datasets/{id}/identity", put(set_identity))
+        .add("/datasets/{id}/freshness", put(set_freshness))
         .add("/datasets/{id}/transactions", get(transactions))
         // A raw body stream: no body limit layer applies, `load_csv` holds the bound.
         .add("/datasets/{id}/transactions/csv", post(load_csv))
+        .add("/datasets/{id}/uploads", post(upload_start))
+        .add("/datasets/{id}/uploads/{upload}", get(upload_get))
+        .add(
+            "/datasets/{id}/uploads/{upload}/parts/{part}",
+            put(upload_part),
+        )
+        .add(
+            "/datasets/{id}/uploads/{upload}/complete",
+            post(upload_complete),
+        )
         .add("/datasets/{id}/sample", get(sample))
+        .add("/datasets/{id}/profile", get(profile))
 }
 
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
@@ -41,11 +55,17 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             create,
             remove,
             set_identity,
+            set_freshness,
             transactions,
             load_csv,
-            sample
+            upload_start,
+            upload_get,
+            upload_part,
+            upload_complete,
+            sample,
+            profile
         ),
-        components(schemas(DatasetTransactionKind))
+        components(schemas(DatasetTransactionKind, pnex_core::datasets::DatasetUploadState))
     )]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
@@ -56,14 +76,7 @@ fn coded(status: StatusCode, code: &str, text: &str, args: Option<serde_json::Va
 }
 
 fn dataset_error(e: DatasetError) -> Result<Response> {
-    let csv = |args| {
-        coded(
-            StatusCode::BAD_REQUEST,
-            err_codes::DATASET_CSV_INVALID,
-            "The file is not a CSV this server can read.",
-            Some(args),
-        )
-    };
+    let args = e.args();
     Err(match e {
         DatasetError::Invalid { field, token } => return Ok(super::field_error(&field, &token)),
         DatasetError::NotFound => Error::CustomError(
@@ -91,43 +104,58 @@ fn dataset_error(e: DatasetError) -> Result<Response> {
                 "The load stopped before it could commit; run it again.",
             ),
         ),
-        DatasetError::Csv(CsvError::Empty) => csv(serde_json::json!({ "reason": "empty" })),
-        DatasetError::Csv(CsvError::RecordTooLarge { line }) => {
-            csv(serde_json::json!({ "reason": "record_too_large", "line": line }))
-        }
-        DatasetError::Csv(CsvError::TooManyColumns { line }) => {
-            csv(serde_json::json!({ "reason": "too_many_columns", "line": line }))
-        }
-        DatasetError::Csv(CsvError::ColumnNameTooLong) => {
-            csv(serde_json::json!({ "reason": "column_name_too_long" }))
-        }
-        DatasetError::Csv(CsvError::DuplicateColumn { name }) => {
-            csv(serde_json::json!({ "reason": "duplicate_column", "column": name }))
-        }
-        DatasetError::Csv(CsvError::FieldCount {
-            line,
-            expected,
-            got,
-        }) => csv(serde_json::json!({
-            "reason": "field_count", "line": line, "expected": expected, "got": got
-        })),
-        DatasetError::SchemaMismatch { columns } => coded(
+        DatasetError::Csv(_) => coded(
+            StatusCode::BAD_REQUEST,
+            err_codes::DATASET_CSV_INVALID,
+            "The file is not a CSV this server can read.",
+            args,
+        ),
+        DatasetError::SchemaMismatch { .. } => coded(
             StatusCode::CONFLICT,
             err_codes::DATASET_SCHEMA_MISMATCH,
             "The columns of the file are not those of the dataset.",
-            Some(serde_json::json!({ "columns": columns })),
+            args,
         ),
         DatasetError::QuotaExceeded => coded(
             StatusCode::CONFLICT,
             err_codes::DATASET_QUOTA,
             "The org's dataset storage is full.",
-            Some(serde_json::json!({ "max": datasets::QUOTA_BYTES })),
+            args,
         ),
         DatasetError::SourceTooLarge => coded(
             StatusCode::PAYLOAD_TOO_LARGE,
             err_codes::DATASET_SOURCE_TOO_LARGE,
             "The file is over the size a load accepts.",
-            Some(serde_json::json!({ "max": datasets::SOURCE_MAX_BYTES })),
+            args,
+        ),
+        DatasetError::UploadNotFound => Error::CustomError(
+            StatusCode::NOT_FOUND,
+            ErrorDetail::new(err_codes::DATASET_UPLOAD_NOT_FOUND, "Upload not found."),
+        ),
+        DatasetError::UploadClosed | DatasetError::UploadLost => Error::CustomError(
+            StatusCode::CONFLICT,
+            ErrorDetail::new(
+                err_codes::DATASET_UPLOAD_CLOSED,
+                "The upload no longer takes parts.",
+            ),
+        ),
+        DatasetError::PartTooLarge => coded(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            err_codes::DATASET_UPLOAD_PART_TOO_LARGE,
+            "The part is over the size of a part.",
+            Some(serde_json::json!({ "max": UPLOAD_PART_MAX_BYTES })),
+        ),
+        DatasetError::PartsMissing { missing, count } => coded(
+            StatusCode::CONFLICT,
+            err_codes::DATASET_UPLOAD_PARTS_MISSING,
+            "The parts received are not those announced.",
+            Some(serde_json::json!({ "missing": missing, "count": count })),
+        ),
+        DatasetError::TooManyUploads => coded(
+            StatusCode::CONFLICT,
+            err_codes::DATASET_UPLOAD_TOO_MANY,
+            "Too many uploads are in progress in this org.",
+            None,
         ),
         DatasetError::SourceInterrupted => Error::CustomError(
             StatusCode::BAD_REQUEST,
@@ -305,6 +333,36 @@ async fn remove(
     }
 }
 
+/// `PUT /api/v1/datasets/{id}/freshness`
+#[utoipa::path(
+    put,
+    path = "/api/v1/datasets/{id}/freshness",
+    tag = "datasets",
+    operation_id = "datasets_freshness_set",
+    summary = "Set how long a dataset may go without a new version",
+    description = "Past this many hours without a new version the dataset reads as stale and the org is warned once; `null` stops the check. Requires `datasets:write`.",
+    params(("id" = String, Path, format = "uuid", description = "Dataset id (UUID)")),
+    request_body = pnex_core::datasets::DatasetFreshnessInput,
+    responses(
+        (status = 200, body = pnex_core::datasets::Dataset),
+        (status = 400, description = "`field-invalid` on `max_age_hours`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`dataset-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn set_freshness(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<pnex_core::datasets::DatasetFreshnessInput>,
+) -> Result<Response> {
+    match datasets::set_freshness(&ctx.db, org.org.id, id, input.max_age_hours).await {
+        Ok(d) => format::json(d),
+        Err(e) => dataset_error(e),
+    }
+}
+
 /// `PUT /api/v1/datasets/{id}/identity`
 #[utoipa::path(
     put,
@@ -416,9 +474,7 @@ async fn load_csv(
 ) -> Result<Response> {
     let delimiter = match q.delimiter.as_deref() {
         None => None,
-        Some(d) if d.len() == 1 && d.is_ascii() && d != "\"" && d != "\n" && d != "\r" => {
-            d.bytes().next()
-        }
+        Some(d) if valid_delimiter(d) => d.bytes().next(),
         Some(_) => return Ok(super::field_error("delimiter", "invalid")),
     };
     let kind = q.kind.unwrap_or(DatasetTransactionKind::Snapshot);
@@ -432,6 +488,170 @@ async fn load_csv(
     let stream = body.into_data_stream();
     match datasets::load_csv(&ctx.db, &store, org.org.id, id, kind, delimiter, stream).await {
         Ok(t) => Ok((StatusCode::CREATED, Json(t)).into_response()),
+        Err(e) => dataset_error(e),
+    }
+}
+
+fn valid_delimiter(d: &str) -> bool {
+    d.len() == 1 && d.is_ascii() && d != "\"" && d != "\n" && d != "\r"
+}
+
+/// `POST /api/v1/datasets/{id}/uploads`
+#[utoipa::path(
+    post,
+    path = "/api/v1/datasets/{id}/uploads",
+    tag = "datasets",
+    operation_id = "datasets_uploads_start",
+    summary = "Open the upload of a file in parts",
+    description = "For a file over what a request may carry behind a proxy (Cloudflare: 100 MB). Send the parts with `PUT .../parts/{part}`, close with `POST .../complete`, then read the upload until it is `done` or `failed`. An upload still open on this table is replaced. Requires `datasets:write`.",
+    params(("id" = String, Path, format = "uuid", description = "Dataset id (UUID)")),
+    request_body = pnex_core::datasets::DatasetUploadInput,
+    responses(
+        (status = 201, body = pnex_core::datasets::DatasetUpload),
+        (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`dataset-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`dataset-reserved`, `dataset-transaction-open`, `dataset-upload-too-many`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn upload_start(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<DatasetUploadInput>,
+) -> Result<Response> {
+    if input
+        .delimiter
+        .as_deref()
+        .is_some_and(|d| !valid_delimiter(d))
+    {
+        return Ok(super::field_error("delimiter", "invalid"));
+    }
+    let kind = input.kind.unwrap_or(DatasetTransactionKind::Snapshot);
+    let result = match datasets::store_of(&ctx.config) {
+        Ok(store) => {
+            uploads::start(
+                &ctx.db,
+                &store,
+                org.org.id,
+                id,
+                kind,
+                input.delimiter.as_deref(),
+            )
+            .await
+        }
+        Err(e) => Err(e),
+    };
+    match result {
+        Ok(u) => Ok((StatusCode::CREATED, Json(u)).into_response()),
+        Err(e) => dataset_error(e),
+    }
+}
+
+/// `GET /api/v1/datasets/{id}/uploads/{upload}`
+#[utoipa::path(
+    get,
+    path = "/api/v1/datasets/{id}/uploads/{upload}",
+    tag = "datasets",
+    operation_id = "datasets_uploads_get",
+    summary = "State of an upload",
+    description = "Parts received, then the conversion: `done` with its `transaction_id`, or `failed` with its `code` and `args`. Requires `datasets:read`.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Dataset id (UUID)"),
+        ("upload" = String, Path, format = "uuid", description = "Upload id (UUID)")
+    ),
+    responses(
+        (status = 200, body = pnex_core::datasets::DatasetUpload),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`dataset-upload-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn upload_get(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, upload)): Path<(Uuid, Uuid)>,
+) -> Result<Response> {
+    match uploads::get(&ctx.db, org.org.id, id, upload).await {
+        Ok(u) => format::json(u),
+        Err(e) => dataset_error(e),
+    }
+}
+
+/// `PUT /api/v1/datasets/{id}/uploads/{upload}/parts/{part}`
+#[utoipa::path(
+    put,
+    path = "/api/v1/datasets/{id}/uploads/{upload}/parts/{part}",
+    tag = "datasets",
+    operation_id = "datasets_uploads_part_put",
+    summary = "Store one part of an upload",
+    description = "The bytes of the file, cut anywhere, 64 MiB at most. Parts are numbered from 1 and may come in any order; sending one again replaces it. Requires `datasets:write`.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Dataset id (UUID)"),
+        ("upload" = String, Path, format = "uuid", description = "Upload id (UUID)"),
+        ("part" = i32, Path, description = "Part number, from 1 to 1000")
+    ),
+    request_body(content = String, content_type = "application/octet-stream"),
+    responses(
+        (status = 200, body = pnex_core::datasets::DatasetUpload),
+        (status = 400, description = "`field-invalid` (`errors.fields`), `dataset-source-interrupted`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`dataset-upload-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`dataset-upload-closed`", body = crate::openapi::ErrorDetail),
+        (status = 413, description = "`dataset-upload-part-too-large` (args `max`), `dataset-source-too-large` (args `max`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn upload_part(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, upload, part)): Path<(Uuid, Uuid, i32)>,
+    body: Body,
+) -> Result<Response> {
+    let store = match datasets::store_of(&ctx.config) {
+        Ok(store) => store,
+        Err(e) => return dataset_error(e),
+    };
+    let stream = body.into_data_stream();
+    match uploads::put_part(&ctx.db, &store, org.org.id, id, upload, part, stream).await {
+        Ok(u) => format::json(u),
+        Err(e) => dataset_error(e),
+    }
+}
+
+/// `POST /api/v1/datasets/{id}/uploads/{upload}/complete`
+#[utoipa::path(
+    post,
+    path = "/api/v1/datasets/{id}/uploads/{upload}/complete",
+    tag = "datasets",
+    operation_id = "datasets_uploads_complete",
+    summary = "Close an upload and convert the file",
+    description = "Says how many parts make the file; refused if any is missing. A server then converts it in the background: read the upload until it is `done` or `failed`. Requires `datasets:write`.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Dataset id (UUID)"),
+        ("upload" = String, Path, format = "uuid", description = "Upload id (UUID)")
+    ),
+    request_body = pnex_core::datasets::DatasetUploadComplete,
+    responses(
+        (status = 202, body = pnex_core::datasets::DatasetUpload),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`dataset-upload-not-found`, `dataset-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`dataset-upload-closed`, `dataset-reserved`, `dataset-upload-parts-missing` (args `missing`, `count`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn upload_complete(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, upload)): Path<(Uuid, Uuid)>,
+    Json(input): Json<DatasetUploadComplete>,
+) -> Result<Response> {
+    match uploads::complete(&ctx.db, org.org.id, id, upload, input.parts).await {
+        Ok(u) => Ok((StatusCode::ACCEPTED, Json(u)).into_response()),
         Err(e) => dataset_error(e),
     }
 }
@@ -480,6 +700,38 @@ async fn sample(
     };
     match result {
         Ok(s) => format::json(s),
+        Err(e) => dataset_error(e),
+    }
+}
+
+/// `GET /api/v1/datasets/{id}/profile`
+#[utoipa::path(
+    get,
+    path = "/api/v1/datasets/{id}/profile",
+    tag = "datasets",
+    operation_id = "datasets_profile",
+    summary = "Read how full the columns of a dataset are",
+    description = "Row count, and for each column its type and its empty values, from the file footers of the current view. No value is read. Requires `datasets:read`.",
+    params(("id" = String, Path, format = "uuid", description = "Dataset id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::datasets::DatasetProfile),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`dataset-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn profile(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    let result = match datasets::store_of(&ctx.config) {
+        Ok(store) => datasets::profile(&ctx.db, &store, org.org.id, id).await,
+        Err(e) => Err(e),
+    };
+    match result {
+        Ok(p) => format::json(p),
         Err(e) => dataset_error(e),
     }
 }

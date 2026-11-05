@@ -81,4 +81,5 @@ export const GEO_BASE = process.env.PNEX_E2E_GEO_BASE?.replace(/\/+$/, '');
 export const DEVICE = process.env.PNEX_E2E_DEVICE;
 
 /** Where the global setup leaves the shared state (tokens, org id). */
-export const STATE_FILE = path.join(REPO_ROOT, 'e2e/.state/run.json');
+// Own file per concurrent run: a second run against another server must not change the org of the first.
+export const STATE_FILE = process.env.PNEX_E2E_STATE_FILE ?? path.join(REPO_ROOT, 'e2e/.state/run.json');

@@ -30,6 +30,12 @@ pub const MAX_DAYS: u32 = 3650;
 /// `system_settings` key of the platform default retention.
 const DEFAULT_RETENTION_KEY: &str = "default_retention_days";
 
+/// `system_settings` key of how long the provenance journal is kept (data-pipelines.md
+/// D350, Q-P1): a choice of its own, whatever the tier or the telemetry retention say.
+const HISTORY_RETENTION_KEY: &str = "history_retention_days";
+/// Provenance serves to follow an entity over years.
+pub const HISTORY_DEFAULT_DAYS: u32 = 3650;
+
 /// Fallback when nothing else is configured.
 const ENV_FALLBACK_DAYS: u32 = 30;
 
@@ -157,23 +163,22 @@ fn env_default_days() -> Option<u32> {
         .and_then(|v| v.trim().parse().ok())
 }
 
-/// Platform default retention (days) stored in `system_settings`.
-pub async fn global_default(db: &DatabaseConnection) -> Result<Option<u32>, sea_orm::DbErr> {
+async fn stored_days(db: &DatabaseConnection, key: &str) -> Result<Option<u32>, sea_orm::DbErr> {
     let row = system_settings::Entity::find()
-        .filter(system_settings::Column::Key.eq(DEFAULT_RETENTION_KEY))
+        .filter(system_settings::Column::Key.eq(key))
         .one(db)
         .await?;
     Ok(row.and_then(|r| serde_json::from_str::<u32>(&r.value).ok()))
 }
 
-/// Sets (or clears with `None`) the platform default retention.
-pub async fn set_global_default(
+async fn store_days(
     db: &DatabaseConnection,
+    key: &str,
     days: Option<u32>,
     user_id: i64,
 ) -> Result<(), sea_orm::DbErr> {
     let existing = system_settings::Entity::find()
-        .filter(system_settings::Column::Key.eq(DEFAULT_RETENTION_KEY))
+        .filter(system_settings::Column::Key.eq(key))
         .one(db)
         .await?;
     match (existing, days) {
@@ -190,7 +195,7 @@ pub async fn set_global_default(
         }
         (None, Some(days)) => {
             system_settings::ActiveModel {
-                key: Set(DEFAULT_RETENTION_KEY.to_string()),
+                key: Set(key.to_string()),
                 value: Set(days.to_string()),
                 updated_by: Set(Some(user_id)),
                 ..Default::default()
@@ -201,6 +206,36 @@ pub async fn set_global_default(
         (None, None) => {}
     }
     Ok(())
+}
+
+/// Platform default retention (days) stored in `system_settings`.
+pub async fn global_default(db: &DatabaseConnection) -> Result<Option<u32>, sea_orm::DbErr> {
+    stored_days(db, DEFAULT_RETENTION_KEY).await
+}
+
+/// Sets (or clears with `None`) the platform default retention.
+pub async fn set_global_default(
+    db: &DatabaseConnection,
+    days: Option<u32>,
+    user_id: i64,
+) -> Result<(), sea_orm::DbErr> {
+    store_days(db, DEFAULT_RETENTION_KEY, days, user_id).await
+}
+
+/// Days the provenance journal is kept.
+pub async fn history_days(db: &DatabaseConnection) -> Result<u32, sea_orm::DbErr> {
+    Ok(stored_days(db, HISTORY_RETENTION_KEY)
+        .await?
+        .unwrap_or(HISTORY_DEFAULT_DAYS))
+}
+
+/// Sets how long provenance is kept; `None` goes back to the default.
+pub async fn set_history_days(
+    db: &DatabaseConnection,
+    days: Option<u32>,
+    user_id: i64,
+) -> Result<(), sea_orm::DbErr> {
+    store_days(db, HISTORY_RETENTION_KEY, days, user_id).await
 }
 
 /// Tier of the org, if any.
@@ -268,6 +303,21 @@ pub async fn reconcile_org(
             .set_stream_retention(o2_org, &stream.name, effective.days as i64)
             .await?;
         updated += 1;
+    }
+    // Created by the first write of an object: nothing to set before that.
+    let history = history_days(db).await.map_err(|e| format!("db: {e}"))? as i64;
+    use crate::services::ontology::changes::{OBJECT_CHANGES_STREAM, OBJECT_TRANSITIONS_STREAM};
+    for journal in [OBJECT_CHANGES_STREAM, OBJECT_TRANSITIONS_STREAM] {
+        if client
+            .log_stream_retention(o2_org, journal)
+            .await?
+            .is_some_and(|days| days != history)
+        {
+            client
+                .set_log_stream_retention(o2_org, journal, history)
+                .await?;
+            updated += 1;
+        }
     }
     Ok(updated)
 }

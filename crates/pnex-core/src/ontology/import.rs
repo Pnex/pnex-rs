@@ -21,6 +21,8 @@ use crate::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 pub const ROWS_MAX: usize = 250_000;
 /// Objects and links declared by one mapping.
 pub const ENTRIES_MAX: usize = 20;
+/// Imports one mapping can wait for.
+pub const AFTER_MAX: usize = 32;
 /// Pipeline steps of one import.
 pub const STEPS_MAX: usize = 10;
 /// Elements expanded by one `each` in one row (an RS sheet lists up to
@@ -571,6 +573,10 @@ pub struct Mapping {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
     pub steps: Vec<crate::ingest::IngestConfig>,
+    /// Keys of the imports whose objects this one needs: a schedule runs them first
+    /// (data-pipelines.md D575).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub after: Vec<String>,
     #[serde(default)]
     pub objects: Vec<ObjectMap>,
     #[serde(default)]
@@ -658,6 +664,9 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
     }
     if m.name.trim().is_empty() {
         return Err(ferr("name", FIELD_REQUIRED));
+    }
+    if m.after.len() > AFTER_MAX || m.after.iter().any(|k| !valid_key(k) || *k == m.key) {
+        return Err(ferr("after", FIELD_INVALID));
     }
     if m.objects.is_empty() && m.observations.is_none() {
         return Err(ferr("objects", FIELD_REQUIRED));

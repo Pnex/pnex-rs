@@ -83,6 +83,182 @@ impl S3Config {
     pub fn store(&self) -> Result<S3Store, String> {
         S3Store::connect(self)
     }
+
+    /// Aborts the multipart uploads started more than `older_than` ago whose key
+    /// contains `key_part`. A killed process leaves its upload behind: the parts
+    /// take disk space, no object listing shows them, and opendal has no call
+    /// for them. Returns how many were aborted.
+    pub async fn abort_stale_uploads(
+        &self,
+        key_part: &str,
+        older_than: std::time::Duration,
+    ) -> Result<usize, String> {
+        let base = if self.path_style {
+            format!("{}/{}", self.endpoint.trim_end_matches('/'), self.bucket)
+        } else {
+            self.endpoint
+                .trim_end_matches('/')
+                .replacen("://", &format!("://{}.", self.bucket), 1)
+        };
+        let limit = chrono::Utc::now()
+            - chrono::Duration::from_std(older_than).map_err(|e| e.to_string())?;
+        let mut stale = Vec::new();
+        let mut page =
+            reqwest::Url::parse(&format!("{base}?uploads")).map_err(|e| e.to_string())?;
+        // Aborted once listed: deleting while listing would move the markers.
+        loop {
+            let listing = self.signed(http::Method::GET, page.as_str()).await?;
+            let (found, next) = stale_uploads(&listing, key_part, limit)?;
+            stale.extend(found);
+            let Some((key, id)) = next else { break };
+            page.set_query(Some("uploads"));
+            page.query_pairs_mut()
+                .append_pair("key-marker", &key)
+                .append_pair("upload-id-marker", &id);
+        }
+        for upload in &stale {
+            let mut url = reqwest::Url::parse(&base).map_err(|e| e.to_string())?;
+            url.path_segments_mut()
+                .map_err(|()| "S3: endpoint cannot have a path".to_string())?
+                .extend(upload.key.split('/'));
+            url.query_pairs_mut().append_pair("uploadId", &upload.id);
+            self.signed(http::Method::DELETE, url.as_str()).await?;
+        }
+        Ok(stale.len())
+    }
+
+    /// One SigV4-signed request, its body on success.
+    async fn signed(&self, method: http::Method, url: &str) -> Result<String, String> {
+        let region = if self.region.is_empty() {
+            "us-east-1"
+        } else {
+            &self.region
+        };
+        let signer = reqsign_core::Signer::new(
+            reqsign_core::Context::new(),
+            reqsign_aws_v4::StaticCredentialProvider::new(&self.access_key, &self.secret_key),
+            reqsign_aws_v4::RequestSigner::new("s3", region),
+        );
+        let (mut parts, ()) = http::Request::builder()
+            .method(method)
+            .uri(url)
+            .body(())
+            .map_err(|e| e.to_string())?
+            .into_parts();
+        signer
+            .sign(&mut parts, None)
+            .await
+            .map_err(|e| format!("S3 sign: {e}"))?;
+        let response = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())?
+            .request(parts.method, parts.uri.to_string())
+            .headers(parts.headers)
+            .send()
+            .await
+            .map_err(|e| format!("S3 uploads: {e}"))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(format!("S3 uploads: status {status}"));
+        }
+        response
+            .text()
+            .await
+            .map_err(|e| format!("S3 uploads: {e}"))
+    }
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct StaleUpload {
+    key: String,
+    id: String,
+}
+
+/// The uploads of a `ListMultipartUploads` answer started before `limit`, and the markers
+/// of the next page if there is one. An upload with a date that does not read stays:
+/// aborting a live upload loses data.
+fn stale_uploads(
+    xml: &str,
+    key_part: &str,
+    limit: chrono::DateTime<chrono::Utc>,
+) -> Result<(Vec<StaleUpload>, Option<(String, String)>), String> {
+    use quick_xml::events::Event;
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let mut found = Vec::new();
+    let (mut current, mut tag, mut initiated) = (StaleUpload::default(), Vec::new(), String::new());
+    let (mut truncated, mut next_key, mut next_id) = (false, String::new(), String::new());
+    loop {
+        match reader
+            .read_event()
+            .map_err(|e| format!("S3 uploads: {e}"))?
+        {
+            Event::Start(e) => tag = e.local_name().as_ref().to_vec(),
+            Event::Text(t) => {
+                let text = t.decode().map_err(|e| format!("S3 uploads: {e}"))?;
+                match tag.as_slice() {
+                    b"Key" => current.key = text.into_owned(),
+                    b"UploadId" => current.id = text.into_owned(),
+                    b"Initiated" => initiated = text.into_owned(),
+                    b"IsTruncated" => truncated = text == "true",
+                    b"NextKeyMarker" => next_key = text.into_owned(),
+                    b"NextUploadIdMarker" => next_id = text.into_owned(),
+                    _ => {}
+                }
+            }
+            Event::End(e) => {
+                tag.clear();
+                if e.local_name().as_ref() == b"Upload" {
+                    let old =
+                        chrono::DateTime::parse_from_rfc3339(&initiated).is_ok_and(|at| at < limit);
+                    let upload = std::mem::take(&mut current);
+                    if old && upload.key.contains(key_part) {
+                        found.push(upload);
+                    }
+                    initiated.clear();
+                }
+            }
+            Event::Eof => {
+                // No marker to go on from: stop rather than read the same page forever.
+                let next = (truncated && !next_key.is_empty()).then_some((next_key, next_id));
+                return Ok((found, next));
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod stale_upload_tests {
+    use super::*;
+
+    #[test]
+    fn only_old_uploads_of_the_right_keys_are_stale() {
+        let row = |key: &str, id: &str, at: &str| {
+            format!("<Upload><Initiator><ID>x</ID></Initiator><Key>{key}</Key><UploadId>{id}</UploadId><Initiated>{at}</Initiated></Upload>")
+        };
+        let xml = format!(
+            "<?xml version=\"1.0\"?><ListMultipartUploadsResult><Bucket>b</Bucket><IsTruncated>true</IsTruncated><NextKeyMarker>k</NextKeyMarker><NextUploadIdMarker>u</NextUploadIdMarker>{}{}{}{}</ListMultipartUploadsResult>",
+            row("org_1/datasets/a.parquet", "old", "2026-11-01T00:00:00.000Z"),
+            row("org_1/datasets/b.parquet", "young", "2026-11-05T00:00:00.000Z"),
+            row("org_1/media/c.mp4", "other", "2026-11-01T00:00:00.000Z"),
+            row("org_1/datasets/d.parquet", "unreadable", "yesterday"),
+        );
+        let limit = "2026-11-04T00:00:00Z".parse().unwrap();
+        assert_eq!(
+            stale_uploads(&xml, "/datasets/", limit).unwrap(),
+            (
+                vec![StaleUpload {
+                    key: "org_1/datasets/a.parquet".into(),
+                    id: "old".into()
+                }],
+                Some(("k".to_string(), "u".to_string()))
+            )
+        );
+        let last =
+            "<ListMultipartUploadsResult><IsTruncated>false</IsTruncated></ListMultipartUploadsResult>";
+        assert_eq!(stale_uploads(last, "", limit).unwrap(), (vec![], None));
+    }
 }
 
 /// opendal 0.58 serves HTTP services (S3) through a process-wide transport

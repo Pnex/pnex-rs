@@ -291,6 +291,48 @@ pub(crate) async fn unknown_actions_for_deploy(
     Ok(violations)
 }
 
+/// Tables gate (data-pipelines.md D578): a `dataset_trigger` names a table of the
+/// org, otherwise it would never fire.
+pub(crate) async fn unknown_datasets_for_deploy(
+    ctx: &AppContext,
+    org_id: i64,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        let pnex_core::FlowNodeKind::DatasetTrigger { config } = &n.kind else {
+            continue;
+        };
+        if let Some((code, message)) = config.check_deployable() {
+            violations.push(pnex_core::FlowViolation::new(
+                Some(n.id.as_str()),
+                code,
+                message,
+            ));
+            continue;
+        }
+        let found = ctx
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT 1 AS x FROM datasets WHERE org_id = $1 AND name = $2",
+                vec![org_id.into(), config.dataset.clone().into()],
+            ))
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+        if found.is_none() {
+            violations.push(pnex_core::FlowViolation::with_args(
+                Some(n.id.as_str()),
+                pnex_core::err_codes::DATASET_NOT_FOUND,
+                "dataset_trigger names a table absent from the organization",
+                serde_json::json!({ "dataset": config.dataset }),
+            ));
+        }
+    }
+    Ok(violations)
+}
+
 /// Mailboxes gate (mail.md D454): a `mail_received` or a `mail_send`
 /// names mailboxes, all of which the person deploying reads; a flow never
 /// listens to, nor writes from, someone else's mailbox.
@@ -749,6 +791,7 @@ async fn deploy_version(
         );
         conflicts.extend(unknown_controls_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(unknown_actions_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
+        conflicts.extend(unknown_datasets_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(dynamic_recipients_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(mailboxes_for_deploy(&ctx, &org, &candidate_graph).await?);
         conflicts.extend(

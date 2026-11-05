@@ -30,6 +30,7 @@ export const ROUTES: RouteCase[] = [
   { path: '/catalog', title: 'nav-catalog' },
   { path: '/edges/refs', title: 'edgerefs-title' },
   { path: '/web-sites', title: 'web-sites-title' },
+  { path: '/pipelines', title: 'pipe-title' },
   { path: '/mailboxes', title: 'mailboxes-title' },
   { path: '/orgs', title: 'orgs-title' },
   { path: '/orgs/current', title: null },

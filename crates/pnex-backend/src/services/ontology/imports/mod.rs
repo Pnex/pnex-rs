@@ -24,9 +24,10 @@ use pnex_core::ontology::import::{
     Mapping, ObjectImportInput, ObjectImportView, MAPPING_MAX_BYTES, PAGES_MAX,
 };
 use pnex_core::ontology::recurrence::Recurrence;
+use pnex_core::pipelines::{BuildTargetKind, GraphNode};
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, FromQueryResult, Statement,
     TransactionTrait,
 };
 use serde_json::Value;
@@ -241,7 +242,7 @@ async fn check_input<C: ConnectionTrait>(
 }
 
 /// Next scheduled start: the first occurrence day whose run hour is ahead.
-fn next_run(recurrence: Option<&Value>) -> Option<DateTimeWithTimeZone> {
+pub(crate) fn next_run(recurrence: Option<&Value>) -> Option<DateTimeWithTimeZone> {
     let r = Recurrence::parse(recurrence?)?;
     let now = chrono::Utc::now();
     let today = now.date_naive();
@@ -304,6 +305,8 @@ pub async fn create(
     pack_key: Option<&str>,
 ) -> Result<ObjectImportView> {
     let m = check_input(db, org_id, input).await?;
+    let id = Uuid::new_v4();
+    check_no_cycle(db, org_id, id, input, &m).await?;
     let count = db
         .query_one_raw(stmt(
             "SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = $1",
@@ -315,7 +318,6 @@ pub async fn create(
     if count >= IMPORTS_MAX {
         return Err(invalid("name", format!("{FIELD_MAX_LENGTH}:{IMPORTS_MAX}")));
     }
-    let id = Uuid::new_v4();
     db.execute_raw(stmt(
         "INSERT INTO object_imports (id, org_id, name, mapping_yaml, pack_key, source, source_url, \
            mode, recurrence, next_run_at, max_pages, created_by) \
@@ -375,6 +377,7 @@ pub async fn update(
         ..input.clone()
     };
     let m = check_input(db, org_id, input).await?;
+    check_no_cycle(db, org_id, id, input, &m).await?;
     let done = db
         .execute_raw(stmt(
             "UPDATE object_imports SET name = $3, mapping_yaml = $4, source = $5, source_url = $6, \
@@ -1053,7 +1056,7 @@ pub fn release_memory() {
 }
 
 /// Machine code journaled for a failed application.
-fn error_code(e: &OntologyError) -> &'static str {
+pub(crate) fn error_code(e: &OntologyError) -> &'static str {
     match e {
         OntologyError::Import { code, .. } => code,
         OntologyError::KeyTaken | OntologyError::VersionConflict { .. } => {
@@ -1859,8 +1862,6 @@ async fn scheduled(
 /// In-app notice to the org of a refused or failed scheduled run
 /// (D303: never silent).
 async fn notify_refused(db: &DatabaseConnection, imp: &ImportRow, code: &str, args: Value) {
-    use crate::models::_entities::notify_channels;
-    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
     tracing::info!(import = %imp.id, org = imp.org_id, code, "scheduled import not applied");
     let msg = pnex_notify::Message {
         subject: Some(format!("Import {} not applied", imp.name)),
@@ -1875,25 +1876,111 @@ async fn notify_refused(db: &DatabaseConnection, imp: &ImportRow, code: &str, ar
             "args": args,
         }),
     };
-    let channel = notify_channels::Entity::find()
-        .filter(notify_channels::Column::OrgId.eq(imp.org_id))
-        .filter(notify_channels::Column::Kind.eq("websocket"))
-        .order_by_asc(notify_channels::Column::Id)
-        .one(db)
-        .await
-        .ok()
-        .flatten();
-    if let Some(ch) = channel {
-        crate::services::notify::deliver_in_app(
-            pnex_core::NotifyDeliveryEntry {
-                org_id: imp.org_id,
-                channel_id: ch.id,
-                source: "import".into(),
-                ..Default::default()
-            },
-            &msg,
-        );
+    crate::services::data_builds::notify_org(db, imp.org_id, "import", msg).await;
+}
+
+/// `start` refused because this pod stops: another pod will start the step.
+pub(crate) fn stopping_refusal(e: &OntologyError) -> bool {
+    error_code(e) == err_codes::IMPORT_SERVER_STOPPING
+}
+
+fn graph_node(imp: &ImportRow, table_of: impl Fn(&str) -> Option<String>) -> GraphNode {
+    let m = imp.mapping().ok();
+    let source = imp.source();
+    GraphNode {
+        kind: BuildTargetKind::Import,
+        id: imp.id.to_string(),
+        name: imp.name.clone(),
+        runnable: m
+            .as_ref()
+            .is_some_and(|m| !(m.steps.is_empty() && source == ImportSource::File)),
+        reads: match (source, imp.source_url.as_deref()) {
+            (ImportSource::Dataset, Some(id)) => table_of(id).into_iter().collect(),
+            _ => Vec::new(),
+        },
+        writes: m
+            .as_ref()
+            .filter(|m| sync::steps_fill_a_table(m))
+            .map(|m| vec![m.key.clone()])
+            .unwrap_or_default(),
+        after: m.as_ref().map(|m| m.after.clone()).unwrap_or_default(),
+        key: m.map(|m| m.key),
     }
+}
+
+async fn table_names<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+) -> Result<std::collections::HashMap<String, String>> {
+    let rows = db
+        .query_all_raw(stmt(
+            "SELECT id::text AS id, name FROM datasets WHERE org_id = $1",
+            vec![org_id.into()],
+        ))
+        .await?;
+    let mut out = std::collections::HashMap::with_capacity(rows.len());
+    for r in &rows {
+        out.insert(r.try_get("", "id")?, r.try_get("", "name")?);
+    }
+    Ok(out)
+}
+
+/// The imports of an org as the scheduler sees them (D575).
+pub(crate) async fn graph_nodes<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+) -> std::result::Result<Vec<GraphNode>, DbErr> {
+    let db_err = |e: OntologyError| match e {
+        OntologyError::Db(e) => e,
+        e => DbErr::Custom(format!("{e:?}")),
+    };
+    let tables = table_names(db, org_id).await.map_err(db_err)?;
+    let rows = ImportRow::find_by_statement(stmt(
+        &format!("SELECT {IMPORT_COLUMNS} FROM object_imports WHERE org_id = $1 ORDER BY name"),
+        vec![org_id.into()],
+    ))
+    .all(db)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| graph_node(r, |id| tables.get(id).cloned()))
+        .collect())
+}
+
+/// Refuses a mapping that closes a dependency loop (D575).
+async fn check_no_cycle(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    input: &ObjectImportInput,
+    m: &Mapping,
+) -> Result<()> {
+    let tables = table_names(db, org_id).await?;
+    let source_url = input.source_url.clone().flatten();
+    let candidate = GraphNode {
+        kind: BuildTargetKind::Import,
+        id: id.to_string(),
+        name: input.name.clone(),
+        runnable: true,
+        reads: match (input.source, source_url.as_deref()) {
+            (ImportSource::Dataset, Some(t)) => tables.get(t).cloned().into_iter().collect(),
+            _ => Vec::new(),
+        },
+        writes: if sync::steps_fill_a_table(m) {
+            vec![m.key.clone()]
+        } else {
+            Vec::new()
+        },
+        after: m.after.clone(),
+        key: Some(m.key.clone()),
+    };
+    if crate::services::data_builds::cycle_with(db, org_id, candidate)
+        .await?
+        .is_some()
+    {
+        return Err(invalid("mapping.after", "cycle"));
+    }
+    Ok(())
 }
 
 const SWEEP_EVERY: Duration = Duration::from_secs(60);
@@ -1901,9 +1988,6 @@ const SWEEP_EVERY: Duration = Duration::from_secs(60);
 /// Due scheduled imports, run one after the other on one pod.
 pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
     let db = ctx.db.clone();
-    let store = crate::services::artifact_store::S3Config::from_config(&ctx.config)
-        .store()
-        .ok();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(120)).await;
         loop {
@@ -1911,7 +1995,7 @@ pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
             if !stop::stopping()
                 && crate::services::singleton::my_turn(&db, "object-imports", SWEEP_EVERY).await
             {
-                if let Err(e) = sweep(&db, store.as_ref()).await {
+                if let Err(e) = sweep(&db).await {
                     tracing::warn!("import schedule sweep failed: {e}");
                 }
             }
@@ -1923,11 +2007,8 @@ pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
 /// A run without a heartbeat for this long lost its server.
 const RUN_STALE: &str = "10 minutes";
 
-async fn sweep(
-    db: &DatabaseConnection,
-    store: Option<&crate::services::artifact_store::S3Store>,
-) -> Result<()> {
-    let store = store.cloned();
+/// Runs lost with their pod, then due imports. Public for the tests.
+pub async fn sweep(db: &DatabaseConnection) -> Result<()> {
     // Runs lost with their pod: no heartbeat any more. An application
     // still writing holds the org's import lock (it dies with its
     // connection): such a run is not lost.
@@ -1963,12 +2044,17 @@ async fn sweep(
             vec![imp.id.into(), next_run(imp.recurrence.as_ref()).into()],
         ))
         .await?;
-        match start(db, store.clone(), imp.org_id, imp.id, None, "schedule").await {
-            Ok(r) => tracing::info!(import = %imp.id, run = %r.id, "scheduled import run started"),
-            Err(e) => {
-                tracing::warn!(import = %imp.id, error = %e, "scheduled import run not started")
-            }
-        }
+        // Through a build: what it depends on runs first (D575). The author's role is
+        // checked by each run.
+        crate::services::data_builds::fire(
+            db,
+            imp.org_id,
+            BuildTargetKind::Import,
+            imp.id,
+            &imp.name,
+            imp.created_by,
+        )
+        .await?;
     }
     Ok(())
 }

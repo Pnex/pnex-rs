@@ -49,6 +49,7 @@ pub fn routes() -> Routes {
         .add("/retention", get(retention_get))
         .add("/retention/orgs/{org_id}", put(retention_org_put))
         .add("/retention/default", put(retention_default_put))
+        .add("/retention/history", put(retention_history_put))
         .add("/o2/streams", get(o2_streams))
         .add("/o2/streams/{name}", delete(o2_stream_delete))
         .add(
@@ -58,6 +59,10 @@ pub fn routes() -> Routes {
         .add("/o2/purge", post(o2_purge))
         .add("/orgs", get(orgs_overview))
         .add("/orgs/{org_id}/tier", put(org_tier_put))
+        .add(
+            "/orgs/{org_id}/connector-hosts",
+            get(connector_hosts_get).put(connector_hosts_put),
+        )
         .add("/tiers", get(tiers_list))
         .add("/status", get(status))
         .add("/secrets/rekey", post(super::secrets::platform_rekey))
@@ -70,6 +75,9 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         retention_get,
         retention_org_put,
         retention_default_put,
+        retention_history_put,
+        connector_hosts_get,
+        connector_hosts_put,
         o2_streams,
         o2_stream_delete,
         o2_stream_delete_range,
@@ -111,6 +119,7 @@ async fn retention_info(
         deployment_mode: mode.into(),
         org_override_days: days_u32(org.data_retention_days),
         global_default_days: global,
+        history_days: retention::history_days(&ctx.db).await.map_err(db_err)?,
         tier_name: tier.as_ref().map(|t| t.name.clone()),
         tier_days: tier
             .and_then(|t| t.data_retention_secs)
@@ -226,6 +235,100 @@ async fn retention_default_put(
     let bg = ctx.clone();
     tokio::spawn(async move { retention::reconcile_all(&bg).await });
     format::json(RetentionUpdate { days: body.days })
+}
+
+/// `PUT /api/v1/system/retention/history` — platform admin.
+#[utoipa::path(
+    put,
+    path = "/api/v1/system/retention/history",
+    tag = "system",
+    operation_id = "system_retention_history_set",
+    summary = "Set how long object history is kept",
+    description = "Platform admin only. Sets how many days the provenance journal of objects and links is kept, for every org and in every deployment mode, apart from telemetry retention; `days: null` goes back to the default of 3650. Reapplied on every org in the background. Echoes the stored value.",
+    request_body = pnex_core::RetentionUpdate,
+    responses(
+        (status = 200, body = pnex_core::RetentionUpdate),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`retention-out-of-range`: days outside 1..=3650", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn retention_history_put(
+    admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Json(body): Json<RetentionUpdate>,
+) -> Result<Response> {
+    check_days(body.days)?;
+    retention::set_history_days(&ctx.db, body.days, admin.0.user.id)
+        .await
+        .map_err(db_err)?;
+    tracing::info!(days = ?body.days, by = admin.0.user.id, "history retention updated");
+    let bg = ctx.clone();
+    tokio::spawn(async move { retention::reconcile_all(&bg).await });
+    format::json(RetentionUpdate { days: body.days })
+}
+
+/// `GET /api/v1/system/orgs/{org_id}/connector-hosts` — platform admin.
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/orgs/{org_id}/connector-hosts",
+    tag = "system",
+    operation_id = "system_connector_hosts_get",
+    summary = "List the private hosts an org may reach",
+    description = "Platform admin only. Hosts on private addresses the connectors of this org may reach.",
+    params(("org_id" = i64, Path, description = "Organization id")),
+    responses(
+        (status = 200, body = pnex_core::connectors::ConnectorHosts),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn connector_hosts_get(
+    _admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Path(org_id): Path<i64>,
+) -> Result<Response> {
+    format::json(
+        crate::services::connectors::allowed_hosts(&ctx.db, org_id)
+            .await
+            .map_err(db_err)?,
+    )
+}
+
+/// `PUT /api/v1/system/orgs/{org_id}/connector-hosts` — platform admin.
+#[utoipa::path(
+    put,
+    path = "/api/v1/system/orgs/{org_id}/connector-hosts",
+    tag = "system",
+    operation_id = "system_connector_hosts_set",
+    summary = "Set the private hosts an org may reach",
+    description = "Platform admin only, never an org admin: anyone who signs up owns an org, and this opens the network of the deployment. Replaces the list of hosts on private addresses the connectors of this org may reach. Loopback and cloud metadata addresses stay refused.",
+    params(("org_id" = i64, Path, description = "Organization id")),
+    request_body = pnex_core::connectors::ConnectorHosts,
+    responses(
+        (status = 200, body = pnex_core::connectors::ConnectorHosts),
+        (status = 400, description = "`field-invalid` on `hosts`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn connector_hosts_put(
+    admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Path(org_id): Path<i64>,
+    Json(body): Json<pnex_core::connectors::ConnectorHosts>,
+) -> Result<Response> {
+    let saved = crate::services::connectors::set_allowed_hosts(
+        &ctx.db,
+        org_id,
+        &body.hosts,
+        admin.0.user.id,
+    )
+    .await;
+    match saved {
+        Ok(hosts) => format::json(hosts),
+        Err(e) => crate::controllers::connectors::connector_error(e),
+    }
 }
 
 // ───────────────────────────── O2 cleanup ─────────────────────────────

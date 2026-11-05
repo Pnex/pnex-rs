@@ -58,6 +58,8 @@ members = [
     "crates/pnex-recorder",
     # SQL transforms of data pipelines, apart from the server (D573).
     "crates/pnex-pipeline-worker",
+    # Creates a pod per job in its own namespace (worker-fabric.md section 14).
+    "crates/pnex-runner",
 ]
 # Vendored EdgeLinkd (submodule) stays a separate workspace — without exclude,
 # Cargo would attach its crates to the PNEX workspace and the

@@ -193,6 +193,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::MailReceived { config } => rsx! {
             MailReceivedForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::DatasetTrigger { config } => rsx! {
+            DatasetTriggerForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::ActionTrigger { config } => rsx! {
             ActionTriggerForm { cx, initial: config.clone(), can_write }
         },
@@ -292,6 +295,7 @@ mod action_trigger;
 mod camera_source;
 mod control_source;
 mod coolprop;
+mod dataset_trigger;
 mod device;
 mod event_log;
 mod function;
@@ -330,6 +334,7 @@ use action_trigger::ActionTriggerForm;
 use camera_source::CameraSourceForm;
 use control_source::ControlSourceForm;
 use coolprop::CoolPropForm;
+use dataset_trigger::DatasetTriggerForm;
 use device::{DeviceReadForm, DeviceWriteForm};
 use event_log::EventLogForm;
 use function::FunctionForm;

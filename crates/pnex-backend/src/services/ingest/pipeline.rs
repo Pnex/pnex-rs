@@ -12,7 +12,7 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::{archive, cleanup, download, filter, finish, resolve, table, Cx};
+use super::{archive, cleanup, download, filter, finish, query, resolve, table, Cx};
 use crate::services::artifact_store::S3Store;
 
 /// Bytes read at a time from a staged file into a table.
@@ -156,6 +156,7 @@ async fn steps_then_key(cx: &Cx<'_>, steps: &[IngestConfig]) -> Result<String, S
             IngestStep::ArchiveExtract => archive::run(cx, &cfg, msg.clone()).await,
             IngestStep::TableInspect => table::run(cx, &cfg, msg.clone()).await,
             IngestStep::RowsFilter => filter::run(cx, &cfg, msg.clone()).await,
+            IngestStep::ConnectorQuery => query::run(cx, &cfg, msg.clone()).await,
         };
         let reply = finish(cx, &cfg, msg, out).await.map_err(|_| {
             (

@@ -83,12 +83,15 @@ jobs:
             version=${GITHUB_REF_NAME#v}
             server="$REGISTRY/pnex-server-rs:$version"
             builder="$REGISTRY/pnex-builder-rs:$version"
+            pipeline="$REGISTRY/pnex-pipeline-worker-rs:$version"
           else
             server="$REGISTRY/pnex-server-rs:main-$short,$REGISTRY/pnex-server-rs:main,$REGISTRY/pnex-server-rs:latest"
             builder="$REGISTRY/pnex-builder-rs:main-$short,$REGISTRY/pnex-builder-rs:main,$REGISTRY/pnex-builder-rs:latest"
+            pipeline="$REGISTRY/pnex-pipeline-worker-rs:main-$short,$REGISTRY/pnex-pipeline-worker-rs:main,$REGISTRY/pnex-pipeline-worker-rs:latest"
           fi
           echo "server=$server" >> "$GITHUB_OUTPUT"
           echo "builder=$builder" >> "$GITHUB_OUTPUT"
+          echo "pipeline=$pipeline" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
@@ -121,10 +124,25 @@ jobs:
           build-args: BUILD_SHA=${{ steps.tags.outputs.short }}
           tags: ${{ steps.tags.outputs.builder }}
           cache-from: type=gha,scope=pnex-images
+      # Its own build: the query engine stays out of the server image (D573).
+      - name: Build + push pnex-pipeline-worker-rs
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: pipeline-worker
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.tags.outputs.pipeline }}
+          cache-from: |
+            type=gha,scope=pnex-images
+            type=gha,scope=pnex-images-pipeline
+          cache-to: type=gha,scope=pnex-images-pipeline,mode=max
       - name: Summary
         run: |
           {
             echo "### Published (linux/amd64 + linux/arm64)"
             echo "- \`${{ steps.tags.outputs.server }}\`"
             echo "- \`${{ steps.tags.outputs.builder }}\`"
+            echo "- \`${{ steps.tags.outputs.pipeline }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

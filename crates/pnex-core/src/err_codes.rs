@@ -412,6 +412,14 @@ pub const SERVER_BUSY: &str = "server-busy";
 /// Too many requests from this client address on a protected route
 /// (`Retry-After` header carries the wait in seconds).
 pub const RATE_LIMITED: &str = "rate-limited";
+/// Invalid, used or expired runner join token.
+pub const RUNNER_JOIN_TOKEN_INVALID: &str = "runner-join-token-invalid";
+/// Unknown or revoked runner token.
+pub const RUNNER_UNAUTHORIZED: &str = "runner-unauthorized";
+/// Runner or job absent from this org.
+pub const RUNNER_NOT_FOUND: &str = "runner-not-found";
+/// The runner does not hold the job any more.
+pub const RUNNER_JOB_NOT_HELD: &str = "runner-job-not-held";
 
 // ── Org controls (D125–D127, surfaces-controls.md) ──────────────────────
 
@@ -679,6 +687,66 @@ pub const PIPELINE_MEMORY_EXCEEDED: &str = "pipeline-memory-exceeded";
 pub const PIPELINE_TIMEOUT: &str = "pipeline-timeout";
 /// The worker kept dying on this run.
 pub const PIPELINE_WORKER_LOST: &str = "pipeline-worker-lost";
+/// A blocking check refused the result (args `output`, `check`, `column`, `value`,
+/// `limit`): the previous version stays current (D576).
+pub const PIPELINE_CHECK_FAILED: &str = "pipeline-check-failed";
+pub const BUILD_NOT_FOUND: &str = "build-not-found";
+/// The dependencies form a loop (args `through`, D575).
+pub const BUILD_CYCLE: &str = "build-cycle";
+/// A mapping waits for an import the org no longer has (args `name`, `after`).
+pub const BUILD_DEPENDENCY_MISSING: &str = "build-dependency-missing";
+/// More steps than a build accepts (args `max`).
+pub const BUILD_TOO_LONG: &str = "build-too-long";
+/// Who set the schedule may no longer run it: nothing ran.
+pub const BUILD_AUTHOR_FORBIDDEN: &str = "build-author-forbidden";
+/// A step did not finish in time, usually because no worker takes the queue.
+pub const BUILD_TIMEOUT: &str = "build-timeout";
+pub const CONNECTOR_NOT_FOUND: &str = "connector-not-found";
+pub const CONNECTOR_NAME_TAKEN: &str = "connector-name-taken";
+/// The connector changed since it was read (args `current`).
+pub const CONNECTOR_VERSION_CONFLICT: &str = "connector-version-conflict";
+/// No connection could be made: wrong address, password or database.
+pub const CONNECTOR_UNREACHABLE: &str = "connector-unreachable";
+/// This address may not be reached, or only by a host on the platform admin's list.
+pub const CONNECTOR_HOST_REFUSED: &str = "connector-host-refused";
+/// The database refused the query (args `sqlstate`).
+pub const CONNECTOR_QUERY_INVALID: &str = "connector-query-invalid";
+/// The author of the import may no longer use connectors.
+pub const CONNECTOR_FORBIDDEN: &str = "connector-forbidden";
+pub const IMAGE_REGISTRY_NOT_FOUND: &str = "image-registry-not-found";
+pub const IMAGE_REGISTRY_NAME_TAKEN: &str = "image-registry-name-taken";
+/// The registry changed since it was read (args `current`).
+pub const IMAGE_REGISTRY_VERSION_CONFLICT: &str = "image-registry-version-conflict";
+/// No usable answer: wrong address, TLS setting, or a server that is not a registry.
+pub const IMAGE_REGISTRY_UNREACHABLE: &str = "image-registry-unreachable";
+/// This address may not be reached, or only by a host on the platform admin's list.
+pub const IMAGE_REGISTRY_HOST_REFUSED: &str = "image-registry-host-refused";
+/// The registry refused the login.
+pub const IMAGE_REGISTRY_AUTH_FAILED: &str = "image-registry-auth-failed";
+/// The login works but has no right on the repository.
+pub const IMAGE_REGISTRY_ACCESS_DENIED: &str = "image-registry-access-denied";
+/// An environment still names this registry.
+pub const IMAGE_REGISTRY_IN_USE: &str = "image-registry-in-use";
+pub const ENVIRONMENT_NOT_FOUND: &str = "environment-not-found";
+pub const ENVIRONMENT_VERSION_NOT_FOUND: &str = "environment-version-not-found";
+pub const ENVIRONMENT_NAME_TAKEN: &str = "environment-name-taken";
+/// The environment changed since it was read (args `current`).
+pub const ENVIRONMENT_VERSION_CONFLICT: &str = "environment-version-conflict";
+/// The source holds what looks like a credential (args `at`).
+pub const ENVIRONMENT_SECRET_IN_DOCKERFILE: &str = "environment-secret-in-dockerfile";
+pub const ENVIRONMENT_BUILD_NOT_FOUND: &str = "environment-build-not-found";
+/// This deployment has no builder image.
+pub const ENVIRONMENT_BUILD_UNAVAILABLE: &str = "environment-build-unavailable";
+/// The registry of the environment has no write secret.
+pub const ENVIRONMENT_BUILD_NO_WRITE_SECRET: &str = "environment-build-no-write-secret";
+/// A build of this environment is not finished.
+pub const ENVIRONMENT_BUILD_RUNNING: &str = "environment-build-running";
+/// Only a build that produced an image can be activated.
+pub const ENVIRONMENT_BUILD_NOT_READY: &str = "environment-build-not-ready";
+/// The journal did not take or give the SBOM.
+pub const ENVIRONMENT_SBOM_UNAVAILABLE: &str = "environment-sbom-unavailable";
+/// This build has no scan yet.
+pub const ENVIRONMENT_SCAN_NOT_FOUND: &str = "environment-scan-not-found";
 /// No dataset of the org has this id (D569).
 pub const DATASET_NOT_FOUND: &str = "dataset-not-found";
 /// A dataset of the org already has this name.
@@ -701,6 +769,20 @@ pub const DATASET_SOURCE_INTERRUPTED: &str = "dataset-source-interrupted";
 pub const DATASET_VERSION_PURGED: &str = "dataset-version-purged";
 /// The object storage holding the datasets is not reachable.
 pub const DATASET_STORAGE_UNAVAILABLE: &str = "dataset-storage-unavailable";
+/// No such upload on this table.
+pub const DATASET_UPLOAD_NOT_FOUND: &str = "dataset-upload-not-found";
+/// The upload no longer takes parts.
+pub const DATASET_UPLOAD_CLOSED: &str = "dataset-upload-closed";
+/// A part over the limit (args `max`).
+pub const DATASET_UPLOAD_PART_TOO_LARGE: &str = "dataset-upload-part-too-large";
+/// Parts expected and not received (args `missing`, `count`).
+pub const DATASET_UPLOAD_PARTS_MISSING: &str = "dataset-upload-parts-missing";
+/// Too many uploads in progress in the org (args `max`).
+pub const DATASET_UPLOAD_TOO_MANY: &str = "dataset-upload-too-many";
+/// Replaced by a newer upload, or left unfinished for a day.
+pub const DATASET_UPLOAD_EXPIRED: &str = "dataset-upload-expired";
+/// Its conversion was lost with its server, again and again.
+pub const DATASET_UPLOAD_LOST: &str = "dataset-upload-lost";
 /// The org's staging area is full (2 GB, D318): nothing was downloaded.
 pub const INGEST_STAGING_QUOTA: &str = "ingest-staging-quota";
 /// The object storage holding the staging area is not reachable (D318).
@@ -979,6 +1061,10 @@ pub const ONTOLOGY_PATH_INCOMPLETE: &str = "ontology-path-incomplete";
 /// All registered codes. A code not listed here falls back to the verbatim
 /// `description`/`message` on the frontend (never panics).
 pub const ALL: &[&str] = &[
+    RUNNER_JOIN_TOKEN_INVALID,
+    RUNNER_UNAUTHORIZED,
+    RUNNER_NOT_FOUND,
+    RUNNER_JOB_NOT_HELD,
     FIELD_INVALID_BODY,
     REQUEST_INVALID,
     FLOW_INVALID,
@@ -1049,7 +1135,48 @@ pub const ALL: &[&str] = &[
     PIPELINE_MEMORY_EXCEEDED,
     PIPELINE_TIMEOUT,
     PIPELINE_WORKER_LOST,
+    PIPELINE_CHECK_FAILED,
+    BUILD_NOT_FOUND,
+    CONNECTOR_NOT_FOUND,
+    CONNECTOR_NAME_TAKEN,
+    CONNECTOR_VERSION_CONFLICT,
+    CONNECTOR_UNREACHABLE,
+    CONNECTOR_HOST_REFUSED,
+    CONNECTOR_QUERY_INVALID,
+    CONNECTOR_FORBIDDEN,
+    IMAGE_REGISTRY_NOT_FOUND,
+    IMAGE_REGISTRY_NAME_TAKEN,
+    IMAGE_REGISTRY_VERSION_CONFLICT,
+    IMAGE_REGISTRY_UNREACHABLE,
+    IMAGE_REGISTRY_HOST_REFUSED,
+    IMAGE_REGISTRY_AUTH_FAILED,
+    IMAGE_REGISTRY_ACCESS_DENIED,
+    IMAGE_REGISTRY_IN_USE,
+    ENVIRONMENT_NOT_FOUND,
+    ENVIRONMENT_VERSION_NOT_FOUND,
+    ENVIRONMENT_NAME_TAKEN,
+    ENVIRONMENT_VERSION_CONFLICT,
+    ENVIRONMENT_SECRET_IN_DOCKERFILE,
+    ENVIRONMENT_BUILD_NOT_FOUND,
+    ENVIRONMENT_BUILD_UNAVAILABLE,
+    ENVIRONMENT_BUILD_NO_WRITE_SECRET,
+    ENVIRONMENT_BUILD_RUNNING,
+    ENVIRONMENT_SCAN_NOT_FOUND,
+    ENVIRONMENT_SBOM_UNAVAILABLE,
+    ENVIRONMENT_BUILD_NOT_READY,
+    BUILD_CYCLE,
+    BUILD_DEPENDENCY_MISSING,
+    BUILD_TOO_LONG,
+    BUILD_AUTHOR_FORBIDDEN,
+    BUILD_TIMEOUT,
     DATASET_NOT_FOUND,
+    DATASET_UPLOAD_NOT_FOUND,
+    DATASET_UPLOAD_CLOSED,
+    DATASET_UPLOAD_PART_TOO_LARGE,
+    DATASET_UPLOAD_PARTS_MISSING,
+    DATASET_UPLOAD_TOO_MANY,
+    DATASET_UPLOAD_EXPIRED,
+    DATASET_UPLOAD_LOST,
     DATASET_NAME_TAKEN,
     DATASET_TRANSACTION_OPEN,
     DATASET_TRANSACTION_ABORTED,

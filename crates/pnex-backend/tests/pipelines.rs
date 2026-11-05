@@ -179,6 +179,46 @@ async fn documents_versions_and_runs() {
         .await;
         assert_eq!(v["count"], 2);
         assert_eq!(v["results"][1]["document"], DOC);
+        assert_eq!(v["results"][0]["author"], "alice@example.com", "{v}");
+
+        // A draft is checked without being saved, with the same answers as a save.
+        let check = "/api/v1/pipelines/validate";
+        let (s, parsed) = call(
+            &server,
+            "POST",
+            check,
+            &env.alice,
+            org,
+            Some(json!({ "document": DOC })),
+        )
+        .await;
+        assert_eq!(s, 200, "{parsed}");
+        assert!(parsed["transforms"][0]["output"].is_string(), "{parsed}");
+        for (document, token) in [("transforms: []", "required"), ("not: [yaml", "yaml")] {
+            let (s, e) = call(
+                &server,
+                "POST",
+                check,
+                &env.alice,
+                org,
+                Some(json!({ "document": document })),
+            )
+            .await;
+            assert_eq!(s, 400, "{e}");
+            assert_eq!(e["error"], "pipeline-document-invalid");
+            assert_eq!(e["errors"]["violations"][0]["token"], token, "{e}");
+        }
+        let (_, again) = call(
+            &server,
+            "GET",
+            &format!("{path}/versions"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(again["count"], 2, "a check saves nothing");
+        assert_eq!(v["results"][1]["author"], "alice@example.com", "{v}");
 
         // A run is queued for the worker, once.
         let runs = format!("{path}/runs");
@@ -247,6 +287,18 @@ async fn isolation_between_orgs_and_viewer_read_only() {
             assert_eq!(s, 404, "{m} {p}");
             assert_eq!(e["error"], "pipeline-not-found");
         }
+
+        // A check goes through the org of the caller like everything else (R1).
+        let (s, _) = call(
+            &server,
+            "POST",
+            "/api/v1/pipelines/validate",
+            &env.bob,
+            org_a,
+            Some(json!({ "document": DOC })),
+        )
+        .await;
+        assert_eq!(s, 403);
 
         let (s, _) = call(
             &server,

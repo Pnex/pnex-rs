@@ -8,6 +8,8 @@ pub mod camera_recordings;
 /// Cameras settings + recorded segments API (D76/D79).
 pub mod cameras;
 pub mod cases;
+/// Pipelines (data-pipelines.md D571).
+pub mod connectors;
 pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
@@ -20,6 +22,7 @@ pub mod docs;
 /// Edge references — WiFi credentials + PNeX server hosts (device wizard).
 pub mod edge_agents;
 pub mod edge_refs;
+pub mod environments;
 /// JSON events stored as OpenObserve logs (D84).
 pub mod events;
 /// Browser agents API (extension-collector.md D254–D269).
@@ -35,6 +38,7 @@ pub mod global_search;
 pub mod health;
 /// Access management API (iam.md §8).
 pub mod iam;
+pub mod image_registries;
 pub mod internal_flow;
 /// Internal websocket delivery endpoint (flow runtime / loopback).
 pub mod internal_notify;
@@ -59,13 +63,13 @@ pub mod orgs;
 pub mod ota;
 pub mod pagination;
 pub mod pins;
-/// Pipelines (data-pipelines.md D571).
 pub mod pipelines;
 pub mod pois;
 pub mod proposals;
 pub mod public_tours;
 /// Cross-cutting organization layer (D42) — kind-agnostic endpoints.
 pub mod resources;
+pub mod runners;
 /// Org secrets vault (D110–D118).
 pub mod secrets;
 /// Site navigation rules, test runs and their journal (site-recipes.md D323–D326).

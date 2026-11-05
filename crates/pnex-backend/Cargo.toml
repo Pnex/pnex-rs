@@ -33,6 +33,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 # Valkey live last-value cache (pnex-device-read acceleration)
 redis = { workspace = true }
+# Same version sea-orm links: connectors to outside PostgreSQL databases (D352).
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres"] }
 tokio = { version = "1.45", default-features = false, features = [
   "rt-multi-thread",
   "time",
@@ -152,6 +154,10 @@ chrono-tz = "0.10"
 croner = "3.0.1"
 # GPX track import (cases-workspace.md K26); MIT, same version as pnex-core's.
 quick-xml = "0.41"
+# Same versions as opendal: signs the S3 calls it has no API for (multipart listing).
+http = "1"
+reqsign-core = "3.3"
+reqsign-aws-v4 = "3.3"
 if-addrs = { workspace = true }
 futures-util = "0.3"
 uuid = { workspace = true, features = ["v5"] }

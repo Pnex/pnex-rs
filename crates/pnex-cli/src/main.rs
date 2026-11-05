@@ -173,6 +173,46 @@ fn cli(ops: &[Op]) -> Command {
                 )
                 .arg(body_arg(false))
                 .arg(yes_arg()),
+        )
+        .subcommand(
+            Command::new("import")
+                .about("Run an import")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("run")
+                        .about("Start a run; --wait follows it and exits non-zero unless applied")
+                        .arg(Arg::new("id").required(true).help("Import id"))
+                        .arg(
+                            Arg::new("wait")
+                                .long("wait")
+                                .action(ArgAction::SetTrue)
+                                .help("Wait for the end of the run"),
+                        )
+                        .arg(yes_arg()),
+                ),
+        )
+        .subcommand(
+            Command::new("dataset")
+                .about("Load a file into a table")
+                .subcommand_required(true)
+                .subcommand(
+                    Command::new("load")
+                        .about("Send a CSV in parts, whatever a proxy allows per request, and wait for its conversion; exits non-zero unless it becomes a version")
+                        .arg(Arg::new("id").required(true).help("Dataset id"))
+                        .arg(Arg::new("file").required(true).help("Path of the CSV file"))
+                        .arg(
+                            Arg::new("delimiter")
+                                .long("delimiter")
+                                .help("One character. Default: detected from the first line"),
+                        )
+                        .arg(
+                            Arg::new("append")
+                                .long("append")
+                                .action(ArgAction::SetTrue)
+                                .help("Add to the table instead of replacing its content"),
+                        )
+                        .arg(yes_arg()),
+                ),
         );
     let mut tags: Vec<&str> = ops.iter().map(|o| o.tag.as_str()).collect();
     tags.dedup();
@@ -364,6 +404,227 @@ fn run_org(http: &Client, id: Option<i64>) -> Result<()> {
     Ok(())
 }
 
+/// How a run ended, once it has: `Err` says what stopped it.
+fn run_end(run: &Value) -> Option<Result<(), String>> {
+    let state = run["state"].as_str().unwrap_or("unknown");
+    match (state, run["state_code"].as_str()) {
+        ("running", _) => None,
+        ("applied", _) => Some(Ok(())),
+        (_, Some(code)) => Some(Err(format!("{state}: {code}"))),
+        _ => Some(Err(state.to_string())),
+    }
+}
+
+fn call_json(
+    http: &Client,
+    session: &mut Session,
+    org: Option<i64>,
+    method: Method,
+    path: &str,
+) -> Result<(reqwest::StatusCode, Value)> {
+    let token = session.token(http)?.to_string();
+    let mut req = http
+        .request(method, format!("{}{path}", session.url))
+        .bearer_auth(token);
+    if let Some(org) = org {
+        req = req.header(ORG_HEADER, org.to_string());
+    }
+    let res = req.send()?;
+    let status = res.status();
+    Ok((status, serde_json::from_slice(&res.bytes()?)?))
+}
+
+/// Well under what a proxy lets through in one request (Cloudflare: 100 MB).
+const UPLOAD_PART_BYTES: u64 = 32 * 1024 * 1024;
+const UPLOAD_ATTEMPTS: u32 = 4;
+/// A slow link on a whole part: the client's default of 30 s would cut it.
+const UPLOAD_PART_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Reads up to one part. Empty at the end of the file.
+fn read_part(file: &mut impl std::io::Read) -> Result<Vec<u8>> {
+    let mut part = Vec::new();
+    file.take(UPLOAD_PART_BYTES).read_to_end(&mut part)?;
+    Ok(part)
+}
+
+fn send_part(
+    http: &Client,
+    session: &mut Session,
+    org: Option<i64>,
+    path: &str,
+    part: &[u8],
+) -> Result<()> {
+    let mut attempt = 1;
+    loop {
+        let token = session.token(http)?.to_string();
+        let mut req = http
+            .put(format!("{}{path}", session.url))
+            .bearer_auth(token)
+            .timeout(UPLOAD_PART_TIMEOUT)
+            .body(part.to_vec());
+        if let Some(org) = org {
+            req = req.header(ORG_HEADER, org.to_string());
+        }
+        let why = match req.send() {
+            Ok(res) if res.status().is_success() => return Ok(()),
+            Ok(res) if res.status().is_client_error() => {
+                bail!(
+                    "HTTP {} on {path}: {}",
+                    res.status(),
+                    res.text().unwrap_or_default()
+                )
+            }
+            Ok(res) => res.status().to_string(),
+            Err(e) => e.to_string(),
+        };
+        if attempt >= UPLOAD_ATTEMPTS {
+            bail!("{path} failed {attempt} times: {why}");
+        }
+        attempt += 1;
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+}
+
+/// `pnex dataset load`: the conversion ends on the server whatever happens here.
+#[allow(clippy::too_many_arguments)]
+fn load_dataset(
+    http: &Client,
+    session: &mut Session,
+    org: Option<i64>,
+    id: &str,
+    file: &str,
+    delimiter: Option<&String>,
+    append: bool,
+    patience: u32,
+) -> Result<()> {
+    let mut source = std::fs::File::open(file).with_context(|| format!("cannot read {file}"))?;
+    let base = format!("/api/v1/datasets/{}/uploads", encode(id));
+    let input = serde_json::json!({
+        "kind": if append { "append" } else { "snapshot" },
+        "delimiter": delimiter,
+    });
+    let (status, upload) = post_json(http, session, org, &base, input)?;
+    if !status.is_success() {
+        bail!("HTTP {status}: {upload}");
+    }
+    let upload_id = upload["id"]
+        .as_str()
+        .context("upload without an id")?
+        .to_string();
+    let path = format!("{base}/{}", encode(&upload_id));
+    let mut parts = 0;
+    loop {
+        let part = read_part(&mut source)?;
+        // An empty file too is a part: the server says why it refuses it.
+        if part.is_empty() && parts > 0 {
+            break;
+        }
+        parts += 1;
+        send_part(http, session, org, &format!("{path}/parts/{parts}"), &part)?;
+        eprintln!("part {parts} sent");
+        if (part.len() as u64) < UPLOAD_PART_BYTES {
+            break;
+        }
+    }
+    let close = serde_json::json!({ "parts": parts });
+    let (status, mut upload) = post_json(http, session, org, &format!("{path}/complete"), close)?;
+    if !status.is_success() {
+        bail!("HTTP {status}: {upload}");
+    }
+    let mut failures = 0;
+    while !matches!(upload["state"].as_str(), Some("done" | "failed")) {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        match call_json(http, session, org, Method::GET, &path) {
+            Ok((status, body)) if status.is_success() => {
+                failures = 0;
+                upload = body;
+            }
+            Ok((status, _)) if status.is_client_error() => bail!("HTTP {status} on {path}"),
+            failed => {
+                failures += 1;
+                if failures >= patience {
+                    let why = failed.map_or_else(|e| e.to_string(), |(s, _)| s.to_string());
+                    bail!("upload {upload_id} still unknown after {failures} polls: {why}");
+                }
+            }
+        }
+    }
+    println!("{}", serde_json::to_string_pretty(&upload)?);
+    if upload["state"] == "failed" {
+        bail!(
+            "not loaded: {}",
+            upload["code"].as_str().unwrap_or("unknown")
+        );
+    }
+    Ok(())
+}
+
+fn post_json(
+    http: &Client,
+    session: &mut Session,
+    org: Option<i64>,
+    path: &str,
+    body: Value,
+) -> Result<(reqwest::StatusCode, Value)> {
+    let token = session.token(http)?.to_string();
+    let mut req = http
+        .post(format!("{}{path}", session.url))
+        .bearer_auth(token)
+        .json(&body);
+    if let Some(org) = org {
+        req = req.header(ORG_HEADER, org.to_string());
+    }
+    let res = req.send()?;
+    let status = res.status();
+    Ok((status, serde_json::from_slice(&res.bytes()?)?))
+}
+
+/// `pnex import run`: the run ends on the server whatever happens here, so a poll that
+/// fails (a pod replaced, a busy server) is retried for `patience` polls in a row.
+fn run_import(
+    http: &Client,
+    session: &mut Session,
+    org: Option<i64>,
+    id: &str,
+    wait: bool,
+    every: std::time::Duration,
+    patience: u32,
+) -> Result<()> {
+    let base = format!("/api/v1/ontology/imports/{}/runs", encode(id));
+    let (status, mut run) = call_json(http, session, org, Method::POST, &base)?;
+    if !status.is_success() {
+        bail!("HTTP {status}: {run}");
+    }
+    if wait {
+        let run_id = run["id"].as_str().context("run without an id")?.to_string();
+        let path = format!("{base}/{}", encode(&run_id));
+        let mut failures = 0;
+        while run_end(&run).is_none() {
+            std::thread::sleep(every);
+            match call_json(http, session, org, Method::GET, &path) {
+                Ok((status, mut body)) if status.is_success() => {
+                    failures = 0;
+                    // The start answers the run, the poll a preview that holds it.
+                    run = body["run"].take();
+                }
+                Ok((status, _)) if status.is_client_error() => bail!("HTTP {status} on {path}"),
+                failed => {
+                    failures += 1;
+                    if failures >= patience {
+                        let why = failed.map_or_else(|e| e.to_string(), |(s, _)| s.to_string());
+                        bail!("run {run_id} still unknown after {failures} polls: {why}");
+                    }
+                }
+            }
+        }
+    }
+    println!("{}", serde_json::to_string_pretty(&run)?);
+    match run_end(&run) {
+        Some(Err(why)) if wait => bail!("run did not apply: {why}"),
+        _ => Ok(()),
+    }
+}
+
 fn run() -> Result<()> {
     let ops = ops();
     let matches = cli(&ops).get_matches();
@@ -408,6 +669,54 @@ fn run() -> Result<()> {
             let org = org.or(session.org);
             send(&http, &mut session, org, method, url, vec![], body)
         }
+        ("dataset", m) => {
+            let (_, m) = m.subcommand().expect("subcommand required");
+            if let Some(reason) = danger("datasets_uploads_start", &Method::POST) {
+                if !m.get_flag("yes") {
+                    bail!("refused without --yes: {reason}");
+                }
+            }
+            let mut session = Session::load()?;
+            let org = org.or(session.org);
+            if org.is_none() {
+                bail!("no organisation: pick one with `pnex org <id>` or pass --org");
+            }
+            load_dataset(
+                &http,
+                &mut session,
+                org,
+                m.get_one::<String>("id").expect("required"),
+                m.get_one::<String>("file").expect("required"),
+                m.get_one::<String>("delimiter"),
+                m.get_flag("append"),
+                // Five minutes: longer than a rollout.
+                150,
+            )
+        }
+        ("import", m) => {
+            let (_, m) = m.subcommand().expect("subcommand required");
+            let start = "ontology_imports_runs_start";
+            if let Some(reason) = danger(start, &Method::POST) {
+                if !m.get_flag("yes") {
+                    bail!("refused without --yes: {reason}");
+                }
+            }
+            let mut session = Session::load()?;
+            let org = org.or(session.org);
+            if org.is_none() {
+                bail!("no organisation: pick one with `pnex org <id>` or pass --org");
+            }
+            run_import(
+                &http,
+                &mut session,
+                org,
+                m.get_one::<String>("id").expect("required"),
+                m.get_flag("wait"),
+                std::time::Duration::from_secs(2),
+                // Five minutes: longer than a rollout.
+                150,
+            )
+        }
         (tag, m) => {
             let (action, m) = m.subcommand().expect("subcommand required");
             let op = ops
@@ -428,6 +737,18 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_file_is_cut_in_parts_with_nothing_lost() {
+        let size = UPLOAD_PART_BYTES as usize + 5;
+        let mut file = std::io::Cursor::new(vec![7u8; size]);
+        assert_eq!(
+            read_part(&mut file).unwrap().len() as u64,
+            UPLOAD_PART_BYTES
+        );
+        assert_eq!(read_part(&mut file).unwrap().len(), 5);
+        assert!(read_part(&mut file).unwrap().is_empty());
+    }
+
     use super::*;
 
     #[test]
@@ -435,6 +756,100 @@ mod tests {
         let ops = ops();
         assert!(ops.len() > 300);
         cli(&ops).debug_assert();
+    }
+
+    #[test]
+    fn a_run_ends_on_anything_but_running() {
+        let end = |v: Value| run_end(&v);
+        assert_eq!(end(serde_json::json!({"state": "running"})), None);
+        assert_eq!(end(serde_json::json!({"state": "applied"})), Some(Ok(())));
+        assert_eq!(
+            end(serde_json::json!({"state": "failed", "state_code": "import-run-interrupted"})),
+            Some(Err("failed: import-run-interrupted".into()))
+        );
+        // A run stopped at a preview wrote nothing: not a success.
+        assert_eq!(
+            end(serde_json::json!({"state": "preview"})),
+            Some(Err("preview".into()))
+        );
+    }
+
+    /// Answers one canned response per connection, in order, and records the request lines.
+    fn mock(answers: Vec<(u16, &'static str)>) -> (String, std::sync::mpsc::Receiver<String>) {
+        use std::io::{BufRead, BufReader};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for (status, body) in answers {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let _ = tx.send(line.trim().to_string());
+                let mut header = String::new();
+                while reader.read_line(&mut header).unwrap() > 2 {
+                    header.clear();
+                }
+                write!(
+                    stream,
+                    "HTTP/1.1 {status} X\r\nconnection: close\r\ncontent-length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+            }
+        });
+        (url, rx)
+    }
+
+    fn session(url: &str) -> Session {
+        serde_json::from_value(serde_json::json!({
+            "url": url, "org": 7, "access_token": "t", "refresh_token": "r",
+            "expires_at": u64::MAX,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn wait_follows_the_run_through_a_replaced_pod_and_reports_its_end() {
+        let http = Client::new();
+        let tick = std::time::Duration::from_millis(1);
+        let (url, requests) = mock(vec![
+            (202, r#"{"id": "r1", "state": "running"}"#),
+            (503, r#"{"error": "server-busy"}"#),
+            (200, r#"{"run": {"id": "r1", "state": "running"}}"#),
+            (
+                200,
+                r#"{"run": {"id": "r1", "state": "failed", "state_code": "import-schema-changed"}}"#,
+            ),
+        ]);
+        let e = run_import(&http, &mut session(&url), Some(7), "i1", true, tick, 3).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "run did not apply: failed: import-schema-changed"
+        );
+        let lines: Vec<String> = requests.try_iter().collect();
+        assert_eq!(lines[0], "POST /api/v1/ontology/imports/i1/runs HTTP/1.1");
+        assert_eq!(lines[3], "GET /api/v1/ontology/imports/i1/runs/r1 HTTP/1.1");
+
+        let (url, _) = mock(vec![
+            (202, r#"{"id": "r2", "state": "running"}"#),
+            (200, r#"{"run": {"id": "r2", "state": "applied"}}"#),
+        ]);
+        run_import(&http, &mut session(&url), Some(7), "i1", true, tick, 3).unwrap();
+
+        // Not waiting: the started run is enough.
+        let (url, _) = mock(vec![(202, r#"{"id": "r3", "state": "running"}"#)]);
+        run_import(&http, &mut session(&url), Some(7), "i1", false, tick, 3).unwrap();
+
+        // A server that never comes back ends the wait instead of hanging.
+        let (url, _) = mock(vec![
+            (202, r#"{"id": "r4", "state": "running"}"#),
+            (503, "{}"),
+            (503, "{}"),
+        ]);
+        let e = run_import(&http, &mut session(&url), Some(7), "i1", true, tick, 2).unwrap_err();
+        assert!(e.to_string().contains("still unknown after 2 polls"), "{e}");
     }
 
     #[test]

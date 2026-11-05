@@ -14,6 +14,7 @@ use crate::pages::browser_agents::BrowserAgents;
 use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::mailbox_messages::MailboxMessages;
 use crate::pages::mailboxes::Mailboxes;
+use crate::pages::pipelines::{PipelineStudio, PipelineTable, Pipelines};
 use crate::pages::proposals::Proposals;
 use crate::pages::web_sites::{WebSiteStudio, WebSites};
 use crate::pages::{
@@ -188,6 +189,16 @@ pub enum Route {
 
         #[route("/web-sites/:site")]
         WebSiteStudio { site: String },
+
+        // Data pipelines: tables, studio, chained runs, connectors (data-pipelines.md §9.5).
+        #[route("/pipelines")]
+        Pipelines {},
+
+        #[route("/pipelines/tables/:id")]
+        PipelineTable { id: String },
+
+        #[route("/pipelines/:id")]
+        PipelineStudio { id: String },
 
         #[route("/orgs")]
         Orgs {},

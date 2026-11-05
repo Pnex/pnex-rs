@@ -51,6 +51,17 @@ JSON joli sur stdout (à passer dans `jq`), corps binaire tel quel ; une
 réponse non 2xx part sur stderr avec code de sortie 1 (`ErrorDetail` du
 serveur, non retraduit : outil d'admin, anglais canonique).
 
+`pnex dataset load <id> <fichier> --yes` envoie un CSV par parties de 32 Mio (lecture du fichier
+au fil de l'eau, chaque partie retentée quatre fois sur une panne réseau ou un 5xx), attend la conversion,
+rend l'envoi en JSON et sort en erreur s'il n'est pas devenu une version. Fonctionne derrière un proxy qui
+limite la taille d'une requête (Cloudflare : 100 Mo). `--delimiter`, `--append`.
+
+`pnex import run <id> --yes` lance une exécution d'import et rend la réponse du
+serveur ; avec `--wait`, il la suit et sort en 1 si elle ne finit pas `applied`
+(`failed`, `refused`, `stale`, ou `preview` : rien n'a été écrit). Un serveur
+injoignable ou occupé est réessayé pendant 5 minutes, le temps d'un déploiement : le
+run se poursuit côté serveur quoi qu'il arrive au client.
+
 ## 4. Distribution
 
 `task build:cli [TARGET=<triple>]` → `target/dist/pnex-cli-<triple>.tar.gz`
@@ -65,6 +76,7 @@ pnex org 16
 pnex devices list --limit 5 | jq '.results[].device_id'
 pnex devices delete --id 42 --yes
 pnex raw GET '/api/v1/flows?limit=1'
+pnex import run 7f3e… --wait --yes
 pnex logout
 ```
 

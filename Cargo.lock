@@ -10008,6 +10008,7 @@ dependencies = [
  "flate2",
  "form_urlencoded",
  "futures-util",
+ "http",
  "if-addrs",
  "image",
  "include_dir",
@@ -10038,6 +10039,8 @@ dependencies = [
  "rcgen",
  "redis",
  "regex",
+ "reqsign-aws-v4",
+ "reqsign-core",
  "reqwest 0.12.28",
  "ring",
  "rustls",
@@ -10052,6 +10055,7 @@ dependencies = [
  "serial_test",
  "sha2 0.10.9",
  "snap",
+ "sqlx",
  "subtle",
  "tar",
  "tempfile",
@@ -10691,6 +10695,20 @@ dependencies = [
  "webbrowser",
  "windows-registry",
  "wry",
+]
+
+[[package]]
+name = "pnex-runner"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "pnex-core",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

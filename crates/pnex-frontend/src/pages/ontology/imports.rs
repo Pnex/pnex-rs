@@ -762,6 +762,7 @@ fn step_name(step: &str) -> String {
         "archive_extract" => t!("onto-imp-step-extract"),
         "table_inspect" => t!("onto-imp-step-inspect"),
         "rows_filter" => t!("onto-imp-step-filter"),
+        "connector_query" => t!("onto-imp-step-connector"),
         "ontology_import" => t!("onto-imp-step-import"),
         _ => t!("onto-imp-step-cleanup"),
     }

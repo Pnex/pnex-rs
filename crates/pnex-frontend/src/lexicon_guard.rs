@@ -30,6 +30,19 @@ struct Rule {
 }
 
 const RULES: &[Rule] = &[
+    // data-pipelines.md D358: the words of a pipeline screen.
+    Rule {
+        scope: Scope::Fr,
+        term: "transformation",
+        use_instead: "traitement",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "dry-run",
+        use_instead: "aperçu",
+        allowed_keys: &[],
+    },
     // external-apps.md D433: an external program built on an org's data
     // is an « application »; a « connecteur » is a provider (geo, LLM).
     // A view of an application is a screen (app-builder.md D507).

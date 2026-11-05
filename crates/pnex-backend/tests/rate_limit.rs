@@ -147,3 +147,28 @@ async fn native_bridge_crosses_pods_and_is_single_use() {
     assert!(found, "bridge entry expires within 300 s");
     let _ = native_bridge_take_with(Some(conn), &state).await;
 }
+
+#[tokio::test]
+#[serial]
+async fn runner_register_is_rate_limited() {
+    let base = common::spawn_mock_rauthy().await;
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        |server, _ctx| async move {
+            let attempt = || {
+                server
+                    .post("/api/v1/runner/register")
+                    .json(&serde_json::json!({"join_token": "pnjoin_nope", "capabilities": []}))
+            };
+            for _ in 0..10 {
+                let res = attempt().await;
+                assert_eq!(res.status_code(), 400, "{}", res.text());
+            }
+            let res = attempt().await;
+            assert_eq!(res.status_code(), 429, "{}", res.text());
+        },
+    )
+    .await;
+}

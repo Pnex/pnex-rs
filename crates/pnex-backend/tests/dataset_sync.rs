@@ -814,6 +814,171 @@ fn peak_rss_mb() -> u64 {
 /// The OP1.3 acceptance: all of `Partenaires`, every sheet active or not, accepted;
 /// then the same file again as a new transaction writes nothing and an edit stays.
 /// Expected counts come from `OP1_FC_ORGS` and `OP1_FC_LINKS`, computed apart.
+/// A worker killed (SIGKILL) while it writes: nothing half written is readable, the run
+/// starts again on the next worker, and neither the file nor the upload stays behind.
+/// The 10 minutes without a heartbeat are skipped in SQL, the kill is real.
+/// Needs `PNEX_WORKER_BIN`.
+#[tokio::test]
+#[serial]
+#[ignore = "needs the worker binary in PNEX_WORKER_BIN"]
+async fn a_killed_worker_loses_nothing() {
+    use pnex_backend::services::artifact_store::S3Config;
+    use pnex_backend::services::datasets;
+    const SIDE: usize = 6000;
+    let bin = std::env::var("PNEX_WORKER_BIN").expect("PNEX_WORKER_BIN");
+    let worker = || {
+        std::process::Command::new(&bin)
+            .env(
+                "PNEX_PIPELINE_DATABASE_URL",
+                std::env::var("TEST_DATABASE_URL").unwrap(),
+            )
+            .env("PNEX_PIPELINE_DATABASE_ROLE", "pnex_pipeline_worker")
+            .env("PNEX_S3_ENDPOINT", "http://localhost:9000")
+            .env("PNEX_S3_BUCKET", "pnex-test")
+            .spawn()
+            .unwrap()
+    };
+    with_app(|server, alice, ctx| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token: &alice, org };
+        let (s, d) = api.call("POST", "/api/v1/datasets", Some(json!({ "name": "numbers" }))).await;
+        assert_eq!(s, 201, "{d}");
+        let csv = (0..SIDE).fold("n\n".to_string(), |all, n| format!("{all}{n}\n"));
+        let res = server
+            .post(&format!("/api/v1/datasets/{}/transactions/csv", d["id"].as_str().unwrap()))
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .add_header("X-Org-Id", org.to_string())
+            .bytes(csv.into_bytes().into())
+            .await;
+        assert_eq!(res.status_code().as_u16(), 201, "{}", res.text());
+        let document = r#"
+transforms:
+  - output: crossed
+    inputs: { a: numbers, b: numbers }
+    sql: SELECT a.n AS x, b.n AS y, a.n || '-' || b.n AS z FROM a CROSS JOIN b
+"#;
+        let (s, p) = api
+            .call("POST", "/api/v1/pipelines", Some(json!({ "name": "cross", "document": document })))
+            .await;
+        assert_eq!(s, 201, "{p}");
+        let runs = format!("/api/v1/pipelines/{}/runs", p["id"].as_str().unwrap());
+        let (s, r) = api.call("POST", &runs, None).await;
+        assert_eq!(s, 202, "{r}");
+        let run = format!("{runs}/{}", r["id"].as_str().unwrap());
+
+        let open = "SELECT t.id FROM dataset_transactions t JOIN datasets d ON d.id = t.dataset_id \
+                    WHERE d.name = 'crossed' AND t.state = 'open'";
+
+        // A rollout first: SIGTERM gives the run back at once, without spending an attempt.
+        let mut polite = worker();
+        for _ in 0..120 {
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            if !sql(&ctx.db, open).await.is_empty() {
+                break;
+            }
+        }
+        assert_eq!(sql(&ctx.db, open).await.len(), 1, "the worker never started writing");
+        let pid = polite.id().to_string();
+        assert!(std::process::Command::new("kill").args(["-TERM", &pid]).status().unwrap().success());
+        let asked = std::time::Instant::now();
+        while polite.try_wait().unwrap().is_none() {
+            assert!(asked.elapsed().as_secs() < 60, "SIGTERM not honoured");
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(sql(&ctx.db, open).await.is_empty(), "its transaction stays open");
+        let queued = sql(&ctx.db, "SELECT state, attempts FROM pipeline_jobs").await;
+        assert_eq!(queued[0].try_get::<String>("", "state").unwrap(), "queued");
+        assert_eq!(queued[0].try_get::<i32>("", "attempts").unwrap(), 0);
+
+        let mut first = worker();
+        for _ in 0..120 {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            if !sql(&ctx.db, open).await.is_empty() {
+                break;
+            }
+        }
+        assert_eq!(sql(&ctx.db, open).await.len(), 1, "the worker never started writing");
+        // Killed only once the store holds an unfinished upload of this table.
+        let table: String = sql(&ctx.db, "SELECT id::text AS id FROM datasets WHERE name = 'crossed'").await[0]
+            .try_get("", "id")
+            .unwrap();
+        let mut uploading = false;
+        for _ in 0..240 {
+            let listing = std::process::Command::new("curl")
+                .args(["-sS", "--aws-sigv4", "aws:amz:us-east-1:s3", "--user", "rustfsadmin:rustfsadmin"])
+                .arg("http://localhost:9000/pnex-test?uploads")
+                .output()
+                .unwrap();
+            if String::from_utf8_lossy(&listing.stdout).contains(&table) {
+                uploading = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+        assert!(uploading, "no upload seen before the end of the run");
+        first.kill().unwrap();
+        first.wait().unwrap();
+
+        let (_, state) = api.call("GET", &run, None).await;
+        assert_eq!(state["state"], "running", "killed too late: {state}");
+        let (_, all) = api.call("GET", "/api/v1/datasets", None).await;
+        let crossed = all["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == "crossed")
+            .expect("output dataset")
+            .clone();
+        let id = crossed["id"].as_str().unwrap().to_string();
+        assert_eq!(crossed["rows"].as_i64().unwrap_or(0), 0, "half a file is readable: {crossed}");
+
+        sql(&ctx.db, "UPDATE pipeline_jobs SET heartbeat_at = now() - interval '11 minutes' WHERE state = 'running'").await;
+        sql(&ctx.db, "UPDATE dataset_transactions SET heartbeat_at = now() - interval '11 minutes' WHERE state = 'open'").await;
+        let mut second = worker();
+        let mut state = Value::Null;
+        for _ in 0..300 {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            state = api.call("GET", &run, None).await.1;
+            if state["state"] == "done" || state["state"] == "failed" {
+                break;
+            }
+        }
+        second.kill().unwrap();
+        second.wait().unwrap();
+        assert_eq!(state["state"], "done", "{state}");
+        let (_, table) = api.call("GET", &format!("/api/v1/datasets/{id}"), None).await;
+        assert_eq!(table["rows"], (SIDE * SIDE) as i64, "{table}");
+        let attempts = sql(&ctx.db, "SELECT attempts FROM pipeline_jobs").await;
+        assert_eq!(attempts[0].try_get::<i32>("", "attempts").unwrap(), 2);
+
+        // What the dead worker left: its transaction, its file, its upload.
+        let store = datasets::store_of(&ctx.config).unwrap();
+        datasets::purge(&ctx.db, &store).await.unwrap();
+        let kept = sql(&ctx.db, &format!(
+            "SELECT id::text AS id FROM dataset_transactions WHERE dataset_id = '{id}' AND state = 'committed'"
+        ))
+        .await;
+        assert_eq!(kept.len(), 1);
+        let kept: String = kept[0].try_get("", "id").unwrap();
+        let files = store.list_prefix(&format!("org_{org}/datasets/{id}/")).await.unwrap();
+        assert!(!files.is_empty());
+        assert!(files.iter().all(|f| format!("{f:?}").contains(&kept)), "{files:?}");
+        let left = S3Config::from_config(&ctx.config)
+            .abort_stale_uploads(&id, std::time::Duration::ZERO)
+            .await
+            .unwrap();
+        // The SIGKILL one for sure, the SIGTERM one if it had reached the store.
+        assert!(left >= 1, "the killed upload");
+    })
+    .await;
+}
+
 #[tokio::test]
 #[serial]
 #[ignore = "needs the France Compétences files in OP1_FC_DIR"]

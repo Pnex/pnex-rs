@@ -47,7 +47,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "3.3.1"
+version: "3.4.0"
 requires: [companies_fr, web_presence]
 extends:
   - type: organization
@@ -548,7 +548,6 @@ imports:
   - name: France Compétences · certifiers
     source: file
     mode: incremental
-    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       steps:
         - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
@@ -580,7 +579,6 @@ imports:
   - name: France Compétences · sheets
     source: file
     mode: incremental
-    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       steps:
         - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
@@ -589,6 +587,7 @@ imports:
         - { step: table_inspect, entry: "*Standard*.csv", expected_columns: [Numero_Fiche, Intitule, Nomenclature_Europe_Niveau, Date_Decision, Date_Fin_Enregistrement, Date_Effet, Actif] }
         - { step: rows_filter, entry: "*Standard*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
       key: fc_sheets
+      after: [fc_certifiers]
       name: France Compétences sheets
       names: {fr: "Fiches France Compétences"}
       format: csv
@@ -612,7 +611,6 @@ imports:
   - name: France Compétences · partners
     source: file
     mode: snapshot
-    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       steps:
         - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
@@ -624,6 +622,7 @@ imports:
         # the active ones ~141k (2026-10-29). Needs fc_sheets' `status`.
         - { step: rows_filter, entry: "*Partenaires*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, only: { property: status, values: [active] }, convert: [trim, upper] }
       key: fc_partners
+      after: [fc_sheets]
       name: France Compétences partners
       names: {fr: "Partenaires France Compétences"}
       format: csv
@@ -654,7 +653,6 @@ imports:
   - name: France Compétences · skill blocks
     source: file
     mode: snapshot
-    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       steps:
         - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
@@ -663,6 +661,7 @@ imports:
         - { step: table_inspect, entry: "*Blocs_De_Comp*.csv", expected_columns: [Numero_Fiche, Bloc_Competences_Code, Bloc_Competences_Libelle] }
         - { step: rows_filter, entry: "*Blocs_De_Comp*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
       key: fc_blocks
+      after: [fc_partners]
       name: France Compétences skill blocks
       names: {fr: "Blocs de compétences France Compétences"}
       format: csv
@@ -696,6 +695,7 @@ imports:
         - { step: file_download }
         - { step: archive_extract, entries: ["*.xml"] }
       key: fc_rs_xml
+      after: [fc_blocks]
       name: France Compétences RS sheets
       names: {fr: "Fiches RS France Compétences (XML)"}
       format: xml

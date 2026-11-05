@@ -94,9 +94,25 @@ pub struct Dataset {
     /// Latest commit, absent before the first one.
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub committed_at: Option<String>,
+    /// Longest wait for a new version before the org is warned (D576).
+    pub max_age_hours: Option<i32>,
+    /// `max_age_hours` has passed without a new version.
+    pub stale: bool,
+    /// The import that fills it: neither a load nor a pipeline may write it.
+    pub import_name: Option<String>,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub created_at: String,
 }
+
+/// How often a dataset must get a new version; `null` stops the check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DatasetFreshnessInput {
+    pub max_age_hours: Option<i32>,
+}
+
+/// Longest wait a freshness check accepts: a year.
+pub const FRESHNESS_HOURS_MAX: i32 = 24 * 366;
 
 /// Creation of a dataset.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,10 +133,80 @@ pub struct DatasetTransaction {
     pub bytes: i64,
     /// Machine code of the failure of an aborted transaction.
     pub code: Option<String>,
+    /// Outcome of the checks of the transform that wrote it (D576).
+    pub checks: Vec<crate::pipelines::CheckResult>,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub committed_at: Option<String>,
+}
+
+/// Largest part of an upload, under the request limit of proxies (Cloudflare: 100 MB).
+pub const UPLOAD_PART_MAX_BYTES: u64 = 64 * 1024 * 1024;
+pub const UPLOAD_PARTS_MAX: i32 = 1000;
+/// Largest source file a load accepts.
+pub const SOURCE_MAX_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum DatasetUploadState {
+    /// Receiving parts.
+    Open,
+    /// Complete, waiting for a server.
+    Ready,
+    Converting,
+    Done,
+    Failed,
+}
+
+impl DatasetUploadState {
+    pub fn ended(self) -> bool {
+        matches!(self, Self::Done | Self::Failed)
+    }
+}
+
+/// A file sent in several requests.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DatasetUpload {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub id: String,
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub dataset_id: String,
+    pub kind: DatasetTransactionKind,
+    pub delimiter: Option<String>,
+    pub state: DatasetUploadState,
+    /// Parts received.
+    pub parts: i32,
+    /// Bytes received.
+    pub bytes: i64,
+    /// The version it became, once done.
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub transaction_id: Option<String>,
+    /// Machine code of the failure.
+    pub code: Option<String>,
+    /// Arguments of the failure.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub args: Option<serde_json::Value>,
+    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
+    pub created_at: String,
+}
+
+/// Opens an upload. Default kind: snapshot.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DatasetUploadInput {
+    pub kind: Option<DatasetTransactionKind>,
+    /// One ASCII character. Default: detected from the first line.
+    pub delimiter: Option<String>,
+}
+
+/// Closes an upload: parts 1 to `parts` make the file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DatasetUploadComplete {
+    pub parts: i32,
 }
 
 /// First rows of a view, values as text (`null` for a missing one).
@@ -131,9 +217,54 @@ pub struct DatasetSample {
     pub rows: Vec<Vec<Option<String>>>,
 }
 
+/// How full each column of the current view is, read from the file footers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DatasetProfile {
+    pub rows: i64,
+    pub columns: Vec<DatasetColumnProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DatasetColumnProfile {
+    pub name: String,
+    pub data_type: String,
+    /// Empty values; absent when a file does not record them.
+    pub nulls: Option<i64>,
+}
+
+impl DatasetProfile {
+    /// Share of filled values of a column, in percent, rounded down so that a column
+    /// with a single gap never reads 100.
+    pub fn filled_pct(&self, column: &str) -> Option<i64> {
+        let nulls = self.columns.iter().find(|c| c.name == column)?.nulls?;
+        (self.rows > 0).then(|| (self.rows - nulls).max(0) * 100 / self.rows)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::fingerprint;
+    use super::{DatasetColumnProfile, DatasetProfile};
+
+    #[test]
+    fn a_fill_rate_never_rounds_a_gap_away() {
+        let profile = |rows, nulls| DatasetProfile {
+            rows,
+            columns: vec![DatasetColumnProfile {
+                name: "a".into(),
+                data_type: "text".into(),
+                nulls,
+            }],
+        };
+        assert_eq!(profile(1000, Some(1)).filled_pct("a"), Some(99));
+        assert_eq!(profile(4, Some(0)).filled_pct("a"), Some(100));
+        assert_eq!(profile(4, Some(4)).filled_pct("a"), Some(0));
+        assert_eq!(profile(0, Some(0)).filled_pct("a"), None);
+        assert_eq!(profile(4, None).filled_pct("a"), None);
+        assert_eq!(profile(4, Some(0)).filled_pct("b"), None);
+    }
 
     #[test]
     fn one_person_has_one_fingerprint() {

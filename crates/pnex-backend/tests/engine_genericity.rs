@@ -74,6 +74,20 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "event attachment role (K21), also an investigation type",
     ),
     (
+        "pnex-backend/src/services/software_supply.rs",
+        &[
+            "software_supply",
+            "software_image",
+            "software_bom",
+            "software_component",
+            "software_vulnerability",
+            "image_has_bom",
+            "bom_lists_component",
+            "image_exposed_to",
+        ],
+        "the fabric projects what it scans into its own pack (agent-environments.md D708, D728)",
+    ),
+    (
         "pnex-backend/src/services/profiles.rs",
         &["person", "identifier", "uses_identifier"],
         "browser-agent profiles write investigation identities",

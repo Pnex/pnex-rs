@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use bytes::Bytes;
 use datafusion::arrow::array::{cast::AsArray, BooleanArray, RecordBatch};
 use datafusion::arrow::compute::{can_cast_types, cast, filter_record_batch};
-use datafusion::arrow::datatypes::{DataType, SchemaRef};
+use datafusion::arrow::datatypes::{DataType, Int64Type, SchemaRef};
 use datafusion::arrow::error::ArrowError;
 use datafusion::dataframe::DataFrame;
 use datafusion::error::DataFusionError;
@@ -29,7 +29,7 @@ use object_store::aws::{AmazonS3, AmazonS3Builder};
 use object_store::buffered::BufWriter;
 use object_store::path::Path as StorePath;
 use pnex_core::err_codes;
-use pnex_core::pipelines::{PipelineDocument, Transform};
+use pnex_core::pipelines::{CheckResult, PipelineDocument, Transform};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -666,7 +666,12 @@ impl Worker {
             .config
             .transform_timeout
             .min(deadline.saturating_duration_since(Instant::now()));
-        let write = self.write_query(&ctx, t, &key, room, &erased);
+        let write = async {
+            let written = self.write_query(&ctx, t, &key, room, &erased).await?;
+            self.run_checks(transaction, output_id, t, &key, &written)
+                .await?;
+            Ok(written)
+        };
         let result = match tokio::time::timeout(timeout, write).await {
             Ok(result) => result,
             Err(_) => Err(Failure::new(
@@ -703,6 +708,182 @@ impl Worker {
             return Err(f);
         }
         Ok(())
+    }
+
+    /// D576: runs the checks on the file just written, keeps their results on the
+    /// transaction, and refuses it if one fails. The caller aborts: the current
+    /// version stays, and the purge removes this file.
+    async fn run_checks(
+        &self,
+        transaction: Uuid,
+        output_id: Uuid,
+        t: &Transform,
+        key: &str,
+        written: &Written,
+    ) -> Result<(), Failure> {
+        if t.checks.is_empty() {
+            return Ok(());
+        }
+        let results = self.measure(output_id, t, key, written).await?;
+        sqlx::query("UPDATE dataset_transactions SET checks = $2 WHERE id = $1")
+            .bind(transaction)
+            .bind(json!(results))
+            .execute(&self.pool)
+            .await
+            .map_err(db_failure)?;
+        match results.iter().find(|r| !r.passed) {
+            None => Ok(()),
+            Some(r) => Err(Failure::new(
+                err_codes::PIPELINE_CHECK_FAILED,
+                json!({
+                    "output": t.output,
+                    "check": r.check,
+                    "column": r.column,
+                    "value": r.value,
+                    "limit": r.limit,
+                }),
+            )),
+        }
+    }
+
+    /// The version a check compares to: rows and columns, if there is one.
+    async fn current_shape(&self, output_id: Uuid) -> Result<Option<(i64, Value)>, Failure> {
+        let row = sqlx::query(
+            "SELECT t.rows, d.schema FROM dataset_transactions t \
+             JOIN datasets d ON d.id = t.dataset_id \
+             WHERE t.dataset_id = $1 AND t.state = 'committed' AND t.purged_at IS NULL \
+             ORDER BY t.seq DESC LIMIT 1",
+        )
+        .bind(output_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_failure)?;
+        row.map(|r| {
+            Ok((
+                r.try_get("rows").map_err(db_failure)?,
+                r.try_get("schema").map_err(db_failure)?,
+            ))
+        })
+        .transpose()
+    }
+
+    async fn measure(
+        &self,
+        output_id: Uuid,
+        t: &Transform,
+        key: &str,
+        written: &Written,
+    ) -> Result<Vec<CheckResult>, Failure> {
+        let c = &t.checks;
+        let output = t.output.as_str();
+        let engine = |e| Failure::of_engine(output, e);
+        let ctx = engine::session(&self.config.limits).map_err(engine)?;
+        let url = format!("s3://{}", self.config.s3_bucket)
+            .parse::<url::Url>()
+            .map_err(Failure::storage)?;
+        ctx.register_object_store(&url, self.store.clone());
+        let file = format!("s3://{}/{key}", self.config.s3_bucket);
+        let frame = ctx
+            .read_parquet(vec![file], ParquetReadOptions::default())
+            .await
+            .map_err(engine)?;
+        ctx.register_table("result", frame.into_view())
+            .map_err(engine)?;
+        let columns: HashSet<&str> = written
+            .schema
+            .fields()
+            .iter()
+            .map(|f| f.name().as_str())
+            .collect();
+        let count = |sql: String| {
+            let ctx = &ctx;
+            async move {
+                let frame = ctx
+                    .sql_with_options(&sql, engine::read_only())
+                    .await
+                    .map_err(engine)?;
+                let batches = frame.collect().await.map_err(engine)?;
+                let n = batches
+                    .iter()
+                    .find(|b| b.num_rows() > 0)
+                    .and_then(|b| {
+                        cast(b.column(0), &DataType::Int64)
+                            .ok()
+                            .map(|a| a.as_primitive::<Int64Type>().value(0))
+                    })
+                    .unwrap_or(0);
+                Ok::<i64, Failure>(n)
+            }
+        };
+        let mut out = Vec::new();
+        let rows = written.rows as i64;
+        if let Some(min) = c.min_rows {
+            out.push(check("min_rows", None, rows >= min as i64, rows, min));
+        }
+        if let Some(max) = c.max_rows {
+            out.push(check("max_rows", None, rows <= max as i64, rows, max));
+        }
+        if !c.unique.is_empty() {
+            let label = c.unique.join(", ");
+            let n = if c.unique.iter().all(|k| columns.contains(k.as_str())) {
+                count(duplicates_sql(&c.unique)).await?
+            } else {
+                // A column it no longer has identifies nothing.
+                -1
+            };
+            out.push(check("unique", Some(label), n == 0, n, 0));
+        }
+        for (column, limit) in &c.max_empty_pct {
+            let pct = if columns.contains(column.as_str()) {
+                let empty = count(empty_sql(column)).await?;
+                percent(empty, rows)
+            } else {
+                100
+            };
+            let passed = columns.contains(column.as_str()) && pct <= *limit as i64;
+            out.push(check(
+                "max_empty_pct",
+                Some(column.clone()),
+                passed,
+                pct,
+                limit,
+            ));
+        }
+        if c.max_drop_pct.is_some() || c.same_columns {
+            let current = self.current_shape(output_id).await?;
+            if let (Some(limit), Some((before, _))) = (c.max_drop_pct, &current) {
+                let drop = percent((before - rows).max(0), *before);
+                out.push(check(
+                    "max_drop_pct",
+                    None,
+                    drop <= limit as i64,
+                    drop,
+                    limit,
+                ));
+            }
+            if let (true, Some((_, schema))) = (c.same_columns, &current) {
+                let before: Vec<&str> = schema
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|f| f["name"].as_str())
+                    .collect();
+                let now: Vec<&str> = written
+                    .schema
+                    .fields()
+                    .iter()
+                    .map(|f| f.name().as_str())
+                    .collect();
+                out.push(CheckResult {
+                    check: "same_columns".into(),
+                    column: None,
+                    passed: before == now,
+                    value: now.join(", "),
+                    limit: before.join(", "),
+                });
+            }
+        }
+        Ok(out)
     }
 
     async fn write_query(
@@ -855,6 +1036,53 @@ impl Worker {
     }
 }
 
+fn check(
+    name: &str,
+    column: Option<String>,
+    passed: bool,
+    value: impl std::fmt::Display,
+    limit: impl std::fmt::Display,
+) -> CheckResult {
+    CheckResult {
+        check: name.into(),
+        column,
+        passed,
+        value: value.to_string(),
+        limit: limit.to_string(),
+    }
+}
+
+/// The share, rounded up: 1 row in a million is not 0 %.
+fn percent(part: i64, whole: i64) -> i64 {
+    if whole <= 0 {
+        return 0;
+    }
+    (part.saturating_mul(100) + whole - 1) / whole
+}
+
+/// Column names come from the document: quoted, and only asked about once found in
+/// the schema of the result.
+fn quoted(column: &str) -> String {
+    format!("\"{}\"", column.replace('"', "\"\""))
+}
+
+fn duplicates_sql(columns: &[String]) -> String {
+    let keys = columns
+        .iter()
+        .map(|c| quoted(c))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("SELECT count(*) FROM (SELECT 1 FROM result GROUP BY {keys} HAVING count(*) > 1) d")
+}
+
+fn empty_sql(column: &str) -> String {
+    let c = quoted(column);
+    format!(
+        "SELECT coalesce(sum(CASE WHEN {c} IS NULL OR btrim(CAST({c} AS VARCHAR)) = '' \
+         THEN 1 ELSE 0 END), 0) FROM result"
+    )
+}
+
 /// Column → fingerprints of the values to leave out.
 type Erased = HashMap<String, HashSet<String>>;
 
@@ -896,5 +1124,24 @@ fn type_name(t: &DataType) -> String {
         DataType::Timestamp(..) => "timestamp".into(),
         DataType::Decimal128(..) | DataType::Decimal256(..) => "decimal".into(),
         other => format!("{other:?}").to_lowercase(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_share_rounds_up_and_survives_nothing() {
+        assert_eq!(percent(0, 0), 0);
+        assert_eq!(percent(1, 1_000_000), 1);
+        assert_eq!(percent(1, 2), 50);
+        assert_eq!(percent(3, 3), 100);
+    }
+
+    #[test]
+    fn a_column_name_cannot_leave_its_quotes() {
+        assert_eq!(quoted(r#"a"b"#), r#""a""b""#);
+        assert!(duplicates_sql(&["x".into(), r#"y"; DROP"#.into()]).contains(r#""y""; DROP""#));
     }
 }

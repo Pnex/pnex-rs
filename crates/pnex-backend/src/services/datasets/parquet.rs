@@ -118,6 +118,45 @@ impl AsyncFileReader for S3Reader {
 
 /// Column names and the first `limit` rows of a file, values as text cut to
 /// [`SAMPLE_VALUE_MAX`] characters.
+/// Empty values per column of a file, from its footer: no row is read. `None` when a
+/// row group does not record them.
+pub async fn null_counts(
+    store: &S3Store,
+    key: &str,
+    size: u64,
+) -> ParquetResult<Vec<(String, Option<i64>)>> {
+    let reader = S3Reader {
+        store: store.clone(),
+        key: key.to_string(),
+        size,
+    };
+    let builder = ParquetRecordBatchStreamBuilder::new(reader).await?;
+    let names: Vec<String> = builder
+        .schema()
+        .fields()
+        .iter()
+        .map(|f| f.name().clone())
+        .collect();
+    let groups = builder.metadata().row_groups();
+    Ok(names
+        .into_iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let nulls = groups
+                .iter()
+                .map(|g| {
+                    g.columns()
+                        .get(i)?
+                        .statistics()?
+                        .null_count_opt()
+                        .map(|n| n as i64)
+                })
+                .sum::<Option<i64>>();
+            (name, nulls)
+        })
+        .collect())
+}
+
 pub async fn sample(
     store: &S3Store,
     key: &str,

@@ -36,6 +36,7 @@ use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
 mod action;
+mod dataset;
 mod mail;
 mod mail_send;
 mod ontology;

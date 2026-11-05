@@ -597,3 +597,150 @@ async fn a_query_over_its_time_limit_stops() {
     assert_eq!(state, "failed");
     assert_eq!(code.as_deref(), Some("pipeline-timeout"));
 }
+
+/// D576: a check that fails leaves the previous version current and says why; one
+/// that passes is kept on the version.
+#[tokio::test]
+#[serial]
+async fn a_failed_check_keeps_the_current_version() {
+    let e = env().await;
+    let org = org(&e).await;
+    seed(
+        &e,
+        org,
+        "raw",
+        &["k", "v"],
+        &[&["a", "1"], &["b", "2"], &["c", "3"], &["d", "4"]],
+    )
+    .await;
+    let yaml = |checks: &str, filter: &str| {
+        format!(
+            "transforms:\n  - output: clean\n    inputs: {{ r: raw }}\n    sql: {filter}\n    checks: {checks}\n"
+        )
+    };
+    let all = "SELECT k, v FROM r";
+    let id = pipeline(
+        &e,
+        org,
+        &yaml("{ min_rows: 1, unique: [k], max_empty_pct: { v: 0 } }", all),
+    )
+    .await;
+    let (state, code, _) = run(&e, org, id).await;
+    assert_eq!((state.as_str(), code), ("done", None));
+    let clean: Uuid = sqlx::query("SELECT id FROM datasets WHERE org_id = $1 AND name = 'clean'")
+        .bind(org)
+        .fetch_one(&e.admin)
+        .await
+        .unwrap()
+        .get("id");
+    let last = || async {
+        let r = sqlx::query(
+            "SELECT state, code, checks FROM dataset_transactions WHERE dataset_id = $1 \
+             ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(clean)
+        .fetch_one(&e.admin)
+        .await
+        .unwrap();
+        (
+            r.get::<String, _>("state"),
+            r.get::<Option<String>, _>("code"),
+            r.get::<serde_json::Value, _>("checks"),
+        )
+    };
+    let (state, _, checks) = last().await;
+    assert_eq!(state, "committed");
+    assert_eq!(checks.as_array().unwrap().len(), 3, "{checks}");
+    assert!(
+        checks
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["passed"] == true),
+        "{checks}"
+    );
+
+    // Each check alone fails with what it measured; the committed version stays.
+    let doubled = "SELECT k, v FROM r UNION ALL SELECT k, v FROM r";
+    let blanks = "SELECT k, CASE WHEN k = ''a'' THEN v ELSE '' '' END AS v FROM r";
+    let renamed = "SELECT k, v AS other FROM r";
+    let few = "SELECT k, v FROM r WHERE k = ''a''";
+    for (checks, sql, check, value) in [
+        ("{ min_rows: 5 }", all, "min_rows", "4"),
+        ("{ max_rows: 3 }", all, "max_rows", "4"),
+        ("{ unique: [k] }", doubled, "unique", "4"),
+        ("{ unique: [gone] }", all, "unique", "-1"),
+        (
+            "{ max_empty_pct: { v: 50 } }",
+            blanks,
+            "max_empty_pct",
+            "75",
+        ),
+        (
+            "{ max_empty_pct: { gone: 100 } }",
+            all,
+            "max_empty_pct",
+            "100",
+        ),
+        ("{ max_drop_pct: 50 }", few, "max_drop_pct", "75"),
+        (
+            "{ same_columns: true }",
+            renamed,
+            "same_columns",
+            "k, other",
+        ),
+    ] {
+        let quoted = format!("'{sql}'");
+        sqlx::query("UPDATE pipelines SET version = version + 1, document = $2 WHERE id = $1")
+            .bind(id)
+            .bind(yaml(checks, &quoted))
+            .execute(&e.admin)
+            .await
+            .unwrap();
+        let version: i32 = sqlx::query(
+            "INSERT INTO pipeline_versions (pipeline_id, version, document) \
+             SELECT id, version, document FROM pipelines WHERE id = $1 RETURNING version",
+        )
+        .bind(id)
+        .fetch_one(&e.admin)
+        .await
+        .unwrap()
+        .get("version");
+        let job: Uuid = sqlx::query(
+            "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger) \
+             VALUES ($1, $2, $3, 'manual') RETURNING id",
+        )
+        .bind(org)
+        .bind(id)
+        .bind(version)
+        .fetch_one(&e.admin)
+        .await
+        .unwrap()
+        .get("id");
+        assert!(e.worker.run_next().await.unwrap());
+        let r = sqlx::query("SELECT state, code, args FROM pipeline_jobs WHERE id = $1")
+            .bind(job)
+            .fetch_one(&e.admin)
+            .await
+            .unwrap();
+        assert_eq!(r.get::<String, _>("state"), "failed", "{checks}");
+        assert_eq!(
+            r.get::<Option<String>, _>("code").as_deref(),
+            Some("pipeline-check-failed"),
+            "{checks}"
+        );
+        let args: serde_json::Value = r.get("args");
+        assert_eq!(args["check"], check, "{args}");
+        assert_eq!(args["value"], value, "{args}");
+        let (state, code, kept) = last().await;
+        assert_eq!(state, "aborted", "{checks}");
+        assert_eq!(code.as_deref(), Some("pipeline-check-failed"));
+        assert_eq!(kept[0]["passed"], false, "{kept}");
+        let visible: Vec<_> = transactions(&e, org, "clean")
+            .await
+            .into_iter()
+            .filter(|t| t.0 == "committed")
+            .collect();
+        assert_eq!(visible, [("committed".to_string(), 4)], "{checks}");
+    }
+}

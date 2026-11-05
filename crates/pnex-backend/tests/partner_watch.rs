@@ -1473,11 +1473,20 @@ async fn import_runs_its_own_steps() {
                         "recurrence": weekly, "expected_version": sheet["version"]}))).await;
         assert_eq!((st, e["errors"]["fields"]["recurrence"].as_str()), (400, Some("invalid")), "{e}");
 
-        // D359: the pack ships the certifiers import with its steps, every
-        // night; the followed certifiers come from the pack setting.
+        // D359: the pack ships the certifiers import with its steps; the followed
+        // certifiers come from the pack setting. D575: one schedule, on the last
+        // import, and the others run first in the order they need.
         let (import_id, _) = import_named(&server, &env.alice, org, "France Compétences · certifiers").await;
         let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org, None).await;
-        assert!(imp["next_run_at"].is_string() && imp["mapping"].as_str().unwrap().contains("source_resolve"), "{imp}");
+        assert!(imp["next_run_at"].is_null() && imp["mapping"].as_str().unwrap().contains("source_resolve"), "{imp}");
+        let (last, _) = import_named(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
+        let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{last}"), &env.alice, org, None).await;
+        assert!(imp["next_run_at"].is_string(), "{imp}");
+        let (st, plan) = call(&server, "GET", &format!("/api/v1/data-builds/plan?target_kind=import&target_id={last}"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{plan}");
+        let names: Vec<&str> = plan["steps"].as_array().unwrap().iter().map(|s| s["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["France Compétences · certifiers", "France Compétences · sheets", "France Compétences · partners",
+            "France Compétences · skill blocks", "France Compétences · RS sheets (XML)"]);
         let (st, p) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
             Some(json!({"values": {"certifiers": "80259488700019"}}))).await;
         assert_eq!(st, 200, "{p}");
@@ -2444,6 +2453,124 @@ async fn partners_import_memory() {
         println!("rows {} counts {}", r["run"]["rows"], r["run"]["counts"]);
         assert_eq!(r["run"]["state"], "applied", "{r}");
         // The org id comes back in the next test: its staging is emptied.
+        empty_staging(org).await;
+        unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
+    })
+    .await;
+}
+
+/// D575, acceptance of OP1.4: one schedule on the last import runs the five France
+/// Compétences imports in the order they need, and a missing file stops only what
+/// waits for it.
+#[tokio::test]
+#[serial]
+async fn france_competences_from_one_schedule() {
+    with_app(|server, env| async move {
+        use std::io::Write;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        empty_staging(org).await;
+        let (st, _) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
+            Some(json!({"values": {"certifiers": "80259488700019"}}))).await;
+        assert_eq!(st, 200);
+
+        // The night's two exports; a sheet of a block and a sheet of the XML are held.
+        let blocks = BLOCS_CSV.replace("RNCP183", "RS6765");
+        let xml = RS_XML.replace("RS0101", "RS6765");
+        let csv_zip = |with_standard: bool| {
+            let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            let mut files = vec![
+                ("export_fiches_CSV_Certificateurs_2026_10_20.csv", FC_CERTIFIERS.to_string()),
+                ("export_fiches_CSV_Partenaires_2026_10_20.csv", fc_partners(&[])),
+                ("export_fiches_CSV_Blocs_De_Competences_2026_10_20.csv", blocks.clone()),
+            ];
+            if with_standard {
+                files.push(("export_fiches_CSV_Standard_2026_10_20.csv", FC_STANDARD.to_string()));
+            }
+            for (name, body) in files {
+                w.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+                w.write_all(body.as_bytes()).unwrap();
+            }
+            w.finish().unwrap().into_inner()
+        };
+        let rs_zip = {
+            let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            w.start_file("export.xml", zip::write::SimpleFileOptions::default()).unwrap();
+            w.write_all(xml.as_bytes()).unwrap();
+            w.finish().unwrap().into_inner()
+        };
+        let zip = std::sync::Arc::new(std::sync::Mutex::new(csv_zip(true)));
+        let served = zip.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let dataset = json!({"title": "Répertoires", "resources": [
+            {"title": "export-fiches-csv-2026-10-20.zip", "url": format!("{base}/files/csv.zip"),
+             "format": "zip", "last_modified": "2026-10-20T03:00:00+00:00"},
+            {"title": "export-fiches-rs-v4-1-2026-10-20.zip", "url": format!("{base}/files/rs.zip"),
+             "format": "zip", "last_modified": "2026-10-20T03:00:00+00:00"}
+        ]});
+        let app = axum::Router::new()
+            .route("/api/1/datasets/{id}/", axum::routing::get(move || async move { axum::Json(dataset) }))
+            .route("/files/csv.zip", axum::routing::get(move || async move { served.lock().unwrap().clone() }))
+            .route("/files/rs.zip", axum::routing::get(move || async move { rs_zip }));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
+        let store = pnex_backend::services::artifact_store::S3Config::from_config(
+            &loco_rs::config::Config::new(&loco_rs::environment::Environment::Test).unwrap(),
+        ).store().unwrap();
+
+        let (last, _) = import_named(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
+        let due = format!("UPDATE object_imports SET next_run_at = now() - interval '1 minute' WHERE id = '{last}'");
+        let run_build = |s: String| {
+            let (server, token, db, store) = (&server, env.alice.clone(), env.db.clone(), store.clone());
+            async move {
+                db.execute_unprepared(&s).await.unwrap();
+                pnex_backend::services::ontology::imports::sweep(&db).await.unwrap();
+                let (_, list) = call(server, "GET", "/api/v1/data-builds", &token, org, None).await;
+                let id = list["results"][0]["id"].as_str().expect("a build").to_string();
+                assert_eq!(list["results"][0]["trigger"], "schedule", "{list}");
+                for _ in 0..600 {
+                    pnex_backend::services::data_builds::tick(&db, Some(&store)).await.unwrap();
+                    let (_, b) = call(server, "GET", &format!("/api/v1/data-builds/{id}"), &token, org, None).await;
+                    if b["state"] != "running" {
+                        return b;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                panic!("build {id} never ended");
+            }
+        };
+        let states = |b: &Value| b["steps"].as_array().unwrap().iter()
+            .map(|s| s["state"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+
+        let b = run_build(due.clone()).await;
+        assert_eq!(b["state"], "done", "{b}");
+        assert_eq!(states(&b), ["done", "done", "done", "done", "done"], "{b}");
+        // Tables filled by these imports say so: the screen offers no load on them.
+        let (_, tables) = call(&server, "GET", "/api/v1/datasets", &env.alice, org, None).await;
+        let filled: Vec<&Value> = tables["results"].as_array().unwrap().iter()
+            .filter(|t| t["import_name"].is_string()).collect();
+        assert!(!filled.is_empty(), "{tables}");
+        let n = |sql: String| { let db = env.db.clone(); async move {
+            db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql))
+                .await.unwrap().unwrap().try_get::<i64>("", "n").unwrap() } };
+        let objects = |t: &'static str| format!(
+            "SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} AND type_key = '{t}' AND valid_to IS NULL");
+        assert_eq!(n(objects("certification")).await, 2, "certifiers ran first");
+        assert!(n(objects("skill")).await > 2, "blocks and competencies, on what the first ones wrote");
+        assert_eq!(n(format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
+            AND relation = 'accredited_for' AND valid_to IS NULL")).await, 3, "partners, on the sheets kept");
+
+        // The next export lost a file: sheets fail, what waits is blocked and keeps
+        // its data, certifiers ran.
+        let skills = n(objects("skill")).await;
+        *zip.lock().unwrap() = csv_zip(false);
+        let b = run_build(due).await;
+        assert_eq!(b["state"], "failed", "{b}");
+        assert_eq!(states(&b), ["done", "failed", "blocked", "blocked", "blocked"], "{b}");
+        assert_eq!(b["args"]["step"], "France Compétences · sheets", "{b}");
+        assert!(b["code"].is_string(), "{b}");
+        assert_eq!(n(objects("skill")).await, skills);
         empty_staging(org).await;
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
     })

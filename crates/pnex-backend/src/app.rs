@@ -148,6 +148,9 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::taxonomies::routes())
         .add_route(controllers::datasets::routes())
         .add_route(controllers::pipelines::routes())
+        .add_route(controllers::connectors::routes())
+        .add_route(controllers::image_registries::routes())
+        .add_route(controllers::environments::routes())
         .add_route(controllers::extension::routes())
         .add_route(controllers::ws_extension::routes())
         .add_route(controllers::time_ranges::routes())
@@ -155,6 +158,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::web_search::routes())
         .add_route(controllers::mailboxes::routes())
         .add_route(controllers::proposals::routes())
+        .add_route(controllers::runners::routes())
         .add_route(controllers::lab::routes())
         .add_route(controllers::ontology::routes())
         .add_route(controllers::markets::routes())
@@ -285,8 +289,12 @@ impl Hooks for App {
         crate::services::ai::conversations::spawn_purger(ctx);
         // Recurrence occurrences roll forward (ontology.md annex B).
         crate::services::ontology::recurrence::spawn_sweeper(ctx);
+        crate::services::runners::spawn_reaper(ctx);
+        crate::services::environments::spawn_rescans(ctx);
         // Scheduled ontology imports (partner-watch.md D303).
         crate::services::ontology::imports::spawn_scheduler(ctx);
+        // Chained runs, stale tables, dataset events (data-pipelines.md D575–D578).
+        crate::services::data_builds::spawn(ctx);
         // Server site crawls (partner-watch.md D307).
         crate::services::crawl::spawn_scheduler(ctx);
         crate::services::markets::documents::spawn_scheduler(ctx);
@@ -301,6 +309,7 @@ impl Hooks for App {
         crate::services::ingest::spawn_purge(ctx);
         // Dataset purge: dead transactions, retention (D569).
         crate::services::datasets::spawn_purge(ctx);
+        crate::services::datasets::uploads::spawn(ctx);
         crate::services::datasets::erasure::spawn(ctx);
         // Flow execution cluster (D106): this process as a flow worker (one
         // supervised runtime for the orgs placed on it) and as a placement
@@ -336,10 +345,11 @@ impl Hooks for App {
         let router = router.layer(axum::middleware::from_fn(
             crate::auth::internal_guard::middleware,
         ));
-        // MCP tool calls are replayed on this final router (D245).
-        ctx.shared_store
-            .insert(crate::services::mcp::AppRouter(router.clone()));
-        Ok(router)
+        // MCP tool calls are replayed on this final router (D245). The requests carry it:
+        // kept in `ctx`, it would close a cycle (the router holds `ctx`) and no context
+        // would ever free its database pool.
+        let replay = crate::services::mcp::AppRouter(std::sync::Arc::new(router.clone()));
+        Ok(router.layer(axum::Extension(replay)))
     }
 
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {

@@ -97,6 +97,7 @@ pub mod tour_viewer;
 /// audio/video player built on it: one look for everything timed.
 pub mod transport;
 pub mod ui;
+pub mod versions_drawer;
 /// Consented voice profiles of persons (voice-id.md).
 pub mod voice_id;
 pub mod web_search_providers;

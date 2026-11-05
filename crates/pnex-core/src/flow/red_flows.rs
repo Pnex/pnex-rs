@@ -292,6 +292,15 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            FlowNodeKind::DatasetTrigger { config } => serde_json::json!({
+                "type": "pnex-dataset-trigger",
+                "dataset": config.dataset,
+                "on": config.on,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::MediaSource { config } => serde_json::json!({
                 "type": "pnex-media-source",
                 "streams": config.streams,

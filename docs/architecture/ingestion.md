@@ -112,6 +112,14 @@ conversions D301 sur la colonne avant comparaison (`digits` pour les SIRET
 précédés d'une tabulation). Écrit un CSV filtré en staging (même
 séparateur). Manifeste `{rows_in, rows_out, distinct_kept, staging_key}`.
 
+**Règles de pack** (data-pipelines.md §7 bis) : `FILTER_VALUES_MAX` borne une liste
+`in` écrite dans le YAML à 1 000 valeurs ; une liste plus longue se lit dans
+l'ontologie par `in_objects` + `only`, la limite ne monte pas. Un import d'une source
+publique livre `invalid: skip` dès le premier jour, sur sa clé et ses textes libres :
+une valeur sale ne doit pas refuser tout le run. À vérifier en revue de pack, « source
+publique » ne se déduit pas du YAML. Une conversion qui garde une partie (`left:9`)
+précède celle qui la contrôle (`luhn`).
+
 ### D322 — `ontology_import`
 
 Exécute une import D301 **existante** sur la clé reçue

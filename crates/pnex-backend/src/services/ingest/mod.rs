@@ -10,6 +10,7 @@ mod archive;
 mod download;
 mod filter;
 pub mod pipeline;
+mod query;
 mod resolve;
 mod table;
 

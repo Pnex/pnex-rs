@@ -552,6 +552,8 @@ async fn resolve_labels<C: ConnectionTrait>(
         }
     }
     for (kind, table) in [
+        (SecretConsumerKind::Connector, "connectors"),
+        (SecretConsumerKind::ImageRegistry, "image_registries"),
         (SecretConsumerKind::BrowserEndpoint, "browser_endpoints"),
         (
             SecretConsumerKind::WebSearchProvider,

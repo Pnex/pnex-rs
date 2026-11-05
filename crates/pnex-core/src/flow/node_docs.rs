@@ -31,7 +31,7 @@ pub const FLOW_AUTHORING_RULES: &[(&str, &str)] = &[
     ),
     (
         "canonical_pipeline",
-        "inject (trigger) → device_read → calc → metric. A flow runs continuously: a periodic inject (repeat_secs) is the default idiom. Event sources (camera_source, control_source, action_trigger, media_source) need no inject.",
+        "inject (trigger) → device_read → calc → metric. A flow runs continuously: a periodic inject (repeat_secs) is the default idiom. Event sources (camera_source, control_source, action_trigger, dataset_trigger, media_source) need no inject.",
     ),
     (
         "payload_key_rule",
@@ -457,6 +457,15 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("action", "action key declared on the type"),
         ],
         notes: "Message: payload = the action parameters (object), topic = action key, msg.object = {id, type, title}, msg.action = {invocation_id, key, by, ts_ms}. Invoking an action with no deployed flow holding its trigger is refused. Several flows may listen to the same action; each gets every invocation.",
+    },
+    NodeDoc {
+        kind: "dataset_trigger",
+        summary: "Event source fed by the new versions of one table of the organization, whether a pipeline computed it or a file was loaded into it, or by the syncs from that table into the ontology. One output port.",
+        config: &[
+            ("dataset", "name of the table — must exist at deploy"),
+            ("on", "\"committed\" (default): each new version; \"synced\": each sync applied from this table"),
+        ],
+        notes: "Message: payload = {dataset_id, dataset, reference, counts, changed, ts_ms}, topic = dataset.committed or dataset.synced. reference is the version (committed) or the import and run (synced). counts holds rows and bytes (committed) or created, updated and closed (synced). changed holds up to 10,000 ids of objects a sync wrote; empty on committed. A message never carries rows, and a flow neither starts a pipeline nor writes a table. Events missed while the flow is stopped are not replayed; they can arrive up to a few tens of seconds after the commit.",
     },
     NodeDoc {
         kind: "mail_received",

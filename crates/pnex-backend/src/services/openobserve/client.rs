@@ -697,6 +697,57 @@ impl Client {
             .collect())
     }
 
+    /// Retention of a logs stream, `None` while it does not exist. A value of 0 means
+    /// the stream follows the instance default.
+    pub async fn log_stream_retention(
+        &self,
+        org_identifier: &str,
+        stream: &str,
+    ) -> Result<Option<i64>, String> {
+        let (status, text) = self
+            .json_request(
+                reqwest::Method::GET,
+                &format!("/api/{org_identifier}/streams?type=logs"),
+                &self.root_basic,
+                None,
+            )
+            .await?;
+        if !status.is_success() {
+            return Err(format!("streams logs {status} : {text}"));
+        }
+        let parsed = serde_json::from_str::<StreamsResponse>(&text)
+            .map_err(|e| format!("unreadable streams: {e}"))?;
+        Ok(parsed
+            .list
+            .into_iter()
+            .find(|row| row.name == stream)
+            .map(|row| row.settings.and_then(|s| s.data_retention).unwrap_or(0)))
+    }
+
+    /// Sets the retention of one logs stream.
+    pub async fn set_log_stream_retention(
+        &self,
+        org_identifier: &str,
+        stream: &str,
+        days: i64,
+    ) -> Result<(), String> {
+        let (status, text) = self
+            .json_request(
+                reqwest::Method::PUT,
+                &format!(
+                    "/api/{org_identifier}/streams/{}/settings?type=logs",
+                    checked_stream(stream)?
+                ),
+                &self.root_basic,
+                Some(serde_json::json!({ "data_retention": days })),
+            )
+            .await?;
+        if !status.is_success() {
+            return Err(format!("stream settings {status} : {text}"));
+        }
+        Ok(())
+    }
+
     /// Sets the retention of one metrics stream
     /// (`PUT /api/{org}/streams/{name}/settings?type=metrics`, partial body
     /// `{"data_retention": days}` — verified live on O2 v1.0.0).

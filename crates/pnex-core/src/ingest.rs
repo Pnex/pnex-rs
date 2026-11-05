@@ -44,15 +44,18 @@ pub enum IngestStep {
     ArchiveExtract,
     TableInspect,
     RowsFilter,
+    /// One read-only query on a connector, its result as CSV (data-pipelines.md D352).
+    ConnectorQuery,
 }
 
 impl IngestStep {
-    pub const ALL: [IngestStep; 5] = [
+    pub const ALL: [IngestStep; 6] = [
         Self::SourceResolve,
         Self::FileDownload,
         Self::ArchiveExtract,
         Self::TableInspect,
         Self::RowsFilter,
+        Self::ConnectorQuery,
     ];
 
     pub fn key(self) -> &'static str {
@@ -62,6 +65,7 @@ impl IngestStep {
             Self::ArchiveExtract => "archive_extract",
             Self::TableInspect => "table_inspect",
             Self::RowsFilter => "rows_filter",
+            Self::ConnectorQuery => "connector_query",
         }
     }
 
@@ -153,6 +157,13 @@ pub struct IngestConfig {
     /// D301 conversions applied to the column before comparing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub convert: Vec<Convert>,
+    // ── connector_query ──
+    /// Name of a connector of the org.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub connector: String,
+    /// One read-only statement.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub query: String,
 }
 
 fn http_url(s: &str) -> bool {
@@ -193,6 +204,9 @@ impl IngestConfig {
                 }
                 _ => None,
             },
+            IngestStep::ConnectorQuery if self.query.len() > crate::connectors::QUERY_MAX_BYTES => {
+                bad("the query is 64 KB at most")
+            }
             IngestStep::ArchiveExtract
                 if self.entries.len() > ENTRY_GLOBS_MAX
                     || self
@@ -253,6 +267,11 @@ impl IngestConfig {
             },
             IngestStep::RowsFilter if self.column.trim().is_empty() => {
                 unset("a column is required")
+            }
+            IngestStep::ConnectorQuery
+                if self.connector.trim().is_empty() || self.query.trim().is_empty() =>
+            {
+                unset("a connector and a query are required")
             }
             IngestStep::RowsFilter => match self.op {
                 FilterOp::In if self.setting.is_some() => None,

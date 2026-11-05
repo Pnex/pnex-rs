@@ -78,6 +78,16 @@ pub const RULES: &[Rule] = &[
         code: pnex_core::err_codes::AGENT_ENROLL_RATE_LIMITED,
         message: "Too many enrollment attempts, retry in a minute.",
     },
+    // Runner enrolment (join token guessing).
+    Rule {
+        name: "runner-register",
+        path: "/api/v1/runner/register",
+        exact: true,
+        limit: 10,
+        window: MINUTE,
+        code: pnex_core::err_codes::RATE_LIMITED,
+        message: "Too many requests, retry later.",
+    },
     // Device-token authenticated sockets: provisioning (Announce),
     // telemetry ingest, camera uplink (device token guessing).
     Rule {

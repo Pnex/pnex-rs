@@ -76,6 +76,173 @@ async fn make_platform_admin(db: &sea_orm::DatabaseConnection, user_id: i64) {
 
 #[tokio::test]
 #[serial]
+async fn status_names_who_holds_each_lease_and_flags_another_version() {
+    use sea_orm::ConnectionTrait;
+    with_app(|server, ctx, alice, _bob| async move {
+        let (alice_id, _, _) = provision(&server, &alice).await;
+        make_platform_admin(&ctx.db, alice_id).await;
+        let topology = || async {
+            let body: serde_json::Value = server
+                .get("/api/v1/system/status")
+                .add_header("Authorization", bearer(&alice))
+                .await
+                .json();
+            body["components"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["key"] == "topology")
+                .unwrap()
+                .clone()
+        };
+        let lease = |t: &serde_json::Value, name: &str| {
+            t["metrics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["key"] == "cluster_lease" && m["label"] == name)
+                .and_then(|m| m["text"].as_str().map(str::to_string))
+        };
+        let db = &ctx.db;
+        assert!(pnex_backend::services::flow_cluster::store::try_lease(
+            db,
+            "task:mine",
+            "pod-a:1:1",
+            60_000
+        )
+        .await
+        .unwrap());
+        let t = topology().await;
+        let text = lease(&t, "task:mine").expect("lease listed");
+        assert!(text.starts_with("pod-a · "), "{text}");
+        assert!(text.contains(&pnex_backend::app::app_version()), "{text}");
+        assert!(
+            !t["detail"]
+                .as_str()
+                .unwrap_or("")
+                .contains("another version"),
+            "{t}"
+        );
+
+        // A pod left behind by a partial rollout.
+        db.execute_unprepared(
+            "INSERT INTO flow_leases (name, holder, expires_at, holder_version) \
+             VALUES ('task:old', 'pod-b:1:1', now() + interval '1 minute', '0.0.1 (old)')",
+        )
+        .await
+        .unwrap();
+        // An expired lease holds nothing.
+        db.execute_unprepared(
+            "INSERT INTO flow_leases (name, holder, expires_at, holder_version) \
+             VALUES ('task:gone', 'pod-c:1:1', now() - interval '1 minute', 'x')",
+        )
+        .await
+        .unwrap();
+        let t = topology().await;
+        assert!(lease(&t, "task:old").unwrap().contains("0.0.1 (old)"));
+        assert_eq!(lease(&t, "task:gone"), None);
+    })
+    .await;
+}
+
+/// O2 answering the stream lists and recording each change of settings.
+async fn fake_o2(
+    logs: serde_json::Value,
+) -> (
+    pnex_backend::services::openobserve::Client,
+    std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+) {
+    use axum::extract::{Path, Query, State};
+    use axum::routing::{get, put};
+    use std::collections::HashMap;
+    type Puts = std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>;
+    let puts: Puts = Default::default();
+    let router = axum::Router::new()
+        .route(
+            "/api/o/streams",
+            get(move |Query(q): Query<HashMap<String, String>>| {
+                let logs = logs.clone();
+                async move {
+                    axum::Json(if q.get("type").map(String::as_str) == Some("logs") {
+                        logs
+                    } else {
+                        serde_json::json!({ "list": [] })
+                    })
+                }
+            }),
+        )
+        .route(
+            "/api/o/streams/{name}/settings",
+            put(
+                |State(puts): State<Puts>,
+                 Path(name): Path<String>,
+                 Query(q): Query<HashMap<String, String>>,
+                 axum::Json(body): axum::Json<serde_json::Value>| async move {
+                    assert_eq!(q.get("type").map(String::as_str), Some("logs"));
+                    puts.lock().unwrap().push((name, body));
+                    axum::Json(serde_json::json!({}))
+                },
+            ),
+        )
+        .with_state(puts.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let client = pnex_backend::services::openobserve::Client::new(
+        &pnex_backend::services::openobserve::OpenobserveSettings {
+            base_url: format!("http://{addr}"),
+            root_email: "root@example.com".into(),
+            root_password: "x".into(),
+        },
+    );
+    (client, puts)
+}
+
+#[tokio::test]
+#[serial]
+async fn reconcile_sets_the_history_retention_only_when_it_differs() {
+    use pnex_backend::models::_entities::organizations;
+    use pnex_backend::services::retention::reconcile_org;
+    with_app(|server, ctx, alice, _bob| async move {
+        let (_, org_id, _) = provision(&server, &alice).await;
+        let org = organizations::Entity::find_by_id(org_id)
+            .one(&ctx.db)
+            .await
+            .unwrap()
+            .unwrap();
+        let stream = |days: i64| {
+            serde_json::json!({ "list": [
+                { "name": "other_logs", "settings": { "data_retention": 1 } },
+                { "name": "object_changes", "settings": { "data_retention": days } },
+            ]})
+        };
+
+        // The instance default on the journal: the history retention replaces it.
+        let (client, puts) = fake_o2(stream(30)).await;
+        assert_eq!(reconcile_org(&ctx.db, &client, &org, "o").await, Ok(1));
+        assert_eq!(
+            *puts.lock().unwrap(),
+            [(
+                "object_changes".to_string(),
+                serde_json::json!({ "data_retention": 3650 })
+            )]
+        );
+
+        // Already right: nothing written.
+        let (client, puts) = fake_o2(stream(3650)).await;
+        assert_eq!(reconcile_org(&ctx.db, &client, &org, "o").await, Ok(0));
+        assert!(puts.lock().unwrap().is_empty());
+
+        // Created by the first write of an object: nothing to set before that.
+        let (client, puts) = fake_o2(serde_json::json!({ "list": [] })).await;
+        assert_eq!(reconcile_org(&ctx.db, &client, &org, "o").await, Ok(0));
+        assert!(puts.lock().unwrap().is_empty());
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn status_is_reserved_to_platform_admins() {
     with_app(|server, ctx, alice, _bob| async move {
         let (alice_id, _, _) = provision(&server, &alice).await;
@@ -123,7 +290,7 @@ async fn status_is_reserved_to_platform_admins() {
 #[tokio::test]
 #[serial]
 async fn retention_precedence_and_admin_edits() {
-    with_app(|server, ctx, alice, _bob| async move {
+    with_app(|server, ctx, alice, bob| async move {
         let (alice_id, org_id, _) = provision(&server, &alice).await;
         let get = || {
             server
@@ -160,6 +327,34 @@ async fn retention_precedence_and_admin_edits() {
         assert_eq!(res.status_code(), 422);
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "retention-out-of-range");
+
+        // History has its own value (Q-P1), long by default, whatever the others say.
+        pnex_backend::services::retention::set_history_days(&ctx.db, None, alice_id)
+            .await
+            .unwrap();
+        let body: serde_json::Value = get().await.json();
+        assert_eq!(body["history_days"], 3650);
+        let put_history = |token: String, days: serde_json::Value| {
+            server
+                .put("/api/v1/system/retention/history")
+                .add_header("Authorization", bearer(&token))
+                .json(&serde_json::json!({ "days": days }))
+        };
+        let res = put_history(bob.clone(), 7.into()).await;
+        assert_eq!(res.status_code(), 403);
+        let res = put_history(alice.clone(), 0.into()).await;
+        assert_eq!(res.status_code(), 422);
+        let res = put_history(alice.clone(), 3651.into()).await;
+        assert_eq!(res.status_code(), 422);
+        let res = put_history(alice.clone(), 400.into()).await;
+        assert_eq!(res.status_code(), 200);
+        let body: serde_json::Value = get().await.json();
+        assert_eq!(body["history_days"], 400, "{body}");
+        assert_ne!(body["days"], 400, "telemetry retention does not follow");
+        let res = put_history(alice.clone(), serde_json::Value::Null).await;
+        assert_eq!(res.status_code(), 200);
+        let body: serde_json::Value = get().await.json();
+        assert_eq!(body["history_days"], 3650);
 
         let res = server
             .put("/api/v1/system/retention/default")

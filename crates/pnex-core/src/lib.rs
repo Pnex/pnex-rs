@@ -14,6 +14,8 @@ pub mod apps;
 pub mod gkg;
 pub mod market_study;
 pub mod markets;
+/// Runners of the worker fabric (agent-environments.md lot E0).
+pub mod runners;
 
 pub mod api;
 pub use api::*;
@@ -149,8 +151,14 @@ pub mod fold;
 /// Mailboxes as sources, messages, the `mail_received` trigger (mail.md).
 pub mod mail;
 
+/// Connectors to outside databases (data-pipelines.md D352).
+pub mod connectors;
 /// Dataset catalogue DTOs (data-pipelines.md D569).
 pub mod datasets;
+/// Agent environments (agent-environments.md D702, D704).
+pub mod environments;
+/// OCI image registries (agent-environments.md D703).
+pub mod image_registries;
 /// Pipeline documents and DTOs (data-pipelines.md D571).
 pub mod pipelines;
 /// Topic taxonomies (media-ingest.md D168): versioned topics, keyword

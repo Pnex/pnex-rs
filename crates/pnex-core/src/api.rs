@@ -706,6 +706,9 @@ pub struct RetentionInfo {
     /// Platform default (days), self-hosted only.
     #[serde(default)]
     pub global_default_days: Option<u32>,
+    /// Days the provenance journal of objects and links is kept (D350).
+    #[serde(default)]
+    pub history_days: u32,
     /// Subscription tier name and its retention (days, rounded up).
     #[serde(default)]
     pub tier_name: Option<String>,

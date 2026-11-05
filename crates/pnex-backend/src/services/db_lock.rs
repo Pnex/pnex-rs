@@ -38,6 +38,8 @@ pub mod ns {
     pub const ONTOLOGY_PACK: i32 = 0x504e_000a;
     /// Ontology import runs of one org (one application at a time, D301).
     pub const ONTOLOGY_IMPORT: i32 = 0x504e_000b;
+    /// Projection of image scans of one org (agent-environments.md D728).
+    pub const SOFTWARE_SUPPLY: i32 = 0x504e_000c;
 }
 
 /// Advisory lock key used by the boot migration (single int8 form).

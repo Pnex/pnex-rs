@@ -25,6 +25,8 @@ cd e2e && bun run report         # HTML report of the last run (traces on failur
 | `PNEX_E2E_ORG` | `E2E` — organization the suite owns |
 | `PNEX_E2E_FRESH_ORG=1` | delete and recreate that org before the run |
 | `PNEX_E2E_KEEP=1` | skip the start-of-run sweep (keep what the last run left) |
+| `PNEX_E2E_STATE_FILE` | `e2e/.state/run.json` — give each concurrent run its own, with `--output`, when two runs target different servers |
+| `PNEX_E2E_PIPELINE_WORKER=1` | unset — the stack runs a pipeline worker (`task pipeline-worker:up`): `@pipelines` also runs pipelines; without it, only the screens are tested |
 | `PNEX_E2E_WORKERS` | `2` |
 | `PNEX_E2E_DPR` | `2` (device scale factor; `1` = faster runs) |
 | `PNEX_E2E_DIST` | unset — a local web build (`target/dx/pnex-frontend/release/web/public`) served instead of the server UI; API and auth stay on the server. Tests a front change without a new image |

@@ -98,10 +98,26 @@ async fn create(
     org: OrgContext,
     Json(input): Json<ObjectImportInput>,
 ) -> Result<Response> {
+    deny_connector_without_right(&org, &input)?;
     reply(
         StatusCode::CREATED,
         imports::create(&ctx.db, org.org.id, Some(org.auth.user.id), &input, None).await,
     )
+}
+
+/// A query on a connector reads an outside database into a table every member reads:
+/// it takes the right to use connectors, on top of writing the import (R2).
+fn deny_connector_without_right(org: &OrgContext, input: &ObjectImportInput) -> Result<()> {
+    let uses = serde_saphyr::from_str::<pnex_core::ontology::import::Mapping>(&input.mapping)
+        .is_ok_and(|m| {
+            m.steps
+                .iter()
+                .any(|s| s.step == pnex_core::ingest::IngestStep::ConnectorQuery)
+        });
+    if uses && !org.can("connectors:use") {
+        return Err(crate::auth::access_denied("connectors:use"));
+    }
+    Ok(())
 }
 
 #[utoipa::path(
@@ -153,6 +169,7 @@ async fn update(
     Path(id): Path<String>,
     Json(input): Json<ObjectImportInput>,
 ) -> Result<Response> {
+    deny_connector_without_right(&org, &input)?;
     reply(
         StatusCode::OK,
         imports::update(

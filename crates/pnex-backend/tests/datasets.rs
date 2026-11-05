@@ -120,9 +120,22 @@ async fn snapshot_append_and_time_travel() {
         assert_eq!(v["columns"], json!(["code", "title", "state"]));
         assert_eq!(v["rows"][0][1], "line one\nline two");
         assert_eq!(v["rows"][1][1], Value::Null);
+        // A version is read by the commit time it answers: rounded, it would fall before it.
+        let (s, v) = get(&server, &format!("{sample}?as_of={}", t["committed_at"].as_str().unwrap()), &env.alice, org).await;
+        assert_eq!(s, 200, "{v}");
+        assert_eq!(v["rows"].as_array().unwrap().len(), 2, "{t} {v}");
+        let profile = format!("/api/v1/datasets/{id}/profile");
+        let (s, p) = get(&server, &profile, &env.alice, org).await;
+        assert_eq!(s, 200, "{p}");
+        assert_eq!(p["rows"], 2);
+        assert_eq!(p["columns"][0]["nulls"], 0, "{p}");
+        assert_eq!(p["columns"][1]["nulls"], 1, "{p}");
 
         let (_, t) = load(&server, &env.alice, org, &id, "?kind=append", "code;title;state\nC;c;on\n").await;
         assert_eq!(t["state"], "committed");
+        let (_, p) = get(&server, &profile, &env.alice, org).await;
+        assert_eq!(p["rows"], 3, "two files of one view");
+        assert_eq!(p["columns"][1]["nulls"], 1, "{p}");
         let (_, d) = get(&server, &format!("/api/v1/datasets/{id}"), &env.alice, org).await;
         assert_eq!(d["rows"], 3, "{d}");
         let before_snapshot = chrono::Utc::now();
@@ -235,6 +248,7 @@ async fn isolation_between_orgs_and_viewer_read_only() {
         for path in [
             format!("/api/v1/datasets/{id}"),
             format!("/api/v1/datasets/{id}/sample"),
+            format!("/api/v1/datasets/{id}/profile"),
             format!("/api/v1/datasets/{id}/transactions"),
         ] {
             let (s, e) = get(&server, &path, &env.bob, org_b).await;
@@ -337,6 +351,28 @@ async fn half_a_gigabyte_is_not_held_in_memory() {
             begin.elapsed()
         );
         assert!(grown_mb < 400, "held in memory: {grown_mb} MB");
+
+        // Erasing the person of the first row reads the file twice and rewrites it.
+        let (s, e) = send(&server, "POST", "/api/v1/ontology/packs/prospecting_b2b/install", &env.alice, org, json!({})).await;
+        assert_eq!(s, 200, "{e}");
+        let declare = json!({ "columns": [{ "column": "name", "type_key": "person", "property": "$title" }] });
+        let path = format!("/api/v1/datasets/{id}/identity");
+        let (s, e) = send(&server, "PUT", &path, &env.alice, org, declare).await;
+        assert_eq!(s, 200, "{e}");
+        let first = person(&server, &env.alice, org, "Organisation 9e3779b97f4a7c15").await;
+        let path = format!("/api/v1/ontology/objects/{first}/erase");
+        let (s, e) = send(&server, "POST", &path, &env.alice, org, json!({})).await;
+        assert_eq!(s, 200, "{e}");
+        let begin = std::time::Instant::now();
+        let before_rss = peak_rss_kb();
+        assert_eq!(datasets::erasure::erase_pass(&ctx.db, &store).await.unwrap(), 1);
+        println!(
+            "erasure: {:?}, peak memory grew by {} MB",
+            begin.elapsed(),
+            (peak_rss_kb() - before_rss) / 1024
+        );
+        let (_, after) = get(&server, &format!("/api/v1/datasets/{id}"), &env.alice, org).await;
+        assert_eq!(after["rows"], t.rows - 1, "{after}");
         datasets::delete(&ctx.db, &store, org, id).await.unwrap();
     })
     .await;
@@ -596,6 +632,280 @@ async fn erasing_an_object_removes_its_rows_from_every_version() {
             let dataset = dataset.parse().unwrap();
             datasets::delete(&ctx.db, &store, org, dataset).await.unwrap();
         }
+    })
+    .await;
+}
+
+/// A killed process leaves its multipart upload behind, out of every object listing.
+#[tokio::test]
+#[serial]
+async fn an_upload_left_behind_is_aborted_once_old() {
+    use pnex_backend::services::artifact_store::S3Config;
+    use std::time::Duration;
+    with_app(|_server, _env, ctx| async move {
+        let store = datasets::store_of(&ctx.config).unwrap();
+        // Unique, so that a sweep at zero age cannot touch a concurrent run's upload.
+        let marker = uuid::Uuid::new_v4().to_string();
+        let key = format!("org_0/datasets/{marker}/part-0.parquet");
+        let mut writer = store.writer(&key).await.unwrap();
+        // Over the 8 MiB chunk: at least one part really reaches the store.
+        for _ in 0..3 {
+            writer.write(vec![7u8; 6 * 1024 * 1024]).await.unwrap();
+        }
+        drop(writer);
+        assert!(store
+            .list_prefix(&format!("org_0/datasets/{marker}/"))
+            .await
+            .unwrap()
+            .is_empty());
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+
+        let config = S3Config::from_config(&ctx.config);
+        let hour = Duration::from_secs(3600);
+        assert_eq!(config.abort_stale_uploads(&marker, hour).await.unwrap(), 0);
+        assert_eq!(
+            config
+                .abort_stale_uploads(&marker, Duration::ZERO)
+                .await
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            config
+                .abort_stale_uploads(&marker, Duration::ZERO)
+                .await
+                .unwrap(),
+            0
+        );
+    })
+    .await;
+}
+
+async fn put_part(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    path: &str,
+    bytes: Vec<u8>,
+) -> (u16, Value) {
+    let res = server
+        .put(path)
+        .add_header("Authorization", format!("Bearer {token}"))
+        .add_header("X-Org-Id", org.to_string())
+        .bytes(bytes.into())
+        .await;
+    let status = res.status_code().as_u16();
+    (
+        status,
+        serde_json::from_str(&res.text()).unwrap_or(Value::Null),
+    )
+}
+
+async fn upload_end(server: &axum_test::TestServer, token: &str, org: i64, path: &str) -> Value {
+    for _ in 0..120 {
+        let (s, u) = get(server, path, token, org).await;
+        assert_eq!(s, 200, "{u}");
+        if u["state"] == "done" || u["state"] == "failed" {
+            return u;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    panic!("upload never ended");
+}
+
+/// A file too large for one request behind a proxy: parts in any order, sent again, a
+/// record cut across two of them. A real background conversion, then no staging left.
+#[tokio::test]
+#[serial]
+async fn a_file_sent_in_parts_becomes_one_version() {
+    with_app(|server, env, ctx| async move {
+        let store = datasets::store_of(&ctx.config).unwrap();
+        let org = personal_org(&server, &env.alice).await;
+        let bob_org = personal_org(&server, &env.bob).await;
+        let (_, d) = create(&server, &env.alice, org, "parts").await;
+        let id = d["id"].as_str().unwrap().to_string();
+        let uploads = format!("/api/v1/datasets/{id}/uploads");
+        let (s, u) = send(&server, "POST", &uploads, &env.alice, org, json!({ "delimiter": ";" })).await;
+        assert_eq!(s, 201, "{u}");
+        assert_eq!(u["state"], "open");
+        let upload = format!("{uploads}/{}", u["id"].as_str().unwrap());
+        let part = |n: i32| format!("{upload}/parts/{n}");
+
+        // Another org reaches neither the table nor the upload (R1), a stranger is refused.
+        let (s, e) = put_part(&server, &env.bob, bob_org, &part(1), b"x".to_vec()).await;
+        assert_eq!(s, 404, "{e}");
+        assert_eq!(e["error"], "dataset-upload-not-found", "{e}");
+        let (s, e) = put_part(&server, &env.bob, org, &part(1), b"x".to_vec()).await;
+        assert_eq!(s, 403, "{e}");
+
+        let (s, e) = put_part(&server, &env.alice, org, &part(0), b"x".to_vec()).await;
+        assert_eq!(s, 400, "{e}");
+        let (s, e) = put_part(&server, &env.alice, org, &part(1), vec![b'a'; 64 * 1024 * 1024 + 1]).await;
+        assert_eq!(s, 413, "{e}");
+        assert_eq!(e["error"], "dataset-upload-part-too-large", "{e}");
+
+        let (s, u) = put_part(&server, &env.alice, org, &part(2), b"WRONG".to_vec()).await;
+        assert_eq!(s, 200, "{u}");
+        let (s, u) = put_part(&server, &env.alice, org, &part(2), b"eur\nb;Nice\n".to_vec()).await;
+        assert_eq!(s, 200, "{u}");
+        assert_eq!(u["parts"], 1, "sent again, not added: {u}");
+        assert_eq!(u["bytes"], 11, "{u}");
+
+        let complete = format!("{upload}/complete");
+        let (s, e) = send(&server, "POST", &complete, &env.alice, org, json!({ "parts": 2 })).await;
+        assert_eq!(s, 409, "part 1 is missing: {e}");
+        assert_eq!(e["error"], "dataset-upload-parts-missing", "{e}");
+        let (s, u) = put_part(&server, &env.alice, org, &part(1), b"name;city\na;Ang".to_vec()).await;
+        assert_eq!(s, 200, "{u}");
+        let (s, e) = send(&server, "POST", &complete, &env.alice, org, json!({ "parts": 3 })).await;
+        assert_eq!(s, 409, "part 3 was never sent: {e}");
+        let (s, e) = send(&server, "POST", &complete, &env.alice, org, json!({ "parts": 1 })).await;
+        assert_eq!(s, 409, "part 2 would be dropped: {e}");
+        let (s, u) = send(&server, "POST", &complete, &env.alice, org, json!({ "parts": 2 })).await;
+        assert_eq!(s, 202, "{u}");
+        let (s, e) = put_part(&server, &env.alice, org, &part(3), b"late".to_vec()).await;
+        assert_eq!(s, 409, "{e}");
+        assert_eq!(e["error"], "dataset-upload-closed", "{e}");
+
+        let end = upload_end(&server, &env.alice, org, &upload).await;
+        assert_eq!(end["state"], "done", "{end}");
+        assert!(end["transaction_id"].is_string(), "{end}");
+        let (_, v) = get(&server, &format!("/api/v1/datasets/{id}/sample"), &env.alice, org).await;
+        assert_eq!(v["rows"], json!([["a", "Angeur"], ["b", "Nice"]]), "{v}");
+        let files = store.list_prefix(&format!("org_{org}/datasets/{id}/")).await.unwrap();
+        assert!(files.iter().all(|f| !f.0.contains("/uploads/")), "{files:?}");
+
+        // A file that does not read: the failure says why, with its arguments.
+        let (_, u) = send(&server, "POST", &uploads, &env.alice, org, json!({})).await;
+        let upload = format!("{uploads}/{}", u["id"].as_str().unwrap());
+        let (s, _) = put_part(&server, &env.alice, org, &format!("{upload}/parts/1"), b"a,b\n1,2,3\n".to_vec()).await;
+        assert_eq!(s, 200);
+        send(&server, "POST", &format!("{upload}/complete"), &env.alice, org, json!({ "parts": 1 })).await;
+        let end = upload_end(&server, &env.alice, org, &upload).await;
+        assert_eq!(end["state"], "failed", "{end}");
+        assert_eq!(end["code"], "dataset-csv-invalid", "{end}");
+        assert_eq!(end["args"]["reason"], "field_count", "{end}");
+        let (_, v) = get(&server, &format!("/api/v1/datasets/{id}/sample"), &env.alice, org).await;
+        assert_eq!(v["rows"].as_array().unwrap().len(), 2, "the table keeps its version: {v}");
+
+        // A new upload replaces one left open, and frees its parts.
+        let (_, first) = send(&server, "POST", &uploads, &env.alice, org, json!({})).await;
+        let first = format!("{uploads}/{}", first["id"].as_str().unwrap());
+        put_part(&server, &env.alice, org, &format!("{first}/parts/1"), b"a\n1\n".to_vec()).await;
+        let (s, second) = send(&server, "POST", &uploads, &env.alice, org, json!({})).await;
+        assert_eq!(s, 201, "{second}");
+        let (s, e) = put_part(&server, &env.alice, org, &format!("{first}/parts/2"), b"x".to_vec()).await;
+        assert_eq!(s, 409, "{e}");
+        let (_, old) = get(&server, &first, &env.alice, org).await;
+        assert_eq!(old["code"], "dataset-upload-expired", "{old}");
+
+        // Left unfinished for a day: its parts go with the purge.
+        let second = format!("{uploads}/{}", second["id"].as_str().unwrap());
+        put_part(&server, &env.alice, org, &format!("{second}/parts/1"), b"a\n1\n".to_vec()).await;
+        sql(&ctx.db, "UPDATE dataset_uploads SET updated_at = now() - interval '2 days' WHERE state = 'open'").await;
+        datasets::purge(&ctx.db, &store).await.unwrap();
+        let (_, old) = get(&server, &second, &env.alice, org).await;
+        assert_eq!(old["state"], "failed", "{old}");
+        let files = store.list_prefix(&format!("org_{org}/datasets/{id}/")).await.unwrap();
+        assert!(files.iter().all(|f| !f.0.contains("/uploads/")), "{files:?}");
+    })
+    .await;
+}
+
+/// Lost with its server: another pod takes it, and it stops after too many of them.
+#[tokio::test]
+#[serial]
+async fn a_conversion_lost_with_its_server_starts_again_a_few_times() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (_, d) = create(&server, &env.alice, org, "lost").await;
+        let uploads = format!("/api/v1/datasets/{}/uploads", d["id"].as_str().unwrap());
+        let start = || async {
+            let (_, u) = send(&server, "POST", &uploads, &env.alice, org, json!({})).await;
+            let upload = format!("{uploads}/{}", u["id"].as_str().unwrap());
+            put_part(&server, &env.alice, org, &format!("{upload}/parts/1"), b"a\n1\n".to_vec()).await;
+            let (s, u) = send(&server, "POST", &format!("{upload}/complete"), &env.alice, org, json!({ "parts": 1 })).await;
+            assert_eq!(s, 202, "{u}");
+            upload
+        };
+        let lost = |attempts: i32| {
+            format!(
+                "UPDATE dataset_uploads SET state = 'converting', attempts = {attempts}, \
+                 heartbeat_at = now() - interval '11 minutes' WHERE state IN ('ready', 'converting')"
+            )
+        };
+        let upload = start().await;
+        sql(&ctx.db, &lost(1)).await;
+        let end = upload_end(&server, &env.alice, org, &upload).await;
+        assert_eq!(end["state"], "done", "{end}");
+
+        let upload = start().await;
+        sql(&ctx.db, &lost(3)).await;
+        let end = upload_end(&server, &env.alice, org, &upload).await;
+        assert_eq!(end["state"], "failed", "{end}");
+        assert_eq!(end["code"], "dataset-upload-lost", "{end}");
+    })
+    .await;
+}
+
+/// Parts sent at once all count, and one whose client is cut does not.
+#[tokio::test]
+#[serial]
+async fn parts_at_once_all_count_and_a_cut_one_does_not() {
+    with_app(|server, env, ctx| async move {
+        let store = datasets::store_of(&ctx.config).unwrap();
+        let org = personal_org(&server, &env.alice).await;
+        let (_, d) = create(&server, &env.alice, org, "many").await;
+        let id: uuid::Uuid = d["id"].as_str().unwrap().parse().unwrap();
+        let uploads = format!("/api/v1/datasets/{id}/uploads");
+        let (_, u) = send(&server, "POST", &uploads, &env.alice, org, json!({})).await;
+        let upload: uuid::Uuid = u["id"].as_str().unwrap().parse().unwrap();
+        let path = format!("{uploads}/{upload}");
+
+        // A client cut in the middle of part 1.
+        let cut = futures_util::stream::iter(vec![
+            Ok(bytes::Bytes::from_static(b"half of a part")),
+            Err(std::io::Error::other("connection reset")),
+        ]);
+        let refused = datasets::uploads::put_part(&ctx.db, &store, org, id, upload, 1, cut).await;
+        assert!(matches!(
+            refused,
+            Err(datasets::DatasetError::SourceInterrupted)
+        ));
+        let (_, u) = get(&server, &path, &env.alice, org).await;
+        assert_eq!(u["parts"], 0, "{u}");
+
+        let bodies: Vec<(usize, Vec<u8>)> = (1..=8)
+            .map(|n| {
+                let head = if n == 1 { "n\n" } else { "" };
+                (n, format!("{head}{n}\n").into_bytes())
+            })
+            .collect();
+        let sent = futures_util::future::join_all(bodies.into_iter().map(|(n, body)| {
+            let part = format!("{path}/parts/{n}");
+            let (server, token) = (&server, &env.alice);
+            async move { put_part(server, token, org, &part, body).await.0 }
+        }))
+        .await;
+        assert!(sent.iter().all(|s| *s == 200), "{sent:?}");
+        let (_, u) = get(&server, &path, &env.alice, org).await;
+        assert_eq!(u["parts"], 8, "a part overwrote another: {u}");
+
+        let complete = format!("{path}/complete");
+        let (s, u) = send(
+            &server,
+            "POST",
+            &complete,
+            &env.alice,
+            org,
+            json!({ "parts": 8 }),
+        )
+        .await;
+        assert_eq!(s, 202, "{u}");
+        let end = upload_end(&server, &env.alice, org, &path).await;
+        assert_eq!(end["state"], "done", "{end}");
+        let (_, t) = get(&server, &format!("/api/v1/datasets/{id}"), &env.alice, org).await;
+        assert_eq!(t["rows"], 8, "{t}");
     })
     .await;
 }

@@ -185,6 +185,11 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ontology::action::ActionTriggerConfig,
     },
+    /// Event source fed by new versions of a table (data-pipelines.md D578).
+    DatasetTrigger {
+        #[serde(default)]
+        config: crate::pipelines::DatasetTriggerConfig,
+    },
     /// Event source fed by the new messages of mailboxes (mail.md D456).
     MailReceived {
         #[serde(default)]
@@ -424,6 +429,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "action_trigger" => Ok(Self::ActionTrigger {
+                    config: opt_config(config)?,
+                }),
+                "dataset_trigger" => Ok(Self::DatasetTrigger {
                     config: opt_config(config)?,
                 }),
                 "mail_received" => Ok(Self::MailReceived {

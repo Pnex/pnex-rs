@@ -398,6 +398,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::MemoryRead { .. } => kind_labels(PaletteKind::MemoryRead),
         pnex_core::FlowNodeKind::ControlSource { .. } => kind_labels(PaletteKind::ControlSource),
         pnex_core::FlowNodeKind::ActionTrigger { .. } => kind_labels(PaletteKind::ActionTrigger),
+        pnex_core::FlowNodeKind::DatasetTrigger { .. } => kind_labels(PaletteKind::DatasetTrigger),
         pnex_core::FlowNodeKind::MailReceived { .. } => kind_labels(PaletteKind::MailReceived),
         pnex_core::FlowNodeKind::OntologyQuery { .. } => kind_labels(PaletteKind::OntologyQuery),
         pnex_core::FlowNodeKind::OntologyAggregate { .. } => {
@@ -512,6 +513,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         }
         pnex_core::FlowNodeKind::ControlSource { .. }
         | pnex_core::FlowNodeKind::ActionTrigger { .. }
+        | pnex_core::FlowNodeKind::DatasetTrigger { .. }
         | pnex_core::FlowNodeKind::MailReceived { .. }
         | pnex_core::FlowNodeKind::Weather { .. }
         | pnex_core::FlowNodeKind::MediaSource { .. } => (
@@ -1345,6 +1347,10 @@ fn node_subtitle(node: &FlowNode) -> String {
                 format!("{} · {}", config.object_type, config.action)
             }
         }
+        pnex_core::FlowNodeKind::DatasetTrigger { config } => match config.dataset.as_str() {
+            "" => "—".into(),
+            d => d.to_string(),
+        },
         pnex_core::FlowNodeKind::OntologyQuery { config } => match config.object_type.as_str() {
             "" => "—".into(),
             t => format!("{t} · {}", config.filters.len()),

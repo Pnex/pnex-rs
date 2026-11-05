@@ -5,6 +5,7 @@
 pub mod csv;
 pub mod erasure;
 pub mod parquet;
+pub mod uploads;
 
 use std::time::{Duration, Instant};
 
@@ -32,7 +33,7 @@ use crate::services::artifact_store::{S3Config, S3Store};
 // shortcut: one quota for everyone, move it to the tier (D569) when tiers sell storage.
 pub const QUOTA_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 /// CSV bytes of one load.
-pub const SOURCE_MAX_BYTES: u64 = 5 * 1024 * 1024 * 1024;
+pub use pnex_core::datasets::SOURCE_MAX_BYTES;
 /// A transaction with no heartbeat for this long is dead (same as D345).
 const DEAD_AFTER_MINUTES: i64 = 10;
 const HEARTBEAT_EVERY: Duration = Duration::from_secs(60);
@@ -43,6 +44,8 @@ const ROW_GROUP_BYTES: usize = 64 * 1024 * 1024;
 const RETAIN_DAYS: i64 = 90;
 const PURGE_EVERY: Duration = Duration::from_secs(600);
 const PURGE_BATCH: i64 = 500;
+/// No upload lasts this long, media or table: one this old lost its process.
+const UPLOAD_ABANDONED_AFTER: Duration = Duration::from_secs(24 * 3600);
 
 #[derive(Debug)]
 pub enum DatasetError {
@@ -69,6 +72,17 @@ pub enum DatasetError {
     VersionPurged,
     /// The table of an import: its steps alone load it.
     Reserved,
+    UploadNotFound,
+    /// The upload no longer takes parts.
+    UploadClosed,
+    PartTooLarge,
+    PartsMissing {
+        missing: Vec<i32>,
+        count: i32,
+    },
+    TooManyUploads,
+    /// Its conversion killed its server too many times.
+    UploadLost,
     /// Deleting it would lose the erasure: its rows could come back.
     ErasurePending,
     Storage(String),
@@ -90,8 +104,39 @@ impl DatasetError {
             Self::QuotaExceeded => err_codes::DATASET_QUOTA,
             Self::SourceTooLarge => err_codes::DATASET_SOURCE_TOO_LARGE,
             Self::SourceInterrupted => err_codes::DATASET_SOURCE_INTERRUPTED,
+            Self::Reserved => err_codes::DATASET_RESERVED,
+            Self::UploadLost => err_codes::DATASET_UPLOAD_LOST,
             _ => err_codes::DATASET_STORAGE_UNAVAILABLE,
         }
+    }
+
+    /// Arguments of the error message, for an answer or a journaled failure.
+    pub fn args(&self) -> Option<serde_json::Value> {
+        use serde_json::json;
+        Some(match self {
+            Self::Csv(CsvError::Empty) => json!({ "reason": "empty" }),
+            Self::Csv(CsvError::RecordTooLarge { line }) => {
+                json!({ "reason": "record_too_large", "line": line })
+            }
+            Self::Csv(CsvError::TooManyColumns { line }) => {
+                json!({ "reason": "too_many_columns", "line": line })
+            }
+            Self::Csv(CsvError::ColumnNameTooLong) => json!({ "reason": "column_name_too_long" }),
+            Self::Csv(CsvError::DuplicateColumn { name }) => {
+                json!({ "reason": "duplicate_column", "column": name })
+            }
+            Self::Csv(CsvError::FieldCount {
+                line,
+                expected,
+                got,
+            }) => {
+                json!({ "reason": "field_count", "line": line, "expected": expected, "got": got })
+            }
+            Self::SchemaMismatch { columns } => json!({ "columns": columns }),
+            Self::QuotaExceeded => json!({ "max": QUOTA_BYTES }),
+            Self::SourceTooLarge => json!({ "max": SOURCE_MAX_BYTES }),
+            _ => return None,
+        })
     }
 }
 
@@ -128,10 +173,13 @@ const VIEW_TRANSACTIONS: &str = "\
     ), 0)";
 
 const DATASET_COLUMNS: &str = "\
-    d.id, d.name, d.schema, \
+    (SELECT i.name FROM object_imports i WHERE i.id = d.import_id) AS import_name, \
+    d.id, d.name, d.schema, d.max_age_hours, \
+    (d.max_age_hours IS NOT NULL AND coalesce(v.committed_at, d.created_at) \
+      < now() - make_interval(hours => d.max_age_hours)) AS stale, \
     to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS created_at, \
     coalesce(v.rows, 0)::bigint AS rows, coalesce(v.bytes, 0)::bigint AS bytes, \
-    to_char(v.committed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS committed_at, \
+    to_char(v.committed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS committed_at, \
     coalesce((SELECT jsonb_agg(jsonb_build_object('column', i.column_name, 'type_key', i.type_key, \
       'property', i.property) ORDER BY i.column_name, i.type_key) \
       FROM dataset_identity_columns i WHERE i.dataset_id = d.id), '[]'::jsonb) AS identity";
@@ -159,14 +207,19 @@ fn dataset_of(row: &QueryResult) -> Result<Dataset, DbErr> {
         rows: row.try_get("", "rows")?,
         bytes: row.try_get("", "bytes")?,
         committed_at: row.try_get("", "committed_at")?,
+        max_age_hours: row.try_get("", "max_age_hours")?,
+        stale: row.try_get("", "stale")?,
+        import_name: row.try_get("", "import_name")?,
         created_at: row.try_get("", "created_at")?,
     })
 }
 
+// Commit times keep the precision of the column: `as_of` reads a version by its commit
+// time, and a rounded time falls before the commit it names.
 const TRANSACTION_SELECT: &str = "\
-    SELECT id, kind, state, rows, bytes, code, \
+    SELECT id, kind, state, rows, bytes, code, checks, \
     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS created_at, \
-    to_char(committed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS committed_at \
+    to_char(committed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS committed_at \
     FROM dataset_transactions";
 
 fn transaction_of(row: &QueryResult) -> Result<DatasetTransaction, DbErr> {
@@ -186,6 +239,7 @@ fn transaction_of(row: &QueryResult) -> Result<DatasetTransaction, DbErr> {
         rows: row.try_get("", "rows")?,
         bytes: row.try_get("", "bytes")?,
         code: row.try_get("", "code")?,
+        checks: serde_json::from_value(row.try_get("", "checks")?).unwrap_or_default(),
         created_at: row.try_get("", "created_at")?,
         committed_at: row.try_get("", "committed_at")?,
     })
@@ -225,6 +279,34 @@ pub async fn get(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<Datas
         .await?
         .ok_or(DatasetError::NotFound)?;
     Ok(dataset_of(&row)?)
+}
+
+/// How long a dataset may wait for a new version (D576). Setting it starts a new
+/// watch: an old warning does not hide the next one.
+pub async fn set_freshness(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    max_age_hours: Option<i32>,
+) -> Result<Dataset, DatasetError> {
+    use pnex_core::datasets::FRESHNESS_HOURS_MAX;
+    if max_age_hours.is_some_and(|h| !(1..=FRESHNESS_HOURS_MAX).contains(&h)) {
+        return Err(DatasetError::Invalid {
+            field: "max_age_hours".into(),
+            token: "invalid".into(),
+        });
+    }
+    let done = db
+        .execute_raw(stmt(
+            "UPDATE datasets SET max_age_hours = $3, stale_notified_at = NULL \
+             WHERE org_id = $1 AND id = $2",
+            vec![org_id.into(), id.into(), max_age_hours.into()],
+        ))
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(DatasetError::NotFound);
+    }
+    get(db, org_id, id).await
 }
 
 /// A page of the org's datasets by name, and their total.
@@ -389,6 +471,42 @@ pub async fn sample(
     Ok(DatasetSample {
         columns: names,
         rows,
+    })
+}
+
+/// How full each column of the current view is, from the footers of its files.
+pub async fn profile(
+    db: &DatabaseConnection,
+    store: &S3Store,
+    org_id: i64,
+    id: Uuid,
+) -> Result<pnex_core::datasets::DatasetProfile, DatasetError> {
+    use pnex_core::datasets::{DatasetColumnProfile, DatasetProfile};
+    let dataset = get(db, org_id, id).await?;
+    let mut columns: Vec<DatasetColumnProfile> = dataset
+        .columns
+        .iter()
+        .map(|c| DatasetColumnProfile {
+            name: c.name.clone(),
+            data_type: c.data_type.clone(),
+            nulls: Some(0),
+        })
+        .collect();
+    for file in current_files(db, org_id, id).await? {
+        let counts = parquet::null_counts(store, &file.key, file.bytes)
+            .await
+            .map_err(storage)?;
+        for column in &mut columns {
+            let found = counts.iter().find(|(name, _)| *name == column.name);
+            // A file without this column has nothing but empty values, which its row
+            // count alone could tell: unknown is the honest answer.
+            let nulls = found.and_then(|(_, n)| *n);
+            column.nulls = column.nulls.zip(nulls).map(|(a, b)| a + b);
+        }
+    }
+    Ok(DatasetProfile {
+        rows: dataset.rows,
+        columns,
     })
 }
 
@@ -856,7 +974,7 @@ pub async fn purge(db: &DatabaseConnection, store: &S3Store) -> Result<usize, Da
             vec![PURGE_BATCH.into()],
         ))
         .await?;
-    let mut removed = 0;
+    let mut removed = uploads::sweep(db, store).await?;
     for row in &due {
         let id: Uuid = row.try_get("", "id")?;
         let prefix = transaction_prefix(
@@ -888,6 +1006,14 @@ pub fn spawn_purge(ctx: &loco_rs::app::AppContext) {
                         Err(e) => tracing::warn!("dataset purge failed: {e:?}"),
                     },
                     Err(e) => tracing::debug!("dataset purge skipped: {e:?}"),
+                }
+                match S3Config::from_config(&config)
+                    .abort_stale_uploads("org_", UPLOAD_ABANDONED_AFTER)
+                    .await
+                {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(aborted = n, "uploads left behind"),
+                    Err(e) => tracing::warn!("uploads not swept: {e}"),
                 }
             }
             tokio::time::sleep(PURGE_EVERY).await;

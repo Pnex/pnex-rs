@@ -46,6 +46,7 @@ pub enum PaletteKind {
     MemoryRead,
     ControlSource,
     ActionTrigger,
+    DatasetTrigger,
     MailReceived,
     OntologyQuery,
     OntologyAggregate,
@@ -259,6 +260,9 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                 config: pnex_core::ui_control::ControlSourceConfig::default(),
             },
             PaletteKind::ActionTrigger => FlowNodeKind::ActionTrigger {
+                config: Default::default(),
+            },
+            PaletteKind::DatasetTrigger => FlowNodeKind::DatasetTrigger {
                 config: Default::default(),
             },
             // No mailbox picked yet: the violation banner guides the user.

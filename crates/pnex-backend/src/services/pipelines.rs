@@ -10,6 +10,7 @@ use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryResult, Statement,
     TransactionTrait,
 };
+use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -64,9 +65,62 @@ pub fn checked(yaml: &str) -> Result<PipelineDocument, PipelineError> {
     }
 }
 
+/// A document that closes a loop with other pipelines or imports could never be
+/// ordered (D575): refused at save.
+async fn no_cycle(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    name: &str,
+    doc: &PipelineDocument,
+) -> Result<(), PipelineError> {
+    let node = crate::services::data_builds::pipeline_node(id, name.to_string(), Some(doc));
+    match crate::services::data_builds::cycle_with(db, org_id, node).await? {
+        Some(_) => Err(PipelineError::Document(vec![PipelineViolation {
+            path: "transforms".into(),
+            token: "cycle".into(),
+        }])),
+        None => Ok(()),
+    }
+}
+
+/// Sets when the pipeline runs on its own, or stops it. `user` answers for each
+/// unattended build: revalidated at every start (R2).
+pub async fn schedule(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    recurrence: Option<&Value>,
+    user: i64,
+) -> Result<Pipeline, PipelineError> {
+    get(db, org_id, id).await?;
+    use crate::services::ontology::imports::next_run;
+    use pnex_core::ontology::recurrence::Recurrence;
+    if recurrence.is_some_and(|r| Recurrence::parse(r).is_none()) {
+        return Err(PipelineError::Invalid {
+            field: "recurrence".into(),
+            token: "invalid".into(),
+        });
+    }
+    db.execute_raw(stmt(
+        "UPDATE pipelines SET recurrence = $3, next_run_at = $4, scheduled_by = $5 \
+         WHERE org_id = $1 AND id = $2",
+        vec![
+            org_id.into(),
+            id.into(),
+            recurrence.cloned().into(),
+            next_run(recurrence).into(),
+            recurrence.is_some().then_some(user).into(),
+        ],
+    ))
+    .await?;
+    get(db, org_id, id).await
+}
+
 fn pipeline_select() -> String {
     format!(
-        "SELECT id, name, version, document, {}, {} FROM pipelines",
+        "SELECT id, name, version, document, recurrence, {}, {}, {} FROM pipelines",
+        at("next_run_at"),
         at("created_at"),
         at("updated_at")
     )
@@ -78,6 +132,8 @@ fn pipeline_of(row: &QueryResult) -> Result<Pipeline, DbErr> {
         name: row.try_get("", "name")?,
         version: row.try_get("", "version")?,
         document: row.try_get("", "document")?,
+        recurrence: row.try_get("", "recurrence")?,
+        next_run_at: row.try_get("", "next_run_at")?,
         created_at: row.try_get("", "created_at")?,
         updated_at: row.try_get("", "updated_at")?,
     })
@@ -117,6 +173,7 @@ pub async fn create(
     org_id: i64,
     name: &str,
     document: &str,
+    author: i64,
 ) -> Result<Pipeline, PipelineError> {
     let name = name.trim();
     let invalid = |token: String| PipelineError::Invalid {
@@ -129,7 +186,8 @@ pub async fn create(
     if name.chars().count() > NAME_MAX {
         return Err(invalid(format!("max_length:{NAME_MAX}")));
     }
-    checked(document)?;
+    let doc = checked(document)?;
+    no_cycle(db, org_id, Uuid::new_v4(), name, &doc).await?;
     let tx = db.begin().await?;
     let row = tx
         .query_one_raw(stmt(
@@ -141,8 +199,9 @@ pub async fn create(
         .ok_or(PipelineError::NameTaken)?;
     let id: Uuid = row.try_get("", "id")?;
     tx.execute_raw(stmt(
-        "INSERT INTO pipeline_versions (pipeline_id, version, document) VALUES ($1, 1, $2)",
-        vec![id.into(), document.into()],
+        "INSERT INTO pipeline_versions (pipeline_id, version, document, author_id) \
+         VALUES ($1, 1, $2, $3)",
+        vec![id.into(), document.into(), author.into()],
     ))
     .await?;
     tx.commit().await?;
@@ -202,19 +261,24 @@ pub async fn update(
     id: Uuid,
     document: &str,
     expected_version: i32,
+    author: i64,
 ) -> Result<Pipeline, PipelineError> {
     let current = get(db, org_id, id).await?;
-    checked(document)?;
+    let doc = checked(document)?;
+    no_cycle(db, org_id, id, &current.name, &doc).await?;
     let tx = db.begin().await?;
     let done = tx
         .execute_raw(stmt(
-            "UPDATE pipelines SET document = $3, version = version + 1, updated_at = now() \
+            // A schedule runs on the rights of who last wrote the document (SEC-58).
+            "UPDATE pipelines SET document = $3, version = version + 1, updated_at = now(), \
+             scheduled_by = CASE WHEN scheduled_by IS NULL THEN NULL ELSE $5 END \
              WHERE org_id = $1 AND id = $2 AND version = $4",
             vec![
                 org_id.into(),
                 id.into(),
                 document.into(),
                 expected_version.into(),
+                author.into(),
             ],
         ))
         .await?;
@@ -224,8 +288,14 @@ pub async fn update(
         });
     }
     tx.execute_raw(stmt(
-        "INSERT INTO pipeline_versions (pipeline_id, version, document) VALUES ($1, $2, $3)",
-        vec![id.into(), (expected_version + 1).into(), document.into()],
+        "INSERT INTO pipeline_versions (pipeline_id, version, document, author_id) \
+         VALUES ($1, $2, $3, $4)",
+        vec![
+            id.into(),
+            (expected_version + 1).into(),
+            document.into(),
+            author.into(),
+        ],
     ))
     .await?;
     tx.commit().await?;
@@ -267,18 +337,24 @@ pub async fn versions(
     )
     .await?;
     let sql = format!(
-        "SELECT version, document, {} FROM pipeline_versions WHERE pipeline_id = $1 \
-         ORDER BY version DESC LIMIT $2 OFFSET $3",
-        at("created_at")
+        "SELECT v.version, v.document, u.email AS author, {} FROM pipeline_versions v \
+         LEFT JOIN organization_members m ON m.user_id = v.author_id AND m.org_id = $4 \
+         LEFT JOIN users u ON u.id = m.user_id WHERE v.pipeline_id = $1 \
+         ORDER BY v.version DESC LIMIT $2 OFFSET $3",
+        "to_char(v.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at"
     );
     let rows = db
-        .query_all_raw(stmt(&sql, vec![id.into(), limit.into(), offset.into()]))
+        .query_all_raw(stmt(
+            &sql,
+            vec![id.into(), limit.into(), offset.into(), org_id.into()],
+        ))
         .await?;
     let mut items = Vec::with_capacity(rows.len());
     for r in &rows {
         items.push(PipelineVersion {
             version: r.try_get("", "version")?,
             document: r.try_get("", "document")?,
+            author: r.try_get("", "author")?,
             created_at: r.try_get("", "created_at")?,
         });
     }
@@ -415,4 +491,66 @@ pub async fn lineage(db: &DatabaseConnection, dataset: &Dataset) -> Result<Datas
         downstream: downstream.iter().map(link_of).collect::<Result<_, _>>()?,
         stale,
     })
+}
+
+#[cfg(test)]
+mod yaml_tests {
+    use super::*;
+    use pnex_core::pipelines::{Checks, Transform};
+    use std::collections::BTreeMap;
+
+    fn doc(sql: &str) -> PipelineDocument {
+        PipelineDocument {
+            transforms: vec![Transform {
+                output: "clean".into(),
+                inputs: BTreeMap::from([("a".to_string(), "raw: \"x\"".to_string())]),
+                sql: sql.into(),
+                checks: Checks {
+                    min_rows: Some(1),
+                    unique: vec!["id".into()],
+                    max_empty_pct: BTreeMap::from([("name".to_string(), 5)]),
+                    same_columns: true,
+                    ..Checks::default()
+                },
+            }],
+        }
+    }
+
+    /// What a screen writes is what the server reads, whatever the query holds.
+    #[test]
+    fn a_document_survives_its_yaml() {
+        for sql in [
+            "SELECT 1",
+            "SELECT *\nFROM a\n\nWHERE x = 'y: z' -- comment # hash",
+            "SELECT '{not: yaml}', \"é\", '|', '- x'",
+            "  SELECT 1",
+            "SELECT 1\n",
+            "\nSELECT 1",
+            "SELECT 1 \nFROM a",
+            "SELECT\t1",
+            "SELECT 1\r\nFROM a",
+            "SELECT 1\n  , 2\n\n\n  , 3",
+            "SELECT '\\n' -- \u{1F600}",
+        ] {
+            let d = doc(sql);
+            let parsed: PipelineDocument =
+                serde_saphyr::from_str(&d.to_yaml()).unwrap_or_else(|e| panic!("{sql:?}: {e}"));
+            assert_eq!(parsed, d, "{sql:?}\n{}", d.to_yaml());
+        }
+    }
+
+    #[test]
+    fn a_plain_query_stays_readable() {
+        let yaml = doc("SELECT *\nFROM a").to_yaml();
+        assert!(
+            yaml.contains("sql: |-\n      SELECT *\n      FROM a\n"),
+            "{yaml}"
+        );
+    }
+
+    #[test]
+    fn the_starter_can_run() {
+        let d = PipelineDocument::starter("raw", "clean");
+        assert_eq!(checked(&d.to_yaml()).unwrap(), d);
+    }
 }

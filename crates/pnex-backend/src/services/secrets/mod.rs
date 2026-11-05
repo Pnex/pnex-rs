@@ -2,9 +2,11 @@
 
 pub mod binding;
 pub mod browser;
+pub mod connector;
 pub mod crypto;
 pub mod flow;
 pub mod geo;
+pub mod image_registry;
 pub mod llm;
 pub mod mailbox;
 pub mod media;

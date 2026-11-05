@@ -452,8 +452,7 @@ l'interface et des fiches de l'assistant.
 
 ### D356 — Événement `import.applied` vers les flows
 
-> **Non codée. Remplacement proposé le 2026-11-04 (D578)** : `dataset.committed`
-> et `dataset_trigger`.
+> **Remplacée par D578**, codée (§9.6) : `dataset.committed` et `dataset_trigger`.
 
 Un run appliqué publie `import.applied` : `{import, run, version,
 counts, changed: [ids]}`, ids plafonnés à 10 000 (au-delà, le flow
@@ -687,6 +686,19 @@ puis L4 pour 6 ; 4 et 5 sont des règles à tenir, 9 est fait.
   › Historique, « Étapes » déplie chaque étape avec son statut, sa durée,
   les lignes lues et gardées, et son code.
 
+**Fait le 2026-11-05** :
+
+- **Point 2, versions côte à côte** (migration 000079). Un bail porte la version de
+  son porteur et l'heure de sa prise ; prendre un bail est journalisé. La page Système liste
+  chaque bail en vigueur (pod, version, âge) et passe la topologie en `degraded` quand l'un
+  d'eux tourne sur une autre version que le serveur interrogé : c'est vrai aussi pendant un
+  déploiement normal, le temps du déploiement. Ligne de runbook : `helm/README.md` du dépôt
+  `pnex-deploy`, section Scaling.
+- **Point 8, outillage**. `pnex import run <id> --wait` (`cli.md` §3). La sortie de `pnex
+  raw` passe par `serde_json`, qui échappe les caractères de contrôle : le défaut relevé le
+  23 n'existe plus pour une réponse JSON. Création et modification d'un import par le MCP :
+  non faites, aucun besoin depuis.
+
 ## 8. Questions tranchées (Shan, 2026-10-22)
 
 - **Q-P1** — Rétention de `object_changes` : **3 650 jours par défaut,
@@ -702,7 +714,7 @@ puis L4 pour 6 ; 4 et 5 sont des règles à tenir, 9 est fait.
 
 ## 9. Datasets et pipelines de transformation (D569–D578, lot OP1)
 
-> **Statut : accepté (2026-11-04), OP1.0 mesuré (§9.7 bis), OP1.1 et OP1.2 codés.** PRD
+> **Statut : accepté (2026-11-04), OP1.0 mesuré (§9.7 bis), OP1.1 à OP1.4 codés.** PRD
 > du lot OP1 de `operational-platform.md` (D554, D557, D561). Questions du §9.8
 > tranchées par Shan le même jour.
 
@@ -997,8 +1009,9 @@ assumés au regard de D569, à reprendre :
   transformations (OP1.2) ;
 - **Un seul fichier par transaction**, écrit pendant la requête : la file de jobs
   arrive en OP1.2. Un client coupé ou un pod tué laisse une transaction `open`,
-  retirée après 10 min sans battement, puis purgée. Une partie d'upload multipart non
-  terminée n'est pas purgée par ce chemin (non vérifié sur RustFS) ;
+  retirée après 10 min sans battement, puis purgée. L'upload multipart d'un processus tué
+  n'apparaît dans aucune liste d'objets et garde sa place sur le disque (vérifié sur RustFS) :
+  la passe de purge annule ceux de plus de 24 h sous `org_*`, média compris (2026-11-05) ;
 - **Encodage** : UTF-8, sinon Latin-1 valeur par valeur (`text_of`), comme les imports ;
 - **Pas d'écran ni de fiche `assistant-kb`** : rien de visible avant OP1.5, qui
   apporte l'écran, la fiche, la ligne de lexique « Table » et sa garde.
@@ -1021,11 +1034,13 @@ autre org, rôle sans accès aux tables métier, délai, saut quand rien n'a cha
   planification (D575) revérifiera les droits de l'auteur au début du run ;
 - **Rôle et réseau** : le rôle `pnex_pipeline_worker` est créé par la migration, sans
   mot de passe. En local il est pris par `SET ROLE`, ce qui prouve les droits mais ne
-  protège pas : le compte de connexion reste celui de l'application. Le vrai
-  cloisonnement (login dédié, `NetworkPolicy`) reste à poser dans le chart
-  `pnex-deploy`, **avant toute mise en service** ;
-- **Auteur des versions et des exécutions** (D354) : non enregistré tant qu'aucun écran
-  ne l'affiche ;
+  protège pas : le compte de connexion reste celui de l'application. En production, le chart
+  `pnex-deploy` (`pipelineWorker.enabled`, faux par défaut, 2026-11-05) lui donne un login par
+  l'opérateur CloudNativePG et une `NetworkPolicy` limitée à Postgres, RustFS et DNS. Rendu
+  vérifié (`helm template`), droits d'un vrai login vérifiés à la main, **jamais déployé sur un
+  cluster** : à essayer avant toute mise en service ;
+- **Auteur des versions** (D354) : enregistré depuis le 2026-11-05 (migration 000080), affiché dans
+  le tiroir Versions. Rien pour les exécutions ;
 - **`prefer_hash_join=false` pour tout le SQL** : fiable en mémoire, plus lent sur les
   grosses jointures (§9.7 bis) ; à revoir si un cas réel en souffre ;
 - **Le quota n'est lu qu'au début de chaque transformation**, comme pour un chargement.
@@ -1070,7 +1085,9 @@ Limites assumées, à trancher avant de promettre un effacement complet :
   identifiant (e-mail, SIRET) quand la source en a un ;
 - **Déclaration tardive** : les effacements antérieurs à la déclaration ne sont pas
   rejoués ;
-- **Durée** : non mesurée sur un gros fichier, chaque fichier touché est relu deux fois ;
+- **Durée** : chaque fichier touché est relu deux fois. Mesuré le 2026-11-05 en build debug, un
+  seul fichier, 8,5 M de lignes (500 Mo de CSV, 94 Mo de Parquet) : 2 min 02, sans hausse notable du
+  pic mémoire. Un ordre de grandeur, pas une promesse ;
 - **Table supprimée** : les empreintes partent avec elle, si bien qu'une table recréée sous le
   même nom et rechargée ramène la personne ;
 - **Colonne convertie** : `digits`, `left` ou `concat` laissent en base une valeur que la colonne
@@ -1145,6 +1162,160 @@ Corrections trouvées en branchant les packs :
 
 Bug corrigé en route, sur tous les imports en mode liste complète : archiver un objet
 ferme ses liens, et fermer ensuite le même lien échouait en annulant tout le run.
+
+**Avancement OP1.4 (2026-11-04, non commité)** : ordonnanceur, contrôles au commit,
+événements (migration 000077, `services/data_builds.rs`, routes `/api/v1/data-builds` et
+`PUT /pipelines/{id}/schedule`, `PUT /datasets/{id}/freshness`, nœud `dataset_trigger`).
+Acceptance tenue de bout en bout (`france_competences_from_one_schedule`, faux data.gouv.fr,
+vrais runs) : le pack 3.4.0 ne planifie plus que son dernier import, les cinq s'exécutent
+dans l'ordre, et un fichier disparu ne bloque que ce qui en dépend, qui garde ses données.
+
+- **D575** : une `build` porte une cible et ses étapes, dépendances d'abord, avec son état
+  dans PostgreSQL : un autre pod la reprend. Dépendances calculées depuis les documents de
+  pipeline et les imports : une entrée d'une part, la table remplie ou lue d'autre part.
+- **D576** : `checks:` sur une transformation (`min_rows`, `max_rows`, `unique`,
+  `max_empty_pct`, `max_drop_pct`, `same_columns`), mesurés par le worker sur le fichier
+  écrit, avant le commit ; résultats sur la transaction. Fraîcheur : `max_age_hours` par
+  table, balayage du serveur, une alerte par dépassement.
+- **D578** : `dataset.committed` et `dataset.synced` sur `pnex:ds:v1:{org}`, publiés par le
+  serveur depuis une marque en base (`published_at`) : le worker n'a ni Valkey ni
+  notifications (D573), et un pod perdu entre commit et publication ne perd rien.
+
+Choix laissés ouverts par le PRD, tranchés au plus prudent en l'absence de Shan, à relire :
+
+- **Dépendance entre imports : `after:` déclaré dans le mapping.** Rien ne relie deux imports
+  par une table (un import attend les objets d'un autre). Le déduire de `create: false` aurait
+  ordonné en silence, avec de faux cycles ;
+- **« Jusqu'aux origines planifiées » : tout amont exécutable tourne**, qu'il ait ou non sa
+  propre planification, sinon un seul horaire ne suffirait pas. Un amont non exécutable (import
+  fichier sans étapes) est sauté et lu tel quel. Conséquence : un import d'API cité dans `after`
+  consomme son quota à chaque passage ;
+- **Une étape à la fois par build.** Une org n'écrit déjà qu'un import et ne calcule qu'un
+  pipeline à la fois : le parallèle gagnerait peu. À revoir si des branches lentes et
+  indépendantes se bloquent ;
+- **Contrôles sur demande** : une transformation sans `checks:` n'en a aucun. Les imports gardent
+  leurs contrôles D303 et `max_closures_pct`. Un chargement CSV manuel n'a pas de contrôle ;
+- **Rien ne se relance tout seul, sauf un run perdu avec son serveur** : un échec attend le prochain
+  horaire ou un lancement à la main. Un run d'import perdu avec son pod (`import-run-interrupted`) repart
+  **une fois** dans sa build (2026-11-05, §7 bis point 1) : l'appliquer deux fois est sans risque, le second
+  compare à ce que le premier a écrit. Il retélécharge sa source, et une source d'API consomme donc son quota
+  une fois de plus. Une fois seulement : un import qui fait tomber son serveur ne doit pas recommencer sans
+  fin. Un lancement à la main hors build ne repart pas. La reprise à l'étape où le run s'est arrêté (D346)
+  n'est pas faite : aucun run réel ne dure assez pour la justifier ;
+- **Une étape a 12 h** (`build-timeout`), pour ne pas bloquer une cible quand aucun worker
+  ne prend la file ;
+- **Droits à chaque déclenchement** : `pipelines:run`, plus `datasets:*` et `ontology:write`
+  selon les étapes, sur le **rôle géré** de la personne qui a posé l'horaire. Un droit venu
+  d'un rôle assigné ne suffit pas sans personne connectée : l'horaire échoue
+  (`build-author-forbidden`) plutôt que d'écrire ;
+- **Montée du pack** : horaire et mode restent ceux de l'org (D424). Une org déjà installée
+  garde donc ses cinq horaires : **à retirer à la main sur dev.pnex.io (org 4)**, sinon cinq
+  builds se recouvrent chaque nuit (sans dégât, un run actif fait attendre l'autre) ;
+- **`changed`** : les ids d'objets dont le dernier auteur est ce run (`source_ref`), pas les
+  liens ;
+- **Écran** : la liste des builds, les horaires et la fraîcheur restent à l'API jusqu'à OP1.5 ;
+  seul le nœud de flow est visible. Historique gardé 90 jours.
+
+`fc_rs_xml` reste sur l'ancien chemin (hors table) : il prend part à la build comme les autres.
+
+**Connecteurs, premier lot (2026-11-05, non commité)** : D352 sur ce socle (OP2), pour
+PostgreSQL seul. Routes `/api/v1/connectors` (admin d'org), migration 000078,
+`services/connectors.rs`, étape `connector_query` d'un import : le résultat part en CSV dans le
+staging, puis suit le chemin de tout fichier (table versionnée, synchro, planification,
+événements). Tests : `tests/connectors.rs`, requêtes hostiles comprises.
+
+- **Lecture seule à deux niveaux** : `default_transaction_read_only` posé au démarrage de la
+  session, qu'un `COMMIT` dans la requête ne lève pas ; et la requête est d'abord préparée
+  seule (protocole étendu), ce qui refuse deux instructions et l'évasion de la parenthèse du
+  `COPY`, avant de partir par `COPY … TO STDOUT` ;
+- **Réseau (Q-P2)** : une adresse privée reste refusée, même sous la politique `lan`, sauf hôte
+  listé pour l'org par l'admin plateforme (`/system/orgs/{id}/connector-hosts`) ; boucle locale et
+  métadonnées cloud restent refusées même listées. La connexion part vers l'adresse vérifiée ;
+- **Droits (R2)** : `connectors:read|write|use|test|delete`, admin d'org. Écrire un import avec
+  cette étape demande `connectors:use`, revérifié à chaque run sur l'auteur, car le résultat
+  atterrit dans une table lisible par tout viewer ;
+- **Secret (R4, R16)** : mot de passe au coffre, jamais dans une réponse ni le journal des
+  étapes ; un connecteur déplacé (hôte ou port) exige de redonner son mot de passe, pour qu'il
+  ne parte pas vers un hôte que son auteur n'a pas choisi. Tout le connecteur est `EXCLUDED`
+  du MCP (motif secret), lecture comprise, ce que §6 ne prévoyait pas : hôte et utilisateur sont
+  des identifiants d'infrastructure.
+
+Écarts à relire :
+
+- **MySQL et Elasticsearch non faits**. MySQL passe par `sqlx-mysql`, qui tire `rsa` côté
+  chiffrement du mot de passe : l'exception `RUSTSEC-2023-0071` de `deny.toml` est justifiée par
+  une vérification de signature seule, et ne couvre donc pas ce cas. À décider avant d'ajouter
+  ce pilote. Elasticsearch attend un besoin réel ;
+- **TLS sans vérification du certificat** : `Require`, puisque la connexion part vers l'IP vérifiée
+  et non vers le nom. Protège d'une écoute passive, pas d'un homme du milieu actif. À renforcer
+  (`sslrootcert` par connecteur) quand un client le demande. Sans TLS : hôte listé seulement ;
+- **Pas d'écran** : API seule, lexique « Connecteur » à poser avec l'écran. Aucun plafond de lignes,
+  seul celui d'octets (500 Mo par défaut, `max_bytes` jusqu'à 2 Go), et 30 min par requête ;
+- **Conversion de types** : le CSV de `COPY` met tout en texte, comme tout chargement.
+
+**Rétention de l'historique (Q-P1, 2026-11-05, non commité)** : `history_retention_days`, 3 650
+jours par défaut, `PUT /system/retention/history` (admin plateforme), posé sur le flux
+`object_changes` par la réconciliation horaire, vérifié sur OpenObserve local (`type=logs`). Un flux
+créé entre deux passes suit le défaut de l'instance jusqu'à la passe suivante.
+
+**Avancement OP1.5 (2026-11-05, non commité)** : `/pipelines` (onglets Pipelines, Tables, Exécutions
+enchaînées, Connecteurs), `/pipelines/:id` (studio), `/pipelines/tables/:id` (page d'une table), nouvelle
+route `POST /pipelines/validate`, `PipelineDocument::to_yaml` et `starter`, `VersionsDrawer` devenu un
+composant partagé avec les règles de navigation. Un pipeline se crée, s'édite, se lance et se planifie
+sans écrire de YAML.
+
+Écarts assumés au regard de §9.5 et de D355, à relire :
+
+- **Graphe SVG en colonnes, lecture seule** : un nœud par table, les traitements sont les flèches qui
+  entrent dans leur table écrite. On n'y dessine pas de liaison à la souris : les tables lues se règlent dans
+  le traitement. Le graphe Sigma des dossiers montre une force, pas un sens de lecture ;
+- **Pas de lecteur commun D220** : une exécution de pipeline n'enregistre ni étape ni durée par traitement,
+  il n'y a rien à mettre sur une frise. Les exécutions sont une liste ;
+- **Profil de colonnes** : type et taux de remplissage lus dans le pied des fichiers Parquet (`GET
+  /datasets/{id}/profile`, 2026-11-05), sans lire de valeur. Pas de valeurs distinctes ni d'exemples au-delà de
+  l'échantillon. Un texte fait d'espaces compte comme rempli ;
+- **L'onglet Imports de l'ontologie reste** : les imports ne sont pas migrés (voir OP1.3), le supprimer
+  retirerait leur historique et leur aperçu. Pas de « Correspondance » dans le studio pour la même raison.
+  Un import avec `connector_query` s'écrit encore en YAML ;
+- **Pas de « Reprendre au traitement N »** : un pipeline se recalcule en entier ;
+- **Lancer passe toujours par une exécution enchaînée**, avec la liste des étapes affichée s'il y en a plus d'une.
+
+**Envoi par parties (2026-11-05, migration 000096, `services/datasets/uploads.rs`)** : Cloudflare limite une
+requête à 100 Mo (constaté sur dev.pnex.io le 2026-10-31) et coupe une réponse trop lente (environ 100 s). Envoyer
+le fichier en flux n'y change donc rien. `POST /datasets/{id}/uploads`, `PUT …/parts/{n}` (64 Mio au plus, 1 000
+parties, 5 Gio au total, dans n'importe quel ordre, renvoyable), `POST …/complete` (annonce le nombre de parties : 409
+s'il en manque), puis lecture de l'état jusqu'à `done` ou `failed`. L'interface et `pnex dataset load` passent par là,
+par parties de 32 Mio ; `POST …/transactions/csv` reste pour ce qui ne passe pas par un proxy.
+
+- **Parties sur S3, un objet par partie** : n'importe quel pod convertit, par la même `load_csv` (mêmes contrôles,
+  même filtre d'effacement). Elles sont retirées à la fin, réussie ou non : des lignes brutes ne restent pas à côté de
+  la table. Inachevées, elles partent après 24 h : c'est aussi la durée pendant laquelle une personne effacée peut
+  y figurer ;
+- **Quota** : les parties n'y comptent pas tant qu'elles attendent ; d'où 4 envois en cours par org ;
+- **Un envoi par table** : en ouvrir un nouveau remplace celui encore ouvert. Deux personnes qui envoient en même temps :
+  la première perd le sien (409) ;
+- **Conversion en tâche de fond, un fichier à la fois par pod**, sondage toutes les 5 s. Perdue avec son pod, elle repart
+  après 10 min sans battement, trois tentatives au plus (`dataset-upload-lost`) ;
+- **Pas de reprise après coupure du client** : une partie est retentée, mais un client arrêté recommence depuis le début.
+  `GET` donne le nombre de parties reçues, pas lesquelles ;
+- **Autres uploads** : média (2 Gio annoncés), modèles et imports de fichier passent encore en une requête, donc bornés
+  à 100 Mo derrière Cloudflare. Non traité.
+
+**Pannes réelles (2026-11-05)** : deux tests `ignored` tuent de vrais processus en `SIGKILL`, seuls les
+10 min de silence sont sautés en SQL. `dataset_sync::a_killed_worker_loses_nothing` (worker tué une fois
+son upload visible sur RustFS) : rien de lisible, le run repart (2 tentatives), le fichier et l'upload morts
+sont retirés. `server_kill` (`pnex-server` tué pendant un import de 150 000 lignes) : 0 objet écrit, la build
+repart sur le serveur suivant (`retries` = 1), tout est là, puis `SIGTERM` donne une sortie propre. L'image
+du worker construite ici a fait la jointure France Compétences (142 880 lignes). **Pas sur un cluster** : un
+vrai pod, le chart, la `NetworkPolicy` et `images.yml` restent à essayer.
+
+**Échecs intermittents des suites (2026-11-05, cause établie)** : le routeur gardé dans
+`ctx.shared_store` pour rejouer les outils MCP tient lui-même `ctx` : ce cycle empêchait toute
+libération du contexte, donc du pool. Sans effet en production (un contexte par processus), mais
+chaque test d'un binaire gardait ses connexions : plus de 60 sur `partner_watch`, jusqu'au refus de
+Postgres (limite de 100, partagée entre sessions), que `sqlx` retente jusqu'au délai du pool, d'où
+le 503 `server-busy` sur les derniers tests. Les requêtes portent maintenant le routeur (`Extension`).
+Garde : `tests/pool_release.rs`. Mesuré après correction : 9 connexions au plus sur `partner_watch`, trois passages verts sur trois.
 
 ### 9.7 Non mesuré
 
@@ -1275,3 +1446,26 @@ Toutes tranchées par Shan le 2026-11-04 :
 - **Q-P7** — Mot de l'interface : **« Table » / « Table »**, `datasets` reste le nom
   technique. Lexique et garde dans le lot qui l'affiche.
 - **Q-P8** — Niveau du delta D577 : **entités planifiées** (§9.7 ter).
+
+### 9.9 Décisions non prises (relevé du 2026-11-05)
+
+Rien ici ne bloque ce qui est livré. Chaque ligne renvoie au détail du §9.6.
+
+| Sujet | Question | Recommandation | Bloque |
+|---|---|---|---|
+| Identifiant S3 du worker (SEC-61) | Identité limitée à `org_*/datasets/*` au lieu de la racine RustFS ? Non vérifié que RustFS le permet | Oui | Mise en production du worker |
+| Média derrière Cloudflare | Envoi par parties aussi : 2 Gio annoncés, une seule requête, tout en mémoire | Oui, revoir détection de format et hachage | Média de plus de 100 Mo |
+| Effacement : non déclaré | Un fichier sans déclaration ni lignage garde la personne | À trancher avant de promettre un effacement complet | Promesse d'effacement |
+| Effacement : table supprimée | Les empreintes partent avec elle : recréée et rechargée, la personne revient | Garder les empreintes par org | Promesse d'effacement |
+| Effacement : colonne convertie | `digits`, `left`, `concat` ne sont pas déclarées | À trancher avec le cas réel | Promesse d'effacement |
+| MySQL | `sqlx-mysql` tire `rsa` en chiffrement, que l'exception `deny.toml` ne couvre pas | Attendre un client | Connecteur MySQL |
+| Elasticsearch | Aucun besoin réel | Attendre | Rien |
+| TLS des connecteurs | `Require` sans vérifier le certificat : pas de protection contre un homme du milieu actif | `sslrootcert` par connecteur à la première demande | Client exigeant |
+| `object_imports` | Retirer la table une fois les origines migrées ? | Plus tard | Rien |
+| `fc_rs_xml` | XML imbriqué hors du chemin des tables, donc sans protection des éditions | À concevoir | Rien |
+| Quota et rétention | 20 Go et 90 jours en constantes, au lieu de réglages par tier | Avec la vente du stockage | Offre payante |
+| Exécutions en parallèle | Une étape à la fois par build | Sur branche lente mesurée | Rien |
+| Reprise d'envoi | Un client arrêté recommence son fichier | Sur demande | Très gros fichiers sur lien instable |
+| `pin-utils` | Exception ajoutée à `deny.toml` (RUSTSEC-2026-0441), via `async-imap` | Accepter, sans correctif amont | Rien |
+
+À faire à la main, sans décision : retirer les quatre horaires de l'org 4 sur dev.pnex.io. À essayer : chart `pipelineWorker`, `NetworkPolicy` et `images.yml`, jamais exécutés.

@@ -150,6 +150,10 @@ pub enum SecretConsumerKind {
     WebSearchProvider,
     /// Password of a mailbox (mail.md D453).
     Mailbox,
+    /// Password of a connector to an outside database (data-pipelines.md D352).
+    Connector,
+    /// Read or write secret of an image registry (agent-environments.md D703).
+    ImageRegistry,
 }
 
 impl SecretConsumerKind {
@@ -164,6 +168,8 @@ impl SecretConsumerKind {
             Self::BrowserEndpoint => "browser-endpoint",
             Self::WebSearchProvider => "web-search-provider",
             Self::Mailbox => "mailbox",
+            Self::Connector => "connector",
+            Self::ImageRegistry => "image-registry",
         }
     }
 
@@ -178,6 +184,8 @@ impl SecretConsumerKind {
             "browser-endpoint" => Self::BrowserEndpoint,
             "web-search-provider" => Self::WebSearchProvider,
             "mailbox" => Self::Mailbox,
+            "connector" => Self::Connector,
+            "image-registry" => Self::ImageRegistry,
             _ => return None,
         })
     }
