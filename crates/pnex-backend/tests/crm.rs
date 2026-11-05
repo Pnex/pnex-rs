@@ -342,11 +342,22 @@ async fn the_pack_ships_its_screens() {
         }
         // Every number the screens show is a request the server accepts, and
         // the bars of the pipeline count what is there.
-        let mut sources = 0;
+        let (mut sources, mut funnels) = (0, 0);
         for key in ["pipeline", "figures", "results", "forecast", "prospecting"] {
             let (_, screen) = call(&server, "GET", &format!("/api/v1/apps/{id}/screens/{key}"), &env.alice, org, None).await;
             for w in screen["layout"]["widgets"].as_array().unwrap() {
                 let Some(o) = w["source"][0].get("objects") else { continue };
+                if let Some(t) = o.get("transitions") {
+                    // 503 without O2: the property must still have a funnel (400 otherwise).
+                    let (st, r) = call(&server, "POST", "/api/v1/ontology/transitions/query", &env.alice, org, Some(t.clone())).await;
+                    assert!(st == 200 || st == 503, "{key}/{}: {r}", w["id"]);
+                    if st == 200 {
+                        let keys: Vec<_> = r["groups"].as_array().unwrap().iter().map(|g| g["key"][0].clone()).collect();
+                        assert_eq!(keys, ["new", "contacted", "qualified", "converted"], "the funnel's order: {r}");
+                    }
+                    funnels += 1;
+                    continue;
+                }
                 sources += 1;
                 let set = o["object_set"].as_str().unwrap();
                 let body = json!({"group_by": o.get("group_by").cloned().unwrap_or(json!([])), "metrics": o["metrics"],
@@ -359,7 +370,7 @@ async fn the_pack_ships_its_screens() {
                 }
             }
         }
-        assert_eq!(sources, 23);
+        assert_eq!((sources, funnels), (23, 2));
         // Not a dashboard of the org.
         let (_, list) = call(&server, "GET", "/api/v1/dashboards", &env.alice, org, None).await;
         assert_eq!(list["count"], 0, "{list}");

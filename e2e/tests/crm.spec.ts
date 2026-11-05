@@ -1110,11 +1110,14 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
       await expect(main.getByTestId('objects-error')).toHaveCount(0);
       await capture('crm-figures', { caption: 'Figures of the sales follow-up application' });
 
-      for (const [screen, bars] of [['results', 3], ['forecast', 1], ['stages', 3], ['prospecting', 3]] as const) {
+      for (const [screen, bars] of [['results', 3], ['forecast', 1], ['stages', 3], ['prospecting', 5]] as const) {
         await page.goto(`/apps/sales_follow_up/${screen}`);
         await expect(main.getByTestId('objects-bars')).toHaveCount(bars, { timeout: 30_000 });
         await expect(main.getByTestId('objects-error')).toHaveCount(0);
       }
+      // The lead funnel leads the screen, in its order.
+      await expect(main.getByTestId('objects-bars').first()).toContainText(/New[\s\S]*Contacted[\s\S]*Qualified[\s\S]*Converted/);
+      await capture('crm-prospecting', { caption: 'Prospecting screen: the lead funnel, then leads today' });
 
       // The reader sets the period of Results; an empty date asks instead of failing.
       await page.goto('/apps/sales_follow_up/results');

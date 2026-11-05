@@ -43,7 +43,7 @@
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "3.6.0"
+version: "3.7.0"
 requires: [prospecting_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -499,27 +499,43 @@ apps:
         layout:
           canvas: {width: 1600, height: 900}
           widgets:
-            - id: p1
+            - id: f1
               type: range_bars
               x: 16
               y: 16
               w: 776
               h: 428
-              options: {decimals: 0, app: {titles: {fr: "Pistes par statut", en: "Leads by status"}}}
-              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: all_leads, group_by: [{property: status}], metrics: [{key: n, op: count}], show: n}}]
-            - id: p2
+              options: {decimals: 0, app: {titles: {fr: "Pistes ayant atteint chaque statut, depuis le début du suivi", en: "Leads that reached each status, since tracking began"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {transitions: {type_key: lead, property: status}, metrics: [], show: reached}}]
+            - id: f2
               type: range_bars
               x: 808
               y: 16
               w: 776
               h: 428
+              options: {decimals: 0, unit: "%", app: {titles: {fr: "Part passée au statut suivant, depuis le début du suivi", en: "Share that reached the next status, since tracking began"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {transitions: {type_key: lead, property: status}, metrics: [], show: rate}}]
+            - id: p1
+              type: range_bars
+              x: 16
+              y: 456
+              w: 512
+              h: 428
+              options: {decimals: 0, app: {titles: {fr: "Pistes par statut, aujourd'hui", en: "Leads by status, today"}}}
+              source: [{metric: "", device_id: "", window: 1h, objects: {object_set: all_leads, group_by: [{property: status}], metrics: [{key: n, op: count}], show: n}}]
+            - id: p2
+              type: range_bars
+              x: 544
+              y: 456
+              w: 512
+              h: 428
               options: {decimals: 0, app: {titles: {fr: "Pistes par source", en: "Leads by source"}}}
               source: [{metric: "", device_id: "", window: 1h, objects: {object_set: all_leads, group_by: [{property: source}], metrics: [{key: n, op: count}], show: n}}]
             - id: p3
               type: range_bars
-              x: 16
+              x: 1072
               y: 456
-              w: 1568
+              w: 512
               h: 428
               options: {decimals: 0, unit: "%", app: {titles: {fr: "Pistes converties par source (converties / toutes)", en: "Leads converted by source (converted / all)"}}}
               source: [{metric: "", device_id: "", window: 1h, objects: {object_set: all_leads, group_by: [{property: source}], metrics: [{key: converted, op: count, where: {key: status, op: eq, value: converted}}, {key: all, op: count}, {key: rate, ratio: [converted, all], percent: true}], show: rate}}]
@@ -659,6 +675,9 @@ types:
         colors: { new: blue, contacted: amber, qualified: violet, disqualified: gray, converted: green }
         required: true
         indexed: true
+        # Since 3.7.0: feeds the outreach funnel of the Prospecting screen (sales-dashboards.md D722).
+        history:
+          funnel: [new, contacted, qualified, converted]
       - key: source
         name: Source
         names: {fr: "Source"}

@@ -111,7 +111,7 @@ Filtres pour celui qui regarde : la **période** de l'écran Résultats est livr
 
 Le mail planifié n'est pas dans ces lots : un flow avec le nœud `ontology_aggregate` et une notification le permet déjà.
 
-État de TB1 : Pipeline a gagné deux listes (bloquées, sans activité enregistrée), Résultats et Prospection existent, sur le tous temps. L'entonnoir d'outreach (contacté, répondu, intéressé) reste à faire : le statut d'une piste n'en donne qu'un état courant, et le taux de réponse reste sur l'écran Chiffres. Limite : le clic vers les fiches existe sur les tableaux, pas encore sur les barres (D726).
+État de TB1 : Pipeline a gagné deux listes (bloquées, sans activité enregistrée), Résultats et Prospection existent, sur le tous temps. Depuis la version 3.7.0 du pack, le statut d'une piste a un historique (entonnoir `new`, `contacted`, `qualified`, `converted` ; `disqualified` arrête le chemin) : Prospection montre en tête les pistes ayant atteint chaque statut et la part passée au suivant, depuis le début du suivi, puis l'état courant par statut et par source (2026-11-05). Pas de reprise du passé : comme pour les étapes (D722). Reste à faire : « répondu » et « intéressé » n'existent pas comme statuts, le taux de réponse reste sur l'écran Chiffres, et l'entonnoir n'est pas encore découpé par salon ou par source. Limite : le clic vers les fiches existe sur les tableaux, pas encore sur les barres (D726).
 
 ## 6. Décisions de Shan (2026-11-05)
 
