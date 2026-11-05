@@ -311,6 +311,7 @@ impl Hooks for App {
         crate::services::datasets::spawn_purge(ctx);
         crate::services::datasets::uploads::spawn(ctx);
         crate::services::datasets::erasure::spawn(ctx);
+        crate::services::media_uploads::spawn(ctx);
         // Flow execution cluster (D106): this process as a flow worker (one
         // supervised runtime for the orgs placed on it) and as a placement
         // controller candidate — here and not connect_workers (ServerOnly

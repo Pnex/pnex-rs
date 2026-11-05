@@ -803,6 +803,22 @@ pub const INGEST_SUSPICIOUS_CLOSURES: &str = "ingest-suspicious-closures";
 // ── Site navigation rules (site-recipes.md D323–D326) ───────────────────
 
 /// A site recipe is not valid YAML or breaks a rule; `errors.violations`
+/// No such media upload in this org.
+pub const MEDIA_UPLOAD_NOT_FOUND: &str = "media-upload-not-found";
+/// The media upload no longer takes parts.
+pub const MEDIA_UPLOAD_CLOSED: &str = "media-upload-closed";
+/// A media part over the limit (args `max`).
+pub const MEDIA_UPLOAD_PART_TOO_LARGE: &str = "media-upload-part-too-large";
+/// Media parts expected and not received (args `missing`, `count`).
+pub const MEDIA_UPLOAD_PARTS_MISSING: &str = "media-upload-parts-missing";
+/// Too many media uploads in progress in the org (args `max`).
+pub const MEDIA_UPLOAD_TOO_MANY: &str = "media-upload-too-many";
+/// A media upload left unfinished for a day.
+pub const MEDIA_UPLOAD_EXPIRED: &str = "media-upload-expired";
+/// Joining the parts failed again and again, or was lost with its server.
+pub const MEDIA_UPLOAD_LOST: &str = "media-upload-lost";
+/// The body of a part stopped before its end.
+pub const MEDIA_UPLOAD_INTERRUPTED: &str = "media-upload-interrupted";
 /// lists `{path, token}` (`steps.3` + `one_of`…).
 pub const SITE_RECIPE_INVALID: &str = "site-recipe-invalid";
 /// Site recipe not found (or not in the org).
@@ -1207,6 +1223,14 @@ pub const ALL: &[&str] = &[
     MAIL_NO_MAILBOX,
     MAIL_MAILBOX_UNKNOWN,
     MAIL_MAILBOX_FORBIDDEN,
+    MEDIA_UPLOAD_NOT_FOUND,
+    MEDIA_UPLOAD_CLOSED,
+    MEDIA_UPLOAD_PART_TOO_LARGE,
+    MEDIA_UPLOAD_PARTS_MISSING,
+    MEDIA_UPLOAD_TOO_MANY,
+    MEDIA_UPLOAD_EXPIRED,
+    MEDIA_UPLOAD_LOST,
+    MEDIA_UPLOAD_INTERRUPTED,
     MAIL_NO_PASSWORD,
     MAIL_UNREACHABLE,
     MAIL_TLS_FAILED,

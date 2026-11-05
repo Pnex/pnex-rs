@@ -523,3 +523,239 @@ async fn roles_and_pagination() {
     })
     .await;
 }
+
+async fn call(
+    server: &axum_test::TestServer,
+    method: &str,
+    path: &str,
+    token: &str,
+    org: i64,
+    body: Option<serde_json::Value>,
+) -> (u16, serde_json::Value) {
+    let req = match method {
+        "GET" => server.get(path),
+        _ => server.post(path),
+    };
+    let req = req
+        .add_header("Authorization", bearer(token))
+        .add_header("X-Org-Id", org.to_string());
+    let res = match body {
+        Some(b) => req.json(&b).await,
+        None => req.await,
+    };
+    let status = res.status_code().as_u16();
+    (
+        status,
+        serde_json::from_str(&res.text()).unwrap_or_default(),
+    )
+}
+
+async fn put_part(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    path: &str,
+    bytes: Vec<u8>,
+) -> (u16, serde_json::Value) {
+    let res = server
+        .put(path)
+        .add_header("Authorization", bearer(token))
+        .add_header("X-Org-Id", org.to_string())
+        .bytes(bytes.into())
+        .await;
+    let status = res.status_code().as_u16();
+    (
+        status,
+        serde_json::from_str(&res.text()).unwrap_or_default(),
+    )
+}
+
+/// Sends `parts` as one upload, closes it and waits for the join.
+async fn send_in_parts(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    input: serde_json::Value,
+    parts: &[Vec<u8>],
+) -> serde_json::Value {
+    let (s, u) = call(
+        server,
+        "POST",
+        "/api/v1/media/uploads",
+        token,
+        org,
+        Some(input),
+    )
+    .await;
+    assert_eq!(s, 201, "{u}");
+    let path = format!("/api/v1/media/uploads/{}", u["id"].as_str().unwrap());
+    // Last part first: the order of arrival does not matter.
+    for (n, bytes) in parts.iter().enumerate().rev() {
+        let (s, u) = put_part(
+            server,
+            token,
+            org,
+            &format!("{path}/parts/{}", n + 1),
+            bytes.clone(),
+        )
+        .await;
+        assert_eq!(s, 200, "{u}");
+    }
+    let body = serde_json::json!({ "parts": parts.len() });
+    let (s, u) = call(
+        server,
+        "POST",
+        &format!("{path}/complete"),
+        token,
+        org,
+        Some(body),
+    )
+    .await;
+    assert_eq!(s, 202, "{u}");
+    for _ in 0..120 {
+        let (s, u) = call(server, "GET", &path, token, org, None).await;
+        assert_eq!(s, 200, "{u}");
+        if u["state"] == "done" || u["state"] == "failed" {
+            return u;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    panic!("upload never ended");
+}
+
+/// A file too large for one request behind a proxy (data-pipelines.md §9.9): parts
+/// joined in the background into a new asset, then into a new version of it. The
+/// format is judged on the whole, another org reaches nothing.
+#[tokio::test]
+#[serial]
+async fn a_file_sent_in_parts_becomes_one_version() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let bob_org = personal_org(&server, &env.bob).await;
+        let mut file = gpano_jpeg();
+        file.extend((0..300_000u32).map(|i| (i % 251) as u8));
+        let parts = vec![file[..200_000].to_vec(), file[200_000..].to_vec()];
+
+        let input = serde_json::json!({ "filename": "sphere.jpg", "name": "Sphere" });
+        let end = send_in_parts(&server, &env.alice, org, input, &parts).await;
+        assert_eq!(end["state"], "done", "{end}");
+        assert_eq!(end["version"], 1, "{end}");
+        assert_eq!(end["bytes"], file.len(), "{end}");
+        let asset = end["asset_id"].as_str().unwrap().to_string();
+        let (_, detail) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/media/{asset}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(
+            detail["kind"], "panorama",
+            "sniffed on the first part: {detail}"
+        );
+        assert_eq!(detail["name"], "Sphere", "{detail}");
+        let content = server
+            .get(&format!("/api/v1/media/{asset}/content"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(
+            content.as_bytes().to_vec(),
+            file,
+            "joined in order, nothing lost"
+        );
+
+        // A new version of the same asset.
+        let input =
+            serde_json::json!({ "filename": "sphere2.jpg", "asset_id": asset, "note": "v2" });
+        let end = send_in_parts(&server, &env.alice, org, input, &parts).await;
+        assert_eq!(end["state"], "done", "{end}");
+        assert_eq!(end["version"], 2, "{end}");
+        assert_eq!(end["asset_id"], asset.as_str(), "{end}");
+
+        // A format refused once whole: the upload fails with its code, no asset.
+        let input = serde_json::json!({ "filename": "fake.jpg" });
+        let end = send_in_parts(
+            &server,
+            &env.alice,
+            org,
+            input,
+            &[b"not a picture".to_vec()],
+        )
+        .await;
+        assert_eq!(end["state"], "failed", "{end}");
+        assert_eq!(end["code"], "media-format-unsupported", "{end}");
+        assert!(end["asset_id"].is_null(), "{end}");
+
+        // Another org: its asset is refused as a target, its upload is not found (R1).
+        let input = serde_json::json!({ "filename": "x.jpg", "asset_id": asset });
+        let (s, e) = call(
+            &server,
+            "POST",
+            "/api/v1/media/uploads",
+            &env.bob,
+            bob_org,
+            Some(input),
+        )
+        .await;
+        assert_eq!(s, 400, "{e}");
+        let (_, u) = call(
+            &server,
+            "POST",
+            "/api/v1/media/uploads",
+            &env.alice,
+            org,
+            Some(serde_json::json!({ "filename": "y.jpg" })),
+        )
+        .await;
+        let path = format!("/api/v1/media/uploads/{}", u["id"].as_str().unwrap());
+        let (s, e) = call(&server, "GET", &path, &env.bob, bob_org, None).await;
+        assert_eq!(s, 404, "{e}");
+        assert_eq!(e["error"], "media-upload-not-found", "{e}");
+        let (s, _) = put_part(
+            &server,
+            &env.bob,
+            bob_org,
+            &format!("{path}/parts/1"),
+            b"x".to_vec(),
+        )
+        .await;
+        assert_eq!(s, 404);
+
+        // A part over the limit, a missing part.
+        let (s, e) = put_part(
+            &server,
+            &env.alice,
+            org,
+            &format!("{path}/parts/1"),
+            vec![0; 64 * 1024 * 1024 + 1],
+        )
+        .await;
+        assert_eq!(s, 413, "{e}");
+        assert_eq!(e["error"], "media-upload-part-too-large", "{e}");
+        let (s, _) = put_part(
+            &server,
+            &env.alice,
+            org,
+            &format!("{path}/parts/2"),
+            plain_jpeg(),
+        )
+        .await;
+        assert_eq!(s, 200);
+        let body = serde_json::json!({ "parts": 2 });
+        let (s, e) = call(
+            &server,
+            "POST",
+            &format!("{path}/complete"),
+            &env.alice,
+            org,
+            Some(body),
+        )
+        .await;
+        assert_eq!(s, 409, "{e}");
+        assert_eq!(e["error"], "media-upload-parts-missing", "{e}");
+    })
+    .await;
+}

@@ -205,6 +205,7 @@ pub const EXPOSED: &[&str] = &[
     "media_get",
     "media_index_get",
     "media_index_rebuild",
+    "media_uploads_get",
     "media_list",
     "media_metadata_list",
     "media_search",
@@ -654,6 +655,10 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "media_versions_create",
             "ml_models_test_image",
             "ontology_export",
+            // Opening and closing serve only the binary parts between them.
+            "media_uploads_start",
+            "media_uploads_part_put",
+            "media_uploads_complete",
             "ontology_import",
             "site_recipes_runs_file",
             "site_recipes_runs_live",

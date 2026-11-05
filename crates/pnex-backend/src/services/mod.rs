@@ -62,6 +62,8 @@ pub mod media_runs;
 pub mod media_sniff;
 pub mod memory;
 /// Notifications (D49–D54) — WS broker, journal, pruner, delivery.
+/// Media files sent in parts (data-pipelines.md §9.9).
+pub mod media_uploads;
 pub mod notify;
 pub mod notify_journal;
 pub mod notify_recipients;

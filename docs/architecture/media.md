@@ -55,6 +55,16 @@ vieux clients).
   `content_length()`). Le corps est lu en mémoire : au pire
   `PNEX_UPLOAD_MAX_CONCURRENT` (4) × 2 Gio de RAM ; l'edge nginx laisse
   passer 2100 Mo.
+- **Envoi par parties (2026-11-05, data-pipelines.md §9.9)** : derrière Cloudflare
+  une requête porte 100 Mo au plus. Au-delà de 32 Mio, le front ouvre
+  `POST /api/v1/media/uploads` (nouvel asset, ou nouvelle version d'`asset_id`),
+  envoie des parties de 32 Mio (`PUT .../parts/{n}`, 64 Mio au plus, 1000 parties,
+  total sous `PNEX_MEDIA_MAX_BYTES`), ferme (`POST .../complete`, 202) puis lit l'envoi
+  jusqu'à `done` ou `failed`. Un pod assemble les parties en tâche de fond, une partie
+  en mémoire à la fois, haché au fil de l'eau. Format jugé sur la première partie
+  (taille totale pour un splat) : un docx de plus de 32 Mio dont `word/document.xml`
+  est loin dans l'archive serait refusé. 4 envois actifs par org, 3 tentatives, parts
+  purgées après un jour.
 - `GET /api/v1/media` (D14 : `kind`, `search`, pagination envelope),
   `GET/PATCH/DELETE /{id}`, versions : `GET/POST /{id}/versions`,
   `GET/DELETE /{id}/versions/{n}`, `POST /{id}/versions/{n}/restore`,

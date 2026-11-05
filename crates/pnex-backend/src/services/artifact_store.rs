@@ -28,6 +28,15 @@ use crate::services::media::{MediaError, MediaStore};
 const MAX_BYTES: usize = 50 * 1024 * 1024;
 
 /// S3 store shared by firmware artifacts and media.
+/// Why [`S3Store::write_stream`] stopped.
+#[derive(Debug)]
+pub enum StreamWriteError {
+    /// The body stopped before its end.
+    Interrupted,
+    TooLarge,
+    Storage(String),
+}
+
 #[derive(Clone)]
 pub struct S3Store {
     operator: Operator,
@@ -378,6 +387,47 @@ impl S3Store {
             .user_metadata(meta)
             .await
             .map_err(|e| format!("S3 writer {key}: {e}"))
+    }
+
+    /// Writes a request body to `key`, `max` bytes at most, and returns its size. A body
+    /// cut or over `max` leaves nothing behind.
+    pub async fn write_stream<S, E>(
+        &self,
+        key: &str,
+        mut body: S,
+        max: u64,
+    ) -> Result<u64, StreamWriteError>
+    where
+        S: futures_util::Stream<Item = Result<Bytes, E>> + Unpin,
+    {
+        use futures_util::StreamExt;
+        let mut writer = self.writer(key).await.map_err(StreamWriteError::Storage)?;
+        let mut size = 0u64;
+        let failure = loop {
+            let chunk = match body.next().await {
+                None => break None,
+                Some(Err(_)) => break Some(StreamWriteError::Interrupted),
+                Some(Ok(chunk)) => chunk,
+            };
+            size += chunk.len() as u64;
+            if size > max {
+                break Some(StreamWriteError::TooLarge);
+            }
+            if let Err(e) = writer.write(chunk).await {
+                break Some(StreamWriteError::Storage(e.to_string()));
+            }
+        };
+        if let Some(e) = failure {
+            if let Err(abort) = writer.abort().await {
+                tracing::debug!("{key} not aborted: {abort}");
+            }
+            return Err(e);
+        }
+        writer
+            .close()
+            .await
+            .map_err(|e| StreamWriteError::Storage(e.to_string()))?;
+        Ok(size)
     }
 
     /// Writes a whole object (hashed into its metadata).

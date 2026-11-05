@@ -398,8 +398,54 @@ fn upload_path(path: &str, params: &UploadParams) -> String {
     full
 }
 
+/// A file over one part goes in parts: a proxy limits each request (Cloudflare: 100 MB).
+/// The server joins them in the background; a refused file is its coded error.
+async fn upload_in_parts(
+    asset_id: Option<&str>,
+    params: &UploadParams,
+    bytes: Vec<u8>,
+) -> Result<MediaAsset, ApiError> {
+    use super::pipelines::{upload_part, wait_upload, UPLOAD_PART_BYTES};
+    use pnex_core::media_upload::{MediaUpload, MediaUploadInput};
+    let input = MediaUploadInput {
+        filename: params
+            .filename
+            .clone()
+            .unwrap_or_else(|| "media.bin".into()),
+        asset_id: asset_id.map(str::to_string),
+        name: params.name.clone(),
+        kind: params.kind.map(|k| k.as_str().to_string()),
+        content_type: params.content_type.clone(),
+        note: params.note.clone(),
+    };
+    let body = Some(serde_json::to_value(input).unwrap_or_default());
+    let upload: MediaUpload =
+        client::request(reqwest::Method::POST, "/api/v1/media/uploads", body).await?;
+    let path = format!("/api/v1/media/uploads/{}", upload.id);
+    let mut parts = 0;
+    for part in bytes.chunks(UPLOAD_PART_BYTES) {
+        parts += 1;
+        upload_part(&format!("{path}/parts/{parts}"), part.to_vec()).await?;
+    }
+    let body = Some(serde_json::json!({ "parts": parts }));
+    let upload: MediaUpload =
+        client::request(reqwest::Method::POST, &format!("{path}/complete"), body).await?;
+    let upload = wait_upload(&path, upload, |u: &MediaUpload| u.state.ended()).await?;
+    match upload.asset_id.filter(|_| upload.code.is_none()) {
+        Some(asset) => detail(&asset).await,
+        None => Err(ApiError::local(
+            upload.code.as_deref().unwrap_or_default(),
+            "The file was not joined",
+            upload.args,
+        )),
+    }
+}
+
 /// `POST /api/v1/media` — upload (asset + version 1).
 pub async fn upload(params: &UploadParams, bytes: Vec<u8>) -> Result<MediaAsset, ApiError> {
+    if bytes.len() > super::pipelines::UPLOAD_PART_BYTES {
+        return upload_in_parts(None, params, bytes).await;
+    }
     client::request_upload(
         reqwest::Method::POST,
         &upload_path("/api/v1/media", params),
@@ -414,6 +460,9 @@ pub async fn add_version(
     params: &UploadParams,
     bytes: Vec<u8>,
 ) -> Result<MediaAsset, ApiError> {
+    if bytes.len() > super::pipelines::UPLOAD_PART_BYTES {
+        return upload_in_parts(Some(asset_id), params, bytes).await;
+    }
     client::request_upload(
         reqwest::Method::POST,
         &upload_path(

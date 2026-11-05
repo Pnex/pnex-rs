@@ -13729,6 +13729,143 @@
         ],
         "type": "object"
       },
+      "MediaUpload": {
+        "description": "A media file sent in parts.",
+        "properties": {
+          "args": {
+            "description": "Arguments of the failure.",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "asset_id": {
+            "description": "The asset it adds a version to; once done, the asset it created.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bytes": {
+            "description": "Bytes received.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "code": {
+            "description": "Machine code of the failure.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "parts": {
+            "description": "Parts received.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MediaUploadState"
+          },
+          "version": {
+            "description": "The version number it became, once done.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "state",
+          "parts",
+          "bytes",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "MediaUploadComplete": {
+        "description": "Closes an upload: parts 1 to `parts` make the file.",
+        "properties": {
+          "parts": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "parts"
+        ],
+        "type": "object"
+      },
+      "MediaUploadInput": {
+        "description": "Opens an upload: a new asset, or a new version of `asset_id`. Same fields as the\nquery of the single-request upload.",
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filename": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "Kind of a new asset. Default: found from the content.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Name of a new asset. Default: the file name.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "description": "Note of the version.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "filename"
+        ],
+        "type": "object"
+      },
+      "MediaUploadState": {
+        "enum": [
+          "open",
+          "ready",
+          "joining",
+          "done",
+          "failed"
+        ],
+        "type": "string"
+      },
       "MediaVersionDto": {
         "description": "One version of a media asset.",
         "properties": {
@@ -63596,6 +63733,402 @@
           }
         ],
         "summary": "Search the transcripts of the organisation's streams",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/uploads": {
+      "post": {
+        "description": "For a file over what a request may carry behind a proxy (Cloudflare: 100 MB): a new asset, or a new version of `asset_id`. Send the parts with `PUT .../parts/{part}`, close with `POST .../complete`, then read the upload until it is `done` (its `asset_id` and `version`) or `failed` (its `code`). The format is judged on the whole file, as for a single-request upload. Owner, admin or member.",
+        "operationId": "media_uploads_start",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaUploadInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaUpload"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`filename`: `required`; `kind`, `asset_id`: `invalid`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `media:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`media-upload-too-many` (args `max`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Open the upload of a media file in parts",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/uploads/{upload}": {
+      "get": {
+        "description": "Parts received, then the join: `done` with its `asset_id` and `version`, or `failed` with its `code` and `args`. Owner, admin, member or viewer.",
+        "operationId": "media_uploads_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Upload id (UUID)",
+            "in": "path",
+            "name": "upload",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaUpload"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `media:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`media-upload-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "State of a media upload",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/uploads/{upload}/complete": {
+      "post": {
+        "description": "Says how many parts make the file; refused if any is missing. A server then joins them in the background: read the upload until it is `done` or `failed` (`media-format-unsupported` for a refused format). Owner, admin or member.",
+        "operationId": "media_uploads_complete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Upload id (UUID)",
+            "in": "path",
+            "name": "upload",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaUploadComplete"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaUpload"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `media:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`media-upload-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`media-upload-closed`, `media-upload-parts-missing` (args `missing`, `count`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Close a media upload and join the file",
+        "tags": [
+          "media"
+        ]
+      }
+    },
+    "/api/v1/media/uploads/{upload}/parts/{part}": {
+      "put": {
+        "description": "The bytes of the file, cut anywhere, 64 MiB at most. Parts are numbered from 1 and may come in any order; sending one again replaces it. Owner, admin or member.",
+        "operationId": "media_uploads_part_put",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Upload id (UUID)",
+            "in": "path",
+            "name": "upload",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Part number, from 1 to 1000",
+            "in": "path",
+            "name": "part",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaUpload"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`part`), `media-upload-interrupted`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `media:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`media-upload-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`media-upload-closed`"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`media-upload-part-too-large` (args `max`), `media-file-too-large` (args `max_bytes`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Store one part of a media upload",
         "tags": [
           "media"
         ]

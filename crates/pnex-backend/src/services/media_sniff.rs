@@ -253,6 +253,19 @@ pub fn accepts(kind: &str, filename: &str, bytes: &[u8]) -> bool {
     identify(filename, bytes).is_some_and(|f| f.kinds().contains(&kind))
 }
 
+/// What [`detect`] and [`accepts`] read of a file joined from parts: its first part,
+/// `total` its whole size. A splat is records end to end: the whole must be, and the
+/// head is cut to a record boundary. `None`: refused.
+pub fn head_view<'a>(filename: &str, head: &'a [u8], total: u64) -> Option<&'a [u8]> {
+    if extension(filename) != "splat" {
+        return Some(head);
+    }
+    let record = SPLAT_RECORD as u64;
+    total
+        .is_multiple_of(record)
+        .then(|| &head[..head.len() - head.len() % SPLAT_RECORD])
+}
+
 /// Case-insensitive search of an ASCII needle in the window.
 fn contains_ci(haystack: &[u8], needle: &[u8]) -> bool {
     if needle.is_empty() || haystack.len() < needle.len() {
@@ -442,5 +455,16 @@ mod tests {
         let xmp = r#"<rdf:Description gpano:projectiontype="EQUIRECTANGULAR"/>"#;
         let bytes = jpeg_with_xmp(xmp);
         assert_eq!(kind("p.jpg", &bytes), Some("panorama"));
+    }
+
+    #[test]
+    fn a_splat_in_parts_is_judged_on_its_whole_size() {
+        let head = vec![0u8; 32 * 3 + 5];
+        assert_eq!(
+            head_view("a.splat", &head, 32 * 10).map(<[u8]>::len),
+            Some(96)
+        );
+        assert_eq!(head_view("a.splat", &head, 32 * 10 + 1), None);
+        assert_eq!(head_view("a.jpg", &head, 7).map(<[u8]>::len), Some(101));
     }
 }

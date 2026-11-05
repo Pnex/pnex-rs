@@ -1454,7 +1454,7 @@ Rien ici ne bloque ce qui est livré. Chaque ligne renvoie au détail du §9.6.
 | Sujet | Question | Recommandation | Bloque |
 |---|---|---|---|
 | Identifiant S3 du worker (SEC-61) | Identité limitée à `org_*/datasets/*` au lieu de la racine RustFS ? Non vérifié que RustFS le permet | Oui | Mise en production du worker |
-| Média derrière Cloudflare | Envoi par parties aussi : 2 Gio annoncés, une seule requête, tout en mémoire | Oui, revoir détection de format et hachage | Média de plus de 100 Mo |
+| Média derrière Cloudflare | ~~Envoi par parties aussi~~ **fait le 2026-11-05** (`media.md`) : parties, assemblage en tâche de fond, hachage au fil de l'eau. Reste : le front lit encore le fichier entier en mémoire avant d'envoyer, la CLI n'a pas de `pnex media load` | Lecture du fichier par morceaux côté front si un client envoie plusieurs Gio | Rien |
 | Effacement : non déclaré | Un fichier sans déclaration ni lignage garde la personne | À trancher avant de promettre un effacement complet | Promesse d'effacement |
 | Effacement : table supprimée | Les empreintes partent avec elle : recréée et rechargée, la personne revient | Garder les empreintes par org | Promesse d'effacement |
 | Effacement : colonne convertie | `digits`, `left`, `concat` ne sont pas déclarées | À trancher avec le cas réel | Promesse d'effacement |

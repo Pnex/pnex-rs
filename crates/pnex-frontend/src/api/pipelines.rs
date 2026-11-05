@@ -177,7 +177,7 @@ pub async fn set_freshness(id: &str, max_age_hours: Option<i32>) -> Result<Datas
 }
 
 /// A part stays well under the limit of a proxy on one request. A retry holds it twice.
-const UPLOAD_PART_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const UPLOAD_PART_BYTES: usize = 32 * 1024 * 1024;
 const PART_ATTEMPTS: u32 = 4;
 /// Five minutes of failed polls: longer than a rollout.
 const UPLOAD_POLL_FAILURES: u32 = 300;
@@ -186,10 +186,11 @@ fn may_pass_later(e: &ApiError) -> bool {
     e.status.is_none_or(|s| s >= 500)
 }
 
-async fn upload_part(path: &str, part: Vec<u8>) -> Result<(), ApiError> {
+pub(crate) async fn upload_part(path: &str, part: Vec<u8>) -> Result<(), ApiError> {
     let mut attempt = 1;
     loop {
-        let sent = client::request_upload::<DatasetUpload>(Method::PUT, path, part.clone()).await;
+        let sent =
+            client::request_upload::<serde_json::Value>(Method::PUT, path, part.clone()).await;
         match sent {
             Ok(_) => return Ok(()),
             Err(e) if attempt < PART_ATTEMPTS && may_pass_later(&e) => {
@@ -243,12 +244,21 @@ where
         sent(total);
     }
     let body = json!({ "parts": parts });
-    let mut upload: DatasetUpload =
+    let upload: DatasetUpload =
         client::request(Method::POST, &format!("{path}/complete"), Some(body)).await?;
+    wait_upload(&path, upload, |u| u.state.ended()).await
+}
+
+/// Reads an upload until `ended`, through a server restart.
+pub(crate) async fn wait_upload<T: serde::de::DeserializeOwned>(
+    path: &str,
+    mut upload: T,
+    ended: impl Fn(&T) -> bool,
+) -> Result<T, ApiError> {
     let mut failures = 0;
-    while !upload.state.ended() {
+    while !ended(&upload) {
         crate::util::sleep(Duration::from_secs(1)).await;
-        match client::request(Method::GET, &path, None).await {
+        match client::request(Method::GET, path, None).await {
             Ok(now) => {
                 upload = now;
                 failures = 0;

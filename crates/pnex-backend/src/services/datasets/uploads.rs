@@ -17,7 +17,7 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, QueryResult};
 use uuid::Uuid;
 
 use super::{check_loadable, dataset_prefix, load_csv, remove_prefix, stmt, storage, DatasetError};
-use crate::services::artifact_store::S3Store;
+use crate::services::artifact_store::{S3Store, StreamWriteError};
 
 /// Waiting parts an org can hold: each upload holds up to [`SOURCE_MAX_BYTES`], outside
 /// the quota until it is converted.
@@ -149,7 +149,7 @@ pub async fn put_part<S, E>(
     dataset_id: Uuid,
     id: Uuid,
     part: i32,
-    mut body: S,
+    body: S,
 ) -> Result<DatasetUpload, DatasetError>
 where
     S: Stream<Item = Result<Bytes, E>> + Unpin,
@@ -165,29 +165,14 @@ where
         return Err(DatasetError::UploadClosed);
     }
     let key = part_key(org_id, dataset_id, id, part);
-    let mut writer = store.writer(&key).await.map_err(storage)?;
-    let mut size = 0u64;
-    let failure = loop {
-        let chunk = match body.next().await {
-            None => break None,
-            Some(Err(_)) => break Some(DatasetError::SourceInterrupted),
-            Some(Ok(chunk)) => chunk,
-        };
-        size += chunk.len() as u64;
-        if size > UPLOAD_PART_MAX_BYTES {
-            break Some(DatasetError::PartTooLarge);
-        }
-        if let Err(e) = writer.write(chunk).await {
-            break Some(storage(e));
-        }
-    };
-    if let Some(e) = failure {
-        if let Err(abort) = writer.abort().await {
-            tracing::debug!("dataset part not aborted: {abort}");
-        }
-        return Err(e);
-    }
-    writer.close().await.map_err(storage)?;
+    let size = store
+        .write_stream(&key, body, UPLOAD_PART_MAX_BYTES)
+        .await
+        .map_err(|e| match e {
+            StreamWriteError::Interrupted => DatasetError::SourceInterrupted,
+            StreamWriteError::TooLarge => DatasetError::PartTooLarge,
+            StreamWriteError::Storage(e) => storage(e),
+        })?;
     let row = db
         .query_one_raw(stmt(
             "UPDATE dataset_uploads \
@@ -219,7 +204,7 @@ where
 }
 
 /// Parts from 1 to `count` are all there, and no other.
-fn missing_parts(parts: &BTreeMap<String, i64>, count: i32) -> Vec<i32> {
+pub(crate) fn missing_parts(parts: &BTreeMap<String, i64>, count: i32) -> Vec<i32> {
     (1..=count)
         .filter(|n| !parts.contains_key(&n.to_string()))
         .collect()

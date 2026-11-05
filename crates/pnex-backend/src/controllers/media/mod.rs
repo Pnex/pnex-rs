@@ -24,7 +24,7 @@
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, patch, post};
+use axum::routing::{get, patch, post, put};
 use axum::Json;
 use loco_rs::prelude::*;
 use sea_orm::{
@@ -50,6 +50,7 @@ mod helpers;
 mod review;
 mod search;
 mod store;
+mod uploads;
 mod versions;
 
 // Private globs: bring every submodule's visible items into this module's
@@ -62,6 +63,7 @@ use dto::*;
 use helpers::*;
 use review::*;
 use search::*;
+use uploads::*;
 use versions::*;
 
 // Disambiguate our `delete` handler from `loco_rs::prelude::delete`
@@ -70,7 +72,9 @@ use crud::delete;
 
 // Historical crate-level paths, preserved for external consumers.
 pub(crate) use helpers::format_unsupported;
-pub(crate) use store::{write_version, IncomingVersion};
+pub(crate) use store::{
+    next_version_number, record_version, write_version, IncomingVersion, StoredVersion,
+};
 
 // ─────────────────────────── Routes ───────────────────────────
 
@@ -92,6 +96,11 @@ pub fn routes() -> Routes {
                 .layer(DefaultBodyLimit::max(max))
                 .layer(axum::middleware::from_fn(compute_limits::upload_gate)),
         )
+        // Parts are streamed to S3: no body limit layer, `put_part` holds the bound.
+        .add("/uploads", post(upload_start))
+        .add("/uploads/{upload}", get(upload_get))
+        .add("/uploads/{upload}/parts/{part}", put(upload_part))
+        .add("/uploads/{upload}/complete", post(upload_complete))
         .add("/search", get(search))
         .add("/chunks/{chunk_id}", get(chunk))
         .add("/{id}/index", get(index_state).post(reindex))
@@ -149,7 +158,11 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         delete_version,
         version_content,
         versions_diff,
-        restore
+        restore,
+        upload_start,
+        upload_get,
+        upload_part,
+        upload_complete
     ))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()

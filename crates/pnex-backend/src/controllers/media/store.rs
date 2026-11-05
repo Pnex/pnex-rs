@@ -39,9 +39,36 @@ pub(crate) async fn write_version(
         .filter(|_| media_sniff::accepts(&asset.kind, &filename, &bytes))
         .ok_or_else(super::helpers::format_unsupported)?;
     let sha = sha256_hex(&bytes);
-    // Version n+1 (flow_versions school: incremental per asset).
-    let next: i64 = media_versions::Entity::find()
-        .filter(media_versions::Column::AssetId.eq(asset.id))
+    let next = next_version_number(ctx, asset.id).await?;
+    let key = MediaSettings::storage_key(org_id, asset.id, next, &filename);
+    let store = settings.store().map_err(|_| Error::InternalServerError)?;
+    store
+        .put(&key, bytes.clone())
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    record_version(
+        ctx,
+        org_id,
+        asset,
+        StoredVersion {
+            number: next,
+            filename,
+            content_type,
+            note,
+            key,
+            size: bytes.len() as i64,
+            sha256: sha,
+            sniff,
+        },
+        store,
+    )
+    .await
+}
+
+/// Number of the next version of an asset (flow_versions school: incremental per asset).
+pub(crate) async fn next_version_number(ctx: &AppContext, asset_id: Uuid) -> Result<i64> {
+    Ok(media_versions::Entity::find()
+        .filter(media_versions::Column::AssetId.eq(asset_id))
         .select_only()
         .column_as(media_versions::Column::VersionNumber.max(), "maxv")
         .into_tuple::<Option<i64>>()
@@ -50,13 +77,40 @@ pub(crate) async fn write_version(
         .map_err(|_| Error::InternalServerError)?
         .flatten()
         .unwrap_or(0)
-        + 1;
-    let key = MediaSettings::storage_key(org_id, asset.id, next, &filename);
-    let store = settings.store().map_err(|_| Error::InternalServerError)?;
-    store
-        .put(&key, bytes.clone())
-        .await
-        .map_err(|_| Error::InternalServerError)?;
+        + 1)
+}
+
+/// A version whose bytes are already at `key`.
+pub(crate) struct StoredVersion {
+    pub number: i64,
+    pub filename: String,
+    pub content_type: String,
+    pub note: Option<String>,
+    pub key: String,
+    pub size: i64,
+    pub sha256: String,
+    pub sniff: crate::services::media_sniff::Sniff,
+}
+
+/// Records a stored version and makes it current; on DB failure the blob is deleted
+/// (best effort): no row without a blob.
+pub(crate) async fn record_version(
+    ctx: &AppContext,
+    org_id: i64,
+    asset: &media_assets::Model,
+    stored: StoredVersion,
+    store: std::sync::Arc<dyn crate::services::media::MediaStore>,
+) -> Result<media_versions::Model> {
+    let StoredVersion {
+        number: next,
+        filename,
+        content_type,
+        note,
+        key,
+        size,
+        sha256: sha,
+        sniff,
+    } = stored;
     let version = media_versions::ActiveModel {
         id: Set(Uuid::new_v4()),
         asset_id: Set(asset.id),
@@ -72,7 +126,7 @@ pub(crate) async fn write_version(
             })
             .to_string(),
         ),
-        size_bytes: Set(bytes.len() as i64),
+        size_bytes: Set(size),
         storage_key: Set(key.clone()),
         sha256: Set(Some(sha)),
         metadata: Set(sniff.metadata),

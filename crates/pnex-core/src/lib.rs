@@ -160,6 +160,8 @@ pub mod environments;
 /// OCI image registries (agent-environments.md D703).
 pub mod image_registries;
 /// Pipeline documents and DTOs (data-pipelines.md D571).
+/// Media files sent in parts (data-pipelines.md §9.9).
+pub mod media_upload;
 pub mod pipelines;
 /// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
 /// classifier, `topic_classify` node config.
