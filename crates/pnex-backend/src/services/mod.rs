@@ -1,6 +1,8 @@
 //! Business services (outside HTTP controllers): telemetry, liveness lease,
 //! OpenObserve, dashboard, firmware settings, ETL flow engine (D18).
 
+pub mod agent_gateway;
+pub mod agent_runs;
 pub mod ai;
 /// Media annotations (D55–D60) — writes of the versioned layers.
 pub mod annotation_layer;
@@ -60,10 +62,10 @@ pub mod media_detect;
 pub mod media_ingest;
 pub mod media_runs;
 pub mod media_sniff;
-pub mod memory;
-/// Notifications (D49–D54) — WS broker, journal, pruner, delivery.
 /// Media files sent in parts (data-pipelines.md §9.9).
 pub mod media_uploads;
+pub mod memory;
+/// Notifications (D49–D54) — WS broker, journal, pruner, delivery.
 pub mod notify;
 pub mod notify_journal;
 pub mod notify_recipients;

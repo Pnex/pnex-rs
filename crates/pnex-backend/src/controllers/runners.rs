@@ -376,6 +376,26 @@ async fn claim(State(ctx): State<AppContext>, headers: HeaderMap) -> Result<Resp
         };
         job.build = Some(input);
     }
+    if job.kind == RunnerJobKind::Sandbox {
+        let input =
+            crate::services::agent_runs::sandbox_input(&ctx.db, runner.org_id, &job.id).await;
+        // No run behind it, or no gateway on this deployment: an agent without its model
+        // is not started.
+        let Some(input) = input else {
+            let id = parse_id(&job.id)?;
+            let failed = RunnerJobFinish {
+                outcome: RunnerJobOutcome::Internal,
+                exit_code: None,
+                image_digest: None,
+                scan_report: None,
+            };
+            runners::finish(&ctx.db, runner, id, &failed)
+                .await
+                .map_err(runner_error)?;
+            return Ok(StatusCode::NO_CONTENT.into_response());
+        };
+        job.sandbox = Some(input);
+    }
     if job.kind == RunnerJobKind::EnvironmentScan {
         // Without a read login the scan goes on: the registry may be public, and a refused
         // pull ends the job as `image_pull` anyway.

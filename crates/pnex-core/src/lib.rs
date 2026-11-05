@@ -8,6 +8,8 @@
 //! - it only holds shared DTOs/constants, no business logic.
 
 pub mod agent;
+/// Runs of hosted agents and their LLM gateway (agent-environments.md D731, D732).
+pub mod agent_runs;
 /// Edge agent contract (D95).
 /// Applications declared in an org (external-apps.md D433).
 pub mod apps;
@@ -159,9 +161,9 @@ pub mod datasets;
 pub mod environments;
 /// OCI image registries (agent-environments.md D703).
 pub mod image_registries;
-/// Pipeline documents and DTOs (data-pipelines.md D571).
 /// Media files sent in parts (data-pipelines.md §9.9).
 pub mod media_upload;
+/// Pipeline documents and DTOs (data-pipelines.md D571).
 pub mod pipelines;
 /// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
 /// classifier, `topic_classify` node config.

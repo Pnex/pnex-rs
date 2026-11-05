@@ -714,6 +714,59 @@ qui suivra un logiciel du code source à la production, en passant par la livrai
 - **Reste à faire** : le lien vers `environment_version` arrive avec `agent_ops` (E4) ; d'ici là, l'image
   porte le nom et la version de son environnement. Le scan quotidien relit encore l'image.
 
+### D731 — Un run : un job `sandbox`, un token frappé au claim
+
+Décision du 2026-11-05, première tranche de A1 pour faire tourner un vrai agent. Un run est
+une ligne `agent_runs` et un job `sandbox` sur le build **actif** de l'environnement, par
+digest. Le serveur ne pousse rien : le runner prend le job comme les autres.
+
+- **Token de run** (`pnagr_…`) frappé à **chaque claim**, haché en base. Un runner qui perd
+  le job emporte un token mort : celui du runner suivant le remplace.
+- Il n'ouvre la passerelle **que pendant que le job tourne** (jointure sur
+  `runner_jobs.state = 'running'`) : arrêt, fin, reprise ou bail perdu le ferment sans
+  autre geste. Aucune autre route ne l'accepte en V1 (pas d'API ni de MCP avec ce token).
+- Variables livrées au bac : `PNEX_GATEWAY_URL`, `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` en
+  clair ; `PNEX_RUN_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` = le token, par le Secret
+  du run (D705). Un moteur standard marche donc sans configuration ; ces noms sont refusés
+  dans les variables du run, comme une valeur qui ressemble à un secret.
+- **Adresse de la passerelle** : `PNEX_AGENT_GATEWAY_URL`, sinon `https://$PNEX_PROD_HOST`.
+  Sans elle, le job échoue au claim : un agent sans modèle ne démarre pas. Le serveur
+  résout son nom au claim et livre les adresses dans l'egress du bac (Q-E13 : une
+  `NetworkPolicy` ne connaît que des adresses ; un serveur derrière une IP de Service du
+  cluster n'est pas couvert).
+- **Arrêt** : geste humain (`agents:stop`), job en `failed` / `stopped`, le runner l'apprend
+  à son heartbeat (409) et détruit le pod.
+- Droits : `agents:read` (Viewer), `agents:run` (Admin, comme le build : un run consomme le
+  budget LLM et exécute du code), `agents:stop` (Member). Lecture `EXPOSED` au MCP,
+  lancement et arrêt `EXCLUDED` (runtime) : l'assistant ne lance ni n'arrête de run (D391).
+- **Pas encore** : agent = compte de service (D379) et sa clé propre (D710), politique,
+  dépôts à cloner et services de test dans la demande de run, artefacts (D729), journal du
+  run (D719), page. La clé est celle de l'usage `agent` de l'org (D383, sans niveau agent).
+
+### D732 — Passerelle LLM : deux protocoles, le modèle de l'org, compté et tracé
+
+- Routes `Machine` : `POST /api/v1/agent-gateway/v1/messages` (Anthropic) et
+  `…/v1/chat/completions` (OpenAI). Token en `x-api-key` ou `Authorization: Bearer`.
+- Fournisseur : celui de l'usage **`agent`** (nouvel usage D383, réglable dans l'UI), sinon
+  le défaut de l'org. Le `model` du moteur est **remplacé** par celui de l'org : c'est l'org
+  qui choisit et paie. Pas de traduction entre protocoles : un moteur Anthropic face à un
+  fournisseur OpenAI reçoit `agent-gateway-protocol-mismatch`.
+- Réponse rendue telle quelle, flux SSE compris ; la passerelle lit le flux au passage pour
+  l'usage (Anthropic : `message_start` + `message_delta` ; OpenAI : `include_usage` forcé).
+  Un moteur qui raccroche est compté sur ce qui est passé.
+- **Budget** : appels par run (`llm_calls_max`, 200 par défaut, 10 000 au plus), compteur
+  journalier par org propre aux agents (`settings.ai.agent_daily_calls`, 5 000), qui ne
+  touche ni l'assistant ni les flows (D384). Tokens d'entrée et de sortie cumulés sur le run.
+- **Journal** (D709, niveau `metadata`) : un événement par appel dans le stream O2
+  `agent_llm_calls` : run, fournisseur, modèle, statut, tokens, latence, empreinte SHA-256
+  de la requête envoyée et de la réponse reçue. Jamais le contenu.
+- Corps limité à 8 Mo ; client HTTP de la passerelle sous la garde d'egress R8, sans
+  redirection.
+- Preuve : `crates/pnex-backend/tests/agent_runs.rs` face à un faux fournisseur local (claim
+  sans clé, modèle remplacé, flux et JSON comptés, budget, arrêt qui ferme le token,
+  isolation d'org et droits). Pas encore prouvé : un vrai moteur dans un vrai bac, et
+  l'écriture O2 (aucun O2 dans ces tests).
+
 ## 6. Contrat, IAM, MCP
 
 - Routes `image-registries`, `environments` (versions et builds compris) :
@@ -814,3 +867,5 @@ vrai cluster : les tests d'un bac à sable sans vrai noyau ne prouvent rien.
 | D728 | SBOM tracé dans l'ontologie : pack générique `software_supply`, document CycloneDX et suivi des scans dans O2, composants partagés par `purl`, exposition fermée quand la faille disparaît |
 | D730 | Cache S3 à deux niveaux : couches BuildKit, et dépendances archivées par clé ; le bac passe par PneX, seul le pod de build parle à S3 |
 | D729 | Artefacts de run déclarés en entrée et en sortie, transportés par PneX sans accès S3 depuis le bac, collectés hors du conteneur de l'agent, passés de run en run dans une chaîne |
+| D731 | Run = job `sandbox` sur le build actif ; token de run frappé à chaque claim, valable tant que le job tourne ; adresse de la passerelle résolue au claim pour l'egress |
+| D732 | Passerelle LLM Anthropic et OpenAI, modèle de l'usage `agent` imposé, flux rendu tel quel et compté, budget par run et par jour, empreintes dans O2 |

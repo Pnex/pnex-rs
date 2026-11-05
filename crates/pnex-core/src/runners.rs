@@ -164,6 +164,8 @@ pub enum RunnerJobOutcome {
     Internal,
     /// Too many runners lost it: the reaper gave up.
     LeaseExpired,
+    /// Stopped by a person (D382).
+    Stopped,
 }
 
 impl RunnerJobOutcome {
@@ -175,6 +177,7 @@ impl RunnerJobOutcome {
             Self::ImagePull => "image_pull",
             Self::Internal => "internal",
             Self::LeaseExpired => "lease_expired",
+            Self::Stopped => "stopped",
         }
     }
 
@@ -186,6 +189,7 @@ impl RunnerJobOutcome {
             Self::ImagePull,
             Self::Internal,
             Self::LeaseExpired,
+            Self::Stopped,
         ]
         .into_iter()
         .find(|o| o.as_str() == s)

@@ -320,6 +320,8 @@ pub const EXPOSED: &[&str] = &[
     "runner_jobs_get",
     "runner_jobs_list",
     "runners_list",
+    "agent_runs_get",
+    "agent_runs_list",
     "environments_builds_get",
     "environments_builds_list",
     "environments_builds_scan",
@@ -494,6 +496,8 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
         "runtime: deploy, start, stop or rollback of a flow is a human act (D144)",
         &[
             "runner_jobs_create",
+            "agent_runs_create",
+            "agent_runs_stop",
             "environments_builds_create",
             "environments_builds_activate",
             "flows_deploy",
@@ -674,6 +678,8 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
         &[
             "runner_register",
             "runner_jobs_claim",
+            "agent_gateway_messages",
+            "agent_gateway_chat_completions",
             "runner_jobs_heartbeat",
             "runner_jobs_finish",
             "runner_jobs_sbom",

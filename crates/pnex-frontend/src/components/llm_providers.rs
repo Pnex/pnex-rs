@@ -448,6 +448,7 @@ fn usage_label(u: LlmUsage) -> String {
         LlmUsage::Assistant => t!("llm-usage-assistant"),
         LlmUsage::Extraction => t!("llm-usage-extraction"),
         LlmUsage::Vision => t!("llm-usage-vision"),
+        LlmUsage::Agent => t!("llm-usage-agent"),
     }
     .to_string()
 }

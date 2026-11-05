@@ -438,16 +438,19 @@ pub enum LlmUsage {
     Extraction,
     /// Image work: captions of camera frames and media.
     Vision,
+    /// Hosted agents, through the gateway (D383).
+    Agent,
 }
 
 impl LlmUsage {
-    pub const ALL: [Self; 3] = [Self::Assistant, Self::Extraction, Self::Vision];
+    pub const ALL: [Self; 4] = [Self::Assistant, Self::Extraction, Self::Vision, Self::Agent];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Assistant => "assistant",
             Self::Extraction => "extraction",
             Self::Vision => "vision",
+            Self::Agent => "agent",
         }
     }
 }

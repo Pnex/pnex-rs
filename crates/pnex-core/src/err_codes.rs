@@ -747,6 +747,26 @@ pub const ENVIRONMENT_BUILD_NOT_READY: &str = "environment-build-not-ready";
 pub const ENVIRONMENT_SBOM_UNAVAILABLE: &str = "environment-sbom-unavailable";
 /// This build has no scan yet.
 pub const ENVIRONMENT_SCAN_NOT_FOUND: &str = "environment-scan-not-found";
+/// No run of the org has this id.
+pub const AGENT_RUN_NOT_FOUND: &str = "agent-run-not-found";
+/// The environment has no active build to run.
+pub const AGENT_RUN_NO_ACTIVE_BUILD: &str = "agent-run-no-active-build";
+/// The run has already ended.
+pub const AGENT_RUN_ENDED: &str = "agent-run-ended";
+/// Unknown run token, or the run is not running.
+pub const AGENT_RUN_UNAUTHORIZED: &str = "agent-run-unauthorized";
+/// The run has used all its LLM calls.
+pub const AGENT_RUN_LLM_BUDGET: &str = "agent-run-llm-budget";
+/// The daily LLM calls of agents of the org are used up.
+pub const AGENT_GATEWAY_QUOTA: &str = "agent-gateway-quota";
+/// The org has no LLM provider for agents.
+pub const AGENT_GATEWAY_NOT_CONFIGURED: &str = "agent-gateway-not-configured";
+/// The provider of the org speaks the other protocol.
+pub const AGENT_GATEWAY_PROTOCOL_MISMATCH: &str = "agent-gateway-protocol-mismatch";
+/// The request body is not a JSON object.
+pub const AGENT_GATEWAY_INVALID: &str = "agent-gateway-invalid";
+/// The LLM provider could not be reached.
+pub const AGENT_GATEWAY_UPSTREAM: &str = "agent-gateway-upstream";
 /// No dataset of the org has this id (D569).
 pub const DATASET_NOT_FOUND: &str = "dataset-not-found";
 /// A dataset of the org already has this name.
@@ -1180,6 +1200,16 @@ pub const ALL: &[&str] = &[
     ENVIRONMENT_SCAN_NOT_FOUND,
     ENVIRONMENT_SBOM_UNAVAILABLE,
     ENVIRONMENT_BUILD_NOT_READY,
+    AGENT_RUN_NOT_FOUND,
+    AGENT_RUN_NO_ACTIVE_BUILD,
+    AGENT_RUN_ENDED,
+    AGENT_RUN_UNAUTHORIZED,
+    AGENT_RUN_LLM_BUDGET,
+    AGENT_GATEWAY_QUOTA,
+    AGENT_GATEWAY_NOT_CONFIGURED,
+    AGENT_GATEWAY_PROTOCOL_MISMATCH,
+    AGENT_GATEWAY_INVALID,
+    AGENT_GATEWAY_UPSTREAM,
     BUILD_CYCLE,
     BUILD_DEPENDENCY_MISSING,
     BUILD_TOO_LONG,

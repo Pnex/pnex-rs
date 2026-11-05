@@ -151,6 +151,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::connectors::routes())
         .add_route(controllers::image_registries::routes())
         .add_route(controllers::environments::routes())
+        .add_route(controllers::agent_runs::routes())
         .add_route(controllers::extension::routes())
         .add_route(controllers::ws_extension::routes())
         .add_route(controllers::time_ranges::routes())
