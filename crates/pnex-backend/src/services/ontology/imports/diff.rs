@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use pnex_core::err_codes::FIELD_REQUIRED;
 use pnex_core::ontology::import::{
     plan_row, DiffClose, DiffCreate, DiffEnd, DiffLink, DiffLinkUpdate, DiffUpdate, ImportDiff,
-    Mapping, RowIssue, Schema, ValueChange, FIELD_UNKNOWN_KEY,
+    Mapping, RowIssue, Schema, ValueChange, FIELD_OPPOSED_CONTACT, FIELD_UNKNOWN_KEY,
 };
 use pnex_core::ontology::schema::check_values;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
@@ -75,6 +75,17 @@ enum End {
     Existing(Uuid, String),
     Created(usize, String),
     Missing,
+    /// Carries a contact point that objected or was erased (crm.md D610): left
+    /// out for good, never retried.
+    Opposed,
+}
+
+/// The source column that holds an object's key, as a row issue names it.
+fn key_column(m: &Mapping, a: &Agg) -> String {
+    m.objects[a.entry].properties[&a.key_prop]
+        .from
+        .clone()
+        .unwrap_or_else(|| a.key_prop.clone())
 }
 
 fn source_like(import_id: Uuid) -> String {
@@ -529,6 +540,8 @@ pub async fn against<C: ConnectionTrait>(
     }
 
     let mut ends: Vec<End> = Vec::with_capacity(objs.len());
+    // Per creation: its end, row and key column.
+    let mut created_at: Vec<(usize, usize, String)> = Vec::new();
     // Consumed: a creation takes the planned document, not a copy.
     for a in objs.iter_mut() {
         let def = s.object_type(&a.type_key);
@@ -570,13 +583,9 @@ pub async fn against<C: ConnectionTrait>(
             }
             None if !a.create => {
                 ends.push(End::Missing);
-                let column = m.objects[a.entry].properties[&a.key_prop]
-                    .from
-                    .clone()
-                    .unwrap_or_else(|| a.key_prop.clone());
                 diff.errors.push(RowIssue {
                     row: a.row,
-                    column,
+                    column: key_column(m, a),
                     token: FIELD_UNKNOWN_KEY.into(),
                 });
             }
@@ -610,6 +619,7 @@ pub async fn against<C: ConnectionTrait>(
                     continue;
                 }
                 ends.push(End::Created(diff.created.len(), label));
+                created_at.push((ends.len() - 1, a.row, key_column(m, a)));
                 diff.created.push(DiffCreate {
                     type_key: a.type_key.clone(),
                     key_prop: a.key_prop.clone(),
@@ -620,6 +630,39 @@ pub async fn against<C: ConnectionTrait>(
                 });
             }
         }
+    }
+
+    // Left out in the preview already, so that it and the run count the same.
+    // The write checks again, for an opposition recorded in between.
+    let to_create: Vec<_> = diff
+        .created
+        .iter()
+        .map(|c| (c.type_key.clone(), c.properties.clone()))
+        .collect();
+    let opposed = super::super::opposition::opposed_creations(db, s, org_id, &to_create).await?;
+    drop(to_create);
+    if !opposed.is_empty() {
+        let mut kept = 0;
+        for (i, (end, row, column)) in created_at.into_iter().enumerate() {
+            if opposed.contains(&i) {
+                ends[end] = End::Opposed;
+                diff.warnings.push(RowIssue {
+                    row,
+                    column,
+                    token: FIELD_OPPOSED_CONTACT.into(),
+                });
+            } else {
+                if let End::Created(at, _) = &mut ends[end] {
+                    *at = kept;
+                }
+                kept += 1;
+            }
+        }
+        let mut i = 0;
+        diff.created.retain(|_| {
+            i += 1;
+            !opposed.contains(&(i - 1))
+        });
     }
 
     let skipped: Vec<String> = objs
@@ -673,7 +716,7 @@ pub async fn against<C: ConnectionTrait>(
             created: Some(*i),
             label: label.clone(),
         }),
-        End::Missing => None,
+        End::Missing | End::Opposed => None,
     };
     for pair in planned_links {
         let Pair {

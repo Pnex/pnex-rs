@@ -38,6 +38,8 @@ pub const MAPPING_MAX_BYTES: usize = 64 * 1024;
 pub const FIELD_MISSING_COLUMN: &str = "missing_column";
 /// Token of a lookup key that names no object (`create: false`).
 pub const FIELD_UNKNOWN_KEY: &str = "unknown_key";
+/// Token of a row left out: its contact point objected or was erased (D610).
+pub const FIELD_OPPOSED_CONTACT: &str = "opposed_contact";
 
 /// File or response format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

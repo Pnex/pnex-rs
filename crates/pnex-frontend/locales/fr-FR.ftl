@@ -5130,6 +5130,7 @@ ai-trace-case-board = tableau : { $hypotheses } hypothèse(s), { $unsourced } af
 ai-trace-action-proposed = « { $action } » proposée sur « { $title } »
 ai-review-action = Vérifier et exécuter « { $action } »
 ai-trace-calendar = { $count } occurrence(s) au calendrier
+err-opposed-contact = Écartée : cette adresse ou ce numéro s'est opposé à la prospection ou a été effacé.
 ai-trace-site-recipes = { $count } règle(s) de navigation
 ai-trace-mailboxes = { $count } boîte(s) mail
 ai-trace-mails = { $count } mail(s)

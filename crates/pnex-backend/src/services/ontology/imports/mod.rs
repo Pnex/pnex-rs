@@ -1129,8 +1129,9 @@ async fn write(
         let mut created: Vec<Uuid> = vec![Uuid::nil(); diff.created.len()];
         let (mut at, mut inputs) = (Vec::new(), Vec::new());
         // A file must not bring back an address that objected or was erased
-        // (crm.md D610). shortcut: the run's counts still include these rows,
-        // show them apart if someone asks why the numbers differ.
+        // (crm.md D610). The preview left out those known then; this catches
+        // one recorded since. shortcut: the run's counts still include such a
+        // late one, recount here if it ever matters.
         let to_create: Vec<_> = diff
             .created
             .iter()

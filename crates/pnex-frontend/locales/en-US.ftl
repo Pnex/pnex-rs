@@ -5131,6 +5131,7 @@ ai-trace-case-board = board: { $hypotheses } hypothesis(es), { $unsourced } unso
 ai-trace-action-proposed = proposed "{ $action }" on "{ $title }"
 ai-review-action = Review and run "{ $action }"
 ai-trace-calendar = { $count } calendar occurrence(s)
+err-opposed-contact = Left out: this address or number objected to prospecting or was erased.
 ai-trace-site-recipes = { $count } navigation rule(s)
 ai-trace-mailboxes = { $count } mailbox(es)
 ai-trace-mails = { $count } mail(s)
