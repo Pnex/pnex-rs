@@ -62,7 +62,7 @@
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "3.2.0"
+version: "3.4.0"
 requires: [companies, web_presence]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -173,6 +173,8 @@ link_types:
     inverse_names: {fr: "a pour participant"}
     from_types: [person]
     to_types: [meeting]
+    # A meeting concerns everyone in it: an erasure proposes it, a person decides.
+    propose_erase_targets: true
     attributes:
       - key: side
         name: Side
@@ -262,9 +264,11 @@ types:
     name: Meeting
     names: {fr: "Rendez-vous"}
     icon: user
+    # The title and purpose come from an invitation and may name people (D610).
+    title_classification: personal
     properties:
       - { key: date, name: Date, names: {fr: "Date"}, kind: date_time, indexed: true }
-      - { key: purpose, name: Purpose, names: {fr: "Objet"}, kind: text, max_len: 500 }
+      - { key: purpose, name: Purpose, names: {fr: "Objet"}, kind: text, max_len: 500, classification: personal }
       - key: status
         name: Status
         names: {fr: "Statut"}
@@ -273,8 +277,11 @@ types:
         labels: {planned: {fr: "Prévu", en: "Planned"}, held: {fr: "Tenu", en: "Held"}, cancelled: {fr: "Annulé", en: "Cancelled"}}
         colors: { planned: blue, held: green, cancelled: gray }
         indexed: true
-      - { key: place, name: Place, names: {fr: "Lieu"}, kind: text, max_len: 255 }
-      - { key: next_step, name: Next step, names: {fr: "Suite donnée"}, kind: text, max_len: 2000 }
+      - { key: place, name: Place, names: {fr: "Lieu"}, kind: text, max_len: 255, classification: personal }
+      - { key: next_step, name: Next step, names: {fr: "Suite donnée"}, kind: text, max_len: 2000, classification: personal }
+      # Not personal on purpose: it survives an erasure so an update of the same
+      # invitation hits the erased meeting, refused, instead of recreating it.
+      # To review if an organizer's calendar puts an address in its UIDs.
       - { key: invitation_uid, name: Invitation id, names: {fr: "Identifiant de l'invitation"}, kind: text, max_len: 1024, unique: true }
   - key: coaching_criterion
     name: Playbook criterion
@@ -348,13 +355,13 @@ types:
     # The title is a person's name (D442).
     title_classification: personal
     properties:
-      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 600, required: true, unique: true }
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 600, required: true, unique: true, classification: personal }
       - { key: list, name: List, names: {fr: "Liste"}, kind: text, max_len: 255, indexed: true }
-      - { key: job_title, name: Position, names: {fr: "Poste"}, kind: text, max_len: 255 }
+      - { key: job_title, name: Position, names: {fr: "Poste"}, kind: text, max_len: 255, classification: personal }
       - { key: company, name: Company as written, names: {fr: "Société (telle qu'écrite)"}, kind: text, max_len: 255 }
       - { key: city, name: City, names: {fr: "Ville"}, kind: text, max_len: 255 }
       - { key: postal_code, name: Postcode, names: {fr: "Code postal"}, kind: text, max_len: 10 }
-      - { key: email, name: E-mail, names: {fr: "E-mail"}, kind: text, max_len: 254, classification: personal }
+      - { key: email, name: E-mail, names: {fr: "E-mail"}, kind: text, max_len: 254, classification: personal, contact_point: true }
       - key: persona
         name: Persona
         names: {fr: "Persona"}

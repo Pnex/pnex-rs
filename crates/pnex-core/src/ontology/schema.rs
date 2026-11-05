@@ -155,6 +155,82 @@ pub struct PropertyDef {
     /// permission and removed by an erasure.
     #[serde(default, skip_serializing_if = "Classification::is_internal")]
     pub classification: Classification,
+    /// The value reaches a person (an address, a phone number; crm.md D610):
+    /// an erasure or an objection keeps a hash of it, flows no longer create
+    /// an object carrying it, and other objects holding it are proposed for
+    /// erasure.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub contact_point: bool,
+    /// Changes of this enum property are recorded and stamped
+    /// (sales-dashboards.md D722, D723).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history: Option<PropertyHistory>,
+}
+
+/// What a change of an enum property records. Its transitions go to the O2
+/// `object_transitions` stream, and the server writes the date properties
+/// named here: what a client sends for them is ignored.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct PropertyHistory {
+    /// Date property set to today each time the value changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entered_on: Option<String>,
+    /// Date property set when the value enters `closed_values`, removed when
+    /// it leaves them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed_on: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub closed_values: Vec<String>,
+    /// The values of the way forward, in order: reaching one counts as having
+    /// passed those before it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub funnel: Vec<String>,
+}
+
+/// Writes the dates of `history` properties: a client's value is ignored, the
+/// date already held stays while the value does not change (D723).
+pub fn stamp_history(
+    defs: &[PropertyDef],
+    before: Option<&serde_json::Map<String, Value>>,
+    props: &mut serde_json::Map<String, Value>,
+    today: &str,
+) {
+    for d in defs {
+        let Some(h) = &d.history else { continue };
+        let old = before.and_then(|b| b.get(&d.key));
+        let new = props.get(&d.key).cloned();
+        let held = |key: &str| before.and_then(|b| b.get(key)).cloned();
+        let mut set = |key: &str, value: Option<Value>| match value {
+            Some(v) => {
+                props.insert(key.to_string(), v);
+            }
+            None => {
+                props.remove(key);
+            }
+        };
+        if let Some(key) = &h.entered_on {
+            let value = match (old == new.as_ref(), &new) {
+                (true, _) => held(key),
+                (false, Some(_)) => Some(Value::String(today.to_string())),
+                (false, None) => None,
+            };
+            set(key, value);
+        }
+        if let Some(key) = &h.closed_on {
+            let closed = |v: Option<&Value>| {
+                v.and_then(Value::as_str)
+                    .is_some_and(|v| h.closed_values.iter().any(|c| c == v))
+            };
+            let value = match (closed(old), closed(new.as_ref())) {
+                (_, false) => None,
+                (true, true) => held(key),
+                (false, true) => Some(Value::String(today.to_string())),
+            };
+            set(key, value);
+        }
+    }
 }
 
 /// Closed classification list of a property, a link attribute or a type's
@@ -241,6 +317,10 @@ impl<'de> Deserialize<'de> for PropertyDef {
             labels: std::collections::BTreeMap<String, super::Names>,
             #[serde(default)]
             classification: Classification,
+            #[serde(default)]
+            contact_point: bool,
+            #[serde(default)]
+            history: Option<PropertyHistory>,
         }
         #[derive(Deserialize, Default)]
         #[serde(default)]
@@ -321,6 +401,8 @@ impl<'de> Deserialize<'de> for PropertyDef {
             colors: h.colors,
             labels: h.labels,
             classification: h.classification,
+            contact_point: h.contact_point,
+            history: h.history,
         })
     }
 }
@@ -407,6 +489,27 @@ pub fn check_defs(
             )
         {
             return Err(err(at("unique"), FIELD_INVALID));
+        }
+        if let Some(h) = &d.history {
+            // Only closed internal values reach the O2 stream: nothing to erase there.
+            let PropertyKind::Enum { values } = &d.kind else {
+                return Err(err(at("history"), FIELD_INVALID));
+            };
+            let is_date = |key: &String| {
+                defs.iter()
+                    .any(|o| o.key == *key && o.kind == PropertyKind::Date)
+            };
+            if !d.classification.is_internal()
+                || !h.entered_on.iter().chain(&h.closed_on).all(is_date)
+                || !h
+                    .closed_values
+                    .iter()
+                    .chain(&h.funnel)
+                    .all(|v| values.contains(v))
+                || h.closed_on.is_some() == h.closed_values.is_empty()
+            {
+                return Err(err(at("history"), FIELD_INVALID));
+            }
         }
     }
     Ok(())
@@ -634,7 +737,92 @@ mod tests {
             colors: Default::default(),
             labels: Default::default(),
             classification: Default::default(),
+            contact_point: false,
+            history: None,
         }
+    }
+
+    #[test]
+    fn stamp_history_is_the_servers_and_follows_the_value() {
+        let mut stage = def(
+            "stage",
+            PropertyKind::Enum {
+                values: vec!["new".into(), "won".into(), "lost".into()],
+            },
+        );
+        stage.history = Some(PropertyHistory {
+            entered_on: Some("entered".into()),
+            closed_on: Some("closed".into()),
+            closed_values: vec!["won".into(), "lost".into()],
+            funnel: Vec::new(),
+        });
+        let defs = [stage];
+        let map = |v: Value| v.as_object().unwrap().clone();
+        let stamp = |before: Option<Value>, props: Value, today: &str| {
+            let before = before.map(map);
+            let mut props = map(props);
+            stamp_history(&defs, before.as_ref(), &mut props, today);
+            Value::Object(props)
+        };
+        // Created: a client's date is ignored.
+        let a = stamp(
+            None,
+            json!({"stage": "new", "closed": "2000-01-01"}),
+            "2026-01-01",
+        );
+        assert_eq!(a, json!({"stage": "new", "entered": "2026-01-01"}));
+        // Unchanged: the date holds, whatever is sent.
+        let b = stamp(
+            Some(a.clone()),
+            json!({"stage": "new", "entered": "2000-01-01"}),
+            "2026-02-01",
+        );
+        assert_eq!(b, a);
+        // Closed, then edited, then reopened.
+        let c = stamp(Some(b), json!({"stage": "won"}), "2026-03-01");
+        assert_eq!(
+            c,
+            json!({"stage": "won", "entered": "2026-03-01", "closed": "2026-03-01"})
+        );
+        let d = stamp(Some(c), json!({"stage": "lost"}), "2026-04-01");
+        assert_eq!(
+            d,
+            json!({"stage": "lost", "entered": "2026-04-01", "closed": "2026-03-01"})
+        );
+        let e = stamp(Some(d), json!({"stage": "new"}), "2026-05-01");
+        assert_eq!(e, json!({"stage": "new", "entered": "2026-05-01"}));
+    }
+
+    #[test]
+    fn a_history_needs_an_internal_enum_and_date_properties() {
+        let date = |key: &str| def(key, PropertyKind::Date);
+        let mut stage = def(
+            "stage",
+            PropertyKind::Enum {
+                values: vec!["new".into(), "won".into(), "lost".into()],
+            },
+        );
+        let good = PropertyHistory {
+            closed_on: Some("closed".into()),
+            closed_values: vec!["won".into()],
+            ..Default::default()
+        };
+        stage.history = Some(good.clone());
+        let known = |_: &str| true;
+        assert!(check_defs(&[stage.clone(), date("closed")], "p", &known).is_ok());
+        // The date property does not exist.
+        assert!(check_defs(&[stage.clone()], "p", &known).is_err());
+        // A value the enum does not have.
+        let mut bad = stage.clone();
+        bad.history = Some(PropertyHistory {
+            funnel: vec!["nope".into()],
+            ..good
+        });
+        assert!(check_defs(&[bad, date("closed")], "p", &known).is_err());
+        // A personal enum would put a personal value in the stream.
+        let mut personal = stage.clone();
+        personal.classification = Classification::Personal;
+        assert!(check_defs(&[personal, date("closed")], "p", &known).is_err());
     }
 
     fn pump() -> Vec<PropertyDef> {

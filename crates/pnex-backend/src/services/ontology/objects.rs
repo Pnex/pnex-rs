@@ -242,6 +242,12 @@ pub(super) fn require_role(def: &ObjectTypeDef, actor: &Actor) -> Result<()> {
 /// Creates an org-type object. System objects are created by their own
 /// pages (device wizard, media upload…): the identity follows. Works
 /// inside a transaction (the journal entry is queued at once).
+/// The dates the server keeps for a property with a history (D723).
+fn stamp(def: &ObjectTypeDef, before: Option<&Map<String, Value>>, props: &mut Map<String, Value>) {
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    pnex_core::ontology::schema::stamp_history(&def.properties, before, props, &today);
+}
+
 pub async fn create<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
@@ -267,7 +273,8 @@ pub async fn create_with<C: ConnectionTrait>(
     }
     require_role(def, actor)?;
     let title = check_title(&input.title)?;
-    let props = check_properties(db, org_id, def, &input.properties).await?;
+    let mut props = check_properties(db, org_id, def, &input.properties).await?;
+    stamp(def, None, &mut props);
     check_unique(db, org_id, def, &props, None).await?;
     check_claim(db, org_id, &def.key, None, &props).await?;
     let id = Uuid::new_v4();
@@ -360,7 +367,8 @@ pub async fn update_in_with<C: ConnectionTrait>(
     } else {
         check_title(&input.title)?
     };
-    let props = check_properties(db, org_id, def, &input.properties).await?;
+    let mut props = check_properties(db, org_id, def, &input.properties).await?;
+    stamp(def, row.properties.as_object(), &mut props);
     check_unique(db, org_id, def, &props, Some(id)).await?;
     // Checked when the status changes, not on every later edit.
     let status_changed = row.properties.get("status") != props.get("status");
@@ -616,7 +624,8 @@ pub async fn create_many_with<C: ConnectionTrait>(
             continue;
         }
         let title = check_title(&input.title)?;
-        let props = check_values(&def.properties, &input.properties)?;
+        let mut props = check_values(&def.properties, &input.properties)?;
+        stamp(def, None, &mut props);
         checked.push((i, def, title, props));
     }
     let docs: Vec<_> = checked.iter().map(|(_, d, _, p)| (*d, p)).collect();
@@ -715,7 +724,8 @@ pub async fn update_many_with<C: ConnectionTrait>(
         } else {
             check_title(&input.title)?
         };
-        let props = check_values(&def.properties, &input.properties)?;
+        let mut props = check_values(&def.properties, &input.properties)?;
+        stamp(def, row.properties.as_object(), &mut props);
         checked.push((row, def, expected, title, props));
     }
     let docs: Vec<_> = checked.iter().map(|(_, d, _, _, p)| (*d, p)).collect();

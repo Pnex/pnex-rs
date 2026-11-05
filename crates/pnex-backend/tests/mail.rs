@@ -838,3 +838,65 @@ async fn a_mail_waits_in_the_outbox_until_a_reader_sends_it() {
     })
     .await;
 }
+
+/// An erased address (crm.md D610): its mails go, in and out, a mail to several
+/// people only loses it, and a flow can no longer write to it. A member can.
+#[tokio::test]
+#[serial]
+async fn an_erased_address_loses_its_mails_and_stops_flows_writing_to_it() {
+    use pnex_backend::services::mail::send::{self, Sender};
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    with_app(|server, env| async move {
+        let (org, _, _) = setup(&server, &env).await;
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/packs/crm/install", &env.alice, org, None).await;
+        assert_eq!(st, 200);
+        let (st, b) = call(&server, "POST", "/api/v1/mailboxes", &env.alice, org,
+            Some(input("Alice", "alice@example.com", json!({"smtp_host": "smtp.nowhere.invalid"})))).await;
+        assert_eq!(st, 201, "{b}");
+        let id = b["id"].as_str().unwrap().to_string();
+        let box_id = uuid::Uuid::parse_str(&id).unwrap();
+        let msgs = format!("/api/v1/mailboxes/{id}/messages");
+        for (from, mid) in [("lee@gamma.test", "<a@x>"), ("ann@acme.fr", "<b@x>")] {
+            env.db.execute_raw(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+                "INSERT INTO mail_messages (id, org_id, mailbox_id, folder, uid, message_id, from_address, subject, automatic, from_pnex) \
+                 VALUES ($1, $2, $3, 'INBOX', 1, $4, $5, 'Hi', false, false)",
+                vec![uuid::Uuid::new_v4().into(), org.into(), box_id.into(), mid.into(), from.into()])).await.unwrap();
+        }
+        for (to, key) in [(json!(["lee@gamma.test"]), "only"), (json!(["LEE@gamma.test", "ann@acme.fr"]), "both")] {
+            let (st, m) = call(&server, "POST", &msgs, &env.alice, org,
+                Some(json!({"to": to, "subject": "Devis", "text": "Bonjour", "key": key}))).await;
+            assert_eq!(st, 201, "{m}");
+        }
+        let (st, lead) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org,
+            Some(json!({"type_key": "lead", "title": "Lee", "properties": {"status": "new", "email": "Lee@gamma.test"}}))).await;
+        assert_eq!(st, 201, "{lead}");
+        let (st, e) = call(&server, "POST", &format!("/api/v1/ontology/objects/{}/erase", lead["id"].as_str().unwrap()),
+            &env.alice, org, None).await;
+        assert_eq!(st, 200, "{e}");
+
+        let rows = |sql: &str| {
+            let (db, sql) = (env.db.clone(), sql.to_string());
+            async move {
+                db.query_all_raw(Statement::from_string(DatabaseBackend::Postgres, sql)).await.unwrap().iter()
+                    .map(|r| r.try_get::<String>("", "v").unwrap()).collect::<Vec<_>>()
+            }
+        };
+        assert_eq!(rows("SELECT from_address AS v FROM mail_messages").await, ["ann@acme.fr"]);
+        assert_eq!(rows("SELECT array_to_string(to_addrs, ',') AS v FROM mail_outbox").await, ["ann@acme.fr"]);
+
+        let ring = pnex_backend::services::secrets::Keyring::from_config(&env.config).unwrap();
+        let mail = |key: &str| pnex_core::mail::MailSendInput {
+            to: vec!["lee@gamma.test".into()], subject: "Hi".into(), text: "t".into(),
+            in_reply_to: None, key: Some(key.into()), send_now: false,
+        };
+        let flow = Sender::Flow { flow_id: 1, version: 1 };
+        match send::write(&env.db, &ring, org, box_id, flow, &mail("flow")).await {
+            Err(pnex_backend::services::mail::MailError::Refused { error, .. }) => assert_eq!(error.code, "prospecting-opposed"),
+            other => panic!("{other:?}"),
+        }
+        let (st, m) = call(&server, "POST", &msgs, &env.alice, org,
+            Some(json!({"to": ["lee@gamma.test"], "subject": "Hi", "text": "t", "key": "member"}))).await;
+        assert_eq!(st, 201, "a member answers whoever writes: {m}");
+    })
+    .await;
+}

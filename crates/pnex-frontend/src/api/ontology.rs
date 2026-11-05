@@ -83,6 +83,12 @@ pub async fn query(q: &OntologyQuery) -> Result<QueryResult, ApiError> {
 }
 
 /// `POST /ontology/aggregate/query`: numbers over the objects of a query.
+pub async fn transitions(
+    t: &pnex_core::ontology::aggregate::TransitionsSource,
+) -> Result<pnex_core::ontology::aggregate::AggregateResult, ApiError> {
+    client::request(Method::POST, &format!("{BASE}/transitions/query"), body(t)).await
+}
+
 pub async fn aggregate(
     q: &pnex_core::ontology::aggregate::AggregateQuery,
 ) -> Result<pnex_core::ontology::aggregate::AggregateResult, ApiError> {

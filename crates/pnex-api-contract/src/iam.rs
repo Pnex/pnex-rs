@@ -779,6 +779,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ),
     ("ontology_packs_take", Access::Org("ontology.schema:write")),
     ("ontology_aggregate_query", Access::Org("ontology:read")),
+    ("ontology_transitions_query", Access::Org("ontology:read")),
     ("ontology_path", Access::Org("ontology:read")),
     ("ontology_query", Access::Org("ontology:read")),
     ("ontology_resolve", Access::Org("ontology:read")),

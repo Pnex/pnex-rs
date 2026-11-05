@@ -226,6 +226,24 @@ pub async fn write(
         }
     }
     let automated = sender.automated();
+    // A flow never writes to an address that objected or was erased (crm.md
+    // D610). A member still can: answering someone who wrote is not prospecting.
+    if automated {
+        let keys: Vec<String> = to
+            .iter()
+            .map(|a| crate::services::ontology::opposition::contact_key(org_id, &a.address))
+            .collect();
+        if crate::services::ontology::opposition::any_recorded(db, org_id, &keys)
+            .await
+            .map_err(|e| {
+                MailError::Store(crate::services::mail::StoreError::Db(
+                    sea_orm::DbErr::Custom(e.to_string()),
+                ))
+            })?
+        {
+            return Err(refused(409, err_codes::PROSPECTING_OPPOSED, Value::Null));
+        }
+    }
     let refs = match input.in_reply_to.as_deref().map(str::trim) {
         Some(m) if !m.is_empty() => answered(db, &row, m, automated).await?,
         _ => Vec::new(),

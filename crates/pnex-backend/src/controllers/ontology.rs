@@ -67,6 +67,7 @@ pub fn routes() -> Routes {
         .add("/links/{id}/close", post(close_link))
         .add("/query", post(run_query))
         .add("/aggregate/query", post(run_aggregate))
+        .add("/transitions/query", post(run_transitions))
         .add("/packs", get(list_packs))
         .add("/packs/{key}/install", post(install_pack))
         .add("/packs/{key}/take", post(take_pack_version))
@@ -120,6 +121,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         close_link,
         run_query,
         run_aggregate,
+        run_transitions,
         list_packs,
         install_pack,
         take_pack_version,
@@ -1623,6 +1625,34 @@ async fn run_aggregate(
 }
 
 // ─────────────────────────── packs ───────────────────────────
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/transitions/query",
+    tag = "ontology",
+    operation_id = "ontology_transitions_query",
+    summary = "Read how objects move through the values of a property",
+    description = "Read-only: per value of a property with a history, how many objects reached it (`reached`), the percentage that reached the next one (`rate`) and the average days spent in it (`days`). Recorded best effort, so a trend. Needs `ontology:read`.",
+    request_body = pnex_core::ontology::aggregate::TransitionsSource,
+    responses(
+        (status = 200, body = pnex_core::ontology::aggregate::AggregateResult),
+        (status = 400, description = "Unknown type, or a property without a history (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Missing permission (`access-denied`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "The journal cannot be read (`ontology-changes-unavailable`)", body = crate::openapi::ErrorDetail),
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn run_transitions(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Json(t): Json<pnex_core::ontology::aggregate::TransitionsSource>,
+) -> Result<Response> {
+    match onto::transitions::run(&ctx, org.org.id, &t).await {
+        Ok(Some(r)) => format::json(r),
+        Ok(None) => Err(changes_unavailable()),
+        Err(e) => onto_error(e),
+    }
+}
 
 #[utoipa::path(
     get,

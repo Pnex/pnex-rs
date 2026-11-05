@@ -126,8 +126,8 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
     ),
     (
         "pnex-backend/src/services/profiles.rs",
-        &["lead"],
-        "the retention queue also proposes a CRM lead naming a person (crm.md D514)",
+        &["lead", "list_contact"],
+        "the retention queue also proposes what names a person before the graph knows them: a lead, a list contact (crm.md D514, D610)",
     ),
     (
         "pnex-pipeline-worker/src/engine.rs",

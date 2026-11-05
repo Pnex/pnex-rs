@@ -241,6 +241,9 @@ pub(super) async fn plan(
     let at = sql.bind(at_ts);
     let archived = q.include_archived && q.as_of.is_none();
     let mut start = vec![format!("o.org_id = {org}"), object_validity(&at, archived)];
+    if q.skip_erased {
+        start.push("o.erased_at IS NULL".into());
+    }
     // `cond` on the types where the caller sees the value, false elsewhere.
     let visible = |sql: &mut Sql, cond: String, hidden: Vec<String>| {
         if hidden.is_empty() {

@@ -393,10 +393,16 @@ async fn an_aggregate_never_reveals_what_the_caller_may_not_read() {
         assert_eq!(st, 201, "{a}");
         let (st, e) = call(&server, ROUTE, &bob, org, articles(json!({"metrics": n}))).await;
         assert_eq!((st, e["error"].as_str()), (403, Some("access-denied")), "{e}");
+        let transitions = "/api/v1/ontology/transitions/query";
+        let body = json!({"type_key": "article", "property": "state"});
+        let (st, e) = call(&server, transitions, &bob, org, body.clone()).await;
+        assert_eq!((st, e["error"].as_str()), (403, Some("access-denied")), "{e}");
 
         // Another org sees neither the type nor its objects (R1).
         let (st, other) = call(&server, "/api/v1/orgs", &bob, org, json!({"name": "Elsewhere"})).await;
         assert!(st == 200 || st == 201, "{other}");
+        let (st, e) = call(&server, transitions, &bob, other["id"].as_i64().unwrap(), body).await;
+        assert_eq!(st, 400, "the type is not known there: {e}");
         let (st, _) = call(&server, ROUTE, &bob, other["id"].as_i64().unwrap(), articles(json!({"metrics": n}))).await;
         assert_eq!(st, 400, "the type does not exist over there");
     })

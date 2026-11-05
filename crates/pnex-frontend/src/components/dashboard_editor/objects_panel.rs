@@ -57,6 +57,7 @@ fn metric(op: MetricOp, property: Option<String>) -> Metric {
         key: SHOWN.into(),
         op: Some(op),
         property,
+        weight: None,
         filter: None,
         ratio: vec![],
         percent: false,

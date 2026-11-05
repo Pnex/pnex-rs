@@ -30,6 +30,7 @@ pub mod query;
 pub mod recurrence;
 pub mod redact;
 pub mod series;
+pub mod transitions;
 pub mod types;
 
 use pnex_core::ontology::{

@@ -423,7 +423,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "aggregate_objects",
-            description: "Numbers over the objects of an ontology query, without reading them one by one. metrics: {key, op: count|count_distinct|sum|avg|min|max, property, where: {key, op, value}} or a ratio {key, ratio: [a, b], percent}. group_by, two at most: {property}, {property, bucket: day|week|month|quarter|year} or {hops: [{link_type, direction}]}, two hops at most. Filters accept $today-30 and $today+7. A money property answers by_currency: never add currencies. An object linked to two targets counts in both groups. Refused on what the user may not read.",
+            description: "Numbers over the objects of an ontology query, without reading them one by one. metrics: {key, op: count|count_distinct|sum|avg|min|max, property, weight (with sum: a number property as a percentage, an object without it is left out), where: {key, op, value}} or a ratio {key, ratio: [a, b], percent}. group_by, two at most: {property}, {property, bucket: day|week|month|quarter|year} or {hops: [{link_type, direction}]}, two hops at most. Filters accept $today-30 and $today+7. A money property answers by_currency: never add currencies. An object linked to two targets counts in both groups. Refused on what the user may not read.",
             input_schema: serde_json::from_str(r#"{"type":"object","properties":{"query":{"type":"object"},"group_by":{"type":"array"},"metrics":{"type":"array"},"limit":{"type":"integer"}},"required":["metrics"]}"#).expect("static schema"),
         },
         ToolSpec {

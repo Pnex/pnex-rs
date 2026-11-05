@@ -344,6 +344,8 @@ fn Editor(
                                             colors: Default::default(),
                                             labels: Default::default(),
                                             classification: Default::default(),
+                                            contact_point: false,
+                                            history: None,
                                         })
                                 });
                             },
@@ -879,6 +881,8 @@ mod display_tests {
             colors: Default::default(),
             labels: Default::default(),
             classification: Default::default(),
+            contact_point: false,
+            history: None,
         };
         set_label(&mut p, "customer", "fr", "Client actif");
         set_color(&mut p, "target", "amber");

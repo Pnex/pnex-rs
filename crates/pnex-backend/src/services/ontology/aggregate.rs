@@ -153,6 +153,14 @@ fn number_of(k: &str) -> String {
     )
 }
 
+/// The operand of a metric with a `weight`; the keys were validated.
+fn weighted(operand: String, m: &Metric) -> String {
+    match m.weight.as_deref() {
+        Some(w) => format!("({operand} * {} / 100.0)", number_of(w)),
+        None => operand,
+    }
+}
+
 fn op_sql(op: MetricOp, operand: &str) -> String {
     match op {
         MetricOp::Count => "count(*)".into(),
@@ -213,6 +221,16 @@ pub fn validate(s: &OrgSchema, req: &AggregateQuery, hide: Redaction) -> Result<
             let summable =
                 |k: &&PropertyKind| matches!(k, PropertyKind::Number { .. } | PropertyKind::Money);
             if m.op.is_some_and(MetricOp::numeric) && !kinds.iter().all(summable) {
+                return Err(invalid(field, FIELD_INVALID));
+            }
+        }
+        if let Some(w) = m.weight.as_deref() {
+            let field = format!("metrics.{i}.weight");
+            let kinds = readable_kinds(&types, w, &field, hide)?;
+            if !kinds
+                .iter()
+                .all(|k| matches!(k, PropertyKind::Number { .. }))
+            {
                 return Err(invalid(field, FIELD_INVALID));
             }
         }
@@ -303,7 +321,7 @@ pub async fn run(
         let operand = match (op, m.property.as_deref()) {
             (MetricOp::CountDistinct, Some(k)) => format!("(o.properties ->> '{k}')"),
             (MetricOp::CountDistinct, None) => "o.id".to_string(),
-            (_, Some(k)) => number_of(k),
+            (_, Some(k)) => weighted(number_of(k), m),
             (_, None) => String::new(),
         };
         let filter = filter_clause(&mut main, &m.filter, i)?;
@@ -408,7 +426,7 @@ pub async fn run(
             "WITH {with} SELECT {keys}{currency} AS cur, ({agg}{filter})::double precision AS v \
              FROM {last} o {joins} WHERE {currency} IS NOT NULL{group} LIMIT {lim}",
             keys = keys_sql(&parts),
-            agg = op_sql(op, &amount),
+            agg = op_sql(op, &weighted(amount.clone(), m)),
             joins = joins_sql(&parts),
             group = group_sql(&parts, &currency),
             lim = GROUPS_READ_MAX + 1,

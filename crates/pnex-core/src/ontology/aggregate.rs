@@ -86,6 +86,10 @@ pub struct Metric {
     pub op: Option<MetricOp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub property: Option<String>,
+    /// A `sum` weighted by this number property, as a percentage (an amount
+    /// and its probability). An object without it is left out, never assumed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<String>,
     #[serde(default, rename = "where", skip_serializing_if = "Option::is_none")]
     pub filter: Option<PropertyFilter>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -147,6 +151,16 @@ pub struct AggregateResult {
     pub computed_at: String,
 }
 
+/// The history of a property (sales-dashboards.md D722): how far objects go
+/// and how long they stay. Its groups hold `reached`, `rate` and `days`.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct TransitionsSource {
+    pub type_key: String,
+    pub property: String,
+}
+
 /// A widget reading an aggregate of objects (D583). `query` on a dashboard,
 /// `object_set` on a screen of an application: never both.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -157,6 +171,9 @@ pub struct ObjectsSource {
     pub object_set: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<OntologyQuery>,
+    /// Reads the history of a property instead of objects; `metrics` stays empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transitions: Option<TransitionsSource>,
     /// Parameter of the set → variable that fills it.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, String>,
@@ -258,6 +275,7 @@ pub fn check(a: &AggregateQuery) -> Result<(), (String, &'static str)> {
             // A ratio of ratios or of money has no single meaning here.
             (None, 2) => {
                 m.property.is_none()
+                    && m.weight.is_none()
                     && m.filter.is_none()
                     && m.ratio.iter().all(|r| {
                         seen.get(r.as_str())
@@ -267,6 +285,9 @@ pub fn check(a: &AggregateQuery) -> Result<(), (String, &'static str)> {
             (Some(op), 0) => {
                 let property = m.property.as_deref();
                 !m.percent
+                    && m.weight
+                        .as_deref()
+                        .is_none_or(|w| valid_key(w) && op == MetricOp::Sum)
                     && property.is_none_or(valid_key)
                     && (property.is_some() || !op.numeric())
                     && (op != MetricOp::Count || property.is_none())
@@ -368,6 +389,7 @@ mod tests {
             key: key.into(),
             op: Some(MetricOp::Count),
             property: None,
+            weight: None,
             filter: None,
             ratio: vec![],
             percent: false,
@@ -379,6 +401,7 @@ mod tests {
             key: key.into(),
             op: None,
             property: None,
+            weight: None,
             filter: None,
             ratio: vec![a.into(), b.into()],
             percent: false,

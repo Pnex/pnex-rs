@@ -125,6 +125,30 @@ async fn oppose_by(
             keys.push(ba::profile_of(&v).map(|(_, c)| c).unwrap_or(v));
         }
     }
+    // Its addresses and numbers stop flows creating anything from them (D610),
+    // and a draft nobody sent yet is discarded.
+    let contacts = db
+        .query_all_raw(stmt(
+            "SELECT lower(i.properties ->> 'value') AS value FROM resource_edges l
+             JOIN objects i ON i.id = l.target_object_id AND i.org_id = l.org_id
+             WHERE l.org_id = $1 AND l.source_object_id = $2 AND l.relation = 'uses_identifier'
+               AND i.properties ->> 'kind' IN ('email', 'phone')",
+            vec![org_id.into(), person_id.into()],
+        ))
+        .await?;
+    for row in contacts {
+        let Ok(Some(v)) = row.try_get::<Option<String>>("", "value") else {
+            continue;
+        };
+        keys.push(ontology::opposition::contact_key(org_id, &v));
+        db.execute_raw(stmt(
+            "UPDATE mail_outbox SET state = 'discarded'
+             WHERE org_id = $1 AND state = 'draft'
+               AND EXISTS (SELECT 1 FROM unnest(to_addrs) a WHERE lower(a) = $2)",
+            vec![org_id.into(), v.into()],
+        ))
+        .await?;
+    }
     for key in keys {
         db.execute_raw(stmt(
             "INSERT INTO prospecting_oppositions (org_id, fingerprint, created_by)
@@ -143,6 +167,41 @@ async fn oppose_by(
     Ok(())
 }
 
+/// The mails of an erased address (mail.md D461, crm.md D610): received ones
+/// whose correspondent it is (the original of a trusted forward, else the
+/// sender), never a member's forward of someone else's mail; outgoing ones,
+/// except one being handed to the server right now.
+/// A sent mail goes too, so PneX keeps no proof of it (Shan, 2026-11-04). An
+/// outgoing mail to several people only loses this recipient and keeps its body.
+async fn forget_mail(
+    db: &impl ConnectionTrait,
+    org_id: i64,
+    addr: &str,
+) -> Result<(), ExtensionError> {
+    db.execute_raw(stmt(
+        "DELETE FROM mail_messages WHERE org_id = $1 AND \
+           CASE WHEN COALESCE((forwarded ->> 'trusted')::boolean, false) \
+             THEN lower(forwarded -> 'from' ->> 'address') ELSE from_address END = $2",
+        vec![org_id.into(), addr.into()],
+    ))
+    .await?;
+    db.execute_raw(stmt(
+        "DELETE FROM mail_outbox WHERE org_id = $1 AND state <> 'sending'
+           AND EXISTS (SELECT 1 FROM unnest(to_addrs) a WHERE lower(a) = $2)
+           AND NOT EXISTS (SELECT 1 FROM unnest(to_addrs) a WHERE lower(a) <> $2)",
+        vec![org_id.into(), addr.into()],
+    ))
+    .await?;
+    db.execute_raw(stmt(
+        "UPDATE mail_outbox SET to_addrs = ARRAY(SELECT a FROM unnest(to_addrs) a WHERE lower(a) <> $2)
+         WHERE org_id = $1 AND state <> 'sending'
+           AND EXISTS (SELECT 1 FROM unnest(to_addrs) a WHERE lower(a) = $2)",
+        vec![org_id.into(), addr.into()],
+    ))
+    .await?;
+    Ok(())
+}
+
 /// Before a person is erased (crm.md D446): it enters the opposition
 /// list, its captured profile texts are deleted, and the identifiers it
 /// uses are returned to be erased with it. Other objects: nothing.
@@ -152,6 +211,18 @@ pub async fn before_erase(
     actor: &ontology::Actor,
     row: &crate::models::_entities::objects::Model,
 ) -> Result<Vec<Uuid>, ExtensionError> {
+    // Whatever holds an address: an identifier, a lead from a mailbox (D610).
+    let s = ontology::schema(&ctx.db, org_id)
+        .await
+        .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string())))?;
+    if let Some(def) = s.object_type(&row.type_key) {
+        for addr in ontology::opposition::contact_values(def, &row.properties)
+            .iter()
+            .filter(|v| v.contains('@'))
+        {
+            forget_mail(&ctx.db, org_id, addr).await?;
+        }
+    }
     if row.type_key != "person" {
         return Ok(Vec::new());
     }
@@ -172,21 +243,8 @@ pub async fn before_erase(
             .await
             .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string())))?;
     }
-    // The mails the person sent go with them (mail.md D461): those whose
-    // correspondent they are (the original of a trusted forward, else the
-    // sender), never a member's forward of someone else's mail.
-    ctx.db
-        .execute_raw(stmt(
-            "DELETE FROM mail_messages WHERE org_id = $1 AND \
-               CASE WHEN COALESCE((forwarded ->> 'trusted')::boolean, false) \
-                 THEN lower(forwarded -> 'from' ->> 'address') ELSE from_address END IN (
-               SELECT lower(i.properties ->> 'value') FROM resource_edges l
-               JOIN objects i ON i.id = l.target_object_id AND i.org_id = l.org_id
-               WHERE l.org_id = $1 AND l.source_object_id = $2 AND l.relation = 'uses_identifier'
-                 AND i.properties ->> 'kind' = 'email')",
-            vec![org_id.into(), row.id.into()],
-        ))
-        .await?;
+    // Its identifiers are returned and erased next: their addresses take the
+    // mails with them (`forget_mail`).
     let ids = ctx
         .db
         .query_all_raw(stmt(
@@ -481,9 +539,10 @@ const RETENTION_SETTING: &str = "prospecting_b2b.retention_months";
 const RETENTION_MONTHS: i64 = 36;
 /// People proposed per org and per run.
 const RETENTION_BATCH: i64 = 200;
-/// Types the queue proposes: a person, and a lead that names one before it
-/// is in the graph (crm.md D514). A type missing from the org matches nothing.
-const RETENTION_TYPES: [&str; 2] = ["person", "lead"];
+/// Types the queue proposes: a person, and what names one before they are in
+/// the graph, a lead (crm.md D514) or a contact from a list (D610). A type
+/// missing from the org matches nothing.
+const RETENTION_TYPES: [&str; 3] = ["person", "lead", "list_contact"];
 
 /// The retention queue (crm.md D445): in each org where the prospecting
 /// pack is installed, a live person with no change, no link opened or

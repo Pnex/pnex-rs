@@ -255,6 +255,11 @@ pub struct OntologyQuery {
     pub latest: Vec<String>,
     #[serde(default)]
     pub include_archived: bool,
+    /// Leaves erased shells out of the start set. Set by the server for a
+    /// flow, which can no longer write them: never read from a request.
+    #[serde(skip)]
+    #[cfg_attr(feature = "openapi", schema(ignore))]
+    pub skip_erased: bool,
     /// Property to sort on (as text; ISO dates sort right); title when
     /// absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]

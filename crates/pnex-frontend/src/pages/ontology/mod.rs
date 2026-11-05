@@ -367,6 +367,13 @@ pub fn ObjectForm(
         .properties
         .iter()
         .filter(|p| !p.kind.is_temporal())
+        // The dates of a history are the server's (sales-dashboards.md D723).
+        .filter(|p| {
+            !def.properties
+                .iter()
+                .filter_map(|d| d.history.as_ref())
+                .any(|h| [&h.entered_on, &h.closed_on].contains(&&Some(p.key.clone())))
+        })
         .cloned()
         .collect();
     let title_label = t!("onto-title");

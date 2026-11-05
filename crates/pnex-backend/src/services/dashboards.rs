@@ -82,6 +82,16 @@ async fn check_objects_sources(
         .map_err(|_| DashboardWriteError::Db)?;
     let mut v = Vec::new();
     for (w, o) in sources {
+        if let Some(t) = &o.transitions {
+            if let Err(e) = crate::services::ontology::transitions::validate(&s, t) {
+                v.push(VizViolation::new(
+                    Some(&w.id),
+                    "objects_invalid",
+                    e.to_string(),
+                ));
+            }
+            continue;
+        }
         match &o.query {
             None => v.push(VizViolation::new(
                 Some(&w.id),

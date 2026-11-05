@@ -45,13 +45,28 @@ pub fn AppRun(app: String, screen: String, query: String) -> Element {
     }
 }
 
+/// A variable's default. A date may be relative (`$today-365`): the field needs the day, and
+/// only a date is read that way (D512: a text stays the value it is).
+fn default_value(v: &pnex_core::apps::AppVariable) -> Option<String> {
+    let raw = v.default.clone()?;
+    if v.kind != pnex_core::apps::VariableKind::Date {
+        return Some(raw);
+    }
+    let now = chrono::Utc::now();
+    let today = now.format("%Y-%m-%d").to_string();
+    let value = serde_json::Value::String(raw.clone());
+    let resolved =
+        pnex_core::ontology::flow::resolve_value(&value, &today, &now.to_rfc3339(), &|_| None);
+    Some(resolved.as_str().map_or(raw, str::to_string))
+}
+
 /// Defaults of the variables, then what the address gives. Only declared
 /// variables are taken: a variable is a value, never an expression (D512).
 fn initial_values(app: &AppView, query: &str) -> BTreeMap<String, String> {
     let mut out: BTreeMap<String, String> = app
         .variables
         .iter()
-        .filter_map(|v| Some((v.name.clone(), v.default.clone()?)))
+        .filter_map(|v| Some((v.name.clone(), default_value(v)?)))
         .collect();
     for pair in query.trim_start_matches('?').split('&') {
         let Some((k, v)) = pair.split_once('=') else {
@@ -291,5 +306,23 @@ mod tests {
         assert_eq!(v["lang"], "fr");
         assert_eq!(v["q"], "café noir");
         assert!(!v.contains_key("ghost") && !v.contains_key("other"));
+    }
+
+    #[test]
+    fn a_date_default_may_be_relative_and_a_text_never_is() {
+        let app: AppView = serde_json::from_value(serde_json::json!({
+            "id": "a", "key": "k", "name": "n", "scope": {}, "version": 1,
+            "created_at": "", "updated_at": "",
+            "variables": [
+                {"name": "day", "kind": "date", "default": "$today"},
+                {"name": "fixed", "kind": "date", "default": "2026-01-02"},
+                {"name": "text", "default": "$today"}
+            ]
+        }))
+        .unwrap();
+        let v = initial_values(&app, "");
+        assert_eq!(v["day"], chrono::Utc::now().format("%Y-%m-%d").to_string());
+        assert_eq!(v["fixed"], "2026-01-02");
+        assert_eq!(v["text"], "$today");
     }
 }

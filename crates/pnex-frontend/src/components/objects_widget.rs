@@ -22,6 +22,9 @@ async fn read(
     o: &ObjectsSource,
     app: Option<(String, std::collections::BTreeMap<String, String>)>,
 ) -> Result<AggregateResult, crate::api::error::ApiError> {
+    if let Some(t) = &o.transitions {
+        return api::ontology::transitions(t).await;
+    }
     match (&o.object_set, &o.query, app) {
         (Some(set), _, Some((id, params))) => {
             let req = SetAggregateQuery {
@@ -137,10 +140,17 @@ pub fn ObjectsBody(widget: Widget) -> Element {
                 let params = o
                     .params
                     .iter()
-                    .filter_map(|(p, v)| Some((p.clone(), vars.get(v)?.clone())))
-                    .collect();
+                    .filter_map(|(p, v)| {
+                        let value = vars.get(v).filter(|x| !x.is_empty())?;
+                        Some((p.clone(), value.clone()))
+                    })
+                    .collect::<std::collections::BTreeMap<_, _>>();
                 (id, params)
             });
+            // A parameter left empty is said below, not sent (D508).
+            if app.as_ref().is_some_and(|(_, p)| p.len() < o.params.len()) {
+                return None;
+            }
             Some(read(&o, app).await)
         }
     });
@@ -157,6 +167,18 @@ pub fn ObjectsBody(widget: Widget) -> Element {
     let Some(o) = widget.source.first().and_then(|s| s.objects.clone()) else {
         return rsx! {};
     };
+    // A parameter left empty: said, not sent (D508).
+    let pending = cx.as_ref().is_some_and(|c| {
+        let vars = c.vars.read();
+        o.params
+            .values()
+            .any(|v| vars.get(v).is_none_or(String::is_empty))
+    });
+    if pending {
+        return rsx! {
+            p { class: "p-3 text-xs text-gray-500", {t!("apps-filter-pending")} }
+        };
+    }
     let state = data.read().clone().flatten();
     let result = match state {
         None => return rsx! {},
@@ -187,8 +209,13 @@ pub fn ObjectsBody(widget: Widget) -> Element {
             .query
             .as_ref()
             .and_then(|q| q.type_key.clone())
-            .or(set_type);
-        let property = o.group_by.first().and_then(|g| g.property.clone());
+            .or(set_type)
+            .or(o.transitions.as_ref().map(|t| t.type_key.clone()));
+        let property = o
+            .group_by
+            .first()
+            .and_then(|g| g.property.clone())
+            .or(o.transitions.as_ref().map(|t| t.property.clone()));
         return rsx! {
             ObjectsBars {
                 widget: widget.clone(),

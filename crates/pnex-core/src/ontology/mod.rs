@@ -196,6 +196,16 @@ pub struct LinkTypeDef {
     /// pieces of a web proof sealed on its target.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub evidence: bool,
+    /// Erasing a target whose title is personal also erases the sources of
+    /// these links, open or closed: they hold what that person said or did
+    /// (crm.md D610).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub erase_sources: bool,
+    /// Erasing a source whose title is personal proposes erasing the targets
+    /// of these links, open or closed: they are shared with other people, so
+    /// a person decides (crm.md D610).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub propose_erase_targets: bool,
     /// Attributes carried by each link (scalar properties only).
     #[serde(default)]
     pub attributes: Vec<PropertyDef>,
@@ -407,6 +417,8 @@ fn prop(key: &str, kind: PropertyKind) -> PropertyDef {
         colors: Default::default(),
         labels: Default::default(),
         classification: Default::default(),
+        contact_point: false,
+        history: None,
     }
 }
 
@@ -570,6 +582,8 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         colors: Default::default(),
         labels: Default::default(),
         classification: Default::default(),
+        contact_point: false,
+        history: None,
     };
     let link = |key: &str, from: TypeSet, to: TypeSet| LinkTypeDef {
         inverse_names: Default::default(),
@@ -583,6 +597,8 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         one_target: false,
         one_source: false,
         evidence: false,
+        erase_sources: false,
+        propose_erase_targets: false,
         attributes: Vec::new(),
     };
     vec![

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Livré** (lots DP, CRM1, CRM2, CRM4 ; CRM3 : mails livrés, tableaux de bord en attente d'une spec). Flows essayés sur le vrai runtime : `e2e/tests/crm.spec.ts` (2026-11-04) |
+| Statut | **Livré** (lots DP, CRM1, CRM2, CRM4 ; CRM3 : mails livrés ; tableaux de bord : `sales-dashboards.md`, codés, non commités). Flows essayés sur le vrai runtime : `e2e/tests/crm.spec.ts` (2026-11-04) |
 | Déclencheur | Outillage commercial (P2.28) : après la cartographie et les signaux, le suivi des opportunités, des activités et des relances, sans ressaisie dans un second outil. Avant de vendre : D341 fini |
 | Repose sur | `account-mapping.md` (D329–D343, pack `prospecting_b2b`), `proposals.md` (D367, D371–D377), `ontology.md` (D176–D191, D368 réglages de pack, D370 libellés d'énumération), `iam.md` (D298 classification, D296 portées), `partner-watch.md` (nœuds ontologie D312) |
 | Numérotation | **D442…D452**, lots **DP**, **CRM1…CRM3** ; **D514…D517**, lot **CRM4** ; **D522** (2026-10-29) |
@@ -162,7 +162,7 @@ Flow modèle « CRM · drafts to the outbox » (toutes les heures, 20 au plus) :
 | CRM1 | D448, D449, D452 | pack installable : opportunités, qualification, fiche |
 | CRM2 | D450, D451 | activités, cadence, brouillons, digest du matin |
 | CRM4 | D514–D517, D522 | pistes et conversion, devis et factures suivis, échéances, brouillons vers la boîte d'envoi |
-| CRM3 | — | mail entrant rattaché à la fiche : devient le lot M6 de `mail.md` (boîtes mail génériques, D453–D462) ; tableaux de bord (ROI par salon, taux par étape de relance) à part |
+| CRM3 | — | mail entrant rattaché à la fiche : devient le lot M6 de `mail.md` (boîtes mail génériques, D453–D462) ; tableaux de bord (ROI par salon, taux par étape de relance) à part ; la suite est dans `sales-dashboards.md` (D721–D727, CRM7) |
 
 ### D590 — Une liste de salon devient des pistes (2026-11-04)
 
@@ -174,7 +174,7 @@ Avant : le fichier donnait des `list_contact` et une société proposée (D337),
 - **Opposition** : une adresse qui appartient à une personne opposée ne donne pas de piste (`lead_state: objected`).
 - **Classification** : le titre et l'e-mail de `list_contact` passent `personal` (`prospecting_b2b` 3.2.0) ; ils ne l'étaient pas.
 
-Limites : l'opposition se vérifie sur l'adresse d'une personne connue, un contact sans e-mail ne peut pas être rapproché ; une personne effacée ne laisse pas d'empreinte d'adresse. Le compte se choisit à la conversion, même si `org_resolve` a déjà trouvé la société. Le nom de liste doit être exact.
+Limites : l'opposition se vérifie sur l'adresse d'une personne connue, un contact sans e-mail ne peut pas être rapproché. Le compte se choisit à la conversion, même si `org_resolve` a déjà trouvé la société. Le nom de liste doit être exact.
 
 ### D591 — Un mail d'un inconnu authentifié devient une piste (2026-11-04)
 
@@ -185,7 +185,32 @@ Flow *CRM · leads from a mailbox*, séparé de *CRM · mails received* parce qu
 - **Une personne connue ne fait pas de piste**, opposée ou non : *mails received* la suit déjà.
 - **Le texte reste une donnée** : il va dans `message`, classé `personal`, sans LLM ni action.
 
-Limites : `skip_existing` ne compare pas avec une piste venue d'un fichier de salon à la même adresse (clés différentes), il peut donc y en avoir deux. Un spammeur authentifié (SPF de son propre domaine) passe : un filtre anti-spam reste celui du serveur mail. Le compte se choisit à la conversion.
+Limites : un spammeur authentifié (SPF de son propre domaine) passe : un filtre anti-spam reste celui du serveur mail. Le compte se choisit à la conversion.
+
+### D610 — Ce qu'un effacement emporte vraiment (2026-11-04)
+
+Un audit de ce qui restait en base après un effacement a trouvé des fuites réelles, prouvées par `tests/crm.rs` `an_erasure_leaves_no_address_and_no_mail_text` (SEC-63) : l'adresse dans la clé `mail:<adresse>` d'une piste (D591), le texte des mails dans les activités de la personne, le nom dans la clé `liste|nom|société` d'un contact de liste, les mails reçus d'une piste et les mails sortants.
+
+- **Classé `personal`** : `ref` d'une piste, d'une activité et d'un contact de liste ; titre, `content`, `context`, `draft` d'une activité ; `job_title` d'un contact de liste. Le sujet d'un mail ne va plus dans `source_detail` d'une piste, que la conversion recopie sur l'opportunité : il ouvre `message`.
+- **Lien `erase_sources`** (générique, porté ici par `activity_on`) : effacer une cible au titre personnel efface aussi les sources de ces liens, ouverts ou fermés.
+- **Point de contact `contact_point`** (générique : `lead.email`, `lead.phone`, `list_contact.email`, `identifier.value`). À l'effacement ou à l'opposition, une **empreinte hachée** `contact:<sha256(org:valeur)>` entre dans la liste d'opposition : elle répond à « celui-ci est-il opposé ? » pour une valeur déjà en main, sans rendre l'adresse.
+- **Le moteur s'en sert** : `object_upsert` ne crée pas d'objet portant ce point de contact (`msg.opposed`) ; un flow n'écrit plus à cette adresse (`prospecting-opposed`). Une opposition écarte aussi les brouillons non envoyés. **Un membre garde la main** : la saisie à la main et la réponse à quelqu'un qui écrit restent possibles, répondre n'est pas prospecter.
+- **Imports** : une ligne dont le point de contact est refusé est laissée de côté avec ses liens, le reste du fichier passe. Limite : les compteurs du run l'incluent encore.
+- **Mails** : l'effacement d'un point de contact supprime les mails reçus de cette adresse et les mails sortants vers elle ; un mail à plusieurs destinataires perd seulement celui-ci.
+- **Autres détenteurs : proposés, pas effacés.** Un autre objet portant la même adresse devient une proposition `object_erase` : une adresse peut être partagée (`contact@`), un effacement ne se rattrape pas.
+- **Un flow ne lit plus de coquille** (`ontology_query`) : une coquille refuse toute écriture, une règle qui la relirait réessaierait sans fin, avec un coût LLM pour les brouillons.
+- **File de rétention** : les contacts de liste y entrent.
+- **Rendez-vous** : titre, `purpose`, `place`, `next_step` sont classés `personal`. Un rendez-vous concerne tous ses participants : effacer l'un d'eux le **propose** à l'effacement (lien `takes_part_in`, option générique `propose_erase_targets`), une personne décide ; jusque-là il garde son texte. Accepté, il garde sa date, son statut et `invitation_uid`, qui empêche une mise à jour de l'invitation de le recréer. Une preuve de lien proposé ne porte plus l'objet du rendez-vous.
+
+Validé par Shan (2026-11-04) : un mail envoyé à une adresse effacée disparaît aussi, PneX n'en garde plus de preuve ; une note sur deux personnes part quand l'une est effacée. Les autres détenteurs d'une adresse sont proposés plutôt qu'effacés. L'empreinte reste salée par l'identifiant de l'org, sans clé secrète.
+
+Limites : un mail à plusieurs garde son texte. Le compte rendu (page liée par `page_about`) et l'enregistrement d'un rendez-vous ne sont pas touchés par son effacement. L'empreinte d'un numéro de téléphone exige la même écriture exacte. L'empreinte est une pseudonymisation, pas une anonymisation : quelqu'un qui lit la base et devine une adresse peut la vérifier, le sel étant l'identifiant de l'org. Une clé secrète par org le fermerait : écartée pour l'instant (Shan, 2026-11-04), à rouvrir sur demande de conformité. Un flow déjà déployé garde ses fonctions épinglées : D611 ne s'applique qu'une fois le flow redéployé après la mise à jour du pack.
+
+### D611 — Une piste par adresse, quelle que soit la source (2026-11-04)
+
+Lève la limite de D591. Les deux flows cherchent d'abord une piste à cette adresse. Depuis un fichier de salon, la piste existante est liée au salon et le contact marqué `created` ; depuis un mail, rien n'est écrit. `lead.email` n'est **pas** déclarée `unique` : la mise à jour du pack échouerait pour une org qui a déjà deux pistes à la même adresse, et la saisie à la main serait refusée.
+
+Limites : la comparaison est exacte (les flows et les imports écrivent en minuscules, pas forcément une saisie à la main) ; deux personnes derrière `contact@` font une seule piste.
 
 ## 6. Sécurité et conformité
 
@@ -224,6 +249,8 @@ Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennen
 | D522 | Brouillons de relance mail dans la boîte d'envoi, sans les personnes opposées |
 | D590 | Une liste de salon nommée par le salon devient des pistes, lien `from_list` distinct de `met_at` |
 | D591 | Un mail d'un inconnu authentifié, sur une boîte choisie, devient une piste, une par adresse |
+| D610 | Effacement complet : activités, mails, clés ; empreinte hachée des points de contact ; autres détenteurs proposés |
+| D611 | Une piste par adresse, entre les fichiers de salon et les boîtes mail |
 
 ## 9. État d'implémentation
 
@@ -252,4 +279,4 @@ Pack `crm` 1.0.0 (`packs/crm.yaml`) : types, liens, hiérarchie `opportunities`,
 
 Pack `crm` 3.1.0 : types `lead`, `quote`, `invoice`, propriété `opportunity.ref`, liens `lead_of`, `lead_contact`, `quote_for`, `invoice_for`, `invoices_quote`, action `convert`, modèle `quote_sheet`, 6 fonctions Starlark, 2 flows modèles (9 au total). Tests : `pack_rules.rs` (`a_converted_lead_becomes_an_opportunity_of_its_account`, `an_overdue_invoice_is_marked_and_reminded`, digest avec pistes) et `tests/crm.rs` (piste, cardinalités, numéros uniques, page devis, action refusée sans flow déployé).
 
-Limites : pas de piste créée depuis un formulaire public (depuis un mail : D591). Brouillons de relance branchés sur la boîte d'envoi (D522) : objet = nom de l'opportunité par défaut, corrigeable à la relecture ; une adresse ajoutée après le marquage `none` n'est pas reprise. La file de rétention (D445) propose aussi les pistes depuis le 2026-11-02 (`RETENTION_TYPES`). Écrans métier : application « Suivi commercial » livrée par le pack `crm` 3.2.0 (`app-builder.md` §11), nombres par étape compris. Écrans Pipeline, Chiffres et Salons, avec le ROI par salon et le taux de réponse par étape de relance : pack `crm` 3.3.0, `object-aggregates.md`.
+Limites : pas de piste créée depuis un formulaire public, reporté par Shan le 2026-11-04 avec sa décision anti-abus (depuis un mail : D591). Brouillons de relance branchés sur la boîte d'envoi (D522) : objet = nom de l'opportunité par défaut, corrigeable à la relecture ; une adresse ajoutée après le marquage `none` n'est pas reprise. La file de rétention (D445) propose aussi les pistes depuis le 2026-11-02 (`RETENTION_TYPES`). Écrans métier : application « Suivi commercial » livrée par le pack `crm` 3.2.0 (`app-builder.md` §11), nombres par étape compris. Écrans Pipeline, Chiffres et Salons, avec le ROI par salon et le taux de réponse par étape de relance : pack `crm` 3.3.0, `object-aggregates.md`.

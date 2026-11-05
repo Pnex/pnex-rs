@@ -32,7 +32,7 @@
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "2.1.0"
+version: "2.2.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -156,7 +156,7 @@ types:
         values: [phone, email, plate, account, imei, iban, other]
         labels: {phone: {fr: "Téléphone", en: "Phone"}, email: {fr: "E-mail", en: "Email"}, plate: {fr: "Plaque", en: "Plate"}, account: {fr: "Compte", en: "Account"}, imei: {fr: "IMEI", en: "IMEI"}, iban: {fr: "IBAN", en: "IBAN"}, other: {fr: "Autre", en: "Other"}}
         required: true
-      - { key: value, name: Value, names: {fr: "Valeur"}, kind: text, max_len: 255, required: true, indexed: true, classification: personal }
+      - { key: value, name: Value, names: {fr: "Valeur"}, kind: text, max_len: 255, required: true, indexed: true, classification: personal, contact_point: true }
 link_types:
   - key: occurred_at
     name: occurred at

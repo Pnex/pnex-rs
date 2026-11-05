@@ -7,7 +7,9 @@
 
 use std::collections::HashSet;
 
+use pnex_core::ontology::ObjectTypeDef;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+use serde_json::Value;
 use uuid::Uuid;
 
 use super::{OntologyError, OrgSchema, Result};
@@ -75,20 +77,7 @@ pub async fn opposed_pairs<C: ConnectionTrait>(
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
-    let mut hits = HashSet::new();
-    for chunk in keys.chunks(CHUNK) {
-        let rows = db
-            .query_all_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT fingerprint FROM prospecting_oppositions WHERE org_id = $1 AND fingerprint = ANY($2)",
-                vec![org_id.into(), chunk.to_vec().into()],
-            ))
-            .await?;
-        hits.extend(
-            rows.iter()
-                .filter_map(|r| r.try_get::<String>("", "fingerprint").ok()),
-        );
-    }
+    let hits = recorded(db, org_id, &keys).await?;
     Ok(keyed
         .into_iter()
         .filter(|(k, _)| hits.contains(k))
@@ -140,6 +129,102 @@ pub async fn title_keys<C: ConnectionTrait>(
     Ok(keys)
 }
 
+/// Fingerprint of a contact point (crm.md D610). Hashed, because the list
+/// outlives the erasure: it answers "is this one opposed?" for a value already
+/// in hand, and does not hand the address back. Salted by the org so two
+/// orgs' lists cannot be compared.
+pub fn contact_key(org_id: i64, value: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let v = value.trim().to_lowercase();
+    format!("contact:{:x}", Sha256::digest(format!("{org_id}:{v}")))
+}
+
+/// The contact points `properties` hold for a type.
+pub fn contact_values(def: &ObjectTypeDef, properties: &Value) -> Vec<String> {
+    def.properties
+        .iter()
+        .filter(|p| p.contact_point)
+        .filter_map(|p| properties.get(&p.key)?.as_str())
+        .map(|v| v.trim().to_lowercase())
+        .filter(|v| !v.is_empty())
+        .collect()
+}
+
+/// Whether an object of type `def` with `properties` would carry a contact
+/// point that objected or was erased.
+pub async fn contact_opposed<C: ConnectionTrait>(
+    db: &C,
+    def: &ObjectTypeDef,
+    org_id: i64,
+    properties: &serde_json::Map<String, Value>,
+) -> Result<bool> {
+    let keys: Vec<String> = contact_values(def, &Value::Object(properties.clone()))
+        .iter()
+        .map(|v| contact_key(org_id, v))
+        .collect();
+    any_recorded(db, org_id, &keys).await
+}
+
+/// Whether one of `keys` is on the org's list.
+pub async fn any_recorded<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    keys: &[String],
+) -> Result<bool> {
+    Ok(!recorded(db, org_id, keys).await?.is_empty())
+}
+
+/// Those of `keys` on the org's list.
+pub async fn recorded<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    keys: &[String],
+) -> Result<HashSet<String>> {
+    let mut hits = HashSet::new();
+    for chunk in keys.chunks(CHUNK) {
+        let rows = db
+            .query_all_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT fingerprint FROM prospecting_oppositions WHERE org_id = $1 AND fingerprint = ANY($2)",
+                vec![org_id.into(), chunk.to_vec().into()],
+            ))
+            .await?;
+        hits.extend(
+            rows.iter()
+                .filter_map(|r| r.try_get::<String>("", "fingerprint").ok()),
+        );
+    }
+    Ok(hits)
+}
+
+/// The objects to create, among `created`, carrying a contact point that
+/// objected or was erased: an import leaves them out and goes on (D610).
+pub async fn opposed_creations<C: ConnectionTrait>(
+    db: &C,
+    s: &OrgSchema,
+    org_id: i64,
+    created: &[(String, serde_json::Map<String, Value>)],
+) -> Result<HashSet<usize>> {
+    let keyed: Vec<(usize, String)> = created
+        .iter()
+        .enumerate()
+        .flat_map(|(i, (type_key, properties))| {
+            s.object_type(type_key)
+                .map(|def| contact_values(def, &Value::Object(properties.clone())))
+                .unwrap_or_default()
+                .into_iter()
+                .map(move |v| (i, contact_key(org_id, &v)))
+        })
+        .collect();
+    let keys: Vec<String> = keyed.iter().map(|(_, k)| k.clone()).collect();
+    let hits = recorded(db, org_id, &keys).await?;
+    Ok(keyed
+        .into_iter()
+        .filter(|(_, k)| hits.contains(k))
+        .map(|(i, _)| i)
+        .collect())
+}
+
 /// Adds fingerprints to the org's list (kept when already there).
 pub async fn record<C: ConnectionTrait>(
     db: &C,
@@ -171,5 +256,13 @@ mod tests {
         assert_eq!(normalize("--"), "");
         let id = Uuid::nil();
         assert_eq!(title_key("Ann Smith", id), title_key("ann   smith", id));
+    }
+
+    #[test]
+    fn a_contact_key_ignores_case_and_hides_the_address() {
+        let k = contact_key(1, " Ann@Vale.test ");
+        assert_eq!(k, contact_key(1, "ann@vale.test"));
+        assert!(!k.contains("vale"), "{k}");
+        assert_ne!(k, contact_key(2, "ann@vale.test"), "one list per org");
     }
 }

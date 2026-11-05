@@ -1345,6 +1345,19 @@ fn check_objects_source<F: FnMut(&str, String)>(
         );
         return;
     }
+    // One group per value of the property, with fixed figures (D722).
+    if o.transitions.is_some() {
+        if widget_type != RANGE_BARS || o.object_set.is_some() || o.query.is_some() {
+            push(
+                "objects_selection",
+                "a history is read alone, as bars".into(),
+            );
+        }
+        if !["reached", "rate", "days"].contains(&o.show.as_str()) {
+            push("objects_show", format!("unknown metric \"{}\"", o.show));
+        }
+        return;
+    }
     if o.object_set.is_some() == o.query.is_some() {
         push(
             "objects_selection",

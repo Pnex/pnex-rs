@@ -657,6 +657,17 @@ pub fn check_screen(
             let mut bad = |code: &str, msg: String| {
                 out.push(VizViolation::new(Some(&w.id), code, msg));
             };
+            if let Some(t) = &o.transitions {
+                if !app.scope.types.contains(&t.type_key) {
+                    bad(
+                        "objects_selection",
+                        "outside the application's scope".into(),
+                    );
+                } else if let Err(e) = crate::services::ontology::transitions::validate(s, t) {
+                    bad("objects_invalid", e.to_string());
+                }
+                continue;
+            }
             // Only a set keeps a screen inside its application's scope (D508).
             let Some(set) = o.object_set.as_deref().and_then(|n| app.object_sets.get(n)) else {
                 bad(

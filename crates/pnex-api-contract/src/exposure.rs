@@ -273,6 +273,7 @@ pub const EXPOSED: &[&str] = &[
     "ontology_packs_settings_update",
     "ontology_packs_take",
     "ontology_aggregate_query",
+    "ontology_transitions_query",
     "ontology_path",
     "ontology_query",
     "ontology_resolve",

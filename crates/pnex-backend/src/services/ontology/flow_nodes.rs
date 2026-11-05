@@ -172,6 +172,8 @@ pub async fn query(
         descending: config.descending,
         limit: Some(config.limit.unwrap_or(100)),
         traverse: config.traverse.clone(),
+        // A shell refuses every write: a rule reading one would retry forever.
+        skip_erased: true,
         ..Default::default()
     };
     // A deployed flow reads what its deployer's org holds; its outputs are
@@ -317,12 +319,25 @@ pub async fn upsert(
             .ok_or_else(|| invalid(config.key.clone(), pnex_core::err_codes::FIELD_REQUIRED))?;
         objects::find_by_key(db, org, &config.object_type, &config.key, v).await?
     };
+    // Only creation: an object already there was kept by a person.
+    if existing.is_none()
+        && super::opposition::contact_opposed(db, def, org, &req.properties).await?
+    {
+        return Ok(FlowUpsertAck {
+            created: false,
+            object: None,
+            proposed: false,
+            proposal_id: None,
+            opposed: true,
+        });
+    }
     let actor = actor(&req.node);
     let ack = |created, object| FlowUpsertAck {
         created,
         object: Some(object),
         proposed: false,
         proposal_id: None,
+        opposed: false,
     };
     match existing {
         // Left as is (a reviewed finding is never reset by a rule).
@@ -368,6 +383,7 @@ pub async fn upsert(
                 object: None,
                 proposed: true,
                 proposal_id: propose(db, org, &input).await?,
+                opposed: false,
             })
         }
         Some(o) => {

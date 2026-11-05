@@ -1125,7 +1125,20 @@ async fn write(
         // `map_pin` goes through its POI, one by one.
         let mut created: Vec<Uuid> = vec![Uuid::nil(); diff.created.len()];
         let (mut at, mut inputs) = (Vec::new(), Vec::new());
+        // A file must not bring back an address that objected or was erased
+        // (crm.md D610). shortcut: the run's counts still include these rows,
+        // show them apart if someone asks why the numbers differ.
+        let to_create: Vec<_> = diff
+            .created
+            .iter()
+            .map(|c| (c.type_key.clone(), c.properties.clone()))
+            .collect();
+        let left_out = super::opposition::opposed_creations(&txn, &s, org_id, &to_create).await?;
+        drop(to_create);
         for (i, c) in diff.created.iter().enumerate() {
+            if left_out.contains(&i) {
+                continue;
+            }
             if c.type_key == pnex_core::resources::KIND_MAP_PIN {
                 created[i] = create_pin(&txn, &s, org_id, actor, c).await?;
             } else {
@@ -1186,8 +1199,14 @@ async fn write(
             }
         };
         let now = chrono::Utc::now().to_rfc3339();
+        // The links of a row left out go with it.
+        let kept = |l: &&imp::DiffLink| {
+            ![&l.from, &l.to]
+                .iter()
+                .any(|e| e.created.is_some_and(|i| left_out.contains(&i)))
+        };
         // Proposed links wait for a human (proposals.md D375).
-        for l in diff.links_opened.iter().filter(|l| l.propose) {
+        for l in diff.links_opened.iter().filter(kept).filter(|l| l.propose) {
             let input = pnex_core::ontology::proposal::ProposalInput {
                 kind: Some(pnex_core::ontology::proposal::ProposalKind::LinkCreate),
                 type_key: l.link_type.clone(),
@@ -1202,6 +1221,7 @@ async fn write(
         let opened = diff
             .links_opened
             .iter()
+            .filter(kept)
             .filter(|l| !l.propose)
             .map(|l| {
                 Ok(LinkInput {

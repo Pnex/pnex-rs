@@ -320,6 +320,8 @@ fn LinkTypeForm(
             one_target: one_target(),
             one_source: one_source(),
             evidence: evidence(),
+            erase_sources: false,
+            propose_erase_targets: false,
             attributes: Vec::new(),
         };
         busy.set(true);

@@ -353,6 +353,10 @@ pub struct FlowUpsertAck {
     pub proposed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proposal_id: Option<String>,
+    /// Nothing was written: the object would carry a contact point that
+    /// objected or was erased (crm.md D610).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub opposed: bool,
 }
 
 /// The pack setting an `in` value names (`<pack>.<key>`), if it is one.
@@ -431,6 +435,7 @@ mod aggregate_node_tests {
             key: "n".into(),
             op: Some(MetricOp::Count),
             property: None,
+            weight: None,
             filter: None,
             ratio: vec![],
             percent: false,

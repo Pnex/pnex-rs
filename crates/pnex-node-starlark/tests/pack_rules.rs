@@ -377,19 +377,19 @@ fn signals_digest_lists_the_new_ones_newest_first() {
 #[test]
 fn a_list_contact_becomes_a_lead_unless_their_address_objected() {
     let code = code_in(CRM, "crm_list_lead");
-    let run = |payload: serde_json::Value| {
+    let run = |known: serde_json::Value, same: serde_json::Value, email: &str| {
         execute(
             &code,
-            &json!({"payload": payload, "today": "2026-11-04",
+            &json!({"known": known, "payload": same, "today": "2026-11-04",
                 "show": {"id": "s1", "title": "Global Industrie", "start_on": ""},
-                "contact": {"id": "c1", "title": "Ann Lee", "company": "Acme", "email": ""}}),
+                "contact": {"id": "c1", "title": "Ann Lee", "company": "Acme", "email": email}}),
             2000,
         )
         .unwrap()
         .return_json
         .unwrap()
     };
-    let r = run(json!([]));
+    let r = run(json!([]), json!([]), "");
     let lead = &r[0]["payload"];
     assert_eq!(lead["ref"], "list:c1");
     // No start date on the show: the day it was read.
@@ -397,12 +397,40 @@ fn a_list_contact_becomes_a_lead_unless_their_address_objected() {
     assert_eq!(lead["company"], "Acme");
     assert!(lead.get("email").is_none(), "an empty value is not written");
     assert!(r[1].is_null());
+    assert!(r[2].is_null());
+
+    // A lead already at this address: no second one, it joins the show.
+    let r = run(json!([]), json!([{"id": "l1"}]), "ann@acme.test");
+    assert!(r[0].is_null());
+    assert_eq!(r[2]["object"]["id"], "l1");
+    assert!(
+        r[2].get("payload").is_some(),
+        "without it, the whole value becomes msg.payload"
+    );
+    assert_eq!(r[2]["contact"]["id"], "c1");
 
     let opposed = json!({"properties": {"opposed_on": "2026-01-01"}});
-    let r = run(json!([{"links": {"uses_identifier": [{"other": opposed}]}}]));
+    let r = run(
+        json!([{"links": {"uses_identifier": [{"other": opposed}]}}]),
+        json!([]),
+        "ann@acme.test",
+    );
     assert!(r[0].is_null());
+    assert!(r[2].is_null());
     assert_eq!(r[1]["payload"]["lead_state"], "objected");
     assert_eq!(r[1]["object_id"], "c1");
+
+    // The server refused the lead: the contact is marked, never retried.
+    let r = execute(
+        &code_in(CRM, "crm_list_links"),
+        &json!({"opposed": true, "object": null, "show": {"id": "s1"}, "contact": {"id": "c1"}}),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert!(r[0].is_null(), "no link: there is no lead");
+    assert_eq!(r[1]["payload"]["lead_state"], "objected");
 }
 
 #[test]
@@ -420,6 +448,11 @@ fn only_an_authenticated_stranger_makes_a_lead() {
     };
     let lead = run(json!([]), true).unwrap();
     assert_eq!(lead["payload"]["ref"], "mail:new@prospect.test");
+    assert_eq!(lead["payload"]["message"], "Hello\n\nbody");
+    assert!(
+        lead["payload"].get("source_detail").is_none(),
+        "conversion copies it"
+    );
     assert_eq!(lead["payload"]["received_on"], "2026-10-01");
     assert_eq!(lead["title"], "new@prospect.test", "no name: the address");
     assert!(lead["payload"].get("contact_name").is_none());
@@ -1272,7 +1305,7 @@ fn an_invitation_becomes_a_meeting_with_its_people() {
     );
     assert_eq!(r["meeting"]["id"], "m1");
 
-    let found = |trusted: bool| json!({"object": {"id": "p1"}, "meeting": {"id": "m1", "purpose": "Review"}, "trusted": trusted});
+    let found = |trusted: bool| json!({"object": {"id": "p1"}, "meeting": {"id": "m1"}, "trusted": trusted});
     let link = code_in(CRM, "crm_meeting_link");
     let r = execute(&link, &found(true), 2000)
         .unwrap()
@@ -1289,6 +1322,11 @@ fn an_invitation_becomes_a_meeting_with_its_people() {
         .unwrap();
     assert!(r[0].is_null());
     assert_eq!(r[1]["payload"]["confidence"], 40);
+    assert_eq!(
+        r[1]["payload"]["evidence"],
+        json!({"reason": "sender not authenticated"}),
+        "a proposal outlives an erasure: no purpose in it"
+    );
 }
 
 /// A reference programme and a partner's (fictitious, network-check.md
@@ -1556,6 +1594,48 @@ fn a_trade_show_gets_its_figures_without_converting_currencies() {
         .return_json
         .unwrap_or_default();
     assert!(r["payload"].get("roi").is_none(), "{r}");
+}
+
+/// `crm` « target progress » (sales-dashboards.md D725): in the currency of
+/// the target, the others counted apart, never converted.
+#[test]
+fn a_target_gets_its_progress_without_converting_currencies() {
+    let code = code_in(CRM, "crm_target_figures");
+    let msg = json!({
+        "payload": {"groups": [{"values": {"total": {"by_currency": {"EUR": 2500.0, "USD": 900.0}}}}]},
+        "object": {"id": "t1"},
+        "target": {"amount": {"amount": 10000.0, "currency": "EUR"}},
+    });
+    let r = execute(&code, &msg, 2000).unwrap().return_json.unwrap();
+    assert_eq!(r["object_id"], "t1");
+    let p = &r["payload"];
+    assert_eq!(
+        p["won_amount"],
+        json!({"amount": 2500.0, "currency": "EUR"})
+    );
+    assert_eq!(p["reached"].as_f64(), Some(25.0), "{r}");
+    assert_eq!(p["other_currency_wins"].as_i64(), Some(1), "{r}");
+
+    // No new version when nothing moved.
+    let mut same = msg.clone();
+    for (k, v) in p.as_object().unwrap() {
+        same["target"][k] = v.clone();
+    }
+    assert!(execute(&code, &same, 2000)
+        .unwrap()
+        .return_json
+        .is_none_or(|v| v.is_null()));
+
+    // No win at all, and no division by zero.
+    let none = json!({"payload": {"groups": []}, "object": {"id": "t2"}, "target": {"amount": {"amount": 0, "currency": "EUR"}}});
+    let r = execute(&code, &none, 2000).unwrap().return_json.unwrap();
+    assert_eq!(r["payload"]["reached"].as_f64(), Some(0.0), "{r}");
+
+    // What the server answers when nothing matches: one group, no value.
+    let mut empty = msg.clone();
+    empty["payload"] = json!({"groups": [{"values": {}}]});
+    let r = execute(&code, &empty, 2000).unwrap().return_json.unwrap();
+    assert_eq!(r["payload"]["reached"].as_f64(), Some(0.0), "{r}");
 }
 
 /// `crm` « replies to follow-ups »: only an incoming activity from the moment

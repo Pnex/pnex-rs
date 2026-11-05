@@ -427,6 +427,7 @@ impl ObjectUpsertNode {
             );
             m.set("created".into(), Variant::from(ack.created));
             m.set("proposed".into(), Variant::from(ack.proposed));
+            m.set("opposed".into(), Variant::from(ack.opposed));
         }
         self.fan_out_one(Envelope { port: 0, msg }, cancel).await
     }

@@ -24,6 +24,9 @@ use crate::services::openobserve::{
 };
 
 pub const OBJECT_CHANGES_STREAM: &str = "object_changes";
+/// One row per change of a property with a history (sales-dashboards.md
+/// D722): `before` and `after` of the journal are text, not to be grouped.
+pub const OBJECT_TRANSITIONS_STREAM: &str = "object_transitions";
 const WINDOW_US: i64 = 365 * 24 * 3600 * 1_000_000;
 
 /// One change. `object_id` is the object, or each end for a link change
@@ -182,6 +185,41 @@ where
 
 /// Queues a change for the background writer, or holds it until the
 /// enclosing [`deferred`] scope commits.
+/// The transitions a change holds, for the properties with a history. A value
+/// the journal does not show as changed is no transition.
+pub fn transitions_of(
+    c: &Change,
+    defs: &[pnex_core::ontology::schema::PropertyDef],
+    ts_us: i64,
+) -> Vec<Value> {
+    if !matches!(c.action.as_str(), "object.create" | "object.update") {
+        return Vec::new();
+    }
+    let tracked: Vec<_> = defs.iter().filter(|d| d.history.is_some()).collect();
+    if tracked.is_empty() {
+        return Vec::new();
+    }
+    let read = |d: &Doc| serde_json::from_str::<Value>(&d.to_string()).unwrap_or_default();
+    let (before, after) = (read(&c.before), read(&c.after));
+    tracked
+        .iter()
+        .filter_map(|d| {
+            let of = |v: &Value| v["properties"][&d.key].as_str().map(str::to_string);
+            let (from, to) = (of(&before), of(&after));
+            (from != to).then(|| {
+                serde_json::json!({
+                    "_timestamp": ts_us,
+                    "object_id": c.object_id,
+                    "type_key": c.type_key,
+                    "property": d.key,
+                    "from_value": from.unwrap_or_default(),
+                    "to_value": to.unwrap_or_default(),
+                })
+            })
+        })
+        .collect()
+}
+
 pub fn submit(change: Change) {
     let mut change = Some(change);
     if PENDING
@@ -245,15 +283,48 @@ async fn record(ctx: &AppContext, batch: Vec<Queued>) {
         return;
     };
     let mut by_org: HashMap<i64, Vec<Value>> = HashMap::new();
+    let mut transitions: HashMap<i64, Vec<Value>> = HashMap::new();
+    let mut schemas: HashMap<i64, Option<super::OrgSchema>> = HashMap::new();
     for (c, at) in &batch {
         by_org
             .entry(c.org_id)
             .or_default()
             .push(document_of(c, *at));
+        if let std::collections::hash_map::Entry::Vacant(e) = schemas.entry(c.org_id) {
+            e.insert(super::schema(&ctx.db, c.org_id).await.ok());
+        }
+        let def = schemas
+            .get(&c.org_id)
+            .and_then(Option::as_ref)
+            .and_then(|s| s.object_type(&c.type_key));
+        if let Some(def) = def {
+            transitions
+                .entry(c.org_id)
+                .or_default()
+                .extend(transitions_of(c, &def.properties, *at));
+        }
     }
     for (org_id, docs) in by_org {
         let sent = match ensure_org_credentials(&ctx.db, &client, org_id).await {
             Ok(creds) => {
+                let moved = transitions.remove(&org_id).unwrap_or_default();
+                if !moved.is_empty() {
+                    if let Err(e) = client
+                        .ingest_json(
+                            &creds.o2_org,
+                            OBJECT_TRANSITIONS_STREAM,
+                            &moved,
+                            &creds.email_passcode,
+                        )
+                        .await
+                    {
+                        tracing::warn!(
+                            org_id,
+                            count = moved.len(),
+                            "object transitions write failed: {e}"
+                        );
+                    }
+                }
                 client
                     .ingest_json(
                         &creds.o2_org,
@@ -399,6 +470,42 @@ pub async fn history_of(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_transition_is_a_change_of_a_tracked_value_only() {
+        use pnex_core::ontology::schema::{PropertyDef, PropertyHistory};
+        let mut stage: PropertyDef = serde_json::from_value(serde_json::json!(
+            {"key": "stage", "name": "Stage", "kind": "enum", "values": ["a", "b"]}
+        ))
+        .unwrap();
+        stage.history = Some(PropertyHistory::default());
+        let of = |action: &str, before: Value, after: Value| {
+            let c = Change {
+                org_id: 1,
+                action: action.into(),
+                object_id: "o".into(),
+                type_key: "t".into(),
+                source_ref: "s".into(),
+                before: before.into(),
+                after: after.into(),
+            };
+            transitions_of(&c, std::slice::from_ref(&stage), 5)
+        };
+        let doc = |v: &str| serde_json::json!({"properties": {"stage": v, "name": "secret"}});
+        let moved = of("object.update", doc("a"), doc("b"));
+        assert_eq!(moved.len(), 1);
+        assert_eq!(moved[0]["from_value"], "a");
+        assert_eq!(moved[0]["to_value"], "b");
+        assert!(!moved[0].to_string().contains("secret"), "only the value");
+        assert!(of("object.update", doc("a"), doc("a")).is_empty());
+        assert!(of("object.erase", doc("a"), doc("b")).is_empty());
+        // A creation enters its first value.
+        let new = of("object.create", Value::Null, doc("a"));
+        assert_eq!(
+            (new.len(), &new[0]["from_value"]),
+            (1, &serde_json::json!(""))
+        );
+    }
+
     use super::*;
 
     fn change(id: &str) -> Change {
