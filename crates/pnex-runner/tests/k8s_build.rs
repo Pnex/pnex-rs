@@ -15,13 +15,21 @@ use pnex_core::environments::EnvironmentSource;
 use pnex_core::runners::RunnerScanInput;
 use pnex_core::runners::{digest_is_valid, RunnerBuildCache, RunnerBuildInput, RunnerJobSpec};
 use pnex_runner::k8s::{
-    build_manifests, parse_scan_output, reported_digest, scan_manifests, workload_status,
+    build_manifests, job_policy, parse_scan_output, pod_manifest, reported_digest, scan_manifests,
+    workload_status,
 };
 use pnex_runner::WorkloadStatus;
 use serde_json::Value;
 
 fn env(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("{name} is required"))
+}
+
+/// In-cluster destinations the jobs may reach, `PNEX_TEST_JOB_EGRESS` (a cache in the cluster).
+fn extra_egress() -> Vec<String> {
+    std::env::var("PNEX_TEST_JOB_EGRESS")
+        .map(|v| v.split(',').map(str::to_string).collect())
+        .unwrap_or_default()
 }
 
 fn kubectl(args: &[&str], stdin: Option<&Value>) -> String {
@@ -87,8 +95,9 @@ async fn the_build_pod_pushes_and_reports_its_digest() {
     };
     let pull = std::env::var("PNEX_TEST_PULL_SECRET").ok();
     let (secret, context, pod) = build_manifests(&job, "test", &spec, &input, pull.as_deref());
+    let policy = job_policy(&job, "test", &extra_egress());
     let name = pod["metadata"]["name"].as_str().unwrap().to_string();
-    for manifest in [&secret, &context, &pod] {
+    for manifest in [&policy, &secret, &context, &pod] {
         kubectl(&["apply", "-f", "-"], Some(manifest));
     }
     let mut status = WorkloadStatus::Running;
@@ -102,7 +111,7 @@ async fn the_build_pod_pushes_and_reports_its_digest() {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
     let logs = kubectl(&["logs", &name], None);
-    for kind in ["pod", "secret", "configmap"] {
+    for kind in ["pod", "secret", "configmap", "networkpolicy"] {
         kubectl(&["delete", kind, &name, "--ignore-not-found"], None);
     }
     assert_eq!(status, WorkloadStatus::Exited(0), "{logs}");
@@ -131,6 +140,7 @@ async fn the_scan_pod_reports_findings() {
     let pull = std::env::var("PNEX_TEST_PULL_SECRET").ok();
     let (secret, pod) = scan_manifests(&job, "test", &spec, Some(&login), pull.as_deref());
     let name = pod["metadata"]["name"].as_str().unwrap().to_string();
+    kubectl(&["apply", "-f", "-"], Some(&job_policy(&job, "test", &[])));
     kubectl(&["apply", "-f", "-"], Some(&secret.unwrap()));
     kubectl(&["apply", "-f", "-"], Some(&pod));
     let mut status = WorkloadStatus::Running;
@@ -144,7 +154,7 @@ async fn the_scan_pod_reports_findings() {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
     let logs = kubectl(&["logs", &name], None);
-    for kind in ["pod", "secret"] {
+    for kind in ["pod", "secret", "networkpolicy"] {
         kubectl(&["delete", kind, &name, "--ignore-not-found"], None);
     }
     assert_eq!(status, WorkloadStatus::Exited(0), "{logs}");
@@ -158,4 +168,48 @@ async fn the_scan_pod_reports_findings() {
     );
     assert!(!report.components.is_empty());
     assert!(report.components.iter().all(|c| c.purl.starts_with("pkg:")));
+}
+
+/// SEC-E2: under its rule a job pod reaches the internet, not the cluster.
+/// `PNEX_TEST_PROBE_IMAGE=<image with sh and curl> PNEX_TEST_INTERNAL_URL=<http service of
+/// the namespace>` on top of the above.
+#[tokio::test]
+#[ignore = "needs a cluster, see the file header"]
+async fn a_job_pod_reaches_the_internet_not_the_cluster() {
+    let job = format!("egress-test-{}", std::process::id());
+    let script = format!(
+        "curl -s -o /dev/null -m 10 https://www.google.com && echo PUBLIC_OK; \
+         curl -sS -o /dev/null -m 5 {} 2>&1; echo INTERNAL_DONE",
+        env("PNEX_TEST_INTERNAL_URL")
+    );
+    let spec = RunnerJobSpec {
+        image: env("PNEX_TEST_PROBE_IMAGE"),
+        command: vec!["sh".into(), "-c".into(), script],
+        timeout_secs: 300,
+    };
+    let mut pod = pod_manifest(&job, "test", &spec, None);
+    if let Ok(pull) = std::env::var("PNEX_TEST_PULL_SECRET") {
+        pod["spec"]["imagePullSecrets"] = serde_json::json!([{ "name": pull }]);
+    }
+    let name = pod["metadata"]["name"].as_str().unwrap().to_string();
+    kubectl(&["apply", "-f", "-"], Some(&job_policy(&job, "test", &[])));
+    kubectl(&["apply", "-f", "-"], Some(&pod));
+    let mut status = WorkloadStatus::Running;
+    for _ in 0..150 {
+        let seen =
+            serde_json::from_str(&kubectl(&["get", "pod", &name, "-o", "json"], None)).unwrap();
+        status = workload_status(&seen);
+        if status != WorkloadStatus::Running {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    let logs = kubectl(&["logs", &name], None);
+    for kind in ["pod", "networkpolicy"] {
+        kubectl(&["delete", kind, &name, "--ignore-not-found"], None);
+    }
+    assert_eq!(status, WorkloadStatus::Exited(0), "{logs}");
+    assert!(logs.contains("PUBLIC_OK"), "{logs}");
+    // A refused or answered request would mean the packet got through.
+    assert!(logs.contains("timed out"), "{logs}");
 }

@@ -83,6 +83,11 @@ spec:
             # announces `isolation:none`, never `isolation:pod`.
             - name: PNEX_RUNNER_RUNTIME
               value: ""
+            # Build, scan and probe pods reach DNS and the public internet only.
+            # In-cluster destinations they need (a build cache, a registry), comma
+            # separated, as `ns:<namespace>` or a CIDR.
+            - name: PNEX_RUNNER_JOB_EGRESS
+              value: ""
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

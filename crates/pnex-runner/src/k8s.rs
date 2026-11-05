@@ -37,6 +37,7 @@ pub struct K8s {
     runtime_class: Option<String>,
     builds: bool,
     pull_secret: Option<String>,
+    job_egress: Vec<String>,
 }
 
 /// Labels of everything a job owns, so that a stray is found whatever it is.
@@ -491,6 +492,56 @@ pub fn sandbox_manifests(
     (secret, policy, pod)
 }
 
+/// Ranges that are never the public internet: the cluster, its nodes, the cloud metadata.
+const PRIVATE_V4: [&str; 6] = [
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "100.64.0.0/10",
+    "169.254.0.0/16",
+    "127.0.0.0/8",
+];
+const PRIVATE_V6: [&str; 3] = ["fc00::/7", "fe80::/10", "::1/128"];
+
+/// The rule of a build, scan or probe pod (SEC-E2): nothing comes in; out, names, the public
+/// internet (registries, package mirrors) and only the in-cluster destinations the operator
+/// lists in `extra`, as a CIDR or `ns:<namespace>` (a cache in the cluster, Q-E13).
+pub fn job_policy(job: &str, runner_id: &str, extra: &[String]) -> Value {
+    let mut egress = vec![
+        json!({
+            "to": [{
+                "namespaceSelector": { "matchLabels": { "kubernetes.io/metadata.name": "kube-system" } },
+                "podSelector": { "matchLabels": { "k8s-app": "kube-dns" } }
+            }],
+            "ports": [{ "protocol": "UDP", "port": 53 }, { "protocol": "TCP", "port": 53 }]
+        }),
+        json!({ "to": [
+            { "ipBlock": { "cidr": "0.0.0.0/0", "except": PRIVATE_V4 } },
+            { "ipBlock": { "cidr": "::/0", "except": PRIVATE_V6 } }
+        ] }),
+    ];
+    for entry in extra {
+        let to = match entry.strip_prefix("ns:") {
+            Some(ns) => json!({
+                "namespaceSelector": { "matchLabels": { "kubernetes.io/metadata.name": ns } }
+            }),
+            None => json!({ "ipBlock": { "cidr": entry } }),
+        };
+        egress.push(json!({ "to": [to] }));
+    }
+    json!({
+        "apiVersion": "networking.k8s.io/v1",
+        "kind": "NetworkPolicy",
+        "metadata": { "name": format!("{POD_PREFIX}{job}"), "labels": labels(job, runner_id) },
+        "spec": {
+            "podSelector": { "matchLabels": { "pnex.io/job": job } },
+            "policyTypes": ["Ingress", "Egress"],
+            "ingress": [],
+            "egress": egress,
+        }
+    })
+}
+
 /// The pod of a job: no privilege, no capability, read-only root, no API token, a
 /// deadline, bounded resources.
 pub fn pod_manifest(
@@ -591,6 +642,7 @@ impl K8s {
         runtime_class: Option<String>,
         builds: bool,
         pull_secret: Option<String>,
+        job_egress: Vec<String>,
     ) -> Result<Self, String> {
         let host = std::env::var("KUBERNETES_SERVICE_HOST")
             .map_err(|_| "not running in a Kubernetes pod".to_string())?;
@@ -611,6 +663,7 @@ impl K8s {
             runtime_class,
             builds,
             pull_secret,
+            job_egress,
         })
     }
 
@@ -751,6 +804,9 @@ impl Executor for K8s {
             self.create("secrets", &secret).await?;
             return self.create("pods", &pod).await;
         }
+        // The rule first: not one packet leaves before it holds.
+        self.create_policy(&job_policy(job, &self.runner_id, &self.job_egress))
+            .await?;
         if is_scan_command(&spec.command) {
             let (secret, pod) = scan_manifests(
                 job,
@@ -1178,6 +1234,32 @@ mod tests {
         assert_eq!(p["egress"][1]["to"][0]["ipBlock"]["cidr"], "203.0.113.0/24");
         // A value cannot leave the script: each one is its own argument.
         assert_eq!(init[0]["command"][5], "https://forge.example/team/app.git");
+    }
+
+    #[test]
+    fn a_job_pod_reaches_the_internet_and_only_the_listed_cluster_destinations() {
+        let p = job_policy(
+            "j1",
+            "r1",
+            &["ns:pnex-cache".to_string(), "10.1.2.0/24".to_string()],
+        );
+        assert_eq!(p["spec"]["podSelector"]["matchLabels"]["pnex.io/job"], "j1");
+        assert_eq!(p["spec"]["ingress"], json!([]));
+        let egress = p["spec"]["egress"].as_array().unwrap();
+        assert_eq!(egress.len(), 4);
+        let public = &egress[1]["to"][0]["ipBlock"];
+        assert_eq!(public["cidr"], "0.0.0.0/0");
+        for private in ["10.0.0.0/8", "169.254.0.0/16", "192.168.0.0/16"] {
+            assert!(public["except"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(private)));
+        }
+        assert_eq!(
+            egress[2]["to"][0]["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"],
+            "pnex-cache"
+        );
+        assert_eq!(egress[3]["to"][0]["ipBlock"]["cidr"], "10.1.2.0/24");
     }
 
     #[test]

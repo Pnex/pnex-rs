@@ -95,6 +95,14 @@ fn k8s(runtime: Option<String>) -> Result<K8s, String> {
         runtime,
         env("PNEX_RUNNER_BUILDS").as_deref() == Some("true"),
         env("PNEX_RUNNER_PULL_SECRET"),
+        env("PNEX_RUNNER_JOB_EGRESS")
+            .map(|v| {
+                v.split(',')
+                    .map(|e| e.trim().to_string())
+                    .filter(|e| !e.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default(),
     )
 }
 
