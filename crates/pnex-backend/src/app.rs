@@ -190,7 +190,8 @@ async fn migrate_locked(config: &mut Config) -> Result<()> {
 #[async_trait]
 impl Hooks for App {
     fn app_name() -> &'static str {
-        "pnex-server"
+        // Loco's log filter only lets this target through: anything else silences the server.
+        "pnex_backend"
     }
 
     fn app_version() -> String {
@@ -462,12 +463,18 @@ impl Hooks for App {
 
 #[cfg(test)]
 mod prod_host_tests {
-    use super::parse_prod_host;
+    use super::{parse_prod_host, App};
+    use loco_rs::app::Hooks;
 
     #[test]
     fn unset_or_blank_is_none() {
         assert_eq!(parse_prod_host(None), None);
         assert_eq!(parse_prod_host(Some("  ")), None);
+    }
+
+    #[test]
+    fn the_log_filter_lets_this_crate_through() {
+        assert_eq!(Some(App::app_name()), module_path!().split("::").next());
     }
 
     #[test]

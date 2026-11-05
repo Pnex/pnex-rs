@@ -479,7 +479,10 @@ async fn delete(
             let client = crate::services::openobserve::Client::new(&settings);
             let delays = [5u64, 30, 120, 600];
             for attempt in 0..=delays.len() {
-                match client.purge_metric_streams(&creds.o2_org).await {
+                match client
+                    .purge_org_streams(&creds.o2_org, &creds.email_passcode)
+                    .await
+                {
                     Ok(streams) => {
                         tracing::info!(
                             org_id,

@@ -1067,9 +1067,14 @@ fn projection_flows_json_snapshot() {
         json!({
             "id": "pnexflow12", "type": "tab", "label": "Flow #12 v3",
             "pnex_flow_id": 12, "pnex_version": 3, "pnex_org_id": 7,
-            "pnex_o2_org": "o2_7",
         })
     );
+    // Provisioning O2 after a deploy must not change a flow that does not read it.
+    let unprovisioned = FlowArtifactMeta {
+        o2_org: String::new(),
+        ..meta.clone()
+    };
+    assert_eq!(out, to_red_flows_json(&simple_graph(), &unprovisioned));
     // inject: projected interval, JSON payload encoded as a string.
     assert_eq!(out[1]["type"], "inject");
     assert_eq!(out[1]["repeat"], 1.0);

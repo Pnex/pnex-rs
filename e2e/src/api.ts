@@ -44,6 +44,8 @@ export class Api {
       method,
       headers: this.headers(),
       data,
+      // A pack install makes thousands of queries: seconds at best, more on a busy machine.
+      timeout: path.endsWith('/install') ? 60_000 : undefined,
     });
     if (!res.ok()) throw new ApiError(method, path, res.status(), await res.text());
     return res;

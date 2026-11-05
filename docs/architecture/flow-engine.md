@@ -97,7 +97,9 @@ Pipeline cible : `[inject] → [device] → [calc] → [metric]`
   streams metrics, la série apparaît d'elle-même « comme un capteur »,
   filtrable par source_type.
 - **Creds/org** : `pnex_org_id` **et `pnex_o2_org`** estampillés dans
-  l'artefact au deploy (`FlowArtifactMeta` → tab + nœuds device/metric) —
+  l'artefact au deploy (`FlowArtifactMeta` → nœuds device/metric ; plus sur
+  l'onglet, où personne ne le lisait : le provisioning changeait le hash de
+  tous les flows de l'org et les relançait, messages en cours perdus) —
   l'identifiant O2 **réel** (`openobserve_orgs.o2_org`, généré par le
   provisioning) est résolu en lecture seule (`provisioned_credentials`) au
   moment de la reprojection, **sans schéma déduit** (`pnex_org_{id}` était
@@ -105,7 +107,7 @@ Pipeline cible : `[inject] → [device] → [calc] → [metric]`
   org pas encore provisionnée → nœuds device/metric dégradent (warn,
   lecture/écriture sautée, pipeline vivant) ; le provisioning O2 (1ʳᵉ
   ingestion) déclenche une reprojection qui comble le champ (self-healing,
-  sink.rs). Auth Basic racine via allowlist env. Spike exécuté contre l'O2
+  sink.rs) ; seuls les flows qui ont un tel nœud redémarrent alors. Auth Basic racine via allowlist env. Spike exécuté contre l'O2
   réel (`examples/o2_spike.rs`) : remote-write racine accepté + relecture
   `last_over_time` cohérente — le passcode d'org reste inutile aux lectures
   (O2 v0.92.1), la racine couvre lecture **et** écriture.
@@ -342,6 +344,7 @@ changerait.
 | Artefact | `<state_dir>/flows.json`, tableau Node-RED multi-tabs ; un tab par flow déployé (`id = pnexflow{flow_id}`) |
 | Métadonnées | `pnex_flow_id` / `pnex_version` sur le tab et les nœuds custom — préservées par le désérialiseur EdgeLinkd (`#[serde(flatten)] rest`) |
 | Exécution | **Ferme d'engines** (`engines.rs`) : un `Engine` **par flow** (1 tab = 1 engine, build-then-swap, last-good préservé) — `redeploy_flows` du vendor n'est **plus jamais appelé** |
+| Fenêtre de déploiement | Le runtime démarre le flow avant que la base le marque déployé : un nœud appelé entre les deux voit le serveur relire la base tant qu'un déploiement de l'org est en cours (5 s au plus, sous les 10 s de l'accusé, sans garder de connexion du pool ; un `/stop` tient ce verrou en attendant la fin du nœud, donc pas d'attente bloquante) (`flow_nodes::deployed`). Un nœud vraiment périmé reste refusé, sans attente hors déploiement |
 | Rechargement | SIGUSR1 → relecture du fichier → **diff par tab** (SHA-256) : seuls les engines des tabs modifiés sont swappés — aucune pause d'ingestion pour les autres ; fichier illisible → `reload_failed`, engines courants conservés |
 | Acquittement | Événements **par flow** sur stdout : `flow_started {flow, rev}` / `flow_error {flow, error}` / `flow_stopped {flow}` (l'erreur moteur **réelle** remonte au backend) ; `<state_dir>/runtime.json` reste la santé **process** (`pid`, `running`, `flow_rev`, `redeploys`) — **aucune version** (la version déployée d'un flow vit en DB, `flows.deployed_version_id`) |
 | Pré-flight | `pnex-flow-runtime --check <fichier>` : construit chaque engine sans `start()`, rapport `check_flow` par tab, exit 0/1 ; le deploy écrit `flows.json.candidate`, le vérifie, puis le renomme **seulement si vert** |

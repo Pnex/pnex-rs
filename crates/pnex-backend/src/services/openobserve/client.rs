@@ -726,11 +726,21 @@ impl Client {
     /// Deletes a metrics stream and all its data
     /// (`DELETE /api/{org}/streams/{name}?type=metrics`).
     pub async fn delete_stream(&self, org_identifier: &str, stream: &str) -> Result<(), String> {
+        self.delete_stream_of(org_identifier, stream, "metrics")
+            .await
+    }
+
+    async fn delete_stream_of(
+        &self,
+        org_identifier: &str,
+        stream: &str,
+        kind: &str,
+    ) -> Result<(), String> {
         let (status, text) = self
             .json_request(
                 reqwest::Method::DELETE,
                 &format!(
-                    "/api/{org_identifier}/streams/{}?type=metrics",
+                    "/api/{org_identifier}/streams/{}?type={kind}",
                     checked_stream(stream)?
                 ),
                 &self.root_basic,
@@ -751,6 +761,22 @@ impl Client {
         for stream in self.metric_streams_detailed(org_identifier).await? {
             self.delete_stream(org_identifier, &stream.name).await?;
             deleted.push(stream.name);
+        }
+        Ok(deleted)
+    }
+
+    /// Deletes everything the org has in O2, for a deleted org: its metrics and
+    /// its logs (object journal, transitions, events). Same contract as above.
+    pub async fn purge_org_streams(
+        &self,
+        org_identifier: &str,
+        email_passcode: &str,
+    ) -> Result<Vec<String>, String> {
+        let mut deleted = self.purge_metric_streams(org_identifier).await?;
+        for stream in self.log_streams(org_identifier, email_passcode).await? {
+            self.delete_stream_of(org_identifier, &stream, "logs")
+                .await?;
+            deleted.push(stream);
         }
         Ok(deleted)
     }

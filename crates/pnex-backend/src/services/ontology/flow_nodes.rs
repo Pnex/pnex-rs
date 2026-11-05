@@ -55,6 +55,33 @@ pub(crate) async fn deployed(
     db: &DatabaseConnection,
     r: &FlowNodeRef,
 ) -> std::result::Result<FlowNodeKind, NodeError> {
+    use crate::services::db_lock::{is_lock_timeout, ns, TenantLock};
+    use std::time::Duration;
+    // The runtime runs a flow before its deploy marks it in the database: a refusal here would
+    // lose the message, so give a deploy of the org in progress 5 s, under its 10 s ack. Each
+    // try reads the database first: a stop holds this lock while it waits for this very node to
+    // end, and a blocking wait would hold a connection the deploy may need to finish.
+    for _ in 0..20 {
+        let found = deployed_now(db, r).await;
+        if !matches!(found, Err(NodeError::NotDeployed)) {
+            return found;
+        }
+        match TenantLock::acquire(db, ns::FLOW_DEPLOY, r.org_id, Duration::from_millis(1)).await {
+            Ok(lock) => {
+                lock.release().await;
+                break;
+            }
+            Err(e) if is_lock_timeout(&e) => tokio::time::sleep(Duration::from_millis(250)).await,
+            Err(_) => break,
+        }
+    }
+    deployed_now(db, r).await
+}
+
+async fn deployed_now(
+    db: &DatabaseConnection,
+    r: &FlowNodeRef,
+) -> std::result::Result<FlowNodeKind, NodeError> {
     let flow = flows::Entity::find_by_id(r.flow_id)
         .filter(flows::Column::OrgId.eq(r.org_id))
         .filter(flows::Column::Status.eq(pnex_core::FLOW_STATUS_DEPLOYED))

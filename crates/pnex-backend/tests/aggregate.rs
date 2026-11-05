@@ -479,7 +479,7 @@ async fn a_type_dashboard_reads_what_its_object_links_to() {
 #[serial]
 async fn the_flow_node_computes_what_it_declares() {
     use pnex_backend::models::_entities::{flow_versions, flows};
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set, IntoActiveModel};
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, IntoActiveModel};
     with_db(|server, alice, _, db| async move {
         let org = me(&server, &alice).await["orgs"][0]["id"].as_i64().unwrap();
         seed(&server, &alice, org).await;
@@ -538,6 +538,51 @@ async fn the_flow_node_computes_what_it_declares() {
             .json(&ask("a", "live"))
             .await;
         assert_eq!(res.status_code().as_u16(), 401);
+
+        // The runtime starts a flow before its deploy marks it deployed: a node
+        // called in between gets its answer once the deploy holding the lock ends.
+        use pnex_backend::services::db_lock::{ns, TenantLock};
+        use pnex_backend::services::ontology::flow_nodes;
+        let set_status = |status: &'static str| {
+            let db = db.clone();
+            async move {
+                let mut am = flows::Entity::find_by_id(flow_id)
+                    .one(&db)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .into_active_model();
+                am.status = Set(status.into());
+                sea_orm::ActiveModelTrait::update(am, &db).await.unwrap();
+            }
+        };
+        set_status(pnex_core::FLOW_STATUS_DRAFT).await;
+        let request: pnex_core::ontology::flow::FlowQueryRequest =
+            serde_json::from_value(ask("a", "live")).unwrap();
+        // No deploy in progress: refused at once, as before.
+        assert!(matches!(
+            flow_nodes::aggregate(&db, &request).await,
+            Err(flow_nodes::NodeError::NotDeployed)
+        ));
+        let lock =
+            TenantLock::acquire(&db, ns::FLOW_DEPLOY, org, std::time::Duration::from_secs(5))
+                .await
+                .unwrap();
+        let waiting = tokio::spawn({
+            let db = db.clone();
+            let request = request.clone();
+            async move { flow_nodes::aggregate(&db, &request).await.is_ok() }
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(!waiting.is_finished(), "the node waits for the deploy");
+        set_status(pnex_core::FLOW_STATUS_DEPLOYED).await;
+        // Without the lock's release: a stop holds it while it waits for this node to end.
+        let answer = tokio::time::timeout(std::time::Duration::from_secs(2), waiting).await;
+        assert!(
+            answer.expect("no wait for the lock").unwrap(),
+            "the node runs once marked"
+        );
+        lock.release().await;
 
         // A property the type does not have stops the deploy.
         let bad: pnex_core::flow::FlowGraph = serde_json::from_value(json!({"nodes": [

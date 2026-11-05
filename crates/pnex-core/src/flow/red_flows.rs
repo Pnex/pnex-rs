@@ -33,8 +33,9 @@ pub fn to_red_flows_json_with(
         "label": format!("Flow #{} v{}", meta.flow_id, meta.version_number),
         "pnex_flow_id": meta.flow_id,
         "pnex_version": meta.version_number,
+        // No O2 org here: nothing reads it on the tab, and provisioning would change the
+        // tab's hash, restarting a flow that does not use O2 with its messages in flight.
         "pnex_org_id": meta.org_id,
-        "pnex_o2_org": meta.o2_org,
     })];
 
     for n in &g.nodes {
