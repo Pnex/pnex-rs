@@ -1,4 +1,4 @@
-//! Layer cache of image builds on S3 (agent-environments.md D701, D722). A build pod runs
+//! Layer cache of image builds on S3 (agent-environments.md D701, D730). A build pod runs
 //! a Dockerfile and can read what it holds, so it never gets the keys of this server:
 //! it gets temporary credentials, limited by a session policy to one prefix of one
 //! environment. A store without STS simply means builds without a cache.

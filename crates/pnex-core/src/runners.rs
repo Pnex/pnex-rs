@@ -343,7 +343,7 @@ pub struct RunnerBuildInput {
     pub cache: Option<RunnerBuildCache>,
 }
 
-/// Temporary credentials limited to the prefix of one environment (D722).
+/// Temporary credentials limited to the prefix of one environment (D730).
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RunnerBuildCache {

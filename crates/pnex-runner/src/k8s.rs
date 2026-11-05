@@ -154,7 +154,7 @@ pub fn build_manifests(
                 "privileged": false
             },
             // shortcut: fixed sizes, enough for a Rust or Java image; to be read from the
-            // global settings along with the cache plafonds (D722).
+            // global settings along with the cache plafonds (D730).
             "resources": {
                 "requests": { "cpu": "500m", "memory": "1Gi", "ephemeral-storage": "1Gi" },
                 "limits": { "cpu": "4", "memory": "8Gi", "ephemeral-storage": "40Gi" }

@@ -17,7 +17,7 @@ use crate::services::openobserve::{
 pub const SBOM_STREAM: &str = "environment_sboms";
 pub const EVENTS_STREAM: &str = "environment_scan_events";
 /// shortcut: a fixed ten years, since an SBOM must outlive the image it describes; to be read
-/// from the global settings along with the other limits (D721, D722).
+/// from the global settings along with the other limits (D729, D730).
 const SBOM_RETENTION_DAYS: i64 = 3650;
 const EVENTS_BATCH: usize = 1000;
 const HOUR_US: i64 = 3_600_000_000;
