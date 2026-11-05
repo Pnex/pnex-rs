@@ -17,7 +17,7 @@ struct Env {
 /// Boots the app on the test object store (env set BEFORE the boot).
 async fn with_app<F, Fut>(f: F)
 where
-    F: FnOnce(axum_test::TestServer, Env) -> Fut,
+    F: FnOnce(axum_test::TestServer, Env, loco_rs::app::AppContext) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
     let base = common::spawn_mock_rauthy().await;
@@ -42,7 +42,7 @@ where
         config,
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
-            f(server, env).await;
+            f(server, env, ctx).await;
         },
     )
     .await;
@@ -102,7 +102,7 @@ async fn upload(
 #[tokio::test]
 #[serial]
 async fn cycle_upload_list_detail_versions() {
-    with_app(|server, env| async move {
+    with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let res = upload(
             &server,
@@ -300,7 +300,7 @@ async fn cycle_upload_list_detail_versions() {
 #[tokio::test]
 #[serial]
 async fn org_isolation_and_latest_version() {
-    with_app(|server, env| async move {
+    with_app(|server, env, _ctx| async move {
         let org1 = personal_org(&server, &env.alice).await;
         let org2 = personal_org(&server, &env.bob).await;
         let res = upload(
@@ -364,7 +364,7 @@ async fn org_isolation_and_latest_version() {
 #[tokio::test]
 #[serial]
 async fn content_etag_revalidation() {
-    with_app(|server, env| async move {
+    with_app(|server, env, _ctx| async move {
         let org1 = personal_org(&server, &env.alice).await;
         let org2 = personal_org(&server, &env.bob).await;
         let res = upload(
@@ -444,7 +444,7 @@ async fn content_etag_revalidation() {
 #[tokio::test]
 #[serial]
 async fn roles_and_pagination() {
-    with_app(|server, env| async move {
+    with_app(|server, env, _ctx| async move {
         // JIT provisioning of both users (as in tenant_isolation:
         // a user must exist before being added as a member).
         for token in [&env.alice, &env.bob] {
@@ -629,7 +629,7 @@ async fn send_in_parts(
 #[tokio::test]
 #[serial]
 async fn a_file_sent_in_parts_becomes_one_version() {
-    with_app(|server, env| async move {
+    with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
         let bob_org = personal_org(&server, &env.bob).await;
         let mut file = gpano_jpeg();
@@ -756,6 +756,95 @@ async fn a_file_sent_in_parts_becomes_one_version() {
         .await;
         assert_eq!(s, 409, "{e}");
         assert_eq!(e["error"], "media-upload-parts-missing", "{e}");
+    })
+    .await;
+}
+
+async fn sql(db: &sea_orm::DatabaseConnection, text: &str) {
+    use sea_orm::ConnectionTrait;
+    db.execute_unprepared(text).await.unwrap();
+}
+
+/// A join lost with its server starts again, a few times only; an upload nobody
+/// finished is closed after a day. Neither leaves its parts on the store.
+#[tokio::test]
+#[serial]
+async fn a_lost_join_starts_again_and_a_left_upload_is_swept() {
+    use pnex_backend::services::{media::MediaSettings, media_uploads};
+    with_app(|server, env, ctx| async move {
+        let store = MediaSettings::from_config(&ctx.config).storage.store().unwrap();
+        let org = personal_org(&server, &env.alice).await;
+        // The parts of one upload: an earlier test may leave others in the same org.
+        let staged = |path: &str| format!("org_{org}/media/uploads/{}/", path.rsplit('/').next().unwrap());
+        let start = |close: bool| {
+            let (server, token) = (&server, env.alice.clone());
+            async move {
+                let input = serde_json::json!({ "filename": "p.jpg" });
+                let (_, u) = call(server, "POST", "/api/v1/media/uploads", &token, org, Some(input)).await;
+                let path = format!("/api/v1/media/uploads/{}", u["id"].as_str().unwrap());
+                let (s, _) = put_part(server, &token, org, &format!("{path}/parts/1"), plain_jpeg()).await;
+                assert_eq!(s, 200);
+                if close {
+                    let body = serde_json::json!({ "parts": 1 });
+                    let (s, u) = call(server, "POST", &format!("{path}/complete"), &token, org, Some(body)).await;
+                    assert_eq!(s, 202, "{u}");
+                }
+                path
+            }
+        };
+        let end = |path: String| {
+            let (server, token) = (&server, env.alice.clone());
+            async move {
+                for _ in 0..120 {
+                    let (_, u) = call(server, "GET", &path, &token, org, None).await;
+                    if u["state"] == "done" || u["state"] == "failed" {
+                        return u;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                }
+                panic!("upload never ended");
+            }
+        };
+        let lost = |attempts: i32| {
+            format!(
+                "UPDATE media_uploads SET state = 'joining', attempts = {attempts}, \
+                 heartbeat_at = now() - interval '11 minutes' WHERE state IN ('ready', 'joining')"
+            )
+        };
+
+        let path = start(true).await;
+        sql(&ctx.db, &lost(1)).await;
+        let u = end(path).await;
+        assert_eq!(u["state"], "done", "{u}");
+
+        let path = start(true).await;
+        sql(&ctx.db, &lost(3)).await;
+        let u = end(path.clone()).await;
+        assert_eq!(u["state"], "failed", "{u}");
+        assert_eq!(u["code"], "media-upload-lost", "{u}");
+        // The state is written first, the parts go right after it.
+        let mut left = Vec::new();
+        for _ in 0..40 {
+            left = store.list_prefix(&staged(&path)).await.unwrap();
+            if left.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(left.is_empty(), "parts freed: {left:?}");
+
+        let path = start(false).await;
+        assert_eq!(store.list_prefix(&staged(&path)).await.unwrap().len(), 1);
+        media_uploads::sweep(&ctx.db, &store).await.unwrap();
+        let (_, u) = call(&server, "GET", &path, &env.alice, org, None).await;
+        assert_eq!(u["state"], "open", "a fresh upload stays: {u}");
+        sql(&ctx.db, "UPDATE media_uploads SET updated_at = now() - interval '25 hours' WHERE state = 'open'").await;
+        media_uploads::sweep(&ctx.db, &store).await.unwrap();
+        let (_, u) = call(&server, "GET", &path, &env.alice, org, None).await;
+        assert_eq!(u["state"], "failed", "{u}");
+        assert_eq!(u["code"], "media-upload-expired", "{u}");
+        let left = store.list_prefix(&staged(&path)).await.unwrap();
+        assert!(left.is_empty(), "parts freed: {left:?} {}", staged(&path));
     })
     .await;
 }
