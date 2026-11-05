@@ -1,0 +1,81 @@
+# Pack "Software supply" (agent-environments.md D728): what an image is made of, and which
+# known flaws touch it. Generic on purpose: a later pack following software from source
+# code to production requires this one and links its releases and deployments to these
+# objects. A component is one object per package and version (its purl), shared by every
+# image that holds it, which is what answers "where does this package run?". An exposure
+# is a link: closed when a scan no longer finds it, so its history stays.
+# The whole SBOM document stays in OpenObserve; `document` says where to read it.
+key: software_supply
+name: Software supply
+names: {fr: "Chaîne logicielle"}
+version: "1.0.0"
+description: Images, their software bill of materials, their components and the known vulnerabilities that touch them.
+descriptions: {fr: "Les images, leur nomenclature logicielle (SBOM), leurs composants et les vulnérabilités connues qui les touchent."}
+types:
+  - key: software_image
+    name: Image
+    names: {fr: "Image"}
+    icon: box
+    properties:
+      - { key: reference, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 600, required: true, unique: true, indexed: true }
+      - { key: repository, name: Repository, names: {fr: "Dépôt"}, kind: text, max_len: 512 }
+      - { key: digest, name: Digest, names: {fr: "Empreinte"}, kind: text, max_len: 80, indexed: true }
+      - { key: source_environment, name: Environment, names: {fr: "Environnement"}, kind: text, max_len: 100 }
+      - { key: source_version, name: Environment version, names: {fr: "Version de l'environnement"}, kind: number }
+  - key: software_bom
+    name: SBOM
+    names: {fr: "SBOM"}
+    icon: list
+    properties:
+      - { key: image_reference, name: Image reference, names: {fr: "Référence de l'image"}, kind: text, max_len: 600, required: true, unique: true, indexed: true }
+      - { key: format, name: Format, names: {fr: "Format"}, kind: text, max_len: 64 }
+      - { key: tool, name: Tool, names: {fr: "Outil"}, kind: text, max_len: 64 }
+      - { key: component_count, name: Components, names: {fr: "Composants"}, kind: number }
+      - { key: sha256, name: SHA-256 of the document, names: {fr: "SHA-256 du document"}, kind: text, max_len: 80 }
+      - { key: document, name: Document, names: {fr: "Document"}, kind: text, max_len: 255 }
+  - key: software_component
+    name: Component
+    names: {fr: "Composant"}
+    icon: package
+    properties:
+      - { key: purl, name: Package URL, names: {fr: "Package URL"}, kind: text, max_len: 1024, required: true, unique: true, indexed: true }
+      - { key: package_name, name: Package, names: {fr: "Paquet"}, kind: text, max_len: 256, indexed: true }
+      - { key: package_version, name: Version, names: {fr: "Version"}, kind: text, max_len: 256 }
+  - key: software_vulnerability
+    name: Vulnerability
+    names: {fr: "Vulnérabilité"}
+    icon: shield-alert
+    properties:
+      - { key: advisory, name: Advisory, names: {fr: "Avis"}, kind: text, max_len: 256, required: true, unique: true, indexed: true }
+      - key: severity
+        name: Severity
+        names: {fr: "Sévérité"}
+        kind: enum
+        values: [critical, high, medium, low, unknown]
+        labels: {critical: {fr: "Critique", en: "Critical"}, high: {fr: "Haute", en: "High"}, medium: {fr: "Moyenne", en: "Medium"}, low: {fr: "Basse", en: "Low"}, unknown: {fr: "Inconnue", en: "Unknown"}}
+        indexed: true
+link_types:
+  - key: image_has_bom
+    name: is described by
+    names: {fr: "est décrite par"}
+    inverse_name: describes
+    inverse_names: {fr: "décrit"}
+    from_types: [software_image]
+    to_types: [software_bom]
+  - key: bom_lists_component
+    name: lists
+    names: {fr: "liste"}
+    inverse_name: is listed by
+    inverse_names: {fr: "est listé par"}
+    from_types: [software_bom]
+    to_types: [software_component]
+  - key: image_exposed_to
+    name: is exposed to
+    names: {fr: "est exposée à"}
+    inverse_name: exposes
+    inverse_names: {fr: "expose"}
+    from_types: [software_image]
+    to_types: [software_vulnerability]
+    attributes:
+      - { key: packages, name: Packages, names: {fr: "Paquets"}, kind: text, max_len: 2000 }
+      - { key: fixed_in, name: Fixed in, names: {fr: "Corrigée en"}, kind: text, max_len: 2000 }

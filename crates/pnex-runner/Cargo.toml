@@ -1,0 +1,27 @@
+[package]
+name = "pnex-runner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Polls the PneX server and runs each job in a hardened pod of its own namespace (worker-fabric.md section 14)"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "pnex-runner"
+path = "src/main.rs"
+
+[dependencies]
+pnex-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1.45", features = ["rt-multi-thread", "macros", "time", "signal", "process"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+base64 = "0.22"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tokio = { version = "1.45", features = ["test-util"] }

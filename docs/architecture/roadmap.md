@@ -1225,12 +1225,16 @@ Doc : `operational-platform.md` (D551–D568, lots OP1–OP15). Chaque lot a son
 PRD avant le code. La priorité en cours (robustesse et tests) et P0 passent
 avant ; P0.1 et P0.3 sont des prérequis d'OP10.
 
-| Lot | Contenu |
 Environnements d'agents, validés le 2026-11-04 (`agent-environments.md`,
 D700–D720, lots E0–E6) : préparation et exécution des agents d'OP11. Ils passent
 devant l'ordre OP1 → OP3 par choix explicite, sur une première cible interne ;
 aucun client réel avant OP3 et le masquage (D715).
 
+À ne pas oublier, après le cœur des agents : une page des images, avec à côté de chaque image
+son statut (en édition, construite et disponible) et son score de scan, qui ouvre la liste des
+failles (demande du 2026-11-05, D728).
+
+| Lot | Contenu |
 |---|---|
 | OP1 | Datasets versionnés, lignage, santé des données, ordonnanceur à dépendances |
 | OP2 | Cadre de connecteurs, SaaS/ERP, stockage cloud, CDC, tables virtuelles, écriture retour |

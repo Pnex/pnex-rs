@@ -1,0 +1,32 @@
+# Installs one runner on a VM or a bare machine, as a user service with rootless
+# Podman (agent-environments.md D706). As that user:
+#
+#   sudo loginctl enable-linger "$USER"
+#   install -D -m 755 pnex-runner ~/.local/bin/pnex-runner
+#   install -D -m 600 /dev/null ~/.config/pnex-runner/runner.env
+#   install -D -m 644 pnex-runner.service ~/.config/systemd/user/pnex-runner.service
+#
+# Then in runner.env:
+#   PNEX_RUNNER_SERVER_URL=https://...
+#   PNEX_RUNNER_JOIN_TOKEN=<join token from POST /api/v1/runners/join-tokens>
+#   # A hardened runtime (runsc). Without it the runner announces `isolation:none`.
+#   PNEX_RUNNER_RUNTIME=
+#
+# And: systemctl --user enable --now pnex-runner
+#
+# The join token works once: the runner keeps its own token in
+# ~/.config/pnex-runner/credentials.json (mode 600). Remove it from runner.env.
+[Unit]
+Description=PneX runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/pnex-runner/runner.env
+Environment=PNEX_RUNNER_EXECUTOR=podman
+ExecStart=%h/.local/bin/pnex-runner
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

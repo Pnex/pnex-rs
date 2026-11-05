@@ -221,6 +221,29 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-$
     mkdir -p /out/bin /out/spill; \
     cp "target/$triple/release/pnex-pipeline-worker" /out/bin/
 
+# Runner of the worker fabric (worker-fabric.md section 14): one binary, no shell.
+FROM toolchain AS runner-build
+ARG TARGETARCH
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=pnex-cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/src/target,id=pnex-target-runner-${TARGETARCH} \
+    set -eux; \
+    case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-gnu ;; \
+      arm64) triple=aarch64-unknown-linux-gnu ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    deploy/docker/touch-changed.sh target/.src-manifest; \
+    cargo build --release --locked --target "$triple" -p pnex-runner; \
+    mv target/.src-manifest.new target/.src-manifest; \
+    mkdir -p /out/bin; \
+    cp "target/$triple/release/pnex-runner" /out/bin/
+
+FROM cgr.dev/chainguard/glibc-dynamic:latest AS runner
+COPY --from=runner-build /out/bin/ /usr/local/bin/
+USER 65532
+ENTRYPOINT ["/usr/local/bin/pnex-runner"]
+
 FROM cgr.dev/chainguard/glibc-dynamic:latest AS pipeline-worker
 COPY --from=pipeline-worker-build /out/bin/ /usr/local/bin/
 # A named volume inherits this ownership (nonroot = 65532).

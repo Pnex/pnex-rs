@@ -1,0 +1,97 @@
+# Installs one runner in a dedicated namespace (worker-fabric.md section 14).
+#
+# 1. kubectl create namespace pnex-runner
+# 2. kubectl -n pnex-runner create secret generic pnex-runner-join \
+#      --from-literal=token=<join token from POST /api/v1/runners/join-tokens>
+# 3. Set the image digest and PNEX_RUNNER_SERVER_URL below, then
+#    kubectl -n pnex-runner apply -f deploy/runner/runner.yaml
+#
+# The join token works once: the runner then keeps its own token in the
+# `pnex-runner-token` Secret of this namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pnex-runner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pnex-runner
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pnex-runner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pnex-runner
+subjects:
+  - kind: ServiceAccount
+    name: pnex-runner
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pnex-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pnex-runner
+  template:
+    metadata:
+      labels:
+        app: pnex-runner
+    spec:
+      serviceAccountName: pnex-runner
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          image: REPLACE_ME/pnex-runner@sha256:REPLACE_ME
+          env:
+            - name: PNEX_RUNNER_SERVER_URL
+              value: https://REPLACE_ME
+            - name: PNEX_RUNNER_JOIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pnex-runner-join
+                  key: token
+                  optional: true
+            # A hardened RuntimeClass (gvisor, kata). Without it the runner
+            # announces `isolation:none`, never `isolation:pod`.
+            - name: PNEX_RUNNER_RUNTIME
+              value: ""
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi

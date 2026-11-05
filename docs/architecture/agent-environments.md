@@ -1,9 +1,9 @@
-# Environnements d'agents — PRD (D700–D720)
+# Environnements d'agents — PRD (D700–D720, D728–D730)
 
 | | |
 |---|---|
-| Statut | **Validé le 2026-11-04, implémentation E0 en cours** ; recette sur cluster en fin de chantier |
-| Numérotation | **D700…D720**, lots **E0…E6** |
+| Statut | **Validé le 2026-11-04. E0, E1 et le build de E2 codés, non commités** ; build réel validé sur cluster et Scaleway sans le serveur ni le runner complets ; cache S3 des couches, scan Trivy, activation et nouveau scan quotidien codés ; SBOM stocké et tracé dans l'ontologie (D728) ; restent seuil et notification du scan (Q-E6), cache de dépendances, build sur VM. E3 : pod du bac prouvé sur cluster et branché au runner, pas encore à des runs. Recette sur cluster et sur VM en fin de chantier, API seule (pas de page) |
+| Numérotation | **D700…D720 et D728…D730**, lots **E0…E6** |
 | Complète | `worker-fabric.md` §14 (runner, bacs à sable), `autonomous-agents.md` (D378–D401), `operational-platform.md` D561 |
 | Amende | D561 et fabric §14 : BuildKit au lieu de buildah (D700), secrets en variables d'environnement (D705) ; D394 : le catalogue de moteurs devient un usage des environnements (D704) |
 | Sécurité | `security.md` §6 avant tout lot ; finding = ligne SEC-n au §7 |
@@ -27,6 +27,7 @@ l'environnement de ses agents » :
 | Trace dans l'ontologie | Absente : `agent_runs` + O2 seulement |
 | Entrées et sorties d'un run (Jira, mail) | Déclencheurs D398, sans règle d'accès aux outils tiers |
 | Contenu des échanges LLM pour l'audit | Non tranché |
+| Fichiers en entrée et en sortie d'un run | Une phrase (« artefacts déposés dans le MediaStore »), sans déclaration ni passage d'un run à l'autre |
 
 ## 2. Vue d'ensemble
 
@@ -90,12 +91,12 @@ Une étape `RUN` exécute ce que le Dockerfile contient. Règles :
 
 - un pod par build, détruit à la fin, créé par le runner dans son namespace ;
 - jamais de socket Docker, jamais de conteneur privilégié (D387) ;
-- pas de repli : sans isolation durcie annoncée par le runner, le build est
-  refusé (`environment-build-isolation`), comme fabric §14 ;
+- le build est un simple pod : pas de gVisor ni de Kata exigé (décision du
+  2026-11-05, amende fabric §14 pour le build) ;
 - cache par org, sous `org_<id>/buildcache/`, jamais partagé entre orgs ; purge
   depuis l'UI ;
-- les identifiants du build sont livrés au claim, courts et limités : écriture
-  d'un seul dépôt d'images, un seul préfixe S3.
+- les identifiants du build sont livrés au claim : écriture d'un seul dépôt d'images, et pour le
+  cache des identifiants S3 temporaires limités à un préfixe (D730).
 
 **Le build tourne en rootless**, mode recommandé par BuildKit
 (`examples/kubernetes/job.rootless.yaml`, UID 1000, ni `privileged` ni
@@ -108,18 +109,33 @@ capabilities). Ce manifeste a trois conséquences :
 | Ubuntu 24.04 et suivants : `kernel.apparmor_restrict_unprivileged_userns=0` sur le nœud | Prérequis de nœud, à annoncer dans les capabilities du runner au lieu d'échouer au premier build |
 
 Le rootless réduit le risque d'évasion, mais avec seccomp ouvert il n'est pas une
-frontière pour du code non fiable. D'où deux règles :
+frontière pour du code non fiable. **Risque accepté le 2026-11-05** : le build tourne
+sans runtime durci, sur le cluster du client et pour ses propres Dockerfile. À inscrire
+au registre `security.md` §7 avec ce lot. Reste une règle :
 
-1. Un Dockerfile écrit par une autre personne que l'exploitant du cluster tourne
-   sous gVisor ou Kata (fabric §14). La compatibilité de BuildKit rootless avec
-   ces runtimes reste à mesurer (Q-E1).
-2. Le vol d'identifiants reste borné à l'org. Un build ne reçoit aucun droit sur
-   une autre org ni sur PneX.
+- Le vol d'identifiants reste borné à l'org. Un build ne reçoit aucun droit sur une
+  autre org ni sur PneX.
 
-Constaté sur le poste de dev : démarrage refusé par `rootlesskit`, avec le réglage
-Ubuntu ci-dessus à 1. Non retesté avec ce réglage à 0. Notre image Wolfi doit aussi
-rendre `newuidmap` et `newgidmap` setuid, ce qu'ils ne sont pas dans le paquet ;
-`allowPrivilegeEscalation: false` risque alors de bloquer le démarrage (à tester).
+**Mesure du 2026-11-05** (Q-E1), image amont `moby/buildkit:v0.23.2-rootless`, namespace
+`pnex-agents-test`, microk8s 1.36, Ubuntu 26.04, un nœud testé (`node-worker-1`), réseau et
+cache hors sujet (sortie OCI locale) :
+
+| Pod | Résultat |
+|---|---|
+| UID 1000, seccomp et AppArmor `Unconfined`, `--oci-worker-no-process-sandbox` | Build réussi en 17 s, sans privilège ni réglage de nœud |
+| Le même avec `allowPrivilegeEscalation: false` | Échec : `newuidmap: Could not set caps` |
+
+Même pod, poussé sur Scaleway (`rg.fr-par.scw.cloud/pnex/pnex-test-agent-base`) : build et push
+réussis, puis image relancée par son digest dans un pod durci, non root, racine en lecture seule.
+Le connecteur (D703) passe aussi sur ce registre : pull et push vérifiés, mauvais secret refusé.
+
+Le pod de build garde donc `allowPrivilegeEscalation` : deuxième écart à D387, propre à ce pod,
+à inscrire au même registre. Sur le poste de dev, le démarrage avait été refusé par
+`rootlesskit` : ce réglage de nœud reste donc à vérifier chez chaque client. Notre image (`deploy/docker/image-builder.Dockerfile`, Wolfi, `newuidmap` et `newgidmap` setuid) passe
+le même test : les manifestes du runner construisent, poussent sur Scaleway et rendent le digest par
+le message de fin du pod (`crates/pnex-runner/tests/k8s_build.rs`).
+
+**Sur VM** : pas de build en V1 de ce lot, le runner Podman n'annonce pas `builder:buildkit`.
 
 ### D702 — Le Dockerfile vit en base
 
@@ -213,12 +229,31 @@ Règles :
   distinct) ; l'exécuteur VM (D706) doit démarrer le bac avec un environnement vide.
 - Le runner ne garde les secrets d'un run que le temps de le lancer.
 
-### D706 — Kubernetes d'abord, VM ensuite, même contrat
+### D706 — Kubernetes et VM à égalité, même contrat
 
-Le runner expose un seul contrat d'exécution (créer, attendre, journaliser,
-détruire). Kubernetes est le premier exécuteur. Le même binaire installé sur une
-VM ou une machine nue en fournit un second (Firecracker ou libvirt, D387), au lot
-E6. Le placement reste D393 : runner nommé ou étiquettes, sans repli silencieux.
+Beaucoup d'installations tournent encore sur des VM : elles ne viennent pas après
+Kubernetes. Le runner expose un seul contrat d'exécution (créer, suivre, détruire), livré
+dès E0 pour les deux. Le placement reste D393, avec l'étiquette `platform:kubernetes` ou
+`platform:vm`, sans repli silencieux.
+
+| | Kubernetes | VM ou machine nue |
+|---|---|---|
+| Installation | Deployment, RBAC du namespace (`deploy/runner/runner.yaml`) | Service utilisateur systemd, Podman rootless (`deploy/runner/pnex-runner.service`) |
+| Unité d'un job | Pod | Conteneur, mêmes limites : non-root, sans capability, racine en lecture seule |
+| Runtime durci annonçant `isolation:pod` | RuntimeClass gVisor ou Kata | `runsc` (gVisor) |
+| Token du runner | Secret du namespace | Fichier en mode 600 |
+
+Reste à traiter pour la VM, avant E3 :
+
+- **Egress** : il n'y a pas de `NetworkPolicy`. Sans solution (réseau interne et proxy en
+  liste blanche, Q-E7), un runner VM ne doit pas recevoir de run avec egress restreint.
+- **Services et init containers** (D714, D717) : `podman pod` et étapes lancées dans l'ordre
+  par le runner.
+- **BuildKit** (D700) : même image, en conteneur rootless. Mêmes réserves que D701.
+- **Docker** : sa CLI est compatible (`PNEX_RUNNER_CONTAINER_CLI`), mais Docker rootful donne
+  la machine à l'utilisateur du runner : choix explicite, à éviter.
+- **VM jetable par job** (Firecracker ou libvirt, D387) : isolation plus forte pour du code de
+  tiers, au lot E6.
 
 ### D710 — Une clé LLM par agent
 
@@ -286,6 +321,7 @@ flowchart LR
 | Sortie | Code | Branche + demande de fusion (D388), seul accès direct à un tiers |
 | Sortie | Fait, document | Objet, page ou proposition via l'API (D367, D563) |
 | Sortie | Commentaire Jira, mail | Action PneX soumise à la politique (D563), jamais de jeton tiers dans le bac |
+| Entrée et sortie | Fichier ou dossier | Artefact déclaré, transporté par PneX (D729) |
 
 Passer par PneX est ce qui rend le journal complet : un jeton Jira monté dans le
 bac ferait sortir l'échange de l'audit. L'egress vers un tiers reste possible par
@@ -304,6 +340,8 @@ d'environnement restent la source de vérité des états. Le service qui change 
 | `agent_environment`, `environment_version` | Empreinte, registre, digest, vulnérabilités connues du SBOM |
 | `agent_run` | `runs_as` agent, `uses` version, `started_by` personne ou déclencheur, `read` et `produced` objets |
 | `container_registry` | Connecteur, sans secret (R4, R16) |
+| `software_image`, `software_bom`, `software_component`, `software_vulnerability` | Pack `software_supply` (D728) |
+| `agent_artifact` | `produced_by` run, `consumed_by` runs, empreinte, taille, échéance, jamais le contenu (D729) |
 
 **Limite assumée** : une étape ou un appel d'outil **n'est pas un objet**. À ce
 rythme, le graphe et son journal de changements se rempliraient de bruit. L'objet
@@ -441,6 +479,16 @@ Les runs d'un même sujet partagent un `chain_id`, porté par l'objet `bug_repor
 maximal de tours de revue. Au-delà, elle repasse à un humain. L'export d'audit D401 se
 fait aussi par chaîne.
 
+**Mesure du 2026-11-05 sur le cluster** (`crates/pnex-runner/tests/k8s_sandbox.rs`, 3 passages de suite) :
+depuis l'intérieur du pod, le dépôt est cloné et `setup` a tourné ; non-root, racine en lecture seule,
+aucune capability ; le secret du run est présent chez l'agent ; le jeton de clone n'est ni dans son
+environnement, ni dans le workspace, ni dans `.git/config` ; aucun jeton d'API ; le service répond sur
+`localhost` ; la forge répond et une autre adresse est refusée. Aucun secret dans la spec ni dans les logs.
+
+**Limite de l'egress** : une `NetworkPolicy` ne connaît que des adresses, pas des noms. Une forge ou un
+fournisseur qui change d'adresse casse la règle : une exécution sur cinq a échoué sur l'egress
+autorisé, sans cause établie. Un vrai déploiement demandera un proxy de sortie par nom, à trancher avec Q-E7.
+
 ### D717 — Services de test à côté de l'agent
 
 La fiche d'environnement déclare des **services** : image épinglée par digest, variables,
@@ -504,13 +552,18 @@ publiée après le build. PneX surveille donc les **versions d'environnement**, 
 | Moment | Geste |
 |---|---|
 | Fin de build | Scan du digest par un job du runner. Résultat attaché à la version, qui reste activable selon le seuil de l'org |
-| Chaque jour | Nouveau scan de la version active de chaque environnement, et de toute version utilisée par un run récent, à partir de son SBOM : ni image à retirer, ni registre à solliciter |
+| Chaque jour | Nouveau scan du build actif de chaque environnement, puis à E3 de toute version utilisée par un run récent. **V1 : l'image est relue dans le registre.** Scanner depuis un SBOM stocké, sans solliciter le registre, reste à faire |
 | Nouvelle faille au-dessus du seuil | Notification, objet `environment_version` mis à jour (D708), run refusé ou signalé selon le réglage de l'org |
 
 - **Suggestion de correction** : Trivy donne la version corrigée. PneX propose de
   reconstruire, souvent suffisant quand la base a été corrigée, ou crée un brouillon de
   Dockerfile. Build et activation restent des gestes humains (D702).
-- **SBOM** : celui que Trivy produit lui-même. Sa documentation prévient qu'un SBOM d'un
+- **Mesure du 2026-11-05** : Trivy 0.68.2 (paquet Wolfi, épinglé) dans un pod durci généré par le
+  runner, 30 s environ sur le cluster : `CVE-2021-36159`, critique, version corrigée connue, sur
+  `alpine:3.10` ; image privée Scaleway lue avec le secret de registre. Le runner lit le rapport dans
+  les logs du pod, en tolérant les lignes ajoutées par le runtime du conteneur, et n'envoie à PneX que
+  notre format borné.
+- **SBOM** : celui que Trivy produit lui-même, stocké et tracé dans l'ontologie (D728). Sa documentation prévient qu'un SBOM d'un
   autre outil peut donner une détection inexacte. L'attestation BuildKit reste pour la
   provenance (D700).
 - **Le scan tourne dans un pod du runner**, jamais dans `pnex-server` : un binaire tiers
@@ -525,14 +578,152 @@ publiée après le build. PneX surveille donc les **versions d'environnement**, 
 - **Limites** : le scan voit l'image, pas ce que `setup` installe au démarrage, ni le code du
   projet, qui relève des pipelines du client.
 
+### D729 — Artefacts d'un run : des fichiers déclarés en entrée et en sortie
+
+Décision du 2026-11-05 : un run reçoit et produit des fichiers, comme les
+`inputs.artifacts` et `outputs.artifacts` d'un workflow Argo. Elle précise la phrase
+« artefacts déposés dans le MediaStore » de `autonomous-agents.md`. Un run suivant reprend la
+sortie du précédent : le code d'un correctif, un rapport, un jeu de données préparé.
+
+**Déclaration**, sur la fiche de l'agent, surchargeable par run en resserrant :
+
+```yaml
+inputs:
+  - name: logs
+    path: /artifacts/in/logs
+    from: { run_output: triage/report }   # or upload, or media
+outputs:
+  - name: report
+    path: /artifacts/out/report
+    required: true
+    expires_in: 30d
+```
+
+| Règle | Contenu |
+|---|---|
+| Sources d'une entrée | Sortie d'un run de la même chaîne (D713, D716), fichier déposé par un humain, média de l'org. Pas d'URL ni de seau S3 : un dépôt git passe par `clone` (D714), une donnée par le MCP (D707) |
+| Droits | Vérifiés à la création du run, avec les droits de son auteur (D381). Un artefact d'une autre org n'existe pas (R1) |
+| Immuable | Identifiant, SHA-256, taille. Une entrée est vérifiée à l'empreinte avant le démarrage de l'agent |
+| Forme | Un fichier ou un dossier, ce dernier en archive tar |
+
+**S3 reste l'espace de stockage intermédiaire**, exigence du 2026-11-05 : aucun volume partagé
+entre deux runs, aucune donnée gardée sur un nœud ou un runner. Une sortie part dans S3 avant la
+destruction du pod, et le run suivant la reprend depuis S3, sur n'importe quel runner.
+
+**Transport par PneX, jamais d'accès S3 depuis le bac.** C'est la différence avec Argo, où le pod
+reçoit les identifiants du seau. Ici le bac n'atteint que PneX (egress, D705), le journal reste
+complet (D707) et le code est le même sur Kubernetes et sur VM. Le serveur écrit en flux dans
+`S3Store`, sous `org_<id>/agent-artifacts/<run>/`, sans URL présignée, comme le reste du dépôt.
+
+| Sens | Kubernetes | VM (Podman) |
+|---|---|---|
+| Entrée | Init container `artifacts`, après `bundle` (D714), volume ensuite en lecture seule | Même conteneur, lancé avant l'agent |
+| Sortie | Conteneur de collecte en sidecar natif : à la fin de l'agent il reçoit `SIGTERM`, puis envoie (à mesurer en E3) | Même conteneur, lancé après la sortie de l'agent, avec le volume |
+
+- **La collecte ne vit pas dans le conteneur de l'agent** : un agent tué ne perd pas ses sorties,
+  et un run en échec les envoie aussi. Elle a son propre jeton, limité à ce run et aux noms
+  déclarés.
+- **Le runner ne lit jamais le volume lui-même**, en particulier sur VM : un lien symbolique posé
+  par l'agent lui ferait lire son hôte. Le conteneur de collecte ne voit que le volume en lecture
+  seule, ne suit aucun lien et ne prend que des fichiers réguliers.
+- **Limites et conservation** : taille par artefact et par run, nombre de fichiers, échéance par
+  défaut. Ce sont des réglages globaux que l'utilisateur choisit, pas des valeurs du code. Un dépassement refuse cet artefact et le dit sur le run
+  (`artifact-too-large`), jamais de troncature silencieuse. Une sortie `required` absente fait
+  échouer le run (`artifact-output-missing`).
+- **Le contenu n'est pas fiable** : téléchargement en pièce jointe, jamais affiché sur l'origine
+  de l'app (R11–R13). Lu comme entrée d'un run suivant, il reste du contexte, jamais des droits
+  (D381).
+- **Un artefact peut contenir un secret** : le masquage de D705 vaut pour les journaux, pas pour
+  les fichiers. La lecture demande donc sa propre permission (`agent-artifacts:read`), et chaque
+  artefact a une échéance (D389).
+- **Une seule notion** : le workspace conservé après un échec (D719) devient un artefact
+  `workspace`.
+- **Trace** : un objet `agent_artifact` par artefact (D708). L'ontologie répond ainsi à « quel run
+  a produit ce fichier, et lesquels l'ont lu ».
+- **Hors V1** : publication en cours de run, sources externes, déduplication entre runs.
+
+### D730 — Cache S3 à deux niveaux : couches d'image, et dépendances
+
+Décision du 2026-11-05 : BuildKit + S3 reste le choix, car sans cache les builds Java, Rust,
+C# et C++ sont trop longs. Le pod est éphémère, donc tout ce qui doit survivre part dans S3.
+
+| Niveau | Quoi | Où | Sert à |
+|---|---|---|---|
+| Couches | Cache BuildKit, `mode=max` | `org_<id>/buildcache/<environnement>/` | Tout ce que le Dockerfile a déjà construit, étapes intermédiaires comprises |
+| Dépendances et compilation | Dossiers nommés et archivés (`~/.m2`, `~/.cargo`, `~/.nuget`, sortie de `sccache` ou `ccache`) | `org_<id>/depcache/<environnement>/<nom>/<clé>` | Un `RUN` qui recompile, et le travail de l'agent dans son bac |
+
+**Piège** : les dossiers `RUN --mount=type=cache` restent dans l'état local du démon. Ils
+disparaissent avec le pod et le cache S3 de BuildKit ne les exporte pas (à vérifier à la mesure).
+Dans un build, on s'appuie donc d'abord sur les couches, avec un Dockerfile qui copie le fichier de
+verrou et récupère les dépendances avant de copier les sources.
+
+- **Déclaration**, sur la fiche d'environnement : nom, chemins, clé. La clé est l'empreinte des
+  fichiers de verrou (`Cargo.lock`, `pom.xml`, `packages.lock.json`), avec repli sur la dernière
+  archive du même nom. Plafonds et durée de vie sont des réglages globaux, comme D729.
+- **Dans un bac** : restauration par l'init container `artifacts`, sauvegarde par le conteneur de
+  collecte, en passant par PneX (D729). Le bac n'a toujours aucun accès S3.
+- **Dans un build** : à la prise du job, le serveur demande à S3 (STS `AssumeRole`) des identifiants
+  temporaires limités par une politique de session à `org_<id>/buildcache/<environnement>/`. Le pod
+  de build ne reçoit jamais les clés du serveur, et reste le seul à parler directement à S3. Sans STS
+  sur le stockage, ou sans `PNEX_BUILD_CACHE_ENDPOINT`, le build tourne sans cache.
+
+**Mesure du 2026-11-05** (RustFS 1.0.0-rc.2 dans un namespace de test, pods neufs, notre image) :
+
+| Vérification | Résultat |
+|---|---|
+| Build avec une étape de 25 s, sans cache puis depuis le cache | 32 s, puis 3 s, même digest, étapes `CACHED` |
+| Identifiants temporaires sans droit de lister le bucket | Le cache BuildKit fonctionne |
+| Hors du préfixe : autre org, autre environnement, listing, création de bucket | Refusés (403) |
+- **Empoisonnement** : un cache écrit par du code non fiable est relu par le run suivant. Donc un
+  cache par org et par environnement, jamais entre orgs, écrit seulement par un run réussi, purge
+  depuis l'UI, et un agent exposé à du contenu tiers lit le cache sans pouvoir l'écrire.
+- **Compilation partagée** : `sccache` sait parler à S3 lui-même, ce qui demanderait des
+  identifiants dans le `RUN`. Pas en V1 : son dossier passe par le mécanisme ci-dessus.
+- **Hors V1** : Gradle Build Cache distant, déduplication entre environnements.
+
+### D728 — Le SBOM est tracé dans l'ontologie
+
+Décision du 2026-11-05 : le SBOM n'est pas un simple fichier joint au build. Il prépare un futur pack
+qui suivra un logiciel du code source à la production, en passant par la livraison. D721 à D727
+étant pris par `sales-dashboards.md`, ce numéro saute.
+
+| Élément | Où | Pourquoi |
+|---|---|---|
+| Document CycloneDX complet | O2, stream `environment_sboms`, tel que produit ; empreinte vérifiée à la relecture ; téléchargeable sur le build | JSON texte, consultable avec le reste. Format standard, produit par Trivy lui-même (D720) |
+| Suivi | O2, stream `environment_scan_events` : un événement par scan, un par faille ; route de suivi sur l'environnement | Courbes, recherche et tableaux de bord dans le temps |
+| `software_image` | Objet, clé `reference` (dépôt + digest) | Ce qui tourne |
+| `software_bom` | Objet, relié à l'image, renvoie au document | Le SBOM comme fait durable |
+| `software_component` | Objet, clé `purl`, partagé entre images | Répond à « où tourne ce paquet ? » |
+| `software_vulnerability` | Objet, clé `advisory` ; lien `image_exposed_to`, avec paquets et version corrigée | Fermé quand un scan ne la retrouve plus : l'historique reste |
+
+- **O2 et non S3** (demande du 2026-11-05) : un SBOM est du JSON, à consulter et à suivre. Mesuré sur l'O2
+  local : documents de 28 Ko à 90 Mo relus identiques, et un document de 10 Mo encore identique 20 minutes
+  plus tard. L'écriture des fichiers de stockage d'O2 n'a pas été observée directement. Un SBOM doit survivre à son image : son stream
+  garde 10 ans pour l'instant, à passer en réglage global. Sans O2 sur le déploiement, le scan se termine
+  quand même, sans document.
+- **Pack générique `software_supply`**, installé au premier scan. Rien n'y parle d'agents : le futur
+  pack le prendra en `requires` et reliera ses livraisons et ses déploiements à ces objets.
+- **Le scan lit le SBOM produit** (`trivy image` puis `trivy sbom`) : le rapport décrit exactement le
+  document stocké. Mesuré le 2026-11-05 sur `alpine:3.10` : même faille trouvée que par un scan direct.
+- **Exception à la limite de D708** (« une étape n'est pas un objet ») : un composant est un fait durable
+  et partagé, pas une étape. Le volume reste borné : 20 000 composants par image au plus.
+- **Écart assumé au garde `engine_genericity`** : le moteur écrit dans ce pack, comme le veut D708. La
+  dépendance est déclarée dans le garde.
+- **Future page des images** (demande du 2026-11-05, pas prioritaire) : à côté de chaque image, son statut
+  (en édition, construite et disponible) et son score de scan, qui ouvre la liste des failles.
+- **Reste à faire** : le lien vers `environment_version` arrive avec `agent_ops` (E4) ; d'ici là, l'image
+  porte le nom et la version de son environnement. Le scan quotidien relit encore l'image.
+
 ## 6. Contrat, IAM, MCP
 
-- Routes `registry-connectors`, `environments` (versions et builds compris) :
-  annotées, inscrites dans `iam.rs` (`environments:read`, `environments:write`,
-  `environments:build`, `connectors:manage`) et dans `exposure.rs`.
+- Routes `image-registries`, `environments` (versions et builds compris) :
+  annotées, inscrites dans `iam.rs` (`image-registries:read|write|test|delete`,
+  `environments:read|write|delete`, puis `environments:build` avec le build) et dans
+  `exposure.rs`.
 - MCP : lecture et brouillon de version `EXPOSED`, sans secret. Créer un connecteur,
   lancer un build, activer une version : `EXCLUDED` (motifs secret ou runtime), donc
   `DANGEROUS` en CLI. Un agent ne lance pas de build en V1.
+- Artefacts : lecture des métadonnées `EXPOSED` ; dépôt et téléchargement `EXCLUDED` (binaire).
 - Routes du runner : `Machine`, absentes du MCP.
 - Lexique, fiches `assistant-kb` et clés `err-<code>` au lot qui rend chaque
   notion visible.
@@ -541,7 +732,7 @@ publiée après le build. PneX surveille donc les **versions d'environnement**, 
 
 | Risque | Réponse |
 |---|---|
-| `RUN` lit les identifiants du démon | Pod sous gVisor ou Kata, identifiants courts et limités à l'org (D701) |
+| `RUN` lit les identifiants du démon | Risque accepté sans runtime durci, identifiants courts et limités à l'org (D701) |
 | Cache empoisonné | Cache par org, purge UI ; l'empreinte et le SBOM de chaque version permettent de remonter |
 | Image de base piégée | Liste de registres autorisés, digest épinglé, SBOM (D700, D703) |
 | Agent trompé qui divulgue un secret de son environnement | Egress en liste blanche, secrets limités et courts, clé LLM hors du bac (D705, D385) |
@@ -549,35 +740,49 @@ publiée après le build. PneX surveille donc les **versions d'environnement**, 
 | Secret en clair dans une fiche | Refus au formulaire (D705) |
 | Bac à sable qui pousse une image | Secret de lecture seule côté runner (D703) |
 | Fuite par le contenu LLM | `metadata` par défaut, contenu chiffré et effaçable (D709) |
+| Lien symbolique ou archive piégée dans une sortie | Collecte dans son conteneur, fichiers réguliers seuls, aucun accès du runner au volume (D729) |
+| Secret ou contenu actif dans un artefact | Permission dédiée, échéance, pièce jointe seule (D729) |
 | Disque de build saturé | `ephemeral-storage` limité par pod, élagage du cache S3 par âge |
 
 ## 8. Lots
 
 | Lot | Contenu | Preuve de fin |
 |---|---|---|
-| **E0** | Runner minimal : join token, claim, bail, heartbeat, reaper en HTTP sortant, exécuteur Kubernetes, manifeste généré. Sans repli 360/firmware ni GPU (reste de P2.7) | Un pod de test créé et détruit depuis PneX, runner tué = job repris |
+| **E0** | Runner minimal : join token, claim, bail, heartbeat, reaper en HTTP sortant, exécuteurs Kubernetes et Podman (D706), fichiers d'installation. Sans repli 360/firmware ni GPU (reste de P2.7) | Un job de test créé et détruit depuis PneX sur un cluster et sur une VM, runner tué = job repris |
 | **E1** | Connecteur de registre : coffre, CRUD, test | Test réel sur un registre, 403 sans permission |
-| **E2** | Environnements, versions en base, build BuildKit, cache S3, logs par le runner (D719), SBOM, scan Trivy (D720) | Dockerfile en base → digest dans le registre, 2ᵉ build sur cache, faille connue signalée sur la version |
-| **E3** | Bac à sable depuis un digest : init containers (D714), services de test (D717), pod durci, variables, Secret Kubernetes par run, NetworkPolicy, reaper | Projet cloné et bundle présent au démarrage, jeton de clone absent du workspace et du conteneur de l'agent, secret absent de la spec et du journal, Secret détruit en fin de run, egress refusé hors liste |
+| **E2** | Environnements, versions en base, build BuildKit, cache S3 des couches (D730), logs par le runner (D719), SBOM, scan Trivy (D720) | Dockerfile en base → digest dans le registre, 2ᵉ build sur cache, faille connue signalée sur la version |
+| **E3** | Bac à sable depuis un digest : init containers (D714), artefacts d'entrée et de sortie (D729), cache de dépendances (D730), services de test (D717), pod durci, variables, Secret Kubernetes par run, NetworkPolicy, reaper | Projet cloné et bundle présent au démarrage, artefact d'entrée vérifié et sortie remontée même après l'échec de l'agent (D729), jeton de clone absent du workspace et du conteneur de l'agent, secret absent de la spec et du journal, Secret détruit en fin de run, egress refusé hors liste |
 | **E4** | Pack `agent_ops` et projection des builds et des versions | Requête d'ontologie : environnement → version → digest |
 | **A0, A1, A3** | Déjà au PRD agents ; D709 métadonnées entre dans A0 ; le catalogue A3 devient E2 | Un run réel sur un environnement construit |
-| **E5** | Compétences multi-sources (D711), enchaînement par flow (D713), chaîne et budget (D716), verrou par sujet (D718), entrées et sorties D707 (OP2 pour Jira), A4 agents codeurs | Signalement → tri → enquête → demande de fusion sur un vrai bug de recette, trace de bout en bout |
-| **E6** | Exécuteur VM (D706), capture `full` (D709) | Même scénario sur une VM, contenu LLM effaçable |
+| **E5** | Compétences multi-sources (D711), enchaînement par flow (D713) avec passage d'artefacts (D729), chaîne et budget (D716), verrou par sujet (D718), entrées et sorties D707 (OP2 pour Jira), A4 agents codeurs | Signalement → tri → enquête → demande de fusion sur un vrai bug de recette, trace de bout en bout |
+| **E6** | VM jetable par job (D706), capture `full` (D709) | Même scénario dans une VM jetable, contenu LLM effaçable |
 
 Ordre : E0 → E1 → E2 → E3 → E4, puis A0/A1. Chaque lot de E0 à E3 se teste sur un
 vrai cluster : les tests d'un bac à sable sans vrai noyau ne prouvent rien.
 
 ## 9. Questions ouvertes
 
-- **Q-E1** — BuildKit rootless sur le cluster dev, seul puis sous gVisor ou Kata,
-  et réglage AppArmor des nœuds : à mesurer avant E2, sur un namespace dédié.
-- **Q-E2** — RustFS sait-il émettre des identifiants limités à un préfixe et de
-  courte durée ? Sinon, un compte S3 par org pour le cache.
-- **Q-E3** — Registre de la première recette, et jeton dédié.
+- **Q-E3** — Jeton dédié à la recette, et séparé en lecture et en écriture : Scaleway est retenu, le test a utilisé un seul compte.
 - **Q-E4** — Reconstruction périodique pour reprendre les correctifs de la base :
   à planifier avec D575, ou geste humain en V1 ?
 - **Q-E5** — Milieu fermé : miroir de la base de vulnérabilités (y compris la base Java de
   Trivy), des images de base et des paquets.
+- **Q-E7** — Egress en liste blanche sur VM, sans `NetworkPolicy` : réseau interne Podman et
+  proxy, ou règles nftables par conteneur ? À trancher avant E3.
+- **Q-E8** — Moteur de la première démonstration : Claude Code (proposé, licence à vérifier) ou moteur
+  open source.
+- **Q-E9** — Clé LLM de test : fournisseur et emplacement.
+- **Q-E10** — Scénario de démonstration : petit dépôt de test avec un bug, sur quelle forge (GitLab proposé,
+  rejoint Q-A3).
+- **Q-E11** — Chaîne complète serveur + runner : serveur PneX de test dans `pnex-agents-test` (proposé) ou
+  serveur existant joignable depuis le cluster.
+- **Q-E12** — Vrai RustFS du namespace `pnex` pour la recette : il faudrait une `NetworkPolicy` entrante et ses
+  clés. Copie de test dans `pnex-agents-test` en attendant (proposé).
+- **Q-E13** — Proxy de sortie par nom pour l'egress d'un bac, une `NetworkPolicy` ne voyant que des adresses.
+- **Q-E14** — Limites en réglages globaux : artefacts (D729), caches (D730), taille du pod de build, rétention
+  des streams de SBOM (10 ans en dur) et d'événements de scan.
+- **Q-E15** — Compte Scaleway unique pour la recette : créer une clé de lecture seule pour tester D703 pour de
+  vrai. `scw-regsecert.yaml` doit quitter le dépôt.
 - **Q-E6** — Seuil par défaut du scan (critique seulement ?), et refus du run ou simple
   signalement.
 
@@ -586,12 +791,12 @@ vrai cluster : les tests d'un bac à sable sans vrai noyau ne prouvent rien.
 | # | Décision |
 |---|---|
 | D700 | BuildKit remplace buildah (cache S3 mesuré), image builder sur Wolfi |
-| D701 | Dockerfile = code non fiable : pod rootless par build, gVisor ou Kata pour le code de tiers, cache par org, aucun repli |
+| D701 | Dockerfile = code non fiable : un pod rootless par build, sans runtime durci exigé (risque accepté), cache par org |
 | D702 | Dockerfile et contexte versionnés en base, édités dans l'UI, sans connecteur git |
 | D703 | Connecteur de registre OCI : secrets écriture et lecture distincts, exécution par digest |
 | D704 | Environnement versionné, absorbe le catalogue de moteurs D394 |
 | D705 | Secrets du run en variables, via un Secret Kubernetes par run ; clé du fournisseur LLM toujours hors du bac ; masquage dans les journaux |
-| D706 | Un contrat d'exécution : Kubernetes d'abord, VM ensuite |
+| D706 | Un contrat d'exécution, Kubernetes et VM (Podman rootless) dès E0 ; VM jetable plus tard |
 | D707 | Entrées et sorties d'un run par PneX ; seul git est un accès tiers direct |
 | D708 | Pack `agent_ops` pour les faits durables, étapes dans O2 |
 | D709 | Audit LLM : empreintes dès A0, contenu en S3 plus tard, `metadata` par défaut |
@@ -606,3 +811,6 @@ vrai cluster : les tests d'un bac à sable sans vrai noyau ne prouvent rien.
 | D718 | Une clé de travail par sujet, tenue par la chaîne, en base ; un doublon rejoint la chaîne |
 | D719 | Logs collectés par le runner vers PneX puis O2, workspace conservé en cas d'échec |
 | D720 | Scan Trivy épinglé des versions d'environnement, au build puis chaque jour sur le SBOM |
+| D728 | SBOM tracé dans l'ontologie : pack générique `software_supply`, document CycloneDX et suivi des scans dans O2, composants partagés par `purl`, exposition fermée quand la faille disparaît |
+| D730 | Cache S3 à deux niveaux : couches BuildKit, et dépendances archivées par clé ; le bac passe par PneX, seul le pod de build parle à S3 |
+| D729 | Artefacts de run déclarés en entrée et en sortie, transportés par PneX sans accès S3 depuis le bac, collectés hors du conteneur de l'agent, passés de run en run dans une chaîne |
