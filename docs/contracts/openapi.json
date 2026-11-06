@@ -167,6 +167,140 @@
         ],
         "type": "object"
       },
+      "Agent": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AgentRole"
+          },
+          "service_account_id": {
+            "description": "Its identity in the org: listed with the service accounts, never a member.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AgentSpec"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "service_account_id",
+          "role",
+          "version",
+          "spec",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "AgentArtifact": {
+        "description": "A file kept between runs, in the store of the org (D729). Never its content: that is\ndownloaded as an attachment, under its own permission.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "description": "Error code when refused (`artifact-too-large`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "form": {
+            "$ref": "#/components/schemas/ArtifactForm"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "run_id": {
+            "description": "The run that produced it; none for an upload.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "description": "`sha256:<hex>` once ready.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ArtifactState"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "created_at",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "AgentCreate": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AgentRole",
+            "description": "`viewer` when absent (D761)."
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AgentSpec"
+          }
+        },
+        "required": [
+          "name",
+          "spec"
+        ],
+        "type": "object"
+      },
       "AgentEnrollRequest": {
         "description": "`POST /api/v1/agent/enroll` (public) — body sent by `pnex-agent install`.",
         "properties": {
@@ -408,8 +542,31 @@
         ],
         "type": "object"
       },
+      "AgentRole": {
+        "description": "Role of the service account of an agent: never `admin` (D293), never above its author.",
+        "enum": [
+          "viewer",
+          "member"
+        ],
+        "type": "string"
+      },
       "AgentRun": {
         "properties": {
+          "agent_id": {
+            "description": "The agent it ran as, and the version of its record; none for a run started bare.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_version": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -417,6 +574,13 @@
           "environment_id": {
             "format": "uuid",
             "type": "string"
+          },
+          "error": {
+            "description": "Why PneX failed a run the agent itself ended well (`agent-run-output-missing`).",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "exit_code": {
             "format": "int32",
@@ -490,6 +654,13 @@
       },
       "AgentRunCreate": {
         "properties": {
+          "caches": {
+            "description": "Folders kept from run to run of the same environment, such as `~/.cargo` (D730).",
+            "items": {
+              "$ref": "#/components/schemas/RunCache"
+            },
+            "type": "array"
+          },
           "command": {
             "description": "Command of the agent; empty runs the entrypoint of the image.",
             "items": {
@@ -512,6 +683,13 @@
             "format": "uuid",
             "type": "string"
           },
+          "inputs": {
+            "description": "Files given to the agent, each at `/artifacts/in/<name>` before it starts.",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactInput"
+            },
+            "type": "array"
+          },
           "llm_calls_max": {
             "description": "Calls through the gateway this run may make; [`LLM_CALLS_MAX_DEFAULT`] when absent.",
             "format": "int32",
@@ -519,6 +697,27 @@
               "integer",
               "null"
             ]
+          },
+          "outputs": {
+            "description": "Files the agent leaves at `/artifacts/out/<name>`, collected even when it fails.",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactOutput"
+            },
+            "type": "array"
+          },
+          "repos": {
+            "description": "Cloned into `/workspace/<path>` before anything else runs (D714, D758).",
+            "items": {
+              "$ref": "#/components/schemas/RunRepo"
+            },
+            "type": "array"
+          },
+          "services": {
+            "description": "Test services beside the agent, on `localhost` (D717, D758).",
+            "items": {
+              "$ref": "#/components/schemas/RunService"
+            },
+            "type": "array"
           },
           "timeout_secs": {
             "format": "int32",
@@ -532,6 +731,33 @@
         ],
         "type": "object"
       },
+      "AgentRunStart": {
+        "description": "A run started from an agent: the files for its declared inputs, and limits that may only\nbe lower than the record's.",
+        "properties": {
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactInput"
+            },
+            "type": "array"
+          },
+          "llm_calls_max": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "timeout_secs": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "AgentSettingsPatch": {
         "description": "`PATCH /api/v1/devices/{id}/agent`.",
         "properties": {
@@ -542,6 +768,133 @@
         },
         "required": [
           "max_keys"
+        ],
+        "type": "object"
+      },
+      "AgentSpec": {
+        "description": "What an agent runs, versioned: every change is a new version.",
+        "properties": {
+          "caches": {
+            "items": {
+              "$ref": "#/components/schemas/RunCache"
+            },
+            "type": "array"
+          },
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "environment_id": {
+            "description": "Its runs use the active build of this environment.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "inputs": {
+            "description": "Names of the files each run must be given, at `/artifacts/in/<name>`.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "llm_calls_max": {
+            "description": "Most LLM calls of a run; a run may ask for fewer.",
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactOutput"
+            },
+            "type": "array"
+          },
+          "provider_id": {
+            "description": "Provider of its own, with its own key (D710); else the org's `agent` usage.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/RunRepo"
+            },
+            "type": "array"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/RunService"
+            },
+            "type": "array"
+          },
+          "timeout_secs": {
+            "description": "The longest a run may last; a run may ask for less.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "environment_id",
+          "timeout_secs"
+        ],
+        "type": "object"
+      },
+      "AgentUpdate": {
+        "description": "A new version of the record, written on the version that was read.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expected_version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AgentSpec"
+          }
+        },
+        "required": [
+          "expected_version",
+          "spec"
+        ],
+        "type": "object"
+      },
+      "AgentVersion": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "number": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AgentSpec"
+          }
+        },
+        "required": [
+          "number",
+          "spec",
+          "created_at"
         ],
         "type": "object"
       },
@@ -1988,6 +2341,55 @@
         },
         "type": "object"
       },
+      "ArtifactForm": {
+        "description": "How the bytes of an artifact read: one file, or a folder as a tar archive.",
+        "enum": [
+          "file",
+          "tar"
+        ],
+        "type": "string"
+      },
+      "ArtifactInput": {
+        "description": "An artifact of the org given to a run: uploaded by a person, or produced by an earlier\nrun. Checked against its SHA-256 before the agent starts.",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "artifact_id"
+        ],
+        "type": "object"
+      },
+      "ArtifactOutput": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "description": "Missing at the end, it fails the run (`artifact-output-missing`).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "ArtifactState": {
+        "enum": [
+          "pending",
+          "ready",
+          "refused",
+          "missing"
+        ],
+        "type": "string"
+      },
       "AsrCarrierCheck": {
         "description": "Check of a model on one carrier (`worker:<host>` or a name set by the\nplatform).",
         "properties": {
@@ -3250,6 +3652,22 @@
           "build_phase",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "BuildResources": {
+        "description": "Limits of a build pod, as Kubernetes quantities in `Mi` or `Gi`.",
+        "properties": {
+          "ephemeral_storage": {
+            "type": "string"
+          },
+          "memory": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory",
+          "ephemeral_storage"
         ],
         "type": "object"
       },
@@ -16973,6 +17391,78 @@
         ],
         "type": "object"
       },
+      "Paginated_Agent": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_AgentArtifact": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/AgentArtifact"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_AgentKey": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -17035,6 +17525,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/AgentRun"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_AgentVersion": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/AgentVersion"
             },
             "type": "array"
           }
@@ -24274,6 +24800,30 @@
         ],
         "type": "object"
       },
+      "RunCache": {
+        "description": "A dependency cache: restored before setup and the agent, saved when the agent ends. Its\nkey is the fingerprint of its lock files in the workspace; without an exact match, the\nlatest archive of the same name is restored (D730).",
+        "properties": {
+          "key_files": {
+            "description": "Files under `/workspace` whose content keys the cache (`app/Cargo.lock`).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute folder of the agent, outside `/workspace` and `/artifacts`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "type": "object"
+      },
       "RunExtract": {
         "description": "What a run brought back.",
         "properties": {
@@ -24368,6 +24918,34 @@
         ],
         "type": "string"
       },
+      "RunRepo": {
+        "description": "A repository to clone. Its read token, if any, is a secret of the vault of the org:\ndelivered to the clone step only, never to the agent (D714).",
+        "properties": {
+          "git_ref": {
+            "type": "string"
+          },
+          "path": {
+            "description": "One segment under `/workspace`.",
+            "type": "string"
+          },
+          "secret_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "description": "`https://` only.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "path"
+        ],
+        "type": "object"
+      },
       "RunResume": {
         "description": "Resume point of a run: starts on the page an earlier run of the same\nsite was on after step `step - 1`, and plays from `step` on. The earlier\nsteps and their extracts are taken over from that run.",
         "properties": {
@@ -24385,6 +24963,53 @@
         "required": [
           "run_id",
           "step"
+        ],
+        "type": "object"
+      },
+      "RunService": {
+        "description": "A test service. An `env` value of exactly [`GENERATED`] becomes a fresh password at each\nclaim, which the agent gets as `<NAME>_<KEY>` (D717): never a password written down.",
+        "properties": {
+          "data_paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "image": {
+            "description": "Pinned by digest.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ready_command": {
+            "description": "Command that succeeds once the service answers.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "run_as_user": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "image",
+          "ready_command"
         ],
         "type": "object"
       },
@@ -24500,6 +25125,10 @@
           "registry_host": {
             "description": "Host of the registry, as credentials name it.",
             "type": "string"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/BuildResources",
+            "description": "Size of the build pod (D755); the runner's own default when absent or malformed."
           },
           "secret": {
             "type": "string"
@@ -24835,6 +25464,10 @@
       "RunnerSandboxInput": {
         "description": "What a sandbox pod needs, delivered at the claim (D705, D714, D717).",
         "properties": {
+          "artifacts": {
+            "$ref": "#/components/schemas/SandboxArtifacts",
+            "description": "Files in and out of the run, moved through PneX by containers of their own."
+          },
           "egress": {
             "items": {
               "$ref": "#/components/schemas/SandboxEgress"
@@ -24956,6 +25589,65 @@
           "high"
         ],
         "type": "string"
+      },
+      "SandboxArtifact": {
+        "description": "One declared artifact, and for an input the SHA-256 it must have.",
+        "properties": {
+          "form": {
+            "$ref": "#/components/schemas/ArtifactForm",
+            "description": "Inputs only: how the bytes read."
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "description": "Inputs only: `sha256:<hex>`, checked before the agent starts.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "SandboxArtifacts": {
+        "description": "Where and how the transfer containers of a sandbox move its artifacts (D729, D744). The\ntoken opens the artifact routes of this run only; the agent never gets it.",
+        "properties": {
+          "caches": {
+            "description": "Restored before setup, saved when the agent ends (D730).",
+            "items": {
+              "$ref": "#/components/schemas/RunCache"
+            },
+            "type": "array"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/SandboxArtifact"
+            },
+            "type": "array"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/SandboxArtifact"
+            },
+            "type": "array"
+          },
+          "token": {
+            "type": "string"
+          },
+          "url": {
+            "description": "`.../api/v1/agent-transfer`: `GET inputs/<name>`, `PUT outputs/<name>`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "token"
+        ],
+        "type": "object"
       },
       "SandboxEgress": {
         "description": "One destination the sandbox may reach; everything else is refused.",
@@ -25287,6 +25979,26 @@
         ],
         "type": "object"
       },
+      "ScanMode": {
+        "description": "What a version over the threshold gets (D748): a signal by default; `refuse` blocks its\nactivation and its runs.",
+        "enum": [
+          "signal",
+          "refuse"
+        ],
+        "type": "string"
+      },
+      "ScanPolicy": {
+        "description": "The scan policy of an org (D748).",
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ScanMode"
+          },
+          "threshold": {
+            "$ref": "#/components/schemas/ScanThreshold"
+          }
+        },
+        "type": "object"
+      },
       "ScanReport": {
         "properties": {
           "components": {
@@ -25307,6 +26019,15 @@
           "findings"
         ],
         "type": "object"
+      },
+      "ScanThreshold": {
+        "description": "The lowest severity that counts against a version (D748): `critical` by default.",
+        "enum": [
+          "critical",
+          "high",
+          "none"
+        ],
+        "type": "string"
       },
       "ScheduledFlow": {
         "description": "A deployed flow that plays the recipe, and its triggers.",
@@ -30723,6 +31444,287 @@
         ]
       }
     },
+    "/api/v1/agent-artifacts": {
+      "post": {
+        "description": "Streams the body into the store of the org as an artifact, with its SHA-256 and an expiry; runs then take it as an input by id. Over the size limit it is refused whole. Requires `agents:run`.",
+        "operationId": "agent_artifacts_upload",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`[a-z0-9-]`, the name runs give it as an input.",
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`file` (default) or `tar` for a folder.",
+            "in": "query",
+            "name": "form",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentArtifact"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`), `agent-artifact-interrupted`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:run`): the caller's role does not grant it"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-too-large`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Upload a file for runs",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/v1/agent-artifacts/{id}": {
+      "get": {
+        "description": "Its name, state, checksum, size and expiry; never its content. Requires `agents:read`.",
+        "operationId": "agent_artifacts_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Artifact id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentArtifact"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read an artifact",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/v1/agent-artifacts/{id}/content": {
+      "get": {
+        "description": "The bytes of a ready artifact, as an attachment: what an agent wrote is never shown by the app. It may hold a secret, hence its own permission `agent-artifacts:read`.",
+        "operationId": "agent_artifacts_content",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Artifact id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "The bytes"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agent-artifacts:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-not-found`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Download an artifact",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
     "/api/v1/agent-gateway/v1/chat/completions": {
       "post": {
         "description": "Called from a sandbox with its run token (bearer), while the run runs. Forwards a chat completion request to the provider of the org for agents, with its model; the answer, streamed or not, comes back as the provider sent it. Counted against the run and the org.",
@@ -30988,7 +31990,7 @@
         ]
       },
       "post": {
-        "description": "Queues a run of the active build of an environment, in a sandbox of a runner of the org. The run reaches the org's LLM through the gateway, never with a provider key. Requires `agents:run`.",
+        "description": "Queues a run of the active build of an environment, in a sandbox of a runner of the org. The run reaches the org's LLM through the gateway, never with a provider key. Declared inputs (artifacts of the org) land at `/artifacts/in/<name>` before the agent starts; declared outputs are collected from `/artifacts/out/<name>` when it ends, also on failure. Requires `agents:run`.",
         "operationId": "agent_runs_create",
         "parameters": [
           {
@@ -31061,7 +32063,7 @@
                 }
               }
             },
-            "description": "`environment-not-found`"
+            "description": "`environment-not-found`, `agent-artifact-not-found`"
           },
           "409": {
             "content": {
@@ -31159,6 +32161,103 @@
           }
         ],
         "summary": "Get a run",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/v1/agent-runs/{id}/artifacts": {
+      "get": {
+        "description": "Each declared output with its state: pending, ready, refused (over a limit) or missing. Requires `agents:read`. Paginated (`limit`/`offset`).",
+        "operationId": "agent_runs_artifacts",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Run id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_AgentArtifact"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-run-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the outputs of a run",
         "tags": [
           "agent-runs"
         ]
@@ -31360,6 +32459,359 @@
         ]
       }
     },
+    "/api/v1/agent-transfer/caches/{name}": {
+      "get": {
+        "description": "Called by the transfer container of a sandbox with the artifact token of its run, for a cache it declared (D730). The archive of this key, or else the latest of this cache; `x-pnex-cache-exact` says which. 404 before the first save.",
+        "operationId": "agent_transfer_cache_get",
+        "parameters": [
+          {
+            "description": "Declared cache name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`none`, or 32 hex characters: the fingerprint of the cache's lock files.",
+            "in": "query",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "The archive"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` on the key"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-run-unauthorized`"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-not-declared`, `agent-artifact-not-found` (no archive yet)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Fetch a dependency cache of the running run",
+        "tags": [
+          "agent-runs"
+        ]
+      },
+      "put": {
+        "description": "Called by the collector of a sandbox with the artifact token of its run, for a cache it declared: the archive replaces the one of this key. Over the cache limit it is refused whole.",
+        "operationId": "agent_transfer_cache_put",
+        "parameters": [
+          {
+            "description": "Declared cache name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`none`, or 32 hex characters: the fingerprint of the cache's lock files.",
+            "in": "query",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Saved"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` on the key, `agent-artifact-interrupted`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-run-unauthorized`"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-not-declared`"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-too-large`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save a dependency cache of the running run",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/v1/agent-transfer/inputs/{name}": {
+      "get": {
+        "description": "Called by the transfer container of a sandbox with the artifact token of its run, never by the agent. Only the inputs this run declared.",
+        "operationId": "agent_transfer_input",
+        "parameters": [
+          {
+            "description": "Declared input name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "The bytes"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-run-unauthorized`"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-not-declared`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Fetch an input of the running run",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/v1/agent-transfer/outputs/{name}": {
+      "put": {
+        "description": "Called by the collector of a sandbox with the artifact token of its run, once per declared output; `x-pnex-artifact-form` says `file` or `tar`. Over the limits of an artifact or of the run, it is refused whole and marked so on the run.",
+        "operationId": "agent_transfer_output",
+        "parameters": [
+          {
+            "description": "Declared output name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentArtifact"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` on the form, `agent-artifact-interrupted`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-run-unauthorized`"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-not-declared`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-already-sent`"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-too-large`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-artifact-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send an output of the running run",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
     "/api/v1/agent/download/{target}": {
       "get": {
         "description": "Streams the agent binary shipped with this server for a whitelisted target id, or `SHA256SUMS` (text checksums). No authentication.",
@@ -31509,6 +32961,642 @@
         "summary": "Agent install script for Linux/macOS (public)",
         "tags": [
           "agent"
+        ]
+      }
+    },
+    "/api/v1/agents": {
+      "get": {
+        "description": "Each agent with its identity, role and the current version of its record. Requires `agents:read`. Paginated (`limit`/`offset`).",
+        "operationId": "agents_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Agent"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the agents of the org",
+        "tags": [
+          "agents"
+        ]
+      },
+      "post": {
+        "description": "Creates a service account of the org for the agent, gives it its role (`viewer` by default, `member` at most, never above the caller's), and the first version of its record. Requires `agents:write` (Admin).",
+        "operationId": "agents_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied`, `iam-escalation` (args `permission`) · `access-denied` (`args.permission` = `agents:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-provider-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-name-taken`, `agent-quota` (args `max`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create an agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agents/{id}": {
+      "delete": {
+        "description": "Removes the agent and its service account, keys and roles with it; its runs keep their trace. Requires `agents:delete` (Admin).",
+        "operationId": "agents_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Agent id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete an agent",
+        "tags": [
+          "agents"
+        ]
+      },
+      "get": {
+        "description": "Requires `agents:read`.",
+        "operationId": "agents_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Agent id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get an agent",
+        "tags": [
+          "agents"
+        ]
+      },
+      "put": {
+        "description": "Replaces the record on the version that was read (`expected_version`); the previous one stays in its versions. Requires `agents:write` (Admin).",
+        "operationId": "agents_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Agent id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Agent"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-not-found`, `agent-provider-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-version-conflict` (args `current`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save a new version of an agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agents/{id}/runs": {
+      "post": {
+        "description": "Runs the current version of the record as the agent, given the files for its declared inputs. A timeout or an LLM budget may only be lower than the record's (D380). Requires `agents:run`.",
+        "operationId": "agents_runs_start",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Agent id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRunStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRun"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`above_agent`, `undeclared`, `missing`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:run`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-not-found`, `environment-not-found`, `agent-artifact-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-run-no-active-build`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start a run of an agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agents/{id}/versions": {
+      "get": {
+        "description": "Newest first. Requires `agents:read`.",
+        "operationId": "agents_versions",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Agent id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_AgentVersion"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the versions of an agent",
+        "tags": [
+          "agents"
         ]
       }
     },
@@ -48754,6 +50842,132 @@
         ]
       }
     },
+    "/api/v1/environments/scan-policy": {
+      "get": {
+        "description": "The lowest severity of a fixable flaw that counts against an image (`critical` by default), and what such an image gets: a signal (default) or a refusal of its activation and its runs (D748). Requires `environments:read`.",
+        "operationId": "environments_scan_policy_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanPolicy"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `environments:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the scan policy of the org",
+        "tags": [
+          "environments"
+        ]
+      },
+      "put": {
+        "description": "Applies at once to every check that follows: activation of a build and start of a run. Requires `environments:build` (Admin).",
+        "operationId": "environments_scan_policy_set",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanPolicy"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `environments:build`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set the scan policy of the org",
+        "tags": [
+          "environments"
+        ]
+      }
+    },
     "/api/v1/environments/{id}": {
       "delete": {
         "description": "Removes the environment and its versions. Images stay in the registry. Requires `environments:delete`.",
@@ -49300,6 +51514,123 @@
           }
         ],
         "summary": "Activate a build of an environment",
+        "tags": [
+          "environments"
+        ]
+      }
+    },
+    "/api/v1/environments/{id}/builds/{build}/logs": {
+      "get": {
+        "description": "The last lines of the build pod, oldest first, sent by the runner when the build ended, secrets masked (D733, D759). Requires `environments:read`. Paginated (`limit`/`offset`).",
+        "operationId": "environments_builds_logs",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Environment id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Build id (UUID)",
+            "in": "path",
+            "name": "build",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_RunnerJobLogLine"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `environments:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`environment-build-not-found`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`environment-build-logs-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the journal of a build",
         "tags": [
           "environments"
         ]
@@ -80059,7 +82390,7 @@
     },
     "/api/v1/runner/jobs/{id}/logs": {
       "post": {
-        "description": "Called by the runner holding the job, before finishing it, with the last lines of each container, delivered secrets masked. The server masks credential-shaped words again and journals one record per line (D719). Authenticated by the runner token.",
+        "description": "Called by the runner holding the job, before finishing it, or within ten minutes after a person stopped it, with the last lines of each container, delivered secrets masked. The server masks credential-shaped words again and journals one record per line (D719). Authenticated by the runner token.",
         "operationId": "runner_jobs_logs",
         "parameters": [
           {
