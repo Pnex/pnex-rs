@@ -1181,11 +1181,16 @@ pub fn validate_widget(
         }
         return;
     }
-    // A widget over objects keeps only the titles a pack ships (D584).
+    // A widget over objects keeps only the titles a pack ships (D584), and
+    // range bars the variable a click writes (D726), checked against the
+    // application of its screen.
     let only_titles = source.iter().any(|s| s.objects.is_some())
         && options.app.as_ref().is_some_and(|a| {
             let mut rest = a.clone();
             rest.titles = Default::default();
+            if widget_type == RANGE_BARS {
+                rest.variable = None;
+            }
             rest == Default::default()
         });
     if options.app.is_some() && !only_titles {

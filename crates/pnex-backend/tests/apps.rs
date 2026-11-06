@@ -318,6 +318,16 @@ async fn a_screen_reads_and_writes_inside_its_application() {
             assert_eq!(st, 400, "{e}");
             assert_eq!(e["errors"]["violations"][0]["code"], code, "{e}");
         }
+        // A bar click writes the enum variable of the property the bars group by (D726).
+        let bars = json!({"id": "w1", "type": "range_bars", "x": 0, "y": 0, "w": 400, "h": 300,
+            "options": {"app": {"variable": "lang"}},
+            "source": [{"metric": "", "device_id": "", "window": "1h", "objects": {"object_set": "by_lang",
+                "params": {"lang": "lang"}, "group_by": [{"property": "lang"}], "metrics": [{"key": "n", "op": "count"}], "show": "n"}}]});
+        let (st, e) = put(save(1, bars.clone())).await;
+        assert_eq!((st, e["errors"]["violations"][0]["code"].as_str()), (400, Some("app_variable_kind")), "{e}");
+        let (st, e) = call(&server, "POST", "/api/v1/dashboards", &alice, org, Some(json!({"name": "D", "layout": {
+            "canvas": {"width": 1600, "height": 900}, "widgets": [bars]}}))).await;
+        assert_eq!((st, e["errors"]["violations"][0]["code"].as_str()), (400, Some("app_widget_outside_app")), "{e}");
         let (st, e) = put(save(1, widget("action_button", json!({"app": {"variable": "picked", "action": "draft.review"}})))).await;
         assert_eq!((st, e["errors"]["violations"][0]["code"].as_str()), (400, Some("app_action_not_permitted")), "{e}");
         let (st, e) = put(save(1, widget("object_form", json!({"app": {"object_type": "draft"}})))).await;

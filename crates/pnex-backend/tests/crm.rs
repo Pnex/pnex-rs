@@ -328,6 +328,8 @@ async fn the_pack_ships_its_screens() {
             ("all_opportunities", 1),
             ("won_opportunities", 0),
             ("new_leads", 0),
+            // Filled by a click on a bar of the Prospecting screen (D726).
+            ("leads_with_status?status=new", 0),
         ] {
             let (st, r) = call(
                 &server,

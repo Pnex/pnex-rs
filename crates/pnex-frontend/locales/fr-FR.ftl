@@ -1104,6 +1104,7 @@ insp-app-param = Paramètre { $name }
 insp-app-variable = Variable
 insp-app-row-variable = Variable écrite par une ligne
 insp-app-screen = Écran ouvert par une ligne
+insp-app-bar-variable = Variable écrite par un clic sur une barre
 insp-app-columns = Propriétés affichées
 insp-app-type = Type
 insp-app-action = Action

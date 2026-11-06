@@ -1114,6 +1114,9 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
       await link(crm, 'owned_by', open, owner);
       const late = await object(crm, 'activity', 'Call back', { ref: 'late', kind: 'call', state: 'to_do', due_on: '2026-01-01' });
       await link(crm, 'activity_on', late, open);
+      await object(crm, 'lead', 'Lead one', { status: 'new' });
+      await object(crm, 'lead', 'Lead two', { status: 'new' });
+      await object(crm, 'lead', 'Lead three', { status: 'qualified' });
 
       await page.goto('/');
       await page.evaluate((id) => localStorage.setItem('pnex.org', String(id)), orgId);
@@ -1140,7 +1143,17 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
       }
       // The lead funnel leads the screen, in its order.
       await expect(main.getByTestId('objects-bars').first()).toContainText(/New[\s\S]*Contacted[\s\S]*Qualified[\s\S]*Converted/);
-      await capture('crm-prospecting', { caption: 'Prospecting screen: the lead funnel, then leads today' });
+      // A click on a status lists its leads under the charts; again, clears.
+      const status = main.getByTestId('objects-bars').nth(2).getByTestId('objects-bar').filter({ hasText: /^New/ });
+      const listed = main.locator('table').last().locator('tbody tr');
+      await expect(main.getByText('Filter to fill in')).toBeVisible();
+      await status.click();
+      await expect(status).toHaveAttribute('aria-pressed', 'true');
+      await expect(listed).toHaveCount(2, { timeout: 30_000 });
+      await expect(listed.first()).toContainText(/Lead (one|two)/);
+      await capture('crm-prospecting', { caption: 'Prospecting screen: the lead funnel, leads today, those of the clicked status' });
+      await status.click();
+      await expect(main.getByText('Filter to fill in')).toBeVisible();
 
       // The reader sets the period of Results; an empty date asks instead of failing.
       await page.goto('/apps/sales_follow_up/results');

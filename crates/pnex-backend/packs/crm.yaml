@@ -43,7 +43,7 @@
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "3.7.1"
+version: "3.8.0"
 requires: [prospecting_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -213,6 +213,8 @@ apps:
       # The period of the Results screen, changed there by whoever reads it (D726).
       - {name: period_from, kind: date, default: "$today-365"}
       - {name: period_to, kind: date, default: "$today"}
+      # The status picked by a click on "Leads by status" (D726).
+      - {name: lead_status, kind: enum, type_key: lead, property: status}
     object_sets:
       open_opportunities:
         query:
@@ -248,6 +250,7 @@ apps:
           filters: [{key: state, op: eq, value: done}, {key: direction, op: eq, value: outbound}]
       trade_shows: {query: {type_key: trade_show, order_by: start_on, descending: true}}
       all_leads: {query: {type_key: lead}}
+      leads_with_status: {query: {type_key: lead, filters: [{key: status, op: eq, value: "$status"}], order_by: received_on, descending: true}}
       new_leads:
         query:
           type_key: lead
@@ -497,7 +500,7 @@ apps:
         name: Prospecting
         names: {fr: "Prospection"}
         layout:
-          canvas: {width: 1600, height: 900}
+          canvas: {width: 1600, height: 1320}
           widgets:
             - id: f1
               type: range_bars
@@ -521,7 +524,7 @@ apps:
               y: 456
               w: 512
               h: 428
-              options: {decimals: 0, app: {titles: {fr: "Pistes par statut, aujourd'hui", en: "Leads by status, today"}}}
+              options: {decimals: 0, app: {variable: lead_status, titles: {fr: "Pistes par statut, aujourd'hui", en: "Leads by status, today"}}}
               source: [{metric: "", device_id: "", window: 1h, objects: {object_set: all_leads, group_by: [{property: status}], metrics: [{key: n, op: count}], show: n}}]
             - id: p2
               type: range_bars
@@ -539,6 +542,7 @@ apps:
               h: 428
               options: {decimals: 0, unit: "%", app: {titles: {fr: "Pistes converties par source (converties / toutes)", en: "Leads converted by source (converted / all)"}}}
               source: [{metric: "", device_id: "", window: 1h, objects: {object_set: all_leads, group_by: [{property: source}], metrics: [{key: converted, op: count, where: {key: status, op: eq, value: converted}}, {key: all, op: count}, {key: rate, ratio: [converted, all], percent: true}], show: rate}}]
+            - {id: t1, type: object_table, x: 16, y: 900, w: 1568, h: 404, options: {app: {object_set: leads_with_status, params: {status: lead_status}, columns: [title, status, company, source, received_on], variable: lead, screen: leads, titles: {fr: "Pistes du statut choisi : cliquez un statut dans « Pistes par statut, aujourd'hui »", en: "Leads in the chosen status: click a status in “Leads by status, today”"}}}}
       - key: shows
         name: Trade shows
         names: {fr: "Salons"}

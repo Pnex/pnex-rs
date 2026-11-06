@@ -122,7 +122,11 @@ fn refuse_app_widgets(layout: &DashboardLayout) -> Result<(), DashboardWriteErro
     let v: Vec<VizViolation> = layout
         .widgets
         .iter()
-        .filter(|w| pnex_core::APP_WIDGET_TYPES.contains(&w.widget_type.as_str()))
+        .filter(|w| {
+            pnex_core::APP_WIDGET_TYPES.contains(&w.widget_type.as_str())
+                // A bar writing a variable needs an application to hold it (D726).
+                || w.options.app.as_ref().is_some_and(|a| a.variable.is_some())
+        })
         .map(|w| {
             VizViolation::new(
                 Some(&w.id),

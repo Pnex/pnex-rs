@@ -139,8 +139,9 @@ pub struct AppWidgetOptions {
     /// `object_table`, `object_fields`: the properties shown.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub columns: Vec<String>,
-    /// The variable written (`input`, a row of `object_table`) or read
-    /// (`object_fields`, `object_form`, `action_button`).
+    /// The variable written (`input`, a row of `object_table`, a bar of
+    /// `range_bars`: the `enum` variable of the property it groups by) or
+    /// read (`object_fields`, `object_form`, `action_button`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variable: Option<String>,
     /// `object_table`: the screen a row opens.

@@ -82,11 +82,12 @@ Type `sales_target` : période (début, fin), montant, au niveau de l'org (§6).
 - **Taux de gain :** gagnés / (gagnés + perdus), en nombre, sur les opportunités **clôturées dans la période**. Les ouvertes n'y entrent pas.
 - **Conversion par étape :** part des opportunités entrées dans une étape qui ont atteint la suivante, sauts comptés comme passages. Les retours en arrière ne comptent pas deux fois.
 - **Bloquée :** ouverte et sans activité depuis 30 jours, seuil modifiable dans le pack.
-- Le widget affiche sa définition, et le clic sur un tableau ouvre les fiches concernées. Le clic sur une barre reste à faire.
+- Le widget affiche sa définition, et le clic sur un tableau ouvre les fiches concernées.
+- **Clic sur une barre (2026-11-06)** : il remplit un tableau **sur le même écran**, pas une page de liste. On reste dans l'application et dans ses droits (D508), sans route nouvelle : la barre écrit la valeur de son groupe dans une variable `enum` de l'application (même type, même propriété que son `group_by`, contrôlé à l'enregistrement de l'écran), et un tableau lit un ensemble paramétré par cette variable. Un second clic sur la même barre la vide. Livré sur Prospection (« Pistes par statut, aujourd'hui » → « Pistes du statut choisi »). Pas sur l'entonnoir : une barre y compte les pistes passées par un statut, pas celles qui l'ont, le tableau mentirait ; refusé à l'enregistrement. Pas sur Pipeline : son tableau des opportunités ouvertes est déjà à côté, et le paramétrer le viderait tant qu'aucune barre n'est cliquée. Les groupes « Autres » et « sans valeur » ne sont pas cliquables.
 
 ### D727 — Motifs de perte : une énumération, le texte reste
 
-`loss_category` (prix, concurrent, pas de budget, pas de décision, timing, autre) à côté de `loss_reason`. Valeurs à relire par Shan.
+`loss_category` (prix, concurrent, pas de budget, pas de décision, timing, autre) à côté de `loss_reason`. Valeurs gardées (2026-11-06) : elles couvrent les motifs courants, `other` et le texte libre gardent le reste ; une valeur ajoutée plus tard ne casse rien, en retirer une si.
 
 ## 4. Écrans
 
@@ -111,7 +112,7 @@ Filtres pour celui qui regarde : la **période** de l'écran Résultats est livr
 
 Le mail planifié n'est pas dans ces lots : un flow avec le nœud `ontology_aggregate` et une notification le permet déjà.
 
-État de TB1 : Pipeline a gagné deux listes (bloquées, sans activité enregistrée), Résultats et Prospection existent, sur le tous temps. Depuis la version 3.7.0 du pack, le statut d'une piste a un historique (entonnoir `new`, `contacted`, `qualified`, `converted` ; `disqualified` arrête le chemin) : Prospection montre en tête les pistes ayant atteint chaque statut et la part passée au suivant, depuis le début du suivi, puis l'état courant par statut et par source (2026-11-05). Pas de reprise du passé : comme pour les étapes (D722). Reste à faire : « répondu » et « intéressé » n'existent pas comme statuts, le taux de réponse reste sur l'écran Chiffres, et l'entonnoir n'est pas encore découpé par salon ou par source. Limite : le clic vers les fiches existe sur les tableaux, pas encore sur les barres (D726).
+État de TB1 : Pipeline a gagné deux listes (bloquées, sans activité enregistrée), Résultats et Prospection existent, sur le tous temps. Depuis la version 3.7.0 du pack, le statut d'une piste a un historique (entonnoir `new`, `contacted`, `qualified`, `converted` ; `disqualified` arrête le chemin) : Prospection montre en tête les pistes ayant atteint chaque statut et la part passée au suivant, depuis le début du suivi, puis l'état courant par statut et par source (2026-11-05). Pas de reprise du passé : comme pour les étapes (D722). Reste à faire : « répondu » et « intéressé » n'existent pas comme statuts, le taux de réponse reste sur l'écran Chiffres, et l'entonnoir n'est pas encore découpé par salon ou par source. Depuis 3.8.0, un clic sur « Pistes par statut, aujourd'hui » liste les pistes de ce statut sous les graphiques (D726).
 
 ## 6. Décisions de Shan (2026-11-05)
 
@@ -124,18 +125,20 @@ Le mail planifié n'est pas dans ces lots : un flow avec le nœud `ontology_aggr
 
 Lecture seule par la route d'agrégat, masquage et droits existants (D582). `history` n'écrit que des valeurs d'énumération internes, par le chemin d'écriture commun, dans le stream de l'org. Une seule route nouvelle, en lecture : `POST /ontology/transitions/query`, `ontology:read`, org du principal, clés confrontées au schéma avant la requête O2 (R1, R18). Grille `security.md` §6 parcourue le 2026-11-05 : deux constats, SEC-65 et SEC-66.
 
-## 8. Décisions en attente de Shan (2026-11-05)
+## 8. Décisions du volet CRM (2026-11-06)
 
-Aucune ne bloque le commit. Ce qui est en place reste le choix prudent indiqué.
+Shan a demandé de finaliser le volet avec les bonnes décisions. Chacune peut être rouverte ; aucune n'efface de donnée.
 
-| Sujet | Question | En place aujourd'hui |
+| Sujet | Décision | Pourquoi |
 |---|---|---|
-| Filtre par propriétaire, écran Équipe | Permission dédiée et avis juridique : le lancer ? (§6) | Ni filtre ni écran |
-| Clic sur une barre (D726) | Que doit-il ouvrir : un tableau filtré sur le même écran, ou une page de liste ? | Clic sur les tableaux seulement |
-| Types de perte (D727) | Les valeurs conviennent-elles ? | `price`, `competitor`, `no_budget`, `no_decision`, `timing`, `other` |
-| `meeting.invitation_uid` | Identifiant technique, ou donnée personnelle à effacer ? | Non personnel, commentaire dans `prospecting_b2b.yaml` |
-| Reprise de l'historique d'étape | Remplir `object_transitions` depuis `object_changes` ? (D722) | Suivi à partir de cette version |
-| Orgs déjà supprimées (SEC-66) | Nettoyer leurs journaux restés dans O2 ? | Non rattrapées |
-| Journaux du serveur (SEC-65) | Masquer les valeurs recopiées avant de les envoyer à un outil externe ? | Sortie standard seulement |
-| Installation lente sous charge | Réduire le nombre de requêtes ? Une transaction unique gagnerait peu (environ 226 synchronisations disque par test, mesuré) | Budget e2e de 60 s |
-| Formulaire public de leads | Reporté par Shan : à quand ? | Non fait |
+| Filtre par propriétaire, écran Équipe | **Hors de ce volet.** Ni filtre ni écran. | Condition posée par Shan (§6.2) : avis d'un juriste avant de suivre l'activité de salariés. Ce n'est pas une décision technique. |
+| Clic sur une barre (D726) | **Tableau filtré sur le même écran**, livré sur Prospection. | Reste dans l'application et ses droits, sans route nouvelle (détail en D726). |
+| Types de perte (D727) | **Gardés tels quels.** | Couvrent les cas courants ; `other` + texte libre pour le reste. |
+| `meeting.invitation_uid` | **Identifiant technique, non personnel**, gardé après effacement. | Engendré par l'agenda pour retrouver l'invitation ; les personnes sont des liens à part. Il reste sur la réunion effacée pour qu'une invitation renvoyée soit refusée au lieu de la recréer. Limite : un agenda qui mettrait une adresse dans ses UID le rendrait personnel (commentaire dans `prospecting_b2b.yaml`). |
+| Reprise de l'historique d'étape | **Pas de reprise.** | Les dates d'un `object_changes` ancien ne disent pas toujours l'étape quittée ; mieux vaut un chiffre « depuis le début du suivi », écrit sur le widget, qu'un passé reconstruit faux. |
+| Orgs déjà supprimées (SEC-66) | **Pas de rattrapage.** | Les lignes restantes expirent avec la rétention O2 et plus aucune org ne peut les lire ; une org supprimée depuis le correctif l'est entièrement. Suivi au registre de sécurité. |
+| Journaux du serveur (SEC-65) | **Hors de ce volet**, suivi au registre de sécurité. | Sortie standard seulement aujourd'hui ; le masquage se décide avec l'outil externe choisi. |
+| Installation lente sous charge | **Budget e2e de 60 s gardé.** | Une transaction unique gagnerait peu (mesuré) ; rien de visible pour un humain. |
+| Formulaire public de leads | **Reste reporté** (décision de Shan, 2026-11-04). | Les pistes entrent par fichier, salon et mail (D591). |
+| Statuts « répondu », « intéressé » | **Pas de statuts ajoutés.** | Le taux de réponse existe déjà (écran Chiffres, par étape de relance) ; ajouter des statuts changerait le travail de chaque commercial pour un chiffre déjà là. |
+| Entonnoir par salon ou par source | **Pas ce volet.** | « Pistes converties par source » répond déjà à la question « quelle source convertit » ; un entonnoir par source demanderait un découpage du journal des transitions. |

@@ -216,9 +216,17 @@ pub fn ObjectsBody(widget: Widget) -> Element {
             .first()
             .and_then(|g| g.property.clone())
             .or(o.transitions.as_ref().map(|t| t.property.clone()));
+        // A funnel bar counts what passed a value: it filters nothing (D726).
+        let pick = widget
+            .options
+            .app
+            .as_ref()
+            .and_then(|a| a.variable.clone())
+            .filter(|v| !v.is_empty() && o.transitions.is_none() && cx.is_some());
         return rsx! {
             ObjectsBars {
                 widget: widget.clone(),
+                pick,
                 rows: result
                     .groups
                     .iter()
@@ -231,7 +239,9 @@ pub fn ObjectsBody(widget: Widget) -> Element {
                         } else {
                             group_label(g, &all_types, type_key.as_deref(), property.as_deref())
                         };
-                        (label, value_of(g))
+                        // "Others" and "no value" have no value to filter on.
+                        let key = g.key.first().cloned().flatten().filter(|_| !is_others);
+                        (key, label, value_of(g))
                     })
                     .collect::<Vec<_>>(),
                 truncated: result.truncated,
@@ -288,14 +298,26 @@ pub fn ObjectsBody(widget: Widget) -> Element {
 }
 
 /// One line per group: the label, a bar proportional to the value, the value.
+/// With `pick`, a click on a line writes its value into that variable of the
+/// application, and a second click clears it (D726).
 #[component]
-fn ObjectsBars(widget: Widget, rows: Vec<(String, AggregateValue)>, truncated: bool) -> Element {
+fn ObjectsBars(
+    widget: Widget,
+    rows: Vec<(Option<String>, String, AggregateValue)>,
+    truncated: bool,
+    #[props(default)] pick: Option<String>,
+) -> Element {
+    let cx = try_use_context::<AppRunCx>();
+    let picked = match (&cx, &pick) {
+        (Some(c), Some(v)) => c.vars.read().get(v).cloned().filter(|x| !x.is_empty()),
+        _ => None,
+    };
     let decimals = widget.options.decimals.unwrap_or(0);
     let d = decimals as usize;
     let unit = widget.options.unit.clone().unwrap_or_default();
     let max = rows
         .iter()
-        .filter_map(|(_, v)| single(v))
+        .filter_map(|(_, _, v)| single(v))
         .fold(0.0_f64, f64::max);
     rsx! {
         div {
@@ -307,7 +329,7 @@ fn ObjectsBars(widget: Widget, rows: Vec<(String, AggregateValue)>, truncated: b
             if rows.is_empty() {
                 p { class: "text-xs text-gray-500", {t!("objects-empty")} }
             }
-            for (label, v) in rows.iter() {
+            for (key, label, v) in rows.iter() {
                 {
                     let pct = crate::components::range_bars::bar_pct(single(v), max);
                     let text = match single(v) {
@@ -315,14 +337,38 @@ fn ObjectsBars(widget: Widget, rows: Vec<(String, AggregateValue)>, truncated: b
                         _ if !v.by_currency.is_empty() => money_text(v, decimals),
                         _ => "—".to_string(),
                     };
+                    let on = key.is_some() && *key == picked;
+                    let target = match (&cx, &pick, key) {
+                        (Some(c), Some(var), Some(k)) => Some((c.vars, var.clone(), k.clone())),
+                        _ => None,
+                    };
+                    let class = if on {
+                        "mb-0.5 block w-full rounded px-1 py-1 text-left text-xs bg-signal-50 font-medium"
+                    } else {
+                        "mb-0.5 block w-full rounded px-1 py-1 text-left text-xs hover:bg-gray-50"
+                    };
                     rsx! {
-                        div { class: "mb-1.5 text-xs", "data-testid": "objects-bar",
-                            div { class: "flex justify-between gap-2",
-                                span { class: "truncate", "{label}" }
-                                span { class: "shrink-0 tabular-nums", "{text}" }
+                        if let Some((mut vars, var, k)) = target {
+                            button {
+                                r#type: "button",
+                                class,
+                                "aria-pressed": "{on}",
+                                "data-testid": "objects-bar",
+                                onclick: move |_| {
+                                    let (var, k) = (var.clone(), k.clone());
+                                    vars.with_mut(|m| {
+                                        if on {
+                                            m.remove(&var);
+                                        } else {
+                                            m.insert(var, k);
+                                        }
+                                    });
+                                },
+                                BarLine { label: label.clone(), text: text.clone(), pct }
                             }
-                            div { class: "mt-0.5 h-1.5 rounded bg-gray-200",
-                                div { class: "h-full rounded bg-signal-500", style: "width: {pct}%;" }
+                        } else {
+                            div { class: "mb-0.5 px-1 py-1 text-xs", "data-testid": "objects-bar",
+                                BarLine { label: label.clone(), text, pct }
                             }
                         }
                     }
@@ -330,6 +376,22 @@ fn ObjectsBars(widget: Widget, rows: Vec<(String, AggregateValue)>, truncated: b
             }
             if truncated {
                 p { class: "mt-1 text-xs text-gray-500", {t!("objects-truncated")} }
+            }
+        }
+    }
+}
+
+#[component]
+fn BarLine(label: String, text: String, pct: f64) -> Element {
+    rsx! {
+        div { class: "flex justify-between gap-2",
+            span { class: "truncate", "{label}" }
+            span { class: "shrink-0 tabular-nums", "{text}" }
+        }
+        div { class: "mt-0.5 h-1.5 rounded bg-gray-200",
+            div {
+                class: "h-full rounded bg-signal-500",
+                style: "width: {pct}%;",
             }
         }
     }

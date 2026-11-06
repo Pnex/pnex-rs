@@ -657,7 +657,21 @@ pub fn check_screen(
             let mut bad = |code: &str, msg: String| {
                 out.push(VizViolation::new(Some(&w.id), code, msg));
             };
+            // A bar click writes its value into this variable (D726).
+            let picked = w
+                .options
+                .app
+                .as_ref()
+                .and_then(|a| a.variable.as_deref())
+                .and_then(|n| app.variables.iter().find(|v| v.name == n));
             if let Some(t) = &o.transitions {
+                if let Some(v) = picked {
+                    // A funnel bar counts what passed a value, not what holds it.
+                    bad(
+                        "app_variable_kind",
+                        format!("a funnel writes no variable (\"{}\")", v.name),
+                    );
+                }
                 if !app.scope.types.contains(&t.type_key) {
                     bad(
                         "objects_selection",
@@ -686,6 +700,19 @@ pub fn check_screen(
                         bad("app_variable_unknown", format!("unknown variable \"{v}\""));
                     }
                     Some(_) => {}
+                }
+            }
+            if let Some(v) = picked {
+                let by = o.group_by.first().and_then(|g| g.property.as_deref());
+                let fits = v.kind == VariableKind::Enum
+                    && by.is_some()
+                    && v.property.as_deref() == by
+                    && v.type_key == set.query.type_key;
+                if !fits {
+                    bad(
+                        "app_variable_kind",
+                        format!("variable \"{}\" is not the enum the bars group by", v.name),
+                    );
                 }
             }
             let hide = crate::services::ontology::redact::Redaction::NONE;

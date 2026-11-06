@@ -351,6 +351,22 @@ pub fn ObjectsSourcePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
         .unwrap_or_else(|| metric(MetricOp::Count, None));
     let current_op = current.op.unwrap_or(MetricOp::Count);
     let split = split_value(o.group_by.first());
+    // In an application, a bar click can write the enum variable of the
+    // property the bars split by (sales-dashboards.md D726).
+    let bar_var = widget.options.app.as_ref().and_then(|a| a.variable.clone());
+    let bar_vars: Vec<String> = match (&app, split.strip_prefix("p:")) {
+        (Some(a), Some(prop)) if widget.widget_type == pnex_core::RANGE_BARS => a
+            .variables
+            .iter()
+            .filter(|v| {
+                v.kind == pnex_core::apps::VariableKind::Enum
+                    && v.property.as_deref() == Some(prop)
+                    && v.type_key == type_key
+            })
+            .map(|v| v.name.clone())
+            .collect(),
+        _ => Vec::new(),
+    };
     let bucket = o
         .group_by
         .first()
@@ -575,6 +591,19 @@ pub fn ObjectsSourcePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                     onchange: move |e| {
                         let v = e.value();
                         change(&mut |s| s.group_by = split_of(&v, bucket));
+                        // The bar variable belongs to the old split.
+                        let id = id.peek().clone();
+                        layout
+                            .with_mut(|l| {
+                                if let Some(a) = l
+                                    .widgets
+                                    .iter_mut()
+                                    .find(|w| w.id == id)
+                                    .and_then(|w| w.options.app.as_mut())
+                                {
+                                    a.variable = None;
+                                }
+                            });
                     },
                     option { value: "", selected: split.is_empty(), {t!("objects-no-split")} }
                     for (value, label) in splits.iter() {
@@ -614,6 +643,35 @@ pub fn ObjectsSourcePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
                                 value: k,
                                 selected: bucket.sql() == k,
                                 "{label}"
+                            }
+                        }
+                    }
+                }
+                if !bar_vars.is_empty() {
+                    label { class: "text-xs text-gray-500", {t!("insp-app-bar-variable")} }
+                    select {
+                        class: INPUT,
+                        "data-testid": "objects-bar-variable",
+                        disabled: !can_write,
+                        onchange: move |e| {
+                            let v = e.value();
+                            let id = id.peek().clone();
+                            layout
+                                .with_mut(|l| {
+                                    if let Some(w) = l.widgets.iter_mut().find(|w| w.id == id) {
+                                        w.options.app.get_or_insert_with(Default::default).variable = (!v
+                                            .is_empty())
+                                            .then(|| v.clone());
+                                    }
+                                });
+                        },
+                        option { value: "", selected: bar_var.is_none(), {t!("insp-app-none")} }
+                        for v in bar_vars.iter() {
+                            option {
+                                key: "{v}",
+                                value: "{v}",
+                                selected: bar_var.as_deref() == Some(v.as_str()),
+                                "{v}"
                             }
                         }
                     }

@@ -103,7 +103,9 @@ tests sur l'ontologie inventée (`article`, `auteur`, lien `ecrit_par`).
   entre écrans) : `name` (`[a-z][a-z0-9_]*`), `kind` (`text`, `number`,
   `date`, `object`, `enum`), `type_key` pour `object`, `default`.
 - Écrites par : un champ de saisie, la sélection d'une ligne de tableau
-  (variable `object`), le paramètre d'URL `?v.<nom>=…` (deep-link).
+  (variable `object`), le clic sur une barre d'un graphique d'agrégat
+  (variable `enum` de la propriété qu'il groupe, second clic = vide ;
+  `sales-dashboards.md` D726), le paramètre d'URL `?v.<nom>=…` (deep-link).
 - Lues par : les paramètres des ensembles d'objets, les fiches, les
   formulaires, les boutons d'action.
 - État local à la session de l'utilisateur, jamais en base. Une variable

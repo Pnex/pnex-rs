@@ -269,7 +269,7 @@ Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennen
 
 Écran livré le 2026-11-02 sur la fiche d'un objet : bouton « Effacer les données personnelles » (permission `ontology:delete`, type qui porte des données classées), date d'effacement et fiche en lecture seule, « Masqué » à la place d'une propriété cachée, base légale de l'org en pied de fiche d'une personne ou d'une piste. Essayé dans un navigateur le 2026-11-02 (effacement d'une piste, base légale) ; affichage « Masqué » et bandeau vus en réel pour un rôle restreint le même jour.
 
-Reste : l'export du registre des traitements (pas de registre dans PneX aujourd'hui), le masquage des titres dans les pages générées pour leurs lecteurs suivants (I5).
+Reste : le masquage des titres dans les pages générées pour leurs lecteurs suivants (I5). Décidé le 2026-11-06, à la clôture du volet CRM : **pas d'export du registre des traitements** dans PneX. Le registre (RGPD art. 30) est tenu par le responsable de traitement, c'est-à-dire l'org cliente, pour tous ses outils ; PneX lui fournit les éléments à y recopier, déjà visibles dans l'interface : base légale et durée de rétention (réglages de `prospecting_b2b`), catégories de données (classification `personal` des propriétés), effacements et oppositions (fiche de l'objet). Un export généré ferait croire à un registre complet alors qu'il ne couvrirait que PneX.
 
 ### Lots CRM1–CRM2 — 2026-10-26, non commité
 

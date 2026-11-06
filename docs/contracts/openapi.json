@@ -1979,7 +1979,7 @@
             "description": "The widget's title per language, for a screen a pack ships."
           },
           "variable": {
-            "description": "The variable written (`input`, a row of `object_table`) or read\n(`object_fields`, `object_form`, `action_button`).",
+            "description": "The variable written (`input`, a row of `object_table`, a bar of\n`range_bars`: the `enum` variable of the property it groups by) or\nread (`object_fields`, `object_form`, `action_button`).",
             "type": [
               "string",
               "null"
