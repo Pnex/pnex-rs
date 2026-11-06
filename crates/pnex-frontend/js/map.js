@@ -284,6 +284,11 @@ maplibreGl.setWorkerUrl(
         // a seq greater than the last one it saw.
         host._pnexMapClickSeq = host._pnexMapClickSeq || 0;
         host._pnexMapViewSeq = host._pnexMapViewSeq || 0;
+        // Back on the page, the host is a new element whose sequence starts
+        // again at 1: the previous map's last view (a higher seq) must not
+        // stay readable, or the page fetches points for it, then ignores
+        // every view of this map as already seen.
+        window.__pnexMapView = null;
         map.on('error', function (e) {
           setErr(host, (e && e.error && e.error.message) || 'map');
         });
@@ -313,7 +318,9 @@ maplibreGl.setWorkerUrl(
         });
         map.on('load', function () {
           pushView();
-          if (opts.items) api.setItems(hostId, opts.items);
+          // An empty list here would wipe the markers the page may already
+          // have pushed while the style loaded.
+          if (opts.items && opts.items.length) api.setItems(hostId, opts.items);
           host._pnexTracksDrawn = false;
           drawZones(host);
           drawTracks(host);
