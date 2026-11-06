@@ -235,6 +235,37 @@ async fn a_bad_file_is_refused_and_leaves_nothing_visible() {
 
 #[tokio::test]
 #[serial]
+async fn a_replaced_version_lives_as_long_as_its_dataset_keeps_it() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let store = datasets::store_of(&ctx.config).unwrap();
+        let mut prefixes = Vec::new();
+        for name in ["default_kept", "one_day"] {
+            let (_, d) = create(&server, &env.alice, org, name).await;
+            let id = d["id"].as_str().unwrap().to_string();
+            for body in ["a\n1\n", "a\n2\n"] {
+                let (s, t) = load(&server, &env.alice, org, &id, "", body).await;
+                assert_eq!(s, 201, "{t}");
+            }
+            prefixes.push(format!("org_{org}/datasets/{id}/"));
+        }
+        // What a transform's `retain_days: 1` writes; the other keeps the default (90).
+        let one_day = format!("UPDATE datasets SET retain_days = 1 WHERE org_id = {org} AND name = 'one_day'");
+        sql(&ctx.db, &one_day).await;
+        let aged = format!(
+            "UPDATE dataset_transactions SET committed_at = now() - interval '2 days' WHERE org_id = {org}"
+        );
+        sql(&ctx.db, &aged).await;
+        datasets::purge(&ctx.db, &store).await.unwrap();
+        assert_eq!(store.list_prefix(&prefixes[0]).await.unwrap().len(), 2);
+        // The latest version is never purged, whatever the retention.
+        assert_eq!(store.list_prefix(&prefixes[1]).await.unwrap().len(), 1);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn isolation_between_orgs_and_viewer_read_only() {
     with_app(|server, env, _ctx| async move {
         let org_a = personal_org(&server, &env.alice).await;

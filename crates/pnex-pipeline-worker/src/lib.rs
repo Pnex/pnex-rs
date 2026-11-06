@@ -519,16 +519,23 @@ impl Worker {
         Ok(&read == inputs)
     }
 
-    /// The dataset an output writes. The table of an import is refused: it feeds a
-    /// sync written with the role of the import's author.
-    async fn output_dataset(&self, org_id: i64, name: &str) -> Result<Uuid, Failure> {
+    /// The dataset an output writes, with the retention its transform sets (null: the
+    /// default). The table of an import is refused: it feeds a sync written with the
+    /// role of the import's author.
+    async fn output_dataset(
+        &self,
+        org_id: i64,
+        name: &str,
+        retain_days: Option<u16>,
+    ) -> Result<Uuid, Failure> {
         let row = sqlx::query(
-            "INSERT INTO datasets (org_id, name) VALUES ($1, $2) \
-             ON CONFLICT (org_id, name) DO UPDATE SET name = EXCLUDED.name \
+            "INSERT INTO datasets (org_id, name, retain_days) VALUES ($1, $2, $3) \
+             ON CONFLICT (org_id, name) DO UPDATE SET retain_days = EXCLUDED.retain_days \
              RETURNING id, import_id",
         )
         .bind(org_id)
         .bind(name)
+        .bind(retain_days.map(i32::from))
         .fetch_one(&self.pool)
         .await
         .map_err(db_failure)?;
@@ -636,7 +643,9 @@ impl Worker {
             .iter()
             .flat_map(|i| i.transactions.iter().copied())
             .collect();
-        let output_id = self.output_dataset(org_id, &t.output).await?;
+        let output_id = self
+            .output_dataset(org_id, &t.output, t.retain_days)
+            .await?;
         if self
             .up_to_date(output_id, pipeline_id, version, &read)
             .await?

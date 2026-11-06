@@ -296,6 +296,7 @@ pub fn PipelineStudio(id: String) -> Element {
             inputs: BTreeMap::from([("source".to_string(), source)]),
             sql: "SELECT * FROM source".to_string(),
             checks: Checks::default(),
+            retain_days: None,
         });
         selected.set(Some(output));
         column.set(true);
@@ -1061,6 +1062,7 @@ mod tests {
             inputs: BTreeMap::from([("c".to_string(), "clean".to_string())]),
             sql: "SELECT * FROM c".into(),
             checks: Checks::default(),
+            retain_days: None,
         });
         d
     }

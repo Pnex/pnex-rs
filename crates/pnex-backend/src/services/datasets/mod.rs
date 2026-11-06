@@ -39,9 +39,9 @@ const DEAD_AFTER_MINUTES: i64 = 10;
 const HEARTBEAT_EVERY: Duration = Duration::from_secs(60);
 /// A row group past this size goes to the store, whatever its row count.
 const ROW_GROUP_BYTES: usize = 64 * 1024 * 1024;
-/// How long a replaced version stays readable through `as_of`.
-// shortcut: one duration for everyone, make it a dataset setting when one needs another.
-const RETAIN_DAYS: i64 = 90;
+/// How long a replaced version stays readable through `as_of`, unless the transform
+/// writing the dataset sets its own (`datasets.retain_days`).
+const RETAIN_DAYS: u16 = pnex_core::pipelines::RETAIN_DAYS_DEFAULT;
 const PURGE_EVERY: Duration = Duration::from_secs(600);
 const PURGE_BATCH: i64 = 500;
 /// No upload lasts this long, media or table: one this old lost its process.
@@ -962,10 +962,12 @@ pub async fn purge(db: &DatabaseConnection, store: &S3Store) -> Result<usize, Da
         .query_all_raw(stmt(
             &format!(
                 "SELECT t.id, t.org_id, t.dataset_id FROM dataset_transactions t \
+                 JOIN datasets d ON d.id = t.dataset_id \
                  WHERE t.purged_at IS NULL AND ( \
                    t.state = 'aborted' \
                    OR (t.state = 'committed' \
-                       AND t.committed_at < now() - interval '{RETAIN_DAYS} days' \
+                       AND t.committed_at < now() \
+                         - interval '1 day' * coalesce(d.retain_days, {RETAIN_DAYS}) \
                        AND t.seq < (SELECT max(s.seq) FROM dataset_transactions s \
                                     WHERE s.dataset_id = t.dataset_id AND s.state = 'committed' \
                                     AND s.kind = 'snapshot')) \

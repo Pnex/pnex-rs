@@ -12,6 +12,9 @@ pub const ALIAS_MAX: usize = 63;
 pub const SQL_MAX_BYTES: usize = 64 * 1024;
 pub const DOCUMENT_MAX_BYTES: usize = 1024 * 1024;
 pub const CHECK_COLUMNS_MAX: usize = 32;
+/// How long a replaced version of an output stays readable, when its transform says nothing.
+pub const RETAIN_DAYS_DEFAULT: u16 = 90;
+pub const RETAIN_DAYS_MAX: u16 = 3650;
 /// Steps of one build: everything an org could chain together.
 pub const BUILD_STEPS_MAX: usize = 200;
 
@@ -38,6 +41,10 @@ pub struct Transform {
     /// current (D576).
     #[serde(default, skip_serializing_if = "Checks::is_empty")]
     pub checks: Checks,
+    /// Days a replaced version of the output stays readable through `as_of`, from 1 to
+    /// 3650. Default: 90. The latest version is never purged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retain_days: Option<u16>,
 }
 
 /// What a computed result must hold before it is committed (D576).
@@ -149,6 +156,7 @@ impl PipelineDocument {
                 inputs: BTreeMap::from([("source".to_string(), input.to_string())]),
                 sql: "SELECT * FROM source".to_string(),
                 checks: Checks::default(),
+                retain_days: None,
             }],
         }
     }
@@ -234,6 +242,9 @@ impl PipelineDocument {
             }
             t.checks
                 .violations(&format!("transforms.{i}.checks"), &mut bad);
+            if t.retain_days.is_some_and(|d| d == 0 || d > RETAIN_DAYS_MAX) {
+                bad(format!("transforms.{i}.retain_days"), "invalid");
+            }
             for (alias, dataset) in &t.inputs {
                 let path = format!("transforms.{i}.inputs.{alias}");
                 if !valid_alias(alias) || !valid_name(dataset) {
@@ -725,6 +736,7 @@ mod tests {
                         .collect(),
                     sql: sql.into(),
                     checks: Checks::default(),
+                    retain_days: None,
                 })
                 .collect(),
         }
@@ -920,6 +932,29 @@ mod tests {
                 "transforms.0.checks.max_drop_pct=invalid",
             ]
         );
+    }
+
+    #[test]
+    fn retention_is_a_day_count_up_to_ten_years() {
+        let mut d = doc(vec![("a", vec![("x", "raw")], "SELECT 1")]);
+        for (days, ok) in [
+            (None, true),
+            (Some(1), true),
+            (Some(RETAIN_DAYS_MAX), true),
+            (Some(0), false),
+            (Some(RETAIN_DAYS_MAX + 1), false),
+        ] {
+            d.transforms[0].retain_days = days;
+            let want: &[&str] = if ok {
+                &[]
+            } else {
+                &["transforms.0.retain_days=invalid"]
+            };
+            assert_eq!(tokens(&d), want, "{days:?}");
+        }
+        let json = r#"{"transforms":[{"output":"a","inputs":{"x":"raw"},"sql":"SELECT 1","retain_days":30}]}"#;
+        let parsed: PipelineDocument = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.transforms[0].retain_days, Some(30));
     }
 
     #[test]

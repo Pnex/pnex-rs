@@ -1003,8 +1003,8 @@ assumés au regard de D569, à reprendre :
 
 - **Pas de transaction `delete`** : rien ne l'appelle. L'effacement, lui, est livré
   (ci-dessous) ;
-- **Quota (20 Go) et conservation (90 jours) sont des constantes**, pas des réglages
-  par tier ou par dataset ;
+- **Quota (20 Go) est une constante**, pas un réglage par tier. La conservation se règle
+  par transformation depuis le 2026-11-06 (`retain_days`, 90 jours par défaut) ;
 - **Types** : un fichier chargé est tout en texte ; les types viennent des
   transformations (OP1.2) ;
 - **Un seul fichier par transaction**, écrit pendant la requête : la file de jobs
@@ -1177,6 +1177,11 @@ dans l'ordre, et un fichier disparu ne bloque que ce qui en dépend, qui garde s
   `max_empty_pct`, `max_drop_pct`, `same_columns`), mesurés par le worker sur le fichier
   écrit, avant le commit ; résultats sur la transaction. Fraîcheur : `max_age_hours` par
   table, balayage du serveur, une alerte par dépassement.
+- **Rétention d'une sortie** (2026-11-06) : `retain_days:` sur une transformation, de 1 à
+  3650, durée pendant laquelle une version remplacée reste lisible par `as_of`. Rien = 90
+  jours. Le worker l'écrit sur la table à chaque exécution (`datasets.retain_days`, la
+  définition fait foi), la purge du serveur l'applique ; la dernière version n'est jamais
+  purgée. Une table chargée à la main garde 90 jours.
 - **D578** : `dataset.committed` et `dataset.synced` sur `pnex:ds:v1:{org}`, publiés par le
   serveur depuis une marque en base (`published_at`) : le worker n'a ni Valkey ni
   notifications (D573), et un pod perdu entre commit et publication ne perd rien.
@@ -1463,7 +1468,7 @@ Rien ici ne bloque ce qui est livré. Chaque ligne renvoie au détail du §9.6.
 | TLS des connecteurs | `Require` sans vérifier le certificat : pas de protection contre un homme du milieu actif | `sslrootcert` par connecteur à la première demande | Client exigeant |
 | `object_imports` | Retirer la table une fois les origines migrées ? | Plus tard | Rien |
 | `fc_rs_xml` | XML imbriqué hors du chemin des tables, donc sans protection des éditions | À concevoir | Rien |
-| Quota et rétention | 20 Go et 90 jours en constantes, au lieu de réglages par tier | Avec la vente du stockage | Offre payante |
+| Quota | 20 Go en constante, au lieu d'un réglage par tier. La rétention, elle, se règle dans la pipeline (`retain_days`, 90 jours par défaut, fait le 2026-11-06) | Avec la vente du stockage | Offre payante |
 | Exécutions en parallèle | Une étape à la fois par build | Sur branche lente mesurée | Rien |
 | Reprise d'envoi | Un client arrêté recommence son fichier | Sur demande | Très gros fichiers sur lien instable |
 | `pin-utils` | Exception ajoutée à `deny.toml` (RUSTSEC-2026-0441), via `async-imap` | Accepter, sans correctif amont | Rien |

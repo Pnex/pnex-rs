@@ -268,6 +268,7 @@ mod tests {
                 .collect(),
             sql: "SELECT 1".into(),
             checks: Default::default(),
+            retain_days: None,
         };
         let doc = PipelineDocument {
             transforms: vec![t("clean", &["raw", "ref"]), t("final", &["clean", "ref"])],

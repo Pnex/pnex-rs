@@ -512,6 +512,7 @@ mod yaml_tests {
                     same_columns: true,
                     ..Checks::default()
                 },
+                retain_days: None,
             }],
         }
     }
