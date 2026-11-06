@@ -156,6 +156,19 @@ const RULES: &[Rule] = &[
         use_instead: "agents navigateur (D255)",
         allowed_keys: &[],
     },
+    // D729: what a run of an agent takes and leaves is an « entrée » or a « sortie ».
+    Rule {
+        scope: Scope::Fr,
+        term: "artefact",
+        use_instead: "entrée / sortie (fichier d'une exécution, D729)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "artefacts",
+        use_instead: "entrées / sorties (fichiers d'une exécution, D729)",
+        allowed_keys: &[],
+    },
     // The storyline view of a case is the « Histoire » (its tab name).
     Rule {
         scope: Scope::Fr,

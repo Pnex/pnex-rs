@@ -358,6 +358,16 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                 rail,
                 on_navigate,
             }
+            NavItem {
+                to: Route::HostedAgents {},
+                label: t!("nav-agents"),
+                active: at(Route::HostedAgents {}),
+                icon: rsx! {
+                    crate::components::icons::Sparkles { class: icon }
+                },
+                rail,
+                on_navigate,
+            }
             NavGroup {
                 label: t!("nav-group-monitor"),
                 active: monitor,

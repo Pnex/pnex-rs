@@ -15,6 +15,7 @@ use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::mailbox_messages::MailboxMessages;
 use crate::pages::mailboxes::Mailboxes;
 use crate::pages::pipelines::{PipelineStudio, PipelineTable, Pipelines};
+use crate::pages::hosted_agents::HostedAgents;
 use crate::pages::proposals::Proposals;
 use crate::pages::web_sites::{WebSiteStudio, WebSites};
 use crate::pages::{
@@ -139,6 +140,10 @@ pub enum Route {
 
         #[route("/ontology/types/:type_key")]
         OntologyType { type_key: String },
+
+        // Hosted agents and their runs (agent-environments.md D757, D761).
+        #[route("/agents")]
+        HostedAgents {},
 
         // What machines proposed, waiting for a human (proposals.md D374).
         #[route("/proposals")]

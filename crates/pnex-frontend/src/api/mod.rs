@@ -65,6 +65,7 @@ pub mod resources;
 pub mod search;
 /// Org secrets vault (D110–D117).
 pub mod secrets;
+pub mod hosted_agents;
 pub mod site_recipes;
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub mod stitch_jobs;
