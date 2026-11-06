@@ -67,3 +67,6 @@ deploy/vm/.cache/
 
 # Python bytecode of the helper scripts.
 __pycache__/
+
+# Registry credentials given for the acceptance tests: never in the repository (D745).
+scw-regsecert.yaml

@@ -267,6 +267,10 @@ les règles plus anciennes qui les contredisent.
 | Chaîne de traitements SQL d'une table à l'autre (D571) | Pipeline | Pipeline | pas « flux », pas « flow », pas « import » |
 | Requête d'un pipeline, de ses tables lues à sa table écrite (D358) | Traitement | Transform | pas « transformation », pas « étape » (= règle de navigation), pas « nœud » (= flow) |
 | Un passage d'un pipeline (D358) | Exécution | Run | pas « passage » (= règle de navigation), pas « job » |
+| Fiche d'un travail exécuté dans un bac à sable, identité de service de l'org (D757) | Agent | Agent | seul dans le menu Agents ; ailleurs « agent navigateur » et « agent edge » restent qualifiés |
+| Un passage d'un agent dans son bac (D731) | Exécution | Run | pas « run » en français, pas « job » (= travail du runner) |
+| Fichier donné à une exécution d'agent ou laissé par elle (D729) | Entrée / Sortie | Input / Output | pas « artefact » dans l'UI |
+| Lignes écrites par les conteneurs d'une exécution ou d'un build (D733) | Journal | Log | pas « logs » en français |
 | Une cible et ce dont elle dépend, exécutés dans l'ordre (D575) | Exécution enchaînée | Chained run | pas « build » (= compilation de firmware) |
 | Condition sur le résultat d'un traitement avant sa validation (D576) | Contrôle | Check | — |
 | Accès enregistré à une base externe, identifiants au coffre (D352) | Connecteur | Connector | pas « connexion » (= se connecter), pas « source » |

@@ -520,6 +520,8 @@ référencer qu'une opération `EXPOSED`.
 
 ## 18. Questions ouvertes
 
+Toutes closes le 2026-11-06 par `agent-environments.md` §11 (D750, D752, D756, D757).
+
 - **Q-A1** — Premier cas d'usage pour valider A1/A2 : veille
   (`partner-watch.md`), enquêtes, ingestion open data ?
 - **Q-A2** — Clusters cibles du runner en V1 : seulement ceux de

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | **Validé le 2026-11-04. E0, E1 et le build de E2 codés, non commités** ; build réel validé sur cluster et Scaleway sans le serveur ni le runner complets ; cache S3 des couches, scan Trivy, activation et nouveau scan quotidien codés ; SBOM stocké et tracé dans l'ontologie (D728) ; restent seuil et notification du scan (Q-E6), cache de dépendances, build sur VM. E3 : pod du bac prouvé sur cluster et branché au runner, pas encore à des runs. Recette sur cluster et sur VM en fin de chantier, API seule (pas de page) |
-| Numérotation | **D700…D720 et D728…D730**, lots **E0…E6** |
+| Numérotation | **D700…D720, D728…D733, D744…D759**, lots **E0…E6** ; PRD clos le 2026-11-06 (§11) |
 | Complète | `worker-fabric.md` §14 (runner, bacs à sable), `autonomous-agents.md` (D378–D401), `operational-platform.md` D561 |
 | Amende | D561 et fabric §14 : BuildKit au lieu de buildah (D700), secrets en variables d'environnement (D705) ; D394 : le catalogue de moteurs devient un usage des environnements (D704) |
 | Sécurité | `security.md` §6 avant tout lot ; finding = ligne SEC-n au §7 |
@@ -740,7 +740,7 @@ digest. Le serveur ne pousse rien : le runner prend le job comme les autres.
   budget LLM et exécute du code), `agents:stop` (Member). Lecture `EXPOSED` au MCP,
   lancement et arrêt `EXCLUDED` (runtime) : l'assistant ne lance ni n'arrête de run (D391).
 - **Pas encore** : agent = compte de service (D379) et sa clé propre (D710), politique,
-  dépôts à cloner et services de test dans la demande de run, artefacts (D729), page. La clé
+  dépôts à cloner et services de test dans la demande de run, page. La clé
   est celle de l'usage `agent` de l'org (D383, sans niveau agent).
 
 ### D733 — Journal d'un job, V1 de D719 : en fin de job, par le runner
@@ -763,9 +763,45 @@ Décision du 2026-11-06, qui applique D719 à tous les jobs du runner (build, so
   rang). Rien en base.
 - **Lecture** : `GET /api/v1/agent-runs/{id}/logs`, paginé, `agents:read`, `EXPOSED` au MCP
   (les secrets sont masqués). 503 `agent-run-logs-unavailable` sans O2.
-- **Limites V1** : un run arrêté à la main n'a pas de journal (le serveur ne prend plus rien
-  pour un job arrêté) ; rien n'arrive pendant le run, seulement à la fin ; pas encore de
-  route de lecture pour les builds, ni de lecture sur VM (Podman).
+- **Limites V1** : rien n'arrive pendant le run, seulement à la fin ; pas de lecture sur VM
+  (Podman). Le journal d'un run arrêté à la main et celui d'un build sont faits (D759).
+
+### D744 — Artefacts, V1 de D729 : noms fixes, deux conteneurs de transfert, jeton à part
+
+Décision du 2026-11-06, qui applique D729 au bac Kubernetes :
+
+- **Déclaration dans la demande de run** : `inputs: [{name, artifact_id}]`,
+  `outputs: [{name, required}]`, 16 de chaque au plus, noms `[a-z0-9-]`. **Le chemin n'est
+  pas libre** : entrée à `/artifacts/in/<nom>`, sortie à `/artifacts/out/<nom>`, données à
+  l'agent par `PNEX_ARTIFACTS_IN` et `PNEX_ARTIFACTS_OUT`. Une source d'entrée est un
+  artefact prêt de l'org : déposé par une personne (`POST /agent-artifacts?name=`, flux brut,
+  `agents:run`) ou sortie d'un run précédent. La fiche d'agent viendra avec D710.
+- **Deux conteneurs, l'image `init`** : `artifacts-in` (init, après `clone`) télécharge
+  chaque entrée et compare son SHA-256, puis dépose ; un écart arrête le pod avant `setup`
+  et l'agent. `artifacts-out`, sidecar natif, attend le `SIGTERM` de fin d'agent et envoie
+  chaque sortie ; la période de grâce du pod passe à 300 s quand des sorties sont déclarées.
+  Un fichier part tel quel, un dossier en tar de ses seuls fichiers réguliers ; un lien
+  symbolique est ignoré. Les deux scripts sont prouvés par `crates/pnex-runner/tests/artifact_scripts.rs`
+  (sh, curl, tar réels).
+- **Jeton d'artefacts `pnart_…`**, frappé au claim, haché en base, distinct du jeton de run :
+  il ne va qu'aux deux conteneurs de transfert, jamais à l'agent ni à `setup`. Il n'ouvre que
+  `GET /api/v1/agent-transfer/inputs/{nom}` et `PUT …/outputs/{nom}` des noms déclarés,
+  tant que le job tourne. Une sortie s'envoie une fois (409 ensuite).
+- **Stockage** : `org_<id>/agent-artifacts/<run>/<id>` et `…/uploads/<id>`, écrit en flux par
+  le serveur avec son empreinte ; ligne `agent_artifacts` (état `pending`, `ready`,
+  `refused`, `missing`, forme, taille, SHA-256, échéance), migration 000099.
+- **Limites, réglages globaux** `settings.agents.artifacts` : `max_bytes` (1 Gio),
+  `run_max_bytes` (4 Gio), `expires_days` (30). Dépassement : refus entier,
+  `agent-artifact-too-large`. Ménage horaire des artefacts échus, objets d'abord.
+- **Fin du job** : ce qui n'a pas été envoyé passe `missing` ; une sortie `required`
+  manquante fait échouer un run que l'agent avait réussi (`error =
+  agent-run-output-missing`). Un arrêt à la main ferme aussi les sorties.
+- **Lecture** : `GET /agent-runs/{id}/artifacts` et `GET /agent-artifacts/{id}`
+  (`agents:read`, `EXPOSED`) ; contenu `GET /agent-artifacts/{id}/content` en pièce jointe,
+  `nosniff`, permission **`agent-artifacts:read`** (Member), `EXCLUDED` (binaire).
+- **Pas encore** : objet `agent_artifact` dans l'ontologie (D708), source « média », VM,
+  cache de dépendances par ce chemin (D730), workspace d'échec (D719), preuve sur le
+  cluster.
 
 ### D732 — Passerelle LLM : deux protocoles, le modèle de l'org, compté et tracé
 
@@ -837,31 +873,25 @@ Décision du 2026-11-06, qui applique D719 à tous les jobs du runner (build, so
 Ordre : E0 → E1 → E2 → E3 → E4, puis A0/A1. Chaque lot de E0 à E3 se teste sur un
 vrai cluster : les tests d'un bac à sable sans vrai noyau ne prouvent rien.
 
-## 9. Questions ouvertes
+## 9. Questions ouvertes : toutes tranchées le 2026-11-06
 
-- **Q-E3** — Jeton dédié à la recette, et séparé en lecture et en écriture : Scaleway est retenu, le test a utilisé un seul compte.
-- **Q-E4** — Reconstruction périodique pour reprendre les correctifs de la base :
-  à planifier avec D575, ou geste humain en V1 ?
-- **Q-E5** — Milieu fermé : miroir de la base de vulnérabilités (y compris la base Java de
-  Trivy), des images de base et des paquets.
-- **Q-E7** — Egress en liste blanche sur VM, sans `NetworkPolicy` : réseau interne Podman et
-  proxy, ou règles nftables par conteneur ? À trancher avant E3.
-- **Q-E8** — Moteur de la première démonstration : Claude Code (proposé, licence à vérifier) ou moteur
-  open source.
-- **Q-E9** — Clé LLM de test : fournisseur et emplacement.
-- **Q-E10** — Scénario de démonstration : petit dépôt de test avec un bug, sur quelle forge (GitLab proposé,
-  rejoint Q-A3).
-- **Q-E11** — Chaîne complète serveur + runner : serveur PneX de test dans `pnex-agents-test` (proposé) ou
-  serveur existant joignable depuis le cluster.
-- **Q-E12** — Vrai RustFS du namespace `pnex` pour la recette : il faudrait une `NetworkPolicy` entrante et ses
-  clés. Copie de test dans `pnex-agents-test` en attendant (proposé).
-- **Q-E13** — Proxy de sortie par nom pour l'egress d'un bac, une `NetworkPolicy` ne voyant que des adresses.
-- **Q-E14** — Limites en réglages globaux : artefacts (D729), caches (D730), taille du pod de build, rétention
-  des streams de SBOM (10 ans en dur) et d'événements de scan.
-- **Q-E15** — Compte Scaleway unique pour la recette : créer une clé de lecture seule pour tester D703 pour de
-  vrai. `scw-regsecert.yaml` doit quitter le dépôt.
-- **Q-E6** — Seuil par défaut du scan (critique seulement ?), et refus du run ou simple
-  signalement.
+Plus aucune question ne bloque le code. Chacune est close par une décision du §11 ; ce qui
+reste demande un geste, pas une discussion (§11.3).
+
+| Question | Close par |
+|---|---|
+| Q-E3, Q-E15 — Comptes Scaleway, lecture et écriture séparées | D745 |
+| Q-E4 — Reconstruction périodique | D746 |
+| Q-E5 — Milieu fermé | D747 |
+| Q-E6 — Seuil du scan | D748 |
+| Q-E7 — Egress sur VM | D749 |
+| Q-E8 — Moteur de la démonstration (et Q-A7) | D750 |
+| Q-E9 — Clé LLM de test | D751 |
+| Q-E10 — Scénario et forge (et Q-A3) | D752 |
+| Q-E11, Q-E12 — Serveur de recette, RustFS de recette | D753 |
+| Q-E13 — Egress par nom | D754 |
+| Q-E14 — Limites en réglages globaux | D755 |
+| Q-A1, Q-A2, Q-A4, Q-A5, Q-A6, Q-A8, Q-A9, Q-A10 (`autonomous-agents.md` §18) | D756 |
 
 ## 10. Récapitulatif des décisions
 
@@ -894,3 +924,264 @@ vrai cluster : les tests d'un bac à sable sans vrai noyau ne prouvent rien.
 | D731 | Run = job `sandbox` sur le build actif ; token de run frappé à chaque claim, valable tant que le job tourne ; adresse de la passerelle résolue au claim pour l'egress |
 | D732 | Passerelle LLM Anthropic et OpenAI, modèle de l'usage `agent` imposé, flux rendu tel quel et compté, budget par run et par jour, empreintes dans O2 |
 | D733 | Journal d'un job en fin de job : `pods/log` lu par le runner, secrets livrés masqués par le runner puis formes d'identifiant par PneX, une ligne par enregistrement O2, lu sur le run |
+| D744 | Artefacts V1 : noms fixes sous `/artifacts/{in,out}`, conteneurs `artifacts-in` et `artifacts-out`, jeton `pnart_` à part, empreinte vérifiée, limites en réglages globaux, sortie requise manquante = échec |
+| D745 | Recette Scaleway : clé de lecture et clé d'écriture séparées ; le compte unique ne sert qu'au test, son fichier reste hors du dépôt |
+| D746 | Reconstruction d'une version : geste humain en V1, planifiée plus tard avec D575 |
+| D747 | Milieu fermé hors V1 ; miroirs en réglages globaux le jour venu |
+| D748 | Seuil du scan : faille critique corrigeable signalée par défaut, refus en option de l'org |
+| D749 | Pas de bac sur une VM partagée ; le bac sur VM vient avec la VM jetable (E6) |
+| D750 | Moteur : choix de l'org, aucun par défaut ni livré ; PneX garantit les protocoles Anthropic et OpenAI-compatible |
+| D751 | Clés LLM de test Anthropic et OpenAI-compatible, saisies dans l'UI, au coffre de l'org de recette |
+| D752 | Démonstration : dépôt GitHub privé créé par `gh`, test rouge, ticket en entrée, correctif requis en sortie |
+| D753 | Recette de bout en bout : serveur PneX dans `pnex-agents-test`, `rustfs-test`, sans donnée réelle |
+| D754 | Egress : adresses au claim, plages publiées pour une forge, proxy par nom seulement sur cas réel |
+| D755 | Limites en réglages `settings.agents.*` avec leurs défauts, puis page Système |
+| D756 | Questions du PRD agents closes (premier cas = agent correcteur, clusters de l'exploitant, tokens seuls…) |
+| D757 | Agent = compte de service dès V1, rôle borné par son auteur, fiche versionnée, run lancé depuis la fiche en resserrant, intersection des droits |
+| D758 | Dépôts et services déclarés dans la fiche ou le run, jeton au seul `clone`, mots de passe générés |
+| D759 | Logs d'un run arrêté pris pendant dix minutes ; logs de build lisibles |
+| D760 | Recette locale d'abord : kind + registre local + runner + serveur de dev, par la CLI seule |
+| D761 | Réponses pour R1 à R10 : agents par Admin et `viewer`, quota à part, entrée « Agents », `agent_ops` au premier usage, Firecracker pour E6, recette cluster par Claude, poussée à 19 h |
+
+
+## 11. Clôture du PRD (2026-11-06)
+
+Demande du 2026-11-06 : finir le PRD pour ne plus avoir à revenir en discuter. Shan a
+tranché le 2026-11-06 le moteur, la forge, l'identité de l'agent, le bac sur VM, le seuil du
+scan, la clé de test et le serveur de recette (D748 à D753, D757). Les autres décisions
+prennent la proposition déjà écrite, sinon le choix le plus sûr et le plus petit. Les
+changer reste possible, mais il faut alors une nouvelle décision : le code ne s'arrête plus
+pour attendre.
+
+### 11.1 Décisions de clôture
+
+**D745 — Recette Scaleway : deux clés, la clé unique ne sert qu'au test.** La recette de
+D703 demande une clé de lecture seule (pull) et une clé d'écriture (push), créées dans la
+console Scaleway. Jusque-là, le compte unique de `scw-regsecert.yaml` ne sert qu'aux tests
+du namespace `pnex-agents-test`. Ce fichier n'entre jamais dans le dépôt : il est ignoré
+(`.gitignore`), et sa place est hors du dépôt (`~/.config/pnex/`), sous forme de Secret
+`regcred` dans le namespace de test.
+
+**D746 — Reconstruction : geste humain en V1.** Quand un scan trouve une faille corrigée
+dans une version plus récente, la version porte « reconstruire » (D720). Il n'y a pas de
+reconstruction planifiée en V1 : elle viendra avec la planification de D575, comme un job
+de plus, et une activation restera humaine (D702).
+
+**D747 — Milieu fermé : hors V1.** Rien ne se construit ni ne se scanne sans Internet en
+V1. Le jour où un client le demande, il faudra un miroir OCI des images de base et de la base
+Trivy (`--db-repository`, base Java comprise), plus un miroir des paquets. Ce seront des
+réglages globaux (D755), sans code propre à ce mode.
+
+**D748 — Seuil du scan : signaler, jamais refuser par défaut** (Shan, 2026-11-06). Est signalée par défaut
+toute faille critique qui a une version corrigée : notification à `environments:write` et
+marque sur la version. Le run n'est pas refusé. L'org peut choisir `refuse`, qui bloque
+l'activation et le run d'une version au-dessus du seuil. Les niveaux possibles sont
+`critical` (par défaut), `high`, ou aucun seuil.
+
+**D749 — Pas de bac sur une VM partagée** (Shan, 2026-11-06). Sans `NetworkPolicy`, un Podman rootless ne
+peut pas tenir l'egress d'un conteneur en liste blanche sans droits root. Une VM partagée
+n'exécute donc que des builds et des sondes, et n'annonce jamais `sandbox:pod`. Le bac sur
+VM arrive avec la VM jetable de E6, dont le pare-feu nftables (root dans la VM, qui meurt
+avec le job) tient la liste. Les artefacts y suivent le même chemin (D744).
+
+**D750 — Moteur : le choix de l'org, aucun par défaut** (Shan, 2026-11-06). PneX ne livre
+aucun moteur, n'en propose aucun par défaut et ne redistribue rien. L'org installe le sien
+dans le Dockerfile de son environnement (D704), sous sa propre licence. PneX garantit
+seulement les deux protocoles de la passerelle :
+- Anthropic, par `ANTHROPIC_BASE_URL` et `ANTHROPIC_API_KEY` ;
+- OpenAI-compatible, par `OPENAI_BASE_URL` et `OPENAI_API_KEY`.
+
+La documentation peut citer des moteurs connus comme exemples, sans recommandation. Le
+moteur de la démonstration est choisi par l'utilisateur au moment de construire son
+environnement. Cette décision clôt aussi Q-A7 : le catalogue de moteurs de D394 est celui
+des environnements de l'org.
+
+**D751 — Clés LLM de test : Anthropic et OpenAI-compatible, saisies dans l'UI** (Shan,
+2026-11-06). Une clé de chaque protocole, pour prouver les deux portes de la passerelle sur
+de vrais fournisseurs. Elles vivent dans le coffre de l'org de recette : on les saisit dans
+les réglages IA, puis on les route sur l'usage « Agents hébergés » ou sur la clé propre
+d'un agent (D710). Elles ne vont jamais dans le dépôt, dans un Secret Kubernetes ni dans un
+fichier de test.
+
+**D752 — Démonstration : un dépôt GitHub privé avec un bug** (Shan, 2026-11-06). Le dépôt
+`agent-bugfix-demo` est petit, avec un test rouge. Claude le crée avec `gh` sur le compte de
+Shan, en privé. Il ne contient aucune entreprise réelle ni aucune donnée. L'accès du run :
+- le dépôt arrive par `clone` (D714), avec un jeton fin en lecture seule sur ce seul dépôt,
+  au coffre de l'org de recette ;
+- l'egress couvre les plages publiées par GitHub ;
+- un ticket arrive en artefact d'entrée (D744).
+
+Le run rend en sortie un correctif (`patch`, requis) et un rapport. La branche et la
+demande de fusion (D388) viennent ensuite avec D707. GitLab viendra par le même connecteur.
+Cette décision clôt aussi Q-A3 : GitHub en V1.
+
+**D753 — Recette de bout en bout dans `pnex-agents-test`** (Shan, 2026-11-06). Un serveur PneX de recette y
+est déployé par le chart de `pnex-deploy`, avec :
+- sa propre base PostgreSQL ;
+- le `rustfs-test` déjà en place ;
+- aucune donnée réelle ;
+- son adresse donnée au runner par `PNEX_AGENT_GATEWAY_URL`.
+
+Le vrai RustFS du namespace `pnex` reste fermé à la recette, ce qui clôt Q-E12.
+
+**D754 — Egress : adresses résolues au claim, proxy par nom plus tard.** On garde la règle
+de D731. Une destination nommée (une forge, par exemple) passe par ses plages publiées. Un
+proxy de sortie par nom ne viendra que sur un cas réel qu'une plage ne couvre pas, et il sera
+alors un composant du runner, pas de PneX.
+
+**D755 — Limites : `settings.agents.*`, puis la page Système.** Toutes les limites sont
+des réglages globaux, lus de la configuration. Leur valeur par défaut :
+
+| Réglage | Défaut |
+|---|---|
+| `artifacts.max_bytes` | 1 Gio |
+| `artifacts.run_max_bytes` | 4 Gio |
+| `artifacts.expires_days` | 30 |
+| `depcache.max_bytes` | 8 Gio |
+| `depcache.expires_days` | 14 |
+| `build.memory` | 8 Gi |
+| `build.ephemeral_storage` | 40 Gi |
+| `retention.sbom_days` | 3 650 |
+| `retention.scan_events_days` | 365 |
+| `retention.job_logs_days` | 30 |
+
+Ces réglages s'éditeront ensuite dans la page Système (D72), qui est réservée à
+l'exploitant de la plateforme, pas à une org.
+
+**D756 — Questions du PRD agents.**
+- **Q-A1** : le premier cas d'usage est l'agent correcteur de D752, parce qu'il éprouve
+  tout le chemin (environnement, clone, artefacts, passerelle). La veille vient ensuite.
+- **Q-A2** : en V1, seuls les clusters de l'exploitant. Un cluster client attend les
+  conditions de D715.
+- **Q-A4** : réglée par D732 (compteur `llm-agent` propre aux agents, à part de
+  l'assistant et des flows).
+- **Q-A5** : la création assistée (image, voix, 3D) reste hors de la passerelle en V1.
+- **Q-A6** : seulement les tokens en V1 ; la grille de prix par modèle viendra plus tard.
+- **Q-A8** : aucune bibliothèque de rôles livrée en V1 ; les rôles sont écrits par l'org.
+- **Q-A9** : un LLM local (vLLM, Ollama, OpenAI-compatible) se déclare déjà comme
+  fournisseur de l'org derrière la passerelle. Le runner hors ligne attend un client.
+- **Q-A10** : le nœud `agent-run` lance un run et rend son id. La fin du run est un
+  événement qui déclenche un autre flow, sans nœud qui attend.
+
+**D757 — Un agent est un compte de service dès la V1** (Shan, 2026-11-06), comme le dit
+D379.
+- **Identité** : créer un agent crée une identité IAM de service dans l'org. Elle porte un
+  rôle géré, `viewer` par défaut, choisi par un humain qui a ce rôle au moins (D390, jamais
+  au-dessus de son auteur). Cette identité apparaît dans les membres et dans l'audit.
+  Supprimer l'agent révoque l'identité, et ses runs gardent leur trace.
+- **Fiche versionnée** : environnement, commande, variables, entrées et sorties déclarées,
+  dépôts, services, budget, et fournisseur LLM de son choix. Ce choix porte sa clé propre
+  au coffre (D710), sinon c'est l'usage `agent` qui s'applique.
+- **Run** : il se lance depuis la fiche, qu'il peut resserrer sans jamais l'élargir
+  (D380). Il agit sous l'identité de l'agent, avec l'intersection des droits de l'agent et
+  de l'humain qui le lance (D379). Le token de run porte cette identité.
+- **En V1**, le token n'ouvre que la passerelle et le transfert d'artefacts. L'accès MCP
+  (D707) s'ouvrira sur la même identité, sans rien changer au modèle. Aucun token de
+  l'agent n'est un token d'utilisateur : il n'ouvre ni l'UI ni les routes `User`.
+
+**D758 — Dépôts et services dans le run.** La fiche, ou la demande, déclare
+`repos: [{url, ref, path, secret_id?}]`, où `secret_id` est un secret du coffre de l'org.
+Le jeton est livré au seul conteneur `clone`. Elle déclare aussi
+`services: [{name, image, env, ready_command, data_paths}]`, avec une image épinglée par
+digest (D717). Les mots de passe des services sont générés au claim. Les forges et les
+registres des services s'ajoutent à l'egress.
+
+**D759 — Journal d'un run arrêté : dix minutes de grâce.** Le serveur prend encore les logs
+d'un job arrêté par un humain pendant dix minutes, ce qui couvre la limite de D733. Le
+runner les lit juste avant la destruction qui suit le 409. Les logs d'un build se lisent sur
+`GET /environments/{id}/builds/{build}/logs`, sur le même modèle que ceux d'un run.
+
+**D760 — Recette locale d'abord, dans kind** (Shan, 2026-11-06 : « tu peux tout faire avec
+pnex cli sur la stack locale »). Avant le cluster de D753, la chaîne entière tourne sur le
+poste, par la CLI `pnex` seule :
+- un cluster `kind` nommé `pnex-agents`, qui applique les `NetworkPolicy` ;
+- un registre local `kind-registry` sur le réseau kind ;
+- le runner, déployé dans le namespace `pnex-agents-test` ;
+- le serveur de dev sur `:5160`, avec sa base `pnex_agents_dev`, joint par les pods à
+  l'adresse de passerelle du réseau kind.
+
+La procédure est décrite dans `docs/architecture/agent-environments-recette.md`.
+
+Prouvé le 2026-11-06 par la CLI seule, sans faux runner :
+- le Dockerfile en base est construit par BuildKit dans le cluster et poussé dans le
+  registre, puis le build est activé ;
+- le ticket déposé garde son empreinte ;
+- le run lancé prend son entrée vérifiée, fait un appel au modèle par la passerelle, avec
+  le modèle de l'org imposé et les tokens comptés ;
+- la sortie réseau vers une adresse interdite est refusée ;
+- le jeton imprimé par l'agent apparaît `[masked]` dans le journal ;
+- les sorties sont remontées : un fichier, un dossier en tar sans le lien symbolique posé
+  par l'agent, et une sortie absente marquée `missing` ;
+- le pod, son Secret et sa règle sont détruits ;
+- les journaux du run et du build se lisent par leurs routes.
+
+La recette a trouvé trois défauts, corrigés :
+- la course entre `NetworkPolicy` et démarrage du pod (SEC-E4, porte `egress-gate`) ;
+- le digest de build perdu, parce que buildctl ne peut pas renommer dans `/dev` (script de
+  build explicite) ;
+- le total paginé faux des journaux O2.
+
+Elle en a laissé un ouvert : l'API du nœud reste joignable depuis le bac (SEC-E5).
+
+Deuxième recette, le 2026-11-06 à 16 h, par la CLI seule, sur l'agent `bugfix` créé comme
+compte de service (`viewer`) :
+- une exécution lancée depuis la fiche clone `octocat/Hello-World` depuis GitHub, l'egress
+  vers la forge étant résolu au claim ;
+- elle démarre Valkey en service, avec un mot de passe généré que l'agent reçoit en
+  `VALKEY_REQUIREPASS` ;
+- elle vérifie l'entrée, fait un appel au modèle, remonte la sortie requise et sauvegarde
+  le cache ;
+- la seconde exécution retrouve le cache sous la même clé et ne le renvoie pas ;
+- une demande qui élargit la fiche (délai plus long) est refusée en 400 `above_agent` ;
+- les deux exécutions, l'agent, l'environnement et les fichiers sont dans l'ontologie, avec
+  leurs liens.
+
+**D761 — Réponses du 2026-11-06 pour dérouler R1 à R10 sans retour** (Shan, 2026-11-06,
+questions posées d'un bloc).
+
+- **Création des agents** : un agent se crée ou se modifie avec `agents:write` (Admin).
+  Il naît `viewer`, et son rôle peut monter jusqu'à celui de son auteur, jamais au-dessus.
+- **Quota** : un agent ne prend pas de siège humain. Il compte à part, avec un plafond
+  d'agents propre à chaque palier.
+- **Page** : une entrée de premier niveau « Agents » dans la navigation, avec les fiches et
+  les runs (journal, sorties, arrêt). Environnements et runners y sont en sous-onglets.
+- **Pack `agent_ops`** : installé au premier usage, comme `software_supply`.
+- **VM jetable (E6)** : une micro-VM Firecracker lancée par le runner sur un hôte Linux KVM,
+  détruite à la fin du job. Son pare-feu nftables tourne dans la VM.
+- **Recette sur le cluster** : Claude déploie le serveur de recette dans
+  `pnex-agents-test`, et dans ce namespace seulement, une fois le code stable et poussé. Les
+  vraies clés attendent que Shan les saisisse.
+- **Poussée** : chaque jour à partir de 19 h, sans attendre de feu vert, tests verts et
+  commits limités à leurs chemins, avec un résumé de ce qui est parti.
+- **Stack locale** : kind, le registre, le serveur `:5160` et le faux fournisseur restent en
+  place pour rejouer la recette après chaque lot.
+
+### 11.2 Reste à faire, dans cet ordre
+
+Chaque ligne se code sans nouvelle discussion. Une ligne est finie quand sa preuve passe
+et que le contrat, l'IAM, le MCP, les fiches et les `.ftl` suivent dans le même commit.
+
+| # | Contenu | Preuve de fin |
+|---|---|---|
+| R1 | ✅ D759 : logs d'un run arrêté, logs de build (fait le 2026-11-06) | `tests/agent_runs.rs` : pris juste après l'arrêt, refusés à onze minutes ; recette locale |
+| R2 | ✅ D757 : agents comptes de service (fait le 2026-11-06 : tables `agents` et `agent_versions`, migration 000101, rôle par l'affectation IAM et son contrôle d'escalade, run depuis la fiche, fournisseur propre dans la passerelle, plafond `subscription_tiers.max_agents`) | `tests/agent_runs.rs` `agents_are_service_accounts_whose_runs_only_tighten_them` |
+| R3 | ✅ D758 : dépôts et services dans le run et la fiche (fait le 2026-11-06, migration 000103) : `https` seul, sans identifiant dans l'URL, ref sans tiret initial ; jeton lu au coffre au claim pour le seul `clone` ; `@generated` devient un mot de passe frais, livré à l'agent en `<SERVICE>_<CLÉ>` ; hôte de la forge ouvert en egress | `tests/agent_runs.rs` `repos_and_services_reach_only_their_own_containers` |
+| R4 | ✅ Page Agents (2026-11-06) : entrée de premier niveau `/agents`, onglets Agents, Exécutions, Environnements (builds et leur journal), Runners ; créer, lancer en déposant les fichiers d'entrée, journal, sorties téléchargées en pièce jointe, arrêt, suppression ; lexique « Agent », « Exécution », « Entrée / Sortie », « Journal » | `e2e/tests/agents.spec.ts` (créer, lancer avec un fichier, suivre, télécharger, arrêter, onglets), smoke en et fr, a11y strict de la page et du dialogue |
+| R5 | ✅ Pack `agent_ops` (2026-11-06 : environnement, agent, exécution, fichier ; liens `run_of_agent`, `run_in_environment`, `file_produced_by`, `run_read_file` ; projeté à la fin de chaque job et à l'arrêt, installé au premier usage) | `tests/agent_runs.rs` : la sortie renvoie à son exécution, l'exécution à l'entrée lue |
+| R6 | ✅ D748 (fait le 2026-11-06, migration 000104) : politique par org `GET`/`PUT /environments/scan-policy` (seuil `critical`/`high`/`none`, mode `signal`/`refuse`), décompte des failles corrigeables au scan, notification dans l'app, refus de l'activation et du run en mode `refuse` (`environment-scan-refused`), recompté avec la politique du moment | `tests/agent_runs.rs` `a_scan_over_the_threshold_signals_by_default_and_refuses_on_demand` |
+| R7 | ✅ D730 côté bac (fait le 2026-11-06, migration 000105) : `caches: [{name, path, key_files}]` dans le run et la fiche ; `artifacts-in` calcule la clé (SHA-256 des fichiers de verrou, après le clone), restaure l'archive de la clé ou la dernière du même nom ; le collecteur sauvegarde, sauf clé déjà exacte ; `org_<id>/depcache/<env>/<nom>/<clé>`, `settings.agents.depcache` (8 Gio, 14 jours), ménage horaire | `tests/artifact_scripts.rs` (scripts réels) et `tests/agent_runs.rs` `a_dependency_cache_goes_by_key_and_falls_back_to_the_latest` |
+| R8 | D753 : recette de bout en bout sur le cluster (déjà passée en local, D760) | La démonstration de D752 passe ; artefact d'entrée vérifié, sortie remontée après un échec, egress refusé hors liste |
+| R9 | 🟡 D755 (2026-11-06) : `settings.agents.build` (taille du pod de build, livrée au runner avec le job, quantité validée) et `settings.agents.retention` (SBOM, événements de scan, journaux) lus de la configuration, avec les limites des fichiers et des caches déjà en place ; reste l'édition dans la page Système | `services/fabric_settings.rs`, test du manifeste de build |
+| R10 | E6 : VM jetable (D749) | Le scénario de R8 dans une VM |
+
+### 11.3 Gestes attendus de Shan (pas de discussion)
+
+1. Sortir `scw-regsecert.yaml` du dépôt, vers `~/.config/pnex/` (il est déjà ignoré).
+2. Créer dans Scaleway une clé de lecture seule et une clé d'écriture pour la recette (D745).
+3. Saisir une clé Anthropic et une clé OpenAI-compatible de test dans les réglages IA de
+   l'org de recette (D751).
+4. Créer, au moment de la recette, un jeton GitHub fin en lecture seule sur le dépôt de
+   démonstration ; Claude crée le dépôt avec `gh` (D752).
+5. Choisir le moteur de la démonstration au moment de construire son environnement (D750).
+6. Rien à faire pour la poussée : elle part à 19 h (D761).
+
