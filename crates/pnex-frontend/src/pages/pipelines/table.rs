@@ -244,7 +244,11 @@ pub fn PipelineTable(id: String) -> Element {
             let size = f.size().max(1);
             progress.set(Some(0));
             let on_sent = move |sent: u64| progress.set(Some((sent * 100 / size).min(100) as u8));
-            let done = api::pipelines::upload_csv(&id(), &delimiter(), f.byte_stream(), on_sent)
+            // dioxus-web's `byte_stream` panics in the browser (e2e 2026-11-06), and it
+            // read the whole file at once anyway.
+            // shortcut: the file is held in memory, read it by slices of the Blob if a client sends several GB.
+            let file = futures::stream::once(Box::pin(f.read_bytes()));
+            let done = api::pipelines::upload_csv(&id(), &delimiter(), file, on_sent)
                 .await
                 .map_err(|e| localize(&e))
                 .and_then(|u| match u.code {
