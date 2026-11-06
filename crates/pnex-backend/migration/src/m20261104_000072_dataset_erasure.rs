@@ -30,7 +30,11 @@ impl MigrationTrait for Migration {
                    created_at timestamptz NOT NULL DEFAULT now()
                  );
                  CREATE INDEX dataset_erasures_org ON dataset_erasures (org_id);
-                 GRANT SELECT (org_id) ON dataset_erasures TO pnex_pipeline_worker;
+                 DO $$ BEGIN
+                   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pnex_pipeline_worker') THEN
+                     GRANT SELECT (org_id) ON dataset_erasures TO pnex_pipeline_worker;
+                   END IF;
+                 END $$;
                  ALTER TABLE pipeline_jobs DROP CONSTRAINT pipeline_jobs_trigger_check;
                  ALTER TABLE pipeline_jobs ADD CONSTRAINT pipeline_jobs_trigger_check
                    CHECK (trigger IN ('manual', 'erasure'));",
@@ -46,7 +50,11 @@ impl MigrationTrait for Migration {
                  ALTER TABLE pipeline_jobs DROP CONSTRAINT pipeline_jobs_trigger_check;
                  ALTER TABLE pipeline_jobs ADD CONSTRAINT pipeline_jobs_trigger_check
                    CHECK (trigger IN ('manual'));
-                 REVOKE ALL ON dataset_erasures FROM pnex_pipeline_worker;
+                 DO $$ BEGIN
+                   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pnex_pipeline_worker') THEN
+                     REVOKE ALL ON dataset_erasures FROM pnex_pipeline_worker;
+                   END IF;
+                 END $$;
                  DROP TABLE dataset_erasures;
                  DROP TABLE dataset_identity_columns;",
             )

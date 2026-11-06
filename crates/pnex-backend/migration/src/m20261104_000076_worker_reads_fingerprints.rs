@@ -11,8 +11,11 @@ impl MigrationTrait for Migration {
     async fn up(&self, m: &SchemaManager) -> Result<(), DbErr> {
         m.get_connection()
             .execute_unprepared(
-                "GRANT SELECT (dataset_id, column_name, value) ON dataset_erasures
-                   TO pnex_pipeline_worker;",
+                "DO $$ BEGIN
+                   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pnex_pipeline_worker') THEN
+                     GRANT SELECT (dataset_id, column_name, value) ON dataset_erasures TO pnex_pipeline_worker;
+                   END IF;
+                 END $$;",
             )
             .await?;
         Ok(())
@@ -21,8 +24,11 @@ impl MigrationTrait for Migration {
     async fn down(&self, m: &SchemaManager) -> Result<(), DbErr> {
         m.get_connection()
             .execute_unprepared(
-                "REVOKE SELECT (dataset_id, column_name, value) ON dataset_erasures
-                   FROM pnex_pipeline_worker;",
+                "DO $$ BEGIN
+                   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pnex_pipeline_worker') THEN
+                     REVOKE SELECT (dataset_id, column_name, value) ON dataset_erasures FROM pnex_pipeline_worker;
+                   END IF;
+                 END $$;",
             )
             .await?;
         Ok(())

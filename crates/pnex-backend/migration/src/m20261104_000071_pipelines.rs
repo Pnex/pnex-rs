@@ -65,16 +65,22 @@ impl MigrationTrait for Migration {
                  );
                  CREATE INDEX dataset_transaction_inputs_input
                    ON dataset_transaction_inputs (input_transaction_id);
+                 -- A managed database user may not create roles: the worker role is then
+                 -- left to the database admin (data-pipelines.md), and the boot goes on.
                  DO $$ BEGIN
                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pnex_pipeline_worker') THEN
+                     IF NOT (SELECT rolcreaterole OR rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+                       RAISE NOTICE 'pnex_pipeline_worker not created: % may not create roles', current_user;
+                       RETURN;
+                     END IF;
                      CREATE ROLE pnex_pipeline_worker NOLOGIN;
                    END IF;
-                 END $$;
-                 GRANT SELECT ON pipelines, pipeline_versions TO pnex_pipeline_worker;
-                 GRANT SELECT, UPDATE ON pipeline_jobs TO pnex_pipeline_worker;
-                 GRANT SELECT, INSERT, UPDATE ON datasets, dataset_transactions TO pnex_pipeline_worker;
-                 GRANT SELECT, INSERT ON dataset_files, dataset_transaction_inputs TO pnex_pipeline_worker;
-                 GRANT USAGE ON SEQUENCE dataset_commit_seq TO pnex_pipeline_worker;",
+                   GRANT SELECT ON pipelines, pipeline_versions TO pnex_pipeline_worker;
+                   GRANT SELECT, UPDATE ON pipeline_jobs TO pnex_pipeline_worker;
+                   GRANT SELECT, INSERT, UPDATE ON datasets, dataset_transactions TO pnex_pipeline_worker;
+                   GRANT SELECT, INSERT ON dataset_files, dataset_transaction_inputs TO pnex_pipeline_worker;
+                   GRANT USAGE ON SEQUENCE dataset_commit_seq TO pnex_pipeline_worker;
+                 END $$;",
             )
             .await?;
         Ok(())
@@ -83,10 +89,14 @@ impl MigrationTrait for Migration {
     async fn down(&self, m: &SchemaManager) -> Result<(), DbErr> {
         m.get_connection()
             .execute_unprepared(
-                "REVOKE ALL ON pipelines, pipeline_versions, pipeline_jobs, datasets,
-                   dataset_transactions, dataset_files, dataset_transaction_inputs
-                   FROM pnex_pipeline_worker;
-                 REVOKE ALL ON SEQUENCE dataset_commit_seq FROM pnex_pipeline_worker;
+                "DO $$ BEGIN
+                   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pnex_pipeline_worker') THEN
+                     REVOKE ALL ON pipelines, pipeline_versions, pipeline_jobs, datasets,
+                       dataset_transactions, dataset_files, dataset_transaction_inputs
+                       FROM pnex_pipeline_worker;
+                     REVOKE ALL ON SEQUENCE dataset_commit_seq FROM pnex_pipeline_worker;
+                   END IF;
+                 END $$;
                  DROP TABLE dataset_transaction_inputs;
                  DROP TABLE pipeline_jobs;
                  DROP TABLE pipeline_versions;

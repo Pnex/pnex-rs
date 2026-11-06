@@ -17,7 +17,11 @@ impl MigrationTrait for Migration {
                  ALTER TABLE dataset_erasures ADD COLUMN done_at timestamptz;
                  CREATE INDEX dataset_erasures_pending ON dataset_erasures (org_id)
                    WHERE done_at IS NULL;
-                 GRANT SELECT (done_at) ON dataset_erasures TO pnex_pipeline_worker;
+                 DO $$ BEGIN
+                   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pnex_pipeline_worker') THEN
+                     GRANT SELECT (done_at) ON dataset_erasures TO pnex_pipeline_worker;
+                   END IF;
+                 END $$;
                  ALTER TABLE dataset_transaction_inputs
                    ALTER COLUMN pipeline_id DROP NOT NULL,
                    DROP CONSTRAINT dataset_transaction_inputs_pipeline_id_fkey,
@@ -37,7 +41,11 @@ impl MigrationTrait for Migration {
                    DROP CONSTRAINT dataset_transaction_inputs_pipeline_id_fkey,
                    ADD CONSTRAINT dataset_transaction_inputs_pipeline_id_fkey
                      FOREIGN KEY (pipeline_id) REFERENCES pipelines(id) ON DELETE CASCADE;
-                 REVOKE SELECT (done_at) ON dataset_erasures FROM pnex_pipeline_worker;
+                 DO $$ BEGIN
+                   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pnex_pipeline_worker') THEN
+                     REVOKE SELECT (done_at) ON dataset_erasures FROM pnex_pipeline_worker;
+                   END IF;
+                 END $$;
                  DROP INDEX dataset_erasures_pending;
                  ALTER TABLE dataset_erasures DROP COLUMN done_at;
                  ALTER TABLE datasets DROP COLUMN import_id;",
