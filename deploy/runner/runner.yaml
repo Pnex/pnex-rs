@@ -88,6 +88,15 @@ spec:
             # separated, as `ns:<namespace>` or a CIDR.
             - name: PNEX_RUNNER_JOB_EGRESS
               value: ""
+            # This same image, pinned: build, scan and probe pods start behind its egress
+            # gate, which waits for their NetworkPolicy to hold (SEC-E4).
+            - name: PNEX_RUNNER_IMAGE
+              value: REPLACE_ME/pnex-runner@sha256:REPLACE_ME
+            # The gate probes this pod on port 7171, an address their rule refuses.
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

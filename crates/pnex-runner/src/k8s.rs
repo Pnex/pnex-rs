@@ -40,6 +40,8 @@ pub struct K8s {
     builds: bool,
     pull_secret: Option<String>,
     job_egress: Vec<String>,
+    /// The runner's own image and the address its gates probe (SEC-E4).
+    gate: Option<(String, String)>,
 }
 
 /// Labels of everything a job owns, so that a stray is found whatever it is.
@@ -363,6 +365,27 @@ while curl -sk -o /dev/null --max-time 2 "$target"; do
 done
 echo "egress rule in place"
 "#;
+
+/// Puts the egress gate first in a job pod (SEC-E4): the job starts only once its rule
+/// holds. Hardened, no volume, no secret: a TCP connect from the runner's image.
+pub fn with_gate(pod: &mut Value, image: &str, probe: &str) {
+    let gate = json!({
+        "name": "egress-gate",
+        "image": image,
+        "command": ["/usr/local/bin/pnex-runner", "egress-gate"],
+        "env": [{ "name": "PNEX_EGRESS_PROBE", "value": probe }],
+        "securityContext": hardened(UID),
+        "resources": {
+            "requests": { "cpu": "10m", "memory": "16Mi" },
+            "limits": { "cpu": "100m", "memory": "32Mi" }
+        },
+    });
+    let spec = &mut pod["spec"];
+    match spec["initContainers"].as_array_mut() {
+        Some(init) => init.insert(0, gate),
+        None => spec["initContainers"] = json!([gate]),
+    }
+}
 
 /// Containers whose output is the journal of a job, in the order they ran: init containers
 /// first (`clone`, services, `setup`), then the job. None for a scan, whose output is its
@@ -752,6 +775,7 @@ impl K8s {
         builds: bool,
         pull_secret: Option<String>,
         job_egress: Vec<String>,
+        gate: Option<(String, String)>,
     ) -> Result<Self, String> {
         let host = std::env::var("KUBERNETES_SERVICE_HOST")
             .map_err(|_| "not running in a Kubernetes pod".to_string())?;
@@ -773,6 +797,7 @@ impl K8s {
             builds,
             pull_secret,
             job_egress,
+            gate,
         })
     }
 
@@ -927,6 +952,10 @@ impl Executor for K8s {
             if let Some(secret) = secret {
                 self.create("secrets", &secret).await?;
             }
+            let mut pod = pod;
+            if let Some((image, probe)) = &self.gate {
+                with_gate(&mut pod, image, probe);
+            }
             return self.create("pods", &pod).await;
         }
         if let Some(build) = build {
@@ -939,9 +968,16 @@ impl Executor for K8s {
             );
             self.create("secrets", &secret).await?;
             self.create("configmaps", &context).await?;
+            let mut pod = pod;
+            if let Some((image, probe)) = &self.gate {
+                with_gate(&mut pod, image, probe);
+            }
             return self.create("pods", &pod).await;
         }
-        let manifest = pod_manifest(job, &self.runner_id, spec, self.runtime_class.as_deref());
+        let mut manifest = pod_manifest(job, &self.runner_id, spec, self.runtime_class.as_deref());
+        if let Some((image, probe)) = &self.gate {
+            with_gate(&mut manifest, image, probe);
+        }
         self.create("pods", &manifest).await
     }
 
@@ -1443,6 +1479,25 @@ mod tests {
         let (_, _, pod) = sandbox_manifests("j", "r", &spec(), &sandbox_input(), None);
         assert!(!pod.to_string().contains("artifacts"));
         assert_eq!(pod["spec"]["terminationGracePeriodSeconds"], 5);
+    }
+
+    #[test]
+    fn a_job_pod_starts_behind_the_gate_of_the_runner_image() {
+        let (_, _, mut build) = build_manifests("j", "r", &spec(), &build_input(), None);
+        with_gate(&mut build, "reg/pnex-runner@sha256:abc", "10.1.2.3:7171");
+        let init = build["spec"]["initContainers"].as_array().unwrap();
+        assert_eq!(init[0]["name"], "egress-gate");
+        assert_eq!(init[0]["command"][1], "egress-gate");
+        assert!(init[0]["volumeMounts"].is_null(), "no volume");
+        assert_eq!(
+            init[0]["env"],
+            json!([{ "name": "PNEX_EGRESS_PROBE", "value": "10.1.2.3:7171" }])
+        );
+        assert_eq!(init[0]["securityContext"]["readOnlyRootFilesystem"], true);
+        // Before whatever init containers a pod already has.
+        let mut pod = json!({ "spec": { "initContainers": [{ "name": "x" }] } });
+        with_gate(&mut pod, "img", "10.1.2.3:7171");
+        assert_eq!(pod["spec"]["initContainers"][1]["name"], "x");
     }
 
     #[test]

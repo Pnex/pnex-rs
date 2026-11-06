@@ -7,6 +7,7 @@
 
 pub mod api;
 pub mod artifacts;
+pub mod gate;
 pub mod k8s;
 pub mod podman;
 

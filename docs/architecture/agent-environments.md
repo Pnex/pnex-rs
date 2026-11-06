@@ -942,6 +942,7 @@ reste demande un geste, pas une discussion (§11.3).
 | D759 | Logs d'un run arrêté pris pendant dix minutes ; logs de build lisibles |
 | D760 | Recette locale d'abord : kind + registre local + runner + serveur de dev, par la CLI seule |
 | D761 | Réponses pour R1 à R10 : agents par Admin et `viewer`, quota à part, entrée « Agents », `agent_ops` au premier usage, Firecracker pour E6, recette cluster par Claude, poussée à 19 h |
+| D762 | E6 : exécuteur Firecracker, disque ext4 tiré de l'image par digest, `/init` du runner, nftables dans la VM et sur l'hôte, sortie mesurée à 1,2 s |
 
 
 ## 11. Clôture du PRD (2026-11-06)
@@ -1155,6 +1156,36 @@ questions posées d'un bloc).
   commits limités à leurs chemins, avec un résumé de ce qui est parti.
 - **Stack locale** : kind, le registre, le serveur `:5160` et le faux fournisseur restent en
   place pour rejouer la recette après chaque lot.
+
+**D762 — E6, la micro-VM jetable : plan mesuré** (2026-11-06, applique D749 et D761).
+- **Mesure locale** : Firecracker v1.10.1 (Apache-2.0, empreinte de la publication
+  vérifiée), noyau invité 6.1.102 de la CI Firecracker, `/dev/kvm` de l'hôte. L'image
+  d'environnement construite par BuildKit cet après-midi est exportée en dossier, puis le
+  disque ext4 est fait par `mkfs.ext4 -d`, sans root. La VM (2 vCPU, 512 Mio) démarre,
+  exécute le job et sort en **1,2 s** de bout en bout.
+- **Exécuteur `firecracker` du runner** :
+  - **Disque racine** : il est construit à partir de l'image épinglée par digest. Les
+    couches sont tirées du registre par le runner (client OCI en Rust), puis le disque
+    est fait par `mkfs.ext4 -d`. Le cache des disques est indexé par digest.
+  - **Noyau** : épinglé par empreinte, dans la configuration du runner.
+  - **Init de la VM** : un `/init` livré par le runner, qui tient le rôle des init
+    containers (D714) :
+    - porte d'egress : le pare-feu nftables est posé par `/init` en root, avant toute
+      chose ;
+    - clone, services, `setup`, comme dans le pod ;
+    - scripts `IN_SCRIPT` et `OUT_SCRIPT` de D744, tels quels ;
+    - l'agent tourne sous un uid sans privilège, et le jeton d'artefacts reste dans un
+      fichier root ;
+    - à la sortie de l'agent, `/init` collecte les sorties (D729) puis éteint la VM.
+  - **Réseau** : une interface tap par VM, avec une règle nftables côté hôte (liste des
+    destinations du claim). Il faut donc `CAP_NET_ADMIN` au service du runner. Ce
+    pare-feu de l'hôte doublé de celui de la VM ne dépend pas du plugin réseau de
+    Kubernetes, ce qui clôt SEC-E4 et SEC-E5 pour ce mode.
+  - **Journal** : la console série de la VM, lue par le runner comme `pods/log` (D733).
+  - **Fin** : la VM et son disque sont détruits ; rien n'est gardé sur l'hôte.
+- **À trancher en codant, sans question** : client OCI (crate `oci-client`, licence à
+  vérifier), passage de `jailer` en V1 (oui si le service tourne en root, sinon cgroup
+  utilisateur), taille de VM par réglage global (D755).
 
 ### 11.2 Reste à faire, dans cet ordre
 

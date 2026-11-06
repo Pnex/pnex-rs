@@ -85,7 +85,10 @@ async fn run() -> Result<(), String> {
         Some("kubernetes") => serve(k8s(runtime)?, &url).await,
         Some("podman") => serve(podman(runtime)?, &url).await,
         Some(other) => Err(format!("unknown PNEX_RUNNER_EXECUTOR: {other}")),
-        None if in_cluster => serve(k8s(runtime)?, &url).await,
+        None if in_cluster => {
+            tokio::spawn(pnex_runner::gate::listen());
+            serve(k8s(runtime)?, &url).await
+        }
         None => serve(podman(runtime)?, &url).await,
     }
 }
@@ -103,6 +106,9 @@ fn k8s(runtime: Option<String>) -> Result<K8s, String> {
                     .collect()
             })
             .unwrap_or_default(),
+        // The gate of a job pod probes this runner: needs its pod address (downward API).
+        env("PNEX_RUNNER_IMAGE")
+            .zip(env("POD_IP").map(|ip| format!("{ip}:{}", pnex_runner::gate::PORT))),
     )
 }
 
@@ -113,6 +119,10 @@ fn podman(runtime: Option<String>) -> Result<Podman, String> {
 
 #[tokio::main]
 async fn main() {
+    // The first container of a job pod, from this same image (SEC-E4).
+    if std::env::args().nth(1).as_deref() == Some("egress-gate") {
+        std::process::exit(pnex_runner::gate::run());
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
