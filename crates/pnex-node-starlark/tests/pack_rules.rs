@@ -1737,8 +1737,7 @@ fn a_converted_lead_becomes_an_opportunity_of_its_account() {
     assert_eq!(l[5]["title"], "Gamma · Lee", "the lead keeps its own title");
 
     // Without a contact: no contact links, the rest unchanged.
-    let alone =
-        json!({"object": {"id": "o1"}, "lead": {"id": "l1", "title": "Lee", "account": "g1", "person": ""}});
+    let alone = json!({"object": {"id": "o1"}, "lead": {"id": "l1", "title": "Lee", "account": "g1", "person": ""}});
     let l = execute(&code_in(CRM, "crm_lead_links"), &alone, 2000)
         .unwrap()
         .return_json
