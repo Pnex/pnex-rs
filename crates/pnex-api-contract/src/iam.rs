@@ -251,8 +251,14 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("agents_delete", Access::Org("agents:delete")),
     ("agents_runs_start", Access::Org("agents:run")),
     ("environments_builds_logs", Access::Org("environments:read")),
-    ("environments_scan_policy_get", Access::Org("environments:read")),
-    ("environments_scan_policy_set", Access::Org("environments:build")),
+    (
+        "environments_scan_policy_get",
+        Access::Org("environments:read"),
+    ),
+    (
+        "environments_scan_policy_set",
+        Access::Org("environments:build"),
+    ),
     ("agent_runs_artifacts", Access::Org("agents:read")),
     ("agent_artifacts_get", Access::Org("agents:read")),
     ("agent_artifacts_upload", Access::Org("agents:run")),

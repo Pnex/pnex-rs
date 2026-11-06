@@ -12,10 +12,10 @@ use crate::pages::access::Access;
 use crate::pages::apps::{AppBuild, AppRun, Apps};
 use crate::pages::browser_agents::BrowserAgents;
 use crate::pages::edge_refs::EdgeRefs;
+use crate::pages::hosted_agents::HostedAgents;
 use crate::pages::mailbox_messages::MailboxMessages;
 use crate::pages::mailboxes::Mailboxes;
 use crate::pages::pipelines::{PipelineStudio, PipelineTable, Pipelines};
-use crate::pages::hosted_agents::HostedAgents;
 use crate::pages::proposals::Proposals;
 use crate::pages::web_sites::{WebSiteStudio, WebSites};
 use crate::pages::{

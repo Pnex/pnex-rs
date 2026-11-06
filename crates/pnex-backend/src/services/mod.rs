@@ -2,8 +2,8 @@
 //! OpenObserve, dashboard, firmware settings, ETL flow engine (D18).
 
 pub mod agent_artifacts;
-pub mod agent_ops;
 pub mod agent_gateway;
+pub mod agent_ops;
 pub mod agent_runs;
 pub mod agents;
 pub mod ai;
@@ -37,8 +37,8 @@ pub mod drain;
 pub mod edge_agent;
 pub mod environments;
 pub mod events;
-pub mod fabric_settings;
 pub mod extension;
+pub mod fabric_settings;
 pub mod firmware;
 pub mod firmware_projects;
 pub mod flow;
