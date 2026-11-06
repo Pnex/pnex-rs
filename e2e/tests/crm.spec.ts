@@ -13,6 +13,7 @@ import { expect, test } from '../src/fixtures.ts';
 import type { Api } from '../src/api.ts';
 import { MAILCRAB_SMTP, MAILCRAB_URL, mailsTo } from '../src/mailcrab.ts';
 import { DashboardsPage } from '../src/pages/dashboards.ts';
+import { dialog } from '../src/pages/shell.ts';
 
 const POLL = { timeout: 60_000 };
 
@@ -249,11 +250,13 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
     }
   });
 
-  test('converting a lead twice keeps one opportunity, linked to its account', async ({ api, prefix }) => {
-    test.setTimeout(180_000);
+  test('converting a lead twice keeps one opportunity, linked to its account', async ({ app, page, api, prefix, capture }) => {
+    test.setTimeout(240_000);
     const { crm, orgId } = await crmOrg(api, prefix);
     try {
       const account = await object(crm, 'organization', 'Acme');
+      await object(crm, 'organization', 'Acme Tools');
+      await object(crm, 'organization', 'Beta');
       const person = await object(crm, 'person', 'Ann Lee');
       const lead = await object(crm, 'lead', 'Ann Lee at Acme', {
         status: 'new', source: 'trade_show', source_detail: 'Global Industrie', company: 'Acme',
@@ -265,6 +268,27 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
         });
       // The deploy is acknowledged before the runtime holds the trigger.
       await expect(async () => void (await convert())).toPass(POLL);
+      await expect.poll(async () => (await read(crm, lead.id)).properties.status, POLL).toBe('converted');
+      // The lead keeps its own title, not the opportunity's.
+      expect((await read(crm, lead.id)).title).toBe('Ann Lee at Acme');
+
+      // Again from the lead page: the account comes from the lead's link, a
+      // search would find it among the others.
+      await page.goto('/');
+      await page.evaluate((id) => localStorage.setItem('pnex.org', String(id)), orgId);
+      await app.goto(`/ontology/object/${lead.id}`);
+      await page.locator('[data-action="convert"]').click();
+      const dlg = dialog(page, app.tr('onto-action-title'));
+      const org = dlg.locator('[data-prop="organization"]');
+      await expect(org.getByTestId('ref-chosen')).toHaveText('Acme');
+      await org.getByRole('button', { name: app.t('onto-ref-change') }).click();
+      await org.getByTestId('ref-search').fill('acme');
+      await expect(org.getByTestId('ref-option')).toHaveText(['Acme', 'Acme Tools']);
+      await org.getByTestId('ref-option').filter({ hasText: /^Acme$/ }).click();
+      await expect(dlg.locator('[data-prop="person"]').getByTestId('ref-chosen')).toHaveText('Ann Lee');
+      await capture('crm-convert-dialog', { caption: 'Converting a lead: account and contact taken from its links' });
+      await dlg.getByRole('button', { name: app.t('onto-action-run') }).click();
+      await expect(dlg).toBeHidden();
 
       await expect.poll(async () => (await read(crm, lead.id)).properties.status, POLL).toBe('converted');
       const [opp] = await query(crm, 'opportunity');
@@ -277,7 +301,6 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
       await expect.poll(() => linked(crm, opp.id, 'comes_from'), POLL).toEqual([lead.id]);
       await expect.poll(() => linked(crm, lead.id, 'lead_of'), POLL).toEqual([account.id]);
 
-      await convert();
       // Long enough for a second opportunity to have appeared.
       await new Promise((done) => setTimeout(done, 5_000));
       expect(await query(crm, 'opportunity')).toHaveLength(1);

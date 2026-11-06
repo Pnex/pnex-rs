@@ -5123,6 +5123,9 @@ onto-action-run = Run
 onto-action-title = { $action } — { $object }
 onto-action-hint = The action is sent to the deployed flows that handle it; they decide what happens. The invocation is kept in the Provenance tab.
 onto-action-confirm-hint = This action needs your explicit confirmation: check the parameters before running it.
+onto-ref-change = Change
+onto-ref-none = No match
+onto-ref-linked = Taken from the object's links: check it before running.
 onto-action-sent = Action sent to { $count ->
     [one] 1 flow
    *[other] { $count } flows

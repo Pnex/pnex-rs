@@ -10,7 +10,10 @@ use serde_json::{Map, Value};
 use crate::api;
 use crate::components::crud::form::FormDialog;
 use crate::components::ontology::property_input::PropertyInput;
+use crate::components::ontology::ref_search::RefSearch;
 use crate::state::toasts;
+use pnex_core::ontology::api::LinkView;
+use pnex_core::ontology::{PropertyDef, PropertyKind};
 
 #[component]
 pub fn ActionDialog(
@@ -24,15 +27,42 @@ pub fn ActionDialog(
     #[props(default)] on_done: Option<Callback<()>>,
 ) -> Element {
     let oid = object_id.clone();
+    let ak = action_key.clone();
+    let mut doc = use_signal(move || initial.clone());
+    // Titles of the `ref` parameters prefilled from the object's links.
+    let mut linked = use_signal(std::collections::BTreeMap::<String, (String, String)>::new);
     let loaded = use_resource(move || {
         let id = oid.clone();
+        let ak = ak.clone();
         async move {
             let o = api::ontology::object(&id).await?;
             let t = api::ontology::types().await?;
+            let params = t
+                .iter()
+                .find(|v| v.def.key == o.type_key)
+                .and_then(|v| v.def.action(&ak))
+                .map(|a| a.params.clone())
+                .unwrap_or_default();
+            if params
+                .iter()
+                .any(|p| matches!(p.kind, PropertyKind::Ref { .. }))
+            {
+                // Without its links the dialog still works, unfilled.
+                let links = api::ontology::object_links(&id, None, false)
+                    .await
+                    .unwrap_or_default();
+                let found = prefill(&id, &params, &links);
+                doc.with_mut(|m| {
+                    for (k, (v, _)) in &found {
+                        m.entry(k.clone())
+                            .or_insert_with(|| Value::String(v.clone()));
+                    }
+                });
+                linked.set(found);
+            }
             Ok::<_, api::error::ApiError>((o, t))
         }
     });
-    let doc = use_signal(move || initial.clone());
     let mut busy = use_signal(|| false);
     let mut errors = use_signal(Map::<String, Value>::new);
 
@@ -113,22 +143,136 @@ pub fn ActionDialog(
                 if action.confirm {
                     p { class: "text-sm text-amber-700", {t!("onto-action-confirm-hint")} }
                 }
-                // shortcut: `ref` parameters get no choice list, add one when a pack needs them.
                 for p in action.params.iter().filter(|p| !p.kind.is_temporal()).cloned() {
-                    PropertyInput {
-                        key: "{p.key}",
-                        error: {
-                            let errs = errors.read();
-                            errs.get(&format!("params.{}", p.key))
-                                .or_else(|| errs.get(&p.key))
-                                .and_then(|v| v.as_str())
-                                .map(|t| crate::api::error_i18n::localize_field(&p.key, t))
-                        },
-                        def: p.clone(),
-                        doc,
+                    if let PropertyKind::Ref { to_type } = &p.kind {
+                        RefSearch {
+                            key: "{p.key}",
+                            field: p.key.clone(),
+                            label: format!(
+                                "{}{}",
+                                super::property_input::prop_label(&p),
+                                if p.required { " *" } else { "" },
+                            ),
+                            to_type: to_type.clone(),
+                            doc,
+                            chosen: prefilled(&linked.read(), &doc.read(), &p.key),
+                            hint: prefilled(&linked.read(), &doc.read(), &p.key)
+                                .map(|_| t!("onto-ref-linked").to_string()),
+                            error: field_error(&errors.read(), &p.key),
+                        }
+                    } else {
+                        PropertyInput {
+                            key: "{p.key}",
+                            error: field_error(&errors.read(), &p.key),
+                            def: p.clone(),
+                            doc,
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/// Title of `key` when its value is still the one taken from the links (an
+/// assistant's proposal wins over them).
+fn prefilled(
+    linked: &std::collections::BTreeMap<String, (String, String)>,
+    doc: &Map<String, Value>,
+    key: &str,
+) -> Option<String> {
+    let (id, title) = linked.get(key)?;
+    (doc.get(key).and_then(Value::as_str) == Some(id.as_str())).then(|| title.clone())
+}
+
+fn field_error(errs: &Map<String, Value>, key: &str) -> Option<String> {
+    errs.get(&format!("params.{key}"))
+        .or_else(|| errs.get(key))
+        .and_then(|v| v.as_str())
+        .map(|t| crate::api::error_i18n::localize_field(key, t))
+}
+
+/// `ref` parameters with exactly one linked object of their type, open
+/// links only: key -> (id, title). Two candidates leave the choice open.
+fn prefill(
+    object_id: &str,
+    params: &[PropertyDef],
+    links: &[LinkView],
+) -> std::collections::BTreeMap<String, (String, String)> {
+    let mut out = std::collections::BTreeMap::new();
+    for p in params {
+        let PropertyKind::Ref { to_type } = &p.kind else {
+            continue;
+        };
+        let mut others: Vec<_> = links
+            .iter()
+            .filter(|l| l.valid_to.is_none())
+            .map(|l| {
+                if l.source.id == object_id {
+                    &l.target
+                } else {
+                    &l.source
+                }
+            })
+            .filter(|o| &o.type_key == to_type && o.id != object_id)
+            .collect();
+        others.sort_by(|a, b| a.id.cmp(&b.id));
+        others.dedup_by(|a, b| a.id == b.id);
+        if let [one] = others.as_slice() {
+            out.insert(p.key.clone(), (one.id.clone(), one.title.clone()));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pnex_core::ontology::api::ObjectRef;
+
+    fn obj(id: &str, ty: &str) -> ObjectRef {
+        ObjectRef {
+            id: id.into(),
+            type_key: ty.into(),
+            title: format!("T{id}"),
+            native_id: String::new(),
+        }
+    }
+
+    fn link(from: ObjectRef, to: ObjectRef, closed: bool) -> LinkView {
+        LinkView {
+            id: 0,
+            link_type: "l".into(),
+            source: from,
+            target: to,
+            attributes: Map::new(),
+            valid_from: String::new(),
+            valid_to: closed.then(String::new),
+            source_ref: None,
+        }
+    }
+
+    fn param(key: &str, to: &str) -> PropertyDef {
+        serde_json::from_value(serde_json::json!({"key": key, "kind": "ref", "to_type": to}))
+            .unwrap()
+    }
+
+    #[test]
+    fn only_a_single_open_link_prefills() {
+        let lead = obj("L", "lead");
+        let params = [
+            param("organization", "organization"),
+            param("person", "person"),
+        ];
+        let links = [
+            link(lead.clone(), obj("A", "organization"), false),
+            link(obj("A", "organization"), lead.clone(), false),
+            link(lead.clone(), obj("B", "organization"), true),
+            link(obj("P", "person"), lead.clone(), false),
+            link(lead.clone(), obj("Q", "person"), false),
+        ];
+        let got = prefill("L", &params, &links);
+        assert_eq!(got.get("organization"), Some(&("A".into(), "TA".into())));
+        assert!(!got.contains_key("person"), "two people: the human picks");
     }
 }

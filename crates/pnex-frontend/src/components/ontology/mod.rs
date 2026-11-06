@@ -12,6 +12,7 @@ pub mod object_link;
 pub mod open_case;
 pub mod page_from_template;
 pub mod property_input;
+pub mod ref_search;
 
 use dioxus::prelude::*;
 use dioxus_i18n::prelude::i18n;

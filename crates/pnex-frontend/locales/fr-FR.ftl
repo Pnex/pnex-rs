@@ -5121,6 +5121,9 @@ onto-action-run = Exécuter
 onto-action-title = { $action } — { $object }
 onto-action-hint = L'action est envoyée aux flows déployés qui la traitent : ce sont eux qui décident de ce qui se passe. Le déclenchement est conservé dans l'onglet Provenance.
 onto-action-confirm-hint = Cette action demande votre confirmation explicite : vérifiez les paramètres avant de l'exécuter.
+onto-ref-change = Changer
+onto-ref-none = Aucun résultat
+onto-ref-linked = Repris des liens de l'objet : vérifiez-le avant d'exécuter.
 onto-action-sent = Action envoyée à { $count ->
     [one] 1 flow
    *[other] { $count } flows
