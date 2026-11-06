@@ -84,6 +84,7 @@ async fn run() -> Result<(), String> {
     match env("PNEX_RUNNER_EXECUTOR").as_deref() {
         Some("kubernetes") => serve(k8s(runtime)?, &url).await,
         Some("podman") => serve(podman(runtime)?, &url).await,
+        Some("firecracker") => serve(firecracker()?, &url).await,
         Some(other) => Err(format!("unknown PNEX_RUNNER_EXECUTOR: {other}")),
         None if in_cluster => {
             tokio::spawn(pnex_runner::gate::listen());
@@ -110,6 +111,25 @@ fn k8s(runtime: Option<String>) -> Result<K8s, String> {
         env("PNEX_RUNNER_IMAGE")
             .zip(env("POD_IP").map(|ip| format!("{ip}:{}", pnex_runner::gate::PORT))),
     )
+}
+
+/// A micro-VM per job (D762): the binary, a pinned guest kernel and a work folder.
+fn firecracker() -> Result<pnex_runner::firecracker::Firecracker, String> {
+    let need = |name: &str| env(name).ok_or_else(|| format!("{name} is required for firecracker"));
+    Ok(pnex_runner::firecracker::Firecracker::new(
+        PathBuf::from(need("PNEX_RUNNER_WORKDIR")?),
+        PathBuf::from(env("PNEX_RUNNER_FIRECRACKER").unwrap_or_else(|| "firecracker".into())),
+        PathBuf::from(need("PNEX_RUNNER_KERNEL")?),
+        env("PNEX_RUNNER_INSECURE_REGISTRIES")
+            .map(|v| {
+                v.split(',')
+                    .map(|h| h.trim().to_string())
+                    .filter(|h| !h.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default(),
+        credentials_path()?,
+    ))
 }
 
 fn podman(runtime: Option<String>) -> Result<Podman, String> {

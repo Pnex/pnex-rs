@@ -7,8 +7,10 @@
 
 pub mod api;
 pub mod artifacts;
+pub mod firecracker;
 pub mod gate;
 pub mod k8s;
+pub mod oci;
 pub mod podman;
 
 use std::collections::HashMap;

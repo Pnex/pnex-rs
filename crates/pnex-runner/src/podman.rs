@@ -248,40 +248,55 @@ impl Host for Podman {
     }
 
     async fn load_credentials(&self) -> Result<Option<(String, String)>, String> {
-        match std::fs::read(&self.credentials) {
-            Ok(raw) => {
-                let c: Credentials = serde_json::from_slice(&raw)
-                    .map_err(|_| format!("{} is not valid", self.credentials.display()))?;
-                Ok(Some((c.runner_id, c.token)))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(format!("{}: {e}", self.credentials.display())),
-        }
+        load_file_credentials(&self.credentials)
     }
 
-    /// Readable by the runner's user only.
     async fn save_credentials(&self, runner_id: &str, token: &str) -> Result<(), String> {
-        use std::io::Write;
-        if let Some(dir) = self.credentials.parent() {
-            std::fs::DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(dir)
-                .map_err(|e| format!("{}: {e}", dir.display()))?;
-        }
-        let body = serde_json::to_vec(&Credentials {
-            runner_id: runner_id.to_string(),
-            token: token.to_string(),
-        })
-        .map_err(|e| e.to_string())?;
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&self.credentials)
-            .and_then(|mut f| f.write_all(&body))
-            .map_err(|e| format!("{}: {e}", self.credentials.display()))
+        save_file_credentials(&self.credentials, runner_id, token)
     }
+}
+
+/// The credentials of a runner on a host, from its file.
+pub(crate) fn load_file_credentials(
+    path: &std::path::Path,
+) -> Result<Option<(String, String)>, String> {
+    match std::fs::read(path) {
+        Ok(raw) => {
+            let c: Credentials = serde_json::from_slice(&raw)
+                .map_err(|_| format!("{} is not valid", path.display()))?;
+            Ok(Some((c.runner_id, c.token)))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+/// Readable by the runner's user only.
+pub(crate) fn save_file_credentials(
+    path: &std::path::Path,
+    runner_id: &str,
+    token: &str,
+) -> Result<(), String> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
+            .map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    let body = serde_json::to_vec(&Credentials {
+        runner_id: runner_id.to_string(),
+        token: token.to_string(),
+    })
+    .map_err(|e| e.to_string())?;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+        .and_then(|mut f| f.write_all(&body))
+        .map_err(|e| format!("{}: {e}", path.display()))
 }
 
 #[cfg(test)]
