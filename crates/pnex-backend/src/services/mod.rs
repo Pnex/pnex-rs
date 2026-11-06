@@ -47,6 +47,7 @@ pub mod geo;
 pub mod iam;
 pub mod image_registries;
 pub mod ingest;
+pub mod job_logs;
 /// Live last-value telemetry cache (Valkey) — write side (pnex-device-read
 /// acceleration).
 pub mod lab;

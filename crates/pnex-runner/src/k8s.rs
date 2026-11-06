@@ -6,8 +6,9 @@ use std::time::Duration;
 use base64::Engine;
 use pnex_core::environments::{ScanComponent, ScanFinding, ScanReport};
 use pnex_core::runners::{
-    is_scan_command, RunnerBuildInput, RunnerJobSpec, RunnerSandboxInput, RunnerScanInput,
-    SCAN_REPORT_MARKER,
+    is_scan_command, RunnerBuildInput, RunnerContainerLog, RunnerJobLogs, RunnerJobSpec,
+    RunnerSandboxInput, RunnerScanInput, LOG_CONTAINERS_MAX, LOG_CONTAINER_MAX_BYTES,
+    LOG_TAIL_LINES, SCAN_REPORT_MARKER,
 };
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -320,6 +321,24 @@ if [ -n "${GIT_TOKEN:-}" ]; then
 fi
 exec git clone --depth 1 --no-recurse-submodules --branch "$1" -- "$2" "$3"
 "#;
+
+/// Containers whose output is the journal of a job, in the order they ran: init containers
+/// first (`clone`, services, `setup`), then the job. None for a scan, whose output is its
+/// report, stored apart (D728).
+pub fn log_containers(pod: &Value) -> Vec<String> {
+    let spec = &pod["spec"];
+    let command: Vec<String> =
+        serde_json::from_value(spec["containers"][0]["command"].clone()).unwrap_or_default();
+    if is_scan_command(&command) {
+        return vec![];
+    }
+    ["initContainers", "containers"]
+        .iter()
+        .flat_map(|key| spec[*key].as_array().into_iter().flatten())
+        .filter_map(|c| c["name"].as_str().map(str::to_string))
+        .take(LOG_CONTAINERS_MAX)
+        .collect()
+}
 
 /// `(secret, network policy, pod)` of a sandbox. The order is that of D714 and D717: clone,
 /// services, setup, agent. Each secret goes to one container, by reference: none is in the
@@ -860,6 +879,38 @@ impl Executor for K8s {
         parse_scan_output(&res.error_for_status().ok()?.text().await.ok()?)
     }
 
+    async fn logs(&self, job: &str) -> RunnerJobLogs {
+        let Ok(Some(pod)) = self.get(&format!("pods/{POD_PREFIX}{job}")).await else {
+            return RunnerJobLogs::default();
+        };
+        let mut out = RunnerJobLogs::default();
+        for container in log_containers(&pod) {
+            let res = self
+                .http
+                .get(self.url(&format!(
+                    "pods/{POD_PREFIX}{job}/log?container={container}\
+                     &tailLines={LOG_TAIL_LINES}&limitBytes={LOG_CONTAINER_MAX_BYTES}"
+                )))
+                .bearer_auth(Self::bearer().unwrap_or_default())
+                .send()
+                .await;
+            // A container that never started has no log: a 400, skipped.
+            let Some(text) = (match res {
+                Ok(res) if res.status().is_success() => res.text().await.ok(),
+                _ => None,
+            }) else {
+                continue;
+            };
+            out.containers.push(RunnerContainerLog {
+                truncated: text.len() >= LOG_CONTAINER_MAX_BYTES
+                    || text.lines().count() >= LOG_TAIL_LINES,
+                container,
+                text,
+            });
+        }
+        out
+    }
+
     async fn status(&self, job: &str) -> Result<WorkloadStatus, String> {
         Ok(self
             .get(&format!("pods/{POD_PREFIX}{job}"))
@@ -1179,6 +1230,22 @@ mod tests {
                 port: 443,
             }],
         }
+    }
+
+    #[test]
+    fn the_journal_follows_the_containers_in_the_order_they_ran() {
+        let (_, _, pod) = sandbox_manifests("j", "r", &spec(), &sandbox_input(), None);
+        assert_eq!(
+            log_containers(&pod),
+            ["clone-0", "service-valkey", "setup", "job"]
+        );
+        let mut scan = spec();
+        scan.command = pnex_core::runners::scan_command("x");
+        let (_, pod) = scan_manifests("j", "r", &scan, None, None);
+        assert!(
+            log_containers(&pod).is_empty(),
+            "a scan's output is its report"
+        );
     }
 
     #[test]

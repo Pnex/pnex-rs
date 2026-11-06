@@ -4526,6 +4526,7 @@ err-agent-run-not-found = Ce run n'existe pas.
 err-agent-run-no-active-build = Cet environnement n'a pas de build actif à lancer : activez-en un.
 err-agent-run-ended = Ce run est déjà terminé.
 err-agent-run-unauthorized = Jeton de run inconnu, ou run arrêté.
+err-agent-run-logs-unavailable = Le journal des runs n'est pas disponible pour le moment.
 err-agent-run-llm-budget = Ce run a utilisé tous ses appels au modèle.
 err-agent-gateway-quota = Les agents de l'organisation ont utilisé leurs { $cap } appels au modèle du jour.
 err-agent-gateway-not-configured = Aucun fournisseur de modèle n'est configuré pour les agents de l'organisation.

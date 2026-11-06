@@ -26,6 +26,8 @@ use crate::services::runners::{self, RunnerError, RunnerPrincipal};
 /// A scan report at its bounds (`pnex_core::environments`).
 const FINISH_BODY_MAX: usize = 16 * 1024 * 1024;
 const SBOM_BODY_MAX: usize = 64 * 1024 * 1024;
+/// The bounds of `RunnerJobLogs`, with room for JSON escapes.
+const LOGS_BODY_MAX: usize = 48 * 1024 * 1024;
 
 pub fn routes() -> Routes {
     Routes::new()
@@ -45,6 +47,10 @@ pub fn routes() -> Routes {
         .add(
             "/runner/jobs/{id}/sbom",
             post(upload_sbom).layer(DefaultBodyLimit::max(SBOM_BODY_MAX)),
+        )
+        .add(
+            "/runner/jobs/{id}/logs",
+            post(upload_logs).layer(DefaultBodyLimit::max(LOGS_BODY_MAX)),
         )
 }
 
@@ -537,11 +543,54 @@ async fn upload_sbom(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/runner/jobs/{id}/logs",
+    tag = "runners",
+    operation_id = "runner_jobs_logs",
+    summary = "Upload the logs of a job",
+    description = "Called by the runner holding the job, before finishing it, with the last lines of each container, delivered secrets masked. The server masks credential-shaped words again and journals one record per line (D719). Authenticated by the runner token.",
+    params(("id" = String, Path, format = "uuid", description = "Job id")),
+    request_body = pnex_core::runners::RunnerJobLogs,
+    responses(
+        (status = 204, description = "Accepted"),
+        (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 401, description = "`runner-unauthorized`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`runner-job-not-held`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn upload_logs(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(logs): Json<pnex_core::runners::RunnerJobLogs>,
+) -> Result<Response> {
+    let runner = principal(&ctx, &headers).await?;
+    let id = parse_id(&id)?;
+    // Only for the job this runner holds right now.
+    runners::heartbeat(&ctx.db, runner, id)
+        .await
+        .map_err(runner_error)?;
+    if let Some((field, token)) = logs.violation() {
+        return Ok(super::field_error(field, &token));
+    }
+    // Best effort, like the journal of a scan: the job's result never waits for its logs.
+    let org_id = runner.org_id;
+    tokio::spawn(async move {
+        if let Err(e) = crate::services::job_logs::store(&ctx, org_id, id, &logs).await {
+            tracing::warn!(error = %e, job = %id, "job logs not journaled");
+        }
+    });
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
         paths(
             upload_sbom,
+            upload_logs,
             list,
             create_join_token,
             remove,
@@ -570,7 +619,9 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             RunnerJobOutcome,
             RunnerJobView,
             RunnerClaimedJob,
-            RunnerJobFinish
+            RunnerJobFinish,
+            pnex_core::runners::RunnerJobLogs,
+            pnex_core::runners::RunnerContainerLog
         ))
     )]
     struct Doc;

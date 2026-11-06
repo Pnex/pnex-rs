@@ -4,9 +4,9 @@ title: Agent runs (hosted agents and their model gateway)
 kind: feature
 pages: 
 nodes: 
-err_codes: agent-run-not-found, agent-run-no-active-build, agent-run-ended, agent-run-unauthorized, agent-run-llm-budget, agent-gateway-quota, agent-gateway-not-configured, agent-gateway-protocol-mismatch, agent-gateway-invalid, agent-gateway-upstream
+err_codes: agent-run-not-found, agent-run-no-active-build, agent-run-ended, agent-run-unauthorized, agent-run-llm-budget, agent-gateway-quota, agent-gateway-not-configured, agent-gateway-protocol-mismatch, agent-gateway-invalid, agent-gateway-upstream, agent-run-logs-unavailable
 tools: 
-tags: agent, run, sandbox, gateway, llm, token, budget, environment
+tags: agent, run, sandbox, gateway, llm, token, budget, environment, logs, journal
 ---
 A run starts a hosted agent in a sandbox: one pod, on a runner of the organization, from the active build of an environment. It ends with the pod; nothing stays running between runs.
 
@@ -16,6 +16,12 @@ There is no page for runs yet: they are started through the API.
 - The agent reaches the model of the organization through the PneX gateway only. The provider key stays in the vault and never enters the sandbox.
 - The organization picks that model in the AI settings, under the usage "Hosted agents". Whatever model the agent asks for, the gateway uses this one.
 - The run gets a run token instead of a key. It works only while the run is running: a stop or the end of the run closes it at once.
+
+## The journal of a run
+- When a run ends, its runner sends the last lines of each container of the sandbox: clone, test services, setup, then the agent, in that order.
+- The secrets of the run are masked, and so is anything shaped like a known credential. A container with more output keeps its last lines only, marked as such.
+- The journal is for debugging. A run stopped by hand has none yet.
+- `agent-run-logs-unavailable`: the journal cannot be read on this deployment right now. Try again later; the run itself is not affected.
 
 ## Limits
 - Each run has a number of model calls (200 by default); past it, calls are refused with `agent-run-llm-budget`.

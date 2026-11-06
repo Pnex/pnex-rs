@@ -383,6 +383,102 @@ pub struct RunnerJobFinish {
     pub scan_report: Option<crate::environments::ScanReport>,
 }
 
+/// Bounds of the output a runner sends for one job (D719): its last lines, per container.
+pub const LOG_CONTAINERS_MAX: usize = 32;
+pub const LOG_CONTAINER_MAX_BYTES: usize = 256 * 1024;
+pub const LOG_TAIL_LINES: usize = 4000;
+/// A longer line is cut: a log line is for reading, not for carrying data.
+pub const LOG_LINE_MAX_BYTES: usize = 16 * 1024;
+
+/// The last lines of one container of a job, secrets masked by the runner.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RunnerContainerLog {
+    pub container: String,
+    pub text: String,
+    /// Older lines were left out.
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+/// What a runner sends of the output of a job, before finishing it (D719).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RunnerJobLogs {
+    pub containers: Vec<RunnerContainerLog>,
+}
+
+impl RunnerJobLogs {
+    /// `(field, token)` of what is past its bounds: the server never trusts the runner's.
+    pub fn violation(&self) -> Option<(&'static str, String)> {
+        if self.containers.len() > LOG_CONTAINERS_MAX {
+            return Some(("containers", format!("max_items:{LOG_CONTAINERS_MAX}")));
+        }
+        if self
+            .containers
+            .iter()
+            .any(|c| c.container.is_empty() || c.container.len() > 63)
+        {
+            return Some(("container", "max_length:63".into()));
+        }
+        // Masking may lengthen a little what the runner cut at the bound.
+        if self
+            .containers
+            .iter()
+            .any(|c| c.text.len() > 2 * LOG_CONTAINER_MAX_BYTES)
+        {
+            return Some((
+                "text",
+                format!("max_length:{}", 2 * LOG_CONTAINER_MAX_BYTES),
+            ));
+        }
+        None
+    }
+}
+
+/// One line of the journal of a job, oldest first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RunnerJobLogLine {
+    pub container: String,
+    pub line: String,
+}
+
+impl RunnerClaimedJob {
+    /// Every secret delivered with this job, to mask out of its output.
+    pub fn secret_values(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(build) = &self.build {
+            out.push(build.secret.clone());
+            if let Some(cache) = &build.cache {
+                out.extend([cache.secret_key.clone(), cache.session_token.clone()]);
+            }
+        }
+        if let Some(scan) = &self.scan {
+            out.push(scan.secret.clone());
+        }
+        if let Some(sandbox) = &self.sandbox {
+            out.extend(sandbox.secrets.values().cloned());
+            out.extend(sandbox.repos.iter().filter_map(|r| r.token.clone()));
+        }
+        out
+    }
+}
+
+/// `text` with each secret, and each word shaped like one, replaced by
+/// [`crate::environments::MASK`]. Values under 8 characters are left: masking `a` would
+/// blank the log and hide nothing.
+pub fn mask_secrets(text: &str, secrets: &[String]) -> String {
+    let mut secrets: Vec<&String> = secrets.iter().filter(|s| s.len() >= 8).collect();
+    // The longest first: a secret that holds another one goes whole.
+    secrets.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    let mut out = text.to_string();
+    for secret in secrets {
+        out = out.replace(secret.as_str(), crate::environments::MASK);
+    }
+    crate::environments::redact_tokens(&out)
+}
+
 /// Line between the SBOM and the report in the output of a scan pod.
 pub const SCAN_REPORT_MARKER: &str = "---pnex-scan-report---";
 /// The SBOM first, and the findings from that SBOM: what a scan reports is what the stored
@@ -487,6 +583,58 @@ mod tests {
         ] {
             assert!(!image_is_pinned(&bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn delivered_secrets_are_masked_out_of_a_log() {
+        let job = RunnerClaimedJob {
+            id: "j".into(),
+            kind: RunnerJobKind::Sandbox,
+            spec: RunnerJobSpec {
+                image: format!("x@sha256:{DIGEST}"),
+                command: vec![],
+                timeout_secs: 60,
+            },
+            lease_secs: 120,
+            build: None,
+            scan: None,
+            sandbox: Some(RunnerSandboxInput {
+                init_image: String::new(),
+                repos: vec![SandboxRepo {
+                    url: "https://git.example/r".into(),
+                    git_ref: "main".into(),
+                    path: "r".into(),
+                    token: Some("clone-token-value".into()),
+                }],
+                services: vec![],
+                setup: vec![],
+                env: BTreeMap::new(),
+                secrets: BTreeMap::from([
+                    ("RUN".to_string(), "run-secret-value".to_string()),
+                    ("SHORT".to_string(), "abc".to_string()),
+                ]),
+                egress: vec![],
+            }),
+        };
+        let secrets = job.secret_values();
+        let out = mask_secrets(
+            "run-secret-value clone-token-value abc ghp_000000000000000000000000000000",
+            &secrets,
+        );
+        let m = crate::environments::MASK;
+        assert_eq!(out, format!("{m} {m} abc {m}"));
+
+        let mut logs = RunnerJobLogs::default();
+        assert_eq!(logs.violation(), None);
+        logs.containers = vec![
+            RunnerContainerLog {
+                container: "job".into(),
+                text: String::new(),
+                truncated: false,
+            };
+            LOG_CONTAINERS_MAX + 1
+        ];
+        assert_eq!(logs.violation().map(|v| v.0), Some("containers"));
     }
 
     #[test]

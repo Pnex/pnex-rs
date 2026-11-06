@@ -20321,6 +20321,42 @@
         ],
         "type": "object"
       },
+      "Paginated_RunnerJobLogLine": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/RunnerJobLogLine"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_RunnerJobView": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -24531,6 +24567,26 @@
         ],
         "type": "object"
       },
+      "RunnerContainerLog": {
+        "description": "The last lines of one container of a job, secrets masked by the runner.",
+        "properties": {
+          "container": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "truncated": {
+            "description": "Older lines were left out.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "container",
+          "text"
+        ],
+        "type": "object"
+      },
       "RunnerJobCreate": {
         "properties": {
           "kind": {
@@ -24589,6 +24645,37 @@
           "sandbox"
         ],
         "type": "string"
+      },
+      "RunnerJobLogLine": {
+        "description": "One line of the journal of a job, oldest first.",
+        "properties": {
+          "container": {
+            "type": "string"
+          },
+          "line": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "container",
+          "line"
+        ],
+        "type": "object"
+      },
+      "RunnerJobLogs": {
+        "description": "What a runner sends of the output of a job, before finishing it (D719).",
+        "properties": {
+          "containers": {
+            "items": {
+              "$ref": "#/components/schemas/RunnerContainerLog"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "containers"
+        ],
+        "type": "object"
       },
       "RunnerJobOutcome": {
         "description": "How a job ended, as reported by its runner or decided by the reaper.",
@@ -31072,6 +31159,113 @@
           }
         ],
         "summary": "Get a run",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/v1/agent-runs/{id}/logs": {
+      "get": {
+        "description": "The last lines of each container of the sandbox, oldest first, in the order the containers ran (clone, services, setup, agent). Sent by the runner when the run ends, secrets masked. Requires `agents:read`. Paginated (`limit`/`offset`).",
+        "operationId": "agent_runs_logs",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Run id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_RunnerJobLogLine"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-run-not-found`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-run-logs-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the journal of a run",
         "tags": [
           "agent-runs"
         ]
@@ -79858,6 +80052,78 @@
           }
         ],
         "summary": "Renew the lease of a job",
+        "tags": [
+          "runners"
+        ]
+      }
+    },
+    "/api/v1/runner/jobs/{id}/logs": {
+      "post": {
+        "description": "Called by the runner holding the job, before finishing it, with the last lines of each container, delivered secrets masked. The server masks credential-shaped words again and journals one record per line (D719). Authenticated by the runner token.",
+        "operationId": "runner_jobs_logs",
+        "parameters": [
+          {
+            "description": "Job id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerJobLogs"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`runner-unauthorized`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`runner-job-not-held`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Upload the logs of a job",
         "tags": [
           "runners"
         ]

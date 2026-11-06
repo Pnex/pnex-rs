@@ -755,6 +755,8 @@ pub const AGENT_RUN_NO_ACTIVE_BUILD: &str = "agent-run-no-active-build";
 pub const AGENT_RUN_ENDED: &str = "agent-run-ended";
 /// Unknown run token, or the run is not running.
 pub const AGENT_RUN_UNAUTHORIZED: &str = "agent-run-unauthorized";
+/// The journal of runs cannot be read on this deployment (D719).
+pub const AGENT_RUN_LOGS_UNAVAILABLE: &str = "agent-run-logs-unavailable";
 /// The run has used all its LLM calls.
 pub const AGENT_RUN_LLM_BUDGET: &str = "agent-run-llm-budget";
 /// The daily LLM calls of agents of the org are used up.
@@ -1205,6 +1207,7 @@ pub const ALL: &[&str] = &[
     AGENT_RUN_ENDED,
     AGENT_RUN_UNAUTHORIZED,
     AGENT_RUN_LLM_BUDGET,
+    AGENT_RUN_LOGS_UNAVAILABLE,
     AGENT_GATEWAY_QUOTA,
     AGENT_GATEWAY_NOT_CONFIGURED,
     AGENT_GATEWAY_PROTOCOL_MISMATCH,

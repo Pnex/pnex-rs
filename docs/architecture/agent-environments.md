@@ -740,8 +740,32 @@ digest. Le serveur ne pousse rien : le runner prend le job comme les autres.
   budget LLM et exécute du code), `agents:stop` (Member). Lecture `EXPOSED` au MCP,
   lancement et arrêt `EXCLUDED` (runtime) : l'assistant ne lance ni n'arrête de run (D391).
 - **Pas encore** : agent = compte de service (D379) et sa clé propre (D710), politique,
-  dépôts à cloner et services de test dans la demande de run, artefacts (D729), journal du
-  run (D719), page. La clé est celle de l'usage `agent` de l'org (D383, sans niveau agent).
+  dépôts à cloner et services de test dans la demande de run, artefacts (D729), page. La clé
+  est celle de l'usage `agent` de l'org (D383, sans niveau agent).
+
+### D733 — Journal d'un job, V1 de D719 : en fin de job, par le runner
+
+Décision du 2026-11-06, qui applique D719 à tous les jobs du runner (build, sonde, bac) :
+
+- **Quand** : à la fin du job, quelle qu'elle soit (succès, échec, délai), avant la
+  destruction du pod. Le runner lit `pods/log` de chaque conteneur, init containers d'abord,
+  dans l'ordre où ils ont tourné (`clone`, services, `setup`, agent). Pas de scan : sa sortie
+  est son rapport, rangé à part (D728).
+- **Bornes** : les 4 000 dernières lignes et 256 Kio par conteneur, 32 conteneurs, ligne
+  coupée à 16 Kio. Un conteneur coupé commence par `[older lines left out]`.
+- **Masquage, deux fois** : le runner remplace chaque secret livré au claim (secrets du bac,
+  jetons de clone, login de registre, identifiants STS du cache) ; PneX remplace ensuite tout
+  mot à la forme d'un identifiant connu (`pnagr_`, `ghp_`, `sk-`, `AKIA`…) et les blocs de
+  clé privée. Le jeton de run n'est gardé que haché : seule la forme le rattrape côté serveur.
+- **Transport** : `POST /api/v1/runner/jobs/{id}/logs` (`Machine`, jeton du runner, job
+  tenu), avant `finish`. Au mieux : un échec n'empêche jamais le résultat du job de partir.
+- **Stockage** : stream O2 `runner_job_logs`, une ligne par enregistrement (job, conteneur,
+  rang). Rien en base.
+- **Lecture** : `GET /api/v1/agent-runs/{id}/logs`, paginé, `agents:read`, `EXPOSED` au MCP
+  (les secrets sont masqués). 503 `agent-run-logs-unavailable` sans O2.
+- **Limites V1** : un run arrêté à la main n'a pas de journal (le serveur ne prend plus rien
+  pour un job arrêté) ; rien n'arrive pendant le run, seulement à la fin ; pas encore de
+  route de lecture pour les builds, ni de lecture sur VM (Podman).
 
 ### D732 — Passerelle LLM : deux protocoles, le modèle de l'org, compté et tracé
 
@@ -869,3 +893,4 @@ vrai cluster : les tests d'un bac à sable sans vrai noyau ne prouvent rien.
 | D729 | Artefacts de run déclarés en entrée et en sortie, transportés par PneX sans accès S3 depuis le bac, collectés hors du conteneur de l'agent, passés de run en run dans une chaîne |
 | D731 | Run = job `sandbox` sur le build actif ; token de run frappé à chaque claim, valable tant que le job tourne ; adresse de la passerelle résolue au claim pour l'egress |
 | D732 | Passerelle LLM Anthropic et OpenAI, modèle de l'usage `agent` imposé, flux rendu tel quel et compté, budget par run et par jour, empreintes dans O2 |
+| D733 | Journal d'un job en fin de job : `pods/log` lu par le runner, secrets livrés masqués par le runner puis formes d'identifiant par PneX, une ligne par enregistrement O2, lu sur le run |

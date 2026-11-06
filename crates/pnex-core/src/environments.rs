@@ -306,7 +306,60 @@ const TOKEN_SHAPES: &[(&str, usize)] = &[
     ("hf_", 30),
     ("pnrun_", 16),
     ("pnjoin_", 16),
+    ("pnagr_", 16),
 ];
+
+/// What stands for a masked secret in a log (D705, D719).
+pub const MASK: &str = "[masked]";
+
+/// `text` with each word shaped like a credential, and each private key block, masked.
+/// Same rule as [`holds_a_secret`]: a prefix counts only at the start of a word.
+pub fn redact_tokens(text: &str) -> String {
+    let token_char = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '-');
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while !rest.is_empty() {
+        let word_len: usize = rest
+            .chars()
+            .take_while(|c| token_char(*c))
+            .map(char::len_utf8)
+            .sum();
+        if word_len == 0 {
+            let c = rest.chars().next().unwrap_or_default();
+            out.push(c);
+            rest = &rest[c.len_utf8()..];
+            continue;
+        }
+        let word = &rest[..word_len];
+        let shaped = TOKEN_SHAPES
+            .iter()
+            .any(|(prefix, least)| word.starts_with(prefix) && word.len() - prefix.len() >= *least);
+        out.push_str(if shaped { MASK } else { word });
+        rest = &rest[word_len..];
+    }
+    // From `-----BEGIN ... PRIVATE KEY-----` to the end of its footer, or of the text if cut.
+    let (begin, end_mark) = ("-----BEGIN ", "-----END ");
+    let mut from = 0;
+    while let Some(at) = out[from..].find(begin).map(|i| from + i) {
+        let header_end = out[at + begin.len()..]
+            .find("-----")
+            .map_or(out.len(), |i| at + begin.len() + i);
+        if !out[at..header_end].contains("PRIVATE KEY") {
+            from = header_end;
+            continue;
+        }
+        let end = out[header_end..]
+            .find(end_mark)
+            .and_then(|i| {
+                let footer = header_end + i + end_mark.len();
+                out[footer..].find("-----").map(|j| footer + j + 5)
+            })
+            .unwrap_or(out.len());
+        out.replace_range(at..end, MASK);
+        from = at + MASK.len();
+    }
+    out
+}
 
 /// Whether `text` holds what looks like a credential.
 pub fn holds_a_secret(text: &str) -> bool {
@@ -368,6 +421,27 @@ impl EnvironmentSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_shaped_words_and_private_keys_are_masked() {
+        let token = format!("pnagr_{}", "a".repeat(40));
+        let line = format!("key={token} task-{} 日本 ok", "x".repeat(40));
+        assert_eq!(
+            redact_tokens(&line),
+            format!("key={MASK} task-{} 日本 ok", "x".repeat(40))
+        );
+        let pem = "cert -----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n\
+                   -----BEGIN RSA PRIVATE KEY-----\nBBB\n-----END RSA PRIVATE KEY-----\nafter";
+        let out = redact_tokens(pem);
+        assert!(out.contains("AAA") && !out.contains("BBB"), "{out}");
+        assert!(out.ends_with(&format!("{MASK}\nafter")), "{out}");
+        // A key cut by the end of the output is masked to the end.
+        assert_eq!(
+            redact_tokens("x -----BEGIN PRIVATE KEY-----\nCCC"),
+            format!("x {MASK}")
+        );
+        assert!(holds_a_secret(&token));
+    }
 
     fn source() -> EnvironmentSource {
         EnvironmentSource {

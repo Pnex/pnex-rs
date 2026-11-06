@@ -14,8 +14,8 @@ use std::time::Duration;
 
 use pnex_core::environments::ScanReport;
 use pnex_core::runners::{
-    spec_error, RunnerBuildInput, RunnerClaimedJob, RunnerJobOutcome, RunnerJobSpec,
-    RunnerSandboxInput, RunnerScanInput,
+    mask_secrets, spec_error, RunnerBuildInput, RunnerClaimedJob, RunnerJobLogs, RunnerJobOutcome,
+    RunnerJobSpec, RunnerSandboxInput, RunnerScanInput,
 };
 use tokio::time::Instant;
 
@@ -34,6 +34,8 @@ pub trait Api {
     async fn heartbeat(&self, job: &str) -> Result<(), ApiError>;
     /// Sent before the job finishes: the server still sees it as held.
     async fn upload_sbom(&self, job: &str, document: String) -> Result<(), ApiError>;
+    /// Sent before the job finishes, like the SBOM (D719).
+    async fn upload_logs(&self, job: &str, logs: &RunnerJobLogs) -> Result<(), ApiError>;
     async fn finish(
         &self,
         job: &str,
@@ -73,6 +75,10 @@ pub trait Executor {
     /// What a finished scan reported and its SBOM, read before the workload is destroyed.
     async fn scan_output(&self, _job: &str) -> Option<(ScanReport, String)> {
         None
+    }
+    /// The last lines of each container, read before the workload is destroyed (D719).
+    async fn logs(&self, _job: &str) -> RunnerJobLogs {
+        RunnerJobLogs::default()
     }
     /// Idempotent: destroying what is already gone succeeds.
     async fn destroy(&self, job: &str) -> Result<(), String>;
@@ -119,6 +125,8 @@ struct Held {
     lease_until: Instant,
     beat_at: Instant,
     ending: Option<Ending>,
+    /// What the claim delivered, masked out of the logs before they leave.
+    secrets: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -128,6 +136,7 @@ struct Ending {
     digest: Option<String>,
     report: Option<ScanReport>,
     sbom: Option<String>,
+    logs: Option<RunnerJobLogs>,
 }
 
 impl From<(RunnerJobOutcome, Option<i32>)> for Ending {
@@ -138,6 +147,7 @@ impl From<(RunnerJobOutcome, Option<i32>)> for Ending {
             digest: None,
             report: None,
             sbom: None,
+            logs: None,
         }
     }
 }
@@ -200,6 +210,13 @@ impl<A: Api, E: Executor> Runner<A, E> {
                         ending.sbom = Some(sbom);
                     }
                 }
+                let mut logs = self.exec.logs(job).await;
+                if !logs.containers.is_empty() {
+                    for c in &mut logs.containers {
+                        c.text = mask_secrets(&c.text, &self.held[job].secrets);
+                    }
+                    ending.logs = Some(logs);
+                }
                 self.destroy(job).await;
                 if let Some(h) = self.held.get_mut(job) {
                     h.ending = Some(ending);
@@ -207,6 +224,20 @@ impl<A: Api, E: Executor> Runner<A, E> {
             }
         }
         if let Some(ending) = self.held[job].ending.clone() {
+            if let Some(logs) = &ending.logs {
+                // Best effort: logs are for debugging, they never hold the result back.
+                match self.api.upload_logs(job, logs).await {
+                    Ok(()) => {}
+                    Err(ApiError::NotHeld) => {
+                        self.held.remove(job);
+                        return;
+                    }
+                    Err(ApiError::Other(e)) => tracing::warn!(job, "logs not delivered: {e}"),
+                }
+                if let Some(e) = self.held.get_mut(job).and_then(|h| h.ending.as_mut()) {
+                    e.logs = None;
+                }
+            }
             if let Some(sbom) = ending.sbom.clone() {
                 match self.api.upload_sbom(job, sbom).await {
                     Ok(()) => {
@@ -264,6 +295,8 @@ impl<A: Api, E: Executor> Runner<A, E> {
                 }
             }
             Err(ApiError::NotHeld) => {
+                // shortcut: a stopped job loses its logs, since the server no longer takes
+                // anything for it; keep a short window after the stop if runs need them.
                 tracing::warn!(job, "job lost, destroying its workload");
                 self.destroy(job).await;
                 self.held.remove(job);
@@ -309,6 +342,7 @@ impl<A: Api, E: Executor> Runner<A, E> {
                 lease_until: now + lease,
                 beat_at: now + HEARTBEAT_EVERY,
                 ending: None,
+                secrets: job.secret_values(),
             };
             // The server checked it too; a runner does not trust what it runs.
             if let Some((field, _)) = spec_error(&job.spec) {
@@ -357,6 +391,7 @@ mod tests {
         down: Mutex<bool>,
         digest: Mutex<Option<String>>,
         sboms: Mutex<Vec<String>>,
+        logs: Mutex<Vec<RunnerJobLogs>>,
     }
 
     impl Api for &FakeApi {
@@ -365,6 +400,10 @@ mod tests {
         }
         async fn upload_sbom(&self, _: &str, document: String) -> Result<(), ApiError> {
             self.sboms.lock().unwrap().push(document);
+            Ok(())
+        }
+        async fn upload_logs(&self, _: &str, logs: &RunnerJobLogs) -> Result<(), ApiError> {
+            self.logs.lock().unwrap().push(logs.clone());
             Ok(())
         }
         async fn heartbeat(&self, _: &str) -> Result<(), ApiError> {
@@ -453,6 +492,15 @@ mod tests {
                 )
             })
         }
+        async fn logs(&self, _: &str) -> RunnerJobLogs {
+            RunnerJobLogs {
+                containers: vec![pnex_core::runners::RunnerContainerLog {
+                    container: "job".into(),
+                    text: "token=very-secret-value\n".into(),
+                    truncated: false,
+                }],
+            }
+        }
         async fn image_digest(&self, job: &str) -> Option<String> {
             self.pods
                 .lock()
@@ -473,6 +521,26 @@ mod tests {
         assert_eq!(api.sboms.lock().unwrap().len(), 1);
         assert_eq!(api.finished.lock().unwrap().len(), 1);
         assert_eq!(r.held(), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn logs_go_up_masked_before_the_job_finishes() {
+        let (api, exec) = (FakeApi::default(), FakeExec::default());
+        let mut j = job("j", IMAGE, 60);
+        j.scan = Some(RunnerScanInput {
+            registry_host: "r".into(),
+            username: "u".into(),
+            secret: "very-secret-value".into(),
+        });
+        queue(&api, vec![j]);
+        let mut r = Runner::new(&api, &exec, 1);
+        r.tick().await;
+        exec.set("j", WorkloadStatus::Exited(1));
+        r.tick().await;
+        let logs = api.logs.lock().unwrap();
+        assert_eq!(logs.len(), 1, "a failed job has its logs too");
+        assert_eq!(logs[0].containers[0].text, "token=[masked]\n");
+        assert_eq!(api.finished.lock().unwrap().len(), 1);
     }
 
     #[tokio::test(start_paused = true)]

@@ -371,6 +371,28 @@ async fn a_run_reaches_the_model_through_the_gateway_only_while_it_runs() {
         let (s, _) = gateway(&server, "messages", "pnagr_unknown", json!({})).await;
         assert_eq!(s, 401);
 
+        // The runner sends the journal before finishing (D733), within bounds. No O2 runs
+        // in these tests: reading says so, with a code.
+        let logs = format!("/api/v1/runner/jobs/{}/logs", job["id"].as_str().unwrap());
+        let one_container = json!({ "containers": [{ "container": "job", "text": "done\n" }] });
+        let res = server
+            .post(&logs)
+            .add_header("Authorization", format!("Bearer {runner}"))
+            .json(&one_container)
+            .await;
+        assert_eq!(res.status_code().as_u16(), 204, "{}", res.text());
+        let too_many = json!({ "containers": vec![one_container["containers"][0].clone(); 33] });
+        let res = server
+            .post(&logs)
+            .add_header("Authorization", format!("Bearer {runner}"))
+            .json(&too_many)
+            .await;
+        assert_eq!(res.status_code().as_u16(), 400, "{}", res.text());
+        let journal = format!("/api/v1/agent-runs/{id}/logs");
+        let (s, b) = call(&server, &env.alice, org, "GET", &journal, None).await;
+        assert_eq!(s, 503, "{b}");
+        assert!(b.to_string().contains("agent-run-logs-unavailable"), "{b}");
+
         // A stop closes the token at once and the runner loses the job.
         let stop = format!("/api/v1/agent-runs/{id}/stop");
         let (s, r) = call(&server, &env.alice, org, "POST", &stop, None).await;
@@ -386,6 +408,16 @@ async fn a_run_reaches_the_model_through_the_gateway_only_while_it_runs() {
             .add_header("Authorization", format!("Bearer {runner}"))
             .await;
         assert_eq!(res.status_code().as_u16(), 409);
+        let res = server
+            .post(&logs)
+            .add_header("Authorization", format!("Bearer {runner}"))
+            .json(&one_container)
+            .await;
+        assert_eq!(
+            res.status_code().as_u16(),
+            409,
+            "a stopped job takes no more logs"
+        );
         let (s, b) = call(&server, &env.alice, org, "POST", &stop, None).await;
         assert_eq!(s, 409, "{b}");
         assert_eq!(
@@ -419,6 +451,11 @@ async fn runs_keep_to_their_org_and_rights() {
 
         // Bob in his own org sees neither the run nor the environment.
         assert_eq!(call(&server, &env.bob, b, "GET", &one, None).await.0, 404);
+        let journal = format!("{one}/logs");
+        assert_eq!(
+            call(&server, &env.bob, b, "GET", &journal, None).await.0,
+            404
+        );
         let (s, d) = call(
             &server,
             &env.bob,

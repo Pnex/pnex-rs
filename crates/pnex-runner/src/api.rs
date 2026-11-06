@@ -108,6 +108,26 @@ impl Api for HttpApi {
         }
     }
 
+    async fn upload_logs(
+        &self,
+        job: &str,
+        logs: &pnex_core::runners::RunnerJobLogs,
+    ) -> Result<(), ApiError> {
+        let res = self
+            .http
+            .post(format!("{}/api/v1/runner/jobs/{job}/logs", self.base))
+            .bearer_auth(&self.token)
+            .json(logs)
+            .send()
+            .await
+            .map_err(|e| ApiError::Other(e.without_url().to_string()))?;
+        match res.status() {
+            s if s.is_success() => Ok(()),
+            StatusCode::CONFLICT => Err(ApiError::NotHeld),
+            s => Err(ApiError::Other(format!("logs: {s}"))),
+        }
+    }
+
     async fn heartbeat(&self, job: &str) -> Result<(), ApiError> {
         self.post(&format!("jobs/{job}/heartbeat"), None)
             .await

@@ -188,6 +188,23 @@ pub async fn get(
     Ok(view(&row)?)
 }
 
+/// The job of a run and when it was created, in microseconds: where its journal is.
+pub async fn job_of(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+) -> Result<(Uuid, i64), AgentRunError> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT job_id, (extract(epoch FROM created_at) * 1000000)::bigint AS at_us \
+             FROM agent_runs WHERE org_id = $1 AND id = $2",
+            vec![org_id.into(), id.into()],
+        ))
+        .await?
+        .ok_or(AgentRunError::NotFound)?;
+    Ok((row.try_get("", "job_id")?, row.try_get("", "at_us")?))
+}
+
 pub async fn list(
     db: &DatabaseConnection,
     org_id: i64,

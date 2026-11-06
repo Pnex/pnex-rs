@@ -24,6 +24,7 @@ pub fn routes() -> Routes {
         .add("/agent-runs", get(list).post(create))
         .add("/agent-runs/{id}", get(one))
         .add("/agent-runs/{id}/stop", post(stop))
+        .add("/agent-runs/{id}/logs", get(logs))
         .add(
             "/agent-gateway/v1/messages",
             post(gateway_anthropic).layer(axum::extract::DefaultBodyLimit::max(GATEWAY_BODY_MAX)),
@@ -36,7 +37,10 @@ pub fn routes() -> Routes {
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
-    #[openapi(paths(list, create, one, stop, gateway_anthropic, gateway_openai))]
+    #[openapi(
+        paths(list, create, one, stop, logs, gateway_anthropic, gateway_openai),
+        components(schemas(pnex_core::runners::RunnerJobLogLine))
+    )]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
 }
@@ -199,6 +203,60 @@ async fn stop(
         Ok(run) => format::json(run),
         Err(e) => run_error(e),
     }
+}
+
+/// `GET /api/v1/agent-runs/{id}/logs`
+#[utoipa::path(
+    get,
+    path = "/api/v1/agent-runs/{id}/logs",
+    tag = "agent-runs",
+    operation_id = "agent_runs_logs",
+    summary = "Read the journal of a run",
+    description = "The last lines of each container of the sandbox, oldest first, in the order the containers ran (clone, services, setup, agent). Sent by the runner when the run ends, secrets masked. Requires `agents:read`. Paginated (`limit`/`offset`).",
+    params(("id" = String, Path, format = "uuid", description = "Run id (UUID)"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::runners::RunnerJobLogLine>),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`agent-run-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`agent-run-logs-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn logs(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    let (job, since_us) = match agent_runs::job_of(&ctx.db, org.org.id, id).await {
+        Ok(found) => found,
+        Err(e) => return run_error(e),
+    };
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let found =
+        crate::services::job_logs::lines(&ctx, org.org.id, job, since_us, page.limit, page.offset)
+            .await;
+    let (count, rows) = match found {
+        Ok(Some(found)) => found,
+        not_read => {
+            if let Err(e) = not_read {
+                tracing::warn!(error = %e, "run journal not read");
+            }
+            return Err(super::coded_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                err_codes::AGENT_RUN_LOGS_UNAVAILABLE,
+                "The journal of runs is not available.",
+                None,
+            ));
+        }
+    };
+    format::json(pagination::envelope(
+        &format!("/api/v1/agent-runs/{id}/logs"),
+        &[],
+        page,
+        count,
+        rows,
+    ))
 }
 
 /// The run of the token in `x-api-key` (Anthropic engines) or `Authorization: Bearer`.
