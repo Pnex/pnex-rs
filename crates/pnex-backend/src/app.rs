@@ -152,6 +152,8 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::image_registries::routes())
         .add_route(controllers::environments::routes())
         .add_route(controllers::agent_runs::routes())
+        .add_route(controllers::agent_artifacts::routes())
+        .add_route(controllers::agents::routes())
         .add_route(controllers::extension::routes())
         .add_route(controllers::ws_extension::routes())
         .add_route(controllers::time_ranges::routes())
@@ -292,6 +294,7 @@ impl Hooks for App {
         crate::services::ontology::recurrence::spawn_sweeper(ctx);
         crate::services::runners::spawn_reaper(ctx);
         crate::services::environments::spawn_rescans(ctx);
+        crate::services::agent_artifacts::spawn_sweeper(ctx);
         // Scheduled ontology imports (partner-watch.md D303).
         crate::services::ontology::imports::spawn_scheduler(ctx);
         // Chained runs, stale tables, dataset events (data-pipelines.md D575–D578).

@@ -362,7 +362,16 @@ async fn claim(State(ctx): State<AppContext>, headers: HeaderMap) -> Result<Resp
         let input = match crate::controllers::secrets::keyring(&ctx) {
             Ok(ring) => {
                 let storage = crate::services::artifact_store::S3Config::from_config(&ctx.config);
-                environments::build_input(&ctx.db, &ring, &storage, runner.org_id, &job.id).await
+                let size = crate::services::fabric_settings::build(&ctx.config);
+                environments::build_input(&ctx.db, &ring, &storage, runner.org_id, &job.id)
+                    .await
+                    .map(|mut input| {
+                        input.resources = Some(pnex_core::runners::BuildResources {
+                            memory: size.memory,
+                            ephemeral_storage: size.ephemeral_storage,
+                        });
+                        input
+                    })
             }
             Err(_) => None,
         };
@@ -383,8 +392,14 @@ async fn claim(State(ctx): State<AppContext>, headers: HeaderMap) -> Result<Resp
         job.build = Some(input);
     }
     if job.kind == RunnerJobKind::Sandbox {
-        let input =
-            crate::services::agent_runs::sandbox_input(&ctx.db, runner.org_id, &job.id).await;
+        let ring = crate::controllers::secrets::keyring(&ctx).ok();
+        let input = crate::services::agent_runs::sandbox_input(
+            &ctx.db,
+            ring.as_ref(),
+            runner.org_id,
+            &job.id,
+        )
+        .await;
         // No run behind it, or no gateway on this deployment: an agent without its model
         // is not started.
         let Some(input) = input else {
@@ -464,13 +479,28 @@ async fn finish(
     State(ctx): State<AppContext>,
     headers: HeaderMap,
     Path(id): Path<String>,
-    Json(body): Json<RunnerJobFinish>,
+    Json(mut body): Json<RunnerJobFinish>,
 ) -> Result<Response> {
     let runner = principal(&ctx, &headers).await?;
     let id = parse_id(&id)?;
+    // While the job is still held: what a sandbox did not send is missing, and a required
+    // output missing fails a run the agent ended well (D729).
+    if runners::heartbeat(&ctx.db, runner, id).await.is_ok() {
+        let closed =
+            crate::services::agent_artifacts::close_outputs(&ctx.db, runner.org_id, id).await;
+        match closed {
+            Ok(Some(true)) if body.outcome == RunnerJobOutcome::Succeeded => {
+                body.outcome = RunnerJobOutcome::Failed;
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!(error = %e, job = %id, "outputs not closed"),
+        }
+    }
     runners::finish(&ctx.db, runner, id, &body)
         .await
         .map_err(runner_error)?;
+    // An ended run becomes a fact of the ontology; a job without a run is skipped there.
+    crate::services::agent_ops::spawn_projection(ctx.db.clone(), runner.org_id, id);
     if let (RunnerJobOutcome::Succeeded, Some(digest)) = (body.outcome, &body.image_digest) {
         environments::record_digest(&ctx.db, runner.org_id, id, digest)
             .await
@@ -549,7 +579,7 @@ async fn upload_sbom(
     tag = "runners",
     operation_id = "runner_jobs_logs",
     summary = "Upload the logs of a job",
-    description = "Called by the runner holding the job, before finishing it, with the last lines of each container, delivered secrets masked. The server masks credential-shaped words again and journals one record per line (D719). Authenticated by the runner token.",
+    description = "Called by the runner holding the job, before finishing it, or within ten minutes after a person stopped it, with the last lines of each container, delivered secrets masked. The server masks credential-shaped words again and journals one record per line (D719). Authenticated by the runner token.",
     params(("id" = String, Path, format = "uuid", description = "Job id")),
     request_body = pnex_core::runners::RunnerJobLogs,
     responses(
@@ -568,8 +598,8 @@ async fn upload_logs(
 ) -> Result<Response> {
     let runner = principal(&ctx, &headers).await?;
     let id = parse_id(&id)?;
-    // Only for the job this runner holds right now.
-    runners::heartbeat(&ctx.db, runner, id)
+    // The job this runner holds, or one a person stopped a moment ago (D759).
+    runners::may_send_logs(&ctx.db, runner, id)
         .await
         .map_err(runner_error)?;
     if let Some((field, token)) = logs.violation() {

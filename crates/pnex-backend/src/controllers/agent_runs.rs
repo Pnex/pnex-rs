@@ -45,7 +45,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     <Doc as utoipa::OpenApi>::openapi()
 }
 
-fn run_error(e: AgentRunError) -> Result<Response> {
+pub(crate) fn run_error(e: AgentRunError) -> Result<Response> {
     Err(match e {
         AgentRunError::Invalid { field, token } => return Ok(super::field_error(&field, &token)),
         AgentRunError::NotFound => super::coded_error(
@@ -70,6 +70,18 @@ fn run_error(e: AgentRunError) -> Result<Response> {
             StatusCode::CONFLICT,
             err_codes::AGENT_RUN_ENDED,
             "The run has already ended.",
+            None,
+        ),
+        AgentRunError::ScanRefused { breaches } => super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::ENVIRONMENT_SCAN_REFUSED,
+            "The active image is over the scan threshold of the org: rebuild it.",
+            Some(serde_json::json!({ "breaches": breaches.to_string() })),
+        ),
+        AgentRunError::ArtifactNotFound => super::coded_error(
+            StatusCode::NOT_FOUND,
+            err_codes::AGENT_ARTIFACT_NOT_FOUND,
+            "An input names no ready artifact of the org.",
             None,
         ),
         AgentRunError::Db(e) => {
@@ -128,13 +140,13 @@ async fn list(
     tag = "agent-runs",
     operation_id = "agent_runs_create",
     summary = "Start a run",
-    description = "Queues a run of the active build of an environment, in a sandbox of a runner of the org. The run reaches the org's LLM through the gateway, never with a provider key. Requires `agents:run`.",
+    description = "Queues a run of the active build of an environment, in a sandbox of a runner of the org. The run reaches the org's LLM through the gateway, never with a provider key. Declared inputs (artifacts of the org) land at `/artifacts/in/<name>` before the agent starts; declared outputs are collected from `/artifacts/out/<name>` when it ends, also on failure. Requires `agents:run`.",
     request_body = AgentRunCreate,
     responses(
         (status = 201, body = pnex_core::agent_runs::AgentRun),
         (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`environment-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`environment-not-found`, `agent-artifact-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`agent-run-no-active-build`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -144,7 +156,8 @@ async fn create(
     org: OrgContext,
     Json(input): Json<AgentRunCreate>,
 ) -> Result<Response> {
-    match agent_runs::create(&ctx.db, org.org.id, org.auth.user.id, &input).await {
+    let settings = crate::services::agent_artifacts::ArtifactSettings::from_config(&ctx.config);
+    match agent_runs::create(&ctx.db, settings, org.org.id, org.auth.user.id, &input).await {
         Ok(run) => Ok((StatusCode::CREATED, Json(run)).into_response()),
         Err(e) => run_error(e),
     }
@@ -200,7 +213,12 @@ async fn stop(
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
     match agent_runs::stop(&ctx.db, org.org.id, id).await {
-        Ok(run) => format::json(run),
+        Ok(run) => {
+            if let Ok(job) = Uuid::parse_str(&run.job_id) {
+                crate::services::agent_ops::spawn_projection(ctx.db.clone(), org.org.id, job);
+            }
+            format::json(run)
+        }
         Err(e) => run_error(e),
     }
 }

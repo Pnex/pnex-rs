@@ -16,9 +16,6 @@ use crate::services::openobserve::{
 
 pub const SBOM_STREAM: &str = "environment_sboms";
 pub const EVENTS_STREAM: &str = "environment_scan_events";
-/// shortcut: a fixed ten years, since an SBOM must outlive the image it describes; to be read
-/// from the global settings along with the other limits (D729, D730).
-const SBOM_RETENTION_DAYS: i64 = 3650;
 const EVENTS_BATCH: usize = 1000;
 const HOUR_US: i64 = 3_600_000_000;
 const HISTORY_WINDOW_US: i64 = 90 * 24 * HOUR_US;
@@ -115,8 +112,10 @@ pub async fn store_sbom(
         .await?;
     // The stream exists from here on. Failing to set it is logged: it would only mean the
     // default retention, and the next SBOM tries again.
+    // Long by default: an SBOM must outlive the image it describes (D755).
+    let days = crate::services::fabric_settings::retention(&ctx.config).sbom_days;
     if let Err(e) = client
-        .set_log_stream_retention(&creds.o2_org, SBOM_STREAM, SBOM_RETENTION_DAYS)
+        .set_log_stream_retention(&creds.o2_org, SBOM_STREAM, days)
         .await
     {
         tracing::warn!(error = %e, "SBOM stream retention not set");
@@ -255,6 +254,13 @@ pub async fn journal_scan(ctx: &AppContext, org_id: i64, job: Uuid) -> Result<()
             .ingest_json(&creds.o2_org, EVENTS_STREAM, batch, &creds.email_passcode)
             .await?;
     }
+    let days = crate::services::fabric_settings::retention(&ctx.config).scan_events_days;
+    if let Err(e) = client
+        .set_log_stream_retention(&creds.o2_org, EVENTS_STREAM, days)
+        .await
+    {
+        tracing::warn!(error = %e, "scan events stream retention not set");
+    }
     Ok(())
 }
 
@@ -318,8 +324,28 @@ pub async fn history(
                 fixable: count_of(hit, "fixable"),
             },
         })
-        .collect();
-    Ok(Some((found.total, rows)))
+        .collect::<Vec<_>>();
+    // The `total` of a paged search is the size of the page: the count is asked apart.
+    let counted = client
+        .search_logs(
+            &creds.o2_org,
+            &format!(
+                "SELECT count(*) AS n FROM \"{EVENTS_STREAM}\" \
+                 WHERE kind = 'scan' AND environment_id = '{environment}'"
+            ),
+            now - HISTORY_WINDOW_US,
+            now + HOUR_US,
+            0,
+            1,
+            &creds.email_passcode,
+        )
+        .await?;
+    let total = counted
+        .hits
+        .first()
+        .and_then(|h| h["n"].as_i64())
+        .unwrap_or(rows.len() as i64);
+    Ok(Some((total, rows)))
 }
 
 #[cfg(test)]

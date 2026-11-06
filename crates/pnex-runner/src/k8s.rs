@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use base64::Engine;
+use pnex_core::agent_runs::{ARTIFACTS_IN_DIR, ARTIFACTS_OUT_DIR};
 use pnex_core::environments::{ScanComponent, ScanFinding, ScanReport};
 use pnex_core::runners::{
     is_scan_command, RunnerBuildInput, RunnerContainerLog, RunnerJobLogs, RunnerJobSpec,
@@ -49,6 +50,15 @@ fn labels(job: &str, runner_id: &str) -> Value {
         "pnex.io/job": job
     })
 }
+
+/// Runs the build, then hands the pushed digest to the runner as the termination message.
+/// buildctl writes its metadata by renaming a temporary file, which `/dev` refuses
+/// (measured on kind, 2026-11-06): it lands in the state volume and is copied from there.
+const BUILD_SCRIPT: &str = r#"set -eu
+meta="/home/user/.local/share/buildkit/metadata.json"
+buildctl-daemonless.sh build "$@" --metadata-file="$meta"
+cat "$meta" > /dev/termination-log
+"#;
 
 /// `docker login` for one registry, in the form buildctl reads.
 fn docker_config(build: &RunnerBuildInput) -> String {
@@ -133,6 +143,15 @@ pub fn build_manifests(
             }));
         }
     }
+    let (memory, storage) = match &build.resources {
+        Some(r)
+            if pnex_core::runners::quantity_is_valid(&r.memory)
+                && pnex_core::runners::quantity_is_valid(&r.ephemeral_storage) =>
+        {
+            (r.memory.clone(), r.ephemeral_storage.clone())
+        }
+        _ => ("8Gi".to_string(), "40Gi".to_string()),
+    };
     let mut pod_spec = json!({
         "restartPolicy": "Never",
         "automountServiceAccountToken": false,
@@ -148,6 +167,9 @@ pub fn build_manifests(
             "name": "job",
             "image": spec.image,
             "imagePullPolicy": "IfNotPresent",
+            // Explicit, not the entrypoint of the image: any rootless BuildKit image with
+            // `sh` works. The arguments follow the script as its `$@`.
+            "command": ["sh", "-c", BUILD_SCRIPT, "build"],
             "args": args,
             "env": container_env,
             "securityContext": {
@@ -155,11 +177,10 @@ pub fn build_manifests(
                 "runAsGroup": BUILD_UID,
                 "privileged": false
             },
-            // shortcut: fixed sizes, enough for a Rust or Java image; to be read from the
-            // global settings along with the cache plafonds (D730).
+            // The global settings of the server (D755), else enough for a Rust or Java image.
             "resources": {
                 "requests": { "cpu": "500m", "memory": "1Gi", "ephemeral-storage": "1Gi" },
-                "limits": { "cpu": "4", "memory": "8Gi", "ephemeral-storage": "40Gi" }
+                "limits": { "cpu": "4", "memory": memory, "ephemeral-storage": storage }
             },
             "volumeMounts": [
                 { "name": "context", "mountPath": "/ctx", "readOnly": true },
@@ -322,6 +343,27 @@ fi
 exec git clone --depth 1 --no-recurse-submodules --branch "$1" -- "$2" "$3"
 "#;
 
+/// First container of a sandbox: a `NetworkPolicy` is applied by the network plugin some
+/// time after it exists (seconds on kindnet, measured 2026-11-06), so a pod started at once
+/// gets out freely meanwhile. Nothing else starts until a public address, which the rule
+/// refuses, stops answering; past a minute the pod fails instead of running open. Not the
+/// API of the cluster: on its own node, a pod reaches it whatever the rule (SEC-E5).
+/// shortcut: a fixed probe; read it from the runner's settings when a site has no internet
+/// (there the probe never answers and the gate opens at once, with no internet to leak to).
+pub const EGRESS_GATE_SCRIPT: &str = r#"set -u
+target="${PNEX_EGRESS_PROBE:-https://1.1.1.1/}"
+i=0
+while curl -sk -o /dev/null --max-time 2 "$target"; do
+  i=$((i + 1))
+  if [ "$i" -ge 60 ]; then
+    echo "egress rule not applied after a minute: not starting" >&2
+    exit 1
+  fi
+  sleep 1
+done
+echo "egress rule in place"
+"#;
+
 /// Containers whose output is the journal of a job, in the order they ran: init containers
 /// first (`clone`, services, `setup`), then the job. None for a scan, whose output is its
 /// report, stored apart (D728).
@@ -353,6 +395,10 @@ pub fn sandbox_manifests(
 ) -> (Value, Value, Value) {
     let name = format!("{POD_PREFIX}{job}");
     let mut data = serde_json::Map::new();
+    let has_outputs = input
+        .artifacts
+        .as_ref()
+        .is_some_and(|a| !a.outputs.is_empty());
     let tmp = json!({ "name": "tmp", "mountPath": "/tmp" });
     let workspace = json!({ "name": "workspace", "mountPath": "/workspace" });
     let resources = json!({
@@ -368,7 +414,14 @@ pub fn sandbox_manifests(
             .map(|(k, v)| json!({ "name": k, "value": v }))
             .collect()
     };
-    let mut init = Vec::new();
+    let mut init = vec![json!({
+        "name": "egress-gate",
+        "image": input.init_image,
+        "command": ["sh", "-c", EGRESS_GATE_SCRIPT],
+        "securityContext": hardened(UID),
+        "resources": resources,
+        "volumeMounts": [tmp],
+    })];
     for (i, repo) in input.repos.iter().enumerate() {
         let mut env = vec![json!({ "name": "HOME", "value": "/tmp" })];
         if repo.token.is_some() {
@@ -396,6 +449,21 @@ pub fn sandbox_manifests(
         json!({ "name": "tmp", "emptyDir": { "sizeLimit": "2Gi" } }),
         json!({ "name": "workspace", "emptyDir": { "sizeLimit": "16Gi" } }),
     ];
+    // Inputs land before setup and the agent; the collector runs beside them to the end.
+    if let Some(artifacts) = &input.artifacts {
+        data.insert("artifact-token".into(), json!(artifacts.token));
+        volumes.push(json!({ "name": "artifacts", "emptyDir": { "sizeLimit": "16Gi" } }));
+        volumes.extend(crate::artifacts::cache_volumes_of(artifacts));
+        let (fetch, collect) = crate::artifacts::transfer_containers(
+            artifacts,
+            &input.init_image,
+            &name,
+            &hardened(UID),
+            &resources,
+        );
+        init.extend(fetch);
+        init.extend(collect);
+    }
     for service in &input.services {
         let mut mounts =
             vec![json!({ "name": format!("{}-tmp", service.name), "mountPath": "/tmp" })];
@@ -423,7 +491,15 @@ pub fn sandbox_manifests(
             "volumeMounts": mounts,
         }));
     }
+    // Caches are where dependencies land: setup fills them as much as the agent does.
+    let cache_mounts = input
+        .artifacts
+        .as_ref()
+        .map(crate::artifacts::cache_mounts_of)
+        .unwrap_or_default();
     if !input.setup.is_empty() {
+        let mut mounts = vec![workspace.clone(), tmp.clone()];
+        mounts.extend(cache_mounts.iter().cloned());
         init.push(json!({
             "name": "setup",
             "image": spec.image,
@@ -432,10 +508,17 @@ pub fn sandbox_manifests(
             "env": plain_env(&[("HOME", "/tmp")]),
             "securityContext": hardened(UID),
             "resources": resources,
-            "volumeMounts": [workspace, tmp],
+            "volumeMounts": mounts,
         }));
     }
     let mut agent_env = plain_env(&[("HOME", "/tmp")]);
+    let mut agent_mounts = vec![workspace.clone(), tmp.clone()];
+    if input.artifacts.is_some() {
+        agent_env.push(json!({ "name": "PNEX_ARTIFACTS_IN", "value": ARTIFACTS_IN_DIR }));
+        agent_env.push(json!({ "name": "PNEX_ARTIFACTS_OUT", "value": ARTIFACTS_OUT_DIR }));
+        agent_mounts.extend(crate::artifacts::agent_mounts());
+        agent_mounts.extend(cache_mounts);
+    }
     for (key, value) in &input.secrets {
         let entry = format!("env-{}", key.to_lowercase().replace('_', "-"));
         agent_env.push(json!({
@@ -451,7 +534,7 @@ pub fn sandbox_manifests(
         "env": agent_env,
         "securityContext": hardened(UID),
         "resources": resources,
-        "volumeMounts": [workspace, tmp],
+        "volumeMounts": agent_mounts,
     });
     if !spec.command.is_empty() {
         agent["command"] = json!(spec.command);
@@ -461,7 +544,7 @@ pub fn sandbox_manifests(
         "automountServiceAccountToken": false,
         "enableServiceLinks": false,
         "activeDeadlineSeconds": spec.timeout_secs,
-        "terminationGracePeriodSeconds": 5,
+        "terminationGracePeriodSeconds": if has_outputs { crate::artifacts::COLLECT_GRACE_SECS } else { 5 },
         "securityContext": { "runAsNonRoot": true, "fsGroup": UID },
         "initContainers": init,
         "containers": [agent],
@@ -619,11 +702,18 @@ pub fn pod_manifest(
     })
 }
 
-/// What the build pod wrote as its termination message.
+/// The digest the build pod wrote as its termination message: buildctl's metadata JSON
+/// (`containerimage.digest`), or the digest alone.
 pub fn reported_digest(pod: &Value) -> Option<String> {
     let message = pod["status"]["containerStatuses"][0]["state"]["terminated"]["message"]
         .as_str()?
         .trim();
+    if message.starts_with('{') {
+        let metadata: Value = serde_json::from_str(message).ok()?;
+        return metadata["containerimage.digest"]
+            .as_str()
+            .map(str::to_string);
+    }
     (!message.is_empty()).then(|| message.to_string())
 }
 
@@ -1025,6 +1115,7 @@ mod tests {
             username: "robot".into(),
             secret: "top-secret".into(),
             cache: None,
+            resources: None,
         }
     }
 
@@ -1046,6 +1137,35 @@ mod tests {
             assert!(secret.to_string().contains(value));
         }
         let c = &pod["spec"]["containers"][0];
+        // The size of the pod comes from the server, a malformed one falls back.
+        let mut sized = b.clone();
+        sized.resources = Some(pnex_core::runners::BuildResources {
+            memory: "16Gi".into(),
+            ephemeral_storage: "100Gi".into(),
+        });
+        let (_, _, big) = build_manifests("j", "r", &spec(), &sized, None);
+        let limits = &big["spec"]["containers"][0]["resources"]["limits"];
+        assert_eq!(
+            (
+                limits["memory"].as_str(),
+                limits["ephemeral-storage"].as_str()
+            ),
+            (Some("16Gi"), Some("100Gi"))
+        );
+        sized.resources = Some(pnex_core::runners::BuildResources {
+            memory: "16Gi; rm".into(),
+            ephemeral_storage: "100Gi".into(),
+        });
+        let (_, _, odd) = build_manifests("j", "r", &spec(), &sized, None);
+        assert_eq!(
+            odd["spec"]["containers"][0]["resources"]["limits"]["memory"],
+            "8Gi"
+        );
+        // The digest goes through the state volume, never a rename inside `/dev`.
+        assert_eq!(c["command"][0], "sh");
+        assert!(
+            BUILD_SCRIPT.contains(BUILD_STATE) && BUILD_SCRIPT.contains("/dev/termination-log")
+        );
         let args = c["args"].to_string();
         assert!(
             args.contains(
@@ -1101,7 +1221,9 @@ mod tests {
             args.contains(&"build-arg:V=1; rm -rf /"),
             "one argument, no shell"
         );
-        assert!(c.get("command").is_none(), "the image entrypoint runs");
+        // A fixed script; the arguments reach buildctl as `"$@"`, never read by the shell.
+        assert_eq!(c["command"], json!(["sh", "-c", BUILD_SCRIPT, "build"]));
+        assert!(BUILD_SCRIPT.contains("build \"$@\""));
 
         // A file in a folder goes through `items`, its key stays a plain name.
         let items = s["volumes"][0]["configMap"]["items"].as_array().unwrap();
@@ -1229,7 +1351,98 @@ mod tests {
                 cidr: "203.0.113.0/24".into(),
                 port: 443,
             }],
+            artifacts: None,
         }
+    }
+
+    #[test]
+    fn artifacts_move_in_their_own_containers_with_a_token_the_agent_never_sees() {
+        use pnex_core::agent_runs::ArtifactForm;
+        use pnex_core::runners::{SandboxArtifact, SandboxArtifacts};
+        let mut input = sandbox_input();
+        input.artifacts = Some(SandboxArtifacts {
+            url: "https://pnex.example/api/v1/agent-transfer".into(),
+            token: "pnart_artifact-token-value".into(),
+            inputs: vec![SandboxArtifact {
+                name: "logs".into(),
+                sha256: Some("sha256:ab12".into()),
+                form: Some(ArtifactForm::Tar),
+            }],
+            outputs: vec![SandboxArtifact {
+                name: "report".into(),
+                sha256: None,
+                form: None,
+            }],
+            caches: vec![pnex_core::agent_runs::RunCache {
+                name: "cargo".into(),
+                path: "/tmp/.cargo".into(),
+                key_files: vec!["app/Cargo.lock".into()],
+            }],
+        });
+        let (secret, _, pod) = sandbox_manifests("j", "r", &spec(), &input, None);
+        assert!(!pod.to_string().contains("artifact-token-value"));
+        assert_eq!(
+            secret["stringData"]["artifact-token"],
+            "pnart_artifact-token-value"
+        );
+        let s = &pod["spec"];
+        let init = s["initContainers"].as_array().unwrap();
+        let names: Vec<&str> = init.iter().map(|c| c["name"].as_str().unwrap()).collect();
+        assert_eq!(
+            names,
+            [
+                "egress-gate",
+                "clone-0",
+                "artifacts-in",
+                "artifacts-out",
+                "service-valkey",
+                "setup"
+            ]
+        );
+        assert_eq!(init[2]["env"][1]["value"], "logs,ab12,tar");
+        assert_eq!(init[3]["restartPolicy"], "Always", "a native sidecar");
+        assert_eq!(init[3]["env"][1]["value"], "report");
+        assert_eq!(init[3]["volumeMounts"][0]["readOnly"], true);
+        assert_eq!(
+            s["terminationGracePeriodSeconds"],
+            crate::artifacts::COLLECT_GRACE_SECS
+        );
+        // The token goes to the two transfer containers, never to setup or the agent.
+        let has_token = |c: &Value| c.to_string().contains("artifact-token");
+        assert!(has_token(&init[2]) && has_token(&init[3]));
+        assert!(!has_token(&init[0]) && !has_token(&init[5]) && !has_token(&s["containers"][0]));
+        let agent = &s["containers"][0];
+        let mounts = agent["volumeMounts"].as_array().unwrap();
+        assert!(mounts
+            .iter()
+            .any(|m| m["mountPath"] == ARTIFACTS_IN_DIR && m["readOnly"] == true));
+        assert!(mounts
+            .iter()
+            .any(|m| m["mountPath"] == ARTIFACTS_OUT_DIR && m["readOnly"].is_null()));
+        assert!(agent["env"].to_string().contains("PNEX_ARTIFACTS_OUT"));
+        // A cache: the agent and setup write it, the fetch fills it, the collector reads it.
+        assert!(mounts.iter().any(|m| m["mountPath"] == "/tmp/.cargo"));
+        assert_eq!(init[2]["env"][2]["value"], "cargo,app/Cargo.lock");
+        let at = |c: &Value, path: &str| {
+            c["volumeMounts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|m| m["mountPath"] == path)
+                .cloned()
+        };
+        assert_eq!(at(&init[2], "/caches/cargo").unwrap()["readOnly"], false);
+        assert_eq!(at(&init[3], "/caches/cargo").unwrap()["readOnly"], true);
+        assert_eq!(at(&init[2], "/workspace").unwrap()["readOnly"], true);
+        assert!(
+            at(&init[5], "/tmp/.cargo").is_some(),
+            "setup fills the cache too"
+        );
+
+        // Nothing declared: no transfer container, no volume, the short grace.
+        let (_, _, pod) = sandbox_manifests("j", "r", &spec(), &sandbox_input(), None);
+        assert!(!pod.to_string().contains("artifacts"));
+        assert_eq!(pod["spec"]["terminationGracePeriodSeconds"], 5);
     }
 
     #[test]
@@ -1237,7 +1450,7 @@ mod tests {
         let (_, _, pod) = sandbox_manifests("j", "r", &spec(), &sandbox_input(), None);
         assert_eq!(
             log_containers(&pod),
-            ["clone-0", "service-valkey", "setup", "job"]
+            ["egress-gate", "clone-0", "service-valkey", "setup", "job"]
         );
         let mut scan = spec();
         scan.command = pnex_core::runners::scan_command("x");
@@ -1262,8 +1475,8 @@ mod tests {
         let names: Vec<&str> = init.iter().map(|c| c["name"].as_str().unwrap()).collect();
         assert_eq!(
             names,
-            ["clone-0", "service-valkey", "setup"],
-            "the order of D714"
+            ["egress-gate", "clone-0", "service-valkey", "setup"],
+            "the gate, then the order of D714"
         );
         let refs = |c: &Value| {
             c["env"]
@@ -1274,8 +1487,9 @@ mod tests {
                 .map(str::to_string)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(refs(&init[0]), ["clone-token-0"]);
-        assert!(refs(&init[2]).is_empty(), "setup runs repository code");
+        assert!(init[0]["env"].is_null(), "the gate holds nothing");
+        assert_eq!(refs(&init[1]), ["clone-token-0"]);
+        assert!(refs(&init[3]).is_empty(), "setup runs repository code");
         let agent = &s["containers"][0];
         assert_eq!(
             refs(agent),
@@ -1291,7 +1505,7 @@ mod tests {
             assert_eq!(c["securityContext"]["capabilities"]["drop"][0], "ALL");
             assert!(c["resources"]["limits"]["memory"].is_string());
         }
-        assert_eq!(init[1]["restartPolicy"], "Always");
+        assert_eq!(init[2]["restartPolicy"], "Always");
 
         // Nothing in, and out only names and the list.
         let p = &policy["spec"];
@@ -1300,7 +1514,7 @@ mod tests {
         assert_eq!(p["egress"].as_array().unwrap().len(), 2);
         assert_eq!(p["egress"][1]["to"][0]["ipBlock"]["cidr"], "203.0.113.0/24");
         // A value cannot leave the script: each one is its own argument.
-        assert_eq!(init[0]["command"][5], "https://forge.example/team/app.git");
+        assert_eq!(init[1]["command"][5], "https://forge.example/team/app.git");
     }
 
     #[test]
@@ -1356,5 +1570,22 @@ mod tests {
             ]})),
             WorkloadStatus::ImagePullFailed
         );
+    }
+
+    #[test]
+    fn the_digest_is_read_from_buildctl_metadata_or_alone() {
+        let pod = |message: &str| {
+            json!({ "status": { "containerStatuses": [
+                { "state": { "terminated": { "message": message } } }
+            ] } })
+        };
+        let metadata = r#"{"containerimage.digest":"sha256:ab","image.name":"r/a:v1"}"#;
+        assert_eq!(reported_digest(&pod(metadata)), Some("sha256:ab".into()));
+        assert_eq!(
+            reported_digest(&pod("sha256:cd\n")),
+            Some("sha256:cd".into())
+        );
+        assert_eq!(reported_digest(&pod("{\"other\":1}")), None);
+        assert_eq!(reported_digest(&pod("")), None);
     }
 }

@@ -201,13 +201,21 @@ pub async fn forward(
     headers: &HeaderMap,
     body: Bytes,
 ) -> Result<Response, GatewayError> {
-    let cfg = crate::services::ai::config::resolve(
-        &ctx.db,
-        &ctx.config,
-        run.org_id,
-        pnex_core::LlmUsage::Agent,
-    )
-    .await
+    let cfg = match run.provider_id {
+        Some(id) => {
+            crate::services::ai::config::resolve_provider(&ctx.db, &ctx.config, run.org_id, id)
+                .await
+        }
+        None => {
+            crate::services::ai::config::resolve(
+                &ctx.db,
+                &ctx.config,
+                run.org_id,
+                pnex_core::LlmUsage::Agent,
+            )
+            .await
+        }
+    }
     .ok_or(GatewayError::NotConfigured)?;
     let speaks = match cfg.provider {
         Provider::Anthropic => Protocol::Anthropic,

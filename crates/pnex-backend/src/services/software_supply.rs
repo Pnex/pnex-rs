@@ -30,7 +30,7 @@ const EXPOSED: &str = "image_exposed_to";
 const CHUNK: usize = 500;
 const ATTRIBUTE_MAX: usize = 2000;
 
-fn props(pairs: &[(&str, Value)]) -> Map<String, Value> {
+pub(crate) fn props(pairs: &[(&str, Value)]) -> Map<String, Value> {
     pairs
         .iter()
         .filter(|(_, v)| !v.is_null())
@@ -83,7 +83,7 @@ async fn existing(
 }
 
 /// The objects of these natural keys, created when missing. `new` gives title and properties.
-async fn ensure_all<F>(
+pub(crate) async fn ensure_all<F>(
     db: &DatabaseConnection,
     schema: &OrgSchema,
     org_id: i64,
@@ -119,7 +119,7 @@ where
 }
 
 /// Open links of `source` under `relation`: `target -> link id`.
-async fn open_links(
+pub(crate) async fn open_links(
     db: &DatabaseConnection,
     org_id: i64,
     source: Uuid,
@@ -137,7 +137,12 @@ async fn open_links(
         .collect())
 }
 
-fn link(relation: &str, source: Uuid, target: Uuid, attributes: Map<String, Value>) -> LinkInput {
+pub(crate) fn link(
+    relation: &str,
+    source: Uuid,
+    target: Uuid,
+    attributes: Map<String, Value>,
+) -> LinkInput {
     LinkInput {
         link_type: relation.to_string(),
         source_id: source.to_string(),

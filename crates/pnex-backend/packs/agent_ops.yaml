@@ -1,0 +1,78 @@
+# Pack "Agent operations" (agent-environments.md D708, D761): the durable facts of the agent
+# fabric, installed on first use. An environment and an agent are objects; each run that
+# ended is an object, linked to its agent and its environment; each file a run took or left
+# is an object, linked to the run that produced it and the runs that read it. This answers
+# "which run produced this file, and which ones read it". Steps and lines stay in O2.
+key: agent_ops
+name: Agent operations
+names: {fr: "Opérations des agents"}
+version: "1.0.0"
+description: Environments, agents, their runs and the files those runs took and left.
+descriptions: {fr: "Les environnements, les agents, leurs exécutions et les fichiers que ces exécutions ont pris et laissés."}
+types:
+  - key: agent_environment
+    name: Agent environment
+    names: {fr: "Environnement d'agent"}
+    icon: box
+    properties:
+      - { key: environment_id, name: Environment id, names: {fr: "Identifiant de l'environnement"}, kind: text, max_len: 64, required: true, unique: true, indexed: true }
+      - { key: environment_name, name: Name, names: {fr: "Nom"}, kind: text, max_len: 200 }
+  - key: hosted_agent
+    name: Agent
+    names: {fr: "Agent"}
+    icon: sparkles
+    properties:
+      - { key: agent_id, name: Agent id, names: {fr: "Identifiant de l'agent"}, kind: text, max_len: 64, required: true, unique: true, indexed: true }
+      - { key: agent_name, name: Name, names: {fr: "Nom"}, kind: text, max_len: 200 }
+  - key: agent_run
+    name: Run
+    names: {fr: "Exécution"}
+    icon: play
+    properties:
+      - { key: run_id, name: Run id, names: {fr: "Identifiant de l'exécution"}, kind: text, max_len: 64, required: true, unique: true, indexed: true }
+      - { key: outcome, name: Outcome, names: {fr: "Issue"}, kind: text, max_len: 32, indexed: true }
+      - { key: image, name: Image, names: {fr: "Image"}, kind: text, max_len: 600 }
+      - { key: agent_version, name: Agent version, names: {fr: "Version de l'agent"}, kind: number }
+      - { key: llm_calls, name: Model calls, names: {fr: "Appels au modèle"}, kind: number }
+      - { key: input_tokens, name: Input tokens, names: {fr: "Jetons d'entrée"}, kind: number }
+      - { key: output_tokens, name: Output tokens, names: {fr: "Jetons de sortie"}, kind: number }
+      - { key: error, name: Error, names: {fr: "Erreur"}, kind: text, max_len: 100 }
+  - key: agent_file
+    name: Run file
+    names: {fr: "Fichier d'exécution"}
+    icon: file
+    properties:
+      - { key: artifact_id, name: File id, names: {fr: "Identifiant du fichier"}, kind: text, max_len: 64, required: true, unique: true, indexed: true }
+      - { key: file_name, name: Name, names: {fr: "Nom"}, kind: text, max_len: 100 }
+      - { key: sha256, name: SHA-256, names: {fr: "SHA-256"}, kind: text, max_len: 80, indexed: true }
+      - { key: size, name: Size, names: {fr: "Taille"}, kind: number }
+      - { key: file_state, name: State, names: {fr: "État"}, kind: text, max_len: 16 }
+link_types:
+  - key: run_of_agent
+    name: is a run of
+    names: {fr: "est une exécution de"}
+    inverse_name: ran
+    inverse_names: {fr: "a exécuté"}
+    from_types: [agent_run]
+    to_types: [hosted_agent]
+  - key: run_in_environment
+    name: ran in
+    names: {fr: "a tourné dans"}
+    inverse_name: hosted
+    inverse_names: {fr: "a accueilli"}
+    from_types: [agent_run]
+    to_types: [agent_environment]
+  - key: file_produced_by
+    name: was produced by
+    names: {fr: "a été produit par"}
+    inverse_name: produced
+    inverse_names: {fr: "a produit"}
+    from_types: [agent_file]
+    to_types: [agent_run]
+  - key: run_read_file
+    name: read
+    names: {fr: "a lu"}
+    inverse_name: was read by
+    inverse_names: {fr: "a été lu par"}
+    from_types: [agent_run]
+    to_types: [agent_file]

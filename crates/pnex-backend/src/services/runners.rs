@@ -389,6 +389,34 @@ pub async fn heartbeat(
     Ok(())
 }
 
+/// How long the logs of a job stopped by a person are still taken (D759): its runner learns
+/// the stop at its next heartbeat, then reads the pod before destroying it.
+pub const STOPPED_LOGS_GRACE_SECS: i64 = 600;
+
+/// Whether this runner may still send the logs of a job: it holds it, or a person stopped
+/// it in the last ten minutes while this runner held it.
+pub async fn may_send_logs(
+    db: &DatabaseConnection,
+    runner: RunnerPrincipal,
+    job: Uuid,
+) -> Result<(), RunnerError> {
+    match heartbeat(db, runner, job).await {
+        Err(RunnerError::NotHeld) => {}
+        other => return other,
+    }
+    let stopped = db
+        .query_one_raw(stmt(
+            &format!(
+                "SELECT 1 AS ok FROM runner_jobs WHERE id = $1 AND org_id = $2 AND runner_id = $3 \
+                   AND state = 'failed' AND outcome = 'stopped' \
+                   AND finished_at > now() - interval '{STOPPED_LOGS_GRACE_SECS} seconds'"
+            ),
+            vec![job.into(), runner.org_id.into(), runner.id.into()],
+        ))
+        .await?;
+    stopped.map(|_| ()).ok_or(RunnerError::NotHeld)
+}
+
 /// Ends a job held by this runner. A retry after a lost answer changes nothing and
 /// succeeds; a job taken over by another runner answers `NotHeld`.
 pub async fn finish(

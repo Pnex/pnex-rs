@@ -87,6 +87,11 @@ settings:
   # (fast, failure/timeout driven by wifi_ssid values).
   # Firmware: source embedded in the binary (no source config —
   # clean slate); toolchain replaced by the fixtures (fake pio/esptool).
+  # Small artifact limits, so that a test can go past them (D744).
+  agents:
+    artifacts:
+      max_bytes: 65536
+      run_max_bytes: 98304
   # Object storage: the compose `rustfs` service, bucket pnex-test
   # (`docker compose up -d rustfs rustfs-init`).
   storage:

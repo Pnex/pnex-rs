@@ -92,6 +92,7 @@ async fn the_build_pod_pushes_and_reports_its_digest() {
                 secret_key: env("PNEX_TEST_CACHE_SECRET"),
                 session_token: env("PNEX_TEST_CACHE_TOKEN"),
             }),
+        resources: None,
     };
     let pull = std::env::var("PNEX_TEST_PULL_SECRET").ok();
     let (secret, context, pod) = build_manifests(&job, "test", &spec, &input, pull.as_deref());

@@ -5,10 +5,13 @@
 
 use std::collections::BTreeMap;
 
-use pnex_core::agent_runs::{create_error, AgentRun, AgentRunCreate, RUN_TOKEN_PREFIX};
+use pnex_core::agent_runs::{
+    create_error, service_env_name, AgentRun, AgentRunCreate, ArtifactInput, ArtifactOutput,
+    RunRepo, RunService, GENERATED, RUN_TOKEN_PREFIX,
+};
 use pnex_core::runners::{
     spec_error, RunnerJobCreate, RunnerJobKind, RunnerJobOutcome, RunnerJobSpec, RunnerJobState,
-    RunnerSandboxInput, SandboxEgress,
+    RunnerSandboxInput, SandboxArtifacts, SandboxEgress, SandboxRepo, SandboxService,
 };
 use rand::RngExt;
 use sea_orm::{
@@ -18,7 +21,9 @@ use sea_orm::{
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use crate::services::agent_artifacts::{self, ArtifactError, ArtifactSettings};
 use crate::services::runners;
+use crate::services::secrets::{store, Keyring};
 
 /// Announced by a runner that can run a sandbox pod.
 pub const SANDBOX_CAPABILITY: &str = "sandbox:pod";
@@ -35,6 +40,12 @@ pub enum AgentRunError {
     NoActiveBuild,
     /// The run has already ended.
     Ended,
+    /// An input names no ready artifact of the org.
+    ArtifactNotFound,
+    /// The active build is over the scan threshold and the org refuses such runs (D748).
+    ScanRefused {
+        breaches: u32,
+    },
     Db(DbErr),
 }
 
@@ -49,6 +60,16 @@ impl From<DbErr> for AgentRunError {
 pub struct RunPrincipal {
     pub id: Uuid,
     pub org_id: i64,
+    /// The provider of its agent, with its own key (D710); else the org's `agent` usage.
+    pub provider_id: Option<Uuid>,
+}
+
+/// The agent a run is started from (D757).
+#[derive(Debug, Clone, Copy)]
+pub struct RunOrigin {
+    pub agent_id: Uuid,
+    pub agent_version: i32,
+    pub provider_id: Option<Uuid>,
 }
 
 fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
@@ -70,8 +91,8 @@ const ISO: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
 
 fn select() -> String {
     format!(
-        "SELECT a.id, a.environment_id, a.job_id, a.llm_calls, a.llm_calls_max, \
-           a.input_tokens, a.output_tokens, j.state, j.outcome, j.exit_code, \
+        "SELECT a.id, a.environment_id, a.agent_id, a.agent_version, a.job_id, a.llm_calls, a.llm_calls_max, \
+           a.input_tokens, a.output_tokens, a.error, j.state, j.outcome, j.exit_code, \
            j.spec->>'image' AS image, \
            to_char(a.created_at AT TIME ZONE 'UTC', {ISO}) AS created_at, \
            to_char(j.started_at AT TIME ZONE 'UTC', {ISO}) AS started_at, \
@@ -86,6 +107,10 @@ fn view(r: &QueryResult) -> Result<AgentRun, DbErr> {
     Ok(AgentRun {
         id: r.try_get::<Uuid>("", "id")?.to_string(),
         environment_id: r.try_get::<Uuid>("", "environment_id")?.to_string(),
+        agent_id: r
+            .try_get::<Option<Uuid>>("", "agent_id")?
+            .map(|u| u.to_string()),
+        agent_version: r.try_get("", "agent_version")?,
         image: r.try_get("", "image")?,
         job_id: r.try_get::<Uuid>("", "job_id")?.to_string(),
         state: RunnerJobState::parse(&state)
@@ -96,6 +121,7 @@ fn view(r: &QueryResult) -> Result<AgentRun, DbErr> {
         llm_calls_max: r.try_get("", "llm_calls_max")?,
         input_tokens: r.try_get("", "input_tokens")?,
         output_tokens: r.try_get("", "output_tokens")?,
+        error: r.try_get("", "error")?,
         created_at: r.try_get("", "created_at")?,
         started_at: r.try_get("", "started_at")?,
         finished_at: r.try_get("", "finished_at")?,
@@ -105,13 +131,32 @@ fn view(r: &QueryResult) -> Result<AgentRun, DbErr> {
 /// Queues a run on the active build of an environment of the org.
 pub async fn create(
     db: &DatabaseConnection,
+    artifacts: ArtifactSettings,
     org_id: i64,
     user_id: i64,
     body: &AgentRunCreate,
 ) -> Result<AgentRun, AgentRunError> {
+    create_as(db, artifacts, org_id, user_id, body, None).await
+}
+
+/// A run, bare or started from an agent whose record it carries.
+pub async fn create_as(
+    db: &DatabaseConnection,
+    artifacts: ArtifactSettings,
+    org_id: i64,
+    user_id: i64,
+    body: &AgentRunCreate,
+    origin: Option<RunOrigin>,
+) -> Result<AgentRun, AgentRunError> {
     if let Some((field, token)) = create_error(body) {
         return Err(invalid(field, token));
     }
+    agent_artifacts::check_inputs(db, org_id, &body.inputs)
+        .await
+        .map_err(|e| match e {
+            ArtifactError::Db(e) => AgentRunError::Db(e),
+            _ => AgentRunError::ArtifactNotFound,
+        })?;
     let environment =
         Uuid::parse_str(&body.environment_id).map_err(|_| AgentRunError::EnvironmentNotFound)?;
     let row = db
@@ -128,6 +173,11 @@ pub async fn create(
     let (Some(build), Some(digest)) = (build, digest) else {
         return Err(AgentRunError::NoActiveBuild);
     };
+    if let Some(breaches) =
+        crate::services::environments::refused_by_scan(db, org_id, build).await?
+    {
+        return Err(AgentRunError::ScanRefused { breaches });
+    }
     let repository: String = row.try_get("", "repository")?;
     let spec = RunnerJobSpec {
         image: format!("{repository}@{digest}"),
@@ -153,8 +203,9 @@ pub async fn create(
     let job_id = Uuid::parse_str(&job.id).map_err(|e| DbErr::Custom(e.to_string()))?;
     txn.execute_raw(stmt(
         "INSERT INTO agent_runs \
-           (id, org_id, environment_id, build_id, job_id, env, llm_calls_max, created_by) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+           (id, org_id, environment_id, build_id, job_id, env, llm_calls_max, created_by, \
+            inputs, outputs, agent_id, agent_version, provider_id, repos, services, caches) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
         vec![
             id.into(),
             org_id.into(),
@@ -166,9 +217,18 @@ pub async fn create(
                 .unwrap_or(pnex_core::agent_runs::LLM_CALLS_MAX_DEFAULT)
                 .into(),
             user_id.into(),
+            serde_json::json!(body.inputs).into(),
+            serde_json::json!(body.outputs).into(),
+            origin.map(|o| o.agent_id).into(),
+            origin.map(|o| o.agent_version).into(),
+            origin.and_then(|o| o.provider_id).into(),
+            serde_json::json!(body.repos).into(),
+            serde_json::json!(body.services).into(),
+            serde_json::json!(body.caches).into(),
         ],
     ))
     .await?;
+    agent_artifacts::declare_outputs(&txn, artifacts, org_id, id, &body.outputs).await?;
     txn.commit().await?;
     get(db, org_id, id).await
 }
@@ -262,6 +322,9 @@ pub async fn stop(
             },
         );
     }
+    // Nothing can be sent any more: its token died with the job.
+    let job = Uuid::parse_str(&run.job_id).map_err(|e| DbErr::Custom(e.to_string()))?;
+    agent_artifacts::close_outputs(db, org_id, job).await?;
     get(db, org_id, id).await
 }
 
@@ -305,6 +368,7 @@ async fn gateway_egress(url: &str) -> Vec<SandboxEgress> {
 /// this deployment; the caller fails the job.
 pub async fn sandbox_input(
     db: &DatabaseConnection,
+    ring: Option<&Keyring>,
     org_id: i64,
     job_id: &str,
 ) -> Option<RunnerSandboxInput> {
@@ -318,11 +382,44 @@ pub async fn sandbox_input(
     );
     let row = db
         .query_one_raw(stmt(
-            "UPDATE agent_runs SET token_hash = $3 WHERE org_id = $1 AND job_id = $2 RETURNING env",
+            "UPDATE agent_runs SET token_hash = $3 WHERE org_id = $1 AND job_id = $2 \
+             RETURNING env, inputs, outputs, repos, services, caches",
             vec![org_id.into(), job.into(), hash(&token).into()],
         ))
         .await
         .ok()??;
+    let inputs: Vec<ArtifactInput> =
+        serde_json::from_value(row.try_get("", "inputs").ok()?).ok()?;
+    let outputs: Vec<ArtifactOutput> =
+        serde_json::from_value(row.try_get("", "outputs").ok()?).ok()?;
+    let caches: Vec<pnex_core::agent_runs::RunCache> =
+        serde_json::from_value(row.try_get("", "caches").ok()?).ok()?;
+    let artifacts = if inputs.is_empty() && outputs.is_empty() && caches.is_empty() {
+        None
+    } else {
+        // Its own token, for the transfer containers only: the agent holds the run token.
+        let transfer = agent_artifacts::new_token();
+        db.execute_raw(stmt(
+            "UPDATE agent_runs SET artifact_token_hash = $3 WHERE org_id = $1 AND job_id = $2",
+            vec![
+                org_id.into(),
+                job.into(),
+                agent_artifacts::token_hash(&transfer).into(),
+            ],
+        ))
+        .await
+        .ok()?;
+        let (ins, outs) = agent_artifacts::sandbox_lists(db, org_id, &inputs, &outputs)
+            .await
+            .ok()?;
+        Some(SandboxArtifacts {
+            url: format!("{gateway}/api/v1/agent-transfer"),
+            token: transfer,
+            inputs: ins,
+            outputs: outs,
+            caches: caches.clone(),
+        })
+    };
     let mut env: BTreeMap<String, String> =
         serde_json::from_value(row.try_get::<serde_json::Value>("", "env").ok()?).ok()?;
     let base = format!("{gateway}/api/v1/agent-gateway");
@@ -330,20 +427,73 @@ pub async fn sandbox_input(
     env.insert("ANTHROPIC_BASE_URL".into(), base.clone());
     env.insert("OPENAI_BASE_URL".into(), format!("{base}/v1"));
     // Engines read their key from these: the run token stands in for it (D385).
-    let secrets = BTreeMap::from([
+    let mut secrets = BTreeMap::from([
         ("PNEX_RUN_TOKEN".to_string(), token.clone()),
         ("ANTHROPIC_API_KEY".to_string(), token.clone()),
         ("OPENAI_API_KEY".to_string(), token),
     ]);
+    let repos: Vec<RunRepo> = serde_json::from_value(row.try_get("", "repos").ok()?).ok()?;
+    let services: Vec<RunService> =
+        serde_json::from_value(row.try_get("", "services").ok()?).ok()?;
+    let mut sandbox_repos = Vec::new();
+    for repo in &repos {
+        // A token that cannot be read fails the run: a clone without it would only fail later.
+        let token = match &repo.secret_id {
+            Some(id) => {
+                let id = Uuid::parse_str(id).ok()?;
+                Some(store::reveal(db, ring?, Some(org_id), id).await.ok()?)
+            }
+            None => None,
+        };
+        sandbox_repos.push(SandboxRepo {
+            url: repo.url.clone(),
+            git_ref: repo.git_ref.clone(),
+            path: repo.path.clone(),
+            token,
+        });
+    }
+    let mut sandbox_services = Vec::new();
+    for service in &services {
+        let mut env = service.env.clone();
+        for (key, value) in env.iter_mut() {
+            if value == GENERATED {
+                *value = generated_password();
+                // The agent connects with it: the same value, in its own secret.
+                secrets.insert(service_env_name(&service.name, key), value.clone());
+            }
+        }
+        sandbox_services.push(SandboxService {
+            name: service.name.clone(),
+            image: service.image.clone(),
+            env,
+            ready_command: service.ready_command.clone(),
+            data_paths: service.data_paths.clone(),
+            run_as_user: service.run_as_user,
+        });
+    }
+    let mut egress = gateway_egress(&gateway).await;
+    for repo in &repos {
+        egress.extend(gateway_egress(&repo.url).await);
+    }
+    egress.sort_by(|a, b| a.cidr.cmp(&b.cidr));
+    egress.dedup();
     Some(RunnerSandboxInput {
         init_image: std::env::var("PNEX_SANDBOX_INIT_IMAGE").unwrap_or_default(),
-        repos: Vec::new(),
-        services: Vec::new(),
+        repos: sandbox_repos,
+        services: sandbox_services,
         setup: Vec::new(),
         env,
         secrets,
-        egress: gateway_egress(&gateway).await,
+        egress,
+        artifacts,
     })
+}
+
+/// A password for a test service, fresh at each claim (D717).
+fn generated_password() -> String {
+    let mut bytes = [0u8; 24];
+    rand::rng().fill(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// The run behind a token, only while its job runs.
@@ -356,7 +506,7 @@ pub async fn authenticate(
     }
     let Some(r) = db
         .query_one_raw(stmt(
-            "SELECT a.id, a.org_id FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
+            "SELECT a.id, a.org_id, a.provider_id FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
              WHERE a.token_hash = $1 AND j.state = 'running'",
             vec![hash(token).into()],
         ))
@@ -367,6 +517,7 @@ pub async fn authenticate(
     Ok(Some(RunPrincipal {
         id: r.try_get("", "id")?,
         org_id: r.try_get("", "org_id")?,
+        provider_id: r.try_get("", "provider_id")?,
     }))
 }
 

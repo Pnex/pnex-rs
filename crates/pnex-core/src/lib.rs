@@ -10,6 +10,8 @@
 pub mod agent;
 /// Runs of hosted agents and their LLM gateway (agent-environments.md D731, D732).
 pub mod agent_runs;
+/// Agents of an org: service accounts with a versioned record of what they run (D757).
+pub mod agents;
 /// Edge agent contract (D95).
 /// Applications declared in an org (external-apps.md D433).
 pub mod apps;

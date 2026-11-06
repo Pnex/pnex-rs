@@ -88,6 +88,21 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "the fabric projects what it scans into its own pack (agent-environments.md D708, D728)",
     ),
     (
+        "pnex-backend/src/services/agent_ops.rs",
+        &[
+            "agent_ops",
+            "agent_environment",
+            "hosted_agent",
+            "agent_run",
+            "agent_file",
+            "run_of_agent",
+            "run_in_environment",
+            "file_produced_by",
+            "run_read_file",
+        ],
+        "the fabric projects its ended runs into its own pack (agent-environments.md D708, D761)",
+    ),
+    (
         "pnex-backend/src/services/profiles.rs",
         &["person", "identifier", "uses_identifier"],
         "browser-agent profiles write investigation identities",

@@ -40,6 +40,8 @@ pub mod ns {
     pub const ONTOLOGY_IMPORT: i32 = 0x504e_000b;
     /// Projection of image scans of one org (agent-environments.md D728).
     pub const SOFTWARE_SUPPLY: i32 = 0x504e_000c;
+    /// Projection of ended agent runs of one org (agent-environments.md D761).
+    pub const AGENT_OPS: i32 = 0x504e_000d;
 }
 
 /// Advisory lock key used by the boot migration (single int8 form).

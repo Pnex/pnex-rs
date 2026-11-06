@@ -300,6 +300,49 @@ pub struct RunnerSandboxInput {
     pub secrets: BTreeMap<String, String>,
     #[serde(default)]
     pub egress: Vec<SandboxEgress>,
+    /// Files in and out of the run, moved through PneX by containers of their own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<SandboxArtifacts>,
+}
+
+/// One declared artifact, and for an input the SHA-256 it must have.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SandboxArtifact {
+    pub name: String,
+    /// Inputs only: `sha256:<hex>`, checked before the agent starts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    /// Inputs only: how the bytes read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub form: Option<crate::agent_runs::ArtifactForm>,
+}
+
+/// Where and how the transfer containers of a sandbox move its artifacts (D729, D744). The
+/// token opens the artifact routes of this run only; the agent never gets it.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SandboxArtifacts {
+    /// `.../api/v1/agent-transfer`: `GET inputs/<name>`, `PUT outputs/<name>`.
+    pub url: String,
+    pub token: String,
+    #[serde(default)]
+    pub inputs: Vec<SandboxArtifact>,
+    #[serde(default)]
+    pub outputs: Vec<SandboxArtifact>,
+    /// Restored before setup, saved when the agent ends (D730).
+    #[serde(default)]
+    pub caches: Vec<crate::agent_runs::RunCache>,
+}
+
+impl std::fmt::Debug for SandboxArtifacts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SandboxArtifacts")
+            .field("inputs", &self.inputs)
+            .field("outputs", &self.outputs)
+            .field("caches", &self.caches)
+            .finish_non_exhaustive()
+    }
 }
 
 impl std::fmt::Debug for RunnerSandboxInput {
@@ -307,7 +350,11 @@ impl std::fmt::Debug for RunnerSandboxInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RunnerSandboxInput")
             .field("repos", &self.repos.len())
-            .field("services", &self.services)
+            // Names only: a service's variables hold the passwords generated at the claim.
+            .field(
+                "services",
+                &self.services.iter().map(|s| &s.name).collect::<Vec<_>>(),
+            )
             .field("secrets", &self.secrets.keys().collect::<Vec<_>>())
             .finish_non_exhaustive()
     }
@@ -345,6 +392,26 @@ pub struct RunnerBuildInput {
     /// Layer cache; absent when the store of this deployment cannot provide one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache: Option<RunnerBuildCache>,
+    /// Size of the build pod (D755); the runner's own default when absent or malformed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resources: Option<BuildResources>,
+}
+
+/// Limits of a build pod, as Kubernetes quantities in `Mi` or `Gi`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct BuildResources {
+    pub memory: String,
+    pub ephemeral_storage: String,
+}
+
+/// `512Mi`, `8Gi`: digits and a binary unit, nothing a manifest could misread.
+pub fn quantity_is_valid(q: &str) -> bool {
+    let digits = q.trim_end_matches("Mi").trim_end_matches("Gi");
+    (q.ends_with("Mi") || q.ends_with("Gi"))
+        && !digits.is_empty()
+        && digits.len() <= 6
+        && digits.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Temporary credentials limited to the prefix of one environment (D730).
@@ -460,6 +527,7 @@ impl RunnerClaimedJob {
         if let Some(sandbox) = &self.sandbox {
             out.extend(sandbox.secrets.values().cloned());
             out.extend(sandbox.repos.iter().filter_map(|r| r.token.clone()));
+            out.extend(sandbox.artifacts.iter().map(|a| a.token.clone()));
         }
         out
     }
@@ -614,6 +682,7 @@ mod tests {
                     ("SHORT".to_string(), "abc".to_string()),
                 ]),
                 egress: vec![],
+                artifacts: None,
             }),
         };
         let secrets = job.secret_values();

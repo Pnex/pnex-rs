@@ -755,6 +755,34 @@ pub const AGENT_RUN_NO_ACTIVE_BUILD: &str = "agent-run-no-active-build";
 pub const AGENT_RUN_ENDED: &str = "agent-run-ended";
 /// Unknown run token, or the run is not running.
 pub const AGENT_RUN_UNAUTHORIZED: &str = "agent-run-unauthorized";
+/// No ready artifact of the org has this id (D729).
+pub const AGENT_ARTIFACT_NOT_FOUND: &str = "agent-artifact-not-found";
+/// The run declared no artifact of this name.
+pub const AGENT_ARTIFACT_NOT_DECLARED: &str = "agent-artifact-not-declared";
+/// This output of the run was already sent.
+pub const AGENT_ARTIFACT_ALREADY_SENT: &str = "agent-artifact-already-sent";
+/// The artifact is over its size limit: refused whole.
+pub const AGENT_ARTIFACT_TOO_LARGE: &str = "agent-artifact-too-large";
+/// The body of the artifact stopped before its end.
+pub const AGENT_ARTIFACT_INTERRUPTED: &str = "agent-artifact-interrupted";
+/// The store of artifacts cannot be reached.
+pub const AGENT_ARTIFACT_STORAGE_UNAVAILABLE: &str = "agent-artifact-storage-unavailable";
+/// A required output of the run was not left.
+pub const AGENT_RUN_OUTPUT_MISSING: &str = "agent-run-output-missing";
+/// No agent of the org has this id (D757).
+pub const AGENT_NOT_FOUND: &str = "agent-not-found";
+/// An agent of the org already has this name.
+pub const AGENT_NAME_TAKEN: &str = "agent-name-taken";
+/// The agent changed since it was read.
+pub const AGENT_VERSION_CONFLICT: &str = "agent-version-conflict";
+/// The tier of the org allows no more agents.
+pub const AGENT_QUOTA: &str = "agent-quota";
+/// The agent names no LLM provider of the org.
+pub const AGENT_PROVIDER_NOT_FOUND: &str = "agent-provider-not-found";
+/// The image is over the scan threshold and the org refuses such images (D748).
+pub const ENVIRONMENT_SCAN_REFUSED: &str = "environment-scan-refused";
+/// The journal of builds cannot be read on this deployment (D759).
+pub const ENVIRONMENT_BUILD_LOGS_UNAVAILABLE: &str = "environment-build-logs-unavailable";
 /// The journal of runs cannot be read on this deployment (D719).
 pub const AGENT_RUN_LOGS_UNAVAILABLE: &str = "agent-run-logs-unavailable";
 /// The run has used all its LLM calls.
@@ -1208,6 +1236,20 @@ pub const ALL: &[&str] = &[
     AGENT_RUN_UNAUTHORIZED,
     AGENT_RUN_LLM_BUDGET,
     AGENT_RUN_LOGS_UNAVAILABLE,
+    ENVIRONMENT_BUILD_LOGS_UNAVAILABLE,
+    ENVIRONMENT_SCAN_REFUSED,
+    AGENT_NOT_FOUND,
+    AGENT_NAME_TAKEN,
+    AGENT_VERSION_CONFLICT,
+    AGENT_QUOTA,
+    AGENT_PROVIDER_NOT_FOUND,
+    AGENT_ARTIFACT_NOT_FOUND,
+    AGENT_ARTIFACT_NOT_DECLARED,
+    AGENT_ARTIFACT_ALREADY_SENT,
+    AGENT_ARTIFACT_TOO_LARGE,
+    AGENT_ARTIFACT_INTERRUPTED,
+    AGENT_ARTIFACT_STORAGE_UNAVAILABLE,
+    AGENT_RUN_OUTPUT_MISSING,
     AGENT_GATEWAY_QUOTA,
     AGENT_GATEWAY_NOT_CONFIGURED,
     AGENT_GATEWAY_PROTOCOL_MISMATCH,

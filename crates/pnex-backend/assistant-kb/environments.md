@@ -4,7 +4,7 @@ title: Agent environments (the image an agent runs in)
 kind: feature
 pages: 
 nodes: 
-err_codes: environment-not-found, environment-version-not-found, environment-name-taken, environment-version-conflict, environment-secret-in-dockerfile, image-registry-in-use, environment-build-not-found, environment-build-unavailable, environment-build-no-write-secret, environment-build-running, environment-scan-not-found, environment-sbom-unavailable, environment-build-not-ready
+err_codes: environment-not-found, environment-version-not-found, environment-name-taken, environment-version-conflict, environment-secret-in-dockerfile, image-registry-in-use, environment-build-not-found, environment-build-unavailable, environment-build-no-write-secret, environment-build-running, environment-scan-not-found, environment-sbom-unavailable, environment-build-not-ready, environment-build-logs-unavailable, environment-scan-refused
 tools: 
 tags: environment, dockerfile, image, version, build, agent, context
 ---
@@ -42,3 +42,12 @@ Each scan produces an SBOM, the list of what the image contains, in the CycloneD
 - **"This source holds what looks like a credential"**: the message names the file or build argument. Remove the value. A build argument stays readable in the image history, so it is no place for a secret either.
 - **"This environment changed since you opened it"**: reload it, then save your changes again.
 - **"Registry used by an environment"**: point that environment to another registry, or delete it, then delete the registry.
+
+## The journal of a build
+- When a build ends, its runner sends the last lines of the build, secrets masked. Read them on the build to see why it failed.
+- `environment-build-logs-unavailable`: the journal cannot be read on this deployment right now; the build itself is not affected.
+
+## The scan policy
+- Each image is scanned for known flaws. By default, a critical flaw that a newer package fixes is only signaled: a notice says the image should be rebuilt.
+- An admin can lower the threshold to high flaws, or turn it off, and can choose to refuse: then an image over the threshold can neither be activated nor run (`environment-scan-refused`) until it is rebuilt.
+- A change of the policy applies at once to the next activation and the next run.

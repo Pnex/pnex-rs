@@ -43,6 +43,7 @@ const SHIPPED: &[&str] = &[
     include_str!("../../../packs/markets.yaml"),
     include_str!("../../../packs/investment_thesis.yaml"),
     include_str!("../../../packs/software_supply.yaml"),
+    include_str!("../../../packs/agent_ops.yaml"),
 ];
 
 /// Parsed once per process: an install reads them for every type and link

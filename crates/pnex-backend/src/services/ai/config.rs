@@ -107,6 +107,27 @@ pub async fn resolve(
     }
 }
 
+/// Configuration of one provider of the org, named by id: the provider of its own an agent
+/// was given (D710). `None` when absent, keyless, or AI is switched off.
+pub async fn resolve_provider(
+    db: &DatabaseConnection,
+    config: &Config,
+    org_id: i64,
+    id: uuid::Uuid,
+) -> Option<ResolvedAiConfig> {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    if !AiSettings::from_config(config).enabled {
+        return None;
+    }
+    let row = crate::models::_entities::llm_providers::Entity::find_by_id(id)
+        .filter(crate::models::_entities::llm_providers::Column::OrgId.eq(org_id))
+        .one(db)
+        .await
+        .ok()??;
+    let ring = Keyring::from_config(config).ok()?;
+    super::providers::resolved(db, &ring, &row).await.ok()?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

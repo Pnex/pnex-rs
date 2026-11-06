@@ -169,6 +169,58 @@ pub struct ScanFinding {
 }
 
 pub const SCAN_FINDINGS_MAX: usize = 5000;
+
+/// The lowest severity that counts against a version (D748): `critical` by default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum ScanThreshold {
+    #[default]
+    Critical,
+    High,
+    /// No threshold: scans are shown, never counted.
+    None,
+}
+
+/// What a version over the threshold gets (D748): a signal by default; `refuse` blocks its
+/// activation and its runs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum ScanMode {
+    #[default]
+    Signal,
+    Refuse,
+}
+
+/// The scan policy of an org (D748).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ScanPolicy {
+    #[serde(default)]
+    pub threshold: ScanThreshold,
+    #[serde(default)]
+    pub mode: ScanMode,
+}
+
+impl ScanPolicy {
+    /// Findings of `report` that count against its image: at or above the threshold, with a
+    /// fixed version known, since only those a rebuild can clear are worth an alarm.
+    pub fn breaches(&self, report: &ScanReport) -> u32 {
+        let counts = |severity: &str| match self.threshold {
+            ScanThreshold::Critical => severity == "critical",
+            ScanThreshold::High => matches!(severity, "critical" | "high"),
+            ScanThreshold::None => false,
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        report
+            .findings
+            .iter()
+            .filter(|f| f.fixed.is_some() && counts(&f.severity.to_lowercase()))
+            .filter(|f| seen.insert(f.id.as_str()))
+            .count() as u32
+    }
+}
 pub const SCAN_COMPONENTS_MAX: usize = 20_000;
 pub const SCAN_FIELD_MAX: usize = 256;
 pub const SCAN_PURL_MAX: usize = 1024;
@@ -307,6 +359,7 @@ const TOKEN_SHAPES: &[(&str, usize)] = &[
     ("pnrun_", 16),
     ("pnjoin_", 16),
     ("pnagr_", 16),
+    ("pnart_", 16),
 ];
 
 /// What stands for a masked secret in a log (D705, D719).
@@ -421,6 +474,43 @@ impl EnvironmentSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_policy_counts_fixable_findings_at_its_threshold_once_each() {
+        let finding = |id: &str, severity: &str, fixed: Option<&str>| ScanFinding {
+            id: id.into(),
+            purl: None,
+            package: "p".into(),
+            installed: "1".into(),
+            fixed: fixed.map(str::to_string),
+            severity: severity.into(),
+        };
+        let report = ScanReport {
+            components: vec![],
+            findings: vec![
+                finding("CVE-1", "critical", Some("2")),
+                finding("CVE-1", "critical", Some("2")),
+                finding("CVE-2", "critical", None),
+                finding("CVE-3", "high", Some("3")),
+                finding("CVE-4", "medium", Some("4")),
+            ],
+        };
+        assert_eq!(
+            ScanPolicy::default().breaches(&report),
+            1,
+            "one fixable critical advisory"
+        );
+        let high = ScanPolicy {
+            threshold: ScanThreshold::High,
+            mode: ScanMode::Refuse,
+        };
+        assert_eq!(high.breaches(&report), 2);
+        let none = ScanPolicy {
+            threshold: ScanThreshold::None,
+            ..Default::default()
+        };
+        assert_eq!(none.breaches(&report), 0);
+    }
 
     #[test]
     fn token_shaped_words_and_private_keys_are_masked() {

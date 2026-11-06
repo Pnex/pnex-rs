@@ -5,7 +5,7 @@
 use pnex_core::environments::{
     Environment, EnvironmentBuild, EnvironmentBuildState, EnvironmentInput, EnvironmentScan,
     EnvironmentScanState, EnvironmentSource, EnvironmentVersion, EnvironmentVersionInput,
-    EnvironmentVersionSummary, ScanReport,
+    EnvironmentVersionSummary, ScanMode, ScanPolicy, ScanReport, ScanThreshold,
 };
 use pnex_core::runners::{
     digest_is_valid, RunnerBuildInput, RunnerJobCreate, RunnerJobKind, RunnerJobSpec,
@@ -51,6 +51,10 @@ pub enum EnvironmentError {
     BuildRunning,
     ScanMissing,
     BuildNotReady,
+    /// Over the scan threshold while the org refuses such versions (D748).
+    ScanRefused {
+        breaches: u32,
+    },
     Db(DbErr),
 }
 
@@ -640,6 +644,7 @@ pub async fn build_input(
         username: username?,
         secret,
         cache,
+        resources: None,
     })
 }
 
@@ -675,6 +680,9 @@ pub async fn activate(
     let seen = get_build(db, org_id, id, build).await?;
     if seen.state != EnvironmentBuildState::Ready {
         return Err(EnvironmentError::BuildNotReady);
+    }
+    if let Some(breaches) = refused_by_scan(db, org_id, build).await? {
+        return Err(EnvironmentError::ScanRefused { breaches });
     }
     let done = db
         .execute_raw(stmt(
@@ -858,12 +866,137 @@ pub async fn record_scan(
         tracing::warn!(%job, "out-of-bounds scan report dropped");
         return Ok(());
     }
+    let policy = scan_policy(db, org_id).await?;
+    let breaches = policy.breaches(report);
+    let row = db
+        .query_one_raw(stmt(
+            "UPDATE environment_scans s SET report = $3, breaches = $4 \
+             FROM environment_builds b, environments e \
+             WHERE s.org_id = $1 AND s.job_id = $2 AND b.id = s.build_id AND e.id = b.environment_id \
+             RETURNING e.name, b.number",
+            vec![
+                org_id.into(),
+                job.into(),
+                serde_json::json!(report).into(),
+                (breaches as i32).into(),
+            ],
+        ))
+        .await?;
+    if let (true, Some(row)) = (breaches > 0, row) {
+        let name: String = row.try_get("", "name")?;
+        let number: i32 = row.try_get("", "number")?;
+        signal_breaches(db, org_id, &name, number, breaches, policy.mode).await;
+    }
+    Ok(())
+}
+
+/// In-app notice that a build is over the scan threshold (D748).
+async fn signal_breaches(
+    db: &DatabaseConnection,
+    org_id: i64,
+    environment: &str,
+    number: i32,
+    breaches: u32,
+    mode: ScanMode,
+) {
+    let refused = if mode == ScanMode::Refuse {
+        " It cannot be activated nor run until it is rebuilt."
+    } else {
+        ""
+    };
+    let msg = pnex_notify::Message {
+        subject: Some(format!("Image of {environment} over the scan threshold")),
+        body: format!(
+            "Build {number} of {environment} has {breaches} known flaws a rebuild can fix.{refused}"
+        ),
+        meta: serde_json::json!({
+            "kind": "environment-scan-breach",
+            "environment": environment,
+            "build": number,
+            "breaches": breaches,
+        }),
+    };
+    crate::services::data_builds::notify_org(db, org_id, "environment-scan", msg).await;
+}
+
+/// The scan policy of an org; the default (critical, signal) when it set none.
+pub async fn scan_policy<C: ConnectionTrait>(db: &C, org_id: i64) -> Result<ScanPolicy, DbErr> {
+    let Some(row) = db
+        .query_one_raw(stmt(
+            "SELECT threshold, mode FROM environment_scan_policies WHERE org_id = $1",
+            vec![org_id.into()],
+        ))
+        .await?
+    else {
+        return Ok(ScanPolicy::default());
+    };
+    let threshold: String = row.try_get("", "threshold")?;
+    let mode: String = row.try_get("", "mode")?;
+    Ok(ScanPolicy {
+        threshold: match threshold.as_str() {
+            "high" => ScanThreshold::High,
+            "none" => ScanThreshold::None,
+            _ => ScanThreshold::Critical,
+        },
+        mode: if mode == "refuse" {
+            ScanMode::Refuse
+        } else {
+            ScanMode::Signal
+        },
+    })
+}
+
+pub async fn set_scan_policy(
+    db: &DatabaseConnection,
+    org_id: i64,
+    user_id: i64,
+    policy: ScanPolicy,
+) -> Result<ScanPolicy, DbErr> {
+    let threshold = match policy.threshold {
+        ScanThreshold::Critical => "critical",
+        ScanThreshold::High => "high",
+        ScanThreshold::None => "none",
+    };
+    let mode = match policy.mode {
+        ScanMode::Signal => "signal",
+        ScanMode::Refuse => "refuse",
+    };
     db.execute_raw(stmt(
-        "UPDATE environment_scans SET report = $3 WHERE org_id = $1 AND job_id = $2",
-        vec![org_id.into(), job.into(), serde_json::json!(report).into()],
+        "INSERT INTO environment_scan_policies (org_id, threshold, mode, updated_by) \
+         VALUES ($1, $2, $3, $4) ON CONFLICT (org_id) DO UPDATE \
+         SET threshold = $2, mode = $3, updated_by = $4, updated_at = now()",
+        vec![org_id.into(), threshold.into(), mode.into(), user_id.into()],
     ))
     .await?;
-    Ok(())
+    scan_policy(db, org_id).await
+}
+
+/// `Some(breaches)` when the org refuses versions over its threshold and the latest scan of
+/// this build is over it, counted with the policy of now: a policy change applies at once.
+pub async fn refused_by_scan<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    build: Uuid,
+) -> Result<Option<u32>, DbErr> {
+    let policy = scan_policy(db, org_id).await?;
+    if policy.mode != ScanMode::Refuse {
+        return Ok(None);
+    }
+    let Some(row) = db
+        .query_one_raw(stmt(
+            "SELECT report FROM environment_scans \
+             WHERE org_id = $1 AND build_id = $2 AND report IS NOT NULL \
+             ORDER BY created_at DESC LIMIT 1",
+            vec![org_id.into(), build.into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let report: Option<ScanReport> = row
+        .try_get::<Option<serde_json::Value>>("", "report")?
+        .and_then(|v| serde_json::from_value(v).ok());
+    Ok(report.map(|r| policy.breaches(&r)).filter(|n| *n > 0))
 }
 
 /// The latest scan of a build, with its findings.

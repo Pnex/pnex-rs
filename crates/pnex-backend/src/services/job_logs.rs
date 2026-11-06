@@ -74,6 +74,13 @@ pub async fn store(
             .ingest_json(&creds.o2_org, LOGS_STREAM, batch, &creds.email_passcode)
             .await?;
     }
+    let days = crate::services::fabric_settings::retention(&ctx.config).job_logs_days;
+    if let Err(e) = client
+        .set_log_stream_retention(&creds.o2_org, LOGS_STREAM, days)
+        .await
+    {
+        tracing::warn!(error = %e, "job logs stream retention not set");
+    }
     Ok(())
 }
 
@@ -113,7 +120,7 @@ pub async fn lines(
         Err(e) => return Err(e),
     };
     let text = |hit: &Value, key: &str| hit[key].as_str().unwrap_or_default().to_string();
-    let rows = found
+    let rows: Vec<RunnerJobLogLine> = found
         .hits
         .iter()
         .map(|hit| RunnerJobLogLine {
@@ -121,7 +128,25 @@ pub async fn lines(
             line: text(hit, "line"),
         })
         .collect();
-    Ok(Some((found.total, rows)))
+    // The `total` of a paged search is the size of the page (measured 2026-11-06): the
+    // count is asked apart.
+    let counted = client
+        .search_logs(
+            &creds.o2_org,
+            &format!("SELECT count(*) AS n FROM \"{LOGS_STREAM}\" WHERE job_id = '{job}'"),
+            since_us - HOUR_US,
+            Utc::now().timestamp_micros() + HOUR_US,
+            0,
+            1,
+            &creds.email_passcode,
+        )
+        .await?;
+    let total = counted
+        .hits
+        .first()
+        .and_then(|h| h["n"].as_i64())
+        .unwrap_or(rows.len() as i64);
+    Ok(Some((total, rows)))
 }
 
 #[cfg(test)]

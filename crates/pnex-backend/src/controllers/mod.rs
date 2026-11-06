@@ -1,4 +1,6 @@
+pub mod agent_artifacts;
 pub mod agent_runs;
+pub mod agents;
 pub mod ai;
 pub mod annotation_layers;
 pub mod apps;

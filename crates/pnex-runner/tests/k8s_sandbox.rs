@@ -115,6 +115,7 @@ async fn a_sandbox_keeps_its_promises() {
             cidr: "140.82.112.0/20".into(),
             port: 443,
         }],
+        artifacts: None,
     };
     let pull = std::env::var("PNEX_TEST_PULL_SECRET").ok();
     let (secret, policy, pod) = sandbox_manifests(&job, "test", &spec, &input, pull.as_deref());

@@ -6,6 +6,7 @@
 #![allow(async_fn_in_trait)] // internal traits, used through generics on one runtime
 
 pub mod api;
+pub mod artifacts;
 pub mod k8s;
 pub mod podman;
 
@@ -210,13 +211,7 @@ impl<A: Api, E: Executor> Runner<A, E> {
                         ending.sbom = Some(sbom);
                     }
                 }
-                let mut logs = self.exec.logs(job).await;
-                if !logs.containers.is_empty() {
-                    for c in &mut logs.containers {
-                        c.text = mask_secrets(&c.text, &self.held[job].secrets);
-                    }
-                    ending.logs = Some(logs);
-                }
+                ending.logs = self.masked_logs(job).await;
                 self.destroy(job).await;
                 if let Some(h) = self.held.get_mut(job) {
                     h.ending = Some(ending);
@@ -295,9 +290,14 @@ impl<A: Api, E: Executor> Runner<A, E> {
                 }
             }
             Err(ApiError::NotHeld) => {
-                // shortcut: a stopped job loses its logs, since the server no longer takes
-                // anything for it; keep a short window after the stop if runs need them.
                 tracing::warn!(job, "job lost, destroying its workload");
+                // A job a person stopped still takes its logs for a while (D759); one taken
+                // over by another runner refuses them, and that is fine.
+                if let Some(logs) = self.masked_logs(job).await {
+                    if let Err(e) = self.api.upload_logs(job, &logs).await {
+                        tracing::debug!(job, "logs of a lost job not taken: {e:?}");
+                    }
+                }
                 self.destroy(job).await;
                 self.held.remove(job);
             }
@@ -365,6 +365,24 @@ impl<A: Api, E: Executor> Runner<A, E> {
             }
             self.held.insert(job.id, held);
         }
+    }
+
+    /// The last lines of each container, every delivered secret masked; `None` when the
+    /// workload left nothing to read.
+    async fn masked_logs(&self, job: &str) -> Option<RunnerJobLogs> {
+        let mut logs = self.exec.logs(job).await;
+        if logs.containers.is_empty() {
+            return None;
+        }
+        let secrets = self
+            .held
+            .get(job)
+            .map(|h| h.secrets.as_slice())
+            .unwrap_or(&[]);
+        for c in &mut logs.containers {
+            c.text = mask_secrets(&c.text, secrets);
+        }
+        Some(logs)
     }
 
     async fn destroy(&self, job: &str) {
@@ -656,6 +674,11 @@ mod tests {
         assert_eq!(exec.count(), 0);
         assert_eq!(r.held(), 0);
         assert!(api.finished.lock().unwrap().is_empty());
+        assert_eq!(
+            api.logs.lock().unwrap().len(),
+            1,
+            "a stopped job still sends what its pod wrote"
+        );
     }
 
     #[tokio::test(start_paused = true)]

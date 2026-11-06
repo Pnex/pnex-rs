@@ -97,6 +97,11 @@ mod m20261105_000095_environment_sbom;
 mod m20261105_000096_dataset_uploads;
 mod m20261105_000097_media_uploads;
 mod m20261105_000098_agent_runs;
+mod m20261106_000099_agent_artifacts;
+mod m20261106_000101_agents;
+mod m20261106_000103_agent_run_sources;
+mod m20261106_000104_scan_policy;
+mod m20261106_000105_agent_run_caches;
 
 pub struct Migrator;
 
@@ -190,6 +195,11 @@ impl MigratorTrait for Migrator {
             Box::new(m20261105_000096_dataset_uploads::Migration),
             Box::new(m20261105_000097_media_uploads::Migration),
             Box::new(m20261105_000098_agent_runs::Migration),
+            Box::new(m20261106_000099_agent_artifacts::Migration),
+            Box::new(m20261106_000101_agents::Migration),
+            Box::new(m20261106_000103_agent_run_sources::Migration),
+            Box::new(m20261106_000104_scan_policy::Migration),
+            Box::new(m20261106_000105_agent_run_caches::Migration),
         ]
     }
 }

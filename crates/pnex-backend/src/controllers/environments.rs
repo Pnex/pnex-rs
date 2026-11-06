@@ -33,6 +33,11 @@ pub fn routes() -> Routes {
         .add("/environments/{id}/builds", get(builds))
         .add("/environments/{id}/builds/{build}", get(one_build))
         .add("/environments/{id}/builds/{build}/scan", get(scan))
+        .add("/environments/{id}/builds/{build}/logs", get(build_logs))
+        .add(
+            "/environments/scan-policy",
+            get(get_scan_policy).put(put_scan_policy),
+        )
         .add("/environments/{id}/builds/{build}/sbom", get(sbom))
         .add("/environments/{id}/scans", get(scan_history))
         .add("/environments/{id}/builds/{build}/activate", post(activate))
@@ -41,6 +46,9 @@ pub fn routes() -> Routes {
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(paths(
+        get_scan_policy,
+        put_scan_policy,
+        build_logs,
         list,
         one,
         create,
@@ -127,6 +135,12 @@ fn environment_error(e: EnvironmentError) -> Result<Response> {
                 err_codes::ENVIRONMENT_BUILD_NOT_READY,
                 "Only a build that produced an image can be activated.",
             ),
+        ),
+        EnvironmentError::ScanRefused { breaches } => super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::ENVIRONMENT_SCAN_REFUSED,
+            "The image is over the scan threshold of the org: rebuild it.",
+            Some(serde_json::json!({ "breaches": breaches.to_string() })),
         ),
         EnvironmentError::ScanMissing => Error::CustomError(
             StatusCode::NOT_FOUND,
@@ -503,6 +517,117 @@ async fn one_build(
         Ok(b) => format::json(b),
         Err(e) => environment_error(e),
     }
+}
+
+/// `GET /api/v1/environments/scan-policy`
+#[utoipa::path(
+    get,
+    path = "/api/v1/environments/scan-policy",
+    tag = "environments",
+    operation_id = "environments_scan_policy_get",
+    summary = "Read the scan policy of the org",
+    description = "The lowest severity of a fixable flaw that counts against an image (`critical` by default), and what such an image gets: a signal (default) or a refusal of its activation and its runs (D748). Requires `environments:read`.",
+    responses(
+        (status = 200, body = pnex_core::environments::ScanPolicy),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn get_scan_policy(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
+    format::json(
+        environments::scan_policy(&ctx.db, org.org.id)
+            .await
+            .map_err(Error::DB)?,
+    )
+}
+
+/// `PUT /api/v1/environments/scan-policy`
+#[utoipa::path(
+    put,
+    path = "/api/v1/environments/scan-policy",
+    tag = "environments",
+    operation_id = "environments_scan_policy_set",
+    summary = "Set the scan policy of the org",
+    description = "Applies at once to every check that follows: activation of a build and start of a run. Requires `environments:build` (Admin).",
+    request_body = pnex_core::environments::ScanPolicy,
+    responses(
+        (status = 200, body = pnex_core::environments::ScanPolicy),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn put_scan_policy(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Json(body): Json<pnex_core::environments::ScanPolicy>,
+) -> Result<Response> {
+    format::json(
+        environments::set_scan_policy(&ctx.db, org.org.id, org.auth.user.id, body)
+            .await
+            .map_err(Error::DB)?,
+    )
+}
+
+/// `GET /api/v1/environments/{id}/builds/{build}/logs`
+#[utoipa::path(
+    get,
+    path = "/api/v1/environments/{id}/builds/{build}/logs",
+    tag = "environments",
+    operation_id = "environments_builds_logs",
+    summary = "Read the journal of a build",
+    description = "The last lines of the build pod, oldest first, sent by the runner when the build ended, secrets masked (D733, D759). Requires `environments:read`. Paginated (`limit`/`offset`).",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Environment id (UUID)"),
+        ("build" = String, Path, format = "uuid", description = "Build id (UUID)"),
+        PageQuery
+    ),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::runners::RunnerJobLogLine>),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`environment-build-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`environment-build-logs-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn build_logs(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, build)): Path<(Uuid, Uuid)>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    let b = match environments::get_build(&ctx.db, org.org.id, id, build).await {
+        Ok(b) => b,
+        Err(e) => return environment_error(e),
+    };
+    let job = Uuid::parse_str(&b.job_id).map_err(|_| Error::InternalServerError)?;
+    let since_us = chrono::DateTime::parse_from_rfc3339(&b.created_at)
+        .map(|t| t.timestamp_micros())
+        .unwrap_or(0);
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let found =
+        crate::services::job_logs::lines(&ctx, org.org.id, job, since_us, page.limit, page.offset)
+            .await;
+    let (count, rows) = match found {
+        Ok(Some(found)) => found,
+        not_read => {
+            if let Err(e) = not_read {
+                tracing::warn!(error = %e, "build journal not read");
+            }
+            return Err(super::coded_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                err_codes::ENVIRONMENT_BUILD_LOGS_UNAVAILABLE,
+                "The journal of builds is not available.",
+                None,
+            ));
+        }
+    };
+    format::json(pagination::envelope(
+        &format!("/api/v1/environments/{id}/builds/{build}/logs"),
+        &[],
+        page,
+        count,
+        rows,
+    ))
 }
 
 /// `GET /api/v1/environments/{id}/builds/{build}/scan`
