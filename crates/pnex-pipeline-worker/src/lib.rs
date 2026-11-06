@@ -302,11 +302,12 @@ impl Worker {
 
     /// Runs dead for too long go back to the queue, or fail after their attempts.
     async fn sweep_dead(&self) -> Result<(), sqlx::Error> {
-        // Same delay as `begin()` frees the open transaction of a dead run: requeued
-        // sooner, the retry would find it still open (dataset-transaction-open).
+        // One minute past the 10 after which `begin()` frees the open transaction of a
+        // dead run (its last beat may follow the job's by 30 s): requeued sooner, the
+        // retry would find it still open (dataset-transaction-open).
         sqlx::query(
             "UPDATE pipeline_jobs SET state = 'failed', code = $1, finished_at = now() \
-             WHERE state = 'running' AND heartbeat_at < now() - interval '10 minutes' \
+             WHERE state = 'running' AND heartbeat_at < now() - interval '11 minutes' \
              AND attempts >= $2",
         )
         .bind(err_codes::PIPELINE_WORKER_LOST)
@@ -315,7 +316,7 @@ impl Worker {
         .await?;
         sqlx::query(
             "UPDATE pipeline_jobs SET state = 'queued' \
-             WHERE state = 'running' AND heartbeat_at < now() - interval '10 minutes' \
+             WHERE state = 'running' AND heartbeat_at < now() - interval '11 minutes' \
              AND attempts < $1",
         )
         .bind(MAX_ATTEMPTS)

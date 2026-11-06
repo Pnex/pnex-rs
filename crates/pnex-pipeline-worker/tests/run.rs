@@ -421,7 +421,7 @@ async fn a_run_that_killed_its_worker_twice_is_not_tried_again() {
             sqlx::query(
                 "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger, state, \
                  attempts, heartbeat_at, started_at) \
-                 VALUES ($1, $2, 1, 'manual', 'running', $3, now() - interval '11 minutes', now()) \
+                 VALUES ($1, $2, 1, 'manual', 'running', $3, now() - interval '12 minutes', now()) \
                  RETURNING id",
             )
             .bind(org)
