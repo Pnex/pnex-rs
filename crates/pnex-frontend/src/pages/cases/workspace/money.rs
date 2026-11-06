@@ -15,12 +15,14 @@ use super::{graph::family, model, Sel, Ws};
 
 const TOP: f64 = 72.0;
 /// Room on the left for the first column's labels (right-aligned).
-const LEFT: f64 = 210.0;
+const LEFT: f64 = 250.0;
 const NODE_W: f64 = 12.0;
 const COL_W: f64 = 240.0;
-const PAD: f64 = 18.0;
+/// Gap between two nodes: room for a two-line label (name + amount), so
+/// the labels of small nodes never overlap.
+const PAD: f64 = 34.0;
 /// Height given to each node of the fullest column.
-const ROW_H: f64 = 46.0;
+const ROW_H: f64 = 56.0;
 const MIN_H: f64 = 320.0;
 /// An untraced stub sits this far right of its intermediary, not a column away.
 const STUB: f64 = 110.0;
@@ -45,6 +47,17 @@ fn label(titles: &HashMap<String, String>, id: &str, kind: NodeKind) -> String {
 fn band(x0: f64, y0: f64, x1: f64, y1: f64) -> String {
     let m = (x0 + x1) / 2.0;
     format!("M {x0} {y0} C {m} {y0}, {m} {y1}, {x1} {y1}")
+}
+
+/// Forward band as a filled ribbon of thickness `w` around the centre line:
+/// a thick stroke folds over itself on steep curves.
+fn ribbon(x0: f64, y0: f64, x1: f64, y1: f64, w: f64) -> String {
+    let m = (x0 + x1) / 2.0;
+    let h = w / 2.0;
+    let (a0, a1, b0, b1) = (y0 - h, y1 - h, y0 + h, y1 + h);
+    format!(
+        "M {x0} {a0} C {m} {a0}, {m} {a1}, {x1} {a1} L {x1} {b1} C {m} {b1}, {m} {b0}, {x0} {b0} Z"
+    )
 }
 
 /// Loop of a link back up the chain: out to the right, over the top, in.
@@ -285,7 +298,7 @@ pub(super) fn Money(workspace: CaseWorkspace) -> Element {
                             let d = if l.back {
                                 back_loop(x0, y0, x(b.col), y1, -(j as f64 % 4.0) * 6.0)
                             } else {
-                                band(x0, y0, x1, y1)
+                                ribbon(x0, y0, x1, y1, l.w.max(1.5))
                             };
                             let lit = band_sel() == Some(j) || hovered() == Some(j);
                             let untraced_band = b.kind == NodeKind::Untraced;
@@ -296,7 +309,14 @@ pub(super) fn Money(workspace: CaseWorkspace) -> Element {
                                 (false, false, true) => "0.22",
                                 _ => "0.45",
                             };
-                            let d2 = d.clone();
+                            let d2 = if l.back { d.clone() } else { band(x0, y0, x1, y1) };
+                            let paint = if untraced_band {
+                                "url(#money-hatch)"
+                            } else if l.back {
+                                "var(--color-warn)"
+                            } else {
+                                "var(--color-signal)"
+                            };
                             let tip = format!(
                                 "{} → {} : {}",
                                 label(&titles, &a.id, a.kind),
@@ -307,8 +327,9 @@ pub(super) fn Money(workspace: CaseWorkspace) -> Element {
                                 path {
                                     key: "l{j}",
                                     d,
-                                    fill: "none",
-                                    stroke: if untraced_band { "url(#money-hatch)" } else if l.back { "var(--color-warn)" } else { "var(--color-signal)" },
+                                    fill: if l.back { "none" } else { paint },
+                                    fill_opacity: opacity,
+                                    stroke: if l.back { paint } else { "none" },
                                     stroke_width: "{l.w.max(1.5)}",
                                     stroke_opacity: opacity,
                                     class: "cursor-pointer",
