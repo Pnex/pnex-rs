@@ -1254,6 +1254,25 @@ failles (demande du 2026-11-05, D728).
 
 Ordre : OP1, OP2, OP3, puis OP5 et OP9. Le reste suit la demande client.
 
+### P2.37 — Audit du dépôt du 2026-11-06 : correctifs à discuter (ajout 2026-11-06) — **constats posés, rien de corrigé**
+
+Doc : `audit-2026-11-06.md`. Audit en lecture seule, 26 constats en trois
+niveaux, à arbitrer avant implémentation :
+
+- **En premier** : bac à sable du runtime de flows (JS sans limite, tas
+  Starlark contournable, fence manquante : SEC-67, 68, 76), renvoi de pin
+  périmé (SEC-69), SSRF par le proxy http-fetch (SEC-70), exfiltration par
+  injection via l'assistant (SEC-71, 73), ajout de membre sans consentement
+  (SEC-72), reprise de pipeline après crash et rétention écrasée (A7, A8,
+  rattachés au lot A de `test-grandeur-nature-2026-11-06.md`).
+- **Ensuite** : diff d'import hors verrou (cause probable de C20),
+  websockets et routes `orgs` hors IAM, pagination en mémoire de 30
+  contrôleurs, test de `build_retention`.
+- **Lean** : −2 500 lignes (CoolProp mort, nœuds copiés, 7 helpers de
+  pagination), loco-rs sans options par défaut (SQLite/MySQL), Arrow en
+  double.
+- Tableau du poids des domaines secondaires (§5) pour arbitrer le périmètre.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -1644,3 +1663,6 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   D551–D568, lots OP1–OP15). Non-objectifs levés ou amendés (§9 du doc), militaire
   exclu, cœur en Rust, validation générique et action physique gouvernée. Aucun
   éditeur de référence nommé dans le repo (D552).
+- **2026-11-06 (audit)** — Ajout de P2.37 (`audit-2026-11-06.md`) : audit du
+  dépôt en lecture seule, SEC-67 à SEC-79 au registre de `security.md` §7,
+  constats de pipelines rattachés au lot A du test grandeur nature. À discuter.

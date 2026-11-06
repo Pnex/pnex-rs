@@ -613,6 +613,28 @@ vérifiés dans le code ; plan complet et profils dans
   l'image (qui embarque le PSK WiFi) — inhérent au provisioning, rattaché
   à SEC-W2.
 
+### Audit du dépôt du 2026-11-06 — à discuter
+
+Lecture seule, détail et correctifs proposés dans `audit-2026-11-06.md`
+(référence entre parenthèses). Confiance non contre-vérifiée par un second
+lecteur ; ✔ = relu dans le code à la main.
+
+| # | Sév. | Finding | Règle | Statut |
+|---|---|---|---|---|
+| SEC-67 | HIGH | **Fonction JS déployée sans limite de temps ni de mémoire** ✔ (A1) — `while(true){}` bloque le runtime partagé de toutes les orgs | R5 | ouvert, à discuter |
+| SEC-68 | HIGH | **Limite de tas Starlark contournée par une allocation unique** (A2) — OOM du runtime partagé | R5 | ouvert, à discuter |
+| SEC-69 | MEDIUM | **Renvoi d'une écriture de pin périmée** ✔ (A3) — le device revient à un état physique antérieur | D123 | ouvert, à discuter |
+| SEC-70 | HIGH | **SSRF par le proxy du nœud http-fetch** ✔ (A4) — le proxy échappe à la garde de sortie | R8 | ouvert, à discuter |
+| SEC-71 | MEDIUM | **Exfiltration par injection : `try_site_recipe` en YAML libre sans confirmation** ✔ (A5) | D142 | ouvert, à discuter |
+| SEC-72 | MEDIUM | **Ajout de membre sans consentement + oracle d'existence d'email** ✔ (A6) | R1 | ouvert, à discuter |
+| SEC-73 | MEDIUM | **Délimiteur `<data>` non échappé dans les sorties d'outils mail/site** ✔ (B3) | D142 | ouvert, à discuter |
+| SEC-74 | LOW | **Websockets caméra / notifications / docs sans permission IAM de lecture** (B4) | R2 | ouvert, à discuter |
+| SEC-75 | LOW | **Routes `orgs` en tests de rôle, hors moteur IAM** (B5) | R2 | ouvert, à discuter |
+| SEC-76 | MEDIUM | **Écriture device interne sans fence : `org_id` du corps cru** (B6) — résiduel de SEC-4, aggravé par SEC-67/68 | R7 | ouvert, à discuter |
+| SEC-77 | LOW | **Promotion admin plateforme sans `email_verified`** (C2) — prolonge SEC-W5 | R1 | ouvert, à discuter |
+| SEC-78 | LOW | **Contrôle de version non atomique de `update_notification_template` (assistant)** (C5) | D144 | ouvert, à discuter |
+| SEC-79 | LOW | **`authorize_tool` ouvert sur un outil hors registre IAM** (C6) — rien d'exposé aujourd'hui | R2 | ouvert, à discuter |
+
 ### Reste à faire
 
 SEC-10 (APK release non debuggable, signature de release — accepté
