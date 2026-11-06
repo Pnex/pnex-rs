@@ -32,11 +32,58 @@ pub struct Environment {
     pub active_build_id: Option<String>,
     /// `host/repository@sha256:...` of that build.
     pub active_image: Option<String>,
+    /// Where its runs execute (D763).
+    #[serde(default)]
+    pub isolation: Isolation,
     pub version: i32,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub updated_at: String,
+}
+
+/// Where the runs of an environment execute (D763): a hardened pod, or a micro-VM of their
+/// own. A run that declares services stays in a pod while services do not run in a VM.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum Isolation {
+    #[default]
+    Pod,
+    Vm,
+}
+
+impl Isolation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pod => "pod",
+            Self::Vm => "vm",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "pod" => Some(Self::Pod),
+            "vm" => Some(Self::Vm),
+            _ => None,
+        }
+    }
+
+    /// The runner capability a run of this isolation requires.
+    pub fn capability(self, has_services: bool) -> &'static str {
+        match (self, has_services) {
+            (Self::Vm, false) => "sandbox:vm",
+            _ => "sandbox:pod",
+        }
+    }
+}
+
+/// `PUT /environments/{id}/isolation`, on the version that was read.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct IsolationInput {
+    pub isolation: Isolation,
+    pub expected_version: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -474,6 +521,17 @@ impl EnvironmentSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vm_environment_keeps_runs_with_services_in_a_pod() {
+        assert_eq!(Isolation::default(), Isolation::Pod);
+        assert_eq!(Isolation::Vm.capability(false), "sandbox:vm");
+        assert_eq!(Isolation::Vm.capability(true), "sandbox:pod");
+        assert_eq!(Isolation::Pod.capability(false), "sandbox:pod");
+        assert_eq!(Isolation::parse("vm"), Some(Isolation::Vm));
+        assert_eq!(Isolation::parse("VM"), None);
+        assert_eq!(serde_json::to_value(Isolation::Vm).unwrap(), "vm");
+    }
 
     #[test]
     fn a_policy_counts_fixable_findings_at_its_threshold_once_each() {

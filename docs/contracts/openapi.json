@@ -8117,6 +8117,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "isolation": {
+            "$ref": "#/components/schemas/Isolation",
+            "description": "Where its runs execute (D763)."
+          },
           "latest_version": {
             "description": "Number of its latest version; absent before the first one.",
             "format": "int32",
@@ -11401,6 +11405,31 @@
             "type": "object"
           }
         },
+        "type": "object"
+      },
+      "Isolation": {
+        "description": "Where the runs of an environment execute (D763): a hardened pod, or a micro-VM of their\nown. A run that declares services stays in a pod while services do not run in a VM.",
+        "enum": [
+          "pod",
+          "vm"
+        ],
+        "type": "string"
+      },
+      "IsolationInput": {
+        "description": "`PUT /environments/{id}/isolation`, on the version that was read.",
+        "properties": {
+          "expected_version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "isolation": {
+            "$ref": "#/components/schemas/Isolation"
+          }
+        },
+        "required": [
+          "isolation",
+          "expected_version"
+        ],
         "type": "object"
       },
       "JoinTokenCreate": {
@@ -52063,6 +52092,115 @@
           }
         ],
         "summary": "Get the scan of a build",
+        "tags": [
+          "environments"
+        ]
+      }
+    },
+    "/api/v1/environments/{id}/isolation": {
+      "put": {
+        "description": "`pod` (default) or `vm`, a micro-VM of their own; a run that declares services stays in a pod (D763). Applies to the runs started after, on the version that was read (`expected_version`). Requires `environments:build` (Admin).",
+        "operationId": "environments_isolation_set",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Environment id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IsolationInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Environment"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `environments:build`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`environment-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`environment-version-conflict` (args `current`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set where the runs of an environment execute",
         "tags": [
           "environments"
         ]

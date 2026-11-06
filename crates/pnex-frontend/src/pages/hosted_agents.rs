@@ -19,7 +19,9 @@ use pnex_core::agent_runs::{
     AgentArtifact, AgentRun, ArtifactInput, ArtifactOutput, ArtifactState,
 };
 use pnex_core::agents::{Agent, AgentCreate, AgentRole, AgentRunStart, AgentSpec};
-use pnex_core::environments::{Environment, EnvironmentBuild, EnvironmentBuildState};
+use pnex_core::environments::{
+    Environment, EnvironmentBuild, EnvironmentBuildState, Isolation, IsolationInput,
+};
 use pnex_core::runners::{RunnerJobOutcome, RunnerJobState, RunnerView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -713,6 +715,55 @@ fn DownloadButton(artifact: AgentArtifact) -> Element {
     }
 }
 
+/// Where the runs of an environment execute: an Admin picks, others read (D763).
+#[component]
+fn IsolationCell(env: Environment, reload: Signal<u32>) -> Element {
+    let label = |i: Isolation| match i {
+        Isolation::Pod => t!("agents-isolation-pod").to_string(),
+        Isolation::Vm => t!("agents-isolation-vm").to_string(),
+    };
+    if !access::can("environments:build") {
+        return rsx! {
+            span { class: "text-sm text-slate", {label(env.isolation)} }
+        };
+    }
+    let (id, version, current) = (env.id.clone(), env.version, env.isolation);
+    let save = move |value: String| {
+        let id = id.clone();
+        let mut reload = reload;
+        spawn(async move {
+            if let Some(isolation) = Isolation::parse(&value) {
+                let input = IsolationInput {
+                    isolation,
+                    expected_version: version,
+                };
+                match api::hosted_agents::set_isolation(&id, &input).await {
+                    Ok(_) => {
+                        toasts::info(t!("agents-isolation-saved").to_string());
+                        reload += 1;
+                    }
+                    Err(e) => toasts::error(e),
+                }
+            }
+        });
+    };
+    rsx! {
+        select {
+            class: "{INPUT}",
+            aria_label: t!("agents-col-isolation").to_string(),
+            onchange: move |e| save(e.value()),
+            for i in [Isolation::Pod, Isolation::Vm] {
+                option {
+                    key: "{i.as_str()}",
+                    value: i.as_str(),
+                    selected: i == current,
+                    {label(i)}
+                }
+            }
+        }
+    }
+}
+
 /// Environments of the org with their active image; a build opens on its log.
 #[component]
 fn EnvironmentsTab(reload: Signal<u32>) -> Element {
@@ -726,7 +777,8 @@ fn EnvironmentsTab(reload: Signal<u32>) -> Element {
         Some(Ok(p)) => (Some(Ok(())), p.count == 0, p.results.clone()),
         Some(Err(e)) => (Some(Err(e.clone())), false, Vec::new()),
     };
-    let columns = vec![
+    let columns =
+        vec![
         Column::new(t!("agents-col-name").to_string(), |e: &Environment| {
             rsx! {
                 span { class: "text-sm font-medium text-ink", {e.name.clone()} }
@@ -740,6 +792,11 @@ fn EnvironmentsTab(reload: Signal<u32>) -> Element {
                 } else {
                     span { class: "text-sm text-slate", {t!("agents-no-image")} }
                 }
+            }
+        }),
+        Column::new(t!("agents-col-isolation").to_string(), move |e: &Environment| {
+            rsx! {
+                IsolationCell { key: "{e.id}-{e.version}", env: e.clone(), reload }
             }
         }),
         Column::new(t!("common-actions").to_string(), move |e: &Environment| {

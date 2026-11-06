@@ -4,7 +4,7 @@
 
 use pnex_core::agent_runs::{AgentArtifact, AgentRun};
 use pnex_core::agents::{Agent, AgentCreate, AgentRunStart};
-use pnex_core::environments::{Environment, EnvironmentBuild};
+use pnex_core::environments::{Environment, EnvironmentBuild, IsolationInput};
 use pnex_core::runners::{RunnerJobLogLine, RunnerView};
 use pnex_core::Paginated;
 
@@ -111,6 +111,18 @@ pub async fn environments() -> Result<Paginated<Environment>, ApiError> {
         reqwest::Method::GET,
         "/api/v1/environments?limit=100&offset=0",
         None,
+    )
+    .await
+}
+
+pub async fn set_isolation(
+    environment: &str,
+    input: &IsolationInput,
+) -> Result<Environment, ApiError> {
+    client::request(
+        reqwest::Method::PUT,
+        &format!("/api/v1/environments/{environment}/isolation"),
+        Some(body(input)?),
     )
     .await
 }

@@ -3,7 +3,7 @@
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::Json;
 use loco_rs::controller::{format, ErrorDetail};
 use loco_rs::prelude::*;
@@ -41,11 +41,13 @@ pub fn routes() -> Routes {
         .add("/environments/{id}/builds/{build}/sbom", get(sbom))
         .add("/environments/{id}/scans", get(scan_history))
         .add("/environments/{id}/builds/{build}/activate", post(activate))
+        .add("/environments/{id}/isolation", put(put_isolation))
 }
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(paths(
+        put_isolation,
         get_scan_policy,
         put_scan_policy,
         build_logs,
@@ -539,6 +541,37 @@ async fn get_scan_policy(State(ctx): State<AppContext>, org: OrgContext) -> Resu
             .await
             .map_err(Error::DB)?,
     )
+}
+
+/// `PUT /api/v1/environments/{id}/isolation`
+#[utoipa::path(
+    put,
+    path = "/api/v1/environments/{id}/isolation",
+    tag = "environments",
+    operation_id = "environments_isolation_set",
+    summary = "Set where the runs of an environment execute",
+    description = "`pod` (default) or `vm`, a micro-VM of their own; a run that declares services stays in a pod (D763). Applies to the runs started after, on the version that was read (`expected_version`). Requires `environments:build` (Admin).",
+    params(("id" = String, Path, format = "uuid", description = "Environment id (UUID)")),
+    request_body = pnex_core::environments::IsolationInput,
+    responses(
+        (status = 200, body = pnex_core::environments::Environment),
+        (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`environment-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`environment-version-conflict` (args `current`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn put_isolation(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<pnex_core::environments::IsolationInput>,
+) -> Result<Response> {
+    match environments::set_isolation(&ctx.db, org.org.id, id, &input).await {
+        Ok(e) => format::json(e),
+        Err(e) => environment_error(e),
+    }
 }
 
 /// `PUT /api/v1/environments/scan-policy`

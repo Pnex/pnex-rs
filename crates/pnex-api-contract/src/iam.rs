@@ -481,6 +481,10 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         "environments_builds_create",
         Access::Org("environments:build"),
     ),
+    (
+        "environments_isolation_set",
+        Access::Org("environments:build"),
+    ),
     ("environments_builds_get", Access::Org("environments:read")),
     ("environments_builds_list", Access::Org("environments:read")),
     ("environments_builds_sbom", Access::Org("environments:read")),

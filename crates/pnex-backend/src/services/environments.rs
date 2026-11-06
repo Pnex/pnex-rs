@@ -5,7 +5,8 @@
 use pnex_core::environments::{
     Environment, EnvironmentBuild, EnvironmentBuildState, EnvironmentInput, EnvironmentScan,
     EnvironmentScanState, EnvironmentSource, EnvironmentVersion, EnvironmentVersionInput,
-    EnvironmentVersionSummary, ScanMode, ScanPolicy, ScanReport, ScanThreshold,
+    EnvironmentVersionSummary, Isolation, IsolationInput, ScanMode, ScanPolicy, ScanReport,
+    ScanThreshold,
 };
 use pnex_core::runners::{
     digest_is_valid, RunnerBuildInput, RunnerJobCreate, RunnerJobKind, RunnerJobSpec,
@@ -73,6 +74,7 @@ const ISO: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
 fn select() -> String {
     format!(
         "SELECT id, name, description, registry_id, latest_version, active_build_id, version, \
+           isolation, \
            (SELECT b.repository || '@' || b.digest FROM environment_builds b \
             WHERE b.id = active_build_id) AS active_image, \
            to_char(created_at AT TIME ZONE 'UTC', {ISO}) AS created_at, \
@@ -91,6 +93,7 @@ fn view(r: &QueryResult) -> Result<Environment, DbErr> {
             .try_get::<Option<Uuid>>("", "active_build_id")?
             .map(|u| u.to_string()),
         active_image: r.try_get("", "active_image")?,
+        isolation: Isolation::parse(&r.try_get::<String>("", "isolation")?).unwrap_or_default(),
         version: r.try_get("", "version")?,
         created_at: r.try_get("", "created_at")?,
         updated_at: r.try_get("", "updated_at")?,
@@ -200,6 +203,34 @@ pub async fn create(
         ],
     ))
     .await?;
+    get(db, org_id, id).await
+}
+
+/// Sets where the runs of the environment execute, on the version that was read (D763).
+pub async fn set_isolation(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    input: &IsolationInput,
+) -> Result<Environment, EnvironmentError> {
+    let current = get(db, org_id, id).await?;
+    let done = db
+        .execute_raw(stmt(
+            "UPDATE environments SET isolation = $3, version = version + 1, updated_at = now() \
+             WHERE org_id = $1 AND id = $2 AND version = $4",
+            vec![
+                org_id.into(),
+                id.into(),
+                input.isolation.as_str().into(),
+                input.expected_version.into(),
+            ],
+        ))
+        .await?;
+    if done.rows_affected() != 1 {
+        return Err(EnvironmentError::VersionConflict {
+            current: Some(current.version),
+        });
+    }
     get(db, org_id, id).await
 }
 

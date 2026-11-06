@@ -566,6 +566,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
         &[
             "agents_create",
             "environments_scan_policy_set",
+            "environments_isolation_set",
             "agents_update",
             "apps_build",
             "apps_create",

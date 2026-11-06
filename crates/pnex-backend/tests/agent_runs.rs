@@ -1347,3 +1347,81 @@ async fn a_dependency_cache_goes_by_key_and_falls_back_to_the_latest() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn an_environment_sends_its_runs_to_micro_vms_unless_they_need_services() {
+    with_db(|server, env, db| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let environment = runnable(&server, &db, &env.alice, org).await;
+        let one = format!("/api/v1/environments/{environment}");
+        let isolation = format!("{one}/isolation");
+        let (_, e) = call(&server, &env.alice, org, "GET", &one, None).await;
+        assert_eq!(e["isolation"], "pod", "a pod by default");
+        let version = e["version"].as_i64().unwrap();
+
+        // Another org does not see it; a member of this one may not weaken or harden it.
+        let bob_org = personal_org(&server, &env.bob).await;
+        let body = json!({ "isolation": "vm", "expected_version": version });
+        let (s, d) = call(&server, &env.bob, bob_org, "PUT", &isolation, Some(body.clone())).await;
+        assert_eq!(s, 404, "{d}");
+        let res = server
+            .post(&format!("/api/v1/orgs/{org}/members"))
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&json!({ "email": "bob@example.com", "role": "member" }))
+            .await;
+        assert!(res.status_code().is_success(), "{}", res.text());
+        let (s, d) = call(&server, &env.bob, org, "PUT", &isolation, Some(body.clone())).await;
+        assert_eq!(s, 403, "an Admin decides: {d}");
+
+        let (s, e) = call(&server, &env.alice, org, "PUT", &isolation, Some(body.clone())).await;
+        assert_eq!(s, 200, "{e}");
+        assert_eq!(e["isolation"], "vm");
+        let (s, d) = call(&server, &env.alice, org, "PUT", &isolation, Some(body)).await;
+        assert_eq!(s, 409, "on the version read only: {d}");
+        assert_eq!(d["error"], "environment-version-conflict");
+
+        let required = |run: Value| {
+            let db = db.clone();
+            async move {
+                db.query_one_raw(sea_orm::Statement::from_string(
+                    sea_orm::DatabaseBackend::Postgres,
+                    format!(
+                        "SELECT j.required_capabilities::text AS c FROM agent_runs r \
+                         JOIN runner_jobs j ON j.id = r.job_id WHERE r.id = '{}'",
+                        run["id"].as_str().unwrap()
+                    ),
+                ))
+                .await
+                .unwrap()
+                .unwrap()
+                .try_get::<String>("", "c")
+                .unwrap()
+            }
+        };
+        let plain = json!({ "environment_id": environment, "timeout_secs": 60 });
+        let (s, run) = call(&server, &env.alice, org, "POST", "/api/v1/agent-runs", Some(plain)).await;
+        assert_eq!(s, 201, "{run}");
+        assert_eq!(required(run).await, r#"["sandbox:vm"]"#);
+        // A pod runner never takes it: a VM run waits for a VM.
+        let runner = enrol(&server, &env.alice, org).await;
+        let res = server
+            .post("/api/v1/runner/jobs/claim")
+            .add_header("Authorization", format!("Bearer {runner}"))
+            .await;
+        assert_eq!(res.status_code().as_u16(), 204, "{}", res.text());
+
+        let digest = "0".repeat(64);
+        let with_services = json!({
+            "environment_id": environment, "timeout_secs": 60,
+            "services": [{ "name": "kv", "image": format!("cgr.dev/chainguard/valkey@sha256:{digest}"),
+                           "ready_command": ["valkey-cli", "ping"] }]
+        });
+        let (s, run) =
+            call(&server, &env.alice, org, "POST", "/api/v1/agent-runs", Some(with_services)).await;
+        assert_eq!(s, 201, "{run}");
+        assert_eq!(required(run).await, r#"["sandbox:pod"]"#, "services run in a pod only");
+    })
+    .await;
+}

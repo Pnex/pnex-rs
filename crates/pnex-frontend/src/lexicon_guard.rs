@@ -169,6 +169,13 @@ const RULES: &[Rule] = &[
         use_instead: "entrées / sorties (fichiers d'une exécution, D729)",
         allowed_keys: &[],
     },
+    // D763: where the runs of an environment execute is its « isolation ».
+    Rule {
+        scope: Scope::Fr,
+        term: "isolement",
+        use_instead: "isolation (pod ou micro-VM d'un environnement, D763)",
+        allowed_keys: &[],
+    },
     // The storyline view of a case is the « Histoire » (its tab name).
     Rule {
         scope: Scope::Fr,

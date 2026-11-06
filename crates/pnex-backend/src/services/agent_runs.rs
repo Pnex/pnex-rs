@@ -26,7 +26,6 @@ use crate::services::runners;
 use crate::services::secrets::{store, Keyring};
 
 /// Announced by a runner that can run a sandbox pod.
-pub const SANDBOX_CAPABILITY: &str = "sandbox:pod";
 
 #[derive(Debug)]
 pub enum AgentRunError {
@@ -161,7 +160,7 @@ pub async fn create_as(
         Uuid::parse_str(&body.environment_id).map_err(|_| AgentRunError::EnvironmentNotFound)?;
     let row = db
         .query_one_raw(stmt(
-            "SELECT e.active_build_id, b.repository, b.digest FROM environments e \
+            "SELECT e.active_build_id, e.isolation, b.repository, b.digest FROM environments e \
              LEFT JOIN environment_builds b ON b.id = e.active_build_id \
              WHERE e.org_id = $1 AND e.id = $2",
             vec![org_id.into(), environment.into()],
@@ -179,6 +178,9 @@ pub async fn create_as(
         return Err(AgentRunError::ScanRefused { breaches });
     }
     let repository: String = row.try_get("", "repository")?;
+    let isolation =
+        pnex_core::environments::Isolation::parse(&row.try_get::<String>("", "isolation")?)
+            .unwrap_or_default();
     let spec = RunnerJobSpec {
         image: format!("{repository}@{digest}"),
         command: body.command.clone(),
@@ -195,7 +197,9 @@ pub async fn create_as(
         &RunnerJobCreate {
             kind: RunnerJobKind::Sandbox,
             spec,
-            required_capabilities: vec![SANDBOX_CAPABILITY.to_string()],
+            required_capabilities: vec![isolation
+                .capability(!body.services.is_empty())
+                .to_string()],
         },
     )
     .await?;

@@ -104,6 +104,7 @@ mod m20261106_000102_worker_schema_usage;
 mod m20261106_000103_agent_run_sources;
 mod m20261106_000104_scan_policy;
 mod m20261106_000105_agent_run_caches;
+mod m20261106_000106_environment_isolation;
 
 pub struct Migrator;
 
@@ -204,6 +205,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261106_000103_agent_run_sources::Migration),
             Box::new(m20261106_000104_scan_policy::Migration),
             Box::new(m20261106_000105_agent_run_caches::Migration),
+            Box::new(m20261106_000106_environment_isolation::Migration),
         ]
     }
 }

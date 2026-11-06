@@ -10,7 +10,7 @@ tags: environment, dockerfile, image, version, build, agent, context
 ---
 An environment describes the image an agent runs in. Its source lives in PneX: a Dockerfile, its text context files and its build arguments, with no git repository involved. It also names the image registry its images go to.
 
-There is no page for environments yet: they are managed through the API.
+They are listed in the Agents page, Environments tab, with their active image and their isolation; their source is managed through the API.
 
 ## Versions
 - Each save creates a new numbered version, which never changes afterwards. Its fingerprint is the SHA-256 of its source.
@@ -51,3 +51,9 @@ Each scan produces an SBOM, the list of what the image contains, in the CycloneD
 - Each image is scanned for known flaws. By default, a critical flaw that a newer package fixes is only signaled: a notice says the image should be rebuilt.
 - An admin can lower the threshold to high flaws, or turn it off, and can choose to refuse: then an image over the threshold can neither be activated nor run (`environment-scan-refused`) until it is rebuilt.
 - A change of the policy applies at once to the next activation and the next run.
+
+## Isolation
+- Each environment says where its runs execute: in a pod (the default) or in a micro-VM of their own, a stronger wall between the agent and the cluster.
+- Only an admin changes it, in the Isolation column of the Environments tab. It applies to the runs started after the change.
+- A run that declares services (a test database, a cache) still runs in a pod, even in a micro-VM environment.
+- A micro-VM run waits in the queue until a micro-VM runner is free: if it never starts, check in the Runners tab that one is online.
