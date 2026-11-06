@@ -10,9 +10,10 @@
 <h3 align="center">Your sources. Your server. Your data.</h3>
 
 <p align="center">
-  Self-hosted data platform on an industrial IoT foundation, written in Rust end to end.<br>
-  Boards, cameras, audio and video streams, mailboxes, websites, files and APIs land in one organization,
-  linked by an ontology, processed by flows, read in dashboards — <a href="https://pnex.io">pnex.io</a>
+  Self-hosted operational platform, written in Rust end to end.<br>
+  Databases, files, mailboxes, websites, APIs, calls, streams, cameras and devices land in one organization,
+  linked by an ontology, transformed by versioned data pipelines, processed by flows and by LLM agents
+  that run in sandboxes on Kubernetes or micro-VMs — <a href="https://pnex.io">pnex.io</a>
 </p>
 
 <p align="center">
@@ -47,19 +48,32 @@
 
 ## What PNeX is
 
-PNeX (**Platform Nexus**) started as an industrial IoT platform — devices, firmware, flows,
-SCADA dashboards — and grew into a data platform built on that foundation. Everything an
-organization collects lives in one place and one model:
+PNeX (**Platform Nexus**) is an operational platform: data, ontology, pipelines,
+applications, AI agents and their execution environments, voice, vision and devices, each one
+brick among others. Everything an organization collects and runs lives in one place and one
+model:
 
-- **Sources**: ESP boards and edge agents, IP and ESP32 cameras, live audio and video
-  streams, files of the media library (video, audio, photos, documents), mailboxes (IMAP),
-  websites (crawls, navigation rules, browser agents), open-data files and external HTTP APIs.
+- **Sources**: PostgreSQL databases, open-data files and external HTTP APIs, files of the
+  media library (video, audio, photos, documents), mailboxes (IMAP), websites (crawls,
+  navigation rules, browser agents), recorded calls, live audio and video streams, IP and
+  ESP32 cameras, ESP boards and edge agents.
 - **One model**: an ontology of typed objects, relations, actions and time ranges links
   devices, media, transcripts, mails, documents, places, companies, people and investigation
   cases. What a machine finds is *proposed* to one inbox before it becomes a fact.
-- **Processing**: a flow runtime (Node-RED style, in Rust) for the light ETL; queue workers
-  for the heavy work (firmware builds, speech-to-text, vision inference and training).
-- **Reading**: SCADA and home dashboards, map, timelines, investigation workspaces, pages
+- **Voice**: a desktop recorder captures calls and video meetings (one channel per
+  speaker), live streams are segmented, and everything is transcribed on the server
+  (Whisper / sherpa-onnx, no Python), diarized, searchable and annotated with notes; people
+  who consented to enrollment are recognized by their voice.
+- **Data pipelines**: versioned datasets (Parquet on S3) and SQL transforms run by a
+  DataFusion worker, chained runs, connectors, lineage and profiling; the ontology import is
+  just the last step of a pipeline.
+- **Processing**: a flow runtime (Node-RED style, in Rust) for events and light ETL; queue
+  workers for the heavy work (firmware builds, speech-to-text, vision inference and training).
+- **Agents**: LLM agents are IAM service accounts with a budget, running in a dedicated
+  environment (a Dockerfile versioned in PNeX, built by BuildKit, scanned, SBOM in the
+  ontology). Each run gets its own sandbox — a hardened Kubernetes pod or a Firecracker
+  micro-VM — reaches the model only through a gateway, and leaves files, logs and proposals.
+- **Reading**: dashboards (business, SCADA, home), map, timelines, investigation workspaces, pages
   rendered to PDF, full-text and semantic search, and an AI assistant on the org's own LLM.
 - **Opening up**: the API is a public OpenAPI contract, from which an MCP server for AI
   clients and the `pnex` admin CLI are derived; applications built on the ontology get a
@@ -89,6 +103,14 @@ flowchart LR
         api["API + WebSocket<br/>orgs · ontology · media · devices"]
         flows["Flow runtime<br/>sharded per org"]
         work["Queue workers<br/>firmware · ASR · vision · training"]
+        gw["Agent gateway<br/>LLM · budget · journal"]
+    end
+
+    subgraph exec["Execution (join by token)"]
+        direction TB
+        pw["Pipeline worker<br/>DataFusion"]
+        runner["pnex-runner<br/>Kubernetes · Podman · Firecracker"]
+        sb["Sandboxes<br/>builds · scans · agent runs"]
     end
 
     subgraph store["Storage"]
@@ -116,6 +138,12 @@ flowchart LR
     ext -- "OpenAPI · OAuth" --> api
     api <--> flows
     api --> work
+    api <-->|"claim · outputs"| runner
+    runner --> sb
+    sb -- "run token" --> gw
+    api --> pw
+    pw --> s3
+    gw -.-> llm
     server --> store
     api -.-> idp
     api -.-> llm
@@ -199,6 +227,57 @@ The Lab turns pictures into a detection model without leaving PNeX
 5. **Deployment**: the model runs in the `pnex-vision-detect` flow node on live cameras and
    streams (tracking, zones), and its detections feed dashboards, alerts and the ontology.
 
+### Voice: recordings, transcripts, notes and speakers
+
+- **Recorder**: `pnex-recorder` is a tray utility of the desktop app
+  ([`call-recording.md`](docs/architecture/call-recording.md)) that records calls and video
+  meetings with one channel per side ("me" / "the other"), shows a visible recording
+  notice, sends segments with a checksum and resumes after a cut. Linux validated, Windows
+  built, wired and hardware recorders (ESP32) planned.
+- **Transcripts**: segments of recordings, uploads and live streams go to the confined
+  `pnex-asr` process (Whisper, sherpa-onnx), with word timestamps, diarization and topic
+  classification by versioned taxonomies; transcripts are indexed for full-text search.
+- **Review and notes**: one shared player and timeline for audio and video, with time-coded
+  notes, annotations and version history
+  ([`media-review.md`](docs/architecture/media-review.md)).
+- **Voice ID** ([`voice-id.md`](docs/architecture/voice-id.md)): a voice profile per person,
+  only with recorded consent; the template is sealed (XChaCha20-Poly1305), the threshold
+  calibrated per profile, a match is proposed to a human, and withdrawing consent erases the
+  profile and its audio. "My voice" lets a user check their own enrollment score.
+
+### Data pipelines
+
+Pipelines turn sources into versioned datasets
+([`data-pipelines.md`](docs/architecture/data-pipelines.md) §9):
+
+- **Datasets** are versioned tables stored as Parquet on S3, with transactions, retention of
+  replaced versions, sampling, profiling, lineage and erasure of personal data.
+- **Transforms** are SQL, planned and run by `pnex-pipeline-worker` (Apache DataFusion, a
+  separate image) under an allowlist of functions and memory limits — never in the server.
+- **Runs** are chained, retried and journaled; connectors (PostgreSQL, files uploaded in
+  parts) materialize their input before the worker reads it. Importing into the ontology is a
+  pipeline step, written in bulk.
+
+### Agents, environments and runners
+
+Agents run on the org's own infrastructure, governed in one place
+([`agent-environments.md`](docs/architecture/agent-environments.md),
+[`autonomous-agents.md`](docs/architecture/autonomous-agents.md)):
+
+- **Agent**: an IAM service account, created by an admin, whose role never exceeds its
+  author's; the engine and the LLM provider are the org's choice. Budget per run and per day.
+- **Environment**: a Dockerfile versioned in PostgreSQL, built in an ephemeral rootless
+  BuildKit pod with an S3 layer cache per org, pushed to the org's registry, scanned (Trivy)
+  and traced with its SBOM in the ontology. A run always uses a frozen digest.
+- **Runner**: `pnex-runner` joins a server by token, like a CI runner, and announces its
+  executors: Kubernetes (one hardened pod per run in its namespace, egress gated by a
+  NetworkPolicy), Podman rootless on a VM, or Firecracker micro-VMs on a KVM host that reach
+  only the destinations of their claim.
+- **Run**: the project is cloned in an init container, secrets arrive as per-run variables,
+  the provider key stays outside the sandbox (the gateway calls the model), and the run
+  returns its files, masked logs, a branch or proposals. Everything is visible on the
+  **Agents** page, in the API, the MCP server and the CLI.
+
 ### Processing and scaling
 
 - **Flow runtime**: a vendored fork of EdgeLinkd plus PNeX nodes (`crates/pnex-node-*`),
@@ -209,6 +288,7 @@ The Lab turns pictures into a detection model without leaving PNeX
   ONNX on `tract`, pure Rust.
 - **Deployment**: one machine (Raspberry Pi 4/5 included) with `docker compose`, or N pods
   behind a load balancer with the Helm chart of [pnex-deploy](https://github.com/Pnex/pnex-deploy).
+  Pipeline workers and runners scale apart from the server, on other machines or clusters.
 
 ### App
 
@@ -220,7 +300,9 @@ through Fluent (`fr-FR` / `en-US`), and server errors are machine codes translat
 Design records (in French): [`docs/architecture/`](docs/architecture) — start with
 [`roadmap.md`](docs/architecture/roadmap.md), [`ontology.md`](docs/architecture/ontology.md),
 [`flow-engine.md`](docs/architecture/flow-engine.md),
-[`media-ingest.md`](docs/architecture/media-ingest.md) and
+[`media-ingest.md`](docs/architecture/media-ingest.md),
+[`data-pipelines.md`](docs/architecture/data-pipelines.md),
+[`agent-environments.md`](docs/architecture/agent-environments.md) and
 [`horizontal-scaling.md`](docs/architecture/horizontal-scaling.md).
 
 ## Repository layout
@@ -235,7 +317,10 @@ Design records (in French): [`docs/architecture/`](docs/architecture) — start 
 | `crates/pnex-mirror` | Offline copy of an org for applications (change feed, SQLite, media by hash) |
 | `crates/pnex-flow-runtime`, `pnex-node-*` | Flow engine on the vendored EdgeLinkd fork, and its nodes (device, control, camera, vision, predict, memory, notify, events, weather, Starlark…) |
 | `crates/pnex-media-capture`, `pnex-asr` | Stream capture chain (fetcher, RTSP, confined ffmpeg, segmenter) and speech-to-text |
+| `crates/pnex-recorder` | Desktop call and meeting recorder (tray, capture, upload, voice enrollment check) |
 | `crates/pnex-vision`, `pnex-decide` | ONNX detectors and typed decisions on `tract` |
+| `crates/pnex-pipeline-worker` | SQL transforms of data pipelines on DataFusion, separate image |
+| `crates/pnex-runner` | Runner joined by token: image builds, scans and agent sandboxes on Kubernetes, Podman or Firecracker |
 | `crates/pnex-edge-agent` | Edge agent: local ingestion API, disk queue, encrypted uplink |
 | `crates/pnex-firmware-builder` | PlatformIO / esptool build pipeline |
 | `crates/pnex-notify`, `pnex-pdf`, `pnex-stitcher`, `pnex-coolprop*` | Notification channels, page PDF rendering, 360° stitching, CoolProp bindings |
