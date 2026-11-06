@@ -66,11 +66,9 @@ d'enquête. Le pack d'org `supply_chain` (lien `supplies`, `partner_of`, clé
    partitionnée sur la clé (les deux côtés écrits en N fichiers de spill),
    ou tri-fusion dont le tri est compté dans le pool. Mesure sur 44,5 M × 38 M.
 4. Remettre le flow-worker à 1 Gi dans `values-dev.yaml` une fois C5 en prod.
-   Audit du 2026-11-06 (`audit-2026-11-06.md` A7) : la reprise ne peut pas
-   réussir aujourd'hui — `sweep_dead` remet en file à 3 min, `begin()` ne
-   libère la transaction ouverte qu'à 10 min, d'où `dataset-transaction-open`.
-   Voir aussi A8 (rétention écrasée par une sortie refusée) et B2 (fin
-   tardive sans garde d'état).
+   Audit du 2026-11-06 (`audit-2026-11-06.md` A7) : `sweep_dead` remettait en
+   file à 3 min alors que `begin()` ne libère la transaction ouverte qu'à
+   10 min (`dataset-transaction-open`) — corrigé avec A8 et B2 en 8c8f00d0.
 5. C20 et C21 : cause de `import-run-stale` sur qualiwatch ; erreurs S3 du
    worker.
 
