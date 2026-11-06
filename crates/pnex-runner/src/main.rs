@@ -116,7 +116,7 @@ fn k8s(runtime: Option<String>) -> Result<K8s, String> {
 /// A micro-VM per job (D762): the binary, a pinned guest kernel and a work folder.
 fn firecracker() -> Result<pnex_runner::firecracker::Firecracker, String> {
     let need = |name: &str| env(name).ok_or_else(|| format!("{name} is required for firecracker"));
-    Ok(pnex_runner::firecracker::Firecracker::new(
+    let mut fc = pnex_runner::firecracker::Firecracker::new(
         PathBuf::from(need("PNEX_RUNNER_WORKDIR")?),
         PathBuf::from(env("PNEX_RUNNER_FIRECRACKER").unwrap_or_else(|| "firecracker".into())),
         PathBuf::from(need("PNEX_RUNNER_KERNEL")?),
@@ -129,7 +129,10 @@ fn firecracker() -> Result<pnex_runner::firecracker::Firecracker, String> {
             })
             .unwrap_or_default(),
         credentials_path()?,
-    ))
+    );
+    // With a resolver, sandboxes run in VMs with their own egress rule (needs CAP_NET_ADMIN).
+    fc.dns = env("PNEX_RUNNER_VM_DNS");
+    Ok(fc)
 }
 
 fn podman(runtime: Option<String>) -> Result<Podman, String> {

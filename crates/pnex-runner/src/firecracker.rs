@@ -28,8 +28,12 @@ pub struct Firecracker {
     /// Registries reached over plain HTTP: on the runner's own network only.
     pub insecure: Vec<String>,
     pub credentials: PathBuf,
+    /// Resolver given to sandbox VMs; `None`: no network, plain jobs only.
+    pub dns: Option<String>,
     runner_id: String,
     vms: Mutex<HashMap<String, Child>>,
+    /// The /30 each running VM holds (`vm_net::slot`).
+    slots: Mutex<HashMap<String, u16>>,
 }
 
 /// `'…'` with each `'` closed, escaped and reopened: no argument is read by the shell.
@@ -47,6 +51,7 @@ pub fn init_script(command: &[String]) -> String {
          mount -t sysfs sys /sys\n\
          mount -t devtmpfs dev /dev 2>/dev/null\n\
          mount -t tmpfs tmp /tmp\n\
+         [ -f /pnex/env ] && . /pnex/env\n\
          cd /\n\
          {}\n\
          echo \"{EXIT_MARK}$?\"\n\
@@ -54,6 +59,13 @@ pub fn init_script(command: &[String]) -> String {
          exit 0\n",
         job.join(" ")
     )
+}
+
+/// `export K='v'` lines of the variables of a run, read by `/init` from a root-only file.
+pub fn env_file(vars: &[(&String, &String)]) -> String {
+    vars.iter()
+        .map(|(k, v)| format!("export {k}={}\n", quote(v)))
+        .collect()
 }
 
 /// The code the console reports; a VM that died without saying reads as a failure.
@@ -106,8 +118,10 @@ impl Firecracker {
             mem_mib: 1024,
             insecure,
             credentials,
+            dns: None,
             runner_id: String::new(),
             vms: Mutex::new(HashMap::new()),
+            slots: Mutex::new(HashMap::new()),
         }
     }
 
@@ -149,8 +163,22 @@ impl Executor for Firecracker {
         scan: Option<&RunnerScanInput>,
         sandbox: Option<&RunnerSandboxInput>,
     ) -> Result<(), String> {
-        if build.is_some() || scan.is_some() || sandbox.is_some() {
-            return Err("firecracker runs plain jobs only for now (D762)".into());
+        if build.is_some() || scan.is_some() {
+            return Err("builds and scans stay on Kubernetes (D749)".into());
+        }
+        if let Some(s) = sandbox {
+            if self.dns.is_none() {
+                return Err("a sandbox VM needs the network of this runner".into());
+            }
+            if !s.repos.is_empty()
+                || !s.services.is_empty()
+                || !s.setup.is_empty()
+                || s.artifacts.is_some()
+            {
+                return Err(
+                    "repositories, services, setup and files not yet in a micro-VM (D762)".into(),
+                );
+            }
         }
         if spec.command.is_empty() {
             return Err("a job of a micro-VM names its command".into());
@@ -167,6 +195,30 @@ impl Executor for Firecracker {
         let init = pnex.join("init");
         std::fs::write(&init, init_script(&spec.command)).map_err(|e| e.to_string())?;
         run(Command::new("chmod").arg("755").arg(&init))?;
+        let mut network = None;
+        if let (Some(s), Some(dns)) = (sandbox, &self.dns) {
+            // Variables and secrets of the run in a root-only file of its own disk.
+            let vars: Vec<(&String, &String)> = s.env.iter().chain(s.secrets.iter()).collect();
+            let env = pnex.join("env");
+            std::fs::write(&env, env_file(&vars)).map_err(|e| e.to_string())?;
+            run(Command::new("chmod").arg("600").arg(&env))?;
+            let resolv = root.join("etc/resolv.conf");
+            let _ = std::fs::remove_file(&resolv);
+            std::fs::create_dir_all(root.join("etc")).map_err(|e| e.to_string())?;
+            std::fs::write(&resolv, format!("nameserver {dns}\n")).map_err(|e| e.to_string())?;
+            let n = {
+                let mut slots = self.slots.lock().map_err(|_| "slot table poisoned")?;
+                let taken: std::collections::HashSet<u16> = slots.values().copied().collect();
+                let n = (0..16384u16)
+                    .find(|n| !taken.contains(n))
+                    .ok_or("no free network slot")?;
+                slots.insert(job.to_string(), n);
+                n
+            };
+            let slot = crate::vm_net::slot(n);
+            let tap = crate::vm_net::up(job, &slot, &s.egress, dns)?;
+            network = Some((tap, crate::vm_net::guest_boot_arg(&slot)));
+        }
         let disk = dir.join("disk.ext4");
         let size = dir_bytes(&root) * 13 / 10 + (256 << 20);
         let file = std::fs::File::create(&disk).map_err(|e| e.to_string())?;
@@ -176,14 +228,19 @@ impl Executor for Firecracker {
             .arg(&root)
             .arg(&disk))?;
         std::fs::remove_dir_all(&root).map_err(|e| e.to_string())?;
-        let config = serde_json::json!({
-            "boot-source": {
-                "kernel_image_path": self.kernel,
-                "boot_args": "console=ttyS0 reboot=k panic=1 pci=off init=/pnex/init"
-            },
+        let mut boot = "console=ttyS0 reboot=k panic=1 pci=off init=/pnex/init".to_string();
+        let mut config = serde_json::json!({
+            "boot-source": { "kernel_image_path": self.kernel },
             "drives": [{ "drive_id": "rootfs", "path_on_host": disk, "is_root_device": true, "is_read_only": false }],
             "machine-config": { "vcpu_count": self.vcpus, "mem_size_mib": self.mem_mib }
         });
+        if let Some((tap, arg)) = &network {
+            boot.push(' ');
+            boot.push_str(arg);
+            config["network-interfaces"] =
+                serde_json::json!([{ "iface_id": "eth0", "host_dev_name": tap }]);
+        }
+        config["boot-source"]["boot_args"] = serde_json::json!(boot);
         let config_path = dir.join("vm.json");
         std::fs::write(&config_path, config.to_string()).map_err(|e| e.to_string())?;
         let console = std::fs::File::create(dir.join("console.log")).map_err(|e| e.to_string())?;
@@ -246,6 +303,15 @@ impl Executor for Firecracker {
             let _ = child.kill();
             let _ = child.wait();
         }
+        if self
+            .slots
+            .lock()
+            .map_err(|_| "slot table poisoned")?
+            .remove(job)
+            .is_some()
+        {
+            crate::vm_net::down(job)?;
+        }
         match std::fs::remove_dir_all(self.job_dir(job)) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -271,6 +337,9 @@ impl Host for Firecracker {
         c.retain(|c| c != "isolation:none");
         c.push("isolation:vm".into());
         c.push("runtime:firecracker".into());
+        if self.dns.is_some() {
+            c.push("sandbox:vm".into());
+        }
         c
     }
 
@@ -305,6 +374,8 @@ mod tests {
             1,
             "no word from the VM is a failure"
         );
+        let (k, v) = ("TOKEN".to_string(), "a'b".to_string());
+        assert_eq!(env_file(&[(&k, &v)]), "export TOKEN='a'\\''b'\n");
     }
 
     #[test]
