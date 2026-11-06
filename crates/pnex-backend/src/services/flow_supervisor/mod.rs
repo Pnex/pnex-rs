@@ -189,6 +189,12 @@ pub fn runtime_status(settings: &FlowSettings, flow_id: i64) -> FlowRuntimeStatu
     status
 }
 
+/// A dedicated flow-worker pod (chart: `PNEX_SERVES_API=false`, no Service in
+/// front): it runs flows only, never the file conversions that could OOM it.
+pub fn flow_only_pod() -> bool {
+    std::env::var("PNEX_SERVES_API").is_ok_and(|v| v == "false")
+}
+
 /// Boot advice (from `App::after_routes`): in a multi-pod deployment, a
 /// pod that both serves the API and runs a flow runtime child shares one
 /// cgroup between the two — a runaway flow can OOM-kill the API pod.
@@ -203,7 +209,7 @@ pub fn warn_colocated_runtime(config: &loco_rs::config::Config) {
     }
     // Dedicated flow-worker pods (chart: no Service in front of them) run
     // flows only: sharing their cgroup with the runtime is the design.
-    if std::env::var("PNEX_SERVES_API").is_ok_and(|v| v == "false") {
+    if flow_only_pod() {
         return;
     }
     tracing::warn!(

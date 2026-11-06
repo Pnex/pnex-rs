@@ -406,6 +406,68 @@ async fn one_org_does_not_hold_the_queue() {
     assert!(e.worker.run_next().await.unwrap());
 }
 
+/// A run whose worker died is tried once more; one that took two workers down
+/// fails, instead of taking each new worker down with it.
+#[tokio::test]
+#[serial]
+async fn a_run_that_killed_its_worker_twice_is_not_tried_again() {
+    let e = env().await;
+    let org = org(&e).await;
+    seed_join(&e, org).await;
+    let p = pipeline(&e, org, JOIN).await;
+    let dead = |attempts: i32| {
+        let admin = e.admin.clone();
+        async move {
+            sqlx::query(
+                "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger, state, \
+                 attempts, heartbeat_at, started_at) \
+                 VALUES ($1, $2, 1, 'manual', 'running', $3, now() - interval '11 minutes', now()) \
+                 RETURNING id",
+            )
+            .bind(org)
+            .bind(p)
+            .bind(attempts)
+            .fetch_one(&admin)
+            .await
+            .unwrap()
+            .get::<Uuid, _>("id")
+        }
+    };
+    let twice = dead(2).await;
+    e.worker.run_next().await.unwrap();
+    let row = sqlx::query("SELECT state, code FROM pipeline_jobs WHERE id = $1")
+        .bind(twice)
+        .fetch_one(&e.admin)
+        .await
+        .unwrap();
+    assert_eq!(row.get::<String, _>("state"), "failed");
+    assert_eq!(
+        row.get::<Option<String>, _>("code").as_deref(),
+        Some("pipeline-worker-lost")
+    );
+
+    // The dead run left its output transaction open, as a killed worker does.
+    sqlx::query(
+        "WITH d AS (INSERT INTO datasets (org_id, name) VALUES ($1, 'active_partners') \
+           ON CONFLICT (org_id, name) DO UPDATE SET name = EXCLUDED.name RETURNING id) \
+         INSERT INTO dataset_transactions (org_id, dataset_id, kind, heartbeat_at) \
+         SELECT $1, id, 'snapshot', now() - interval '11 minutes' FROM d",
+    )
+    .bind(org)
+    .execute(&e.admin)
+    .await
+    .unwrap();
+    let once = dead(1).await;
+    assert!(e.worker.run_next().await.unwrap(), "the run is tried again");
+    let state: String = sqlx::query("SELECT state FROM pipeline_jobs WHERE id = $1")
+        .bind(once)
+        .fetch_one(&e.admin)
+        .await
+        .unwrap()
+        .get("state");
+    assert_eq!(state, "done");
+}
+
 /// The table of an import is not an output: it feeds a sync run with its author's role.
 #[tokio::test]
 #[serial]
@@ -423,7 +485,8 @@ async fn a_run_cannot_write_the_table_of_an_import() {
     .unwrap()
     .get("id");
     sqlx::query(
-        "INSERT INTO datasets (org_id, name, import_id) VALUES ($1, 'active_partners', $2)",
+        "INSERT INTO datasets (org_id, name, import_id, retain_days) \
+         VALUES ($1, 'active_partners', $2, 30)",
     )
     .bind(org)
     .bind(import)
@@ -435,6 +498,19 @@ async fn a_run_cannot_write_the_table_of_an_import() {
     assert_eq!(state, "failed");
     assert_eq!(code.as_deref(), Some("dataset-reserved"));
     assert!(transactions(&e, org, "active_partners").await.is_empty());
+    let kept: Option<i32> = sqlx::query(
+        "SELECT retain_days FROM datasets WHERE org_id = $1 AND name = 'active_partners'",
+    )
+    .bind(org)
+    .fetch_one(&e.admin)
+    .await
+    .unwrap()
+    .get("retain_days");
+    assert_eq!(
+        kept,
+        Some(30),
+        "a refused run leaves the import's table as it is"
+    );
 }
 
 /// A pending erasure holds the org's runs back, and a purged output is computed

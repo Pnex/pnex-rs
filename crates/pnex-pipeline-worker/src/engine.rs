@@ -160,7 +160,10 @@ pub fn session(limits: &Limits) -> DfResult<SessionContext> {
         .with_target_partitions(limits.partitions)
         .with_information_schema(false);
     let options = config.options_mut();
-    options.optimizer.prefer_hash_join = false;
+    // A sort-merge join sorts both sides: joining 105 rows to 44 M sorted the 44 M
+    // and the pod died outside the pool (dev, 2026-11-06). A hash join builds the
+    // small side; one too big for the pool ends in a clean memory error.
+    options.optimizer.prefer_hash_join = true;
     // A column keeps the case of its file: `p.Numero_Fiche` means what it says.
     options.sql_parser.enable_ident_normalization = false;
     // An endless recursive query would hold the job until its timeout.
@@ -281,6 +284,30 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(out.iter().map(|b| b.num_rows()).sum::<usize>(), 2);
+    }
+
+    /// A few rows joined to a big table build a hash table of the few rows:
+    /// never a sort of the big table.
+    #[tokio::test]
+    async fn a_small_table_joined_to_a_big_one_sorts_nothing() {
+        let ctx = with_table().await;
+        let schema = Arc::new(Schema::new(vec![Field::new("Code", DataType::Utf8, true)]));
+        let many: Vec<String> = (0..200_000).map(|i| i.to_string()).collect();
+        let values: ArrayRef = Arc::new(StringArray::from(many));
+        let batch = RecordBatch::try_new(schema.clone(), vec![values]).unwrap();
+        let big = MemTable::try_new(schema, vec![vec![batch]]).unwrap();
+        ctx.register_table("big", Arc::new(big)).unwrap();
+        let plan = run(
+            &ctx,
+            "EXPLAIN SELECT big.Code FROM t JOIN big ON big.Code = t.Code",
+        )
+        .await
+        .unwrap();
+        let text = datafusion::arrow::util::pretty::pretty_format_batches(&plan)
+            .unwrap()
+            .to_string();
+        assert!(text.contains("HashJoinExec: mode=CollectLeft"), "{text}");
+        assert!(!text.contains("SortExec"), "{text}");
     }
 
     /// The filter compares canonical names: an alias here, or a typo, would

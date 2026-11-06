@@ -40,7 +40,9 @@ use uuid::Uuid;
 use self::engine::Limits;
 
 const HEARTBEAT_EVERY: Duration = Duration::from_secs(30);
-const MAX_ATTEMPTS: i32 = 3;
+/// A run that took its worker down twice gets no third try: each one would
+/// take the worker down again (dev, 2026-11-06).
+const MAX_ATTEMPTS: i32 = 2;
 const ROW_GROUP_BYTES: usize = 64 * 1024 * 1024;
 /// Same quota as `services/datasets`.
 const QUOTA_BYTES: u64 = 20 * 1024 * 1024 * 1024;
@@ -300,7 +302,8 @@ impl Worker {
 
     /// Runs dead for too long go back to the queue, or fail after their attempts.
     async fn sweep_dead(&self) -> Result<(), sqlx::Error> {
-        // 10 minutes without a heartbeat is a dead run (D345).
+        // Same delay as `begin()` frees the open transaction of a dead run: requeued
+        // sooner, the retry would find it still open (dataset-transaction-open).
         sqlx::query(
             "UPDATE pipeline_jobs SET state = 'failed', code = $1, finished_at = now() \
              WHERE state = 'running' AND heartbeat_at < now() - interval '10 minutes' \
@@ -324,7 +327,7 @@ impl Worker {
     /// Takes a queued run of an org with no run in progress and no erasure pending
     /// (a run started now could read rows about to be erased). The org served least
     /// recently goes first, so that one org's long queue does not hold the others.
-    async fn claim(&self) -> Result<Option<(Uuid, i64, Uuid, i32)>, sqlx::Error> {
+    async fn claim(&self) -> Result<Option<(Uuid, i64, Uuid, i32, i32)>, sqlx::Error> {
         let claimed = sqlx::query(
             "UPDATE pipeline_jobs SET state = 'running', attempts = attempts + 1, \
              heartbeat_at = now(), started_at = coalesce(started_at, now()) \
@@ -337,7 +340,7 @@ impl Worker {
                ORDER BY (SELECT max(l.started_at) FROM pipeline_jobs l WHERE l.org_id = j.org_id) \
                  NULLS FIRST, j.created_at \
                FOR UPDATE OF j SKIP LOCKED LIMIT 1 \
-             ) RETURNING id, org_id, pipeline_id, version",
+             ) RETURNING id, org_id, pipeline_id, version, attempts",
         )
         .fetch_optional(&self.pool)
         .await;
@@ -354,6 +357,7 @@ impl Worker {
                 r.try_get("org_id")?,
                 r.try_get("pipeline_id")?,
                 r.try_get("version")?,
+                r.try_get("attempts")?,
             )),
             None => None,
         })
@@ -362,7 +366,7 @@ impl Worker {
     /// Runs the next queued run. `false` when there is none.
     pub async fn run_next(&self) -> Result<bool, sqlx::Error> {
         self.sweep_dead().await?;
-        let Some((job, org_id, pipeline_id, version)) = self.claim().await? else {
+        let Some((job, org_id, pipeline_id, version, attempts)) = self.claim().await? else {
             return Ok(false);
         };
         *self.current.lock().expect("heartbeat lock") = (Some(job), None);
@@ -378,12 +382,14 @@ impl Worker {
         };
         sqlx::query(
             "UPDATE pipeline_jobs SET state = $2, code = $3, args = $4, finished_at = now() \
-             WHERE id = $1",
+             WHERE id = $1 AND state = 'running' AND attempts = $5",
         )
         .bind(job)
         .bind(state)
         .bind(code)
         .bind(args)
+        // A late worker must not overwrite a run another one took back.
+        .bind(attempts)
         .execute(&self.pool)
         .await?;
         Ok(true)
@@ -531,14 +537,22 @@ impl Worker {
         let row = sqlx::query(
             "INSERT INTO datasets (org_id, name, retain_days) VALUES ($1, $2, $3) \
              ON CONFLICT (org_id, name) DO UPDATE SET retain_days = EXCLUDED.retain_days \
+             WHERE datasets.import_id IS NULL \
              RETURNING id, import_id",
         )
         .bind(org_id)
         .bind(name)
         .bind(retain_days.map(i32::from))
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(db_failure)?;
+        // No row: the table of an import, left untouched.
+        let Some(row) = row else {
+            return Err(Failure::new(
+                err_codes::DATASET_RESERVED,
+                json!({ "dataset": name }),
+            ));
+        };
         let owner: Option<Uuid> = row.try_get("import_id").map_err(db_failure)?;
         if owner.is_some() {
             return Err(Failure::new(

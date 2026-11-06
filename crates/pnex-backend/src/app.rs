@@ -313,9 +313,13 @@ impl Hooks for App {
         crate::services::ingest::spawn_purge(ctx);
         // Dataset purge: dead transactions, retention (D569).
         crate::services::datasets::spawn_purge(ctx);
-        crate::services::datasets::uploads::spawn(ctx);
-        crate::services::datasets::erasure::spawn(ctx);
-        crate::services::media_uploads::spawn(ctx);
+        // A file conversion holds row groups and parts in memory: a bulk load
+        // must not take down the deployed flows of a flow-worker pod.
+        if !crate::services::flow_supervisor::flow_only_pod() {
+            crate::services::datasets::uploads::spawn(ctx);
+            crate::services::datasets::erasure::spawn(ctx);
+            crate::services::media_uploads::spawn(ctx);
+        }
         // Flow execution cluster (D106): this process as a flow worker (one
         // supervised runtime for the orgs placed on it) and as a placement
         // controller candidate — here and not connect_workers (ServerOnly

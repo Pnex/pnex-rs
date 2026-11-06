@@ -706,7 +706,8 @@ where
                     };
                     rows += batch.num_rows() as u64;
                     w.write(batch).await.map_err(storage)?;
-                    if w.in_progress_size() > ROW_GROUP_BYTES {
+                    // The encoded estimate misses unencoded buffers and dictionaries.
+                    if w.in_progress_size().max(w.memory_size()) > ROW_GROUP_BYTES {
                         w.flush().await.map_err(storage)?;
                     }
                     if w.bytes_written() as u64 > room {

@@ -100,6 +100,7 @@ mod m20261105_000098_agent_runs;
 mod m20261106_000099_agent_artifacts;
 mod m20261106_000100_dataset_retention;
 mod m20261106_000101_agents;
+mod m20261106_000102_worker_schema_usage;
 mod m20261106_000103_agent_run_sources;
 mod m20261106_000104_scan_policy;
 mod m20261106_000105_agent_run_caches;
@@ -199,6 +200,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261106_000099_agent_artifacts::Migration),
             Box::new(m20261106_000100_dataset_retention::Migration),
             Box::new(m20261106_000101_agents::Migration),
+            Box::new(m20261106_000102_worker_schema_usage::Migration),
             Box::new(m20261106_000103_agent_run_sources::Migration),
             Box::new(m20261106_000104_scan_policy::Migration),
             Box::new(m20261106_000105_agent_run_caches::Migration),

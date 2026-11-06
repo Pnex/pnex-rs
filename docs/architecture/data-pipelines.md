@@ -1041,8 +1041,13 @@ autre org, rôle sans accès aux tables métier, délai, saut quand rien n'a cha
   cluster** : à essayer avant toute mise en service ;
 - **Auteur des versions** (D354) : enregistré depuis le 2026-11-05 (migration 000080), affiché dans
   le tiroir Versions. Rien pour les exécutions ;
-- **`prefer_hash_join=false` pour tout le SQL** : fiable en mémoire, plus lent sur les
-  grosses jointures (§9.7 bis) ; à revoir si un cas réel en souffre ;
+- **`prefer_hash_join=true` depuis le 2026-11-06** : la jointure par fusion
+  triait les deux côtés ; 105 lignes jointes à 44,5 M (SIRENE, dev) ont tué le pod de 4 Gi
+  hors du pool. Le moteur construit maintenant la table de hachage du petit côté
+  (`CollectLeft`, test `a_small_table_joined_to_a_big_one_sorts_nothing`). Prix : une
+  jointure de deux grosses tables ne déborde plus sur disque et finit en
+  *pipeline-memory-exceeded* (§9.7 bis, point 3) ; la même à 44 M × 38 M y finissait
+  déjà avec la fusion ;
 - **Le quota n'est lu qu'au début de chaque transformation**, comme pour un chargement.
 
 **Effacement dans les datasets (2026-11-04, non commité)**, prérequis d'OP1.3 : une
@@ -1458,8 +1463,8 @@ Rien ici ne bloque ce qui est livré. Chaque ligne renvoie au détail du §9.6.
 
 | Sujet | Question | Recommandation | Bloque |
 |---|---|---|---|
-| Identifiant S3 du worker (SEC-61) | Identité limitée à `org_*/datasets/*` au lieu de la racine RustFS ? Non vérifié que RustFS le permet | Oui | Mise en production du worker |
-| Média derrière Cloudflare | ~~Envoi par parties aussi~~ **fait le 2026-11-05** (`media.md`) : parties, assemblage en tâche de fond, hachage au fil de l'eau. Reste : le front lit encore le fichier entier en mémoire avant d'envoyer, la CLI n'a pas de `pnex media load` | Lecture du fichier par morceaux côté front si un client envoie plusieurs Gio | Rien |
+| Identifiant S3 du worker (SEC-61) | ~~Identité limitée à `org_*/datasets/*`~~ **faite le 2026-11-06** dans le chart (`security.md` SEC-61), RustFS le permet. Reste : une identité par org si la frontière doit tenir hors du code | Une seule identité tant qu'il n'y a qu'un worker partagé | Rien |
+| Média derrière Cloudflare | ~~Envoi par parties aussi~~ **fait le 2026-11-05** (`media.md`) : parties, assemblage en tâche de fond, hachage au fil de l'eau. `pnex media load` le 2026-11-06 (`cli.md`). Reste : le front lit encore le fichier entier en mémoire avant d'envoyer | Lecture du fichier par morceaux côté front si un client envoie plusieurs Gio | Rien |
 | Effacement : non déclaré | Un fichier sans déclaration ni lignage garde la personne | À trancher avant de promettre un effacement complet | Promesse d'effacement |
 | Effacement : table supprimée | Les empreintes partent avec elle : recréée et rechargée, la personne revient | Garder les empreintes par org | Promesse d'effacement |
 | Effacement : colonne convertie | `digits`, `left`, `concat` ne sont pas déclarées | À trancher avec le cas réel | Promesse d'effacement |
