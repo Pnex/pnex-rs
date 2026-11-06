@@ -206,7 +206,7 @@ pub fn apply_layer(root: &Path, layer: &[u8]) -> Result<(), String> {
 
 /// The runner reads every file to make the disk (`/etc/shadow` is often `0000`): the owner
 /// gets read, and folders their search bit. Inside the VM, root reads them all anyway.
-fn readable_by_owner(path: &Path) {
+pub(crate) fn readable_by_owner(path: &Path) {
     use std::os::unix::fs::PermissionsExt;
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return;
@@ -234,7 +234,7 @@ fn remove(path: &Path) {
 }
 
 /// `root/rel`, refused when `rel` climbs out.
-fn safe_join(root: &Path, rel: &Path) -> Result<std::path::PathBuf, String> {
+pub(crate) fn safe_join(root: &Path, rel: &Path) -> Result<std::path::PathBuf, String> {
     use std::path::Component;
     if rel.components().any(|c| {
         matches!(

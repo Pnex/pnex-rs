@@ -103,6 +103,8 @@ save_caches() {
       && echo "cache $name: saved" || echo "cache $name: not saved" >&2
   done
 }
+# A micro-VM is over when the collector starts (D762): no agent to wait for.
+if [ -n "${PNEX_COLLECT_NOW:-}" ]; then collect; save_caches; exit 0; fi
 trap 'collect; save_caches; exit 0' TERM
 echo "collector: waiting for the agent"
 while :; do sleep 1 & wait $!; done
@@ -110,6 +112,30 @@ while :; do sleep 1 & wait $!; done
 
 fn list_of(entries: impl Iterator<Item = String>) -> String {
     entries.collect::<Vec<_>>().join(" ")
+}
+
+/// `$PNEX_ARTIFACTS_LIST` of `IN_SCRIPT`: `name,hex,form` per input.
+pub fn inputs_list(artifacts: &SandboxArtifacts) -> String {
+    list_of(artifacts.inputs.iter().map(|a| {
+        let hex = a.sha256.as_deref().unwrap_or_default();
+        let form = a.form.unwrap_or(ArtifactForm::File).as_str();
+        format!("{},{},{form}", a.name, hex.trim_start_matches("sha256:"))
+    }))
+}
+
+/// `$PNEX_ARTIFACTS_LIST` of `OUT_SCRIPT`: the names of the outputs.
+pub fn outputs_list(artifacts: &SandboxArtifacts) -> String {
+    list_of(artifacts.outputs.iter().map(|a| a.name.clone()))
+}
+
+/// `$PNEX_CACHES_LIST` of both scripts: `name,file:file` per cache.
+pub fn caches_list(artifacts: &SandboxArtifacts) -> String {
+    list_of(
+        artifacts
+            .caches
+            .iter()
+            .map(|c| format!("{},{}", c.name, c.key_files.join(":"))),
+    )
 }
 
 /// `(init container, sidecar)` moving the artifacts of a run, each absent when nothing
@@ -121,12 +147,7 @@ pub fn transfer_containers(
     security: &Value,
     resources: &Value,
 ) -> (Option<Value>, Option<Value>) {
-    let caches = list_of(
-        artifacts
-            .caches
-            .iter()
-            .map(|c| format!("{},{}", c.name, c.key_files.join(":"))),
-    );
+    let caches = caches_list(artifacts);
     let env = |list: String| {
         json!([
             { "name": "PNEX_ARTIFACTS_URL", "value": artifacts.url },
@@ -158,11 +179,7 @@ pub fn transfer_containers(
         vec![json!({ "name": "artifacts", "mountPath": "/artifacts", "readOnly": true })];
     collect_mounts.extend(cache_mounts(true));
     let fetch = (!artifacts.inputs.is_empty() || !artifacts.caches.is_empty()).then(|| {
-        let list = list_of(artifacts.inputs.iter().map(|a| {
-            let hex = a.sha256.as_deref().unwrap_or_default();
-            let form = a.form.unwrap_or(ArtifactForm::File).as_str();
-            format!("{},{},{form}", a.name, hex.trim_start_matches("sha256:"))
-        }));
+        let list = inputs_list(artifacts);
         json!({
             "name": "artifacts-in",
             "image": image,
@@ -179,7 +196,7 @@ pub fn transfer_containers(
             "image": image,
             "restartPolicy": "Always",
             "command": ["sh", "-c", OUT_SCRIPT],
-            "env": env(list_of(artifacts.outputs.iter().map(|a| a.name.clone()))),
+            "env": env(outputs_list(artifacts)),
             "securityContext": security,
             "resources": resources,
             "volumeMounts": collect_mounts,

@@ -337,7 +337,7 @@ fn hardened(uid: i64) -> Value {
 
 /// `git` with the token of a repository from the environment of this container only, so that
 /// it lands neither in the URL nor in `.git/config` (D714).
-const CLONE_SCRIPT: &str = r#"set -eu
+pub(crate) const CLONE_SCRIPT: &str = r#"set -eu
 if [ -n "${GIT_TOKEN:-}" ]; then
   exec git -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GIT_TOKEN"; }; f' \
     clone --depth 1 --no-recurse-submodules --branch "$1" -- "$2" "$3"

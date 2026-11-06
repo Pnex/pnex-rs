@@ -9,6 +9,8 @@ use pnex_core::runners::RunnerJobSpec;
 use pnex_runner::firecracker::Firecracker;
 use pnex_runner::{Executor, WorkloadStatus};
 
+mod support;
+
 fn env(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("{name} is required"))
 }
@@ -147,7 +149,7 @@ async fn a_sandbox_vm_reaches_its_listed_destinations_only() {
     {
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
-    let console = fc.logs("net-a").await.containers[0].text.clone();
+    let console = console_of(&fc, "net-a", "vm").await;
     println!("{console}");
     assert!(
         console.contains("mode=fix token=pnagr_vm-token"),
@@ -168,4 +170,154 @@ async fn a_sandbox_vm_reaches_its_listed_destinations_only() {
         .output()
         .unwrap();
     assert!(!String::from_utf8_lossy(&links.stdout).contains("pnxneta"));
+}
+
+async fn console_of(fc: &Firecracker, job: &str, container: &str) -> String {
+    fc.logs(job)
+        .await
+        .containers
+        .into_iter()
+        .find(|c| c.container == container)
+        .map(|c| c.text)
+        .unwrap_or_default()
+}
+
+/// The whole of a sandbox in VMs: repository, inputs and caches placed by the runner, setup
+/// in a first boot without secrets, the agent on a fresh image, outputs and caches sent.
+/// Same host as the test above, with `git` and `curl`.
+#[tokio::test]
+#[ignore = "needs firecracker, a guest kernel, /dev/kvm, a registry and CAP_NET_ADMIN"]
+async fn a_sandbox_vm_gets_its_repository_files_and_caches_and_setup_never_its_secrets() {
+    use pnex_core::agent_runs::{ArtifactForm, RunCache};
+    use pnex_core::runners::{RunnerSandboxInput, SandboxArtifact, SandboxArtifacts, SandboxRepo};
+    use std::collections::BTreeMap;
+    let work = tempfile::tempdir().unwrap();
+    // A repository on the host, cloned like a remote one.
+    let repo = work.path().join("repo");
+    let git = |args: &[&str]| {
+        let ok = std::process::Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@t", "-C"])
+            .arg(&repo)
+            .args(args)
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "git {args:?}");
+    };
+    std::fs::create_dir_all(&repo).unwrap();
+    git(&["init", "-q", "-b", "main"]);
+    std::fs::write(repo.join("hello.txt"), "from the repo\n").unwrap();
+    std::fs::write(repo.join("deps.lock"), "lock v1\n").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-q", "-m", "init"]);
+
+    let notes = b"take care of the flaky test\n".to_vec();
+    let server: support::Shared = Default::default();
+    server
+        .lock()
+        .unwrap()
+        .inputs
+        .insert("notes".into(), notes.clone());
+    let url = support::serve(server.clone()).await;
+
+    let mut fc = Firecracker::new(
+        work.path().join("fc"),
+        env("PNEX_TEST_FC_BIN").into(),
+        env("PNEX_TEST_FC_KERNEL").into(),
+        std::env::var("PNEX_TEST_FC_INSECURE").into_iter().collect(),
+        work.path().join("credentials.json"),
+    );
+    fc.dns = Some("172.31.0.1".into());
+    let input = RunnerSandboxInput {
+        init_image: String::new(),
+        repos: vec![SandboxRepo {
+            url: format!("file://{}", repo.display()),
+            git_ref: "main".into(),
+            path: "app".into(),
+            token: None,
+        }],
+        services: vec![],
+        setup: vec![
+            "sh".into(),
+            "-c".into(),
+            "echo built > app/built; mkdir -p /root/.deps; echo dep > /root/.deps/x; \
+             touch /setup-was-here; echo setup-token=${PNEX_RUN_TOKEN:-none}"
+                .into(),
+        ],
+        env: BTreeMap::from([("MODE".to_string(), "fix".to_string())]),
+        secrets: BTreeMap::from([("PNEX_RUN_TOKEN".to_string(), "pnagr_vm-token".to_string())]),
+        egress: vec![],
+        artifacts: Some(SandboxArtifacts {
+            url,
+            token: support::TOKEN.into(),
+            inputs: vec![SandboxArtifact {
+                name: "notes".into(),
+                sha256: Some(format!("sha256:{}", support::hex(&notes))),
+                form: Some(ArtifactForm::File),
+            }],
+            outputs: vec![SandboxArtifact {
+                name: "report".into(),
+                sha256: None,
+                form: None,
+            }],
+            caches: vec![RunCache {
+                name: "deps".into(),
+                path: "/root/.deps".into(),
+                key_files: vec!["app/deps.lock".into()],
+            }],
+        }),
+    };
+    let agent = "cat app/hello.txt app/built $PNEX_ARTIFACTS_IN/notes /root/.deps/x; \
+                 echo token=$PNEX_RUN_TOKEN; echo done > $PNEX_ARTIFACTS_OUT/report; \
+                 test ! -e /setup-was-here";
+    let spec = RunnerJobSpec {
+        image: env("PNEX_TEST_FC_IMAGE"),
+        command: vec!["sh".into(), "-c".into(), agent.into()],
+        timeout_secs: 120,
+    };
+    let started = Instant::now();
+    fc.start("box-a", &spec, None, None, Some(&input))
+        .await
+        .unwrap();
+    let status = loop {
+        match fc.status("box-a").await.unwrap() {
+            WorkloadStatus::Running if started.elapsed() < Duration::from_secs(120) => {
+                tokio::time::sleep(Duration::from_millis(200)).await
+            }
+            other => break other,
+        }
+    };
+    let (transfer, setup, vm) = (
+        console_of(&fc, "box-a", "transfer").await,
+        console_of(&fc, "box-a", "setup").await,
+        console_of(&fc, "box-a", "vm").await,
+    );
+    println!("--- transfer\n{transfer}\n--- setup\n{setup}\n--- vm\n{vm}");
+    println!("whole sandbox in {:?}", started.elapsed());
+    // Before any assertion: a failed one must not leave the tap to the next test.
+    fc.destroy("box-a").await.unwrap();
+    assert_eq!(
+        status,
+        WorkloadStatus::Exited(0),
+        "the agent ran on a fresh image"
+    );
+    assert!(setup.contains("setup-token=none"), "setup gets no secret");
+    for seen in [
+        "from the repo",
+        "built",
+        "take care of the flaky test",
+        "dep",
+        "token=pnagr_vm-token",
+    ] {
+        assert!(vm.contains(seen), "the agent sees {seen}");
+    }
+    {
+        let s = server.lock().unwrap();
+        assert_eq!(
+            s.outputs["report"],
+            ("file".to_string(), b"done\n".to_vec())
+        );
+        assert_eq!(s.caches.len(), 1, "the cache is saved under its key");
+    }
+    assert!(fc.list().await.unwrap().is_empty());
 }
