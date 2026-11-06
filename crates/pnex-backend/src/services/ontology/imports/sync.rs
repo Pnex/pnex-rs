@@ -12,6 +12,7 @@ use std::collections::{BTreeSet, HashSet};
 use futures_util::TryStreamExt;
 use pnex_core::datasets::IDENTITY_TITLE;
 use pnex_core::err_codes;
+use pnex_core::markets::PlannedObservation;
 use pnex_core::ontology::import::{
     Convert, FieldSpec, ImportDiff, ImportMode, ImportSource, Mapping, Schema, SourceFormat,
 };
@@ -124,7 +125,6 @@ pub(super) async fn check<C: ConnectionTrait>(
         (m.conflict_feed.is_some(), "conflict_feed"),
         (m.per_setting_code.is_some(), "per_setting_code"),
         (m.rows_in_setting.is_some(), "rows_in_setting"),
-        (m.observations.is_some(), "observations"),
         (m.contact_setting.is_some(), "contact_setting"),
         (m.keyed_source.is_some(), "keyed_source"),
         (m.shape.is_some(), "shape"),
@@ -194,7 +194,12 @@ pub(super) async fn declare_identity<C: ConnectionTrait>(
     Ok(())
 }
 
-async fn plan(store: &S3Store, files: &[ViewFile], m: &Mapping, s: &Schema<'_>) -> Result<Planned> {
+async fn plan(
+    store: &S3Store,
+    files: &[ViewFile],
+    m: &Mapping,
+    s: &Schema<'_>,
+) -> Result<(Planned, Vec<PlannedObservation>)> {
     let unreadable = |e: ::parquet::errors::ParquetError| {
         tracing::warn!("dataset sync read: {e}");
         OntologyError::Import {
@@ -203,6 +208,7 @@ async fn plan(store: &S3Store, files: &[ViewFile], m: &Mapping, s: &Schema<'_>) 
         }
     };
     let mut planned = Planned::default();
+    let mut observed = Vec::new();
     // Line 1 of a CSV holds the headers: line numbers read as in the source.
     let mut row_no = 1;
     for file in files {
@@ -213,11 +219,14 @@ async fn plan(store: &S3Store, files: &[ViewFile], m: &Mapping, s: &Schema<'_>) 
             for row in parquet::records(&batch).map_err(unreadable)? {
                 row_no += 1;
                 planned.push(m, s, row_no, &row, PLANNED_MAX)?;
+                if m.observations.is_some() {
+                    observed.extend(pnex_core::markets::observation(&row));
+                }
             }
             tokio::task::yield_now().await;
         }
     }
-    Ok(planned)
+    Ok((planned, pnex_core::markets::first_reports(observed)))
 }
 
 /// A preview stands only on the transactions it read (D577).
@@ -379,7 +388,7 @@ pub(super) async fn run(
         links: &links,
     };
     let snapshot = imp.mode() == ImportMode::Snapshot;
-    let mut planned = plan(store, &files, m, &shape).await?;
+    let (mut planned, observations) = plan(store, &files, m, &shape).await?;
     let base_files = match &reference {
         Some(r) => datasets::files_of_transactions(db, imp.org_id, id, r)
             .await
@@ -389,7 +398,7 @@ pub(super) async fn run(
     let compared_to_reference = base_files.is_some();
     let closing = match base_files {
         Some(base) => {
-            let base = plan(store, &base, m, &shape).await?;
+            let (base, _) = plan(store, &base, m, &shape).await?;
             let gone = planned.delta(m, &base, &skipped);
             match snapshot {
                 true => Closing::Gone(gone),
@@ -399,7 +408,8 @@ pub(super) async fn run(
         None if snapshot => Closing::NotSeen,
         None => Closing::None,
     };
-    let (d, left_out) = diff::against(db, imp.org_id, imp.id, &s, m, planned, closing).await?;
+    let (mut d, left_out) = diff::against(db, imp.org_id, imp.id, &s, m, planned, closing).await?;
+    d.observations = observations;
     db.execute_raw(stmt(
         "UPDATE object_import_runs SET skipped_keys = $2 WHERE id = $1",
         vec![run.id.into(), left_out.into()],

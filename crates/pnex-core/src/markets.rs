@@ -464,23 +464,33 @@ pub struct PlannedObservation {
 /// unchanged says nothing new: only the first report and real restatements
 /// remain, which is what a reading "as known at a date" needs.
 pub fn observations(rows: &[Value]) -> Vec<PlannedObservation> {
-    let mut out: Vec<PlannedObservation> = rows
-        .iter()
-        .filter_map(|r| {
-            let text = |k: &str| r.get(k).and_then(Value::as_str).map(str::to_string);
-            let end = text("end").filter(|d| is_date(d))?;
-            Some(PlannedObservation {
-                key: text(QUERIED)?,
-                metric: text("metric").filter(|m| !m.is_empty())?,
-                unit: text("unit").unwrap_or_default(),
-                period_start: text("start").filter(|d| is_date(d)).unwrap_or(end.clone()),
-                period_end: end,
-                known_on: text("known_on").filter(|d| is_date(d)),
-                value: r.get("value")?.as_f64().filter(|v| v.is_finite())?,
-                source: text("source"),
-            })
-        })
-        .collect();
+    first_reports(rows.iter().filter_map(observation).collect())
+}
+
+/// One record read as an observation: columns `@queried`, `metric`, `unit`,
+/// `start`, `end`, `known_on`, `value`, `source`. A table gives every value as
+/// text: `value` may be a number or its text.
+pub fn observation(r: &Value) -> Option<PlannedObservation> {
+    let text = |k: &str| r.get(k).and_then(Value::as_str).map(str::to_string);
+    let end = text("end").filter(|d| is_date(d))?;
+    let value = match r.get("value")? {
+        Value::String(s) => s.trim().parse::<f64>().ok()?,
+        v => v.as_f64()?,
+    };
+    Some(PlannedObservation {
+        key: text(QUERIED)?,
+        metric: text("metric").filter(|m| !m.is_empty())?,
+        unit: text("unit").unwrap_or_default(),
+        period_start: text("start").filter(|d| is_date(d)).unwrap_or(end.clone()),
+        period_end: end,
+        known_on: text("known_on").filter(|d| is_date(d)),
+        value: Some(value).filter(|v| v.is_finite())?,
+        source: text("source"),
+    })
+}
+
+/// Keeps the first report of each value and its real restatements.
+pub fn first_reports(mut out: Vec<PlannedObservation>) -> Vec<PlannedObservation> {
     let same_period = |a: &PlannedObservation, b: &PlannedObservation| {
         (&a.key, &a.metric, &a.unit, &a.period_start, &a.period_end)
             == (&b.key, &b.metric, &b.unit, &b.period_start, &b.period_end)

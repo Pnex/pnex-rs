@@ -483,6 +483,85 @@ async fn what_waited_for_an_object_is_written_when_it_appears() {
     .await;
 }
 
+/// A table of dated values becomes the series of the objects it names: no
+/// `per_object`, the `@queried` column says whose value it is.
+#[tokio::test]
+#[serial]
+async fn a_table_of_dated_values_becomes_series() {
+    with_app(|server, alice, ctx| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token: &alice, org };
+        let db = &ctx.db;
+        api.call("POST", "/api/v1/ontology/packs/quali_watch/install", None).await;
+        let partners = api.dataset("partners").await;
+        api.load(&partners, V1).await;
+        let (s, imp) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(json!({ "name": "partners", "mapping": MAPPING.replace("create: false", "create: false\n    missing: skip"),
+                             "source": "dataset", "source_url": partners, "mode": "incremental" })),
+            )
+            .await;
+        assert_eq!(s, 201, "{imp}");
+        let r = api.run(imp["id"].as_str().unwrap(), 30).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+
+        let accounts = api.dataset("accounts").await;
+        api.load(
+            &accounts,
+            b"@queried;metric;unit;start;end;value\n\
+              732829320;revenue;EUR;2024-01-01;2024-12-31;1500000\n\
+              732829320;revenue;EUR;2025-01-01;2025-12-31;1750000.5\n\
+              552100554;revenue;EUR;2025-01-01;2025-12-31;not a number\n\
+              999999999;revenue;EUR;2025-01-01;2025-12-31;42\n",
+        )
+        .await;
+        let mapping = "key: accounts\nname: Accounts\n\
+                       observations: { type: organization, property: siren }\n";
+        let (s, imp) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(json!({ "name": "accounts", "mapping": mapping, "source": "dataset",
+                             "source_url": accounts, "mode": "incremental" })),
+            )
+            .await;
+        assert_eq!(s, 201, "{imp}");
+        let r = api.run(imp["id"].as_str().unwrap(), 30).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let values: Vec<f64> = sql(
+            db,
+            "SELECT m.value FROM market_observations m JOIN objects o ON o.id = m.object_id \
+             WHERE m.metric = 'revenue' ORDER BY m.period_end",
+        )
+        .await
+        .iter()
+        .map(|r| r.try_get("", "value").unwrap())
+        .collect();
+        assert_eq!(values, [1_500_000.0, 1_750_000.5]);
+
+        // Elsewhere the key comes from the run: without per_object, refused.
+        let (s, e) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(json!({ "name": "api", "mapping": mapping, "source": "api",
+                             "source_url": "https://example.com/x.json", "mode": "incremental" })),
+            )
+            .await;
+        assert_eq!(s, 400, "{e}");
+        assert_eq!(e["errors"]["fields"]["mapping.observations"], "invalid");
+    })
+    .await;
+}
+
 /// A table anyone with `datasets:write` can load does not write with the rights of
 /// the import's author; the table of an import's steps cannot be loaded at all.
 #[tokio::test]

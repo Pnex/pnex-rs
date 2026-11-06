@@ -525,6 +525,10 @@ pub struct LinkMap {
     pub link_type: String,
     pub from: String,
     pub to: String,
+    /// Only the records (or `each` elements) where this path equals the value
+    /// produce the link, as on an object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<When>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub valid_from: Option<FieldSpec>,
     #[serde(default)]
@@ -754,7 +758,9 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
         let unique = s
             .object_type(&o.type_key)
             .is_some_and(|t| t.properties.iter().any(|d| d.key == o.property && d.unique));
-        if !unique || (m.per_object.is_none() && m.per_setting_code.is_none()) {
+        // Where the `@queried` key comes from depends on the source: checked
+        // by the server, which knows it.
+        if !unique {
             return Err(ferr("observations", FIELD_INVALID));
         }
     }
@@ -1543,8 +1549,11 @@ pub fn plan_row(
             (_, true) => Some(false),
             _ => None,
         };
+        if side.is_none() && !passes(l.when.as_ref(), row, None) {
+            continue;
+        }
         let shared = match side {
-            None => match link_values(l, lt, row, None) {
+            None => match link_values(l, lt, row, None, &mut warnings) {
                 Ok(v) => Some(v),
                 Err(mut e) => {
                     issues.extend(e.drain(..).map(issue));
@@ -1559,7 +1568,10 @@ pub fn plan_row(
                 (None, Some(on_from)) => {
                     let at = if on_from { from } else { to };
                     let elem = elems[at].as_ref().map(|(v, n)| (v, *n));
-                    match link_values(l, lt, row, elem) {
+                    if !passes(l.when.as_ref(), row, elem) {
+                        continue;
+                    }
+                    match link_values(l, lt, row, elem, &mut warnings) {
                         Ok(v) => v,
                         Err(mut e) => {
                             issues.extend(e.drain(..).map(issue));
@@ -1595,36 +1607,47 @@ fn link_values(
     lt: &LinkTypeDef,
     row: &Value,
     elem: Elem,
+    warnings: &mut Vec<(String, String)>,
 ) -> Result<(Map<String, Value>, Option<String>), Vec<(String, String)>> {
     let mut attrs = Map::new();
     let mut issues = Vec::new();
     for (k, f) in &l.attributes {
-        match read(row, elem, f) {
+        let column = || f.from.clone().unwrap_or_else(|| k.clone());
+        let v = read(row, elem, f).and_then(|v| {
+            let def = lt.attributes.iter().find(|a| &a.key == k);
+            v.map(|v| match def.map(|d| cast(d, v)) {
+                Some(Ok(v)) => Ok(v),
+                _ => Err((column(), FIELD_INVALID.to_string())),
+            })
+            .transpose()
+        });
+        match v {
             Ok(Some(v)) => {
-                let def = lt.attributes.iter().find(|a| &a.key == k);
-                match def.map(|d| cast(d, v)) {
-                    Some(Ok(v)) => {
-                        attrs.insert(k.clone(), v);
-                    }
-                    _ => issues.push((
-                        f.from.clone().unwrap_or_else(|| k.clone()),
-                        FIELD_INVALID.into(),
-                    )),
-                }
+                attrs.insert(k.clone(), v);
             }
             Ok(None) => {}
+            // The link is kept without this attribute.
+            Err(e) if f.invalid == Missing::Skip => warnings.push(e),
             Err(e) => issues.push(e),
         }
     }
-    match check_values(&lt.attributes, &attrs) {
-        Ok(a) => attrs = a,
-        Err((k, token)) => {
-            let column = l
-                .attributes
-                .get(&k)
-                .and_then(|f| f.from.clone())
-                .unwrap_or(k);
-            issues.push((column, token));
+    loop {
+        match check_values(&lt.attributes, &attrs) {
+            Ok(a) => {
+                attrs = a;
+                break;
+            }
+            Err((k, token)) => {
+                let f = l.attributes.get(&k);
+                let column = f.and_then(|f| f.from.clone()).unwrap_or_else(|| k.clone());
+                // Left out under `invalid: skip`, then the rest is checked again.
+                if f.is_some_and(|f| f.invalid == Missing::Skip) && attrs.remove(&k).is_some() {
+                    warnings.push((column, token));
+                    continue;
+                }
+                issues.push((column, token));
+                break;
+            }
         }
     }
     let valid_from = match &l.valid_from {
@@ -1647,6 +1670,14 @@ fn link_values(
     }
 }
 
+/// Whether a record (or `each` element) meets a `when`.
+fn passes(when: Option<&When>, row: &Value, elem: Elem) -> bool {
+    when.is_none_or(|w| {
+        let v = at_path(row, elem, &w.from).as_ref().and_then(text_of);
+        (v.as_deref().map(str::trim) == Some(w.equals.as_str())) != w.not
+    })
+}
+
 /// One object of an entry; `Ok(None)` when its key is empty (nothing to
 /// upsert: an optional site column left blank).
 /// `warnings` gets the values left out under `invalid: skip`; `skipped` is
@@ -1660,11 +1691,8 @@ fn plan_object(
     warnings: &mut Vec<(String, String)>,
     skipped: &mut bool,
 ) -> Result<Option<PlannedObject>, (String, String)> {
-    if let Some(w) = &o.when {
-        let v = at_path(row, elem, &w.from).as_ref().and_then(text_of);
-        if (v.as_deref().map(str::trim) == Some(w.equals.as_str())) == w.not {
-            return Ok(None);
-        }
+    if !passes(o.when.as_ref(), row, elem) {
+        return Ok(None);
     }
     let mut props = Map::new();
     for (k, f) in &o.properties {
@@ -2526,6 +2554,87 @@ mod tests {
             convert(Some(json!({"ANNEE": "2024"})), &latest).unwrap(),
             None
         );
+    }
+
+    /// A partial date under `invalid: skip` leaves the attribute out, not the link
+    /// nor the whole import.
+    #[test]
+    fn a_link_attribute_skips_its_invalid_value() {
+        let t: Vec<ObjectTypeDef> = serde_json::from_value(json!([
+            {"key": "organization", "name": "O", "properties": [{"key": "siren", "kind": "text", "unique": true}]},
+            {"key": "person", "name": "P", "properties": [{"key": "ref", "kind": "text", "unique": true}]}
+        ]))
+        .unwrap();
+        let l: Vec<LinkTypeDef> = serde_json::from_value(json!([
+            {"key": "officer_of", "name": "o", "from_types": ["person"], "to_types": ["organization"],
+             "attributes": [{"key": "since", "kind": "date"}, {"key": "role", "kind": "text"}]}
+        ]))
+        .unwrap();
+        let s = Schema {
+            types: &t,
+            links: &l,
+        };
+        let mapping = |invalid: &str| {
+            from_value(json!({
+                "key": "officers", "name": "Officers",
+                "objects": [
+                    {"as": "org", "type": "organization", "key": "siren", "properties": {"siren": "siren"}},
+                    {"as": "p", "type": "person", "key": "ref", "properties": {"ref": "ref"}}
+                ],
+                "links": [{"type": "officer_of", "from": "p", "to": "org",
+                           "attributes": {"since": {"from": "since", "invalid": invalid}, "role": "role"}}]
+            }))
+            .unwrap()
+        };
+        let row = json!({"siren": "732829320", "ref": "p1", "since": "2026-03", "role": "CEO"});
+        assert!(plan_row(&mapping("error"), &s, 2, &row).is_err());
+        let p = plan_row(&mapping("skip"), &s, 2, &row).unwrap();
+        assert_eq!(p.links.len(), 1);
+        assert_eq!(p.links[0].attributes.get("since"), None);
+        assert_eq!(p.links[0].attributes["role"], json!("CEO"));
+        assert_eq!(p.warnings.len(), 1);
+    }
+
+    /// One table gives several kinds of link: `when` picks each record's.
+    #[test]
+    fn a_link_is_made_only_where_its_when_holds() {
+        let t: Vec<ObjectTypeDef> = serde_json::from_value(json!([
+            {"key": "organization", "name": "O", "properties": [{"key": "siren", "kind": "text", "unique": true}]}
+        ]))
+        .unwrap();
+        let l: Vec<LinkTypeDef> = serde_json::from_value(json!([
+            {"key": "supplier_of", "name": "s", "from_types": ["organization"], "to_types": ["organization"]},
+            {"key": "owns", "name": "o", "from_types": ["organization"], "to_types": ["organization"]}
+        ]))
+        .unwrap();
+        let s = Schema {
+            types: &t,
+            links: &l,
+        };
+        let m = from_value(json!({
+            "key": "rel", "name": "Relations",
+            "objects": [
+                {"as": "a", "type": "organization", "key": "siren", "properties": {"siren": "a"}},
+                {"as": "b", "type": "organization", "key": "siren", "properties": {"siren": "b"}}
+            ],
+            "links": [
+                {"type": "supplier_of", "from": "a", "to": "b", "when": {"from": "kind", "equals": "supply"}},
+                {"type": "owns", "from": "a", "to": "b", "when": {"from": "kind", "equals": "supply", "not": true}}
+            ]
+        }))
+        .unwrap();
+        assert_eq!(check(&m, &s), Ok(()));
+        let kinds = |kind: &str| {
+            let row = json!({"a": "732829320", "b": "552100554", "kind": kind});
+            plan_row(&m, &s, 2, &row)
+                .unwrap()
+                .links
+                .into_iter()
+                .map(|l| l.link_type)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(kinds("supply"), ["supplier_of"]);
+        assert_eq!(kinds("stake"), ["owns"]);
     }
 
     #[test]

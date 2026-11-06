@@ -212,6 +212,15 @@ async fn check_input<C: ConnectionTrait>(
     if m.per_object.is_some() && input.source != ImportSource::Api {
         return Err(invalid("mapping.per_object", FIELD_INVALID));
     }
+    // A table gives its `@queried` column; elsewhere the key is the object or
+    // the code the run asked for.
+    if m.observations.is_some()
+        && input.source != ImportSource::Dataset
+        && m.per_object.is_none()
+        && m.per_setting_code.is_none()
+    {
+        return Err(invalid("mapping.observations", FIELD_INVALID));
+    }
     // Without a parameter the value goes in place of `{value}` in the URL.
     if m.per_object.as_ref().is_some_and(|p| {
         p.param.is_empty()
