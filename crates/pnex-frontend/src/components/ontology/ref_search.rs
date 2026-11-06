@@ -56,7 +56,7 @@ pub fn RefSearch(
                     span { class: "truncate", "data-testid": "ref-chosen", {title().unwrap_or(id)} }
                     button {
                         r#type: "button",
-                        class: "shrink-0 text-xs font-medium text-blue-700 hover:underline",
+                        class: "shrink-0 text-xs font-medium text-signal-700 hover:underline",
                         onclick: move |_| {
                             doc.with_mut(|m| {
                                 m.remove(&f_clear);
