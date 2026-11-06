@@ -110,6 +110,11 @@ fn onto_error(e: OntologyError) -> ToolError {
             "a person can be attached to this case only once the user has filled in its processing basis".into(),
             None,
         ),
+        OntologyError::LinkMemberOnly => coded(
+            c::ONTOLOGY_LINK_MEMBER_ONLY,
+            "only the user writes this link, from a case (such as a market move attributed to a cause); you may only say an event is in the same window, never that it caused a move".into(),
+            None,
+        ),
         OntologyError::ProposalDecided => coded(
             c::PROPOSAL_DECIDED,
             "this proposal is already decided; only a person decides proposals".into(),
@@ -412,6 +417,13 @@ pub async fn open_link(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome,
     let a = actor(deps)?;
     let input: LinkInput = serde_json::from_value(args.clone())
         .map_err(|e| ToolError::from(format!("invalid arguments: {e}")))?;
+    // D742: a member's judgement, never the assistant's.
+    let s = crate::services::ontology::schema(deps.db, deps.org_id)
+        .await
+        .map_err(|e| onto_error(e.into()))?;
+    if s.link_type(&input.link_type).is_some_and(|l| l.member_only) {
+        return Err(onto_error(OntologyError::LinkMemberOnly));
+    }
     let l = links::create(deps.db, deps.org_id, &a, &input)
         .await
         .map_err(onto_error)?;

@@ -8,6 +8,9 @@ use serde_json::{json, Value};
 
 use crate::ontology::import::{parse_csv, table_rows};
 
+pub mod exhibit21;
+pub mod moves;
+
 /// Field of a per-object record holding the value it was queried with.
 pub const QUERIED: &str = "@queried";
 

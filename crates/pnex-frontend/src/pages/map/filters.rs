@@ -63,8 +63,57 @@ pub(super) async fn redraw_with(
             color: None,
         });
     }
+    // World events layer (D739): a failed read leaves the layer empty.
+    if SHOW_WORLD.load(std::sync::atomic::Ordering::Relaxed) {
+        // A view across the dateline or onto a copy of the world asks for
+        // every longitude rather than an invalid box.
+        let (w, e) = if west < -180.0 || east > 180.0 || west >= east {
+            (-180.0, 180.0)
+        } else {
+            (west, east)
+        };
+        if let Ok(page) =
+            crate::api::markets::world_events(w, south.max(-90.0), e, north.min(90.0)).await
+        {
+            items.extend(page.results.into_iter().map(|w| {
+                MapItem {
+                    kind: "event",
+                    id: Some(w.id),
+                    lon: w.lon,
+                    lat: w.lat,
+                    label: format!("{} · {}", w.title, w.event_at),
+                    emoji: world_emoji(&w.kind).to_string(),
+                    count: 0,
+                    color: Some(
+                        if w.status == "confirmed" {
+                            "green"
+                        } else {
+                            "amber"
+                        }
+                        .into(),
+                    ),
+                }
+            }));
+        }
+    }
     map_viewer::set_items(MAP_HOST, &items).await;
     true
+}
+
+/// The world events layer is shown (sidebar toggle).
+pub(super) static SHOW_WORLD: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn world_emoji(kind: &str) -> &'static str {
+    match kind {
+        "armed_conflict" => "⚔️",
+        "attack" => "💥",
+        "sanctions" => "🚫",
+        "blockade" => "⛔",
+        "ceasefire" => "🕊️",
+        "natural_disaster" => "🌋",
+        _ => "🌐",
+    }
 }
 
 pub(super) async fn handle_click(
@@ -90,6 +139,12 @@ pub(super) async fn handle_click(
         }
         // Device GPS live → info toast.
         "position" => toasts::info(format!("🛰️ {}", click.label)),
+        // World event → its object page.
+        "event" => {
+            if let Some(id) = click.id {
+                navigator().push(crate::app::Route::OntologyObject { id });
+            }
+        }
         // Click on the bare map: in add mode (form closed), capture coords.
         "map" => {
             let coords = click.lng.zip(click.lat).map(|(lon, lat)| (lat, lon));

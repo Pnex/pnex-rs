@@ -100,6 +100,37 @@ impl Api<'_> {
         panic!("{name} never settled");
     }
 
+    /// `run` with a long wait: a real download can take minutes.
+    async fn run_long(&self, name: &str) -> (Value, std::time::Duration) {
+        let started = std::time::Instant::now();
+        let (_, list) = self
+            .call("GET", "/api/v1/ontology/imports?limit=50", None)
+            .await;
+        let id = list["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["name"] == name)
+            .unwrap_or_else(|| panic!("{name}: {list}"))["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (st, r) = self
+            .call("POST", &format!("/api/v1/ontology/imports/{id}/runs"), None)
+            .await;
+        assert_eq!(st, 202, "{r}");
+        let run = r["id"].as_str().unwrap().to_string();
+        loop {
+            let path = format!("/api/v1/ontology/imports/{id}/runs/{run}");
+            let (_, r) = self.call("GET", &path, None).await;
+            if r["run"]["state"] != "running" {
+                return (r, started.elapsed());
+            }
+            assert!(started.elapsed().as_secs() < 3600, "{name} never settled");
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    }
+
     async fn settings(&self, values: Value) {
         let (st, r) = self
             .call(
@@ -676,6 +707,871 @@ async fn markets_real_sources() {
         println!("indexed: {status}, {chars} chunks");
         assert_eq!(status, "indexed");
         assert!(chars > 0);
+    })
+    .await;
+}
+
+/// A watched index as FRED answers it: 150 quiet days with a crash on day
+/// 120; from the second reading on, one more day, a second crash.
+async fn mock_move_series() -> String {
+    use axum::{routing::get, Router};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let reads = Arc::new(AtomicUsize::new(0));
+    let app = Router::new().route(
+        "/graph/fredgraph.csv",
+        get(move || {
+            let reads = reads.clone();
+            async move {
+                let days = if reads.fetch_add(1, Ordering::SeqCst) == 0 {
+                    150
+                } else {
+                    151
+                };
+                let mut csv = String::from("observation_date,TESTIDX\n");
+                let mut p = 100.0f64;
+                for i in 0..days {
+                    if i > 0 {
+                        p *= if i == 120 || i == 150 {
+                            0.94
+                        } else if i % 2 == 0 {
+                            1.004
+                        } else {
+                            0.996
+                        };
+                    }
+                    csv.push_str(&format!("{},{p:.4}\n", move_day(i)));
+                }
+                csv
+            }
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    base
+}
+
+fn move_day(i: usize) -> chrono::NaiveDate {
+    chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap() + chrono::Duration::days(i as i64)
+}
+
+async fn count(db: &DatabaseConnection, sql: String) -> i64 {
+    db.query_one_raw(Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        sql,
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get::<i64>("", "n")
+    .unwrap()
+}
+
+/// D734-D743: a crash of a watched series becomes one market event, caught
+/// up from history on the first reading and new on the next, never twice;
+/// the session lists it with the world events of its window; an attribution
+/// needs a case; a rule on world event dates measures one series.
+#[tokio::test]
+#[serial]
+async fn abnormal_sessions_and_their_window() {
+    with_app(|server, ctx, token| async move {
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api {
+            server: &server,
+            token,
+            org,
+        };
+        for pack in ["markets", "world_events", "market_attribution"] {
+            let (st, r) = api
+                .call(
+                    "POST",
+                    &format!("/api/v1/ontology/packs/{pack}/install"),
+                    None,
+                )
+                .await;
+            assert_eq!(st, 200, "{pack}: {r}");
+        }
+        api.settings(json!({
+            "source_contact": CONTACT, "move_series": "testidx:log_return:equity_index"
+        }))
+        .await;
+        let base = mock_move_series().await;
+        db.execute_raw(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "UPDATE object_imports SET source_url = replace(source_url, \
+                 'https://fred.stlouisfed.org', '{base}') WHERE org_id = {org}"
+            ),
+        ))
+        .await
+        .unwrap();
+        let events = format!(
+            "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event'"
+        );
+
+        // First reading: the old crash is found, caught up from history.
+        let r = api.run("Watched series (FRED)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(count(&db, events.clone()).await, 1);
+        let old = object_id(
+            &db,
+            org,
+            "market_event",
+            "event_at",
+            &move_day(120).to_string(),
+        )
+        .await
+        .expect("crash of day 120");
+        let (_, o) = api
+            .call("GET", &format!("/api/v1/ontology/objects/{old}"), None)
+            .await;
+        let p = &o["properties"];
+        assert_eq!(p["kind"], "market_move", "{o}");
+        assert_eq!(p["move_direction"], "down");
+        assert_eq!(p["asset_class"], "equity_index");
+        assert_eq!(p["series_code"], "TESTIDX");
+        assert_eq!(p["backfilled"], true);
+        let (_, links) = api
+            .call(
+                "GET",
+                &format!("/api/v1/ontology/objects/{old}/links"),
+                None,
+            )
+            .await;
+        assert!(links.to_string().contains("event_about"), "{links}");
+
+        // Next reading: the new crash is news; a third adds nothing.
+        api.run("Watched series (FRED)").await;
+        api.run("Watched series (FRED)").await;
+        assert_eq!(count(&db, events).await, 2);
+        let day = move_day(150).to_string();
+        let new = object_id(&db, org, "market_event", "event_at", &day)
+            .await
+            .expect("new crash");
+        let (_, o) = api
+            .call("GET", &format!("/api/v1/ontology/objects/{new}"), None)
+            .await;
+        assert_eq!(o["properties"]["backfilled"], false, "{o}");
+
+        // A confirmed world event the same day, and a dismissed one: the
+        // session shows the first only.
+        for (status, title) in [("confirmed", "Strike"), ("dismissed", "Noise")] {
+            let (st, r) = api
+                .call(
+                    "POST",
+                    "/api/v1/ontology/objects",
+                    Some(json!({
+                        "type_key": "geo_event",
+                        "title": title,
+                        "properties": {
+                            "ref": format!("manual:{title}"),
+                            "kind": "attack",
+                            "event_at": day,
+                            "known_at": format!("{day}T12:00:00Z"),
+                            "country": "UP",
+                            "status": status,
+                            "source_kind": "manual",
+                        }
+                    })),
+                )
+                .await;
+            assert_eq!(st, 201, "{r}");
+        }
+        let (st, s) = api
+            .call("GET", &format!("/api/v1/markets/sessions/{day}"), None)
+            .await;
+        assert_eq!(st, 200, "{s}");
+        assert_eq!(s["moves"][0]["series_code"], "TESTIDX", "{s}");
+        assert_eq!(s["moves"][0]["event_at"], day);
+        let world = s["world_events"].as_array().unwrap();
+        assert_eq!(world.len(), 1, "{s}");
+        assert_eq!(world[0]["status"], "confirmed");
+        let strike = world[0]["id"].as_str().unwrap().to_string();
+        let (st, _) = api
+            .call("GET", "/api/v1/markets/sessions/not-a-day", None)
+            .await;
+        assert_eq!(st, 400);
+
+        // Outside a case, no attribution.
+        let (st, r) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/links",
+                Some(json!({
+                    "link_type": "attributed_to",
+                    "source_id": new,
+                    "target_id": strike,
+                    "attributes": { "justification": "Same day", "source": "https://example.com/a" }
+                })),
+            )
+            .await;
+        assert_eq!(
+            (st, r["error"].as_str()),
+            (409, Some("ontology-link-member-only")),
+            "{r}"
+        );
+        // From a case holding the move, a member attributes it.
+        let (st, case) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/objects",
+                Some(json!({"type_key": "case", "title": "Crash of day 150",
+                            "properties": {"status": "open", "question": "Why?"}})),
+            )
+            .await;
+        assert_eq!(st, 201, "{case}");
+        let cid = case["id"].as_str().unwrap();
+        let (st, w) = api
+            .call(
+                "POST",
+                &format!("/api/v1/cases/{cid}/attach"),
+                Some(json!({"object_id": new})),
+            )
+            .await;
+        assert_eq!(st, 200, "{w}");
+        let (st, r) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/links",
+                Some(json!({
+                    "link_type": "attributed_to",
+                    "source_id": new,
+                    "target_id": strike,
+                    "attributes": { "justification": "Same day", "source": "https://example.com/a" }
+                })),
+            )
+            .await;
+        assert_eq!(st, 201, "{r}");
+
+        // The series after confirmed world events, against drawn dates.
+        let (st, r) = api
+            .call(
+                "GET",
+                "/api/v1/markets/rule-test?dates=geo_events&series=TESTIDX",
+                None,
+            )
+            .await;
+        assert_eq!(st, 200, "{r}");
+        assert_eq!(r["filings"], 1, "{r}");
+        assert_eq!(r["merged"], 0);
+        let (st, _) = api
+            .call("GET", "/api/v1/markets/rule-test?dates=geo_events", None)
+            .await;
+        assert_eq!(st, 400);
+        let (st, _) = api
+            .call(
+                "GET",
+                "/api/v1/markets/rule-test?dates=geo_events&series=NOPE",
+                None,
+            )
+            .await;
+        assert_eq!(st, 400);
+    })
+    .await;
+}
+
+/// UCDP and ACLED as they answer, with what each checks of the caller.
+async fn mock_conflicts(seen: Arc<Mutex<Vec<String>>>) -> String {
+    use axum::http::HeaderMap;
+    use axum::{
+        routing::{get, post},
+        Router,
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let day = (chrono::Utc::now().date_naive() - chrono::Duration::days(3)).to_string();
+    let (d1, d2) = (day.clone(), day.clone());
+    // GED as UCDP publishes it: a zipped CSV, a quoted field over two lines.
+    let ged = {
+        use std::io::Write;
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        w.start_file(
+            "GEDEvent_v26_1.csv",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        w.write_all(
+            b"id,country_id,date_start,type_of_violence,source_headline,latitude,longitude,best,number_of_sources,source_date\n\
+              9001,369,2015-02-01 00:00:00.000,3,\"Shelling,\nDonetsk\",48.0,37.8,5,2,2015-02-03;2015-02-02\n\
+              9002,365,2015-02-01 00:00:00.000,1,x,55.0,37.0,1,1,2015-02-01\n",
+        )
+        .unwrap();
+        w.finish().unwrap().into_inner()
+    };
+    let (s1, s2, s3) = (seen.clone(), seen.clone(), seen);
+    let app = Router::new()
+        .route(
+            "/downloads/ged/ged261-csv.zip",
+            get(move || {
+                let ged = ged.clone();
+                async move { ged }
+            }),
+        )
+        .route(
+            "/api/gedevents/26.0.9",
+            get(move |h: HeaderMap, q: axum::extract::RawQuery| {
+                let d = d1.clone();
+                let s = s1.clone();
+                async move {
+                    let token = h.get("x-ucdp-access-token").and_then(|v| v.to_str().ok());
+                    s.lock().unwrap().push(format!("ucdp:{}", token.unwrap_or("")));
+                    // UCDP's pages count from 0: any other page is out of range.
+                    if !q.0.unwrap_or_default().contains("page=0") {
+                        return axum::Json(json!({"TotalPages": 1, "Result": []}));
+                    }
+                    axum::Json(json!({"TotalPages": 1, "Result": [
+                        {"id": 7001, "country_id": 369, "date_start": format!("{d} 00:00:00.000"),
+                         "type_of_violence": 1, "where_coordinates": "Kharkiv city", "adm_1": "Kharkiv oblast",
+                         "latitude": 49.99, "longitude": 36.23, "side_a": "Government of Russia (Soviet Union)",
+                         "side_b": "Government of Ukraine", "number_of_sources": 3, "best": 4},
+                        {"id": 7002, "country_id": 365, "date_start": format!("{d} 00:00:00.000"), "type_of_violence": 1}
+                    ]}))
+                }
+            }),
+        )
+        .route(
+            "/oauth/token",
+            post(move |body: String| {
+                let s = s2.clone();
+                async move {
+                    let ok = body.contains("username=ops%40example.com") && body.contains("password=pw");
+                    s.lock().unwrap().push(format!("token:{ok}"));
+                    axum::Json(json!({"access_token": if ok { "tk" } else { "" }, "expires_in": 86400}))
+                }
+            }),
+        )
+        .route(
+            "/api/acled/read",
+            get(move |h: HeaderMap| {
+                let d = d2.clone();
+                let s = s3.clone();
+                async move {
+                    let auth = h.get("authorization").and_then(|v| v.to_str().ok()).unwrap_or("");
+                    s.lock().unwrap().push(format!("acled:{auth}"));
+                    axum::Json(json!({"status": 200, "data": [
+                        {"event_id_cnty": "UKR9", "event_date": d, "event_type": "Explosions/Remote violence",
+                         "sub_event_type": "Air/drone strike", "iso": 804, "admin1": "Kyiv", "location": "Kyiv",
+                         "latitude": "50.45", "longitude": "30.52", "actor1": "Military Forces of Russia",
+                         "fatalities": "2", "timestamp": "1762300800"}
+                    ]}))
+                }
+            }),
+        );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    base
+}
+
+/// D739, D741: a GDELT lead is confirmed by a UCDP event of its country and
+/// day; ACLED is read with the org's own account; both reach the map.
+/// Without credentials, nothing is read.
+#[tokio::test]
+#[serial]
+async fn verified_events_confirm_leads_and_reach_the_map() {
+    with_app(|server, ctx, token| async move {
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api {
+            server: &server,
+            token,
+            org,
+        };
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/packs/world_events/install", None)
+            .await;
+        assert_eq!(st, 200, "{r}");
+        let (st, r) = api
+            .call(
+                "PATCH",
+                "/api/v1/ontology/packs/world_events/settings",
+                Some(json!({ "values": { "geo_watch": "ua" } })),
+            )
+            .await;
+        assert_eq!(st, 200, "{r}");
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let base = mock_conflicts(seen.clone()).await;
+        pnex_backend::services::markets::allow_test_host(&base);
+        for host in [
+            "https://ucdpapi.pcr.uu.se",
+            "https://ucdp.uu.se",
+            "https://acleddata.com",
+        ] {
+            db.execute_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!(
+                    "UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') \
+                     WHERE org_id = {org}"
+                ),
+            ))
+            .await
+            .unwrap();
+        }
+
+        // The GED download needs no token: the history of the watched
+        // country, dated by its first report.
+        let r = api.run("Verified events history (UCDP GED download)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let old = object_id(&db, org, "geo_event", "ref", "ucdp:UA:attack:2015-02-01")
+            .await
+            .expect("2015 history");
+        assert!(object_id(&db, org, "geo_event", "ref", "ucdp:RU:armed_conflict:2015-02-01")
+            .await
+            .is_none());
+        let (_, o) = api
+            .call("GET", &format!("/api/v1/ontology/objects/{old}"), None)
+            .await;
+        assert_eq!(o["properties"]["known_at"], "2015-02-02T23:59:59Z", "{o}");
+        assert_eq!(o["properties"]["deaths"], 5.0);
+
+        // No token in the vault: refused, nothing sent.
+        let r = api.run("Verified events (UCDP)").await;
+        assert_eq!(r["run"]["state_code"], "import-key-required", "{r}");
+        assert!(seen.lock().unwrap().is_empty());
+
+        // A GDELT lead of the day before, unconfirmed.
+        let day = chrono::Utc::now().date_naive() - chrono::Duration::days(3);
+        let (st, r) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/objects",
+                Some(json!({
+                    "type_key": "geo_event",
+                    "title": "Kharkiv lead",
+                    "properties": {
+                        "ref": "gdelt:UA:19:x", "kind": "attack", "country": "UA",
+                        "event_at": (day - chrono::Duration::days(1)).to_string(),
+                        "source_kind": "gdelt", "status": "unconfirmed"
+                    }
+                })),
+            )
+            .await;
+        assert_eq!(st, 201, "{r}");
+        let lead = r["id"].as_str().unwrap().to_string();
+
+        for (name, value) in [
+            ("world_events_ucdp_token", "u-123"),
+            ("world_events_acled_email", "ops@example.com"),
+            ("world_events_acled_password", "pw"),
+        ] {
+            let (st, r) = api
+                .call("POST", "/api/v1/secrets", Some(json!({"name": name, "value": value})))
+                .await;
+            assert!(st == 200 || st == 201, "{r}");
+        }
+        let r = api.run("Verified events (UCDP)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        // Only the watched country, confirmed, and the lead with it.
+        let ucdp_ref = format!("ucdp:UA:armed_conflict:{day}");
+        let ucdp = object_id(&db, org, "geo_event", "ref", &ucdp_ref)
+            .await
+            .expect("UA event");
+        assert!(
+            object_id(&db, org, "geo_event", "ref", &format!("ucdp:RU:armed_conflict:{day}"))
+                .await
+                .is_none()
+        );
+        let (_, o) = api
+            .call("GET", &format!("/api/v1/ontology/objects/{ucdp}"), None)
+            .await;
+        assert_eq!(o["properties"]["status"], "confirmed", "{o}");
+        assert_eq!(o["properties"]["country"], "UA");
+        let (_, o) = api
+            .call("GET", &format!("/api/v1/ontology/objects/{lead}"), None)
+            .await;
+        assert_eq!(o["properties"]["status"], "confirmed", "{o}");
+        assert_eq!(o["properties"]["confirmed_with"], ucdp_ref.as_str());
+
+        let r = api.run("Verified events (ACLED, your account)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert!(
+            object_id(&db, org, "geo_event", "ref", &format!("acled:UA:attack:{day}"))
+                .await
+                .is_some()
+        );
+        let seen = seen.lock().unwrap().clone();
+        assert!(seen.contains(&"ucdp:u-123".to_string()), "{seen:?}");
+        assert!(seen.contains(&"token:true".to_string()), "{seen:?}");
+        assert!(seen.contains(&"acled:Bearer tk".to_string()), "{seen:?}");
+
+        // The map: both verified events are in a box around Ukraine, the
+        // lead has no location; a box elsewhere is empty.
+        let (st, m) = api
+            .call(
+                "GET",
+                "/api/v1/markets/world-events?west=22&south=44&east=41&north=53",
+                None,
+            )
+            .await;
+        assert_eq!(st, 200, "{m}");
+        assert_eq!(m["count"], 2, "{m}");
+        let (_, m) = api
+            .call(
+                "GET",
+                "/api/v1/markets/world-events?west=0&south=0&east=1&north=1",
+                None,
+            )
+            .await;
+        assert_eq!(m["count"], 0, "{m}");
+        let (st, _) = api
+            .call(
+                "GET",
+                "/api/v1/markets/world-events?west=0&south=0&east=500&north=1",
+                None,
+            )
+            .await;
+        assert_eq!(st, 400);
+    })
+    .await;
+}
+
+/// The real sources of the market moves and world events (D734-D743), by
+/// hand: `MARKETS_CONTACT="Name mail" WORLD_COUNTRIES="UA,IL" cargo test
+/// --test markets world_events_real_sources -- --ignored --nocapture`.
+/// Prints what was read and how long each step took.
+#[tokio::test]
+#[serial]
+#[ignore = "reaches the real FRED, GDELT and UCDP"]
+async fn world_events_real_sources() {
+    let contact = std::env::var("MARKETS_CONTACT").expect("MARKETS_CONTACT");
+    let countries =
+        std::env::var("WORLD_COUNTRIES").unwrap_or_else(|_| "UA,IL,IR,RU,SY,IQ,YE,SD,CD,AF".into());
+    with_app(|server, ctx, token| async move {
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        for pack in ["markets", "world_events"] {
+            let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
+            assert_eq!(st, 200, "{pack}: {r}");
+        }
+        // The acceptance session of MK7 needs the indices: private test only.
+        api.settings(json!({
+            "source_contact": contact,
+            "move_series": "NASDAQCOM:log_return:equity_index, SP500:log_return:equity_index, \
+                VIXCLS:diff:volatility, DGS10:diff:rates, DCOILWTICO:log_return:commodity, \
+                DCOILBRENTEU:log_return:commodity, DTWEXBGS:log_return:fx",
+        }))
+        .await;
+        let (st, r) = api
+            .call(
+                "PATCH",
+                "/api/v1/ontology/packs/world_events/settings",
+                Some(json!({ "values": { "geo_watch": countries } })),
+            )
+            .await;
+        assert_eq!(st, 200, "{r}");
+        let count = |sql: String| {
+            let db = db.clone();
+            async move { super_count(&db, sql).await }
+        };
+        for name in [
+            "Watched series (FRED)",
+            "World events (GDELT)",
+            "Verified events history (UCDP GED download)",
+            "Verified events this year (UCDP Candidate download)",
+        ] {
+            let (r, took) = api.run_long(name).await;
+            println!("{name}: {} in {took:?}: {}", r["run"]["state"], r["run"]["counts"]);
+            assert_eq!(r["run"]["state"], "applied", "{r}");
+        }
+        let moves = count(format!(
+            "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event'"
+        ))
+        .await;
+        let fresh = count(format!(
+            "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event' \
+             AND properties ->> 'backfilled' = 'false'"
+        ))
+        .await;
+        println!("market moves: {moves} ({fresh} not caught up from history)");
+        for (label, filter) in [
+            ("leads", "properties ->> 'source_kind' = 'gdelt'"),
+            ("confirmed leads", "properties ->> 'source_kind' = 'gdelt' AND properties ->> 'status' = 'confirmed'"),
+            ("UCDP days", "properties ->> 'source_kind' = 'ucdp'"),
+            ("UCDP days with known_at", "properties ->> 'source_kind' = 'ucdp' AND properties ->> 'known_at' IS NOT NULL"),
+        ] {
+            let n = count(format!(
+                "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'geo_event' AND {filter}"
+            ))
+            .await;
+            println!("{label}: {n}");
+        }
+        for day in ["2026-11-05", "2026-11-04"] {
+            let (st, s) = api.call("GET", &format!("/api/v1/markets/sessions/{day}"), None).await;
+            assert_eq!(st, 200, "{s}");
+            let moves: Vec<String> = s["moves"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|m| format!("{} {} {:.4} ({:.1} sigma)", m["event_at"], m["series_code"], m["measure"].as_f64().unwrap_or(0.0), m["score"].as_f64().unwrap_or(0.0)))
+                .collect();
+            println!("session {day}: {moves:?}; {} world events in the window", s["world_events"].as_array().unwrap().len());
+        }
+        let (st, m) = api
+            .call("GET", "/api/v1/markets/world-events?west=-180&south=-90&east=180&north=90&limit=300", None)
+            .await;
+        assert_eq!(st, 200, "{m}");
+        println!("map, 30 days, world: {} events", m["count"]);
+        for q in [
+            "dates=geo_events&series=DCOILWTICO",
+            "dates=geo_events&series=DCOILWTICO&include_unconfirmed=true",
+            "dates=geo_events&series=VIXCLS&kind=armed_conflict&country=UA",
+            "dates=market_moves&series=DCOILBRENTEU&asset_class=equity_index&direction=down",
+        ] {
+            let started = std::time::Instant::now();
+            let (st, r) = api.call("GET", &format!("/api/v1/markets/rule-test?{q}"), None).await;
+            assert_eq!(st, 200, "{q}: {r}");
+            let w = &r["windows"][1];
+            println!(
+                "rule {q}: {} dates, {} merged, unconfirmed {}, [0,5] events {} baseline {} in {:?}",
+                r["filings"], r["merged"], r["unconfirmed_share"], w["events"], w["baseline"], started.elapsed()
+            );
+        }
+    })
+    .await;
+}
+
+async fn super_count(db: &DatabaseConnection, sql: String) -> i64 {
+    count(db, sql).await
+}
+
+/// Volume run of the world events (D739-D743): every country (`*`), the whole
+/// UCDP history, three months of GDELT, then the reads people make. By hand,
+/// with an O2 of its own (never the shared one: its org names would collide):
+/// `MARKETS_CONTACT=… PNEX_O2_URL=http://127.0.0.1:5091 PNEX_O2_ROOT_PASSWORD=…
+/// cargo test --test markets world_events_volume -- --ignored --nocapture`.
+#[tokio::test]
+#[serial]
+#[ignore = "downloads gigabytes and writes hundreds of thousands of objects"]
+async fn world_events_volume() {
+    let contact = std::env::var("MARKETS_CONTACT").expect("MARKETS_CONTACT");
+    with_app(|server, ctx, token| async move {
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        println!("org {org}");
+        let api = Api { server: &server, token, org };
+        for pack in ["markets", "world_events"] {
+            let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
+            assert_eq!(st, 200, "{pack}: {r}");
+        }
+        api.settings(json!({ "source_contact": contact })).await;
+        let (st, r) = api
+            .call(
+                "PATCH",
+                "/api/v1/ontology/packs/world_events/settings",
+                Some(json!({ "values": { "geo_watch": "*", "gdelt_codes": "18, 19, 20, 163, 191, 17" } })),
+            )
+            .await;
+        assert_eq!(st, 200, "{r}");
+        let size = |what: &'static str| {
+            let db = db.clone();
+            async move {
+                let sql = format!(
+                    "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'geo_event' {what}"
+                );
+                count(&db, sql).await
+            }
+        };
+        for name in [
+            "Watched series (FRED)",
+            "Verified events history (UCDP GED download)",
+            "Verified events this year (UCDP Candidate download)",
+            "World events history (GDELT, 3 months)",
+            "World events (GDELT)",
+        ] {
+            let (r, took) = api.run_long(name).await;
+            println!(
+                "{name}: {} in {took:?}: {} — geo_event now {}",
+                r["run"]["state"],
+                r["run"]["counts"],
+                size("").await
+            );
+            assert_eq!(r["run"]["state"], "applied", "{r}");
+        }
+        for (label, what) in [
+            ("leads", "AND properties ->> 'source_kind' = 'gdelt'"),
+            ("leads confirmed", "AND properties ->> 'source_kind' = 'gdelt' AND properties ->> 'status' = 'confirmed'"),
+            ("leads Aug-Sep 2026", "AND properties ->> 'source_kind' = 'gdelt' AND properties ->> 'event_at' BETWEEN '2026-08-01' AND '2026-09-30'"),
+            ("leads Aug-Sep 2026 confirmed", "AND properties ->> 'source_kind' = 'gdelt' AND properties ->> 'status' = 'confirmed' AND properties ->> 'event_at' BETWEEN '2026-08-01' AND '2026-09-30'"),
+            ("UCDP days", "AND properties ->> 'source_kind' = 'ucdp'"),
+        ] {
+            println!("{label}: {}", size(what).await);
+        }
+        let started = std::time::Instant::now();
+        let n = pnex_backend::services::markets::world::confirm_leads(
+            &db,
+            org,
+            &pnex_backend::services::ontology::Actor {
+                user_id: None,
+                role: pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole::Owner,
+                source_ref: "test:volume".into(),
+            },
+        )
+        .await
+        .unwrap();
+        println!("a second confirmation pass: {n} more in {:?}", started.elapsed());
+        let sizes = db
+            .query_one_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT pg_size_pretty(pg_total_relation_size('objects')) AS o, \
+                 pg_size_pretty(pg_total_relation_size('market_observations')) AS m, \
+                 pg_size_pretty(pg_database_size(current_database())) AS d"
+                    .to_string(),
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        println!(
+            "postgres: objects {}, market_observations {}, database {}",
+            sizes.try_get::<String>("", "o").unwrap(),
+            sizes.try_get::<String>("", "m").unwrap(),
+            sizes.try_get::<String>("", "d").unwrap()
+        );
+        for path in [
+            "/api/v1/markets/sessions/2026-11-05".to_string(),
+            "/api/v1/markets/world-events?west=-180&south=-90&east=180&north=90".to_string(),
+            "/api/v1/markets/world-events?west=20&south=40&east=50&north=55".to_string(),
+            "/api/v1/markets/rule-test?dates=geo_events&series=DCOILWTICO".to_string(),
+            "/api/v1/markets/rule-test?dates=geo_events&series=DCOILWTICO&include_unconfirmed=true".to_string(),
+            "/api/v1/markets/rule-test?dates=geo_events&series=DCOILBRENTEU&kind=armed_conflict&country=IR".to_string(),
+            "/api/v1/ontology/objects?type_key=geo_event&limit=50".to_string(),
+            "/api/v1/search?q=Kharkiv&limit=20".to_string(),
+        ] {
+            let started = std::time::Instant::now();
+            let (st, r) = api.call("GET", &path, None).await;
+            let took = started.elapsed();
+            let brief = r
+                .get("count")
+                .or_else(|| r.get("filings"))
+                .cloned()
+                .unwrap_or_else(|| json!(r["moves"].as_array().map(|a| a.len())));
+            println!("GET {path}: {st} in {took:?} ({brief})");
+            assert!(st < 500, "{path}: {r}");
+        }
+    })
+    .await;
+}
+
+/// F6: the subsidiaries a (fictitious) group declares in the Exhibit 21 of
+/// its 10-K become organizations linked to it, read once per filing.
+#[tokio::test]
+#[serial]
+async fn exhibit_21_subsidiaries_become_organizations() {
+    with_app(|server, ctx, token| async move {
+        use axum::{routing::get, Router};
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        assert_eq!(st, 200, "{r}");
+        api.settings(json!({ "source_contact": CONTACT })).await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let dir = "/Archives/edgar/data/42/000004226000001";
+        let app = Router::new()
+            .route(
+                &format!("{dir}/0000042-26-000001-index.htm"),
+                get(move || async move {
+                    axum::response::Html(format!(
+                        "<table><tr><td>1</td><td><a href=\"{dir}/acme-10k.htm\">acme-10k.htm</a></td><td>10-K</td></tr>\
+                         <tr><td>5</td><td><a href=\"{dir}/ex21.htm\">ex21.htm</a></td><td>EX-21.1</td></tr></table>"
+                    ))
+                }),
+            )
+            .route(
+                &format!("{dir}/ex21.htm"),
+                get(|| async {
+                    axum::response::Html(
+                        "<table><tr><td>Name</td><td>Jurisdiction</td></tr>\
+                         <tr><td>Acme Widgets LLC</td><td>Delaware</td></tr>\
+                         <tr><td>Acme Widgets B.V.</td><td>Netherlands</td></tr>\
+                         <tr><td>Acme Widgets (UK) Limited</td><td>England and Wales</td></tr></table>",
+                    )
+                }),
+            );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::markets::allow_test_host(&base);
+
+        let (st, parent) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/objects",
+                Some(json!({"type_key": "organization", "title": "Acme Holdings",
+                            "properties": {"cik": "0000000042", "kind": "company"}})),
+            )
+            .await;
+        assert_eq!(st, 201, "{parent}");
+        let (st, filing) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/objects",
+                Some(json!({"type_key": "filing", "title": "10-K 2026-02-01",
+                            "properties": {"accession": "0000042-26-000001", "form": "10-K",
+                                           "url": format!("{base}{dir}/acme-10k.htm"), "document_state": "kept"}})),
+            )
+            .await;
+        assert_eq!(st, 201, "{filing}");
+        let (st, r) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/links",
+                Some(json!({"link_type": "filed_by", "source_id": filing["id"], "target_id": parent["id"]})),
+            )
+            .await;
+        assert_eq!(st, 201, "{r}");
+
+        for _ in 0..2 {
+            pnex_backend::services::markets::documents::sweep(&ctx).await.unwrap();
+        }
+        let nl = object_id(&db, org, "organization", "declared_key", "NL|ACME WIDGETS B V")
+            .await
+            .expect("Dutch subsidiary");
+        let (_, o) = api.call("GET", &format!("/api/v1/ontology/objects/{nl}"), None).await;
+        assert_eq!(o["properties"]["country"], "NL", "{o}");
+        assert_eq!(o["properties"]["incorporated_in"], "Netherlands");
+        let links = count(
+            &db,
+            format!(
+                "SELECT count(*) AS n FROM resource_edges WHERE org_id = {org} AND relation = 'subsidiary_of' \
+                 AND target_object_id = '{}' AND valid_to IS NULL AND attributes ->> 'nature' = 'declared' \
+                 AND attributes ->> 'source' LIKE '%/ex21.htm'",
+                parent["id"].as_str().unwrap()
+            ),
+        )
+        .await;
+        assert_eq!(links, 3, "one link per subsidiary, the second sweep adds none");
+        let (_, f) = api
+            .call("GET", &format!("/api/v1/ontology/objects/{}", filing["id"].as_str().unwrap()), None)
+            .await;
+        assert_eq!(f["properties"]["subsidiaries_state"], "read", "{f}");
     })
     .await;
 }

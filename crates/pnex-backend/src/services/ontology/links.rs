@@ -204,6 +204,9 @@ pub async fn create_with<C: ConnectionTrait>(
         }
     }
     super::opposition::check_links(db, s, org_id, &[(&src, &tgt)]).await?;
+    if lt.member_only {
+        check_member_only(db, org_id, actor, src.id).await?;
+    }
     let attrs = check_values(&lt.attributes, &input.attributes)
         .map_err(|(f, t)| super::invalid(format!("attributes.{f}"), t))?;
     let now: DateTimeWithTimeZone = chrono::Utc::now().into();
@@ -371,6 +374,9 @@ pub async fn update_with<C: ConnectionTrait>(
     let Some(lt) = s.link_type(&row.relation) else {
         return Err(OntologyError::NotFound);
     };
+    if lt.member_only && !by_member(actor) {
+        return Err(OntologyError::LinkMemberOnly);
+    }
     // A binding's attributes carry its uniqueness (measures) or a checked
     // pose (depicts): rebind instead.
     if lt.key == REL_MEASURES || lt.key == REL_DEPICTS {
@@ -423,6 +429,9 @@ pub async fn close<C: ConnectionTrait>(
                 return Err(OntologyError::WriteForbidden);
             }
         }
+    }
+    if s.link_type(&row.relation).is_some_and(|l| l.member_only) && !by_member(actor) {
+        return Err(OntologyError::LinkMemberOnly);
     }
     let now: DateTimeWithTimeZone = chrono::Utc::now().into();
     let to = parse_instant("valid_to", valid_to)?.unwrap_or(now);
@@ -719,4 +728,42 @@ pub async fn update_many_with<C: ConnectionTrait>(
         }
     }
     Ok(())
+}
+
+/// D742: a `member_only` link is written by a member, from a case holding
+/// its source (directly, or attached to one of its events). An import or a
+/// service has no member behind it.
+async fn check_member_only<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    actor: &Actor,
+    source: Uuid,
+) -> Result<()> {
+    if !by_member(actor) {
+        return Err(OntologyError::LinkMemberOnly);
+    }
+    let in_case = db
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT 1 AS x FROM resource_edges WHERE org_id = $1 AND valid_to IS NULL \
+               AND ((relation = $2 AND source_object_id = $3) \
+                 OR (relation = $4 AND target_object_id = $3)) LIMIT 1",
+            vec![
+                org_id.into(),
+                pnex_core::ontology::REL_IN_CASE.into(),
+                source.into(),
+                pnex_core::ontology::REL_INVOLVES.into(),
+            ],
+        ))
+        .await?;
+    if in_case.is_none() {
+        return Err(OntologyError::LinkMemberOnly);
+    }
+    Ok(())
+}
+
+/// A member acting by hand: not an import, a flow, a service or the
+/// assistant (their `source_ref` is `import:`, `flow:`, `assistant:`…).
+fn by_member(actor: &Actor) -> bool {
+    actor.user_id.is_some() && actor.source_ref.starts_with("manual:")
 }

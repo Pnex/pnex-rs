@@ -607,6 +607,7 @@ async fn records<C: ConnectionTrait>(
             Ok(a) => a,
             Err(code) => return Err(coded(code)),
         },
+        ..Default::default()
     };
     let by = &by;
     let rows = match (imp.source(), file) {
@@ -631,6 +632,27 @@ async fn records<C: ConnectionTrait>(
         }
         (ImportSource::Api, _) => {
             let url = imp.source_url.as_deref().unwrap_or_default();
+            if let Some(feed) = &m.conflict_feed {
+                let secrets = conflict_secrets(db, imp, feed).await.map_err(coded)?;
+                let countries = setting_codes(db, imp.org_id, &feed.countries_setting).await;
+                return source::fetch_conflicts(url, feed, secrets, countries)
+                    .await
+                    .map_err(coded);
+            }
+            if let Some(feed) = &m.events_feed {
+                let filter = pnex_core::gdelt_events::EventsFilter {
+                    countries: setting_codes(db, imp.org_id, &feed.countries_setting)
+                        .await
+                        .into_iter()
+                        .collect(),
+                    codes: setting_codes(db, imp.org_id, &feed.codes_setting).await,
+                    min_sources: feed.min_sources,
+                    max_goldstein: feed.max_goldstein,
+                };
+                return source::fetch_events(url, feed.hours, filter)
+                    .await
+                    .map_err(coded);
+            }
             if let Some(feed) = &m.press_feed {
                 let watched = press_watched(db, imp, feed)
                     .await
@@ -713,6 +735,37 @@ async fn keyed_authorization<C: ConnectionTrait>(
         .await
         .map_err(|_| required)?;
     Ok(Some(format!("{} {}", src.scheme, value.trim())))
+}
+
+/// The org's credentials of a conflict source, from the vault, for the
+/// source's own host only (R9, D741).
+async fn conflict_secrets<C: ConnectionTrait>(
+    db: &C,
+    imp: &ImportRow,
+    feed: &imp::ConflictFeed,
+) -> std::result::Result<Vec<String>, &'static str> {
+    let url = imp.source_url.as_deref().unwrap_or_default();
+    let host_ok = reqwest::Url::parse(url)
+        .is_ok_and(|u| u.scheme() == "https" && u.host_str() == Some(feed.source.host()))
+        || crate::services::markets::test_host_allowed(url);
+    if !host_ok {
+        return Err(err_codes::IMPORT_KEY_HOST);
+    }
+    use crate::services::secrets::store;
+    let required = err_codes::IMPORT_KEY_REQUIRED;
+    let ring = crate::services::markets::keyring().ok_or(required)?;
+    let mut out = Vec::new();
+    for name in feed.source.secrets() {
+        let row = store::find_by_name(db, Some(imp.org_id), name)
+            .await
+            .map_err(|_| required)?
+            .ok_or(required)?;
+        let value = store::reveal(db, ring, Some(imp.org_id), row.id)
+            .await
+            .map_err(|_| required)?;
+        out.push(value.trim().to_string());
+    }
+    Ok(out)
 }
 
 /// The day each object's reading starts from, when the URL asks for it.
@@ -1098,6 +1151,39 @@ async fn write_locked(
             )
             .await
             .map_err(OntologyError::from);
+        }
+    }
+    // Derived objects under the same lock: two runs at once would both find
+    // a move or a lead missing and write it twice (refs are not unique in
+    // the database).
+    if out.is_ok() {
+        // D741: leads confirmed by a verified event, whichever came first.
+        if imp
+            .mapping()
+            .is_ok_and(|m| m.conflict_feed.is_some() || m.events_feed.is_some())
+        {
+            match crate::services::markets::world::confirm_leads(db, imp.org_id, actor).await {
+                Ok(n) if n > 0 => tracing::info!(
+                    org = imp.org_id,
+                    confirmed = n,
+                    "world event leads confirmed"
+                ),
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!(org = imp.org_id, error = %e, "world event confirmation failed")
+                }
+            }
+        }
+        // D735: abnormal sessions of the watched series this run stored.
+        if let Some(target) = imp.mapping().ok().and_then(|m| m.observations) {
+            crate::services::markets::moves::after_store(
+                db,
+                imp.org_id,
+                actor,
+                &target,
+                &diff.observations,
+            )
+            .await;
         }
     }
     lock.release().await;
@@ -1623,6 +1709,8 @@ pub async fn run_staged(
         && previous > 0
         && m.per_object.is_none()
         && m.press_feed.is_none()
+        && m.events_feed.is_none()
+        && m.conflict_feed.is_none()
         && m.per_setting_code.is_none()
         && m.rows_in_setting.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {
@@ -1780,6 +1868,8 @@ async fn scheduled(
         && previous > 0
         && m.per_object.is_none()
         && m.press_feed.is_none()
+        && m.events_feed.is_none()
+        && m.conflict_feed.is_none()
         && m.per_setting_code.is_none()
         && m.rows_in_setting.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {

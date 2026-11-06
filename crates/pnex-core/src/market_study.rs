@@ -163,8 +163,8 @@ pub struct RuleWindow {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RuleResult {
-    /// Filings matching the rule; `events` of a window can be fewer, when the
-    /// prices do not cover it.
+    /// Filings (or dated events, D743) matching the rule; `events` of a
+    /// window can be fewer, when the prices do not cover it.
     pub filings: usize,
     /// Instruments with both filings and prices.
     pub instruments: usize,
@@ -173,6 +173,14 @@ pub struct RuleResult {
     pub windows: Vec<RuleWindow>,
     /// No benchmark prices: nothing can be measured.
     pub benchmark_missing: bool,
+    /// Dated events that fell in the measure window of an earlier one and
+    /// counted once (D743); 0 for filings.
+    #[serde(default)]
+    pub merged: usize,
+    /// Share of the dates coming from unconfirmed world events, when the
+    /// rule asked to include them (D743).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unconfirmed_share: Option<f64>,
 }
 
 /// A fictitious position measured on closing prices (D534).

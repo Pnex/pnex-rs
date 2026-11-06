@@ -3,7 +3,9 @@
 //! known at t" takes, for each period, the last row known by then.
 
 pub mod documents;
+pub mod moves;
 pub mod study;
+pub mod world;
 
 use std::collections::HashMap;
 
@@ -16,8 +18,8 @@ use uuid::Uuid;
 use crate::services::secrets::Keyring;
 
 static RING: std::sync::OnceLock<Keyring> = std::sync::OnceLock::new();
-/// Host of a mock of a keyed source: integration tests only, never set by the app.
-static TEST_HOST: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+/// Hosts of mocks of keyed sources: integration tests only, never set by the app.
+static TEST_HOSTS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
 /// The vault keyring of the imports, which run without an `AppContext`.
 pub fn init(ctx: &loco_rs::app::AppContext) {
@@ -31,11 +33,20 @@ pub fn keyring() -> Option<&'static Keyring> {
 }
 
 pub fn allow_test_host(base: &str) {
-    let _ = TEST_HOST.set(base.to_string());
+    if let Ok(mut hosts) = TEST_HOSTS.lock() {
+        hosts.push(base.to_string());
+    }
+}
+
+/// The mocks allowed, for the sweeps that pick their URLs in SQL.
+pub fn test_hosts() -> Vec<String> {
+    TEST_HOSTS.lock().map(|h| h.clone()).unwrap_or_default()
 }
 
 pub fn test_host_allowed(url: &str) -> bool {
-    TEST_HOST.get().is_some_and(|b| url.starts_with(b.as_str()))
+    TEST_HOSTS
+        .lock()
+        .is_ok_and(|hosts| hosts.iter().any(|b| url.starts_with(b.as_str())))
 }
 
 /// Per object key, the day a price read starts from: a few days back, so a

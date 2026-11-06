@@ -165,8 +165,8 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
     ),
     (
         "pnex-frontend/src/pages/ontology/object.rs",
-        &["macro_series", "instrument", "paper_position"],
-        "object tabs of the markets pack (markets-research.md D541)",
+        &["macro_series", "instrument", "paper_position", "market_event", "geo_event"],
+        "object tabs of the markets pack (markets-research.md D541) and the session tab of its moves and world events (D738)",
     ),
     (
         "pnex-backend/src/controllers/markets.rs",
@@ -175,8 +175,19 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
     ),
     (
         "pnex-backend/src/services/markets/",
-        &["instrument", "filing", "filing_document"],
-        "market services built on the markets pack (markets-research.md)",
+        &[
+            "instrument",
+            "filing",
+            "filing_document",
+            "macro_series",
+            "market_event",
+            "event_about",
+            "geo_event",
+            "organization",
+            "subsidiary_of",
+            "filed_by",
+        ],
+        "market services built on the markets and world_events packs: detector, session, map, confirmation (markets-research.md D734-D743); subsidiaries of a 10-K's Exhibit 21 written as companies-pack organizations (F6)",
     ),
 ];
 

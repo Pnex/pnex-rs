@@ -13,21 +13,29 @@ use serde::Deserialize;
 
 use super::field_error;
 use crate::auth::OrgContext;
-use crate::services::markets::study::{self, Rule};
+use crate::services::markets::study::{self, DateSource, DatedRule, Rule};
+use pnex_core::markets::moves::{MarketSession, SessionMove, SessionWorldEvent, WorldEventPoint};
 
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/markets")
         .add("/instruments/{id}/event-study", get(event_study))
         .add("/rule-test", get(rule_test))
+        .add("/sessions/{date}", get(session))
+        .add("/world-events", get(world_events))
         .add("/positions/{id}/result", get(position_result))
 }
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(event_study, rule_test, position_result),
+        paths(event_study, rule_test, position_result, session, world_events),
         components(schemas(
+            DateSource,
+            MarketSession,
+            SessionMove,
+            SessionWorldEvent,
+            WorldEventPoint,
             EventStudy,
             WindowResult,
             RuleResult,
@@ -96,8 +104,23 @@ async fn event_study(
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 struct RuleQuery {
-    /// Form of the filings (`8-K`, `10-Q`…).
-    form: String,
+    /// Where the dates come from; `filings` by default.
+    dates: Option<DateSource>,
+    /// Form of the filings (`8-K`, `10-Q`…); required with `filings`.
+    form: Option<String>,
+    /// Ticker or macro series code measured; required with `geo_events`
+    /// and `market_moves`.
+    series: Option<String>,
+    /// `geo_events`: kind of event (`armed_conflict`, `attack`, `sanctions`…).
+    kind: Option<String>,
+    /// `geo_events`: ISO 3166 alpha-2 country code.
+    country: Option<String>,
+    /// `geo_events`: also count unconfirmed events (default false).
+    include_unconfirmed: Option<bool>,
+    /// `market_moves`: asset class of the moves.
+    asset_class: Option<String>,
+    /// `market_moves`: `up` or `down`.
+    direction: Option<String>,
     /// One item of the form (`2.02` = results in an 8-K).
     item: Option<String>,
     /// First filing day (`YYYY-MM-DD`).
@@ -113,12 +136,12 @@ struct RuleQuery {
     path = "/api/v1/markets/rule-test",
     tag = "markets",
     operation_id = "markets_rule_test",
-    summary = "Test how instruments moved after a kind of filing",
-    description = "Distribution of the abnormal return after every matching filing of the followed instruments, next to the same measure on drawn dates, with the number of events. Each filing is dated by its filing day. Instruments no longer followed are missing, which can flatter a result. An aid to analysis, not investment advice. Any org member.",
+    summary = "Test how prices moved after a kind of filing or event",
+    description = "With `dates=filings`, the distribution of the abnormal return after every matching filing of the followed instruments. With `dates=geo_events` or `market_moves`, how one series (`series`) moved after each matching event, dated by when it became known; events closer than the longest window count once (`merged`), unconfirmed world events stay out unless asked. Always next to the same measure on drawn dates, with the number of events. Instruments no longer followed are missing, which can flatter a result. An aid to analysis, not investment advice, and never a cause. Any org member.",
     params(RuleQuery),
     responses(
         (status = 200, body = RuleResult),
-        (status = 400, description = "Invalid `form`, `from` or `to` (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "Invalid `form`, `series`, `kind`, `asset_class`, `direction`, `from` or `to` (field → token)", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`server-busy`: too many rule tests at once", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -128,15 +151,61 @@ async fn rule_test(
     org: OrgContext,
     Query(q): Query<RuleQuery>,
 ) -> Result<Response> {
-    if q.form.trim().is_empty() || q.form.len() > 16 {
-        return Ok(field_error("form", err_codes::FIELD_INVALID));
-    }
     let (from, to) = match (day("from", q.from.as_deref()), day("to", q.to.as_deref())) {
         (Ok(a), Ok(b)) => (a, b),
         (Err(r), _) | (_, Err(r)) => return Ok(r),
     };
+    let source = q.dates.unwrap_or_default();
+    if source != DateSource::Filings {
+        let text = |v: &Option<String>| v.as_deref().unwrap_or("").trim().to_string();
+        let series = text(&q.series);
+        if series.is_empty() || series.len() > 64 {
+            return Ok(field_error("series", err_codes::FIELD_REQUIRED));
+        }
+        let (kind, asset_class, direction) =
+            (text(&q.kind), text(&q.asset_class), text(&q.direction));
+        const KINDS: [&str; 7] = [
+            "armed_conflict",
+            "attack",
+            "sanctions",
+            "blockade",
+            "ceasefire",
+            "natural_disaster",
+            "other",
+        ];
+        if !kind.is_empty() && !KINDS.contains(&kind.as_str()) {
+            return Ok(field_error("kind", err_codes::FIELD_INVALID));
+        }
+        if !asset_class.is_empty()
+            && pnex_core::markets::moves::AssetClass::parse(&asset_class).is_none()
+        {
+            return Ok(field_error("asset_class", err_codes::FIELD_INVALID));
+        }
+        if !direction.is_empty() && direction != "up" && direction != "down" {
+            return Ok(field_error("direction", err_codes::FIELD_INVALID));
+        }
+        let rule = DatedRule {
+            source,
+            series,
+            kind,
+            country: text(&q.country),
+            include_unconfirmed: q.include_unconfirmed.unwrap_or(false),
+            asset_class,
+            direction,
+            from,
+            to,
+        };
+        return match study::rule_on_dates(&ctx.db, org.org.id, &rule).await? {
+            Some(r) => format::json(r),
+            None => Ok(field_error("series", err_codes::FIELD_INVALID)),
+        };
+    }
+    let form = q.form.unwrap_or_default();
+    if form.trim().is_empty() || form.len() > 16 {
+        return Ok(field_error("form", err_codes::FIELD_INVALID));
+    }
     let rule = Rule {
-        form: q.form.trim().to_string(),
+        form: form.trim().to_string(),
         item: q.item.unwrap_or_default().trim().to_string(),
         from,
         to,
@@ -172,4 +241,95 @@ async fn position_result(
         Err(e) => return super::ontology::onto_error(e),
     };
     format::json(study::position(&ctx.db, org.org.id, id, &object.properties).await?)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/sessions/{date}",
+    tag = "markets",
+    operation_id = "markets_session",
+    summary = "List the abnormal sessions and world events around a date",
+    description = "The abnormal moves of the watched series in the window of one session before and after the date (those of the date first, by size against their usual volatility), and the world events of the same window, dismissed ones left out. Computed at reading: being in the same window is never a cause. Any org member.",
+    params(("date" = String, Path, format = Date, description = "Session day (`YYYY-MM-DD`)")),
+    responses(
+        (status = 200, body = MarketSession),
+        (status = 400, description = "Invalid `date` (field → token)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn session(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(date): Path<String>,
+) -> Result<Response> {
+    let date = match day("date", Some(&date)) {
+        Ok(Some(d)) => d,
+        Ok(None) => return Ok(field_error("date", err_codes::FIELD_REQUIRED)),
+        Err(r) => return Ok(r),
+    };
+    format::json(crate::services::markets::moves::session(&ctx.db, org.org.id, date).await?)
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct WorldEventsQuery {
+    /// West longitude of the view (-180 to 180).
+    west: f64,
+    /// South latitude of the view (-90 to 90).
+    south: f64,
+    east: f64,
+    north: f64,
+    /// Days back from today (1 to 366, default 30).
+    days: Option<i64>,
+    /// Page size (1 to 300, default 300).
+    limit: Option<i64>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/world-events",
+    tag = "markets",
+    operation_id = "markets_world_events",
+    summary = "List the world events placed inside a map view",
+    description = "The world events of the last `days` days whose location falls inside the bounding box, dismissed ones left out, the most significant first (deaths, then sources, then newest), at most `limit`. `count` is the total in the box. Any org member.",
+    params(WorldEventsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<WorldEventPoint>),
+        (status = 400, description = "Invalid `west`, `south`, `east`, `north`, `days` or `limit` (field → token)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn world_events(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<WorldEventsQuery>,
+) -> Result<Response> {
+    for (field, v, max) in [
+        ("west", q.west, 180.0),
+        ("east", q.east, 180.0),
+        ("south", q.south, 90.0),
+        ("north", q.north, 90.0),
+    ] {
+        if !v.is_finite() || v.abs() > max {
+            return Ok(field_error(field, err_codes::FIELD_INVALID));
+        }
+    }
+    let days = q.days.unwrap_or(30);
+    if !(1..=366).contains(&days) {
+        return Ok(field_error("days", err_codes::FIELD_INVALID));
+    }
+    let limit = q.limit.unwrap_or(300);
+    if !(1..=300).contains(&limit) {
+        return Ok(field_error("limit", err_codes::FIELD_INVALID));
+    }
+    let bbox = (q.west, q.south, q.east, q.north);
+    let (count, results) =
+        crate::services::markets::moves::world_events_in(&ctx.db, org.org.id, bbox, days, limit)
+            .await?;
+    format::json(pnex_core::Paginated {
+        count,
+        next: None,
+        previous: None,
+        results,
+    })
 }

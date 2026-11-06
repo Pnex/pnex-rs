@@ -301,5 +301,270 @@ pub async fn rule<C: ConnectionTrait>(
         instruments,
         windows,
         benchmark_missing: index.is_empty(),
+        merged: 0,
+        unconfirmed_share: None,
     })
+}
+
+/// Where the dates of a rule come from (D743).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DateSource {
+    /// Filings of the followed instruments, measured on each instrument.
+    #[default]
+    Filings,
+    /// World events (`geo_event` objects), measured on one series.
+    GeoEvents,
+    /// Abnormal sessions (`market_event` of kind `market_move`), measured on
+    /// one series.
+    MarketMoves,
+}
+
+/// A rule whose dates are events, measured on one series (D743).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DatedRule {
+    pub source: DateSource,
+    /// Ticker of an instrument or code of a macro series.
+    pub series: String,
+    pub kind: String,
+    pub country: String,
+    pub include_unconfirmed: bool,
+    pub asset_class: String,
+    pub direction: String,
+    pub from: Option<NaiveDate>,
+    pub to: Option<NaiveDate>,
+}
+
+/// Drawn dates of a single measured series.
+const BASELINE_SINGLE: usize = 200;
+
+/// The `known_at` day of each event of the rule, with whether it is
+/// unconfirmed: a test reads when an event became known, never when it is
+/// said to have happened (D531). Moves caught up from a history have no real
+/// `known_at` and stay out.
+async fn event_dates<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    rule: &DatedRule,
+) -> Result<Vec<(NaiveDate, bool)>, DbErr> {
+    let (type_key, filters) = match rule.source {
+        DateSource::Filings => return Ok(Vec::new()),
+        DateSource::GeoEvents => (
+            "geo_event",
+            "AND ($4 = '' OR properties ->> 'kind' = $4) \
+             AND ($5 = '' OR upper(properties ->> 'country') = upper($5)) \
+             AND coalesce(properties ->> 'status', '') <> 'dismissed' \
+             AND ($6 OR (properties ->> 'status' = 'confirmed' \
+                         AND coalesce(properties ->> 'source_kind', '') <> 'gdelt'))",
+        ),
+        DateSource::MarketMoves => (
+            "market_event",
+            "AND properties ->> 'kind' = 'market_move' \
+             AND coalesce(properties ->> 'backfilled', 'false') <> 'true' \
+             AND ($4 = '' OR properties ->> 'asset_class' = $4) \
+             AND ($5 = '' OR properties ->> 'move_direction' = $5) \
+             AND $6::bool IS NOT NULL",
+        ),
+    };
+    let (a, b) = match rule.source {
+        DateSource::GeoEvents => (rule.kind.clone(), rule.country.clone()),
+        _ => (rule.asset_class.clone(), rule.direction.clone()),
+    };
+    // One row per day it became known: a day counts as unconfirmed when none
+    // of its events is. A GDELT lead confirmed later is not "confirmed" here:
+    // its confirmation came after its own known_at (D531).
+    let sql = format!(
+        "SELECT left(properties ->> 'known_at', 10) AS k, \
+           bool_and(coalesce(properties ->> 'status', '') <> 'confirmed' \
+                    OR coalesce(properties ->> 'source_kind', '') = 'gdelt') AS unconfirmed \
+         FROM objects WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL \
+           AND properties ->> 'known_at' IS NOT NULL {filters} \
+           AND ($3::date IS NULL OR (properties ->> 'event_at') >= $3::text) \
+           AND ($7::date IS NULL OR (properties ->> 'event_at') <= $7::text) \
+         GROUP BY 1 ORDER BY 1"
+    );
+    let rows = db
+        .query_all_raw(stmt(
+            &sql,
+            vec![
+                org_id.into(),
+                type_key.into(),
+                rule.from.into(),
+                a.into(),
+                b.into(),
+                rule.include_unconfirmed.into(),
+                rule.to.into(),
+            ],
+        ))
+        .await?;
+    // Measured from the first session after the day it became known: a
+    // move known at the end of its own session must not measure itself.
+    Ok(rows
+        .iter()
+        .filter_map(|r| {
+            let k: String = r.try_get("", "k").ok()?;
+            let unconfirmed: bool = r.try_get("", "unconfirmed").ok()?;
+            let day = NaiveDate::parse_from_str(&k, "%Y-%m-%d").ok()?;
+            Some((day.succ_opt()?, unconfirmed))
+        })
+        .collect())
+}
+
+/// The measured series: an instrument by ticker, else a macro series by code.
+async fn series_object<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    code: &str,
+) -> Result<Option<(Uuid, bool)>, DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT id, type_key = 'instrument' AS inst FROM objects \
+             WHERE org_id = $1 AND valid_to IS NULL AND ( \
+               (type_key = 'instrument' AND upper(properties ->> 'ticker') = $2) \
+               OR (type_key = 'macro_series' AND upper(properties ->> 'code') = $2)) \
+             ORDER BY type_key LIMIT 1",
+            vec![org_id.into(), code.trim().to_uppercase().into()],
+        ))
+        .await?;
+    row.map(|r| Ok((r.try_get("", "id")?, r.try_get("", "inst")?)))
+        .transpose()
+}
+
+/// A rule whose dates are world events or abnormal sessions, measured on one
+/// series against drawn dates of the same series (D743). `None` when the
+/// series is unknown. Close dates count once; unconfirmed world events are
+/// out unless asked, and their share is then given.
+pub async fn rule_on_dates<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    rule: &DatedRule,
+) -> Result<Option<RuleResult>, RuleError> {
+    use pnex_core::markets::moves as mv;
+    let _slot = rule_pool().acquire().await.map_err(RuleError::Busy)?;
+    let Some((series, is_instrument)) = series_object(db, org_id, &rule.series).await? else {
+        return Ok(None);
+    };
+    let dated = event_dates(db, org_id, rule).await?;
+    let all: Vec<NaiveDate> = dated.iter().map(|(d, _)| *d).collect();
+    let (kept, merged) = mv::cluster(&all);
+    let unconfirmed_share =
+        (rule.source == DateSource::GeoEvents && rule.include_unconfirmed && !kept.is_empty())
+            .then(|| {
+                let unconfirmed: std::collections::HashSet<NaiveDate> =
+                    dated.iter().filter(|(_, u)| *u).map(|(d, _)| *d).collect();
+                kept.iter().filter(|d| unconfirmed.contains(d)).count() as f64 / kept.len() as f64
+            });
+    let (studied, drawn, benchmark_missing) = if is_instrument {
+        let stock = bars(db, org_id, series).await?;
+        let index = match benchmark(db, org_id).await? {
+            Some(b) => bars(db, org_id, b).await?,
+            None => Vec::new(),
+        };
+        let missing = index.is_empty();
+        let dates = kept.clone();
+        let (a, b) = tokio::task::spawn_blocking(move || {
+            let of = |d: &NaiveDate| ms::event_study(&stock, &index, *d);
+            let a: Vec<EventStudy> = dates.iter().filter_map(of).collect();
+            let b: Vec<EventStudy> = ms::baseline_dates(&stock, BASELINE_SINGLE, 0)
+                .iter()
+                .filter_map(of)
+                .collect();
+            (a, b)
+        })
+        .await
+        .map_err(|e| DbErr::Custom(e.to_string()))?;
+        (a, b, missing)
+    } else {
+        let points = macro_points(db, org_id, series).await?;
+        let mode = watched_mode(db, org_id, &rule.series).await?;
+        let dates = kept.clone();
+        let (a, b) = tokio::task::spawn_blocking(move || {
+            let as_study = |w: Vec<WindowResult>| EventStudy {
+                day_zero: String::new(),
+                beta: 0.0,
+                windows: w,
+                relative_volume: None,
+            };
+            let of = |d: &NaiveDate| mv::series_windows(&points, mode, *d).map(as_study);
+            // Drawn among the series' own dates; a level can be negative.
+            let as_bars: Vec<Bar> = points
+                .iter()
+                .map(|(d, v)| Bar {
+                    date: *d,
+                    close: *v,
+                    volume: 0.0,
+                    dividend: 0.0,
+                    split: 1.0,
+                })
+                .collect();
+            let a: Vec<EventStudy> = dates.iter().filter_map(of).collect();
+            let b: Vec<EventStudy> = ms::baseline_dates(&as_bars, BASELINE_SINGLE, 0)
+                .iter()
+                .filter_map(of)
+                .collect();
+            (a, b)
+        })
+        .await
+        .map_err(|e| DbErr::Custom(e.to_string()))?;
+        (a, b, false)
+    };
+    let windows = WINDOWS
+        .iter()
+        .map(|&(from, to)| RuleWindow {
+            from,
+            to,
+            events: ms::distribution(&window_values(&studied, from, to)),
+            baseline: ms::distribution(&window_values(&drawn, from, to)),
+        })
+        .collect();
+    Ok(Some(RuleResult {
+        filings: kept.len(),
+        instruments: 1,
+        windows,
+        benchmark_missing,
+        merged,
+        unconfirmed_share,
+    }))
+}
+
+/// A macro series' last known value per date, oldest first.
+async fn macro_points<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    object: Uuid,
+) -> Result<Vec<(NaiveDate, f64)>, DbErr> {
+    let rows = db
+        .query_all_raw(stmt(
+            "SELECT DISTINCT ON (period_end) period_end::text AS d, value \
+             FROM market_observations m JOIN objects o ON o.id = m.object_id \
+             WHERE m.org_id = $1 AND m.object_id = $2 AND m.metric = upper(o.properties ->> 'code') \
+             ORDER BY period_end, known_at DESC",
+            vec![org_id.into(), object.into()],
+        ))
+        .await?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| {
+            let d: String = r.try_get("", "d").ok()?;
+            Some((
+                NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok()?,
+                r.try_get("", "value").ok()?,
+            ))
+        })
+        .collect())
+}
+
+/// The mode of a watched series (D737); a return otherwise.
+async fn watched_mode<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    code: &str,
+) -> Result<pnex_core::markets::moves::MoveMode, DbErr> {
+    use pnex_core::markets::moves as mv;
+    let code = code.trim().to_uppercase();
+    Ok(super::moves::watched(db, org_id)
+        .await?
+        .into_iter()
+        .find(|w| w.code == code)
+        .map_or(mv::MoveMode::LogReturn, |w| w.mode))
 }

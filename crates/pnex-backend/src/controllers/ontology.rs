@@ -199,6 +199,11 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             err_codes::CASE_LEGAL_BASIS_REQUIRED,
             "Declare the processing basis of personal data before attaching a person.",
         ),
+        OntologyError::LinkMemberOnly => coded(
+            StatusCode::CONFLICT,
+            err_codes::ONTOLOGY_LINK_MEMBER_ONLY,
+            "This link is written by a member, from a case that holds its source.",
+        ),
         OntologyError::CaseProposalStale => coded(
             StatusCode::CONFLICT,
             err_codes::CASE_PROPOSAL_STALE,

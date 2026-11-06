@@ -1,0 +1,317 @@
+# Pack "World events" (markets-research.md D739-D741): what happened where,
+# dated and sourced: conflicts, attacks, sanctions, blockades, ceasefires.
+# Defined by a place, not a price: useful to investigation cases as much as
+# to markets, so it requires no other pack.
+# Leads come from the GDELT 2.0 Events feed, aggregated per (country, code
+# family, day), always unconfirmed: they feed no computation by default
+# (D540). A lead is confirmed by a verified event (D741), or by a member
+# citing a source. Terms: GDELT's data is free to use with a citation of
+# the project and a link to its site. UCDP's data is CC BY 4.0: cite
+# Davies, Pettersson & Öberg (2026) and Sundberg & Melander (2013) for GED,
+# Hegre et al. (2020) for the Candidate events. Its downloads need nothing:
+# GED for the history since 1989, the Candidate file for the current year.
+# Its API, for a live reading, needs a token asked to Uppsala University
+# (vault secret `world_events_ucdp_token`). ACLED is
+# read only with the organization's own ACLED account (vault secrets
+# `world_events_acled_email`, `world_events_acled_password`) and under the
+# licence the organization holds with ACLED: PNEX provides no ACLED data.
+# Countries are ISO 3166 alpha-2 codes; GDELT's FIPS 10-4 codes are
+# converted when read (GM becomes DE, UK becomes GB, UP becomes UA).
+key: world_events
+name: World events
+names: {fr: "Événements du monde"}
+version: "1.0.0"
+requires: []
+description: Geopolitical events (conflicts, attacks, sanctions, blockades, ceasefires) with a place, a date and a source, from the GDELT feed for the countries watched. Unconfirmed until a member cites a source.
+descriptions: {fr: "Événements géopolitiques (conflits, attaques, sanctions, blocus, cessez-le-feu) avec un lieu, une date et une source, issus du flux GDELT pour les pays surveillés. Non confirmés tant qu'un membre ne cite pas de source."}
+settings:
+  - key: geo_watch
+    name: Countries watched
+    names: {fr: "Pays surveillés"}
+    description: "Comma-separated ISO 3166 alpha-2 country codes, for example UA, RU, IL, IR, SA; * for every country (GDELT and UCDP, not ACLED). Empty: nothing is read."
+    descriptions: {fr: "Codes pays ISO 3166 alpha-2 séparés par des virgules, par exemple UA, RU, IL, IR, SA ; * pour tous les pays (GDELT et UCDP, pas ACLED). Vide : rien n'est lu."}
+    kind: text
+    default: ""
+  - key: gdelt_codes
+    name: Kinds of events kept (CAMEO codes)
+    names: {fr: "Natures d'événements retenues (codes CAMEO)"}
+    description: "Comma-separated CAMEO code families: 18 assault, 19 fight, 20 mass violence, 163 embargo and sanctions, 191 blockade, 17 coercion."
+    descriptions: {fr: "Familles de codes CAMEO séparées par des virgules : 18 assaut, 19 combat, 20 violence de masse, 163 embargo et sanctions, 191 blocus, 17 coercition."}
+    kind: text
+    default: "18, 19, 20, 163"
+types:
+  - key: geo_event
+    name: World event
+    names: {fr: "Événement du monde"}
+    icon: globe
+    properties:
+      - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 200, unique: true, required: true }
+      - key: kind
+        name: Kind
+        names: {fr: "Nature"}
+        kind: enum
+        values: [armed_conflict, attack, sanctions, blockade, ceasefire, natural_disaster, other]
+        labels:
+          armed_conflict: {fr: "Conflit armé", en: "Armed conflict"}
+          attack: {fr: "Attaque", en: "Attack"}
+          sanctions: {fr: "Sanctions", en: "Sanctions"}
+          blockade: {fr: "Blocus", en: "Blockade"}
+          ceasefire: {fr: "Cessez-le-feu", en: "Ceasefire"}
+          natural_disaster: {fr: "Catastrophe naturelle", en: "Natural disaster"}
+          other: {fr: "Autre", en: "Other"}
+        indexed: true
+      - { key: event_at, name: Day of the event, names: {fr: "Jour de l'événement"}, kind: date, indexed: true }
+      - { key: published_at, name: First published at, names: {fr: "Publié pour la première fois le"}, kind: date_time }
+      - { key: known_at, name: Known at, names: {fr: "Connu le"}, description: "A GDELT lead: when every line aggregated was public. A verified event: the end of the first day a source reported one of its events. A test reads this date, never the day of the event.", descriptions: {fr: "Une piste GDELT : moment où toutes les lignes agrégées étaient publiques. Un événement vérifié : fin du premier jour où une source a parlé d'un de ses événements. Un test lit cette date, jamais le jour de l'événement."}, kind: date_time, indexed: true }
+      - { key: location, name: Location, names: {fr: "Position"}, kind: geo_point }
+      - { key: country, name: Country (ISO), names: {fr: "Pays (ISO)"}, kind: text, max_len: 8, indexed: true }
+      - { key: region, name: Region, names: {fr: "Région"}, kind: text, max_len: 64 }
+      - { key: actors, name: Actors, names: {fr: "Acteurs"}, kind: text, max_len: 1000 }
+      - key: source_kind
+        name: Source
+        names: {fr: "Source"}
+        kind: enum
+        values: [gdelt, acled, ucdp, manual]
+        labels: {gdelt: {fr: "GDELT", en: "GDELT"}, acled: {fr: "ACLED", en: "ACLED"}, ucdp: {fr: "UCDP", en: "UCDP"}, manual: {fr: "Saisie", en: "Entered"}}
+      - key: status
+        name: Status
+        names: {fr: "Statut"}
+        kind: enum
+        values: [unconfirmed, confirmed, dismissed]
+        labels: {unconfirmed: {fr: "Non confirmé", en: "Unconfirmed"}, confirmed: {fr: "Confirmé", en: "Confirmed"}, dismissed: {fr: "Écarté", en: "Dismissed"}}
+        colors: { unconfirmed: amber, confirmed: green, dismissed: gray }
+        indexed: true
+      - { key: confirmed_by, name: Confirming source, names: {fr: "Source de confirmation"}, description: "The source a member cites to confirm the event.", descriptions: {fr: "La source qu'un membre cite pour confirmer l'événement."}, kind: url }
+      - { key: confirmed_with, name: Confirmed by the verified event, names: {fr: "Confirmé par l'événement vérifié"}, description: "Reference of the UCDP or ACLED event that confirmed this lead.", descriptions: {fr: "Référence de l'événement UCDP ou ACLED qui a confirmé cette piste."}, kind: text, max_len: 64 }
+      - { key: deaths, name: Deaths (best estimate), names: {fr: "Morts (meilleure estimation)"}, kind: number }
+      - { key: event_ids, name: Verified events aggregated, names: {fr: "Événements vérifiés agrégés"}, description: "Ids of the UCDP or ACLED events of this country, kind and day.", descriptions: {fr: "Identifiants des événements UCDP ou ACLED de ce pays, de cette nature et de ce jour."}, kind: text, max_len: 1000 }
+      - { key: code, name: CAMEO code family, names: {fr: "Famille de codes CAMEO"}, kind: text, max_len: 8 }
+      - { key: source_count, name: Sources, names: {fr: "Sources"}, kind: number }
+      - { key: article_count, name: Articles, names: {fr: "Articles"}, kind: number }
+      - { key: gdelt_ids, name: GDELT events aggregated, names: {fr: "Événements GDELT agrégés"}, kind: text, max_len: 1000 }
+      - { key: credit, name: Collected through, names: {fr: "Collecté via"}, kind: text, max_len: 255 }
+imports:
+  - name: World events (GDELT)
+    source: api
+    source_url: "https://data.gdeltproject.org/gdeltv2"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: gdelt_events
+      name: World events
+      names: {fr: "Événements du monde (GDELT)"}
+      description: The coded events of the last two days in the countries watched, one lead per country, kind and day, unconfirmed. Source GDELT Project, gdeltproject.org.
+      format: json
+      events_feed:
+        countries_setting: world_events.geo_watch
+        codes_setting: world_events.gdelt_codes
+        # A GDELT line is born with one source: later mentions land in other
+        # files. Measured 2026-11-06: 166 of 168 matching lines had one.
+        min_sources: 1
+        max_goldstein: -5
+        hours: 48
+      objects:
+        # Counts and places follow the last reading; the status is written
+        # on creation only, so a member's confirmation stays.
+        - as: event
+          type: geo_event
+          key: ref
+          title: title
+          defaults: { status: unconfirmed }
+          properties:
+            ref: ref
+            kind: kind
+            code: code
+            event_at: event_at
+            published_at: published_at
+            known_at: known_at
+            location: location
+            country: country
+            region: region
+            actors: actors
+            source_count: source_count
+            article_count: article_count
+            gdelt_ids: gdelt_ids
+            source_kind: { value: gdelt }
+            # GDELT's terms: any use cites the project and links to its site.
+            credit: { value: "GDELT Project, https://www.gdeltproject.org/" }
+  # D740: the same leads over the last three months, run by hand (about
+  # 8 800 files of the feed): a history to study, or a volume run with `*`.
+  - name: World events history (GDELT, 3 months)
+    source: api
+    source_url: "https://data.gdeltproject.org/gdeltv2"
+    mode: incremental
+    mapping:
+      key: gdelt_events_history
+      name: World events history
+      names: {fr: "Historique des événements du monde (GDELT, 3 mois)"}
+      description: The coded events of the last three months in the countries watched, one lead per country, kind and day, unconfirmed. Run by hand. Source GDELT Project, gdeltproject.org.
+      format: json
+      events_feed:
+        countries_setting: world_events.geo_watch
+        codes_setting: world_events.gdelt_codes
+        # A GDELT line is born with one source: later mentions land in other
+        # files. Measured 2026-11-06: 166 of 168 matching lines had one.
+        min_sources: 1
+        max_goldstein: -5
+        hours: 2208
+      objects:
+        - as: event
+          type: geo_event
+          key: ref
+          title: title
+          defaults: { status: unconfirmed }
+          properties:
+            ref: ref
+            kind: kind
+            code: code
+            event_at: event_at
+            published_at: published_at
+            known_at: known_at
+            location: location
+            country: country
+            region: region
+            actors: actors
+            source_count: source_count
+            article_count: article_count
+            gdelt_ids: gdelt_ids
+            source_kind: { value: gdelt }
+            credit: { value: "GDELT Project, https://www.gdeltproject.org/" }
+  # D741: verified events of the countries watched, one per country, kind
+  # and day. The downloads need no token: GED holds the history since 1989
+  # (run it by hand or once a year), the Candidate file the current year.
+  # Their address names UCDP's release: update it when UCDP publishes one.
+  - name: Verified events history (UCDP GED download)
+    source: api
+    source_url: "https://ucdp.uu.se/downloads/ged/ged261-csv.zip"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: year }
+    mapping:
+      key: ucdp_ged_file
+      name: Verified events history (UCDP GED)
+      names: {fr: "Historique des événements vérifiés (UCDP GED)"}
+      description: Organized violence since 1989 in the countries watched, from UCDP's GED download, dated by the first report of a source. Source UCDP, Uppsala University, CC BY 4.0.
+      format: json
+      conflict_feed: { source: ucdp_file, countries_setting: world_events.geo_watch, days: 366 }
+      objects:
+        - as: event
+          type: geo_event
+          key: ref
+          title: title
+          # Written on creation only: a member's dismissal stays.
+          defaults: { status: confirmed }
+          properties:
+            ref: ref
+            kind: kind
+            event_at: event_at
+            published_at: known_at
+            known_at: known_at
+            location: location
+            country: country
+            region: region
+            actors: actors
+            source_count: source_count
+            deaths: deaths
+            event_ids: event_ids
+            source_kind: { value: ucdp }
+            credit: { value: "UCDP, Uppsala University (CC BY 4.0): Davies, Pettersson & Öberg 2026; Sundberg & Melander 2013; Hegre et al. 2020" }
+  - name: Verified events this year (UCDP Candidate download)
+    source: api
+    source_url: "https://ucdp.uu.se/downloads/candidateged/GEDEvent_v26_01_26_09.csv"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: month }
+    mapping:
+      key: ucdp_candidate_file
+      name: Verified events this year (UCDP Candidate)
+      names: {fr: "Événements vérifiés de l'année (UCDP Candidate)"}
+      description: Organized violence of the current year in the countries watched, from UCDP's monthly Candidate download, dated by the first report of a source. Source UCDP, Uppsala University, CC BY 4.0.
+      format: json
+      conflict_feed: { source: ucdp_file, countries_setting: world_events.geo_watch, days: 366 }
+      objects:
+        - as: event
+          type: geo_event
+          key: ref
+          title: title
+          # Written on creation only: a member's dismissal stays.
+          defaults: { status: confirmed }
+          properties:
+            ref: ref
+            kind: kind
+            event_at: event_at
+            published_at: known_at
+            known_at: known_at
+            location: location
+            country: country
+            region: region
+            actors: actors
+            source_count: source_count
+            deaths: deaths
+            event_ids: event_ids
+            source_kind: { value: ucdp }
+            credit: { value: "UCDP, Uppsala University (CC BY 4.0): Davies, Pettersson & Öberg 2026; Sundberg & Melander 2013; Hegre et al. 2020" }
+  # The API: a live reading, with a token asked to Uppsala University.
+  - name: Verified events (UCDP)
+    source: api
+    source_url: "https://ucdpapi.pcr.uu.se/api/gedevents/26.0.9"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: week }
+    mapping:
+      key: ucdp_events
+      name: Verified events (UCDP)
+      names: {fr: "Événements vérifiés (UCDP)"}
+      description: The organized violence events coded by UCDP in the countries watched, over the last 60 days. Source UCDP, Uppsala University, CC BY 4.0.
+      format: json
+      conflict_feed: { source: ucdp, countries_setting: world_events.geo_watch, days: 60 }
+      objects:
+        - as: event
+          type: geo_event
+          key: ref
+          title: title
+          # Written on creation only: a member's dismissal stays.
+          defaults: { status: confirmed }
+          properties:
+            ref: ref
+            kind: kind
+            event_at: event_at
+            known_at: known_at
+            location: location
+            country: country
+            region: region
+            actors: actors
+            source_count: source_count
+            deaths: deaths
+            event_ids: event_ids
+            source_kind: { value: ucdp }
+            credit: { value: "UCDP, Uppsala University (CC BY 4.0): Hegre et al. 2020; Davies, Pettersson & Öberg 2026" }
+  - name: Verified events (ACLED, your account)
+    source: api
+    source_url: "https://acleddata.com/api/acled/read"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: week }
+    mapping:
+      key: acled_events
+      name: Verified events (ACLED)
+      names: {fr: "Événements vérifiés (ACLED, votre compte)"}
+      description: The events coded by ACLED in the countries watched, over the last 30 days, read with the organization's own ACLED account and licence.
+      format: json
+      conflict_feed: { source: acled, countries_setting: world_events.geo_watch, days: 30 }
+      objects:
+        - as: event
+          type: geo_event
+          key: ref
+          title: title
+          # Written on creation only: a member's dismissal stays.
+          defaults: { status: confirmed }
+          properties:
+            ref: ref
+            kind: kind
+            event_at: event_at
+            known_at: known_at
+            location: location
+            country: country
+            region: region
+            actors: actors
+            deaths: deaths
+            event_ids: event_ids
+            source_kind: { value: acled }
+            credit: { value: "ACLED (Armed Conflict Location & Event Data), acleddata.com, under the organization's own licence" }

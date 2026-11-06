@@ -975,6 +975,10 @@ pub const ONTOLOGY_UNIQUE_DUPLICATES: &str = "ontology-unique-duplicates";
 /// A person is attached to a case only once its processing basis is declared
 /// (cases-workspace.md K38).
 pub const CASE_LEGAL_BASIS_REQUIRED: &str = "case-legal-basis-required";
+/// A link type marked `member_only` is written only by a member, from a
+/// case that holds its source (markets-research.md D742): never by the
+/// assistant, an import, a service, or outside a case.
+pub const ONTOLOGY_LINK_MEMBER_ONLY: &str = "ontology-link-member-only";
 /// A proposal already reviewed the other way: a rejected one is not retained,
 /// a retained one is not rejected (cases-workspace.md K30).
 pub const CASE_PROPOSAL_STALE: &str = "case-proposal-stale";
@@ -1343,6 +1347,7 @@ pub const ALL: &[&str] = &[
     PROPOSAL_DECIDED,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
+    ONTOLOGY_LINK_MEMBER_ONLY,
     CASE_PROPOSAL_STALE,
     CASE_READS_UNAVAILABLE,
     TRACK_IMPORT_TIMEZONE_REQUIRED,

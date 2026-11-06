@@ -10,10 +10,16 @@
 # Daily prices come from Tiingo with the org's own key (vault secret
 # `markets_tiingo_key`); its free plan is for personal internal use, a
 # commercial use needs its commercial plan.
+# Since 1.1.0 (D734-D738) the series of `move_series` are read every day and
+# an abnormal session becomes a `market_event` of kind `market_move`, found
+# from the series itself, never from the press.
+# Since 1.2.0 the subsidiaries a group declares in the Exhibit 21 of its
+# 10-K become organizations (`declared_key` = country and name) linked to it
+# by `subsidiary_of`, nature `declared`, the exhibit as source.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.0.0"
+version: "1.2.0"
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
 descriptions: {fr: "Sociétés suivies par ticker avec leurs dépôts et chiffres publiés (SEC EDGAR), et séries macroéconomiques (FRED), chaque valeur datée par sa publication. Une aide à l'analyse, pas un conseil en investissement."}
@@ -60,6 +66,32 @@ settings:
     descriptions: {fr: "Codes FRED séparés par des virgules."}
     kind: text
     default: "CPIAUCSL, UNRATE, FEDFUNDS, DGS10, GDPC1"
+  # D737: series watched for abnormal sessions. The defaults are public
+  # domain (EIA oil, Federal Reserve dollar and rate) or need a citation
+  # (VIX: Chicago Board Options Exchange). FRED's SP500 and NASDAQCOM are
+  # left out: S&P Dow Jones Indices and Nasdaq require a prior permission
+  # for any reproduction; equity indices come from ETFs read with Tiingo.
+  - key: move_series
+    name: FRED series watched for abnormal sessions
+    names: {fr: "Séries FRED surveillées (séances anormales)"}
+    description: "Comma-separated CODE:mode:class entries, optionally :k:floor. Mode log_return (prices, indices) or diff (rates, VIX). Class equity_index, commodity, rates, volatility, fx or crypto. FRED's SP500 and NASDAQCOM need the permission of S&P Dow Jones Indices and Nasdaq before any use."
+    descriptions: {fr: "Entrées CODE:mode:classe séparées par des virgules, éventuellement :k:plancher. Mode log_return (cours, indices) ou diff (taux, VIX). Classe equity_index, commodity, rates, volatility, fx ou crypto. SP500 et NASDAQCOM de FRED exigent l'accord de S&P Dow Jones Indices et de Nasdaq avant tout usage."}
+    kind: text
+    default: "VIXCLS:diff:volatility, DGS10:diff:rates, DCOILWTICO:log_return:commodity, DCOILBRENTEU:log_return:commodity, DTWEXBGS:log_return:fx"
+  - key: move_tickers
+    name: Tickers watched for abnormal sessions (Tiingo)
+    names: {fr: "Tickers surveillés (séances anormales, Tiingo)"}
+    description: "Same entries as above for tickers, read with the org's Tiingo key: SPY follows the S&P 500, QQQ the Nasdaq-100."
+    descriptions: {fr: "Mêmes entrées que ci-dessus pour des tickers, lus avec la clé Tiingo de l'org : SPY suit le S&P 500, QQQ le Nasdaq-100."}
+    kind: text
+    default: "SPY:log_return:equity_index, QQQ:log_return:equity_index"
+  - key: move_notify_channels
+    name: Channels of the abnormal session notice
+    names: {fr: "Canaux de l'avis de séance anormale"}
+    description: "Comma-separated names of the org's notification channels (e-mail, Slack, ntfy…) that also get the notice of each abnormal session. The in-app notice is always sent."
+    descriptions: {fr: "Noms des canaux de notification de l'org (e-mail, Slack, ntfy…), séparés par des virgules, qui reçoivent aussi l'avis de chaque séance anormale. L'avis dans l'application part toujours."}
+    kind: text
+    default: ""
 extends:
   - type: organization
     properties:
@@ -72,6 +104,8 @@ extends:
         values: [followed]
         labels: {followed: {fr: "Suivie", en: "Followed"}}
         indexed: true
+      - { key: declared_key, name: Declared as, names: {fr: "Déclarée comme"}, description: "Country and name of a company known by a group's declaration only (Exhibit 21 of a 10-K): the key it is found again by.", descriptions: {fr: "Pays et nom d'une société connue seulement par la déclaration d'un groupe (Exhibit 21 d'un 10-K) : la clé qui la retrouve."}, kind: text, max_len: 400, unique: true }
+      - { key: incorporated_in, name: Incorporated in, names: {fr: "Immatriculée en"}, description: "The jurisdiction as the declaration writes it (a US state, a country).", descriptions: {fr: "La juridiction telle que la déclaration l'écrit (un État américain, un pays)."}, kind: text, max_len: 120 }
       - { key: market_names, name: Names in the press, names: {fr: "Noms dans la presse"}, description: "Comma-separated names the press uses, such as Nvidia for NVIDIA CORP.", descriptions: {fr: "Noms utilisés par la presse, séparés par des virgules, par exemple Nvidia pour NVIDIA CORP."}, kind: text, max_len: 500 }
 types:
   - key: instrument
@@ -98,6 +132,12 @@ types:
         kind: enum
         values: [kept, unreadable]
         labels: {kept: {fr: "Conservé", en: "Kept"}, unreadable: {fr: "Illisible", en: "Unreadable"}}
+      - key: subsidiaries_state
+        name: Subsidiaries (Exhibit 21)
+        names: {fr: "Filiales (Exhibit 21)"}
+        kind: enum
+        values: [read, none, unreadable]
+        labels: {read: {fr: "Lues", en: "Read"}, none: {fr: "Pas d'Exhibit 21", en: "No Exhibit 21"}, unreadable: {fr: "Illisibles", en: "Unreadable"}}
   # What the press says (D540): a lead to check, never an input of a figure.
   - key: market_news
     name: Press article
@@ -124,7 +164,77 @@ types:
     icon: chart
     properties:
       - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 64, unique: true, required: true }
+  # D529, D734: a dated market fact, always sourced. In V1 only the
+  # market_move kind is written, by the detector from the series itself.
+  - key: market_event
+    name: Market event
+    names: {fr: "Événement de marché"}
+    icon: activity
+    properties:
+      - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 200, unique: true, required: true }
+      - key: kind
+        name: Kind
+        names: {fr: "Nature"}
+        kind: enum
+        values: [earnings, guidance, capital_operation, m_and_a, management_change, rating, litigation, regulatory, macro, market_move, other]
+        labels:
+          earnings: {fr: "Résultats", en: "Earnings"}
+          guidance: {fr: "Prévisions", en: "Guidance"}
+          capital_operation: {fr: "Opération sur le capital", en: "Capital operation"}
+          m_and_a: {fr: "Fusion ou acquisition", en: "Merger or acquisition"}
+          management_change: {fr: "Changement de dirigeant", en: "Management change"}
+          rating: {fr: "Notation", en: "Rating"}
+          litigation: {fr: "Contentieux", en: "Litigation"}
+          regulatory: {fr: "Réglementaire", en: "Regulatory"}
+          macro: {fr: "Macroéconomique", en: "Macroeconomic"}
+          market_move: {fr: "Mouvement de série", en: "Series move"}
+          other: {fr: "Autre", en: "Other"}
+        indexed: true
+      - { key: event_at, name: Session, names: {fr: "Séance"}, kind: date, indexed: true }
+      - { key: known_at, name: Known at, names: {fr: "Connu le"}, kind: date_time, indexed: true }
+      - { key: backfilled, name: Caught up from history, names: {fr: "Rattrapé sur l'historique"}, description: "Found on a history read at once: its real publication date is lost, a past-dated test leaves it out.", descriptions: {fr: "Trouvé sur un historique lu d'un coup : sa vraie date de publication est perdue, un test daté le laisse de côté."}, kind: bool }
+      - { key: series_code, name: Series, names: {fr: "Série"}, kind: text, max_len: 64, indexed: true }
+      - key: asset_class
+        name: Asset class
+        names: {fr: "Classe d'actifs"}
+        kind: enum
+        values: [equity_index, commodity, rates, volatility, fx, crypto]
+        labels:
+          equity_index: {fr: "Indice actions", en: "Equity index"}
+          commodity: {fr: "Matière première", en: "Commodity"}
+          rates: {fr: "Taux", en: "Rates"}
+          volatility: {fr: "Volatilité", en: "Volatility"}
+          fx: {fr: "Change", en: "Currency"}
+          crypto: {fr: "Crypto", en: "Crypto"}
+        indexed: true
+      - key: move_direction
+        name: Direction
+        names: {fr: "Sens"}
+        kind: enum
+        values: [up, down]
+        labels: {up: {fr: "Hausse", en: "Up"}, down: {fr: "Baisse", en: "Down"}}
+        colors: { up: green, down: red }
+        indexed: true
+      - key: mode
+        name: Measure
+        names: {fr: "Mesure"}
+        kind: enum
+        values: [log_return, diff]
+        labels: {log_return: {fr: "Rendement logarithmique", en: "Log return"}, diff: {fr: "Écart", en: "Difference"}}
+      - { key: measure, name: Change, names: {fr: "Variation"}, kind: number }
+      - { key: sigma, name: Usual volatility (sigma), names: {fr: "Volatilité habituelle (sigma)"}, kind: number }
+      - { key: threshold, name: Threshold crossed, names: {fr: "Seuil franchi"}, kind: number }
+      - { key: score, name: Change in sigmas, names: {fr: "Variation en sigmas"}, kind: number }
+      - { key: metric, name: Source metric, names: {fr: "Mesure source"}, description: "The stored values the event was computed from: this metric of the series, at this session, as known at the time above.", descriptions: {fr: "Les valeurs stockées dont l'événement est calculé : cette mesure de la série, à cette séance, telle que connue à l'heure ci-dessus."}, kind: text, max_len: 64 }
 link_types:
+  - key: event_about
+    name: is about
+    names: {fr: "concerne"}
+    inverse_name: has as event
+    inverse_names: {fr: "a pour événement"}
+    from_types: [market_event]
+    to_types: [instrument, macro_series]
+    one_target: true
   - key: issues
     name: issues
     names: {fr: "émet"}
@@ -260,6 +370,48 @@ imports:
           title: metric
           properties:
             code: metric
+  - name: Watched series (FRED)
+    source: api
+    source_url: "https://fred.stlouisfed.org/graph/fredgraph.csv?id={value}"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: fred_move_series
+      name: Watched series
+      names: {fr: "Séries surveillées"}
+      description: The series of the move_series setting; each run is followed by the search for abnormal sessions (D735).
+      shape: dated_csv
+      contact_setting: markets.source_contact
+      per_setting_code: markets.move_series
+      observations: { type: macro_series, property: code }
+      objects:
+        - as: series
+          type: macro_series
+          key: code
+          title: metric
+          properties:
+            code: metric
+  - name: Watched prices (Tiingo)
+    source: api
+    source_url: "https://api.tiingo.com/tiingo/daily/{value}/prices?startDate={since}"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: tiingo_move_tickers
+      name: Watched prices
+      names: {fr: "Cours surveillés"}
+      description: The tickers of the move_tickers setting; each run is followed by the search for abnormal sessions (D735).
+      shape: daily_prices
+      keyed_source: tiingo
+      per_setting_code: markets.move_tickers
+      observations: { type: instrument, property: ticker }
+      objects:
+        - as: instrument
+          type: instrument
+          key: ticker
+          title: "@queried"
+          properties:
+            ticker: "@queried"
   - name: Daily prices (Tiingo)
     source: api
     source_url: "https://api.tiingo.com/tiingo/daily/{value}/prices?startDate={since}"

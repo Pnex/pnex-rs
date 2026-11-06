@@ -120,6 +120,8 @@ pub(super) async fn check<C: ConnectionTrait>(
         (!m.steps.is_empty(), "steps"),
         (m.per_object.is_some(), "per_object"),
         (m.press_feed.is_some(), "press_feed"),
+        (m.events_feed.is_some(), "events_feed"),
+        (m.conflict_feed.is_some(), "conflict_feed"),
         (m.per_setting_code.is_some(), "per_setting_code"),
         (m.rows_in_setting.is_some(), "rows_in_setting"),
         (m.observations.is_some(), "observations"),

@@ -30,12 +30,163 @@ fn window_label(from: i32, to: i32) -> String {
 }
 
 #[component]
-pub fn ReactionPanel(id: String) -> Element {
+pub fn ReactionPanel(id: String, instrument: bool, series: String) -> Element {
     rsx! {
         div { class: "space-y-4", "data-testid": "onto-reaction",
             p { class: "text-xs text-gray-500", {t!("onto-figures-disclaimer")} }
-            OneDate { id }
-            RuleTest {}
+            if instrument {
+                OneDate { id }
+                RuleTest {}
+            }
+            if !series.is_empty() {
+                EventRuleTest { series }
+            }
+        }
+    }
+}
+
+/// World event kinds and move filters a rule on events offers (D743).
+const GEO_KINDS: [&str; 6] = [
+    "armed_conflict",
+    "attack",
+    "sanctions",
+    "blockade",
+    "ceasefire",
+    "natural_disaster",
+];
+const ASSET_CLASSES: [&str; 6] = [
+    "equity_index",
+    "commodity",
+    "rates",
+    "volatility",
+    "fx",
+    "crypto",
+];
+
+/// How this series moved after world events or abnormal sessions (D743).
+#[component]
+fn EventRuleTest(series: String) -> Element {
+    let mut dates = use_signal(|| "geo_events".to_string());
+    let mut kind = use_signal(String::new);
+    let mut country = use_signal(String::new);
+    let mut unconfirmed = use_signal(|| false);
+    let mut asset_class = use_signal(String::new);
+    let mut direction = use_signal(String::new);
+    let result = use_resource(move || {
+        let series = series.clone();
+        let filters = if dates() == "geo_events" {
+            vec![
+                ("kind", kind()),
+                ("country", country()),
+                ("include_unconfirmed", unconfirmed().to_string()),
+            ]
+        } else {
+            vec![("asset_class", asset_class()), ("direction", direction())]
+        };
+        let d = dates();
+        async move { api::markets::rule_test_on_events(&d, &series, &filters).await }
+    });
+    let read = result.read();
+    rsx! {
+        div { class: SECTION, "data-testid": "onto-event-rule",
+            label { class: "text-sm text-gray-700 space-y-1 block",
+                span { class: "block font-medium", {t!("onto-event-rule")} }
+                select {
+                    class: INPUT,
+                    "data-testid": "onto-event-rule-dates",
+                    onchange: move |e| dates.set(e.value()),
+                    option {
+                        value: "geo_events",
+                        selected: dates() == "geo_events",
+                        {t!("onto-event-rule-world")}
+                    }
+                    option {
+                        value: "market_moves",
+                        selected: dates() == "market_moves",
+                        {t!("onto-event-rule-moves")}
+                    }
+                }
+            }
+            if dates() == "geo_events" {
+                div { class: "flex flex-wrap gap-3 items-end",
+                    select { class: INPUT, onchange: move |e| kind.set(e.value()),
+                        option { value: "", selected: kind().is_empty(),
+                            {t!("onto-event-rule-any-kind")}
+                        }
+                        for k in GEO_KINDS {
+                            option {
+                                key: "{k}",
+                                value: "{k}",
+                                selected: kind() == k,
+                                {rule_label(&format!("onto-geo-kind-{}", k.replace('_', "-")))}
+                            }
+                        }
+                    }
+                    input {
+                        class: INPUT,
+                        placeholder: t!("onto-event-rule-country"),
+                        value: "{country}",
+                        onchange: move |e| country.set(e.value().trim().to_uppercase()),
+                    }
+                    label { class: "text-sm text-gray-700 flex items-center gap-2",
+                        input {
+                            r#type: "checkbox",
+                            checked: unconfirmed(),
+                            onchange: move |e| unconfirmed.set(e.checked()),
+                        }
+                        {t!("onto-event-rule-unconfirmed")}
+                    }
+                }
+            } else {
+                div { class: "flex flex-wrap gap-3",
+                    select {
+                        class: INPUT,
+                        onchange: move |e| asset_class.set(e.value()),
+                        option { value: "", selected: asset_class().is_empty(),
+                            {t!("onto-event-rule-any-class")}
+                        }
+                        for c in ASSET_CLASSES {
+                            option {
+                                key: "{c}",
+                                value: "{c}",
+                                selected: asset_class() == c,
+                                {rule_label(&format!("onto-asset-class-{}", c.replace('_', "-")))}
+                            }
+                        }
+                    }
+                    select {
+                        class: INPUT,
+                        onchange: move |e| direction.set(e.value()),
+                        option { value: "", selected: direction().is_empty(),
+                            {t!("onto-event-rule-any-direction")}
+                        }
+                        option { value: "up", selected: direction() == "up",
+                            {t!("onto-event-rule-up")}
+                        }
+                        option { value: "down", selected: direction() == "down",
+                            {t!("onto-event-rule-down")}
+                        }
+                    }
+                }
+            }
+            p { class: "text-xs text-gray-500", {t!("onto-event-rule-known-at")} }
+            match &*read {
+                Some(Err(e)) => rsx! {
+                    p { class: "text-sm text-red-700", {crate::api::error_i18n::localize(e)} }
+                },
+                Some(Ok(r)) => rsx! {
+                    p { class: "text-sm text-gray-700",
+                        {t!("onto-event-rule-counts", events : r.filings, merged : r.merged)}
+                    }
+                    if let Some(share) = r.unconfirmed_share {
+                        p { class: "text-sm text-amber-700",
+                            {t!("onto-event-rule-unconfirmed-share", share : format!("{:.0}", share * 100.0))}
+                        }
+                    }
+                    RuleTable { result: r.clone(), on_events: true }
+                },
+                None => rsx! {},
+            }
         }
     }
 }
@@ -154,7 +305,7 @@ fn RuleTest() -> Element {
                     p { class: "text-sm text-red-700", {crate::api::error_i18n::localize(e)} }
                 },
                 Some(Ok(r)) => rsx! {
-                    RuleTable { result: r.clone() }
+                    RuleTable { result: r.clone(), on_events: false }
                 },
                 None => rsx! {},
             }
@@ -167,19 +318,21 @@ fn rule_label(key: &str) -> String {
 }
 
 #[component]
-fn RuleTable(result: RuleResult) -> Element {
+fn RuleTable(result: RuleResult, on_events: bool) -> Element {
     if result.benchmark_missing {
         return rsx! {
             p { class: "text-sm text-gray-500", {t!("onto-reaction-no-benchmark")} }
         };
     }
     rsx! {
-        p { class: "text-sm text-gray-700",
-            {
-                t!(
-                    "onto-reaction-rule-counts", filings : result.filings, instruments : result
-                    .instruments
-                )
+        if !on_events {
+            p { class: "text-sm text-gray-700",
+                {
+                    t!(
+                        "onto-reaction-rule-counts", filings : result.filings, instruments : result
+                        .instruments
+                    )
+                }
             }
         }
         div { class: "overflow-x-auto",

@@ -913,6 +913,8 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("markets_event_study", Access::Org("ontology:read")),
     ("markets_rule_test", Access::Org("ontology:read")),
     ("markets_position_result", Access::Org("ontology:read")),
+    ("markets_session", Access::Org("ontology:read")),
+    ("markets_world_events", Access::Org("ontology:read")),
     ("ontology_objects_update", Access::Org("ontology:write")),
     (
         "ontology_packs_install",
@@ -1225,6 +1227,7 @@ pub const TOOLS: &[(&str, Option<&str>)] = &[
     ("read_knowledge", None),
     ("market_figures", Some("ontology:read")),
     ("market_rule_test", Some("ontology:read")),
+    ("market_session", Some("ontology:read")),
     ("read_memory", Some("memory:read")),
     ("save_object_type", Some("ontology.schema:write")),
     ("search_docs", Some("docs:read")),

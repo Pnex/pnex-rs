@@ -206,6 +206,11 @@ pub struct LinkTypeDef {
     /// a person decides (crm.md D610).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub propose_erase_targets: bool,
+    /// A judgement only a member writes, from a case that holds the
+    /// source: never an import, a service or the assistant
+    /// (markets-research.md D742, a market move attributed to a cause).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub member_only: bool,
     /// Attributes carried by each link (scalar properties only).
     #[serde(default)]
     pub attributes: Vec<PropertyDef>,
@@ -599,6 +604,7 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         evidence: false,
         erase_sources: false,
         propose_erase_targets: false,
+        member_only: false,
         attributes: Vec::new(),
     };
     vec![

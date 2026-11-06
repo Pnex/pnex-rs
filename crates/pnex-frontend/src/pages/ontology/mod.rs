@@ -11,6 +11,7 @@ pub mod packs;
 pub mod profile_capture;
 mod reaction;
 pub mod schema;
+mod session;
 pub mod type_editor;
 
 use dioxus::prelude::*;

@@ -81,6 +81,10 @@ pub enum OntologyError {
     /// A person joins a case only once its processing basis is declared (K38).
     #[error("case legal basis required")]
     CaseLegalBasisRequired,
+    /// A `member_only` link written by other than a member, or outside a
+    /// case (markets-research.md D742).
+    #[error("link member only")]
+    LinkMemberOnly,
     /// The proposal was already reviewed the other way (K30).
     #[error("case proposal stale")]
     CaseProposalStale,

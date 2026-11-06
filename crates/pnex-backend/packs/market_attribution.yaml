@@ -1,0 +1,25 @@
+# Pack "Market attribution" (markets-research.md D742): a member who has
+# checked it says, in a case, which world event or article a market move is
+# attributed to, with a written justification and a source. PNEX never
+# stores such a link by itself: the same window is computed at reading time
+# and shown as such, never as a cause. Neither the assistant nor an import
+# writes this link.
+key: market_attribution
+name: Market attribution
+names: {fr: "Attribution des mouvements de marché"}
+version: "1.0.0"
+requires: [markets, world_events]
+description: Lets a member attribute a market move to a world event or an article, in a case, with a justification and a source. Never automatic.
+descriptions: {fr: "Permet à un membre d'attribuer un mouvement de marché à un événement du monde ou à un article, dans un dossier, avec une justification et une source. Jamais automatique."}
+link_types:
+  - key: attributed_to
+    name: is attributed to
+    names: {fr: "est attribué à"}
+    inverse_name: is given as the cause of
+    inverse_names: {fr: "est donné comme cause de"}
+    from_types: [market_event]
+    to_types: [geo_event, market_news]
+    member_only: true
+    attributes:
+      - { key: justification, name: Justification, names: {fr: "Justification"}, kind: text, max_len: 2000, required: true }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: url, required: true }

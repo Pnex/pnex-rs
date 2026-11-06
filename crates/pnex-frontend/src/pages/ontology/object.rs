@@ -109,8 +109,29 @@ pub fn OntologyObject(id: String) -> Element {
     {
         tabs.insert(4, ("figures", t!("onto-tab-figures")));
     }
-    if o.type_key == "instrument" {
+    if o.type_key == "instrument" || o.type_key == "macro_series" {
         tabs.insert(5, ("reaction", t!("onto-tab-reaction")));
+    }
+    // D738, D742: the session of a move, or the moves around a world event.
+    // The code a reaction is measured on: a ticker or a series code (D743).
+    let reaction_series = o
+        .properties
+        .get(if o.type_key == "instrument" {
+            "ticker"
+        } else {
+            "code"
+        })
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let event_day = o
+        .properties
+        .get("event_at")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .filter(|_| o.type_key == "market_event" || o.type_key == "geo_event");
+    if event_day.is_some() {
+        tabs.insert(1, ("session", t!("onto-tab-session")));
     }
     if o.type_key == "paper_position" {
         tabs.insert(4, ("position", t!("onto-tab-position")));
@@ -276,7 +297,13 @@ pub fn OntologyObject(id: String) -> Element {
                 } else if tab() == "position" {
                     super::reaction::PositionPanel { id: o.id.clone() }
                 } else if tab() == "reaction" {
-                    super::reaction::ReactionPanel { id: o.id.clone() }
+                    super::reaction::ReactionPanel {
+                        id: o.id.clone(),
+                        instrument: o.type_key == "instrument",
+                        series: reaction_series.clone(),
+                    }
+                } else if tab() == "session" {
+                    super::session::SessionPanel { date: event_day.clone().unwrap_or_default() }
                 } else if tab() == "figures" {
                     super::observations::ObservationsPanel { id: o.id.clone() }
                 } else if tab() == "provenance" {

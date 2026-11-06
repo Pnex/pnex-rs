@@ -322,6 +322,7 @@ fn LinkTypeForm(
             evidence: evidence(),
             erase_sources: false,
             propose_erase_targets: false,
+            member_only: false,
             attributes: Vec::new(),
         };
         busy.set(true);

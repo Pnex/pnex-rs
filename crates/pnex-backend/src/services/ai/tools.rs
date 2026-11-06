@@ -498,8 +498,13 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "market_rule_test",
-            description: "How the followed instruments moved after a kind of filing (form 8-K, 10-Q…; item such as 2.02 for results), against dates drawn at random: abnormal return per window, with the number of events. Always give the number of events and say that instruments no longer followed are missing. An aid to analysis, never a recommendation. Read-only.",
-            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"form":{"type":"string"},"item":{"type":"string"}},"required":["form"]}"#).expect("static schema"),
+            description: "How prices moved after dated events, against dates drawn at random: abnormal return per window, with the number of events. dates=filings (default): the followed instruments after a kind of filing (form 8-K, 10-Q…; item such as 2.02 for results). dates=geo_events or market_moves: one series (series = ticker or macro code such as DCOILWTICO) after world events (kind, country) or abnormal sessions (asset_class, direction), dated by when they became known; close events count once (merged), unconfirmed world events stay out unless include_unconfirmed (then give unconfirmed_share). Always give the number of events, say that instruments no longer followed are missing, and never present a result as a cause. An aid to analysis, never a recommendation. Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"dates":{"type":"string","enum":["filings","geo_events","market_moves"]},"form":{"type":"string"},"item":{"type":"string"},"series":{"type":"string"},"kind":{"type":"string","enum":["armed_conflict","attack","sanctions","blockade","ceasefire","natural_disaster","other"]},"country":{"type":"string"},"include_unconfirmed":{"type":"boolean"},"asset_class":{"type":"string","enum":["equity_index","commodity","rates","volatility","fx","crypto"]},"direction":{"type":"string","enum":["up","down"]}}}"#).expect("static schema"),
+        },
+        ToolSpec {
+            name: "market_session",
+            description: "The abnormal sessions of the watched series (index, oil, rates, VIX…) around a date (YYYY-MM-DD), and the world events of the same window. A world event in the same window is a concomitance, never a cause: say \"same window, not a cause\" and never attribute a move yourself; only the user attributes one, from a case. Read-only.",
+            input_schema: serde_json::from_str(r#"{"type":"object","properties":{"date":{"type":"string"}},"required":["date"]}"#).expect("static schema"),
         },
         ToolSpec {
             name: "search_docs",
@@ -708,6 +713,7 @@ pub async fn execute(
         }
         "market_figures" => super::market_tools::market_figures(deps, args).await,
         "market_rule_test" => super::market_tools::market_rule_test(deps, args).await,
+        "market_session" => super::market_tools::market_session(deps, args).await,
         "search_docs" => super::doc_tools::search_docs(deps, args).await,
         "read_chunk" => super::doc_tools::read_chunk(deps, args).await,
         "open_page" => super::doc_tools::open_page(deps, args).await,
@@ -1269,7 +1275,15 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
             s(
                 "ai-trace-market-rule",
                 json!({"count": n}),
-                format!("reaction to {n} filing(s)"),
+                format!("reaction to {n} event(s)"),
+            )
+        }
+        "market_session" => {
+            let n = count(&v["session"]["moves"]);
+            s(
+                "ai-trace-market-session",
+                json!({"count": n}),
+                format!("{n} abnormal session move(s)"),
             )
         }
         "search_docs" => {
@@ -1843,6 +1857,7 @@ mod tests {
                 "save_object_type",
                 "market_figures",
                 "market_rule_test",
+                "market_session",
                 "search_docs",
                 "read_chunk",
                 "open_page",

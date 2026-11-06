@@ -91,6 +91,7 @@ pub fn Map() -> Element {
     let mut search = use_signal(String::new);
     let mut filter_device = use_signal(|| false);
     let mut filter_position = use_signal(|| false);
+    let mut show_world = use_signal(|| filters::SHOW_WORLD.load(Ordering::Relaxed));
     let mut filter_emoji = use_signal(String::new);
     // Sidebar list page (server-side, D14); back to the first page whenever
     // a filter changes.
@@ -319,6 +320,19 @@ pub fn Map() -> Element {
                                 },
                             }
                             {t!("poi-filter-gps")}
+                        }
+                        label { class: "flex items-center gap-2 text-sm text-gray-700",
+                            input {
+                                r#type: "checkbox",
+                                "data-testid": "map-world-events",
+                                checked: show_world(),
+                                onchange: move |_| {
+                                    show_world.toggle();
+                                    filters::SHOW_WORLD.store(show_world(), Ordering::Relaxed);
+                                    filters_rev += 1;
+                                },
+                            }
+                            {t!("map-world-events")}
                         }
                         div { class: "flex items-center gap-2",
                             span { class: "text-sm text-gray-700 shrink-0", {t!("poi-filter-emoji")} }
