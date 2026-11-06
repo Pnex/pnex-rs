@@ -320,4 +320,42 @@ async fn a_sandbox_vm_gets_its_repository_files_and_caches_and_setup_never_its_s
         assert_eq!(s.caches.len(), 1, "the cache is saved under its key");
     }
     assert!(fc.list().await.unwrap().is_empty());
+
+    // Stopped before its end: what the agent left is still sent, in the background (D763).
+    server.lock().unwrap().outputs.clear();
+    let spec = RunnerJobSpec {
+        command: vec![
+            "sh".into(),
+            "-c".into(),
+            "echo partial > $PNEX_ARTIFACTS_OUT/report; sync; sleep 600".into(),
+        ],
+        ..spec
+    };
+    let input = RunnerSandboxInput {
+        setup: vec![],
+        ..input
+    };
+    fc.start("box-b", &spec, None, None, Some(&input))
+        .await
+        .unwrap();
+    while !console_of(&fc, "box-b", "vm")
+        .await
+        .contains("Successfully started")
+    {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    fc.destroy("box-b").await.unwrap();
+    assert_eq!(fc.status("box-b").await.unwrap(), WorkloadStatus::Gone);
+    let sent = Instant::now();
+    while server.lock().unwrap().outputs.is_empty() && sent.elapsed() < Duration::from_secs(30) {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    assert_eq!(
+        server.lock().unwrap().outputs["report"].1,
+        b"partial\n".to_vec()
+    );
+    while !fc.list().await.unwrap().is_empty() || work.path().join("fc/jobs/box-b").exists() {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
 }

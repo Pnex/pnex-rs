@@ -9,10 +9,10 @@
 //! At the end the runner reads the outputs and caches off the disk (`debugfs`, no mount,
 //! no root) and sends them. Services are not run in a VM yet.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use pnex_core::agent_runs::{ARTIFACTS_IN_DIR, ARTIFACTS_OUT_DIR};
 use pnex_core::runners::{
@@ -48,6 +48,8 @@ pub struct Firecracker {
     jobs: Mutex<HashMap<String, Held>>,
     /// The /30 each running VM holds (`vm_net::slot`).
     slots: Mutex<HashMap<String, u16>>,
+    /// Jobs destroyed before their end whose outputs are still being sent (D763).
+    collecting: Arc<Mutex<HashSet<String>>>,
 }
 
 /// A job in progress: its task (prepare, boot, collect) and what it was given.
@@ -549,6 +551,7 @@ impl Firecracker {
             runner_id: String::new(),
             jobs: Mutex::new(HashMap::new()),
             slots: Mutex::new(HashMap::new()),
+            collecting: Arc::default(),
         }
     }
 
@@ -678,26 +681,31 @@ impl Executor for Firecracker {
     }
 
     async fn destroy(&self, job: &str) -> Result<(), String> {
+        if self
+            .collecting
+            .lock()
+            .map_err(|_| "collect table poisoned")?
+            .contains(job)
+        {
+            // Its sending ends on its own, then the folder goes.
+            return Ok(());
+        }
         let held = self
             .jobs
             .lock()
             .map_err(|_| "job table poisoned")?
             .remove(job);
         let dir = self.job_dir(job);
+        let mut sending = None;
         if let Some(h) = held {
             if !h.task.is_finished() {
                 h.task.abort();
                 let _ = h.task.await;
-                // Stopped before its end (cancel, deadline): what it left is still sent.
-                if let Some(s) = &h.sandbox {
-                    let disk = ["disk.ext4", "setup.ext4"]
-                        .iter()
-                        .map(|d| dir.join(d))
-                        .find(|d| d.exists());
-                    if let Some(disk) = disk {
-                        self.machine().collect(&dir, &disk, s).await;
-                    }
-                }
+                let disk = ["disk.ext4", "setup.ext4"]
+                    .iter()
+                    .map(|d| dir.join(d))
+                    .find(|d| d.exists());
+                sending = h.sandbox.zip(disk);
             }
         }
         if self
@@ -708,6 +716,31 @@ impl Executor for Firecracker {
             .is_some()
         {
             crate::vm_net::down(job)?;
+        }
+        // Stopped before its end (cancel, deadline): what it left is still sent, in the
+        // background and for as long as a pod's collector gets (D763).
+        if let Some((s, disk)) = sending {
+            let (machine, collecting, id) =
+                (self.machine(), self.collecting.clone(), job.to_string());
+            collecting
+                .lock()
+                .map_err(|_| "collect table poisoned")?
+                .insert(id.clone());
+            tokio::spawn(async move {
+                let grace =
+                    std::time::Duration::from_secs(crate::artifacts::COLLECT_GRACE_SECS.into());
+                if tokio::time::timeout(grace, machine.collect(&dir, &disk, &s))
+                    .await
+                    .is_err()
+                {
+                    tracing::warn!(job = id, "outputs of a stopped VM not sent in time");
+                }
+                remove(&dir);
+                if let Ok(mut c) = collecting.lock() {
+                    c.remove(&id);
+                }
+            });
+            return Ok(());
         }
         match std::fs::remove_dir_all(&dir) {
             Ok(()) => Ok(()),
@@ -723,6 +756,10 @@ impl Executor for Firecracker {
             .flatten()
             .filter_map(|e| e.file_name().into_string().ok())
             .collect();
+        // A job still sending is not a stray.
+        if let Ok(c) = self.collecting.lock() {
+            jobs.retain(|j| !c.contains(j));
+        }
         jobs.sort();
         Ok(jobs)
     }
