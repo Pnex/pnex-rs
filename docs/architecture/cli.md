@@ -56,6 +56,11 @@ au fil de l'eau, chaque partie retentée quatre fois sur une panne réseau ou un
 rend l'envoi en JSON et sort en erreur s'il n'est pas devenu une version. Fonctionne derrière un proxy qui
 limite la taille d'une requête (Cloudflare : 100 Mo). `--delimiter`, `--append`.
 
+`pnex media load <fichier>` envoie un fichier média de la même façon (`/api/v1/media/uploads`), attend
+l'assemblage et sort en erreur s'il n'est pas devenu une version (`code` du refus, par exemple
+`media-format-unsupported`). `--asset <id>` en fait une nouvelle version, sinon un nouvel asset (`--name`,
+`--kind`). Pas de `--yes` : l'opération n'est pas classée dangereuse.
+
 `pnex import run <id> --yes` lance une exécution d'import et rend la réponse du
 serveur ; avec `--wait`, il la suit et sort en 1 si elle ne finit pas `applied`
 (`failed`, `refused`, `stale`, ou `preview` : rien n'a été écrit). Un serveur

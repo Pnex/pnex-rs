@@ -246,9 +246,29 @@ fn cli(ops: &[Op]) -> Command {
             }
             group = group.subcommand(cmd);
         }
+        if tag == "media" {
+            group = group.subcommand(media_load());
+        }
         root = root.subcommand(group);
     }
     root
+}
+
+fn media_load() -> Command {
+    Command::new("load")
+        .about("Send a media file in parts, whatever a proxy allows per request, and wait for its join; exits non-zero unless it becomes a version")
+        .arg(Arg::new("file").required(true).help("Path of the file"))
+        .arg(
+            Arg::new("asset")
+                .long("asset")
+                .help("Asset id: the file becomes its new version"),
+        )
+        .arg(Arg::new("name").long("name").help("Name of a new asset"))
+        .arg(
+            Arg::new("kind")
+                .long("kind")
+                .help("Kind of a new asset. Default: from the file"),
+        )
 }
 
 fn read_body(arg: &str) -> Result<Vec<u8>> {
@@ -485,25 +505,19 @@ fn send_part(
     }
 }
 
-/// `pnex dataset load`: the conversion ends on the server whatever happens here.
-#[allow(clippy::too_many_arguments)]
-fn load_dataset(
+/// Opens an upload at `start` with `input`, sends `file` in parts, closes it and waits
+/// until it is `done` or `failed`. The join ends on the server whatever happens here.
+fn send_in_parts(
     http: &Client,
     session: &mut Session,
     org: Option<i64>,
-    id: &str,
+    start: &str,
+    input: Value,
     file: &str,
-    delimiter: Option<&String>,
-    append: bool,
     patience: u32,
-) -> Result<()> {
+) -> Result<Value> {
     let mut source = std::fs::File::open(file).with_context(|| format!("cannot read {file}"))?;
-    let base = format!("/api/v1/datasets/{}/uploads", encode(id));
-    let input = serde_json::json!({
-        "kind": if append { "append" } else { "snapshot" },
-        "delimiter": delimiter,
-    });
-    let (status, upload) = post_json(http, session, org, &base, input)?;
+    let (status, upload) = post_json(http, session, org, start, input)?;
     if !status.is_success() {
         bail!("HTTP {status}: {upload}");
     }
@@ -511,7 +525,7 @@ fn load_dataset(
         .as_str()
         .context("upload without an id")?
         .to_string();
-    let path = format!("{base}/{}", encode(&upload_id));
+    let path = format!("{start}/{}", encode(&upload_id));
     let mut parts = 0;
     loop {
         let part = read_part(&mut source)?;
@@ -556,7 +570,20 @@ fn load_dataset(
             upload["code"].as_str().unwrap_or("unknown")
         );
     }
-    Ok(())
+    Ok(upload)
+}
+
+/// What `pnex media load` declares: the file's own name, and the asset when it is a new version.
+fn media_upload_input(
+    file: &str,
+    asset: Option<&String>,
+    name: Option<&String>,
+    kind: Option<&String>,
+) -> Value {
+    let filename = std::path::Path::new(file)
+        .file_name()
+        .map_or_else(|| file.to_string(), |n| n.to_string_lossy().into_owned());
+    serde_json::json!({ "filename": filename, "asset_id": asset, "name": name, "kind": kind })
 }
 
 fn post_json(
@@ -681,17 +708,47 @@ fn run() -> Result<()> {
             if org.is_none() {
                 bail!("no organisation: pick one with `pnex org <id>` or pass --org");
             }
-            load_dataset(
+            let id = m.get_one::<String>("id").expect("required");
+            let input = serde_json::json!({
+                "kind": if m.get_flag("append") { "append" } else { "snapshot" },
+                "delimiter": m.get_one::<String>("delimiter"),
+            });
+            send_in_parts(
                 &http,
                 &mut session,
                 org,
-                m.get_one::<String>("id").expect("required"),
+                &format!("/api/v1/datasets/{}/uploads", encode(id)),
+                input,
                 m.get_one::<String>("file").expect("required"),
-                m.get_one::<String>("delimiter"),
-                m.get_flag("append"),
                 // Five minutes: longer than a rollout.
                 150,
             )
+            .map(drop)
+        }
+        ("media", m) if m.subcommand_name() == Some("load") => {
+            let (_, m) = m.subcommand().expect("subcommand required");
+            let mut session = Session::load()?;
+            let org = org.or(session.org);
+            if org.is_none() {
+                bail!("no organisation: pick one with `pnex org <id>` or pass --org");
+            }
+            let file = m.get_one::<String>("file").expect("required");
+            let input = media_upload_input(
+                file,
+                m.get_one::<String>("asset"),
+                m.get_one::<String>("name"),
+                m.get_one::<String>("kind"),
+            );
+            send_in_parts(
+                &http,
+                &mut session,
+                org,
+                "/api/v1/media/uploads",
+                input,
+                file,
+                150,
+            )
+            .map(drop)
         }
         ("import", m) => {
             let (_, m) = m.subcommand().expect("subcommand required");
@@ -747,6 +804,18 @@ mod tests {
         );
         assert_eq!(read_part(&mut file).unwrap().len(), 5);
         assert!(read_part(&mut file).unwrap().is_empty());
+    }
+
+    #[test]
+    fn media_load_declares_the_file_name_only() {
+        let asset = "a1".to_string();
+        let input = media_upload_input("/tmp/dir/scan.ply", Some(&asset), None, None);
+        assert_eq!(input["filename"], "scan.ply");
+        assert_eq!(input["asset_id"], "a1");
+        assert!(input["name"].is_null());
+        let m = cli(&ops()).get_matches_from(["pnex", "media", "load", "x.mp4", "--kind", "video"]);
+        let (_, m) = m.subcommand().unwrap();
+        assert_eq!(m.subcommand_name(), Some("load"));
     }
 
     use super::*;
