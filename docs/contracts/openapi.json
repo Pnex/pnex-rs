@@ -7051,6 +7051,15 @@
         ],
         "type": "string"
       },
+      "DateSource": {
+        "description": "Where the dates of a rule come from (D743).",
+        "enum": [
+          "filings",
+          "geo_events",
+          "market_moves"
+        ],
+        "type": "string"
+      },
       "DecisionKind": {
         "enum": [
           "accept",
@@ -12461,6 +12470,10 @@
           "key": {
             "type": "string"
           },
+          "member_only": {
+            "description": "A judgement only a member writes, from a case that holds the\nsource: never an import, a service or the assistant\n(markets-research.md D742, a market move attributed to a cause).",
+            "type": "boolean"
+          },
           "name": {
             "type": "string"
           },
@@ -13560,6 +13573,44 @@
           "value",
           "color",
           "count"
+        ],
+        "type": "object"
+      },
+      "MarketSession": {
+        "description": "The moves and world events of the window around one session (D738,\nD742): computed at reading time, nothing is stored between them.",
+        "properties": {
+          "date": {
+            "format": "date",
+            "type": "string"
+          },
+          "moves": {
+            "description": "Moves of the window, `date` first, then by score.",
+            "items": {
+              "$ref": "#/components/schemas/SessionMove"
+            },
+            "type": "array"
+          },
+          "window_from": {
+            "format": "date",
+            "type": "string"
+          },
+          "window_to": {
+            "format": "date",
+            "type": "string"
+          },
+          "world_events": {
+            "items": {
+              "$ref": "#/components/schemas/SessionWorldEvent"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "date",
+          "window_from",
+          "window_to",
+          "moves",
+          "world_events"
         ],
         "type": "object"
       },
@@ -22035,6 +22086,42 @@
         ],
         "type": "object"
       },
+      "Paginated_WorldEventPoint": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/WorldEventPoint"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "PairRequest": {
         "description": "Pairing body, sent with the user's bearer token (the only user gesture).",
         "properties": {
@@ -24751,7 +24838,7 @@
             "type": "boolean"
           },
           "filings": {
-            "description": "Filings matching the rule; `events` of a window can be fewer, when the\nprices do not cover it.",
+            "description": "Filings (or dated events, D743) matching the rule; `events` of a\nwindow can be fewer, when the prices do not cover it.",
             "minimum": 0,
             "type": "integer"
           },
@@ -24759,6 +24846,19 @@
             "description": "Instruments with both filings and prices.",
             "minimum": 0,
             "type": "integer"
+          },
+          "merged": {
+            "description": "Dated events that fell in the measure window of an earlier one and\ncounted once (D743); 0 for filings.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unconfirmed_share": {
+            "description": "Share of the dates coming from unconfirmed world events, when the\nrule asked to include them (D743).",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "windows": {
             "description": "Followed instruments only: those the org stopped following or that\ndisappeared are missing, which flatters a result.",
@@ -26616,6 +26716,100 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "SessionMove": {
+        "description": "A move of the session view.",
+        "properties": {
+          "asset_class": {
+            "type": "string"
+          },
+          "backfilled": {
+            "type": "boolean"
+          },
+          "event_at": {
+            "format": "date",
+            "type": "string"
+          },
+          "id": {
+            "description": "Object id of the `market_event`.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "measure": {
+            "format": "double",
+            "type": "number"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "move_direction": {
+            "type": "string"
+          },
+          "score": {
+            "description": "|measure| / sigma: the order of the view.",
+            "format": "double",
+            "type": "number"
+          },
+          "series_code": {
+            "type": "string"
+          },
+          "sigma": {
+            "format": "double",
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "event_at",
+          "series_code",
+          "asset_class",
+          "move_direction",
+          "mode",
+          "measure",
+          "sigma",
+          "score",
+          "backfilled"
+        ],
+        "type": "object"
+      },
+      "SessionWorldEvent": {
+        "description": "A world event of the same window: shown as such, never as a cause.",
+        "properties": {
+          "country": {
+            "type": "string"
+          },
+          "event_at": {
+            "format": "date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "description": "`unconfirmed` or `confirmed`; dismissed events are left out.",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "event_at",
+          "kind",
+          "country",
+          "status"
+        ],
         "type": "object"
       },
       "SetAggregateQuery": {
@@ -29622,6 +29816,15 @@
             "description": "Dataset it writes, created on the first run.",
             "type": "string"
           },
+          "retain_days": {
+            "description": "Days a replaced version of the output stays readable through `as_of`, from 1 to\n3650. Default: 90. The latest version is never purged.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "sql": {
             "type": "string"
           }
@@ -31320,6 +31523,47 @@
           "right"
         ],
         "type": "string"
+      },
+      "WorldEventPoint": {
+        "description": "A world event placed on the general map (D739).",
+        "properties": {
+          "event_at": {
+            "format": "date",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "lat": {
+            "format": "double",
+            "type": "number"
+          },
+          "lon": {
+            "format": "double",
+            "type": "number"
+          },
+          "status": {
+            "description": "`unconfirmed` or `confirmed`; dismissed events are left out.",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "status",
+          "event_at",
+          "lon",
+          "lat"
+        ],
+        "type": "object"
       },
       "WriteControlValue": {
         "description": "`POST /api/v1/controls/{id}/value`.",
@@ -65069,7 +65313,7 @@
     },
     "/api/v1/markets/rule-test": {
       "get": {
-        "description": "Distribution of the abnormal return after every matching filing of the followed instruments, next to the same measure on drawn dates, with the number of events. Each filing is dated by its filing day. Instruments no longer followed are missing, which can flatter a result. An aid to analysis, not investment advice. Any org member.",
+        "description": "With `dates=filings`, the distribution of the abnormal return after every matching filing of the followed instruments. With `dates=geo_events` or `market_moves`, how one series (`series`) moved after each matching event, dated by when it became known; events closer than the longest window count once (`merged`), unconfirmed world events stay out unless asked. Always next to the same measure on drawn dates, with the number of events. Instruments no longer followed are missing, which can flatter a result. An aid to analysis, not investment advice, and never a cause. Any org member.",
         "operationId": "markets_rule_test",
         "parameters": [
           {
@@ -65083,10 +65327,73 @@
             }
           },
           {
-            "description": "Form of the filings (`8-K`, `10-Q`…).",
+            "description": "Where the dates come from; `filings` by default.",
+            "in": "query",
+            "name": "dates",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DateSource"
+            }
+          },
+          {
+            "description": "Form of the filings (`8-K`, `10-Q`…); required with `filings`.",
             "in": "query",
             "name": "form",
-            "required": true,
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Ticker or macro series code measured; required with `geo_events`\nand `market_moves`.",
+            "in": "query",
+            "name": "series",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`geo_events`: kind of event (`armed_conflict`, `attack`, `sanctions`…).",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`geo_events`: ISO 3166 alpha-2 country code.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`geo_events`: also count unconfirmed events (default false).",
+            "in": "query",
+            "name": "include_unconfirmed",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "`market_moves`: asset class of the moves.",
+            "in": "query",
+            "name": "asset_class",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`market_moves`: `up` or `down`.",
+            "in": "query",
+            "name": "direction",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -65140,7 +65447,7 @@
                 }
               }
             },
-            "description": "Invalid `form`, `from` or `to` (field → token)"
+            "description": "Invalid `form`, `series`, `kind`, `asset_class`, `direction`, `from` or `to` (field → token)"
           },
           "401": {
             "content": {
@@ -65178,7 +65485,213 @@
             "bearer": []
           }
         ],
-        "summary": "Test how instruments moved after a kind of filing",
+        "summary": "Test how prices moved after a kind of filing or event",
+        "tags": [
+          "markets"
+        ]
+      }
+    },
+    "/api/v1/markets/sessions/{date}": {
+      "get": {
+        "description": "The abnormal moves of the watched series in the window of one session before and after the date (those of the date first, by size against their usual volatility), and the world events of the same window, dismissed ones left out. Computed at reading: being in the same window is never a cause. Any org member.",
+        "operationId": "markets_session",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Session day (`YYYY-MM-DD`)",
+            "in": "path",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketSession"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `date` (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the abnormal sessions and world events around a date",
+        "tags": [
+          "markets"
+        ]
+      }
+    },
+    "/api/v1/markets/world-events": {
+      "get": {
+        "description": "The world events of the last `days` days whose location falls inside the bounding box, dismissed ones left out, the most significant first (deaths, then sources, then newest), at most `limit`. `count` is the total in the box. Any org member.",
+        "operationId": "markets_world_events",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "West longitude of the view (-180 to 180).",
+            "in": "query",
+            "name": "west",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "South latitude of the view (-90 to 90).",
+            "in": "query",
+            "name": "south",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "east",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "north",
+            "required": true,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Days back from today (1 to 366, default 30).",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size (1 to 300, default 300).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_WorldEventPoint"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `west`, `south`, `east`, `north`, `days` or `limit` (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the world events placed inside a map view",
         "tags": [
           "markets"
         ]
