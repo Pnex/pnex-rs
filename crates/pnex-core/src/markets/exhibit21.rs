@@ -30,7 +30,9 @@ impl Declared {
 }
 
 fn fold(s: &str) -> String {
-    s.chars()
+    // Accents go through the shared fold first: "Société" and "Societe" meet.
+    crate::fold::fold(s)
+        .chars()
         .map(|c| {
             if c.is_alphanumeric() {
                 c.to_ascii_uppercase()
@@ -487,6 +489,11 @@ mod tests {
                 ("Acme Widgets Pte. Ltd.", "SG")
             ]
         );
+    }
+
+    #[test]
+    fn key_folds_accents() {
+        assert_eq!(fold("Société Générale, S.A."), fold("SOCIETE GENERALE S A"));
     }
 
     #[test]

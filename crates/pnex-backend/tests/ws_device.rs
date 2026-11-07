@@ -1516,7 +1516,7 @@ async fn custom_metrics_and_commands_roundtrip() {
 #[serial]
 async fn flow_device_write_sends_announced_commands() {
     unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "test-flow-token") };
-    with_app(|server, auth, _ctx| async move {
+    with_app(|server, auth, ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_custom(&server, &auth, "custom-rgb").await;
         let mut ws = connect(&server, &dev).await;
@@ -1543,6 +1543,34 @@ async fn flow_device_write_sends_announced_commands() {
             res.json::<serde_json::Value>()["commands"],
             serde_json::json!(["color"])
         );
+
+        // SEC-76: only a device targeted by a deployed flow can be written.
+        let undeployed = server
+            .post("/internal/flow/device-write")
+            .add_header("x-pnex-flow-token", "test-flow-token")
+            .json(&serde_json::json!({
+                "org_id": org, "device_id": dev.device_id, "commands": {"color": 1},
+            }))
+            .await;
+        assert_eq!(undeployed.status_code(), 404);
+        let flow = server
+            .post("/api/v1/flows")
+            .add_header("Authorization", format!("Bearer {auth}"))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "name": "rgb",
+                "graph": {"nodes": [{
+                    "id": "w1", "kind": "device_write",
+                    "config": {"device_id": dev.device_id, "commands": ["color"]},
+                }]},
+            }))
+            .await;
+        flow.assert_status(axum_test::http::StatusCode::CREATED);
+        mark_deployed(
+            &ctx,
+            flow.json::<serde_json::Value>()["id"].as_i64().unwrap(),
+        )
+        .await;
 
         let res = server
             .post("/internal/flow/device-write")
@@ -1903,4 +1931,26 @@ async fn lease_claim_is_atomic_and_release_is_owner_checked() {
         assert!(claim(dev.id, "after-release", 60).await.expect("claim"));
     })
     .await;
+}
+
+/// Deployed state the runtime would have acked (engine-off tests).
+async fn mark_deployed(ctx: &loco_rs::app::AppContext, flow_id: i64) {
+    use pnex_backend::models::_entities::{flow_versions, flows};
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+    let latest = flow_versions::Entity::find()
+        .filter(flow_versions::Column::FlowId.eq(flow_id))
+        .order_by_desc(flow_versions::Column::VersionNumber)
+        .one(&ctx.db)
+        .await
+        .expect("versions")
+        .expect("latest version");
+    let flow = flows::Entity::find_by_id(flow_id)
+        .one(&ctx.db)
+        .await
+        .expect("find flow")
+        .expect("flow");
+    let mut f: flows::ActiveModel = flow.into();
+    f.status = Set(pnex_core::FLOW_STATUS_DEPLOYED.to_string());
+    f.deployed_version_id = Set(Some(latest.id));
+    f.update(&ctx.db).await.expect("mark deployed");
 }

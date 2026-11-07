@@ -376,12 +376,15 @@ async fn org_isolation_and_viewer() {
         assert_eq!(cross.status_code(), 404);
 
         // Viewer of org A: reads, doesn't write.
-        server
-            .post(&format!("/api/v1/orgs/{org_a}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org_a,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let read = server
             .get("/api/v1/notify/channels")
             .add_header("Authorization", bearer(&env.bob))
@@ -903,6 +906,52 @@ async fn ws_notify_auth_rejections() {
             .await;
         let msg = replay.receive_message().await;
         assert!(matches!(msg, axum_test::WsMessage::Close(Some(f)) if u16::from(f.code) == 4001));
+    })
+    .await;
+}
+
+/// SEC-74: a custom role denying `notify:read` closes the socket (4006),
+/// even for the org owner; membership alone is not enough.
+#[tokio::test]
+#[serial]
+async fn ws_notify_honours_a_denied_permission() {
+    with_app(|server, env| async move {
+        let info = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json::<serde_json::Value>();
+        let org = info["orgs"][0]["id"].as_i64().unwrap();
+        let user_id = info["id"].as_i64().expect("user id");
+        let role = server
+            .post("/api/v1/iam/roles")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "key": "no-notify", "name": "No notify",
+                "statements": [{ "effect": "deny", "permissions": ["notify:read"] }]
+            }))
+            .await;
+        assert_eq!(role.status_code(), 201, "{}", role.text());
+        let assigned = server
+            .post("/api/v1/iam/assignments")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "user_id": user_id,
+                "role_id": role.json::<serde_json::Value>()["id"]
+            }))
+            .await;
+        assert_eq!(assigned.status_code(), 201, "{}", assigned.text());
+
+        let ticket = common::ws_ticket(&server, &env.alice, org).await;
+        let mut ws = server
+            .get_websocket(&format!("/ws/notify?ticket={ticket}"))
+            .await
+            .into_websocket()
+            .await;
+        let msg = ws.receive_message().await;
+        assert!(matches!(msg, axum_test::WsMessage::Close(Some(f)) if u16::from(f.code) == 4006));
     })
     .await;
 }

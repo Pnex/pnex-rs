@@ -24,12 +24,12 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::response::Response;
 use loco_rs::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 
 use super::device_link::{active_token, reject, FrameCodec};
-use crate::models::_entities::{device_registries, organization_members};
+use crate::models::_entities::device_registries;
 use crate::services::camera;
 use crate::services::settings::IngestSettings;
 use pnex_core::camera::{FrameHeader, DEFAULT_MAX_FRAME_BYTES};
@@ -278,16 +278,9 @@ async fn ws_camera_live(
         return reject(ws, 4001, "Invalid ticket");
     };
     let org_id = owner.org_id;
-    let member = organization_members::Entity::find()
-        .filter(
-            organization_members::Column::UserId
-                .eq(owner.user_id)
-                .and(organization_members::Column::OrgId.eq(org_id)),
-        )
-        .one(&ctx.db)
-        .await;
-    if !matches!(member, Ok(Some(_))) {
-        return reject(ws, 4006, "Not a member of this org");
+    let grants = crate::services::iam::store::member_grants(&ctx.db, org_id, owner.user_id).await;
+    if !matches!(&grants, Ok(Some(g)) if g.can("cameras:read")) {
+        return reject(ws, 4006, "Not allowed in this org");
     }
     // Device of the org (cross-org = same answer as unknown).
     let device = device_registries::Entity::find_by_id(device_pk)

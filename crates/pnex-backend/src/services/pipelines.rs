@@ -303,22 +303,35 @@ pub async fn update(
 }
 
 pub async fn delete(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<(), PipelineError> {
-    get(db, org_id, id).await?;
-    let active = count(
-        db,
-        "SELECT count(*) AS n FROM pipeline_jobs WHERE pipeline_id = $1 \
-         AND state IN ('queued', 'running')",
-        vec![id.into()],
-    )
-    .await?;
+    // Lock the pipeline first, then count active jobs in a new statement: its
+    // fresh snapshot sees a run committed while we waited for the lock, and a
+    // run started after the lock waits on the FK and fails once we are gone.
+    // One statement with NOT EXISTS would miss the first case under READ
+    // COMMITTED, and the cascade would delete a job under the worker.
+    let tx = db.begin().await?;
+    tx.query_one_raw(stmt(
+        "SELECT id FROM pipelines WHERE org_id = $1 AND id = $2 FOR UPDATE",
+        vec![org_id.into(), id.into()],
+    ))
+    .await?
+    .ok_or(PipelineError::NotFound)?;
+    let active: i64 = tx
+        .query_one_raw(stmt(
+            "SELECT count(*) AS n FROM pipeline_jobs WHERE pipeline_id = $1 \
+             AND state IN ('queued', 'running')",
+            vec![id.into()],
+        ))
+        .await?
+        .map_or(Ok(0), |r| r.try_get("", "n"))?;
     if active > 0 {
         return Err(PipelineError::RunActive);
     }
-    db.execute_raw(stmt(
+    tx.execute_raw(stmt(
         "DELETE FROM pipelines WHERE org_id = $1 AND id = $2",
         vec![org_id.into(), id.into()],
     ))
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 

@@ -55,8 +55,7 @@ pub fn registered() {}
 /// saturate the runtime memory.
 const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 
-/// Header carrying the flow runtime service token.
-const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+use pnex_core::flow::FLOW_TOKEN_HEADER;
 
 /// The node's HTTP client (total timeout per request + optional proxy), built
 /// once its secrets are known. `proxy_password` = resolved proxy password.
@@ -77,6 +76,19 @@ fn build_client(cfg: &HttpFetchNodeConfig, proxy_password: &str) -> Result<reqwe
             builder = builder.no_proxy();
         }
         pnex_core::HttpFetchProxy::Custom { url, username, .. } => {
+            // The proxy is an egress target too (SEC-70): an internal proxy
+            // would reach metadata services or localhost by itself.
+            let refused = reqwest::Url::parse(url)
+                .ok()
+                .map_or(Some("egress_host_refused"), |u| {
+                    pnex_core::egress::check_url(&u)
+                });
+            if let Some(code) = refused {
+                return Err(EdgelinkError::BadFlowsJson(format!(
+                    "pnex-http-fetch: proxy \"{url}\" refused ({code})"
+                ))
+                .into());
+            }
             let mut proxy = reqwest::Proxy::all(url).map_err(|e| {
                 EdgelinkError::BadFlowsJson(format!(
                     "pnex-http-fetch: invalid proxy \"{url}\": {e}"
@@ -209,7 +221,7 @@ impl PnexHttpFetchNode {
                          server?)"
                             .into(),
                     )
-                    .into())
+                    .into());
                 }
             }
         } else {
@@ -611,6 +623,16 @@ mod tests {
             ..Default::default()
         };
         assert!(build_client(&ok, "p").is_ok());
+        // SEC-70: the proxy itself goes through the egress guard.
+        let metadata = HttpFetchNodeConfig {
+            proxy: HttpFetchProxy::Custom {
+                url: "http://169.254.169.254".into(),
+                username: None,
+                password: pnex_core::SecretSlot::Unset,
+            },
+            ..Default::default()
+        };
+        assert!(build_client(&metadata, "").is_err());
     }
 
     /// The config header `HttpFetchHeader` stays serde-only (wasm-safe).

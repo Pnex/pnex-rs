@@ -7746,10 +7746,8 @@ dependencies = [
  "futures-util",
  "heck 0.5.0",
  "include_dir",
- "jsonwebtoken",
  "lettre",
  "loco-gen",
- "moka",
  "notify",
  "opendal",
  "rand 0.9.5",
@@ -8310,13 +8308,10 @@ version = "0.12.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4293f18e7567a1caf3c584855554377025c65e0aa445344d04171f5ad63d19b9"
 dependencies = [
- "async-lock",
  "crossbeam-channel",
  "crossbeam-epoch",
  "crossbeam-utils",
  "equivalent",
- "event-listener 5.4.2",
- "futures-util",
  "parking_lot",
  "portable-atomic",
  "smallvec",
@@ -10180,7 +10175,6 @@ dependencies = [
 name = "pnex-extension"
 version = "0.2.0"
 dependencies = [
- "base64 0.22.1",
  "getrandom 0.2.17",
  "getrandom 0.3.4",
  "js-sys",
@@ -10301,7 +10295,6 @@ dependencies = [
 name = "pnex-migration"
 version = "0.2.0"
 dependencies = [
- "loco-rs",
  "sea-orm",
  "sea-orm-migration",
  "tokio",

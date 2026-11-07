@@ -24,7 +24,7 @@ use crate::models::_entities::{device_capability_instances, device_registries};
 use crate::services::flow::FlowSettings;
 use pnex_core::{Mode, ServerMsg};
 
-const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+use pnex_core::flow::FLOW_TOKEN_HEADER;
 
 /// Serialized size cap of a custom-firmware command value (D146).
 const COMMAND_VALUE_MAX_BYTES: usize = 512;
@@ -345,7 +345,7 @@ async fn video_segment(
             return Err(bad_request(
                 "video-segment-invalid",
                 "Invalid video segment",
-            ))
+            ));
         }
     };
     let stream: String = q.stream.trim().chars().take(128).collect();
@@ -371,6 +371,47 @@ async fn video_segment(
     format::json(crate::controllers::cameras::segment_dto(&row, &device_slug))
 }
 
+/// Is `device_id` the target of a `device-write` node of a deployed flow
+/// of `org_id`? A yes is cached 2 s (a flow may write at a high rate); a no
+/// is never cached, so a fresh deploy writes at once.
+async fn device_targeted_by_deployed_flow(
+    ctx: &AppContext,
+    org_id: i64,
+    device_id: &str,
+) -> Result<bool> {
+    type Cache = std::collections::HashMap<(i64, String), std::time::Instant>;
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<Cache>> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    let key = (org_id, device_id.trim().to_string());
+    if let Some(at) = cache.lock().expect("device-write cache").get(&key) {
+        if at.elapsed() < std::time::Duration::from_secs(2) {
+            return Ok(true);
+        }
+    }
+    let mut targeted = false;
+    for (_, version) in
+        crate::controllers::flows::deployed_flows_with_versions(&ctx.db, org_id).await?
+    {
+        let Ok(graph) = serde_json::from_value::<pnex_core::FlowGraph>(version.graph) else {
+            continue;
+        };
+        targeted = graph.nodes.iter().any(|n| {
+            matches!(&n.kind, pnex_core::FlowNodeKind::DeviceWrite { config } if config.device_id.trim() == key.1)
+        });
+        if targeted {
+            break;
+        }
+    }
+    if targeted {
+        let mut c = cache.lock().expect("device-write cache");
+        if c.len() > 100_000 {
+            c.clear();
+        }
+        c.insert(key, std::time::Instant::now());
+    }
+    Ok(targeted)
+}
+
 async fn device_write(
     State(ctx): State<AppContext>,
     headers: HeaderMap,
@@ -393,6 +434,31 @@ async fn device_write(
     }
     if let Some(r) = fenced(&ctx, &headers, body.org_id).await {
         return Ok(r);
+    }
+    // SEC-76: the runtime token is shared by every org, so a sandbox escape
+    // must not actuate any device. Every runtime stamps its fence: once a
+    // runtime worker exists, an unstamped write is refused; and the device
+    // must be the target of a device-write node of a deployed flow of the
+    // org (not targeted answers like an unknown device).
+    if crate::services::flow_cluster::fence_header(&headers).is_none()
+        && crate::services::flow_cluster::store::workers(&ctx.db)
+            .await
+            .map_or(true, |w| !w.is_empty())
+    {
+        tracing::warn!(org_id = body.org_id, "device-write refused: no fence");
+        return Ok((
+            StatusCode::CONFLICT,
+            axum::Json(serde_json::json!({ "code": "fenced" })),
+        )
+            .into_response());
+    }
+    if !device_targeted_by_deployed_flow(&ctx, body.org_id, &body.device_id).await? {
+        tracing::warn!(
+            org_id = body.org_id,
+            device = %body.device_id,
+            "device-write refused: no deployed flow targets the device"
+        );
+        return Ok(StatusCode::NOT_FOUND.into_response());
     }
     if body.values.is_empty() && body.commands.is_empty() {
         return Err(bad_request(
@@ -598,7 +664,7 @@ async fn ai_node_deployed(
         Err(_) => return Some(StatusCode::INTERNAL_SERVER_ERROR.into_response()),
     };
     let found = flows.into_iter().any(|(_, version)| {
-        serde_json::from_value::<pnex_core::flow::FlowGraph>(version.graph)
+        serde_json::from_value::<pnex_core::FlowGraph>(version.graph)
             .is_ok_and(|g| g.nodes.iter().any(|n| is_caller(&n.kind)))
     });
     if found {

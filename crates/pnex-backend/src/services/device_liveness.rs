@@ -334,7 +334,11 @@ async fn persist_last_seen(db: &DatabaseConnection, rows: &[(i64, DateTime<Utc>)
     let existing: HashSet<i64> = device_registries::Entity::find()
         .select_only()
         .column(device_registries::Column::Id)
-        .filter(device_registries::Column::Id.is_in(ids))
+        // One array parameter: `IN (...)` binds one per id, refused past 65 535.
+        .filter(sea_orm::sea_query::Expr::cust_with_values(
+            "id = ANY($1)",
+            [ids],
+        ))
         .into_tuple::<i64>()
         .all(db)
         .await
@@ -353,18 +357,21 @@ async fn persist_last_seen(db: &DatabaseConnection, rows: &[(i64, DateTime<Utc>)
     if models.is_empty() {
         return Ok(());
     }
-    device_states::Entity::insert_many(models)
-        .on_conflict(
-            OnConflict::column(device_states::Column::DeviceRegistryId)
-                .update_column(device_states::Column::LastSeenAt)
-                .to_owned(),
-        )
-        .exec(db)
-        .await
-        .map_err(|e| {
-            tracing::warn!(error = %e, "liveness persist failed");
-            Error::InternalServerError
-        })?;
+    // Two parameters per row: chunks stay under the 65 535 bind limit.
+    for chunk in models.chunks(10_000) {
+        device_states::Entity::insert_many(chunk.to_vec())
+            .on_conflict(
+                OnConflict::column(device_states::Column::DeviceRegistryId)
+                    .update_column(device_states::Column::LastSeenAt)
+                    .to_owned(),
+            )
+            .exec(db)
+            .await
+            .map_err(|e| {
+                tracing::warn!(error = %e, "liveness persist failed");
+                Error::InternalServerError
+            })?;
+    }
     Ok(())
 }
 
@@ -423,7 +430,10 @@ pub async fn deactivate_stale(
                 sea_orm::sea_query::Expr::value(true),
             )
             .filter(device_registries::Column::Active.eq(false))
-            .filter(device_registries::Column::Id.is_in(fresh.clone()))
+            .filter(sea_orm::sea_query::Expr::cust_with_values(
+                "id = ANY($1)",
+                [fresh.clone()],
+            ))
             .exec(db)
             .await
             .map_err(|_| Error::InternalServerError)?
@@ -466,7 +476,10 @@ pub async fn deactivate_stale(
             sea_orm::sea_query::Expr::value(false),
         )
         .filter(device_registries::Column::Active.eq(true))
-        .filter(device_registries::Column::Id.is_not_in(fresh))
+        .filter(sea_orm::sea_query::Expr::cust_with_values(
+            "NOT (id = ANY($1))",
+            [fresh],
+        ))
         .exec(db)
         .await
         .map_err(|_| Error::InternalServerError)?

@@ -66,6 +66,12 @@ impl PendingAcks {
             ServerMsg::Command { cmd_id, name, .. } => (cmd_id, format!("command {name}"), None),
             _ => return,
         };
+        if resend.is_some() {
+            // A newer write to the same gpio supersedes the older ones:
+            // resending one later would put the pin back to a stale value.
+            self.pending
+                .retain(|_, p| !(p.resend.is_some() && p.what == what));
+        }
         if self.pending.len() >= MAX_PENDING {
             // Drop the oldest entry: tracking is best effort.
             if let Some(oldest) = self
@@ -99,12 +105,15 @@ impl PendingAcks {
     /// Commands overdue at `now`. A `Write` is resent once (and tracked
     /// again); anything else is reported lost and forgotten.
     pub fn overdue(&mut self, now: Instant) -> Vec<Overdue> {
-        let late: Vec<String> = self
+        let mut late: Vec<(Instant, String)> = self
             .pending
             .iter()
             .filter(|(_, p)| now.saturating_duration_since(p.sent_at) >= ACK_TIMEOUT)
-            .map(|(id, _)| id.clone())
+            .map(|(id, p)| (p.sent_at, id.clone()))
             .collect();
+        // Resend in the order they were first pushed (the map has none).
+        late.sort();
+        let late = late.into_iter().map(|(_, id)| id);
         let mut out = Vec::with_capacity(late.len());
         for cmd_id in late {
             let Some(mut p) = self.pending.remove(&cmd_id) else {
@@ -195,6 +204,26 @@ mod tests {
     }
 
     #[test]
+    fn a_newer_write_to_the_same_gpio_supersedes_the_pending_one() {
+        let t0 = Instant::now();
+        let mut acks = PendingAcks::default();
+        acks.track(&write("old"), "frame-old", t0);
+        acks.track(&write("new"), "frame-new", t0 + Duration::from_millis(10));
+        acks.ack("new", t0 + Duration::from_millis(200));
+        assert!(acks.is_empty(), "the superseded write must not be resent");
+        acks.track(&command("c1"), "frame-c1", t0);
+        acks.track(&command("c2"), "frame-c2", t0 + Duration::from_millis(5));
+        let lost: Vec<_> = acks
+            .overdue(t0 + ACK_TIMEOUT * 2)
+            .into_iter()
+            .map(|o| match o {
+                Overdue::Lost { cmd_id, .. } | Overdue::Resend { cmd_id, .. } => cmd_id,
+            })
+            .collect();
+        assert_eq!(lost, vec!["c1", "c2"], "reported in push order");
+    }
+
+    #[test]
     fn a_lost_custom_command_is_never_resent() {
         let t0 = Instant::now();
         let mut acks = PendingAcks::default();
@@ -222,9 +251,10 @@ mod tests {
             t0,
         );
         assert!(acks.is_empty());
+        // Commands: writes to one gpio would supersede each other.
         for i in 0..(MAX_PENDING + 10) {
             acks.track(
-                &write(&i.to_string()),
+                &command(&i.to_string()),
                 "f",
                 t0 + Duration::from_millis(i as u64),
             );

@@ -12,7 +12,6 @@ crate-type = ["cdylib", "rlib"]
 pnex-core = { path = "../pnex-core", features = ["frame-crypto"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-base64 = "0.22"
 sha2 = "0.10"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"

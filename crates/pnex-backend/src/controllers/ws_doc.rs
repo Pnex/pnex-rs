@@ -17,12 +17,11 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use loco_rs::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::models::_entities::organization_members;
 use crate::services::pages::room::{self, Outcome};
 
 const HEARTBEAT_SECS: u64 = 30;
@@ -53,9 +52,15 @@ async fn ws_doc(
     let Some(owner) = crate::services::ws_ticket::redeem(&ctx.config, ticket).await else {
         return reject(ws, 4001, "Invalid ticket");
     };
-    let Ok(Some(can_write)) = member_can_write(&ctx.db, owner.user_id, owner.org_id).await else {
-        return reject(ws, 4006, "Not a member of this org");
+    let grants =
+        crate::services::iam::store::member_grants(&ctx.db, owner.org_id, owner.user_id).await;
+    let Ok(Some(grants)) = grants
+        .as_ref()
+        .map(|g| g.as_ref().filter(|g| g.can("docs:read")))
+    else {
+        return reject(ws, 4006, "Not allowed in this org");
     };
+    let can_write = grants.can("docs:write");
     if crate::controllers::docs::find_doc(&ctx.db, owner.org_id, id)
         .await
         .is_err()
@@ -91,23 +96,6 @@ async fn ws_doc(
 
 /// `docs:write` of a member, assigned roles included (`Ok(None)` = not a
 /// member).
-async fn member_can_write(
-    db: &DatabaseConnection,
-    user_id: i64,
-    org_id: i64,
-) -> Result<Option<bool>, sea_orm::DbErr> {
-    let member = organization_members::Entity::find()
-        .filter(organization_members::Column::UserId.eq(user_id))
-        .filter(organization_members::Column::OrgId.eq(org_id))
-        .one(db)
-        .await?;
-    let Some(m) = member else {
-        return Ok(None);
-    };
-    let grants = crate::services::iam::store::grants(db, org_id, user_id, Some(&m.role)).await?;
-    Ok(Some(grants.can("docs:write")))
-}
-
 struct LeaveGuard {
     db: DatabaseConnection,
     room: std::sync::Arc<room::Room>,
@@ -167,8 +155,9 @@ async fn session_loop(
                 }
                 // Role re-read (SEC-29): removed → closed, demoted → read-only.
                 // A failed lookup keeps the current right (no mass close on a DB blip).
-                match member_can_write(db, user_id, org_id).await {
-                    Ok(Some(w)) => can_write = w,
+                let grants = crate::services::iam::store::member_grants(db, org_id, user_id).await;
+                match grants.map(|g| g.filter(|g| g.can("docs:read"))) {
+                    Ok(Some(g)) => can_write = g.can("docs:write"),
                     Ok(None) => {
                         close(socket, 4006, "Not a member of this org").await;
                         return;

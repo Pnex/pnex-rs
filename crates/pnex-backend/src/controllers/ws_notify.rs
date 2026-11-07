@@ -19,12 +19,11 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::response::Response;
 use loco_rs::prelude::*;
-use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
+
 use serde::Deserialize;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::models::_entities::organization_members;
 use crate::services::notify::{self, SessionGuard};
 
 /// Heartbeat: protocol ping every 30 s (the browser answers with a
@@ -54,16 +53,9 @@ async fn ws_notify(
         return reject(ws, 4001, "Invalid ticket");
     };
     let org_id = owner.org_id;
-    let member = organization_members::Entity::find()
-        .filter(
-            organization_members::Column::UserId
-                .eq(owner.user_id)
-                .and(organization_members::Column::OrgId.eq(org_id)),
-        )
-        .one(&ctx.db)
-        .await;
-    if !matches!(member, Ok(Some(_))) {
-        return reject(ws, 4006, "Not a member of this org");
+    let grants = crate::services::iam::store::member_grants(&ctx.db, org_id, owner.user_id).await;
+    if !matches!(&grants, Ok(Some(g)) if g.can("notify:read")) {
+        return reject(ws, 4006, "Not allowed in this org");
     }
 
     let (tx, rx) = mpsc::unbounded_channel::<String>();
