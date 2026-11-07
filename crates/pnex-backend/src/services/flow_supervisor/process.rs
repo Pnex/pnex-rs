@@ -148,7 +148,7 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
 }
 
 /// Address-space limit of the runtime child from
-/// `PNEX_FLOW_RUNTIME_MAX_MEMORY_MB` (unset, empty or 0 = no limit).
+/// `PNEX_FLOW_RUNTIME_MAX_MEMORY_MB` (unset or empty = 4096, 0 = no limit).
 ///
 /// This is `RLIMIT_AS` (virtual memory): allocators and thread stacks
 /// reserve more than they touch, so size it generously (≥ 2× the expected
@@ -164,8 +164,15 @@ pub(crate) fn runtime_memory_limit_bytes() -> Option<libc::rlim_t> {
     )
 }
 
+/// Default cap (SEC-67): a runaway flow must not OOM the whole pod.
+const DEFAULT_RUNTIME_MEMORY_MB: u64 = 4096;
+
 fn parse_memory_limit_mb(raw: Option<&str>) -> Option<libc::rlim_t> {
-    let mb: u64 = raw?.trim().parse().ok()?;
+    let raw = raw.map(str::trim).filter(|r| !r.is_empty());
+    let mb: u64 = match raw {
+        None => DEFAULT_RUNTIME_MEMORY_MB,
+        Some(r) => r.parse().ok()?,
+    };
     if mb == 0 {
         return None;
     }
@@ -194,8 +201,8 @@ pub(super) fn spawn_child(
     // outside a container would otherwise leave an orphan runtime running
     // the flows that the controller hands to another worker.
     //
-    // Optional address-space cap (`PNEX_FLOW_RUNTIME_MAX_MEMORY_MB`, unset =
-    // unlimited): the runtime shares the pod cgroup with the API, so a
+    // Address-space cap (`PNEX_FLOW_RUNTIME_MAX_MEMORY_MB`, 4 GiB by
+    // default, 0 = unlimited): the runtime shares the pod cgroup with the API, so a
     // runaway flow would otherwise OOM-kill the whole pod. Computed before
     // the fork: the pre_exec closure only performs async-signal-safe calls.
     #[cfg(target_os = "linux")]
@@ -470,9 +477,9 @@ mod limit_tests {
     use super::parse_memory_limit_mb;
 
     #[test]
-    fn memory_limit_is_opt_in() {
-        assert_eq!(parse_memory_limit_mb(None), None);
-        assert_eq!(parse_memory_limit_mb(Some("")), None);
+    fn memory_limit_defaults_to_4g() {
+        assert_eq!(parse_memory_limit_mb(None), Some(4096 * 1024 * 1024));
+        assert_eq!(parse_memory_limit_mb(Some("")), Some(4096 * 1024 * 1024));
         assert_eq!(parse_memory_limit_mb(Some("0")), None);
         assert_eq!(parse_memory_limit_mb(Some("abc")), None);
         assert_eq!(

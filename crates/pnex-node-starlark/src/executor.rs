@@ -4,9 +4,108 @@
 
 use std::time::{Duration, Instant};
 
-use starlark::environment::{Globals, LibraryExtension, Module};
+use starlark::environment::{Globals, GlobalsBuilder, LibraryExtension, Module};
 use starlark::eval::Evaluator;
 use starlark::syntax::{AstModule, Dialect};
+use starlark::values::{Heap, Value};
+
+/// Largest string (bytes) or list/tuple (items) that `*` or `range` may build
+/// in one go: the heap limit is only checked between steps, so one huge
+/// allocation would OOM the shared runtime before it (SEC-68).
+const MAX_BUILT_LEN: i64 = 8 * 1024 * 1024;
+
+fn too_large(what: &str, len: i64) -> starlark::Error {
+    starlark::Error::new_other(anyhow::anyhow!(
+        "{what} would build {len} items, the limit is {MAX_BUILT_LEN}"
+    ))
+}
+
+#[starlark::starlark_module]
+fn sized_builtins(builder: &mut GlobalsBuilder) {
+    /// Size-checked `*`: every `a * b` of the user code is rewritten to it.
+    fn __pnex_mul<'v>(
+        #[starlark(require = pos)] a: Value<'v>,
+        #[starlark(require = pos)] b: Value<'v>,
+        heap: Heap<'v>,
+    ) -> starlark::Result<Value<'v>> {
+        let seq_len = |v: Value<'v>| match v.unpack_str() {
+            Some(s) => Some(s.len() as i64),
+            None if matches!(v.get_type(), "list" | "tuple") => v.length().ok().map(i64::from),
+            None => None,
+        };
+        let times = |v: Value<'v>| v.unpack_i32().map(|n| i64::from(n.max(0)));
+        let built = match (seq_len(a), times(b), seq_len(b), times(a)) {
+            (Some(len), Some(n), _, _) | (_, _, Some(len), Some(n)) => Some(len.saturating_mul(n)),
+            _ => None,
+        };
+        if let Some(len) = built.filter(|len| *len > MAX_BUILT_LEN) {
+            return Err(too_large("`*`", len));
+        }
+        a.mul(b, heap)
+    }
+
+    /// Eager `range` capped at [`MAX_BUILT_LEN`] (`list(range(n))` would
+    /// otherwise allocate n items at once).
+    fn range<'v>(
+        #[starlark(require = pos)] a: i32,
+        #[starlark(require = pos)] b: Option<i32>,
+        #[starlark(require = pos)] step: Option<i32>,
+        heap: Heap<'v>,
+    ) -> starlark::Result<Value<'v>> {
+        let (start, stop) = match b {
+            Some(stop) => (a, stop),
+            None => (0, a),
+        };
+        let step = step.unwrap_or(1);
+        if step == 0 {
+            return Err(starlark::Error::new_other(anyhow::anyhow!(
+                "range() step must not be zero"
+            )));
+        }
+        let span = i64::from(stop) - i64::from(start);
+        let len = if (span > 0) == (step > 0) && span != 0 {
+            (span.abs() + i64::from(step).abs() - 1) / i64::from(step).abs()
+        } else {
+            0
+        };
+        if len > MAX_BUILT_LEN {
+            return Err(too_large("range()", len));
+        }
+        let items: Vec<i32> = (0..len)
+            .map(|i| start + (i * i64::from(step)) as i32)
+            .collect();
+        Ok(heap.alloc(items))
+    }
+}
+
+/// Globals of every evaluation: standard + json + the size-checked builtins.
+fn sandbox_globals() -> Globals {
+    GlobalsBuilder::extended_by(&[LibraryExtension::Json])
+        .with(sized_builtins)
+        .build()
+}
+
+/// Parses user code with `*` routed through `__pnex_mul`; `*=` is refused
+/// since the rewrite does not reach augmented assignments.
+fn parse_sandboxed(script: String) -> Result<AstModule, String> {
+    use starlark::syntax::ast::{AssignOp, AstStmt, StmtP};
+    let mut ast = AstModule::parse("pnex_function.star", script, &Dialect::Standard)
+        .map_err(|e| format!("syntax: {e}"))?;
+    fn has_mul_assign(stmt: &AstStmt) -> bool {
+        if let StmtP::AssignModify(_, AssignOp::Multiply, _) = &stmt.node {
+            return true;
+        }
+        let mut found = false;
+        stmt.visit_stmt(|s| found |= has_mul_assign(s));
+        found
+    }
+    if has_mul_assign(ast.statement()) {
+        return Err("syntax: `*=` is not supported, write `x = x * n`".to_string());
+    }
+    let ops = std::collections::HashMap::from([("*".to_string(), "__pnex_mul".to_string())]);
+    ast.replace_binary_operators(&ops);
+    Ok(ast)
+}
 
 /// Result of a Starlark function execution.
 #[derive(Debug)]
@@ -63,9 +162,8 @@ pub fn compile_check(code: &str) -> Result<(), String> {
     // `pack_setting` exists at run time (driver): declared here too, after the
     // code so positions are unchanged.
     let script = format!("{}\n{SETTING_STUB}", code.trim_end());
-    let ast = AstModule::parse("pnex_function.star", script, &Dialect::Standard)
-        .map_err(|e| format!("syntax: {e}"))?;
-    let globals = Globals::extended_by(&[LibraryExtension::Json]);
+    let ast = parse_sandboxed(script)?;
+    let globals = sandbox_globals();
     Module::with_temp_heap(|module| {
         let mut eval = Evaluator::new(&module);
         apply_limits(&mut eval, Duration::from_millis(200));
@@ -111,9 +209,8 @@ pub fn execute_with(
     let script = build_script(code, &inputs_obj, msg, settings);
 
     let timeout = Duration::from_millis(timeout_ms);
-    let ast = AstModule::parse("pnex_function.star", script, &Dialect::Standard)
-        .map_err(|e| anyhow::anyhow!("syntax: {e}"))?;
-    let globals = Globals::extended_by(&[LibraryExtension::Json]);
+    let ast = parse_sandboxed(script).map_err(|e| anyhow::anyhow!(e))?;
+    let globals = sandbox_globals();
     Module::with_temp_heap(|module| {
         let mut eval = Evaluator::new(&module);
         apply_limits(&mut eval, timeout);
@@ -307,6 +404,41 @@ mod tests {
             }],
             outputs: vec![],
         }
+    }
+
+    #[test]
+    fn huge_repetition_and_range_are_refused_small_ones_work() {
+        for code in [
+            "def handle(inputs, msg):\n    return 'x' * 2000000000",
+            "def handle(inputs, msg):\n    return len(('ab' * 1000) * 2000000)",
+            "def handle(inputs, msg):\n    return len(3000000000 * [1] if False else 2000000000 * [1])",
+            "def handle(inputs, msg):\n    return len(list(range(2000000000)))",
+        ] {
+            let e = exec(code, serde_json::json!({}), 2000)
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains("the limit is"), "{code}: {e}");
+        }
+        let out = exec(
+            "def handle(inputs, msg):\n    return [len('ab' * 3), 2 * [0], (1,) * 2, 3 * 4, list(range(1, 10, 3)), list(range(5, 0, -2))]",
+            serde_json::json!({}),
+            2000,
+        )
+        .unwrap();
+        assert_eq!(
+            out.return_json,
+            Some(serde_json::json!([
+                6,
+                [0, 0],
+                [1, 1],
+                12,
+                [1, 4, 7],
+                [5, 3, 1]
+            ]))
+        );
+        let e = compile_check("def handle(inputs, msg):\n    s = 'x'\n    s *= 9\n    return s")
+            .unwrap_err();
+        assert!(e.contains("*="), "{e}");
     }
 
     #[test]
