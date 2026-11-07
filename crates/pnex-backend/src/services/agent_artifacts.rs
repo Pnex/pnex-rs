@@ -711,7 +711,7 @@ pub fn spawn_sweeper(ctx: &loco_rs::app::AppContext) {
                 Ok(n) => tracing::info!(n, "expired agent artifacts removed"),
                 Err(e) => tracing::warn!("agent artifact sweep failed: {e}"),
             }
-            let caches = CacheSettings::from_config(&ctx.config);
+            let caches = crate::services::fabric_settings::caches(&ctx).await;
             match sweep_caches(&ctx.db, &store, caches).await {
                 Ok(0) => {}
                 Ok(n) => tracing::info!(n, "expired dependency caches removed"),

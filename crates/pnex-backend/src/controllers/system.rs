@@ -64,6 +64,7 @@ pub fn routes() -> Routes {
             get(connector_hosts_get).put(connector_hosts_put),
         )
         .add("/tiers", get(tiers_list))
+        .add("/agent-limits", get(agent_limits_get).put(agent_limits_put))
         .add("/status", get(status))
         .add("/secrets/rekey", post(super::secrets::platform_rekey))
 }
@@ -85,6 +86,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         orgs_overview,
         org_tier_put,
         tiers_list,
+        agent_limits_get,
+        agent_limits_put,
         status,
         super::secrets::platform_rekey
     ))]
@@ -266,6 +269,79 @@ async fn retention_history_put(
     let bg = ctx.clone();
     tokio::spawn(async move { retention::reconcile_all(&bg).await });
     format::json(RetentionUpdate { days: body.days })
+}
+
+// ───────────────────────────── Agent limits ─────────────────────────────
+
+async fn agent_limits_info(ctx: &AppContext) -> Result<pnex_core::environments::AgentLimitsInfo> {
+    use crate::services::fabric_settings;
+    let defaults = fabric_settings::defaults(&ctx.config);
+    let stored = fabric_settings::stored(&ctx.db).await.map_err(db_err)?;
+    Ok(pnex_core::environments::AgentLimitsInfo {
+        overridden: stored.is_some(),
+        limits: stored.unwrap_or_else(|| defaults.clone()),
+        defaults,
+    })
+}
+
+/// `GET /api/v1/system/agent-limits` — platform admin.
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/agent-limits",
+    tag = "system",
+    operation_id = "system_agent_limits_get",
+    summary = "Get the global limits of hosted agents",
+    description = "Platform admin only. Limits in force for every org (build pod size, retention of SBOMs, scan events and job logs, artifact and dependency cache sizes and keeping), the defaults of the configuration, and whether an admin changed them.",
+    responses(
+        (status = 200, body = pnex_core::environments::AgentLimitsInfo),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn agent_limits_get(
+    _admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+) -> Result<Response> {
+    format::json(agent_limits_info(&ctx).await?)
+}
+
+/// `PUT /api/v1/system/agent-limits` — platform admin.
+#[utoipa::path(
+    put,
+    path = "/api/v1/system/agent-limits",
+    tag = "system",
+    operation_id = "system_agent_limits_set",
+    summary = "Set the global limits of hosted agents",
+    description = "Platform admin only. Replaces every limit at once; they apply to the next build, upload, run or sweep without a restart. Putting the defaults back is putting their values.",
+    request_body = pnex_core::environments::AgentLimits,
+    responses(
+        (status = 200, body = pnex_core::environments::AgentLimitsInfo),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `invalid`, `range:<min>..<max>`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn agent_limits_put(
+    admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Json(body): Json<pnex_core::environments::AgentLimits>,
+) -> Result<Response> {
+    let errs = body.check();
+    if !errs.is_empty() {
+        let fields = errs
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), serde_json::Value::String(v)))
+            .collect();
+        return Ok(super::fields_error(
+            axum::http::StatusCode::BAD_REQUEST,
+            fields,
+        ));
+    }
+    crate::services::fabric_settings::store(&ctx.db, &body, admin.0.user.id)
+        .await
+        .map_err(db_err)?;
+    tracing::info!(by = admin.0.user.id, "agent limits updated");
+    format::json(agent_limits_info(&ctx).await?)
 }
 
 /// `GET /api/v1/system/orgs/{org_id}/connector-hosts` — platform admin.

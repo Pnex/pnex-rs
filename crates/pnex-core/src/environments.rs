@@ -518,9 +518,163 @@ impl EnvironmentSource {
     }
 }
 
+/// Global limits of hosted agents (D755, R9): the configuration gives the defaults, a
+/// platform admin may store others, read at use time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AgentLimits {
+    /// Memory of a build pod, a Kubernetes quantity in `Mi`, `Gi` or `Ti` (`8Gi`).
+    pub build_memory: String,
+    /// Scratch disk of a build pod, same form (`40Gi`).
+    pub build_ephemeral_storage: String,
+    pub sbom_days: u32,
+    pub scan_events_days: u32,
+    pub job_logs_days: u32,
+    /// Largest single artifact, in bytes.
+    pub artifact_max_bytes: u64,
+    /// All the outputs of one run together, in bytes; at least `artifact_max_bytes`.
+    pub artifact_run_max_bytes: u64,
+    pub artifact_expires_days: u32,
+    /// Largest dependency cache archive, in bytes.
+    pub depcache_max_bytes: u64,
+    pub depcache_expires_days: u32,
+}
+
+/// The limits in force, the defaults of the configuration, and whether an admin changed them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AgentLimitsInfo {
+    pub limits: AgentLimits,
+    pub defaults: AgentLimits,
+    pub overridden: bool,
+}
+
+const MIB: u64 = 1 << 20;
+const GIB: u64 = 1 << 30;
+pub const LIMIT_DAYS_MAX: u32 = 3650;
+pub const BUILD_MEMORY_RANGE: (u64, u64) = (GIB, 256 * GIB);
+pub const BUILD_STORAGE_RANGE: (u64, u64) = (GIB, 2048 * GIB);
+/// From 64 KiB: what the test configuration uses.
+pub const ARTIFACT_BYTES_RANGE: (u64, u64) = (64 << 10, 64 * GIB);
+pub const RUN_BYTES_MAX: u64 = 256 * GIB;
+pub const DEPCACHE_BYTES_RANGE: (u64, u64) = (MIB, 256 * GIB);
+
+/// Bytes of a Kubernetes quantity `<n>Mi|Gi|Ti`; any other form is refused.
+pub fn quantity_bytes(q: &str) -> Option<u64> {
+    let (n, unit) = q.split_at(q.len().checked_sub(2)?);
+    let unit = match unit {
+        "Mi" => MIB,
+        "Gi" => GIB,
+        "Ti" => 1 << 40,
+        _ => return None,
+    };
+    if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    n.parse::<u64>().ok()?.checked_mul(unit)
+}
+
+impl AgentLimits {
+    /// Field errors as machine tokens (`invalid`, `range:<min>..<max>`); empty when valid.
+    pub fn check(&self) -> Vec<(&'static str, String)> {
+        let mut errs = Vec::new();
+        let mut bytes = |field, value: u64, (min, max): (u64, u64)| {
+            if !(min..=max).contains(&value) {
+                errs.push((field, format!("range:{min}..{max}")));
+            }
+        };
+        bytes(
+            "artifact_max_bytes",
+            self.artifact_max_bytes,
+            ARTIFACT_BYTES_RANGE,
+        );
+        bytes(
+            "artifact_run_max_bytes",
+            self.artifact_run_max_bytes,
+            (
+                self.artifact_max_bytes.max(ARTIFACT_BYTES_RANGE.0),
+                RUN_BYTES_MAX,
+            ),
+        );
+        bytes(
+            "depcache_max_bytes",
+            self.depcache_max_bytes,
+            DEPCACHE_BYTES_RANGE,
+        );
+        for (field, raw, range) in [
+            ("build_memory", &self.build_memory, BUILD_MEMORY_RANGE),
+            (
+                "build_ephemeral_storage",
+                &self.build_ephemeral_storage,
+                BUILD_STORAGE_RANGE,
+            ),
+        ] {
+            match quantity_bytes(raw) {
+                None => errs.push((field, "invalid".into())),
+                Some(v) if !(range.0..=range.1).contains(&v) => errs.push((
+                    field,
+                    format!("range:{}Gi..{}Gi", range.0 / GIB, range.1 / GIB),
+                )),
+                Some(_) => {}
+            }
+        }
+        for (field, days) in [
+            ("sbom_days", self.sbom_days),
+            ("scan_events_days", self.scan_events_days),
+            ("job_logs_days", self.job_logs_days),
+            ("artifact_expires_days", self.artifact_expires_days),
+            ("depcache_expires_days", self.depcache_expires_days),
+        ] {
+            if !(1..=LIMIT_DAYS_MAX).contains(&days) {
+                errs.push((field, format!("range:1..{LIMIT_DAYS_MAX}")));
+            }
+        }
+        errs
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn agent_limits_are_bounded_and_quantities_parsed() {
+        assert_eq!(quantity_bytes("8Gi"), Some(8 << 30));
+        assert_eq!(quantity_bytes("512Mi"), Some(512 << 20));
+        for bad in ["", "Gi", "8G", "-1Gi", "1.5Gi", "8gi"] {
+            assert_eq!(quantity_bytes(bad), None, "{bad}");
+        }
+        let ok = AgentLimits {
+            build_memory: "8Gi".into(),
+            build_ephemeral_storage: "40Gi".into(),
+            sbom_days: 3650,
+            scan_events_days: 365,
+            job_logs_days: 30,
+            artifact_max_bytes: 1 << 30,
+            artifact_run_max_bytes: 4 << 30,
+            artifact_expires_days: 30,
+            depcache_max_bytes: 8 << 30,
+            depcache_expires_days: 14,
+        };
+        assert!(ok.check().is_empty());
+        let bad = AgentLimits {
+            build_memory: "512Mi".into(),
+            build_ephemeral_storage: "lots".into(),
+            job_logs_days: 0,
+            artifact_run_max_bytes: 1 << 20,
+            ..ok
+        };
+        let fields: Vec<_> = bad.check().into_iter().map(|(f, _)| f).collect();
+        assert_eq!(
+            fields,
+            [
+                "artifact_run_max_bytes",
+                "build_memory",
+                "build_ephemeral_storage",
+                "job_logs_days"
+            ]
+        );
+    }
 
     #[test]
     fn a_vm_environment_keeps_runs_with_services_in_a_pod() {

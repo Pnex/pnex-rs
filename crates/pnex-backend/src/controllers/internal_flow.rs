@@ -950,7 +950,7 @@ async fn flow_agent_run(
     if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
         return Ok(r);
     }
-    let artifacts = crate::services::agent_artifacts::ArtifactSettings::from_config(&ctx.config);
+    let artifacts = crate::services::fabric_settings::artifacts(&ctx).await;
     match crate::services::agent_chains::run_node(&ctx.db, artifacts, &req).await {
         Ok(reply) => Ok(axum::Json(reply).into_response()),
         Err(NodeError::NotDeployed) => Ok((

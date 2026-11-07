@@ -15,7 +15,6 @@ use uuid::Uuid;
 
 use crate::auth::OrgContext;
 use crate::controllers::pagination::{self, PageParams};
-use crate::services::agent_artifacts::ArtifactSettings;
 use crate::services::agents::{self, AgentError};
 
 pub fn routes() -> Routes {
@@ -318,7 +317,7 @@ async fn start_run(
     Path(id): Path<Uuid>,
     Json(body): Json<AgentRunStart>,
 ) -> Result<Response> {
-    let settings = ArtifactSettings::from_config(&ctx.config);
+    let settings = crate::services::fabric_settings::artifacts(&ctx).await;
     match agents::start_run(&ctx.db, settings, org.org.id, org.auth.user.id, id, &body).await {
         Ok(run) => Ok((StatusCode::CREATED, Json(run)).into_response()),
         Err(e) => agent_error(e),

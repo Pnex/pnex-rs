@@ -105,3 +105,20 @@ pub async fn set_org_tier(org_id: i64, tier_id: Option<i64>) -> Result<OrgTierUp
     )
     .await
 }
+
+/// `GET /api/v1/system/agent-limits` — platform admin (D755, R9).
+pub async fn agent_limits() -> Result<pnex_core::environments::AgentLimitsInfo, ApiError> {
+    client::request(reqwest::Method::GET, "/api/v1/system/agent-limits", None).await
+}
+
+/// `PUT /api/v1/system/agent-limits` — platform admin, every limit at once.
+pub async fn set_agent_limits(
+    limits: &pnex_core::environments::AgentLimits,
+) -> Result<pnex_core::environments::AgentLimitsInfo, ApiError> {
+    client::request(
+        reqwest::Method::PUT,
+        "/api/v1/system/agent-limits",
+        Some(serde_json::to_value(limits).unwrap_or_default()),
+    )
+    .await
+}

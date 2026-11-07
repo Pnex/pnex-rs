@@ -544,6 +544,8 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ),
     ("system_connector_hosts_get", Access::Platform),
     ("system_connector_hosts_set", Access::Platform),
+    ("system_agent_limits_get", Access::Platform),
+    ("system_agent_limits_set", Access::Platform),
     ("data_builds_get", Access::Org("pipelines:read")),
     ("data_builds_list", Access::Org("pipelines:read")),
     ("data_builds_plan", Access::Org("pipelines:read")),

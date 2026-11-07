@@ -18,8 +18,8 @@ use crate::api;
 use crate::api::error_i18n::resolve;
 use crate::components::crud::layout::ListLayout;
 use crate::components::gerbe::Gerbe;
-use crate::components::ui::FIELD_LABEL;
 use crate::components::ui::{BTN_DANGER_SOLID, BTN_PRIMARY_SM, BTN_SECONDARY_SM};
+use crate::components::ui::{FIELD_ERROR, FIELD_HELP, FIELD_LABEL, INPUT};
 use crate::pages::system::{format_bytes, parse_days};
 use crate::state::{session, toasts};
 
@@ -93,6 +93,7 @@ pub fn AdminStatus() -> Element {
             div { class: "mt-8",
                 crate::components::ai_retention::AiRetentionCard { platform: true }
             }
+            AgentLimitsCard {}
             section { class: "mt-8 bg-white rounded-lg shadow p-5",
                 SecretsRekey {
                     stale: stale_secrets(&status.value().read()),
@@ -572,5 +573,245 @@ fn OrgRow(row: OrgSystemRow, tiers: Vec<TierOption>, on_saved: Callback<()>) -> 
                 }
             }
         }
+    }
+}
+
+/// How a limit of hosted agents is typed: a Kubernetes quantity, days, or bytes in MiB.
+#[derive(Clone, Copy, PartialEq)]
+enum LimitUnit {
+    Quantity,
+    Days,
+    Mib,
+}
+
+/// Fields of `AgentLimits`, in the order of the form.
+const AGENT_LIMIT_FIELDS: [(&str, LimitUnit); 10] = [
+    ("build_memory", LimitUnit::Quantity),
+    ("build_ephemeral_storage", LimitUnit::Quantity),
+    ("artifact_max_bytes", LimitUnit::Mib),
+    ("artifact_run_max_bytes", LimitUnit::Mib),
+    ("artifact_expires_days", LimitUnit::Days),
+    ("depcache_max_bytes", LimitUnit::Mib),
+    ("depcache_expires_days", LimitUnit::Days),
+    ("sbom_days", LimitUnit::Days),
+    ("scan_events_days", LimitUnit::Days),
+    ("job_logs_days", LimitUnit::Days),
+];
+
+const MIB: f64 = 1_048_576.0;
+
+fn limit_label(field: &str) -> String {
+    match field {
+        "build_memory" => t!("system-agents-build-memory"),
+        "build_ephemeral_storage" => t!("system-agents-build-ephemeral-storage"),
+        "artifact_max_bytes" => t!("system-agents-artifact-max-bytes"),
+        "artifact_run_max_bytes" => t!("system-agents-artifact-run-max-bytes"),
+        "artifact_expires_days" => t!("system-agents-artifact-expires-days"),
+        "depcache_max_bytes" => t!("system-agents-depcache-max-bytes"),
+        "depcache_expires_days" => t!("system-agents-depcache-expires-days"),
+        "sbom_days" => t!("system-agents-sbom-days"),
+        "scan_events_days" => t!("system-agents-scan-events-days"),
+        "job_logs_days" => t!("system-agents-job-logs-days"),
+        other => other.to_string(),
+    }
+    .to_string()
+}
+
+/// Form text of a limit: bytes in MiB, the rest as they are.
+fn limit_text(limits: &serde_json::Value, field: &str, unit: LimitUnit) -> String {
+    let v = &limits[field];
+    match unit {
+        LimitUnit::Quantity => v.as_str().unwrap_or_default().to_string(),
+        LimitUnit::Days => v.to_string(),
+        LimitUnit::Mib => v
+            .as_u64()
+            .map(|b| (b as f64 / MIB).to_string())
+            .unwrap_or_default(),
+    }
+}
+
+/// The limits typed in the form; `Err` names the first field that does not read.
+fn limits_of(texts: &[String]) -> Result<pnex_core::environments::AgentLimits, &'static str> {
+    let mut obj = serde_json::Map::new();
+    for ((field, unit), raw) in AGENT_LIMIT_FIELDS.iter().zip(texts) {
+        let raw = raw.trim();
+        let value = match unit {
+            LimitUnit::Quantity => serde_json::Value::from(raw),
+            LimitUnit::Days => raw.parse::<u32>().map_err(|_| *field)?.into(),
+            LimitUnit::Mib => {
+                let mib = raw
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|m| m.is_finite() && *m > 0.0)
+                    .ok_or(*field)?;
+                ((mib * MIB).round() as u64).into()
+            }
+        };
+        obj.insert(field.to_string(), value);
+    }
+    serde_json::from_value(obj.into()).map_err(|_| "body")
+}
+
+/// Global limits of hosted agents (D755, R9), for every organization.
+#[component]
+fn AgentLimitsCard() -> Element {
+    let mut reload = use_signal(|| 0u32);
+    let info = use_resource(move || async move {
+        let _ = reload();
+        api::system::agent_limits().await
+    });
+    rsx! {
+        section { class: "mt-8 bg-white rounded-lg shadow p-5 space-y-4",
+            div {
+                h2 { class: "text-lg font-semibold text-gray-900", {t!("system-agents-title")} }
+                p { class: "text-sm text-gray-600", {t!("system-agents-help")} }
+            }
+            match &*info.value().read() {
+                None => rsx! {
+                    div { class: "text-center py-6",
+                        Gerbe { size: 28 }
+                    }
+                },
+                Some(Err(err)) => rsx! {
+                    p { class: "text-sm text-red-700", {api::error_i18n::localize(err)} }
+                },
+                Some(Ok(info)) => rsx! {
+                    AgentLimitsForm {
+                        key: "{reload}",
+                        info: info.clone(),
+                        on_saved: move |_| reload.with_mut(|r| *r += 1),
+                    }
+                },
+            }
+        }
+    }
+}
+
+#[component]
+fn AgentLimitsForm(
+    info: pnex_core::environments::AgentLimitsInfo,
+    on_saved: Callback<()>,
+) -> Element {
+    let current = serde_json::to_value(&info.limits).unwrap_or_default();
+    let defaults = serde_json::to_value(&info.defaults).unwrap_or_default();
+    let texts_of = |limits: &serde_json::Value| -> Vec<String> {
+        AGENT_LIMIT_FIELDS
+            .iter()
+            .map(|(f, u)| limit_text(limits, f, *u))
+            .collect()
+    };
+    let mut texts = use_signal(|| texts_of(&current));
+    let default_texts = texts_of(&defaults);
+    let mut errors = use_signal(serde_json::Map::<String, serde_json::Value>::new);
+    let mut busy = use_signal(|| false);
+    let save = move |_| {
+        let limits = match limits_of(&texts.read()) {
+            Ok(l) => l,
+            Err(field) => {
+                let mut one = serde_json::Map::new();
+                one.insert(field.to_string(), "invalid".into());
+                errors.set(one);
+                return;
+            }
+        };
+        errors.set(serde_json::Map::new());
+        busy.set(true);
+        spawn(async move {
+            let saved = api::system::set_agent_limits(&limits).await;
+            busy.set(false);
+            match saved {
+                Ok(_) => {
+                    toasts::success("toast-saved");
+                    on_saved.call(());
+                }
+                Err(err) => {
+                    if let Some(fields) = err.fields() {
+                        errors.set(fields.clone());
+                    }
+                    toasts::error(err);
+                }
+            }
+        });
+    };
+    let rows: Vec<_> = AGENT_LIMIT_FIELDS
+        .iter()
+        .enumerate()
+        .map(|(i, (field, unit))| {
+            let error = errors
+                .read()
+                .get(*field)
+                .and_then(|v| v.as_str())
+                .map(|token| api::error_i18n::localize_field(field, token));
+            let kind = if *unit == LimitUnit::Quantity {
+                "text"
+            } else {
+                "number"
+            };
+            let value = texts.read()[i].clone();
+            (i, *field, kind, value, default_texts[i].clone(), error)
+        })
+        .collect();
+    let source = if info.overridden {
+        t!("system-agents-overridden")
+    } else {
+        t!("system-agents-from-config")
+    };
+    rsx! {
+        p { class: "text-xs text-gray-500", {source} }
+        div { class: "grid gap-4 md:grid-cols-2",
+            for (i, field, kind, value, default, error) in rows {
+                div { key: "{field}",
+                    label { r#for: "agent-limit-{field}", class: FIELD_LABEL, {limit_label(field)} }
+                    input {
+                        id: "agent-limit-{field}",
+                        class: INPUT,
+                        r#type: kind,
+                        value: "{value}",
+                        oninput: move |e| texts.with_mut(|t| t[i] = e.value()),
+                    }
+                    p { class: FIELD_HELP, {t!("system-agents-default", value : default)} }
+                    if let Some(error) = error {
+                        p { class: FIELD_ERROR, {error} }
+                    }
+                }
+            }
+        }
+        div { class: "flex gap-2",
+            button { class: BTN_PRIMARY_SM, disabled: busy(), onclick: save, {t!("common-save")} }
+            button {
+                class: BTN_SECONDARY_SM,
+                disabled: busy(),
+                onclick: move |_| texts.set(default_texts.clone()),
+                {t!("system-agents-reset")}
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod agent_limits_tests {
+    use super::*;
+
+    #[test]
+    fn form_texts_read_back_into_limits() {
+        let texts: Vec<String> = [
+            "4Gi", "40Gi", "0.0625", "1024", "30", "8192", "14", "3650", "365", "7",
+        ]
+        .map(String::from)
+        .to_vec();
+        let l = limits_of(&texts).unwrap();
+        assert_eq!(
+            (l.artifact_max_bytes, l.artifact_run_max_bytes),
+            (65536, 1 << 30)
+        );
+        assert_eq!((l.build_memory.as_str(), l.job_logs_days), ("4Gi", 7));
+        let back = serde_json::to_value(&l).unwrap();
+        assert_eq!(
+            limit_text(&back, "artifact_max_bytes", LimitUnit::Mib),
+            "0.0625"
+        );
+        let mut bad = texts.clone();
+        bad[4] = "soon".into();
+        assert_eq!(limits_of(&bad).unwrap_err(), "artifact_expires_days");
     }
 }

@@ -362,7 +362,7 @@ async fn claim(State(ctx): State<AppContext>, headers: HeaderMap) -> Result<Resp
         let input = match crate::controllers::secrets::keyring(&ctx) {
             Ok(ring) => {
                 let storage = crate::services::artifact_store::S3Config::from_config(&ctx.config);
-                let size = crate::services::fabric_settings::build(&ctx.config);
+                let size = crate::services::fabric_settings::build(&ctx).await;
                 environments::build_input(&ctx.db, &ring, &storage, runner.org_id, &job.id)
                     .await
                     .map(|mut input| {

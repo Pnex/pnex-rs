@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::auth::OrgContext;
 use crate::controllers::pagination::{self, PageParams};
-use crate::services::agent_artifacts::{self, ArtifactError, ArtifactSettings, TransferPrincipal};
+use crate::services::agent_artifacts::{self, ArtifactError, TransferPrincipal};
 use crate::services::artifact_store::{S3Config, S3Store};
 
 pub fn routes() -> Routes {
@@ -165,7 +165,7 @@ async fn upload(
         Ok(s) => s,
         Err(e) => return artifact_error(e),
     };
-    let settings = ArtifactSettings::from_config(&ctx.config);
+    let settings = crate::services::fabric_settings::artifacts(&ctx).await;
     match agent_artifacts::upload(
         &ctx.db,
         &store,
@@ -445,7 +445,7 @@ async fn transfer_output(
         Ok(s) => s,
         Err(e) => return artifact_error(e),
     };
-    let settings = ArtifactSettings::from_config(&ctx.config);
+    let settings = crate::services::fabric_settings::artifacts(&ctx).await;
     match agent_artifacts::receive_output(
         &ctx.db,
         &store,
@@ -560,7 +560,7 @@ async fn transfer_cache_put(
         Err(e) => return artifact_error(e),
     };
     let prefix = agent_artifacts::cache_prefix(run.org_id, environment, &name);
-    let settings = agent_artifacts::CacheSettings::from_config(&ctx.config);
+    let settings = crate::services::fabric_settings::caches(&ctx).await;
     match agent_artifacts::save_cache(&store, settings, &prefix, &q.key, body.into_data_stream())
         .await
     {

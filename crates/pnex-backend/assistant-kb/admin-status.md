@@ -6,7 +6,7 @@ pages: /admin/status
 nodes: 
 err_codes: platform-admin-required, retention-out-of-range, retention-locked-by-plan, tier-unknown
 tools: 
-tags: platform admin, subscription, tier, quota, abonnement, health, status, infrastructure, monitoring, retention, master key, rekey, uptime, disk, database, administrateur plateforme
+tags: platform admin, subscription, tier, quota, abonnement, health, status, infrastructure, monitoring, retention, master key, rekey, hosted agents, agent limits, build memory, dependency cache, SBOM, limites des agents, uptime, disk, database, administrateur plateforme
 ---
 Platform status is the platform administrator's page: the health of every infrastructure component of the PNeX installation, the platform-wide telemetry retention settings per organization, and the secrets master-key rotation. It appears in the menu only for platform administrators; anyone else gets "Reserved to platform administrators".
 
@@ -28,3 +28,7 @@ Platform status is the platform administrator's page: the health of every infras
 ## Assistant conversations
 
 The **Assistant conversations** card sets the platform retention of inactive assistant conversations (1–3650 days, default 180); **Default value** restores it. Organizations can only shorten it.
+
+## Hosted agent limits
+
+The **Hosted agent limits** card sets, for every organization, the memory and disk of an environment build (a quantity such as `8Gi`), the largest input or output and all the outputs of a run (MiB), how long inputs and outputs, untouched dependency caches, SBOMs, scan results and logs are kept (1–3650 days), and the largest dependency cache (MiB). Each field shows its default, from the server configuration; **Fill in the defaults** puts them back in the form, **Save** applies the whole set. Changes apply to the next build, run or cleanup, without a restart. A value out of its bounds is shown under its field and nothing is saved.

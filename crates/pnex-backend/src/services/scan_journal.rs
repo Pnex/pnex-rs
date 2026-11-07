@@ -113,7 +113,9 @@ pub async fn store_sbom(
     // The stream exists from here on. Failing to set it is logged: it would only mean the
     // default retention, and the next SBOM tries again.
     // Long by default: an SBOM must outlive the image it describes (D755).
-    let days = crate::services::fabric_settings::retention(&ctx.config).sbom_days;
+    let days = crate::services::fabric_settings::retention(ctx)
+        .await
+        .sbom_days;
     if let Err(e) = client
         .set_log_stream_retention(&creds.o2_org, SBOM_STREAM, days)
         .await
@@ -254,7 +256,9 @@ pub async fn journal_scan(ctx: &AppContext, org_id: i64, job: Uuid) -> Result<()
             .ingest_json(&creds.o2_org, EVENTS_STREAM, batch, &creds.email_passcode)
             .await?;
     }
-    let days = crate::services::fabric_settings::retention(&ctx.config).scan_events_days;
+    let days = crate::services::fabric_settings::retention(ctx)
+        .await
+        .scan_events_days;
     if let Err(e) = client
         .set_log_stream_retention(&creds.o2_org, EVENTS_STREAM, days)
         .await

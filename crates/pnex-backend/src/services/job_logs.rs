@@ -74,7 +74,9 @@ pub async fn store(
             .ingest_json(&creds.o2_org, LOGS_STREAM, batch, &creds.email_passcode)
             .await?;
     }
-    let days = crate::services::fabric_settings::retention(&ctx.config).job_logs_days;
+    let days = crate::services::fabric_settings::retention(ctx)
+        .await
+        .job_logs_days;
     if let Err(e) = client
         .set_log_stream_retention(&creds.o2_org, LOGS_STREAM, days)
         .await

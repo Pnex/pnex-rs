@@ -367,6 +367,7 @@ pub const EXPOSED: &[&str] = &[
     "stitch_jobs_create",
     "stitch_jobs_get",
     "stitch_jobs_get_by_asset",
+    "system_agent_limits_get",
     "system_o2_streams_list",
     "system_orgs_list",
     "system_retention_get",
@@ -644,6 +645,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     (
         "platform: instance administration stays in the UI",
         &[
+            "system_agent_limits_set",
             "system_orgs_tier_set",
             "system_retention_default_set",
             "system_retention_history_set",

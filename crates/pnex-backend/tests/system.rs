@@ -602,3 +602,102 @@ async fn org_tier_is_changed_by_platform_admins_only() {
     })
     .await;
 }
+
+/// R9 (D755): the global limits of hosted agents are edited by a platform admin only,
+/// checked on write, and read at use time by the next build and upload.
+/// The upload part needs the test S3 (`docker compose up -d rustfs rustfs-init`).
+#[tokio::test]
+#[serial]
+async fn agent_limits_are_edited_by_platform_admins_and_apply_at_once() {
+    with_app(|server, ctx, alice, bob| async move {
+        let (alice_id, org_id, _) = provision(&server, &alice).await;
+        provision(&server, &bob).await;
+        make_platform_admin(&ctx.db, alice_id).await;
+        let path = "/api/v1/system/agent-limits";
+        // Other suites rely on the configured limits: none stored before or after.
+        let forget = || async {
+            use sea_orm::ConnectionTrait;
+            ctx.db
+                .execute_unprepared("DELETE FROM system_settings WHERE key = 'agent_limits'")
+                .await
+                .unwrap();
+        };
+        forget().await;
+
+        let res = server
+            .get(path)
+            .add_header("Authorization", bearer(&bob))
+            .await;
+        assert_eq!(res.status_code(), 403);
+        let res = server
+            .get(path)
+            .add_header("Authorization", bearer(&alice))
+            .await;
+        assert_eq!(res.status_code(), 200);
+        let info: serde_json::Value = res.json();
+        // The test configuration sets the artifact sizes; the rest are code defaults.
+        assert_eq!(info["defaults"]["artifact_max_bytes"], 65536, "{info}");
+        assert_eq!(info["defaults"]["build_memory"], "8Gi");
+        let mut limits = info["defaults"].clone();
+
+        limits["build_memory"] = "4Gi".into();
+        let res = server
+            .put(path)
+            .add_header("Authorization", bearer(&bob))
+            .json(&limits)
+            .await;
+        assert_eq!(res.status_code(), 403);
+
+        let mut bad = limits.clone();
+        bad["build_ephemeral_storage"] = "lots".into();
+        bad["job_logs_days"] = 0.into();
+        let res = server
+            .put(path)
+            .add_header("Authorization", bearer(&alice))
+            .json(&bad)
+            .await;
+        assert_eq!(res.status_code(), 400);
+        let body: serde_json::Value = res.json();
+        assert_eq!(
+            body["errors"]["fields"]["build_ephemeral_storage"], "invalid",
+            "{body}"
+        );
+        assert_eq!(body["errors"]["fields"]["job_logs_days"], "range:1..3650");
+
+        limits["artifact_max_bytes"] = (1u64 << 20).into();
+        limits["artifact_run_max_bytes"] = (1u64 << 20).into();
+        let res = server
+            .put(path)
+            .add_header("Authorization", bearer(&alice))
+            .json(&limits)
+            .await;
+        assert_eq!(res.status_code(), 200, "{}", res.text());
+        let info: serde_json::Value = res.json();
+        assert_eq!(info["overridden"], true);
+        assert_eq!(info["limits"]["build_memory"], "4Gi");
+
+        // The next build pod and the next upload use the stored values.
+        let build = pnex_backend::services::fabric_settings::build(&ctx).await;
+        assert_eq!(build.memory, "4Gi");
+        let upload = |size: usize| {
+            server
+                .post("/api/v1/agent-artifacts?name=big")
+                .add_header("Authorization", bearer(&alice))
+                .add_header("X-Org-Id", org_id.to_string())
+                .bytes(vec![7u8; size].into())
+        };
+        let res = upload(70_000).await;
+        assert!(res.status_code().is_success(), "{}", res.text());
+
+        limits["artifact_max_bytes"] = 65536.into();
+        let res = server
+            .put(path)
+            .add_header("Authorization", bearer(&alice))
+            .json(&limits)
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert_eq!(upload(70_000).await.status_code().as_u16(), 413);
+        forget().await;
+    })
+    .await;
+}

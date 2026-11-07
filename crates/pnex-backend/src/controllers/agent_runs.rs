@@ -199,7 +199,7 @@ async fn create(
     org: OrgContext,
     Json(input): Json<AgentRunCreate>,
 ) -> Result<Response> {
-    let settings = crate::services::agent_artifacts::ArtifactSettings::from_config(&ctx.config);
+    let settings = crate::services::fabric_settings::artifacts(&ctx).await;
     match agent_runs::create(&ctx.db, settings, org.org.id, org.auth.user.id, &input).await {
         Ok(run) => Ok((StatusCode::CREATED, Json(run)).into_response()),
         Err(e) => run_error(e),
