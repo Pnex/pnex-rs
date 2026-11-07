@@ -653,6 +653,14 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ),
     ("extension_opposition_get", Access::Org("extension:read")),
     (
+        "extension_people_captures_create",
+        Access::Org("extension:write"),
+    ),
+    (
+        "extension_people_captures_list",
+        Access::Org("extension:read"),
+    ),
+    (
         "extension_profile_captures_list",
         Access::Org("extension:read"),
     ),

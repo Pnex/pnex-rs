@@ -316,6 +316,10 @@ pub struct FlowUpsertRequest {
     /// Evidence of a proposal, from `msg.evidence`.
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub evidence: Value,
+    /// `msg.about`: the object a new one with a personal title is about
+    /// (an employer); its name objected there stops the creation (D447).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub about: Option<String>,
 }
 
 /// `POST /internal/flow/ontology/link`.

@@ -40,6 +40,13 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 - **Record their objection to prospecting** (in the same window, confirmed twice): no capture of that person or of their profile addresses anymore, even if the person is deleted later.
 - The platform's terms may forbid automated access; the suspension risk falls on the account signed in within the agent.
 
+## Capturing a company's employees
+
+- On an **organization** page, **Capture employees (LinkedIn)**: paste the company's People page (`linkedin.com/company/<name>/people/`). Your browser agent (or a common one) opens it once in its signed-in session, scrolls the first screens at a human pace and reads them; the text becomes a document of the company, kept 30 days. The organization's page lists each capture and where it stands.
+- Any other page is refused (error "not a company's employee list on LinkedIn"). At most 10 captures per day for the organization.
+- With the B2B account mapping pack, the flow **Prospecting · captured employee lists** (deploy it once, needs an AI provider) turns each person named into a list contact (name, position) and proposes them as a contact at that company on the **To validate** page. Someone who objected at that company is never created again.
+- The capture is always asked by a person in the app: the assistant cannot start one. The platform's terms may forbid automated access; the risk falls on the account signed in within the agent.
+
 ## Good to know
 
 - Sign in to X, YouTube or TikTok in the agent's browser before following an account there.

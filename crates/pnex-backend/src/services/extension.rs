@@ -71,6 +71,14 @@ pub enum ExtensionError {
     Opposed,
     #[error("person not found")]
     PersonNotFound,
+    /// Not a company's employee list on LinkedIn (D779).
+    #[error("not an employee list")]
+    NotPeoplePage,
+    /// Daily employee list captures reached (D779).
+    #[error("people daily cap")]
+    PeopleDailyCap { max: i64 },
+    #[error("organization not found")]
+    OrganizationNotFound,
     #[error(transparent)]
     Db(#[from] DbErr),
 }
@@ -984,12 +992,13 @@ pub async fn store_page(
 ) -> Result<ba::PageStored, ExtensionError> {
     use crate::models::_entities::media_assets;
     let (id, mission, spec) = own_mission(&ctx.db, agent, &snapshot.mission_id).await?;
-    let profile = match &spec {
-        MissionSpec::CollectPage(_) => None,
+    let (profile, people) = match &spec {
+        MissionSpec::CollectPage(_) => (None, None),
         MissionSpec::CaptureProfile(p) => {
             crate::services::profiles::check_still_allowed(&ctx.db, agent.org_id, id, p).await?;
-            Some(p.clone())
+            (Some(p.clone()), None)
         }
+        MissionSpec::CapturePeople(p) => (None, Some(p.clone())),
         _ => return Err(ExtensionError::MissionNotFound),
     };
     if snapshot.text.trim().is_empty() {
@@ -1046,6 +1055,8 @@ pub async fn store_page(
                     "source_url": snapshot.url,
                     // Read by the 30-day purge of profile texts (D333).
                     "profile_person_id": profile.as_ref().map(|p| p.person_id.clone()),
+                    // Same purge for an employee list (D779).
+                    "people_org_id": people.as_ref().map(|p| p.organization_id.clone()),
                 }))),
                 ..Default::default()
             }
@@ -1085,6 +1096,9 @@ pub async fn store_page(
         .await?;
     if let Some(p) = &profile {
         crate::services::profiles::captured(ctx, agent, id, p, asset.id).await?;
+    }
+    if let Some(p) = &people {
+        crate::services::profiles::people_captured(ctx, agent, id, p, asset.id).await?;
     }
     Ok(ba::PageStored {
         asset_id: asset.id.to_string(),

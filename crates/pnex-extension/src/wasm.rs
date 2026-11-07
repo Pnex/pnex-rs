@@ -631,6 +631,7 @@ async fn run_mission(
         MissionSpec::CrawlSite(p) => format!("{}/", p.url),
         MissionSpec::CaptureProof(p) => p.url.clone(),
         MissionSpec::CaptureProfile(p) => p.url.clone(),
+        MissionSpec::CapturePeople(p) => p.url.clone(),
     };
     // Sites the mission reads: its page, or the platform's sites.
     let needed: Vec<String> = match &m.spec {
@@ -684,6 +685,17 @@ async fn run_mission(
         MissionSpec::CrawlSite(c) => return crawl_site(session, m, c, tab).await,
         MissionSpec::CaptureProof(_) => return capture_proof(session, m, tab).await,
         MissionSpec::CaptureProfile(_) => return capture_page(session, m, tab).await,
+        MissionSpec::CapturePeople(_) => {
+            // The first screens of cards, at a reader's pace (D258, D779).
+            for _ in 0..ba::PEOPLE_SCROLLS {
+                host::sleep(3_000.0 + js_sys::Math::random() * 3_000.0).await;
+                if host::scroll(tab).await.is_err() {
+                    break;
+                }
+            }
+            host::sleep(1_500.0).await;
+            return capture_page(session, m, tab).await;
+        }
     };
     #[derive(Deserialize)]
     struct Read {
@@ -727,9 +739,14 @@ async fn capture_page(session: &Session, m: &AssignedMission, tab: f64) -> Strin
     else {
         return "read-failed".into();
     };
-    // A profile that redirected elsewhere hit a sign-in or verification
-    // wall: blocked, never bypassed (D333).
-    if matches!(m.spec, MissionSpec::CaptureProfile(_)) && ba::profile_of(&page.url).is_err() {
+    // A profile or list that redirected elsewhere hit a sign-in or
+    // verification wall: blocked, never bypassed (D333, D779).
+    let walled = match &m.spec {
+        MissionSpec::CaptureProfile(_) => ba::profile_of(&page.url).is_err(),
+        MissionSpec::CapturePeople(_) => ba::people_page_of(&page.url).is_err(),
+        _ => false,
+    };
+    if walled {
         let code = if page.url.contains("checkpoint") || page.url.contains("challenge") {
             err_codes::EXT_CHALLENGE
         } else {

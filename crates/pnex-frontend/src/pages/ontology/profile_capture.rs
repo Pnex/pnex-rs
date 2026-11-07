@@ -1,7 +1,8 @@
 //! Profile capture of a person (account-mapping.md D333) and its
 //! prospecting objection (D341): one pasted profile address, captured once
 //! by the caller's browser agent in its signed-in session, and where the
-//! captures of the person stand.
+//! captures of the person stand. The same dialog asks the capture of a
+//! company's employee list on LinkedIn from an organization (D779).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -12,8 +13,14 @@ use crate::components::badges::date_label;
 use crate::components::crud::form::FormDialog;
 use crate::state::toasts;
 
+/// `people`: `person_id` is an organization and the address its employee
+/// list (D779); no objection there, it belongs to each person.
 #[component]
-pub fn ProfileCaptureDialog(person_id: String, on_close: EventHandler<()>) -> Element {
+pub fn ProfileCaptureDialog(
+    person_id: String,
+    #[props(default)] people: bool,
+    on_close: EventHandler<()>,
+) -> Element {
     let mut url = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let mut reload = use_signal(|| 0u32);
@@ -24,6 +31,9 @@ pub fn ProfileCaptureDialog(person_id: String, on_close: EventHandler<()>) -> El
         let id = pid.clone();
         async move {
             let _ = reload();
+            if people {
+                return None;
+            }
             api::extension::opposition(&id).await.ok()
         }
     });
@@ -34,10 +44,20 @@ pub fn ProfileCaptureDialog(person_id: String, on_close: EventHandler<()>) -> El
         .is_some_and(|o| o.opposed);
     let submit_id = person_id.clone();
     let oppose_id = person_id.clone();
+    let title = if people {
+        t!("people-capture-title")
+    } else {
+        t!("profile-capture-title")
+    };
+    let placeholder = if people {
+        "https://www.linkedin.com/company/…/people/"
+    } else {
+        "https://www.linkedin.com/in/…"
+    };
 
     rsx! {
         FormDialog {
-            title: t!("profile-capture-title").to_string(),
+            title: title.to_string(),
             submit_label: t!("profile-capture-submit").to_string(),
             on_close: move |_| on_close.call(()),
             busy: busy(),
@@ -48,7 +68,12 @@ pub fn ProfileCaptureDialog(person_id: String, on_close: EventHandler<()>) -> El
                 let done = t!("profile-capture-requested").to_string();
                 busy.set(true);
                 spawn(async move {
-                    match api::extension::capture_profile(&id, &raw).await {
+                    let asked = if people {
+                        api::extension::capture_people(&id, &raw).await
+                    } else {
+                        api::extension::capture_profile(&id, &raw).await
+                    };
+                    match asked {
                         Ok(_) => {
                             toasts::success(done);
                             on_close.call(());
@@ -67,22 +92,31 @@ pub fn ProfileCaptureDialog(person_id: String, on_close: EventHandler<()>) -> El
                 }
             } else {
                 label { class: "block text-sm font-medium text-gray-700",
-                    {t!("profile-capture-url")}
+                    if people {
+                        {t!("people-capture-url")}
+                    } else {
+                        {t!("profile-capture-url")}
+                    }
                     input {
                         class: "mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white",
                         r#type: "url",
                         "data-testid": "profile-url",
-                        placeholder: "https://www.linkedin.com/in/…",
+                        placeholder,
                         value: "{url}",
                         oninput: move |e| url.set(e.value()),
                     }
                 }
-                p { class: "text-xs text-gray-500", {t!("profile-capture-help")} }
+                if people {
+                    p { class: "text-xs text-gray-500", {t!("people-capture-help")} }
+                } else {
+                    p { class: "text-xs text-gray-500", {t!("profile-capture-help")} }
+                }
                 // D254: the platform's terms may forbid automated access.
                 p { class: "rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800",
                     {t!("profile-capture-terms-warning")}
                 }
                 button {
+                    hidden: people,
                     class: "text-xs text-red-700 underline",
                     r#type: "button",
                     "data-testid": "profile-oppose",
@@ -150,14 +184,22 @@ fn BrowserNotice() -> Element {
 /// Captures asked for the person, on its page; empty until one is asked.
 /// Refreshed while one is open: the agent runs it at its own pace.
 #[component]
-pub fn ProfileCaptures(person_id: String, reload: Signal<u32>) -> Element {
+pub fn ProfileCaptures(
+    person_id: String,
+    #[props(default)] people: bool,
+    reload: Signal<u32>,
+) -> Element {
     let mut tick = use_signal(|| 0u32);
     let id = person_id.clone();
     let captures = use_resource(move || {
         let id = id.clone();
         async move {
             let _ = (reload(), tick());
-            api::extension::profile_captures(&id).await.ok()
+            if people {
+                api::extension::people_captures(&id).await.ok()
+            } else {
+                api::extension::profile_captures(&id).await.ok()
+            }
         }
     });
     let rows = captures.read().clone().flatten().unwrap_or_default();
@@ -180,7 +222,13 @@ pub fn ProfileCaptures(person_id: String, reload: Signal<u32>) -> Element {
     }
     rsx! {
         div { class: "mt-6 space-y-2", "data-testid": "profile-captures",
-            h3 { class: "text-sm font-medium text-ink", {t!("profile-captures-title")} }
+            h3 { class: "text-sm font-medium text-ink",
+                if people {
+                    {t!("people-captures-title")}
+                } else {
+                    {t!("profile-captures-title")}
+                }
+            }
             if any_open {
                 BrowserNotice {}
             }

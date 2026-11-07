@@ -16,7 +16,7 @@ Voir un compte comme un **réseau daté** (groupe, filiales, établissements, di
 
 - ~~**Pas de CRM**~~ : revu le 2026-10-26 par `crm.md` D448 — le suivi commercial (opportunités, activités, plans de relance) est un pack `crm` à part, hors du noyau ; ni devis ni envoi automatique.
 - **Pas de connecteur CRM** dans ce PRD.
-- **Pas de découverte automatique de personnes** (D254 inchangé) : aucune recherche de profils, aucun parcours de graphe social, aucun rafraîchissement automatique d'un profil de réseau social.
+- **Pas de découverte automatique de personnes** (D254 inchangé) : aucune recherche de profils, aucun parcours de graphe social, aucun rafraîchissement automatique d'un profil de réseau social. Amendé par D779 pour un seul cas : la liste des salariés d'une entreprise, demandée par un humain.
 - **Pas de type « entreprise » ou « compte »** à côté de `organization` (même raison que D304 : un second type couperait le graphe en deux).
 - Rien de propre à un vendeur ou à un secteur au noyau (D190) : tout ce qui est métier vit dans un pack.
 - Rien de propre à une méthode de vente dans le pack non plus : profil de client idéal, personas visés, signaux déclencheurs, secteurs prioritaires et rôles de l'équipe commerciale sont des **réglages ou des données de l'org**. Le pack fournit la forme, jamais le contenu d'un playbook.
@@ -114,6 +114,19 @@ Nouveau nœud `org_resolve` : entrée nom + ville (ou code postal) ; il interrog
 > **D341, fin (2026-10-26)** : classification, masquage par rôle, base légale, file de rétention, effacement en coquille et opposition au moteur sont décrits et codés dans `crm.md` D442–D447.
 >
 > **D341, minimum livré** : liste `prospecting_oppositions` (empreintes `person:<uuid>` et adresses de profil canoniques, qui survivent à la personne). « Enregistrer son opposition » sur la fiche, confirmée deux fois et sans retour arrière dans l'UI, ferme les captures en attente et refuse les suivantes (`prospecting-opposed`). La classification D298, la base légale affichée, la file de rétention à 36 mois et l'effacement restent à faire.
+
+### D779 — Liste des salariés d'une entreprise, demandée par un humain (2026-11-07)
+
+Choix de Shan (2026-11-07) : les pages entreprise et les flux de presse sont laissés de côté ; sur LinkedIn, ce qui sert, ce sont **les gens qui travaillent** dans les entreprises déjà connues. Entre une collecte automatique (abandon de D254) et l'onglet envoyé par l'humain, Shan retient la seconde voie : déclenchement humain, une page à la fois.
+
+- **Amende D333 pour une seule page** : `linkedin.com/company/<nom>/people/` (`browser_agent::people_page_of`). Recherches, listes de relations et profils restent refusés (`ext-target-not-people-page`).
+- Bouton « Capturer les salariés (LinkedIn) » sur la fiche d'une `organization` : l'humain colle l'adresse, une mission `capture_people` est créée par le serveur seul (`POST /api/v1/extension/organizations/{id}/people-captures`, exclue du MCP et de l'assistant, motif « outward »). L'agent l'ouvre une fois dans sa session connectée, fait défiler **5 écrans** au rythme D258 et lit la page ; un renvoi vers la connexion ou une vérification bloque (`ext-login-required`, `ext-challenge`).
+- Plafond compilé : **10 listes par jour et par org** (`ext-people-daily-cap`). Texte purgé à 30 jours avec les profils.
+- À l'arrivée : document `published_by` l'organisation, propriété `people_to_read` posée sur elle (`prospecting_b2b` 3.5.0). Le flow *Prospecting · captured employee lists* (horaire, 5 organisations par passage, LLM de l'org) écrit **un `list_contact` par personne nommée** (nom, poste, liste « LinkedIn · <entreprise> », clé `linkedin|<org>|<nom>`) et **propose** le lien `contact_of` vers l'entreprise, à valider. Aucune `person` créée, aucun profil ouvert, aucun lien du réseau suivi.
+- **Opposition (D447)** : `object_upsert` reçoit `msg.about` (l'entreprise) ; un nouvel objet à titre personnel dont le nom s'est opposé chez cet objet n'est pas créé (`msg.opposed`). Une personne opposée chez ACME ne revient donc pas par la liste d'ACME. La file de rétention (D445) couvre déjà `list_contact`.
+- Limites : seuls les premiers écrans (de l'ordre de quelques dizaines de cartes) ; un homonyme ailleurs n'est pas bloqué ; le nom tel qu'affiché par le réseau, jamais vérifié.
+
+Tests : `only_a_company_employee_list_is_a_people_page` (pnex-core), `a_captured_employee_list_gives_list_contacts_about_the_company` (pnex-node-starlark), `an_employee_list_lands_on_its_company_and_skips_objections` (`tests/extension.rs`).
 
 ### D334 — Changement de poste : registre, recapture humaine et rappel
 

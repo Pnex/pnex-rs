@@ -68,6 +68,10 @@ pub fn routes() -> Routes {
             "/people/{id}/profile-captures",
             get(profile_captures).post(capture_profile),
         )
+        .add(
+            "/organizations/{id}/people-captures",
+            get(people_captures).post(capture_people),
+        )
         .add("/people/{id}/opposition", get(opposition).post(oppose))
         .add("/missions", get(missions).post(create_mission))
         .add(
@@ -104,6 +108,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         remove_mission,
         profile_captures,
         capture_profile,
+        people_captures,
+        capture_people,
         opposition,
         oppose
     ))]
@@ -181,6 +187,22 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
             err_codes::ONTOLOGY_NOT_FOUND,
             "Person not found.",
         ),
+        ExtensionError::OrganizationNotFound => coded(
+            StatusCode::NOT_FOUND,
+            err_codes::ONTOLOGY_NOT_FOUND,
+            "Organization not found.",
+        ),
+        ExtensionError::NotPeoplePage => coded(
+            StatusCode::BAD_REQUEST,
+            err_codes::EXT_TARGET_NOT_PEOPLE_PAGE,
+            "Not a company's employee list on LinkedIn (linkedin.com/company/<name>/people/).",
+        ),
+        ExtensionError::PeopleDailyCap { max } => Err(super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::EXT_PEOPLE_DAILY_CAP,
+            "The organization captured as many employee lists today as allowed.",
+            Some(serde_json::json!({ "max": max.to_string() })),
+        )),
         ExtensionError::Db(e) => {
             tracing::error!(error = %e, "browser agent database error");
             Err(Error::InternalServerError)
@@ -1308,6 +1330,69 @@ async fn capture_profile(
 ) -> Result<Response> {
     use crate::services::profiles;
     match profiles::request(&ctx.db, org.org.id, org.auth.user.id, id, &input.url).await {
+        Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `GET /api/v1/extension/organizations/{id}/people-captures` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/organizations/{id}/people-captures",
+    tag = "extension",
+    operation_id = "extension_people_captures_list",
+    summary = "List the employee list captures of an organization",
+    description = "The latest employee list captures asked for this organization (D779), newest first, with where each stands: waiting for a browser (`state_code` `ext-no-agent`), blocked, captured or stopped. Paginated (`limit`/`offset`). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Organization object id (UUID)"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::browser_agent::ProfileCapture>),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn people_captures(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    match crate::services::profiles::people_captures(&ctx.db, org.org.id, id).await {
+        Ok(rows) => pagination::paged(
+            &format!("/api/v1/extension/organizations/{id}/people-captures"),
+            &[],
+            q.page(),
+            rows,
+        ),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/organizations/{id}/people-captures` — `can_write`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/organizations/{id}/people-captures",
+    tag = "extension",
+    operation_id = "extension_people_captures_create",
+    summary = "Capture a company's employee list",
+    description = "Asks one capture of this organization's employee list on LinkedIn (`linkedin.com/company/<name>/people/`, D779): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session and reads the first screens. The page text becomes a document linked to the organization, kept 30 days; with the prospecting pack, a flow proposes the people it names as list contacts to validate, never someone who objected at that company. Any other page is refused. At most 10 captures per day. An open capture of the same list is returned as is. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Organization object id (UUID)")),
+    request_body = pnex_core::browser_agent::ProfileCaptureRequest,
+    responses(
+        (status = 201, body = pnex_core::browser_agent::Mission),
+        (status = 400, description = "`ext-target-not-people-page`: not a company's employee list; `field-invalid` (`url`): not a LinkedIn address", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`: no such organization", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ext-people-daily-cap` (`args.max`): daily captures reached", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn capture_people(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<pnex_core::browser_agent::ProfileCaptureRequest>,
+) -> Result<Response> {
+    use crate::services::profiles;
+    match profiles::request_people(&ctx.db, org.org.id, org.auth.user.id, id, &input.url).await {
         Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
         Err(e) => extension_error(e),
     }

@@ -505,13 +505,192 @@ pub async fn captured(
     disable(&ctx.db, mission_id).await
 }
 
-/// Deletes captured profile texts older than [`RAW_TEXT_DAYS`] (D333).
+/// The live `organization` object of the org.
+async fn organization(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+) -> Result<String, ExtensionError> {
+    match ontology::objects::find(db, org_id, id).await {
+        Ok(o) if o.type_key == "organization" && o.valid_to.is_none() => Ok(o.title),
+        Ok(_) | Err(ontology::OntologyError::NotFound) => Err(ExtensionError::OrganizationNotFound),
+        Err(e) => Err(ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string()))),
+    }
+}
+
+/// Asks one capture of a company's employee list on LinkedIn for the
+/// organization (D779). An open capture of the same list is returned as is.
+/// The people it names become list contacts to validate, read by a flow of
+/// the prospecting pack; nobody objecting at that company comes back.
+pub async fn request_people(
+    db: &DatabaseConnection,
+    org_id: i64,
+    user_id: i64,
+    organization_id: Uuid,
+    raw_url: &str,
+) -> Result<Mission, ExtensionError> {
+    organization(db, org_id, organization_id).await?;
+    let url = ba::people_page_of(raw_url).map_err(|r| match r {
+        ba::ProfileRefusal::NotNetwork => ExtensionError::Invalid {
+            field: "url".into(),
+            token: err_codes::FIELD_INVALID.into(),
+        },
+        ba::ProfileRefusal::NotProfile => ExtensionError::NotPeoplePage,
+    })?;
+    let target = ba::people_target(&url);
+    let open = db
+        .query_one_raw(stmt(
+            "SELECT id FROM extension_missions WHERE org_id = $1 AND kind = 'capture_people'
+               AND enabled AND target = $2 AND spec -> 'params' ->> 'organization_id' = $3",
+            vec![
+                org_id.into(),
+                target.clone().into(),
+                organization_id.to_string().into(),
+            ],
+        ))
+        .await?
+        .and_then(|r| r.try_get::<Uuid>("", "id").ok());
+    if let Some(id) = open {
+        return crate::services::extension::get_mission(db, org_id, id).await;
+    }
+    // shortcut: count then insert is racy by a few rows, fine for an abuse cap.
+    let today = db
+        .query_one_raw(stmt(
+            "SELECT count(*) AS n FROM extension_missions WHERE org_id = $1
+               AND kind = 'capture_people' AND created_at > now() - interval '24 hours'",
+            vec![org_id.into()],
+        ))
+        .await?
+        .and_then(|r| r.try_get::<i64>("", "n").ok())
+        .unwrap_or(0);
+    if today >= ba::PEOPLE_CAPTURES_PER_DAY {
+        return Err(ExtensionError::PeopleDailyCap {
+            max: ba::PEOPLE_CAPTURES_PER_DAY,
+        });
+    }
+    let spec = MissionSpec::CapturePeople(ba::CapturePeopleParams {
+        url: url.clone(),
+        organization_id: organization_id.to_string(),
+    });
+    let name: String = format!("Employees · {url}")
+        .chars()
+        .take(ba::NAME_MAX)
+        .collect();
+    let waiting = !crate::services::extension::runner_online(db, org_id, Some(user_id)).await;
+    let id = Uuid::new_v4();
+    db.execute_raw(stmt(
+        "INSERT INTO extension_missions (id, org_id, name, kind, spec, target, interval_secs,
+            enabled, state_code, created_by)
+         VALUES ($1, $2, $3, 'capture_people', $4, $5, $6, true, $7, $8)",
+        vec![
+            id.into(),
+            org_id.into(),
+            name.into(),
+            serde_json::to_value(&spec).unwrap_or_default().into(),
+            target.into(),
+            ba::MAX_INTERVAL_SECS.into(),
+            waiting.then(|| err_codes::EXT_NO_AGENT.to_string()).into(),
+            user_id.into(),
+        ],
+    ))
+    .await?;
+    crate::services::extension::get_mission(db, org_id, id).await
+}
+
+/// Latest employee list captures asked for the organization, newest first.
+pub async fn people_captures(
+    db: &DatabaseConnection,
+    org_id: i64,
+    organization_id: Uuid,
+) -> Result<Vec<ba::ProfileCapture>, ExtensionError> {
+    use sea_orm::FromQueryResult;
+    #[derive(FromQueryResult)]
+    struct Row {
+        id: Uuid,
+        url: Option<String>,
+        state: String,
+        state_code: Option<String>,
+        enabled: bool,
+        captured: bool,
+        created_at: chrono::DateTime<chrono::FixedOffset>,
+    }
+    organization(db, org_id, organization_id).await?;
+    let rows = Row::find_by_statement(stmt(
+        "SELECT id, spec -> 'params' ->> 'url' AS url, state, state_code, enabled,
+                cursor ->> 'asset_id' IS NOT NULL AS captured, created_at
+         FROM extension_missions WHERE org_id = $1 AND kind = 'capture_people'
+           AND spec -> 'params' ->> 'organization_id' = $2
+         ORDER BY created_at DESC LIMIT 20",
+        vec![org_id.into(), organization_id.to_string().into()],
+    ))
+    .all(db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| ba::ProfileCapture {
+            id: r.id.to_string(),
+            url: r.url.unwrap_or_default(),
+            state: ba::MissionState::parse(&r.state).unwrap_or_default(),
+            state_code: r.state_code,
+            open: r.enabled,
+            captured: r.captured,
+            created_at: r.created_at.to_rfc3339(),
+        })
+        .collect())
+}
+
+/// Property of `prospecting_b2b` naming the captured employee list a flow
+/// has yet to read (D779).
+const PEOPLE_TO_READ: &str = "people_to_read";
+
+/// After the list is stored: the document is linked to the organization,
+/// marked to read when the org has the prospecting pack, and the one-shot
+/// mission ends.
+pub async fn people_captured(
+    ctx: &AppContext,
+    agent: &AgentAuth,
+    mission_id: Uuid,
+    params: &ba::CapturePeopleParams,
+    asset_id: Uuid,
+) -> Result<(), ExtensionError> {
+    crate::services::extension::link_publisher(ctx, agent, asset_id, &params.organization_id).await;
+    if let Ok(id) = Uuid::parse_str(&params.organization_id) {
+        let known = ontology::schema(&ctx.db, agent.org_id)
+            .await
+            .ok()
+            .and_then(|s| {
+                s.object_type("organization")
+                    .map(|t| t.properties.iter().any(|p| p.key == PEOPLE_TO_READ))
+            })
+            .unwrap_or(false);
+        if known {
+            // Written in place: a stamp, not an edit of the organization.
+            ctx.db
+                .execute_raw(stmt(
+                    "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text)
+                     WHERE org_id = $1 AND id = $2 AND valid_to IS NULL",
+                    vec![
+                        agent.org_id.into(),
+                        id.into(),
+                        PEOPLE_TO_READ.into(),
+                        asset_id.to_string().into(),
+                    ],
+                ))
+                .await?;
+        }
+    }
+    disable(&ctx.db, mission_id).await
+}
+
+/// Deletes captured profile texts and employee lists older than
+/// [`RAW_TEXT_DAYS`] (D333, D779).
 pub async fn prune_expired(ctx: &AppContext) -> Result<u64, ExtensionError> {
     let rows = ctx
         .db
         .query_all_raw(stmt(
             "SELECT id, org_id FROM media_assets
-             WHERE metadata ->> 'profile_person_id' IS NOT NULL
+             WHERE (metadata ->> 'profile_person_id' IS NOT NULL
+                    OR metadata ->> 'people_org_id' IS NOT NULL)
                AND created_at < now() - make_interval(days => $1::int)
              LIMIT 500",
             vec![(RAW_TEXT_DAYS as i32).into()],

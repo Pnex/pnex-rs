@@ -409,6 +409,7 @@ impl ObjectUpsertNode {
                     .map(|v| v as i32),
                 confidence: to_json(m.get("confidence")).as_f64(),
                 evidence: to_json(m.get("evidence")),
+                about: to_json(m.get("about")).as_str().map(str::to_string),
             }
         };
         let who = format!("pnex-object-upsert [{}]", self.name());

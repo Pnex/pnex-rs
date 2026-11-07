@@ -616,6 +616,7 @@ fn MissionForm(
         Some(MissionSpec::CrawlSite(p)) => p.url.clone(),
         Some(MissionSpec::CaptureProof(p)) => p.url.clone(),
         Some(MissionSpec::CaptureProfile(p)) => p.url.clone(),
+        Some(MissionSpec::CapturePeople(p)) => p.url.clone(),
         Some(MissionSpec::FollowAccount(_)) | None => String::new(),
     };
     let crawl_params = match mission.as_ref().map(|m| &m.spec) {

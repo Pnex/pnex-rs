@@ -1153,6 +1153,10 @@ pub const EXT_TARGET_NOT_PROFILE: &str = "ext-target-not-profile";
 /// The org captured as many profiles of this network today as allowed
 /// (D333); args: `max`.
 pub const EXT_PROFILE_DAILY_CAP: &str = "ext-profile-daily-cap";
+/// Not a company's employee list on LinkedIn (D779).
+pub const EXT_TARGET_NOT_PEOPLE_PAGE: &str = "ext-target-not-people-page";
+/// Daily employee list captures of the org reached (D779). Args: `max`.
+pub const EXT_PEOPLE_DAILY_CAP: &str = "ext-people-daily-cap";
 /// The person objected to prospecting: no capture, no re-creation (D341).
 pub const PROSPECTING_OPPOSED: &str = "prospecting-opposed";
 /// The object was erased: a shell, never edited nor linked again (D446).
@@ -1204,6 +1208,8 @@ pub const ALL: &[&str] = &[
     EXT_NO_AGENT,
     EXT_TARGET_NOT_PROFILE,
     EXT_PROFILE_DAILY_CAP,
+    EXT_TARGET_NOT_PEOPLE_PAGE,
+    EXT_PEOPLE_DAILY_CAP,
     PROSPECTING_OPPOSED,
     ONTOLOGY_ERASED,
     ONTOLOGY_AGGREGATE_TIMEOUT,

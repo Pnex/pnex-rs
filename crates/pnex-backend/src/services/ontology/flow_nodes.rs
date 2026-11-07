@@ -348,7 +348,8 @@ pub async fn upsert(
     };
     // Only creation: an object already there was kept by a person.
     if existing.is_none()
-        && super::opposition::contact_opposed(db, def, org, &req.properties).await?
+        && (super::opposition::contact_opposed(db, def, org, &req.properties).await?
+            || name_opposed(db, def, org, req, &config.key).await?)
     {
         return Ok(FlowUpsertAck {
             created: false,
@@ -470,6 +471,26 @@ pub async fn check(
 }
 
 /// Title of an object created from a message: the message's, else its key.
+/// Whether the name of a new object with a personal title objected at the
+/// object it is about (`msg.about`, D447): an employee list must not bring
+/// back someone who objected at that company.
+async fn name_opposed(
+    db: &DatabaseConnection,
+    def: &pnex_core::ontology::ObjectTypeDef,
+    org: i64,
+    req: &FlowUpsertRequest,
+    key: &str,
+) -> Result<bool> {
+    let Some(about) = req.about.as_deref().and_then(|a| Uuid::parse_str(a).ok()) else {
+        return Ok(false);
+    };
+    if !def.title_classification.is_personal() {
+        return Ok(false);
+    }
+    let title = new_title(req, key, &def.key);
+    super::opposition::any_recorded(db, org, &[super::opposition::title_key(&title, about)]).await
+}
+
 fn new_title(req: &FlowUpsertRequest, key: &str, object_type: &str) -> String {
     req.title
         .clone()

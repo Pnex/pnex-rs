@@ -6553,6 +6553,11 @@ web-sites-no-extract = Ce passage n'a rien extrait.
 web-sites-search = Chercher un site web…
 
 ## Capture de profil d'une personne (D333) et opposition à la prospection (D341)
+people-capture-open = Capturer les salariés (LinkedIn)
+people-capture-title = Capturer la liste des salariés
+people-capture-url = Adresse de la liste des salariés
+people-capture-help = La page « Personnes » de cette entreprise sur LinkedIn (linkedin.com/company/<nom>/people/). Votre agent navigateur, ou un agent commun si vous n'en avez pas, l'ouvre une fois dans sa session connectée et lit les premiers écrans ; le texte devient un document de l'entreprise, gardé 30 jours. Avec le pack de prospection, les personnes qu'elle cite sont proposées comme contacts de liste à valider, jamais une personne opposée dans cette entreprise. 10 captures par jour au plus.
+people-captures-title = Captures de la liste des salariés
 profile-captures-title = Captures de profil
 profile-capture-state-done = Capturée
 profile-capture-state-stopped = Arrêtée
@@ -6571,6 +6576,8 @@ profile-opposition-confirm = Confirmer l'opposition (définitive)
 profile-opposition-recorded = Opposition enregistrée : plus aucune capture de cette personne.
 err-ext-target-not-profile = Cette adresse n'est pas la page de profil d'une personne sur un réseau connu (recherche, relations ou suggestions refusées).
 err-ext-profile-daily-cap = L'organisation a capturé aujourd'hui autant de profils de ce réseau que permis ({ $max }) : réessayez demain.
+err-ext-target-not-people-page = Cette adresse n'est pas la liste des salariés d'une entreprise sur LinkedIn (linkedin.com/company/<nom>/people/).
+err-ext-people-daily-cap = L'organisation a capturé aujourd'hui autant de listes de salariés que permis ({ $max }) : réessayez demain.
 err-prospecting-opposed = Cette personne s'est opposée à la prospection : aucune capture de profil, et aucun nouveau lien vers elle chez le même compte.
 err-ontology-aggregate-timeout = Ce calcul a pris trop de temps : réduisez-le ou réessayez.
 err-ontology-path-incomplete = Recherche interrompue avant de trouver un chemin : trop de liens à parcourir. Limitez les types de liens ou réessayez.

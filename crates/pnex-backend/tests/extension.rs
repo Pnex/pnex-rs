@@ -1241,6 +1241,134 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
     .await;
 }
 
+/// D779: an employee list is asked from an organization, lands on it to be
+/// read, and its people never bring back someone who objected there.
+#[tokio::test]
+#[serial]
+async fn an_employee_list_lands_on_its_company_and_skips_objections() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+        let (s, _) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert_eq!(s, 200);
+        let (s, _) = call(&server, "POST", "/api/v1/ontology/packs/prospecting_b2b/install", &env.alice, org, None).await;
+        assert_eq!(s, 200);
+        let new = |type_key: &str, title: &str| json!({ "type_key": type_key, "title": title, "properties": {} });
+        let (s, acme) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(new("organization", "ACME"))).await;
+        assert_eq!(s, 201, "{acme}");
+        let acme = acme["id"].as_str().unwrap().to_string();
+        let captures = format!("/api/v1/extension/organizations/{acme}/people-captures");
+        let ask = |url: &str| json!({ "url": url });
+
+        for url in ["https://www.linkedin.com/search/results/people/?keywords=acme", "https://www.linkedin.com/company/acme/", "https://www.linkedin.com/in/jane"] {
+            let (s, e) = call(&server, "POST", &captures, &env.alice, org, Some(ask(url))).await;
+            assert_eq!((s, e["error"].as_str()), (400, Some("ext-target-not-people-page")), "{url} {e}");
+        }
+        let (s, _) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://example.org/company/acme/people/"))).await;
+        assert_eq!(s, 400);
+        let (s, jane) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(new("person", "Jane Doe"))).await;
+        assert_eq!(s, 201);
+        let jane = jane["id"].as_str().unwrap().to_string();
+        let (s, _) = call(&server, "POST", &format!("/api/v1/extension/organizations/{jane}/people-captures"), &env.alice, org, Some(ask("https://www.linkedin.com/company/acme/people/"))).await;
+        assert_eq!(s, 404, "a person has no employee list");
+
+        let (s, m) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://fr.linkedin.com/company/ACME/people/?viewAsMember=true"))).await;
+        assert_eq!(s, 201, "{m}");
+        assert_eq!(m["spec"]["kind"], "capture_people");
+        assert_eq!(m["spec"]["params"]["url"], "https://www.linkedin.com/company/acme/people/");
+        let (_, again) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://www.linkedin.com/company/acme/people/"))).await;
+        assert_eq!(again["id"], m["id"]);
+
+        let mission_id = m["id"].as_str().unwrap();
+        let page = json!({ "mission_id": mission_id, "url": "https://www.linkedin.com/company/acme/people/", "title": "ACME", "text": "Jane Doe\nHead of purchasing\nJohn Roe\nBuyer" });
+        let (s, stored, _) = upload_page(&server, &install, &a, &page).await;
+        assert_eq!(s, 201, "{stored}");
+        let (_, company) = call(&server, "GET", &format!("/api/v1/ontology/objects/{acme}"), &env.alice, org, None).await;
+        assert_eq!(company["properties"]["people_to_read"].as_str().map(str::len), Some(36), "{company}");
+        let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{acme}/links"), &env.alice, org, None).await;
+        assert!(links.to_string().contains("published_by"), "{links}");
+        let (_, listed) = call(&server, "GET", &captures, &env.alice, org, None).await;
+        assert_eq!((&listed["results"][0]["open"], &listed["results"][0]["captured"]), (&json!(false), &json!(true)), "{listed}");
+
+        // A viewer may not ask one (R2).
+        personal_org(&server, &env.bob).await;
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
+        let (s, e) = call(&server, "POST", &captures, &env.bob, org, Some(ask("https://www.linkedin.com/company/acme/people/"))).await;
+        assert_eq!((s, e["error"].as_str()), (403, Some("access-denied")));
+
+        // Jane objected while at ACME: the flow never creates her again.
+        let (s, l) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(json!({"link_type": "employs", "source_id": acme, "target_id": jane}))).await;
+        assert_eq!(s, 201, "{l}");
+        let (s, _) = call(&server, "POST", &format!("/api/v1/extension/people/{jane}/opposition"), &env.alice, org, None).await;
+        assert_eq!(s, 200);
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-ext-1") };
+        let flow = deploy_contact_upsert(&env.db, org).await;
+        let node = json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": "u"});
+        let upsert = |title: &str| json!({"node": node, "title": title, "about": acme,
+            "properties": {"ref": format!("linkedin|{acme}|{}", title.to_lowercase()), "company": "ACME"}});
+        let (st, r) = internal_flow(&server, "upsert", upsert("JANE  doe")).await;
+        assert_eq!((st, r["opposed"].clone(), r["object"].clone()), (200, json!(true), Value::Null), "{r}");
+        let (st, r) = internal_flow(&server, "upsert", upsert("John Roe")).await;
+        assert_eq!((st, r["created"].clone()), (200, json!(true)), "{r}");
+
+        // Daily cap.
+        for i in 1..ba::PEOPLE_CAPTURES_PER_DAY {
+            let (s, o) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(new("organization", &format!("Co {i}")))).await;
+            assert_eq!(s, 201);
+            let (s, e) = call(&server, "POST", &format!("/api/v1/extension/organizations/{}/people-captures", o["id"].as_str().unwrap()), &env.alice, org, Some(ask(&format!("https://www.linkedin.com/company/co-{i}/people/")))).await;
+            assert_eq!(s, 201, "{i} {e}");
+        }
+        let (s, e) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://www.linkedin.com/company/acme-2/people/"))).await;
+        assert_eq!((s, e["error"].as_str()), (409, Some("ext-people-daily-cap")), "{e}");
+    })
+    .await;
+}
+
+/// A deployed flow of `org` whose node `u` upserts list contacts.
+async fn deploy_contact_upsert(db: &sea_orm::DatabaseConnection, org: i64) -> i64 {
+    use pnex_backend::models::_entities::{flow_versions, flows};
+    use sea_orm::{ActiveModelTrait, Set};
+    let flow = flows::ActiveModel {
+        name: Set("people".into()),
+        status: Set(pnex_core::FLOW_STATUS_DEPLOYED.into()),
+        org_id: Set(org),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let version = flow_versions::ActiveModel {
+        flow_id: Set(flow.id),
+        version_number: Set(1),
+        graph: Set(json!({ "nodes": [
+            {"id": "u", "kind": "object_upsert", "config": {"object_type": "list_contact", "key": "ref", "skip_existing": true}}
+        ] })),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let id = flow.id;
+    let mut am: flows::ActiveModel = flow.into();
+    am.deployed_version_id = Set(Some(version.id));
+    am.update(db).await.unwrap();
+    id
+}
+
+async fn internal_flow(server: &axum_test::TestServer, path: &str, body: Value) -> (u16, Value) {
+    let res = server
+        .post(&format!("/internal/flow/ontology/{path}"))
+        .add_header("x-pnex-flow-token", "tok-ext-1")
+        .json(&body)
+        .await;
+    let status = res.status_code().as_u16();
+    (
+        status,
+        serde_json::from_str(&res.text()).unwrap_or(Value::Null),
+    )
+}
+
 /// D550, SEC-56: a personal browser runs only its owner's missions, an admin
 /// shares only their own, and neither edits nor deletion reach a colleague's.
 #[tokio::test]

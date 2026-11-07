@@ -128,6 +128,26 @@ pub async fn capture_profile(person_id: &str, url: &str) -> Result<Mission, ApiE
     .await
 }
 
+/// `GET /api/v1/extension/organizations/{id}/people-captures` (D779).
+pub async fn people_captures(
+    organization_id: &str,
+) -> Result<Vec<pnex_core::browser_agent::ProfileCapture>, ApiError> {
+    client::request_all(&format!(
+        "/api/v1/extension/organizations/{organization_id}/people-captures"
+    ))
+    .await
+}
+
+/// `POST /api/v1/extension/organizations/{id}/people-captures` (D779).
+pub async fn capture_people(organization_id: &str, url: &str) -> Result<Mission, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/extension/organizations/{organization_id}/people-captures"),
+        body(&pnex_core::browser_agent::ProfileCaptureRequest { url: url.into() }),
+    )
+    .await
+}
+
 /// Whether a person objected to prospecting (D341).
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct Opposition {

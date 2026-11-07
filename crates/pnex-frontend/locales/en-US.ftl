@@ -6557,6 +6557,11 @@ web-sites-no-extract = This run extracted nothing.
 web-sites-search = Search a website…
 
 ## Profile capture of a person (D333) and prospecting objection (D341)
+people-capture-open = Capture employees (LinkedIn)
+people-capture-title = Capture the employee list
+people-capture-url = Employee list address
+people-capture-help = This company's People page on LinkedIn (linkedin.com/company/<name>/people/). Your browser agent, or a common one if you have none, opens it once in its signed-in session and reads the first screens; the text becomes a document of the company, kept 30 days. With the prospecting pack, the people it names are proposed as list contacts to validate, never someone who objected at this company. At most 10 captures per day.
+people-captures-title = Employee list captures
 profile-captures-title = Profile captures
 profile-capture-state-done = Captured
 profile-capture-state-stopped = Stopped
@@ -6575,6 +6580,8 @@ profile-opposition-confirm = Confirm the objection (final)
 profile-opposition-recorded = Objection recorded: no more captures of this person.
 err-ext-target-not-profile = This address is not one person's profile page on a known network (searches, relations and suggestions are refused).
 err-ext-profile-daily-cap = The organization captured as many profiles of this network today as allowed ({ $max }): try again tomorrow.
+err-ext-target-not-people-page = This address is not a company's employee list on LinkedIn (linkedin.com/company/<name>/people/).
+err-ext-people-daily-cap = The organization captured as many employee lists today as allowed ({ $max }): try again tomorrow.
 err-prospecting-opposed = This person objected to prospecting: no profile capture, and no new link to them at the same account.
 err-ontology-aggregate-timeout = This calculation took too long: narrow it or try again.
 err-ontology-path-incomplete = The search stopped before finding a path: too many links to walk. Restrict the link types or try again.

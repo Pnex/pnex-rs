@@ -1969,3 +1969,61 @@ fn a_captured_profile_proposes_its_employer() {
     assert_eq!(l["payload"]["attributes"]["position"], "CFO");
     assert_eq!(l["payload"]["evidence"]["on the profile"], "ACME");
 }
+
+/// D779: an employee list read by the model gives one list contact per
+/// person, about its company (an objection there stops it), and the
+/// organization is marked read even when the model names nobody.
+#[test]
+fn a_captured_employee_list_gives_list_contacts_about_the_company() {
+    let run = |name: &str, msg: serde_json::Value| {
+        execute(&code_in(PROSPECTING, name), &msg, 2000)
+            .unwrap()
+            .return_json
+            .unwrap_or(serde_json::Value::Null)
+    };
+    let ask = run(
+        "ppl_ask",
+        json!({"object": {"id": "o1", "title": "ACME", "properties": {"people_to_read": "m1"}}}),
+    );
+    assert_eq!(
+        (ask["payload"]["media_id"].as_str(), ask["org"].as_str()),
+        (Some("m1"), Some("o1"))
+    );
+    let r = run(
+        "ppl_read",
+        json!({"org": "o1", "org_title": "ACME", "payload": {"text":
+        "Jane Doe | Head of purchasing\n**John Roe** | none\njane doe | Buyer\nnone"}}),
+    );
+    let people = r[0]["payload"].as_array().unwrap();
+    assert_eq!(people.len(), 2, "{r}");
+    assert_eq!(people[0]["name"], "Jane Doe");
+    assert_eq!(people[0]["properties"]["job_title"], "Head of purchasing");
+    assert_eq!(people[0]["properties"]["ref"], "linkedin|o1|jane doe");
+    assert_eq!(people[1]["name"], "John Roe");
+    assert_eq!(people[1]["properties"]["job_title"], "");
+    assert_eq!(r[1]["payload"]["people_to_read"], "", "read once");
+    assert_eq!(r[1]["object_id"], "o1");
+    let r = run(
+        "ppl_read",
+        json!({"org": "o1", "payload": {"text": "none"}}),
+    );
+    assert!(r[0].is_null());
+    assert_eq!(r[1]["object_id"], "o1");
+
+    let one = run(
+        "ppl_one",
+        json!({"org": "o1", "payload": people[0].clone()}),
+    );
+    assert_eq!(one["title"], "Jane Doe");
+    assert_eq!(one["about"], "o1", "an objection at the company stops it");
+    // An opposed contact (no object) is not proposed.
+    assert!(run("ppl_link", json!({"org": "o1", "object": null})).is_null());
+    let l = run("ppl_link", json!({"org": "o1", "object": {"id": "c1"}}));
+    assert_eq!(
+        (
+            l["payload"]["source_id"].as_str(),
+            l["payload"]["target_id"].as_str()
+        ),
+        (Some("c1"), Some("o1"))
+    );
+}

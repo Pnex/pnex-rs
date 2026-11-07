@@ -4285,6 +4285,25 @@
         ],
         "type": "string"
       },
+      "CapturePeopleParams": {
+        "description": "`capture_people` (D779): one capture of one company's employee list,\nin the agent's signed-in session. Asked by a human from the\norganization's page, created by the server only.",
+        "properties": {
+          "organization_id": {
+            "description": "The `organization` the list belongs to.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "url": {
+            "description": "Canonical list address ([`people_page_of`]).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "organization_id"
+        ],
+        "type": "object"
+      },
       "CaptureProfileParams": {
         "description": "`capture_profile` (D333): one capture of one person's profile page, in\nthe agent's signed-in session. Asked by a human from the person's page,\ncreated by the server only.",
         "properties": {
@@ -15378,6 +15397,26 @@
               "params": {
                 "$ref": "#/components/schemas/CaptureProfileParams",
                 "description": "Created by the server only (D333): one capture of one profile."
+              }
+            },
+            "required": [
+              "params",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Created by the server only (D779): one capture of one employee list.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "capture_people"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/CapturePeopleParams",
+                "description": "Created by the server only (D779): one capture of one employee list."
               }
             },
             "required": [
@@ -55391,6 +55430,210 @@
           }
         ],
         "summary": "List the pages of a crawled site",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/organizations/{id}/people-captures": {
+      "get": {
+        "description": "The latest employee list captures asked for this organization (D779), newest first, with where each stands: waiting for a browser (`state_code` `ext-no-agent`), blocked, captured or stopped. Paginated (`limit`/`offset`). Any member.",
+        "operationId": "extension_people_captures_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Organization object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ProfileCapture"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the employee list captures of an organization",
+        "tags": [
+          "extension"
+        ]
+      },
+      "post": {
+        "description": "Asks one capture of this organization's employee list on LinkedIn (`linkedin.com/company/<name>/people/`, D779): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session and reads the first screens. The page text becomes a document linked to the organization, kept 30 days; with the prospecting pack, a flow proposes the people it names as list contacts to validate, never someone who objected at that company. Any other page is refused. At most 10 captures per day. An open capture of the same list is returned as is. Requires owner, admin or member role.",
+        "operationId": "extension_people_captures_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Organization object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileCaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mission"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ext-target-not-people-page`: not a company's employee list; `field-invalid` (`url`): not a LinkedIn address"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no such organization"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ext-people-daily-cap` (`args.max`): daily captures reached"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Capture a company's employee list",
         "tags": [
           "extension"
         ]

@@ -62,7 +62,7 @@
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "3.4.0"
+version: "3.5.0"
 requires: [companies, web_presence]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -102,6 +102,8 @@ extends:
       - { key: score_detail, name: Score detail, names: {fr: "Détail du score"}, kind: text, max_len: 4000 }
       - { key: scored_on, name: Scored on, names: {fr: "Score calculé le"}, kind: date }
       - { key: press_names, name: Other names in the press, names: {fr: "Autres noms dans la presse"}, kind: text, max_len: 500 }
+      # Captured employee list not read yet (D779): a document id, set by the server.
+      - { key: people_to_read, name: Employee list to read, names: {fr: "Liste des salariés à lire"}, kind: text, max_len: 64 }
   - type: map_pin
     properties:
       - key: establishment_status
@@ -588,7 +590,96 @@ functions:
     code: |
       def handle(inputs, msg):
           return {"payload": {"notified_on": msg.get("today", "")}, "object_id": msg["object"]["id"]}
+  - name: ppl_ask
+    language: starlark
+    description: An organization with a captured employee list not yet read, its document asked for.
+    code: |
+      def handle(inputs, msg):
+          o = msg["object"]
+          return {"payload": {"media_id": o["properties"].get("people_to_read", "")},
+                  "org": o["id"], "org_title": o["title"]}
+  - name: ppl_read
+    language: starlark
+    description: "The model's lines about an employee list: one list contact per person named, and the organization marked read."
+    outputs:
+      - {name: people, ty: any, desc: "The people named, as list contacts"}
+      - {name: read, ty: any, desc: "The organization, marked read"}
+    code: |
+      # One line per person: "<full name> | <position>" (D779).
+      def handle(inputs, msg):
+          org = msg["org"]
+          title = msg.get("org_title", "")
+          people = []
+          seen = {}
+          for line in msg["payload"].get("text", "").split("\n"):
+              parts = [x.strip().strip("`*\"-").strip() for x in line.split("|")]
+              name = parts[0][:255] if parts else ""
+              if len(name) < 3 or name.lower() in ["none", "unknown"] or name.lower() in seen:
+                  continue
+              seen[name.lower()] = True
+              job = parts[1][:255] if len(parts) > 1 and parts[1].lower() not in ["none", "unknown"] else ""
+              people.append({"name": name, "properties": {
+                  "ref": ("linkedin|" + org + "|" + name.lower())[:600],
+                  "list": ("LinkedIn · " + title)[:255],
+                  "job_title": job,
+                  "company": title[:255],
+                  "matching": "found",
+              }})
+              if len(people) >= 200:
+                  break
+          read = {"payload": {"people_to_read": ""}, "object_id": org}
+          if not people:
+              return [None, read]
+          return [{"payload": people, "org": org, "org_title": title}, read]
+  - name: ppl_one
+    language: starlark
+    description: One person of the list, as a list contact about its company (an objection there stops it).
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          return {"payload": p["properties"], "title": p["name"], "about": msg["org"], "org": msg["org"],
+                  "org_title": msg.get("org_title", "")}
+  - name: ppl_link
+    language: starlark
+    description: The list contact proposed as a contact at the company, to validate.
+    code: |
+      def handle(inputs, msg):
+          o = msg.get("object")
+          if not o:
+              return None
+          return {"payload": {"source_id": o["id"], "target_id": msg["org"], "attributes": {},
+                              "evidence": {"employee list": msg.get("org_title", "")}}}
 flows:
+  - name: "Prospecting · captured employee lists"
+    note: "Every hour, up to 5 organizations whose employee list was captured by a person (Capture employees, on the organization's page) are read by the organization's LLM: each person the page names becomes a list contact (name, position) and is proposed as a contact at that company on the To validate page. Someone who objected at that company is never brought back. It follows no link of the network and opens no profile. Needs an AI provider."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "40 * * * *" }, outputs: [{ port: 0, targets: [todo] }] }
+        - id: todo
+          kind: ontology_query
+          config:
+            object_type: organization
+            filters:
+              - { key: people_to_read, op: exists }
+              - { key: people_to_read, op: ne, value: "" }
+            limit: 5
+          outputs: [{ port: 0, targets: [ask] }]
+        - { id: ask, kind: pnex_function, config: { function_name: ppl_ask, language: starlark }, outputs: [{ port: 0, targets: [doc] }] }
+        - { id: doc, kind: document_text, outputs: [{ port: 0, targets: [read] }] }
+        - id: read
+          kind: llm_text
+          config:
+            data_field: text
+            max_chars: 12000
+            prompt: "This is the text of a company's employee list page on a professional network. Write one line per person the page lists as working at the company, exactly '<full name> | <current position>', and nothing else. Skip the viewer's own name, ads, suggestions, and anyone not listed as an employee. Write none for a position the page does not give. Never guess or complete a name. If the page lists nobody, write none."
+          outputs: [{ port: 0, targets: [parse] }]
+        - { id: parse, kind: pnex_function, config: { function_name: ppl_read, language: starlark }, outputs: [{ port: 0, targets: [each] }, { port: 1, targets: [mark] }] }
+        - { id: mark, kind: object_upsert, config: { object_type: organization, key: id } }
+        - { id: each, kind: json_split, config: { auto: false }, outputs: [{ port: 0, targets: [one] }] }
+        - { id: one, kind: pnex_function, config: { function_name: ppl_one, language: starlark }, outputs: [{ port: 0, targets: [contact] }] }
+        - { id: contact, kind: object_upsert, config: { object_type: list_contact, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: ppl_link, language: starlark }, outputs: [{ port: 0, targets: [attach] }] }
+        - { id: attach, kind: link_upsert, config: { link_type: contact_of, skip_closed: true, propose: true } }
   - name: "Prospecting · watched pages to signals"
     note: "Every hour, up to 50 watched pages whose text changed are read by the organization's LLM: a page announcing a topic of the list (new site, investment, hiring, ramp-up, takeover, retirements, quality problem, multi-site, in-house school, new offer, prices) becomes a commercial signal about the account, to validate, quoting the sentence. Edit the topics in the function ps_signal and in the prompt together. Watch a page with a site crawl whose record writes type watched_page (url, text, changed → changed, link_to → account). Needs an AI provider."
     graph:
