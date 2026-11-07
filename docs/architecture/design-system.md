@@ -271,6 +271,7 @@ les règles plus anciennes qui les contredisent.
 | Un passage d'un agent dans son bac (D731) | Exécution | Run | pas « run » en français, pas « job » (= travail du runner) |
 | Fichier donné à une exécution d'agent ou laissé par elle (D729) | Entrée / Sortie | Input / Output | pas « artefact » dans l'UI |
 | Où s'exécutent les exécutions d'un environnement (D763) | Isolation : Pod / Micro-VM | Isolation: Pod / Micro-VM | pas « isolement », pas « VM » seul |
+| Texte versionné qu'un agent lit à chaque exécution, brouillon jusqu'à son activation par un humain (D711) | Compétence | Skill | pas « skill » en français |
 | Accès enregistré à un registre OCI, secrets de lecture et d'écriture distincts (D703) | Registre d'images | Image registry | pas « connecteur » (= base externe), pas « dépôt » (= chemin dans le registre) |
 | Jeton à usage unique qui inscrit un runner | Jeton d'inscription | Join token | pas « token » en français, pas « clé » |
 | Seuil et effet du scan des images de l'org (D748) | Politique de scan | Scan policy | — |

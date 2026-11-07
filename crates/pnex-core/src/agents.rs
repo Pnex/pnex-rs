@@ -44,6 +44,9 @@ pub struct AgentSpec {
     #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub provider_id: Option<String>,
+    /// Skills its runs get under `/artifacts/in/skills/`, each at an activated version (D711).
+    #[serde(default)]
+    pub skills: Vec<crate::agent_skills::SkillPin>,
 }
 
 /// Role of the service account of an agent: never `admin` (D293), never above its author.
@@ -148,6 +151,18 @@ pub fn spec_error(spec: &AgentSpec) -> Option<(&'static str, &'static str)> {
         if uuid::Uuid::parse_str(p).is_err() {
             return Some(("provider_id", "invalid"));
         }
+    }
+    if let Some(found) = crate::agent_skills::pins_error(&spec.skills) {
+        return Some(found);
+    }
+    // The skills arrive under this input name.
+    if !spec.skills.is_empty()
+        && spec
+            .inputs
+            .iter()
+            .any(|i| i == crate::agent_skills::SKILLS_INPUT)
+    {
+        return Some(("inputs", "reserved"));
     }
     None
 }

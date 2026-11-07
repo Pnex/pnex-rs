@@ -145,6 +145,11 @@ async fn check_spec<C: ConnectionTrait>(
             return Err(AgentError::ProviderNotFound);
         }
     }
+    if let Some((field, token)) =
+        crate::services::agent_skills::check_pins(db, org_id, &spec.skills).await?
+    {
+        return Err(invalid(field, token));
+    }
     Ok(())
 }
 
@@ -410,6 +415,12 @@ pub async fn start_run(
     start: &AgentRunStart,
 ) -> Result<pnex_core::agent_runs::AgentRun, AgentError> {
     let agent = get(db, org_id, id).await?;
+    // A skill removed since the record was saved: said now, not missing from the sandbox.
+    if let Some((field, token)) =
+        crate::services::agent_skills::check_pins(db, org_id, &agent.spec.skills).await?
+    {
+        return Err(invalid(field, token));
+    }
     let body = run_of(&agent.spec, start).map_err(|(f, t)| invalid(f, t))?;
     let provider = match &agent.spec.provider_id {
         Some(p) => Some(Uuid::parse_str(p).map_err(|_| AgentError::ProviderNotFound)?),

@@ -1425,3 +1425,155 @@ async fn an_environment_sends_its_runs_to_micro_vms_unless_they_need_services() 
     })
     .await;
 }
+
+/// D711: a run gets the skills its agent version pins, as `skills/<name>.md`, at their
+/// activated text; a draft never reaches a sandbox.
+#[tokio::test]
+#[serial]
+async fn a_run_gets_the_pinned_skills_of_its_agent_never_a_draft() {
+    with_db(|server, env, db| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let environment = runnable(&server, &db, &env.alice, org).await;
+        let mut ids = Vec::new();
+        for (name, body) in [("review", "Activated text."), ("notes", "Draft only.")] {
+            let (s, skill) = call(
+                &server,
+                &env.alice,
+                org,
+                "POST",
+                "/api/v1/agent-skills",
+                Some(json!({ "name": name, "body": body })),
+            )
+            .await;
+            assert_eq!(s, 201, "{skill}");
+            ids.push(skill["id"].as_str().unwrap().to_string());
+        }
+        let (review, notes) = (ids[0].clone(), ids[1].clone());
+        let (s, a) = call(
+            &server,
+            &env.alice,
+            org,
+            "POST",
+            &format!("/api/v1/agent-skills/{review}/activate"),
+            Some(json!({ "number": 1, "expected_version": 1 })),
+        )
+        .await;
+        assert_eq!(s, 200, "{a}");
+        // A newer draft of the same skill, never activated.
+        let res = server
+            .patch(&format!("/api/v1/agent-skills/{review}"))
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&json!({ "expected_version": 2, "body": "Newer draft." }))
+            .await;
+        assert_eq!(res.status_code().as_u16(), 200, "{}", res.text());
+
+        let agent = |skills: Value, inputs: Value| {
+            json!({ "name": "reviewer", "spec": {
+                "environment_id": environment, "timeout_secs": 60,
+                "inputs": inputs, "skills": skills } })
+        };
+        for (skills, inputs, why) in [
+            (
+                json!([{ "skill_id": notes, "version": 1 }]),
+                json!([]),
+                "a draft is not pinned",
+            ),
+            (
+                json!([{ "skill_id": review, "version": 2 }]),
+                json!([]),
+                "nor a newer draft",
+            ),
+            (
+                json!([{ "skill_id": review, "version": 1 }]),
+                json!(["skills"]),
+                "reserved input",
+            ),
+        ] {
+            let (s, e) = call(
+                &server,
+                &env.alice,
+                org,
+                "POST",
+                "/api/v1/agents",
+                Some(agent(skills, inputs)),
+            )
+            .await;
+            assert_eq!(s, 400, "{why}: {e}");
+        }
+        let (s, created) = call(
+            &server,
+            &env.alice,
+            org,
+            "POST",
+            "/api/v1/agents",
+            Some(agent(
+                json!([{ "skill_id": review, "version": 1 }]),
+                json!([]),
+            )),
+        )
+        .await;
+        assert_eq!(s, 201, "{created}");
+        let (s, run) = call(
+            &server,
+            &env.alice,
+            org,
+            "POST",
+            &format!("/api/v1/agents/{}/runs", created["id"].as_str().unwrap()),
+            Some(json!({})),
+        )
+        .await;
+        assert_eq!(s, 201, "{run}");
+
+        let runner = enrol(&server, &env.alice, org).await;
+        let res = server
+            .post("/api/v1/runner/jobs/claim")
+            .add_header("Authorization", format!("Bearer {runner}"))
+            .await;
+        assert_eq!(res.status_code().as_u16(), 200, "{}", res.text());
+        let job = res.json::<Value>();
+        let artifacts = &job["sandbox"]["artifacts"];
+        let entry = artifacts["inputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["name"] == "skills")
+            .cloned()
+            .expect("skills input");
+        assert_eq!(entry["form"], "tar");
+        assert!(
+            !job["sandbox"]["env"].to_string().contains("Activated text"),
+            "never in env"
+        );
+        let res = raw(
+            &server,
+            "GET",
+            "/api/v1/agent-transfer/inputs/skills",
+            artifacts["token"].as_str().unwrap(),
+            None,
+            &[],
+            b"",
+        )
+        .await;
+        assert_eq!(res.status_code().as_u16(), 200, "{}", res.text());
+        let bytes = res.as_bytes().to_vec();
+        use sha2::Digest;
+        assert_eq!(
+            entry["sha256"],
+            format!("sha256:{:x}", sha2::Sha256::digest(&bytes)),
+            "the checksum of the claim holds"
+        );
+        let mut files = Vec::new();
+        for e in tar::Archive::new(bytes.as_slice()).entries().unwrap() {
+            let mut e = e.unwrap();
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut e, &mut text).unwrap();
+            files.push((e.path().unwrap().to_string_lossy().to_string(), text));
+        }
+        assert_eq!(
+            files,
+            vec![("review.md".to_string(), "Activated text.".to_string())]
+        );
+    })
+    .await;
+}

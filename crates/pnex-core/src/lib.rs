@@ -10,6 +10,8 @@
 pub mod agent;
 /// Runs of hosted agents and their LLM gateway (agent-environments.md D731, D732).
 pub mod agent_runs;
+/// Skills of hosted agents: versioned text, activated by a person (D396, D711).
+pub mod agent_skills;
 /// Agents of an org: service accounts with a versioned record of what they run (D757).
 pub mod agents;
 /// Edge agent contract (D95).

@@ -944,6 +944,11 @@ reste demande un geste, pas une discussion (§11.3).
 | D761 | Réponses pour R1 à R10 : agents par Admin et `viewer`, quota à part, entrée « Agents », `agent_ops` au premier usage, Firecracker pour E6, recette cluster par Claude, poussée à 19 h |
 | D762 | E6 : exécuteur Firecracker, disque ext4 tiré de l'image par digest, `/init` du runner, nftables dans la VM et sur l'hôte, sortie mesurée à 1,2 s |
 | D763 | Isolation choisie par environnement (`pod` par défaut, `vm`) ; un run avec services reste en pod ; un job VM arrêté garde 5 min pour envoyer ses sorties |
+| D770 | Compétences V1 à la main : tables en base, entrée `skills` (tar de `<nom>.md`) relue en base au claim et au transfert, rien dans S3, l'env ni la passerelle |
+| D771 | Toute écriture = brouillon ; activation humaine sur `expected_version`, jamais MCP ; secrets refusés à l'écriture et à l'activation |
+| D772 | Import d'un fichier lu par le navigateur, envoyé comme nouveau texte ; `SKILL.md` non analysé |
+| D773 | Épingle `{ skill_id, version }` dans la fiche d'agent, version activée seulement, revérifiée au départ ; épinglage depuis l'éditeur de compétence |
+| D774 | Pas de permission nouvelle (`agents:read/write/delete`) ; MCP : lecture et brouillons, pas l'activation ni la suppression |
 
 
 ## 11. Clôture du PRD (2026-11-06)
@@ -1197,6 +1202,43 @@ questions posées d'un bloc).
 - **Arrêt avant la fin** (annulation, délai dépassé) : le runner lit et envoie encore
   sorties et caches, en tâche de fond, pendant au plus `COLLECT_GRACE_SECS` (5 min),
   comme le conteneur `artifacts-out` d'un pod ; la boucle du runner n'attend pas.
+
+**D770 — Compétences V1, saisies à la main : remise au bac** (2026-11-07, lot C, applique
+D711 ; choix de Shan : V1 = saisie ou import dans l'UI, ni dépôt git ni compétences
+intégrées). Tables `agent_skills` et `agent_skill_versions` (migration 000111). Un run
+reçoit les compétences épinglées par **la version d'agent dont il part** comme une entrée de
+plus, nommée `skills`, forme `tar` : `/artifacts/in/skills/<nom>.md`, en lecture seule
+(mode 0444). L'archive est relue en base au claim (empreinte) et au transfert (octets),
+déterministe (propriétaires et dates fixes), donc rien n'est copié dans S3 ; ni variable
+d'environnement, ni passerelle LLM. Une version d'agent est figée et une version de
+compétence aussi : ce que lit le run ne bouge plus. Le nom d'entrée `skills` est réservé à
+un agent qui épingle une compétence.
+
+**D771 — Activer, c'est une décision sur une version déjà lue.** Toute écriture (création,
+nouveau texte, import) crée un brouillon ; `POST /agent-skills/{id}/activate` prend
+`number` et `expected_version` (version de la fiche lue), exige `agents:write` et n'est
+jamais un outil MCP (motif « sign-off »). Une version activée une fois reste épinglable ;
+`active_number` désigne la dernière activée, celle que l'UI propose d'épingler. La
+recherche de secrets (`holds_a_secret`, celle des environnements) tourne à l'écriture **et**
+à l'activation : `agent-skill-secret` (422), le texte n'est jamais stocké.
+
+**D772 — Import d'un fichier = lecture côté navigateur.** Le bouton « Importer un fichier »
+lit le `.md` dans le navigateur et l'envoie comme nouveau texte : même route, mêmes
+contrôles, un brouillon. Pas de route d'upload à part en V1. Le format `SKILL.md`
+(nom, description, corps) n'est pas analysé : nom et description sont des champs de la
+fiche, le texte est remis tel quel.
+
+**D773 — Épingler depuis l'onglet Compétences.** Une épingle est `{ skill_id, version }`
+dans la fiche d'agent (`spec.skills`, 20 au plus, une par compétence), donc versionnée
+avec elle. Elle n'est acceptée que sur une version activée de l'org (`not_found`,
+`not_active`) ; le départ d'un run revérifie, si bien qu'une compétence supprimée arrête
+l'agent au lieu de manquer en silence. L'UI épingle depuis l'éditeur de compétence
+(« Épingler à un agent ») ; le formulaire d'agent n'est pas touché en V1.
+
+**D774 — Droits et exposition.** Pas de permission nouvelle : `agents:read` (Viewer) pour
+lire, `agents:write` (Admin) pour écrire un brouillon ou activer, `agents:delete` pour
+supprimer. MCP : lecture, diff et écriture de brouillons exposés ; activation (sign-off)
+et suppression (destructive) exclues. L'assistant intégré n'a aucun outil de compétence.
 
 ### 11.2 Reste à faire, dans cet ordre
 

@@ -38,6 +38,7 @@ enum Tab {
     Environments,
     Registries,
     Runners,
+    Skills,
 }
 
 /// `2026-10-01T13:44:11.000Z` → `2026-10-01 13:44`.
@@ -84,6 +85,7 @@ pub fn HostedAgents() -> Element {
         (Tab::Runs, "agents-tab-runs"),
         (Tab::Environments, "agents-tab-environments"),
         (Tab::Runners, "agents-tab-runners"),
+        (Tab::Skills, "agents-skill-tab"),
     ];
     if access::can("image-registries:read") {
         tabs.insert(3, (Tab::Registries, "agents-reg-tab"));
@@ -126,6 +128,9 @@ pub fn HostedAgents() -> Element {
                 },
                 Tab::Runners => rsx! {
                     RunnersTab { reload }
+                },
+                Tab::Skills => rsx! {
+                    crate::pages::agent_skills::SkillsTab { reload }
                 },
             }
         }

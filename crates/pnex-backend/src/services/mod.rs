@@ -5,6 +5,7 @@ pub mod agent_artifacts;
 pub mod agent_gateway;
 pub mod agent_ops;
 pub mod agent_runs;
+pub mod agent_skills;
 pub mod agents;
 pub mod ai;
 /// Media annotations (D55–D60) — writes of the versioned layers.

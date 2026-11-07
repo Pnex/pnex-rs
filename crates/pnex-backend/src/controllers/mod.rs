@@ -1,5 +1,6 @@
 pub mod agent_artifacts;
 pub mod agent_runs;
+pub mod agent_skills;
 pub mod agents;
 pub mod ai;
 pub mod annotation_layers;

@@ -176,6 +176,20 @@ const RULES: &[Rule] = &[
         use_instead: "isolation (pod ou micro-VM d'un environnement, D763)",
         allowed_keys: &[],
     },
+    // D711: a versioned text an agent reads at each run is a « compétence ».
+    Rule {
+        scope: Scope::Fr,
+        term: "skill",
+        use_instead: "compétence (texte lu par un agent, D711)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "skills",
+        use_instead: "compétences (textes lus par un agent, D711)",
+        // The hint names the folder of the sandbox, `/artifacts/in/skills/`.
+        allowed_keys: &["agents-skill-field-name-hint"],
+    },
     // The storyline view of a case is the « Histoire » (its tab name).
     Rule {
         scope: Scope::Fr,

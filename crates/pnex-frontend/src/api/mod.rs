@@ -1,6 +1,8 @@
 //! Front API client — relative URLs (same-origin), Bearer + X-Org-Id,
 //! single-flight 401 refresh, error messages relayed as is.
 
+/// Skills of hosted agents (D711).
+pub mod agent_skills;
 pub mod agents;
 pub mod ai;
 /// Annotations on media (D55–D60) — versioned layers + read model.

@@ -6,6 +6,8 @@
 /// Access management of the org (iam.md §9).
 pub mod access;
 pub mod admin_status;
+/// Skills tab of the Agents page (D711).
+pub mod agent_skills;
 pub mod annotations;
 pub mod apps;
 pub mod auth_callback;

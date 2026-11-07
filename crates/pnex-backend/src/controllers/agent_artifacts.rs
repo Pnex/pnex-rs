@@ -383,6 +383,19 @@ async fn transfer_input(
     Path(name): Path<String>,
 ) -> Result<Response> {
     let run = transfer_of(&ctx, &headers).await?;
+    // The skills of its agent are read from PneX, not from the store (D711).
+    if name == pnex_core::agent_skills::SKILLS_INPUT {
+        let bundle = crate::services::agent_skills::bundle_of(&ctx.db, run.org_id, run.run_id)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "skills of a run unreadable");
+                Error::InternalServerError
+            })?;
+        if let Some(bytes) = bundle {
+            let kind = (header::CONTENT_TYPE, "application/octet-stream");
+            return Ok(([kind, (header::X_CONTENT_TYPE_OPTIONS, "nosniff")], bytes).into_response());
+        }
+    }
     let (key, size) = match agent_artifacts::input_of(&ctx.db, run, &name).await {
         Ok(found) => found,
         Err(e) => return artifact_error(e),

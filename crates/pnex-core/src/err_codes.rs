@@ -779,6 +779,16 @@ pub const AGENT_VERSION_CONFLICT: &str = "agent-version-conflict";
 pub const AGENT_QUOTA: &str = "agent-quota";
 /// The agent names no LLM provider of the org.
 pub const AGENT_PROVIDER_NOT_FOUND: &str = "agent-provider-not-found";
+/// No skill of the org has this id (D711).
+pub const AGENT_SKILL_NOT_FOUND: &str = "agent-skill-not-found";
+/// The skill has no text with this number.
+pub const AGENT_SKILL_VERSION_NOT_FOUND: &str = "agent-skill-version-not-found";
+/// A skill of the org already has this name.
+pub const AGENT_SKILL_NAME_TAKEN: &str = "agent-skill-name-taken";
+/// The skill changed since it was read (args `current`).
+pub const AGENT_SKILL_VERSION_CONFLICT: &str = "agent-skill-version-conflict";
+/// The text holds what looks like a credential: a skill never carries a secret (D396).
+pub const AGENT_SKILL_SECRET: &str = "agent-skill-secret";
 /// The image is over the scan threshold and the org refuses such images (D748).
 pub const ENVIRONMENT_SCAN_REFUSED: &str = "environment-scan-refused";
 /// The journal of builds cannot be read on this deployment (D759).
@@ -1247,6 +1257,11 @@ pub const ALL: &[&str] = &[
     AGENT_VERSION_CONFLICT,
     AGENT_QUOTA,
     AGENT_PROVIDER_NOT_FOUND,
+    AGENT_SKILL_NOT_FOUND,
+    AGENT_SKILL_VERSION_NOT_FOUND,
+    AGENT_SKILL_NAME_TAKEN,
+    AGENT_SKILL_VERSION_CONFLICT,
+    AGENT_SKILL_SECRET,
     AGENT_ARTIFACT_NOT_FOUND,
     AGENT_ARTIFACT_NOT_DECLARED,
     AGENT_ARTIFACT_ALREADY_SENT,

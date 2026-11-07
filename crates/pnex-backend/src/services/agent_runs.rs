@@ -398,7 +398,12 @@ pub async fn sandbox_input(
         serde_json::from_value(row.try_get("", "outputs").ok()?).ok()?;
     let caches: Vec<pnex_core::agent_runs::RunCache> =
         serde_json::from_value(row.try_get("", "caches").ok()?).ok()?;
-    let artifacts = if inputs.is_empty() && outputs.is_empty() && caches.is_empty() {
+    // The skills pinned by its agent come as one more input (D711).
+    let skills = crate::services::agent_skills::bundle_of(db, org_id, job)
+        .await
+        .ok()?;
+    let nothing = inputs.is_empty() && outputs.is_empty() && caches.is_empty() && skills.is_none();
+    let artifacts = if nothing {
         None
     } else {
         // Its own token, for the transfer containers only: the agent holds the run token.
@@ -413,9 +418,14 @@ pub async fn sandbox_input(
         ))
         .await
         .ok()?;
-        let (ins, outs) = agent_artifacts::sandbox_lists(db, org_id, &inputs, &outputs)
+        let (mut ins, outs) = agent_artifacts::sandbox_lists(db, org_id, &inputs, &outputs)
             .await
             .ok()?;
+        ins.extend(
+            skills
+                .as_deref()
+                .map(crate::services::agent_skills::sandbox_entry),
+        );
         Some(SandboxArtifacts {
             url: format!("{gateway}/api/v1/agent-transfer"),
             token: transfer,

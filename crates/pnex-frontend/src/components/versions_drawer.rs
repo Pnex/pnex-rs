@@ -35,10 +35,14 @@ pub fn VersionsDrawer(
     /// Why the last restore failed.
     #[props(default)]
     error: Option<String>,
+    /// Label of the restore verb, when the caller's word differs (skills: "Activate").
+    #[props(default)]
+    restore_label: Option<String>,
     on_close: EventHandler<()>,
     on_open: EventHandler<VersionRow>,
     on_restore: EventHandler<i32>,
 ) -> Element {
+    let restore = restore_label.unwrap_or_else(|| t!("web-sites-version-restore").to_string());
     let mut cursor = use_signal(|| None::<i32>);
     let mut comparing = use_signal(|| None::<i32>);
     let list: Vec<VersionRow> = match &rows {
@@ -160,7 +164,7 @@ pub fn VersionsDrawer(
                                                 let ver = v.version;
                                                 move |_| on_restore.call(ver)
                                             },
-                                            {t!("web-sites-version-restore")}
+                                            {restore.clone()}
                                         }
                                     }
                                 }
