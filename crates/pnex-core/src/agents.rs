@@ -13,13 +13,40 @@ use crate::agent_runs::{
 pub const NAME_MAX: usize = 80;
 pub const DESCRIPTION_MAX: usize = 1000;
 
+/// Default of `max_steps` of an internal agent, and its bounds (autonomous-agents.md D380).
+pub const MAX_STEPS_DEFAULT: i32 = 20;
+pub const MAX_STEPS_MAX: i32 = 50;
+/// Most tools one internal agent may be given.
+pub const TOOLS_MAX: usize = 64;
+/// The output every internal run leaves: its final answer (D785).
+pub const REPORT_OUTPUT: &str = "report";
+/// The same tool call (name and arguments) this many times ends the run (`loop_guard`).
+pub const LOOP_GUARD_REPEATS: u32 = 3;
+
+/// Where the loop of an agent runs (autonomous-agents.md D378, D785).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum AgentLevel {
+    /// In a sandbox a runner creates, from an environment's image.
+    #[default]
+    Hosted,
+    /// In the backend, with a closed subset of the assistant's tools; every write becomes
+    /// a proposal a person decides.
+    Internal,
+}
+
 /// What an agent runs, versioned: every change is a new version.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentSpec {
-    /// Its runs use the active build of this environment.
+    /// `hosted` when absent.
+    #[serde(default)]
+    pub level: AgentLevel,
+    /// Hosted only, required there: its runs use the active build of this environment.
+    #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub environment_id: String,
+    pub environment_id: Option<String>,
     #[serde(default)]
     pub command: Vec<String>,
     #[serde(default)]
@@ -47,6 +74,23 @@ pub struct AgentSpec {
     /// Skills its runs get under `/artifacts/in/skills/`, each at an activated version (D711).
     #[serde(default)]
     pub skills: Vec<crate::agent_skills::SkillPin>,
+    /// Internal only: the assistant tools it may call, by name (a closed subset).
+    #[serde(default)]
+    pub tools: Vec<String>,
+    /// Internal only: most model calls of one run; 20 when absent.
+    #[serde(default)]
+    pub max_steps: Option<i32>,
+}
+
+/// One tool an internal agent may be given (`GET /agents/tools`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AgentToolInfo {
+    pub name: String,
+    /// What the model is told the tool does (English).
+    pub summary: String,
+    /// A write: on an internal agent, each call becomes a proposal.
+    pub write: bool,
 }
 
 /// Role of the service account of an agent: never `admin` (D293), never above its author.
@@ -136,9 +180,53 @@ pub struct AgentRunStart {
 
 /// `(field, token)` of the first problem of a record.
 pub fn spec_error(spec: &AgentSpec) -> Option<(&'static str, &'static str)> {
+    match spec.level {
+        AgentLevel::Hosted => {
+            if spec.environment_id.is_none() {
+                return Some(("environment_id", "required"));
+            }
+            if !spec.tools.is_empty() {
+                return Some(("tools", "internal_only"));
+            }
+            if spec.max_steps.is_some() {
+                return Some(("max_steps", "internal_only"));
+            }
+        }
+        AgentLevel::Internal => {
+            // Nothing of a sandbox reaches an internal agent: no image, env, repo or secret.
+            let hosted_only = [
+                ("environment_id", spec.environment_id.is_some()),
+                ("command", !spec.command.is_empty()),
+                ("env", !spec.env.is_empty()),
+                ("outputs", !spec.outputs.is_empty()),
+                ("repos", !spec.repos.is_empty()),
+                ("services", !spec.services.is_empty()),
+                ("caches", !spec.caches.is_empty()),
+            ];
+            if let Some((field, _)) = hosted_only.into_iter().find(|(_, set)| *set) {
+                return Some((field, "hosted_only"));
+            }
+            if spec.tools.len() > TOOLS_MAX {
+                return Some(("tools", "too_many"));
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            if !spec.tools.iter().all(|t| seen.insert(t.as_str())) {
+                return Some(("tools", "duplicate"));
+            }
+            if spec
+                .max_steps
+                .is_some_and(|n| !(1..=MAX_STEPS_MAX).contains(&n))
+            {
+                return Some(("max_steps", "invalid"));
+            }
+        }
+    }
     // Same rules as a run: a record is a run waiting for its files.
     let as_run = AgentRunCreate {
-        environment_id: spec.environment_id.clone(),
+        environment_id: spec
+            .environment_id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::nil().to_string()),
         command: spec.command.clone(),
         env: spec.env.clone(),
         timeout_secs: spec.timeout_secs,
@@ -177,6 +265,58 @@ pub fn spec_error(spec: &AgentSpec) -> Option<(&'static str, &'static str)> {
         return Some(("inputs", "reserved"));
     }
     None
+}
+
+/// `loop_guard` (D380): counts each call by tool and normalized arguments.
+#[derive(Debug, Default)]
+pub struct LoopGuard {
+    seen: std::collections::HashMap<String, u32>,
+}
+
+impl LoopGuard {
+    /// Records one call; `true` once the same call reaches [`LOOP_GUARD_REPEATS`].
+    pub fn repeated(&mut self, tool: &str, arguments: &serde_json::Value) -> bool {
+        let key = format!("{tool}|{}", canonical(arguments));
+        let n = self.seen.entry(key).or_insert(0);
+        *n += 1;
+        *n >= LOOP_GUARD_REPEATS
+    }
+}
+
+/// Arguments with object keys sorted at every depth: the same call reads the same.
+pub fn canonical(v: &serde_json::Value) -> String {
+    fn walk(v: &serde_json::Value, out: &mut String) {
+        match v {
+            serde_json::Value::Object(m) => {
+                let mut keys: Vec<&String> = m.keys().collect();
+                keys.sort();
+                out.push('{');
+                for (i, k) in keys.into_iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    out.push_str(&serde_json::Value::String(k.clone()).to_string());
+                    out.push(':');
+                    walk(&m[k], out);
+                }
+                out.push('}');
+            }
+            serde_json::Value::Array(a) => {
+                out.push('[');
+                for (i, x) in a.iter().enumerate() {
+                    if i > 0 {
+                        out.push(',');
+                    }
+                    walk(x, out);
+                }
+                out.push(']');
+            }
+            other => out.push_str(&other.to_string()),
+        }
+    }
+    let mut out = String::new();
+    walk(v, &mut out);
+    out
 }
 
 pub fn name_error(name: &str) -> Option<&'static str> {
@@ -220,7 +360,7 @@ pub fn run_of(
         return Err(("inputs", "missing"));
     }
     Ok(AgentRunCreate {
-        environment_id: spec.environment_id.clone(),
+        environment_id: spec.environment_id.clone().unwrap_or_default(),
         command: spec.command.clone(),
         env: spec.env.clone(),
         timeout_secs,
@@ -239,7 +379,7 @@ mod tests {
 
     fn spec() -> AgentSpec {
         AgentSpec {
-            environment_id: uuid::Uuid::nil().to_string(),
+            environment_id: Some(uuid::Uuid::nil().to_string()),
             timeout_secs: 600,
             llm_calls_max: Some(50),
             inputs: vec!["ticket".into()],
@@ -317,5 +457,64 @@ mod tests {
         assert_eq!(spec_error(&s), Some(("provider_id", "invalid")));
         assert_eq!(name_error("  "), Some("required"));
         assert_eq!(name_error("triage"), None);
+    }
+
+    #[test]
+    fn an_internal_agent_has_tools_and_nothing_of_a_sandbox() {
+        let internal = AgentSpec {
+            level: AgentLevel::Internal,
+            timeout_secs: 600,
+            inputs: vec!["task".into()],
+            tools: vec!["list_flows".into()],
+            max_steps: Some(10),
+            ..Default::default()
+        };
+        assert_eq!(spec_error(&internal), None);
+        let mut s = internal.clone();
+        s.environment_id = Some(uuid::Uuid::nil().to_string());
+        assert_eq!(spec_error(&s), Some(("environment_id", "hosted_only")));
+        let mut s = internal.clone();
+        s.env.insert("MODE".into(), "x".into());
+        assert_eq!(spec_error(&s), Some(("env", "hosted_only")));
+        let mut s = internal.clone();
+        s.repos.push(RunRepo {
+            url: "https://github.com/a/b.git".into(),
+            git_ref: "main".into(),
+            path: "b".into(),
+            secret_id: None,
+            push_secret_id: None,
+        });
+        assert_eq!(spec_error(&s), Some(("repos", "hosted_only")));
+        let mut s = internal.clone();
+        s.max_steps = Some(51);
+        assert_eq!(spec_error(&s), Some(("max_steps", "invalid")));
+        let mut s = internal.clone();
+        s.tools.push("list_flows".into());
+        assert_eq!(spec_error(&s), Some(("tools", "duplicate")));
+
+        let mut hosted = spec();
+        hosted.tools = vec!["list_flows".into()];
+        assert_eq!(spec_error(&hosted), Some(("tools", "internal_only")));
+        let mut hosted = spec();
+        hosted.environment_id = None;
+        assert_eq!(spec_error(&hosted), Some(("environment_id", "required")));
+        // A record saved before levels existed reads as hosted.
+        let old: AgentSpec = serde_json::from_value(serde_json::json!({
+            "environment_id": uuid::Uuid::nil().to_string(), "timeout_secs": 60
+        }))
+        .unwrap();
+        assert_eq!(old.level, AgentLevel::Hosted);
+    }
+
+    #[test]
+    fn the_loop_guard_stops_the_third_same_call() {
+        let mut guard = LoopGuard::default();
+        let a = serde_json::json!({"b": 1, "a": [1, {"y": 2, "x": 1}]});
+        let same = serde_json::json!({"a": [1, {"x": 1, "y": 2}], "b": 1});
+        assert!(!guard.repeated("get_flow", &a));
+        assert!(!guard.repeated("get_flow", &same));
+        assert!(!guard.repeated("get_flow", &serde_json::json!({"b": 2})));
+        assert!(!guard.repeated("list_flows", &a));
+        assert!(guard.repeated("get_flow", &a), "third same call");
     }
 }

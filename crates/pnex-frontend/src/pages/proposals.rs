@@ -16,8 +16,11 @@ const STATUSES: [ProposalStatus; 4] = [
     ProposalStatus::Superseded,
 ];
 
+/// `origin`: only the proposals of this origin prefix, such as `agent:<id>` from a run
+/// (D785); empty for all.
 #[component]
-pub fn Proposals() -> Element {
+pub fn Proposals(origin: String) -> Element {
+    let origin = (!origin.trim().is_empty()).then_some(origin);
     let mut status = use_signal(|| ProposalStatus::Proposed);
     rsx! {
         ListLayout {
@@ -43,9 +46,16 @@ pub fn Proposals() -> Element {
                             }
                         }
                     }
+                    if let Some(o) = origin.clone() {
+                        span { class: "text-sm text-slate", {t!("proposals-origin-filter", origin : o)} }
+                    }
                 }
             },
-            ProposalsTable { key: "{status().as_str()}", status: status() }
+            ProposalsTable {
+                key: "{status().as_str()}",
+                status: status(),
+                origin: origin.clone(),
+            }
         }
     }
 }

@@ -146,8 +146,9 @@ pub enum Route {
         HostedAgents {},
 
         // What machines proposed, waiting for a human (proposals.md D374).
-        #[route("/proposals")]
-        Proposals {},
+        // `?origin=` narrows to one origin, such as an agent's (D785).
+        #[route("/proposals?:origin")]
+        Proposals { origin: String },
 
         #[route("/devices")]
         Devices {},

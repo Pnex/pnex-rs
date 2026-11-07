@@ -294,6 +294,8 @@ impl Hooks for App {
         // Recurrence occurrences roll forward (ontology.md annex B).
         crate::services::ontology::recurrence::spawn_sweeper(ctx);
         crate::services::runners::spawn_reaper(ctx);
+        // Internal agent runs, played in the backend (D785).
+        crate::services::internal_agents::spawn(ctx);
         crate::services::environments::spawn_rescans(ctx);
         crate::services::agent_artifacts::spawn_sweeper(ctx);
         // Scheduled ontology imports (partner-watch.md D303).

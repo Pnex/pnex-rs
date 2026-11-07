@@ -328,6 +328,7 @@ pub const EXPOSED: &[&str] = &[
     "agent_runs_logs",
     "agent_chains_get",
     "agents_list",
+    "agents_tools",
     "agents_get",
     "agents_versions",
     // Drafts only: activating stays a person's act (D711).

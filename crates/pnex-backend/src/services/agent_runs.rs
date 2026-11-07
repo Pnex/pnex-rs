@@ -106,7 +106,7 @@ const ISO: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
 fn select() -> String {
     format!(
         "SELECT a.id, a.environment_id, a.agent_id, a.agent_version, a.chain_id, a.job_id, a.llm_calls, a.llm_calls_max, \
-           a.input_tokens, a.output_tokens, a.error, j.state, j.outcome, j.exit_code, \
+           a.input_tokens, a.output_tokens, a.error, j.kind, j.state, j.outcome, j.exit_code, \
            j.spec->>'image' AS image, \
            to_char(a.created_at AT TIME ZONE 'UTC', {ISO}) AS created_at, \
            to_char(j.started_at AT TIME ZONE 'UTC', {ISO}) AS started_at, \
@@ -120,9 +120,14 @@ fn select() -> String {
 fn view(r: &QueryResult) -> Result<AgentRun, DbErr> {
     let state: String = r.try_get("", "state")?;
     let outcome: Option<String> = r.try_get("", "outcome")?;
+    let kind: String = r.try_get("", "kind")?;
     Ok(AgentRun {
         id: r.try_get::<Uuid>("", "id")?.to_string(),
-        environment_id: r.try_get::<Uuid>("", "environment_id")?.to_string(),
+        engine: RunnerJobKind::parse(&kind)
+            .ok_or_else(|| DbErr::Custom(format!("unknown job kind {kind}")))?,
+        environment_id: r
+            .try_get::<Option<Uuid>>("", "environment_id")?
+            .map(|u| u.to_string()),
         agent_id: r
             .try_get::<Option<Uuid>>("", "agent_id")?
             .map(|u| u.to_string()),
@@ -268,6 +273,90 @@ pub async fn create_as(
     ))
     .await?;
     agent_artifacts::declare_outputs(&txn, artifacts, org_id, id, &body.outputs).await?;
+    txn.commit().await?;
+    get(db, org_id, id).await
+}
+
+/// A run of an internal agent (D785): an `internal_llm` job the backend plays, no
+/// environment, no sandbox. Its final answer is the `report` output.
+pub async fn create_internal(
+    db: &DatabaseConnection,
+    artifacts: ArtifactSettings,
+    org_id: i64,
+    user_id: i64,
+    body: &AgentRunCreate,
+    origin: RunOrigin,
+    chain: Option<&ChainPick>,
+) -> Result<AgentRun, AgentRunError> {
+    agent_artifacts::check_inputs(db, org_id, &body.inputs)
+        .await
+        .map_err(|e| match e {
+            ArtifactError::Db(e) => AgentRunError::Db(e),
+            _ => AgentRunError::ArtifactNotFound,
+        })?;
+    let outputs = vec![ArtifactOutput {
+        name: pnex_core::agents::REPORT_OUTPUT.into(),
+        required: true,
+    }];
+    let txn = db.begin().await?;
+    let mut llm_calls_max = body
+        .llm_calls_max
+        .unwrap_or(pnex_core::agent_runs::LLM_CALLS_MAX_DEFAULT);
+    let chain_id = match chain {
+        Some(pick) => {
+            let (id, calls) = agent_chains::take(
+                &txn,
+                org_id,
+                user_id,
+                Some(origin.agent_id),
+                pick,
+                llm_calls_max,
+            )
+            .await?;
+            llm_calls_max = calls;
+            Some(id)
+        }
+        None => None,
+    };
+    let job = runners::create_job(
+        &txn,
+        org_id,
+        user_id,
+        &RunnerJobCreate {
+            kind: RunnerJobKind::InternalLlm,
+            // No image: the backend plays it; only the timeout is read.
+            spec: RunnerJobSpec {
+                image: String::new(),
+                command: Vec::new(),
+                timeout_secs: body.timeout_secs,
+            },
+            required_capabilities: Vec::new(),
+        },
+    )
+    .await?;
+    let id = Uuid::new_v4();
+    let job_id = Uuid::parse_str(&job.id).map_err(|e| DbErr::Custom(e.to_string()))?;
+    txn.execute_raw(stmt(
+        "INSERT INTO agent_runs \
+           (id, org_id, job_id, llm_calls_max, created_by, inputs, outputs, agent_id, \
+            agent_version, provider_id, chain_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        vec![
+            id.into(),
+            org_id.into(),
+            job_id.into(),
+            llm_calls_max.into(),
+            user_id.into(),
+            serde_json::json!(body.inputs).into(),
+            serde_json::json!(outputs).into(),
+            origin.agent_id.into(),
+            origin.agent_version.into(),
+            origin.provider_id.into(),
+            chain_id.into(),
+        ],
+    ))
+    .await?;
+    agent_artifacts::declare_outputs(&txn, artifacts, org_id, id, &outputs).await?;
     txn.commit().await?;
     get(db, org_id, id).await
 }

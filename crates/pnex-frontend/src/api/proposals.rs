@@ -11,11 +11,15 @@ use crate::components::crud::pager::PAGE_SIZE;
 pub async fn page(
     status: &str,
     object_id: Option<&str>,
+    origin: Option<&str>,
     page: i64,
 ) -> Result<Paginated<ProposalView>, ApiError> {
-    let object = object_id
+    let mut object = object_id
         .map(|o| format!("&object_id={o}"))
         .unwrap_or_default();
+    if let Some(o) = origin {
+        object.push_str(&format!("&origin={o}"));
+    }
     client::request(
         reqwest::Method::GET,
         &format!(

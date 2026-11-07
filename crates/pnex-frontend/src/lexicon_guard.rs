@@ -198,6 +198,13 @@ const RULES: &[Rule] = &[
         use_instead: "isolation (pod ou micro-VM d'un environnement, D763)",
         allowed_keys: &[],
     },
+    // D785: an agent whose loop runs in PneX is an « agent interne » (level Interne).
+    Rule {
+        scope: Scope::Fr,
+        term: "agent embarqué",
+        use_instead: "agent interne (niveau Interne, D785)",
+        allowed_keys: &[],
+    },
     // D711: a versioned text an agent reads at each run is a « compétence ».
     Rule {
         scope: Scope::Fr,

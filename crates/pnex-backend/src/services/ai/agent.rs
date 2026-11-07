@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use super::config::ResolvedAiConfig;
 use super::error::AiError;
-use super::provider::{AiChatRequest, Msg, Provider, Usage};
+use super::provider::{AiChatRequest, Msg, Provider, ToolSpec, Usage};
 use super::tools::{self, ToolDeps, ToolError, ToolOutcome, ToolTrace};
 
 /// Max number of LLM calls per user turn.
@@ -62,6 +62,76 @@ pub struct AgentReply {
     pub usage: Usage,
 }
 
+/// How a loop treats its tools and its model calls: the chat assistant ([`Chat`], the
+/// behaviour of a user turn) or an internal agent (`services::internal_agents`, D785).
+pub(crate) trait LoopPolicy {
+    /// Why the policy ended the loop before its answer.
+    type Stop;
+    /// The tools the model is offered.
+    fn specs(&self) -> Vec<ToolSpec>;
+    /// A tool the model may call; any other is refused as unknown.
+    fn allows(&self, name: &str) -> bool;
+    /// Model calls of the loop, the last one forced without tools.
+    fn max_calls(&self) -> usize;
+    /// Before each model call: a spent budget or a stop ends the loop.
+    async fn before_call(&mut self) -> Result<(), Self::Stop>;
+    /// After each model call, with its usage and text.
+    async fn after_call(&mut self, usage: &Usage, text: Option<&str>);
+    /// Before each tool call (`loop_guard`).
+    fn before_tool(&mut self, name: &str, arguments: &serde_json::Value) -> Result<(), Self::Stop>;
+    /// Every write becomes a proposal (agents); else a write is held only once the loop
+    /// read untrusted content (chat, SEC-71).
+    fn proposes_writes(&self) -> bool;
+    /// A write turned into a proposal: its trace entry and what the model reads.
+    async fn propose(&mut self, name: &str, arguments: &serde_json::Value) -> (ToolTrace, String);
+    /// After each tool call, with its trace entry.
+    async fn after_tool(&mut self, entry: &ToolTrace);
+}
+
+/// Why a loop ended without an answer.
+#[derive(Debug)]
+pub(crate) enum LoopEnd<S> {
+    Ai(AiError),
+    Stop(S),
+}
+
+impl<S> From<AiError> for LoopEnd<S> {
+    fn from(e: AiError) -> Self {
+        Self::Ai(e)
+    }
+}
+
+/// The chat assistant: every registry tool, [`MAX_ITERATIONS`] calls, writes held after
+/// untrusted content.
+pub(crate) struct Chat;
+
+impl LoopPolicy for Chat {
+    type Stop = std::convert::Infallible;
+    fn specs(&self) -> Vec<ToolSpec> {
+        tools::tool_specs()
+    }
+    fn allows(&self, _name: &str) -> bool {
+        true
+    }
+    fn max_calls(&self) -> usize {
+        MAX_ITERATIONS
+    }
+    async fn before_call(&mut self) -> Result<(), Self::Stop> {
+        Ok(())
+    }
+    async fn after_call(&mut self, _usage: &Usage, _text: Option<&str>) {}
+    fn before_tool(&mut self, _: &str, _: &serde_json::Value) -> Result<(), Self::Stop> {
+        Ok(())
+    }
+    fn proposes_writes(&self) -> bool {
+        false
+    }
+    async fn propose(&mut self, name: &str, arguments: &serde_json::Value) -> (ToolTrace, String) {
+        (held(name, arguments), HELD_NOTE.to_string())
+    }
+    async fn after_tool(&mut self, _entry: &ToolTrace) {}
+}
+
 /// Runs a user turn: loops until a text answer or
 /// the iteration bound (last call **without tools** to force the
 /// conclusion).
@@ -72,8 +142,32 @@ pub async fn run_turn(
     system: String,
     history: Vec<Msg>,
 ) -> Result<AgentReply, AiError> {
+    run_loop(deps, cfg, provider, system, history, &mut Chat)
+        .await
+        .map_err(|e| match e {
+            LoopEnd::Ai(e) => e,
+            LoopEnd::Stop(never) => match never {},
+        })
+}
+
+fn add(total: Usage, turn: &Usage) -> Usage {
+    Usage {
+        input_tokens: total.input_tokens + turn.input_tokens,
+        output_tokens: total.output_tokens + turn.output_tokens,
+    }
+}
+
+/// The bounded loop under a policy.
+pub(crate) async fn run_loop<P: LoopPolicy>(
+    deps: &ToolDeps<'_>,
+    cfg: &ResolvedAiConfig,
+    provider: Provider,
+    system: String,
+    history: Vec<Msg>,
+    policy: &mut P,
+) -> Result<AgentReply, LoopEnd<P::Stop>> {
     let http = shared_http();
-    let specs = tools::tool_specs();
+    let specs = policy.specs();
     let mut messages = history;
     let mut trace: Vec<ToolTrace> = Vec::new();
     let mut usage_total = Usage::default();
@@ -81,8 +175,9 @@ pub async fn run_turn(
     let mut tainted = false;
 
     // Tool-enabled calls; the forced final answer below is the last of the
-    // `MAX_ITERATIONS` calls (O48).
-    for _iteration in 0..MAX_ITERATIONS - 1 {
+    // `max_calls` calls (O48).
+    for _iteration in 0..policy.max_calls().saturating_sub(1) {
+        policy.before_call().await.map_err(LoopEnd::Stop)?;
         let req = AiChatRequest {
             system: system.clone(),
             messages: &messages,
@@ -90,10 +185,8 @@ pub async fn run_turn(
             max_tokens: MAX_TOKENS,
         };
         let turn = provider.chat(http, cfg, &req).await?;
-        usage_total = Usage {
-            input_tokens: usage_total.input_tokens + turn.usage.input_tokens,
-            output_tokens: usage_total.output_tokens + turn.usage.output_tokens,
-        };
+        usage_total = add(usage_total, &turn.usage);
+        policy.after_call(&turn.usage, turn.text.as_deref()).await;
 
         // Final text answer → turn done.
         if turn.tool_calls.is_empty() {
@@ -112,11 +205,32 @@ pub async fn run_turn(
             tool_calls: turn.tool_calls.clone(),
         });
         for call in turn.tool_calls {
-            if tainted && is_write_tool(&call.name) {
-                // Held, not run: the human confirms it in the chat (SEC-71).
+            policy
+                .before_tool(&call.name, &call.arguments)
+                .map_err(LoopEnd::Stop)?;
+            if !policy.allows(&call.name) {
+                let refused: Result<ToolOutcome, ToolError> = Err(format!(
+                    "unknown tool: {} — only the tools listed in this conversation are available",
+                    call.name
+                )
+                .into());
+                let (entry, content) = traced(&call.name, &call.arguments, refused);
+                policy.after_tool(&entry).await;
+                trace.push(entry);
+                messages.push(Msg::ToolResult {
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    content,
+                    is_error: true,
+                });
+                continue;
+            }
+            if is_write_tool(&call.name) && (tainted || policy.proposes_writes()) {
+                // Held or proposed, not run: a human decides (SEC-71, D785).
                 // A refused permission is still reported as a refusal.
                 if let Err(err) = tools::authorize_tool(deps, &call.name) {
                     let (entry, content) = traced(&call.name, &call.arguments, Err(err));
+                    policy.after_tool(&entry).await;
                     trace.push(entry);
                     messages.push(Msg::ToolResult {
                         id: call.id.clone(),
@@ -126,12 +240,14 @@ pub async fn run_turn(
                     });
                     continue;
                 }
-                tracing::info!(tool = %call.name, "assistant write held for confirmation");
-                trace.push(held(&call.name, &call.arguments));
+                tracing::info!(tool = %call.name, "assistant write held for a human decision");
+                let (entry, content) = policy.propose(&call.name, &call.arguments).await;
+                policy.after_tool(&entry).await;
+                trace.push(entry);
                 messages.push(Msg::ToolResult {
                     id: call.id.clone(),
                     name: call.name.clone(),
-                    content: HELD_NOTE.to_string(),
+                    content,
                     is_error: false,
                 });
                 continue;
@@ -142,6 +258,7 @@ pub async fn run_turn(
             let outcome = tools::execute(deps, &call.name, &call.arguments).await;
             let is_error = outcome.is_err();
             let (entry, content) = traced(&call.name, &call.arguments, outcome);
+            policy.after_tool(&entry).await;
             trace.push(entry);
             messages.push(Msg::ToolResult {
                 id: call.id.clone(),
@@ -158,6 +275,7 @@ pub async fn run_turn(
         text: "(tool limit reached for this turn — answer the user now without calling a tool)"
             .into(),
     });
+    policy.before_call().await.map_err(LoopEnd::Stop)?;
     let req = AiChatRequest {
         system,
         messages: &messages,
@@ -165,10 +283,8 @@ pub async fn run_turn(
         max_tokens: MAX_TOKENS,
     };
     let turn = provider.chat(http, cfg, &req).await?;
-    usage_total = Usage {
-        input_tokens: usage_total.input_tokens + turn.usage.input_tokens,
-        output_tokens: usage_total.output_tokens + turn.usage.output_tokens,
-    };
+    usage_total = add(usage_total, &turn.usage);
+    policy.after_call(&turn.usage, turn.text.as_deref()).await;
     Ok(AgentReply {
         answer: turn
             .text

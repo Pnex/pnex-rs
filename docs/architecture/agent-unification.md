@@ -127,7 +127,7 @@ les quotas d'envoi ; la tenue de D123 (aucune action physique).
 | **U3** | Routage D782 (`session: required`, repli, choix forcé) ; file et plafonds côté serveur | U2 |
 | **U4** | Recettes fournies : `capture_profile`, `capture_people` (D779), `collect_page`… réécrites en recettes ; `linkedin_profile_by_name` (D784) ; retrait des types de mission codés en dur | U3 |
 | **U5** | Nœud `agent-run` unique et page Agents tous moteurs (D786) | U1 |
-| **U6** | A2 : moteur `internal_llm`, outils de l'assistant, écritures en propositions, niveau dans la fiche agent (choix du 2026-11-07). Avancé en parallèle de U1–U4 (Shan, 2026-11-07) : il pose le moteur sur `runner_jobs` + `agent_runs`, comme D781 | — |
+| **U6** | A2 : moteur `internal_llm`, outils de l'assistant, écritures en propositions, niveau dans la fiche agent (choix du 2026-11-07). Avancé en parallèle de U1–U4 (Shan, 2026-11-07) : il pose le moteur sur `runner_jobs` + `agent_runs`, comme D781. **Livré 2026-11-07** (voir §5) | — |
 | **U7** (plus tard) | Canaux d'un agent : mail en entrée et en sortie, téléphone, Slack, Telegram (D787) | U5 |
 
 **Notes pour U4 (`capture_people`, D779, poussé en 8b220d62).** Ce qu'une recette doit
@@ -155,3 +155,29 @@ reprendre sans rien perdre :
   l'extension ne joue que lui.
 - Il faut un plan de migration des missions en cours (D779 est poussé par une autre
   session) avant le retrait des types codés en dur, prévu à U4.
+
+## 5. U6 livré (2026-11-07)
+
+- **Fiche** : `AgentSpec.level` (`hosted` par défaut, `internal`), `environment_id` facultatif
+  (exigé en hébergé), `tools` (noms du registre de l'assistant, jeton `unknown_tool` sinon ;
+  outil d'écriture refusé à un agent lecteur, `write_needs_member`), `max_steps` (20 par
+  défaut, 1 à 50). Un agent interne refuse tout champ du bac (`hosted_only`) : ni image, ni
+  commande, ni variable, ni dépôt, ni service, ni cache, ni sortie déclarée.
+- **Run** : job `internal_llm` joué par une tâche du backend (`services/internal_agents.rs`,
+  `FOR UPDATE SKIP LOCKED`, bail = durée du run + 2 min), jamais pris par un runner.
+  `AgentRun.engine` = le genre du job. Arrêt vu avant chaque appel au modèle ; délai = celui
+  du run ; `take_call` + quota quotidien `llm-agent` avant chaque appel, `add_tokens` après.
+- **Boucle** : celle de l'assistant (`ai::agent::run_loop` sous une politique) ; le chat
+  garde son comportement. `loop_guard` : même outil + mêmes arguments 3 fois → échec
+  `agent-loop-detected`.
+- **Écritures** : chaque appel d'un outil d'écriture devient une proposition `tool_call`
+  (origine `agent:<id>`, `run_id` dans les valeurs). L'accepter rejoue les arguments exacts
+  par `tools::execute` avec les droits de la personne qui décide (comme `run_confirmed`) ;
+  un refus de l'outil la laisse ouverte (409, code de l'outil ou `proposal-tool-failed`).
+  Pas de correction des valeurs.
+- **Entrées** : le texte des fichiers d'entrée (64 Kio chacun au plus, balisé comme donnée)
+  est la tâche ; les compétences activées épinglées sont les consignes. La réponse finale
+  est la sortie `report`.
+- **Écarts assumés** : pas de planification, pas de priorités (D400), pas d'étapes
+  reprenables (D397 : un backend tué rejoue le run du début après expiration du bail) ; le
+  journal part dans OpenObserve à la fin du run, pas au fil de l'eau.

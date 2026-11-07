@@ -828,6 +828,11 @@ pub const AGENT_RUN_MERGE_REQUEST_FAILED: &str = "agent-run-merge-request-failed
 pub const AGENT_GATEWAY_QUOTA: &str = "agent-gateway-quota";
 /// The org has no LLM provider for agents.
 pub const AGENT_GATEWAY_NOT_CONFIGURED: &str = "agent-gateway-not-configured";
+/// An internal agent called the same tool with the same arguments again: the run ends
+/// (`loop_guard`, D380).
+pub const AGENT_LOOP_DETECTED: &str = "agent-loop-detected";
+/// The tool of an accepted agent proposal refused to run (args `tool`): it stays open.
+pub const PROPOSAL_TOOL_FAILED: &str = "proposal-tool-failed";
 /// The provider of the org speaks the other protocol.
 pub const AGENT_GATEWAY_PROTOCOL_MISMATCH: &str = "agent-gateway-protocol-mismatch";
 /// The request body is not a JSON object.
@@ -1313,6 +1318,8 @@ pub const ALL: &[&str] = &[
     AGENT_SUBJECT_TAKEN,
     AGENT_GATEWAY_QUOTA,
     AGENT_GATEWAY_NOT_CONFIGURED,
+    AGENT_LOOP_DETECTED,
+    PROPOSAL_TOOL_FAILED,
     AGENT_GATEWAY_PROTOCOL_MISMATCH,
     AGENT_GATEWAY_INVALID,
     AGENT_GATEWAY_UPSTREAM,

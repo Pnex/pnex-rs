@@ -309,7 +309,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             | Route::Ontology { .. }
             | Route::OntologyObject { .. }
             | Route::OntologyType { .. }
-            | Route::Proposals {}
+            | Route::Proposals { .. }
             | Route::Cases {}
             | Route::CaseWorkspace { .. }
             | Route::Calendar {}
@@ -443,9 +443,11 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     on_navigate,
                 }
                 NavItem {
-                    to: Route::Proposals {},
+                    to: Route::Proposals {
+                        origin: String::new(),
+                    },
                     label: t!("nav-proposals"),
-                    active: at(Route::Proposals {}),
+                    active: matches!(route, Route::Proposals { .. }),
                     on_navigate,
                 }
                 NavItem {

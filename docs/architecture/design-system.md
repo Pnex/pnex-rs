@@ -272,6 +272,7 @@ les règles plus anciennes qui les contredisent.
 | Fichier donné à une exécution d'agent ou laissé par elle (D729) | Entrée / Sortie | Input / Output | pas « artefact » dans l'UI |
 | Où s'exécutent les exécutions d'un environnement (D763) | Isolation : Pod / Micro-VM | Isolation: Pod / Micro-VM | pas « isolement », pas « VM » seul |
 | Texte versionné qu'un agent lit à chaque exécution, brouillon jusqu'à son activation par un humain (D711) | Compétence | Skill | pas « skill » en français |
+| Où tourne la boucle d'un agent : dans PneX avec les outils de l'assistant, ou dans un bac à sable (D378, D785) | Niveau : Interne / Hébergé | Level: Internal / Hosted | pas « agent embarqué », pas « mode » |
 | Suite d'exécutions d'agents lancées par un flow, avec un budget, un nombre de tours et au plus un sujet (D716, D718) | Chaîne d'exécutions | Chain of runs | pas « exécution enchaînée » (= pipeline, D575), pas « workflow » |
 | Accès enregistré à un registre OCI, secrets de lecture et d'écriture distincts (D703) | Registre d'images | Image registry | pas « connecteur » (= base externe), pas « dépôt » (= chemin dans le registre) |
 | Jeton à usage unique qui inscrit un runner | Jeton d'inscription | Join token | pas « token » en français, pas « clé » |

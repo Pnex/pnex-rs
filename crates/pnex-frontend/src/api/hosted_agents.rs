@@ -3,7 +3,7 @@
 //! ever downloaded, never shown.
 
 use pnex_core::agent_runs::{AgentArtifact, AgentRun};
-use pnex_core::agents::{Agent, AgentCreate, AgentRunStart, AgentVersion};
+use pnex_core::agents::{Agent, AgentCreate, AgentRunStart, AgentToolInfo, AgentVersion};
 use pnex_core::environments::{
     Environment, EnvironmentActivate, EnvironmentBuild, EnvironmentInput, EnvironmentScan,
     EnvironmentVersion, EnvironmentVersionInput, EnvironmentVersionSummary, IsolationInput,
@@ -32,6 +32,24 @@ pub async fn agents(limit: i64, offset: i64) -> Result<Paginated<Agent>, ApiErro
 
 pub async fn create_agent(input: &AgentCreate) -> Result<Agent, ApiError> {
     client::request(reqwest::Method::POST, "/api/v1/agents", Some(body(input)?)).await
+}
+
+/// Every tool an internal agent may be given (D785), all pages.
+pub async fn agent_tools() -> Result<Vec<AgentToolInfo>, ApiError> {
+    let mut out = Vec::new();
+    loop {
+        let page: Paginated<AgentToolInfo> = client::request(
+            reqwest::Method::GET,
+            &format!("/api/v1/agents/tools?limit=100&offset={}", out.len()),
+            None,
+        )
+        .await?;
+        let done = page.results.is_empty() || out.len() + page.results.len() >= page.count as usize;
+        out.extend(page.results);
+        if done {
+            return Ok(out);
+        }
+    }
 }
 
 pub async fn agent(id: &str) -> Result<Agent, ApiError> {

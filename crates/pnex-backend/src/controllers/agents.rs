@@ -21,6 +21,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1")
         .add("/agents", get(list).post(create))
+        .add("/agents/tools", get(tools))
         .add("/agents/{id}", get(one).put(update).delete(remove))
         .add("/agents/{id}/versions", get(versions))
         .add("/agents/{id}/runs", post(start_run))
@@ -29,7 +30,7 @@ pub fn routes() -> Routes {
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(list, create, one, update, remove, versions, start_run),
+        paths(list, tools, create, one, update, remove, versions, start_run),
         components(schemas(
             Agent,
             AgentCreate,
@@ -37,7 +38,9 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             AgentVersion,
             AgentRunStart,
             pnex_core::agents::AgentSpec,
-            pnex_core::agents::AgentRole
+            pnex_core::agents::AgentRole,
+            pnex_core::agents::AgentLevel,
+            pnex_core::agents::AgentToolInfo
         ))
     )]
     struct Doc;
@@ -126,6 +129,39 @@ async fn list(
         .map_err(Error::DB)?;
     format::json(pagination::envelope(
         "/api/v1/agents",
+        &[],
+        page,
+        count,
+        rows,
+    ))
+}
+
+/// `GET /api/v1/agents/tools`
+#[utoipa::path(
+    get,
+    path = "/api/v1/agents/tools",
+    tag = "agents",
+    operation_id = "agents_tools",
+    summary = "List the tools an internal agent may be given",
+    description = "The assistant's tools by name, with what they do and whether they write: on an internal agent (D785) every write call becomes a proposal a person decides. Requires `agents:read`. Paginated (`limit`/`offset`).",
+    params(PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::agents::AgentToolInfo>),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn tools(_org: OrgContext, Query(q): Query<PageQuery>) -> Result<Response> {
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let all = crate::services::ai::tools::tool_infos();
+    let count = all.len() as i64;
+    let rows = all
+        .into_iter()
+        .skip(page.offset as usize)
+        .take(page.limit as usize)
+        .collect();
+    format::json(pagination::envelope(
+        "/api/v1/agents/tools",
         &[],
         page,
         count,

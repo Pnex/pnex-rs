@@ -42,7 +42,10 @@ pub mod iam;
 /// 7 (2026-11-07, SEC-72/SEC-75): `POST /orgs/{id}/members` is replaced by
 /// invitations (`/orgs/{id}/invitations`, `/invitations`); the `/orgs/{id}`
 /// routes need `X-Org-Id` equal to the path org; leaving is `POST /orgs/{id}/leave`.
-pub const CONTRACT: u32 = 7;
+///
+/// 8 (2026-11-07, agent-unification.md D781, D785): `AgentSpec.environment_id` and
+/// `AgentRun.environment_id` may be `null` (internal agents); a run carries its `engine`.
+pub const CONTRACT: u32 = 8;
 
 /// Routes under this prefix act on the org of their `{id}`, which must also be
 /// the `X-Org-Id` (SEC-75): generated clients send the path org there instead

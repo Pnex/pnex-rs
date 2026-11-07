@@ -111,7 +111,7 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
                a.output_tokens, a.error, j.outcome, j.spec->>'image' AS image, \
                e.id AS environment_id, e.name AS environment_name, g.name AS agent_name \
              FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
-             JOIN environments e ON e.id = a.environment_id \
+             LEFT JOIN environments e ON e.id = a.environment_id \
              LEFT JOIN agents g ON g.id = a.agent_id \
              WHERE a.org_id = $1 AND a.job_id = $2",
             vec![org_id.into(), job.into()],
@@ -121,8 +121,11 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
         return Ok(());
     };
     let run_id: Uuid = row.try_get("", "id")?;
-    let environment_id: Uuid = row.try_get("", "environment_id")?;
-    let environment_name: String = row.try_get("", "environment_name")?;
+    // None for an engine that runs in the server (D781).
+    let environment_id: Option<Uuid> = row.try_get("", "environment_id")?;
+    let environment_name: String = row
+        .try_get::<Option<String>>("", "environment_name")?
+        .unwrap_or_default();
     let agent_id: Option<Uuid> = row.try_get("", "agent_id")?;
     let agent_name: Option<String> = row.try_get("", "agent_name")?;
     let outcome: Option<String> = row.try_get("", "outcome")?;
@@ -180,33 +183,35 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
     )
     .await?[&run_key];
 
-    let env_key = environment_id.to_string();
-    let environment = ensure_all(
-        db,
-        &schema,
-        org_id,
-        &actor,
-        (ENVIRONMENT, "environment_id"),
-        std::slice::from_ref(&env_key),
-        |_| {
-            (
-                environment_name.clone(),
-                props(&[
-                    ("environment_id", json!(env_key)),
-                    ("environment_name", json!(environment_name)),
-                ]),
-            )
-        },
-    )
-    .await?[&env_key];
-    ensure_link(
-        db,
-        &schema,
-        org_id,
-        &actor,
-        (IN_ENVIRONMENT, run, environment),
-    )
-    .await?;
+    if let Some(environment_id) = environment_id {
+        let env_key = environment_id.to_string();
+        let environment = ensure_all(
+            db,
+            &schema,
+            org_id,
+            &actor,
+            (ENVIRONMENT, "environment_id"),
+            std::slice::from_ref(&env_key),
+            |_| {
+                (
+                    environment_name.clone(),
+                    props(&[
+                        ("environment_id", json!(env_key)),
+                        ("environment_name", json!(environment_name)),
+                    ]),
+                )
+            },
+        )
+        .await?[&env_key];
+        ensure_link(
+            db,
+            &schema,
+            org_id,
+            &actor,
+            (IN_ENVIRONMENT, run, environment),
+        )
+        .await?;
+    }
 
     if let (Some(agent_id), Some(name)) = (agent_id, &agent_name) {
         let agent_key = agent_id.to_string();

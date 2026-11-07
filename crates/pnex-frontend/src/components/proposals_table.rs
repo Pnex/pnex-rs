@@ -25,11 +25,12 @@ pub fn label(prefix: &str, value: &str) -> String {
         .unwrap_or_else(|_| value.to_string())
 }
 
-/// `object_id`: only the proposals about it; `hide_empty`: render nothing
-/// when there is none (object pages).
+/// `object_id`: only the proposals about it; `origin`: only those of this origin prefix
+/// (an agent's, D785); `hide_empty`: render nothing when there is none (object pages).
 #[component]
 pub fn ProposalsTable(
     #[props(default)] object_id: Option<String>,
+    #[props(default)] origin: Option<String>,
     status: ProposalStatus,
     #[props(default)] hide_empty: bool,
 ) -> Element {
@@ -37,9 +38,11 @@ pub fn ProposalsTable(
     let mut reload = use_signal(|| 0u32);
     let object = object_id.clone();
     let rows = use_resource(move || {
-        let object = object.clone();
+        let (object, origin) = (object.clone(), origin.clone());
         let (p, _) = (page(), reload());
-        async move { api::proposals::page(status.as_str(), object.as_deref(), p).await }
+        async move {
+            api::proposals::page(status.as_str(), object.as_deref(), origin.as_deref(), p).await
+        }
     });
     let can_decide = can("proposals:decide") && status == ProposalStatus::Proposed;
     let (state, list, count) = match &*rows.read() {
@@ -133,6 +136,8 @@ pub fn ProposalsTable(
                 move |p: &ProposalView| {
                     let a = p.id.clone();
                     let (fix, rej) = (p.clone(), p.clone());
+                    // An agent's tool call runs as proposed: never corrected.
+                    let correctable = p.kind != ProposalKind::ToolCall;
                     // A voice is decided where it can be heard.
                     if p.kind == ProposalKind::VoiceSpan {
                         let id = p
@@ -157,11 +162,13 @@ pub fn ProposalsTable(
                                 onclick: move |_| decide(a.clone(), DecisionKind::Accept),
                                 {t!("proposals-accept")}
                             }
-                            button {
-                                class: BTN_SECONDARY_SM,
-                                r#type: "button",
-                                onclick: move |_| dialog.set(Some((fix.clone(), DecisionKind::Accept))),
-                                {t!("proposals-correct")}
+                            if correctable {
+                                button {
+                                    class: BTN_SECONDARY_SM,
+                                    r#type: "button",
+                                    onclick: move |_| dialog.set(Some((fix.clone(), DecisionKind::Accept))),
+                                    {t!("proposals-correct")}
+                                }
                             }
                             button {
                                 class: BTN_SECONDARY_SM,

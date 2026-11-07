@@ -575,6 +575,14 @@
         ],
         "type": "object"
       },
+      "AgentLevel": {
+        "description": "Where the loop of an agent runs (autonomous-agents.md D378, D785).",
+        "enum": [
+          "hosted",
+          "internal"
+        ],
+        "type": "string"
+      },
       "AgentLimits": {
         "description": "Global limits of hosted agents (D755, R9): the configuration gives the defaults, a\nplatform admin may store others, read at use time.",
         "properties": {
@@ -701,9 +709,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "engine": {
+            "$ref": "#/components/schemas/RunnerJobKind",
+            "description": "What plays the run (D781): `sandbox` for a hosted agent, `internal_llm` for an\ninternal one."
+          },
           "environment_id": {
+            "description": "Its environment; none for an engine that runs in the server.",
             "format": "uuid",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "error": {
             "description": "Why PneX failed a run the agent itself ended well (`agent-run-output-missing`).",
@@ -777,7 +793,7 @@
         },
         "required": [
           "id",
-          "environment_id",
+          "engine",
           "image",
           "job_id",
           "state",
@@ -1103,9 +1119,12 @@
             "type": "object"
           },
           "environment_id": {
-            "description": "Its runs use the active build of this environment.",
+            "description": "Hosted only, required there: its runs use the active build of this environment.",
             "format": "uuid",
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "inputs": {
             "description": "Names of the files each run must be given, at `/artifacts/in/<name>`.",
@@ -1114,8 +1133,20 @@
             },
             "type": "array"
           },
+          "level": {
+            "$ref": "#/components/schemas/AgentLevel",
+            "description": "`hosted` when absent."
+          },
           "llm_calls_max": {
             "description": "Most LLM calls of a run; a run may ask for fewer.",
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_steps": {
+            "description": "Internal only: most model calls of one run; 20 when absent.",
             "format": "int32",
             "type": [
               "integer",
@@ -1160,11 +1191,39 @@
             "format": "int32",
             "minimum": 0,
             "type": "integer"
+          },
+          "tools": {
+            "description": "Internal only: the assistant tools it may call, by name (a closed subset).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
-          "environment_id",
           "timeout_secs"
+        ],
+        "type": "object"
+      },
+      "AgentToolInfo": {
+        "description": "One tool an internal agent may be given (`GET /agents/tools`).",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "summary": {
+            "description": "What the model is told the tool does (English).",
+            "type": "string"
+          },
+          "write": {
+            "description": "A write: on an internal agent, each call becomes a proposal.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "summary",
+          "write"
         ],
         "type": "object"
       },
@@ -18141,6 +18200,42 @@
         ],
         "type": "object"
       },
+      "Paginated_AgentToolInfo": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/AgentToolInfo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_AgentVersion": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -24427,7 +24522,8 @@
           "link_close",
           "case_event",
           "voice_span",
-          "object_erase"
+          "object_erase",
+          "tool_call"
         ],
         "type": "string"
       },
@@ -35055,6 +35151,83 @@
           }
         ],
         "summary": "Create an agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agents/tools": {
+      "get": {
+        "description": "The assistant's tools by name, with what they do and whether they write: on an internal agent (D785) every write call becomes a proposal a person decides. Requires `agents:read`. Paginated (`limit`/`offset`).",
+        "operationId": "agents_tools",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_AgentToolInfo"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the tools an internal agent may be given",
         "tags": [
           "agents"
         ]
@@ -82979,7 +83152,7 @@
             }
           },
           {
-            "description": "Origin prefix: `import:`, `flow:`, `detector:`, `llm:`.",
+            "description": "Origin prefix: `import:`, `flow:`, `detector:`, `llm:`, `agent:<agent id>`.",
             "in": "query",
             "name": "origin",
             "required": false,
@@ -83149,7 +83322,7 @@
     },
     "/api/v1/proposals/{id}/decision": {
       "post": {
-        "description": "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
+        "description": "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Accepting a `tool_call` (a write of an internal agent, D785) runs its exact arguments with the decider's rights; a refusal of the tool keeps it open (409 with the tool's code, or `proposal-tool-failed`). Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
         "operationId": "proposals_decide",
         "parameters": [
           {
@@ -83242,7 +83415,7 @@
                 }
               }
             },
-            "description": "`proposal-decided` (decided the other way or superseded), `ontology-version-conflict` (the object changed since it was read), `ontology-link-cardinality`"
+            "description": "`proposal-decided` (decided the other way or superseded), `ontology-version-conflict` (the object changed since it was read), `ontology-link-cardinality`, `proposal-tool-failed` (args `tool`) or the refusal code of the tool of a `tool_call`"
           }
         },
         "security": [

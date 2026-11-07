@@ -4,8 +4,8 @@
 //! starts from it and may only tighten it (D380).
 
 use pnex_core::agents::{
-    name_error, run_of, spec_error, Agent, AgentCreate, AgentRole, AgentRunStart, AgentSpec,
-    AgentUpdate, AgentVersion, DESCRIPTION_MAX,
+    name_error, run_of, spec_error, Agent, AgentCreate, AgentLevel, AgentRole, AgentRunStart,
+    AgentSpec, AgentUpdate, AgentVersion, DESCRIPTION_MAX,
 };
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryResult, Statement,
@@ -118,21 +118,36 @@ fn view(r: &QueryResult) -> Result<Agent, DbErr> {
 async fn check_spec<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
+    role: AgentRole,
     spec: &AgentSpec,
 ) -> Result<(), AgentError> {
     if let Some((field, token)) = spec_error(spec) {
         return Err(invalid(&format!("spec.{field}"), token));
     }
-    let environment = Uuid::parse_str(&spec.environment_id)
-        .map_err(|_| invalid("spec.environment_id", "invalid"))?;
-    let found = db
-        .query_one_raw(stmt(
-            "SELECT 1 AS ok FROM environments WHERE org_id = $1 AND id = $2",
-            vec![org_id.into(), environment.into()],
-        ))
-        .await?;
-    if found.is_none() {
-        return Err(invalid("spec.environment_id", "not_found"));
+    if let Some(environment_id) = &spec.environment_id {
+        let environment = Uuid::parse_str(environment_id)
+            .map_err(|_| invalid("spec.environment_id", "invalid"))?;
+        let found = db
+            .query_one_raw(stmt(
+                "SELECT 1 AS ok FROM environments WHERE org_id = $1 AND id = $2",
+                vec![org_id.into(), environment.into()],
+            ))
+            .await?;
+        if found.is_none() {
+            return Err(invalid("spec.environment_id", "not_found"));
+        }
+    }
+    // Only registry tools; a viewer agent gets no write tool, its proposals would all be
+    // refused (D785).
+    let known = crate::services::ai::tools::tool_infos();
+    for tool in &spec.tools {
+        match known.iter().find(|t| &t.name == tool) {
+            None => return Err(invalid("spec.tools", "unknown_tool")),
+            Some(t) if t.write && role == AgentRole::Viewer => {
+                return Err(invalid("spec.tools", "write_needs_member"))
+            }
+            Some(_) => {}
+        }
     }
     if let Some(p) = &spec.provider_id {
         let id = Uuid::parse_str(p).map_err(|_| invalid("spec.provider_id", "invalid"))?;
@@ -219,7 +234,7 @@ pub async fn create(
     if body.description.chars().count() > DESCRIPTION_MAX {
         return Err(invalid("description", "max_length:1000"));
     }
-    check_spec(db, org_id, &body.spec).await?;
+    check_spec(db, org_id, body.role, &body.spec).await?;
     if let Some(max) = cap_of(db, org_id).await? {
         let n: i64 = db
             .query_one_raw(stmt(
@@ -249,7 +264,7 @@ pub async fn create(
         org_id,
         caller_id,
         &format!("agent: {name}"),
-        Some("Identity of a hosted agent (D757)."),
+        Some("Identity of an agent (D757)."),
     )
     .await?;
     let managed = match body.role {
@@ -336,7 +351,7 @@ pub async fn update(
             return Err(invalid("description", "max_length:1000"));
         }
     }
-    check_spec(db, org_id, &body.spec).await?;
+    check_spec(db, org_id, current.role, &body.spec).await?;
     let spec = serde_json::to_value(&body.spec).map_err(|e| DbErr::Custom(e.to_string()))?;
     let txn = db.begin().await?;
     let next = body.expected_version + 1;
@@ -428,20 +443,37 @@ pub async fn start_run(
         Some(p) => Some(Uuid::parse_str(p).map_err(|_| AgentError::ProviderNotFound)?),
         None => None,
     };
-    agent_runs::create_as(
-        db,
-        artifacts,
-        org_id,
-        caller_id,
-        &body,
-        Some(RunOrigin {
-            agent_id: id,
-            agent_version: agent.version,
-            provider_id: provider,
-        }),
-        chain.as_ref(),
-    )
-    .await
+    let origin = RunOrigin {
+        agent_id: id,
+        agent_version: agent.version,
+        provider_id: provider,
+    };
+    match agent.spec.level {
+        AgentLevel::Hosted => {
+            agent_runs::create_as(
+                db,
+                artifacts,
+                org_id,
+                caller_id,
+                &body,
+                Some(origin),
+                chain.as_ref(),
+            )
+            .await
+        }
+        AgentLevel::Internal => {
+            agent_runs::create_internal(
+                db,
+                artifacts,
+                org_id,
+                caller_id,
+                &body,
+                origin,
+                chain.as_ref(),
+            )
+            .await
+        }
+    }
     .map_err(AgentError::Run)
 }
 

@@ -356,8 +356,12 @@ fn artifacts_error<'a>(names: impl Iterator<Item = &'a str>, count: usize) -> Op
 pub struct AgentRun {
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
+    /// What plays the run (D781): `sandbox` for a hosted agent, `internal_llm` for an
+    /// internal one.
+    pub engine: crate::runners::RunnerJobKind,
+    /// Its environment; none for an engine that runs in the server.
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub environment_id: String,
+    pub environment_id: Option<String>,
     /// The agent it ran as, and the version of its record; none for a run started bare.
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub agent_id: Option<String>,

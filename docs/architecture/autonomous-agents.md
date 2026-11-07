@@ -515,7 +515,7 @@ référencer qu'une opération `EXPOSED`.
 |---|---|---|
 | **A0** | Passerelle LLM : usage `agent`, compteurs par usage (D383, D384), page de consommation par usage | D212 (livré) |
 | **A1** | Agents libres : agent = compte de service, `agent_runs`, token de run, journal O2, journal d'audit chaîné et export (D401), budget d'appels, arrêt, page Agents ; reprise des missions de l'extension en runs | IAM comptes de service (P2.25) |
-| **A2** | Agents internes : politique (D380), rôles et compétences en instructions (D395, D396), `max_steps`, `loop_guard`, portes par propositions, planification, étapes reprenables et idempotence (D397), déclencheurs dont le nœud `agent-run` (D398), file et priorités (D400) | A0, A1 |
+| **A2** | Agents internes : politique (D380), rôles et compétences en instructions (D395, D396), `max_steps`, `loop_guard`, portes par propositions, planification, étapes reprenables et idempotence (D397), déclencheurs dont le nœud `agent-run` (D398), file et priorités (D400) | A0, A1 — **livré en partie 2026-11-07 (lot U6)** : niveau interne, outils fermés, `max_steps`, `loop_guard`, portes par propositions, nœud `agent-run` ; reste planification, reprise (D397), file et priorités (D400) |
 | **A3** | Runner + bacs à sable pod durci (fabric §14), placement (D393), catalogue de moteurs et configuration générée (D394), compétences montées (D396), reprise sur un autre runner (D397), repli fournisseur (D400), évaluations et promotion (D399), passerelle exposée (D385), egress, nettoyage (D389) | fabric MVP (P2.7), A0 |
 | **A4** | Agents codeurs : espace de travail, caches, sortie branche + demande de fusion (D388) ; isolation VM | A3 |
 | **A5** | Équipes et délégation (D390) | A2 |

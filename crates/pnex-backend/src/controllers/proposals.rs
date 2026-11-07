@@ -32,7 +32,7 @@ pub fn routes() -> Routes {
 struct ListQuery {
     /// `proposed` (default), `accepted`, `rejected` or `superseded`.
     status: Option<String>,
-    /// Origin prefix: `import:`, `flow:`, `detector:`, `llm:`.
+    /// Origin prefix: `import:`, `flow:`, `detector:`, `llm:`, `agent:<agent id>`.
     origin: Option<String>,
     /// Only the proposals about this object (UUID).
     object_id: Option<String>,
@@ -159,7 +159,7 @@ async fn detail(
     tag = "proposals",
     operation_id = "proposals_decide",
     summary = "Accept or reject a proposal",
-    description = "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
+    description = "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Accepting a `tool_call` (a write of an internal agent, D785) runs its exact arguments with the decider's rights; a refusal of the tool keeps it open (409 with the tool's code, or `proposal-tool-failed`). Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
     params(("id" = String, Path, format = "uuid", description = "Proposal id")),
     request_body = ProposalDecision,
     responses(
@@ -167,7 +167,7 @@ async fn detail(
         (status = 400, description = "Invalid corrected values (`field-invalid`)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`access-denied`, or `ontology-write-forbidden` by the type's write role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`proposal-decided` (decided the other way or superseded), `ontology-version-conflict` (the object changed since it was read), `ontology-link-cardinality`", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`proposal-decided` (decided the other way or superseded), `ontology-version-conflict` (the object changed since it was read), `ontology-link-cardinality`, `proposal-tool-failed` (args `tool`) or the refusal code of the tool of a `tool_call`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -178,10 +178,70 @@ async fn decide(
     Json(body): Json<ProposalDecision>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
+    let kind = match proposals::get(&ctx.db, org.org.id, id).await {
+        Ok(p) => p.kind,
+        Err(e) => return onto_error(e),
+    };
+    if kind == ProposalKind::ToolCall && body.decision == DecisionKind::Accept {
+        return accept_tool_call(&ctx, &org, id, &body).await;
+    }
     match crate::services::ontology::erase::decide(&ctx, org.org.id, &actor(&org), id, &body).await
     {
         Ok(v) => format::json(v),
         Err(e) => onto_error(e),
+    }
+}
+
+/// An internal agent's write (D785): its exact arguments, run with the decider's rights.
+async fn accept_tool_call(
+    ctx: &AppContext,
+    org: &OrgContext,
+    id: Uuid,
+    body: &ProposalDecision,
+) -> Result<Response> {
+    use crate::services::internal_agents::{self, AcceptError, Decider};
+    // The arguments are the ones the agent proposed: corrected values would be a new write.
+    if body.values.is_some() {
+        return Ok(super::field_error(
+            "values",
+            pnex_core::err_codes::FIELD_INVALID,
+        ));
+    }
+    let reason = body
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+        .map(|r| {
+            r.chars()
+                .take(pnex_core::ontology::proposal::REASON_MAX)
+                .collect()
+        });
+    let decider = Decider {
+        user_id: org.auth.user.id,
+        email: &org.auth.user.email,
+        role: org.role.clone(),
+        grants: org.grants.clone(),
+    };
+    match internal_agents::accept_tool_call(ctx, org.org.id, decider, id, reason).await {
+        Ok(v) => format::json(v),
+        Err(AcceptError::NotFound) => {
+            onto_error(crate::services::ontology::OntologyError::NotFound)
+        }
+        Err(AcceptError::Decided) => {
+            onto_error(crate::services::ontology::OntologyError::ProposalDecided)
+        }
+        Err(AcceptError::Refused {
+            code,
+            args,
+            message,
+        }) => Err(super::coded_error(
+            axum::http::StatusCode::CONFLICT,
+            code,
+            message,
+            args,
+        )),
+        Err(AcceptError::Db(e)) => Err(crate::controllers::db_error(e)),
     }
 }
 

@@ -15,7 +15,9 @@ use crate::state::access;
 use crate::state::toasts;
 use pnex_core::agent_runs::{ArtifactOutput, RunCache, RunRepo, RunService};
 use pnex_core::agent_skills::SkillPin;
-use pnex_core::agents::{Agent, AgentRole, AgentSpec, AgentUpdate, AgentVersion};
+use pnex_core::agents::{
+    Agent, AgentLevel, AgentRole, AgentSpec, AgentToolInfo, AgentUpdate, AgentVersion,
+};
 
 mod sections;
 
@@ -47,6 +49,7 @@ pub(super) struct CacheDraft {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct Draft {
     pub description: String,
+    pub level: AgentLevel,
     pub environment_id: String,
     /// One argument per line, so an argument may hold spaces.
     pub command: String,
@@ -62,6 +65,10 @@ pub(super) struct Draft {
     /// Empty: the org's provider for hosted agents.
     pub provider_id: String,
     pub skills: Vec<SkillPin>,
+    /// Internal only (D785): the assistant tools it may call.
+    pub tools: Vec<String>,
+    /// Internal only; empty: the default.
+    pub max_steps: String,
 }
 
 /// Non-empty trimmed lines.
@@ -92,7 +99,8 @@ impl Draft {
     pub(super) fn of(description: &str, s: &AgentSpec) -> Self {
         Self {
             description: description.to_string(),
-            environment_id: s.environment_id.clone(),
+            level: s.level,
+            environment_id: s.environment_id.clone().unwrap_or_default(),
             command: s.command.join("\n"),
             env: pairs(&s.env),
             timeout: s.timeout_secs.to_string(),
@@ -123,6 +131,8 @@ impl Draft {
                 .collect(),
             provider_id: s.provider_id.clone().unwrap_or_default(),
             skills: s.skills.clone(),
+            tools: s.tools.clone(),
+            max_steps: s.max_steps.map(|n| n.to_string()).unwrap_or_default(),
         }
     }
 
@@ -130,13 +140,28 @@ impl Draft {
     /// the server with its field.
     pub(super) fn spec(&self) -> AgentSpec {
         let calls = self.calls.trim();
-        AgentSpec {
-            environment_id: self.environment_id.clone(),
-            command: lines(&self.command),
-            env: map(&self.env),
+        let steps = self.max_steps.trim();
+        let common = AgentSpec {
+            level: self.level,
             timeout_secs: self.timeout.trim().parse().unwrap_or(0),
             llm_calls_max: (!calls.is_empty()).then(|| calls.parse().unwrap_or(0)),
             inputs: names(&self.inputs),
+            provider_id: (!self.provider_id.is_empty()).then(|| self.provider_id.clone()),
+            skills: self.skills.clone(),
+            ..Default::default()
+        };
+        // Only the fields of the level go: the others stay in the form, not in the record.
+        if self.level == AgentLevel::Internal {
+            return AgentSpec {
+                tools: self.tools.clone(),
+                max_steps: (!steps.is_empty()).then(|| steps.parse().unwrap_or(0)),
+                ..common
+            };
+        }
+        AgentSpec {
+            environment_id: (!self.environment_id.is_empty()).then(|| self.environment_id.clone()),
+            command: lines(&self.command),
+            env: map(&self.env),
             outputs: self
                 .outputs
                 .iter()
@@ -180,8 +205,7 @@ impl Draft {
                     key_files: names(&c.key_files),
                 })
                 .collect(),
-            provider_id: (!self.provider_id.is_empty()).then(|| self.provider_id.clone()),
-            skills: self.skills.clone(),
+            ..common
         }
     }
 }
@@ -201,6 +225,9 @@ fn field_label(field: &str) -> String {
         "caches" => "agents-edit-caches",
         "provider_id" => "agents-edit-provider",
         "skills" => "agents-edit-skills",
+        "level" => "agents-field-level",
+        "tools" => "agents-edit-tools",
+        "max_steps" => "agents-field-max-steps",
         "description" => "agents-edit-description",
         other => return other.to_string(),
     };
@@ -392,19 +419,23 @@ pub(super) fn AgentEditor(
             }
             fieldset { class: "space-y-6", disabled: !can_write,
                 GeneralSection { draft }
-                div {
-                    h3 { class: FIELD_LABEL, {t!("agents-edit-env")} }
-                    KvList {
-                        rows: draft().env,
-                        generated: false,
-                        on_change: move |rows| draft.write().env = rows,
+                if draft().level == AgentLevel::Internal {
+                    ToolsSection { draft, role: current.role }
+                } else {
+                    div {
+                        h3 { class: FIELD_LABEL, {t!("agents-edit-env")} }
+                        KvList {
+                            rows: draft().env,
+                            generated: false,
+                            on_change: move |rows| draft.write().env = rows,
+                        }
+                        p { class: "text-xs text-slate mt-1", {t!("agents-edit-env-hint")} }
                     }
-                    p { class: "text-xs text-slate mt-1", {t!("agents-edit-env-hint")} }
+                    OutputsSection { draft }
+                    ReposSection { draft }
+                    ServicesSection { draft }
+                    CachesSection { draft }
                 }
-                OutputsSection { draft }
-                ReposSection { draft }
-                ServicesSection { draft }
-                CachesSection { draft }
             }
             SkillsSection { pins: current.spec.skills.clone(), on_skills }
             if versions_open() {
@@ -462,6 +493,7 @@ fn GeneralSection(draft: Signal<Draft>) -> Element {
         })
         .unwrap_or_default();
     let d = draft();
+    let hosted = d.level == AgentLevel::Hosted;
     rsx! {
         div { class: "grid grid-cols-1 md:grid-cols-2 gap-4",
             div { class: "md:col-span-2",
@@ -475,7 +507,8 @@ fn GeneralSection(draft: Signal<Draft>) -> Element {
                     oninput: move |e| draft.write().description = e.value(),
                 }
             }
-            div {
+            LevelField { draft }
+            div { hidden: !hosted,
                 label { r#for: "agent-edit-env", class: FIELD_LABEL, {t!("agents-field-environment")} }
                 select {
                     id: "agent-edit-env",
@@ -511,7 +544,7 @@ fn GeneralSection(draft: Signal<Draft>) -> Element {
                     }
                 }
             }
-            div {
+            div { hidden: !hosted,
                 label { r#for: "agent-edit-command", class: FIELD_LABEL, {t!("agents-field-command")} }
                 textarea {
                     id: "agent-edit-command",
@@ -562,6 +595,116 @@ fn GeneralSection(draft: Signal<Draft>) -> Element {
     }
 }
 
+/// Where the loop of the agent runs (D378, D785).
+#[component]
+fn LevelField(draft: Signal<Draft>) -> Element {
+    let mut draft = draft;
+    let level = draft().level;
+    rsx! {
+        div {
+            label { r#for: "agent-edit-level", class: FIELD_LABEL, {t!("agents-field-level")} }
+            select {
+                id: "agent-edit-level",
+                class: INPUT,
+                onchange: move |e| {
+                    draft.write().level = if e.value() == "internal" {
+                        AgentLevel::Internal
+                    } else {
+                        AgentLevel::Hosted
+                    };
+                },
+                option { value: "hosted", selected: level == AgentLevel::Hosted,
+                    {t!("agents-level-hosted")}
+                }
+                option {
+                    value: "internal",
+                    selected: level == AgentLevel::Internal,
+                    {t!("agents-level-internal")}
+                }
+            }
+            p { class: "text-xs text-slate mt-1", {t!("agents-field-level-hint")} }
+        }
+    }
+}
+
+/// The assistant tools an internal agent may call, and its most steps (D785).
+#[component]
+fn ToolsSection(draft: Signal<Draft>, role: AgentRole) -> Element {
+    let mut draft = draft;
+    let tools = use_resource(move || async move { api::hosted_agents::agent_tools().await });
+    let d = draft();
+    let list = match &*tools.value().read() {
+        Some(Ok(list)) => list.clone(),
+        _ => Vec::new(),
+    };
+    let viewer = role == AgentRole::Viewer;
+    rsx! {
+        div { class: "space-y-3",
+            div { class: "max-w-xs",
+                label { r#for: "agent-edit-max-steps", class: FIELD_LABEL,
+                    {t!("agents-field-max-steps")}
+                }
+                input {
+                    id: "agent-edit-max-steps",
+                    class: INPUT,
+                    r#type: "number",
+                    value: "{d.max_steps}",
+                    oninput: move |e| draft.write().max_steps = e.value(),
+                }
+                p { class: "text-xs text-slate mt-1", {t!("agents-field-max-steps-hint")} }
+            }
+            h3 { class: FIELD_LABEL, {t!("agents-edit-tools")} }
+            p { class: "text-xs text-slate", {t!("agents-edit-tools-hint")} }
+            if viewer {
+                p { class: "text-xs text-slate", {t!("agents-edit-tools-viewer")} }
+            }
+            div { class: "max-h-80 overflow-auto rounded border border-gray-200 divide-y divide-gray-100",
+                for tool in list {
+                    ToolRow {
+                        key: "{tool.name}",
+                        checked: d.tools.contains(&tool.name),
+                        disabled: viewer && tool.write,
+                        tool,
+                        draft,
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ToolRow(tool: AgentToolInfo, checked: bool, disabled: bool, draft: Signal<Draft>) -> Element {
+    let mut draft = draft;
+    let name = tool.name.clone();
+    rsx! {
+        label { class: "flex items-start gap-2 p-2 text-sm",
+            input {
+                r#type: "checkbox",
+                class: "mt-1",
+                disabled,
+                checked,
+                onchange: move |e: FormEvent| toggle(&mut draft.write().tools, &name, e.checked()),
+            }
+            span { class: "min-w-0",
+                span { class: "font-mono text-ink", {tool.name.clone()} }
+                if tool.write {
+                    span { class: "ml-2 text-xs text-amber-700", {t!("agents-tool-proposed")} }
+                }
+                span { class: "block text-xs text-slate", {tool.summary.clone()} }
+            }
+        }
+    }
+}
+
+/// Adds or removes `name`, keeping the order of the list.
+fn toggle(tools: &mut Vec<String>, name: &str, on: bool) {
+    tools.retain(|t| t != name);
+    if on {
+        tools.push(name.to_string());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -570,7 +713,7 @@ mod tests {
     #[test]
     fn a_spec_survives_the_form() {
         let spec = AgentSpec {
-            environment_id: "e1".into(),
+            environment_id: Some("e1".into()),
             command: vec!["sh".into(), "-c".into(), "echo a b".into()],
             env: [("MODE".to_string(), "fast".to_string())].into(),
             timeout_secs: 600,
@@ -605,6 +748,7 @@ mod tests {
                 skill_id: "k1".into(),
                 version: 2,
             }],
+            ..Default::default()
         };
         assert_eq!(Draft::of("d", &spec).spec(), spec);
         // Blank rows added in the form are left out, not sent.
@@ -623,5 +767,29 @@ mod tests {
         assert_eq!(d.spec().llm_calls_max, Some(0));
         d.calls = String::new();
         assert_eq!(d.spec().llm_calls_max, None);
+    }
+
+    #[test]
+    fn an_internal_spec_sends_its_tools_and_none_of_the_sandbox() {
+        let spec = AgentSpec {
+            level: AgentLevel::Internal,
+            timeout_secs: 600,
+            inputs: vec!["task".into()],
+            tools: vec!["list_flows".into(), "create_object".into()],
+            max_steps: Some(12),
+            ..Default::default()
+        };
+        assert_eq!(Draft::of("d", &spec).spec(), spec);
+        // Fields typed while hosted stay in the form, never in an internal record.
+        let mut d = Draft::of("d", &spec);
+        d.command = "sh".into();
+        d.environment_id = "e1".into();
+        assert_eq!(d.spec(), spec);
+        d.level = AgentLevel::Hosted;
+        assert!(d.spec().tools.is_empty() && d.spec().max_steps.is_none());
+        let mut tools = vec!["a".to_string()];
+        toggle(&mut tools, "b", true);
+        toggle(&mut tools, "a", false);
+        assert_eq!(tools, ["b"]);
     }
 }

@@ -106,6 +106,15 @@ pub async fn propose<C: ConnectionTrait>(
         | ProposalKind::LinkClose
         | ProposalKind::ObjectErase => needs("target_id", &p.target_id)?,
         ProposalKind::VoiceSpan => return Err(invalid("kind", FIELD_INVALID)),
+        ProposalKind::ToolCall => {
+            if p.values
+                .get("tool")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                return Err(invalid("values.tool", FIELD_REQUIRED));
+            }
+        }
         ProposalKind::CaseEvent => {
             needs("target_id", &p.target_id)?;
             if p.values
@@ -465,7 +474,9 @@ async fn apply<C: ConnectionTrait>(
             .to_string(),
         // Decided by `erase::decide` with a human (D445): an org rule
         // accepting it lands here and leaves it to validate.
-        ProposalKind::VoiceSpan | ProposalKind::ObjectErase => {
+        // A tool call runs through `internal_agents::accept_tool_call`, with the rights of
+        // the person deciding: an org rule accepting it lands here and leaves it to them.
+        ProposalKind::VoiceSpan | ProposalKind::ObjectErase | ProposalKind::ToolCall => {
             return Err(invalid("kind", FIELD_INVALID))
         }
         ProposalKind::CaseEvent => {

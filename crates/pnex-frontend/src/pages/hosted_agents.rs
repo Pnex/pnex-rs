@@ -7,6 +7,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::api::error::ApiError;
+use crate::app::Route;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
@@ -18,8 +19,8 @@ use crate::state::toasts;
 use pnex_core::agent_runs::{
     AgentArtifact, AgentRun, ArtifactInput, ArtifactOutput, ArtifactState,
 };
-use pnex_core::agents::{Agent, AgentCreate, AgentRole, AgentRunStart, AgentSpec};
-use pnex_core::runners::{RunnerJobOutcome, RunnerJobState};
+use pnex_core::agents::{Agent, AgentCreate, AgentLevel, AgentRole, AgentRunStart, AgentSpec};
+use pnex_core::runners::{RunnerJobKind, RunnerJobOutcome, RunnerJobState};
 
 mod agent_editor;
 mod builds;
@@ -63,6 +64,15 @@ fn state_label(run: &AgentRun) -> String {
         (_, Some(RunnerJobOutcome::Stopped)) => t!("agents-run-stopped").to_string(),
         (_, Some(RunnerJobOutcome::Timeout)) => t!("agents-run-timeout").to_string(),
         _ => t!("agents-run-failed").to_string(),
+    }
+}
+
+/// What played a run (D781).
+fn engine_label(engine: RunnerJobKind) -> String {
+    match engine {
+        RunnerJobKind::InternalLlm => t!("agents-engine-internal_llm").to_string(),
+        RunnerJobKind::Sandbox => t!("agents-engine-sandbox").to_string(),
+        other => other.as_str().to_string(),
     }
 }
 
@@ -302,6 +312,7 @@ fn AgentsTab(reload: Signal<u32>, adding: Signal<bool>, tab: Signal<Tab>) -> Ele
 #[component]
 fn NewAgent(adding: Signal<bool>, reload: Signal<u32>) -> Element {
     let mut name = use_signal(String::new);
+    let mut internal = use_signal(|| false);
     let mut environment = use_signal(String::new);
     let mut command = use_signal(String::new);
     let mut timeout = use_signal(|| "1800".to_string());
@@ -322,7 +333,7 @@ fn NewAgent(adding: Signal<bool>, reload: Signal<u32>) -> Element {
             .collect(),
         _ => Vec::new(),
     };
-    let valid = !name().trim().is_empty() && !environment().is_empty();
+    let valid = !name().trim().is_empty() && (internal() || !environment().is_empty());
     rsx! {
         FormDialog {
             title: t!("agents-new").to_string(),
@@ -347,19 +358,31 @@ fn NewAgent(adding: Signal<bool>, reload: Signal<u32>) -> Element {
                                 required: false,
                             }),
                     );
+                let base = AgentSpec {
+                    timeout_secs: timeout().trim().parse().unwrap_or(0),
+                    llm_calls_max: calls().trim().parse().ok(),
+                    inputs: names(&inputs()),
+                    ..Default::default()
+                };
+                // An internal agent gets its tools in its editor (D785).
+                let spec = if internal() {
+                    AgentSpec {
+                        level: AgentLevel::Internal,
+                        ..base
+                    }
+                } else {
+                    AgentSpec {
+                        environment_id: Some(environment()),
+                        command: command().split_whitespace().map(str::to_string).collect(),
+                        outputs,
+                        ..base
+                    }
+                };
                 let input = AgentCreate {
                     name: name().trim().to_string(),
                     description: String::new(),
                     role: if member() { AgentRole::Member } else { AgentRole::Viewer },
-                    spec: AgentSpec {
-                        environment_id: environment(),
-                        command: command().split_whitespace().map(str::to_string).collect(),
-                        timeout_secs: timeout().trim().parse().unwrap_or(0),
-                        llm_calls_max: calls().trim().parse().ok(),
-                        inputs: names(&inputs()),
-                        outputs,
-                        ..Default::default()
-                    },
+                    spec,
                 };
                 busy.set(true);
                 spawn(async move {
@@ -385,6 +408,19 @@ fn NewAgent(adding: Signal<bool>, reload: Signal<u32>) -> Element {
                     }
                 }
                 div {
+                    label { r#for: "agent-level", class: FIELD_LABEL, {t!("agents-field-level")} }
+                    select {
+                        id: "agent-level",
+                        class: "{INPUT} w-full",
+                        onchange: move |e| internal.set(e.value() == "internal"),
+                        option { value: "hosted", selected: !internal(), {t!("agents-level-hosted")} }
+                        option { value: "internal", selected: internal(),
+                            {t!("agents-level-internal")}
+                        }
+                    }
+                    p { class: "text-xs text-slate mt-1", {t!("agents-field-level-hint")} }
+                }
+                div { hidden: internal(),
                     label { r#for: "agent-env", class: FIELD_LABEL, {t!("agents-field-environment")} }
                     select {
                         id: "agent-env",
@@ -396,7 +432,7 @@ fn NewAgent(adding: Signal<bool>, reload: Signal<u32>) -> Element {
                         }
                     }
                 }
-                div {
+                div { hidden: internal(),
                     label { r#for: "agent-command", class: FIELD_LABEL, {t!("agents-field-command")} }
                     input {
                         id: "agent-command",
@@ -439,7 +475,7 @@ fn NewAgent(adding: Signal<bool>, reload: Signal<u32>) -> Element {
                         oninput: move |e| inputs.set(e.value()),
                     }
                 }
-                div {
+                div { hidden: internal(),
                     label { r#for: "agent-required", class: FIELD_LABEL,
                         {t!("agents-field-required-outputs")}
                     }
@@ -450,7 +486,7 @@ fn NewAgent(adding: Signal<bool>, reload: Signal<u32>) -> Element {
                         oninput: move |e| required.set(e.value()),
                     }
                 }
-                div {
+                div { hidden: internal(),
                     label { r#for: "agent-optional", class: FIELD_LABEL,
                         {t!("agents-field-optional-outputs")}
                     }
@@ -702,6 +738,18 @@ fn RunDetail(run: AgentRun, open: Signal<Option<AgentRun>>, reload: Signal<u32>)
             on_close: move |_| open.set(None),
             div { class: "space-y-4",
                 div { class: "text-sm text-ink", {state_label(&run)} }
+                div { class: "text-sm text-slate",
+                    {t!("agents-run-engine", engine : engine_label(run.engine))}
+                }
+                if let (RunnerJobKind::InternalLlm, Some(agent)) = (run.engine, run.agent_id.clone()) {
+                    Link {
+                        class: "text-sm text-signal-600 hover:underline",
+                        to: Route::Proposals {
+                            origin: format!("agent:{agent}"),
+                        },
+                        {t!("agents-run-proposals")}
+                    }
+                }
                 if can_stop {
                     button {
                         class: DANGER_BTN,

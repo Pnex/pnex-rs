@@ -403,7 +403,7 @@ pub async fn check_pins<C: ConnectionTrait>(
 
 /// The skills of a run, `(name, text)`, from the version of the agent it was started from:
 /// pinned texts that were activated, drafts never. `run` is the run or its job.
-async fn texts_of<C: ConnectionTrait>(
+pub async fn texts_of<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
     run: Uuid,

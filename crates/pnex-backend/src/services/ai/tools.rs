@@ -184,6 +184,18 @@ pub fn tool_specs() -> Vec<ToolSpec> {
     registry().iter().map(|t| t.spec.clone()).collect()
 }
 
+/// The registry tools an internal agent may be given (D785), with their write flag.
+pub fn tool_infos() -> Vec<pnex_core::agents::AgentToolInfo> {
+    registry()
+        .iter()
+        .map(|t| pnex_core::agents::AgentToolInfo {
+            name: t.spec.name.to_string(),
+            summary: t.spec.description.to_string(),
+            write: super::agent::is_write_tool(t.spec.name),
+        })
+        .collect()
+}
+
 fn flow_read_tools() -> Vec<ToolDef> {
     vec![
         ToolDef {

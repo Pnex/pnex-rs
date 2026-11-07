@@ -58,7 +58,7 @@ pub enum GatewayError {
 }
 
 /// `settings.ai.agent_daily_calls`, else [`AGENT_DAILY_CALLS`].
-fn daily_cap(ctx: &AppContext) -> u64 {
+pub(crate) fn daily_cap(ctx: &AppContext) -> u64 {
     ctx.config
         .settings
         .as_ref()

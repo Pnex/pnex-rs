@@ -31,10 +31,14 @@ pub enum ProposalKind {
     /// the retention queue, `values.last_activity` its last activity.
     /// Accepted by a human only, never by an org rule.
     ObjectErase,
+    /// A write tool call of an internal agent (D785): `type_key` is the tool, `values`
+    /// holds `tool`, `arguments` and `run_id`. Accepting runs those exact arguments with
+    /// the deciding person's rights; never accepted by an org rule.
+    ToolCall,
 }
 
 impl ProposalKind {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::ObjectCreate,
         Self::ObjectUpdate,
         Self::LinkCreate,
@@ -43,6 +47,7 @@ impl ProposalKind {
         Self::CaseEvent,
         Self::VoiceSpan,
         Self::ObjectErase,
+        Self::ToolCall,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -55,6 +60,7 @@ impl ProposalKind {
             Self::CaseEvent => "case_event",
             Self::VoiceSpan => "voice_span",
             Self::ObjectErase => "object_erase",
+            Self::ToolCall => "tool_call",
         }
     }
 
@@ -202,6 +208,17 @@ pub fn slot(p: &ProposalInput) -> Option<String> {
         ),
         // Not proposed through this table.
         ProposalKind::VoiceSpan => return None,
+        // Each call of a run stands alone: never in competition with another.
+        ProposalKind::ToolCall => format!(
+            "{}|{}|{}|{}",
+            kind.as_str(),
+            p.values
+                .get("run_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            p.type_key,
+            crate::agents::canonical(p.values.get("arguments").unwrap_or(&Value::Null))
+        ),
         // One detection of one case: never in competition with another.
         ProposalKind::CaseEvent => format!(
             "{}|{}|{}",
