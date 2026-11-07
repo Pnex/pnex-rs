@@ -83,6 +83,10 @@ Avant, la capture était seulement humaine, faite à partir d'une URL, et la rec
 - le plafond quotidien compilé par org et par réseau ;
 - l'avertissement D254 dans l'UI.
 
+Entrées (Shan, 2026-11-07) : **prénom, nom et entreprise**. Quand la recherche rend
+plusieurs profils plausibles, la recette les capture **tous** (dans la limite du plafond)
+et l'utilisateur **valide** celui qui correspond ; les autres sont écartés avec leur texte.
+
 Les données extraites sont **proposées** (à valider), jamais écrites directement sur la
 personne. Les conditions d'utilisation des plateformes restent sous la responsabilité de
 l'org.

@@ -305,9 +305,9 @@ async fn previous_flow_status(
 ) -> Result<Option<RunStatus>, sea_orm::DbErr> {
     let row = db
         .query_one_raw(stmt(
-            "SELECT status FROM site_recipe_runs WHERE org_id = $1 AND recipe_id = $2 \
+            "SELECT status FROM recipe_runs WHERE org_id = $1 AND recipe_id = $2 \
              AND trigger = 'flow' AND id <> $3 AND finished_at IS NOT NULL \
-             AND started_at <= (SELECT started_at FROM site_recipe_runs WHERE id = $3) \
+             AND started_at <= (SELECT started_at FROM recipe_runs WHERE id = $3) \
              ORDER BY started_at DESC LIMIT 1",
             vec![org_id.into(), recipe_id.into(), run_id.into()],
         ))

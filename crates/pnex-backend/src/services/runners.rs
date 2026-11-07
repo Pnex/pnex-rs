@@ -507,7 +507,11 @@ pub async fn reap(db: &DatabaseConnection) -> Result<Reaped, DbErr> {
         .await?
         .rows_affected();
     db.execute_raw(stmt(
-        &format!("DELETE FROM runner_jobs WHERE finished_at < now() - interval '{FINISHED_KEPT}'"),
+        // A recipe run's history is kept: its job carries the run (D781).
+        &format!(
+            "DELETE FROM runner_jobs WHERE finished_at < now() - interval '{FINISHED_KEPT}' \
+             AND kind NOT IN ('server_browser', 'extension')"
+        ),
         vec![],
     ))
     .await?;

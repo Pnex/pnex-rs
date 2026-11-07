@@ -127,7 +127,7 @@ pub async fn sites(
              (SELECT count(*) FROM site_pages p WHERE p.org_id = $1 AND p.site = 'web:site:' || h.site)::bigint AS pages, \
              l.started_at AS last_run_at, l.status AS last_status \
              FROM hosts h \
-             LEFT JOIN LATERAL (SELECT started_at, status FROM site_recipe_runs x \
+             LEFT JOIN LATERAL (SELECT started_at, status FROM recipe_runs x \
                  WHERE x.org_id = $1 AND x.site = h.site ORDER BY started_at DESC LIMIT 1) l ON true \
              ORDER BY l.started_at DESC NULLS LAST, h.site LIMIT $2 OFFSET $3"
         ),
@@ -440,28 +440,43 @@ pub async fn insert_run(
     org_id: i64,
     run: &NewRun<'_>,
 ) -> Result<SiteRecipeRun, sea_orm::DbErr> {
-    let row = RunRow::find_by_statement(stmt(
-        &format!(
-            "INSERT INTO site_recipe_runs (id, org_id, recipe_id, recipe_version, site, name, yaml, \
-             params, trigger, status, keys, created_by) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'running', '{{}}', $10) RETURNING {RUN_COLUMNS}"
-        ),
+    use sea_orm::TransactionTrait;
+    // A run of the unified model (agent-unification.md D781): its job carries
+    // the engine and the state, the run row what the recipe played.
+    let id = Uuid::new_v4();
+    let txn = db.begin().await?;
+    txn.execute_raw(stmt(
+        "INSERT INTO runner_jobs (id, org_id, kind, spec, state, created_by, started_at, \
+           queue_expires_at) \
+         VALUES ($1, $2, 'server_browser', '{}', 'running', $3, now(), now())",
+        vec![id.into(), org_id.into(), run.user_id.into()],
+    ))
+    .await?;
+    txn.execute_raw(stmt(
+        "INSERT INTO agent_runs (id, org_id, job_id, llm_calls_max, created_by, recipe_id, \
+           recipe_version, site, name, plan, trigger) \
+         VALUES ($1, $2, $1, 1, $3, $4, $5, $6, $7, $8, $9)",
         vec![
-            Uuid::new_v4().into(),
+            id.into(),
             org_id.into(),
+            run.user_id.into(),
             run.recipe_id.into(),
             run.recipe_version.into(),
             site_host(&run.recipe.site).unwrap_or_default().into(),
             run.recipe.name.clone().into(),
-            run.yaml.to_string().into(),
-            serde_json::to_value(run.params).unwrap_or_default().into(),
+            serde_json::json!({ "yaml": run.yaml, "params": run.params }).into(),
             run.trigger.to_string().into(),
-            run.user_id.into(),
         ],
+    ))
+    .await?;
+    txn.commit().await?;
+    let row = RunRow::find_by_statement(stmt(
+        &format!("SELECT {RUN_COLUMNS} FROM recipe_runs WHERE id = $1"),
+        vec![id.into()],
     ))
     .one(db)
     .await?;
-    Ok(row.expect("RETURNING").view())
+    Ok(row.expect("just inserted").view())
 }
 
 /// Saves the steps played so far (the studio polls them).
@@ -473,7 +488,7 @@ pub async fn save_progress(
     keys: &BTreeMap<String, String>,
 ) -> Result<(), sea_orm::DbErr> {
     db.execute_raw(stmt(
-        "UPDATE site_recipe_runs SET steps = $2, extracts = $3, keys = $4 WHERE id = $1",
+        "UPDATE agent_runs SET steps = $2, extracts = $3, keys = $4 WHERE id = $1",
         vec![
             run_id.into(),
             serde_json::to_value(steps).unwrap_or_default().into(),
@@ -492,18 +507,61 @@ pub async fn finish(
     failed_step: Option<u32>,
     reason: Option<&str>,
 ) -> Result<(), sea_orm::DbErr> {
+    let state = match status {
+        RunStatus::Ok => "succeeded",
+        RunStatus::Running => "running",
+        RunStatus::Failed => "failed",
+    };
     db.execute_raw(stmt(
-        "UPDATE site_recipe_runs SET status = $2, failed_step = $3, reason = $4, finished_at = now() \
-         WHERE id = $1",
+        "WITH a AS (UPDATE agent_runs SET failed_step = $3, reason = $4 WHERE id = $1 RETURNING job_id) \
+         UPDATE runner_jobs SET state = $2, finished_at = now() WHERE id IN (SELECT job_id FROM a)",
         vec![
             run_id.into(),
-            status.as_str().into(),
+            state.into(),
             failed_step.map(|i| i as i32).into(),
             reason.map(str::to_string).into(),
         ],
     ))
     .await?;
     Ok(())
+}
+
+/// Writes the steps of a finished run to the job journal shared by every
+/// engine (D781): one line per step, read like a runner job's.
+pub async fn journal(ctx: &loco_rs::app::AppContext, org_id: i64, run_id: Uuid) {
+    let Ok(row) = run_row(&ctx.db, org_id, run_id).await else {
+        return;
+    };
+    let steps: Vec<RunStep> = serde_json::from_value(row.steps).unwrap_or_default();
+    let text = steps
+        .iter()
+        .map(|s| {
+            let status = serde_json::to_value(s.status)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            let why = s
+                .reason
+                .as_deref()
+                .map(|r| format!(" ({r})"))
+                .unwrap_or_default();
+            format!(
+                "step {} {} {}: {status}{why} {} {} ms",
+                s.index, s.action, s.label, s.url, s.ms
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let logs = pnex_core::runners::RunnerJobLogs {
+        containers: vec![pnex_core::runners::RunnerContainerLog {
+            container: "browser".into(),
+            text,
+            truncated: false,
+        }],
+    };
+    if let Err(e) = crate::services::job_logs::store(ctx, org_id, run_id, &logs).await {
+        tracing::warn!(error = %e, run = %run_id, "site recipe journal not written");
+    }
 }
 
 /// A run still `running` after this was cut by a restart (longer than
@@ -516,8 +574,10 @@ pub async fn recover(db: &DatabaseConnection) -> Result<u64, sea_orm::DbErr> {
     let res = db
         .execute_raw(stmt(
             &format!(
-                "UPDATE site_recipe_runs SET status = 'failed', reason = $1, finished_at = now() \
-                 WHERE status = 'running' AND started_at < now() - interval '{STALE_MINUTES} minutes'"
+                "WITH j AS (UPDATE runner_jobs SET state = 'failed', finished_at = now() \
+                   WHERE kind = 'server_browser' AND state = 'running' \
+                     AND started_at < now() - interval '{STALE_MINUTES} minutes' RETURNING id) \
+                 UPDATE agent_runs SET reason = $1 WHERE job_id IN (SELECT id FROM j)"
             ),
             vec![pnex_core::site_recipe::reason::INTERRUPTED.into()],
         ))
@@ -542,7 +602,7 @@ pub async fn runs(
     let filter =
         "org_id = $1 AND ($2::text IS NULL OR site = $2) AND ($3::uuid IS NULL OR recipe_id = $3)";
     let count = Count::find_by_statement(stmt(
-        &format!("SELECT count(*)::bigint AS n FROM site_recipe_runs WHERE {filter}"),
+        &format!("SELECT count(*)::bigint AS n FROM recipe_runs WHERE {filter}"),
         vec![org_id.into(), site.clone().into(), recipe_id.into()],
     ))
     .one(db)
@@ -550,7 +610,7 @@ pub async fn runs(
     .map_or(0, |c| c.n);
     let rows = RunRow::find_by_statement(stmt(
         &format!(
-            "SELECT {RUN_COLUMNS} FROM site_recipe_runs WHERE {filter} \
+            "SELECT {RUN_COLUMNS} FROM recipe_runs WHERE {filter} \
              ORDER BY started_at DESC LIMIT $4 OFFSET $5"
         ),
         vec![
@@ -568,7 +628,7 @@ pub async fn runs(
 
 async fn run_row(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<RunRow, RecipeError> {
     RunRow::find_by_statement(stmt(
-        &format!("SELECT {RUN_COLUMNS} FROM site_recipe_runs WHERE org_id = $1 AND id = $2"),
+        &format!("SELECT {RUN_COLUMNS} FROM recipe_runs WHERE org_id = $1 AND id = $2"),
         vec![org_id.into(), id.into()],
     ))
     .one(db)
@@ -589,7 +649,7 @@ pub async fn run(
     // that fails now and then, a dedicated extract index if not.
     let earlier = RunRow::find_by_statement(stmt(
         &format!(
-            "SELECT {RUN_COLUMNS} FROM site_recipe_runs WHERE org_id = $1 AND site = $2 AND name = $3 \
+            "SELECT {RUN_COLUMNS} FROM recipe_runs WHERE org_id = $1 AND site = $2 AND name = $3 \
              AND id <> $4 AND finished_at IS NOT NULL AND started_at < $5 \
              ORDER BY started_at DESC LIMIT 20"
         ),
@@ -663,7 +723,7 @@ pub async fn prune_files(
     let mut after = Uuid::nil();
     loop {
         let rows = Row::find_by_statement(stmt(
-            "SELECT id, yaml, keys, finished_at FROM site_recipe_runs \
+            "SELECT id, yaml, keys, finished_at FROM recipe_runs \
              WHERE finished_at IS NOT NULL AND keys NOT IN ('{}'::jsonb, '[]'::jsonb) AND id > $1 \
              ORDER BY id LIMIT $2",
             vec![after.into(), PRUNE_BATCH.into()],
@@ -694,7 +754,7 @@ pub async fn prune_files(
                 continue;
             }
             db.execute_raw(stmt(
-                "UPDATE site_recipe_runs SET keys = '{}' WHERE id = $1",
+                "UPDATE agent_runs SET keys = '{}' WHERE id = $1",
                 vec![row.id.into()],
             ))
             .await?;

@@ -134,7 +134,8 @@ async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
         // The previous flow run passed: this failure is the break.
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "UPDATE site_recipe_runs SET status = 'ok', reason = NULL WHERE id = $1::uuid",
+            "WITH a AS (UPDATE agent_runs SET reason = NULL WHERE id = $1::uuid RETURNING job_id) \
+             UPDATE runner_jobs SET state = 'succeeded' WHERE id IN (SELECT job_id FROM a)",
             [run.into()],
         ))
         .await
@@ -187,8 +188,10 @@ async fn a_run_resumes_only_from_a_valid_step_of_the_same_site() {
         ]);
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Postgres,
-            "INSERT INTO site_recipe_runs (id, org_id, site, name, yaml, params, trigger, status, steps, extracts, keys, finished_at) \
-             VALUES ($1, $2, 'example.org', 'programme', $3, '{}', 'studio', 'failed', $4, '[]', '{}', now())",
+            "WITH j AS (INSERT INTO runner_jobs (id, org_id, kind, spec, state, started_at, finished_at, queue_expires_at) \
+               VALUES ($1, $2, 'server_browser', '{}', 'failed', now(), now(), now()) RETURNING id) \
+             INSERT INTO agent_runs (id, org_id, job_id, llm_calls_max, site, name, plan, trigger, steps) \
+             SELECT $1, $2, id, 1, 'example.org', 'programme', jsonb_build_object('yaml', $3::text, 'params', '{}'::jsonb), 'studio', $4 FROM j",
             [earlier.into(), org.into(), yaml.into(), steps.into()],
         ))
         .await

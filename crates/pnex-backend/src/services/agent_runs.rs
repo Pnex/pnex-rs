@@ -102,6 +102,7 @@ fn invalid(field: &str, token: &str) -> AgentRunError {
 
 const ISO: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
 
+/// Hosted and internal agent runs, until the runs page shows every engine (D786, lot U5).
 fn select() -> String {
     format!(
         "SELECT a.id, a.environment_id, a.agent_id, a.agent_version, a.chain_id, a.job_id, a.llm_calls, a.llm_calls_max, \
@@ -111,7 +112,8 @@ fn select() -> String {
            to_char(j.started_at AT TIME ZONE 'UTC', {ISO}) AS started_at, \
            to_char(j.finished_at AT TIME ZONE 'UTC', {ISO}) AS finished_at, \
            a.merge_requests \
-         FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id"
+         FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
+           AND j.kind IN ('sandbox', 'internal_llm')"
     )
 }
 
@@ -310,7 +312,8 @@ pub async fn list(
 ) -> Result<(i64, Vec<AgentRun>), DbErr> {
     let total: i64 = db
         .query_one_raw(stmt(
-            "SELECT count(*) AS n FROM agent_runs WHERE org_id = $1",
+            "SELECT count(*) AS n FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
+             WHERE a.org_id = $1 AND j.kind IN ('sandbox', 'internal_llm')",
             vec![org_id.into()],
         ))
         .await?

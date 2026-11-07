@@ -17,7 +17,7 @@ jamais en production.
 
 ```mermaid
 flowchart LR
-  S[Studio /web-sites/:site] -- Lecture brouillon --> R[run site_recipe_runs]
+  S[Studio /web-sites/:site] -- Lecture brouillon --> R[run unifié agent_runs]
   F[flow : nœud site_recipe] -- passage attendu --> R
   R --> P[préflight HTTP gardé<br/>robots, 2 s, statut]
   P --> B[navigateur CDP<br/>Obscura par défaut]
@@ -154,6 +154,8 @@ statut `running | ok | failed`, étape en échec et raison, étapes (JSON, sauv�
 chaque étape : le studio les voit arriver), extraits (texte ≤ 200 000 car., SHA-256),
 clés S3 des captures et PDF (`org_{id}/site_recipes/{run}/…`). Un passage resté `running`
 au-delà de 11 min est montré `interrupted` ; au démarrage, ces passages sont fermés.
+
+> **Run unifié (2026-11-07, `agent-unification.md` D781, lot U1)** : la table `site_recipe_runs` est supprimée. Un passage est un job `server_browser` de `runner_jobs` (état, dates) et une ligne `agent_runs` (recette, version, plan = YAML + paramètres, déclencheur, étapes, extraits, clés). La vue `recipe_runs` garde la forme ci-dessus pour le studio, le nœud de flow et la reprise. Les étapes partent aussi dans le journal commun des jobs (`runner_job_logs`, conteneur `browser`). Le ménage des jobs à 90 jours épargne ces passages : leur historique reste gardé.
 Un échec ne conclut rien. La notification ok → échec passe par le nœud de flow (D327).
 
 ### D327 — Nœud de flow `site_recipe`
