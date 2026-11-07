@@ -30,6 +30,9 @@ services:
       # The agents spec queues an environment build and drives the runner by
       # hand: the image is never pulled, it only has to be a pinned reference.
       PNEX_IMAGE_BUILDER: registry.example.org/builder@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      # Without a gateway a claimed sandbox job is failed on the spot (204): no
+      # PNEX_PROD_HOST here, so name it. The spec rewrites its host anyway.
+      PNEX_AGENT_GATEWAY_URL: http://localhost:5150
 
   pnex-builder:
     pull_policy: never
