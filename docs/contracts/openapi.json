@@ -64104,7 +64104,7 @@
         ],
         "summary": "List my pending invitations",
         "tags": [
-          "orgs"
+          "invitations"
         ]
       }
     },
@@ -64163,7 +64163,7 @@
         ],
         "summary": "Accept an invitation",
         "tags": [
-          "orgs"
+          "invitations"
         ]
       }
     },
@@ -64215,7 +64215,7 @@
         ],
         "summary": "Decline an invitation",
         "tags": [
-          "orgs"
+          "invitations"
         ]
       }
     },

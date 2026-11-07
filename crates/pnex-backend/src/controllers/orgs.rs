@@ -1018,7 +1018,7 @@ struct MyInvitationsQuery {
 #[utoipa::path(
     get,
     path = "/api/v1/invitations",
-    tag = "orgs",
+    tag = "invitations",
     operation_id = "invitations_list",
     summary = "List my pending invitations",
     description = "Invitations addressed to the caller's email, not expired, for orgs the caller is not a member of yet, newest first, paginated. Empty while the identity provider has not verified the email. Not scoped by X-Org-Id.",
@@ -1078,7 +1078,7 @@ async fn my_invitations(
 #[utoipa::path(
     post,
     path = "/api/v1/invitations/{id}/accept",
-    tag = "orgs",
+    tag = "invitations",
     operation_id = "invitations_accept",
     summary = "Accept an invitation",
     description = "The caller joins the org with the invited role and the invitation is used up. Only for the invited email, verified by the identity provider, before expiry. Not scoped by X-Org-Id.",
@@ -1150,7 +1150,7 @@ async fn accept_invitation(
 #[utoipa::path(
     post,
     path = "/api/v1/invitations/{id}/decline",
-    tag = "orgs",
+    tag = "invitations",
     operation_id = "invitations_decline",
     summary = "Decline an invitation",
     description = "The invitation addressed to the caller's verified email is dropped; the org can invite again. Not scoped by X-Org-Id.",
