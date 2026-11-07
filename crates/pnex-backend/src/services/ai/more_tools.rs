@@ -161,9 +161,14 @@ pub async fn update_notification_template(
         .into());
     }
     let input = template_input(args)?;
-    let m = tpl::update(deps.db, m, &input)
+    let m = tpl::update_if_unchanged(deps.db, m, &input)
         .await
-        .map_err(template_error)?;
+        .map_err(template_error)?
+        .ok_or_else(|| {
+            ToolError::from(
+                "conflict: the template changed since you read it — reload it with get_notification_template and redo the change",
+            )
+        })?;
     outcome(json!({ "template_id": m.id, "name": m.name, "updated_at": m.updated_at.to_rfc3339() }))
 }
 
@@ -579,7 +584,9 @@ fn taxonomy_error(e: crate::services::media_ingest::taxonomies::TaxonomyError) -
             None,
         ),
         E::VersionConflict { current } => coded(
-            format!("version conflict: the taxonomy is now at version {current} — reload it with get_taxonomy and redo the change"),
+            format!(
+                "version conflict: the taxonomy is now at version {current} — reload it with get_taxonomy and redo the change"
+            ),
             err_codes::TAXONOMY_VERSION_CONFLICT,
             Some(json!({ "current": current.to_string() })),
         ),
@@ -666,4 +673,307 @@ pub async fn create_taxonomy_version(
         "topic_count": crate::services::media_ingest::taxonomies::topics_of(&v).len(),
         "note": "deployed flows keep their pinned version: the user selects the new version in the Topic classifier node and redeploys",
     }))
+}
+
+// ─────────────────────────── Registry entries ───────────────────────────
+
+use super::provider::ToolSpec;
+use super::tools::{count, shown, trace, ToolDef, TraceSummary};
+
+/// The more tools: spec and trace summary of each, in one place.
+pub(super) fn tools() -> Vec<ToolDef> {
+    vec![
+        ToolDef {
+            spec: ToolSpec {
+                name: "get_notification_template",
+                description: "Full notification template (subject, body, declared variables, updated_at).",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"template_id":{"type":"string","description":"template UUID (list_notifications)"}},"required":["template_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let nm = shown(&v["template"]["name"]);
+            trace(
+                "ai-trace-template",
+                json!({"name": nm}),
+                format!("template \"{nm}\""),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "preview_notification_template",
+                description: "Renders a template with example variables and an optional msg payload — NEVER sends anything.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"template_id":{"type":"string"},"vars":{"type":"object","description":"{var: value}; missing ones use the declared examples"},"payload":{"description":"simulated msg.payload"}},"required":["template_id"]}"#).expect("static schema"),
+            },
+            summary: |_| trace(
+            "ai-trace-template-preview",
+            json!({}),
+            "preview rendered (not sent)".into(),
+        ),
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "create_notification_template",
+                description: "Creates a notification template (minijinja; variables {{ name }} are detected automatically). Sends nothing. Channels are managed by the user only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"name":{"type":"string"},"subject":{"type":"string"},"body":{"type":"string"},"vars":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"example":{"type":"string"}}}}},"required":["name","body"]}"#).expect("static schema"),
+            },
+            summary: summary_create_notification_template,
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "update_notification_template",
+                description: "Rewrites a template in place, on top of the state read with get_notification_template (pass its updated_at as expected_updated_at). Deployed flows keep their snapshot until the user redeploys.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"template_id":{"type":"string"},"expected_updated_at":{"type":"string"},"name":{"type":"string"},"subject":{"type":"string"},"body":{"type":"string"},"vars":{"type":"array","items":{"type":"object"}}},"required":["template_id","expected_updated_at","name","body"]}"#).expect("static schema"),
+            },
+            summary: summary_create_notification_template,
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "list_functions",
+                description: "Lists the organization's JS/Starlark functions (Functions page).",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = count(&v["functions"]);
+            trace(
+                "ai-trace-functions",
+                json!({"count": n}),
+                format!("{n} function(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "get_function",
+                description: "Latest code and declared interface (inputs, outputs) of a function, its version count, and the deployed flows that use it (with their pinned version).",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"function_id":{"type":"integer"}},"required":["function_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (nm, ver) = (shown(&v["function"]["name"]), shown(&v["latest_version"]));
+            trace(
+                "ai-trace-function",
+                json!({"name": nm, "version": ver}),
+                format!("function \"{nm}\" v{ver}"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "validate_function",
+                description: "Compile-only check of JS or Starlark code (no execution): diagnostics with line/column.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"language":{"type":"string","enum":["js","starlark"]},"code":{"type":"string"}},"required":["language","code"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            if v["ok"].as_bool().unwrap_or(false) {
+                trace(
+                    "ai-trace-function-compiles",
+                    json!({}),
+                    "code compiles".into(),
+                )
+            } else {
+                trace(
+                    "ai-trace-function-compile-errors",
+                    json!({}),
+                    "compile errors".into(),
+                )
+            }
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "test_function",
+                description: "Runs a function in the sandbox of the Test button (no network, no device, no side effect): its latest saved version, or `code` (unsaved) in the function's language, with typed `inputs` and an optional `msg`.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"function_id":{"type":"integer"},"code":{"type":"string"},"inputs":{"type":"object"},"msg":{"type":"object"}},"required":["function_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            if v["ok"].as_bool().unwrap_or(false) {
+                trace(
+                    "ai-trace-function-test-passed",
+                    json!({}),
+                    "test passed".into(),
+                )
+            } else {
+                trace(
+                    "ai-trace-function-test-failed",
+                    json!({}),
+                    "test failed".into(),
+                )
+            }
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "create_function",
+                description: "Creates a JS or Starlark function (version 1). Its ports are declared in `inputs`/`outputs`, never in the code; without outputs the node has one output and the returned value is the message. Check the code with validate_function first.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"name":{"type":"string"},"language":{"type":"string","enum":["js","starlark"]},"code":{"type":"string"},"description":{"type":"string"},"inputs":{"type":"array","description":"Declared inputs: one input anchor each","items":{"type":"object","properties":{"name":{"type":"string","description":"snake_case"},"ty":{"type":"string","enum":["number","string","bool","any"]},"default":{},"desc":{"type":"string"}},"required":["name","ty"]}},"outputs":{"type":"array","description":"Declared outputs: one port each, the returned dict is routed by key. Omit for message mode (one output, the returned value is the message)","items":{"type":"object","properties":{"name":{"type":"string","description":"snake_case"},"ty":{"type":"string","enum":["number","string","bool","any"]},"desc":{"type":"string"}},"required":["name","ty"]}}},"required":["name","language","code"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (nm, ver) = (shown(&v["name"]), shown(&v["version"]));
+            trace(
+                "ai-trace-function-created",
+                json!({"name": nm, "version": ver}),
+                format!("function \"{nm}\" created (v{ver})"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "update_function",
+                description: "Saves a new version of a function (code, declared `inputs`/`outputs`, and/or name/description; parts not sent are kept) on top of the version read with get_function (expected_version = its latest_version). Deployed flows keep their pinned version until the user selects the new one and redeploys.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"function_id":{"type":"integer"},"expected_version":{"type":"integer"},"code":{"type":"string"},"inputs":{"type":"array","description":"Declared inputs: one input anchor each","items":{"type":"object","properties":{"name":{"type":"string","description":"snake_case"},"ty":{"type":"string","enum":["number","string","bool","any"]},"default":{},"desc":{"type":"string"}},"required":["name","ty"]}},"outputs":{"type":"array","description":"Declared outputs: one port each, the returned dict is routed by key. Omit for message mode (one output, the returned value is the message)","items":{"type":"object","properties":{"name":{"type":"string","description":"snake_case"},"ty":{"type":"string","enum":["number","string","bool","any"]},"desc":{"type":"string"}},"required":["name","ty"]}},"name":{"type":"string"},"description":{"type":"string"},"note":{"type":"string"}},"required":["function_id","expected_version"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (id, ver) = (shown(&v["function_id"]), shown(&v["new_version"]));
+            trace(
+                "ai-trace-function-saved",
+                json!({"id": id, "version": ver}),
+                format!("function #{id}: version {ver}"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "list_annotation_sets",
+                description: "Lists the organization's annotation sets (name, published, attached to a media or a tour). Read-only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = count(&v["annotation_sets"]);
+            trace(
+                "ai-trace-annotation-sets",
+                json!({"count": n}),
+                format!("{n} annotation set(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "list_tours",
+                description: "Lists the organization's virtual tours (name, mode, published, whether a public link exists). Read-only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = count(&v["tours"]);
+            trace(
+                "ai-trace-tours",
+                json!({"count": n}),
+                format!("{n} tour(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "list_pois",
+                description: "Lists the map points of interest (label, location, coordinates, devices placed there). Read-only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = count(&v["pois"]);
+            trace("ai-trace-pois", json!({"count": n}), format!("{n} POI(s)"))
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "list_controls",
+                description: "Controls of the organization (switches, sliders… declared by dashboards and annotations): spec, last commanded value, and the deployed flows listening to each. Read-only: the assistant never operates a control.",
+                input_schema: json!({"type": "object", "properties": {}, "required": []}),
+            },
+            summary: |v| {
+            let n = count(&v["controls"]);
+            trace(
+                "ai-trace-controls",
+                json!({"count": n}),
+                format!("{n} control(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "read_memory",
+                description: "Shared memory of the organization (written by memory_write flow nodes). Without keys: the keys, their numeric fields and age. With keys (\"key\" or \"key#field\"): their current values. Read-only.",
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {"keys": {"type": "array", "items": {"type": "string"}}},
+                    "required": []
+                }),
+            },
+            summary: |v| match v["values"].as_array() {
+            Some(values) => {
+                let n = values.len().to_string();
+                trace(
+                    "ai-trace-memory-values",
+                    json!({"count": n}),
+                    format!("{n} value(s)"),
+                )
+            }
+            None => {
+                let n = count(&v["keys"]);
+                trace(
+                    "ai-trace-memory-keys",
+                    json!({"count": n}),
+                    format!("{n} key(s)"),
+                )
+            }
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "list_taxonomies",
+                description: "Lists the organization's topic taxonomies (Audio streams › Taxonomies): name, current version, topic count and topic ids. Read-only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{},"required":[]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = count(&v["taxonomies"]);
+            trace(
+                "ai-trace-taxonomies",
+                json!({"count": n}),
+                format!("{n} taxonomy(ies)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "get_taxonomy",
+                description: "One taxonomy with the full topics (id, label, definition, keywords) of its current version. Read it before create_taxonomy_version.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"taxonomy_id":{"type":"string"}},"required":["taxonomy_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (nm, ver) = (
+                shown(&v["taxonomy"]["name"]),
+                shown(&v["taxonomy"]["current_version"]),
+            );
+            trace(
+                "ai-trace-taxonomy",
+                json!({"name": nm, "version": ver}),
+                format!("taxonomy \"{nm}\" v{ver}"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "create_taxonomy_version",
+                description: "Saves a new version of a taxonomy with the COMPLETE topic list (topics left out are dropped from the new version), on top of the version read with get_taxonomy (expected_version = its current_version). Topic id = stable slug [a-z0-9_]; keywords match whole words, ignoring case and accents. Never rewrites history: deployed flows keep their pinned version until the user picks the new one and redeploys.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"taxonomy_id":{"type":"string"},"expected_version":{"type":"integer"},"topics":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"label":{"type":"string"},"definition":{"type":"string"},"keywords":{"type":"array","items":{"type":"string"}}},"required":["id","label"]}},"note":{"type":"string"}},"required":["taxonomy_id","expected_version","topics"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (nm, ver) = (shown(&v["name"]), shown(&v["new_version"]));
+            trace(
+                "ai-trace-taxonomy-saved",
+                json!({"name": nm, "version": ver}),
+                format!("taxonomy \"{nm}\": version {ver}"),
+            )
+        },
+        },
+    ]
+}
+
+/// Trace summary shared by create_notification_template, update_notification_template.
+fn summary_create_notification_template(v: &Value) -> TraceSummary {
+    {
+        let nm = shown(&v["name"]);
+        trace(
+            "ai-trace-template-saved",
+            json!({"name": nm}),
+            format!("template \"{nm}\" saved"),
+        )
+    }
 }

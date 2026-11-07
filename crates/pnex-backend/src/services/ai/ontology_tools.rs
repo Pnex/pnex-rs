@@ -485,3 +485,222 @@ pub async fn save_object_type(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolO
         json!({ "type_key": view.def.key, "version": view.version, "property_count": view.def.properties.len() }),
     )
 }
+
+// ─────────────────────────── Registry entries ───────────────────────────
+
+use super::provider::ToolSpec;
+use super::tools::{count, shown, trace, ToolDef, TraceSummary};
+
+/// The ontology tools: spec and trace summary of each, in one place.
+pub(super) fn tools() -> Vec<ToolDef> {
+    vec![
+        ToolDef {
+            spec: ToolSpec {
+                name: "describe_ontology",
+                description: "The organization's ontology schema: object types (key, name, typed properties, containment, write role, object count; system types are devices, media, dashboards, tours, POIs, flows, folders) and link types (key, from/to types, attributes, cardinality). Read it before any ontology query or write. Read-only.",
+                input_schema: json!({"type": "object", "properties": {}}),
+            },
+            summary: |v| {
+            let n = count(&v["types"]);
+            trace(
+                "ai-trace-ontology-schema",
+                json!({"count": n}),
+                format!("{n} object type(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "query_ontology",
+                description: "Declarative ontology query: start set (type_key, ids, text in titles, property filters {key, op: eq|ne|lt|lte|gt|gte|contains|exists, value}, label 'name' or 'name:value', within = descendants of an object) then up to 4 traversals [{link_type, direction: out|in}], evaluated as_of an RFC 3339 instant (default now); latest = series properties whose last value is joined. At most 50 rows. Read-only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"query":{"type":"object","properties":{"type_key":{"type":"string"},"ids":{"type":"array","items":{"type":"string"}},"text":{"type":"string"},"filters":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"op":{"type":"string"},"value":{}},"required":["key","op"]}},"label":{"type":"string"},"within":{"type":"string"},"traverse":{"type":"array","items":{"type":"object","properties":{"link_type":{"type":"string"},"direction":{"type":"string"}},"required":["link_type"]}},"as_of":{"type":"string"},"latest":{"type":"array","items":{"type":"string"}},"limit":{"type":"integer"}}}},"required":["query"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = shown(&v["count"]);
+            trace(
+                "ai-trace-ontology-query",
+                json!({"count": n}),
+                format!("{n} object(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "aggregate_objects",
+                description: "Numbers over the objects of an ontology query, without reading them one by one. metrics: {key, op: count|count_distinct|sum|avg|min|max, property, weight (with sum: a number property as a percentage, an object without it is left out), where: {key, op, value}} or a ratio {key, ratio: [a, b], percent}. group_by, two at most: {property}, {property, bucket: day|week|month|quarter|year} or {hops: [{link_type, direction}]}, two hops at most. Filters accept $today-30 and $today+7. A money property answers by_currency: never add currencies. An object linked to two targets counts in both groups. Refused on what the user may not read.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"query":{"type":"object"},"group_by":{"type":"array"},"metrics":{"type":"array"},"limit":{"type":"integer"}},"required":["metrics"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = v["groups"].as_array().map_or(0, Vec::len).to_string();
+            trace(
+                "ai-trace-ontology-aggregate",
+                json!({"count": n}),
+                format!("{n} group(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "get_object",
+                description: "One ontology object (properties, version) with its links valid now. Read it before update_object.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"}},"required":["object_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let t = shown(&v["object"]["title"]);
+            trace(
+                "ai-trace-ontology-object",
+                json!({"title": t}),
+                format!("object \"{t}\""),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "case_workspace",
+                description: "An investigation case (object of type case) as its workspace shows it: its events oldest first (title, occurred as fuzzy time, origin, analysis note) with the objects each involves and their role (evidence, actor, context, hypothesis, source), and its undated pieces. Read-only: never attach, detach nor create an event; propose it to the user.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (e, u) = (count(&v["events"]), count(&v["undated"]));
+            trace(
+                "ai-trace-case-workspace",
+                json!({"events": e, "undated": u}),
+                format!("case: {e} event(s), {u} undated piece(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "case_signals",
+                description: "Raw signals around the members of an investigation case, oldest first: links opened and closed, object changes, ranges set on members, notifications of member flows, approximate dates — over the span of the case events or from/to (RFC 3339). At most 200 items (the newest). Each may be worth an event: propose it to the user, never create it.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"},"from":{"type":"string"},"to":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = shown(&v["items_total"]);
+            trace(
+                "ai-trace-case-signals",
+                json!({"count": n}),
+                format!("case signals: {n}"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "case_board",
+                description: "The hypotheses board of an investigation case: each hypothesis member with the claims that support or contradict it (status, number of sources), the member claims without any source, and those contradicted by another claim. No score: present the balance, the user concludes. Read-only: never change a hypothesis' or claim's status.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (h, u) = (count(&v["hypotheses"]), count(&v["unsourced"]));
+            trace(
+                "ai-trace-case-board",
+                json!({"hypotheses": h, "unsourced": u}),
+                format!("board: {h} hypothesis(es), {u} unsourced claim(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "case_proposals",
+                description: "Detections proposed to an investigation case from the members' position tracks (co_presence of two members, stop, signal_loss), each with its span, members, place, thresholds and status (proposed, retained as an event, rejected with an optional reason). A detection is a lead, not a fact. Read-only: only the user retains or rejects a proposal.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"case_id":{"type":"string"}},"required":["case_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = count(&v["proposals"]);
+            trace(
+                "ai-trace-case-proposals",
+                json!({"count": n}),
+                format!("case proposals: {n}"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "create_object",
+                description: "Creates an object of an organization type (not a system type: devices, media… are created from their own pages). properties must follow the type's schema (describe_ontology); series and events properties hold no value. A recurrence value is {start: YYYY-MM-DD, every: 1-999, unit: day|week|month|year, until?: YYYY-MM-DD, floating?: true (count from the last completion), days?: length, lead_days?: days to prepare}: its occurrences appear in the calendar (list_calendar).",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"type_key":{"type":"string"},"title":{"type":"string"},"properties":{"type":"object"}},"required":["type_key","title"]}"#).expect("static schema"),
+            },
+            summary: summary_create_object,
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "update_object",
+                description: "Saves the title and the COMPLETE property document of an object (properties left out are cleared) on top of the version read with get_object (expected_version). For a system object only its organization properties change.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"},"expected_version":{"type":"integer"},"title":{"type":"string"},"properties":{"type":"object"}},"required":["object_id","expected_version","properties"]}"#).expect("static schema"),
+            },
+            summary: summary_create_object,
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "open_link",
+                description: "Opens a typed link between two objects (link types from describe_ontology), optionally valid_from a past RFC 3339 instant. To bind a sensor to an object's series property: link_type 'measures', source = the device object, target = the object, attributes {metric, property}.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"link_type":{"type":"string"},"source_id":{"type":"string"},"target_id":{"type":"string"},"attributes":{"type":"object"},"valid_from":{"type":"string"}},"required":["link_type","source_id","target_id"]}"#).expect("static schema"),
+            },
+            summary: |v| link_summary("ai-trace-ontology-link-opened", v),
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "close_link",
+                description: "Closes an open link at valid_to (default now). The link stays in the history; nothing is deleted. Replacing a sensor = close its 'measures' link, then open one from the new device.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"link_id":{"type":"integer"},"valid_to":{"type":"string"}},"required":["link_id"]}"#).expect("static schema"),
+            },
+            summary: |v| link_summary("ai-trace-ontology-link-closed", v),
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "propose_action",
+                description: "Proposes to the user an action declared on the object's type (actions in describe_ontology, e.g. start_maintenance on a pump), with its parameters pre-filled. Nothing is executed: the user reviews the proposal and runs it from the button shown under your answer; a deployed flow then acts. Tells which deployed flows would receive it (none = the user must first deploy a flow with an action_trigger node). Never claim the action was done.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"},"action":{"type":"string"},"params":{"type":"object"}},"required":["object_id","action"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (a, t) = (shown(&v["action_name"]), shown(&v["title"]));
+            trace(
+                "ai-trace-action-proposed",
+                json!({"action": a, "title": t}),
+                format!("proposed \"{a}\" on \"{t}\""),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "save_object_type",
+                description: "Creates an organization object type (no expected_version) or saves a new version of one on top of expected_version (from describe_ontology). def = {key [a-z][a-z0-9_]*, name, icon, properties: [{key, name, kind: text|number|bool|date|date_time|enum|geo_point|url|ref|series|events|fuzzy_time|recurrence, required, indexed, unit, min, max, values, to_type, stream, max_len}], may_contain / may_be_contained_in: '*' or a list of type keys or null, write_role: member|admin|owner}. For a system type only properties are taken. Organization owners and admins only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"def":{"type":"object"},"expected_version":{"type":"integer"}},"required":["def"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (k, ver) = (shown(&v["type_key"]), shown(&v["version"]));
+            trace(
+                "ai-trace-ontology-type-saved",
+                json!({"key": k, "version": ver}),
+                format!("type {k} v{ver}"),
+            )
+        },
+        },
+    ]
+}
+
+/// Trace summary shared by create_object, update_object.
+fn summary_create_object(v: &Value) -> TraceSummary {
+    {
+        let (t, ver) = (shown(&v["title"]), shown(&v["version"]));
+        trace(
+            "ai-trace-ontology-object-saved",
+            json!({"title": t, "version": ver}),
+            format!("object \"{t}\" v{ver}"),
+        )
+    }
+}
+
+/// Trace summary of open_link / close_link (`key` tells which).
+fn link_summary(key: &'static str, v: &Value) -> TraceSummary {
+    let (a, b, k) = (
+        shown(&v["source"]),
+        shown(&v["target"]),
+        shown(&v["link_type"]),
+    );
+    trace(
+        key,
+        json!({"source": a, "target": b, "link": k}),
+        format!("{a} —{k}→ {b}"),
+    )
+}

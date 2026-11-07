@@ -116,7 +116,9 @@ fn message_dto(m: ai_messages::Model) -> AiMessage {
 /// Tool trace → bounded wire/storage form.
 pub fn trace_dto(t: &ToolTrace) -> AiToolTrace {
     let args_text = t.arguments.to_string();
-    let arguments = if args_text.chars().count() > TRACE_ARGS_MAX_CHARS {
+    // A held write keeps its full arguments: they are what the user confirms.
+    let held = t.code == Some(pnex_core::err_codes::AI_CONFIRM_REQUIRED);
+    let arguments = if !held && args_text.chars().count() > TRACE_ARGS_MAX_CHARS {
         serde_json::Value::String(truncate_chars(&args_text, TRACE_ARGS_MAX_CHARS))
     } else {
         t.arguments.clone()
@@ -318,6 +320,28 @@ pub async fn history(db: &DatabaseConnection, id: Uuid) -> Result<Vec<Msg>, DbEr
             _ => None,
         })
         .collect())
+}
+
+/// The held write at `index` of the conversation's latest answer, as
+/// `(tool, arguments)`; `None` once a later turn ran (it confirmed or
+/// replaced it), so an action is confirmed at most once (SEC-71).
+pub async fn pending_action(
+    db: &DatabaseConnection,
+    id: Uuid,
+    index: usize,
+) -> Result<Option<(String, serde_json::Value)>, DbErr> {
+    let last = ai_messages::Entity::find()
+        .filter(ai_messages::Column::ConversationId.eq(id))
+        .order_by_desc(ai_messages::Column::Seq)
+        .one(db)
+        .await?;
+    Ok(last
+        .filter(|m| m.role == "assistant")
+        .and_then(|m| m.tool_trace)
+        .and_then(|v| serde_json::from_value::<Vec<AiToolTrace>>(v).ok())
+        .and_then(|traces| traces.into_iter().nth(index))
+        .filter(|t| t.code.as_deref() == Some(pnex_core::err_codes::AI_CONFIRM_REQUIRED))
+        .map(|t| (t.name, t.arguments)))
 }
 
 /// What one finished turn stores.

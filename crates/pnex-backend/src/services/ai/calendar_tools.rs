@@ -120,7 +120,7 @@ pub async fn propose_occurrence_change(
             return Err(coded(
                 err_codes::TIME_RANGE_NOT_FOUND,
                 "no such occurrence in this organization",
-            ))
+            ));
         }
         Err(e) => return Err(internal("occurrence lookup")(e)),
     };
@@ -156,4 +156,45 @@ pub async fn propose_occurrence_change(
         "executed": false,
         "next": "the user reviews the change and applies it from the button under your answer",
     }))
+}
+
+// ─────────────────────────── Registry entries ───────────────────────────
+
+use super::provider::ToolSpec;
+use super::tools::{count, shown, trace, ToolDef};
+
+/// The calendar tools: spec and trace summary of each, in one place.
+pub(super) fn tools() -> Vec<ToolDef> {
+    vec![
+        ToolDef {
+            spec: ToolSpec {
+                name: "list_calendar",
+                description: "Lists the organization's calendar: time ranges and the occurrences of maintenance plans (objects with a recurrence property), each with its state: planned, due (inside its lead time, to prepare), late (planned end passed, not done), done, cancelled. Window from/to as YYYY-MM-DD (default 30 days back to 90 days ahead, at most 366 days); optional state filter. Read-only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"},"state":{"type":"string","enum":["planned","due","late","done","cancelled"]}}}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = count(&v["occurrences"]);
+            trace(
+                "ai-trace-calendar",
+                json!({"count": n}),
+                format!("{n} calendar occurrence(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "propose_occurrence_change",
+                description: "Proposes to the user one change to an occurrence from list_calendar: done (date = day it was done, default today), move (date = new day, required) or cancel (this occurrence only). Nothing is written: the user reviews and applies it from the button under your answer; the plan itself never changes. Done and cancelled occurrences are history and cannot be changed. To change the plan (period, start, floating), use update_object on the plan.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"range_id":{"type":"string"},"change":{"type":"string","enum":["done","move","cancel"]},"date":{"type":"string"}},"required":["range_id","change"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let (c, l) = (shown(&v["change"]), shown(&v["label"]));
+            trace(
+                "ai-trace-occurrence-proposed",
+                json!({"change": c, "label": l}),
+                format!("proposed \"{c}\" on \"{l}\""),
+            )
+        },
+        },
+    ]
 }

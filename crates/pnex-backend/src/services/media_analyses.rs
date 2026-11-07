@@ -842,7 +842,7 @@ async fn llm_call(
         .await
         .map_err(|_| err_codes::MEDIA_ANALYSIS_QUOTA)?;
     let msgs = [Msg::User {
-        text: format!("<data>\n{text}\n</data>"),
+        text: crate::services::ai::untrusted_data(text),
     }];
     let turn = cfg
         .provider

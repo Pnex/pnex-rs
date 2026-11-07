@@ -4,7 +4,7 @@ title: The PNeX assistant
 kind: feature
 pages: 
 nodes: 
-err_codes: ai-flow-running, ai-conversation-busy
+err_codes: ai-flow-running, ai-conversation-busy, ai-confirm-required, ai-confirm-stale
 tools: list_devices, get_device_pins, list_flows, get_flow, list_notifications, query_telemetry, describe_node_types, search_knowledge, read_knowledge, diagnose_device, diagnose_flow, list_dashboards, get_dashboard, validate_dashboard_layout, create_dashboard, update_dashboard, get_notification_template, preview_notification_template, create_notification_template, update_notification_template, list_functions, get_function, validate_function, test_function, create_function, update_function, list_annotation_sets, list_tours, list_pois, list_controls, read_memory, list_taxonomies, get_taxonomy, create_taxonomy_version, describe_ontology, query_ontology, get_object, create_object, update_object, open_link, close_link, propose_action, save_object_type, case_workspace, case_signals, case_board, case_proposals, list_calendar, propose_occurrence_change, search_docs, read_chunk, open_page, validate_flow_graph, validate_calc_expression, create_flow, update_flow
 tags: assistant, function, starlark, javascript, template, ai, llm, chat, conversation, history, privacy, gdpr, rgpd, help, aide, what can you do
 ---
@@ -31,6 +31,7 @@ The assistant (**AI Assistant** button at the bottom of the sidebar, above the o
 - Deploy, stop or delete a flow; delete anything.
 - Send a command to a device, start an OTA update or a flash, write a control or the shared memory.
 - Edit a **deployed** flow: it answers *ai-flow-running*. Stop the flow in the flow editor, then ask again; after its change, review and redeploy yourself.
+- Write after reading outside content without asking you: once a turn read a mail, a website page or a document (*ai-confirm-required*), each change it wants to make waits under its answer with the exact data it would send. **Confirm** runs it as shown, with your rights checked again; **Cancel** drops it. Only the latest answer's actions can be confirmed (*ai-confirm-stale* otherwise: ask again).
 - Overwrite your work: it saves on top of the version it read; if someone saved in between, it reloads and redoes its change.
 - Read a secret value: secrets appear by name only.
 - Delete a dashboard or write a control value.

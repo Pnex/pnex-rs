@@ -137,27 +137,15 @@ fn provider_error(e: ProviderError) -> Result<Response> {
     }
 }
 
-fn db_error(e: sea_orm::DbErr) -> Error {
-    tracing::error!(error = %e, "LLM providers database error");
-    Error::InternalServerError
-}
-
 /// Providers of the org, one page (D240).
 async fn list_response(ctx: &AppContext, org_id: i64, q: &ListQuery) -> Result<Response> {
-    let rows = providers::list(&ctx.db, org_id).await.map_err(db_error)?;
+    let rows = providers::list(&ctx.db, org_id)
+        .await
+        .map_err(crate::controllers::db_error)?;
     match providers::views(&ctx.db, org_id, &rows).await {
         Ok(views) => {
             let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-            let count = views.len() as i64;
-            let (skip, take) = page.slice(views.len());
-            let views: Vec<_> = views.into_iter().skip(skip).take(take).collect();
-            format::json(pagination::envelope(
-                "/api/v1/ai/providers",
-                &[],
-                page,
-                count,
-                views,
-            ))
+            pagination::paged("/api/v1/ai/providers", &[], page, views)
         }
         Err(e) => crate::controllers::secrets::store_error(e),
     }
@@ -376,7 +364,7 @@ async fn owned_or_404(
 ) -> Result<crate::models::_entities::ai_conversations::Model> {
     conversations::find_owned(&ctx.db, org.auth.user.id, org.org.id, id)
         .await
-        .map_err(db_error)?
+        .map_err(crate::controllers::db_error)?
         .ok_or_else(|| {
             super::coded_error(
                 axum::http::StatusCode::NOT_FOUND,
@@ -449,7 +437,7 @@ async fn conversation_create(
     let title = body.title.as_deref().filter(|t| !t.trim().is_empty());
     let conv = conversations::create(&ctx.db, org.auth.user.id, org.org.id, title)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     Ok((
         axum::http::StatusCode::CREATED,
         format::json(conversations::dto(&conv)),
@@ -481,7 +469,7 @@ async fn conversation_detail(
     format::json(
         conversations::detail(&ctx.db, &conv)
             .await
-            .map_err(db_error)?,
+            .map_err(crate::controllers::db_error)?,
     )
 }
 
@@ -514,7 +502,7 @@ async fn conversation_rename(
     let conv = owned_or_404(&ctx, &org, id).await?;
     let conv = conversations::rename(&ctx.db, conv, title)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     format::json(conversations::dto(&conv))
 }
 
@@ -541,7 +529,7 @@ async fn conversation_delete(
     let conv = owned_or_404(&ctx, &org, id).await?;
     conversations::delete(&ctx.db, conv.id)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     Ok(axum::http::StatusCode::NO_CONTENT.into_response())
 }
 
@@ -577,7 +565,7 @@ async fn conversation_delete_all(
 ) -> Result<Response> {
     let deleted = conversations::delete_all(&ctx.db, org.auth.user.id, org.org.id)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     format::json(AiDeletedCount { deleted })
 }
 
@@ -598,13 +586,13 @@ async fn conversation_export(org: OrgContext, State(ctx): State<AppContext>) -> 
     let rows = conversations::owned(org.auth.user.id, org.org.id)
         .all(&ctx.db)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     let mut out = Vec::with_capacity(rows.len());
     for conv in &rows {
         out.push(
             conversations::detail(&ctx.db, conv)
                 .await
-                .map_err(db_error)?,
+                .map_err(crate::controllers::db_error)?,
         );
     }
     format::json(pnex_core::AiConversationsExport {
@@ -623,7 +611,7 @@ async fn conversation_export(org: OrgContext, State(ctx): State<AppContext>) -> 
     tag = "ai",
     operation_id = "ai_conversations_send",
     summary = "Send a message to the assistant",
-    description = "Runs one agent turn: the server rebuilds the history, calls the org LLM, may run assistant tools (write tools re-check the caller's write role and never deploy, stop or delete) and stores the turn. One turn at a time per conversation. Any member.",
+    description = "Runs one agent turn: the server rebuilds the history, calls the org LLM, may run assistant tools (write tools re-check the caller's write role and never deploy, stop or delete) and stores the turn. Once a turn read outside content (mail, web page, document), its write tools are held (`ai-confirm-required` in the trace); `confirm` runs one held action as stored, without an LLM call. One turn at a time per conversation. Any member.",
     params(("id" = String, Path, format = "uuid", description = "Conversation id")),
     request_body = pnex_core::AiSendMessage,
     responses(
@@ -631,7 +619,7 @@ async fn conversation_export(org: OrgContext, State(ctx): State<AppContext>) -> 
         (status = 400, description = "`field-invalid` on `content` (`required`, `max_length:<n>`), or `ai-not-configured`", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`ai-disabled`: assistant switched off on this server", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ai-conversation-not-found`: not one of the caller's conversations in this org", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`ai-conversation-busy`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ai-conversation-busy`, or `ai-confirm-stale` (`confirm` names no held action of the latest answer)", body = crate::openapi::ErrorDetail),
         (status = 429, description = "`ai-rate-limited` by the LLM provider", body = crate::openapi::ErrorDetail),
         (status = 502, description = "LLM failure (`ai-upstream`, `ai-timeout`, `ai-auth-rejected`, ...)", body = crate::openapi::ErrorDetail)
     ),
@@ -667,7 +655,7 @@ async fn conversation_send(
     };
     if !conversations::acquire(&ctx.db, conv.id, cfg.timeout)
         .await
-        .map_err(db_error)?
+        .map_err(crate::controllers::db_error)?
     {
         return Err(Error::CustomError(
             axum::http::StatusCode::CONFLICT,
@@ -754,7 +742,7 @@ async fn run_conversation_turn(
     // History rebuilt from storage: the client only sends the new message.
     let mut history: Vec<Msg> = conversations::history(&ctx.db, conv.id)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     history.push(Msg::User {
         text: content.to_string(),
     });
@@ -772,7 +760,24 @@ async fn run_conversation_turn(
             source_ref: format!("assistant:{}", org.auth.user.id),
         }),
     };
-    let reply = agent::run_turn(&deps, cfg, cfg.provider, system, history).await?;
+    let reply = match body.confirm {
+        // A held write the user confirms runs as stored, no LLM (SEC-71).
+        Some(index) => {
+            let pending = conversations::pending_action(&ctx.db, conv.id, index as usize)
+                .await
+                .map_err(crate::controllers::db_error)?;
+            let Some((name, arguments)) = pending else {
+                return Err(super::coded_error(
+                    axum::http::StatusCode::CONFLICT,
+                    err_codes::AI_CONFIRM_STALE,
+                    "This action is no longer the latest one of the conversation",
+                    None,
+                ));
+            };
+            agent::run_confirmed(&deps, &name, &arguments).await
+        }
+        None => agent::run_turn(&deps, cfg, cfg.provider, system, history).await?,
+    };
     let trace: Vec<pnex_core::AiToolTrace> = reply
         .tool_trace
         .iter()
@@ -791,7 +796,7 @@ async fn run_conversation_turn(
         },
     )
     .await
-    .map_err(db_error)?;
+    .map_err(crate::controllers::db_error)?;
     Ok((reply, trace, updated))
 }
 
@@ -867,7 +872,10 @@ async fn retention_put(
     }
     let mut active: crate::models::_entities::organizations::ActiveModel = org.org.clone().into();
     active.ai_retention_days = sea_orm::Set(body.days.map(|d| d as i32));
-    let updated = active.update(&ctx.db).await.map_err(db_error)?;
+    let updated = active
+        .update(&ctx.db)
+        .await
+        .map_err(crate::controllers::db_error)?;
     tracing::info!(org_id = updated.id, days = ?body.days, "assistant conversation retention updated");
     let mut org = org;
     org.org = updated;
@@ -909,7 +917,7 @@ async fn retention_default_put(
     }
     conversations::set_platform_retention(&ctx.db, body.days, admin.0.user.id)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     tracing::info!(days = ?body.days, by = admin.0.user.id, "platform conversation retention updated");
     format::json(AiRetentionDays {
         days: conversations::retention_days(&ctx.db).await,

@@ -396,6 +396,131 @@ pub async fn update_dashboard(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolO
     })
 }
 
+// ─────────────────────────── Registry entries ───────────────────────────
+
+use super::provider::ToolSpec;
+use super::tools::{count, shown, trace, ToolDef};
+
+/// The dashboard tools: spec and trace summary of each, in one place.
+pub(super) fn tools() -> Vec<ToolDef> {
+    vec![
+        ToolDef {
+            spec: ToolSpec {
+                name: "list_dashboards",
+                description: "Lists the organization's dashboards (id, name, current version).",
+                input_schema: json!({"type": "object", "properties": {}, "required": []}),
+            },
+            summary: |v| {
+                let n = count(&v["dashboards"]);
+                trace(
+                    "ai-trace-dashboards",
+                    json!({"count": n}),
+                    format!("{n} dashboard(s)"),
+                )
+            },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "get_dashboard",
+                description: "Current layout of a dashboard (format, canvas, widgets, mobile sections/pages) and its version. `coupled_flows` maps each widget whose control feeds a DEPLOYED flow to those flows: such a widget can only be moved or resized until the user stops the flows.",
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {"dashboard_id": {"type": "string", "description": "dashboard UUID (list_dashboards)"}},
+                    "required": ["dashboard_id"]
+                }),
+            },
+            summary: |v| {
+                let (nm, ver) = (
+                    shown(&v["dashboard"]["name"]),
+                    shown(&v["dashboard"]["version"]),
+                );
+                trace(
+                    "ai-trace-dashboard",
+                    json!({"name": nm, "version": ver}),
+                    format!("dashboard \"{nm}\" v{ver}"),
+                )
+            },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "validate_dashboard_layout",
+                description: "Checks a dashboard layout WITHOUT saving: validation violations and, with dashboard_id, the changes refused on coupled widgets. Call it before create_dashboard/update_dashboard and warn the user about coupled widgets first.",
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "layout": {"type": "object", "description": "complete DashboardLayout"},
+                        "dashboard_id": {"type": "string", "description": "optional: compare with this dashboard's current layout"}
+                    },
+                    "required": ["layout"]
+                }),
+            },
+            summary: |v| {
+                if v["valid"].as_bool().unwrap_or(false) {
+                    trace("ai-trace-layout-valid", json!({}), "layout valid".into())
+                } else {
+                    trace(
+                        "ai-trace-layout-refused",
+                        json!({}),
+                        "layout refused".into(),
+                    )
+                }
+            },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "create_dashboard",
+                description: "Creates a dashboard (version 1, live immediately). The format (pc or mobile) is fixed at creation. A control widget DECLARES a new control (it never operates anything): wiring it to a device takes a control_source flow the user deploys.",
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "layout": {"type": "object", "description": "optional DashboardLayout (default: empty desktop canvas)"}
+                    },
+                    "required": ["name"]
+                }),
+            },
+            summary: |v| {
+                let (nm, ver) = (shown(&v["name"]), shown(&v["version"]));
+                trace(
+                    "ai-trace-dashboard-created",
+                    json!({"name": nm, "version": ver}),
+                    format!("dashboard \"{nm}\" created (live v{ver})"),
+                )
+            },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "update_dashboard",
+                description: "Saves a new version of a dashboard — LIVE immediately (no draft). Pass the version read with get_dashboard as expected_version (conflict → reload and redo). Widgets coupled to a deployed flow can only be moved or resized: removing, re-binding, retyping, re-specifying or renaming them is refused with ai-flow-running listing the flows to stop. No deletion.",
+                input_schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "dashboard_id": {"type": "string"},
+                        "expected_version": {"type": "integer"},
+                        "layout": {"type": "object", "description": "complete DashboardLayout of the new version"},
+                        "name": {"type": "string", "description": "optional new name"}
+                    },
+                    "required": ["dashboard_id", "expected_version", "layout"]
+                }),
+            },
+            summary: |v| {
+                let ver = shown(&v["version"]);
+                let (a, r, c) = (
+                    count(&v["widgets_added"]),
+                    count(&v["widgets_removed"]),
+                    count(&v["widgets_changed"]),
+                );
+                trace(
+                    "ai-trace-dashboard-saved",
+                    json!({"version": ver, "added": a, "removed": r, "changed": c}),
+                    format!("dashboard v{ver} saved (live): +{a} -{r} ~{c} widget(s)"),
+                )
+            },
+        },
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

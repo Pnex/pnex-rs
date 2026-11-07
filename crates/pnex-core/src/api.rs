@@ -313,17 +313,54 @@ pub struct UpdateOrg {
     pub name: String,
 }
 
-/// Body of `POST /api/v1/orgs/{id}/members`.
+/// Body of `POST /api/v1/orgs/{id}/invitations`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
     feature = "openapi",
-    schema(description = "Body of `POST /api/v1/orgs/{id}/members`.")
+    schema(description = "Body of `POST /api/v1/orgs/{id}/invitations`.")
 )]
-pub struct AddMember {
+pub struct InviteMember {
     pub email: String,
     /// Default `viewer`.
     pub role: Option<OrgRole>,
+}
+
+/// Pending invitation as the org sees it (`GET /api/v1/orgs/{id}/invitations`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Pending invitation of an organisation.")
+)]
+pub struct OrgInvitation {
+    pub id: i64,
+    /// Lowercased email the invitation waits for.
+    pub email: String,
+    pub role: OrgRole,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub expires_at: String,
+}
+
+/// Pending invitation as the invited user sees it (`GET /api/v1/invitations`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Invitation waiting for the caller's answer.")
+)]
+pub struct MyInvitation {
+    pub id: i64,
+    pub org_id: i64,
+    pub org_name: String,
+    pub role: OrgRole,
+    /// Display name of the inviter, when still known.
+    #[serde(default)]
+    pub invited_by: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub expires_at: String,
 }
 
 /// Body of `PATCH /api/v1/orgs/{id}/members/{user_id}`.
@@ -598,6 +635,11 @@ pub struct AiSendMessage {
     pub language: Option<String>,
     #[serde(default)]
     pub page: Option<AiPageContext>,
+    /// Confirms the held write at this index of the latest answer's
+    /// `tool_trace` (code `ai-confirm-required`): it runs as is, without an
+    /// LLM call; `content` is the user's confirmation text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confirm: Option<u32>,
 }
 
 /// Answer of one agent turn.

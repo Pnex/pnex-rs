@@ -476,14 +476,15 @@ async fn viewer_cannot_manage_providers() {
 
         // bob logs in once (JIT user provisioning) before being added.
         let _ = personal_org(&server, &env.bob).await;
-        let add = server
-            .post(&format!("/api/v1/orgs/{org}/members"))
-            .add_header("Authorization", bearer(&env.alice))
-            .add_header("X-Org-Id", org.to_string())
-            .add_header("Content-Type", "application/json")
-            .json(&serde_json::json!({"email": "bob@example.com", "role": "viewer"}))
-            .await;
-        assert_eq!(add.status_code(), 201, "{}", add.text());
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
 
         let list = send_json(&server, "GET", "/api/v1/ai/providers", &env.bob, org, None).await;
         assert_eq!(list.status_code(), 200, "{}", list.text());
@@ -910,14 +911,7 @@ async fn iteration_bound_forces_the_final_answer() {
 /// Adds bob to `org` with `role` (bob logs in once first: JIT user).
 async fn add_bob(server: &axum_test::TestServer, env: &Env, org: i64, role: &str) {
     let _ = personal_org(server, &env.bob).await;
-    let add = server
-        .post(&format!("/api/v1/orgs/{org}/members"))
-        .add_header("Authorization", bearer(&env.alice))
-        .add_header("X-Org-Id", org.to_string())
-        .add_header("Content-Type", "application/json")
-        .json(&serde_json::json!({"email": "bob@example.com", "role": role}))
-        .await;
-    assert_eq!(add.status_code(), 201, "{}", add.text());
+    common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", role).await;
 }
 
 /// A conversation is private to its author within its org: another
@@ -933,14 +927,15 @@ async fn conversations_are_private_to_user_and_org() {
         assert_ne!(bob_org, org);
         add_bob(&server, &env, org, "admin").await;
         // alice is also a member of bob's org: same user, other org.
-        let add = server
-            .post(&format!("/api/v1/orgs/{bob_org}/members"))
-            .add_header("Authorization", bearer(&env.bob))
-            .add_header("X-Org-Id", bob_org.to_string())
-            .add_header("Content-Type", "application/json")
-            .json(&serde_json::json!({"email": "alice@example.com", "role": "admin"}))
-            .await;
-        assert_eq!(add.status_code(), 201, "{}", add.text());
+        common::join_org(
+            &server,
+            &env.bob,
+            &env.alice,
+            bob_org,
+            "alice@example.com",
+            "admin",
+        )
+        .await;
         reset_mock();
         push_reply(MockReply::Ok(reply_tool_call(
             "t1",
@@ -1420,14 +1415,15 @@ async fn org_retention_only_shortens_and_drives_the_purge() {
         assert_eq!(platform.status_code(), 403, "{}", platform.text());
 
         // A viewer of alice's org cannot change it.
-        let add = server
-            .post(&format!("/api/v1/orgs/{org}/members"))
-            .add_header("Authorization", bearer(&env.alice))
-            .add_header("X-Org-Id", org.to_string())
-            .add_header("Content-Type", "application/json")
-            .json(&serde_json::json!({"email": "bob@example.com", "role": "viewer"}))
-            .await;
-        assert_eq!(add.status_code(), 201, "{}", add.text());
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let viewer = send_json(
             &server,
             "PUT",
@@ -1538,20 +1534,138 @@ async fn assistant_writes_templates_on_top_of_what_it_read() {
 
         // A viewer cannot write a template.
         let _ = personal_org(&server, &env.bob).await;
-        let add = server
-            .post(&format!("/api/v1/orgs/{org}/members"))
-            .add_header("Authorization", bearer(&env.alice))
-            .add_header("X-Org-Id", org.to_string())
-            .add_header("Content-Type", "application/json")
-            .json(&serde_json::json!({"email": "bob@example.com", "role": "viewer"}))
-            .await;
-        assert_eq!(add.status_code(), 201);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let trace = run_tools(&server, &env.bob, org, vec![(
             "create_notification_template",
             serde_json::json!({"name": "x", "body": "y"}),
         )])
         .await;
         assert_eq!(trace[0]["ok"], false, "{trace:?}");
+    })
+    .await;
+}
+
+async fn template_count(server: &axum_test::TestServer, token: &str, org: i64) -> usize {
+    send_json(server, "GET", "/api/v1/notify/templates", token, org, None)
+        .await
+        .json::<serde_json::Value>()["results"]
+        .as_array()
+        .map_or(0, Vec::len)
+}
+
+/// A turn that read outside content (documents here) holds its writes:
+/// nothing is written, the trace carries `ai-confirm-required`; the user's
+/// confirmation runs the held call as stored (no LLM), once. A turn that
+/// read nothing untrusted writes directly (SEC-71).
+#[tokio::test]
+#[serial]
+async fn tainted_turn_holds_writes_until_the_user_confirms() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        reset_mock();
+        push_reply(MockReply::Ok(reply_tool_call(
+            "t0",
+            "search_docs",
+            serde_json::json!({"query": "invoice"}),
+        )));
+        push_reply(MockReply::Ok(reply_tool_call(
+            "t1",
+            "create_notification_template",
+            serde_json::json!({"name": "Exfil", "body": "x"}),
+        )));
+        push_reply(MockReply::Ok(reply_text("please confirm")));
+        let conv = new_conversation(&server, &env.alice, org).await;
+        let body = send_in(&server, &env.alice, org, &conv, "read my docs")
+            .await
+            .json::<serde_json::Value>();
+        let trace = body["tool_trace"].as_array().cloned().unwrap_or_default();
+        assert_eq!(trace[1]["code"], "ai-confirm-required", "{trace:?}");
+        assert_eq!(trace[1]["ok"], false);
+        assert_eq!(
+            template_count(&server, &env.alice, org).await,
+            0,
+            "a held write writes nothing"
+        );
+        let model_saw = mock_requests()[2].to_string();
+        assert!(model_saw.contains("NOT RUN"), "{model_saw}");
+
+        // The user confirms: the held call runs as stored, without the LLM.
+        reset_mock();
+        let confirm = |index: u32| {
+            server
+                .post(&format!("/api/v1/ai/conversations/{conv}/messages"))
+                .add_header("Authorization", bearer(&env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("Content-Type", "application/json")
+                .json(&serde_json::json!({"content": "Confirmed", "confirm": index}))
+        };
+        let done = confirm(1).await;
+        assert_eq!(done.status_code(), 200, "{}", done.text());
+        let done = done.json::<serde_json::Value>();
+        assert_eq!(
+            done["tool_trace"][0]["name"],
+            "create_notification_template"
+        );
+        assert_eq!(done["tool_trace"][0]["ok"], true, "{done}");
+        assert!(mock_requests().is_empty(), "no LLM call on a confirmation");
+        assert_eq!(template_count(&server, &env.alice, org).await, 1);
+        // Confirmed once: the latest answer holds nothing any more.
+        let again = confirm(1).await;
+        assert_eq!(again.status_code(), 409);
+        assert_eq!(
+            again.json::<serde_json::Value>()["error"],
+            "ai-confirm-stale"
+        );
+
+        // Untainted turn: the write runs directly.
+        let trace = run_tools(
+            &server,
+            &env.alice,
+            org,
+            vec![(
+                "create_notification_template",
+                serde_json::json!({"name": "Plain", "body": "y"}),
+            )],
+        )
+        .await;
+        assert_eq!(trace[0]["ok"], true, "{trace:?}");
+        assert_eq!(template_count(&server, &env.alice, org).await, 2);
+    })
+    .await;
+}
+
+/// The assistant's template write is one conditional UPDATE on the
+/// `updated_at` it read: an edit landing between its read and its write
+/// is never overwritten (SEC-78).
+#[tokio::test]
+#[serial]
+async fn template_write_on_a_stale_read_is_a_conflict() {
+    use pnex_backend::services::notify_templates::{self as tpl, TemplateInput};
+    with_app_ai(true, false, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let input = |body: &str| TemplateInput {
+            name: "T".into(),
+            subject: None,
+            body: body.into(),
+            vars: Vec::new(),
+        };
+        let read = tpl::create(&ctx.db, org, &input("v1"))
+            .await
+            .expect("create");
+        // Someone else saves in between (the UI path).
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        let theirs = tpl::update(&ctx.db, read.clone(), &input("theirs"))
+            .await
+            .expect("ui update");
+        let stale = tpl::update_if_unchanged(&ctx.db, read, &input("assistant"))
+            .await
+            .expect("no db error");
+        assert!(stale.is_none(), "stale read must conflict");
+        let fresh = tpl::update_if_unchanged(&ctx.db, theirs, &input("assistant"))
+            .await
+            .expect("no db error")
+            .expect("fresh read writes");
+        assert_eq!(fresh.body, "assistant");
     })
     .await;
 }
@@ -2179,11 +2293,15 @@ async fn analyses_isolation_and_roles() {
             .json();
         let shared = shared["id"].as_i64().unwrap();
         let id = upload_md(&server, &env.alice, shared, "texte").await;
-        server
-            .post(&format!("/api/v1/orgs/{shared}/members"))
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            shared,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let res = analyses_of(&server, &env.bob, shared, &id).await;
         assert_eq!(res.status_code(), 200, "{}", res.text());
         let res = start_steps(&server, &env.bob, shared, &id, serde_json::json!(["index"])).await;

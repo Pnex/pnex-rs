@@ -94,17 +94,16 @@ pub const IAM_VERSION_CONFLICT: &str = "iam-version-conflict";
 pub const IAM_ESCALATION: &str = "iam-escalation";
 /// An org-scoped route was called without a valid `X-Org-Id` header (400).
 pub const ORG_HEADER_REQUIRED: &str = "org-header-required";
-pub const ORG_RENAME_FORBIDDEN: &str = "org-rename-forbidden";
-pub const ORG_DELETE_FORBIDDEN: &str = "org-delete-forbidden";
 pub const ORG_NOT_EMPTY: &str = "org-not-empty";
-pub const ORG_MEMBER_ADD_FORBIDDEN: &str = "org-member-add-forbidden";
+/// The org of an `/api/v1/orgs/{id}` path is not the `X-Org-Id` one (403).
+pub const ORG_PATH_MISMATCH: &str = "org-path-mismatch";
+/// No pending invitation of the caller under this id: unknown, expired,
+/// answered, revoked or addressed to another email (404).
+pub const ORG_INVITATION_NOT_FOUND: &str = "org-invitation-not-found";
 pub const ORG_OWNER_GRANT_FORBIDDEN: &str = "org-owner-grant-forbidden";
-pub const ORG_MEMBER_UNKNOWN_USER: &str = "org-member-unknown-user";
 pub const ORG_MEMBER_DUPLICATE: &str = "org-member-duplicate";
-pub const ORG_MEMBER_ROLE_FORBIDDEN: &str = "org-member-role-forbidden";
 pub const ORG_OWNER_EDIT_FORBIDDEN: &str = "org-owner-edit-forbidden";
 pub const ORG_LAST_OWNER: &str = "org-last-owner";
-pub const ORG_MEMBER_REMOVE_FORBIDDEN: &str = "org-member-remove-forbidden";
 pub const ORG_OWNER_REMOVE_FORBIDDEN: &str = "org-owner-remove-forbidden";
 /// `PATCH /api/v1/profile` without any field.
 pub const PROFILE_PATCH_EMPTY: &str = "profile-patch-empty";
@@ -472,6 +471,16 @@ pub const AI_BAD_RESPONSE: &str = "ai-bad-response";
 /// Internal failure while an assistant tool ran (details logged server
 /// side, never shown: they may carry SQL or identifiers).
 pub const AI_TOOL_INTERNAL: &str = "ai-tool-internal";
+/// A write tool of a turn that read untrusted outside content (mail, web
+/// page, document) was held, not run: the user confirms it in the chat
+/// (SEC-71); `args.tool` = the held tool.
+pub const AI_CONFIRM_REQUIRED: &str = "ai-confirm-required";
+/// The held action to confirm is no longer the latest one of the
+/// conversation (a later turn ran, or it was already confirmed).
+pub const AI_CONFIRM_STALE: &str = "ai-confirm-stale";
+/// The assistant only plays saved navigation rules: a draft goes through a
+/// proposal the user saves first (SEC-71).
+pub const AI_SITE_RECIPE_SAVED_ONLY: &str = "ai-site-recipe-saved-only";
 /// A one-time websocket ticket could not be issued (Valkey unreachable).
 pub const WS_TICKET_UNAVAILABLE: &str = "ws-ticket-unavailable";
 /// No device with this identifier in the org (`args.device_id`).
@@ -1447,17 +1456,13 @@ pub const ALL: &[&str] = &[
     IAM_VERSION_CONFLICT,
     IAM_ESCALATION,
     ORG_HEADER_REQUIRED,
-    ORG_RENAME_FORBIDDEN,
-    ORG_DELETE_FORBIDDEN,
     ORG_NOT_EMPTY,
-    ORG_MEMBER_ADD_FORBIDDEN,
+    ORG_PATH_MISMATCH,
+    ORG_INVITATION_NOT_FOUND,
     ORG_OWNER_GRANT_FORBIDDEN,
-    ORG_MEMBER_UNKNOWN_USER,
     ORG_MEMBER_DUPLICATE,
-    ORG_MEMBER_ROLE_FORBIDDEN,
     ORG_OWNER_EDIT_FORBIDDEN,
     ORG_LAST_OWNER,
-    ORG_MEMBER_REMOVE_FORBIDDEN,
     ORG_OWNER_REMOVE_FORBIDDEN,
     PROFILE_PATCH_EMPTY,
     POI_DEVICE_ALREADY_PLACED,
@@ -1634,6 +1639,9 @@ pub const ALL: &[&str] = &[
     AI_NETWORK,
     AI_BAD_RESPONSE,
     AI_TOOL_INTERNAL,
+    AI_CONFIRM_REQUIRED,
+    AI_CONFIRM_STALE,
+    AI_SITE_RECIPE_SAVED_ONLY,
     CONTROL_UNKNOWN,
     CONTROL_STORE_UNAVAILABLE,
     MEDIA_STREAM_NOT_FOUND,

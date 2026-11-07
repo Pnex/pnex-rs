@@ -144,6 +144,48 @@ pub async fn update(
     active.update(db).await.map_err(|_| TemplateWriteError::Db)
 }
 
+/// Same write as [`update`], only if the template is still the one read
+/// (`current.updated_at`): a single conditional `UPDATE`, so an edit made in
+/// between is never overwritten (SEC-78). `Ok(None)` = it changed.
+pub async fn update_if_unchanged(
+    db: &DatabaseConnection,
+    current: notify_templates::Model,
+    input: &TemplateInput,
+) -> Result<Option<notify_templates::Model>, TemplateWriteError> {
+    use sea_orm::sea_query::Expr;
+    let name = validate(input)?;
+    if name != current.name {
+        ensure_name_free(db, current.org_id, &name).await?;
+    }
+    let vars = serde_json::to_value(merge_vars(input)).map_err(|_| TemplateWriteError::Db)?;
+    let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
+    let done = notify_templates::Entity::update_many()
+        .col_expr(notify_templates::Column::Name, Expr::value(name))
+        .col_expr(
+            notify_templates::Column::Subject,
+            Expr::value(input.subject.clone()),
+        )
+        .col_expr(
+            notify_templates::Column::Body,
+            Expr::value(input.body.clone()),
+        )
+        .col_expr(notify_templates::Column::Vars, Expr::value(vars))
+        .col_expr(notify_templates::Column::UpdatedAt, Expr::value(now))
+        .filter(notify_templates::Column::Id.eq(current.id))
+        .filter(notify_templates::Column::OrgId.eq(current.org_id))
+        .filter(notify_templates::Column::UpdatedAt.eq(current.updated_at))
+        .exec(db)
+        .await
+        .map_err(|_| TemplateWriteError::Db)?;
+    if done.rows_affected == 0 {
+        return Ok(None);
+    }
+    notify_templates::Entity::find_by_id(current.id)
+        .one(db)
+        .await
+        .map_err(|_| TemplateWriteError::Db)
+}
+
 /// Renders a stored template (never sends): missing variables take their
 /// declared non-empty example (an empty one would mask a payload key of
 /// the same name, vars taking precedence in the context).

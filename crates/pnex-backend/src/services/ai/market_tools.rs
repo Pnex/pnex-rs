@@ -103,3 +103,59 @@ pub async fn market_session(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
         .map_err(internal("reading a market session"))?;
     outcome(json!({ "session": session, "note": CAUSE_NOTE }))
 }
+
+// ─────────────────────────── Registry entries ───────────────────────────
+
+use super::provider::ToolSpec;
+use super::tools::{count, trace, ToolDef};
+
+/// The market tools: spec and trace summary of each, in one place.
+pub(super) fn tools() -> Vec<ToolDef> {
+    vec![
+        ToolDef {
+            spec: ToolSpec {
+                name: "market_figures",
+                description: "Dated figures of a company, an instrument or a macroeconomic series, read from primary sources (SEC filings, FRED, ECB, closing prices): metric, period, value, unit, known_at, source_ref. as_of (RFC 3339) gives the values as known at that instant. Cite source_ref. An aid to analysis, never a recommendation. Read-only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"},"metric":{"type":"string"},"as_of":{"type":"string"}},"required":["object_id"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = count(&v["figures"]);
+            trace(
+                "ai-trace-market-figures",
+                json!({"count": n}),
+                format!("{n} market figure(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "market_rule_test",
+                description: "How prices moved after dated events, against dates drawn at random: abnormal return per window, with the number of events. dates=filings (default): the followed instruments after a kind of filing (form 8-K, 10-Q…; item such as 2.02 for results). dates=geo_events or market_moves: one series (series = ticker or macro code such as DCOILWTICO) after world events (kind, country) or abnormal sessions (asset_class, direction), dated by when they became known; close events count once (merged), unconfirmed world events stay out unless include_unconfirmed (then give unconfirmed_share). Always give the number of events, say that instruments no longer followed are missing, and never present a result as a cause. An aid to analysis, never a recommendation. Read-only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"dates":{"type":"string","enum":["filings","geo_events","market_moves"]},"form":{"type":"string"},"item":{"type":"string"},"series":{"type":"string"},"kind":{"type":"string","enum":["armed_conflict","attack","sanctions","blockade","ceasefire","natural_disaster","other"]},"country":{"type":"string"},"include_unconfirmed":{"type":"boolean"},"asset_class":{"type":"string","enum":["equity_index","commodity","rates","volatility","fx","crypto"]},"direction":{"type":"string","enum":["up","down"]}}}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = v["result"]["filings"].as_u64().unwrap_or(0);
+            trace(
+                "ai-trace-market-rule",
+                json!({"count": n}),
+                format!("reaction to {n} event(s)"),
+            )
+        },
+        },
+        ToolDef {
+            spec: ToolSpec {
+                name: "market_session",
+                description: "The abnormal sessions of the watched series (index, oil, rates, VIX…) around a date (YYYY-MM-DD), and the world events of the same window. A world event in the same window is a concomitance, never a cause: say \"same window, not a cause\" and never attribute a move yourself; only the user attributes one, from a case. Read-only.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"date":{"type":"string"}},"required":["date"]}"#).expect("static schema"),
+            },
+            summary: |v| {
+            let n = count(&v["session"]["moves"]);
+            trace(
+                "ai-trace-market-session",
+                json!({"count": n}),
+                format!("{n} abnormal session move(s)"),
+            )
+        },
+        },
+    ]
+}

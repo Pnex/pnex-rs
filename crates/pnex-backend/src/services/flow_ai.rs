@@ -221,7 +221,10 @@ pub async fn text(ctx: &AppContext, req: &LlmTextRequest) -> Result<LlmTextRespo
     take_quota(ctx, req.org_id).await?;
     let started = std::time::Instant::now();
     let msgs = [Msg::User {
-        text: format!("Task: {prompt}\n\n<data>\n{data}\n</data>"),
+        text: format!(
+            "Task: {prompt}\n\n{}",
+            crate::services::ai::untrusted_data(&data)
+        ),
     }];
     let turn = cfg
         .provider

@@ -4,7 +4,7 @@ title: Websites and navigation rules
 kind: feature
 pages: /web-sites, /web-sites/:site
 nodes: site_recipe, site_crawl
-err_codes: site-recipe-invalid, site-recipe-not-found, site-recipe-version-conflict, site-recipe-run-not-found, site-recipe-param-missing, site-recipe-unavailable, browser-endpoint-not-found, browser-endpoint-name-taken, site-crawl-url-invalid, site-crawl-invalid
+err_codes: site-recipe-invalid, site-recipe-not-found, site-recipe-version-conflict, site-recipe-run-not-found, site-recipe-param-missing, site-recipe-unavailable, browser-endpoint-not-found, browser-endpoint-name-taken, site-crawl-url-invalid, site-crawl-invalid, ai-site-recipe-saved-only
 tools: list_site_recipes, get_site_recipe, try_site_recipe, get_site_recipe_run, propose_site_recipe
 tags: website candidate, candidat, presence web, présence web, website, site web, navigation rule, règle, studio, play, lecture, step, étape, screenshot, capture, retention, conservation, media, médias, extract, extrait, pdf, programme, scraping, collecte, browser, navigateur, obscura, journal, crawl, parcours, écart, finding, conformité, compliance, partenaire, partner, CPF, Qualiopi, preuve, proof
 ---
@@ -37,7 +37,7 @@ A navigation rule is YAML bound to one website: `name`, `site` (a host or an add
 
 ## With the assistant
 
-The assistant can list and read the rules (list_site_recipes, get_site_recipe), explore a page and try a draft on the server browser (try_site_recipe: `open` then `extract: {all_text: true}` shows the page text; the run lands in the site journal, trigger assistant), read a run (get_site_recipe_run) and propose a rule (propose_site_recipe). It never saves a rule: **Open in the studio** under its answer opens the proposal as an unsaved draft in the studio of the site, where the user plays it and saves it. Website text is data for it, never instructions.
+The assistant can list and read the rules (list_site_recipes, get_site_recipe), play a saved rule on the server browser (try_site_recipe; the run lands in the site journal, trigger assistant). It never plays a draft (*ai-site-recipe-saved-only*): it proposes it, you save it in the studio, then it can try it, read a run (get_site_recipe_run) and propose a rule (propose_site_recipe). It never saves a rule: **Open in the studio** under its answer opens the proposal as an unsaved draft in the studio of the site, where the user plays it and saves it. Website text is data for it, never instructions.
 
 ## Why a step fails
 

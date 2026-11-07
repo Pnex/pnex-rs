@@ -117,7 +117,8 @@ fn AssistantDrawer(on_close: Callback) -> Element {
         });
     });
 
-    let mut send = move |text: String| {
+    // `confirm`: index of a held write of the latest answer to run (SEC-71).
+    let mut send = move |text: String, confirm: Option<u32>| {
         let trimmed = text.trim().to_string();
         if trimmed.is_empty() || thinking() {
             return;
@@ -143,6 +144,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                         content: trimmed,
                         language: Some(crate::i18n::current_tag()),
                         page: Some(page),
+                        confirm,
                     };
                     api::ai::send_message(id, msg).await
                 }
@@ -168,6 +170,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
     };
     let close = move |_| on_close.call(());
     let bubbles = messages().clone();
+    let last = bubbles.len().saturating_sub(1);
 
     // Keep the latest message (and the thinking bubble) in view.
     use_effect(move || {
@@ -225,7 +228,14 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                             p { class: "text-sm text-gray-500", {t!("ai-empty")} }
                         }
                         for (idx, bubble) in bubbles.into_iter().enumerate() {
-                            Bubble { key: "{idx}", bubble }
+                            Bubble {
+                                key: "{idx}",
+                                bubble,
+                                latest: idx == last && !thinking(),
+                                on_confirm: move |(index, tool): (u32, String)| {
+                                    send(t!("ai-confirm-message", tool : tool), Some(index));
+                                },
+                            }
                         }
                         if thinking() {
                             // Pending answer: an assistant bubble with animated dots.
@@ -258,7 +268,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                                 if event.key() == Key::Enter {
                                     event.prevent_default();
                                     let text = input();
-                                    send(text);
+                                    send(text, None);
                                 }
                             },
                         }
@@ -271,7 +281,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                                 disabled: thinking(),
                                 onclick: move |_| {
                                     let text = input();
-                                    send(text);
+                                    send(text, None);
                                 },
                                 {t!("ai-send")}
                             }
@@ -471,7 +481,7 @@ fn ConversationRow(
 }
 
 #[component]
-fn Bubble(bubble: ChatBubble) -> Element {
+fn Bubble(bubble: ChatBubble, latest: bool, on_confirm: EventHandler<(u32, String)>) -> Element {
     let navigator = use_navigator();
     match bubble {
         ChatBubble::User(text) => rsx! {
@@ -498,6 +508,15 @@ fn Bubble(bubble: ChatBubble) -> Element {
                     )
                 })
                 .cloned()
+                .collect();
+            // Writes held for confirmation (only the latest answer's can run).
+            let held: Vec<(u32, AiToolTrace)> = trace
+                .iter()
+                .enumerate()
+                .filter(|(_, e)| {
+                    e.code.as_deref() == Some(pnex_core::err_codes::AI_CONFIRM_REQUIRED)
+                })
+                .map(|(i, e)| (i as u32, e.clone()))
                 .collect();
             rsx! {
                 div { class: "flex justify-start",
@@ -541,6 +560,16 @@ fn Bubble(bubble: ChatBubble) -> Element {
                                 }
                             }
                         }
+                        if latest {
+                            for (index, entry) in held.into_iter() {
+                                HeldAction {
+                                    key: "{index}",
+                                    index,
+                                    entry,
+                                    on_confirm,
+                                }
+                            }
+                        }
                         for (i, entry) in proposals.into_iter().enumerate() {
                             ProposalButton { key: "{i}", entry }
                         }
@@ -560,6 +589,44 @@ fn Bubble(bubble: ChatBubble) -> Element {
                                 {t!("ai-open-in-editor")}
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A write the assistant held because its turn read outside content: the
+/// user reads the exact arguments, then confirms (runs it as is) or
+/// cancels (SEC-71).
+#[component]
+fn HeldAction(index: u32, entry: AiToolTrace, on_confirm: EventHandler<(u32, String)>) -> Element {
+    let mut cancelled = use_signal(|| false);
+    let arguments = serde_json::to_string_pretty(&entry.arguments).unwrap_or_default();
+    let tool = entry.name.clone();
+    rsx! {
+        div {
+            class: "rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm space-y-2",
+            "data-testid": "ai-held-action",
+            p { class: "font-medium text-amber-900", {t!("ai-confirm-title", tool : tool.clone())} }
+            p { class: "text-xs text-amber-800", {t!("ai-confirm-hint")} }
+            pre { class: "text-xs bg-white border border-amber-200 rounded p-2 overflow-x-auto max-h-48",
+                {arguments}
+            }
+            if cancelled() {
+                p { class: "text-xs text-gray-600", {t!("ai-confirm-cancelled")} }
+            } else {
+                div { class: "flex gap-2",
+                    button {
+                        class: BTN_PRIMARY_SM,
+                        "data-testid": "ai-held-confirm",
+                        onclick: move |_| on_confirm.call((index, tool.clone())),
+                        {t!("ai-confirm-run")}
+                    }
+                    button {
+                        class: "px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 text-sm hover:bg-gray-50",
+                        onclick: move |_| cancelled.set(true),
+                        {t!("ai-confirm-cancel")}
                     }
                 }
             }

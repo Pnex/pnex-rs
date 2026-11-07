@@ -265,19 +265,17 @@ async fn the_assistant_tries_and_proposes_rules_without_saving() {
         };
         use pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole as R;
         let yaml = "name: programme\nsite: https://www.example.org/x\nsteps:\n  - open: \"/\"\n  - extract: {all_text: true, as: page}\n";
-        let r = execute(&deps(R::Member), "try_site_recipe", &json!({"yaml": yaml})).await.unwrap().value;
-        assert_eq!(r["status"], "failed", "{r}");
-        assert_eq!(r["reason"], pnex_core::site_recipe::reason::BROWSER);
-        let run = execute(&deps(R::Member), "get_site_recipe_run", &json!({"run_id": r["run_id"]})).await.unwrap().value;
-        assert_eq!(run["run_id"], r["run_id"]);
-        let bad = execute(&deps(R::Member), "try_site_recipe", &json!({"yaml": "name: x\nsite: example.org\nsteps: []\n"})).await.unwrap_err();
-        assert_eq!(bad.code, Some("site-recipe-invalid"));
+        // A draft is never played by the assistant (SEC-71): only a saved rule.
+        let draft = execute(&deps(R::Member), "try_site_recipe", &json!({"yaml": yaml})).await.unwrap_err();
+        assert_eq!(draft.code, Some("ai-site-recipe-saved-only"));
+        let missing = execute(&deps(R::Member), "try_site_recipe", &json!({"recipe_id": uuid::Uuid::new_v4().to_string()})).await.unwrap_err();
+        assert_eq!(missing.code, Some("site-recipe-not-found"));
         let p = execute(&deps(R::Member), "propose_site_recipe", &json!({"yaml": yaml})).await.unwrap().value;
         assert_eq!((p["executed"].as_bool(), p["site"].as_str()), (Some(false), Some("example.org")), "{p}");
         let list = execute(&deps(R::Member), "list_site_recipes", &json!({})).await.unwrap().value;
         assert_eq!(list["rules"], json!([]), "a proposal saves nothing");
         // A viewer reads but neither plays nor proposes.
-        let denied = execute(&deps(R::Viewer), "try_site_recipe", &json!({"yaml": yaml})).await.unwrap_err();
+        let denied = execute(&deps(R::Viewer), "try_site_recipe", &json!({"recipe_id": uuid::Uuid::new_v4().to_string()})).await.unwrap_err();
         assert_eq!(denied.code, Some("access-denied"));
         execute(&deps(R::Viewer), "list_site_recipes", &json!({})).await.unwrap();
     })
