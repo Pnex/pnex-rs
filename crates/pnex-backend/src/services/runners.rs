@@ -333,7 +333,8 @@ pub async fn get_job(
 }
 
 /// Oldest job of the runner's org whose requirements its capabilities cover. Two
-/// runners never take the same job (`SKIP LOCKED`).
+/// runners never take the same job (`SKIP LOCKED`). Server kinds (D781) are filtered by
+/// kind, not capability: a runner declares its own capabilities.
 pub async fn claim(
     db: &DatabaseConnection,
     runner: RunnerPrincipal,
@@ -349,6 +350,7 @@ pub async fn claim(
                    WHERE r.id = $1 AND j.org_id = r.org_id AND j.org_id = $2 \
                      AND j.state = 'queued' AND j.queue_expires_at > now() \
                      AND j.required_capabilities <@ r.capabilities \
+                     AND j.kind IN ('probe', 'environment_build', 'environment_scan', 'sandbox') \
                    ORDER BY j.created_at LIMIT 1 FOR UPDATE OF j SKIP LOCKED \
                  ) RETURNING id, kind, spec"
             ),

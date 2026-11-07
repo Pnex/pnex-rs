@@ -90,6 +90,15 @@ pub enum RunnerJobKind {
     EnvironmentScan,
     /// Runs an agent in its sandbox (D712, D714).
     Sandbox,
+    /// Plays a site recipe in the server's browser (D781). Never leased to a runner.
+    #[serde(rename = "server_browser")]
+    ServerBrowser,
+    /// Runs an internal agent's LLM loop in the backend (D785). Never leased to a runner.
+    #[serde(rename = "internal_llm")]
+    InternalLlm,
+    /// Plays a site recipe in a browser agent of the org, leased over its WebSocket
+    /// (D782). Never leased to a runner.
+    Extension,
 }
 
 impl RunnerJobKind {
@@ -99,7 +108,18 @@ impl RunnerJobKind {
             Self::EnvironmentBuild => "environment_build",
             Self::EnvironmentScan => "environment_scan",
             Self::Sandbox => "sandbox",
+            Self::ServerBrowser => "server_browser",
+            Self::InternalLlm => "internal_llm",
+            Self::Extension => "extension",
         }
+    }
+
+    /// Whether a runner may lease this kind; the others run in the server (D781).
+    pub fn runs_on_runner(self) -> bool {
+        !matches!(
+            self,
+            Self::ServerBrowser | Self::InternalLlm | Self::Extension
+        )
     }
 
     pub fn parse(s: &str) -> Option<Self> {
@@ -108,6 +128,9 @@ impl RunnerJobKind {
             Self::EnvironmentBuild,
             Self::EnvironmentScan,
             Self::Sandbox,
+            Self::ServerBrowser,
+            Self::InternalLlm,
+            Self::Extension,
         ]
         .into_iter()
         .find(|k| k.as_str() == s)
@@ -642,6 +665,31 @@ pub fn spec_error(spec: &RunnerJobSpec) -> Option<(&'static str, &'static str)> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runner_kinds_match_the_claim_filter() {
+        // `services::runners::claim` lists these kinds in its SQL: keep both in step.
+        let leased: Vec<&str> = [
+            RunnerJobKind::Probe,
+            RunnerJobKind::EnvironmentBuild,
+            RunnerJobKind::EnvironmentScan,
+            RunnerJobKind::Sandbox,
+            RunnerJobKind::ServerBrowser,
+            RunnerJobKind::InternalLlm,
+            RunnerJobKind::Extension,
+        ]
+        .into_iter()
+        .filter(|k| k.runs_on_runner())
+        .map(RunnerJobKind::as_str)
+        .collect();
+        assert_eq!(
+            leased,
+            ["probe", "environment_build", "environment_scan", "sandbox"]
+        );
+        for k in ["server_browser", "internal_llm", "extension"] {
+            assert_eq!(RunnerJobKind::parse(k).map(RunnerJobKind::as_str), Some(k));
+        }
+    }
 
     const DIGEST: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 

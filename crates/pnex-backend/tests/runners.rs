@@ -365,6 +365,32 @@ async fn a_job_only_reaches_a_runner_with_its_capabilities() {
 
 #[tokio::test]
 #[serial]
+async fn a_runner_never_leases_a_server_job() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (_, runner) = enrol(&server, &env.alice, org, &["isolation:none"]).await;
+        let job = queue(&server, &env.alice, org, &[]).await;
+        // Whatever capabilities it declares, a runner never gets a job the server runs (D781).
+        for kind in ["server_browser", "internal_llm", "extension"] {
+            sql(
+                &ctx,
+                format!("UPDATE runner_jobs SET kind = '{kind}' WHERE id = '{job}'"),
+            )
+            .await;
+            assert_eq!(claim(&server, &runner).await, None, "{kind}");
+        }
+        sql(
+            &ctx,
+            format!("UPDATE runner_jobs SET kind = 'probe' WHERE id = '{job}'"),
+        )
+        .await;
+        assert_eq!(claim(&server, &runner).await.as_deref(), Some(&*job));
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn invalid_jobs_are_refused() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;

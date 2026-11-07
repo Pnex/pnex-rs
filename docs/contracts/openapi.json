@@ -26006,7 +26006,10 @@
           "probe",
           "environment_build",
           "environment_scan",
-          "sandbox"
+          "sandbox",
+          "server_browser",
+          "internal_llm",
+          "extension"
         ],
         "type": "string"
       },
