@@ -27,6 +27,9 @@ services:
       PNEX_FLOW_DEBUG_TOOLS: "true"
       # No TLS edge here: the browser agent spec links over plain ws.
       PNEX_DEVICE_REQUIRE_TLS: "false"
+      # The agents spec queues an environment build and drives the runner by
+      # hand: the image is never pulled, it only has to be a pinned reference.
+      PNEX_IMAGE_BUILDER: registry.example.org/builder@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
   pnex-builder:
     pull_policy: never
