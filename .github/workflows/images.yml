@@ -84,14 +84,17 @@ jobs:
             server="$REGISTRY/pnex-server-rs:$version"
             builder="$REGISTRY/pnex-builder-rs:$version"
             pipeline="$REGISTRY/pnex-pipeline-worker-rs:$version"
+            runner="$REGISTRY/pnex-runner-rs:$version"
           else
             server="$REGISTRY/pnex-server-rs:main-$short,$REGISTRY/pnex-server-rs:main,$REGISTRY/pnex-server-rs:latest"
             builder="$REGISTRY/pnex-builder-rs:main-$short,$REGISTRY/pnex-builder-rs:main,$REGISTRY/pnex-builder-rs:latest"
             pipeline="$REGISTRY/pnex-pipeline-worker-rs:main-$short,$REGISTRY/pnex-pipeline-worker-rs:main,$REGISTRY/pnex-pipeline-worker-rs:latest"
+            runner="$REGISTRY/pnex-runner-rs:main-$short,$REGISTRY/pnex-runner-rs:main,$REGISTRY/pnex-runner-rs:latest"
           fi
           echo "server=$server" >> "$GITHUB_OUTPUT"
           echo "builder=$builder" >> "$GITHUB_OUTPUT"
           echo "pipeline=$pipeline" >> "$GITHUB_OUTPUT"
+          echo "runner=$runner" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
@@ -138,6 +141,20 @@ jobs:
             type=gha,scope=pnex-images
             type=gha,scope=pnex-images-pipeline
           cache-to: type=gha,scope=pnex-images-pipeline,mode=max
+      # Installed apart from the server (helm chart pnex-runner of pnex-deploy).
+      - name: Build + push pnex-runner-rs
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: runner
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.tags.outputs.runner }}
+          cache-from: |
+            type=gha,scope=pnex-images
+            type=gha,scope=pnex-images-runner
+          cache-to: type=gha,scope=pnex-images-runner,mode=max
       - name: Summary
         run: |
           {
@@ -145,4 +162,5 @@ jobs:
             echo "- \`${{ steps.tags.outputs.server }}\`"
             echo "- \`${{ steps.tags.outputs.builder }}\`"
             echo "- \`${{ steps.tags.outputs.pipeline }}\`"
+            echo "- \`${{ steps.tags.outputs.runner }}\`"
           } >> "$GITHUB_STEP_SUMMARY"

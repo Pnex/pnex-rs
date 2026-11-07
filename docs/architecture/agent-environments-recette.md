@@ -48,3 +48,26 @@ Il n'embarque aucun moteur, puisque le moteur est le choix de l'org (D750). Il :
 - écrit un fichier et un dossier ;
 - pose un lien symbolique vers `/etc/passwd`, qui doit être ignoré ;
 - laisse une sortie déclarée absente, qui doit être marquée `missing`.
+
+## 5. Recette sur le cluster (D753, 2026-11-07)
+
+Même déroulé, sur le cluster partagé, namespace `pnex-agents-test` seul.
+
+| Pièce | Où |
+|---|---|
+| Serveur | release `pnex-acc` du chart `pnex` (`pnex-deploy`, copie propre de son `HEAD`), image `main-9d86cbc`, `https://agents-test.pnex.io` (TLS chez Cloudflare), sa propre base, son propre RustFS ; `api.extraEnv` porte `PNEX_AGENT_GATEWAY_URL` et les images de test épinglées |
+| Runner | release `pnex-runner` du chart `pnex-runner` (D764), jeton d'inscription dans le Secret `pnex-runner-join` |
+| Registre | Scaleway, dépôt `pnex/agents-recette` |
+| Session CLI | connexion du navigateur scriptée sans écran, dossier de session à part |
+
+Résultats du premier run (agent de test sans moteur, qui échoue exprès en code 7) :
+- build BuildKit poussé sur Scaleway en 80 s, puis activé ;
+- entrée `ticket` vérifiée : même SHA-256 vu par l'agent ;
+- jeton et clé imprimés exprès : `[masked]` dans le journal ;
+- sorties `patch` (fichier) et `report` (tar) remontées après l'échec, lien vers `/etc/passwd` absent du tar, `notes` en `missing` ;
+- egress refusé vers l'API Kubernetes (SEC-E5 fermé sur ce cluster), vers la base du serveur et vers l'internet public hors claim ;
+- appel du modèle : 503, aucun fournisseur saisi à ce stade.
+
+Trouvé en route : l'image d'init de test sans `curl` ouvrait la porte d'egress sans sonder (SEC-E7, corrigé).
+
+Reste pour la démonstration de D752 : clés de test saisies dans l'UI (D751), jeton GitHub fin en lecture seule sur `agent-bugfix-demo`, et environnement du moteur OpenAI-compatible.

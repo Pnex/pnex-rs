@@ -354,6 +354,8 @@ exec git clone --depth 1 --no-recurse-submodules --branch "$1" -- "$2" "$3"
 /// (there the probe never answers and the gate opens at once, with no internet to leak to).
 pub const EGRESS_GATE_SCRIPT: &str = r#"set -u
 target="${PNEX_EGRESS_PROBE:-https://1.1.1.1/}"
+# Without curl every probe "fails" and the gate would open unchecked.
+command -v curl > /dev/null || { echo "egress gate: curl missing in the init image: not starting" >&2; exit 1; }
 i=0
 while curl -sk -o /dev/null --max-time 2 "$target"; do
   i=$((i + 1))
@@ -1642,5 +1644,16 @@ mod tests {
         );
         assert_eq!(reported_digest(&pod("{\"other\":1}")), None);
         assert_eq!(reported_digest(&pod("")), None);
+    }
+
+    #[test]
+    fn the_egress_gate_never_opens_without_its_probe_tool() {
+        let out = std::process::Command::new("/bin/sh")
+            .args(["-c", EGRESS_GATE_SCRIPT])
+            .env("PATH", "/nonexistent")
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1));
+        assert!(!String::from_utf8_lossy(&out.stdout).contains("in place"));
     }
 }
