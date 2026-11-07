@@ -1313,7 +1313,9 @@ détourner le jeton) ; les liens symboliques sont stockés comme liens, jamais s
 branche de base, jamais une branche choisie par l'agent. Le serveur ouvre ensuite la demande
 de fusion par l'API de la forge (GitHub seul en V1, D752), à travers la règle d'egress, et
 garde son URL sur le run (`merge_requests`, migration 000112). La fusion reste un geste humain.
-Reste : la même sortie pour l'exécuteur micro-VM (le runner pousse côté hôte), GitLab.
+Sur micro-VM (E6), le runner lit l'arbre de l'agent sur le disque de la VM (`debugfs`,
+liens jamais suivis) et lance le même script côté hôte : le jeton n'entre jamais dans la VM.
+Reste : GitLab.
 
 ### 11.3 Gestes attendus de Shan (pas de discussion)
 

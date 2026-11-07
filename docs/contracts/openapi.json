@@ -591,6 +591,95 @@
         ],
         "type": "object"
       },
+      "AgentLimits": {
+        "description": "Global limits of hosted agents (D755, R9): the configuration gives the defaults, a\nplatform admin may store others, read at use time.",
+        "properties": {
+          "artifact_expires_days": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "artifact_max_bytes": {
+            "description": "Largest single artifact, in bytes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "artifact_run_max_bytes": {
+            "description": "All the outputs of one run together, in bytes; at least `artifact_max_bytes`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "build_ephemeral_storage": {
+            "description": "Scratch disk of a build pod, same form (`40Gi`).",
+            "type": "string"
+          },
+          "build_memory": {
+            "description": "Memory of a build pod, a Kubernetes quantity in `Mi`, `Gi` or `Ti` (`8Gi`).",
+            "type": "string"
+          },
+          "depcache_expires_days": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "depcache_max_bytes": {
+            "description": "Largest dependency cache archive, in bytes.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "job_logs_days": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sbom_days": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "scan_events_days": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "build_memory",
+          "build_ephemeral_storage",
+          "sbom_days",
+          "scan_events_days",
+          "job_logs_days",
+          "artifact_max_bytes",
+          "artifact_run_max_bytes",
+          "artifact_expires_days",
+          "depcache_max_bytes",
+          "depcache_expires_days"
+        ],
+        "type": "object"
+      },
+      "AgentLimitsInfo": {
+        "description": "The limits in force, the defaults of the configuration, and whether an admin changed them.",
+        "properties": {
+          "defaults": {
+            "$ref": "#/components/schemas/AgentLimits"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/AgentLimits"
+          },
+          "overridden": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "limits",
+          "defaults",
+          "overridden"
+        ],
+        "type": "object"
+      },
       "AgentRole": {
         "description": "Role of the service account of an agent: never `admin` (D293), never above its author.",
         "enum": [
@@ -676,6 +765,13 @@
           "llm_calls_max": {
             "format": "int32",
             "type": "integer"
+          },
+          "merge_requests": {
+            "description": "Merge requests opened for its branches at the end (D388): forge URLs.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "outcome": {
             "$ref": "#/components/schemas/RunnerJobOutcome"
@@ -847,6 +943,157 @@
         ],
         "type": "object"
       },
+      "AgentSkill": {
+        "properties": {
+          "active_number": {
+            "description": "Number of the text activated last; `None` while every text is a draft.",
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "latest_number": {
+            "description": "Number of the newest text.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version of the record, for `expected_version`: any change raises it.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "version",
+          "latest_number",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "AgentSkillActivate": {
+        "description": "Activates the text `number`, on the version of the skill that was read.",
+        "properties": {
+          "expected_version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "number": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "expected_version"
+        ],
+        "type": "object"
+      },
+      "AgentSkillCreate": {
+        "description": "A new skill, its text as a first draft.",
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "body"
+        ],
+        "type": "object"
+      },
+      "AgentSkillUpdate": {
+        "description": "A change on the version that was read; a new text is a new draft.",
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expected_version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "type": "object"
+      },
+      "AgentSkillVersion": {
+        "description": "One text of a skill. A draft until a person activates it.",
+        "properties": {
+          "activated": {
+            "description": "It was activated once: agents may pin it.",
+            "type": "boolean"
+          },
+          "activated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "number": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "sha256": {
+            "description": "`sha256:<hex>` of the body.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "body",
+          "sha256",
+          "activated",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "AgentSpec": {
         "description": "What an agent runs, versioned: every change is a new version.",
         "properties": {
@@ -914,6 +1161,13 @@
           "services": {
             "items": {
               "$ref": "#/components/schemas/RunService"
+            },
+            "type": "array"
+          },
+          "skills": {
+            "description": "Skills its runs get under `/artifacts/in/skills/`, each at an activated version (D711).",
+            "items": {
+              "$ref": "#/components/schemas/SkillPin"
             },
             "type": "array"
           },
@@ -17718,6 +17972,78 @@
         ],
         "type": "object"
       },
+      "Paginated_AgentSkill": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/AgentSkill"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_AgentSkillVersion": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/AgentSkillVersion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_AgentVersion": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -25160,6 +25486,14 @@
             "description": "One segment under `/workspace`.",
             "type": "string"
           },
+          "push_secret_id": {
+            "description": "Write token of the vault, limited to this repository and to creating branches: the\nagent's changes go out as branch `pnex/run-<run id>` and a merge request onto\n`git_ref` (D388). Only a push sidecar gets it, never the agent. GitHub in V1.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "secret_id": {
             "format": "uuid",
             "type": [
@@ -25899,6 +26233,22 @@
         ],
         "type": "object"
       },
+      "SandboxPush": {
+        "description": "Branch output of a coder agent (D388): a `pnex/run-<id>` branch and a write token\nlimited to that repository, for the push sidecar only.",
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "branch",
+          "token"
+        ],
+        "type": "object"
+      },
       "SandboxRepo": {
         "description": "A repository cloned before the agent starts (D714).",
         "properties": {
@@ -25908,6 +26258,10 @@
           "path": {
             "description": "Under `/workspace`.",
             "type": "string"
+          },
+          "push": {
+            "$ref": "#/components/schemas/SandboxPush",
+            "description": "The agent's changes go out as this branch (D388), pushed by a sidecar of its own."
           },
           "token": {
             "description": "Read token, for the clone step only: the agent never gets it.",
@@ -27422,6 +27776,24 @@
           "version",
           "yaml",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "SkillPin": {
+        "description": "A skill an agent runs with, at an activated version.",
+        "properties": {
+          "skill_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "skill_id",
+          "version"
         ],
         "type": "object"
       },
@@ -33000,6 +33372,840 @@
         "summary": "Stop a run",
         "tags": [
           "agent-runs"
+        ]
+      }
+    },
+    "/api/v1/agent-skills": {
+      "get": {
+        "description": "Each skill with the number of its newest text and of its active one. Requires `agents:read`. Paginated (`limit`/`offset`).",
+        "operationId": "agent_skills_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_AgentSkill"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the skills of the org",
+        "tags": [
+          "agents"
+        ]
+      },
+      "post": {
+        "description": "Creates a skill whose text is its first draft; no agent can use it before a person activates a version. A text shaped like a credential is refused. Requires `agents:write` (Admin).",
+        "operationId": "agent_skills_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSkillCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSkill"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-name-taken`"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-secret`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a skill",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agent-skills/{id}": {
+      "delete": {
+        "description": "Removes the skill and all its versions. An agent that still pins it can no longer start a run until its record drops it. Requires `agents:delete` (Admin).",
+        "operationId": "agent_skills_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skill id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a skill",
+        "tags": [
+          "agents"
+        ]
+      },
+      "get": {
+        "description": "Requires `agents:read`.",
+        "operationId": "agent_skills_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skill id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSkill"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a skill",
+        "tags": [
+          "agents"
+        ]
+      },
+      "patch": {
+        "description": "On the version that was read (`expected_version`). A new `body` becomes the next draft; the active version stays until a person activates another. Requires `agents:write` (Admin).",
+        "operationId": "agent_skills_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skill id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSkillUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSkill"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-version-conflict` (args `current`)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-secret`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Change a skill, a new text being a new draft",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agent-skills/{id}/activate": {
+      "post": {
+        "description": "A person's decision, after reading its diff: from then on agents may pin this version. Never automatic, whoever wrote the text. On the version of the skill that was read (`expected_version`); a text shaped like a credential is refused. Requires `agents:write` (Admin).",
+        "operationId": "agent_skills_activate",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skill id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentSkillActivate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSkill"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-not-found`, `agent-skill-version-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-version-conflict` (args `current`)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-secret`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Activate a version of a skill",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agent-skills/{id}/diff": {
+      "get": {
+        "description": "Paragraph by paragraph, from `from` to `to`: what a person reads before activating a version. Requires `agents:read`.",
+        "operationId": "agent_skills_diff",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skill id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of the older text.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of the newer text.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextDiff"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-not-found`, `agent-skill-version-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Compare two texts of a skill",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agent-skills/{id}/versions": {
+      "get": {
+        "description": "Newest first, each with its text and whether it was ever activated. Requires `agents:read`. Paginated (`limit`/`offset`).",
+        "operationId": "agent_skills_versions_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skill id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_AgentSkillVersion"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the texts of a skill",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agent-skills/{id}/versions/{number}": {
+      "get": {
+        "description": "Requires `agents:read`.",
+        "operationId": "agent_skills_versions_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Skill id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Version number",
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSkillVersion"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-skill-not-found`, `agent-skill-version-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one text of a skill",
+        "tags": [
+          "agents"
         ]
       }
     },
@@ -85780,6 +86986,118 @@
         "summary": "Upload one frame of a stitch job",
         "tags": [
           "stitch-jobs"
+        ]
+      }
+    },
+    "/api/v1/system/agent-limits": {
+      "get": {
+        "description": "Platform admin only. Limits in force for every org (build pod size, retention of SBOMs, scan events and job logs, artifact and dependency cache sizes and keeping), the defaults of the configuration, and whether an admin changed them.",
+        "operationId": "system_agent_limits_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLimitsInfo"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`platform-admin-required`: not a platform admin"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the global limits of hosted agents",
+        "tags": [
+          "system"
+        ]
+      },
+      "put": {
+        "description": "Platform admin only. Replaces every limit at once; they apply to the next build, upload, run or sweep without a restart. Putting the defaults back is putting their values.",
+        "operationId": "system_agent_limits_set",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLimitsInfo"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`: `invalid`, `range:<min>..<max>`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`platform-admin-required`: not a platform admin"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set the global limits of hosted agents",
+        "tags": [
+          "system"
         ]
       }
     },
