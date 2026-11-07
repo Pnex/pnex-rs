@@ -67,6 +67,12 @@ serveur ; avec `--wait`, il la suit et sort en 1 si elle ne finit pas `applied`
 injoignable ou occupé est réessayé pendant 5 minutes, le temps d'un déploiement : le
 run se poursuit côté serveur quoi qu'il arrive au client.
 
+`pnex import update <id> --mapping @fichier.yaml` remplace la correspondance d'un
+import : la commande relit l'import et envoie sa version (`expected_version`), sans
+la chercher à la main (C11 du test grandeur nature). Le reste de l'import (nom,
+mode, source, programmation) ne change pas ; une modification faite entre la lecture
+et l'envoi rend toujours le 409.
+
 ## 4. Distribution
 
 `task build:cli [TARGET=<triple>]` → `target/dist/pnex-cli-<triple>.tar.gz`
