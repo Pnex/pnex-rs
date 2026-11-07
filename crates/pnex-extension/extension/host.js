@@ -2,6 +2,10 @@
 // APIs, WebCrypto and IndexedDB. Every decision lives in the Rust code
 // (src/), compiled to wasm; this file only reaches what wasm cannot.
 
+// The page side of navigation rules, the same file the server browser plays
+// (D780). Absolute: wasm-bindgen moves this module under pkg/snippets/.
+import * as rulePage from "/rule_page.js";
+
 const api = globalThis.browser ?? globalThis.chrome;
 
 /** Longest wait for a script injected in a tab before it counts as failed. */
@@ -527,4 +531,24 @@ export function ws_close(id) {
   ws.onclose = null;
   sockets.delete(id);
   ws.close();
+}
+
+// ── Navigation rules (D780) ─────────────────────────────────────────────
+
+const RULE_FUNCTIONS = new Set([
+  "pnexFind", "pnexClick", "pnexType", "pnexPress", "pnexCards", "pnexSelectorText", "pnexCount",
+]);
+
+/** Calls one function of the page side of a rule in the tab: JSON of its result. */
+export async function rule_call(tabId, name, args) {
+  if (!RULE_FUNCTIONS.has(name)) throw new Error("unknown rule function");
+  const [result] = await exec({ target: { tabId }, func: rulePage[name], args: JSON.parse(args) });
+  return JSON.stringify(result?.result ?? null);
+}
+
+/** After an action that may navigate: a pause, then the load if one started (30 s cap). */
+export async function settle(tabId, ms) {
+  await sleep(ms);
+  const tab = await api.tabs.get(tabId).catch(() => null);
+  if (tab && tab.status === "loading") await loaded(tabId, 30000);
 }

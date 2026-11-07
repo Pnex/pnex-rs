@@ -25,5 +25,7 @@ RUSTFLAGS='--cfg getrandom_backend="wasm_js"' \
 rm -rf "$out"
 mkdir -p "$out"
 cp -r "$root/crates/pnex-extension/extension/." "$out/"
+# The page side of navigation rules, shared with the server browser (D780).
+cp "$root/crates/pnex-core/js/rule_page.js" "$out/rule_page.js"
 "$wb" --target web --no-typescript --out-dir "$out/pkg" \
   "${CARGO_TARGET_DIR:-$root/target}/wasm32-unknown-unknown/release/pnex_extension.wasm"

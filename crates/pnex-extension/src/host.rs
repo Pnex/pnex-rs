@@ -74,6 +74,12 @@ extern "C" {
     pub async fn read_clean_html(tab: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     pub async fn read_links(tab: f64) -> Result<JsValue, JsValue>;
+    /// One function of the page side of a rule (`rule_page.js`), JSON args and result.
+    #[wasm_bindgen(catch)]
+    pub async fn rule_call(tab: f64, name: &str, args: &str) -> Result<JsValue, JsValue>;
+    /// Waits for a load started by a click or a key.
+    #[wasm_bindgen(catch)]
+    pub async fn settle(tab: f64, ms: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     pub async fn focus_tab(tab: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]

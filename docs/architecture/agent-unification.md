@@ -251,8 +251,17 @@ règle relue, valeurs vérifiées, site) part dans `ServerMsg::Runs` ; l'agent r
 `run_step`, `run_extract`, `run_done` ; une étape hors du site et des hôtes permis termine
 le passage en échec (`off-site`), un extrait hors plan ou d'un profil opposé (D341) est
 écarté ; pas de capture d'écran ni de fichier stocké pour un agent ; bouton « Jouer dans
-mon navigateur » du studio. Reste : le lecteur dans l'extension (wasm + `host.js` qui
-importe `rule_page.js`).
+mon navigateur » du studio (93f3ac98). Lecteur dans l'extension (`pnex-extension/src/rules.rs`) :
+il joue le plan reçu dans l'onglet de la plateforme du site (une règle sur LinkedIn partage
+l'onglet et la cadence des missions LinkedIn, `rule_platform`), une étape à la fois au
+rythme d'un lecteur, et appelle les fonctions de `rule_page.js` par `host.js`
+(`rule_call`, import absolu `/rule_page.js` copié par `build-dist.sh`). Un site non autorisé
+par l'utilisateur termine le passage en `permission-missing` et la page d'options le
+demande. `follow_pdf` reste au navigateur du serveur (échec `browser-unavailable` sur un
+agent, sauf `optional`). Vérifié : tests unitaires, protocole de bout en bout côté serveur
+(`tests/extension.rs`), code de page dans un vrai Chrome (`page_side_…`) ; le cas e2e
+`browser-agent.spec.ts` (extension réelle dans Chromium) tournera sur l'image suivante.
+**U2 livré.**
 
 **Notes pour U4 (`capture_people`, D779, poussé en 8b220d62).** Ce qu'une recette doit
 reprendre sans rien perdre :

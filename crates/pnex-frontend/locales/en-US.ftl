@@ -7129,3 +7129,4 @@ web-sites-action-for-each = For each result
 web-sites-play-browser = Play in my browser
 web-sites-play-browser-help = Your browser agent plays the rule in your own session, for sites that need you signed in; the run waits up to 30 minutes for it.
 web-sites-waiting-browser = Waiting for your browser agent…
+web-sites-reason-permission-missing = Your browser agent may not open this site yet: allow it from the agent's options page

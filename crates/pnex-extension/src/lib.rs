@@ -120,11 +120,52 @@ pub mod adapters;
 #[cfg(target_arch = "wasm32")]
 mod host;
 #[cfg(target_arch = "wasm32")]
+mod rules;
+#[cfg(target_arch = "wasm32")]
 mod wasm;
+
+/// Platform of a rule's site, the key of its tab and pace (D255, D258): the
+/// network's name for the sites missions already know (a rule on LinkedIn
+/// shares its tab with the LinkedIn missions), `web:<host>` for any other.
+pub fn rule_platform(site: &str) -> String {
+    let host = site.trim_start_matches("www.");
+    let known = [
+        ("linkedin.com", "linkedin"),
+        ("x.com", "x"),
+        ("twitter.com", "x"),
+        ("youtube.com", "youtube"),
+        ("tiktok.com", "tiktok"),
+        ("facebook.com", "facebook"),
+        ("instagram.com", "instagram"),
+    ];
+    for (domain, platform) in known {
+        if host == domain || host.ends_with(&format!(".{domain}")) {
+            return platform.to_string();
+        }
+    }
+    format!("web:{host}")
+}
+
+/// Lower-case hex SHA-256.
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rule_shares_the_tab_of_its_network() {
+        assert_eq!(rule_platform("linkedin.com"), "linkedin");
+        assert_eq!(rule_platform("fr.linkedin.com"), "linkedin");
+        assert_eq!(rule_platform("example.org"), "web:example.org");
+        assert_eq!(rule_platform("notlinkedin.com"), "web:notlinkedin.com");
+    }
     use ba::{CollectValueParams, MissionSpec};
 
     fn mission(id: &str, url: &str) -> AssignedMission {

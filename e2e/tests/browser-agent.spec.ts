@@ -2,7 +2,9 @@
 // the server is loaded in a real Chromium, paired with the test org, then
 // runs two missions on a local page: a value read into a series, a page
 // kept as a document. A page on an origin the agent was not allowed stays
-// blocked with `ext-permission-missing` (never a silent bypass).
+// blocked with `ext-permission-missing` (never a silent bypass). Then a
+// navigation rule played by the same agent (D781–D790): typed in the site's
+// search, the result cards read, each result opened.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -31,9 +33,21 @@ test.describe('browser agent', { tag: ['@extension'] }, () => {
 
     // The page the missions read, on localhost (the server's host, allowed at
     // pairing) and on 127.0.0.1 (never allowed).
-    const site = createServer((_, res) => {
+    const site = createServer((req, res) => {
       res.setHeader('Content-Type', 'text/html');
-      res.end('<!doctype html><title>Prices</title><p>Price: <span class="price">42.5</span></p>');
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      if (url.pathname === '/') {
+        res.end('<!doctype html><title>Search</title><form role=search action=/results><input name=q aria-label=Search></form>'
+          + '<form><input id=user><input type=password></form>');
+      } else if (url.pathname === '/results') {
+        res.end(`<!doctype html><title>Results</title><h2>Results for ${url.searchParams.get('q')}</h2><ul>`
+          + '<li class=result><span class=name>Ada Lovelace</span><a href=/in/ada>profile</a></li>'
+          + '<li class=result><span class=name>Ada King</span><a href=/in/king>profile</a></li></ul>');
+      } else if (url.pathname.startsWith('/in/')) {
+        res.end(`<!doctype html><title>Profile</title><h1>${url.pathname.slice(4)}</h1>`);
+      } else {
+        res.end('<!doctype html><title>Prices</title><p>Price: <span class="price">42.5</span></p>');
+      }
     });
     await new Promise<void>((ok) => site.listen(0, ok));
     const port = (site.address() as AddressInfo).port;
@@ -97,6 +111,29 @@ test.describe('browser agent', { tag: ['@extension'] }, () => {
       const search = encodeURIComponent(`${prefix} page`);
       await expect.poll(async () => (await api.get(`/media?kind=document&search=${search}&limit=100`)).results
         .some((d: { name: string }) => d.name === `${prefix} page`), { timeout: 30_000 }).toBe(true);
+
+      // A rule played by this agent in its own session (D781): the search typed,
+      // its cards read, each result opened.
+      const yaml = [
+        `name: ${prefix} search`,
+        'site: localhost',
+        'params: [query]',
+        'steps:',
+        `  - open: "http://localhost:${port}/"`,
+        '  - type: {text: "{{query}}"}',
+        '  - press: Enter',
+        '  - wait: {text: "Results for"}',
+        '  - extract: {cards: {selector: "li.result", fields: {name: {selector: ".name"}, link: {selector: "a", attr: href}}}, as: results}',
+        '  - for_each: {from: results, link: link, max: 2, steps: [{extract: {selector: "h1", as: who}}]}',
+      ].join('\n');
+      const run = await api.post('/site-recipes/runs', { yaml, params: { query: 'ada' }, engine: 'extension' });
+      expect(run.engine).toBe('extension');
+      await expect.poll(async () => (await api.get(`/site-recipes/runs/${run.id}`)).status, { timeout: 150_000 }).toBe('ok');
+      const done = await api.get(`/site-recipes/runs/${run.id}`);
+      const byName = Object.fromEntries(done.extracts.map((e: { name: string; text: string }) => [e.name, e]));
+      expect(byName.results.cards.map((c: { name: string }) => c.name)).toEqual(['Ada Lovelace', 'Ada King']);
+      expect(byName['who.1'].text).toBe('ada');
+      expect(byName['who.2'].text).toBe('king');
     } finally {
       for (const id of created) await api.delete(`/extension/missions/${id}`).catch(() => {});
       for (const a of (await api.get('/extension/agents?limit=100')).results) {

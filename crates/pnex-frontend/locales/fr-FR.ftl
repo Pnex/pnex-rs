@@ -7125,3 +7125,4 @@ web-sites-action-for-each = Pour chaque résultat
 web-sites-play-browser = Jouer dans mon navigateur
 web-sites-play-browser-help = Votre agent navigateur joue la règle dans votre propre session, pour les sites qui demandent d’être connecté ; le passage l’attend jusqu’à 30 minutes.
 web-sites-waiting-browser = En attente de votre agent navigateur…
+web-sites-reason-permission-missing = Votre agent navigateur n'a pas encore le droit d'ouvrir ce site : autorisez-le depuis la page d'options de l'agent

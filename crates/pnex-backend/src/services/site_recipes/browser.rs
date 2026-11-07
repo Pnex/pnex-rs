@@ -814,7 +814,7 @@ impl Run {
                 .unwrap_or(Err(Fail::of(reason::TIMEOUT)));
             opened?;
             for (j, sub) in f.steps.iter().enumerate() {
-                let sub = numbered(sub, j, n);
+                let sub = sub.numbered(j, n);
                 let started = Instant::now();
                 let outcome = tokio::time::timeout(STEP_TIMEOUT, Box::pin(self.step(j, &sub)))
                     .await
@@ -1165,18 +1165,6 @@ async fn pdf_text(bytes: Vec<u8>) -> String {
             .join("\n\n"),
         _ => String::new(),
     }
-}
-
-/// A sub-step of a loop for link `n`: its extract named `<as>.<n>`.
-fn numbered(step: &Step, j: usize, n: usize) -> Step {
-    let mut step = step.clone();
-    let name = step.output_name(j).map(|o| format!("{o}.{n}"));
-    match &mut step {
-        Step::Extract(e) => e.name = name,
-        Step::FollowPdf(p) => p.name = name,
-        _ => {}
-    }
-    step
 }
 
 #[cfg(test)]

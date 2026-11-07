@@ -438,6 +438,7 @@ impl Session {
             for msg in inbox {
                 match msg {
                     ServerMsg::Missions { missions } => plan.borrow_mut().replace(missions),
+                    ServerMsg::Runs { runs } => plan.borrow_mut().runs = runs,
                     ServerMsg::Capture {
                         mission_id,
                         platform_ids,
@@ -518,6 +519,31 @@ impl Session {
                     p.next_download_at =
                         host::now_ms() + 5_000.0 + js_sys::Math::random() * 5_000.0;
                     p.outcome.insert(mission_id, outcome);
+                });
+            }
+            // Rule runs (D781): each once, when its platform's tab is free.
+            let next_run_plan = {
+                let p = plan.borrow();
+                p.runs
+                    .iter()
+                    .find(|r| {
+                        !p.playing.contains(&r.run_id)
+                            && !p.busy.contains(&crate::rule_platform(&r.site))
+                    })
+                    .cloned()
+            };
+            if let Some(rp) = next_run_plan {
+                let platform = crate::rule_platform(&rp.site);
+                {
+                    let mut p = plan.borrow_mut();
+                    p.playing.insert(rp.run_id.clone());
+                    p.busy.insert(platform.clone());
+                    p.last_nav.insert(platform.clone(), host::now_ms());
+                }
+                let (this, plan) = (this.clone(), plan.clone());
+                spawn_local(async move {
+                    play_rule(&this, &plan, &platform, &rp).await;
+                    plan.borrow_mut().busy.remove(&platform);
                 });
             }
             let now = host::now_ms();
@@ -604,6 +630,10 @@ struct Plan {
     tracks: BTreeMap<String, (String, String)>,
     downloading: bool,
     next_download_at: f64,
+    /// Rule runs leased to this agent, with their sealed plans (D783).
+    runs: Vec<pnex_core::site_recipe::RulePlan>,
+    /// Runs already started this session: each is played once.
+    playing: BTreeSet<String>,
 }
 
 impl Plan {
@@ -612,6 +642,44 @@ impl Plan {
         self.next.retain(|id, _| ids.contains(id.as_str()));
         self.outcome.retain(|id, _| ids.contains(id.as_str()));
         self.missions = missions;
+    }
+}
+
+/// Plays one rule run in its platform's tab (D781), once the user allowed
+/// its site.
+async fn play_rule(
+    session: &Session,
+    plan: &Rc<RefCell<Plan>>,
+    platform: &str,
+    rp: &pnex_core::site_recipe::RulePlan,
+) {
+    use pnex_core::site_recipe::reason;
+    let allowed = host::has_origin(&rp.base)
+        .await
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !allowed {
+        plan.borrow_mut().missing.insert(origin_of(&rp.base));
+        session.send(&AgentMsg::RunDone {
+            run_id: rp.run_id.clone(),
+            ok: false,
+            failed_step: None,
+            reason: Some(reason::PERMISSION_MISSING.into()),
+        });
+        return;
+    }
+    plan.borrow_mut().missing.remove(&origin_of(&rp.base));
+    let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
+    take_responses(tab);
+    let send = |msg: &AgentMsg| session.send(msg);
+    let mut player = crate::rules::Player::new(rp, tab, &send);
+    host::debug_log(&format!("PNeX agent: rule run {} started", rp.run_id));
+    player.play().await;
+    if player.tab >= 0.0 {
+        plan.borrow_mut()
+            .tabs
+            .insert(platform.to_string(), player.tab);
     }
 }
 
@@ -1325,13 +1393,7 @@ async fn fetch_captions(
     }
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::Digest as _;
-    sha2::Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
-}
+use crate::sha256_hex;
 
 /// The tab is shown on screen (window not minimized nor covered, screen
 /// not locked).

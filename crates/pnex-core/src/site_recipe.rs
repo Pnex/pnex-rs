@@ -1052,6 +1052,19 @@ impl RunStatus {
 /// Why a step failed (machine token, `run-reason-<token>` in the UI).
 /// Name of what step `i` brings back (`extract`, `follow_pdf`), if any.
 impl Step {
+    /// Sub-step `j` of a `for_each` played on its link `n` (from 1): its
+    /// output named `<as>.<n>` (D790). Shared by both players.
+    pub fn numbered(&self, j: usize, n: usize) -> Step {
+        let mut step = self.clone();
+        let name = step.output_name(j).map(|o| format!("{o}.{n}"));
+        match &mut step {
+            Step::Extract(e) => e.name = name,
+            Step::FollowPdf(p) => p.name = name,
+            _ => {}
+        }
+        step
+    }
+
     pub fn output_name(&self, i: usize) -> Option<String> {
         match self {
             Step::Extract(e) => Some(e.name.clone().unwrap_or_else(|| format!("extract-{i}"))),
@@ -1077,6 +1090,8 @@ pub mod reason {
     pub const INTERRUPTED: &str = "interrupted";
     /// A `type` step aimed at a field that is not a search (D789).
     pub const NOT_A_SEARCH_FIELD: &str = "not-a-search-field";
+    /// The browser agent may not open the rule's site yet (its options page asks).
+    pub const PERMISSION_MISSING: &str = "permission-missing";
     /// Step taken over from the run a resumed run started from.
     pub const REUSED: &str = "reused";
     pub const ALL: &[&str] = &[
@@ -1094,6 +1109,7 @@ pub mod reason {
         PARAM_MISSING,
         INTERRUPTED,
         NOT_A_SEARCH_FIELD,
+        PERMISSION_MISSING,
         REUSED,
     ];
 }
