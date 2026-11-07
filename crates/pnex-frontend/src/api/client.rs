@@ -70,10 +70,33 @@ pub async fn request_opt<T: DeserializeOwned>(
     path: &str,
     body: Option<serde_json::Value>,
 ) -> Result<Option<T>, ApiError> {
-    let mut response = send(method.clone(), path, body.clone()).await?;
+    request_opt_in(crate::state::org::current(), method, path, body).await
+}
+
+/// [`request`] sent with `X-Org-Id: org`, whatever org is current: the
+/// `/orgs/{id}` routes need the header to name the path org.
+pub async fn request_in<T: DeserializeOwned>(
+    org: i64,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> Result<T, ApiError> {
+    match request_opt_in(Some(org), method, path, body).await? {
+        Some(value) => Ok(value),
+        None => from_empty_body(),
+    }
+}
+
+async fn request_opt_in<T: DeserializeOwned>(
+    org: Option<i64>,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> Result<Option<T>, ApiError> {
+    let mut response = send(org, method.clone(), path, body.clone()).await?;
     if response.status() == reqwest::StatusCode::UNAUTHORIZED && !is_auth_exempt(path) {
         ensure_refresh().await?;
-        response = send(method, path, body).await?;
+        response = send(org, method, path, body).await?;
     }
     let status = response.status().as_u16();
     let text = response.text().await.unwrap_or_default();
@@ -160,10 +183,11 @@ fn from_empty_body<T: DeserializeOwned>() -> Result<T, ApiError> {
 /// Authenticated request expecting **bytes** (firmware
 /// download) — same 401 refresh mechanism as `request_opt`.
 pub async fn request_bytes(method: reqwest::Method, path: &str) -> Result<Vec<u8>, ApiError> {
-    let mut response = send(method.clone(), path, None).await?;
+    let org = crate::state::org::current();
+    let mut response = send(org, method.clone(), path, None).await?;
     if response.status() == reqwest::StatusCode::UNAUTHORIZED && !is_auth_exempt(path) {
         ensure_refresh().await?;
-        response = send(method, path, None).await?;
+        response = send(org, method, path, None).await?;
     }
     let status = response.status().as_u16();
     let bytes = response.bytes().await.unwrap_or_default();
@@ -263,6 +287,7 @@ fn authed(method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
 }
 
 async fn send(
+    org: Option<i64>,
     method: reqwest::Method,
     path: &str,
     body: Option<serde_json::Value>,
@@ -273,9 +298,9 @@ async fn send(
         if let Some(token) = storage::local().get(KEY_ACCESS_TOKEN) {
             req = req.bearer_auth(token);
         }
-        // The ORG signal is the reactive mirror of the current tenant (written by the
-        // org switcher, persisted through the same path).
-        if let Some(org) = crate::state::org::current() {
+        // `org` is the current tenant (the ORG signal, written by the org
+        // switcher) unless the caller names another one.
+        if let Some(org) = org {
             req = req.header("X-Org-Id", org.to_string());
         }
     }

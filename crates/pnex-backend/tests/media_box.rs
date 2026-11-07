@@ -221,10 +221,7 @@ async fn capture_box_stream_list_and_upload() {
 
             // R9: the secret of a stream goes to its box, so only an
             // owner/admin moves a secret-holding stream onto a box.
-            let res = call("POST", &format!("/api/v1/orgs/{org}/members"), &alice, org)
-                .json(&json!({ "email": "bob@example.com", "role": "member" }))
-                .await;
-            assert!(res.status_code().is_success(), "{}", res.text());
+            common::join_org(&server, &alice, &bob, org, "bob@example.com", "member").await;
             let res = call("POST", "/api/v1/media/streams", &alice, org)
                 .json(&json!({ "name": "Private", "kind": "icecast",
                 "url": "http://192.168.1.20:9981/stream/channel/private", "segment_secs": 10,

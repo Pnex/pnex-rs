@@ -41,7 +41,7 @@ test.describe('packs', { tag: '@packs' }, () => {
         }
         expect(refused).toEqual([]);
       } finally {
-        await api.delete(`/orgs/${org.id}`).catch(() => {});
+        await api.forOrg(org.id).delete(`/orgs/${org.id}`).catch(() => {});
       }
     });
   }

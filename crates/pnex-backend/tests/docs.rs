@@ -96,17 +96,8 @@ async fn call(
     )
 }
 
-async fn add_viewer(server: &axum_test::TestServer, owner: &str, org: i64) {
-    let (st, _) = call(
-        server,
-        "POST",
-        &format!("/api/v1/orgs/{org}/members"),
-        owner,
-        org,
-        Some(json!({ "email": "bob@example.com", "role": "viewer" })),
-    )
-    .await;
-    assert!(st == 200 || st == 201, "{st}");
+async fn add_viewer(server: &axum_test::TestServer, owner: &str, bob: &str, org: i64) {
+    common::join_org(server, owner, bob, org, "bob@example.com", "viewer").await;
 }
 
 /// A page may start from Markdown (2026-10-18), as the editor's import
@@ -328,7 +319,7 @@ async fn crud_versions_isolation_and_viewer() {
         }
 
         // Viewer: reads, never writes.
-        add_viewer(&server, &env.alice, org_a).await;
+        add_viewer(&server, &env.alice, &env.bob, org_a).await;
         let (st, _) = call(&server, "GET", &path, &env.bob, org_a, None).await;
         assert_eq!(st, 200);
         for (m, p, body) in [
@@ -540,7 +531,7 @@ async fn live_sync_persists_and_enforces_schema_and_roles() {
 
         // A viewer reads the page live but its updates are dropped.
         personal_org(&server, &env.bob).await; // provisions bob
-        add_viewer(&server, &env.alice, org).await;
+        add_viewer(&server, &env.alice, &env.bob, org).await;
         let v_doc = Doc::new();
         let mut v = open(&server, &env.bob, org, &id).await;
         handshake(&mut v, &v_doc).await;
@@ -634,17 +625,8 @@ async fn ws_refuses_bad_ticket_and_foreign_page() {
     .await;
 }
 
-async fn add_member(server: &axum_test::TestServer, owner: &str, org: i64, role: &str) {
-    let (st, _) = call(
-        server,
-        "POST",
-        &format!("/api/v1/orgs/{org}/members"),
-        owner,
-        org,
-        Some(json!({ "email": "bob@example.com", "role": role })),
-    )
-    .await;
-    assert!(st == 200 || st == 201, "{st}");
+async fn add_member(server: &axum_test::TestServer, owner: &str, bob: &str, org: i64, role: &str) {
+    common::join_org(server, owner, bob, org, "bob@example.com", role).await;
 }
 
 #[tokio::test]
@@ -761,7 +743,7 @@ async fn comments_threads_roles_and_live_notice() {
         }
 
         // Viewer: reads, never writes.
-        add_member(&server, &env.alice, org_a, "viewer").await;
+        add_member(&server, &env.alice, &env.bob, org_a, "viewer").await;
         let (st, _) = call(&server, "GET", &base, &env.bob, org_a, None).await;
         assert_eq!(st, 200);
         for (m, p, body) in [
@@ -1009,7 +991,7 @@ async fn flow_writes_pages_and_versions_get_approved() {
         assert!(v1.get("approved_at").is_none());
 
         let bob_org = personal_org(&server, &env.bob).await;
-        add_viewer(&server, a, org).await;
+        add_viewer(&server, a, &env.bob, org).await;
         let (st, _) = call(
             &server,
             "POST",
@@ -1166,7 +1148,7 @@ async fn approve_resolves_author_and_approver() {
     with_app(|server, env| async move {
         let org_a = personal_org(&server, &env.alice).await;
         personal_org(&server, &env.bob).await;
-        add_member(&server, &env.alice, org_a, "member").await;
+        add_member(&server, &env.alice, &env.bob, org_a, "member").await;
         let (_, d) = call(
             &server,
             "POST",

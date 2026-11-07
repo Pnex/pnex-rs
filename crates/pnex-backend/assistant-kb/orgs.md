@@ -4,9 +4,9 @@ title: Organizations
 kind: feature
 pages: /orgs
 nodes: 
-err_codes: org-name-duplicate, org-delete-forbidden, org-not-empty
+err_codes: org-name-duplicate, org-not-empty, org-invitation-not-found
 tools: 
-tags: organization, organisation, org, tenant, workspace, team, switch org, active org, create org
+tags: organization, organisation, org, tenant, workspace, team, switch org, active org, create org, invitation, join organization
 ---
 The Organizations page lists every organization you belong to, with your role in each, lets you create a new one and choose which one is active. Everything you see in PNeX (devices, flows, dashboards, secrets, telemetry) belongs to the active organization.
 
@@ -14,6 +14,7 @@ The Organizations page lists every organization you belong to, with your role in
 - **Create an organization**: click **New organization** at the top of the list, type a name and click **Create**. You become its Owner and it becomes the active organization.
 - **Switch organization**: click **Set active** on a row. The active one carries the green **Active** badge; all other pages then show that organization's data.
 - **Manage**: opens the organization detail (rename, members, LLM providers, delete). The same detail for the active organization is reachable directly at Organizations → detail (/orgs/current).
+- **Answer an invitation**: invitations addressed to your email show above the list, under **Invitations for you**. **Accept** makes you a member with the invited role; **Decline** drops it.
 - **Refresh** the list with the refresh button in the header.
 
 Columns: **Name**, **Your role** (Owner, Admin, Member or Viewer), **Tier** (subscription, "—" when none).

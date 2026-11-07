@@ -317,12 +317,15 @@ async fn viewer_reads_without_writing() {
         // Bob must have "logged in" at least once before the invitation
         // (add-member contract: user already seen by the IdP).
         let _bob_org = personal_org(&server, &env.bob).await;
-        server
-            .post(&format!("/api/v1/orgs/{org}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&json!({"email": "bob@example.com", "role": "viewer"}))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
 
         let (_, created) = post_fn(
             &server,

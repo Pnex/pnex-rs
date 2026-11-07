@@ -291,14 +291,15 @@ async fn viewer_cannot_manage_providers() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let _ = personal_org(&server, &env.bob).await;
-        let add = server
-            .post(&format!("/api/v1/orgs/{org}/members"))
-            .add_header("Authorization", bearer(&env.alice))
-            .add_header("X-Org-Id", org.to_string())
-            .add_header("Content-Type", "application/json")
-            .json(&serde_json::json!({"email": "bob@example.com", "role": "viewer"}))
-            .await;
-        assert_eq!(add.status_code(), 201, "{}", add.text());
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
 
         let body = serde_json::json!({
             "name": "osm", "kind": "nominatim", "capabilities": ["geocode"],

@@ -442,12 +442,15 @@ async fn tenant_isolation_and_roles() {
         assert_eq!(res.status_code(), 400);
 
         // Viewer: read OK, write refused.
-        server
-            .post(&format!("/api/v1/orgs/{alice_org}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            alice_org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let res = server
             .get("/api/v1/devices")
             .add_header("Authorization", bearer(&env.bob))

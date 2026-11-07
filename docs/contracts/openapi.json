@@ -151,22 +151,6 @@
         ],
         "type": "object"
       },
-      "AddMember": {
-        "description": "Body of `POST /api/v1/orgs/{id}/members`.",
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "role": {
-            "$ref": "#/components/schemas/OrgRole",
-            "description": "Default `viewer`."
-          }
-        },
-        "required": [
-          "email"
-        ],
-        "type": "object"
-      },
       "Agent": {
         "properties": {
           "created_at": {
@@ -1727,6 +1711,15 @@
       "AiSendMessage": {
         "description": "`POST /api/v1/ai/conversations/{id}/messages` — only the new message:\nthe history is rebuilt by the server.",
         "properties": {
+          "confirm": {
+            "description": "Confirms the held write at this index of the latest answer's\n`tool_trace` (code `ai-confirm-required`): it runs as is, without an\nLLM call; `content` is the user's confirmation text.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "content": {
             "type": "string"
           },
@@ -11755,6 +11748,22 @@
         ],
         "type": "object"
       },
+      "InviteMember": {
+        "description": "Body of `POST /api/v1/orgs/{id}/invitations`.",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrgRole",
+            "description": "Default `viewer`."
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
       "InvokeBody": {
         "properties": {
           "params": {
@@ -14899,27 +14908,6 @@
         ],
         "type": "object"
       },
-      "MemberAdded": {
-        "description": "Answer of `POST /api/v1/orgs/{id}/members`.",
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "role": {
-            "$ref": "#/components/schemas/OrgRole"
-          },
-          "user_id": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "user_id",
-          "email",
-          "role"
-        ],
-        "type": "object"
-      },
       "MemberRoleUpdated": {
         "description": "Answer of `PATCH /api/v1/orgs/{id}/members/{user_id}`.",
         "properties": {
@@ -15711,6 +15699,44 @@
           "labels",
           "score_threshold",
           "nms_iou"
+        ],
+        "type": "object"
+      },
+      "MyInvitation": {
+        "description": "Invitation waiting for the caller's answer.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "invited_by": {
+            "description": "Display name of the inviter, when still known.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "org_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "org_name": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrgRole"
+          }
+        },
+        "required": [
+          "id",
+          "org_id",
+          "org_name",
+          "role",
+          "expires_at"
         ],
         "type": "object"
       },
@@ -16891,7 +16917,7 @@
         "type": "object"
       },
       "OrgCreated": {
-        "description": "Answer of `POST /api/v1/orgs` (shaped like `OrgSummary`).",
+        "description": "Answer of `POST /api/v1/orgs` and of an accepted invitation (shaped\nlike `OrgSummary`).",
         "properties": {
           "id": {
             "format": "int64",
@@ -16945,6 +16971,38 @@
           "name",
           "role",
           "members"
+        ],
+        "type": "object"
+      },
+      "OrgInvitation": {
+        "description": "Pending invitation of an organisation.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "description": "Lowercased email the invitation waits for.",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrgRole"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "created_at",
+          "expires_at"
         ],
         "type": "object"
       },
@@ -20420,6 +20478,42 @@
         ],
         "type": "object"
       },
+      "Paginated_MyInvitation": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/MyInvitation"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_NotifyChannel": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -20734,6 +20828,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/ObservationView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_OrgInvitation": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/OrgInvitation"
             },
             "type": "array"
           }
@@ -35858,7 +35988,7 @@
     },
     "/api/v1/ai/conversations/{id}/messages": {
       "post": {
-        "description": "Runs one agent turn: the server rebuilds the history, calls the org LLM, may run assistant tools (write tools re-check the caller's write role and never deploy, stop or delete) and stores the turn. One turn at a time per conversation. Any member.",
+        "description": "Runs one agent turn: the server rebuilds the history, calls the org LLM, may run assistant tools (write tools re-check the caller's write role and never deploy, stop or delete) and stores the turn. Once a turn read outside content (mail, web page, document), its write tools are held (`ai-confirm-required` in the trace); `confirm` runs one held action as stored, without an LLM call. One turn at a time per conversation. Any member.",
         "operationId": "ai_conversations_send",
         "parameters": [
           {
@@ -35951,7 +36081,7 @@
                 }
               }
             },
-            "description": "`ai-conversation-busy`"
+            "description": "`ai-conversation-busy`, or `ai-confirm-stale` (`confirm` names no held action of the latest answer)"
           },
           "429": {
             "content": {
@@ -63502,6 +63632,174 @@
         ]
       }
     },
+    "/api/v1/invitations": {
+      "get": {
+        "description": "Invitations addressed to the caller's email, not expired, for orgs the caller is not a member of yet, newest first, paginated. Empty while the identity provider has not verified the email. Not scoped by X-Org-Id.",
+        "operationId": "invitations_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_MyInvitation"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List my pending invitations",
+        "tags": [
+          "orgs"
+        ]
+      }
+    },
+    "/api/v1/invitations/{id}/accept": {
+      "post": {
+        "description": "The caller joins the org with the invited role and the invitation is used up. Only for the invited email, verified by the identity provider, before expiry. Not scoped by X-Org-Id.",
+        "operationId": "invitations_accept",
+        "parameters": [
+          {
+            "description": "Invitation id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgCreated"
+                }
+              }
+            },
+            "description": "Joined"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No pending invitation of the caller under this id (`org-invitation-not-found`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Accept an invitation",
+        "tags": [
+          "orgs"
+        ]
+      }
+    },
+    "/api/v1/invitations/{id}/decline": {
+      "post": {
+        "description": "The invitation addressed to the caller's verified email is dropped; the org can invite again. Not scoped by X-Org-Id.",
+        "operationId": "invitations_decline",
+        "parameters": [
+          {
+            "description": "Invitation id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Declined"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No pending invitation of the caller under this id (`org-invitation-not-found`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Decline an invitation",
+        "tags": [
+          "orgs"
+        ]
+      }
+    },
     "/api/v1/lab/images/{id}": {
       "delete": {
         "description": "Removes the image and its annotations from the project; the media stays in the library. Owner, admin or member.",
@@ -79481,9 +79779,19 @@
     },
     "/api/v1/orgs/{id}": {
       "delete": {
-        "description": "Deletes the org and, by cascade, all its data. Owner only, and only when the owner is the last member. Telemetry streams are purged from OpenObserve in the background (best effort).",
+        "description": "Deletes the org and, by cascade, all its data. Needs `orgs:delete` (owner), and the caller must be the last member; `X-Org-Id` must be the path org. Telemetry streams are purged from OpenObserve in the background (best effort).",
         "operationId": "orgs_delete",
         "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
           {
             "description": "Org id",
             "in": "path",
@@ -79517,17 +79825,7 @@
                 }
               }
             },
-            "description": "Not owner (`org-delete-forbidden`) · `access-denied` (`args.permission` = `orgs:delete`): the caller's role does not grant it"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Unknown org or caller not a member"
+            "description": "`org-path-mismatch`: the path org is not the `X-Org-Id` one · `access-denied` (`args.permission` = `orgs:delete`): the caller's role does not grant it"
           },
           "409": {
             "content": {
@@ -79551,9 +79849,19 @@
         ]
       },
       "get": {
-        "description": "Org detail, the caller role and the full member list. Members only (404 otherwise).",
+        "description": "Org detail, the caller role and the full member list. Any member (`orgs:read`); `X-Org-Id` must be the path org.",
         "operationId": "orgs_get",
         "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
           {
             "description": "Org id",
             "in": "path",
@@ -79586,7 +79894,7 @@
             },
             "description": "Missing, invalid or expired bearer token"
           },
-          "404": {
+          "403": {
             "content": {
               "application/json": {
                 "schema": {
@@ -79594,7 +79902,7 @@
                 }
               }
             },
-            "description": "Unknown org or caller not a member"
+            "description": "`org-path-mismatch`: the path org is not the `X-Org-Id` one · `access-denied` (`args.permission` = `orgs:read`): the caller's role does not grant it"
           }
         },
         "security": [
@@ -79608,9 +79916,19 @@
         ]
       },
       "patch": {
-        "description": "Renames the org. Owner or admin only. Names are globally unique.",
+        "description": "Renames the org. Needs `orgs:write` (owner or admin); `X-Org-Id` must be the path org. Names are globally unique.",
         "operationId": "orgs_update",
         "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
           {
             "description": "Org id",
             "in": "path",
@@ -79671,17 +79989,7 @@
                 }
               }
             },
-            "description": "Not owner/admin (`org-rename-forbidden`) · `access-denied` (`args.permission` = `orgs:write`): the caller's role does not grant it"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Unknown org or caller not a member"
+            "description": "`org-path-mismatch`: the path org is not the `X-Org-Id` one · `access-denied` (`args.permission` = `orgs:write`): the caller's role does not grant it"
           },
           "409": {
             "content": {
@@ -79705,11 +80013,358 @@
         ]
       }
     },
+    "/api/v1/orgs/{id}/invitations": {
+      "get": {
+        "description": "Invitations not answered and not expired, newest first, paginated, optional search on the email. Needs `orgs.invitations:read` (owner or admin); `X-Org-Id` must be the path org.",
+        "operationId": "orgs_invitations_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Org id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Case-insensitive search on email and full name.",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_OrgInvitation"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-path-mismatch`: the path org is not the `X-Org-Id` one · `access-denied` (`args.permission` = `orgs.invitations:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the pending invitations of an organisation",
+        "tags": [
+          "orgs"
+        ]
+      },
+      "post": {
+        "description": "Invites an email with a role (default viewer). Needs `orgs.members:write` (owner or admin); inviting as owner also needs `orgs.owners:write`. Nobody is added: the invited person accepts from their own session, with that email verified, within 14 days. The answer is the same whether an account uses that email or not; inviting the same email again replaces the pending invitation. `X-Org-Id` must be the path org.",
+        "operationId": "orgs_invitations_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Org id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteMember"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgInvitation"
+                }
+              }
+            },
+            "description": "Invitation pending"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `email` (`required`, `invalid`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-owner-grant-forbidden` (owner only), `org-path-mismatch` · `access-denied` (`args.permission` = `orgs.members:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Already a member (`org-member-duplicate`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invite someone to an organisation",
+        "tags": [
+          "orgs"
+        ]
+      }
+    },
+    "/api/v1/orgs/{id}/invitations/{invitation_id}": {
+      "delete": {
+        "description": "Withdraws an invitation before it is answered. Needs `orgs.members:delete` (owner or admin); `X-Org-Id` must be the path org.",
+        "operationId": "orgs_invitations_revoke",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Org id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Invitation id",
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-path-mismatch`: the path org is not the `X-Org-Id` one · `access-denied` (`args.permission` = `orgs.members:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No such invitation in this org (`org-invitation-not-found`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoke a pending invitation",
+        "tags": [
+          "orgs"
+        ]
+      }
+    },
+    "/api/v1/orgs/{id}/leave": {
+      "post": {
+        "description": "The caller leaves the org, whatever their role, except its last owner. Deletes the caller's assistant conversations in this org. Not scoped by X-Org-Id.",
+        "operationId": "orgs_leave",
+        "parameters": [
+          {
+            "description": "Org id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Left"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The caller is not a member of this org"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Last owner (`org-last-owner`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Leave an organisation",
+        "tags": [
+          "orgs"
+        ]
+      }
+    },
     "/api/v1/orgs/{id}/members": {
       "get": {
-        "description": "Paginated (`limit`/`offset`), optional search on email and full name. Members only.",
+        "description": "Paginated (`limit`/`offset`), optional search on email and full name. Any member (`orgs.members:read`); `X-Org-Id` must be the path org.",
         "operationId": "orgs_members_list",
         "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
           {
             "description": "Org id",
             "in": "path",
@@ -79769,7 +80424,7 @@
             },
             "description": "Missing, invalid or expired bearer token"
           },
-          "404": {
+          "403": {
             "content": {
               "application/json": {
                 "schema": {
@@ -79777,7 +80432,7 @@
                 }
               }
             },
-            "description": "Unknown org or caller not a member"
+            "description": "`org-path-mismatch`: the path org is not the `X-Org-Id` one · `access-denied` (`args.permission` = `orgs.members:read`): the caller's role does not grant it"
           }
         },
         "security": [
@@ -79789,100 +80444,23 @@
         "tags": [
           "orgs"
         ]
-      },
-      "post": {
-        "description": "Adds an already provisioned user (they must have signed in once) by email. Owner or admin; granting the owner role requires owner. Default role viewer.",
-        "operationId": "orgs_members_add",
+      }
+    },
+    "/api/v1/orgs/{id}/members/{user_id}": {
+      "delete": {
+        "description": "Needs `orgs.members:delete` (owner or admin); removing an owner also needs `orgs.owners:write` (owner) and never the last owner. Also deletes the member assistant conversations in this org. `X-Org-Id` must be the path org; leaving is `POST /api/v1/orgs/{id}/leave`.",
+        "operationId": "orgs_members_remove",
         "parameters": [
           {
-            "description": "Org id",
-            "in": "path",
-            "name": "id",
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
             "required": true,
             "schema": {
               "format": "int64",
               "type": "integer"
             }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AddMember"
-              }
-            }
           },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemberAdded"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Missing, invalid or expired bearer token"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Not allowed (`org-member-add-forbidden`, `org-owner-grant-forbidden`) · `access-denied` (`args.permission` = `orgs.members:write`): the caller's role does not grant it"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Unknown org, caller not a member, or unknown user (`org-member-unknown-user`)"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Already a member (`org-member-duplicate`)"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "Add a member to an organisation",
-        "tags": [
-          "orgs"
-        ]
-      }
-    },
-    "/api/v1/orgs/{id}/members/{user_id}": {
-      "delete": {
-        "description": "Removes a member, or lets the caller leave. Removing someone else needs owner or admin; removing an owner needs owner and never the last owner. Also deletes the member assistant conversations in this org.",
-        "operationId": "orgs_members_remove",
-        "parameters": [
           {
             "description": "Org id",
             "in": "path",
@@ -79926,7 +80504,7 @@
                 }
               }
             },
-            "description": "Not allowed (`org-member-remove-forbidden`, `org-owner-remove-forbidden`) · `access-denied` (`args.permission` = `orgs.members:delete`): the caller's role does not grant it"
+            "description": "`org-owner-remove-forbidden` (owner only), `org-path-mismatch` · `access-denied` (`args.permission` = `orgs.members:delete`): the caller's role does not grant it"
           },
           "404": {
             "content": {
@@ -79936,7 +80514,7 @@
                 }
               }
             },
-            "description": "Unknown org/member or caller not a member"
+            "description": "Not a member of this org"
           },
           "409": {
             "content": {
@@ -79954,15 +80532,25 @@
             "bearer": []
           }
         ],
-        "summary": "Remove a member (or leave)",
+        "summary": "Remove a member",
         "tags": [
           "orgs"
         ]
       },
       "patch": {
-        "description": "Owner or admin; touching an owner (or granting owner) requires owner. The org always keeps at least one owner.",
+        "description": "Needs `orgs.members:write` (owner or admin); touching an owner, or granting owner, also needs `orgs.owners:write` (owner). The org always keeps at least one owner. `X-Org-Id` must be the path org.",
         "operationId": "orgs_members_update",
         "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
           {
             "description": "Org id",
             "in": "path",
@@ -80023,7 +80611,7 @@
                 }
               }
             },
-            "description": "Not allowed (`org-member-role-forbidden`, `org-owner-edit-forbidden`) · `access-denied` (`args.permission` = `orgs.members:write`): the caller's role does not grant it"
+            "description": "`org-owner-edit-forbidden` (owner only), `org-path-mismatch` · `access-denied` (`args.permission` = `orgs.members:write`): the caller's role does not grant it"
           },
           "404": {
             "content": {
@@ -80033,7 +80621,7 @@
                 }
               }
             },
-            "description": "Unknown org/member or caller not a member"
+            "description": "Not a member of this org"
           },
           "409": {
             "content": {

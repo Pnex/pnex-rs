@@ -194,16 +194,15 @@ async fn providers_keep_their_key_and_viewers_only_read() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let _ = personal_org(&server, &env.bob).await;
-        let (st, _) = call(
+        common::join_org(
             &server,
-            "POST",
-            &format!("/api/v1/orgs/{org}/members"),
             &env.alice,
+            &env.bob,
             org,
-            Some(json!({"email": "bob@example.com", "role": "viewer"})),
+            "bob@example.com",
+            "viewer",
         )
         .await;
-        assert_eq!(st, 201);
 
         // Serper needs its key; SearXNG needs its address.
         let (st, e) = call(

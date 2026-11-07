@@ -111,16 +111,15 @@ async fn org(server: &axum_test::TestServer, env: &Env) -> i64 {
     )
     .await;
     assert_eq!(st, 200, "{e}");
-    let (st, e) = call(
+    common::join_org(
         server,
-        "POST",
-        &format!("/api/v1/orgs/{org}/members"),
         &env.alice,
+        &env.bob,
         org,
-        Some(json!({"email": "bob@example.com", "role": "member"})),
+        "bob@example.com",
+        "member",
     )
     .await;
-    assert!(st == 200 || st == 201, "{e}");
     org
 }
 

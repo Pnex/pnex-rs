@@ -179,9 +179,11 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("ontology:write", Level::Member),
     ("proposals:decide", Level::Member),
     ("proposals:read", Level::Viewer),
+    ("orgs.invitations:read", Level::Admin),
     ("orgs.members:delete", Level::Admin),
     ("orgs.members:read", Level::Viewer),
     ("orgs.members:write", Level::Admin),
+    ("orgs.owners:write", Level::Owner),
     ("orgs:delete", Level::Owner),
     ("orgs:read", Level::Viewer),
     ("orgs:write", Level::Admin),
@@ -970,7 +972,19 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("orgs_delete", Access::Org("orgs:delete")),
     ("orgs_get", Access::Org("orgs:read")),
     ("orgs_list", Access::User),
-    ("orgs_members_add", Access::Org("orgs.members:write")),
+    ("invitations_accept", Access::User),
+    ("invitations_decline", Access::User),
+    ("invitations_list", Access::User),
+    ("orgs_invitations_create", Access::Org("orgs.members:write")),
+    (
+        "orgs_invitations_list",
+        Access::Org("orgs.invitations:read"),
+    ),
+    (
+        "orgs_invitations_revoke",
+        Access::Org("orgs.members:delete"),
+    ),
+    ("orgs_leave", Access::User),
     ("orgs_members_list", Access::Org("orgs.members:read")),
     ("orgs_members_remove", Access::Org("orgs.members:delete")),
     ("orgs_members_update", Access::Org("orgs.members:write")),
@@ -1156,6 +1170,10 @@ pub const OPERATIONS: &[(&str, Access)] = &[
 /// beyond the operation's own: a field gate, a redacted field, a case of
 /// the operation. Only those no operation needs are listed here.
 pub const GATES: &[(&str, &str)] = &[
+    (
+        "orgs.owners:write",
+        "grant the owner role, change or remove an owner (invitation included)",
+    ),
     (
         "connectors:use",
         "writing an import that queries a connector, checked again on each of its runs",

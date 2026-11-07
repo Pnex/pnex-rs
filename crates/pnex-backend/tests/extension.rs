@@ -490,16 +490,15 @@ async fn viewer_reads_and_other_orgs_see_nothing() {
         .await;
         assert_eq!(list["count"], 0);
 
-        let (s, _) = call(
+        common::join_org(
             &server,
-            "POST",
-            &format!("/api/v1/orgs/{org}/members"),
             &env.alice,
+            &env.bob,
             org,
-            Some(json!({ "email": "bob@example.com", "role": "viewer" })),
+            "bob@example.com",
+            "viewer",
         )
         .await;
-        assert!(s == 200 || s == 201, "{s}");
         let (s, _) = call(&server, "GET", &path, &env.bob, org, None).await;
         assert_eq!(s, 200);
         for (method, p, body) in [
@@ -1209,8 +1208,7 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
 
         // A viewer may not capture nor record an objection (R2).
         personal_org(&server, &env.bob).await;
-        let (s, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({ "email": "bob@example.com", "role": "viewer" }))).await;
-        assert!(s == 200 || s == 201, "{s}");
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let opposition = format!("/api/v1/extension/people/{ada}/opposition");
         for p in [captures.clone(), opposition.clone()] {
             let (s, e) = call(&server, "POST", &p, &env.bob, org, Some(ask("https://x.com/ada"))).await;
@@ -1251,8 +1249,7 @@ async fn a_personal_browser_runs_only_its_owners_missions() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         personal_org(&server, &env.bob).await;
-        let (s, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({ "email": "bob@example.com", "role": "member" }))).await;
-        assert!(s == 200 || s == 201, "{s}");
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "member").await;
         let (alice_install, bob_install) = (Install::new(), Install::new());
         let alice_agent = pair(&server, &env.alice, org, &alice_install).await;
         let bob_agent = pair(&server, &env.bob, org, &bob_install).await;

@@ -463,15 +463,15 @@ async fn roles_and_pagination() {
             .await
             .json();
         let org = created["id"].as_i64().unwrap();
-        server
-            .post(&format!("/api/v1/orgs/{org}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({
-                "email": "bob@example.com",
-                "role": "viewer"
-            }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
 
         for i in 0..3 {
             let res = upload(

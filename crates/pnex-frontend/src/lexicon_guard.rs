@@ -30,6 +30,20 @@ struct Rule {
 }
 
 const RULES: &[Rule] = &[
+    // SEC-72: nobody is added to an org, they are invited and accept.
+    // A team gains members directly (`iam-`).
+    Rule {
+        scope: Scope::Fr,
+        term: "ajouter un membre",
+        use_instead: "inviter",
+        allowed_keys: &["iam-", "access-"],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "add member",
+        use_instead: "invite",
+        allowed_keys: &["iam-", "access-"],
+    },
     // data-pipelines.md D358: the words of a pipeline screen.
     Rule {
         scope: Scope::Fr,

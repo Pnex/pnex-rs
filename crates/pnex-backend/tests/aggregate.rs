@@ -345,9 +345,7 @@ async fn an_aggregate_never_reveals_what_the_caller_may_not_read() {
         let org = me(&server, &alice).await["orgs"][0]["id"].as_i64().unwrap();
         seed(&server, &alice, org).await;
         let bob_id = me(&server, &bob).await["id"].as_i64().unwrap();
-        let (st, m) = call(&server, &format!("/api/v1/orgs/{org}/members"), &alice, org,
-            json!({"email": "bob@example.com", "role": "member"})).await;
-        assert!(st == 200 || st == 201, "{m}");
+        common::join_org(&server, &alice, &bob, org, "bob@example.com", "member").await;
         let (st, role) = call(&server, "/api/v1/iam/roles", &alice, org, json!({
             "key": "no-personal", "name": "No personal data",
             "statements": [{"effect": "deny", "permissions": ["ontology.personal:read"]}]

@@ -281,16 +281,15 @@ async fn org_isolation_and_viewer_read_only() {
         assert_eq!(e["error"], "lab-project-not-found");
 
         // Bob as a viewer of alice's org: reads, never writes.
-        let (st, _) = call(
+        common::join_org(
             &server,
-            "POST",
-            &format!("/api/v1/orgs/{org_a}/members"),
             &env.alice,
+            &env.bob,
             org_a,
-            Some(json!({"email": "bob@example.com", "role": "viewer"})),
+            "bob@example.com",
+            "viewer",
         )
         .await;
-        assert!(st < 300, "member add: {st}");
         let (st, _) = call(
             &server,
             "GET",

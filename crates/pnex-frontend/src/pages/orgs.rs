@@ -10,6 +10,7 @@ use dioxus_i18n::t;
 use pnex_core::OrgRole;
 
 use crate::api;
+use crate::components::badges::date_label;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
@@ -154,6 +155,7 @@ fn OrgsPage(initial: Option<i64>) -> Element {
                     }
                 },
                 None => rsx! {
+                    MyInvitations { on_changed: move |_| reload.with_mut(|r| *r += 1) }
                     ListStates {
                         state: list_state,
                         is_empty,
@@ -207,6 +209,128 @@ fn OrgsPage(initial: Option<i64>) -> Element {
     }
 }
 
+/// Invitations waiting for the signed-in user's answer (SEC-72): nothing
+/// shows while there is none.
+#[component]
+fn MyInvitations(on_changed: Callback<()>) -> Element {
+    let mut reload = use_signal(|| 0u32);
+    let invitations = use_resource(move || async move {
+        let _ = reload();
+        api::orgs::my_invitations().await.unwrap_or_default()
+    });
+    let rows: Vec<(i64, String, String)> = invitations
+        .value()
+        .read()
+        .iter()
+        .flatten()
+        .map(|inv| {
+            let by = inv.invited_by.clone().unwrap_or_else(|| "—".into());
+            let title = t!("orgs-my-invitation", org : inv.org_name.clone(), role : role_badge(inv.role).1, by : by);
+            let expires = t!("orgs-invitation-expires", date : date_label(& inv.expires_at));
+            (inv.id, title, expires)
+        })
+        .collect();
+    if rows.is_empty() {
+        return rsx! {};
+    }
+    let answer = move |id: i64, accept: bool| {
+        spawn(async move {
+            let done = if accept {
+                api::orgs::accept_invitation(id).await.map(|_| ())
+            } else {
+                api::orgs::decline_invitation(id).await
+            };
+            match done {
+                Ok(()) => toasts::success("toast-saved"),
+                Err(err) => toasts::error(err),
+            }
+            reload.with_mut(|r| *r += 1);
+            on_changed.call(());
+        });
+    };
+    rsx! {
+        div { class: "mb-4 bg-white rounded-lg border border-line p-4 md:p-6",
+            h3 { class: "text-sm font-semibold text-gray-900 mb-3", {t!("orgs-my-invitations")} }
+            div { class: "space-y-2",
+                for (id, title, expires) in rows {
+                    div {
+                        key: "{id}",
+                        class: "flex flex-wrap items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg",
+                        div { class: "min-w-0",
+                            p { class: "truncate text-sm font-medium text-gray-900",
+                                {title}
+                            }
+                            p { class: "text-xs text-gray-600", {expires} }
+                        }
+                        div { class: "flex shrink-0 items-center gap-2",
+                            button {
+                                class: BTN_PRIMARY,
+                                onclick: move |_| answer(id, true),
+                                {t!("orgs-accept-invitation")}
+                            }
+                            button {
+                                class: crate::components::ui::BTN_SECONDARY_SM,
+                                onclick: move |_| answer(id, false),
+                                {t!("orgs-decline-invitation")}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Pending invitations of an org, revocable (owner/admin).
+#[component]
+fn OrgInvitations(org_id: i64, reload: Signal<u32>) -> Element {
+    let mut reload = reload;
+    let invitations = use_resource(move || async move {
+        let _ = reload();
+        api::orgs::invitations(org_id).await.unwrap_or_default()
+    });
+    let rows = invitations.value().read().clone().unwrap_or_default();
+    if rows.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        h4 { class: "mt-4 mb-2 text-xs font-semibold text-gray-700", {t!("orgs-invitations")} }
+        div { class: "space-y-2",
+            for inv in rows {
+                div {
+                    key: "{inv.id}",
+                    class: "flex items-center justify-between gap-2 p-3 bg-gray-50 rounded-lg",
+                    div { class: "min-w-0",
+                        p { class: "truncate text-sm font-medium text-gray-900",
+                            {inv.email.clone()}
+                        }
+                        p { class: "text-xs text-gray-600",
+                            {role_badge(inv.role).1}
+                            " · "
+                            {t!("orgs-invitation-expires", date : date_label(& inv.expires_at))}
+                        }
+                    }
+                    button {
+                        class: "p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors",
+                        title: t!("orgs-revoke-invitation"),
+                        aria_label: t!("orgs-revoke-invitation"),
+                        onclick: move |_| {
+                            spawn(async move {
+                                match api::orgs::revoke_invitation(org_id, inv.id).await {
+                                    Ok(()) => toasts::success("toast-saved"),
+                                    Err(err) => toasts::error(err),
+                                }
+                                reload.with_mut(|r| *r += 1);
+                            });
+                        },
+                        icons::Trash2 { class: "h-4 w-4" }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Role badge: full literal classes (Tailwind scan).
 pub fn role_badge(role: OrgRole) -> (&'static str, String) {
     let label = match role {
@@ -245,6 +369,8 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
     match &*detail.value().read() {
         Some(Ok(detail)) => {
             let can_write = crate::state::access::role_can(detail.role, "orgs.members:write");
+            let can_see_invitations =
+                crate::state::access::role_can(detail.role, "orgs.invitations:read");
             let is_owner = detail.role == OrgRole::Owner;
             let members = detail.members.clone();
             let name = detail.name.clone();
@@ -327,8 +453,8 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                     let role = member_role();
                                     let org_id = org_id;
                                     spawn(async move {
-                                        match api::orgs::add_member(org_id, &email, role).await {
-                                            Ok(_) => toasts::success("toast-saved"),
+                                        match api::orgs::invite(org_id, &email, role).await {
+                                            Ok(_) => toasts::success("toast-invitation-saved"),
                                             Err(err) => toasts::error(err),
                                         }
                                         refresh(());
@@ -378,6 +504,9 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                             for member in members {
                                 {member_row(member, org_id, can_write, refresh, reload)}
                             }
+                        }
+                        if can_see_invitations {
+                            OrgInvitations { org_id, reload }
                         }
                         ul { class: "mt-4 space-y-1 text-xs text-gray-500",
                             li {

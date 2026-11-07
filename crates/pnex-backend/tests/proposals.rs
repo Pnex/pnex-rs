@@ -146,9 +146,7 @@ async fn proposals_wait_for_a_human_decision() {
         // A viewer reads, never decides (R2).
         let (st, _) = call(&server, "GET", "/api/v1/user-info", &env.bob, org, None).await;
         assert_eq!(st, 200);
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org,
-            Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st == 200 || st == 201);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "GET", "/api/v1/proposals", &env.bob, org, None).await;
         assert_eq!(st, 200);
         let decision = |d: &str| json!({"decision": d});

@@ -39,13 +39,16 @@ pub enum ProvisionError {
 /// their personal owner org (Free tier).
 ///
 /// Then promotes the user to platform admin when their email is listed in
-/// `PNEX_PLATFORM_ADMIN_EMAILS` (the flag is never revoked automatically:
-/// the database stays the source of truth).
+/// `PNEX_PLATFORM_ADMIN_EMAILS` and the IdP verified it (SEC-77; the flag is
+/// never revoked automatically: the database stays the source of truth).
 pub async fn get_or_create_user(
     db: &DatabaseConnection,
     claims: &Claims,
 ) -> Result<users::Model, ProvisionError> {
     let user = find_or_create_user(db, claims).await?;
+    if claims.email_verified != Some(true) {
+        return Ok(user);
+    }
     ensure_platform_admin(db, user).await
 }
 
@@ -173,17 +176,22 @@ async fn find_or_create_user(
     })
 }
 
-/// Resyncs email/name from the IdP when they diverge.
+/// Resyncs email/name from the IdP when they diverge; the email only once
+/// the IdP verified it (SEC-77: an unverified address never replaces it).
 async fn sync_user(
     db: &DatabaseConnection,
     user: users::Model,
     claims: &Claims,
 ) -> Result<users::Model, ProvisionError> {
-    let email = claims.email.clone().unwrap_or_default();
+    let email = claims
+        .email
+        .clone()
+        .filter(|e| !e.is_empty() && claims.email_verified == Some(true));
     let full_name = claims.display_name();
-    if user.email != email || user.full_name.as_deref() != Some(full_name.as_str()) {
+    let email_changed = email.as_ref().is_some_and(|e| *e != user.email);
+    if email_changed || user.full_name.as_deref() != Some(full_name.as_str()) {
         let mut active: users::ActiveModel = user.into();
-        if !email.is_empty() {
+        if let Some(email) = email.filter(|_| email_changed) {
             active.email = Set(email);
         }
         active.full_name = Set(Some(full_name));

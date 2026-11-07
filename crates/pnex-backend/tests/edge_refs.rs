@@ -323,12 +323,15 @@ async fn org_isolation_and_auth_401() {
         assert_eq!(del(&server, &env.bob, org_b, &cross).await, 404);
 
         // Bob, viewer of org A: reads but does not write.
-        server
-            .post(&format!("/api/v1/orgs/{org_a}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org_a,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let rows = list_edge(&server, &env.alice, org_a, "/api/v1/edge/wifi-credentials").await;
         assert_eq!(rows.len(), 1, "viewer reads the reference data");
         let (status, _) = post_host(&server, &env.bob, org_a, json!({ "host": "h:1" })).await;

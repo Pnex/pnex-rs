@@ -662,12 +662,15 @@ async fn org_isolation_and_roles() {
             .await
             .json();
         let shared_org = created_org["id"].as_i64().unwrap();
-        server
-            .post(&format!("/api/v1/orgs/{shared_org}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            shared_org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
 
         // Read OK for a viewer, write 403 (read model included).
         let pano_id = upload(

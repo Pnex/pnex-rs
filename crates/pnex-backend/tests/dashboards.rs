@@ -262,12 +262,15 @@ async fn layout_violations_and_viewer_roles() {
         // (bob must exist on the PNEX side: JIT provisioning runs on the
         // first user-info — sites.rs pattern.)
         let _bob_org = personal_org(&server, &env.bob).await;
-        server
-            .post(&format!("/api/v1/orgs/{org}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let read = server
             .get(&format!("/api/v1/dashboards/{id}"))
             .add_header("Authorization", bearer(&env.bob))

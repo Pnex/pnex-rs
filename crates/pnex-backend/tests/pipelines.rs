@@ -300,16 +300,15 @@ async fn isolation_between_orgs_and_viewer_read_only() {
         .await;
         assert_eq!(s, 403);
 
-        let (s, _) = call(
+        common::join_org(
             &server,
-            "POST",
-            &format!("/api/v1/orgs/{org_a}/members"),
             &env.alice,
+            &env.bob,
             org_a,
-            Some(json!({ "email": "bob@example.com", "role": "viewer" })),
+            "bob@example.com",
+            "viewer",
         )
         .await;
-        assert!(s == 200 || s == 201, "{s}");
         let (s, _) = call(&server, "GET", &path, &env.bob, org_a, None).await;
         assert_eq!(s, 200);
         for (m, p, body) in [

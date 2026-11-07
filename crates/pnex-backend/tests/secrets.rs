@@ -977,16 +977,7 @@ async fn members_keep_secrets_but_never_rewire_them() {
     with_app(|server, _ctx, alice, bob| async move {
         let (_, org) = provision(&server, &alice).await;
         provision(&server, &bob).await;
-        let (s, body) = call(
-            &server,
-            "POST",
-            &format!("/api/v1/orgs/{org}/members"),
-            &alice,
-            org,
-            Some(json!({ "email": "sec-bob@example.com", "role": "member" })),
-        )
-        .await;
-        assert!(s == 200 || s == 201, "{s} {body}");
+        common::join_org(&server, &alice, &bob, org, "sec-bob@example.com", "member").await;
         let (_, created) = call(
             &server,
             "POST",
@@ -1290,16 +1281,7 @@ async fn members_never_wire_secrets_nor_administer() {
         let (bob_id, _) = provision(&server, &bob).await;
 
         // The owner grants the `member` role through the API.
-        let (s, body) = call(
-            &server,
-            "POST",
-            &format!("/api/v1/orgs/{org}/members"),
-            &alice,
-            org,
-            Some(json!({ "email": "sec-bob@example.com", "role": "member" })),
-        )
-        .await;
-        assert!(s == 200 || s == 201, "{s} {body}");
+        common::join_org(&server, &alice, &bob, org, "sec-bob@example.com", "member").await;
         let (_, detail) = call(
             &server,
             "GET",
@@ -1431,10 +1413,7 @@ async fn members_never_wire_secrets_nor_administer() {
             Some(json!({ "name": "renamed" })),
         )
         .await;
-        assert_eq!(
-            (s, body["error"].as_str()),
-            (403, Some("org-rename-forbidden"))
-        );
+        assert_eq!((s, body["error"].as_str()), (403, Some("access-denied")));
         let (s, body) = call(
             &server,
             "PATCH",
@@ -1444,10 +1423,7 @@ async fn members_never_wire_secrets_nor_administer() {
             Some(json!({ "role": "admin" })),
         )
         .await;
-        assert_eq!(
-            (s, body["error"].as_str()),
-            (403, Some("org-member-role-forbidden"))
-        );
+        assert_eq!((s, body["error"].as_str()), (403, Some("access-denied")));
     })
     .await;
 }

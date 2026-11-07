@@ -651,14 +651,7 @@ async fn an_edit_takes_the_schedule_and_a_former_member_stays_unnamed() {
             .call("PUT", &format!("/api/v1/pipelines/{p}/schedule"), Some(every_day))
             .await;
         assert_eq!(s, 200, "{e}");
-        let (s, m) = alice
-            .call(
-                "POST",
-                &format!("/api/v1/orgs/{org}/members"),
-                Some(json!({ "email": "bob@example.com", "role": "admin" })),
-            )
-            .await;
-        assert!((200..300).contains(&s), "{m}");
+        common::join_org(&server, alice.token, &env.bob, org, "bob@example.com", "admin").await;
         let bob = Api {
             server: &server,
             token: &env.bob,
@@ -784,15 +777,15 @@ async fn a_schedule_answers_to_who_set_it() {
         assert!(id.is_none());
 
         // A viewer reads, and starts nothing.
-        let members = format!("/api/v1/orgs/{org}/members");
-        let (s, m) = alice
-            .call(
-                "POST",
-                &members,
-                Some(json!({ "email": "bob@example.com", "role": "viewer" })),
-            )
-            .await;
-        assert!(s == 200 || s == 201, "{m}");
+        common::join_org(
+            &server,
+            alice.token,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let (s, _) = bob.call("GET", "/api/v1/data-builds", None).await;
         assert_eq!(s, 200);
         let (s, e) = bob.call("PUT", &schedule, Some(every_day.clone())).await;

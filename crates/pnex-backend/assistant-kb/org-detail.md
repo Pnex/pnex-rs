@@ -4,15 +4,16 @@ title: Organization detail
 kind: feature
 pages: /orgs/current, /orgs
 nodes: 
-err_codes: org-rename-forbidden, org-delete-forbidden, org-not-empty, org-member-add-forbidden, org-owner-grant-forbidden, org-member-unknown-user, org-member-duplicate, org-member-role-forbidden, org-owner-edit-forbidden, org-last-owner, org-member-remove-forbidden, org-owner-remove-forbidden, org-name-duplicate
+err_codes: access-denied, org-path-mismatch, org-not-empty, org-owner-grant-forbidden, org-member-duplicate, org-invitation-not-found, org-owner-edit-forbidden, org-last-owner, org-owner-remove-forbidden, org-name-duplicate
 tools: 
-tags: members, invite, add member, team, role, rename organization, delete organization, membres, inviter, owner, admin, viewer
+tags: members, invite, invitation, accept invitation, team, role, rename organization, delete organization, membres, inviter, owner, admin, viewer
 ---
 The organization detail page (Organizations → **Manage**, or directly the active organization) shows one organization: its members and their roles, its LLM providers for the assistant, its geo providers for the map, and the rename and delete actions.
 
 ## What you can do
 - **Rename** (Owner or Admin): type the new name and click **Rename**.
-- **Add member** (Owner or Admin): enter the person's email, pick a **Role** (Viewer is preselected, least privilege) and click **Add member**. The person must have signed in to PNeX at least once, otherwise the server answers "This user has never signed in, so they cannot be added yet."
+- **Invite** (Owner or Admin): enter the person's email, pick a **Role** (Viewer is preselected, least privilege) and click **Invite**. Nobody is added yet: the invitation appears under **Pending invitations** until the person accepts it. The person does not need an account yet; they see the invitation once they sign in with that email.
+- **Revoke an invitation** (Owner or Admin): trash button on the row under **Pending invitations**.
 - **Change a role** (Owner or Admin): use the role selector on the member row.
 - **Remove member** (Owner or Admin): trash button on the member row.
 - **LLM providers**: configure the organization's own LLM for the assistant (see the LLM providers card).
@@ -21,7 +22,12 @@ The organization detail page (Organizations → **Manage**, or directly the acti
 
 Users with the Member or Viewer role see the member list and role badges, without the editing controls.
 
+## Accepting an invitation
+An invitation addressed to you shows at the top of **Organizations**, under **Invitations for you**: **Accept** makes you a member with the invited role, **Decline** drops it. An invitation lasts 14 days; inviting the same email again renews it.
+
 ## Good to know
+- "This invitation no longer exists": it was already answered, revoked or has expired. Ask an Owner or Admin of that organization to invite you again.
+- Invitations only show for the email of your account, once your identity provider has verified it.
 - Only an Owner can grant the Owner role, modify another Owner or remove an Owner.
 - An organization must keep at least one Owner: the last one cannot be demoted or removed.
 - Deletion is refused while other members remain: remove them first.

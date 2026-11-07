@@ -425,12 +425,15 @@ async fn viewer_reads_but_never_operates_and_orgs_are_isolated() {
         assert!(values["values"][&id].is_null());
 
         // Bob as viewer of org A: reads, cannot operate nor create.
-        server
-            .post(&format!("/api/v1/orgs/{org_a}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", format!("Bearer {}", env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org_a,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let read = server
             .get(&format!("/api/v1/controls/{id}"))
             .add_header("Authorization", format!("Bearer {}", env.bob))

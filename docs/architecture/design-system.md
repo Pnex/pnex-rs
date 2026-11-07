@@ -290,6 +290,7 @@ les règles plus anciennes qui les contredisent.
 | Utilitaire de bureau, dans la barre des tâches, qui capte l'audio vers PNeX (call-recording.md R1) | Enregistreur PNeX | PNeX recorder | pas « agent » (= agent navigateur, agent edge), pas « dictaphone » |
 | Essai de 5 s qui vérifie que le serveur transcrit, depuis l'enregistreur | Test de transcription | Transcription test | pas « test STT », pas « speech to text » |
 | État sauvegardé d'un objet | Version | Version | — |
+| Proposition d'entrer dans une org, en attente de la réponse de la personne (SEC-72) | Invitation | Invitation | jamais « ajouter un membre » : personne n'entre sans accepter ; ≠ invitation de calendrier d'un mail |
 | Programme construit sur les données d'une org : par un compte de service (D433), ou par ses écrans dans PneX (D506) | Application | Application | ni « intégration », ni « connecteur » (= fournisseur) |
 | Vue d'une application, avec sa version publiée (D507) | Écran | Screen | ni « page d'application » |
 | Valeur passée entre les widgets d'une application, le temps de la session (D509) | Variable | Variable | — |

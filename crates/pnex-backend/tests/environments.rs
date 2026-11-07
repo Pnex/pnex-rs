@@ -324,13 +324,15 @@ async fn rights_and_org_isolation() {
         assert_eq!(s, 404, "{d}");
 
         // Bob as a viewer of Alice's org.
-        let res = server
-            .post(&format!("/api/v1/orgs/{a}/members"))
-            .add_header("Authorization", format!("Bearer {}", env.alice))
-            .add_header("X-Org-Id", a.to_string())
-            .json(&json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
-        assert!(res.status_code().is_success(), "{}", res.text());
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            a,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         assert_eq!(call(&server, &env.bob, a, "GET", &one, None).await.0, 200);
         assert_eq!(
             call(&server, &env.bob, a, "GET", &versions, None).await.0,
@@ -629,13 +631,15 @@ async fn building_needs_its_right_and_a_write_secret() {
         assert_eq!(d["error"], "environment-build-no-write-secret", "{d}");
 
         // Bob as a viewer reads, and cannot build.
-        let res = server
-            .post(&format!("/api/v1/orgs/{a}/members"))
-            .add_header("Authorization", format!("Bearer {}", env.alice))
-            .add_header("X-Org-Id", a.to_string())
-            .json(&json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
-        assert!(res.status_code().is_success(), "{}", res.text());
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            a,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         assert_eq!(
             call(&server, &env.bob, a, "POST", &start, None).await.0,
             403
@@ -677,13 +681,15 @@ async fn a_person_activates_a_ready_build_and_it_is_scanned_again() {
         runner_post(&server, &builder, &finish, Some(body)).await;
 
         // A viewer cannot, a stale version cannot.
-        let res = server
-            .post(&format!("/api/v1/orgs/{a}/members"))
-            .add_header("Authorization", format!("Bearer {}", env.alice))
-            .add_header("X-Org-Id", a.to_string())
-            .json(&json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
-        assert!(res.status_code().is_success(), "{}", res.text());
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            a,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let (s, _) = call(&server, &env.bob, a, "POST", &activate, Some(v1.clone())).await;
         assert_eq!(s, 403);
         let stale = json!({ "expected_version": 9 });

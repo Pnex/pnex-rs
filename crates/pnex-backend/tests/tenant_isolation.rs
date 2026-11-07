@@ -300,33 +300,39 @@ async fn a_tenant_does_not_see_the_other_tenants_orgs() {
             .as_i64()
             .expect("alice org id");
 
-        // Bob doesn't see alice's org, neither for reading nor for writing.
+        // Bob doesn't see alice's org, neither for reading nor for writing:
+        // not a member of the X-Org-Id org (SEC-75).
+        let org = alice_org_id.to_string();
         let res = server
             .get(&format!("/api/v1/orgs/{alice_org_id}"))
             .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org.clone())
             .await;
-        assert_eq!(res.status_code(), 404, "alice's org invisible to bob");
+        assert_eq!(res.status_code(), 403, "alice's org invisible to bob");
         let res = server
             .patch(&format!("/api/v1/orgs/{alice_org_id}"))
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org.clone())
             .json(&serde_json::json!({ "name": "Hack" }))
             .await;
-        assert_eq!(res.status_code(), 404, "alice's org not modifiable by bob");
+        assert_eq!(res.status_code(), 403, "alice's org not modifiable by bob");
         let res = server
             .delete(&format!("/api/v1/orgs/{alice_org_id}"))
             .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org.clone())
             .await;
-        assert_eq!(res.status_code(), 404);
+        assert_eq!(res.status_code(), 403);
 
-        // Bob can't add himself to alice's org either.
+        // Bob can't invite himself into alice's org either.
         let res = server
-            .post(&format!("/api/v1/orgs/{alice_org_id}/members"))
+            .post(&format!("/api/v1/orgs/{alice_org_id}/invitations"))
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org)
             .json(&serde_json::json!({ "email": "bob@example.com" }))
             .await;
-        assert_eq!(res.status_code(), 404);
+        assert_eq!(res.status_code(), 403);
     })
     .await;
 }
@@ -355,14 +361,15 @@ async fn viewer_owner_roles_and_safeguards() {
         serde_json::from_value::<pnex_core::api::OrgSummary>(created.clone())
             .expect("creation response is an OrgSummary");
 
-        let added: serde_json::Value = server
-            .post(&format!("/api/v1/orgs/{org_id}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await
-            .json();
-        assert_eq!(added["role"], "viewer", "lowercase role on input/output");
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org_id,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
 
         // O1: bob's orgs listed by increasing id (JIT personal org
         // first) — deterministic order for the front's org fallback,
@@ -390,6 +397,7 @@ async fn viewer_owner_roles_and_safeguards() {
         let res = server
             .get(&format!("/api/v1/orgs/{org_id}"))
             .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org_id.to_string())
             .await;
         assert_eq!(res.status_code(), 200);
         let detail: serde_json::Value = res.json();
@@ -400,16 +408,18 @@ async fn viewer_owner_roles_and_safeguards() {
             .patch(&format!("/api/v1/orgs/{org_id}"))
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org_id.to_string())
             .json(&serde_json::json!({ "name": "Hack Co" }))
             .await;
         assert_eq!(res.status_code(), 403, "viewer does not rename");
         let res = server
-            .post(&format!("/api/v1/orgs/{org_id}/members"))
+            .post(&format!("/api/v1/orgs/{org_id}/invitations"))
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org_id.to_string())
             .json(&serde_json::json!({ "email": "alice@example.com" }))
             .await;
-        assert_eq!(res.status_code(), 403, "viewer does not add a member");
+        assert_eq!(res.status_code(), 403, "viewer does not invite");
 
         // Alice can't leave her role as the last owner.
         let alice_user_id: i64 = server
@@ -422,6 +432,7 @@ async fn viewer_owner_roles_and_safeguards() {
         let res = server
             .delete(&format!("/api/v1/orgs/{org_id}/members/{alice_user_id}"))
             .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org_id.to_string())
             .await;
         assert_eq!(res.status_code(), 409, "last owner cannot be removed");
 
@@ -437,6 +448,7 @@ async fn viewer_owner_roles_and_safeguards() {
             .patch(&format!("/api/v1/orgs/{org_id}/members/{bob_user_id}"))
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org_id.to_string())
             .json(&serde_json::json!({ "role": "owner" }))
             .await;
         assert_eq!(res.status_code(), 403, "viewer does not promote themselves");
@@ -446,6 +458,7 @@ async fn viewer_owner_roles_and_safeguards() {
             .patch(&format!("/api/v1/orgs/{org_id}/members/{bob_user_id}"))
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org_id.to_string())
             .json(&serde_json::json!({ "role": "member" }))
             .await;
         assert_eq!(res.status_code(), 200);

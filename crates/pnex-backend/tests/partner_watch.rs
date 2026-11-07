@@ -1207,9 +1207,7 @@ async fn imports_preview_apply_and_close_missing_links() {
         assert_eq!(p["run"]["counts"]["links_opened"], 2, "{p}");
         // R2: a viewer previews nothing and applies nothing.
         personal_org(&server, &env.bob).await;
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org,
-            Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st == 200 || st == 201);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = apply(&server, &env.bob, org, &id, &p, &v).await;
         assert_eq!(st, 403);
         let (st, _) = call(&server, "DELETE", &format!("/api/v1/ontology/imports/{id}"), &env.bob, org, None).await;
@@ -1495,9 +1493,7 @@ async fn import_runs_its_own_steps() {
 
         // R2: a viewer starts nothing.
         personal_org(&server, &env.bob).await;
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org,
-            Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st == 200 || st == 201);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.bob, org, None).await;
         assert_eq!(st, 403);
 
@@ -1744,15 +1740,7 @@ async fn message_recipients_need_an_admin_flag_and_respect_the_caps() {
         let org = personal_org(&server, &env.alice).await;
         // A member cannot turn recipients from messages on.
         personal_org(&server, &env.bob).await;
-        call(
-            &server,
-            "POST",
-            &format!("/api/v1/orgs/{org}/members"),
-            &env.alice,
-            org,
-            Some(json!({"email": "bob@example.com", "role": "member"})),
-        )
-        .await;
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "member").await;
         let (st, e) = smtp_channel(&server, &env.bob, org, "bob", true).await;
         assert_eq!(
             (st, e["error"].as_str()),

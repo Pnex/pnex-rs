@@ -460,9 +460,9 @@ pub fn media_store() -> std::sync::Arc<dyn pnex_backend::services::media::MediaS
         .expect("test S3 store")
 }
 
-/// Makes the user behind `email` a member of `org` with `role`, through the
-/// members route of the org. Same signature as the invitation flow of SEC-72,
-/// which replaces this body when it lands.
+/// Makes the user of `invitee` a member of `org` with `role` the way the UI
+/// does (SEC-72): `inviter` invites `email` from `org`, the invitee accepts.
+/// The invitee needs no prior sign-in: accepting provisions them.
 #[allow(dead_code)]
 pub async fn join_org(
     server: &axum_test::TestServer,
@@ -472,25 +472,19 @@ pub async fn join_org(
     email: &str,
     role: &str,
 ) {
-    // The members route only adds a user who signed in once: this call provisions them.
     let res = server
-        .get("/api/v1/user-info")
-        .add_header("Authorization", format!("Bearer {invitee}"))
-        .await;
-    assert!(
-        res.status_code().is_success(),
-        "sign-in of {email}: {}",
-        res.text()
-    );
-    let res = server
-        .post(&format!("/api/v1/orgs/{org}/members"))
+        .post(&format!("/api/v1/orgs/{org}/invitations"))
         .add_header("Authorization", format!("Bearer {inviter}"))
         .add_header("X-Org-Id", org.to_string())
         .json(&serde_json::json!({ "email": email, "role": role }))
         .await;
-    assert!(
-        res.status_code().is_success(),
-        "add {email}: {}",
-        res.text()
-    );
+    assert_eq!(res.status_code(), 202, "invite {email}: {}", res.text());
+    let id = res.json::<serde_json::Value>()["id"]
+        .as_i64()
+        .expect("invitation id");
+    let res = server
+        .post(&format!("/api/v1/invitations/{id}/accept"))
+        .add_header("Authorization", format!("Bearer {invitee}"))
+        .await;
+    assert_eq!(res.status_code(), 200, "accept {email}: {}", res.text());
 }

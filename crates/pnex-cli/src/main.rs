@@ -372,7 +372,14 @@ fn run_op(http: &Client, op: &Op, m: &ArgMatches, org: Option<i64>) -> Result<()
         }
     }
     let org_param = op.params.iter().find(|p| p.name == ORG_HEADER);
-    let org = org_param.and(org.or(session.org));
+    let path_org = op
+        .path
+        .starts_with(pnex_api_contract::ORG_PATH_PREFIX)
+        .then(|| op.params.iter().find(|p| p.name == "id" && p.loc == "path"))
+        .flatten()
+        .and_then(|p| m.get_one::<String>(&p.flag))
+        .and_then(|v| v.parse().ok());
+    let org = org_param.and(path_org.or(org).or(session.org));
     if org_param.is_some_and(|p| p.required) && org.is_none() {
         bail!("no organisation: pick one with `pnex org <id>` or pass --org");
     }

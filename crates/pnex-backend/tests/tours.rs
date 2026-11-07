@@ -904,12 +904,15 @@ async fn org_isolation_and_roles() {
             .await
             .json();
         let shared_org = created_org["id"].as_i64().unwrap();
-        server
-            .post(&format!("/api/v1/orgs/{shared_org}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            shared_org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
 
         let listed_in_shared = create_tour(&server, &env.alice, shared_org, "Partagé").await;
         let shared_tour = listed_in_shared["id"].as_str().unwrap().to_string();

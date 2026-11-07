@@ -359,16 +359,15 @@ async fn org_isolation_and_viewer_read_only() {
         }
 
         // Viewer of alice's org: reads, never writes.
-        let (st, _) = call(
+        common::join_org(
             &server,
-            "POST",
-            &format!("/api/v1/orgs/{org_a}/members"),
             &env.alice,
+            &env.bob,
             org_a,
-            Some(json!({ "email": "bob@example.com", "role": "viewer" })),
+            "bob@example.com",
+            "viewer",
         )
         .await;
-        assert!(st == 200 || st == 201, "{st}");
         let (st, page) = call(&server, "GET", &day_query(&s), &env.bob, org_a, None).await;
         assert_eq!(st, 200);
         assert_eq!(page["count"], 1);

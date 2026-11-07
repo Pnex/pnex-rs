@@ -118,16 +118,15 @@ async fn setup(server: &axum_test::TestServer, env: &Env) -> (i64, i64, String) 
     let org = me(server, &env.alice).await["orgs"][0]["id"]
         .as_i64()
         .unwrap();
-    let (st, e) = call(
+    common::join_org(
         server,
-        "POST",
-        &format!("/api/v1/orgs/{org}/members"),
         &env.alice,
+        &env.bob,
         org,
-        Some(json!({"email": "bob@example.com", "role": "member"})),
+        "bob@example.com",
+        "member",
     )
     .await;
-    assert!(st == 200 || st == 201, "{e}");
     let (st, team) = call(
         server,
         "POST",

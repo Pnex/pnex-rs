@@ -281,15 +281,7 @@ async fn consented_profile_generation_test_and_revocation() {
             .await;
             assert_eq!(st, 404);
             // R2: a viewer reads, never enrols nor tests.
-            let (st, _) = call(
-                &alice,
-                org,
-                "POST",
-                &format!("/api/v1/orgs/{org}/members"),
-                Some(json!({"email": "bob@example.com", "role": "viewer"})),
-            )
-            .await;
-            assert!(st == 200 || st == 201, "{st}");
+            common::join_org(&server, &alice, &bob, org, "bob@example.com", "viewer").await;
             let (st, list) = call(&bob, org, "GET", "/api/v1/voice-id/profiles", None).await;
             assert_eq!((st, list["results"].as_array().map(Vec::len)), (200, Some(1)));
             let (st, e) = upload(

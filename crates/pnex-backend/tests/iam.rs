@@ -202,12 +202,7 @@ async fn me_permissions_follow_the_managed_role() {
                 .json::<Value>()["id"]
                 .as_i64()
                 .unwrap();
-            let res = server
-                .post(&format!("/api/v1/orgs/{org}/members"))
-                .add_header("Authorization", bearer(&alice))
-                .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-                .await;
-            assert!(res.status_code().is_success(), "{}", res.text());
+            common::join_org(&server, &alice, &bob, org, "bob@example.com", "viewer").await;
 
             let me = |token: String| {
                 let server = &server;
@@ -392,16 +387,11 @@ async fn custom_roles_teams_and_assignments() {
                 .json::<Value>()["id"]
                 .as_i64()
                 .unwrap();
-            for (email, role) in [
-                ("bob@example.com", "viewer"),
-                ("carol@example.com", "admin"),
+            for (invitee, email, role) in [
+                (&bob, "bob@example.com", "viewer"),
+                (&carol, "carol@example.com", "admin"),
             ] {
-                let res = server
-                    .post(&format!("/api/v1/orgs/{org}/members"))
-                    .add_header("Authorization", bearer(&alice))
-                    .json(&serde_json::json!({ "email": email, "role": role }))
-                    .await;
-                assert!(res.status_code().is_success(), "{}", res.text());
+                common::join_org(&server, &alice, invitee, org, email, role).await;
             }
             let taxonomy = |name: &str| Some(serde_json::json!({ "name": name }));
 
@@ -680,6 +670,7 @@ async fn custom_roles_teams_and_assignments() {
             let res = server
                 .delete(&format!("/api/v1/orgs/{org}/members/{}", ids["bob"]))
                 .add_header("Authorization", bearer(&alice))
+                .add_header("X-Org-Id", org.to_string())
                 .await;
             assert!(res.status_code().is_success(), "{}", res.text());
             let (_, page) = call(
@@ -808,19 +799,14 @@ async fn service_accounts_and_access_keys() {
                 .await;
             assert_eq!(res.status_code().as_u16(), 403, "{}", res.text());
 
-            // Never a member: not listed, never added by email.
+            // Never a member: not listed.
             let members = server
                 .get(&format!("/api/v1/orgs/{org}/members"))
                 .add_header("Authorization", bearer(&alice))
+                .add_header("X-Org-Id", org.to_string())
                 .await
                 .text();
             assert!(!members.contains("service-accounts.invalid"), "{members}");
-            let res = server
-                .post(&format!("/api/v1/orgs/{personal}/members"))
-                .add_header("Authorization", bearer(&alice))
-                .json(&serde_json::json!({ "email": format!("sa-{sa_id}@service-accounts.invalid"), "role": "viewer" }))
-                .await;
-            assert_eq!(res.status_code().as_u16(), 404, "{}", res.text());
 
             // Rotation: two keys at most, revocation is immediate.
             let (s, k2) = call(&server, "POST", &keys, &alice, org, Some(serde_json::json!({ "expires_at": in_days(60) }))).await;

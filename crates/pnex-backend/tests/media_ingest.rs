@@ -337,16 +337,15 @@ async fn secret_stays_bound_to_the_url_origin() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let _ = personal_org(&server, &env.bob).await;
-        let (s, _) = call(
+        common::join_org(
             &server,
-            "POST",
-            &format!("/api/v1/orgs/{org}/members"),
             &env.alice,
+            &env.bob,
             org,
-            Some(json!({ "email": "bob@example.com", "role": "member" })),
+            "bob@example.com",
+            "member",
         )
         .await;
-        assert!(s == 200 || s == 201, "{s}");
 
         let mut body = stream("Privée", "https://radio.example/private.mp3");
         body["auth_secret"] = json!({ "value": "Bearer s3cr3t" });
@@ -475,16 +474,15 @@ async fn org_isolation_and_viewer_read_only() {
         assert_eq!(e["errors"]["fields"]["asr_model_id"], "invalid");
 
         // Viewer: reads, never writes.
-        let (s, _) = call(
+        common::join_org(
             &server,
-            "POST",
-            &format!("/api/v1/orgs/{org_a}/members"),
             &env.alice,
+            &env.bob,
             org_a,
-            Some(json!({ "email": "bob@example.com", "role": "viewer" })),
+            "bob@example.com",
+            "viewer",
         )
         .await;
-        assert!(s == 200 || s == 201, "{s}");
         let (s, _) = call(&server, "GET", &path, &env.bob, org_a, None).await;
         assert_eq!(s, 200);
         for (m, p, body) in [

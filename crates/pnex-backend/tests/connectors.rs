@@ -365,14 +365,15 @@ async fn connectors_are_for_admins_of_the_org() {
         assert_eq!(s, 201, "{e}");
 
         // A member: no connector, and no import reading one.
-        let (s, m) = alice
-            .call(
-                "POST",
-                &format!("/api/v1/orgs/{org}/members"),
-                Some(json!({ "email": "bob@example.com", "role": "member" })),
-            )
-            .await;
-        assert!(s == 200 || s == 201, "{m}");
+        common::join_org(
+            &server,
+            alice.token,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "member",
+        )
+        .await;
         for (method, p, body) in [
             ("GET", "/api/v1/connectors".to_string(), None),
             ("GET", path.clone(), None),

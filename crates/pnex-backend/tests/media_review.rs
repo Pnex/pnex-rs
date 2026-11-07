@@ -314,16 +314,15 @@ async fn spans_are_attributed_to_persons_without_voice() {
 
         // A viewer reads, never writes (R2); another org sees nothing (R1).
         let bob_org = personal_org(&server, &env.bob).await;
-        let (st, _) = call(
+        common::join_org(
             &server,
-            "POST",
-            &format!("/api/v1/orgs/{org}/members"),
             &env.alice,
+            &env.bob,
             org,
-            Some(json!({"email": "bob@example.com", "role": "viewer"})),
+            "bob@example.com",
+            "viewer",
         )
         .await;
-        assert!(st < 300);
         let (st, list) = call(&server, "GET", &path, &env.bob, org, None).await;
         assert_eq!((st, list["count"].as_i64()), (200, Some(3)), "{list}");
         let (st, e) = call(

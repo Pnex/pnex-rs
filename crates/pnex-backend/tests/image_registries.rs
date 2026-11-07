@@ -463,13 +463,15 @@ async fn rights_and_org_isolation() {
         assert_eq!(mine["count"], 0, "{mine}");
 
         // Bob as a viewer of Alice's org.
-        let res = server
-            .post(&format!("/api/v1/orgs/{a}/members"))
-            .add_header("Authorization", format!("Bearer {}", env.alice))
-            .add_header("X-Org-Id", a.to_string())
-            .json(&json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
-        assert!(res.status_code().is_success(), "{}", res.text());
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            a,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         for (method, path, body) in [
             ("GET", list.to_string(), None),
             ("POST", list.to_string(), Some(registry("x", "r.example"))),

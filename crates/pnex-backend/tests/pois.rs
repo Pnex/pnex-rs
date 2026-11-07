@@ -842,12 +842,15 @@ async fn org_isolation_and_viewer_roles() {
             .await
             .json();
         let shared_org = created["id"].as_i64().expect("shared org id");
-        server
-            .post(&format!("/api/v1/orgs/{shared_org}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            shared_org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
 
         let org = personal_org(&server, &env.alice).await;
         let res = create_poi(&server, &env.alice, org, "POI Privé", 45.7, 4.8).await;

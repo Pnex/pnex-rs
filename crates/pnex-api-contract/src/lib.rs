@@ -38,7 +38,16 @@ pub mod iam;
 /// `inputs`/`outputs` (create, save, ad-hoc test), never read from `@input`/
 /// `@output` comments in the code; `function-directive-invalid` is replaced
 /// by field errors (`inputs.<i>.name`…).
-pub const CONTRACT: u32 = 6;
+///
+/// 7 (2026-11-07, SEC-72/SEC-75): `POST /orgs/{id}/members` is replaced by
+/// invitations (`/orgs/{id}/invitations`, `/invitations`); the `/orgs/{id}`
+/// routes need `X-Org-Id` equal to the path org; leaving is `POST /orgs/{id}/leave`.
+pub const CONTRACT: u32 = 7;
+
+/// Routes under this prefix act on the org of their `{id}`, which must also be
+/// the `X-Org-Id` (SEC-75): generated clients send the path org there instead
+/// of their default org.
+pub const ORG_PATH_PREFIX: &str = "/api/v1/orgs/{id}";
 
 /// Identity announced by the meta endpoint — aligned with
 /// `pnex_core::SERVICE_NAME` (the service is `pnex-server`). The LAN scan compares this field to tell a PNEX

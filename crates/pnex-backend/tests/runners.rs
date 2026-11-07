@@ -272,12 +272,15 @@ async fn managing_needs_the_permission_and_reading_does_not() {
     with_app(|server, env, _ctx| async move {
         let _ = personal_org(&server, &env.bob).await;
         let org = personal_org(&server, &env.alice).await;
-        let res = server
-            .post(&format!("/api/v1/orgs/{org}/members"))
-            .add_header("Authorization", format!("Bearer {}", env.alice))
-            .json(&json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
-        assert!(res.status_code().is_success(), "{}", res.text());
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let (runner, _) = enrol(&server, &env.alice, org, &[]).await;
         let job = queue(&server, &env.alice, org, &[]).await;
 

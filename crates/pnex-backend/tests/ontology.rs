@@ -517,8 +517,7 @@ async fn isolation_roles_and_yaml_round_trip() {
 
         // R2: a viewer reads but never writes; a member writes objects but
         // not the schema (D188: org admin for types).
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org_a}/members"), &env.alice, org_a, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st == 200 || st == 201);
+        common::join_org(&server, &env.alice, &env.bob, org_a, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "GET", &format!("/api/v1/ontology/objects/{pid}"), &env.bob, org_a, None).await;
         assert_eq!(st, 200);
         let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.bob, org_a, Some(json!({"type_key": "pump", "title": "x", "properties": {"serial": "1"}}))).await;
@@ -825,8 +824,7 @@ async fn case_detections_are_proposed_and_reviewed_by_a_human() {
         let org_b = personal_org(&server, &env.bob).await;
         let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/proposals"), &env.bob, org_b, None).await;
         assert_eq!(st, 404);
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st < 300);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/proposals"), &env.bob, org, None).await;
         assert_eq!(st, 200);
         for path in [format!("/api/v1/cases/{cid}/detect"), reject] {
@@ -923,8 +921,7 @@ async fn imported_tracks_feed_the_tracks_and_the_detectors() {
         assert_eq!(st, 404);
         let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{cid}/tracks/imports"), &env.bob, org_b, None).await;
         assert_eq!(st, 404);
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st < 300);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "POST", &path, &env.bob, org, Some(body(true))).await;
         assert_eq!(st, 403);
         let (st, list) = call(&server, "GET", &format!("/api/v1/cases/{cid}/tracks/imports"), &env.bob, org, None).await;
@@ -1080,8 +1077,7 @@ async fn case_workspace_events_attachments_and_signals() {
         assert_eq!(st, 404);
 
         // Viewer: reads the workspace, cannot attach nor create an event.
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st < 300);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "GET", &url("workspace"), &env.bob, org, None).await;
         assert_eq!(st, 200);
         let (st, _) = call(&server, "POST", &url("attach"), &env.bob, org, Some(json!({"object_id": d1}))).await;
@@ -1157,8 +1153,7 @@ async fn case_opened_from_an_alert() {
         assert_eq!(st, 201, "{c}");
         let (_, w) = call(&server, "GET", &format!("/api/v1/cases/{}/workspace", c["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert!(attached(&w, "Foreign").is_empty(), "{w}");
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st < 300);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "POST", "/api/v1/cases", &env.bob, org, Some(json!({"title": "nope"}))).await;
         assert_eq!(st, 403);
     })
@@ -1278,16 +1273,15 @@ async fn sub_cases_nest_under_their_parent() {
             assert_eq!(st, 400, "{e}");
             assert!(e.to_string().contains("parent_id"), "{e}");
         }
-        let (st, _) = call(
+        common::join_org(
             &server,
-            "POST",
-            &format!("/api/v1/orgs/{org}/members"),
             &env.alice,
+            &env.bob,
             org,
-            Some(json!({"email": "bob@example.com", "role": "viewer"})),
+            "bob@example.com",
+            "viewer",
         )
         .await;
-        assert!(st < 300);
         let (st, _) = call(
             &server,
             "POST",
@@ -2081,8 +2075,7 @@ async fn case_pages_from_templates_and_conclusion() {
         let org_b = personal_org(&server, &env.bob).await;
         let (st, _) = call(&server, "POST", &url, &env.bob, org_b, Some(json!({"title": "x"}))).await;
         assert_eq!(st, 404);
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st == 200 || st == 201);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "POST", &url, &env.bob, org, Some(json!({"title": "x"}))).await;
         assert_eq!(st, 403);
     })
@@ -2175,8 +2168,7 @@ async fn case_graph_relations_and_expansion() {
         let (st, _) = call(&server, "GET", &lay, &env.bob, org_b, None).await;
         assert_eq!(st, 404);
         // R2: a viewer reads the arrangement, never saves one.
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st < 300);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "PUT", &lay, &env.bob, org, Some(json!({"positions": {}}))).await;
         assert_eq!(st, 403);
         let (st, l) = call(&server, "GET", &lay, &env.bob, org, None).await;
@@ -2280,8 +2272,7 @@ async fn case_snapshots_and_export_round_trip() {
         assert_eq!(st, 404);
         let (st, _) = call(&server, "GET", &format!("{url}/1"), &env.bob, org_b, None).await;
         assert_eq!(st, 404);
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st < 300);
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "POST", &url, &env.bob, org, Some(json!({}))).await;
         assert_eq!(st, 403);
         let (st, _) = call(&server, "POST", "/api/v1/cases/import", &env.bob, org, Some(before)).await;
@@ -2430,8 +2421,7 @@ async fn actions_are_checked_and_need_a_deployed_flow() {
 
         // R2: a viewer never invokes.
         personal_org(&server, &env.bob).await;
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st < 300, "{st}");
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
         let (st, _) = call(&server, "POST", &url, &env.bob, org, Some(ok)).await;
         assert_eq!(st, 403);
     })
@@ -2505,8 +2495,7 @@ async fn recurrence_occurrences_are_materialized_and_kept_by_history() {
 
         // D188: an occurrence is written with the type's write role.
         personal_org(&server, &env.bob).await;
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org, Some(json!({"email": "bob@example.com", "role": "member"}))).await;
-        assert!(st < 300, "{st}");
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "member").await;
         env.db
             .execute_unprepared(&format!(
                 "UPDATE object_type_versions v SET definition = jsonb_set(definition, '{{write_role}}', '\"admin\"') \

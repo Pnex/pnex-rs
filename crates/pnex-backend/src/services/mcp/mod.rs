@@ -235,6 +235,12 @@ fn request(tool: &Tool, params: &Value, headers: &HeaderMap) -> Result<Request<B
     let mut query = form_urlencoded::Serializer::new(String::new());
     let mut req = Request::builder().method(tool.method.clone());
     let mut org_set = false;
+    // The org of an `/orgs/{id}…` path is the org of the call (SEC-75).
+    let path_org = tool
+        .path
+        .starts_with(pnex_api_contract::ORG_PATH_PREFIX)
+        .then(|| args.get("id").filter(|v| !v.is_null()).map(scalar))
+        .flatten();
     for (pname, loc) in &tool.params {
         let Some(value) = args.get(pname).filter(|v| !v.is_null()) else {
             if loc == "path" {
@@ -257,12 +263,18 @@ fn request(tool: &Tool, params: &Value, headers: &HeaderMap) -> Result<Request<B
                 }
             },
             _ => {
-                org_set |= pname.eq_ignore_ascii_case(ORG_HEADER);
+                let org = pname.eq_ignore_ascii_case(ORG_HEADER);
+                if org && path_org.is_some() {
+                    continue;
+                }
+                org_set |= org;
                 req = req.header(pname.as_str(), scalar(value));
             }
         }
     }
-    if let (false, Some(org)) = (org_set, headers.get(ORG_HEADER)) {
+    if let Some(org) = &path_org {
+        req = req.header(ORG_HEADER, org.as_str());
+    } else if let (false, Some(org)) = (org_set, headers.get(ORG_HEADER)) {
         req = req.header(ORG_HEADER, org);
     }
     if let Some(auth) = headers.get(header::AUTHORIZATION) {
@@ -320,6 +332,21 @@ mod tests {
         assert_eq!(v["results"][0]["device_token"], "[redacted]");
         assert_eq!(v["results"][0]["name"], "x");
         assert!(v["results"][0]["api_key"].is_null());
+    }
+
+    #[test]
+    fn org_routes_send_the_path_org() {
+        let (_, tool) = TOOLS
+            .iter()
+            .find(|(n, _)| n == "orgs_get")
+            .expect("orgs_get exposed");
+        let mut headers = HeaderMap::new();
+        headers.insert(ORG_HEADER, "3".parse().unwrap());
+        for args in [json!({"id": 5}), json!({"id": 5, "X-Org-Id": 9})] {
+            let req = request(tool, &json!({ "arguments": args }), &headers).unwrap();
+            let sent: Vec<_> = req.headers().get_all(ORG_HEADER).iter().collect();
+            assert_eq!(sent, ["5"], "{args}");
+        }
     }
 
     #[test]

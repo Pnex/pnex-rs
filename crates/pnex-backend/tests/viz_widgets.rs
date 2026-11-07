@@ -294,12 +294,15 @@ async fn org_isolation_and_viewer() {
         assert_eq!(cross_delete.status_code(), 404);
 
         // ── Org viewer: reads the library, doesn't modify it.
-        server
-            .post(&format!("/api/v1/orgs/{org_a}/members"))
-            .add_header("Content-Type", "application/json")
-            .add_header("Authorization", bearer(&env.alice))
-            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org_a,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let read = server
             .get(&format!("/api/v1/viz/widgets/{id}"))
             .add_header("Authorization", bearer(&env.bob))
