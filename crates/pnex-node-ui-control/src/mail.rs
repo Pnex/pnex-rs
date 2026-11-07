@@ -35,7 +35,7 @@ use pnex_core::ontology::flow::FlowNodeRef;
 
 const NODE: &str = "pnex-mail-received";
 const BACKOFF_MAX_SECS: u64 = 30;
-const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+use pnex_core::flow::FLOW_TOKEN_HEADER;
 /// Mail ids already emitted this run (replay and live may cross).
 const SEEN_MAX: usize = 10_000;
 /// Attempts of a replay or an acknowledgement (about a minute in all).

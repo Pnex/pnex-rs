@@ -13,7 +13,7 @@ use pnex_core::taxonomy::{TaxonomyInput, TaxonomyVersionInput};
 use uuid::Uuid;
 
 use crate::auth::OrgContext;
-use crate::controllers::pagination::{self, PageParams};
+use crate::controllers::pagination;
 use crate::services::media_ingest::taxonomies::{self, TaxonomyError};
 
 pub fn routes() -> Routes {
@@ -60,24 +60,7 @@ pub(crate) fn taxonomy_error(e: TaxonomyError) -> Result<Response> {
     }
 }
 
-/// Page of a list (`limit`/`offset`, D14).
-#[derive(serde::Deserialize, utoipa::IntoParams)]
-#[into_params(parameter_in = Query)]
-struct PageQuery {
-    #[param(value_type = Option<i64>)]
-    limit: Option<String>,
-    #[param(value_type = Option<i64>)]
-    offset: Option<String>,
-}
-
-/// Slices a small in-memory list into the D14 envelope.
-fn paged<T: serde::Serialize>(path: &str, q: &PageQuery, items: Vec<T>) -> Result<Response> {
-    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let count = items.len() as i64;
-    let (skip, take) = page.slice(items.len());
-    let results: Vec<T> = items.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(path, &[], page, count, results))
-}
+use super::pagination::PageQuery;
 
 /// `GET /api/v1/taxonomies` — every member; current version included.
 #[utoipa::path(
@@ -99,7 +82,7 @@ async fn list(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     match taxonomies::list(&ctx.db, org.org.id).await {
-        Ok(rows) => paged("/api/v1/taxonomies", &q, rows),
+        Ok(rows) => pagination::paged("/api/v1/taxonomies", &[], q.page(), rows),
         Err(e) => taxonomy_error(e.into()),
     }
 }
@@ -239,7 +222,12 @@ async fn versions(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     match taxonomies::versions(&ctx.db, org.org.id, id).await {
-        Ok(v) => paged(&format!("/api/v1/taxonomies/{id}/versions"), &q, v),
+        Ok(v) => pagination::paged(
+            &format!("/api/v1/taxonomies/{id}/versions"),
+            &[],
+            q.page(),
+            v,
+        ),
         Err(e) => taxonomy_error(e),
     }
 }

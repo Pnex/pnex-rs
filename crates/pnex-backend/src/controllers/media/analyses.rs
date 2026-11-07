@@ -3,11 +3,6 @@ use crate::services::{doc_search, media_analyses};
 
 // ─────────── File analyses (media-import-pipeline.md D213) ───────────
 
-fn db_error(e: sea_orm::DbErr) -> Error {
-    tracing::error!(error = %e, "media analyses query failed");
-    Error::InternalServerError
-}
-
 /// Analysis offers, step states and index state of an asset's current version.
 #[derive(serde::Serialize, utoipa::ToSchema)]
 pub(super) struct MediaAnalysesState {
@@ -24,16 +19,16 @@ async fn state_json(
 ) -> Result<MediaAnalysesState> {
     let offers = media_analyses::offers(ctx, org_id, &asset.kind, asset.current_version_id)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     let analyses = match asset.current_version_id {
         Some(v) => media_analyses::list(&ctx.db, org_id, v)
             .await
-            .map_err(db_error)?,
+            .map_err(crate::controllers::db_error)?,
         None => Vec::new(),
     };
     let index = doc_search::state_of(&ctx.db, org_id, asset.id)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     Ok(MediaAnalysesState {
         offers,
         analyses,
@@ -119,7 +114,7 @@ pub(super) async fn start_analyses(
             | media_analyses::AnalysisError::NoVoiceProfile
             | media_analyses::AnalysisError::NoDetector
             | media_analyses::AnalysisError::Busy => StatusCode::CONFLICT,
-            media_analyses::AnalysisError::Db(e) => return Err(db_error(e)),
+            media_analyses::AnalysisError::Db(e) => return Err(crate::controllers::db_error(e)),
         };
         return Err(Error::CustomError(
             status,

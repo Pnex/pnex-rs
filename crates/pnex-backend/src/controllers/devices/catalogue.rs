@@ -53,8 +53,6 @@ pub(super) async fn capabilities(
             mode: capability_mode(c.mode),
         })
         .collect();
-    let count = caps.len() as i64;
-    let (skip, take) = page.slice(caps.len());
     let mut filters = Vec::new();
     if let Some(m) = &q.mode {
         filters.push(("mode".to_string(), m.clone()));
@@ -62,13 +60,7 @@ pub(super) async fn capabilities(
     if let Some(s) = &q.search {
         filters.push(("search".to_string(), s.clone()));
     }
-    format::json(pagination::envelope(
-        "/api/v1/device-capabilities",
-        &filters,
-        page,
-        count,
-        caps.into_iter().skip(skip).take(take).collect(),
-    ))
+    pagination::paged("/api/v1/device-capabilities", &filters, page, caps)
 }
 
 /// Query string as a multi-value map (`capabilities=a&capabilities=b`).

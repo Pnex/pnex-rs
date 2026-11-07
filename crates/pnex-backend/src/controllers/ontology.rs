@@ -19,7 +19,6 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use super::coded_error;
-use super::pagination::{envelope, PageParams};
 use crate::auth::OrgContext;
 use crate::models::_entities::resource_edges;
 use crate::services::ontology::redact::Redaction;
@@ -327,21 +326,7 @@ fn created<T: serde::Serialize>(r: onto::Result<T>) -> Result<Response> {
     }
 }
 
-/// `limit`/`offset` of a computed sub-collection (D240).
-#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
-#[into_params(parameter_in = Query)]
-pub(crate) struct PageQuery {
-    #[param(value_type = Option<i64>)]
-    limit: Option<String>,
-    #[param(value_type = Option<i64>)]
-    offset: Option<String>,
-}
-
-impl PageQuery {
-    pub(crate) fn page(&self) -> PageParams {
-        PageParams::from(self.limit.as_deref(), self.offset.as_deref())
-    }
-}
+pub(crate) use super::pagination::PageQuery;
 
 /// Pages an already computed list into the D14 envelope; `filters` are kept
 /// in the `next`/`previous` links.
@@ -351,15 +336,10 @@ pub(crate) fn paged<T: serde::Serialize>(
     q: &PageQuery,
     r: onto::Result<Vec<T>>,
 ) -> Result<Response> {
-    let rows = match r {
-        Ok(rows) => rows,
-        Err(e) => return onto_error(e),
-    };
-    let page = q.page();
-    let count = rows.len() as i64;
-    let (skip, take) = page.slice(rows.len());
-    let rows: Vec<T> = rows.into_iter().skip(skip).take(take).collect();
-    format::json(envelope(path, filters, page, count, rows))
+    match r {
+        Ok(rows) => super::pagination::paged(path, filters, q.page(), rows),
+        Err(e) => onto_error(e),
+    }
 }
 
 pub(crate) fn actor(org: &OrgContext) -> Actor {

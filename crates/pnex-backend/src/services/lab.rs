@@ -279,11 +279,8 @@ pub async fn delete_project(db: &DatabaseConnection, org_id: i64, id: Uuid) -> R
     Ok(())
 }
 
-pub async fn list_images(
-    db: &DatabaseConnection,
-    org_id: i64,
-    project: Uuid,
-) -> Res<Vec<LabImage>> {
+/// Every image of a project (stats and snapshots need them all).
+async fn all_images(db: &DatabaseConnection, org_id: i64, project: Uuid) -> Res<Vec<LabImage>> {
     find_project(db, org_id, project).await?;
     Ok(lab_images::Entity::find()
         .filter(lab_images::Column::ProjectId.eq(project))
@@ -295,6 +292,26 @@ pub async fn list_images(
         .iter()
         .map(image_view)
         .collect())
+}
+
+pub async fn list_images(
+    db: &DatabaseConnection,
+    org_id: i64,
+    project: Uuid,
+    page: crate::controllers::pagination::PageParams,
+) -> Res<(i64, Vec<LabImage>)> {
+    find_project(db, org_id, project).await?;
+    let (count, rows) = crate::controllers::pagination::sql_page(
+        db,
+        lab_images::Entity::find()
+            .filter(lab_images::Column::ProjectId.eq(project))
+            .order_by_asc(lab_images::Column::CreatedAt)
+            .order_by_asc(lab_images::Column::Name),
+        page,
+    )
+    .await
+    .map_err(LabError::db)?;
+    Ok((count, rows.iter().map(image_view).collect()))
 }
 
 /// Current version of an asset of the org.
@@ -496,7 +513,7 @@ pub async fn save_annotations(
 
 pub async fn stats(db: &DatabaseConnection, org_id: i64, project: Uuid) -> Res<LabStats> {
     let p = find_project(db, org_id, project).await?;
-    let images = list_images(db, org_id, project).await?;
+    let images = all_images(db, org_id, project).await?;
     Ok(lab::stats(&classes_of(&p), &images))
 }
 
@@ -540,7 +557,7 @@ pub async fn freeze(
 ) -> Res<LabDatasetVersion> {
     let p = find_project(db, org_id, project).await?;
     let classes = classes_of(&p);
-    let images = list_images(db, org_id, project).await?;
+    let images = all_images(db, org_id, project).await?;
     let mut snap = DatasetSnapshot {
         classes: classes.clone(),
         images: Vec::new(),

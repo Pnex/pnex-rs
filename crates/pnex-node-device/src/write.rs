@@ -326,7 +326,7 @@ impl DeviceWriteNode {
         let request = self
             .http
             .post(&self.url)
-            .header("x-pnex-flow-token", &self.token)
+            .header(pnex_core::flow::FLOW_TOKEN_HEADER, &self.token)
             // Fencing identity of this worker (D106).
             .header(
                 pnex_core::FLOW_WORKER_HEADER,

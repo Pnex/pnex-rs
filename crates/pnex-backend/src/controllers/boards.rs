@@ -158,20 +158,12 @@ async fn list(
             pins,
         });
     }
-    let count = boards.len() as i64;
-    let (skip, take) = page.slice(boards.len());
     let filters: Vec<(String, String)> = q
         .soc
         .iter()
         .map(|s| ("soc".to_string(), s.clone()))
         .collect();
-    format::json(pagination::envelope(
-        "/api/v1/boards",
-        &filters,
-        page,
-        count,
-        boards.into_iter().skip(skip).take(take).collect(),
-    ))
+    pagination::paged("/api/v1/boards", &filters, page, boards)
 }
 
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).

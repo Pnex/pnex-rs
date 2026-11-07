@@ -30,6 +30,22 @@ pub fn default_limit() -> i64 {
         .min(MAX_LIMIT)
 }
 
+/// `limit`/`offset` query of a plain paginated list (D240).
+#[derive(Debug, Default, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct PageQuery {
+    #[param(value_type = Option<i64>)]
+    pub limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    pub offset: Option<String>,
+}
+
+impl PageQuery {
+    pub fn page(&self) -> PageParams {
+        PageParams::from(self.limit.as_deref(), self.offset.as_deref())
+    }
+}
+
 /// Requested page, after clamping.
 #[derive(Debug, Clone, Copy)]
 pub struct PageParams {
@@ -174,6 +190,27 @@ where
     Ok((count, rows))
 }
 
+/// Raw-SQL twin of [`sql_page`]'s count: `SELECT COUNT(*) <from_where>`
+/// (`FROM … WHERE …`, same bound values as the page query).
+pub async fn sql_count(
+    db: &sea_orm::DatabaseConnection,
+    from_where: &str,
+    values: Vec<sea_orm::Value>,
+) -> Result<i64, sea_orm::DbErr> {
+    use sea_orm::ConnectionTrait;
+    let row = db
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            format!("SELECT COUNT(*) AS n {from_where}"),
+            values,
+        ))
+        .await?;
+    Ok(match row {
+        Some(r) => r.try_get::<i64>("", "n")?,
+        None => 0,
+    })
+}
+
 /// Paginated envelope with relative `next`/`previous` links (path and
 /// filters kept). `filters`: active key/value pairs, limit/offset excluded.
 pub fn envelope<T: Serialize>(
@@ -198,6 +235,20 @@ pub fn envelope<T: Serialize>(
         "previous": page.previous_offset().map(link),
         "results": results,
     })
+}
+
+/// D14 response of one page of an already filtered in-memory list (the
+/// single slicing helper; growing lists use [`sql_page`] instead).
+pub fn paged<T: Serialize>(
+    path: &str,
+    filters: &[(String, String)],
+    page: PageParams,
+    all: Vec<T>,
+) -> loco_rs::Result<axum::response::Response> {
+    let count = all.len() as i64;
+    let (skip, take) = page.slice(all.len());
+    let rows: Vec<T> = all.into_iter().skip(skip).take(take).collect();
+    loco_rs::controller::format::json(envelope(path, filters, page, count, rows))
 }
 
 /// Minimal percent-encoding of filter values in the links.

@@ -164,13 +164,11 @@ async fn list(
         }
         Err(resp) => return Ok(resp),
     }
-    let rows = select
-        .order_by_asc(functions::Column::Name)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let count = rows.len() as i64;
-    // Current version numbers of the batch: a single versions query.
+    let (count, rows) =
+        pagination::sql_page(&ctx.db, select.order_by_asc(functions::Column::Name), page)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+    // Current version numbers of the page: a single versions query.
     let ids: Vec<i64> = rows.iter().map(|f| f.id).collect();
     let all_versions = if ids.is_empty() {
         Vec::new()
@@ -192,8 +190,6 @@ async fn list(
                 .unwrap_or(0);
             summary_dto(f, current)
         })
-        .skip(page.slice(count as usize).0)
-        .take(page.slice(count as usize).1)
         .collect();
     let label_filter: Vec<(String, String)> = q
         .label

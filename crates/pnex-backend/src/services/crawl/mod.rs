@@ -148,21 +148,25 @@ pub async fn pages(
     org_id: i64,
     mission_id: Uuid,
     state: Option<&str>,
-) -> Result<Vec<SitePage>, sea_orm::DbErr> {
+    page: crate::controllers::pagination::PageParams,
+) -> Result<(i64, Vec<SitePage>), sea_orm::DbErr> {
+    const FROM: &str = "FROM site_pages WHERE org_id = $1 AND mission_id = $2 \
+                        AND ($3::text IS NULL OR state = $3)";
+    let values = vec![
+        org_id.into(),
+        mission_id.into(),
+        state.map(str::to_string).into(),
+    ];
+    let count = crate::controllers::pagination::sql_count(db, FROM, values.clone()).await?;
+    let mut values = values;
+    values.extend([page.limit.into(), page.offset.into()]);
     let rows = PageRow::find_by_statement(stmt(
-        &format!(
-            "SELECT {PAGE_COLUMNS} FROM site_pages WHERE org_id = $1 AND mission_id = $2 \
-             AND ($3::text IS NULL OR state = $3) ORDER BY last_seen_at DESC, url LIMIT 5000"
-        ),
-        vec![
-            org_id.into(),
-            mission_id.into(),
-            state.map(str::to_string).into(),
-        ],
+        &format!("SELECT {PAGE_COLUMNS} {FROM} ORDER BY last_seen_at DESC, url LIMIT $4 OFFSET $5"),
+        values,
     ))
     .all(db)
     .await?;
-    Ok(rows.iter().map(PageRow::view).collect())
+    Ok((count, rows.iter().map(PageRow::view).collect()))
 }
 
 /// A page read by a crawl (server or agent).

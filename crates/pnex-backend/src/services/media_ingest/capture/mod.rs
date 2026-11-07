@@ -63,9 +63,6 @@ pub struct RemoteSink {
     token: String,
 }
 
-/// Header of the internal service token (shared with `/internal/flow/*`).
-pub const SERVICE_TOKEN_HEADER: &str = "x-pnex-flow-token";
-
 impl RemoteSink {
     /// `None` when the URL or the token is not configured.
     pub fn from_config(config: &loco_rs::config::Config) -> Option<Self> {
@@ -672,7 +669,7 @@ async fn post_segment(
     let res = remote
         .client
         .post(&remote.url)
-        .header(SERVICE_TOKEN_HEADER, &remote.token)
+        .header(pnex_core::flow::FLOW_TOKEN_HEADER, &remote.token)
         .query(&[
             ("stream_id", stream.id.to_string()),
             ("org_id", stream.org_id.to_string()),

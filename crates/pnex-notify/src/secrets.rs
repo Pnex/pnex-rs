@@ -14,8 +14,7 @@ use crate::channels::CLIENT;
 use crate::error::NotifyError;
 use crate::registry::channel;
 
-/// Header carrying the flow runtime service token.
-pub const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+pub use pnex_core::flow::FLOW_TOKEN_HEADER;
 
 /// Vault id held by a field value (`{"secret_id": "…"}`), if any.
 pub fn ref_of(value: &serde_json::Value) -> Option<Uuid> {

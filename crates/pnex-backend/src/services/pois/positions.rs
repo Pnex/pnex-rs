@@ -378,10 +378,14 @@ pub async fn set_manual(
 pub async fn list_positions(
     db: &DatabaseConnection,
     org_id: i64,
-) -> Result<Vec<device_positions::Model>, DbErr> {
-    device_positions::Entity::find()
-        .filter(device_positions::Column::OrgId.eq(org_id))
-        .order_by_desc(device_positions::Column::PositionedAt)
-        .all(db)
-        .await
+    page: crate::controllers::pagination::PageParams,
+) -> Result<(i64, Vec<device_positions::Model>), DbErr> {
+    crate::controllers::pagination::sql_page(
+        db,
+        device_positions::Entity::find()
+            .filter(device_positions::Column::OrgId.eq(org_id))
+            .order_by_desc(device_positions::Column::PositionedAt),
+        page,
+    )
+    .await
 }

@@ -98,14 +98,7 @@ pub(super) async fn attributions(
         Err(e) => return attribution_error(media_attributions::AttributionError::Db(e)),
     };
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let (from, to) = page.slice(all.len());
-    format::json(pagination::envelope(
-        &format!("/api/v1/media/{id}/attributions"),
-        &[],
-        page,
-        all.len() as i64,
-        all[from..to].to_vec(),
-    ))
+    pagination::paged(&format!("/api/v1/media/{id}/attributions"), &[], page, all)
 }
 
 /// `POST /api/v1/media/{id}/attributions` — owner/admin.

@@ -166,18 +166,7 @@ async fn list(
     // shortcut: views are built for the whole org then sliced (a handful of
     // consented profiles per org); push LIMIT into the service if it grows.
     match profiles::list(&ctx.db, org.org.id).await {
-        Ok(v) => {
-            let count = v.len() as i64;
-            let (skip, take) = page.slice(v.len());
-            let rows: Vec<_> = v.into_iter().skip(skip).take(take).collect();
-            format::json(pagination::envelope(
-                "/api/v1/voice-id/profiles",
-                &[],
-                page,
-                count,
-                rows,
-            ))
-        }
+        Ok(v) => pagination::paged("/api/v1/voice-id/profiles", &[], page, v),
         Err(e) => fail(e),
     }
 }

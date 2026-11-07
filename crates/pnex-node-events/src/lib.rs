@@ -22,7 +22,7 @@ use edgelink_macro::*;
 use pnex_core::events::{EventInput, EventLevel};
 
 const NODE: &str = "pnex-event-log";
-const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+use pnex_core::flow::FLOW_TOKEN_HEADER;
 
 /// Anti-stripping anchor (see the runtime binary).
 pub fn registered() {}

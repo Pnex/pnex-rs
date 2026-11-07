@@ -70,13 +70,8 @@ fn recipe_error(e: RecipeError) -> Result<Response> {
             "The recipe was saved by someone else since it was read.",
             None,
         )),
-        RecipeError::Db(e) => db_error(e),
+        RecipeError::Db(e) => Err(super::db_error(e)),
     }
-}
-
-fn db_error(e: sea_orm::DbErr) -> Result<Response> {
-    tracing::error!(error = %e, "site recipes database error");
-    Err(Error::InternalServerError)
 }
 
 fn run_not_found() -> Error {
@@ -122,7 +117,7 @@ async fn sites(
             count,
             rows,
         )),
-        Err(e) => db_error(e),
+        Err(e) => Err(super::db_error(e)),
     }
 }
 
@@ -157,7 +152,7 @@ async fn list(
     let site = q.site.as_deref().filter(|s| !s.trim().is_empty());
     let all = match recipes::list(&ctx.db, org.org.id, site).await {
         Ok(v) => v,
-        Err(e) => return db_error(e),
+        Err(e) => return Err(super::db_error(e)),
     };
     let count = all.len() as i64;
     let results: Vec<SiteRecipe> = all
@@ -340,16 +335,14 @@ async fn versions_list(
         Ok(v) => v,
         Err(e) => return recipe_error(e),
     };
-    let count = all.len() as i64;
-    let (skip, take) = page.slice(all.len());
-    let results: Vec<SiteRecipeVersion> = all.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(
+    // shortcut: the service caps the history at its 500 newest versions (restore
+    // reads the same list); push LIMIT/OFFSET into it if recipes get edited more.
+    pagination::paged(
         &format!("/api/v1/site-recipes/{id}/versions"),
         &[],
         page,
-        count,
-        results,
-    ))
+        all,
+    )
 }
 
 #[utoipa::path(
@@ -376,7 +369,7 @@ async fn schedule(
     }
     match recipes::flow_node::schedule(&ctx.db, org.org.id, id).await {
         Ok(s) => format::json(s),
-        Err(e) => db_error(e),
+        Err(e) => Err(super::db_error(e)),
     }
 }
 
@@ -530,7 +523,7 @@ async fn runs(
             count,
             rows,
         )),
-        Err(e) => db_error(e),
+        Err(e) => Err(super::db_error(e)),
     }
 }
 
@@ -747,22 +740,13 @@ async fn endpoints_list(
     let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let rows = match endpoints::list(&ctx.db, org.org.id).await {
         Ok(r) => r,
-        Err(e) => return db_error(e),
+        Err(e) => return Err(super::db_error(e)),
     };
     let views = match endpoints::views(&ctx.db, org.org.id, &rows).await {
         Ok(v) => v,
         Err(e) => return crate::controllers::secrets::store_error(e),
     };
-    let count = views.len() as i64;
-    let (skip, take) = page.slice(views.len());
-    let results: Vec<BrowserEndpoint> = views.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(
-        "/api/v1/browser-endpoints",
-        &[],
-        page,
-        count,
-        results,
-    ))
+    pagination::paged("/api/v1/browser-endpoints", &[], page, views)
 }
 
 #[utoipa::path(

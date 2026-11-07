@@ -49,16 +49,7 @@ async fn keys(
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let all = memory::list_keys(&ctx.config, org.org.id).await;
-    let (skip, take) = page.slice(all.len());
-    let count = all.len() as i64;
-    let rows: Vec<_> = all.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(
-        "/api/v1/memory/keys",
-        &[],
-        page,
-        count,
-        rows,
-    ))
+    pagination::paged("/api/v1/memory/keys", &[], page, all)
 }
 
 #[utoipa::path(

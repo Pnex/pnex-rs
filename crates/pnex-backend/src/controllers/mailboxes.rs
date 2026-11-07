@@ -134,16 +134,7 @@ async fn list(
     let views = mail::views(&ctx.db, &access, &rows)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    let count = views.len() as i64;
-    let (skip, take) = page.slice(views.len());
-    let results: Vec<Mailbox> = views.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(
-        "/api/v1/mailboxes",
-        &[],
-        page,
-        count,
-        results,
-    ))
+    pagination::paged("/api/v1/mailboxes", &[], page, views)
 }
 
 #[utoipa::path(

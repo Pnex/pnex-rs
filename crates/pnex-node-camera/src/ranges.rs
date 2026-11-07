@@ -27,7 +27,7 @@ use pnex_core::time_range::{
 };
 
 const NODE: &str = "pnex-range-upsert";
-const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+use pnex_core::flow::FLOW_TOKEN_HEADER;
 
 /// Explicit fields, no `flatten` (arbitrary_precision, see topics.rs).
 #[derive(Debug, Deserialize)]

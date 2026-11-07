@@ -29,11 +29,6 @@ pub(super) struct MediaIndexState {
     index: Option<doc_search::IndexState>,
 }
 
-fn db_error(e: sea_orm::DbErr) -> Error {
-    tracing::error!(error = %e, "document search query failed");
-    Error::InternalServerError
-}
-
 /// `GET /api/v1/media/search?q=&kind=&k=` — lexical search over the
 /// current versions of the org's documents and tables.
 #[utoipa::path(
@@ -57,7 +52,7 @@ pub(super) async fn search(
     let kind = q.kind.as_deref().filter(|k| doc_search::is_indexed_kind(k));
     let hits = doc_search::search(&ctx.db, org.org.id, &q.q, kind, q.k.unwrap_or(20))
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     format::json(MediaSearchHits { hits })
 }
 
@@ -91,7 +86,7 @@ pub(super) async fn chunk(
 ) -> Result<Response> {
     let chunks = doc_search::read_chunk(&ctx.db, org.org.id, chunk_id, q.context.unwrap_or(0))
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     if chunks.is_empty() {
         return Err(Error::NotFound);
     }
@@ -124,7 +119,7 @@ pub(super) async fn index_state(
     }
     let state = doc_search::state_of(&ctx.db, org.org.id, id)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     format::json(MediaIndexState { index: state })
 }
 
@@ -166,6 +161,6 @@ pub(super) async fn reindex(
     };
     doc_search::enqueue(&ctx, org.org.id, version_id)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     Ok(StatusCode::ACCEPTED.into_response())
 }

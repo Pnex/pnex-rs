@@ -114,6 +114,12 @@ pub(crate) async fn api_route_not_found() -> loco_rs::Error {
     )
 }
 
+/// 500 of a database failure, the cause logged (never sent to the client).
+pub(crate) fn db_error(e: sea_orm::DbErr) -> loco_rs::Error {
+    tracing::error!(error = %e, "database error");
+    loco_rs::Error::InternalServerError
+}
+
 /// Error answer of the API: machine `code` (resolved by the frontend to
 /// `err-<code>`), canonical English `description`, optional fluent `args`.
 pub(crate) fn coded_error(

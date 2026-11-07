@@ -265,8 +265,16 @@ async fn images(
     Path(id): Path<Uuid>,
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
-    let rows = lab::list_images(&ctx.db, org.org.id, id).await;
-    paged(&format!("/api/v1/lab/projects/{id}/images"), &q, rows)
+    match lab::list_images(&ctx.db, org.org.id, id, q.page()).await {
+        Ok((count, rows)) => format::json(super::pagination::envelope(
+            &format!("/api/v1/lab/projects/{id}/images"),
+            &[],
+            q.page(),
+            count,
+            rows,
+        )),
+        Err(e) => fail(e),
+    }
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]

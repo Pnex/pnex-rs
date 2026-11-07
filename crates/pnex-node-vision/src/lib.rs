@@ -58,7 +58,7 @@ use pnex_node_camera::status::{publish_status, STATUS_PERIOD};
 use pnex_vision::Detector;
 
 const NODE: &str = "pnex-vision-detect";
-const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+use pnex_core::flow::FLOW_TOKEN_HEADER;
 /// Frames older than this are skipped (inference slower than the camera).
 const STALE_FRAME_MS: i64 = 3_000;
 /// Annotation layer post period (D105).

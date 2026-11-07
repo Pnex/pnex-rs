@@ -173,20 +173,21 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = FluidMixtures::find()
-        .filter(fluid_mixtures::Column::OrgId.eq(org.org.id))
-        .order_by_desc(fluid_mixtures::Column::Id)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let all: Vec<pnex_core::FluidMixture> = rows
-        .into_iter()
-        .filter(|m| pagination::rust_search_match(&q.search, &[&m.name]))
-        .map(dto)
-        .collect::<Result<_>>()?;
-    let count = all.len() as i64;
-    let (skip, take) = page.slice(all.len());
-    let results: Vec<pnex_core::FluidMixture> = all.into_iter().skip(skip).take(take).collect();
+    let mut select = FluidMixtures::find().filter(fluid_mixtures::Column::OrgId.eq(org.org.id));
+    if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
+        select = select.filter(pagination::sql_contains(
+            (fluid_mixtures::Entity, fluid_mixtures::Column::Name),
+            &pat,
+        ));
+    }
+    let (count, rows) = pagination::sql_page(
+        &ctx.db,
+        select.order_by_desc(fluid_mixtures::Column::Id),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    let results: Vec<pnex_core::FluidMixture> = rows.into_iter().map(dto).collect::<Result<_>>()?;
     Ok(format::json(pagination::envelope(
         "/api/v1/fluid-mixtures",
         &[],

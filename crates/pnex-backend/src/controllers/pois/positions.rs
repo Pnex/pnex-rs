@@ -31,21 +31,15 @@ pub(super) async fn list_positions(
     Query(q): Query<PositionsQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = svc::list_positions(&ctx.db, org.org.id)
+    let (count, rows) = svc::list_positions(&ctx.db, org.org.id, page)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    let (skip, take) = page.slice(rows.len());
-    let results: Vec<DevicePositionDto> = rows
-        .iter()
-        .skip(skip)
-        .take(take)
-        .map(position_dto)
-        .collect();
+    let results: Vec<DevicePositionDto> = rows.iter().map(position_dto).collect();
     format::json(pagination::envelope(
         "/api/v1/device-positions",
         &[],
         page,
-        rows.len() as i64,
+        count,
         results,
     ))
 }

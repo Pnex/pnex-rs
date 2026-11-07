@@ -688,19 +688,25 @@ pub async fn list(
     db: &DatabaseConnection,
     org_id: i64,
     page: Option<Uuid>,
-) -> Result<Vec<WebProof>, sea_orm::DbErr> {
-    Ok(ProofRow::find_by_statement(stmt(
-        &format!(
-            "SELECT {PROOF_COLUMNS} FROM web_proofs WHERE org_id = $1 \
-             AND ($2::uuid IS NULL OR site_page_id = $2) ORDER BY created_at DESC LIMIT 500"
-        ),
-        vec![org_id.into(), page.into()],
+    window: crate::controllers::pagination::PageParams,
+) -> Result<(i64, Vec<WebProof>), sea_orm::DbErr> {
+    const FROM: &str =
+        "FROM web_proofs WHERE org_id = $1 AND ($2::uuid IS NULL OR site_page_id = $2)";
+    let count =
+        crate::controllers::pagination::sql_count(db, FROM, vec![org_id.into(), page.into()])
+            .await?;
+    let rows = ProofRow::find_by_statement(stmt(
+        &format!("SELECT {PROOF_COLUMNS} {FROM} ORDER BY created_at DESC LIMIT $3 OFFSET $4"),
+        vec![
+            org_id.into(),
+            page.into(),
+            window.limit.into(),
+            window.offset.into(),
+        ],
     ))
     .all(db)
-    .await?
-    .iter()
-    .map(ProofRow::view)
-    .collect())
+    .await?;
+    Ok((count, rows.iter().map(ProofRow::view).collect()))
 }
 
 /// Recomputes the org's chain: each manifest's SHA-256, its link to the

@@ -62,15 +62,14 @@ pub(super) async fn list_templates(
         }
         Err(resp) => return Ok(resp),
     }
-    let rows = select
-        .order_by_desc(notify_templates::Column::Id)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
+    let (count, rows) = pagination::sql_page(
+        &ctx.db,
+        select.order_by_desc(notify_templates::Column::Id),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
     let results: Vec<NotifyTemplate> = rows.into_iter().map(template_dto).collect();
-    let count = results.len() as i64;
-    let (skip, take) = page.slice(results.len());
-    let results: Vec<NotifyTemplate> = results.into_iter().skip(skip).take(take).collect();
     Ok(format::json(pagination::envelope(
         "/api/v1/notify/templates",
         &[],

@@ -143,7 +143,7 @@ async fn internal_segment(
     let stream = match stream {
         Ok(Some(s)) => s,
         Ok(None) => return Ok(StatusCode::NOT_FOUND.into_response()),
-        Err(e) => return db_error(e),
+        Err(e) => return Err(super::db_error(e)),
     };
     let Some(clock) = ClockSource::from_wire(&q.clock) else {
         return field("segment", err_codes::FIELD_INVALID);
@@ -321,13 +321,8 @@ fn profile_error(e: ProfileError) -> Result<Response> {
             err_codes::ASR_PROFILE_NAME_TAKEN,
             "An ASR profile of the org already has this name.",
         )),
-        ProfileError::Db(e) => db_error(e),
+        ProfileError::Db(e) => Err(super::db_error(e)),
     }
-}
-
-fn db_error<T>(e: sea_orm::DbErr) -> Result<T> {
-    tracing::error!(error = %e, "media ingest database error");
-    Err(Error::InternalServerError)
 }
 
 /// One stream read model with its secret reference resolved.
@@ -414,7 +409,7 @@ async fn stream_list(
     }
     let (count, rows) = match pagination::sql_page(&ctx.db, select, page).await {
         Ok(v) => v,
-        Err(e) => return db_error(e),
+        Err(e) => return Err(super::db_error(e)),
     };
     let results = match streams::views(&ctx.db, org.org.id, &rows).await {
         Ok(v) => v,
@@ -451,8 +446,13 @@ async fn capture_device_list(
     Query(q): Query<ListPage>,
 ) -> Result<Response> {
     match crate::services::media_ingest::boxes::list(&ctx.db, org.org.id).await {
-        Ok(v) => paged("/api/v1/media/capture-devices", &q, v),
-        Err(e) => db_error(e),
+        Ok(v) => pagination::paged(
+            "/api/v1/media/capture-devices",
+            &[],
+            pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref()),
+            v,
+        ),
+        Err(e) => Err(super::db_error(e)),
     }
 }
 
@@ -466,17 +466,6 @@ struct ListPage {
     limit: Option<String>,
     #[param(value_type = Option<i64>)]
     offset: Option<String>,
-}
-
-/// D14 envelope of an in-memory list.
-// shortcut: the whole org list is loaded then sliced (tens of rows at most);
-// push LIMIT/OFFSET into the services if a catalogue grows.
-fn paged<T: serde::Serialize>(path: &str, q: &ListPage, all: Vec<T>) -> Result<Response> {
-    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let count = all.len() as i64;
-    let (skip, take) = page.slice(all.len());
-    let rows: Vec<T> = all.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(path, &[], page, count, rows))
 }
 
 /// `GET /api/v1/media/streams/{id}` — every member.
@@ -866,7 +855,7 @@ async fn segment_list(
     }
     let (count, rows) = match pagination::sql_page(&ctx.db, query, page).await {
         Ok(v) => v,
-        Err(e) => return db_error(e),
+        Err(e) => return Err(super::db_error(e)),
     };
     let results: Vec<MediaSegment> = rows.iter().map(segment_view).collect();
     format::json(pagination::envelope(
@@ -917,7 +906,7 @@ async fn segment_retry(
         .await;
     let failed = match failed {
         Ok(rows) => rows,
-        Err(e) => return db_error(e),
+        Err(e) => return Err(super::db_error(e)),
     };
     for seg in &failed {
         crate::services::media_ingest::segments::enqueue(&ctx, seg, false).await;
@@ -971,12 +960,13 @@ async fn profile_list(
     Query(q): Query<ListPage>,
 ) -> Result<Response> {
     match profiles::list(&ctx.db, org.org.id).await {
-        Ok(rows) => paged(
+        Ok(rows) => pagination::paged(
             "/api/v1/asr/profiles",
-            &q,
+            &[],
+            pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref()),
             rows.iter().map(profiles::view).collect(),
         ),
-        Err(e) => db_error(e),
+        Err(e) => Err(super::db_error(e)),
     }
 }
 
@@ -1124,7 +1114,7 @@ fn model_error(e: ModelError) -> Result<Response> {
             format!("No runtime of this server can run models of family {family}."),
             Some(serde_json::json!({ "family": family })),
         )),
-        ModelError::Db(e) => db_error(e),
+        ModelError::Db(e) => Err(super::db_error(e)),
     }
 }
 
@@ -1136,7 +1126,7 @@ async fn model_view(
 ) -> Result<Response> {
     match models::views(&ctx.db, std::slice::from_ref(row)).await {
         Ok(mut v) => Ok((status, format::json(v.remove(0))).into_response()),
-        Err(e) => db_error(e),
+        Err(e) => Err(super::db_error(e)),
     }
 }
 
@@ -1161,10 +1151,15 @@ async fn model_list(
 ) -> Result<Response> {
     match models::list(&ctx.db, org.org.id).await {
         Ok(rows) => match models::views(&ctx.db, &rows).await {
-            Ok(v) => paged("/api/v1/asr/models", &q, v),
-            Err(e) => db_error(e),
+            Ok(v) => pagination::paged(
+                "/api/v1/asr/models",
+                &[],
+                pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref()),
+                v,
+            ),
+            Err(e) => Err(super::db_error(e)),
         },
-        Err(e) => db_error(e),
+        Err(e) => Err(super::db_error(e)),
     }
 }
 
@@ -1389,7 +1384,7 @@ async fn transcript_search(
     };
     let rows = match streams::select(org.org.id).all(&ctx.db).await {
         Ok(rows) => rows,
-        Err(e) => return db_error(e),
+        Err(e) => return Err(super::db_error(e)),
     };
     let wanted: Vec<String> = q
         .stream
@@ -1486,7 +1481,7 @@ async fn metadata_list(
     let row = match streams::find_by_slug(&ctx.db, org.org.id, slug).await {
         Ok(Some(row)) => row,
         Ok(None) => return stream_error(StreamError::NotFound),
-        Err(e) => return db_error(e),
+        Err(e) => return Err(super::db_error(e)),
     };
     match crate::services::media_ingest::metadata::list(
         &ctx,

@@ -259,26 +259,6 @@ fn iam_error(e: IamError) -> Result<Response> {
     }
 }
 
-/// In-memory page of a short list (roles and teams of one org).
-fn page_of<T: Serialize>(
-    path: &str,
-    filters: Vec<(String, String)>,
-    limit: Option<&str>,
-    offset: Option<&str>,
-    rows: Vec<T>,
-) -> Result<Response> {
-    let page = pagination::PageParams::from(limit, offset);
-    let count = rows.len() as i64;
-    let (skip, take) = page.slice(rows.len());
-    format::json(pagination::envelope(
-        path,
-        &filters,
-        page,
-        count,
-        rows.into_iter().skip(skip).take(take).collect(),
-    ))
-}
-
 fn search_filter(search: &Option<String>) -> Vec<(String, String)> {
     search
         .iter()
@@ -331,11 +311,10 @@ async fn permissions(_org: OrgContext, Query(q): Query<ListQuery>) -> Result<Res
             level: (*l).into(),
         })
         .collect();
-    page_of(
+    pagination::paged(
         "/api/v1/iam/permissions",
-        search_filter(&q.search),
-        q.limit.as_deref(),
-        q.offset.as_deref(),
+        &search_filter(&q.search),
+        pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref()),
         rows,
     )
 }
@@ -385,11 +364,10 @@ async fn roles_list(
         }))
         .filter(|r| pagination::rust_search_match(&q.search, &[&r.key, &r.name]))
         .collect();
-    page_of(
+    pagination::paged(
         "/api/v1/iam/roles",
-        search_filter(&q.search),
-        q.limit.as_deref(),
-        q.offset.as_deref(),
+        &search_filter(&q.search),
+        pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref()),
         rows,
     )
 }
@@ -546,11 +524,10 @@ async fn teams_list(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     match store::list_teams(&ctx.db, org.org.id).await {
-        Ok(rows) => page_of(
+        Ok(rows) => pagination::paged(
             "/api/v1/iam/teams",
-            search_filter(&q.search),
-            q.limit.as_deref(),
-            q.offset.as_deref(),
+            &search_filter(&q.search),
+            pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref()),
             rows.into_iter()
                 .filter(|t| pagination::rust_search_match(&q.search, &[&t.name]))
                 .collect(),
@@ -769,11 +746,10 @@ async fn assignments_list(
         filters.push(("role_id".to_string(), r.to_string()));
     }
     match store::list_assignments(&ctx.db, org.org.id, &filter).await {
-        Ok(rows) => page_of(
+        Ok(rows) => pagination::paged(
             "/api/v1/iam/assignments",
-            filters,
-            q.limit.as_deref(),
-            q.offset.as_deref(),
+            &filters,
+            pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref()),
             rows,
         ),
         Err(e) => iam_error(e),
@@ -909,11 +885,10 @@ async fn service_accounts_list(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     match service::list_accounts(&ctx.db, org.org.id).await {
-        Ok(rows) => page_of(
+        Ok(rows) => pagination::paged(
             "/api/v1/iam/service-accounts",
-            search_filter(&q.search),
-            q.limit.as_deref(),
-            q.offset.as_deref(),
+            &search_filter(&q.search),
+            pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref()),
             rows.into_iter()
                 .filter(|a| pagination::rust_search_match(&q.search, &[&a.name]))
                 .collect(),
@@ -1064,11 +1039,10 @@ async fn access_keys_list(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     match service::list_keys(&ctx.db, org.org.id, id).await {
-        Ok(rows) => page_of(
+        Ok(rows) => pagination::paged(
             &format!("/api/v1/iam/service-accounts/{id}/keys"),
-            Vec::new(),
-            q.limit.as_deref(),
-            q.offset.as_deref(),
+            &[],
+            pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref()),
             rows,
         ),
         Err(e) => iam_error(e),

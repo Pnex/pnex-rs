@@ -79,16 +79,7 @@ async fn streams(
         .await
         .map_err(|e| o2_unavailable(&e))?
         .ok_or_else(o2_not_configured)?;
-    let (skip, take) = page.slice(names.len());
-    let count = names.len() as i64;
-    let rows: Vec<String> = names.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(
-        "/api/v1/events/streams",
-        &[],
-        page,
-        count,
-        rows,
-    ))
+    pagination::paged("/api/v1/events/streams", &[], page, names)
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]

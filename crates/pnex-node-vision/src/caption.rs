@@ -77,7 +77,7 @@ pub async fn post_ai<B: serde::Serialize, R: serde::de::DeserializeOwned>(
 ) -> std::result::Result<R, String> {
     let resp = http
         .post(url)
-        .header("x-pnex-flow-token", token)
+        .header(pnex_core::flow::FLOW_TOKEN_HEADER, token)
         .header(
             pnex_core::FLOW_WORKER_HEADER,
             pnex_core::flow_worker_fence().unwrap_or_default(),

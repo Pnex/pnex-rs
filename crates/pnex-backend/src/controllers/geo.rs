@@ -3,7 +3,7 @@
 //! reference). Proxy: every member, the browser never calls a provider
 //! (L20). Org always from the principal (R1).
 
-use crate::controllers::pagination::{self, PageParams};
+use crate::controllers::pagination;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post, put};
@@ -104,11 +104,6 @@ fn proxy_error(e: ProxyError) -> Result<Response> {
     }
 }
 
-fn db_error(e: sea_orm::DbErr) -> Error {
-    tracing::error!(error = %e, "geo providers database error");
-    Error::InternalServerError
-}
-
 fn author(org: &OrgContext) -> Author {
     Author {
         user_id: Some(org.auth.user.id),
@@ -150,31 +145,14 @@ async fn list(
 ) -> Result<Response> {
     let rows = providers::list(&ctx.db, org.org.id)
         .await
-        .map_err(db_error)?;
+        .map_err(crate::controllers::db_error)?;
     match providers::views(&ctx.db, org.org.id, &rows).await {
-        Ok(views) => paged("/api/v1/geo/providers", &q, views),
+        Ok(views) => pagination::paged("/api/v1/geo/providers", &[], q.page(), views),
         Err(e) => crate::controllers::secrets::store_error(e),
     }
 }
 
-/// Page of a list (`limit`/`offset`, D14).
-#[derive(Deserialize, utoipa::IntoParams)]
-#[into_params(parameter_in = Query)]
-struct PageQuery {
-    #[param(value_type = Option<i64>)]
-    limit: Option<String>,
-    #[param(value_type = Option<i64>)]
-    offset: Option<String>,
-}
-
-/// Slices a small in-memory list into the D14 envelope.
-fn paged<T: serde::Serialize>(path: &str, q: &PageQuery, items: Vec<T>) -> Result<Response> {
-    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let count = items.len() as i64;
-    let (skip, take) = page.slice(items.len());
-    let results: Vec<T> = items.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(path, &[], page, count, results))
-}
+use super::pagination::PageQuery;
 
 /// `POST /api/v1/geo/providers` — owner/admin.
 #[utoipa::path(
@@ -342,7 +320,7 @@ async fn basemaps(
         Err(e) => return crate::controllers::secrets::store_error(e),
     };
     match providers::basemaps(&ctx.db, &ring, org.org.id).await {
-        Ok(maps) => paged("/api/v1/geo/basemaps", &q, maps),
+        Ok(maps) => pagination::paged("/api/v1/geo/basemaps", &[], q.page(), maps),
         Err(e) => crate::controllers::secrets::store_error(e),
     }
 }

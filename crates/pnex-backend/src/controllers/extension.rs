@@ -188,23 +188,7 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
     }
 }
 
-/// Page of a list (`limit`/`offset`, D14).
-#[derive(serde::Deserialize, utoipa::IntoParams)]
-#[into_params(parameter_in = Query)]
-struct PageQuery {
-    #[param(value_type = Option<i64>)]
-    limit: Option<String>,
-    #[param(value_type = Option<i64>)]
-    offset: Option<String>,
-}
-
-fn paged<T: serde::Serialize>(path: &str, q: &PageQuery, items: Vec<T>) -> Result<Response> {
-    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let count = items.len() as i64;
-    let (skip, take) = page.slice(items.len());
-    let results: Vec<T> = items.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(path, &[], page, count, results))
-}
+use super::pagination::PageQuery;
 
 /// `GET /api/v1/extension/agents` — the caller's and the common ones.
 #[utoipa::path(
@@ -225,7 +209,7 @@ async fn agents(
 ) -> Result<Response> {
     let can_share = org.can("extension:share");
     match extension::list_agents(&ctx.db, org.org.id, org.auth.user.id, can_share).await {
-        Ok(rows) => paged("/api/v1/extension/agents", &q, rows),
+        Ok(rows) => pagination::paged("/api/v1/extension/agents", &[], q.page(), rows),
         Err(e) => extension_error(e),
     }
 }
@@ -947,15 +931,18 @@ async fn site_pages(
         return extension_error(e);
     }
     let state = q.state.as_deref().filter(|s| !s.is_empty());
-    match crate::services::crawl::pages(&ctx.db, org.org.id, id, state).await {
-        Ok(rows) => paged(
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let filters: Vec<(String, String)> = state
+        .map(|s| vec![("state".to_string(), s.to_string())])
+        .unwrap_or_default();
+    match crate::services::crawl::pages(&ctx.db, org.org.id, id, state, page).await {
+        Ok((count, rows)) => format::json(pagination::envelope(
             &format!("/api/v1/extension/missions/{id}/pages"),
-            &PageQuery {
-                limit: q.limit,
-                offset: q.offset,
-            },
+            &filters,
+            page,
+            count,
             rows,
-        ),
+        )),
         Err(e) => extension_error(e.into()),
     }
 }
@@ -989,15 +976,19 @@ async fn proofs(
     org: OrgContext,
     Query(q): Query<ProofsQuery>,
 ) -> Result<Response> {
-    match crate::services::proofs::list(&ctx.db, org.org.id, q.page_id).await {
-        Ok(rows) => paged(
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let filters: Vec<(String, String)> = q
+        .page_id
+        .map(|p| vec![("page_id".to_string(), p.to_string())])
+        .unwrap_or_default();
+    match crate::services::proofs::list(&ctx.db, org.org.id, q.page_id, page).await {
+        Ok((count, rows)) => format::json(pagination::envelope(
             "/api/v1/extension/proofs",
-            &PageQuery {
-                limit: q.limit,
-                offset: q.offset,
-            },
+            &filters,
+            page,
+            count,
             rows,
-        ),
+        )),
         Err(e) => extension_error(e.into()),
     }
 }
@@ -1095,7 +1086,7 @@ async fn missions(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     match extension::list_missions(&ctx.db, org.org.id).await {
-        Ok(rows) => paged("/api/v1/extension/missions", &q, rows),
+        Ok(rows) => pagination::paged("/api/v1/extension/missions", &[], q.page(), rows),
         Err(e) => extension_error(e),
     }
 }
@@ -1281,9 +1272,10 @@ async fn profile_captures(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     match crate::services::profiles::captures(&ctx.db, org.org.id, id).await {
-        Ok(rows) => paged(
+        Ok(rows) => pagination::paged(
             &format!("/api/v1/extension/people/{id}/profile-captures"),
-            &q,
+            &[],
+            q.page(),
             rows,
         ),
         Err(e) => extension_error(e),

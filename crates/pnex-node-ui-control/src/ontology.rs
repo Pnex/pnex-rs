@@ -32,7 +32,7 @@ use pnex_core::ontology::flow::{
 };
 use pnex_core::vision::{NodeStatus, NodeStatusLevel, NODE_STATUS_FORMAT};
 
-const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+use pnex_core::flow::FLOW_TOKEN_HEADER;
 
 /// Fields every ontology node carries in the artifact. Explicit fields,
 /// no `flatten` (arbitrary_precision).

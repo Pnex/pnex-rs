@@ -19,17 +19,7 @@ use super::*;
 pub(super) async fn kinds(Query(q): Query<PageQuery>) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let all = pnex_notify::kinds();
-    let count = all.len() as i64;
-    let (skip, take) = page.slice(all.len());
-    let results: Vec<_> = all.into_iter().skip(skip).take(take).collect();
-    Ok(format::json(pagination::envelope(
-        "/api/v1/notify/kinds",
-        &[],
-        page,
-        count,
-        results,
-    ))
-    .into_response())
+    pagination::paged("/api/v1/notify/kinds", &[], page, all)
 }
 
 /// `limit`/`offset` of a plain paginated list.
@@ -100,11 +90,13 @@ pub(super) async fn list_channels(
         }
         Err(resp) => return Ok(resp),
     }
-    let rows = select
-        .order_by_desc(notify_channels::Column::Id)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
+    let (count, rows) = pagination::sql_page(
+        &ctx.db,
+        select.order_by_desc(notify_channels::Column::Id),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
     let last = notify_journal::last_status_by_channel(&ctx, org.org.id, &ids).await;
     let mut results: Vec<NotifyChannel> = Vec::with_capacity(rows.len());
@@ -115,9 +107,6 @@ pub(super) async fn list_channels(
             secret_views(&ctx.db, m).await?,
         ));
     }
-    let count = results.len() as i64;
-    let (skip, take) = page.slice(count as usize);
-    let results: Vec<NotifyChannel> = results.into_iter().skip(skip).take(take).collect();
     Ok(format::json(pagination::envelope(
         "/api/v1/notify/channels",
         &[],

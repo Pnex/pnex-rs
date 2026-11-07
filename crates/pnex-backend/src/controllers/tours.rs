@@ -570,18 +570,17 @@ async fn versions(
         return Err(Error::NotFound);
     };
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = tour_versions::Entity::find()
-        .filter(tour_versions::Column::TourId.eq(tour.id))
-        .order_by_desc(tour_versions::Column::VersionNumber)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let count = rows.len() as i64;
-    let (skip, take) = page.slice(rows.len());
+    let (count, rows) = pagination::sql_page(
+        &ctx.db,
+        tour_versions::Entity::find()
+            .filter(tour_versions::Column::TourId.eq(tour.id))
+            .order_by_desc(tour_versions::Column::VersionNumber),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
     let results: Vec<pnex_core::TourVersionSummary> = rows
         .into_iter()
-        .skip(skip)
-        .take(take)
         .map(|v| {
             let published = tour.published_version_id == Some(v.id);
             pnex_core::TourVersionSummary {

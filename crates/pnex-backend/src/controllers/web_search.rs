@@ -104,16 +104,7 @@ async fn list(
         Ok(v) => v,
         Err(e) => return crate::controllers::secrets::store_error(e),
     };
-    let count = views.len() as i64;
-    let (skip, take) = page.slice(views.len());
-    let results: Vec<WebSearchProvider> = views.into_iter().skip(skip).take(take).collect();
-    format::json(pagination::envelope(
-        "/api/v1/web-search/providers",
-        &[],
-        page,
-        count,
-        results,
-    ))
+    pagination::paged("/api/v1/web-search/providers", &[], page, views)
 }
 
 #[utoipa::path(

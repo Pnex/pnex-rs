@@ -638,18 +638,17 @@ async fn versions(
         return Err(Error::NotFound);
     };
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = annotation_layer_versions::Entity::find()
-        .filter(annotation_layer_versions::Column::LayerId.eq(layer.id))
-        .order_by_desc(annotation_layer_versions::Column::VersionNumber)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let count = rows.len() as i64;
-    let (skip, take) = page.slice(rows.len());
+    let (count, rows) = pagination::sql_page(
+        &ctx.db,
+        annotation_layer_versions::Entity::find()
+            .filter(annotation_layer_versions::Column::LayerId.eq(layer.id))
+            .order_by_desc(annotation_layer_versions::Column::VersionNumber),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
     let results: Vec<pnex_core::AnnotationLayerVersionSummary> = rows
         .into_iter()
-        .skip(skip)
-        .take(take)
         .map(|v| {
             let published = layer.published_version_id == Some(v.id);
             pnex_core::AnnotationLayerVersionSummary {

@@ -188,23 +188,23 @@ async fn list(
         }
         Err(resp) => return Ok(resp),
     }
-    let rows = select
-        .order_by_asc(ml_models::Column::Name)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let dtos: Vec<_> = rows
-        .iter()
-        .filter(|m| {
-            pagination::rust_search_match(
-                &q.search,
-                &[m.name.as_str(), m.description.as_deref().unwrap_or("")],
-            )
-        })
-        .map(vision::dto)
-        .collect();
-    let count = dtos.len() as i64;
-    let (skip, take) = page.slice(dtos.len());
+    if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
+        select = select.filter(
+            sea_orm::Condition::any()
+                .add(pagination::sql_contains(
+                    (ml_models::Entity, ml_models::Column::Name),
+                    &pat,
+                ))
+                .add(pagination::sql_contains(
+                    (ml_models::Entity, ml_models::Column::Description),
+                    &pat,
+                )),
+        );
+    }
+    let (count, rows) =
+        pagination::sql_page(&ctx.db, select.order_by_asc(ml_models::Column::Name), page)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
     let mut filters = Vec::new();
     if let Some(s) = q.search.as_deref().filter(|s| !s.is_empty()) {
         filters.push(("search".to_string(), s.to_string()));
@@ -217,7 +217,7 @@ async fn list(
         &filters,
         page,
         count,
-        dtos.into_iter().skip(skip).take(take).collect(),
+        rows.iter().map(vision::dto).collect::<Vec<_>>(),
     ))
 }
 
@@ -798,7 +798,7 @@ fn flow_token_ok(ctx: &AppContext, headers: &HeaderMap) -> bool {
         return false;
     };
     headers
-        .get("x-pnex-flow-token")
+        .get(pnex_core::flow::FLOW_TOKEN_HEADER)
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| crate::auth::service_token::matches(v, &expected))
 }

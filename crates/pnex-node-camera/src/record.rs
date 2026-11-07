@@ -28,7 +28,7 @@ use edgelink_macro::*;
 use pnex_core::avi::AviWriter;
 
 const NODE: &str = "pnex-video-record";
-const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+use pnex_core::flow::FLOW_TOKEN_HEADER;
 const UPLOAD_TIMEOUT_SECS: u64 = 120;
 
 #[derive(Debug, Deserialize)]

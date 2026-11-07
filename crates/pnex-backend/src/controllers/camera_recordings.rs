@@ -331,19 +331,16 @@ async fn layers(
         Vec::new()
     });
     let page = super::pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let count = layers.len() as i64;
-    let (skip, take) = page.slice(layers.len());
     let filters = vec![
         ("from".to_string(), from.to_rfc3339()),
         ("to".to_string(), to.to_rfc3339()),
     ];
-    format::json(super::pagination::envelope(
+    super::pagination::paged(
         &format!("/api/v1/cameras/{device}/recordings/layers"),
         &filters,
         page,
-        count,
-        layers.into_iter().skip(skip).take(take).collect::<Vec<_>>(),
-    ))
+        layers,
+    )
 }
 
 #[utoipa::path(

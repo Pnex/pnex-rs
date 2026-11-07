@@ -25,7 +25,7 @@ use pnex_core::mail::{MailSendNodeReply, MailSendNodeRequest, SEND_PORT_REFUSED}
 use pnex_core::ontology::flow::FlowNodeRef;
 
 const NAME: &str = "pnex-mail-send";
-const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+use pnex_core::flow::FLOW_TOKEN_HEADER;
 /// The backend gives SMTP 30 s.
 const TIMEOUT: Duration = Duration::from_secs(45);
 const UNAVAILABLE: &str = pnex_core::err_codes::MAIL_UNREACHABLE;

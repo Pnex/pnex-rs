@@ -316,34 +316,10 @@ async fn labels_catalog(
             count,
         })
         .collect::<Vec<_>>();
-    page_of("/api/v1/resources/labels/catalog", &[], &q, entries)
+    super::pagination::paged("/api/v1/resources/labels/catalog", &[], q.page(), entries)
 }
 
-/// `limit`/`offset` of a plain paginated list.
-#[derive(Deserialize, Default, utoipa::IntoParams)]
-#[into_params(parameter_in = Query)]
-struct PageQuery {
-    #[param(value_type = Option<i64>)]
-    limit: Option<String>,
-    #[param(value_type = Option<i64>)]
-    offset: Option<String>,
-}
-
-/// One page of an in-memory list (small org-wide lists).
-fn page_of<T: Serialize>(
-    path: &str,
-    filters: &[(String, String)],
-    q: &PageQuery,
-    all: Vec<T>,
-) -> Result<Response> {
-    let page = super::pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let count = all.len() as i64;
-    let (skip, take) = page.slice(all.len());
-    let results: Vec<T> = all.into_iter().skip(skip).take(take).collect();
-    format::json(super::pagination::envelope(
-        path, filters, page, count, results,
-    ))
-}
+use super::pagination::PageQuery;
 
 // ─────────────────────────── location ───────────────────────────
 
@@ -725,10 +701,10 @@ async fn list_edges(
         limit: q.limit.clone(),
         offset: q.offset.clone(),
     };
-    page_of(
+    super::pagination::paged(
         "/api/v1/resources/edges",
         &filters,
-        &page,
+        page.page(),
         rows.iter().map(edge_dto).collect(),
     )
 }
@@ -938,10 +914,10 @@ async fn list_folders(
     let rows = svc::folders::list_folders(&ctx.db, org.org.id)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    page_of(
+    super::pagination::paged(
         "/api/v1/resources/folders",
         &[],
-        &q,
+        q.page(),
         rows.iter().map(folder_dto).collect(),
     )
 }
@@ -1114,7 +1090,7 @@ async fn search(
         limit: q.limit.clone(),
         offset: q.offset.clone(),
     };
-    page_of("/api/v1/resources/search", &filters, &page, results)
+    super::pagination::paged("/api/v1/resources/search", &filters, page.page(), results)
 }
 
 // ─────────────────────────── routes ───────────────────────────

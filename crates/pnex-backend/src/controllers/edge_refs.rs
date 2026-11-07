@@ -176,15 +176,15 @@ async fn list_wifi(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = WifiCredentials::find()
-        .filter(wifi_credentials::Column::OrgId.eq(org.org.id))
-        .order_by_asc(wifi_credentials::Column::Ssid)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let count = rows.len() as i64;
-    let (skip, take) = page.slice(count as usize);
-    let rows: Vec<_> = rows.into_iter().skip(skip).take(take).collect();
+    let (count, rows) = pagination::sql_page(
+        &ctx.db,
+        WifiCredentials::find()
+            .filter(wifi_credentials::Column::OrgId.eq(org.org.id))
+            .order_by_asc(wifi_credentials::Column::Ssid),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
     let ids: Vec<uuid::Uuid> = rows.iter().filter_map(|r| r.secret_id).collect();
     let names = crate::services::secrets::store::names_of(&ctx.db, Some(org.org.id), &ids)
         .await
@@ -498,15 +498,16 @@ async fn list_hosts(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = PnexHosts::find()
-        .filter(pnex_hosts::Column::OrgId.eq(org.org.id))
-        .order_by_asc(pnex_hosts::Column::Host)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let count = rows.len() as i64;
-    let (skip, take) = page.slice(count as usize);
-    let results: Vec<PnexHost> = rows.iter().map(host_dto).skip(skip).take(take).collect();
+    let (count, rows) = pagination::sql_page(
+        &ctx.db,
+        PnexHosts::find()
+            .filter(pnex_hosts::Column::OrgId.eq(org.org.id))
+            .order_by_asc(pnex_hosts::Column::Host),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    let results: Vec<PnexHost> = rows.iter().map(host_dto).collect();
     Ok(format::json(pagination::envelope(
         "/api/v1/edge/hosts",
         &[],
