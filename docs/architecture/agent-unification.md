@@ -91,7 +91,7 @@ l'org.
 
 Un agent interne à LLM (A2) n'est qu'un moteur de plus (`internal_llm`). Il n'est pas le
 chemin par défaut. Une tâche qu'une recette sait faire passe par une recette, pour une
-question de coût. A2 reprend après U3, dans ce modèle.
+question de coût. A2 avance en parallèle des lots navigateur, dans ce modèle (moteur sur le run unifié).
 
 ### D786 — Un nœud de flow, une page
 
@@ -123,7 +123,7 @@ les quotas d'envoi ; la tenue de D123 (aucune action physique).
 | **U3** | Routage D782 (`session: required`, repli, choix forcé) ; file et plafonds côté serveur | U2 |
 | **U4** | Recettes fournies : `capture_profile`, `capture_people` (D779), `collect_page`… réécrites en recettes ; `linkedin_profile_by_name` (D784) ; retrait des types de mission codés en dur | U3 |
 | **U5** | Nœud `agent-run` unique et page Agents tous moteurs (D786) | U1 |
-| **U6** | A2 : moteur `internal_llm`, outils de l'assistant, écritures en propositions, niveau dans la fiche agent (choix du 2026-11-07) | U3 |
+| **U6** | A2 : moteur `internal_llm`, outils de l'assistant, écritures en propositions, niveau dans la fiche agent (choix du 2026-11-07). Avancé en parallèle de U1–U4 (Shan, 2026-11-07) : il pose le moteur sur `runner_jobs` + `agent_runs`, comme D781 | — |
 | **U7** (plus tard) | Canaux d'un agent : mail en entrée et en sortie, téléphone, Slack, Telegram (D787) | U5 |
 
 ## 4. Risques
