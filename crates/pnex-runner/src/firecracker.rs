@@ -489,6 +489,7 @@ impl Machine {
     /// Outputs and caches off the disk, sent as the collector of a pod sends them: also when
     /// the agent failed; what cannot be sent is in the journal, never a failure of the job.
     async fn collect(&self, dir: &Path, disk: &Path, s: &RunnerSandboxInput) {
+        self.push_branches(dir, disk, s).await;
         let Some(a) = &s.artifacts else { return };
         if a.outputs.is_empty() && a.caches.is_empty() {
             return;
@@ -508,6 +509,41 @@ impl Machine {
         env.push(("PNEX_COLLECT_NOW", "1".into()));
         if let Err(e) = host_script(dir, crate::artifacts::OUT_SCRIPT, &[], &env).await {
             note(dir, &format!("collector: {e}"));
+        }
+    }
+}
+
+impl Machine {
+    /// Branch outputs (D388, D775), pushed from the host: the agent's folder comes off the
+    /// disk, links unfollowed, and is the work tree of a git directory the runner cloned
+    /// itself. The write token stays on the host, the VM never had it.
+    async fn push_branches(&self, dir: &Path, disk: &Path, s: &RunnerSandboxInput) {
+        for (i, repo) in s.repos.iter().enumerate() {
+            let Some(push) = &repo.push else { continue };
+            let tree = dir.join(format!("push-tree-{i}"));
+            let root = dir.join(format!("push-{i}"));
+            let got = extract(disk, &format!("/workspace/{}", repo.path), &tree).await;
+            if let Err(e) = got {
+                note(dir, &format!("push: tree not read from the disk: {e}"));
+                continue;
+            }
+            let env = [
+                ("GIT_TOKEN", push.token.clone()),
+                ("PNEX_PUSH_ROOT", root.display().to_string()),
+                ("PNEX_PUSH_NOW", "1".to_string()),
+            ];
+            let tree_arg = tree.display().to_string();
+            let args = [
+                repo.git_ref.as_str(),
+                repo.url.as_str(),
+                tree_arg.as_str(),
+                push.branch.as_str(),
+            ];
+            if let Err(e) = host_script(dir, crate::push::PUSH_SCRIPT, &args, &env).await {
+                note(dir, &format!("push: {e}"));
+            }
+            remove(&tree);
+            remove(&root);
         }
     }
 }

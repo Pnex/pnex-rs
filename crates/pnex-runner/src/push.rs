@@ -20,20 +20,22 @@ pub const PUSH_SCRIPT: &str = r#"set -u
 base="$1"; url="$2"; tree="$3"; branch="$4"
 case "$branch" in pnex/run-*) ;; *) echo "push: branch $branch refused" >&2; exit 1;; esac
 [ "$branch" = "$base" ] && { echo "push: the base branch is never pushed" >&2; exit 1; }
-export HOME=/push/home GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
+root="${PNEX_PUSH_ROOT:-/push}"
+export HOME="$root/home" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0
 mkdir -p "$HOME"
 git_() {
   git -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$GIT_TOKEN"; }; f' \
     -c core.hooksPath=/dev/null -c core.fsmonitor=false -c protocol.allow=never \
     -c protocol.https.allow=always "$@"
 }
-if ! git_ clone --quiet --depth 1 --no-recurse-submodules --branch "$base" -- "$url" /push/repo; then
+if ! git_ clone --quiet --depth 1 --no-recurse-submodules --branch "$base" -- "$url" "$root/repo"; then
   echo "push: base not cloned, nothing will be pushed" >&2
+  [ -n "${PNEX_PUSH_NOW:-}" ] && exit 0
   trap 'exit 0' TERM
   while :; do sleep 1 & wait $!; done
 fi
 push() {
-  g() { git_ --git-dir=/push/repo/.git --work-tree="$tree" "$@"; }
+  g() { git_ --git-dir="$root/repo/.git" --work-tree="$tree" "$@"; }
   if [ ! -d "$tree" ]; then echo "push: no folder $tree" >&2; exit 0; fi
   g add -A . || { echo "push: changes not read" >&2; exit 0; }
   if g diff --cached --quiet; then echo "push: no change"; exit 0; fi
@@ -47,6 +49,8 @@ push() {
   fi
   exit 0
 }
+# A micro-VM is over when the runner pushes from the host (D762): no agent to wait for.
+[ -n "${PNEX_PUSH_NOW:-}" ] && push
 trap push TERM
 echo "push: waiting for the agent"
 while :; do sleep 1 & wait $!; done
@@ -105,8 +109,20 @@ mod tests {
 
     #[test]
     fn only_run_branches_other_than_the_base_are_pushed() {
-        for (base, branch) in [("main", "main"), ("main", "feature"), ("pnex/run-1", "pnex/run-1")] {
-            let out = sh(PUSH_SCRIPT, &[base, "https://example.invalid/r.git", "/nonexistent", branch]);
+        for (base, branch) in [
+            ("main", "main"),
+            ("main", "feature"),
+            ("pnex/run-1", "pnex/run-1"),
+        ] {
+            let out = sh(
+                PUSH_SCRIPT,
+                &[
+                    base,
+                    "https://example.invalid/r.git",
+                    "/nonexistent",
+                    branch,
+                ],
+            );
             assert_eq!(out.status.code(), Some(1), "{base} {branch}");
         }
     }
@@ -123,12 +139,24 @@ mod tests {
                 token: "ghp_write".into(),
             }),
         };
-        let (c, own, (key, token)) =
-            push_container(0, &repo, "init@sha256:x", "job-secret", &json!({}), &json!({}))
-                .unwrap();
+        let (c, own, (key, token)) = push_container(
+            0,
+            &repo,
+            "init@sha256:x",
+            "job-secret",
+            &json!({}),
+            &json!({}),
+        )
+        .unwrap();
         assert!(!c.to_string().contains("ghp_write"));
-        assert_eq!((key.as_str(), token.as_str()), ("push-token-0", "ghp_write"));
-        assert_eq!(c["env"][0]["valueFrom"]["secretKeyRef"]["key"], "push-token-0");
+        assert_eq!(
+            (key.as_str(), token.as_str()),
+            ("push-token-0", "ghp_write")
+        );
+        assert_eq!(
+            c["env"][0]["valueFrom"]["secretKeyRef"]["key"],
+            "push-token-0"
+        );
         assert_eq!(c["volumeMounts"][0]["readOnly"], true);
         assert_eq!(own["name"], "push-0");
         let no_push = SandboxRepo { push: None, ..repo };
