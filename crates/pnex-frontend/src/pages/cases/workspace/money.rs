@@ -358,7 +358,8 @@ pub(super) fn Money(workspace: CaseWorkspace) -> Element {
                             let name = label(&titles, &n.id, n.kind);
                             let value = n.value_in.max(n.value_out);
                             let last = n.col + 1 == s.cols || n.kind == NodeKind::Untraced;
-                            // Labels sit before their node, except at the end of a chain.
+                            // Labels sit before their node, except at the end of a chain. They
+                            // lie over the bands between columns, so clicks pass through them.
                             let (tx, anchor) = if last {
                                 (nx(n) + NODE_W + 8.0, "start")
                             } else {
@@ -393,7 +394,7 @@ pub(super) fn Money(workspace: CaseWorkspace) -> Element {
                                         y: "{ty - 3.0}",
                                         text_anchor: anchor,
                                         class: if is_obj { "fill-ink text-sm font-semibold" } else { "fill-slate text-sm italic" },
-                                        style: "paint-order: stroke; stroke: var(--color-ground); stroke-width: 4px; stroke-linejoin: round",
+                                        style: "paint-order: stroke; stroke: var(--color-ground); stroke-width: 4px; stroke-linejoin: round; pointer-events: none",
                                         {model::short(&name, 30)}
                                     }
                                     text {
@@ -401,7 +402,7 @@ pub(super) fn Money(workspace: CaseWorkspace) -> Element {
                                         y: "{ty + 13.0}",
                                         text_anchor: anchor,
                                         class: "fill-slate text-xs font-mono",
-                                        style: "paint-order: stroke; stroke: var(--color-ground); stroke-width: 4px; stroke-linejoin: round",
+                                        style: "paint-order: stroke; stroke: var(--color-ground); stroke-width: 4px; stroke-linejoin: round; pointer-events: none",
                                         {amount(value)}
                                     }
                                 }
