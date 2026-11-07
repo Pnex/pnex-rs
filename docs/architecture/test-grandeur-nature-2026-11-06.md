@@ -147,3 +147,18 @@ la sous-traitance privée de rang 2 et 3 reste partielle.
    capital) et vérifier la vue Argent de chaque dossier.
 4. Relire les données web (sources secondaires ou anciennes, actualités « À
    valider ») et les 86 filiales proposées.
+
+## 4. Reprise du 2026-11-07 (dev en 0.2.0, 9d86cbc)
+
+- **C3 vérifié** : pipeline « Check: big joins (C3) », vraie jointure
+  `sirene_establishments` (44,5 M) × `followed_sirens` (105), puis
+  `sirene_geolocation` (38 M) × sites : 14 s, aucune mort du worker, 766 sites
+  (identique à la liste en dur de « Group sites » v3), 762 positions.
+- **C8 vérifié** : import « Published accounts (BCE/INPI) » depuis
+  `group_financial_series` (`observations: { type: organization, property: siren }`) :
+  2328 lignes appliquées, séries visibles sur la fiche (59 valeurs pour un
+  groupe, social et consolidé) ; une 2e exécution n'écrit rien.
+  Reste : la source ne donne qu'une date de clôture, la période vaut un jour
+  (`start` = `end`) ; à dériver dans le pipeline (exercice de 12 mois).
+- Restent du lot E : vue Argent dossier par dossier (E3), relecture humaine des
+  données web et des 86 filiales proposées (E4).
