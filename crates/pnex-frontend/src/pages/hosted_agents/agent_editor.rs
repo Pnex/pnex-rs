@@ -19,7 +19,9 @@ use pnex_core::agents::{Agent, AgentRole, AgentSpec, AgentUpdate, AgentVersion};
 
 mod sections;
 
-use sections::{CachesSection, KvList, OutputsSection, ReposSection, ServicesSection, SkillsSection};
+use sections::{
+    CachesSection, KvList, OutputsSection, ReposSection, ServicesSection, SkillsSection,
+};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct ServiceDraft {
@@ -208,14 +210,20 @@ fn field_label(field: &str) -> String {
 fn error_text(err: &ApiError) -> String {
     let message = crate::api::error_i18n::localize(err);
     match err.fields().and_then(|f| f.keys().next().cloned()) {
-        Some(field) => t!("agents-edit-field-error", field : field_label(&field), message : message)
-            .to_string(),
+        Some(field) => {
+            t!("agents-edit-field-error", field : field_label(&field), message : message)
+                .to_string()
+        }
         None => message,
     }
 }
 
 #[component]
-pub(super) fn AgentEditor(agent_id: String, on_back: Callback<()>, on_skills: Callback<()>) -> Element {
+pub(super) fn AgentEditor(
+    agent_id: String,
+    on_back: Callback<()>,
+    on_skills: Callback<()>,
+) -> Element {
     let can_write = access::can("agents:write");
     let mut generation = use_signal(|| 0u32);
     let load_id = agent_id.clone();
@@ -285,7 +293,11 @@ pub(super) fn AgentEditor(agent_id: String, on_back: Callback<()>, on_skills: Ca
             if !open {
                 return None;
             }
-            Some(api::hosted_agents::agent_versions(&id).await.map(|p| p.results))
+            Some(
+                api::hosted_agents::agent_versions(&id)
+                    .await
+                    .map(|p| p.results),
+            )
         }
     });
     let history_versions: Vec<AgentVersion> = match &*history.value().read() {

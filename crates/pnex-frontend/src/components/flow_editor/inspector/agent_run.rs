@@ -13,7 +13,11 @@ const INPUT: &str = "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm"
 /// Agent run inspector: the agent, the message path of each of its declared inputs, the
 /// subject path and the bounds of the chain the node opens.
 #[component]
-pub(super) fn AgentRunForm(mut cx: EditorCx, initial: AgentRunNodeConfig, can_write: bool) -> Element {
+pub(super) fn AgentRunForm(
+    mut cx: EditorCx,
+    initial: AgentRunNodeConfig,
+    can_write: bool,
+) -> Element {
     let agents = use_resource(|| async {
         api::hosted_agents::agents(200, 0)
             .await

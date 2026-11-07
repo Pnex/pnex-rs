@@ -41,13 +41,13 @@ pub mod environments;
 pub mod events;
 pub mod extension;
 pub mod fabric_settings;
-pub mod forge;
 pub mod firmware;
 pub mod firmware_projects;
 pub mod flow;
 pub mod flow_ai;
 pub mod flow_cluster;
 pub mod flow_supervisor;
+pub mod forge;
 pub mod functions;
 pub mod geo;
 /// Authorization engine and action registry checks (iam.md D285–D299).

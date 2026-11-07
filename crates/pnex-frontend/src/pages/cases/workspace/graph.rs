@@ -1616,10 +1616,7 @@ mod tests {
 
     #[test]
     fn events_can_be_hidden_like_any_family() {
-        let w = workspace(
-            vec![event("e1", "2025-01-01T00:00:00Z", &["p1"])],
-            &["p1"],
-        );
+        let w = workspace(vec![event("e1", "2025-01-01T00:00:00Z", &["p1"])], &["p1"]);
         let all = build(&w, None, &[], &[], usize::MAX);
         assert!(all.0.iter().any(|n| n.family == "event"));
         assert!(FAMILIES.contains(&"event"), "no chip to hide them");

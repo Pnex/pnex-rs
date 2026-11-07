@@ -348,9 +348,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         PaletteKind::PnexNotify
         | PaletteKind::MailSend
         | PaletteKind::AgentRun
-        | PaletteKind::HttpFetch => {
-            PaletteCategory::Integrations
-        }
+        | PaletteKind::HttpFetch => PaletteCategory::Integrations,
         // Display is an inline probe, not a device node (O49).
         PaletteKind::Debug | PaletteKind::Display => PaletteCategory::Debug,
     }
