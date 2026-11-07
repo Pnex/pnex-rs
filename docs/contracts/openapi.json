@@ -5898,6 +5898,10 @@
             "format": "int32",
             "type": "integer"
           },
+          "rest": {
+            "$ref": "#/components/schemas/RestSettings",
+            "description": "Settings of a `rest` connector."
+          },
           "tls": {
             "description": "Whether the connection requires TLS.",
             "type": "boolean"
@@ -5975,6 +5979,10 @@
             "format": "int32",
             "type": "integer"
           },
+          "rest": {
+            "$ref": "#/components/schemas/RestSettings",
+            "description": "Required for a `rest` connector, ignored otherwise."
+          },
           "tls": {
             "type": "boolean"
           },
@@ -5985,15 +5993,14 @@
         "required": [
           "name",
           "host",
-          "port",
-          "database",
-          "username"
+          "port"
         ],
         "type": "object"
       },
       "ConnectorKind": {
         "enum": [
-          "postgres"
+          "postgres",
+          "rest"
         ],
         "type": "string"
       },
@@ -25357,6 +25364,40 @@
         "required": [
           "locations"
         ],
+        "type": "object"
+      },
+      "RestAuth": {
+        "description": "How a REST connector authenticates. Every secret value is the connector's one\nvault secret: the token, the header value, the password or the client secret.",
+        "enum": [
+          "none",
+          "bearer",
+          "header",
+          "basic",
+          "oauth2_client_credentials"
+        ],
+        "type": "string"
+      },
+      "RestSettings": {
+        "description": "What a REST connector adds to host, port and TLS.",
+        "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/RestAuth"
+          },
+          "base_path": {
+            "description": "Path every request starts from (`/api/v2`).",
+            "type": "string"
+          },
+          "header_name": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "token_url": {
+            "description": "OAuth2 token endpoint, absolute.",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "RetentionInfo": {

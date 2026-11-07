@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use pnex_core::connectors::{
     egress_policy, Connector, ConnectorHosts, ConnectorInput, ConnectorKind, ConnectorTest,
-    ALLOWED_HOSTS_MAX, HOST_MAX,
+    RestAuth, RestSettings, ALLOWED_HOSTS_MAX, HOST_MAX,
 };
 use pnex_core::err_codes;
 use sea_orm::{
@@ -57,21 +57,47 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
 }
 
 const SELECT: &str = "SELECT id, name, kind, host, port, database, username, tls, \
-    secret_id IS NOT NULL AS has_password, version, \
+    settings, secret_id IS NOT NULL AS has_password, version, \
     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS created_at, \
     to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS updated_at \
     FROM connectors";
 
+fn kind_of(r: &QueryResult) -> Result<ConnectorKind, DbErr> {
+    let wire: String = r.try_get("", "kind")?;
+    ConnectorKind::parse(&wire)
+        .ok_or_else(|| DbErr::Custom(format!("unknown connector kind {wire}")))
+}
+
+/// The settings of a REST connector; a stored value that no longer parses reads as
+/// the defaults rather than failing the whole list.
+fn rest_of(r: &QueryResult, kind: ConnectorKind) -> Result<Option<RestSettings>, DbErr> {
+    if kind != ConnectorKind::Rest {
+        return Ok(None);
+    }
+    let v: serde_json::Value = r.try_get("", "settings")?;
+    Ok(Some(serde_json::from_value(v).unwrap_or_default()))
+}
+
+/// What goes into the `settings` column.
+fn settings_json(input: &ConnectorInput) -> String {
+    match (input.kind, &input.rest) {
+        (ConnectorKind::Rest, Some(r)) => serde_json::to_string(r).unwrap_or_else(|_| "{}".into()),
+        _ => "{}".into(),
+    }
+}
+
 fn view(r: &QueryResult) -> Result<Connector, DbErr> {
+    let kind = kind_of(r)?;
     Ok(Connector {
         id: r.try_get::<Uuid>("", "id")?.to_string(),
         name: r.try_get("", "name")?,
-        kind: ConnectorKind::Postgres,
+        kind,
         host: r.try_get("", "host")?,
         port: r.try_get("", "port")?,
         database: r.try_get("", "database")?,
         username: r.try_get("", "username")?,
         tls: r.try_get("", "tls")?,
+        rest: rest_of(r, kind)?,
         has_password: r.try_get("", "has_password")?,
         version: r.try_get("", "version")?,
         created_at: r.try_get("", "created_at")?,
@@ -164,7 +190,8 @@ pub async fn create(
     .await?;
     txn.execute_raw(stmt(
         "INSERT INTO connectors (id, org_id, name, kind, host, port, database, username, tls, \
-           secret_id, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+           secret_id, created_by, settings) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)",
         vec![
             id.into(),
             org_id.into(),
@@ -177,6 +204,7 @@ pub async fn create(
             input.tls.into(),
             secret.into(),
             by.user_id.into(),
+            settings_json(input).into(),
         ],
     ))
     .await?;
@@ -234,7 +262,11 @@ pub async fn update(
     .await?;
     // A connector pointed elsewhere keeps no password unless one is given again: the
     // stored password must not be sent to a host its author never meant it for.
-    let moved = current.host != input.host.trim() || current.port != input.port;
+    let token_url = |r: Option<&RestSettings>| r.map(|r| r.token_url.trim().to_string());
+    let moved = current.host != input.host.trim()
+        || current.port != input.port
+        || current.kind != input.kind
+        || token_url(current.rest.as_ref()) != token_url(input.rest.as_ref());
     if moved && input.password.is_none() && held.is_some() {
         return Err(ConnectorError::Invalid {
             field: "password".into(),
@@ -244,7 +276,8 @@ pub async fn update(
     let done = txn
         .execute_raw(stmt(
             "UPDATE connectors SET name = $3, kind = $4, host = $5, port = $6, database = $7, \
-               username = $8, tls = $9, secret_id = $10, version = version + 1, updated_at = now() \
+               username = $8, tls = $9, secret_id = $10, settings = $12::jsonb, \
+               version = version + 1, updated_at = now() \
              WHERE org_id = $1 AND id = $2 AND version = $11",
             vec![
                 org_id.into(),
@@ -258,6 +291,7 @@ pub async fn update(
                 input.tls.into(),
                 secret.into(),
                 expected.into(),
+                settings_json(input).into(),
             ],
         ))
         .await?;
@@ -334,15 +368,20 @@ pub async fn set_allowed_hosts(
     Ok(allowed_hosts(db, org_id).await?)
 }
 
-/// A checked way to open a connection. Holds the password as long as the run needs it.
-pub(crate) struct Target {
+/// A checked way to reach a connector. Holds its secret as long as the run needs it.
+pub(crate) enum Target {
+    Pg(Box<PgTarget>),
+    Rest(Box<RestTarget>),
+}
+
+pub(crate) struct PgTarget {
     options: PgConnectOptions,
 }
 
 /// Why no connection: codes only, the text of an outside server stays in the logs.
 pub(crate) type Refusal = &'static str;
 
-/// Resolves the connector of the org with its password and the address it may reach.
+/// Resolves the connector of the org with its secret and the address it may reach.
 pub(crate) async fn target<C: ConnectionTrait>(
     db: &C,
     ring: &Keyring,
@@ -351,19 +390,19 @@ pub(crate) async fn target<C: ConnectionTrait>(
     id: Option<Uuid>,
 ) -> Result<Target, Refusal> {
     let by_db = |_e: DbErr| err_codes::CONNECTOR_UNREACHABLE;
+    const COLUMNS: &str =
+        "SELECT kind, host, port, database, username, tls, settings, secret_id FROM connectors";
     let row = match (name, id) {
         (Some(name), _) => {
             db.query_one_raw(stmt(
-                "SELECT host, port, database, username, tls, secret_id FROM connectors \
-                 WHERE org_id = $1 AND name = $2",
+                &format!("{COLUMNS} WHERE org_id = $1 AND name = $2"),
                 vec![org_id.into(), name.into()],
             ))
             .await
         }
         (_, Some(id)) => {
             db.query_one_raw(stmt(
-                "SELECT host, port, database, username, tls, secret_id FROM connectors \
-                 WHERE org_id = $1 AND id = $2",
+                &format!("{COLUMNS} WHERE org_id = $1 AND id = $2"),
                 vec![org_id.into(), id.into()],
             ))
             .await
@@ -372,9 +411,11 @@ pub(crate) async fn target<C: ConnectionTrait>(
     }
     .map_err(by_db)?
     .ok_or(err_codes::CONNECTOR_NOT_FOUND)?;
+    let kind = kind_of(&row).map_err(by_db)?;
     let host: String = row.try_get("", "host").map_err(by_db)?;
     let port: i32 = row.try_get("", "port").map_err(by_db)?;
     let tls: bool = row.try_get("", "tls").map_err(by_db)?;
+    let username: String = row.try_get("", "username").map_err(by_db)?;
     let secret: Option<Uuid> = row.try_get("", "secret_id").map_err(by_db)?;
 
     let listed = db
@@ -400,10 +441,23 @@ pub(crate) async fn target<C: ConnectionTrait>(
     else {
         return Err(err_codes::CONNECTOR_HOST_REFUSED);
     };
-    // Without TLS the password crosses the network in the clear: a host the platform
+    // Without TLS the secret crosses the network in the clear: a host the platform
     // admin listed only, or a development server.
     if !tls && !listed && process != pnex_core::egress::EgressPolicy::Open {
         return Err(err_codes::CONNECTOR_HOST_REFUSED);
+    }
+    let secret = match secret {
+        Some(secret) => Some(
+            store::reveal(db, ring, Some(org_id), secret)
+                .await
+                .map_err(|_| err_codes::CONNECTOR_UNREACHABLE)?,
+        ),
+        None => None,
+    };
+    if kind == ConnectorKind::Rest {
+        let settings = rest_of(&row, kind).map_err(by_db)?.unwrap_or_default();
+        return RestTarget::new(host, addr, tls, settings, username, secret)
+            .map(|t| Target::Rest(Box::new(t)));
     }
     let mut options = PgConnectOptions::new()
         .host(&addr.ip().to_string())
@@ -413,11 +467,7 @@ pub(crate) async fn target<C: ConnectionTrait>(
                 .map_err(by_db)?
                 .as_str(),
         )
-        .username(
-            row.try_get::<String>("", "username")
-                .map_err(by_db)?
-                .as_str(),
-        )
+        .username(&username)
         // shortcut: TLS without checking the certificate, since the connection goes to
         // the checked address and not the name; pass the name to verify it when a
         // customer asks for it.
@@ -429,16 +479,13 @@ pub(crate) async fn target<C: ConnectionTrait>(
         .application_name("pnex-connector")
         // Set at startup: a query cannot undo it with a COMMIT.
         .options([("default_transaction_read_only", "on")]);
-    if let Some(secret) = secret {
-        let password = store::reveal(db, ring, Some(org_id), secret)
-            .await
-            .map_err(|_| err_codes::CONNECTOR_UNREACHABLE)?;
+    if let Some(password) = secret {
         options = options.password(&password);
     }
-    Ok(Target { options })
+    Ok(Target::Pg(Box::new(PgTarget { options })))
 }
 
-impl Target {
+impl PgTarget {
     pub(crate) async fn connect(
         self,
         statement_timeout: Duration,
@@ -459,6 +506,179 @@ impl Target {
     }
 }
 
+/// Tries per request on a 429, a 5xx or a network failure.
+const REST_TRIES: u32 = 5;
+const REST_TIMEOUT: Duration = Duration::from_secs(120);
+const TOKEN_MAX_BYTES: usize = 64 * 1024;
+
+/// A REST connector ready to send GETs (connectors.md D793). The client reaches the
+/// connector's host at the address checked above only, follows no redirect, and every
+/// other host (the OAuth2 token endpoint) goes through the guarded resolver.
+pub(crate) struct RestTarget {
+    client: reqwest::Client,
+    base: reqwest::Url,
+    settings: RestSettings,
+    username: String,
+    secret: Option<String>,
+    token: Option<String>,
+}
+
+impl RestTarget {
+    fn new(
+        host: String,
+        addr: SocketAddr,
+        tls: bool,
+        settings: RestSettings,
+        username: String,
+        secret: Option<String>,
+    ) -> Result<Self, Refusal> {
+        let scheme = if tls { "https" } else { "http" };
+        // An IPv6 literal needs brackets inside a URL.
+        let shown = if host.contains(':') {
+            format!("[{host}]")
+        } else {
+            host.clone()
+        };
+        let base = reqwest::Url::parse(&format!(
+            "{scheme}://{shown}:{}{}",
+            addr.port(),
+            settings.base_path
+        ))
+        .map_err(|_| err_codes::CONNECTOR_UNREACHABLE)?;
+        let client = pnex_core::egress::guarded(reqwest::Client::builder())
+            .resolve(&host, addr)
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(REST_TIMEOUT)
+            .user_agent("pnex-connector")
+            .build()
+            .map_err(|_| err_codes::CONNECTOR_UNREACHABLE)?;
+        Ok(Self {
+            client,
+            base,
+            settings,
+            username,
+            secret,
+            token: None,
+        })
+    }
+
+    /// The base URL followed by `path` (already checked by `RestQuery::check`).
+    pub(crate) fn url(&self, path: &str) -> reqwest::Url {
+        let mut url = self.base.clone();
+        if !path.is_empty() {
+            let joined = format!("{}{path}", url.path().trim_end_matches('/'));
+            url.set_path(&joined);
+        }
+        url
+    }
+
+    /// Whether `url` stays on the connector's scheme, host and port.
+    pub(crate) fn same_origin(&self, url: &reqwest::Url) -> bool {
+        url.origin() == self.base.origin()
+    }
+
+    async fn bearer(&mut self) -> Result<Option<String>, Refusal> {
+        if self.settings.auth != RestAuth::Oauth2ClientCredentials {
+            return Ok(None);
+        }
+        if let Some(t) = &self.token {
+            return Ok(Some(t.clone()));
+        }
+        let mut form = vec![("grant_type", "client_credentials".to_string())];
+        if !self.settings.scope.trim().is_empty() {
+            form.push(("scope", self.settings.scope.trim().to_string()));
+        }
+        let res = self
+            .client
+            .post(&self.settings.token_url)
+            .basic_auth(&self.username, self.secret.as_deref())
+            .form(&form)
+            .send()
+            .await
+            .map_err(|e| {
+                tracing::info!(error = %e, "connector token request failed");
+                err_codes::CONNECTOR_UNREACHABLE
+            })?;
+        if !res.status().is_success() {
+            tracing::info!(status = %res.status(), "connector token refused");
+            return Err(err_codes::CONNECTOR_REST_DENIED);
+        }
+        let mut res = res;
+        let mut body = Vec::new();
+        while let Some(chunk) = res
+            .chunk()
+            .await
+            .map_err(|_| err_codes::CONNECTOR_UNREACHABLE)?
+        {
+            body.extend_from_slice(&chunk);
+            if body.len() > TOKEN_MAX_BYTES {
+                return Err(err_codes::CONNECTOR_REST_NOT_JSON);
+            }
+        }
+        let token = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("access_token")?.as_str().map(str::to_string))
+            .ok_or(err_codes::CONNECTOR_REST_NOT_JSON)?;
+        // shortcut: the token is kept for the whole run, not refreshed at expiry; a run
+        // longer than the token's life fails with rest-denied, refresh when one does.
+        self.token = Some(token.clone());
+        Ok(Some(token))
+    }
+
+    /// One GET with the connector's credentials, retried on 429, 5xx and network
+    /// failures. A refused or unexpected status is a code, never the server's text.
+    pub(crate) async fn get(
+        &mut self,
+        url: reqwest::Url,
+        params: &[(String, String)],
+    ) -> Result<reqwest::Response, Refusal> {
+        let bearer = self.bearer().await?;
+        let mut wait = Duration::from_secs(1);
+        for attempt in 1..=REST_TRIES {
+            let mut req = self.client.get(url.clone()).query(params);
+            req = match (self.settings.auth, &bearer, &self.secret) {
+                (RestAuth::Oauth2ClientCredentials, Some(t), _) => req.bearer_auth(t),
+                (RestAuth::Bearer, _, Some(s)) => req.bearer_auth(s),
+                (RestAuth::Header, _, Some(s)) => req.header(self.settings.header_name.as_str(), s),
+                (RestAuth::Basic, _, s) => req.basic_auth(&self.username, s.as_deref()),
+                _ => req,
+            };
+            let last = attempt == REST_TRIES;
+            match req.send().await {
+                Ok(res) if res.status().is_success() => return Ok(res),
+                Ok(res) => {
+                    let status = res.status();
+                    let again = status.as_u16() == 429 || status.is_server_error();
+                    if !again || last {
+                        tracing::info!(%status, "connector request refused");
+                        return Err(match status.as_u16() {
+                            401 | 403 => err_codes::CONNECTOR_REST_DENIED,
+                            _ => err_codes::CONNECTOR_REST_STATUS,
+                        });
+                    }
+                    let asked = res
+                        .headers()
+                        .get(reqwest::header::RETRY_AFTER)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.trim().parse::<u64>().ok());
+                    if let Some(secs) = asked {
+                        wait = Duration::from_secs(secs.min(60));
+                    }
+                }
+                Err(e) if last => {
+                    tracing::info!(error = %e, "connector request failed");
+                    return Err(err_codes::CONNECTOR_UNREACHABLE);
+                }
+                Err(_) => {}
+            }
+            tokio::time::sleep(wait).await;
+            wait = (wait * 2).min(Duration::from_secs(60));
+        }
+        Err(err_codes::CONNECTOR_UNREACHABLE)
+    }
+}
+
 /// Tries the connection, without returning any data.
 pub async fn test(
     db: &DatabaseConnection,
@@ -468,13 +688,20 @@ pub async fn test(
 ) -> Result<ConnectorTest, ConnectorError> {
     get(db, org_id, id).await?;
     let outcome = async {
-        let target = target(db, ring, org_id, None, Some(id)).await?;
-        let mut conn = target.connect(Duration::from_secs(10)).await?;
-        conn.ping().await.map_err(|e| {
-            tracing::info!(error = %e, "connector ping failed");
-            err_codes::CONNECTOR_UNREACHABLE
-        })?;
-        let _ = conn.close().await;
+        match target(db, ring, org_id, None, Some(id)).await? {
+            Target::Pg(target) => {
+                let mut conn = target.connect(Duration::from_secs(10)).await?;
+                conn.ping().await.map_err(|e| {
+                    tracing::info!(error = %e, "connector ping failed");
+                    err_codes::CONNECTOR_UNREACHABLE
+                })?;
+                let _ = conn.close().await;
+            }
+            Target::Rest(mut target) => {
+                let base = target.url("");
+                target.get(base, &[]).await?;
+            }
+        }
         Ok::<(), Refusal>(())
     }
     .await;

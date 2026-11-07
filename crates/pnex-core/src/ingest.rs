@@ -161,9 +161,12 @@ pub struct IngestConfig {
     /// Name of a connector of the org.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub connector: String,
-    /// One read-only statement.
+    /// One read-only statement (database connectors).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub query: String,
+    /// The request (REST connectors, connectors.md D793).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rest: Option<crate::connectors::rest::RestQuery>,
 }
 
 fn http_url(s: &str) -> bool {
@@ -206,6 +209,13 @@ impl IngestConfig {
             },
             IngestStep::ConnectorQuery if self.query.len() > crate::connectors::QUERY_MAX_BYTES => {
                 bad("the query is 64 KB at most")
+            }
+            IngestStep::ConnectorQuery if self.rest.as_ref().and_then(|r| r.check()).is_some() => {
+                bad(self
+                    .rest
+                    .as_ref()
+                    .and_then(|r| r.check())
+                    .unwrap_or_default())
             }
             IngestStep::ArchiveExtract
                 if self.entries.len() > ENTRY_GLOBS_MAX
@@ -269,9 +279,10 @@ impl IngestConfig {
                 unset("a column is required")
             }
             IngestStep::ConnectorQuery
-                if self.connector.trim().is_empty() || self.query.trim().is_empty() =>
+                if self.connector.trim().is_empty()
+                    || (self.query.trim().is_empty() && self.rest.is_none()) =>
             {
-                unset("a connector and a query are required")
+                unset("a connector and a query or a REST request are required")
             }
             IngestStep::RowsFilter => match self.op {
                 FilterOp::In if self.setting.is_some() => None,

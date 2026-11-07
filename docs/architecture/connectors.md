@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Proposé le 2026-11-07, choix produit tranchés par Shan le même jour** (§3). Rien de codé au-delà du premier lot PostgreSQL du 2026-11-05 |
+| Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1 codé le 2026-11-07** (§9) ; CN2–CN5 à faire |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; OP1 livré en grande partie |
 | Repose sur | `operational-platform.md` (D555), `data-pipelines.md` (D352, §9.6 « Connecteurs, premier lot »), `secrets.md` (D113, D115), `security.md` (R1, R2, R4, R8, R16), `iam.md`, `crm.md` (D369) |
 | Numérotation | **D791…D797**, lots **CN1…CN5** |
@@ -128,8 +128,8 @@ ligne), réplication logique PostgreSQL, Elasticsearch (repris par `rest` si l'i
   une erreur ; l'URL du webhook n'est pas un secret (la signature l'est).
 - **R8** : chaque page REST, chaque appel de jeton OAuth2 passe l'egress ; hôte constant sur la
   pagination ; pas de redirection.
-- **Entrée hostile** : JSON profondément imbriqué plafonné (profondeur 64), corps et réponses
-  plafonnés avant parsing.
+- **Entrée hostile** : JSON profondément imbriqué refusé par la limite de récursion du parseur
+  (128) ; réponses plafonnées en octets pendant la lecture, avant parsing.
 - **MCP** : connecteurs toujours `EXCLUDED` (secret) ; la route webhook `EXCLUDED` (entrant
   machine).
 
@@ -160,3 +160,23 @@ Ordre : CN1, CN2, CN3, CN4, CN5.
   par le débit visé.
 - **Q-CN2** — Un `POST` en lecture (API de recherche) : drapeau explicite sur la requête, à
   ouvrir au premier besoin réel.
+
+## 9. Avancement
+
+**CN1 (2026-11-07)** : sorte `rest` (migration 000123, colonne `settings`), `RestSettings` et
+`RestQuery` dans `pnex_core::connectors`, logique pure dans `connectors/rest.rs` (pagination,
+extraction, CSV, en-tête `Link`), envoi dans `services/connectors.rs` (`RestTarget` : client
+restreint à l'adresse vérifiée par `resolve`, sans redirection, jeton OAuth2 gardé le temps du run),
+boucle des pages dans `services/ingest/query.rs`. Test `an_import_reads_a_paged_rest_api_into_a_table`
+(faux serveur local : deux pages, hôte changé, pas de JSON, statut, limite de pages, jeton refusé,
+chemin de base piégé). Six codes `connector-rest-*`, fiche `pipelines` complétée.
+
+Écarts à relire :
+
+- **Erreur de statut sans le code HTTP** dans `args` : le journal le garde, l'UI montre seulement
+  `connector-rest-status` ou `connector-rest-denied` (401, 403) ;
+- **Jeton OAuth2 non rafraîchi** pendant un run (`shortcut:` dans le code) ;
+- **Formulaire existant** : il garde la sorte et les réglages d'un connecteur REST mais ne sait pas
+  en créer un ; c'est CN5, en attendant l'API seule ;
+- **Paramètres de requête** : en clair dans la config de l'import. Une clé d'API va dans
+  l'authentification du connecteur (coffre), jamais dans `params`.

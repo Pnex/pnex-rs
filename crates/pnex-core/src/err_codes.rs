@@ -724,6 +724,18 @@ pub const CONNECTOR_HOST_REFUSED: &str = "connector-host-refused";
 pub const CONNECTOR_QUERY_INVALID: &str = "connector-query-invalid";
 /// The author of the import may no longer use connectors.
 pub const CONNECTOR_FORBIDDEN: &str = "connector-forbidden";
+/// The API refused the connector's credentials (401, 403, or the token endpoint).
+pub const CONNECTOR_REST_DENIED: &str = "connector-rest-denied";
+/// The API answered with an unexpected status.
+pub const CONNECTOR_REST_STATUS: &str = "connector-rest-status";
+/// The API answered something other than JSON.
+pub const CONNECTOR_REST_NOT_JSON: &str = "connector-rest-not-json";
+/// No array of records where the request says they are.
+pub const CONNECTOR_REST_NO_RECORDS: &str = "connector-rest-no-records";
+/// A next page pointed to another host.
+pub const CONNECTOR_REST_HOST_CHANGED: &str = "connector-rest-host-changed";
+/// More pages than the request allows.
+pub const CONNECTOR_REST_PAGE_LIMIT: &str = "connector-rest-page-limit";
 pub const IMAGE_REGISTRY_NOT_FOUND: &str = "image-registry-not-found";
 pub const IMAGE_REGISTRY_NAME_TAKEN: &str = "image-registry-name-taken";
 /// The registry changed since it was read (args `current`).
@@ -1275,6 +1287,12 @@ pub const ALL: &[&str] = &[
     CONNECTOR_HOST_REFUSED,
     CONNECTOR_QUERY_INVALID,
     CONNECTOR_FORBIDDEN,
+    CONNECTOR_REST_DENIED,
+    CONNECTOR_REST_STATUS,
+    CONNECTOR_REST_NOT_JSON,
+    CONNECTOR_REST_NO_RECORDS,
+    CONNECTOR_REST_HOST_CHANGED,
+    CONNECTOR_REST_PAGE_LIMIT,
     IMAGE_REGISTRY_NOT_FOUND,
     IMAGE_REGISTRY_NAME_TAKEN,
     IMAGE_REGISTRY_VERSION_CONFLICT,

@@ -450,3 +450,169 @@ async fn connectors_are_for_admins_of_the_org() {
     })
     .await;
 }
+
+/// A paged JSON API: bearer `tok`, three records over two pages, a third page empty,
+/// and a route whose next link leaves for another host.
+async fn spawn_api() -> u16 {
+    use axum::extract::Query;
+    use axum::http::{HeaderMap, StatusCode};
+    use axum::response::IntoResponse;
+    use axum::routing::get;
+    use std::collections::HashMap;
+
+    fn authorized(h: &HeaderMap) -> bool {
+        h.get("authorization").and_then(|v| v.to_str().ok()) == Some("Bearer tok")
+    }
+    let app = axum::Router::new()
+        .route(
+            "/api",
+            get(|h: HeaderMap| async move {
+                if authorized(&h) {
+                    StatusCode::OK
+                } else {
+                    StatusCode::UNAUTHORIZED
+                }
+            }),
+        )
+        .route(
+            "/api/items",
+            get(
+                |h: HeaderMap, Query(q): Query<HashMap<String, String>>| async move {
+                    if !authorized(&h) {
+                        return StatusCode::UNAUTHORIZED.into_response();
+                    }
+                    let data = match q.get("page").map(String::as_str) {
+                        Some("1") => json!([{ "code": "A1", "name": "Acme, Inc" },
+                                            { "code": "B2", "name": "Beta" }]),
+                        Some("2") => json!([{ "code": "C3", "name": "Gamma" }]),
+                        _ => json!([]),
+                    };
+                    axum::Json(json!({ "data": data })).into_response()
+                },
+            ),
+        )
+        .route(
+            "/api/away",
+            get(|| async {
+                (
+                    [(
+                        "link",
+                        "<http://elsewhere.example.org/api/away?p=2>; rel=\"next\"",
+                    )],
+                    axum::Json(json!({ "data": [{ "code": "Z9", "name": "Zeta" }] })),
+                )
+            }),
+        )
+        .route("/api/html", get(|| async { "<html></html>" }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    port
+}
+
+fn rest_mapping(path: &str, paging: &str) -> String {
+    format!(
+        "key: api_table\nname: Api\nformat: csv\nsteps:\n  - step: connector_query\n    connector: api\n    rest:\n      path: {path}\n      records: /data\n{paging}objects:\n  - as: org\n    type: certification\n    key: code\n    title: {{ from: name }}\n    properties:\n      code: {{ from: code }}\n"
+    )
+}
+
+#[tokio::test]
+#[serial]
+async fn an_import_reads_a_paged_rest_api_into_a_table() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let api = Api {
+            server: &server,
+            token: &env.alice,
+            org,
+        };
+        install_pack(&api).await;
+        let port = spawn_api().await;
+        let body = |secret: &str| {
+            json!({ "name": "api", "kind": "rest", "host": "127.0.0.1", "port": port,
+                    "tls": false, "rest": { "base_path": "/api", "auth": "bearer" },
+                    "password": { "value": secret } })
+        };
+
+        // Settings come back, the token never.
+        let (s, c) = api
+            .call("POST", "/api/v1/connectors", Some(body("tok")))
+            .await;
+        assert_eq!(s, 201, "{c}");
+        assert_eq!(c["kind"], "rest", "{c}");
+        assert_eq!(c["rest"]["base_path"], "/api", "{c}");
+        assert!(!c.to_string().contains("tok\""), "{c}");
+        let id = c["id"].as_str().unwrap().to_string();
+        let (_, t) = api
+            .call("POST", &format!("/api/v1/connectors/{id}/test"), None)
+            .await;
+        assert_eq!(t["ok"], true, "{t}");
+
+        let paging = "      paging: page\n      page_param: page\n";
+        let import = |path: &str, paging: &str| {
+            json!({ "name": "api", "mapping": rest_mapping(path, paging), "source": "file",
+                    "mode": "incremental" })
+        };
+        let (s, i) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(import("/items", paging)),
+            )
+            .await;
+        assert_eq!(s, 201, "{i}");
+        let imp = i["id"].as_str().unwrap().to_string();
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["run"]["counts"]["created"], 3, "two pages read: {r}");
+        assert!(!r["steps"].to_string().contains("127.0.0.1"), "{r}");
+
+        // Each failure is a code: another host, not JSON, no records, a page limit.
+        let mut version = 1;
+        for (path, paging, code) in [
+            (
+                "/away",
+                "      paging: link\n",
+                "connector-rest-host-changed",
+            ),
+            ("/html", "", "connector-rest-not-json"),
+            ("/", "", "connector-rest-status"),
+            (
+                "/items",
+                "      paging: page\n      page_param: page\n      max_pages: 1\n",
+                "connector-rest-page-limit",
+            ),
+        ] {
+            let mut b = import(path, paging);
+            b["expected_version"] = json!(version);
+            let (s, e) = api
+                .call("PUT", &format!("/api/v1/ontology/imports/{imp}"), Some(b))
+                .await;
+            assert_eq!(s, 200, "{e}");
+            version = e["version"].as_i64().unwrap();
+            let r = api.run(&imp).await;
+            assert_eq!(r["run"]["state"], "failed", "{path}: {r}");
+            assert_eq!(r["run"]["state_code"], code, "{path}: {r}");
+        }
+
+        // A wrong token: refused, and the test says so without the server's text.
+        let mut wrong = body("nope");
+        wrong["expected_version"] = json!(1);
+        let (s, e) = api
+            .call("PUT", &format!("/api/v1/connectors/{id}"), Some(wrong))
+            .await;
+        assert_eq!(s, 200, "{e}");
+        let (_, t) = api
+            .call("POST", &format!("/api/v1/connectors/{id}/test"), None)
+            .await;
+        assert_eq!(t["code"], "connector-rest-denied", "{t}");
+
+        // A base path that smuggles a host is refused before anything is stored.
+        let mut bad = body("tok");
+        bad["name"] = json!("bad");
+        bad["rest"]["base_path"] = json!("//evil.example.org/x");
+        let (s, e) = api.call("POST", "/api/v1/connectors", Some(bad)).await;
+        assert_eq!(s, 400, "{e}");
+    })
+    .await;
+}

@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use futures_util::TryStreamExt;
+use pnex_core::connectors::rest::{self, Paging, RestColumn};
 use pnex_core::connectors::QUERY_MAX_BYTES;
 use pnex_core::err_codes;
 use pnex_core::ingest::{IngestConfig, IngestMsg, StagedEntry};
@@ -66,9 +67,6 @@ fn refused(code: &'static str) -> Outcome {
 }
 
 pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Outcome {
-    if cfg.query.trim().is_empty() || cfg.query.len() > QUERY_MAX_BYTES {
-        return refused(err_codes::CONNECTOR_QUERY_INVALID);
-    }
     if !author_may_use(cx).await {
         return refused(err_codes::CONNECTOR_FORBIDDEN);
     }
@@ -82,9 +80,13 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Out
     let cap = cfg.max_bytes();
     let target = connectors::target(cx.db, ring, cx.node.org_id, Some(&cfg.connector), None).await;
     let target = match target {
-        Ok(t) => t,
+        Ok(connectors::Target::Pg(t)) => t,
+        Ok(connectors::Target::Rest(mut t)) => return rest(cx, cfg, &mut t, cap, room).await,
         Err(code) => return refused(code),
     };
+    if cfg.query.trim().is_empty() || cfg.query.len() > QUERY_MAX_BYTES {
+        return refused(err_codes::CONNECTOR_QUERY_INVALID);
+    }
     let mut conn = match target.connect(QUERY_TIMEOUT).await {
         Ok(c) => c,
         Err(code) => return refused(code),
@@ -151,6 +153,11 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Out
         return unavailable();
     }
     let _ = conn.close().await;
+    staged(cfg, key, bytes, hasher)
+}
+
+/// The outcome of a step whose CSV is written: the next steps read it like a file.
+fn staged(cfg: &IngestConfig, key: String, bytes: u64, hasher: Sha256) -> Outcome {
     let sha256 = format!("{:x}", hasher.finalize());
     // No host or user in the journal (R4).
     let manifest = json!({
@@ -176,4 +183,124 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Out
     out.sha256 = Some(sha256);
     out.keep_until = Some(Utc::now() + chrono::Duration::days(cfg.keep_raw_days() as i64));
     out
+}
+
+/// Reads a REST API page after page into one CSV (connectors.md D793). Bodies count
+/// against `cap`, the CSV against the staging room.
+async fn rest(
+    cx: &Cx<'_>,
+    cfg: &IngestConfig,
+    t: &mut connectors::RestTarget,
+    cap: u64,
+    room: u64,
+) -> Outcome {
+    let Some(q) = cfg.rest.as_ref().filter(|q| q.check().is_none()) else {
+        return refused(err_codes::CONNECTOR_QUERY_INVALID);
+    };
+    let key = cx.key("raw", FILE_NAME);
+    let Ok(mut w) = cx.store.writer(&key).await else {
+        return unavailable();
+    };
+    let mut hasher = Sha256::new();
+    let mut written = 0u64;
+    let read = async {
+        let first = t.url(&q.path);
+        let (mut received, mut columns) = (0u64, None::<Vec<RestColumn>>);
+        let (mut cursor, mut link) = (None::<String>, None::<reqwest::Url>);
+        for n in 0..q.max_pages() {
+            let (url, params) = match link.take() {
+                Some(next) => (next, Vec::new()),
+                None => (first.clone(), q.page_params(n, cursor.as_deref())),
+            };
+            let mut res = t.get(url.clone(), &params).await.map_err(refused)?;
+            let next = res
+                .headers()
+                .get(reqwest::header::LINK)
+                .and_then(|v| v.to_str().ok())
+                .and_then(rest::next_link);
+            let mut body = Vec::new();
+            loop {
+                match res.chunk().await {
+                    Ok(Some(chunk)) => {
+                        received += chunk.len() as u64;
+                        if received > cap {
+                            let args = json!({ "bytes": received, "max": cap });
+                            return Err(Outcome::fail(err_codes::IMPORT_SOURCE_TOO_LARGE, args));
+                        }
+                        body.extend_from_slice(&chunk);
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        tracing::info!(error = %e, "connector page stopped");
+                        return Err(refused(err_codes::CONNECTOR_UNREACHABLE));
+                    }
+                }
+            }
+            let page: Value = serde_json::from_slice(&body)
+                .map_err(|_| refused(err_codes::CONNECTOR_REST_NOT_JSON))?;
+            drop(body);
+            let records = q
+                .records(&page)
+                .ok_or_else(|| refused(err_codes::CONNECTOR_REST_NO_RECORDS))?;
+            let mut csv = String::new();
+            let cols = columns.get_or_insert_with(|| {
+                let c = q.columns_for(records.first());
+                csv.push_str(&rest::csv_line(c.iter().map(|c| c.name.as_str())));
+                c
+            });
+            for r in records {
+                csv.push_str(&rest::csv_line(
+                    cols.iter().map(|c| rest::cell(r, &c.pointer)),
+                ));
+            }
+            written += csv.len() as u64;
+            if written > room {
+                return Err(Outcome::fail(err_codes::INGEST_STAGING_QUOTA, Value::Null));
+            }
+            hasher.update(csv.as_bytes());
+            if w.write(csv.into_bytes()).await.is_err() {
+                return Err(unavailable());
+            }
+            let short = q.page_size.is_some_and(|s| records.len() < s as usize);
+            let more = match q.paging {
+                Paging::None => false,
+                Paging::Page | Paging::Offset => !records.is_empty() && !short,
+                Paging::Cursor => match q.next_cursor(&page) {
+                    // The same cursor twice would loop until the page limit.
+                    Some(c) if cursor.as_deref() != Some(c.as_str()) => {
+                        cursor = Some(c);
+                        true
+                    }
+                    _ => false,
+                },
+                Paging::Link => match next {
+                    Some(href) => {
+                        let next = url
+                            .join(&href)
+                            .map_err(|_| refused(err_codes::CONNECTOR_REST_HOST_CHANGED))?;
+                        if !t.same_origin(&next) {
+                            return Err(refused(err_codes::CONNECTOR_REST_HOST_CHANGED));
+                        }
+                        link = Some(next);
+                        true
+                    }
+                    None => false,
+                },
+            };
+            if !more {
+                return Ok(());
+            }
+        }
+        let args = json!({ "max": q.max_pages() });
+        Err(Outcome::fail(err_codes::CONNECTOR_REST_PAGE_LIMIT, args))
+    }
+    .await;
+    if let Err(out) = read {
+        let _ = w.abort().await;
+        return out;
+    }
+    if w.close().await.is_err() {
+        return unavailable();
+    }
+    staged(cfg, key, written, hasher)
 }

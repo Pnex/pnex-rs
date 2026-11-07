@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::connectors::{Connector, ConnectorInput, ConnectorKind};
+use pnex_core::connectors::{Connector, ConnectorInput};
 
 use super::{code_label, tone, BADGE};
 use crate::api;
@@ -163,6 +163,13 @@ fn ConnectorForm(
     let mut error = use_signal(|| None::<String>);
     let id = initial.as_ref().map(|c| c.id.clone());
     let version = initial.as_ref().map(|c| c.version);
+    // The form edits database fields only: a REST connector keeps its kind and settings.
+    let (kind, rest) = initial
+        .as_ref()
+        .map(|c| (c.kind, c.rest.clone()))
+        .unwrap_or_default();
+    // A signal keeps `input` below Copy.
+    let rest = use_signal(move || rest);
     let title = if initial.is_some() {
         t!("pipe-connector-edit")
     } else {
@@ -170,12 +177,13 @@ fn ConnectorForm(
     };
     let input = move || ConnectorInput {
         name: name().trim().to_string(),
-        kind: ConnectorKind::Postgres,
+        kind,
         host: host().trim().to_string(),
         port: port().trim().parse().unwrap_or(0),
         database: database().trim().to_string(),
         username: username().trim().to_string(),
         tls: tls(),
+        rest: rest(),
         password: password().to_input(),
         expected_version: version,
     };

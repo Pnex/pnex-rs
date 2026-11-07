@@ -4,8 +4,8 @@ title: Pipelines, tables and connectors
 kind: feature
 pages: /pipelines, /pipelines/:id, /pipelines/tables/:id
 nodes: dataset_trigger
-err_codes: pipeline-not-found, pipeline-name-taken, pipeline-version-conflict, pipeline-document-invalid, pipeline-run-active, pipeline-input-missing, pipeline-input-empty, pipeline-sql-invalid, pipeline-memory-exceeded, pipeline-timeout, pipeline-worker-lost, pipeline-check-failed, build-not-found, build-cycle, build-too-long, build-author-forbidden, build-timeout, dataset-name-taken, dataset-reserved, dataset-csv-invalid, dataset-schema-mismatch, dataset-quota, dataset-source-too-large, dataset-unchanged, connector-name-taken, connector-unreachable, connector-host-refused
-tags: pipeline, table, dataset, transform, traitement, sql, lineage, lignage, version, retention, rétention, check, contrôle, freshness, fraîcheur, schedule, planification, chained run, exécution enchaînée, connector, connecteur, csv
+err_codes: pipeline-not-found, pipeline-name-taken, pipeline-version-conflict, pipeline-document-invalid, pipeline-run-active, pipeline-input-missing, pipeline-input-empty, pipeline-sql-invalid, pipeline-memory-exceeded, pipeline-timeout, pipeline-worker-lost, pipeline-check-failed, build-not-found, build-cycle, build-too-long, build-author-forbidden, build-timeout, dataset-name-taken, dataset-reserved, dataset-csv-invalid, dataset-schema-mismatch, dataset-quota, dataset-source-too-large, dataset-unchanged, connector-name-taken, connector-unreachable, connector-host-refused, connector-rest-denied, connector-rest-status, connector-rest-not-json, connector-rest-no-records, connector-rest-host-changed, connector-rest-page-limit
+tags: pipeline, table, dataset, transform, traitement, sql, lineage, lignage, version, retention, rétention, check, contrôle, freshness, fraîcheur, schedule, planification, chained run, exécution enchaînée, connector, connecteur, csv, rest, api, pagination
 ---
 The Pipelines page (Sources › Pipelines) holds versioned **tables**, the **pipelines** that compute them in SQL, the **chained runs** and the **connectors**.
 
@@ -20,7 +20,13 @@ A table keeps its past versions. Create one and load a CSV from its page (5 GB a
 ## Connectors
 Organization admins save access to an outside PostgreSQL database; the password stays in the vault. **Test** tries to connect. An import reads it with a `connector_query` step, always read only. A private address is refused (*connector-host-refused*) until the platform admin allows that host.
 
+A connector can also point to a **REST API**: a host, a base path and how it authenticates (a bearer token, a key in a header, a user and password, or an OAuth2 client). The import then names the path, where the records sit in the JSON answer, the columns to keep, and how to page (page number, offset, cursor, or the `Link` header). It only reads, page after page, and never follows a next page to another host.
+
 ## Troubleshooting
+- ***connector-rest-denied*.** The API refused the credentials: save the connector again with the right token, key or client secret, then **Test**.
+- ***connector-rest-no-records*.** The JSON answer holds no list where the import looks: fix the records path of the import.
+- ***connector-rest-page-limit*.** More pages than the import allows: raise its page limit or narrow its parameters.
+- ***connector-rest-host-changed*.** The API sent a next page on another host; the import stopped and kept nothing from that run.
 - **A run stays queued, then ends in *build-timeout*.** No pipeline worker is running on this server: ask the platform admin.
 - ***pipeline-input-missing* or *pipeline-input-empty*.** A table read does not exist or has no version: load it or run what fills it.
 - ***pipeline-sql-invalid*.** The query was refused: it can only read, and only the tables listed in the transform, under the names given there.
