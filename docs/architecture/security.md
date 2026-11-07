@@ -623,19 +623,19 @@ lecteur ; ✔ = relu dans le code à la main.
 
 | # | Sév. | Finding | Règle | Statut |
 |---|---|---|---|---|
-| SEC-67 | HIGH | **Fonction JS déployée sans limite de temps ni de mémoire** ✔ (A1) — `while(true){}` bloque le runtime partagé de toutes les orgs | R5 | ouvert, à discuter |
-| SEC-68 | HIGH | **Limite de tas Starlark contournée par une allocation unique** (A2) — OOM du runtime partagé | R5 | ouvert, à discuter |
-| SEC-69 | MEDIUM | **Renvoi d'une écriture de pin périmée** ✔ (A3) — le device revient à un état physique antérieur | D123 | ouvert, à discuter |
-| SEC-70 | HIGH | **SSRF par le proxy du nœud http-fetch** ✔ (A4) — le proxy échappe à la garde de sortie | R8 | ouvert, à discuter |
-| SEC-71 | MEDIUM | **Exfiltration par injection : `try_site_recipe` en YAML libre sans confirmation** ✔ (A5) | D142 | ouvert, à discuter |
-| SEC-72 | MEDIUM | **Ajout de membre sans consentement + oracle d'existence d'email** ✔ (A6) | R1 | ouvert, à discuter |
-| SEC-73 | MEDIUM | **Délimiteur `<data>` non échappé dans les sorties d'outils mail/site** ✔ (B3) | D142 | ouvert, à discuter |
-| SEC-74 | LOW | **Websockets caméra / notifications / docs sans permission IAM de lecture** (B4) | R2 | ouvert, à discuter |
-| SEC-75 | LOW | **Routes `orgs` en tests de rôle, hors moteur IAM** (B5) | R2 | ouvert, à discuter |
-| SEC-76 | MEDIUM | **Écriture device interne sans fence : `org_id` du corps cru** (B6) — résiduel de SEC-4, aggravé par SEC-67/68 | R7 | ouvert, à discuter |
-| SEC-77 | LOW | **Promotion admin plateforme sans `email_verified`** (C2) — prolonge SEC-W5 | R1 | ouvert, à discuter |
-| SEC-78 | LOW | **Contrôle de version non atomique de `update_notification_template` (assistant)** (C5) | D144 | ouvert, à discuter |
-| SEC-79 | LOW | **`authorize_tool` ouvert sur un outil hors registre IAM** (C6) — rien d'exposé aujourd'hui | R2 | ouvert, à discuter |
+| SEC-67 | HIGH | **Fonction JS déployée sans limite de temps ni de mémoire** ✔ (A1) — `while(true){}` bloque le runtime partagé de toutes les orgs | R5 | **corrigé** (2026-11-07) : appels JS sous 128 Mio, pile 1 Mio et budget de 10 s par init/message/finalize (fork edgelinkd), espace d'adressage du runtime plafonné à 4 Gio par défaut ; test `pnex-flow-runtime/tests/function_budget.rs` |
+| SEC-68 | HIGH | **Limite de tas Starlark contournée par une allocation unique** (A2) — OOM du runtime partagé | R5 | **corrigé** (2026-11-07) : `*` réécrit en `__pnex_mul` qui refuse plus de 8 Mi éléments, `range` borné de même, `*=` refusé ; test dans `pnex-node-starlark/src/executor.rs` |
+| SEC-69 | MEDIUM | **Renvoi d'une écriture de pin périmée** ✔ (A3) — le device revient à un état physique antérieur | D123 | **corrigé** (2026-11-07) : une écriture plus récente sur la même gpio remplace l'attente ; renvois dans l'ordre d'envoi ; test `cmd_acks` |
+| SEC-70 | HIGH | **SSRF par le proxy du nœud http-fetch** ✔ (A4) — le proxy échappe à la garde de sortie | R8 | **corrigé** (2026-11-07) : `egress::check_url` sur l'URL du proxy dans `build_client` ; test |
+| SEC-71 | MEDIUM | **Exfiltration par injection : `try_site_recipe` en YAML libre sans confirmation** ✔ (A5) | D142 | **corrigé** (2026-11-07) : `try_site_recipe` ne joue qu'une recette enregistrée (`ai-site-recipe-saved-only`) ; tour « contaminé » dès qu'un outil renvoie du contenu extérieur (mails, recettes, docs, pages) : ses outils d'écriture (`*:write`, hors `propose_*`) sont retenus (`ai-confirm-required`) et ne s'exécutent qu'à la confirmation de l'humain dans le chat, une seule fois, mêmes contrôles (`ai-confirm-stale` sinon) ; tests `tests/ai.rs` |
+| SEC-72 | MEDIUM | **Ajout de membre sans consentement + oracle d'existence d'email** ✔ (A6) | R1 | **corrigé** (2026-11-07) : adhésion seulement par invitation acceptée par l'invité (`org_invitations`, 14 jours) ; 202 identique que le compte existe ou non, sans `user_id` ; acceptation par l'email invité vérifié par l'IdP seulement ; rôle owner = `orgs.owners:write` ; tests `tests/org_invitations.rs` |
+| SEC-73 | MEDIUM | **Délimiteur `<data>` non échappé dans les sorties d'outils mail/site** ✔ (B3) | D142 | **corrigé** (2026-11-07) : un helper `services::ai::untrusted_data` échappe `&` et `<` ; utilisé pour mails, extraits de sites, analyses média et nœuds IA de flow ; test |
+| SEC-74 | LOW | **Websockets caméra / notifications / docs sans permission IAM de lecture** (B4) | R2 | **corrigé** (2026-11-07) : `iam::store::member_grants` + `cameras:read` / `notify:read` / `docs:read` (et `docs:write` à la relecture du rôle), 4006 sinon ; test `notify.rs` (Deny) |
+| SEC-75 | LOW | **Routes `orgs` en tests de rôle, hors moteur IAM** (B5) | R2 | **corrigé** (2026-11-07) : toutes les routes `/orgs/{id}…` passent par `OrgContext` (refus audités, D294) ; 403 `org-path-mismatch` si l'org du chemin diffère de `X-Org-Id` ; actes owner = porte `orgs.owners:write` ; départ `POST /orgs/{id}/leave` ; tests |
+| SEC-76 | MEDIUM | **Écriture device interne sans fence : `org_id` du corps cru** (B6) — résiduel de SEC-4, aggravé par SEC-67/68 | R7 | **corrigé** (2026-11-07) : écriture sans fence refusée dès qu'un worker runtime est inscrit ; le device doit être la cible d'un nœud `device_write` d'un flow déployé de l'org (404 sinon, oui mis en cache 2 s) ; tests `ws_device.rs`, `internal_flow.rs`, `flow_cluster.rs` |
+| SEC-77 | LOW | **Promotion admin plateforme sans `email_verified`** (C2) — prolonge SEC-W5 | R1 | **corrigé** (2026-11-07) : promotion admin plateforme et resynchronisation d'email exigent `email_verified == Some(true)` ; test |
+| SEC-78 | LOW | **Contrôle de version non atomique de `update_notification_template` (assistant)** (C5) | D144 | **corrigé** (2026-11-07) : `notify_templates::update_if_unchanged`, un seul `UPDATE … WHERE updated_at = <lu>`, conflit sinon ; test |
+| SEC-79 | LOW | **`authorize_tool` ouvert sur un outil hors registre IAM** (C6) — rien d'exposé aujourd'hui | R2 | **corrigé** (2026-11-07) : nom hors registre IAM refusé avant toute exécution ; test |
 
 ### Reste à faire
 
