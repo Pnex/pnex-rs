@@ -143,10 +143,32 @@ fn luhn(args: &[ColumnarValue]) -> DfResult<ColumnarValue> {
     Ok(ColumnarValue::Array(Arc::new(out)))
 }
 
+/// How a session joins.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Joins {
+    /// Builds the small side in memory: fast, never spills.
+    Hash,
+    /// Sorts both sides, spilling to disk: for two sides too big for the pool
+    /// (C6). Half the pool: the engine also allocates outside its pool while
+    /// sorting (§9.7 bis, cause 4), and a pod killed there loses the whole
+    /// run. The partitions stay: with one, the planner joins by hash anyway.
+    SortMerge,
+}
+
+/// True when a memory error comes from the hash table of a join, the one
+/// case a sort-merge join can get through.
+pub fn hash_join_too_big(e: &DataFusionError) -> bool {
+    matches!(e.find_root(), DataFusionError::ResourcesExhausted(m) if m.contains("HashJoinInput"))
+}
+
 /// A session with no table, ready for the inputs of one transform.
-pub fn session(limits: &Limits) -> DfResult<SessionContext> {
+pub fn session(limits: &Limits, joins: Joins) -> DfResult<SessionContext> {
+    let (memory, partitions) = match joins {
+        Joins::Hash => (limits.memory_bytes, limits.partitions),
+        Joins::SortMerge => (limits.memory_bytes / 2, limits.partitions.max(2)),
+    };
     let pool = TrackConsumersPool::new(
-        FairSpillPool::new(limits.memory_bytes),
+        FairSpillPool::new(memory),
         std::num::NonZeroUsize::new(5).expect("not zero"),
     );
     let disk = DiskManagerBuilder::default()
@@ -157,13 +179,25 @@ pub fn session(limits: &Limits) -> DfResult<SessionContext> {
         .with_disk_manager_builder(disk)
         .build_arc()?;
     let mut config = SessionConfig::new()
-        .with_target_partitions(limits.partitions)
+        .with_target_partitions(partitions)
+        // Merging spilled runs holds one batch per run: smaller batches, more
+        // runs merged within the pool.
+        .with_batch_size(match joins {
+            Joins::Hash => 8192,
+            Joins::SortMerge => 1024,
+        })
         .with_information_schema(false);
     let options = config.options_mut();
     // A sort-merge join sorts both sides: joining 105 rows to 44 M sorted the 44 M
     // and the pod died outside the pool (dev, 2026-11-06). A hash join builds the
     // small side; one too big for the pool ends in a clean memory error.
-    options.optimizer.prefer_hash_join = true;
+    options.optimizer.prefer_hash_join = joins == Joins::Hash;
+    if joins == Joins::SortMerge {
+        // Each sort holds this much back for its merge (10 MB by default): with
+        // two sides per partition it would take the pool before any row.
+        options.execution.sort_spill_reservation_bytes =
+            (memory / (partitions * 8)).clamp(256 * 1024, 10 * 1024 * 1024);
+    }
     // A column keeps the case of its file: `p.Numero_Fiche` means what it says.
     options.sql_parser.enable_ident_normalization = false;
     // An endless recursive query would hold the job until its timeout.
@@ -225,7 +259,7 @@ mod tests {
             spill_dir: std::env::temp_dir(),
             spill_max_bytes: 1024 * 1024 * 1024,
         };
-        let ctx = session(&limits).unwrap();
+        let ctx = session(&limits, Joins::Hash).unwrap();
         let schema = Arc::new(Schema::new(vec![Field::new("Code", DataType::Utf8, true)]));
         let values: ArrayRef = Arc::new(StringArray::from(vec![" 732 829 320 ", "x"]));
         let batch = RecordBatch::try_new(schema.clone(), vec![values]).unwrap();
@@ -239,6 +273,53 @@ mod tests {
             .await?
             .collect()
             .await
+    }
+
+    /// C6: two sides too big for the pool. The hash join stops on its table;
+    /// sorting both sides on disk gets through.
+    #[tokio::test]
+    async fn a_join_too_big_for_the_pool_ends_when_sorted() {
+        let rows = 600_000usize;
+        let spill = std::env::temp_dir().join(format!("pnex-c6-{}", std::process::id()));
+        std::fs::create_dir_all(&spill).unwrap();
+        let limits = Limits {
+            memory_bytes: 48 * 1024 * 1024,
+            partitions: 2,
+            spill_dir: spill.clone(),
+            spill_max_bytes: 2 * 1024 * 1024 * 1024,
+        };
+        let side = |name: &str| {
+            let schema = Arc::new(Schema::new(vec![
+                Field::new("k", DataType::Utf8, false),
+                Field::new(name, DataType::Utf8, false),
+            ]));
+            let keys: ArrayRef = Arc::new(StringArray::from_iter_values(
+                (0..rows).map(|i| format!("{:014}", (i * 7919) % rows)),
+            ));
+            let values: ArrayRef = Arc::new(StringArray::from_iter_values(
+                (0..rows).map(|i| format!("{name} value number {i:>12}")),
+            ));
+            let batch = RecordBatch::try_new(schema.clone(), vec![keys, values]).unwrap();
+            let parts = (0..8)
+                .map(|p| vec![batch.slice(p * rows / 8, rows / 8)])
+                .collect();
+            Arc::new(MemTable::try_new(schema, parts).unwrap())
+        };
+        let sql = "SELECT a.k, a.a, b.b FROM a JOIN b ON a.k = b.k";
+        let mut outcome = Vec::new();
+        for joins in [Joins::Hash, Joins::SortMerge] {
+            let ctx = session(&limits, joins).unwrap();
+            ctx.register_table("a", side("a")).unwrap();
+            ctx.register_table("b", side("b")).unwrap();
+            outcome.push(run(&ctx, sql).await);
+        }
+        let _ = std::fs::remove_dir_all(&spill);
+        let e = outcome[0]
+            .as_ref()
+            .expect_err("the hash table fits: grow the sides");
+        assert!(hash_join_too_big(e), "{e}");
+        let batches = outcome[1].as_ref().expect("sorted join");
+        assert_eq!(batches.iter().map(|b| b.num_rows()).sum::<usize>(), rows);
     }
 
     /// Every way out of the declared inputs must be refused (D572).

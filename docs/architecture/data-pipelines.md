@@ -1424,6 +1424,18 @@ défaut ; les causes et les réglages qui lèvent ces échecs sont dans « Cause
 DataFusion réduit aux seules fonctionnalités utiles, RustFS en réseau réel, tenue
 de `objects` au-delà de quelques centaines de milliers de lignes.
 
+### 9.7 quater Jointure grosse × grosse (C6, 2026-11-07)
+
+Une jointure par hachage reste le choix par défaut (`prefer_hash_join=true`, C3) : elle
+ne trie pas le grand côté face à un petit. Quand sa table dépasse le pool
+(`ResourcesExhausted` sur `HashJoinInput`), la transformation repart **une fois** en
+jointure par fusion : les deux côtés sont triés avec débordement sur disque, avec la
+moitié du pool (le moteur alloue aussi hors du pool en triant, cause 4 du §9.7 bis).
+Les partitions restent : avec une seule, le planificateur joint par hachage malgré
+`prefer_hash_join=false` (relevé par le test `a_join_too_big_for_the_pool_ends_when_sorted`).
+Deux réglages du même mode, trouvés par le test : la réserve de fusion de chaque tri (10 Mo par défaut) suit la taille du pool, et les lots passent à 1 024 lignes, car la fusion des fichiers déversés tient un lot par fichier. Un dépassement d'agrégat garde l'échec propre `pipeline-memory-exceeded`. Reste à
+mesurer sur dev la jointure réelle 44,5 M × 38 M une fois l'image déployée.
+
 ### 9.7 ter Écart de D577 relevé dans le code
 
 D577 compare deux transactions « par clé puis par propriété », ce qui suppose une

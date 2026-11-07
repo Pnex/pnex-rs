@@ -111,11 +111,17 @@ impl Config {
 pub struct Failure {
     pub code: &'static str,
     pub args: Value,
+    /// The hash table of a join outgrew the pool: a sort-merge join may pass.
+    pub hash_join: bool,
 }
 
 impl Failure {
     fn new(code: &'static str, args: Value) -> Self {
-        Self { code, args }
+        Self {
+            code,
+            args,
+            hash_join: false,
+        }
     }
 
     /// Infrastructure failed, not the pipeline. The detail stays in the logs: it
@@ -131,10 +137,13 @@ impl Failure {
     fn of_engine(output: &str, e: DataFusionError) -> Self {
         let root = e.find_root();
         match root {
-            DataFusionError::ResourcesExhausted(_) => Self::new(
-                err_codes::PIPELINE_MEMORY_EXCEEDED,
-                json!({ "output": output }),
-            ),
+            DataFusionError::ResourcesExhausted(_) => Self {
+                hash_join: engine::hash_join_too_big(&e),
+                ..Self::new(
+                    err_codes::PIPELINE_MEMORY_EXCEEDED,
+                    json!({ "output": output }),
+                )
+            },
             DataFusionError::ObjectStore(_)
             | DataFusionError::IoError(_)
             | DataFusionError::ParquetError(_)
@@ -642,6 +651,23 @@ impl Worker {
         Ok(())
     }
 
+    /// A session holding the inputs of one transform.
+    async fn session(
+        &self,
+        inputs: &[Input],
+        joins: engine::Joins,
+    ) -> Result<SessionContext, DataFusionError> {
+        let ctx = engine::session(&self.config.limits, joins)?;
+        let url = format!("s3://{}", self.config.s3_bucket)
+            .parse::<url::Url>()
+            .map_err(|e| DataFusionError::External(Box::new(e)))?;
+        ctx.register_object_store(&url, self.store.clone());
+        for input in inputs {
+            self.register_input(&ctx, input).await?;
+        }
+        Ok(ctx)
+    }
+
     async fn run_transform(
         &self,
         org_id: i64,
@@ -670,18 +696,6 @@ impl Worker {
         }
         let room = self.room(org_id).await?;
 
-        let ctx =
-            engine::session(&self.config.limits).map_err(|e| Failure::of_engine(&t.output, e))?;
-        let url = format!("s3://{}", self.config.s3_bucket)
-            .parse::<url::Url>()
-            .map_err(Failure::storage)?;
-        ctx.register_object_store(&url, self.store.clone());
-        for input in &inputs {
-            self.register_input(&ctx, input)
-                .await
-                .map_err(|e| Failure::of_engine(&t.output, e))?;
-        }
-
         let transaction = self.begin(org_id, output_id).await?;
         self.current.lock().expect("heartbeat lock").1 = Some(transaction);
         let key = format!("org_{org_id}/datasets/{output_id}/{transaction}/part-0.parquet");
@@ -691,7 +705,22 @@ impl Worker {
             .transform_timeout
             .min(deadline.saturating_duration_since(Instant::now()));
         let write = async {
-            let written = self.write_query(&ctx, t, &key, room, &erased).await?;
+            // A join whose hash table outgrows the pool runs again sorting both
+            // sides on disk (C6): slower, but it ends.
+            let mut joins = engine::Joins::Hash;
+            let written = loop {
+                let ctx = self
+                    .session(&inputs, joins)
+                    .await
+                    .map_err(|e| Failure::of_engine(&t.output, e))?;
+                match self.write_query(&ctx, t, &key, room, &erased).await {
+                    Err(f) if f.hash_join && joins == engine::Joins::Hash => {
+                        tracing::info!(output = %t.output, "hash join over the pool, sorting instead");
+                        joins = engine::Joins::SortMerge;
+                    }
+                    other => break other?,
+                }
+            };
             self.run_checks(transaction, output_id, t, &key, &written)
                 .await?;
             Ok(written)
@@ -801,7 +830,7 @@ impl Worker {
         let c = &t.checks;
         let output = t.output.as_str();
         let engine = |e| Failure::of_engine(output, e);
-        let ctx = engine::session(&self.config.limits).map_err(engine)?;
+        let ctx = engine::session(&self.config.limits, engine::Joins::Hash).map_err(engine)?;
         let url = format!("s3://{}", self.config.s3_bucket)
             .parse::<url::Url>()
             .map_err(Failure::storage)?;
