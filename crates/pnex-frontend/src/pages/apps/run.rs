@@ -178,12 +178,16 @@ fn Runner(app: AppView, screen: String, query: String) -> Element {
                 }
             }
             div { class: "min-w-0 flex-1",
-                ScreenBody {
-                    key: "{screen}",
-                    app_id: app.id.clone(),
-                    screen: screen.clone(),
-                    via,
-                    tick,
+                // A key is honoured in a list only: a one-item list remounts the screen, so
+                // a widget sharing its id with one of the last screen never keeps its set.
+                for key in std::iter::once(screen.clone()) {
+                    ScreenBody {
+                        key: "{key}",
+                        app_id: app.id.clone(),
+                        screen: key.clone(),
+                        via: via.clone(),
+                        tick,
+                    }
                 }
             }
         }

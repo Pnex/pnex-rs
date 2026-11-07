@@ -1164,6 +1164,14 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
       await from.blur();
       await expect(main.getByText('Filter to fill in').first()).toBeVisible();
       await expect(main.getByTestId('objects-error')).toHaveCount(0);
+
+      // Moved to from another screen in the app, a table sharing its widget id with one
+      // there shows its own set, not the one it was showing.
+      await page.goto('/apps/sales_follow_up/leads');
+      await expect(main.locator('table').first()).toContainText('Lead one', { timeout: 30_000 });
+      await main.getByRole('link', { name: 'Pipeline', exact: true }).click();
+      await expect(main.locator('table').first()).toContainText('Open', { timeout: 30_000 });
+      await expect(main.locator('table').first()).not.toContainText('Lead one');
     } finally {
       await api.forOrg(orgId).delete(`/orgs/${orgId}`).catch(() => {});
     }
