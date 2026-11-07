@@ -162,3 +162,12 @@ la sous-traitance privée de rang 2 et 3 reste partielle.
   (`start` = `end`) ; à dériver dans le pipeline (exercice de 12 mois).
 - Restent du lot E : vue Argent dossier par dossier (E3), relecture humaine des
   données web et des 86 filiales proposées (E4).
+- **Adresse des sites** (retour de Shan) : aucun site n'avait d'adresse, le type
+  `map_pin` n'en portait pas. Pack `companies` 2.2.0 : propriété `address` ;
+  imports du registre (`companies_fr` 4.3.0, `prospecting_b2b_fr` 3.6.0,
+  `quali_watch` 3.5.0) : `adresse` du registre. « Group sites » v4 : vraie
+  jointure (plus de liste en dur) et adresse SIRENE, 766 sites en 14 s.
+  Mapping de l'import des sites à compléter (`address: address`) une fois
+  l'image déployée et les packs montés de version sur dev.
+  Piste pour plus tard : adresse déduite des coordonnées (géocodage inverse)
+  pour les sites qui ont une position mais pas d'adresse.

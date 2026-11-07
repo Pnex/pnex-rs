@@ -811,7 +811,8 @@ async fn the_sites_of_a_followed_account_come_from_a_search_by_name() {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let site = |siret: &str, state: &str| json!({
             "siret": siret, "etat_administratif": state, "est_siege": false, "date_creation": "2026-10-20",
-            "latitude": "45.76", "longitude": "4.83", "tranche_effectif_salarie": "12"});
+            "latitude": "45.76", "longitude": "4.83", "tranche_effectif_salarie": "12",
+            "adresse": "12 RUE DE LA REPUBLIQUE 69002 LYON"});
         let results = json!({"results": [
             {"siren": "429853351", "nom_complet": "MECAWORKS FRANCE", "nombre_etablissements_ouverts": 240,
              "matching_etablissements": [site("42985335100022", "A"), site("42985335100030", "F")]},
@@ -841,6 +842,7 @@ async fn the_sites_of_a_followed_account_come_from_a_search_by_name() {
         assert_eq!(*asked.lock().unwrap(), vec!["MECAWORKS FRANCE".to_string()], "the name, of followed accounts only");
         let open = props_of(&env.db, org, "map_pin", "siret", "42985335100022").await;
         assert_eq!((open["created_on"].as_str(), open["administrative_state"].as_str()), (Some("2026-10-20"), Some("active")), "{open}");
+        assert_eq!(open["address"].as_str(), Some("12 RUE DE LA REPUBLIQUE 69002 LYON"), "the register's address");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", account["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert!(l.to_string().contains("establishment_of"), "{l}");
         let pins = |siret: &'static str| {

@@ -1,3 +1,4 @@
+# Since 3.5.0 the register import fills the establishment address.
 # Since 3.2.0 a programme is analyzed into a cross-table (D415–D420), and
 # the documents a relevant page links are kept as media (D421).
 # Since 3.1.0 the network and website flows record their check runs
@@ -47,7 +48,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "3.4.0"
+version: "3.5.0"
 requires: [companies_fr, web_presence]
 extends:
   - type: organization
@@ -791,6 +792,7 @@ imports:
           location: { lat: siege.latitude, lon: siege.longitude }
           properties:
             siret: siege.siret
+            address: siege.adresse
             head_office: { value: true }
             administrative_state: { from: siege.etat_administratif, convert: [{ enum: { A: active, F: closed } }] }
             headcount_band: siege.tranche_effectif_salarie
@@ -805,6 +807,7 @@ imports:
           properties:
             siret: siret
             head_office: est_siege
+            address: adresse
             administrative_state: { from: etat_administratif, convert: [{ enum: { A: active, F: closed } }] }
             headcount_band: tranche_effectif_salarie
             headcount_min: { from: tranche_effectif_salarie, convert: [*qw_headcount_min] }

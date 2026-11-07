@@ -24,10 +24,12 @@
 # 1.2.0 a link from a community source is a proposal (proposals.md D375):
 # it enters the graph once a human accepts it.
 # Since 2.0.0 every identifier is English (breaking).
+# Since 2.2.0 an establishment carries its postal address, as the register
+# publishes it (one line).
 key: companies
 name: Companies
 names: {fr: "Entreprises"}
-version: "2.1.0"
+version: "2.2.0"
 requires: [investigation]
 description: Legal units of any country, their establishments on the map and their officers by mandate; country packs add the local registers.
 descriptions: {fr: "Unités légales de tout pays, leurs établissements sur la carte et leurs dirigeants par mandat ; les packs par pays ajoutent les registres locaux."}
@@ -62,6 +64,7 @@ extends:
         labels: {active: {fr: "Actif", en: "Active"}, closed: {fr: "Fermé", en: "Closed"}}
         indexed: true
       - { key: trade_name, name: Trade name, names: {fr: "Enseigne"}, kind: text, max_len: 255 }
+      - { key: address, name: Address, names: {fr: "Adresse"}, kind: text, max_len: 512 }
       - { key: headcount_min, name: Headcount from, names: {fr: "Effectif à partir de"}, kind: number, min: 0 }
       - { key: headcount_max, name: Headcount up to, names: {fr: "Effectif jusqu'à"}, kind: number, min: 0 }
 link_types:

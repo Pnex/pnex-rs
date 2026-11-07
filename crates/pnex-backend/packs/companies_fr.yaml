@@ -23,10 +23,11 @@
 # are never merged.
 # Since 3.0.0 every identifier is English (breaking).
 # Since 4.0.0 the import aliases are English too (breaking).
+# Since 4.3.0 the register import fills the establishment address.
 key: companies_fr
 name: French companies
 names: {fr: "Entreprises françaises"}
-version: "4.2.0"
+version: "4.3.0"
 requires: [companies]
 description: SIRENE legal units, establishments on the map and officers by mandate, synchronized from the public company registers.
 descriptions: {fr: "Unités légales SIRENE, établissements sur la carte et dirigeants par mandat, synchronisés depuis les registres publics des entreprises."}
@@ -87,6 +88,7 @@ imports:
           location: { lat: siege.latitude, lon: siege.longitude }
           properties:
             siret: siege.siret
+            address: siege.adresse
             head_office: { value: true }
             administrative_state: { from: siege.etat_administratif, convert: [{ enum: { A: active, F: closed } }] }
             headcount_band: siege.tranche_effectif_salarie
@@ -101,6 +103,7 @@ imports:
           properties:
             siret: siret
             head_office: est_siege
+            address: adresse
             administrative_state: { from: etat_administratif, convert: [{ enum: { A: active, F: closed } }] }
             headcount_band: tranche_effectif_salarie
             headcount_min: { from: tranche_effectif_salarie, convert: [*headcount_min] }
