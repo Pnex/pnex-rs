@@ -72,6 +72,8 @@ fn engine_label(engine: RunnerJobKind) -> String {
     match engine {
         RunnerJobKind::InternalLlm => t!("agents-engine-internal_llm").to_string(),
         RunnerJobKind::Sandbox => t!("agents-engine-sandbox").to_string(),
+        RunnerJobKind::ServerBrowser => t!("agents-engine-server_browser").to_string(),
+        RunnerJobKind::Extension => t!("agents-engine-extension").to_string(),
         other => other.as_str().to_string(),
     }
 }
@@ -611,13 +613,16 @@ fn StartRun(agent: Agent, starting: Signal<Option<Agent>>, reload: Signal<u32>) 
 
 #[component]
 fn RunsTab(reload: Signal<u32>) -> Element {
-    let page = use_signal(|| 0i64);
+    let mut page = use_signal(|| 0i64);
     let mut open = use_signal(|| Option::<AgentRun>::None);
+    // D786: every run of the org, one engine when picked.
+    let mut engine = use_signal(|| None::<RunnerJobKind>);
     let list = use_resource(move || {
         let offset = page() * PAGE_SIZE;
+        let engine = engine();
         async move {
             let _ = reload();
-            api::hosted_agents::runs(PAGE_SIZE, offset).await
+            api::hosted_agents::runs(PAGE_SIZE, offset, engine).await
         }
     });
     let (state, is_empty, count, rows) = match &*list.value().read() {
@@ -629,6 +634,15 @@ fn RunsTab(reload: Signal<u32>) -> Element {
         Column::new(t!("agents-col-started").to_string(), |r: &AgentRun| {
             rsx! {
                 span { class: "text-sm text-ink", {short_date(&r.created_at)} }
+            }
+        }),
+        Column::new(t!("agents-col-what").to_string(), |r: &AgentRun| {
+            let what = match &r.rule {
+                Some(rule) => format!("{} · {rule}", engine_label(r.engine)),
+                None => engine_label(r.engine),
+            };
+            rsx! {
+                span { class: "text-sm text-ink", "{what}" }
             }
         }),
         Column::new(t!("agents-col-state").to_string(), |r: &AgentRun| {
@@ -650,6 +664,16 @@ fn RunsTab(reload: Signal<u32>) -> Element {
         .secondary(),
         Column::new(t!("common-actions").to_string(), move |r: &AgentRun| {
             let run = r.clone();
+            // A rule run is read in its site's studio, with its steps.
+            if let Some(site) = r.site.clone() {
+                return rsx! {
+                    Link {
+                        class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
+                        to: crate::app::Route::WebSiteStudio { site },
+                        {t!("agents-open-rule")}
+                    }
+                };
+            }
             rsx! {
                 button {
                     class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
@@ -659,6 +683,12 @@ fn RunsTab(reload: Signal<u32>) -> Element {
             }
         })
         .actions(),
+    ];
+    let engines = [
+        RunnerJobKind::Sandbox,
+        RunnerJobKind::InternalLlm,
+        RunnerJobKind::ServerBrowser,
+        RunnerJobKind::Extension,
     ];
     rsx! {
         if let Some(run) = open() {
@@ -670,6 +700,24 @@ fn RunsTab(reload: Signal<u32>) -> Element {
             empty_message: t!("agents-runs-empty").to_string(),
             empty_detail: rsx! {},
             div { class: "space-y-4",
+                select {
+                    class: "rounded-lg border border-gray-300 px-2 py-1 text-sm",
+                    "aria-label": t!("agents-filter-engine").to_string(),
+                    "data-testid": "agents-runs-engine",
+                    onchange: move |e| {
+                        engine.set(RunnerJobKind::parse(&e.value()));
+                        page.set(0);
+                    },
+                    option { value: "", {t!("agents-filter-engine-all")} }
+                    for k in engines {
+                        option {
+                            key: "{k.as_str()}",
+                            value: "{k.as_str()}",
+                            selected: engine() == Some(k),
+                            {engine_label(k)}
+                        }
+                    }
+                }
                 DataTable {
                     columns,
                     rows,

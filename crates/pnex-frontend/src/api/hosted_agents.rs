@@ -10,6 +10,7 @@ use pnex_core::environments::{
     ScanPolicy,
 };
 use pnex_core::image_registries::{ImageRegistry, ImageRegistryInput, ImageRegistryTest};
+use pnex_core::runners::RunnerJobKind;
 use pnex_core::runners::{JoinTokenCreate, JoinTokenCreated, RunnerJobLogLine, RunnerView};
 use pnex_core::Paginated;
 
@@ -85,10 +86,17 @@ pub async fn start_run(agent: &str, input: &AgentRunStart) -> Result<AgentRun, A
     .await
 }
 
-pub async fn runs(limit: i64, offset: i64) -> Result<Paginated<AgentRun>, ApiError> {
+pub async fn runs(
+    limit: i64,
+    offset: i64,
+    engine: Option<RunnerJobKind>,
+) -> Result<Paginated<AgentRun>, ApiError> {
+    let filter = engine
+        .map(|e| format!("&engine={}", e.as_str()))
+        .unwrap_or_default();
     client::request(
         reqwest::Method::GET,
-        &format!("/api/v1/agent-runs?limit={limit}&offset={offset}"),
+        &format!("/api/v1/agent-runs?limit={limit}&offset={offset}{filter}"),
         None,
     )
     .await

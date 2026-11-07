@@ -392,6 +392,11 @@ pub struct AgentRun {
     /// Merge requests opened for its branches at the end (D388): forge URLs.
     #[serde(default)]
     pub merge_requests: Vec<String>,
+    /// A navigation rule run (D786): the rule's name and its site.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site: Option<String>,
 }
 
 /// Tokens of one LLM answer, read from its body or its stream.

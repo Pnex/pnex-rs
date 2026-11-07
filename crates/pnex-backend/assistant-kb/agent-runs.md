@@ -12,6 +12,8 @@ A run starts a hosted agent in a sandbox: one pod, on a runner of the organizati
 
 The Agents page lists the agents and their runs. From it a person creates an agent, starts a run by giving the files it asks for, follows its log, downloads its outputs and stops it.
 
+The Runs tab lists every run of the organization, whatever played it: a hosted agent in its sandbox, an internal agent, or a navigation rule played by the server browser or by a browser agent (its rule's name is shown; **Open the site** opens it in the website studio with its steps). The Engine filter keeps one of them.
+
 ## Agents
 - An agent is an identity of the organization: a service account, listed with the other service accounts, never a member. Only an admin creates or changes one.
 - It is born viewer and can be raised to member at most, never above the person who sets it.

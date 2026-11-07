@@ -1765,6 +1765,13 @@ async fn a_rule_run_plays_on_the_starters_browser_and_stays_on_its_site() {
         assert!(done["steps"][0].get("screenshot").is_none(), "an agent stores no screenshot");
         let names: Vec<&str> = done["extracts"].as_array().unwrap().iter().filter_map(|e| e["name"].as_str()).collect();
         assert_eq!(names, ["page"], "an extract from off the site is dropped");
+        // One runs page for every engine (D786), filtered on one.
+        let (s, listed) = call(&server, "GET", "/api/v1/agent-runs?engine=extension", &env.alice, org, None).await;
+        assert_eq!(s, 200, "{listed}");
+        assert_eq!(listed["results"][0]["rule"], "search", "{listed}");
+        assert_eq!(listed["results"][0]["site"], "example.org");
+        let (s, _) = call(&server, "GET", "/api/v1/agent-runs?engine=teleport", &env.alice, org, None).await;
+        assert_eq!(s, 400);
 
         // A step off the site ends the run as failed.
         let (_, second) = call(&server, "POST", "/api/v1/site-recipes/runs", &env.alice, org, Some(start("john"))).await;

@@ -143,15 +143,23 @@ struct PageQuery {
     offset: Option<String>,
 }
 
+/// Filter of the runs list.
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct EngineQuery {
+    /// One engine only: `sandbox`, `internal_llm`, `server_browser`, `extension`.
+    engine: Option<String>,
+}
+
 /// `GET /api/v1/agent-runs`
 #[utoipa::path(
     get,
     path = "/api/v1/agent-runs",
     tag = "agent-runs",
     operation_id = "agent_runs_list",
-    summary = "List the runs of hosted agents",
-    description = "Newest first, with their state and the LLM usage counted by the gateway. Requires `agents:read`. Paginated (`limit`/`offset`).",
-    params(PageQuery),
+    summary = "List the runs of agents and rules",
+    description = "Every run of the org, newest first (D786): hosted and internal agents with the LLM usage counted by the gateway, and navigation rules played by the server browser or a browser agent (their `rule` and `site`). `engine` keeps one engine. Requires `agents:read`. Paginated (`limit`/`offset`).",
+    params(PageQuery, EngineQuery),
     responses(
         (status = 200, body = pnex_core::Paginated<pnex_core::agent_runs::AgentRun>),
         (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
@@ -162,12 +170,25 @@ async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Query(q): Query<PageQuery>,
+    Query(f): Query<EngineQuery>,
 ) -> Result<Response> {
     let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    match agent_runs::list(&ctx.db, org.org.id, page.limit, page.offset).await {
+    let engine = match f.engine.as_deref().filter(|e| !e.is_empty()) {
+        None => None,
+        Some(e) => match pnex_core::runners::RunnerJobKind::parse(e) {
+            Some(k) => Some(k),
+            None => return Ok(super::field_error("engine", err_codes::FIELD_INVALID)),
+        },
+    };
+    let keep: Vec<(String, String)> = f
+        .engine
+        .iter()
+        .map(|e| ("engine".to_string(), e.clone()))
+        .collect();
+    match agent_runs::list(&ctx.db, org.org.id, page.limit, page.offset, engine).await {
         Ok((count, rows)) => format::json(pagination::envelope(
             "/api/v1/agent-runs",
-            &[],
+            &keep,
             page,
             count,
             rows,

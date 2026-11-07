@@ -104,16 +104,23 @@ const ISO: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
 
 /// Hosted and internal agent runs, until the runs page shows every engine (D786, lot U5).
 fn select() -> String {
+    select_of("'sandbox', 'internal_llm'")
+}
+
+/// Every engine (D786): the runs page lists agents and rules alike.
+const ALL_ENGINES: &str = "'sandbox', 'internal_llm', 'server_browser', 'extension'";
+
+fn select_of(kinds: &str) -> String {
     format!(
         "SELECT a.id, a.environment_id, a.agent_id, a.agent_version, a.chain_id, a.job_id, a.llm_calls, a.llm_calls_max, \
            a.input_tokens, a.output_tokens, a.error, j.kind, j.state, j.outcome, j.exit_code, \
-           j.spec->>'image' AS image, \
+           COALESCE(j.spec->>'image', '') AS image, a.name, a.site, \
            to_char(a.created_at AT TIME ZONE 'UTC', {ISO}) AS created_at, \
            to_char(j.started_at AT TIME ZONE 'UTC', {ISO}) AS started_at, \
            to_char(j.finished_at AT TIME ZONE 'UTC', {ISO}) AS finished_at, \
            a.merge_requests \
          FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
-           AND j.kind IN ('sandbox', 'internal_llm')"
+           AND j.kind IN ({kinds})"
     )
 }
 
@@ -151,6 +158,12 @@ fn view(r: &QueryResult) -> Result<AgentRun, DbErr> {
         finished_at: r.try_get("", "finished_at")?,
         merge_requests: serde_json::from_value(r.try_get("", "merge_requests")?)
             .unwrap_or_default(),
+        rule: matches!(kind.as_str(), "server_browser" | "extension")
+            .then(|| r.try_get::<Option<String>>("", "name").ok().flatten())
+            .flatten(),
+        site: matches!(kind.as_str(), "server_browser" | "extension")
+            .then(|| r.try_get::<Option<String>>("", "site").ok().flatten())
+            .flatten(),
     })
 }
 
@@ -398,11 +411,19 @@ pub async fn list(
     org_id: i64,
     limit: i64,
     offset: i64,
+    engine: Option<RunnerJobKind>,
 ) -> Result<(i64, Vec<AgentRun>), DbErr> {
+    // Every engine, or the one asked (D786).
+    let kinds = match engine {
+        Some(e) => format!("'{}'", e.as_str()),
+        None => ALL_ENGINES.to_string(),
+    };
     let total: i64 = db
         .query_one_raw(stmt(
-            "SELECT count(*) AS n FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
-             WHERE a.org_id = $1 AND j.kind IN ('sandbox', 'internal_llm')",
+            &format!(
+                "SELECT count(*) AS n FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
+                 WHERE a.org_id = $1 AND j.kind IN ({kinds})"
+            ),
             vec![org_id.into()],
         ))
         .await?
@@ -413,7 +434,7 @@ pub async fn list(
         .query_all_raw(stmt(
             &format!(
                 "{} WHERE a.org_id = $1 ORDER BY a.created_at DESC LIMIT $2 OFFSET $3",
-                select()
+                select_of(&kinds)
             ),
             vec![org_id.into(), limit.into(), offset.into()],
         ))

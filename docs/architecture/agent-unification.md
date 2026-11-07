@@ -316,6 +316,14 @@ site non autorisé) arrête la recherche avec sa raison au lieu de réessayer. P
 horaire : propositions décidées suivies (acceptée → rattachée ; toutes refusées → requête
 suivante), puis nouvelles recherches des personnes des comptes `target`/`prospect`.
 
+**U5 livré en partie (2026-11-07).** La liste des runs (`GET /agent-runs`) et l'onglet
+Passages de la page Agents montrent tous les moteurs (`sandbox`, `internal_llm`,
+`server_browser`, `extension`), filtre `engine` ; un passage de règle porte `rule` et `site`
+et s'ouvre dans le studio du site. **Question ouverte pour Shan, non tranchée :** replier le
+nœud `site-recipe` dans `agent-run` (D786) change la forme des sorties (le nœud d'agent a les
+ports de chaîne D713, celui de règle *réussi / cassé / échoué* et les extraits) ; gardé en
+deux nœuds tant que ce n'est pas décidé.
+
 Limite connue : les sélecteurs des cartes et l'appui sur Entrée n'ont pas encore été joués
 sur une vraie session LinkedIn ; la règle étant de la donnée, elle se corrige dans le
 studio (copie dans l'org) sans code.

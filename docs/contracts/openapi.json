@@ -780,6 +780,19 @@
             "format": "int64",
             "type": "integer"
           },
+          "rule": {
+            "description": "A navigation rule run (D786): the rule's name and its site.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "site": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "started_at": {
             "format": "date-time",
             "type": [
@@ -33395,7 +33408,7 @@
     },
     "/api/v1/agent-runs": {
       "get": {
-        "description": "Newest first, with their state and the LLM usage counted by the gateway. Requires `agents:read`. Paginated (`limit`/`offset`).",
+        "description": "Every run of the org, newest first (D786): hosted and internal agents with the LLM usage counted by the gateway, and navigation rules played by the server browser or a browser agent (their `rule` and `site`). `engine` keeps one engine. Requires `agents:read`. Paginated (`limit`/`offset`).",
         "operationId": "agent_runs_list",
         "parameters": [
           {
@@ -33424,6 +33437,15 @@
             "schema": {
               "format": "int64",
               "type": "integer"
+            }
+          },
+          {
+            "description": "One engine only: `sandbox`, `internal_llm`, `server_browser`, `extension`.",
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -33464,7 +33486,7 @@
             "bearer": []
           }
         ],
-        "summary": "List the runs of hosted agents",
+        "summary": "List the runs of agents and rules",
         "tags": [
           "agent-runs"
         ]
