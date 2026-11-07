@@ -809,6 +809,12 @@ pub const ENVIRONMENT_BUILD_LOGS_UNAVAILABLE: &str = "environment-build-logs-una
 pub const AGENT_RUN_LOGS_UNAVAILABLE: &str = "agent-run-logs-unavailable";
 /// The run has used all its LLM calls.
 pub const AGENT_RUN_LLM_BUDGET: &str = "agent-run-llm-budget";
+/// A branch output needs a forge PneX speaks: GitHub in V1 (D388, D752).
+pub const AGENT_RUN_FORGE_UNSUPPORTED: &str = "agent-run-forge-unsupported";
+/// The egress rule refuses the forge's API.
+pub const AGENT_RUN_FORGE_REFUSED: &str = "agent-run-forge-refused";
+/// The forge did not open the merge request of the run's branch.
+pub const AGENT_RUN_MERGE_REQUEST_FAILED: &str = "agent-run-merge-request-failed";
 /// The daily LLM calls of agents of the org are used up.
 pub const AGENT_GATEWAY_QUOTA: &str = "agent-gateway-quota";
 /// The org has no LLM provider for agents.
@@ -1262,6 +1268,9 @@ pub const ALL: &[&str] = &[
     AGENT_RUN_ENDED,
     AGENT_RUN_UNAUTHORIZED,
     AGENT_RUN_LLM_BUDGET,
+    AGENT_RUN_FORGE_UNSUPPORTED,
+    AGENT_RUN_FORGE_REFUSED,
+    AGENT_RUN_MERGE_REQUEST_FAILED,
     AGENT_RUN_LOGS_UNAVAILABLE,
     ENVIRONMENT_BUILD_LOGS_UNAVAILABLE,
     ENVIRONMENT_SCAN_REFUSED,

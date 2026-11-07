@@ -235,6 +235,7 @@ async fn a_sandbox_vm_gets_its_repository_files_and_caches_and_setup_never_its_s
             git_ref: "main".into(),
             path: "app".into(),
             token: None,
+            push: None,
         }],
         services: vec![],
         setup: vec![

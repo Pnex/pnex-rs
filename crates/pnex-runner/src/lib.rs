@@ -12,6 +12,7 @@ pub mod gate;
 pub mod k8s;
 pub mod oci;
 pub mod podman;
+pub mod push;
 pub mod vm_net;
 
 use std::collections::HashMap;

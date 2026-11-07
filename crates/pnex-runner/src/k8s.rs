@@ -489,6 +489,21 @@ pub fn sandbox_manifests(
         init.extend(fetch);
         init.extend(collect);
     }
+    // A branch output: cloned now, beyond the agent's reach, pushed when the agent ends.
+    for (i, repo) in input.repos.iter().enumerate() {
+        if let Some((container, own, (key, token))) = crate::push::push_container(
+            i,
+            repo,
+            &input.init_image,
+            &name,
+            &hardened(UID),
+            &resources,
+        ) {
+            init.push(container);
+            volumes.push(own);
+            data.insert(key, json!(token));
+        }
+    }
     for service in &input.services {
         let mut mounts =
             vec![json!({ "name": format!("{}-tmp", service.name), "mountPath": "/tmp" })];
@@ -1373,6 +1388,7 @@ mod tests {
                 git_ref: "main".into(),
                 path: "app".into(),
                 token: Some("clone-token-value".into()),
+                push: None,
             }],
             services: vec![SandboxService {
                 name: "valkey".into(),

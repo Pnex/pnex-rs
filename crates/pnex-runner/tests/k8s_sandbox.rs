@@ -93,6 +93,7 @@ async fn a_sandbox_keeps_its_promises() {
             git_ref: "master".into(),
             path: "app".into(),
             token: Some(CLONE_TOKEN.into()),
+            push: None,
         }],
         services: vec![SandboxService {
             name: "valkey".into(),

@@ -41,6 +41,7 @@ pub mod environments;
 pub mod events;
 pub mod extension;
 pub mod fabric_settings;
+pub mod forge;
 pub mod firmware;
 pub mod firmware_projects;
 pub mod flow;

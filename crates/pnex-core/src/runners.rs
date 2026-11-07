@@ -252,6 +252,18 @@ pub struct SandboxRepo {
     /// Read token, for the clone step only: the agent never gets it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
+    /// The agent's changes go out as this branch (D388), pushed by a sidecar of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push: Option<SandboxPush>,
+}
+
+/// Branch output of a coder agent (D388): a `pnex/run-<id>` branch and a write token
+/// limited to that repository, for the push sidecar only.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SandboxPush {
+    pub branch: String,
+    pub token: String,
 }
 
 /// A test service beside the agent, on `localhost` (D717).
@@ -673,6 +685,7 @@ mod tests {
                     git_ref: "main".into(),
                     path: "r".into(),
                     token: Some("clone-token-value".into()),
+                    push: None,
                 }],
                 services: vec![],
                 setup: vec![],

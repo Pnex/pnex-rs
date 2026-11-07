@@ -494,6 +494,7 @@ pub async fn sandbox_input(
             git_ref: repo.git_ref.clone(),
             path: repo.path.clone(),
             token,
+            push: None,
         });
     }
     let mut sandbox_services = Vec::new();
