@@ -22,6 +22,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::services::agent_artifacts::{self, ArtifactError, ArtifactSettings};
+use crate::services::agent_chains::{self, ChainPick};
 use crate::services::runners;
 use crate::services::secrets::{store, Keyring};
 
@@ -44,6 +45,19 @@ pub enum AgentRunError {
     /// The active build is over the scan threshold and the org refuses such runs (D748).
     ScanRefused {
         breaches: u32,
+    },
+    /// No chain of the org has this id (D716).
+    ChainNotFound,
+    ChainClosed,
+    /// The chain used its runs, rounds or model calls.
+    ChainExhausted {
+        reason: &'static str,
+    },
+    /// A run of the chain is still running (D718).
+    ChainBusy,
+    /// Another active chain holds the subject.
+    SubjectTaken {
+        chain_id: Uuid,
     },
     Db(DbErr),
 }
@@ -90,7 +104,7 @@ const ISO: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
 
 fn select() -> String {
     format!(
-        "SELECT a.id, a.environment_id, a.agent_id, a.agent_version, a.job_id, a.llm_calls, a.llm_calls_max, \
+        "SELECT a.id, a.environment_id, a.agent_id, a.agent_version, a.chain_id, a.job_id, a.llm_calls, a.llm_calls_max, \
            a.input_tokens, a.output_tokens, a.error, j.state, j.outcome, j.exit_code, \
            j.spec->>'image' AS image, \
            to_char(a.created_at AT TIME ZONE 'UTC', {ISO}) AS created_at, \
@@ -110,6 +124,9 @@ fn view(r: &QueryResult) -> Result<AgentRun, DbErr> {
             .try_get::<Option<Uuid>>("", "agent_id")?
             .map(|u| u.to_string()),
         agent_version: r.try_get("", "agent_version")?,
+        chain_id: r
+            .try_get::<Option<Uuid>>("", "chain_id")?
+            .map(|u| u.to_string()),
         image: r.try_get("", "image")?,
         job_id: r.try_get::<Uuid>("", "job_id")?.to_string(),
         state: RunnerJobState::parse(&state)
@@ -135,7 +152,7 @@ pub async fn create(
     user_id: i64,
     body: &AgentRunCreate,
 ) -> Result<AgentRun, AgentRunError> {
-    create_as(db, artifacts, org_id, user_id, body, None).await
+    create_as(db, artifacts, org_id, user_id, body, None, None).await
 }
 
 /// A run, bare or started from an agent whose record it carries.
@@ -146,6 +163,7 @@ pub async fn create_as(
     user_id: i64,
     body: &AgentRunCreate,
     origin: Option<RunOrigin>,
+    chain: Option<&ChainPick>,
 ) -> Result<AgentRun, AgentRunError> {
     if let Some((field, token)) = create_error(body) {
         return Err(invalid(field, token));
@@ -190,6 +208,19 @@ pub async fn create_as(
         return Err(AgentRunError::NoActiveBuild);
     }
     let txn = db.begin().await?;
+    let mut llm_calls_max = body
+        .llm_calls_max
+        .unwrap_or(pnex_core::agent_runs::LLM_CALLS_MAX_DEFAULT);
+    let chain_id = match chain {
+        Some(pick) => {
+            let agent = origin.map(|o| o.agent_id);
+            let (id, calls) =
+                agent_chains::take(&txn, org_id, user_id, agent, pick, llm_calls_max).await?;
+            llm_calls_max = calls;
+            Some(id)
+        }
+        None => None,
+    };
     let job = runners::create_job(
         &txn,
         org_id,
@@ -208,8 +239,8 @@ pub async fn create_as(
     txn.execute_raw(stmt(
         "INSERT INTO agent_runs \
            (id, org_id, environment_id, build_id, job_id, env, llm_calls_max, created_by, \
-            inputs, outputs, agent_id, agent_version, provider_id, repos, services, caches) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
+            inputs, outputs, agent_id, agent_version, provider_id, repos, services, caches, chain_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
         vec![
             id.into(),
             org_id.into(),
@@ -217,9 +248,7 @@ pub async fn create_as(
             build.into(),
             job_id.into(),
             serde_json::json!(body.env).into(),
-            body.llm_calls_max
-                .unwrap_or(pnex_core::agent_runs::LLM_CALLS_MAX_DEFAULT)
-                .into(),
+            llm_calls_max.into(),
             user_id.into(),
             serde_json::json!(body.inputs).into(),
             serde_json::json!(body.outputs).into(),
@@ -229,6 +258,7 @@ pub async fn create_as(
             serde_json::json!(body.repos).into(),
             serde_json::json!(body.services).into(),
             serde_json::json!(body.caches).into(),
+            chain_id.into(),
         ],
     ))
     .await?;

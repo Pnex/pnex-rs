@@ -31,7 +31,7 @@ pub const FLOW_AUTHORING_RULES: &[(&str, &str)] = &[
     ),
     (
         "canonical_pipeline",
-        "inject (trigger) → device_read → calc → metric. A flow runs continuously: a periodic inject (repeat_secs) is the default idiom. Event sources (camera_source, control_source, action_trigger, dataset_trigger, media_source) need no inject.",
+        "inject (trigger) → device_read → calc → metric. A flow runs continuously: a periodic inject (repeat_secs) is the default idiom. Event sources (camera_source, control_source, action_trigger, dataset_trigger, agent_run_finished, media_source) need no inject.",
     ),
     (
         "payload_key_rule",
@@ -466,6 +466,26 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("on", "\"committed\" (default): each new version; \"synced\": each sync applied from this table"),
         ],
         notes: "Message: payload = {dataset_id, dataset, reference, counts, changed, ts_ms}, topic = dataset.committed or dataset.synced. reference is the version (committed) or the import and run (synced). counts holds rows and bytes (committed) or created, updated and closed (synced). changed holds up to 10,000 ids of objects a sync wrote; empty on committed. A message never carries rows, and a flow neither starts a pipeline nor writes a table. Events missed while the flow is stopped are not replayed; they can arrive up to a few tens of seconds after the commit.",
+    },
+    NodeDoc {
+        kind: "agent_run",
+        summary: "Starts one run of a hosted agent of the organization (Agents) and answers at once with its id: the flow never waits for the run. Two output ports: 0 started (or joined), 1 refused.",
+        config: &[
+            ("agent_id", "id of an agent of the organization — checked at deploy, and the person who deploys must be allowed to run agents"),
+            ("inputs", "object: input name declared by the agent → dotted path in the message holding an artifact id, e.g. {\"ticket\": \"payload.ticket\"} or {\"patch\": \"run.outputs.patch\"} after agent_run_finished"),
+            ("subject_from", "dotted path of a subject key (repository and ticket, object id) in the message; empty = no subject. One active chain per subject"),
+            ("limits", "{runs_max (default 10), llm_calls_max (default 500, all runs together), rounds_max (default 3, runs of the same agent)} of the chain this node opens"),
+        ],
+        notes: "Every run started here belongs to a chain: msg.chain_id joins that chain, else the node opens one with its limits and subject. Port 0: msg.run = {run_id, chain_id, joined}, msg.chain_id = chain id; joined = true means the subject already had an active chain, so no second run was started (repeated report). Port 1: msg.error = {code, args}: agent-chain-exhausted (args.reason runs|rounds|llm_calls: hand over to a person), agent-chain-busy (a run of the chain is still running), agent-chain-closed, agent-artifact-not-found, field-invalid (an input missing or undeclared). The run has the agent's rights, never more; a run takes no physical action. To chain, wire agent_run_finished to the next agent_run: its msg.chain_id and msg.run.outputs feed it. Deploying and stopping stay with a person.",
+    },
+    NodeDoc {
+        kind: "agent_run_finished",
+        summary: "Event source fed by the ended runs of hosted agents of the organization: one message per run, once, when it ends (succeeded, failed, stopped). One output port.",
+        config: &[
+            ("agent_id", "runs of this agent only; empty = any agent"),
+            ("chained_only", "bool: runs that belong to a chain only (started by agent_run)"),
+        ],
+        notes: "Message: payload = msg.run = {run_id, agent_id, chain_id, subject, state, outcome, exit_code, error, llm_calls, outputs: {output name → artifact id}}, msg.chain_id = chain id, topic = state. Route on payload.state / payload.exit_code with a switch, then start the next step with agent_run (inputs from \"run.outputs.<name>\"). Runs that end while the flow is stopped are not replayed.",
     },
     NodeDoc {
         kind: "mail_received",

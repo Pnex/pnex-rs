@@ -120,6 +120,18 @@ pub struct AgentRunStart {
     pub timeout_secs: Option<u32>,
     #[serde(default)]
     pub llm_calls_max: Option<i32>,
+    /// The run joins this active chain of the org and spends its budget (D716).
+    #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub chain_id: Option<String>,
+    /// Without `chain_id`: opens a chain holding this subject; refused while another
+    /// active chain holds it (D718).
+    #[serde(default)]
+    pub subject: Option<String>,
+    /// Without `chain_id`, `subject` or these bounds open a chain for this run (defaults
+    /// when only `subject` is given).
+    #[serde(default)]
+    pub chain_limits: Option<crate::agent_chains::ChainLimits>,
 }
 
 /// `(field, token)` of the first problem of a record.
@@ -253,6 +265,7 @@ mod tests {
             inputs: vec![input("ticket")],
             timeout_secs: Some(60),
             llm_calls_max: Some(5),
+            ..Default::default()
         };
         let run = run_of(&s, &start).unwrap();
         assert_eq!((run.timeout_secs, run.llm_calls_max), (60, Some(5)));

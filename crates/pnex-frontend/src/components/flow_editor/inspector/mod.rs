@@ -196,6 +196,12 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::DatasetTrigger { config } => rsx! {
             DatasetTriggerForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::AgentRun { config } => rsx! {
+            AgentRunForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::AgentRunFinished { config } => rsx! {
+            AgentRunFinishedForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::ActionTrigger { config } => rsx! {
             ActionTriggerForm { cx, initial: config.clone(), can_write }
         },
@@ -292,6 +298,7 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
 }
 
 mod action_trigger;
+mod agent_run;
 mod camera_source;
 mod control_source;
 mod coolprop;
@@ -331,6 +338,7 @@ mod web_visit;
 use crate::components::ui::BTN_DANGER;
 use crate::components::ui::FIELD_LABEL;
 use action_trigger::ActionTriggerForm;
+use agent_run::{AgentRunFinishedForm, AgentRunForm};
 use camera_source::CameraSourceForm;
 use control_source::ControlSourceForm;
 use coolprop::CoolPropForm;

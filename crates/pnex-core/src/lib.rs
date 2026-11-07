@@ -8,6 +8,8 @@
 //! - it only holds shared DTOs/constants, no business logic.
 
 pub mod agent;
+/// Agent runs chained by flows: budget, rounds, subject lock (D713, D716, D718).
+pub mod agent_chains;
 /// Runs of hosted agents and their LLM gateway (agent-environments.md D731, D732).
 pub mod agent_runs;
 /// Skills of hosted agents: versioned text, activated by a person (D396, D711).

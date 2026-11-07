@@ -333,6 +333,65 @@ pub(crate) async fn unknown_datasets_for_deploy(
     Ok(violations)
 }
 
+/// Agents gate (agent-environments.md D713, D757): an `agent_run` names an agent of the
+/// org and the person deploying may run agents; the runtime re-checks that person at each
+/// run. An `agent_run_finished` filtered on an agent names one of the org.
+pub(crate) async fn agent_runs_for_deploy(
+    ctx: &AppContext,
+    org: &OrgContext,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        let agent = match &n.kind {
+            pnex_core::FlowNodeKind::AgentRun { config } => {
+                if let Some((code, message)) = config.check_deployable() {
+                    violations.push(pnex_core::FlowViolation::new(
+                        Some(n.id.as_str()),
+                        code,
+                        message,
+                    ));
+                    continue;
+                }
+                if !org.can("agents:run") {
+                    violations.push(pnex_core::FlowViolation::with_args(
+                        Some(n.id.as_str()),
+                        pnex_core::err_codes::ACCESS_DENIED,
+                        "the person deploying may not run agents",
+                        serde_json::json!({ "permission": "agents:run" }),
+                    ));
+                    continue;
+                }
+                config.agent_id.clone()
+            }
+            pnex_core::FlowNodeKind::AgentRunFinished { config } if !config.agent_id.is_empty() => {
+                config.agent_id.clone()
+            }
+            _ => continue,
+        };
+        let id = uuid::Uuid::parse_str(&agent).map_err(|_| Error::BadRequest(agent.clone()))?;
+        let found = ctx
+            .db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT 1 AS x FROM agents WHERE org_id = $1 AND id = $2",
+                vec![org.org.id.into(), id.into()],
+            ))
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+        if found.is_none() {
+            violations.push(pnex_core::FlowViolation::with_args(
+                Some(n.id.as_str()),
+                pnex_core::err_codes::AGENT_NOT_FOUND,
+                "the node names an agent absent from the organization",
+                serde_json::json!({ "agent_id": agent }),
+            ));
+        }
+    }
+    Ok(violations)
+}
+
 /// Mailboxes gate (mail.md D454): a `mail_received` or a `mail_send`
 /// names mailboxes, all of which the person deploying reads; a flow never
 /// listens to, nor writes from, someone else's mailbox.
@@ -794,6 +853,7 @@ async fn deploy_version(
         conflicts.extend(unknown_datasets_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(dynamic_recipients_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(mailboxes_for_deploy(&ctx, &org, &candidate_graph).await?);
+        conflicts.extend(agent_runs_for_deploy(&ctx, &org, &candidate_graph).await?);
         conflicts.extend(
             crate::services::ontology::flow_nodes::deploy_violations(
                 &ctx.db,
@@ -866,6 +926,18 @@ async fn deploy_version(
         .update(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
+    // Its agent_run nodes act within the rights of this person (D757).
+    {
+        use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+        ctx.db
+            .execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE flows SET deployed_by = $2 WHERE id = $1",
+                vec![flow.id.into(), org.auth.user.id.into()],
+            ))
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+    }
     // The deployed version's secrets stay in use while it runs (lot S5).
     if let Err(e) = crate::services::secrets::flow::sync_usages(&ctx.db, flow.id).await {
         tracing::error!(flow_id = flow.id, error = %e, "flow secret usages sync failed");

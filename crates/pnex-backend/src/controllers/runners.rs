@@ -500,7 +500,7 @@ async fn finish(
         .await
         .map_err(runner_error)?;
     // An ended run becomes a fact of the ontology; a job without a run is skipped there.
-    crate::services::agent_ops::spawn_projection(ctx.db.clone(), runner.org_id, id);
+    crate::services::agent_ops::spawn_projection(&ctx, runner.org_id, id);
     if let (RunnerJobOutcome::Succeeded, Some(digest)) = (body.outcome, &body.image_digest) {
         environments::record_digest(&ctx.db, runner.org_id, id, digest)
             .await

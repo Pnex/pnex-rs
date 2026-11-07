@@ -122,6 +122,11 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_SITE_CRAWL_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/site-crawl"),
             )
+            // Agent runs started by agent_run nodes (D713).
+            .env(
+                "PNEX_FLOW_AGENT_RUN_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/agent-run"),
+            )
             // Company name → SIREN (account-mapping.md D332).
             .env(
                 "PNEX_FLOW_ORG_RESOLVE_URL",

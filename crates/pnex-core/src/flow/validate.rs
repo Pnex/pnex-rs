@@ -144,6 +144,16 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                     v.push(FlowViolation::new(Some(&n.id), code, message));
                 }
             }
+            FlowNodeKind::AgentRun { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
+            FlowNodeKind::AgentRunFinished { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
             // An empty node saves as a draft; the mailboxes are checked at deploy.
             FlowNodeKind::MailReceived { config } => {
                 if let Some((code, message)) = config.check_deployable() {

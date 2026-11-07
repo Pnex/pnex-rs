@@ -1577,3 +1577,268 @@ async fn a_run_gets_the_pinned_skills_of_its_agent_never_a_draft() {
     })
     .await;
 }
+
+/// Subscribes to the run ends of `org` (D713).
+async fn run_ends(org: i64) -> tokio::sync::mpsc::UnboundedReceiver<Value> {
+    use futures_util::StreamExt;
+    let url = std::env::var("PNEX_TEST_APP_VALKEY_URL")
+        .unwrap_or_else(|_| "redis://127.0.0.1:6379/14".into());
+    let client = redis::Client::open(url).unwrap();
+    let mut pubsub = client.get_async_pubsub().await.unwrap();
+    pubsub
+        .subscribe(pnex_core::agent_chains::finished_channel(org))
+        .await
+        .unwrap();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    tokio::spawn(async move {
+        let mut stream = pubsub.on_message();
+        while let Some(m) = stream.next().await {
+            let raw: String = m.get_payload().unwrap();
+            if tx.send(serde_json::from_str(&raw).unwrap()).is_err() {
+                break;
+            }
+        }
+    });
+    rx
+}
+
+/// The next end of `run`, if one comes within `secs`.
+async fn end_of(rx: &mut tokio::sync::mpsc::UnboundedReceiver<Value>, run: &Value, secs: u64) -> Option<Value> {
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(secs);
+    loop {
+        let ev = tokio::time::timeout_at(deadline, rx.recv()).await.ok()??;
+        if ev["run_id"] == *run {
+            return Some(ev);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn chains_bound_their_runs_hold_a_subject_and_publish_each_end_once() {
+    with_db(|server, env, db| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let environment = runnable(&server, &db, &env.alice, org).await;
+        let spec = json!({
+            "environment_id": environment, "timeout_secs": 600, "llm_calls_max": 20,
+            "inputs": [], "outputs": [{ "name": "patch", "required": false }]
+        });
+        let (s, agent) = call(&server, &env.alice, org, "POST", "/api/v1/agents",
+            Some(json!({ "name": "coder", "spec": spec }))).await;
+        assert_eq!(s, 201, "{agent}");
+        let runs = format!("/api/v1/agents/{}/runs", agent["id"].as_str().unwrap());
+        let start = |body: Value| call(&server, &env.alice, org, "POST", &runs, Some(body));
+
+        // A subject opens a chain; a repeated report does not start a second run (D718).
+        let (s, first) = start(json!({ "subject": "repo#1",
+            "chain_limits": { "runs_max": 2, "llm_calls_max": 30, "rounds_max": 2 } })).await;
+        assert_eq!(s, 201, "{first}");
+        let chain = first["chain_id"].as_str().unwrap().to_string();
+        assert_eq!(first["llm_calls_max"], 20);
+        let (s, b) = start(json!({ "subject": "repo#1" })).await;
+        assert_eq!(s, 409, "{b}");
+        assert!(b.to_string().contains("agent-subject-taken") && b.to_string().contains(&chain), "{b}");
+        // One run of a chain at a time.
+        let (s, b) = start(json!({ "chain_id": chain })).await;
+        assert_eq!(s, 409, "{b}");
+        assert!(b.to_string().contains("agent-chain-busy"), "{b}");
+
+        // Its end is published once, with its outputs by name.
+        let mut ends = run_ends(org).await;
+        let runner = enrol(&server, &env.alice, org).await;
+        let job = server
+            .post("/api/v1/runner/jobs/claim")
+            .add_header("Authorization", format!("Bearer {runner}"))
+            .await
+            .json::<Value>();
+        let finish = || async {
+            server
+                .post(&format!("/api/v1/runner/jobs/{}/finish", job["id"].as_str().unwrap()))
+                .add_header("Authorization", format!("Bearer {runner}"))
+                .json(&json!({ "outcome": "succeeded", "exit_code": 0 }))
+                .await
+                .status_code()
+                .as_u16()
+        };
+        assert_eq!(finish().await, 204);
+        let ev = end_of(&mut ends, &first["id"], 10).await.expect("the end is published");
+        assert_eq!(ev["chain_id"], chain.as_str());
+        assert_eq!(ev["subject"], "repo#1");
+        assert_eq!(ev["state"], "succeeded");
+        assert_eq!(ev["exit_code"], 0);
+        assert!(ev["outputs"].as_object().unwrap().is_empty(), "the output never came");
+        finish().await;
+        assert!(end_of(&mut ends, &first["id"], 2).await.is_none(), "never twice (D398)");
+
+        // The next run gets what the chain has left of its model calls.
+        db.execute_unprepared(&format!(
+            "UPDATE agent_runs SET llm_calls = 25 WHERE id = '{}'",
+            first["id"].as_str().unwrap()
+        ))
+        .await
+        .unwrap();
+        let (s, second) = start(json!({ "chain_id": chain })).await;
+        assert_eq!(s, 201, "{second}");
+        assert_eq!(second["chain_id"], chain.as_str());
+        assert_eq!(second["llm_calls_max"], 5);
+        let stop = format!("/api/v1/agent-runs/{}/stop", second["id"].as_str().unwrap());
+        assert_eq!(call(&server, &env.alice, org, "POST", &stop, None).await.0, 200);
+        let ev = end_of(&mut ends, &second["id"], 10).await.expect("a stop is an end");
+        assert_eq!(ev["outcome"], "stopped");
+        let (s, b) = start(json!({ "chain_id": chain })).await;
+        assert_eq!(s, 409, "{b}");
+        assert!(b.to_string().contains("agent-chain-exhausted") && b.to_string().contains("runs"), "{b}");
+        let (_, c) = call(&server, &env.alice, org, "GET", &format!("/api/v1/agent-chains/{chain}"), None).await;
+        assert_eq!((c["runs"].as_i64(), c["llm_calls"].as_i64()), (Some(2), Some(25)), "{c}");
+
+        // Rounds: runs of the same agent in a chain.
+        let (s, r) = start(json!({ "subject": "repo#2",
+            "chain_limits": { "runs_max": 5, "llm_calls_max": 100, "rounds_max": 1 } })).await;
+        assert_eq!(s, 201, "{r}");
+        let stop = format!("/api/v1/agent-runs/{}/stop", r["id"].as_str().unwrap());
+        call(&server, &env.alice, org, "POST", &stop, None).await;
+        let (s, b) = start(json!({ "chain_id": r["chain_id"] })).await;
+        assert_eq!(s, 409, "{b}");
+        assert!(b.to_string().contains("rounds"), "{b}");
+
+        // A person closes the chain: no more runs, the subject is free.
+        let close = format!("/api/v1/agent-chains/{chain}/close");
+        let (s, c) = call(&server, &env.alice, org, "POST", &close, None).await;
+        assert_eq!((s, c["state"].as_str()), (200, Some("closed")), "{c}");
+        assert_eq!(call(&server, &env.alice, org, "POST", &close, None).await.0, 409);
+        let (s, b) = start(json!({ "chain_id": chain })).await;
+        assert!(s == 409 && b.to_string().contains("agent-chain-closed"), "{b}");
+        let (s, again) = start(json!({ "subject": "repo#1" })).await;
+        assert_eq!(s, 201, "{again}");
+        assert_ne!(again["chain_id"], chain.as_str());
+        // Another org sees no chain of this one.
+        let other = personal_org(&server, &env.bob).await;
+        let (s, _) = call(&server, &env.bob, other, "GET", &format!("/api/v1/agent-chains/{chain}"), None).await;
+        assert_eq!(s, 404);
+    })
+    .await;
+}
+
+/// A deployed flow of `org` with these nodes, deployed by `user`; returns its id.
+async fn deployed_flow(db: &sea_orm::DatabaseConnection, org: i64, user: Option<i64>, nodes: Value) -> i64 {
+    let sql = |q: String| sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, q);
+    let flow: i64 = db
+        .query_one_raw(sql(format!(
+            "INSERT INTO flows (name, status, org_id, created_at, updated_at) \
+             VALUES ('chain', 'deployed', {org}, now(), now()) RETURNING id"
+        )))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "id")
+        .unwrap();
+    let graph = json!({ "nodes": nodes }).to_string().replace('\'', "''");
+    db.execute_unprepared(&format!(
+        "INSERT INTO flow_versions (flow_id, version_number, graph, created_at, updated_at) \
+           VALUES ({flow}, 1, '{graph}', now(), now()); \
+         UPDATE flows SET deployed_version_id = (SELECT id FROM flow_versions WHERE flow_id = {flow}), \
+           deployed_by = {} WHERE id = {flow}",
+        user.map_or("NULL".to_string(), |u| u.to_string())
+    ))
+    .await
+    .unwrap();
+    flow
+}
+
+#[tokio::test]
+#[serial]
+async fn an_agent_run_node_starts_runs_within_its_deployer_rights() {
+    with_db(|server, env, db| async move {
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-agent-run-1") };
+        let org = personal_org(&server, &env.alice).await;
+        let environment = runnable(&server, &db, &env.alice, org).await;
+        let res = raw(&server, "POST", "/api/v1/agent-artifacts?name=ticket", &env.alice, Some(org), &[], b"bug").await;
+        let ticket = res.json::<Value>()["id"].clone();
+        let spec = json!({
+            "environment_id": environment, "timeout_secs": 600,
+            "inputs": ["ticket"], "outputs": []
+        });
+        let (_, agent) = call(&server, &env.alice, org, "POST", "/api/v1/agents",
+            Some(json!({ "name": "triage", "spec": spec }))).await;
+        let node = json!({ "id": "a", "kind": "agent_run", "config": {
+            "agent_id": agent["id"], "inputs": { "ticket": "payload.ticket" },
+            "subject_from": "payload.key", "limits": { "runs_max": 3, "llm_calls_max": 40, "rounds_max": 2 } } });
+        let alice_id: i64 = db
+            .query_one_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT id FROM users WHERE email = 'alice@example.com'",
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "id")
+            .unwrap();
+        let flow = deployed_flow(&db, org, Some(alice_id), json!([node])).await;
+        let server = &server;
+        let call_node = |body: Value| async move {
+            let res = server
+                .post("/internal/flow/agent-run")
+                .add_header("x-pnex-flow-token", "tok-agent-run-1")
+                .json(&body)
+                .await;
+            (res.status_code().as_u16(), serde_json::from_str::<Value>(&res.text()).unwrap_or(Value::Null))
+        };
+        let me = |flow: i64, id: &str| json!({ "org_id": org, "flow_id": flow, "version": 1, "node_id": id });
+
+        let (s, r) = call_node(json!({ "node": me(flow, "a"),
+            "inputs": { "ticket": ticket }, "subject": "repo#9" })).await;
+        assert_eq!(s, 200, "{r}");
+        assert_eq!(r["port"], 0, "{r}");
+        let run = run_of(&server, &env.alice, org, r["run_id"].as_str().unwrap()).await;
+        assert_eq!(run["chain_id"], r["chain_id"]);
+        assert_eq!(run["llm_calls_max"], 40, "the chain caps the agent's default");
+        // The same subject again: joined, no second run.
+        let (_, j) = call_node(json!({ "node": me(flow, "a"),
+            "inputs": { "ticket": ticket }, "subject": "repo#9" })).await;
+        assert_eq!((j["port"].as_i64(), j["joined"].as_bool()), (Some(0), Some(true)), "{j}");
+        assert_eq!(j["chain_id"], r["chain_id"]);
+        assert!(j["run_id"].is_null());
+        // In the chain while its run runs: refused on port 1 with its code.
+        let (_, b) = call_node(json!({ "node": me(flow, "a"),
+            "inputs": { "ticket": ticket }, "chain_id": r["chain_id"] })).await;
+        assert_eq!((b["port"].as_i64(), b["code"].as_str()), (Some(1), Some("agent-chain-busy")), "{b}");
+        // A missing input is refused, not guessed.
+        let (_, b) = call_node(json!({ "node": me(flow, "a"), "inputs": {} })).await;
+        assert_eq!(b["port"], 1, "{b}");
+
+        // A worker that does not own the org starts nothing (fencing, SEC-76).
+        let res = server
+            .post("/internal/flow/agent-run")
+            .add_header("x-pnex-flow-token", "tok-agent-run-1")
+            .add_header(pnex_core::FLOW_WORKER_HEADER, "ghost-worker:1")
+            .json(&json!({ "node": me(flow, "a"), "inputs": { "ticket": ticket }, "subject": "repo#11" }))
+            .await;
+        assert_eq!(res.status_code().as_u16(), 409, "{}", res.text());
+        assert_eq!(res.json::<Value>()["code"], "fenced");
+        // Forged node, or no token: refused before anything.
+        assert_eq!(call_node(json!({ "node": me(flow, "zz"), "inputs": {} })).await.0, 403);
+        let res = server.post("/internal/flow/agent-run").json(&json!({ "node": me(flow, "a") })).await;
+        assert_eq!(res.status_code().as_u16(), 401);
+        // A deployer who may not run agents in the org starts nothing; nor does a flow
+        // without one.
+        personal_org(server, &env.bob).await;
+        let bob_id: i64 = db
+            .query_one_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT id FROM users WHERE email = 'bob@example.com'",
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "id")
+            .unwrap();
+        for deployer in [Some(bob_id), None] {
+            let f = deployed_flow(&db, org, deployer, json!([node])).await;
+            let (s, b) = call_node(json!({ "node": me(f, "a"),
+                "inputs": { "ticket": ticket }, "subject": "repo#10" })).await;
+            assert_eq!(s, 200);
+            assert_eq!((b["port"].as_i64(), b["code"].as_str()), (Some(1), Some("access-denied")), "{b}");
+        }
+    })
+    .await;
+}

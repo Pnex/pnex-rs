@@ -243,6 +243,8 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("agent_runs_get", Access::Org("agents:read")),
     ("agent_runs_list", Access::Org("agents:read")),
     ("agent_runs_logs", Access::Org("agents:read")),
+    ("agent_chains_get", Access::Org("agents:read")),
+    ("agent_chains_close", Access::Org("agents:stop")),
     ("agents_list", Access::Org("agents:read")),
     ("agents_get", Access::Org("agents:read")),
     ("agents_versions", Access::Org("agents:read")),

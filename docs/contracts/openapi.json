@@ -279,6 +279,55 @@
         ],
         "type": "object"
       },
+      "AgentChain": {
+        "description": "Read model of a chain, with what it used.",
+        "properties": {
+          "closed_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ChainLimits"
+          },
+          "llm_calls": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "runs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ChainState"
+          },
+          "subject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "limits",
+          "runs",
+          "llm_calls",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "AgentCreate": {
         "properties": {
           "description": {
@@ -567,6 +616,14 @@
               "null"
             ]
           },
+          "chain_id": {
+            "description": "The chain it belongs to, if any (D716).",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -734,6 +791,18 @@
       "AgentRunStart": {
         "description": "A run started from an agent: the files for its declared inputs, and limits that may only\nbe lower than the record's.",
         "properties": {
+          "chain_id": {
+            "description": "The run joins this active chain of the org and spends its budget (D716).",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "chain_limits": {
+            "$ref": "#/components/schemas/ChainLimits",
+            "description": "Without `chain_id`, `subject` or these bounds open a chain for this run (defaults\nwhen only `subject` is given)."
+          },
           "inputs": {
             "items": {
               "$ref": "#/components/schemas/ArtifactInput"
@@ -744,6 +813,13 @@
             "format": "int32",
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "subject": {
+            "description": "Without `chain_id`: opens a chain holding this subject; refused while another\nactive chain holds it (D718).",
+            "type": [
+              "string",
               "null"
             ]
           },
@@ -4849,6 +4925,33 @@
           "area"
         ],
         "type": "object"
+      },
+      "ChainLimits": {
+        "description": "Bounds of a chain, set when it opens (D716). A round is one more run of an agent that\nalready ran in the chain, such as a fix after a review (D765).",
+        "properties": {
+          "llm_calls_max": {
+            "description": "Model calls of all the runs of the chain together.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "rounds_max": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "runs_max": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ChainState": {
+        "description": "Closed set of chain states.",
+        "enum": [
+          "active",
+          "closed"
+        ],
+        "type": "string"
       },
       "Change": {
         "enum": [
@@ -31998,6 +32101,174 @@
         ]
       }
     },
+    "/api/v1/agent-chains/{id}": {
+      "get": {
+        "description": "Its subject, state, bounds and what its runs used (runs, model calls) (D716). Requires `agents:read`.",
+        "operationId": "agent_chains_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Chain id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChain"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-chain-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read a chain of runs",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/v1/agent-chains/{id}/close": {
+      "post": {
+        "description": "A person's gesture: the chain takes no more runs and its subject is free for a new chain (D718). A run still running goes on. Requires `agents:stop`.",
+        "operationId": "agent_chains_close",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Chain id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChain"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `agents:stop`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-chain-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`agent-chain-closed`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Close a chain of runs",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
     "/api/v1/agent-gateway/v1/chat/completions": {
       "post": {
         "description": "Called from a sandbox with its run token (bearer), while the run runs. Forwards a chat completion request to the provider of the org for agents, with its model; the answer, streamed or not, comes back as the provider sent it. Counted against the run and the org.",
@@ -33669,7 +33940,7 @@
     },
     "/api/v1/agents/{id}/runs": {
       "post": {
-        "description": "Runs the current version of the record as the agent, given the files for its declared inputs. A timeout or an LLM budget may only be lower than the record's (D380). Requires `agents:run`.",
+        "description": "Runs the current version of the record as the agent, given the files for its declared inputs. A timeout or an LLM budget may only be lower than the record's (D380). `chain_id` joins a chain, `subject` or `chain_limits` open one: the run then spends the chain budget, one run of the chain at a time (D716, D718). Requires `agents:run`.",
         "operationId": "agents_runs_start",
         "parameters": [
           {
@@ -33752,7 +34023,7 @@
                 }
               }
             },
-            "description": "`agent-not-found`, `environment-not-found`, `agent-artifact-not-found`"
+            "description": "`agent-not-found`, `environment-not-found`, `agent-artifact-not-found`, `agent-chain-not-found`"
           },
           "409": {
             "content": {
@@ -33762,7 +34033,7 @@
                 }
               }
             },
-            "description": "`agent-run-no-active-build`"
+            "description": "`agent-run-no-active-build`; in a chain (D716, D718): `agent-chain-closed`, `agent-chain-exhausted` (`args.reason`), `agent-chain-busy`, `agent-subject-taken` (`args.chain_id`)"
           }
         },
         "security": [

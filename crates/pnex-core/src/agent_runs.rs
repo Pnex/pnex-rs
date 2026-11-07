@@ -339,6 +339,10 @@ pub struct AgentRun {
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub agent_id: Option<String>,
     pub agent_version: Option<i32>,
+    /// The chain it belongs to, if any (D716).
+    #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub chain_id: Option<String>,
     /// Image by digest, as run.
     pub image: String,
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]

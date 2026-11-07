@@ -944,6 +944,10 @@ reste demande un geste, pas une discussion (§11.3).
 | D761 | Réponses pour R1 à R10 : agents par Admin et `viewer`, quota à part, entrée « Agents », `agent_ops` au premier usage, Firecracker pour E6, recette cluster par Claude, poussée à 19 h |
 | D762 | E6 : exécuteur Firecracker, disque ext4 tiré de l'image par digest, `/init` du runner, nftables dans la VM et sur l'hôte, sortie mesurée à 1,2 s |
 | D763 | Isolation choisie par environnement (`pod` par défaut, `vm`) ; un run avec services reste en pod ; un job VM arrêté garde 5 min pour envoyer ses sorties |
+| D765 | Bornes de chaîne : exécutions, appels au modèle de toute la chaîne, exécutions d'un même agent ; épuisée = refus codé, un humain reprend |
+| D766 | Une exécution à la fois par chaîne ; sujet tenu par la chaîne active (index unique partiel) ; doublon = `joined`, pas de second run |
+| D767 | Sujet libéré par un geste humain (`POST /agent-chains/{id}/close`) ; fermeture à la fusion avec A4 |
+| D768 | `flows.deployed_by` ; `agents:run` exigé au déploiement et revérifié à chaque message ; fin d'exécution publiée une fois après la projection |
 | D770 | Compétences V1 à la main : tables en base, entrée `skills` (tar de `<nom>.md`) relue en base au claim et au transfert, rien dans S3, l'env ni la passerelle |
 | D771 | Toute écriture = brouillon ; activation humaine sur `expected_version`, jamais MCP ; secrets refusés à l'écriture et à l'activation |
 | D772 | Import d'un fichier lu par le navigateur, envoyé comme nouveau texte ; `SKILL.md` non analysé |
@@ -1239,6 +1243,39 @@ l'agent au lieu de manquer en silence. L'UI épingle depuis l'éditeur de compé
 lire, `agents:write` (Admin) pour écrire un brouillon ou activer, `agents:delete` pour
 supprimer. MCP : lecture, diff et écriture de brouillons exposés ; activation (sign-off)
 et suppression (destructive) exclues. L'assistant intégré n'a aucun outil de compétence.
+
+**D765 — Bornes d'une chaîne** (lot B, 2026-11-07, applique D716). Une chaîne porte trois
+bornes fixées à son ouverture : `runs_max` (exécutions, 10 par défaut), `llm_calls_max`
+(appels au modèle de toutes ses exécutions, 500) et `rounds_max` (exécutions d'un même
+agent, 3) : un « tour » est un passage de plus du même agent, la correction après une revue.
+Chaque exécution reçoit au plus ce qui reste du budget d'appels. Au-delà d'une borne, le
+départ est refusé (`agent-chain-exhausted`, `args.reason` = `runs`, `rounds` ou
+`llm_calls`) et la chaîne reste active : un humain reprend la main (D716). Pas de plafond de
+durée en V1 : chaque exécution garde son `timeout_secs`.
+
+**D766 — Une exécution à la fois par chaîne** (applique D718). Tant qu'une exécution de la
+chaîne est en file ou tourne, une autre est refusée (`agent-chain-busy`, 409). Le sujet est
+une clé libre de 200 caractères (dépôt et ticket, id de l'objet), tenu par la chaîne active
+(index unique partiel en base). Un départ sur un sujet déjà tenu ne lance rien : le nœud
+`agent_run` répond `joined` avec l'id de la chaîne existante, la route HTTP répond 409
+`agent-subject-taken` avec `args.chain_id`. Le doublon n'est pas versé au contexte de la
+chaîne en V1 : le flow l'écrit dans l'ontologie s'il le veut.
+
+**D767 — Libération d'un sujet.** Un geste humain, `POST /agent-chains/{id}/close`
+(`agents:stop`, exclu du MCP comme l'arrêt d'une exécution) : la chaîne n'accepte plus
+d'exécution et son sujet est libre ; une exécution en cours continue. La fermeture
+automatique à la fusion de la demande et le signalement d'une chaîne inactive viendront avec
+le lot A4 (forge).
+
+**D768 — Droits d'un flow qui lance des agents** (applique D757 et R2). Le déploiement
+retient la personne qui déploie (`flows.deployed_by`) ; la porte de déploiement exige
+`agents:run` pour chaque nœud `agent_run` et un agent de l'org. À chaque message, le backend
+relit le graphe déployé (agent, chemins, bornes), revérifie `agents:run` de cette personne
+dans l'org et lance l'exécution en son nom : elle perd ce droit, le flow ne lance plus rien.
+Toute exécution lancée par un flow appartient à une chaîne. La fin d'une exécution est
+publiée une seule fois (`agent_runs.finished_event_at`, D398) sur le canal de l'org, après
+la projection `agent_ops`, pour les nœuds `agent_run_finished` ; un flow arrêté à ce
+moment-là ne la reçoit pas.
 
 ### 11.2 Reste à faire, dans cet ordre
 

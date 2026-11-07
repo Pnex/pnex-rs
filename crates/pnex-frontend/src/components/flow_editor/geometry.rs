@@ -132,6 +132,8 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         FlowNodeKind::SiteRecipe { .. } => (pnex_core::site_recipe::NODE_PORT_COUNT, 0),
         // Web search: results, failed.
         FlowNodeKind::WebSearch { .. } => (pnex_core::web_search::NODE_PORT_COUNT, 0),
+        // Agent run: started (or joined), refused.
+        FlowNodeKind::AgentRun { .. } => (pnex_core::agent_chains::NODE_PORT_COUNT, 0),
         // Mail: written (draft or sent), refused.
         FlowNodeKind::MailSend { .. } => (pnex_core::mail::SEND_PORT_COUNT, 0),
         // Company lookup: matched, to review, failed.
@@ -212,6 +214,10 @@ pub fn predict_output_labels(kind: &FlowNodeKind) -> Vec<String> {
             t!("flows-web-search-port-ok").to_string(),
             t!("flows-web-search-port-failed").to_string(),
         ],
+        FlowNodeKind::AgentRun { .. } => vec![
+            t!("flows-agent-run-port-started").to_string(),
+            t!("flows-agent-run-port-refused").to_string(),
+        ],
         FlowNodeKind::MailSend { .. } => vec![
             t!("flows-mail-send-port-ok").to_string(),
             t!("flows-mail-send-port-refused").to_string(),
@@ -256,6 +262,7 @@ pub fn accepts_input(node: &FlowNode) -> bool {
             | FlowNodeKind::ControlSource { .. }
             | FlowNodeKind::ActionTrigger { .. }
             | FlowNodeKind::DatasetTrigger { .. }
+            | FlowNodeKind::AgentRunFinished { .. }
             | FlowNodeKind::MailReceived { .. }
             | FlowNodeKind::Weather { .. }
             | FlowNodeKind::MediaSource { .. }

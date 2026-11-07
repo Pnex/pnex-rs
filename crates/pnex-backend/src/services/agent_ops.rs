@@ -290,11 +290,20 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
     Ok(())
 }
 
-/// In the background, after the runner was answered; a failure is logged.
-pub fn spawn_projection(db: DatabaseConnection, org_id: i64, job: Uuid) {
+/// In the background, after the runner was answered; a failure is logged. The end of the
+/// run is then published to the flows, once (D713): the next step reads the projection.
+pub fn spawn_projection(ctx: &loco_rs::app::AppContext, org_id: i64, job: Uuid) {
+    let db = ctx.db.clone();
+    let config = ctx.config.clone();
     tokio::spawn(async move {
         if let Err(e) = project_run(&db, org_id, job).await {
             tracing::warn!(org_id, %job, error = ?e, "agent run not projected to the ontology");
+        }
+        let valkey = crate::services::shared_valkey::conn(&config).await;
+        if let Err(e) =
+            crate::services::agent_chains::publish_finished(&db, valkey, org_id, job).await
+        {
+            tracing::warn!(org_id, %job, error = %e, "agent run end not published");
         }
     });
 }

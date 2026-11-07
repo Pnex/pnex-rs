@@ -169,6 +169,14 @@ const RULES: &[Rule] = &[
         use_instead: "entrées / sorties (fichiers d'une exécution, D729)",
         allowed_keys: &[],
     },
+    // D716: runs of agents sharing a budget form a « chaîne d'exécutions »; an
+    // « exécution enchaînée » is a pipeline target with its dependencies (D575).
+    Rule {
+        scope: Scope::Fr,
+        term: "workflow",
+        use_instead: "chaîne d'exécutions (agents, D716) ou flow",
+        allowed_keys: &[],
+    },
     // D763: where the runs of an environment execute is its « isolation ».
     Rule {
         scope: Scope::Fr,

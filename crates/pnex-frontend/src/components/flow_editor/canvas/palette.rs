@@ -1,11 +1,12 @@
 use super::*;
 
 /// Canonical list of the kinds offered for adding (mockup order).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 54] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 56] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
     PaletteKind::DatasetTrigger,
+    PaletteKind::AgentRunFinished,
     PaletteKind::MailReceived,
     PaletteKind::Weather,
     PaletteKind::Value,
@@ -20,6 +21,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 54] = [
     PaletteKind::RegPid,
     PaletteKind::PnexNotify,
     PaletteKind::MailSend,
+    PaletteKind::AgentRun,
     PaletteKind::HttpFetch,
     PaletteKind::Function,
     PaletteKind::JsonSplit,
@@ -101,6 +103,8 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::ControlSource => "control-source",
         PaletteKind::ActionTrigger => "action-trigger",
         PaletteKind::DatasetTrigger => "dataset-trigger",
+        PaletteKind::AgentRun => "agent-run",
+        PaletteKind::AgentRunFinished => "agent-run-finished",
         PaletteKind::MailReceived => "mail-received",
         PaletteKind::OntologyQuery => "ontology-query",
         PaletteKind::OntologyAggregate => "ontology-aggregate",
@@ -171,6 +175,8 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::ControlSource => (PaletteIcon::Gauge, "bg-signal-50 text-signal-600"),
         PaletteKind::ActionTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
         PaletteKind::DatasetTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
+        PaletteKind::AgentRun => (PaletteIcon::Gauge, "bg-violet-50 text-violet-800"),
+        PaletteKind::AgentRunFinished => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
         PaletteKind::MailReceived => (PaletteIcon::Gauge, "bg-sky-50 text-sky-700"),
         PaletteKind::OntologyQuery => (PaletteIcon::Database, "bg-teal-50 text-teal-700"),
         PaletteKind::OntologyAggregate => (PaletteIcon::Gauge, "bg-teal-50 text-teal-700"),
@@ -234,6 +240,8 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::ControlSource { .. } => PaletteKind::ControlSource,
         FlowNodeKind::ActionTrigger { .. } => PaletteKind::ActionTrigger,
         FlowNodeKind::DatasetTrigger { .. } => PaletteKind::DatasetTrigger,
+        FlowNodeKind::AgentRun { .. } => PaletteKind::AgentRun,
+        FlowNodeKind::AgentRunFinished { .. } => PaletteKind::AgentRunFinished,
         FlowNodeKind::MailReceived { .. } => PaletteKind::MailReceived,
         FlowNodeKind::OntologyQuery { .. } => PaletteKind::OntologyQuery,
         FlowNodeKind::OntologyAggregate { .. } => PaletteKind::OntologyAggregate,
@@ -292,6 +300,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::ControlSource
         | PaletteKind::ActionTrigger
         | PaletteKind::DatasetTrigger
+        | PaletteKind::AgentRunFinished
         | PaletteKind::MailReceived
         | PaletteKind::CameraSource
         | PaletteKind::MediaSource
@@ -336,7 +345,10 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::TextDecide
         | PaletteKind::Anomaly
         | PaletteKind::Forecast => PaletteCategory::Ai,
-        PaletteKind::PnexNotify | PaletteKind::MailSend | PaletteKind::HttpFetch => {
+        PaletteKind::PnexNotify
+        | PaletteKind::MailSend
+        | PaletteKind::AgentRun
+        | PaletteKind::HttpFetch => {
             PaletteCategory::Integrations
         }
         // Display is an inline probe, not a device node (O49).
@@ -525,6 +537,14 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::DatasetTrigger => (
             t!("flows-palette-dataset-trigger").to_string(),
             t!("flows-palette-dataset-trigger-help").to_string(),
+        ),
+        PaletteKind::AgentRun => (
+            t!("flows-palette-agent-run").to_string(),
+            t!("flows-palette-agent-run-help").to_string(),
+        ),
+        PaletteKind::AgentRunFinished => (
+            t!("flows-palette-agent-run-finished").to_string(),
+            t!("flows-palette-agent-run-finished-help").to_string(),
         ),
         PaletteKind::MailReceived => (
             t!("flows-palette-mail-received").to_string(),

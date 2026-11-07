@@ -300,15 +300,15 @@ async fn versions(
     tag = "agents",
     operation_id = "agents_runs_start",
     summary = "Start a run of an agent",
-    description = "Runs the current version of the record as the agent, given the files for its declared inputs. A timeout or an LLM budget may only be lower than the record's (D380). Requires `agents:run`.",
+    description = "Runs the current version of the record as the agent, given the files for its declared inputs. A timeout or an LLM budget may only be lower than the record's (D380). `chain_id` joins a chain, `subject` or `chain_limits` open one: the run then spends the chain budget, one run of the chain at a time (D716, D718). Requires `agents:run`.",
     params(("id" = String, Path, format = "uuid", description = "Agent id (UUID)")),
     request_body = AgentRunStart,
     responses(
         (status = 201, body = pnex_core::agent_runs::AgentRun),
         (status = 400, description = "`field-invalid` (`above_agent`, `undeclared`, `missing`)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`agent-not-found`, `environment-not-found`, `agent-artifact-not-found`", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`agent-run-no-active-build`", body = crate::openapi::ErrorDetail)
+        (status = 404, description = "`agent-not-found`, `environment-not-found`, `agent-artifact-not-found`, `agent-chain-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`agent-run-no-active-build`; in a chain (D716, D718): `agent-chain-closed`, `agent-chain-exhausted` (`args.reason`), `agent-chain-busy`, `agent-subject-taken` (`args.chain_id`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]

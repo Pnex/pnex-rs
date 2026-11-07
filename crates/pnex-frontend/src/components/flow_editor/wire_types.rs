@@ -101,6 +101,8 @@ fn port_type(node: &FlowNode, port: usize) -> PortType {
         | FlowNodeKind::PageWrite { .. }
         | FlowNodeKind::ActionTrigger { .. }
         | FlowNodeKind::DatasetTrigger { .. }
+        | FlowNodeKind::AgentRun { .. }
+        | FlowNodeKind::AgentRunFinished { .. }
         | FlowNodeKind::MailReceived { .. }
         | FlowNodeKind::OntologyQuery { .. }
         | FlowNodeKind::OntologyAggregate { .. }

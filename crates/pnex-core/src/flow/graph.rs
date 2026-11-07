@@ -190,6 +190,16 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::pipelines::DatasetTriggerConfig,
     },
+    /// Starts a run of a hosted agent and answers its id at once (D713).
+    AgentRun {
+        #[serde(default)]
+        config: crate::agent_chains::AgentRunNodeConfig,
+    },
+    /// Event source fed by the ended runs of hosted agents (D713).
+    AgentRunFinished {
+        #[serde(default)]
+        config: crate::agent_chains::AgentRunFinishedConfig,
+    },
     /// Event source fed by the new messages of mailboxes (mail.md D456).
     MailReceived {
         #[serde(default)]
@@ -432,6 +442,12 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "dataset_trigger" => Ok(Self::DatasetTrigger {
+                    config: opt_config(config)?,
+                }),
+                "agent_run" => Ok(Self::AgentRun {
+                    config: opt_config(config)?,
+                }),
+                "agent_run_finished" => Ok(Self::AgentRunFinished {
                     config: opt_config(config)?,
                 }),
                 "mail_received" => Ok(Self::MailReceived {

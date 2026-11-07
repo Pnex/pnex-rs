@@ -3,10 +3,10 @@ id: agent-runs
 title: Agent runs (hosted agents and their model gateway)
 kind: feature
 pages: /agents
-nodes: 
-err_codes: agent-run-not-found, agent-run-no-active-build, agent-run-ended, agent-run-unauthorized, agent-run-llm-budget, agent-gateway-quota, agent-gateway-not-configured, agent-gateway-protocol-mismatch, agent-gateway-invalid, agent-gateway-upstream, agent-run-logs-unavailable, agent-artifact-not-found, agent-artifact-not-declared, agent-artifact-already-sent, agent-artifact-too-large, agent-artifact-interrupted, agent-artifact-storage-unavailable, agent-run-output-missing, agent-not-found, agent-name-taken, agent-version-conflict, agent-quota, agent-provider-not-found
+nodes: agent_run, agent_run_finished
+err_codes: agent-run-not-found, agent-run-no-active-build, agent-run-ended, agent-run-unauthorized, agent-run-llm-budget, agent-gateway-quota, agent-gateway-not-configured, agent-gateway-protocol-mismatch, agent-gateway-invalid, agent-gateway-upstream, agent-run-logs-unavailable, agent-artifact-not-found, agent-artifact-not-declared, agent-artifact-already-sent, agent-artifact-too-large, agent-artifact-interrupted, agent-artifact-storage-unavailable, agent-run-output-missing, agent-not-found, agent-name-taken, agent-version-conflict, agent-quota, agent-provider-not-found, agent-chain-not-found, agent-chain-closed, agent-chain-exhausted, agent-chain-busy, agent-subject-taken
 tools: 
-tags: agent, run, sandbox, gateway, llm, token, budget, environment, logs, journal, artifact, file, input, output
+tags: agent, run, chain, subject, flow, sandbox, gateway, llm, token, budget, environment, logs, journal, artifact, file, input, output
 ---
 A run starts a hosted agent in a sandbox: one pod, on a runner of the organization, from the active build of an environment. It ends with the pod; nothing stays running between runs.
 
@@ -49,6 +49,14 @@ The Agents page lists the agents and their runs. From it a person creates an age
 - Each cache is keyed by its lock files: the same lock file restores the same cache; a changed one starts from the latest cache and saves a new one.
 - Caches belong to their environment, expire after two weeks without use, and have a size limit.
 
+## Chains of runs, started by a flow
+- A deployed flow chains short runs: the "Agent run" node starts a run and answers at once; the "Run finished" node receives each run that ends, with its outputs by name, and starts the next step. No flow waits for a run.
+- Every run started by a flow belongs to a chain of runs. The chain has one budget: runs at most, model calls of all its runs together, and runs of the same agent (rounds, such as a fix after a review). Each run gets at most what the chain has left.
+- A chain runs one run at a time (`agent-chain-busy`). Past a bound, the next run is refused (`agent-chain-exhausted`): a person takes over.
+- A chain can hold a subject, such as a repository and a ticket. While it is active, the same subject starts no second run: a repeated report joins the chain (`agent-subject-taken` when started by hand).
+- A person closes a chain when the work is done or abandoned: it takes no more runs and its subject is free again (`agent-chain-closed` after that).
+- The flow runs agents within the rights of the person who deployed it, checked again at each run: someone who may not run agents cannot deploy such a flow, and one who loses that right stops its runs.
+
 ## Limits
 - Each run has a number of model calls (200 by default); past it, calls are refused with `agent-run-llm-budget`.
 - The agents of an organization also share a number of calls per day, apart from the assistant and the flows.
@@ -60,4 +68,4 @@ The Agents page lists the agents and their runs. From it a person creates an age
 - `agent-gateway-protocol-mismatch`: the engine of the agent speaks another protocol than the provider (Anthropic or OpenAI compatible). Pick a provider of the same kind.
 
 ## What you can do
-- You can read runs and their usage. You never start or stop a run: those stay with the people who hold `agents:run` and `agents:stop`.
+- You can read runs, chains and their usage, and you may add "Agent run" and "Run finished" nodes to a flow that is not deployed. You never deploy it, never close a chain, and never start or stop a run: those stay with the people who hold `agents:run` and `agents:stop`.

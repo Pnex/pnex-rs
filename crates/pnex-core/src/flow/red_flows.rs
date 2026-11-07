@@ -292,6 +292,28 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            // The backend reads the agent and the paths from the deployed graph (D713).
+            FlowNodeKind::AgentRun { config } => {
+                padded_ports = Some(crate::agent_chains::NODE_PORT_COUNT);
+                serde_json::json!({
+                    "type": "pnex-agent-run",
+                    "inputs": config.inputs,
+                    "subject_from": config.subject_from,
+                    "pnex_node_id": n.id,
+                    "pnex_flow_id": meta.flow_id,
+                    "pnex_version": meta.version_number,
+                    "pnex_org_id": meta.org_id,
+                })
+            }
+            FlowNodeKind::AgentRunFinished { config } => serde_json::json!({
+                "type": "pnex-agent-run-finished",
+                "agent_id": config.agent_id,
+                "chained_only": config.chained_only,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::DatasetTrigger { config } => serde_json::json!({
                 "type": "pnex-dataset-trigger",
                 "dataset": config.dataset,

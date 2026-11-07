@@ -771,6 +771,16 @@ pub const AGENT_ARTIFACT_INTERRUPTED: &str = "agent-artifact-interrupted";
 pub const AGENT_ARTIFACT_STORAGE_UNAVAILABLE: &str = "agent-artifact-storage-unavailable";
 /// A required output of the run was not left.
 pub const AGENT_RUN_OUTPUT_MISSING: &str = "agent-run-output-missing";
+/// No chain of the org has this id (D716).
+pub const AGENT_CHAIN_NOT_FOUND: &str = "agent-chain-not-found";
+/// The chain was closed: it takes no more runs.
+pub const AGENT_CHAIN_CLOSED: &str = "agent-chain-closed";
+/// The chain used its runs, rounds or model calls (args `reason`): a person takes over.
+pub const AGENT_CHAIN_EXHAUSTED: &str = "agent-chain-exhausted";
+/// A run of the chain is still running: one run at a time (D718, D766).
+pub const AGENT_CHAIN_BUSY: &str = "agent-chain-busy";
+/// Another active chain holds this subject (args `chain_id`, D718).
+pub const AGENT_SUBJECT_TAKEN: &str = "agent-subject-taken";
 /// No agent of the org has this id (D757).
 pub const AGENT_NOT_FOUND: &str = "agent-not-found";
 /// An agent of the org already has this name.
@@ -1272,6 +1282,11 @@ pub const ALL: &[&str] = &[
     AGENT_ARTIFACT_INTERRUPTED,
     AGENT_ARTIFACT_STORAGE_UNAVAILABLE,
     AGENT_RUN_OUTPUT_MISSING,
+    AGENT_CHAIN_NOT_FOUND,
+    AGENT_CHAIN_CLOSED,
+    AGENT_CHAIN_EXHAUSTED,
+    AGENT_CHAIN_BUSY,
+    AGENT_SUBJECT_TAKEN,
     AGENT_GATEWAY_QUOTA,
     AGENT_GATEWAY_NOT_CONFIGURED,
     AGENT_GATEWAY_PROTOCOL_MISMATCH,

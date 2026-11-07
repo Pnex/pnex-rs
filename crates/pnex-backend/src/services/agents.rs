@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::models::_entities::sea_orm_active_enums::OrgMemberRole;
 use crate::services::agent_artifacts::ArtifactSettings;
+use crate::services::agent_chains::ChainPick;
 use crate::services::agent_runs::{self, AgentRunError, RunOrigin};
 use crate::services::iam::store::IamError;
 use crate::services::iam::{service, store, Grants};
@@ -422,6 +423,7 @@ pub async fn start_run(
         return Err(invalid(field, token));
     }
     let body = run_of(&agent.spec, start).map_err(|(f, t)| invalid(f, t))?;
+    let chain = chain_of(start)?;
     let provider = match &agent.spec.provider_id {
         Some(p) => Some(Uuid::parse_str(p).map_err(|_| AgentError::ProviderNotFound)?),
         None => None,
@@ -437,7 +439,32 @@ pub async fn start_run(
             agent_version: agent.version,
             provider_id: provider,
         }),
+        chain.as_ref(),
     )
     .await
     .map_err(AgentError::Run)
+}
+
+/// The chain a start names or opens (D716, D718); none for a bare start.
+fn chain_of(start: &AgentRunStart) -> Result<Option<ChainPick>, AgentError> {
+    if let Some(id) = &start.chain_id {
+        let id = Uuid::parse_str(id).map_err(|_| invalid("chain_id", "invalid"))?;
+        return Ok(Some(ChainPick::Join(id)));
+    }
+    if start.subject.is_none() && start.chain_limits.is_none() {
+        return Ok(None);
+    }
+    if let Some(s) = &start.subject {
+        if !pnex_core::agent_chains::subject_is_valid(s) {
+            return Err(invalid("subject", "invalid"));
+        }
+    }
+    let limits = start.chain_limits.unwrap_or_default();
+    if let Some((field, token)) = limits.error() {
+        return Err(invalid(field, token));
+    }
+    Ok(Some(ChainPick::Open {
+        subject: start.subject.clone(),
+        limits,
+    }))
 }

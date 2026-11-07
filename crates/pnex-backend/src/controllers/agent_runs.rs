@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::auth::OrgContext;
 use crate::controllers::pagination::{self, PageParams};
+use crate::services::agent_chains;
 use crate::services::agent_gateway::{self, GatewayError, Protocol};
 use crate::services::agent_runs::{self, AgentRunError, RunPrincipal};
 
@@ -25,6 +26,8 @@ pub fn routes() -> Routes {
         .add("/agent-runs/{id}", get(one))
         .add("/agent-runs/{id}/stop", post(stop))
         .add("/agent-runs/{id}/logs", get(logs))
+        .add("/agent-chains/{id}", get(chain))
+        .add("/agent-chains/{id}/close", post(close_chain))
         .add(
             "/agent-gateway/v1/messages",
             post(gateway_anthropic).layer(axum::extract::DefaultBodyLimit::max(GATEWAY_BODY_MAX)),
@@ -38,7 +41,17 @@ pub fn routes() -> Routes {
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(list, create, one, stop, logs, gateway_anthropic, gateway_openai),
+        paths(
+            list,
+            create,
+            one,
+            stop,
+            logs,
+            chain,
+            close_chain,
+            gateway_anthropic,
+            gateway_openai
+        ),
         components(schemas(pnex_core::runners::RunnerJobLogLine))
     )]
     struct Doc;
@@ -83,6 +96,36 @@ pub(crate) fn run_error(e: AgentRunError) -> Result<Response> {
             err_codes::AGENT_ARTIFACT_NOT_FOUND,
             "An input names no ready artifact of the org.",
             None,
+        ),
+        AgentRunError::ChainNotFound => super::coded_error(
+            StatusCode::NOT_FOUND,
+            err_codes::AGENT_CHAIN_NOT_FOUND,
+            "Chain not found.",
+            None,
+        ),
+        AgentRunError::ChainClosed => super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::AGENT_CHAIN_CLOSED,
+            "The chain was closed.",
+            None,
+        ),
+        AgentRunError::ChainExhausted { reason } => super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::AGENT_CHAIN_EXHAUSTED,
+            "The chain used its budget: a person takes over.",
+            Some(serde_json::json!({ "reason": reason })),
+        ),
+        AgentRunError::ChainBusy => super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::AGENT_CHAIN_BUSY,
+            "A run of the chain is still running.",
+            None,
+        ),
+        AgentRunError::SubjectTaken { chain_id } => super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::AGENT_SUBJECT_TAKEN,
+            "Another active chain holds this subject.",
+            Some(serde_json::json!({ "chain_id": chain_id.to_string() })),
         ),
         AgentRunError::Db(e) => {
             tracing::error!(error = %e, "agent run database error");
@@ -215,10 +258,65 @@ async fn stop(
     match agent_runs::stop(&ctx.db, org.org.id, id).await {
         Ok(run) => {
             if let Ok(job) = Uuid::parse_str(&run.job_id) {
-                crate::services::agent_ops::spawn_projection(ctx.db.clone(), org.org.id, job);
+                crate::services::agent_ops::spawn_projection(&ctx, org.org.id, job);
             }
             format::json(run)
         }
+        Err(e) => run_error(e),
+    }
+}
+
+/// `GET /api/v1/agent-chains/{id}`
+#[utoipa::path(
+    get,
+    path = "/api/v1/agent-chains/{id}",
+    tag = "agent-runs",
+    operation_id = "agent_chains_get",
+    summary = "Read a chain of runs",
+    description = "Its subject, state, bounds and what its runs used (runs, model calls) (D716). Requires `agents:read`.",
+    params(("id" = String, Path, format = "uuid", description = "Chain id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::agent_chains::AgentChain),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`agent-chain-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn chain(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match agent_chains::get(&ctx.db, org.org.id, id).await {
+        Ok(c) => format::json(c),
+        Err(e) => run_error(e),
+    }
+}
+
+/// `POST /api/v1/agent-chains/{id}/close`
+#[utoipa::path(
+    post,
+    path = "/api/v1/agent-chains/{id}/close",
+    tag = "agent-runs",
+    operation_id = "agent_chains_close",
+    summary = "Close a chain of runs",
+    description = "A person's gesture: the chain takes no more runs and its subject is free for a new chain (D718). A run still running goes on. Requires `agents:stop`.",
+    params(("id" = String, Path, format = "uuid", description = "Chain id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::agent_chains::AgentChain),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`agent-chain-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`agent-chain-closed`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn close_chain(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match agent_chains::close(&ctx.db, org.org.id, id).await {
+        Ok(c) => format::json(c),
         Err(e) => run_error(e),
     }
 }

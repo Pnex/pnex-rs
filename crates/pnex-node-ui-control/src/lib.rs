@@ -36,11 +36,14 @@ use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
 mod action;
+mod agent_run;
+mod agent_run_finished;
 mod dataset;
 mod mail;
 mod mail_send;
 mod ontology;
 mod org_resolve;
+mod proxy;
 mod site_crawl;
 mod site_recipe;
 mod web_search;
