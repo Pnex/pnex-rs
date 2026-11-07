@@ -459,3 +459,24 @@ pub fn media_store() -> std::sync::Arc<dyn pnex_backend::services::media::MediaS
         .store()
         .expect("test S3 store")
 }
+
+/// Makes the user behind `email` a member of `org` with `role`, through the
+/// members route of the org. Same signature as the invitation flow of SEC-72,
+/// which replaces this body when it lands.
+#[allow(dead_code)]
+pub async fn join_org(
+    server: &axum_test::TestServer,
+    inviter: &str,
+    _invitee: &str,
+    org: i64,
+    email: &str,
+    role: &str,
+) {
+    let res = server
+        .post(&format!("/api/v1/orgs/{org}/members"))
+        .add_header("Authorization", format!("Bearer {inviter}"))
+        .add_header("X-Org-Id", org.to_string())
+        .json(&serde_json::json!({ "email": email, "role": role }))
+        .await;
+    assert!(res.status_code().is_success(), "add {email}: {}", res.text());
+}
