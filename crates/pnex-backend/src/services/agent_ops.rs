@@ -92,6 +92,10 @@ async fn files(db: &DatabaseConnection, org_id: i64, sql: &str, key: Uuid) -> Re
 /// Projects the run behind runner job `job` once it ended. One at a time per org.
 pub async fn project_run(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Result<()> {
     use crate::services::db_lock::{ns, TenantLock};
+    // Queue in the process first: a projection waiting on the tenant lock holds a
+    // connection, and a burst of ended runs would otherwise drain the pool.
+    static IN_PROCESS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _turn = IN_PROCESS.lock().await;
     let lock = TenantLock::acquire(
         db,
         ns::AGENT_OPS,
