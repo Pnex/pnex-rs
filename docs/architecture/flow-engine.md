@@ -17,7 +17,7 @@
 > device, frontière D13/D17) — **dépassé** : le nœud `pnex-device-write`
 > écrit sur les pins depuis un flow déployé (mode « connecté », source
 > d'écriture exclusive par pin, 8d60950 ; D17 amendé dans `inventory.md`) ;
-> cœur EdgeLinkd jamais patché ; pas de
+> cœur EdgeLinkd patché seulement dans notre fork `Pnex/edgelinkd` (vendor/README.md) ; pas de
 > type-check global du graphe (contrats typés aux frontières des nœuds
 > custom) ; les utilisateurs n'écrivent pas de Rust ; l'éditeur Node-RED
 > embarqué n'est **jamais exposé** (runtime headless) ; tranches fines —
@@ -184,7 +184,7 @@ Choix structurants :
   l'ancre → payload entrant, sinon `payload.<name>`, sinon défaut),
   `msg` = message entrant. Retour : voir le mode du nœud (§11).
 - **JS = le nœud `function` QuickJS du vendor, réutilisé tel quel**
-  (réutilisation maximale, doctrine « ne jamais patcher ») : la projection
+  (réutilisation maximale ; le cœur n'est patché que dans notre fork, pour la sécurité) : la projection
   génère un **wrapper** (`build_js_wrapper` dans pnex-core) — helpers
   embarqués + code utilisateur + tail qui construit `inputs` et mappe le
   retour en ports — et l'inline dans la config `func` du nœud builtin.

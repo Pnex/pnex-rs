@@ -179,7 +179,7 @@ fn split_topic_routed_writes_reach_the_write_route() {
         |v| {
             v["msg"]
                 .as_str()
-                .is_some_and(|m| m.contains("\"topic\": \"G13\""))
+                .is_some_and(|m| m.contains("\"topic\":\"G13\""))
         },
         Duration::from_secs(30),
     );
@@ -187,7 +187,7 @@ fn split_topic_routed_writes_reach_the_write_route() {
         |v| {
             v["msg"]
                 .as_str()
-                .is_some_and(|m| m.contains("\"topic\": \"G14\""))
+                .is_some_and(|m| m.contains("\"topic\":\"G14\""))
         },
         Duration::from_secs(30),
     );

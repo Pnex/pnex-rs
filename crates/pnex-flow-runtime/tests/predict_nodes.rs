@@ -67,24 +67,24 @@ fn anomaly_scores_and_forecast_predicts_breach() {
             v.get("event").and_then(|e| e.as_str()) == Some("debug")
                 && v["msg"]
                     .as_str()
-                    .is_some_and(|m| m.contains("robust_z") && m.contains("\"warming_up\": false"))
+                    .is_some_and(|m| m.contains("robust_z") && m.contains("\"warming_up\":false"))
         },
         Duration::from_secs(30),
     );
     let msg = line["msg"].as_str().unwrap();
-    assert!(msg.contains("\"anomaly\": false"), "{msg}");
+    assert!(msg.contains("\"anomaly\":false"), "{msg}");
     // Forecast detail with a predicted breach.
     let line = rt.wait_for(
         |v| {
             v.get("event").and_then(|e| e.as_str()) == Some("debug")
                 && v["msg"]
                     .as_str()
-                    .is_some_and(|m| m.contains("breach_in_secs") && m.contains("\"breach\": true"))
+                    .is_some_and(|m| m.contains("breach_in_secs") && m.contains("\"breach\":true"))
         },
         Duration::from_secs(30),
     );
     let msg = line["msg"].as_str().unwrap();
-    assert!(msg.contains("\"model\": \"linear\""), "{msg}");
+    assert!(msg.contains("\"model\":\"linear\""), "{msg}");
     // ETA port: a bare number of seconds, below the 8 s horizon of the test.
     let eta_line = rt.wait_for(
         |v| {

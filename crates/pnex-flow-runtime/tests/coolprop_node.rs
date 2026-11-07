@@ -62,7 +62,7 @@ fn inject_coolprop_debug_returns_the_properties() {
     // Water vapour at 400 K / 1 bar: Dmolar ≈ P/(RT) ≈ 30.5 mol/m³.
     // (ideal gas ≈ 0.996 compressibility — anti-garbage safeguard).
     let dmolar: f64 = msg
-        .split("\"Dmolar\": ")
+        .split("\"Dmolar\":")
         .nth(1)
         .and_then(|s| s.split(',').next())
         .and_then(|s| s.trim().trim_end_matches('}').parse().ok())
@@ -147,7 +147,7 @@ fn named_inputs_with_units_feed_object_and_scalar_ports() {
     // h ≈ 104.9 kJ/kg, subcooling ≈ 100 − 25 = 75 K.
     let msg = object["msg"].as_str().unwrap();
     let field = |key: &str| -> f64 {
-        msg.split(&format!("\"{key}\": "))
+        msg.split(&format!("\"{key}\":"))
             .nth(1)
             .and_then(|s| s.split([',', '\n', '}']).next())
             .and_then(|s| s.trim().parse().ok())
@@ -160,6 +160,8 @@ fn named_inputs_with_units_feed_object_and_scalar_ports() {
 
     // Port 1: the Hmass scalar alone, topic = output id.
     let msg = scalar["msg"].as_str().unwrap();
-    assert!(msg.contains("\"topic\": \"Hmass\""), "{msg}");
-    assert!(msg.contains("\"payload\": 104."), "{msg}");
+    let scalar: serde_json::Value = serde_json::from_str(msg).expect("debug msg is JSON");
+    assert_eq!(scalar["topic"], "Hmass", "{msg}");
+    let h = scalar["payload"].as_f64().expect("numeric payload");
+    assert!((104.0..105.0).contains(&h), "{msg}");
 }

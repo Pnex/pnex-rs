@@ -2585,15 +2585,6 @@ checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
 name = "croner"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c344b0690c1ad1c7176fe18eb173e0c927008fdaaa256e40dfd43ddd149c0843"
-dependencies = [
- "chrono",
-]
-
-[[package]]
-name = "croner"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4aa42bcd3d846ebf66e15bd528d1087f75d1c6c1c66ebff626178a106353c576"
@@ -4753,7 +4744,7 @@ dependencies = [
 
 [[package]]
 name = "edgelink-core"
-version = "0.1.99"
+version = "4.1.16"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -4767,6 +4758,7 @@ dependencies = [
  "config",
  "dashmap",
  "edgelink-macro",
+ "encoding_rs",
  "futures-util",
  "hex",
  "inventory",
@@ -4788,7 +4780,7 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.21",
  "tokio",
- "tokio-cron-scheduler 0.14.0",
+ "tokio-cron-scheduler",
  "tokio-util",
  "url",
  "uuid",
@@ -4796,7 +4788,7 @@ dependencies = [
 
 [[package]]
 name = "edgelink-macro"
-version = "0.1.99"
+version = "4.1.16"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7764,7 +7756,7 @@ dependencies = [
  "tera 2.4.0",
  "thiserror 2.0.21",
  "tokio",
- "tokio-cron-scheduler 0.15.1",
+ "tokio-cron-scheduler",
  "tokio-util",
  "toml 0.8.2",
  "tower",
@@ -9996,7 +9988,7 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "chrono-tz 0.10.4",
- "croner 3.0.1",
+ "croner",
  "csv-core",
  "ed25519-dalek 2.2.0",
  "ego-tree",
@@ -14495,28 +14487,13 @@ dependencies = [
 
 [[package]]
 name = "tokio-cron-scheduler"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c71ce8f810abc9fabebccc30302a952f9e89c6cf246fafaf170fef164063141"
-dependencies = [
- "chrono",
- "croner 2.2.0",
- "num-derive",
- "num-traits",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "tokio-cron-scheduler"
 version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f50e41f200fd8ed426489bd356910ede4f053e30cebfbd59ef0f856f0d7432a"
 dependencies = [
  "chrono",
  "chrono-tz 0.10.4",
- "croner 3.0.1",
+ "croner",
  "num-derive",
  "num-traits",
  "tokio",

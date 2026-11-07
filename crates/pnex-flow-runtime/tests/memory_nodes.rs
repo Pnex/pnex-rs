@@ -86,7 +86,7 @@ fn write_then_read_back_through_valkey() {
 
     let object = object["msg"].as_str().unwrap().to_string();
     assert!(object.contains("412.5"), "{object}");
-    assert!(object.contains("\"never.written\": null"), "{object}");
+    assert!(object.contains("\"never.written\":null"), "{object}");
     let scalar = scalar["msg"].as_str().unwrap().to_string();
     assert!(scalar.contains(&key), "topic = key: {scalar}");
     assert!(scalar.contains("412.5"), "{scalar}");

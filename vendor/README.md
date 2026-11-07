@@ -2,20 +2,33 @@
 
 ## edgelinkd
 
-- **Amont** : <https://github.com/oldrev/edgelinkd> — moteur de flow compatible Node-RED en Rust.
-- **Commit épinglé** : `d0a5e114468ee1b26147de55cdca10484ade6b05` (master, 2026-01-19). Pas de
-  release versionnée en amont (nights Windows uniquement) → on épingle un SHA, jamais un tag.
-- **Licence** : Apache-2.0 (`vendor/edgelinkd/LICENSE`), Copyright Li Wei and other contributors.
-  Licence du workspace : MIT (code vendored **séparé et non modifié**, il reste sous sa licence d'origine).
-- **Règle absolue : ne jamais patcher.** Toute modification du cœur EdgeLinkd est interdite
-  (décision PRD §3) — on étend par nœuds custom (`crates/pnex-node-*`) et par notre binaire
-  (`crates/pnex-flow-runtime`). Les retours amont passent par issue/PR chez oldrev ; les mises à
-  jour se font par bump du submodule (SHA re-épinglé + note dans `docs/architecture/flow-engine.md`).
+- **Source** : notre fork <https://github.com/Pnex/edgelinkd>, synchronisé depuis l'amont
+  <https://github.com/oldrev/edgelinkd> (moteur de flow compatible Node-RED en Rust).
+- **Commit épinglé** : `80cc1e0` (2026-11-07) : amont v4.1.16 fusionné, plus les mises à
+  jour de dépendances. L'amont ne publie pas de release versionnée, donc on épingle un SHA,
+  jamais un tag.
+- **Licence** : Apache-2.0 (`vendor/edgelinkd/LICENSE`), Copyright Li Wei and other
+  contributors. Le code du fork reste sous sa licence d'origine (workspace : MIT).
+- **Patchs du cœur autorisés dans le fork** (2026-11-07, plus « ne jamais patcher ») :
+  - SEC-3 : l'environnement du processus n'est pas copié dans le magasin d'env du moteur ;
+  - SEC-67 : budget du nœud `function` (128 Mio de mémoire, 1 Mio de pile, 10 s par appel),
+    qui partage le gestionnaire d'interruption du `timeout` par nœud de l'amont ;
+  - `dirs-next` retiré.
+
+  On étend toujours d'abord par nœuds custom (`crates/pnex-node-*`) et par notre binaire
+  (`crates/pnex-flow-runtime`). Un patch du cœur se fait dans le fork, avec sa raison, et
+  part en PR chez oldrev quand il est utile à l'amont.
+- **Mise à jour** : synchroniser le fork depuis oldrev, puis bumper le submodule (SHA
+  ré-épinglé ici) et faire passer les tests de `pnex-flow-runtime` et des `pnex-node-*`.
+  Depuis 80cc1e0, le nœud debug sort du JSON compact (`"k":v`) : un test ne doit jamais
+  chercher `"k": v` avec une espace.
 - **Sous-module `3rd-party/node-red` volontairement NON initialisé** (clone Node-RED complet,
-  ~100 Mo, inutile à la compilation de `edgelink-core`). Ne jamais faire `git submodule update --recursive` ici.
+  ~100 Mo, inutile à la compilation de `edgelink-core`). Ne jamais faire
+  `git submodule update --recursive` ici.
 - **Intégration** : `edgelink-core` est consommé en path-dependency
-  (`default-features = false, features = ["core"]`) depuis `crates/pnex-node-sql` et
-  `crates/pnex-flow-runtime`. Le backend Loco **ne lie jamais** ces crates (isolation process, mode B).
+  (`default-features = false, features = ["core"]`) depuis les `crates/pnex-node-*` et
+  `crates/pnex-flow-runtime`. Le backend Loco **ne lie jamais** ces crates (isolation
+  process, mode B).
 
 ## CoolProp
 

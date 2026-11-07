@@ -92,8 +92,8 @@ fn replays_stored_value_then_routes_live_writes_by_control() {
     // Replay: proves the subscription is live (replay runs after SUBSCRIBE).
     let replay = rt.wait_for(debug_of("da"), Duration::from_secs(30));
     let msg = replay["msg"].as_str().unwrap().to_string();
-    assert!(msg.contains("\"topic\": \"light.room\""), "{msg}");
-    assert!(msg.contains("\"payload\": 1"), "{msg}");
+    assert!(msg.contains("\"topic\":\"light.room\""), "{msg}");
+    assert!(msg.contains("\"payload\":1"), "{msg}");
 
     // Live write of control b (PWM duty) → port 1 only.
     let live = serde_json::to_string(&event(b, "fan.duty", 42.5)).unwrap();
@@ -104,7 +104,7 @@ fn replays_stored_value_then_routes_live_writes_by_control() {
         .expect("publish");
     let got = rt.wait_for(debug_of("db"), Duration::from_secs(30));
     let msg = got["msg"].as_str().unwrap().to_string();
-    assert!(msg.contains("\"topic\": \"fan.duty\""), "{msg}");
+    assert!(msg.contains("\"topic\":\"fan.duty\""), "{msg}");
     assert!(msg.contains("42.5"), "{msg}");
     assert!(msg.contains("dashboard:e2e"), "msg.control.via: {msg}");
 
@@ -124,5 +124,5 @@ fn replays_stored_value_then_routes_live_writes_by_control() {
     );
     assert_eq!(next["node_red"], "da", "{next}");
     let msg = next["msg"].as_str().unwrap().to_string();
-    assert!(msg.contains("\"payload\": 0"), "{msg}");
+    assert!(msg.contains("\"payload\":0"), "{msg}");
 }
