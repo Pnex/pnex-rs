@@ -176,7 +176,7 @@ fn BuildRow(
                     {short_digest(&image)}
                 }
             }
-            if let Some(code) = build.outcome.clone() {
+            if let Some(code) = build.outcome.clone().filter(|c| c != "succeeded") {
                 div { class: "text-xs text-alarm",
                     {crate::api::error_i18n::localize_code(&code, None, &code)}
                 }
