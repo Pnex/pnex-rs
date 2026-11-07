@@ -1315,7 +1315,7 @@ de fusion par l'API de la forge (GitHub seul en V1, D752), à travers la règle 
 garde son URL sur le run (`merge_requests`, migration 000112). La fusion reste un geste humain.
 Sur micro-VM (E6), le runner lit l'arbre de l'agent sur le disque de la VM (`debugfs`,
 liens jamais suivis) et lance le même script côté hôte : le jeton n'entre jamais dans la VM.
-Reste : GitLab.
+Reste : GitLab, mis de côté (2026-11-07). Il suivra le même modèle : le token d'un utilisateur GitLab dédié à l'agent IA, dans le coffre, recetté sur un GitLab déployé sur Scaleway.
 
 ### 11.3 Gestes attendus de Shan (pas de discussion)
 
