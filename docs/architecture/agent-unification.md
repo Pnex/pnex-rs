@@ -126,6 +126,22 @@ les quotas d'envoi ; la tenue de D123 (aucune action physique).
 | **U6** | A2 : moteur `internal_llm`, outils de l'assistant, écritures en propositions, niveau dans la fiche agent (choix du 2026-11-07). Avancé en parallèle de U1–U4 (Shan, 2026-11-07) : il pose le moteur sur `runner_jobs` + `agent_runs`, comme D781 | — |
 | **U7** (plus tard) | Canaux d'un agent : mail en entrée et en sortie, téléphone, Slack, Telegram (D787) | U5 |
 
+**Notes pour U4 (`capture_people`, D779, poussé en 8b220d62).** Ce qu'une recette doit
+reprendre sans rien perdre :
+
+- Adresse : `browser_agent::people_page_of` (seule `linkedin.com/company/<nom>/people/`,
+  canonique, refus `ext-target-not-people-page`) ; cible de bail `people_target`.
+- Lecture : 5 écrans défilés au rythme D258 (`PEOPLE_SCROLLS`), puis le texte ; un renvoi
+  hors de la page = `ext-login-required` / `ext-challenge` (`pnex-extension` `capture_page`).
+- Plafond compilé `PEOPLE_CAPTURES_PER_DAY` = 10 par org et par jour, `ext-people-daily-cap`.
+- Côté serveur : `services/profiles.rs` `request_people`, `people_captures`,
+  `people_captured` (document `published_by` l'organisation, `people_to_read` posé) ;
+  purge à 30 jours par `metadata.people_org_id`.
+- Lecture par le flow *Prospecting · captured employee lists* (`prospecting_b2b` 3.5.0) ;
+  `object_upsert` reçoit `msg.about` : un nom opposé chez cet objet n'est pas recréé
+  (D447). La recette `linkedin_profile_by_name` (D784) peut réutiliser ce contrôle.
+- Test de bout en bout côté serveur : `an_employee_list_lands_on_its_company_and_skips_objections`.
+
 ## 4. Risques
 
 - Les sites qui bloquent l'automatisation bloquent aussi l'extension si son rythme n'est
