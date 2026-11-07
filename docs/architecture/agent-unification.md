@@ -327,8 +327,15 @@ deux nœuds tant que ce n'est pas décidé.
 
 Écart D441 assumé (exception motivée dans `tests/engine_genericity.rs`) : le pipeline nomme
 les liens `employs`, `subsidiary_of`, `establishment_of` et `uses_identifier` des packs
-investigation et companies ; à terme, `prospecting_b2b` doit déclarer ces clés et le moteur
-les lire, comme `people_to_read` (D779).
+investigation et companies. **Tranché le 2026-11-07 (Shan sans avis, « au mieux ») :** ni
+réglage de pack (un admin d'org pourrait renommer une clé de structure) ni correctif isolé.
+Le moyen retenu est un **rôle déclaré sur le type de lien** par son pack, comme `evidence` ou
+`erase_sources` : le moteur cherche le type de lien qui porte le rôle (« emploi »,
+« groupe », « établissement », « identifiant ») au lieu de sa clé. Il se fera en un seul lot
+pour tous les couplages de lien gelés de `tests/engine_genericity.rs` (`profiles.rs`,
+`mail/invitations.rs`, `media_attributions.rs`, `extension.rs`, `ontology/api.rs`,
+`person_match.rs`), avec la montée de version des packs `investigation` et `companies`,
+pas pour un seul fichier.
 
 Limite connue : les sélecteurs des cartes et l'appui sur Entrée n'ont pas encore été joués
 sur une vraie session LinkedIn ; la règle étant de la donnée, elle se corrige dans le
