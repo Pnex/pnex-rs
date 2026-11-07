@@ -171,3 +171,33 @@ la sous-traitance privée de rang 2 et 3 reste partielle.
   l'image déployée et les packs montés de version sur dev.
   Piste pour plus tard : adresse déduite des coordonnées (géocodage inverse)
   pour les sites qui ont une position mais pas d'adresse.
+
+### Suite du 2026-11-07 (« fais tout »)
+
+- **Compteurs d'import** : un run compte ce qu'il a écrit (`ImportDiff.written`) :
+  les valeurs datées réellement stockées (plus celles qui ne nomment aucun objet), les
+  créations écartées par D610 au moment de l'écriture.
+- **C20 / audit B1** : un run planifié ou une sync de table dont le diff est périmé par un
+  autre import de l'org (clé prise, version changée) le recalcule une fois et réécrit.
+  **Audit C4** : le délai du verrou d'org a son code, `import-org-busy`.
+- **C6** : repli en jointure par fusion avec tri sur disque quand la table de hachage
+  dépasse le pool (`data-pipelines.md` §9.7 quater) ; mesure réelle 44,5 M × 38 M après
+  déploiement.
+- **C7** : une conversion d'upload perdue est reprise après 3 min sans battement (au
+  lieu de 10), avec la transaction ouverte par le pod perdu.
+- **C11** : `pnex import update <id> --mapping @fichier` (`cli.md`).
+- **C12** : pas de connecteur INSEE (il faut une clé) ; la sortie du plafond de 100 sites
+  est le pipeline sur le fichier SIRENE complet, éprouvé ici (« Group sites » v4).
+- **C16** : sous 24 px, motif de tirets court (`pnex-gerbe-small`) : le loader de 16 px
+  bougeait trop peu pour se voir.
+- **Lot F** : EDGAR Exhibit 21 déjà livré (F6, aa89bccd). **TED** : API de recherche
+  anonyme, 498 attributions des groupes suivis, import « EU contract awards (TED) »
+  (248 marchés en événements de dossier + liens `supplies`). **USAspending** : API de
+  recherche (pas le fichier en masse), 9 321 contrats dont 2 734 sous-contrats déclarés,
+  import « US federal awards (USAspending) » (9 094 objets, 26 940 liens). TED et
+  USAspending n'ont pas d'identifiant national commun : titulaires et acheteurs sont
+  clés par pays et nom (`ted:<pays>:<nom>`, `usa:uei:<UEI>`).
+- **Graphe du dossier** : les événements ont leur pastille de filtre (des milliers de
+  contrats importés remplissaient le graphe).
+- **Restent à décider (Shan)** : presse par flux RSS de l'org, capture de page entreprise
+  LinkedIn, registres étrangers (lesquels, quelles clés).
