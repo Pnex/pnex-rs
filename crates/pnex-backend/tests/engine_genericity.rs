@@ -116,6 +116,11 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "browser-agent profiles write investigation identities",
     ),
     (
+        "pnex-backend/src/services/person_match.rs",
+        &["person", "uses_identifier", "employs", "subsidiary_of", "establishment_of"],
+        "the person match reads who works where (investigation employs, companies group and sites) and writes investigation identities (D788); to move into keys the prospecting pack declares",
+    ),
+    (
         "pnex-backend/src/services/mail/invitations.rs",
         &["identifier", "uses_identifier"],
         "meeting attendees matched by the investigation pack's e-mail identifiers (mail.md D466)",

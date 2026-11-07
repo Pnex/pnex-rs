@@ -324,6 +324,11 @@ nœud `site-recipe` dans `agent-run` (D786) change la forme des sorties (le nœu
 ports de chaîne D713, celui de règle *réussi / cassé / échoué* et les extraits) ; gardé en
 deux nœuds tant que ce n'est pas décidé.
 
+Écart D441 assumé (exception motivée dans `tests/engine_genericity.rs`) : le pipeline nomme
+les liens `employs`, `subsidiary_of`, `establishment_of` et `uses_identifier` des packs
+investigation et companies ; à terme, `prospecting_b2b` doit déclarer ces clés et le moteur
+les lire, comme `people_to_read` (D779).
+
 Limite connue : les sélecteurs des cartes et l'appui sur Entrée n'ont pas encore été joués
 sur une vraie session LinkedIn ; la règle étant de la donnée, elle se corrige dans le
 studio (copie dans l'org) sans code.
