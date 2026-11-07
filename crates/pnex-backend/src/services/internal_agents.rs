@@ -143,7 +143,7 @@ impl End {
 
 /// Plays a claimed job to its end, then finishes it like a runner would.
 pub async fn run_job(ctx: &AppContext, c: Claimed) {
-    let mut journal = Vec::new();
+    let mut journal = Journal::default();
     let played = tokio::time::timeout(
         Duration::from_secs(u64::from(c.timeout_secs)),
         play(ctx, c, &mut journal),
@@ -167,19 +167,39 @@ pub async fn run_job(ctx: &AppContext, c: Claimed) {
     if let Err(e) = finish(&ctx.db, c, &end).await {
         tracing::error!(job = %c.job, error = %e, "internal agent run not finished");
     }
-    // shortcut: the journal goes to OpenObserve once, at the end; send it by step if
-    // people need to follow long runs live.
-    let logs = RunnerJobLogs {
-        containers: vec![RunnerContainerLog {
-            container: CONTAINER.into(),
-            text: journal.join("\n"),
-            truncated: false,
-        }],
-    };
-    if let Err(e) = crate::services::job_logs::store(ctx, c.org_id, c.job, &logs).await {
-        tracing::warn!(job = %c.job, error = %e, "internal agent journal not kept");
-    }
+    journal.flush(ctx, c).await;
     crate::services::agent_ops::spawn_projection(ctx, c.org_id, c.job);
+}
+
+/// The journal of a run, sent to OpenObserve step by step so a long run can be followed live.
+#[derive(Default)]
+struct Journal {
+    lines: Vec<String>,
+    sent: usize,
+}
+
+impl Journal {
+    fn push(&mut self, line: String) {
+        self.lines.push(line);
+    }
+
+    /// Sends the lines not sent yet; a failed send keeps them for the next flush.
+    async fn flush(&mut self, ctx: &AppContext, c: Claimed) {
+        if self.sent == self.lines.len() {
+            return;
+        }
+        let logs = RunnerJobLogs {
+            containers: vec![RunnerContainerLog {
+                container: CONTAINER.into(),
+                text: self.lines[self.sent..].join("\n"),
+                truncated: false,
+            }],
+        };
+        match crate::services::job_logs::store(ctx, c.org_id, c.job, &logs).await {
+            Ok(()) => self.sent = self.lines.len(),
+            Err(e) => tracing::warn!(job = %c.job, error = %e, "internal agent journal not kept"),
+        }
+    }
 }
 
 /// Ends the job unless a person stopped it, closes its outputs, keeps the code.
@@ -323,7 +343,7 @@ fn system_prompt(plan: &Plan, skills: &[(String, String)]) -> String {
 }
 
 /// Runs the loop and keeps its answer as the `report` output.
-async fn play(ctx: &AppContext, c: Claimed, journal: &mut Vec<String>) -> Result<End, String> {
+async fn play(ctx: &AppContext, c: Claimed, journal: &mut Journal) -> Result<End, String> {
     let db = &ctx.db;
     let Some(plan) = plan_of(db, c).await.map_err(|e| e.to_string())? else {
         return Err("no internal run behind the job".into());
@@ -445,7 +465,7 @@ struct AgentPolicy<'a> {
     tools: Vec<String>,
     max_steps: usize,
     guard: LoopGuard,
-    journal: &'a mut Vec<String>,
+    journal: &'a mut Journal,
 }
 
 impl AgentPolicy<'_> {
@@ -523,6 +543,7 @@ impl LoopPolicy for AgentPolicy<'_> {
             text.map(|t| format!(": {}", cut(t, LOG_TEXT_MAX)))
                 .unwrap_or_default()
         ));
+        self.journal.flush(self.ctx, self.c).await;
     }
 
     fn before_tool(&mut self, name: &str, arguments: &Value) -> Result<(), Stop> {
@@ -588,6 +609,7 @@ impl LoopPolicy for AgentPolicy<'_> {
     async fn after_tool(&mut self, entry: &ToolTrace) {
         let what = if entry.ok { "ok" } else { "refused" };
         self.journal.push(format!("tool {}: {what}", entry.name));
+        self.journal.flush(self.ctx, self.c).await;
     }
 }
 
