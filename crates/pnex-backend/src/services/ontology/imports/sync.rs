@@ -208,6 +208,7 @@ async fn plan(
         }
     };
     let mut planned = Planned::default();
+    planned.replace = m.steps.iter().any(|s| s.cursor.is_some());
     let mut observed = Vec::new();
     // Line 1 of a CSV holds the headers: line numbers read as in the source.
     let mut row_no = 1;

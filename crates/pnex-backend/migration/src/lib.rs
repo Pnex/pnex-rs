@@ -115,6 +115,7 @@ mod m20261107_000120_tool_call_proposals;
 mod m20261107_000121_capture_missions_to_rules;
 mod m20261107_000122_person_matches;
 mod m20261107_000123_connector_settings;
+mod m20261107_000124_import_cursor;
 
 pub struct Migrator;
 
@@ -226,6 +227,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261107_000121_capture_missions_to_rules::Migration),
             Box::new(m20261107_000122_person_matches::Migration),
             Box::new(m20261107_000123_connector_settings::Migration),
+            Box::new(m20261107_000124_import_cursor::Migration),
         ]
     }
 }

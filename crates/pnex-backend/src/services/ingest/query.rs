@@ -9,7 +9,7 @@ use futures_util::TryStreamExt;
 use pnex_core::connectors::rest::{self, Paging, RestColumn};
 use pnex_core::connectors::QUERY_MAX_BYTES;
 use pnex_core::err_codes;
-use pnex_core::ingest::{IngestConfig, IngestMsg, StagedEntry};
+use pnex_core::ingest::{cursor_after, IngestConfig, IngestMsg, StagedEntry, CURSOR_PLACEHOLDER};
 use sea_orm::ConnectionTrait;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -62,6 +62,39 @@ async fn author_may_use(cx: &Cx<'_>) -> bool {
     role.is_some_and(|r| crate::services::iam::authorize(&r, "connectors:use").allowed())
 }
 
+/// The cursor the import last committed and the incremental reads since a full one.
+async fn cursor_state(cx: &Cx<'_>) -> (Option<String>, u32) {
+    let Some(import) = cx
+        .node
+        .node_id
+        .strip_prefix("import:")
+        .and_then(|i| i.parse::<Uuid>().ok())
+    else {
+        return (None, 0);
+    };
+    let row = cx
+        .db
+        .query_one_raw(stmt(
+            "SELECT cursor, cursor_runs FROM object_imports WHERE org_id = $1 AND id = $2",
+            vec![cx.node.org_id.into(), import.into()],
+        ))
+        .await
+        .ok()
+        .flatten();
+    let Some(row) = row else {
+        return (None, 0);
+    };
+    let cursor: Option<String> = row.try_get("", "cursor").ok().flatten();
+    let runs: i32 = row.try_get("", "cursor_runs").unwrap_or(0);
+    (cursor, runs.max(0) as u32)
+}
+
+/// The value this run reads past: the start on a full read, the stored one otherwise.
+struct Read {
+    full: bool,
+    from: String,
+}
+
 fn refused(code: &'static str) -> Outcome {
     Outcome::fail(code, Value::Null)
 }
@@ -79,9 +112,24 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Out
     };
     let cap = cfg.max_bytes();
     let target = connectors::target(cx.db, ring, cx.node.org_id, Some(&cfg.connector), None).await;
+    let read = match &cfg.cursor {
+        Some(c) => {
+            let (stored, runs) = cursor_state(cx).await;
+            let full = c.full(stored.as_deref(), runs);
+            Some(Read {
+                full,
+                from: if full {
+                    c.start.clone()
+                } else {
+                    stored.unwrap_or_default()
+                },
+            })
+        }
+        None => None,
+    };
     let target = match target {
         Ok(connectors::Target::Pg(t)) => t,
-        Ok(connectors::Target::Rest(mut t)) => return rest(cx, cfg, &mut t, cap, room).await,
+        Ok(connectors::Target::Rest(mut t)) => return rest(cx, cfg, &mut t, cap, room, read).await,
         Err(code) => return refused(code),
     };
     if cfg.query.trim().is_empty() || cfg.query.len() > QUERY_MAX_BYTES {
@@ -91,11 +139,28 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Out
         Ok(c) => c,
         Err(code) => return refused(code),
     };
+    let mut query = cfg.query.clone();
+    if let Some(read) = &read {
+        // One snapshot for the rows and their highest cursor: a row committed between
+        // the two reads can be neither missed nor counted twice.
+        let begun = (&mut conn)
+            .execute("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            .await;
+        // The source quotes the value: it comes from its own data, never trusted.
+        let literal = sqlx::query_scalar::<_, String>("SELECT quote_literal($1::text)")
+            .bind(&read.from)
+            .fetch_one(&mut conn)
+            .await;
+        match (begun, literal) {
+            (Ok(_), Ok(lit)) => query = query.replace(CURSOR_PLACEHOLDER, &lit),
+            _ => return refused(err_codes::CONNECTOR_UNREACHABLE),
+        }
+    }
     // The extended protocol parses one statement alone. Parsed, it cannot close the
     // parenthesis below or chain another statement; the driver would run those. The
     // SQL is the admin's on purpose, on their own database.
     if let Err(e) = (&mut conn)
-        .prepare(sqlx::AssertSqlSafe(cfg.query.clone()).into_sql_str())
+        .prepare(sqlx::AssertSqlSafe(query.clone()).into_sql_str())
         .await
     {
         // The server's text can quote the data: the code stays, the text in the logs.
@@ -109,7 +174,7 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Out
             json!({ "sqlstate": state }),
         );
     }
-    let copy = format!("COPY ({}\n) TO STDOUT (FORMAT csv, HEADER true)", cfg.query);
+    let copy = format!("COPY ({query}\n) TO STDOUT (FORMAT csv, HEADER true)");
     let key = cx.key("raw", FILE_NAME);
     let Ok(mut w) = cx.store.writer(&key).await else {
         return unavailable();
@@ -152,12 +217,48 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Out
     if w.close().await.is_err() {
         return unavailable();
     }
+    let (mut top, mut rows) = (String::new(), None);
+    if let (Some(c), Some(_)) = (&cfg.cursor, &read) {
+        let ident = sqlx::query_scalar::<_, String>("SELECT quote_ident($1::text)")
+            .bind(&c.column)
+            .fetch_one(&mut conn)
+            .await;
+        let Ok(ident) = ident else {
+            return refused(err_codes::CONNECTOR_UNREACHABLE);
+        };
+        let sql = format!("SELECT max(q.{ident})::text, count(*) FROM ({query}\n) q");
+        match sqlx::query_as::<_, (Option<String>, i64)>(sqlx::AssertSqlSafe(sql))
+            .fetch_one(&mut conn)
+            .await
+        {
+            Ok((v, n)) => {
+                top = v.unwrap_or_default();
+                rows = Some(n.max(0) as u64);
+            }
+            Err(e) => {
+                tracing::info!(error = %e, "connector cursor not read");
+                return Outcome::fail(
+                    err_codes::CONNECTOR_QUERY_INVALID,
+                    json!({ "cursor": c.column }),
+                );
+            }
+        }
+        let _ = (&mut conn).execute("COMMIT").await;
+    }
     let _ = conn.close().await;
-    staged(cfg, key, bytes, hasher)
+    staged(cfg, key, bytes, hasher, read.map(|r| r.full), top, rows)
 }
 
 /// The outcome of a step whose CSV is written: the next steps read it like a file.
-fn staged(cfg: &IngestConfig, key: String, bytes: u64, hasher: Sha256) -> Outcome {
+fn staged(
+    cfg: &IngestConfig,
+    key: String,
+    bytes: u64,
+    hasher: Sha256,
+    full_read: Option<bool>,
+    cursor: String,
+    read_rows: Option<u64>,
+) -> Outcome {
     let sha256 = format!("{:x}", hasher.finalize());
     // No host or user in the journal (R4).
     let manifest = json!({
@@ -165,6 +266,9 @@ fn staged(cfg: &IngestConfig, key: String, bytes: u64, hasher: Sha256) -> Outcom
         "bytes": bytes,
         "sha256": sha256,
         "fetched_at": Utc::now().to_rfc3339(),
+        "full_read": full_read,
+        "cursor": cursor,
+        "read_rows": read_rows,
     });
     let entry = StagedEntry {
         name: FILE_NAME.to_string(),
@@ -175,6 +279,9 @@ fn staged(cfg: &IngestConfig, key: String, bytes: u64, hasher: Sha256) -> Outcom
         IngestMsg {
             raw_key: key.clone(),
             staging_key: key,
+            full_read,
+            cursor,
+            read_rows,
             ..Default::default()
         },
         manifest,
@@ -193,6 +300,7 @@ async fn rest(
     t: &mut connectors::RestTarget,
     cap: u64,
     room: u64,
+    read: Option<Read>,
 ) -> Outcome {
     let Some(q) = cfg.rest.as_ref().filter(|q| q.check().is_none()) else {
         return refused(err_codes::CONNECTOR_QUERY_INVALID);
@@ -203,14 +311,27 @@ async fn rest(
     };
     let mut hasher = Sha256::new();
     let mut written = 0u64;
-    let read = async {
+    let since = match (&cfg.cursor, &read) {
+        (Some(c), Some(r)) if !r.from.is_empty() => Some((c.param.clone(), r.from.clone())),
+        _ => None,
+    };
+    let mut top = String::new();
+    let mut count = 0u64;
+    let pages = async {
         let first = t.url(&q.path);
         let (mut received, mut columns) = (0u64, None::<Vec<RestColumn>>);
         let (mut cursor, mut link) = (None::<String>, None::<reqwest::Url>);
         for n in 0..q.max_pages() {
             let (url, params) = match link.take() {
                 Some(next) => (next, Vec::new()),
-                None => (first.clone(), q.page_params(n, cursor.as_deref())),
+                None => {
+                    let mut p = q.page_params(n, cursor.as_deref());
+                    if let Some((k, v)) = &since {
+                        p.retain(|(x, _)| x != k);
+                        p.push((k.clone(), v.clone()));
+                    }
+                    (first.clone(), p)
+                }
             };
             let mut res = t.get(url.clone(), &params).await.map_err(refused)?;
             let next = res
@@ -248,10 +369,17 @@ async fn rest(
                 csv.push_str(&rest::csv_line(c.iter().map(|c| c.name.as_str())));
                 c
             });
+            count += records.len() as u64;
             for r in records {
                 csv.push_str(&rest::csv_line(
                     cols.iter().map(|c| rest::cell(r, &c.pointer)),
                 ));
+                if let Some(c) = &cfg.cursor {
+                    let v = rest::cell(r, &c.column);
+                    if !v.is_empty() && (top.is_empty() || cursor_after(&v, &top)) {
+                        top = v;
+                    }
+                }
             }
             written += csv.len() as u64;
             if written > room {
@@ -295,12 +423,13 @@ async fn rest(
         Err(Outcome::fail(err_codes::CONNECTOR_REST_PAGE_LIMIT, args))
     }
     .await;
-    if let Err(out) = read {
+    if let Err(out) = pages {
         let _ = w.abort().await;
         return out;
     }
     if w.close().await.is_err() {
         return unavailable();
     }
-    staged(cfg, key, written, hasher)
+    let rows = read.as_ref().map(|_| count);
+    staged(cfg, key, written, hasher, read.map(|r| r.full), top, rows)
 }

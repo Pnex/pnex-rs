@@ -167,6 +167,64 @@ pub struct IngestConfig {
     /// The request (REST connectors, connectors.md D793).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rest: Option<crate::connectors::rest::RestQuery>,
+    /// Read only what is past the last value seen (connectors.md D794).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<CursorSpec>,
+}
+
+/// Placeholder of the cursor in a SQL query, replaced by a literal the source quotes.
+pub const CURSOR_PLACEHOLDER: &str = "{{cursor}}";
+
+/// An incremental read (connectors.md D794).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CursorSpec {
+    /// SQL: a column of the result. REST: a JSON pointer inside a record.
+    pub column: String,
+    /// REST: the query parameter that receives the last value.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub param: String,
+    /// The value of a full read. Required for SQL; for REST, empty sends no parameter.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub start: String,
+    /// Read everything again after this many incremental reads; absent = never.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_every: Option<u32>,
+}
+
+impl CursorSpec {
+    fn check(&self, sql: bool, query: &str) -> Option<&'static str> {
+        if self.column.trim().is_empty() || self.column.len() > 200 {
+            return Some("a cursor needs a column, 200 characters at most");
+        }
+        if self.start.len() > 200 || self.param.len() > 100 {
+            return Some("the cursor start is 200 characters at most, its parameter 100");
+        }
+        if self.full_every == Some(0) {
+            return Some("full_every must be positive");
+        }
+        if sql && (!query.contains(CURSOR_PLACEHOLDER) || self.start.is_empty()) {
+            return Some("a SQL cursor needs {{cursor}} in the query and a start value");
+        }
+        if !sql && (!self.column.starts_with('/') || self.param.trim().is_empty()) {
+            return Some("a REST cursor needs a JSON pointer and a parameter");
+        }
+        None
+    }
+
+    /// Whether this run reads everything: no value yet, or `full_every` reached.
+    pub fn full(&self, stored: Option<&str>, runs_since_full: u32) -> bool {
+        stored.is_none_or(str::is_empty) || self.full_every.is_some_and(|n| runs_since_full >= n)
+    }
+}
+
+/// Whether cursor value `a` comes after `b`: as numbers when both are, as text
+/// otherwise (ISO 8601 dates of one format sort as text).
+pub fn cursor_after(a: &str, b: &str) -> bool {
+    match (a.trim().parse::<f64>(), b.trim().parse::<f64>()) {
+        (Ok(x), Ok(y)) => x > y,
+        _ => a > b,
+    }
 }
 
 fn http_url(s: &str) -> bool {
@@ -209,6 +267,19 @@ impl IngestConfig {
             },
             IngestStep::ConnectorQuery if self.query.len() > crate::connectors::QUERY_MAX_BYTES => {
                 bad("the query is 64 KB at most")
+            }
+            IngestStep::ConnectorQuery
+                if self
+                    .cursor
+                    .as_ref()
+                    .and_then(|c| c.check(self.rest.is_none(), &self.query))
+                    .is_some() =>
+            {
+                bad(self
+                    .cursor
+                    .as_ref()
+                    .and_then(|c| c.check(self.rest.is_none(), &self.query))
+                    .unwrap_or_default())
             }
             IngestStep::ConnectorQuery if self.rest.as_ref().and_then(|r| r.check()).is_some() => {
                 bad(self
@@ -336,6 +407,16 @@ pub struct IngestMsg {
     /// Extracted entries (archive_extract).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<StagedEntry>,
+    /// Set by a `connector_query` with a cursor (connectors.md D794): whether it read
+    /// everything (`true`) or only what is past the stored cursor (`false`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_read: Option<bool>,
+    /// The highest cursor value read; empty when nothing was read.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cursor: String,
+    /// Rows the cursor read found; `Some(0)` = nothing new.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_rows: Option<u64>,
 }
 
 /// Outcome of a step: the next fields, the output port and the manifest;
@@ -542,5 +623,44 @@ mod tests {
         assert!(serde_json::to_vec(&m).unwrap().len() <= MANIFEST_MAX_BYTES);
         assert_eq!(m["truncated"], true);
         assert_eq!(m["rows"], 3);
+    }
+
+    #[test]
+    fn a_cursor_reads_past_the_last_value() {
+        let sql = CursorSpec {
+            column: "updated_at".into(),
+            start: "1970-01-01".into(),
+            ..Default::default()
+        };
+        assert!(sql
+            .check(true, "SELECT 1 WHERE updated_at > {{cursor}}")
+            .is_none());
+        assert!(sql.check(true, "SELECT 1").is_some());
+        let no_start = CursorSpec {
+            start: String::new(),
+            ..sql.clone()
+        };
+        assert!(no_start.check(true, "x {{cursor}}").is_some());
+        let rest = CursorSpec {
+            column: "/updated".into(),
+            param: "since".into(),
+            ..Default::default()
+        };
+        assert!(rest.check(false, "").is_none());
+        assert!(CursorSpec {
+            param: String::new(),
+            ..rest.clone()
+        }
+        .check(false, "")
+        .is_some());
+        assert!(sql.full(None, 0) && sql.full(Some(""), 0) && !sql.full(Some("5"), 9));
+        let every = CursorSpec {
+            full_every: Some(3),
+            ..sql
+        };
+        assert!(!every.full(Some("5"), 2) && every.full(Some("5"), 3));
+        assert!(cursor_after("10", "9") && !cursor_after("9", "10"));
+        assert!(cursor_after("2026-11-08T00:00:00Z", "2026-11-07T23:59:59Z"));
+        assert!(!cursor_after("5", "5"));
     }
 }

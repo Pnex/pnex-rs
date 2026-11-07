@@ -140,6 +140,9 @@ pub struct Planned {
     pub rows: usize,
     pub errors: Vec<RowIssue>,
     pub warnings: Vec<RowIssue>,
+    /// Rows are a history read with a cursor (connectors.md D794): a later row is the
+    /// newer state of its object, not a conflict, and its title wins too.
+    pub replace: bool,
 }
 
 /// What the source no longer holds, by key.
@@ -197,7 +200,7 @@ impl Planned {
                     // A later record completes or overrides the first one.
                     let a = &mut self.objs[idx];
                     for (p, v) in o.properties {
-                        if a.properties.get(&p).is_some_and(|old| *old != v) {
+                        if !self.replace && a.properties.get(&p).is_some_and(|old| *old != v) {
                             self.warnings.push(RowIssue {
                                 row: row_no,
                                 column: p.clone(),
@@ -206,7 +209,7 @@ impl Planned {
                         }
                         a.properties.insert(p, v);
                     }
-                    if o.titled && !a.titled {
+                    if o.titled && (!a.titled || self.replace) {
                         a.title = o.title;
                         a.titled = true;
                     }

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1 codé le 2026-11-07** (§9) ; CN2–CN5 à faire |
+| Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1 et CN2 codés le 2026-11-07/08** (§9) ; CN3–CN5 à faire |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; OP1 livré en grande partie |
 | Repose sur | `operational-platform.md` (D555), `data-pipelines.md` (D352, §9.6 « Connecteurs, premier lot »), `secrets.md` (D113, D115), `security.md` (R1, R2, R4, R8, R16), `iam.md`, `crm.md` (D369) |
 | Numérotation | **D791…D797**, lots **CN1…CN5** |
@@ -38,6 +38,8 @@ déjà livré, sans écrire de code par éditeur.
 | Tables virtuelles | Plus tard, après OP3 |
 | Webhooks entrants | Vers une table versionnée |
 | Écran | Oui, dans l'onglet Connecteurs existant |
+| Relecture complète (CN2) | Jamais par défaut : `full_every` absent = toujours incrémental |
+| Secret des webhooks (CN3) | **Provisoire, à reconfirmer** : la question n'était pas claire le soir du 2026-11-07. Retenu « les deux », qui ne ferme rien : PneX génère le secret (montré une fois, régénérable), l'admin peut coller celui qu'un émetteur impose |
 
 ## 4. Décisions
 
@@ -180,3 +182,20 @@ chemin de base piégé). Six codes `connector-rest-*`, fiche `pipelines` complé
   en créer un ; c'est CN5, en attendant l'API seule ;
 - **Paramètres de requête** : en clair dans la config de l'import. Une clé d'API va dans
   l'authentification du connecteur (coffre), jamais dans `params`.
+
+**CN2 (2026-11-08)** : `CursorSpec` (`column`, `param`, `start`, `full_every`) sur l'étape
+`connector_query`, migration 000124 (`object_imports.cursor`, `cursor_runs`). Choix techniques :
+
+- **Table** : une lecture incrémentale ajoute ses lignes (`append`), une lecture complète la remplace
+  (`snapshot`) ; une lecture qui ne trouve rien n'ajoute aucune version ;
+- **Synchro** : le planificateur prend la dernière ligne d'une clé comme l'état le plus récent,
+  titre compris, sans avertissement de conflit (`Planned::replace`) ;
+- **SQL** : `{{cursor}}` dans la requête, remplacé par un littéral que la base source cite elle-même
+  (`quote_literal`) ; lignes et maximum lus dans une même transaction `REPEATABLE READ` ; `start`
+  obligatoire ;
+- **REST** : le paramètre part sur chaque page ; maximum comparé en nombre si les deux valeurs sont
+  des nombres, en texte sinon (dates ISO 8601 d'un même format) ;
+- **Curseur avancé après le commit de la table** : un run cassé relit sa tranche.
+
+Limite connue : une ligne validée à la source avec une valeur de curseur inférieure au maximum déjà
+lu (longue transaction côté source) est manquée ; `full_every` la rattrape.

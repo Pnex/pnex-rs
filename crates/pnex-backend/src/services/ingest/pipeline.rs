@@ -77,8 +77,18 @@ pub async fn run_into_table(
         run_id,
     };
     let out = async {
-        let key = steps_then_key(&cx, steps).await?;
+        let msg = steps_then_msg(&cx, steps).await?;
+        let key = msg.staging_key.clone();
+        if msg.full_read == Some(false) && msg.read_rows == Some(0) {
+            // Nothing new: no empty version, the cursor stays.
+            return Ok(());
+        }
         let size = staged_size(&cx, &key).await?;
+        // An incremental read adds its rows to the table; a full read replaces it.
+        let kind = match msg.full_read {
+            Some(false) => DatasetTransactionKind::Append,
+            _ => DatasetTransactionKind::Snapshot,
+        };
         let chunks =
             futures_util::stream::iter((0..size).step_by(READ_CHUNK as usize)).then(|at| {
                 let key = key.as_str();
@@ -89,13 +99,16 @@ pub async fn run_into_table(
             store,
             org_id,
             table,
-            DatasetTransactionKind::Snapshot,
+            kind,
             delimiter,
             Box::pin(chunks),
         )
         .await
-        .map(|_| ())
-        .map_err(|e| (e.code().to_string(), Value::Null))
+        .map_err(|e| (e.code().to_string(), Value::Null))?;
+        if let Some(full) = msg.full_read {
+            advance_cursor(db, org_id, import_id, full, &msg.cursor).await?;
+        }
+        Ok(())
     }
     .await;
     let done = cleanup(&cx, IngestMsg::default()).await;
@@ -103,6 +116,35 @@ pub async fn run_into_table(
         tracing::warn!(import = %import_id, run = %run_id, "import staging not cleaned");
     }
     out
+}
+
+/// Moves the import's cursor once its rows are committed in the table (D794): a run
+/// that fails before reads the same rows again. Nothing read keeps the old value.
+async fn advance_cursor(
+    db: &DatabaseConnection,
+    org_id: i64,
+    import_id: Uuid,
+    full: bool,
+    top: &str,
+) -> Result<(), StepFailure> {
+    use sea_orm::ConnectionTrait;
+    let sql = "UPDATE object_imports SET \
+                 cursor = COALESCE(NULLIF($3, ''), CASE WHEN $4 THEN NULL ELSE cursor END), \
+                 cursor_runs = CASE WHEN $4 THEN 0 ELSE cursor_runs + 1 END \
+               WHERE org_id = $1 AND id = $2";
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Postgres,
+        sql,
+        vec![org_id.into(), import_id.into(), top.into(), full.into()],
+    ))
+    .await
+    .map(|_| ())
+    .map_err(|_| {
+        (
+            err_codes::INGEST_STAGING_UNAVAILABLE.to_string(),
+            Value::Null,
+        )
+    })
 }
 
 /// Size of a staged file, which must be there.
@@ -121,7 +163,7 @@ async fn steps_then_file(
     cx: &Cx<'_>,
     steps: &[IngestConfig],
 ) -> Result<(Vec<u8>, String), StepFailure> {
-    let key = steps_then_key(cx, steps).await?;
+    let key = steps_then_msg(cx, steps).await?.staging_key;
     let n = staged_size(cx, &key).await?;
     if n > UNZIPPED_MAX {
         let args = serde_json::json!({ "bytes": n, "max": UNZIPPED_MAX });
@@ -140,8 +182,8 @@ async fn steps_then_file(
     Ok((bytes, name))
 }
 
-/// Runs the steps; returns the key of the file they leave staged.
-async fn steps_then_key(cx: &Cx<'_>, steps: &[IngestConfig]) -> Result<String, StepFailure> {
+/// Runs the steps; returns the last message, whose key names the file left staged.
+async fn steps_then_msg(cx: &Cx<'_>, steps: &[IngestConfig]) -> Result<IngestMsg, StepFailure> {
     let mut msg = IngestMsg {
         run_id: cx.run_id.to_string(),
         ..Default::default()
@@ -175,5 +217,5 @@ async fn steps_then_key(cx: &Cx<'_>, steps: &[IngestConfig]) -> Result<String, S
     if msg.staging_key.is_empty() {
         return Err((err_codes::INGEST_ENTRY_MISSING.to_string(), Value::Null));
     }
-    Ok(msg.staging_key)
+    Ok(msg)
 }

@@ -22,6 +22,8 @@ Organization admins save access to an outside PostgreSQL database; the password 
 
 A connector can also point to a **REST API**: a host, a base path and how it authenticates (a bearer token, a key in a header, a user and password, or an OAuth2 client). The import then names the path, where the records sit in the JSON answer, the columns to keep, and how to page (page number, offset, cursor, or the `Link` header). It only reads, page after page, and never follows a next page to another host.
 
+An import can read **only what is new** with a cursor: a column (or a field of the API's records) that grows, such as a modification date. The first run reads everything from the start value; each next run reads past the highest value seen and adds those rows to the table, so a changed record updates its object. A run that finds nothing new adds no version. Deletions at the source are not seen, unless the import reads everything again every so many runs (`full_every`).
+
 ## Troubleshooting
 - ***connector-rest-denied*.** The API refused the credentials: save the connector again with the right token, key or client secret, then **Test**.
 - ***connector-rest-no-records*.** The JSON answer holds no list where the import looks: fix the records path of the import.

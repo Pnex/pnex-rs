@@ -503,7 +503,20 @@ async fn spawn_api() -> u16 {
                 )
             }),
         )
-        .route("/api/html", get(|| async { "<html></html>" }));
+        .route("/api/html", get(|| async { "<html></html>" }))
+        .route(
+            "/api/feed",
+            get(|Query(q): Query<HashMap<String, String>>| async move {
+                let since: i64 = q.get("since").and_then(|v| v.parse().ok()).unwrap_or(0);
+                let all = [("A1", "Acme", 1), ("B2", "Beta", 2), ("C3", "Gamma", 3)];
+                let data: Vec<Value> = all
+                    .iter()
+                    .filter(|(_, _, v)| *v > since)
+                    .map(|(c, n, v)| json!({ "code": c, "name": n, "v": v }))
+                    .collect();
+                axum::Json(json!({ "data": data }))
+            }),
+        );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -613,6 +626,163 @@ async fn an_import_reads_a_paged_rest_api_into_a_table() {
         bad["rest"]["base_path"] = json!("//evil.example.org/x");
         let (s, e) = api.call("POST", "/api/v1/connectors", Some(bad)).await;
         assert_eq!(s, 400, "{e}");
+    })
+    .await;
+}
+
+fn table_rows(list: &Value, name: &str) -> i64 {
+    list["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["name"] == name)
+        .map(|d| d["rows"].as_i64().unwrap_or(0))
+        .unwrap_or(-1)
+}
+
+#[tokio::test]
+#[serial]
+async fn a_cursor_reads_only_what_is_new() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let api = Api {
+            server: &server,
+            token: &env.alice,
+            org,
+        };
+        let db = &ctx.db;
+        sql(db, "DROP TABLE IF EXISTS outside_events").await;
+        sql(
+            db,
+            "CREATE TABLE outside_events (code text, name text, updated int)",
+        )
+        .await;
+        sql(
+            db,
+            "INSERT INTO outside_events VALUES ('A1', 'Acme', 1), ('B2', 'Beta', 2)",
+        )
+        .await;
+        install_pack(&api).await;
+        let (s, c) = api
+            .call("POST", "/api/v1/connectors", Some(connector_body("erp")))
+            .await;
+        assert_eq!(s, 201, "{c}");
+        let query = "SELECT code, name, updated FROM outside_events WHERE updated > {{cursor}}";
+        let mapping = mapping(query).replace(
+            "    query:",
+            "    cursor:\n      column: updated\n      start: '0'\n    query:",
+        );
+        let (s, i) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(
+                    json!({ "name": "events", "mapping": mapping, "source": "file",
+                             "mode": "incremental" }),
+                ),
+            )
+            .await;
+        assert_eq!(s, 201, "{i}");
+        let imp = i["id"].as_str().unwrap().to_string();
+        let cursor = || async {
+            let rows = sql(
+                db,
+                &format!("SELECT cursor, cursor_runs FROM object_imports WHERE id = '{imp}'"),
+            )
+            .await;
+            (
+                rows[0].try_get::<Option<String>>("", "cursor").unwrap(),
+                rows[0].try_get::<i32>("", "cursor_runs").unwrap(),
+            )
+        };
+
+        // First run: everything, from the start value.
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["counts"]["created"], 2, "{r}");
+        assert_eq!(cursor().await, (Some("2".into()), 0));
+
+        // Second run: only the new row and the changed one, appended to the table.
+        sql(db, "INSERT INTO outside_events VALUES ('C3', 'Gamma', 3)").await;
+        sql(
+            db,
+            "UPDATE outside_events SET name = 'Beta two', updated = 4 WHERE code = 'B2'",
+        )
+        .await;
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["run"]["counts"]["created"], 1, "{r}");
+        assert_eq!(r["run"]["counts"]["updated"], 1, "{r}");
+        assert_eq!(cursor().await, (Some("4".into()), 1));
+        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
+        assert_eq!(table_rows(&list, "suppliers_table"), 4, "{list}");
+
+        // Third run: nothing new, no empty version, the cursor stays.
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(cursor().await, (Some("4".into()), 1));
+        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
+        assert_eq!(table_rows(&list, "suppliers_table"), 4, "{list}");
+
+        // A cursor value from the source is quoted by the source, never pasted.
+        sql(
+            db,
+            &format!("UPDATE object_imports SET cursor = '0 OR true; --' WHERE id = '{imp}'"),
+        )
+        .await;
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["state"], "failed", "{r}");
+        assert_eq!(r["run"]["state_code"], "connector-query-invalid", "{r}");
+        sql(db, "DROP TABLE outside_events").await;
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn a_rest_cursor_sends_the_last_value() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let api = Api {
+            server: &server,
+            token: &env.alice,
+            org,
+        };
+        install_pack(&api).await;
+        let port = spawn_api().await;
+        let (s, c) = api
+            .call(
+                "POST",
+                "/api/v1/connectors",
+                Some(
+                    json!({ "name": "api", "kind": "rest", "host": "127.0.0.1", "port": port,
+                             "tls": false, "rest": { "base_path": "/api" } }),
+                ),
+            )
+            .await;
+        assert_eq!(s, 201, "{c}");
+        let mapping = rest_mapping("/feed", "").replace(
+            "    rest:",
+            "    cursor:\n      column: /v\n      param: since\n    rest:",
+        );
+        let (s, i) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(
+                    json!({ "name": "feed", "mapping": mapping, "source": "file",
+                             "mode": "incremental" }),
+                ),
+            )
+            .await;
+        assert_eq!(s, 201, "{i}");
+        let imp = i["id"].as_str().unwrap().to_string();
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["counts"]["created"], 3, "{r}");
+        // Without `since=3` the API would send the three records again.
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
+        assert_eq!(table_rows(&list, "api_table"), 3, "{list}");
     })
     .await;
 }
