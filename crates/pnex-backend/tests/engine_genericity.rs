@@ -26,6 +26,14 @@ const ENGINE_WORDS: &[(&str, &str)] = &[
         "quote",
         "block quote of the doc editor, quoted text of a media citation",
     ),
+    (
+        "agent_run",
+        "kind of the flow node that starts a run (D713), not the agent_ops type",
+    ),
+    (
+        "skill",
+        "lexicon term of agent skills (D711), not a pack type",
+    ),
 ];
 
 /// Existing couplings to a shipped pack, frozen: each is debt to move to

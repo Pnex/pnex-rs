@@ -467,16 +467,30 @@ pub fn media_store() -> std::sync::Arc<dyn pnex_backend::services::media::MediaS
 pub async fn join_org(
     server: &axum_test::TestServer,
     inviter: &str,
-    _invitee: &str,
+    invitee: &str,
     org: i64,
     email: &str,
     role: &str,
 ) {
+    // The members route only adds a user who signed in once: this call provisions them.
+    let res = server
+        .get("/api/v1/user-info")
+        .add_header("Authorization", format!("Bearer {invitee}"))
+        .await;
+    assert!(
+        res.status_code().is_success(),
+        "sign-in of {email}: {}",
+        res.text()
+    );
     let res = server
         .post(&format!("/api/v1/orgs/{org}/members"))
         .add_header("Authorization", format!("Bearer {inviter}"))
         .add_header("X-Org-Id", org.to_string())
         .json(&serde_json::json!({ "email": email, "role": role }))
         .await;
-    assert!(res.status_code().is_success(), "add {email}: {}", res.text());
+    assert!(
+        res.status_code().is_success(),
+        "add {email}: {}",
+        res.text()
+    );
 }
