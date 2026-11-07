@@ -607,12 +607,9 @@ async fn follow_proposals(ctx: &AppContext) -> Result<u64, ExtensionError> {
         if let Some(c) = accepted {
             let source = format!("person_match:{}", m.id);
             let person = m.person_id.to_string();
-            match c.asset_id.as_deref().and_then(|a| Uuid::parse_str(a).ok()) {
-                Some(a) => {
-                    profiles::attach_profile(ctx, m.org_id, &source, &person, &c.url, a).await?
-                }
-                // The accepted link names the identifier already.
-                None => {}
+            // Without its text the accepted link names the identifier already.
+            if let Some(a) = c.asset_id.as_deref().and_then(|a| Uuid::parse_str(a).ok()) {
+                profiles::attach_profile(ctx, m.org_id, &source, &person, &c.url, a).await?;
             }
             m.state = MatchState::Matched;
             save(db, &m).await?;

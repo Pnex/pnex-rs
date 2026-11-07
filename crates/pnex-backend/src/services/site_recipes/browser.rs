@@ -597,7 +597,7 @@ impl Run {
         let until = Instant::now() + FIND_GRACE;
         loop {
             let out: serde_json::Value = self
-                .eval(page_call("pnexFind", &[spec.clone()]))
+                .eval(page_call("pnexFind", std::slice::from_ref(&spec)))
                 .await
                 .unwrap_or_default();
             let found = out["found"].as_u64().unwrap_or(0);
@@ -1279,7 +1279,7 @@ mod tests {
             ))
         };
         let app = Router::new()
-            .route("/", get(move || async move { home.clone() }))
+            .route("/", get(move || async move { home }))
             .route("/results", get(results));
         let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();

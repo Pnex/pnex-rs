@@ -147,6 +147,7 @@ pub fn rule_platform(site: &str) -> String {
 }
 
 /// Lower-case hex SHA-256.
+#[cfg(target_arch = "wasm32")]
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::Digest as _;
     sha2::Sha256::digest(bytes)
