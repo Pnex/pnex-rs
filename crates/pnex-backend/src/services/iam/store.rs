@@ -88,6 +88,26 @@ struct GrantRow {
 /// Managed role of the membership (`None` for a service account, which
 /// holds nothing but its assignments), then every role assigned to the
 /// principal directly or through one of their teams in this org.
+/// Grants of a member of `org_id`, `None` when the user is not a member
+/// (websockets, which have no `OrgContext` extractor: SEC-74).
+pub async fn member_grants(
+    db: &impl ConnectionTrait,
+    org_id: i64,
+    user_id: i64,
+) -> std::result::Result<Option<Grants>, DbErr> {
+    use crate::models::_entities::organization_members;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let Some(m) = organization_members::Entity::find()
+        .filter(organization_members::Column::UserId.eq(user_id))
+        .filter(organization_members::Column::OrgId.eq(org_id))
+        .one(db)
+        .await?
+    else {
+        return Ok(None);
+    };
+    grants(db, org_id, user_id, Some(&m.role)).await.map(Some)
+}
+
 // shortcut: one query per org request, no cache; add the compiled cache of
 // D292 (Valkey invalidation) when this shows up in latency.
 pub async fn grants(
