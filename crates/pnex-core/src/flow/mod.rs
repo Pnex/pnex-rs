@@ -49,3 +49,6 @@ pub use node_types::*;
 pub use payload::*;
 pub use red_flows::*;
 pub use validate::*;
+
+/// Header carrying the flow runtime service token (nodes → backend `/internal`).
+pub const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
