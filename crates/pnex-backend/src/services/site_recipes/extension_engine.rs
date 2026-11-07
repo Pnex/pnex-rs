@@ -186,6 +186,7 @@ async fn fail(
 ) -> Result<(), DbErr> {
     super::finish(&ctx.db, run_id, RunStatus::Failed, step, Some(why)).await?;
     super::journal(ctx, agent.org_id, run_id).await;
+    super::purpose::on_finished(ctx, agent.org_id, run_id).await;
     Ok(())
 }
 
@@ -289,6 +290,7 @@ pub async fn done(
     if ok {
         super::finish(&ctx.db, id, RunStatus::Ok, None, None).await?;
         super::journal(ctx, agent.org_id, id).await;
+        super::purpose::on_finished(ctx, agent.org_id, id).await;
         return Ok(());
     }
     let why = why

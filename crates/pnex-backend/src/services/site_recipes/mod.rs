@@ -10,6 +10,7 @@ pub mod cdp;
 pub mod endpoints;
 pub mod extension_engine;
 pub mod flow_node;
+pub mod purpose;
 
 use std::collections::BTreeMap;
 
@@ -440,6 +441,8 @@ pub struct NewRun<'a> {
     pub trigger: &'a str,
     pub user_id: Option<i64>,
     pub engine: RunEngine,
+    /// What the server does with the outcome of a default rule (D780).
+    pub purpose: Option<serde_json::Value>,
 }
 
 /// How long a run for a browser agent waits for one (D782).
@@ -486,7 +489,8 @@ pub async fn insert_run(
             run.recipe_version.into(),
             site_host(&run.recipe.site).unwrap_or_default().into(),
             run.recipe.name.clone().into(),
-            serde_json::json!({ "yaml": run.yaml, "params": run.params }).into(),
+            serde_json::json!({ "yaml": run.yaml, "params": run.params, "purpose": run.purpose })
+                .into(),
             run.trigger.to_string().into(),
         ],
     ))
@@ -996,6 +1000,7 @@ pub async fn start_run(
         trigger,
         user_id,
         engine,
+        purpose: None,
     };
     let run = insert_run(&ctx.db, org_id, &new)
         .await
@@ -1126,6 +1131,20 @@ pub async fn file_key(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_default_rule_parses_and_needs_a_session() {
+        use pnex_core::default_rules as d;
+        let mut rules: Vec<String> = pnex_core::browser_agent::PROFILE_NETWORKS
+            .iter()
+            .map(|n| d::profile_capture(n).unwrap())
+            .collect();
+        rules.push(d::people_capture());
+        for y in &rules {
+            let r = super::parse(y).unwrap_or_else(|e| panic!("{e:?}\n{y}"));
+            assert!(r.needs_session(), "{y}");
+        }
+    }
+
     use super::*;
 
     #[test]

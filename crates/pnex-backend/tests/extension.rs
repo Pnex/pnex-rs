@@ -1148,10 +1148,26 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         let org = personal_org(&server, &env.alice).await;
         let install = Install::new();
         let a = pair(&server, &env.alice, org, &install).await;
-        let (s, _) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        let (s, _) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/investigation/install",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         assert_eq!(s, 200);
         // The layer that reads captured profiles (account-mapping.md D538).
-        let (s, _) = call(&server, "POST", "/api/v1/ontology/packs/prospecting_b2b/install", &env.alice, org, None).await;
+        let (s, _) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/prospecting_b2b/install",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         assert_eq!(s, 200);
         let (s, ada) = call(
             &server,
@@ -1168,51 +1184,163 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         let ask = |url: &str| json!({ "url": url });
 
         // Discovery pages and unknown sites are refused.
-        let (s, e) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://www.linkedin.com/search/results/people/?keywords=ada"))).await;
-        assert_eq!((s, e["error"].as_str()), (400, Some("ext-target-not-profile")), "{e}");
-        let (s, _) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://example.org/ada"))).await;
+        let (s, e) = call(
+            &server,
+            "POST",
+            &captures,
+            &env.alice,
+            org,
+            Some(ask(
+                "https://www.linkedin.com/search/results/people/?keywords=ada",
+            )),
+        )
+        .await;
+        assert_eq!(
+            (s, e["error"].as_str()),
+            (400, Some("ext-target-not-profile")),
+            "{e}"
+        );
+        let (s, _) = call(
+            &server,
+            "POST",
+            &captures,
+            &env.alice,
+            org,
+            Some(ask("https://example.org/ada")),
+        )
+        .await;
         assert_eq!(s, 400);
 
         // One capture, normalised; asking again returns the open one.
-        let (s, m) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://fr.linkedin.com/in/Ada-L/"))).await;
+        let (s, m) = call(
+            &server,
+            "POST",
+            &captures,
+            &env.alice,
+            org,
+            Some(ask("https://fr.linkedin.com/in/Ada-L/")),
+        )
+        .await;
         assert_eq!(s, 201, "{m}");
-        assert_eq!(m["spec"]["kind"], "capture_profile");
-        assert_eq!(m["spec"]["params"]["url"], "https://www.linkedin.com/in/ada-l");
-        let (_, again) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://www.linkedin.com/in/ada-l"))).await;
+        assert_eq!(m["url"], "https://www.linkedin.com/in/ada-l");
+        let (_, again) = call(
+            &server,
+            "POST",
+            &captures,
+            &env.alice,
+            org,
+            Some(ask("https://www.linkedin.com/in/ada-l")),
+        )
+        .await;
         assert_eq!(again["id"], m["id"]);
 
         let (s, listed) = call(&server, "GET", &captures, &env.alice, org, None).await;
         assert_eq!(s, 200, "{listed}");
         assert_eq!(listed["count"], 1);
-        assert_eq!((&listed["results"][0]["open"], &listed["results"][0]["captured"]), (&json!(true), &json!(false)));
-        let (s, _) = call(&server, "GET", "/api/v1/extension/people/00000000-0000-0000-0000-000000000000/profile-captures", &env.alice, org, None).await;
+        assert_eq!(
+            (
+                &listed["results"][0]["open"],
+                &listed["results"][0]["captured"]
+            ),
+            (&json!(true), &json!(false))
+        );
+        let (s, _) = call(
+            &server,
+            "GET",
+            "/api/v1/extension/people/00000000-0000-0000-0000-000000000000/profile-captures",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         assert_eq!(s, 404);
 
-        // The agent uploads the page: a document linked to Ada, the address
-        // an account of Ada, and the mission ends.
-        let mission_id = m["id"].as_str().unwrap();
-        let page = json!({ "mission_id": mission_id, "url": "https://www.linkedin.com/in/ada-l", "title": "Ada L", "text": "Ada L — CTO at ACME" });
-        let (s, stored, _) = upload_page(&server, &install, &a, &page).await;
-        assert_eq!(s, 201, "{stored}");
-        let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{ada}/links"), &env.alice, org, None).await;
+        // The agent plays the default rule of the network (D780): a document
+        // linked to Ada, the address an account of Ada.
+        let mut ws = open(&server, &install, &a).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else {
+            panic!("the capture is a rule run")
+        };
+        assert_eq!(runs[0].run_id, m["id"].as_str().unwrap());
+        assert!(runs[0].recipe.needs_session());
+        assert_eq!(runs[0].params["url"], "https://www.linkedin.com/in/ada-l");
+        assert_eq!(runs[0].params["path"], "/in/ada-l");
+        play(
+            &mut ws,
+            &runs[0].run_id,
+            "profile",
+            "Ada L — CTO at ACME",
+            "https://www.linkedin.com/in/ada-l",
+        )
+        .await;
+        let (_, links) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{ada}/links"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         let links = links.to_string();
-        assert!(links.contains("uses_identifier") && links.contains("published_by"), "{links}");
-        let (_, person) = call(&server, "GET", &format!("/api/v1/ontology/objects/{ada}"), &env.alice, org, None).await;
-        assert_eq!(person["properties"]["profile_to_read"].as_str().map(str::len), Some(36), "the document to read: {person}");
-        let (_, done) = call(&server, "GET", &format!("/api/v1/extension/missions/{mission_id}"), &env.alice, org, None).await;
-        assert_eq!(done["enabled"], false);
+        assert!(
+            links.contains("uses_identifier") && links.contains("published_by"),
+            "{links}"
+        );
+        let (_, person) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{ada}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(
+            person["properties"]["profile_to_read"]
+                .as_str()
+                .map(str::len),
+            Some(36),
+            "the document to read: {person}"
+        );
         let (_, listed) = call(&server, "GET", &captures, &env.alice, org, None).await;
-        assert_eq!((&listed["results"][0]["open"], &listed["results"][0]["captured"]), (&json!(false), &json!(true)));
-        let (s, _, _) = upload_page(&server, &install, &a, &page).await;
-        assert_eq!(s, 404, "a finished capture takes no more pages");
+        assert_eq!(
+            (
+                &listed["results"][0]["open"],
+                &listed["results"][0]["captured"]
+            ),
+            (&json!(false), &json!(true))
+        );
+        drop(ws);
 
         // A viewer may not capture nor record an objection (R2).
         personal_org(&server, &env.bob).await;
-        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let opposition = format!("/api/v1/extension/people/{ada}/opposition");
         for p in [captures.clone(), opposition.clone()] {
-            let (s, e) = call(&server, "POST", &p, &env.bob, org, Some(ask("https://x.com/ada"))).await;
-            assert_eq!((s, e["error"].as_str()), (403, Some("access-denied")), "{p}");
+            let (s, e) = call(
+                &server,
+                "POST",
+                &p,
+                &env.bob,
+                org,
+                Some(ask("https://x.com/ada")),
+            )
+            .await;
+            assert_eq!(
+                (s, e["error"].as_str()),
+                (403, Some("access-denied")),
+                "{p}"
+            );
         }
 
         // The objection covers the person and its known profile addresses.
@@ -1220,22 +1348,84 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         assert_eq!((s, o["opposed"].as_bool()), (200, Some(true)));
         let (_, o) = call(&server, "GET", &opposition, &env.bob, org, None).await;
         assert_eq!(o["opposed"], true);
-        let (s, e) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://x.com/ada"))).await;
+        let (s, e) = call(
+            &server,
+            "POST",
+            &captures,
+            &env.alice,
+            org,
+            Some(ask("https://x.com/ada")),
+        )
+        .await;
         assert_eq!((s, e["error"].as_str()), (409, Some("prospecting-opposed")));
-        let (s, eve) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({ "type_key": "person", "title": "Eve", "properties": {} }))).await;
+        let (s, eve) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/objects",
+            &env.alice,
+            org,
+            Some(json!({ "type_key": "person", "title": "Eve", "properties": {} })),
+        )
+        .await;
         assert_eq!(s, 201);
-        let (s, e) = call(&server, "POST", &format!("/api/v1/extension/people/{}/profile-captures", eve["id"].as_str().unwrap()), &env.alice, org, Some(ask("https://www.linkedin.com/in/ada-l"))).await;
-        assert_eq!((s, e["error"].as_str()), (409, Some("prospecting-opposed")), "Ada's address stays refused");
+        let (s, e) = call(
+            &server,
+            "POST",
+            &format!(
+                "/api/v1/extension/people/{}/profile-captures",
+                eve["id"].as_str().unwrap()
+            ),
+            &env.alice,
+            org,
+            Some(ask("https://www.linkedin.com/in/ada-l")),
+        )
+        .await;
+        assert_eq!(
+            (s, e["error"].as_str()),
+            (409, Some("prospecting-opposed")),
+            "Ada's address stays refused"
+        );
 
         // Daily cap per network.
-        let eve_captures = format!("/api/v1/extension/people/{}/profile-captures", eve["id"].as_str().unwrap());
+        let eve_captures = format!(
+            "/api/v1/extension/people/{}/profile-captures",
+            eve["id"].as_str().unwrap()
+        );
         for i in 0..ba::PROFILE_CAPTURES_PER_DAY - 1 {
-            let (s, e) = call(&server, "POST", &eve_captures, &env.alice, org, Some(ask(&format!("https://www.linkedin.com/in/eve-{i}")))).await;
+            let (s, e) = call(
+                &server,
+                "POST",
+                &eve_captures,
+                &env.alice,
+                org,
+                Some(ask(&format!("https://www.linkedin.com/in/eve-{i}"))),
+            )
+            .await;
             assert_eq!(s, 201, "{i} {e}");
         }
-        let (s, e) = call(&server, "POST", &eve_captures, &env.alice, org, Some(ask("https://www.linkedin.com/in/eve-last"))).await;
-        assert_eq!((s, e["error"].as_str()), (409, Some("ext-profile-daily-cap")), "{e}");
-        let (s, _) = call(&server, "POST", &eve_captures, &env.alice, org, Some(ask("https://x.com/eve"))).await;
+        let (s, e) = call(
+            &server,
+            "POST",
+            &eve_captures,
+            &env.alice,
+            org,
+            Some(ask("https://www.linkedin.com/in/eve-last")),
+        )
+        .await;
+        assert_eq!(
+            (s, e["error"].as_str()),
+            (409, Some("ext-profile-daily-cap")),
+            "{e}"
+        );
+        let (s, _) = call(
+            &server,
+            "POST",
+            &eve_captures,
+            &env.alice,
+            org,
+            Some(ask("https://x.com/eve")),
+        )
+        .await;
         assert_eq!(s, 201, "the cap is per network");
     })
     .await;
@@ -1275,15 +1465,16 @@ async fn an_employee_list_lands_on_its_company_and_skips_objections() {
 
         let (s, m) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://fr.linkedin.com/company/ACME/people/?viewAsMember=true"))).await;
         assert_eq!(s, 201, "{m}");
-        assert_eq!(m["spec"]["kind"], "capture_people");
-        assert_eq!(m["spec"]["params"]["url"], "https://www.linkedin.com/company/acme/people/");
+        assert_eq!(m["url"], "https://www.linkedin.com/company/acme/people/");
         let (_, again) = call(&server, "POST", &captures, &env.alice, org, Some(ask("https://www.linkedin.com/company/acme/people/"))).await;
         assert_eq!(again["id"], m["id"]);
 
-        let mission_id = m["id"].as_str().unwrap();
-        let page = json!({ "mission_id": mission_id, "url": "https://www.linkedin.com/company/acme/people/", "title": "ACME", "text": "Jane Doe\nHead of purchasing\nJohn Roe\nBuyer" });
-        let (s, stored, _) = upload_page(&server, &install, &a, &page).await;
-        assert_eq!(s, 201, "{stored}");
+        let mut ws = open(&server, &install, &a).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else { panic!("the capture is a rule run") };
+        assert_eq!(runs[0].params["url"], "https://www.linkedin.com/company/acme/people/");
+        play(&mut ws, &runs[0].run_id, "people", "Jane Doe\nHead of purchasing\nJohn Roe\nBuyer", "https://www.linkedin.com/company/acme/people/").await;
+        drop(ws);
         let (_, company) = call(&server, "GET", &format!("/api/v1/ontology/objects/{acme}"), &env.alice, org, None).await;
         assert_eq!(company["properties"]["people_to_read"].as_str().map(str::len), Some(36), "{company}");
         let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{acme}/links"), &env.alice, org, None).await;
@@ -1323,6 +1514,44 @@ async fn an_employee_list_lands_on_its_company_and_skips_objections() {
         assert_eq!((s, e["error"].as_str()), (409, Some("ext-people-daily-cap")), "{e}");
     })
     .await;
+}
+
+/// The agent side of a one-page rule run: the page opened, its text sent as
+/// `name`, the run over (the agent is then told it holds nothing).
+async fn play(ws: &mut common::DevWs, run_id: &str, name: &str, text: &str, url: &str) {
+    send(
+        ws,
+        &AgentMsg::RunStep {
+            run_id: run_id.into(),
+            step: serde_json::from_value(json!({
+            "index": 0, "action": "open", "label": url, "status": "ok", "url": url, "ms": 5 }))
+            .unwrap(),
+        },
+    )
+    .await;
+    send(
+        ws,
+        &AgentMsg::RunExtract {
+            run_id: run_id.into(),
+            extract: serde_json::from_value(json!({
+            "name": name, "kind": "text", "text": text, "chars": text.chars().count(),
+            "sha256": "x", "from": url }))
+            .unwrap(),
+        },
+    )
+    .await;
+    send(
+        ws,
+        &AgentMsg::RunDone {
+            run_id: run_id.into(),
+            ok: true,
+            failed_step: None,
+            reason: None,
+        },
+    )
+    .await;
+    assert!(matches!(recv(ws).await, ServerMsg::Runs { .. }));
+    sync(ws).await;
 }
 
 /// A deployed flow of `org` whose node `u` upserts list contacts.
@@ -1625,6 +1854,7 @@ async fn a_rule_needing_a_session_goes_to_an_agent_and_a_blocked_run_moves_over(
             trigger: "studio",
             user_id: Some(alice_id),
             engine: pnex_core::site_recipe::RunEngine::ServerBrowser,
+            purpose: None,
         };
         let blocked = recipes::insert_run(&env.db, org, &new).await.unwrap();
         let id = uuid::Uuid::parse_str(&blocked.id).unwrap();

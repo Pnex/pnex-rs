@@ -95,6 +95,7 @@ pub async fn run(
         trigger: "flow",
         user_id: None,
         engine,
+        purpose: None,
     };
     let Ok(started) = super::insert_run(&ctx.db, org_id, &new).await else {
         return Ok(unavailable());

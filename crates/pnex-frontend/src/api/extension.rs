@@ -119,7 +119,10 @@ pub async fn profile_captures(
 }
 
 /// `POST /api/v1/extension/people/{id}/profile-captures` (D333).
-pub async fn capture_profile(person_id: &str, url: &str) -> Result<Mission, ApiError> {
+pub async fn capture_profile(
+    person_id: &str,
+    url: &str,
+) -> Result<pnex_core::browser_agent::ProfileCapture, ApiError> {
     client::request(
         reqwest::Method::POST,
         &format!("/api/v1/extension/people/{person_id}/profile-captures"),
@@ -139,7 +142,10 @@ pub async fn people_captures(
 }
 
 /// `POST /api/v1/extension/organizations/{id}/people-captures` (D779).
-pub async fn capture_people(organization_id: &str, url: &str) -> Result<Mission, ApiError> {
+pub async fn capture_people(
+    organization_id: &str,
+    url: &str,
+) -> Result<pnex_core::browser_agent::ProfileCapture, ApiError> {
     client::request(
         reqwest::Method::POST,
         &format!("/api/v1/extension/organizations/{organization_id}/people-captures"),

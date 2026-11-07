@@ -79,6 +79,12 @@ pub enum ExtensionError {
     PeopleDailyCap { max: i64 },
     #[error("organization not found")]
     OrganizationNotFound,
+    /// A capture plays on a browser agent and the org has none (D780).
+    #[error("no browser agent")]
+    NoAgent,
+    /// Runs on browser agents of the org today reached (D782).
+    #[error("rule run daily cap")]
+    RunDailyCap { max: i64 },
     #[error(transparent)]
     Db(#[from] DbErr),
 }
@@ -992,15 +998,10 @@ pub async fn store_page(
 ) -> Result<ba::PageStored, ExtensionError> {
     use crate::models::_entities::media_assets;
     let (id, mission, spec) = own_mission(&ctx.db, agent, &snapshot.mission_id).await?;
-    let (profile, people) = match &spec {
-        MissionSpec::CollectPage(_) => (None, None),
-        MissionSpec::CaptureProfile(p) => {
-            crate::services::profiles::check_still_allowed(&ctx.db, agent.org_id, id, p).await?;
-            (Some(p.clone()), None)
-        }
-        MissionSpec::CapturePeople(p) => (None, Some(p.clone())),
-        _ => return Err(ExtensionError::MissionNotFound),
-    };
+    // Profile and employee list captures are default rules now (D780).
+    if !matches!(spec, MissionSpec::CollectPage(_)) {
+        return Err(ExtensionError::MissionNotFound);
+    }
     if snapshot.text.trim().is_empty() {
         return Err(ExtensionError::Invalid {
             field: "text".into(),
@@ -1053,10 +1054,6 @@ pub async fn store_page(
                     "source": "browser_agent",
                     "mission_id": id.to_string(),
                     "source_url": snapshot.url,
-                    // Read by the 30-day purge of profile texts (D333).
-                    "profile_person_id": profile.as_ref().map(|p| p.person_id.clone()),
-                    // Same purge for an employee list (D779).
-                    "people_org_id": people.as_ref().map(|p| p.organization_id.clone()),
                 }))),
                 ..Default::default()
             }
@@ -1094,12 +1091,6 @@ pub async fn store_page(
             ],
         ))
         .await?;
-    if let Some(p) = &profile {
-        crate::services::profiles::captured(ctx, agent, id, p, asset.id).await?;
-    }
-    if let Some(p) = &people {
-        crate::services::profiles::people_captured(ctx, agent, id, p, asset.id).await?;
-    }
     Ok(ba::PageStored {
         asset_id: asset.id.to_string(),
         version: version.version_number,
@@ -1509,12 +1500,24 @@ pub(crate) async fn link_publisher(
     asset_id: Uuid,
     publisher: &str,
 ) {
+    let source = format!("agent:{}", agent.device_id);
+    link_publisher_as(ctx, agent.org_id, &source, asset_id, publisher).await
+}
+
+/// [`link_publisher`] on behalf of `source_ref` (a rule run, D780).
+pub(crate) async fn link_publisher_as(
+    ctx: &loco_rs::app::AppContext,
+    org_id: i64,
+    source_ref: &str,
+    asset_id: Uuid,
+    publisher: &str,
+) {
     use crate::services::ontology;
     let media_object = ctx
         .db
         .query_one_raw(stmt(
             "SELECT object_id FROM media_assets WHERE id = $1 AND org_id = $2",
-            vec![asset_id.into(), agent.org_id.into()],
+            vec![asset_id.into(), org_id.into()],
         ))
         .await
         .ok()
@@ -1526,7 +1529,7 @@ pub(crate) async fn link_publisher(
     let actor = ontology::Actor {
         user_id: None,
         role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
-        source_ref: format!("agent:{}", agent.device_id),
+        source_ref: source_ref.to_string(),
     };
     let input = pnex_core::ontology::api::LinkInput {
         link_type: "published_by".into(),
@@ -1536,7 +1539,7 @@ pub(crate) async fn link_publisher(
         valid_from: None,
         valid_to: None,
     };
-    if let Err(e) = ontology::links::create(&ctx.db, agent.org_id, &actor, &input).await {
+    if let Err(e) = ontology::links::create(&ctx.db, org_id, &actor, &input).await {
         if !matches!(e, ontology::OntologyError::Invalid { .. }) {
             tracing::warn!(error = %e, "published_by link not written");
         }

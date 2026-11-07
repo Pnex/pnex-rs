@@ -45,7 +45,12 @@ pub mod iam;
 ///
 /// 8 (2026-11-07, agent-unification.md D781, D785): `AgentSpec.environment_id` and
 /// `AgentRun.environment_id` may be `null` (internal agents); a run carries its `engine`.
-pub const CONTRACT: u32 = 8;
+///
+/// 9 (2026-11-07, agent-unification.md D780, lot U4): `MissionSpec` loses
+/// `capture_profile` and `capture_people` (default navigation rules now); the two
+/// capture routes answer a `ProfileCapture` instead of a `Mission`. `PageSnapshot`,
+/// `RunInput` and `SiteRecipeRun` carry the rule engine and the new rule steps.
+pub const CONTRACT: u32 = 9;
 
 /// Routes under this prefix act on the org of their `{id}`, which must also be
 /// the `X-Org-Id` (SEC-75): generated clients send the path org there instead

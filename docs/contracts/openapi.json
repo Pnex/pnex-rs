@@ -4344,44 +4344,6 @@
         ],
         "type": "string"
       },
-      "CapturePeopleParams": {
-        "description": "`capture_people` (D779): one capture of one company's employee list,\nin the agent's signed-in session. Asked by a human from the\norganization's page, created by the server only.",
-        "properties": {
-          "organization_id": {
-            "description": "The `organization` the list belongs to.",
-            "format": "uuid",
-            "type": "string"
-          },
-          "url": {
-            "description": "Canonical list address ([`people_page_of`]).",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url",
-          "organization_id"
-        ],
-        "type": "object"
-      },
-      "CaptureProfileParams": {
-        "description": "`capture_profile` (D333): one capture of one person's profile page, in\nthe agent's signed-in session. Asked by a human from the person's page,\ncreated by the server only.",
-        "properties": {
-          "person_id": {
-            "description": "The `person` the profile belongs to.",
-            "format": "uuid",
-            "type": "string"
-          },
-          "url": {
-            "description": "Canonical profile address ([`profile_of`]).",
-            "type": "string"
-          }
-        },
-        "required": [
-          "url",
-          "person_id"
-        ],
-        "type": "object"
-      },
       "CaptureProofParams": {
         "description": "`capture_proof` (D308, D310): capture one page as a proof.",
         "properties": {
@@ -15527,46 +15489,6 @@
               "params": {
                 "$ref": "#/components/schemas/CaptureProofParams",
                 "description": "Created by the server only (D308): one proof of one page."
-              }
-            },
-            "required": [
-              "params",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "description": "Created by the server only (D333): one capture of one profile.",
-            "properties": {
-              "kind": {
-                "enum": [
-                  "capture_profile"
-                ],
-                "type": "string"
-              },
-              "params": {
-                "$ref": "#/components/schemas/CaptureProfileParams",
-                "description": "Created by the server only (D333): one capture of one profile."
-              }
-            },
-            "required": [
-              "params",
-              "kind"
-            ],
-            "type": "object"
-          },
-          {
-            "description": "Created by the server only (D779): one capture of one employee list.",
-            "properties": {
-              "kind": {
-                "enum": [
-                  "capture_people"
-                ],
-                "type": "string"
-              },
-              "params": {
-                "$ref": "#/components/schemas/CapturePeopleParams",
-                "description": "Created by the server only (D779): one capture of one employee list."
               }
             },
             "required": [
@@ -55903,7 +55825,7 @@
         ]
       },
       "post": {
-        "description": "Asks one capture of this organization's employee list on LinkedIn (`linkedin.com/company/<name>/people/`, D779): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session and reads the first screens. The page text becomes a document linked to the organization, kept 30 days; with the prospecting pack, a flow proposes the people it names as list contacts to validate, never someone who objected at that company. Any other page is refused. At most 10 captures per day. An open capture of the same list is returned as is. Requires owner, admin or member role.",
+        "description": "Asks one capture of this organization's employee list on LinkedIn (`linkedin.com/company/<name>/people/`, D779): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session and reads the first screens (a default navigation rule, D780). The page text becomes a document linked to the organization, kept 30 days; with the prospecting pack, a flow proposes the people it names as list contacts to validate, never someone who objected at that company. Any other page is refused. At most 10 captures per day. An open capture of the same list is returned as is. Requires owner, admin or member role.",
         "operationId": "extension_people_captures_create",
         "parameters": [
           {
@@ -55942,7 +55864,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Mission"
+                  "$ref": "#/components/schemas/ProfileCapture"
                 }
               }
             },
@@ -55996,7 +55918,7 @@
                 }
               }
             },
-            "description": "`ext-people-daily-cap` (`args.max`): daily captures reached"
+            "description": "`ext-people-daily-cap` (`args.max`): daily captures reached; `site-recipe-no-agent`: no browser agent paired; `site-recipe-daily-cap` (`args.max`): runs on browser agents reached"
           }
         },
         "security": [
@@ -56263,7 +56185,7 @@
         ]
       },
       "post": {
-        "description": "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session; the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
+        "description": "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session (a default navigation rule of the network, D780); the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
         "operationId": "extension_profile_captures_create",
         "parameters": [
           {
@@ -56302,7 +56224,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Mission"
+                  "$ref": "#/components/schemas/ProfileCapture"
                 }
               }
             },
@@ -56356,7 +56278,7 @@
                 }
               }
             },
-            "description": "`prospecting-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached"
+            "description": "`prospecting-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached; `site-recipe-no-agent`: no browser agent paired; `site-recipe-daily-cap` (`args.max`): runs on browser agents reached"
           }
         },
         "security": [

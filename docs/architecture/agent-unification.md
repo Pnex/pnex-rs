@@ -275,6 +275,28 @@ lanceur a forcé `server_browser`. Le nœud de flow joue une règle à session s
 18 min au plus (son appel en accorde 20). L'assistant ne joue jamais une règle à session
 (`site-recipe-needs-session`) et ne passe jamais la main à un agent (moteur forcé).
 
+**U4 livré en partie (2026-11-07).** Catalogue de règles par défaut en code
+(`pnex_core::default_rules`) : capture d'un profil par réseau (LinkedIn, X, Facebook,
+Instagram, TikTok, YouTube ; ouverture, vérification que l'adresse est restée celle du
+profil — un renvoi vers une connexion échoue la règle —, défilement, texte `profile`),
+liste des salariés LinkedIn (5 écrans, texte `people`), recherche d'une personne par la
+barre de recherche LinkedIn (D788, voir plus bas). Toutes en `session: required`. Le
+passage porte dans son plan le **but** pour lequel le serveur l'a lancé
+(`site_recipes::purpose`) ; à sa fin, le serveur agit selon ce but : document de la
+personne, identifiant, `profile_to_read` (D333) ; document de l'entreprise,
+`people_to_read` (D779). Les types de mission `capture_profile` et `capture_people`
+disparaissent de `MissionSpec` (contrat 9, `feat(api)!`) ; les routes de capture restent et
+répondent une `ProfileCapture` lue sur le passage ; les missions de ces deux types sont
+supprimées (migration 000121, bêta). Sans agent appairé, une capture est refusée
+(`site-recipe-no-agent`) au lieu d'attendre.
+
+**U4b, reste :** `collect_value`, `collect_page`, `follow_account`, `watch_live`,
+`crawl_site`, `capture_proof` restent des missions : il manque aux règles une sortie
+« série » (valeur vers une métrique), le document versionné d'une page suivie à
+intervalle, la lecture des réponses JSON d'une plateforme (`hook.js`), l'enregistrement
+vidéo, la preuve signée et le parcours de site. Chacun deviendra une étape ou une sortie
+déclarée d'une règle, jamais un type de mission.
+
 **Notes pour U4 (`capture_people`, D779, poussé en 8b220d62).** Ce qu'une recette doit
 reprendre sans rien perdre :
 

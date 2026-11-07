@@ -7,13 +7,19 @@
 //! raw text is purged after [`RAW_TEXT_DAYS`].
 
 use loco_rs::app::AppContext;
-use pnex_core::browser_agent::{self as ba, Mission, MissionSpec};
+use pnex_core::browser_agent as ba;
 use pnex_core::err_codes;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use uuid::Uuid;
 
-use crate::services::extension::{AgentAuth, ExtensionError};
+use std::collections::BTreeMap;
+
+use pnex_core::default_rules;
+
+use crate::services::extension::ExtensionError;
 use crate::services::ontology;
+use crate::services::site_recipes::purpose::{self, Purpose};
+use crate::services::site_recipes::{RecipeError, StartError};
 
 /// Days a captured profile text is kept (D333).
 pub const RAW_TEXT_DAYS: i64 = 30;
@@ -259,15 +265,52 @@ pub async fn before_erase(
         .collect())
 }
 
-/// Asks one capture of `raw_url` for the person (D333). An open capture of
-/// the same profile is returned as is.
+/// A capture as listed on the person's or the company's page, read from
+/// its rule run (D780).
+fn capture_view(
+    id: Uuid,
+    url: &str,
+    state: &str,
+    reason: Option<String>,
+    created_at: String,
+) -> ba::ProfileCapture {
+    let (mission_state, open) = match state {
+        "queued" => (ba::MissionState::Idle, true),
+        "running" => (ba::MissionState::Running, true),
+        "succeeded" => (ba::MissionState::Idle, false),
+        _ => (ba::MissionState::Blocked, false),
+    };
+    ba::ProfileCapture {
+        id: id.to_string(),
+        url: url.to_string(),
+        state: mission_state,
+        state_code: reason,
+        open,
+        captured: state == "succeeded",
+        created_at,
+    }
+}
+
+fn start_error(e: StartError) -> ExtensionError {
+    match e {
+        StartError::NoAgent => ExtensionError::NoAgent,
+        StartError::DailyCap { max } => ExtensionError::RunDailyCap { max },
+        StartError::Recipe(RecipeError::Db(e)) => ExtensionError::Db(e),
+        other => ExtensionError::Db(sea_orm::DbErr::Custom(format!("default rule: {other:?}"))),
+    }
+}
+
+/// Asks one capture of `raw_url` for the person (D333): the default rule
+/// of its network, played in the caller's browser agent (else a common
+/// one). An open capture of the same profile is returned as is.
 pub async fn request(
-    db: &DatabaseConnection,
+    ctx: &AppContext,
     org_id: i64,
     user_id: i64,
     person_id: Uuid,
     raw_url: &str,
-) -> Result<Mission, ExtensionError> {
+) -> Result<ba::ProfileCapture, ExtensionError> {
+    let db = &ctx.db;
     person(db, org_id, person_id).await?;
     let (network, url) = ba::profile_of(raw_url).map_err(|r| match r {
         ba::ProfileRefusal::NotNetwork => ExtensionError::Invalid {
@@ -279,67 +322,44 @@ pub async fn request(
     if opposed_any(db, org_id, &[person_key(person_id), url.clone()]).await? {
         return Err(ExtensionError::Opposed);
     }
-    let target = ba::profile_target(network, &url);
-    let open = db
-        .query_one_raw(stmt(
-            "SELECT id FROM extension_missions WHERE org_id = $1 AND kind = 'capture_profile'
-               AND enabled AND target = $2 AND spec -> 'params' ->> 'person_id' = $3",
-            vec![
-                org_id.into(),
-                target.clone().into(),
-                person_id.to_string().into(),
-            ],
-        ))
-        .await?
-        .and_then(|r| r.try_get::<Uuid>("", "id").ok());
-    if let Some(id) = open {
-        return crate::services::extension::get_mission(db, org_id, id).await;
+    let runs = purpose::runs_of(
+        db,
+        org_id,
+        "profile_capture",
+        "person_id",
+        &person_id.to_string(),
+    )
+    .await?;
+    if let Some((id, _, state, reason, at)) = runs.into_iter().find(|(_, p, state, _, _)| {
+        matches!(p, Purpose::ProfileCapture { url: u, .. } if *u == url)
+            && matches!(state.as_str(), "queued" | "running")
+    }) {
+        return Ok(capture_view(id, &url, &state, reason, at));
     }
-    // shortcut: the cap counts per org and network, not per agent (the agent
-    // is only known when it runs the capture); count then insert is racy by a
-    // few rows, fine for an abuse cap.
-    let today = db
-        .query_one_raw(stmt(
-            "SELECT count(*) AS n FROM extension_missions WHERE org_id = $1
-               AND kind = 'capture_profile' AND target LIKE $2
-               AND created_at > now() - interval '24 hours'",
-            vec![org_id.into(), format!("{network}:profile:%").into()],
-        ))
-        .await?
-        .and_then(|r| r.try_get::<i64>("", "n").ok())
-        .unwrap_or(0);
-    if today >= ba::PROFILE_CAPTURES_PER_DAY {
+    // shortcut: count then insert is racy by a few rows, fine for an abuse cap.
+    let site = default_rules::network_site(network).unwrap_or_default();
+    if purpose::count_today(db, org_id, "profile_capture", &format!("https://{site}/")).await?
+        >= ba::PROFILE_CAPTURES_PER_DAY
+    {
         return Err(ExtensionError::ProfileDailyCap {
             max: ba::PROFILE_CAPTURES_PER_DAY,
         });
     }
-    let spec = MissionSpec::CaptureProfile(ba::CaptureProfileParams {
-        url: url.clone(),
+    let yaml = default_rules::profile_capture(network).ok_or(ExtensionError::NotProfile)?;
+    let path = url
+        .split_once("://")
+        .and_then(|(_, rest)| rest.find('/').map(|i| rest[i..].to_string()))
+        .unwrap_or_else(|| "/".into());
+    let params = BTreeMap::from([("url".to_string(), url.clone()), ("path".to_string(), path)]);
+    let purpose = Purpose::ProfileCapture {
         person_id: person_id.to_string(),
-    });
-    let name: String = format!("Profile · {url}")
-        .chars()
-        .take(ba::NAME_MAX)
-        .collect();
-    let waiting = !crate::services::extension::runner_online(db, org_id, Some(user_id)).await;
-    let id = Uuid::new_v4();
-    db.execute_raw(stmt(
-        "INSERT INTO extension_missions (id, org_id, name, kind, spec, target, interval_secs,
-            enabled, state_code, created_by)
-         VALUES ($1, $2, $3, 'capture_profile', $4, $5, $6, true, $7, $8)",
-        vec![
-            id.into(),
-            org_id.into(),
-            name.into(),
-            serde_json::to_value(&spec).unwrap_or_default().into(),
-            target.into(),
-            ba::MAX_INTERVAL_SECS.into(),
-            waiting.then(|| err_codes::EXT_NO_AGENT.to_string()).into(),
-            user_id.into(),
-        ],
-    ))
-    .await?;
-    crate::services::extension::get_mission(db, org_id, id).await
+        url: url.clone(),
+    };
+    let run = purpose::start(ctx, org_id, Some(user_id), &yaml, params, &purpose)
+        .await
+        .map_err(start_error)?;
+    let id = Uuid::parse_str(&run.id).unwrap_or_default();
+    Ok(capture_view(id, &url, "queued", None, run.started_at))
 }
 
 /// Latest captures asked for the person, newest first.
@@ -348,65 +368,72 @@ pub async fn captures(
     org_id: i64,
     person_id: Uuid,
 ) -> Result<Vec<ba::ProfileCapture>, ExtensionError> {
-    use sea_orm::FromQueryResult;
-    #[derive(FromQueryResult)]
-    struct Row {
-        id: Uuid,
-        url: Option<String>,
-        state: String,
-        state_code: Option<String>,
-        enabled: bool,
-        captured: bool,
-        created_at: chrono::DateTime<chrono::FixedOffset>,
-    }
     person(db, org_id, person_id).await?;
-    let rows = Row::find_by_statement(stmt(
-        "SELECT id, spec -> 'params' ->> 'url' AS url, state, state_code, enabled,
-                cursor ->> 'asset_id' IS NOT NULL AS captured, created_at
-         FROM extension_missions WHERE org_id = $1 AND kind = 'capture_profile'
-           AND spec -> 'params' ->> 'person_id' = $2
-         ORDER BY created_at DESC LIMIT 20",
-        vec![org_id.into(), person_id.to_string().into()],
-    ))
-    .all(db)
+    let runs = purpose::runs_of(
+        db,
+        org_id,
+        "profile_capture",
+        "person_id",
+        &person_id.to_string(),
+    )
     .await?;
-    Ok(rows
+    Ok(runs
         .into_iter()
-        .map(|r| ba::ProfileCapture {
-            id: r.id.to_string(),
-            url: r.url.unwrap_or_default(),
-            state: ba::MissionState::parse(&r.state).unwrap_or_default(),
-            state_code: r.state_code,
-            open: r.enabled,
-            captured: r.captured,
-            created_at: r.created_at.to_rfc3339(),
+        .map(|(id, p, state, reason, at)| {
+            let url = match p {
+                Purpose::ProfileCapture { url, .. } => url,
+                Purpose::PeopleCapture { url, .. } => url,
+            };
+            capture_view(id, &url, &state, reason, at)
         })
         .collect())
 }
 
-/// Refuses a capture whose person objected since it was asked; the mission
-/// stops.
-pub async fn check_still_allowed(
-    db: &DatabaseConnection,
+/// Stores a captured text as a document of the org, purged with the other
+/// captured texts by `metadata` (D333, D779).
+async fn store_text(
+    ctx: &AppContext,
     org_id: i64,
-    mission_id: Uuid,
-    params: &ba::CaptureProfileParams,
-) -> Result<(), ExtensionError> {
-    let keys = [format!("person:{}", params.person_id), params.url.clone()];
-    if opposed_any(db, org_id, &keys).await? {
-        disable(db, mission_id).await?;
-        return Err(ExtensionError::MissionNotFound);
+    name: &str,
+    url: &str,
+    text: &str,
+    metadata: serde_json::Value,
+) -> Result<Uuid, ExtensionError> {
+    use crate::models::_entities::media_assets;
+    use sea_orm::{ActiveModelTrait, Set};
+    let mut meta = serde_json::json!({ "source": "browser_agent", "source_url": url });
+    if let (Some(m), Some(extra)) = (meta.as_object_mut(), metadata.as_object()) {
+        m.extend(extra.clone());
     }
-    Ok(())
-}
-
-async fn disable(db: &DatabaseConnection, mission_id: Uuid) -> Result<(), ExtensionError> {
-    db.execute_raw(stmt(
-        "UPDATE extension_missions SET enabled = false, state = 'idle' WHERE id = $1",
-        vec![mission_id.into()],
-    ))
+    let name: String = name.chars().take(ba::NAME_MAX).collect();
+    let asset = media_assets::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(org_id),
+        kind: Set("document".into()),
+        name: Set(name.clone()),
+        description: Set(None),
+        metadata: Set(Some(meta)),
+        ..Default::default()
+    }
+    .insert(&ctx.db)
     .await?;
-    Ok(())
+    let markdown = format!("# {name}\n\n<{url}>\n\n{}\n", text.trim());
+    let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
+    crate::controllers::media::write_version(
+        ctx,
+        org_id,
+        &asset,
+        crate::controllers::media::IncomingVersion {
+            filename: "page.md".into(),
+            content_type: "text/markdown".into(),
+            note: None,
+            bytes: markdown.into_bytes().into(),
+        },
+        &settings,
+    )
+    .await
+    .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(format!("captured text: {e}"))))?;
+    Ok(asset.id)
 }
 
 /// Property of `prospecting_b2b` naming the captured text a flow has yet to
@@ -449,60 +476,92 @@ async fn stamp_to_read(
     Ok(())
 }
 
-/// After the page is stored: the document is linked to the person, the
-/// profile address becomes an account identifier of the person, and the
-/// one-shot mission ends. An org without the investigation pack keeps the
-/// document only.
-pub async fn captured(
+/// A profile captured by its rule run: unless the person or the address
+/// objected since, its text becomes a document of the person, stamped to be
+/// read, and the address an account identifier of theirs.
+pub async fn profile_captured(
     ctx: &AppContext,
-    agent: &AgentAuth,
-    mission_id: Uuid,
-    params: &ba::CaptureProfileParams,
+    org_id: i64,
+    source_ref: &str,
+    person_id: &str,
+    url: &str,
+    text: &str,
+) -> Result<(), ExtensionError> {
+    let keys = [format!("person:{person_id}"), url.to_string()];
+    if opposed_any(&ctx.db, org_id, &keys).await? {
+        return Ok(());
+    }
+    let meta = serde_json::json!({ "profile_person_id": person_id });
+    let asset = store_text(ctx, org_id, &format!("Profile · {url}"), url, text, meta).await?;
+    attach_profile(ctx, org_id, source_ref, person_id, url, asset).await
+}
+
+/// The captured profile `url` becomes the person's: its document linked to
+/// them, stamped to be read, the address an account identifier of theirs.
+/// A second attach of the same profile changes nothing.
+pub(crate) async fn attach_profile(
+    ctx: &AppContext,
+    org_id: i64,
+    source_ref: &str,
+    person_id: &str,
+    url: &str,
     asset_id: Uuid,
 ) -> Result<(), ExtensionError> {
-    crate::services::extension::link_publisher(ctx, agent, asset_id, &params.person_id).await;
-    stamp_to_read(ctx, agent.org_id, &params.person_id, asset_id).await?;
-    let actor = ontology::Actor {
-        user_id: None,
-        role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
-        source_ref: format!("agent:{}", agent.device_id),
-    };
-    let value = serde_json::Value::String(params.url.clone());
-    let identifier =
-        match ontology::objects::find_by_key(&ctx.db, agent.org_id, "identifier", "value", &value)
-            .await
-        {
-            Ok(Some(o)) => Some(o.id.to_string()),
-            Ok(None) => {
-                let mut properties = serde_json::Map::new();
-                properties.insert("kind".into(), "account".into());
-                properties.insert("value".into(), value);
-                let input = pnex_core::ontology::api::ObjectInput {
-                    type_key: "identifier".into(),
-                    title: params.url.clone(),
-                    properties,
-                    expected_version: None,
-                };
-                ontology::objects::create(&ctx.db, agent.org_id, &actor, &input)
-                    .await
-                    .map(|o| o.id)
-                    .ok()
-            }
-            Err(_) => None,
-        };
-    if let Some(identifier) = identifier {
+    crate::services::extension::link_publisher_as(ctx, org_id, source_ref, asset_id, person_id)
+        .await;
+    stamp_to_read(ctx, org_id, person_id, asset_id).await?;
+    let actor = actor_of(source_ref);
+    if let Some(identifier) = identifier_of(&ctx.db, org_id, source_ref, url).await {
         let input = pnex_core::ontology::api::LinkInput {
             link_type: "uses_identifier".into(),
-            source_id: params.person_id.clone(),
+            source_id: person_id.to_string(),
             target_id: identifier,
             attributes: serde_json::Map::new(),
             valid_from: None,
             valid_to: None,
         };
         // An existing link (second capture of the profile) is refused: fine.
-        let _ = ontology::links::create(&ctx.db, agent.org_id, &actor, &input).await;
+        let _ = ontology::links::create(&ctx.db, org_id, &actor, &input).await;
     }
-    disable(&ctx.db, mission_id).await
+    Ok(())
+}
+
+fn actor_of(source_ref: &str) -> ontology::Actor {
+    ontology::Actor {
+        user_id: None,
+        role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
+        source_ref: source_ref.to_string(),
+    }
+}
+
+/// The `identifier` object of a profile address, created when missing;
+/// `None` in an org without the investigation pack.
+pub(crate) async fn identifier_of(
+    db: &DatabaseConnection,
+    org_id: i64,
+    source_ref: &str,
+    url: &str,
+) -> Option<String> {
+    let value = serde_json::Value::String(url.to_string());
+    match ontology::objects::find_by_key(db, org_id, "identifier", "value", &value).await {
+        Ok(Some(o)) => Some(o.id.to_string()),
+        Ok(None) => {
+            let mut properties = serde_json::Map::new();
+            properties.insert("kind".into(), "account".into());
+            properties.insert("value".into(), value);
+            let input = pnex_core::ontology::api::ObjectInput {
+                type_key: "identifier".into(),
+                title: url.to_string(),
+                properties,
+                expected_version: None,
+            };
+            ontology::objects::create(db, org_id, &actor_of(source_ref), &input)
+                .await
+                .map(|o| o.id.to_string())
+                .ok()
+        }
+        Err(_) => None,
+    }
 }
 
 /// A live object of the org whose type declares [`PEOPLE_TO_READ`]: the
@@ -534,16 +593,18 @@ async fn organization(
 }
 
 /// Asks one capture of a company's employee list on LinkedIn for the
-/// organization (D779). An open capture of the same list is returned as is.
-/// The people it names become list contacts to validate, read by a flow of
-/// the prospecting pack; nobody objecting at that company comes back.
+/// organization (D779): the default rule, played in the caller's browser
+/// agent. An open capture of the same list is returned as is. The people it
+/// names become list contacts to validate, read by a flow of the
+/// prospecting pack; nobody objecting at that company comes back.
 pub async fn request_people(
-    db: &DatabaseConnection,
+    ctx: &AppContext,
     org_id: i64,
     user_id: i64,
     organization_id: Uuid,
     raw_url: &str,
-) -> Result<Mission, ExtensionError> {
+) -> Result<ba::ProfileCapture, ExtensionError> {
+    let db = &ctx.db;
     organization(db, org_id, organization_id).await?;
     let url = ba::people_page_of(raw_url).map_err(|r| match r {
         ba::ProfileRefusal::NotNetwork => ExtensionError::Invalid {
@@ -552,64 +613,39 @@ pub async fn request_people(
         },
         ba::ProfileRefusal::NotProfile => ExtensionError::NotPeoplePage,
     })?;
-    let target = ba::people_target(&url);
-    let open = db
-        .query_one_raw(stmt(
-            "SELECT id FROM extension_missions WHERE org_id = $1 AND kind = 'capture_people'
-               AND enabled AND target = $2 AND spec -> 'params' ->> 'organization_id' = $3",
-            vec![
-                org_id.into(),
-                target.clone().into(),
-                organization_id.to_string().into(),
-            ],
-        ))
-        .await?
-        .and_then(|r| r.try_get::<Uuid>("", "id").ok());
-    if let Some(id) = open {
-        return crate::services::extension::get_mission(db, org_id, id).await;
+    let org_key = organization_id.to_string();
+    let runs = purpose::runs_of(db, org_id, "people_capture", "organization_id", &org_key).await?;
+    if let Some((id, _, state, reason, at)) = runs.into_iter().find(|(_, p, state, _, _)| {
+        matches!(p, Purpose::PeopleCapture { url: u, .. } if *u == url)
+            && matches!(state.as_str(), "queued" | "running")
+    }) {
+        return Ok(capture_view(id, &url, &state, reason, at));
     }
     // shortcut: count then insert is racy by a few rows, fine for an abuse cap.
-    let today = db
-        .query_one_raw(stmt(
-            "SELECT count(*) AS n FROM extension_missions WHERE org_id = $1
-               AND kind = 'capture_people' AND created_at > now() - interval '24 hours'",
-            vec![org_id.into()],
-        ))
-        .await?
-        .and_then(|r| r.try_get::<i64>("", "n").ok())
-        .unwrap_or(0);
-    if today >= ba::PEOPLE_CAPTURES_PER_DAY {
+    if purpose::count_today(db, org_id, "people_capture", "https://").await?
+        >= ba::PEOPLE_CAPTURES_PER_DAY
+    {
         return Err(ExtensionError::PeopleDailyCap {
             max: ba::PEOPLE_CAPTURES_PER_DAY,
         });
     }
-    let spec = MissionSpec::CapturePeople(ba::CapturePeopleParams {
+    let params = BTreeMap::from([("url".to_string(), url.clone())]);
+    let purpose = Purpose::PeopleCapture {
+        organization_id: org_key,
         url: url.clone(),
-        organization_id: organization_id.to_string(),
-    });
-    let name: String = format!("Employees · {url}")
-        .chars()
-        .take(ba::NAME_MAX)
-        .collect();
-    let waiting = !crate::services::extension::runner_online(db, org_id, Some(user_id)).await;
-    let id = Uuid::new_v4();
-    db.execute_raw(stmt(
-        "INSERT INTO extension_missions (id, org_id, name, kind, spec, target, interval_secs,
-            enabled, state_code, created_by)
-         VALUES ($1, $2, $3, 'capture_people', $4, $5, $6, true, $7, $8)",
-        vec![
-            id.into(),
-            org_id.into(),
-            name.into(),
-            serde_json::to_value(&spec).unwrap_or_default().into(),
-            target.into(),
-            ba::MAX_INTERVAL_SECS.into(),
-            waiting.then(|| err_codes::EXT_NO_AGENT.to_string()).into(),
-            user_id.into(),
-        ],
-    ))
-    .await?;
-    crate::services::extension::get_mission(db, org_id, id).await
+    };
+    let run = purpose::start(
+        ctx,
+        org_id,
+        Some(user_id),
+        &default_rules::people_capture(),
+        params,
+        &purpose,
+    )
+    .await
+    .map_err(start_error)?;
+    let id = Uuid::parse_str(&run.id).unwrap_or_default();
+    Ok(capture_view(id, &url, "queued", None, run.started_at))
 }
 
 /// Latest employee list captures asked for the organization, newest first.
@@ -618,38 +654,22 @@ pub async fn people_captures(
     org_id: i64,
     organization_id: Uuid,
 ) -> Result<Vec<ba::ProfileCapture>, ExtensionError> {
-    use sea_orm::FromQueryResult;
-    #[derive(FromQueryResult)]
-    struct Row {
-        id: Uuid,
-        url: Option<String>,
-        state: String,
-        state_code: Option<String>,
-        enabled: bool,
-        captured: bool,
-        created_at: chrono::DateTime<chrono::FixedOffset>,
-    }
     organization(db, org_id, organization_id).await?;
-    let rows = Row::find_by_statement(stmt(
-        "SELECT id, spec -> 'params' ->> 'url' AS url, state, state_code, enabled,
-                cursor ->> 'asset_id' IS NOT NULL AS captured, created_at
-         FROM extension_missions WHERE org_id = $1 AND kind = 'capture_people'
-           AND spec -> 'params' ->> 'organization_id' = $2
-         ORDER BY created_at DESC LIMIT 20",
-        vec![org_id.into(), organization_id.to_string().into()],
-    ))
-    .all(db)
+    let runs = purpose::runs_of(
+        db,
+        org_id,
+        "people_capture",
+        "organization_id",
+        &organization_id.to_string(),
+    )
     .await?;
-    Ok(rows
+    Ok(runs
         .into_iter()
-        .map(|r| ba::ProfileCapture {
-            id: r.id.to_string(),
-            url: r.url.unwrap_or_default(),
-            state: ba::MissionState::parse(&r.state).unwrap_or_default(),
-            state_code: r.state_code,
-            open: r.enabled,
-            captured: r.captured,
-            created_at: r.created_at.to_rfc3339(),
+        .map(|(id, p, state, reason, at)| {
+            let url = match p {
+                Purpose::PeopleCapture { url, .. } | Purpose::ProfileCapture { url, .. } => url,
+            };
+            capture_view(id, &url, &state, reason, at)
         })
         .collect())
 }
@@ -658,37 +678,41 @@ pub async fn people_captures(
 /// has yet to read (D779).
 const PEOPLE_TO_READ: &str = "people_to_read";
 
-/// After the list is stored: the document is linked to the organization,
-/// marked to read when the org has the prospecting pack, and the one-shot
-/// mission ends.
+/// An employee list captured by its rule run: a document of the
+/// organization, marked to read when the org has the prospecting pack.
 pub async fn people_captured(
     ctx: &AppContext,
-    agent: &AgentAuth,
-    mission_id: Uuid,
-    params: &ba::CapturePeopleParams,
-    asset_id: Uuid,
+    org_id: i64,
+    source_ref: &str,
+    organization_id: &str,
+    url: &str,
+    text: &str,
 ) -> Result<(), ExtensionError> {
-    crate::services::extension::link_publisher(ctx, agent, asset_id, &params.organization_id).await;
-    if let Ok(id) = Uuid::parse_str(&params.organization_id) {
-        // The type may have lost the property since the capture was asked.
-        let known = organization(&ctx.db, agent.org_id, id).await.is_ok();
-        if known {
-            // Written in place: a stamp, not an edit of the organization.
-            ctx.db
-                .execute_raw(stmt(
-                    "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text)
-                     WHERE org_id = $1 AND id = $2 AND valid_to IS NULL",
-                    vec![
-                        agent.org_id.into(),
-                        id.into(),
-                        PEOPLE_TO_READ.into(),
-                        asset_id.to_string().into(),
-                    ],
-                ))
-                .await?;
-        }
+    let Ok(id) = Uuid::parse_str(organization_id) else {
+        return Ok(());
+    };
+    // The type may have lost the property since the capture was asked.
+    if organization(&ctx.db, org_id, id).await.is_err() {
+        return Ok(());
     }
-    disable(&ctx.db, mission_id).await
+    let meta = serde_json::json!({ "people_org_id": organization_id });
+    let asset = store_text(ctx, org_id, &format!("Employees · {url}"), url, text, meta).await?;
+    crate::services::extension::link_publisher_as(ctx, org_id, source_ref, asset, organization_id)
+        .await;
+    // Written in place: a stamp, not an edit of the organization.
+    ctx.db
+        .execute_raw(stmt(
+            "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text)
+             WHERE org_id = $1 AND id = $2 AND valid_to IS NULL",
+            vec![
+                org_id.into(),
+                id.into(),
+                PEOPLE_TO_READ.into(),
+                asset.to_string().into(),
+            ],
+        ))
+        .await?;
+    Ok(())
 }
 
 /// Deletes captured profile texts and employee lists older than

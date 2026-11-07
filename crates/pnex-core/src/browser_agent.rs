@@ -502,10 +502,6 @@ pub fn profile_target(network: &str, canonical: &str) -> String {
 /// can only ask fewer.
 pub const PEOPLE_CAPTURES_PER_DAY: i64 = 10;
 
-/// Screens the agent scrolls on an employee list before reading it (D779):
-/// the cards a reader would see, never the whole list.
-pub const PEOPLE_SCROLLS: u32 = 5;
-
 /// Canonical address of a company's employee list on LinkedIn (D779), the
 /// only list page a human may send: `linkedin.com/company/<slug>/people/`.
 /// Search results and relation lists stay refused.
@@ -548,32 +544,6 @@ pub fn people_page_of(raw: &str) -> Result<String, ProfileRefusal> {
 /// Lease target of an employee list capture: the LinkedIn tab (D255).
 pub fn people_target(canonical: &str) -> String {
     format!("linkedin:people:{canonical}")
-}
-
-/// `capture_people` (D779): one capture of one company's employee list,
-/// in the agent's signed-in session. Asked by a human from the
-/// organization's page, created by the server only.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct CapturePeopleParams {
-    /// Canonical list address ([`people_page_of`]).
-    pub url: String,
-    /// The `organization` the list belongs to.
-    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub organization_id: String,
-}
-
-/// `capture_profile` (D333): one capture of one person's profile page, in
-/// the agent's signed-in session. Asked by a human from the person's page,
-/// created by the server only.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct CaptureProfileParams {
-    /// Canonical profile address ([`profile_of`]).
-    pub url: String,
-    /// The `person` the profile belongs to.
-    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub person_id: String,
 }
 
 /// A profile capture asked for a person, with where it stands (D333).
@@ -672,10 +642,6 @@ pub enum MissionSpec {
     CrawlSite(CrawlSiteParams),
     /// Created by the server only (D308): one proof of one page.
     CaptureProof(CaptureProofParams),
-    /// Created by the server only (D333): one capture of one profile.
-    CaptureProfile(CaptureProfileParams),
-    /// Created by the server only (D779): one capture of one employee list.
-    CapturePeople(CapturePeopleParams),
 }
 
 /// `capture_proof` (D308, D310): capture one page as a proof.
@@ -1033,8 +999,6 @@ impl MissionSpec {
             Self::WatchLive(_) => "watch_live",
             Self::CrawlSite(_) => "crawl_site",
             Self::CaptureProof(_) => "capture_proof",
-            Self::CaptureProfile(_) => "capture_profile",
-            Self::CapturePeople(_) => "capture_people",
         }
     }
 }
@@ -1231,10 +1195,9 @@ pub fn check_spec(spec: &MissionSpec) -> Result<(MissionSpec, String), FieldErro
             };
             Ok((MissionSpec::WatchLive(WatchLiveParams { url }), target))
         }
-        // Proofs and profile captures are asked by the server (D308, D333, D779).
-        MissionSpec::CaptureProof(_)
-        | MissionSpec::CaptureProfile(_)
-        | MissionSpec::CapturePeople(_) => Err(field("spec.kind", err_codes::FIELD_INVALID)),
+        // Proofs are asked by the server (D308); profile and employee list
+        // captures are default rules now (D780).
+        MissionSpec::CaptureProof(_) => Err(field("spec.kind", err_codes::FIELD_INVALID)),
         MissionSpec::CrawlSite(p) => {
             let f = |k: &str| format!("spec.params.{k}");
             let origin =
@@ -1867,16 +1830,6 @@ mod tests {
     }
 
     #[test]
-    fn a_profile_capture_is_never_created_by_hand() {
-        let spec = MissionSpec::CaptureProfile(CaptureProfileParams {
-            url: "https://x.com/jane".into(),
-            person_id: uuid::Uuid::nil().to_string(),
-        });
-        assert!(check_spec(&spec).is_err());
-        assert_eq!(spec.kind(), "capture_profile");
-    }
-
-    #[test]
     fn only_a_company_employee_list_is_a_people_page() {
         assert_eq!(
             people_page_of("https://fr.linkedin.com/company/Acme-Corp/people/?keywords=x"),
@@ -1900,11 +1853,5 @@ mod tests {
         );
         let target = people_target("https://www.linkedin.com/company/acme/people/");
         assert_eq!(platform_of(&target), "linkedin");
-        let spec = MissionSpec::CapturePeople(CapturePeopleParams {
-            url: "https://www.linkedin.com/company/acme/people/".into(),
-            organization_id: uuid::Uuid::nil().to_string(),
-        });
-        assert!(check_spec(&spec).is_err());
-        assert_eq!(spec.kind(), "capture_people");
     }
 }

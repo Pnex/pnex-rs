@@ -209,6 +209,7 @@ pub async fn play_to_end(
         tracing::error!(error = %e, run = %run_id, "site recipe run not finished");
     }
     super::journal(&journal_ctx, org_id, run_id).await;
+    super::purpose::on_finished(&journal_ctx, org_id, run_id).await;
     status
 }
 

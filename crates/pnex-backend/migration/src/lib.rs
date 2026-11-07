@@ -112,6 +112,7 @@ mod m20261107_000112_agent_run_merge_requests;
 mod m20261107_000113_run_engines;
 mod m20261107_000114_recipe_runs;
 mod m20261107_000120_tool_call_proposals;
+mod m20261107_000121_capture_missions_to_rules;
 
 pub struct Migrator;
 
@@ -220,6 +221,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261107_000113_run_engines::Migration),
             Box::new(m20261107_000114_recipe_runs::Migration),
             Box::new(m20261107_000120_tool_call_proposals::Migration),
+            Box::new(m20261107_000121_capture_missions_to_rules::Migration),
         ]
     }
 }

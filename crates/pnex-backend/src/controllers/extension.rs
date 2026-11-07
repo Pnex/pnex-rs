@@ -203,6 +203,17 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
             "The organization captured as many employee lists today as allowed.",
             Some(serde_json::json!({ "max": max.to_string() })),
         )),
+        ExtensionError::NoAgent => coded(
+            StatusCode::CONFLICT,
+            err_codes::SITE_RECIPE_NO_AGENT,
+            "This capture plays in a browser agent and the organization has none paired.",
+        ),
+        ExtensionError::RunDailyCap { max } => Err(super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::SITE_RECIPE_DAILY_CAP,
+            "The organization played as many rules on its browser agents today as allowed.",
+            Some(serde_json::json!({ "max": max.to_string() })),
+        )),
         ExtensionError::Db(e) => {
             tracing::error!(error = %e, "browser agent database error");
             Err(Error::InternalServerError)
@@ -1311,14 +1322,14 @@ async fn profile_captures(
     tag = "extension",
     operation_id = "extension_profile_captures_create",
     summary = "Capture a person's profile page",
-    description = "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session; the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
+    description = "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session (a default navigation rule of the network, D780); the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
     params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)")),
     request_body = pnex_core::browser_agent::ProfileCaptureRequest,
     responses(
-        (status = 201, body = pnex_core::browser_agent::Mission),
+        (status = 201, body = pnex_core::browser_agent::ProfileCapture),
         (status = 400, description = "`ext-target-not-profile`: not one person's profile page; `field-invalid` (`url`): not a known network", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`prospecting-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`prospecting-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached; `site-recipe-no-agent`: no browser agent paired; `site-recipe-daily-cap` (`args.max`): runs on browser agents reached", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -1329,7 +1340,7 @@ async fn capture_profile(
     Json(input): Json<pnex_core::browser_agent::ProfileCaptureRequest>,
 ) -> Result<Response> {
     use crate::services::profiles;
-    match profiles::request(&ctx.db, org.org.id, org.auth.user.id, id, &input.url).await {
+    match profiles::request(&ctx, org.org.id, org.auth.user.id, id, &input.url).await {
         Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
         Err(e) => extension_error(e),
     }
@@ -1374,14 +1385,14 @@ async fn people_captures(
     tag = "extension",
     operation_id = "extension_people_captures_create",
     summary = "Capture a company's employee list",
-    description = "Asks one capture of this organization's employee list on LinkedIn (`linkedin.com/company/<name>/people/`, D779): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session and reads the first screens. The page text becomes a document linked to the organization, kept 30 days; with the prospecting pack, a flow proposes the people it names as list contacts to validate, never someone who objected at that company. Any other page is refused. At most 10 captures per day. An open capture of the same list is returned as is. Requires owner, admin or member role.",
+    description = "Asks one capture of this organization's employee list on LinkedIn (`linkedin.com/company/<name>/people/`, D779): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session and reads the first screens (a default navigation rule, D780). The page text becomes a document linked to the organization, kept 30 days; with the prospecting pack, a flow proposes the people it names as list contacts to validate, never someone who objected at that company. Any other page is refused. At most 10 captures per day. An open capture of the same list is returned as is. Requires owner, admin or member role.",
     params(("id" = String, Path, format = "uuid", description = "Organization object id (UUID)")),
     request_body = pnex_core::browser_agent::ProfileCaptureRequest,
     responses(
-        (status = 201, body = pnex_core::browser_agent::Mission),
+        (status = 201, body = pnex_core::browser_agent::ProfileCapture),
         (status = 400, description = "`ext-target-not-people-page`: not a company's employee list; `field-invalid` (`url`): not a LinkedIn address", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`: no such organization", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`ext-people-daily-cap` (`args.max`): daily captures reached", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`ext-people-daily-cap` (`args.max`): daily captures reached; `site-recipe-no-agent`: no browser agent paired; `site-recipe-daily-cap` (`args.max`): runs on browser agents reached", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -1392,7 +1403,7 @@ async fn capture_people(
     Json(input): Json<pnex_core::browser_agent::ProfileCaptureRequest>,
 ) -> Result<Response> {
     use crate::services::profiles;
-    match profiles::request_people(&ctx.db, org.org.id, org.auth.user.id, id, &input.url).await {
+    match profiles::request_people(&ctx, org.org.id, org.auth.user.id, id, &input.url).await {
         Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
         Err(e) => extension_error(e),
     }

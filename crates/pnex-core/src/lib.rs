@@ -158,6 +158,9 @@ pub mod browser_agent;
 /// Accent- and case-insensitive text, Rust and SQL (crm.md D447).
 pub mod fold;
 
+/// Navigation rules shipped with PneX, replacing mission types (D780, U4).
+pub mod default_rules;
+
 /// Mailboxes as sources, messages, the `mail_received` trigger (mail.md).
 pub mod mail;
 
