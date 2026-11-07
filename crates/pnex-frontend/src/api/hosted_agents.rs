@@ -4,8 +4,13 @@
 
 use pnex_core::agent_runs::{AgentArtifact, AgentRun};
 use pnex_core::agents::{Agent, AgentCreate, AgentRunStart};
-use pnex_core::environments::{Environment, EnvironmentBuild, IsolationInput};
-use pnex_core::runners::{RunnerJobLogLine, RunnerView};
+use pnex_core::environments::{
+    Environment, EnvironmentActivate, EnvironmentBuild, EnvironmentInput, EnvironmentScan,
+    EnvironmentVersion, EnvironmentVersionInput, EnvironmentVersionSummary, IsolationInput,
+    ScanPolicy,
+};
+use pnex_core::image_registries::{ImageRegistry, ImageRegistryInput, ImageRegistryTest};
+use pnex_core::runners::{JoinTokenCreate, JoinTokenCreated, RunnerJobLogLine, RunnerView};
 use pnex_core::Paginated;
 
 use crate::api::client;
@@ -173,4 +178,156 @@ pub async fn runners() -> Result<Paginated<RunnerView>, ApiError> {
         None,
     )
     .await
+}
+
+pub async fn environment(id: &str) -> Result<Environment, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/environments/{id}"),
+        None,
+    )
+    .await
+}
+
+pub async fn create_environment(input: &EnvironmentInput) -> Result<Environment, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        "/api/v1/environments",
+        Some(body(input)?),
+    )
+    .await
+}
+
+pub async fn versions(environment: &str) -> Result<Paginated<EnvironmentVersionSummary>, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/environments/{environment}/versions?limit=20&offset=0"),
+        None,
+    )
+    .await
+}
+
+pub async fn version(environment: &str, number: i32) -> Result<EnvironmentVersion, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/environments/{environment}/versions/{number}"),
+        None,
+    )
+    .await
+}
+
+pub async fn save_version(
+    environment: &str,
+    input: &EnvironmentVersionInput,
+) -> Result<EnvironmentVersionSummary, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/environments/{environment}/versions"),
+        Some(body(input)?),
+    )
+    .await
+}
+
+pub async fn start_build(environment: &str, number: i32) -> Result<EnvironmentBuild, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/environments/{environment}/versions/{number}/builds"),
+        None,
+    )
+    .await
+}
+
+pub async fn activate_build(
+    environment: &str,
+    build: &str,
+    input: &EnvironmentActivate,
+) -> Result<Environment, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/environments/{environment}/builds/{build}/activate"),
+        Some(body(input)?),
+    )
+    .await
+}
+
+pub async fn build_scan(environment: &str, build: &str) -> Result<EnvironmentScan, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/environments/{environment}/builds/{build}/scan"),
+        None,
+    )
+    .await
+}
+
+pub async fn scan_policy() -> Result<ScanPolicy, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        "/api/v1/environments/scan-policy",
+        None,
+    )
+    .await
+}
+
+pub async fn set_scan_policy(input: &ScanPolicy) -> Result<ScanPolicy, ApiError> {
+    client::request(
+        reqwest::Method::PUT,
+        "/api/v1/environments/scan-policy",
+        Some(body(input)?),
+    )
+    .await
+}
+
+pub async fn registries() -> Result<Paginated<ImageRegistry>, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        "/api/v1/image-registries?limit=100&offset=0",
+        None,
+    )
+    .await
+}
+
+/// Creates a registry, or updates `id` when given.
+pub async fn save_registry(
+    id: Option<&str>,
+    input: &ImageRegistryInput,
+) -> Result<ImageRegistry, ApiError> {
+    let (method, path) = match id {
+        Some(id) => (
+            reqwest::Method::PUT,
+            format!("/api/v1/image-registries/{id}"),
+        ),
+        None => (
+            reqwest::Method::POST,
+            "/api/v1/image-registries".to_string(),
+        ),
+    };
+    client::request(method, &path, Some(body(input)?)).await
+}
+
+pub async fn test_registry(id: &str) -> Result<ImageRegistryTest, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/image-registries/{id}/test"),
+        None,
+    )
+    .await
+}
+
+pub async fn create_join_token(input: &JoinTokenCreate) -> Result<JoinTokenCreated, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        "/api/v1/runners/join-tokens",
+        Some(body(input)?),
+    )
+    .await
+}
+
+pub async fn revoke_runner(id: &str) -> Result<(), ApiError> {
+    client::request_opt::<()>(
+        reqwest::Method::DELETE,
+        &format!("/api/v1/runners/{id}"),
+        None,
+    )
+    .await?;
+    Ok(())
 }

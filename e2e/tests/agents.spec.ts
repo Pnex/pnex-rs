@@ -145,6 +145,19 @@ test.describe('agents', { tag: '@agents' }, () => {
     // The other tabs show where runs go.
     await tab('agents-tab-environments').click();
     await expect(main.locator('tr').filter({ hasText: `${slug}-env` })).toContainText(DIGEST.slice(0, 20));
+    // The environment opens on its editor: its active build beside, a save makes v2.
+    await main
+      .locator('tr')
+      .filter({ hasText: `${slug}-env` })
+      .getByRole('button', { name: app.t('agents-env-open') })
+      .click();
+    await expect(main.getByText(app.t('agents-env-active'), { exact: true })).toBeVisible();
+    const dockerfile = main.getByRole('textbox', { name: 'Dockerfile' });
+    await expect(dockerfile).toHaveValue('FROM scratch');
+    await dockerfile.fill('FROM scratch\nLABEL step=2');
+    await main.getByRole('button', { name: app.t('agents-env-save') }).click();
+    await expect(main.getByText('v2', { exact: true })).toBeVisible();
+    await main.getByRole('button', { name: app.t('agents-env-back') }).click();
     await tab('agents-tab-runners').click();
     await expect(main.locator('tr').filter({ hasText: `${slug}-runner` })).toBeVisible();
 

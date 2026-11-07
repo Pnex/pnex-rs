@@ -2,7 +2,7 @@
 id: runners
 title: Runners (where hosted work runs)
 kind: feature
-pages: 
+pages: /agents
 nodes: 
 err_codes: runner-join-token-invalid, runner-unauthorized, runner-not-found, runner-job-not-held
 tools: 
@@ -10,12 +10,12 @@ tags: runner, job, pod, cluster, kubernetes, join token, capability, sandbox
 ---
 A runner is a small program an organization installs in its own Kubernetes namespace. It connects out to PneX, takes jobs of its organization, and runs each one in a hardened pod that it destroys afterwards. PneX keeps no cluster credentials.
 
-There is no page for runners yet: they are managed through the API.
+They are listed in the Agents page, Runners tab, with their state (online or offline) and their capabilities.
 
 ## Enrolling
-- An Admin creates a join token. It works once and lasts one hour; it is shown once.
+- An Admin clicks **New join token** in the Runners tab and names the runner. The token works once and lasts one hour; it is shown once, with a **Copy** button and the commands that install the runner: a namespace, the Secret `pnex-runner-join` that holds the token, then the `pnex-runner` chart of the pnex-deploy repository pointed to this server. **Copy the commands** copies them with the token filled in.
 - The runner consumes it when it starts, then keeps its own token in its namespace.
-- Revoking a runner stops its token at once, and the jobs it held go back to the queue.
+- **Revoke**, then **Confirm revocation**, on a runner stops its token at once, and the jobs it held go back to the queue.
 
 ## Jobs
 - A job runs an image pinned by digest, never by tag.

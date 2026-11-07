@@ -271,6 +271,10 @@ les règles plus anciennes qui les contredisent.
 | Un passage d'un agent dans son bac (D731) | Exécution | Run | pas « run » en français, pas « job » (= travail du runner) |
 | Fichier donné à une exécution d'agent ou laissé par elle (D729) | Entrée / Sortie | Input / Output | pas « artefact » dans l'UI |
 | Où s'exécutent les exécutions d'un environnement (D763) | Isolation : Pod / Micro-VM | Isolation: Pod / Micro-VM | pas « isolement », pas « VM » seul |
+| Accès enregistré à un registre OCI, secrets de lecture et d'écriture distincts (D703) | Registre d'images | Image registry | pas « connecteur » (= base externe), pas « dépôt » (= chemin dans le registre) |
+| Jeton à usage unique qui inscrit un runner | Jeton d'inscription | Join token | pas « token » en français, pas « clé » |
+| Seuil et effet du scan des images de l'org (D748) | Politique de scan | Scan policy | — |
+| Faille connue trouvée par le scan d'une image (D720) | Faille | Flaw | pas « vulnérabilité », pas « CVE » à l'écran |
 | Lignes écrites par les conteneurs d'une exécution ou d'un build (D733) | Journal | Log | pas « logs » en français |
 | Une cible et ce dont elle dépend, exécutés dans l'ordre (D575) | Exécution enchaînée | Chained run | pas « build » (= compilation de firmware) |
 | Condition sur le résultat d'un traitement avant sa validation (D576) | Contrôle | Check | — |

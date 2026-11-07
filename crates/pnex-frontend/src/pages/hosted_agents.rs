@@ -19,21 +19,29 @@ use pnex_core::agent_runs::{
     AgentArtifact, AgentRun, ArtifactInput, ArtifactOutput, ArtifactState,
 };
 use pnex_core::agents::{Agent, AgentCreate, AgentRole, AgentRunStart, AgentSpec};
-use pnex_core::environments::{
-    Environment, EnvironmentBuild, EnvironmentBuildState, Isolation, IsolationInput,
-};
-use pnex_core::runners::{RunnerJobOutcome, RunnerJobState, RunnerView};
+use pnex_core::runners::{RunnerJobOutcome, RunnerJobState};
+
+mod builds;
+mod env_editor;
+mod environments;
+mod registries;
+mod runners;
+
+use environments::EnvironmentsTab;
+use registries::RegistriesTab;
+use runners::RunnersTab;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tab {
     Agents,
     Runs,
     Environments,
+    Registries,
     Runners,
 }
 
 /// `2026-10-01T13:44:11.000Z` → `2026-10-01 13:44`.
-fn short_date(at: &str) -> String {
+pub(super) fn short_date(at: &str) -> String {
     at.get(..16).unwrap_or(at).replace('T', " ")
 }
 
@@ -71,12 +79,15 @@ pub fn HostedAgents() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut adding = use_signal(|| false);
     let can_write = access::can("agents:write");
-    let tabs = [
+    let mut tabs = vec![
         (Tab::Agents, "agents-tab-agents"),
         (Tab::Runs, "agents-tab-runs"),
         (Tab::Environments, "agents-tab-environments"),
         (Tab::Runners, "agents-tab-runners"),
     ];
+    if access::can("image-registries:read") {
+        tabs.insert(3, (Tab::Registries, "agents-reg-tab"));
+    }
     rsx! {
         ListLayout {
             title: t!("agents-title").to_string(),
@@ -109,6 +120,9 @@ pub fn HostedAgents() -> Element {
                 },
                 Tab::Environments => rsx! {
                     EnvironmentsTab { reload }
+                },
+                Tab::Registries => rsx! {
+                    RegistriesTab { reload }
                 },
                 Tab::Runners => rsx! {
                     RunnersTab { reload }
@@ -711,245 +725,6 @@ fn DownloadButton(artifact: AgentArtifact) -> Element {
                 });
             },
             {t!("agents-download")}
-        }
-    }
-}
-
-/// Where the runs of an environment execute: an Admin picks, others read (D763).
-#[component]
-fn IsolationCell(env: Environment, reload: Signal<u32>) -> Element {
-    let label = |i: Isolation| match i {
-        Isolation::Pod => t!("agents-isolation-pod").to_string(),
-        Isolation::Vm => t!("agents-isolation-vm").to_string(),
-    };
-    if !access::can("environments:build") {
-        return rsx! {
-            span { class: "text-sm text-slate", {label(env.isolation)} }
-        };
-    }
-    let (id, version, current) = (env.id.clone(), env.version, env.isolation);
-    let save = move |value: String| {
-        let id = id.clone();
-        let mut reload = reload;
-        spawn(async move {
-            if let Some(isolation) = Isolation::parse(&value) {
-                let input = IsolationInput {
-                    isolation,
-                    expected_version: version,
-                };
-                match api::hosted_agents::set_isolation(&id, &input).await {
-                    Ok(_) => {
-                        toasts::info(t!("agents-isolation-saved").to_string());
-                        reload += 1;
-                    }
-                    Err(e) => toasts::error(e),
-                }
-            }
-        });
-    };
-    rsx! {
-        select {
-            class: "{INPUT}",
-            aria_label: t!("agents-col-isolation").to_string(),
-            onchange: move |e| save(e.value()),
-            for i in [Isolation::Pod, Isolation::Vm] {
-                option {
-                    key: "{i.as_str()}",
-                    value: i.as_str(),
-                    selected: i == current,
-                    {label(i)}
-                }
-            }
-        }
-    }
-}
-
-/// Environments of the org with their active image; a build opens on its log.
-#[component]
-fn EnvironmentsTab(reload: Signal<u32>) -> Element {
-    let mut open = use_signal(|| Option::<Environment>::None);
-    let list = use_resource(move || async move {
-        let _ = reload();
-        api::hosted_agents::environments().await
-    });
-    let (state, is_empty, rows) = match &*list.value().read() {
-        None => (None, false, Vec::new()),
-        Some(Ok(p)) => (Some(Ok(())), p.count == 0, p.results.clone()),
-        Some(Err(e)) => (Some(Err(e.clone())), false, Vec::new()),
-    };
-    let columns =
-        vec![
-        Column::new(t!("agents-col-name").to_string(), |e: &Environment| {
-            rsx! {
-                span { class: "text-sm font-medium text-ink", {e.name.clone()} }
-            }
-        }),
-        Column::new(t!("agents-col-image").to_string(), |e: &Environment| {
-            let image = e.active_image.clone();
-            rsx! {
-                if let Some(image) = image {
-                    span { class: "font-mono text-xs text-slate break-all", {image} }
-                } else {
-                    span { class: "text-sm text-slate", {t!("agents-no-image")} }
-                }
-            }
-        }),
-        Column::new(t!("agents-col-isolation").to_string(), move |e: &Environment| {
-            rsx! {
-                IsolationCell { key: "{e.id}-{e.version}", env: e.clone(), reload }
-            }
-        }),
-        Column::new(t!("common-actions").to_string(), move |e: &Environment| {
-            let env = e.clone();
-            rsx! {
-                button {
-                    class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
-                    onclick: move |_| open.set(Some(env.clone())),
-                    {t!("agents-builds")}
-                }
-            }
-        })
-        .actions(),
-    ];
-    rsx! {
-        if let Some(env) = open() {
-            BuildsDialog { env, open }
-        }
-        ListStates {
-            state,
-            is_empty,
-            empty_message: t!("agents-environments-empty").to_string(),
-            empty_detail: rsx! {},
-            DataTable {
-                columns,
-                rows,
-                row_key: RowKey::new(|e: &Environment| e.id.clone()),
-            }
-        }
-    }
-}
-
-fn build_state(b: &EnvironmentBuild) -> String {
-    match b.state {
-        EnvironmentBuildState::Building => t!("agents-build-building").to_string(),
-        EnvironmentBuildState::Ready => t!("agents-build-ready").to_string(),
-        EnvironmentBuildState::Failed => t!("agents-build-failed").to_string(),
-    }
-}
-
-#[component]
-fn BuildsDialog(env: Environment, open: Signal<Option<Environment>>) -> Element {
-    let env_id = env.id.clone();
-    let mut log_of = use_signal(|| Option::<String>::None);
-    let builds = use_resource(move || {
-        let id = env_id.clone();
-        async move { api::hosted_agents::builds(&id).await }
-    });
-    let logs_env = env.id.clone();
-    let lines = use_resource(move || {
-        let env = logs_env.clone();
-        async move {
-            match log_of() {
-                Some(build) => api::hosted_agents::build_logs(&env, &build)
-                    .await
-                    .unwrap_or_default(),
-                None => Vec::new(),
-            }
-        }
-    });
-    let rows = match &*builds.value().read() {
-        Some(Ok(p)) => p.results.clone(),
-        _ => Vec::new(),
-    };
-    let shown = lines.value().read().clone().unwrap_or_default();
-    rsx! {
-        crate::components::modal::Modal {
-            title: t!("agents-builds-title", name : env.name.clone()).to_string(),
-            max_width: "max-w-3xl".to_string(),
-            on_close: move |_| open.set(None),
-            div { class: "space-y-3",
-                if rows.is_empty() {
-                    p { class: "text-sm text-slate", {t!("agents-no-builds")} }
-                }
-                for b in rows {
-                    div {
-                        key: "{b.id}",
-                        class: "flex items-center justify-between gap-2 text-sm",
-                        span { class: "text-ink", "v{b.number}" }
-                        span { class: "text-slate", {build_state(&b)} }
-                        span { class: "text-slate", {short_date(&b.created_at)} }
-                        button {
-                            class: "px-2 py-0.5 text-xs border border-gray-300 rounded hover:bg-gray-50",
-                            onclick: move |_| log_of.set(Some(b.id.clone())),
-                            {t!("agents-log")}
-                        }
-                    }
-                }
-                if log_of().is_some() {
-                    pre { class: "max-h-96 overflow-auto rounded bg-gray-50 p-3 text-xs leading-5 text-ink",
-                        if shown.is_empty() {
-                            {t!("agents-no-log")}
-                        }
-                        for (i, l) in shown.into_iter().enumerate() {
-                            div { key: "{i}", "{l.line}" }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Runners of the org: where runs and builds go.
-#[component]
-fn RunnersTab(reload: Signal<u32>) -> Element {
-    let list = use_resource(move || async move {
-        let _ = reload();
-        api::hosted_agents::runners().await
-    });
-    let (state, is_empty, rows) = match &*list.value().read() {
-        None => (None, false, Vec::new()),
-        Some(Ok(p)) => (Some(Ok(())), p.count == 0, p.results.clone()),
-        Some(Err(e)) => (Some(Err(e.clone())), false, Vec::new()),
-    };
-    let columns = vec![
-        Column::new(t!("agents-col-name").to_string(), |r: &RunnerView| {
-            rsx! {
-                span { class: "text-sm font-medium text-ink", {r.name.clone()} }
-            }
-        }),
-        Column::new(t!("agents-col-state").to_string(), |r: &RunnerView| {
-            let label = if r.online {
-                t!("agents-runner-online")
-            } else {
-                t!("agents-runner-offline")
-            };
-            rsx! {
-                span { class: "text-sm text-slate", {label} }
-            }
-        }),
-        Column::new(
-            t!("agents-col-capabilities").to_string(),
-            |r: &RunnerView| {
-                let caps = r.capabilities.join(" · ");
-                rsx! {
-                    span { class: "font-mono text-xs text-slate", {caps} }
-                }
-            },
-        )
-        .secondary(),
-    ];
-    rsx! {
-        ListStates {
-            state,
-            is_empty,
-            empty_message: t!("agents-runners-empty").to_string(),
-            empty_detail: rsx! {},
-            DataTable {
-                columns,
-                rows,
-                row_key: RowKey::new(|r: &RunnerView| r.id.clone()),
-            }
         }
     }
 }

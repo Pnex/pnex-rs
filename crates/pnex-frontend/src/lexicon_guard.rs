@@ -436,6 +436,26 @@ const RULES: &[Rule] = &[
         use_instead: "default profile",
         allowed_keys: &[],
     },
+    // agent-environments.md D720: what an image scan finds is a « faille ».
+    Rule {
+        scope: Scope::Fr,
+        term: "vulnérabilité",
+        use_instead: "faille",
+        allowed_keys: &[],
+    },
+    // A runner enrolls with a join token (« jeton d'inscription »).
+    Rule {
+        scope: Scope::Fr,
+        term: "token d'inscription",
+        use_instead: "jeton d'inscription",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "join key",
+        use_instead: "join token",
+        allowed_keys: &[],
+    },
 ];
 
 /// Fluent placeables (`{ $label }`, selectors) are code, not words.

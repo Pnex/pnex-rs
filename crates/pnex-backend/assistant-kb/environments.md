@@ -2,7 +2,7 @@
 id: environments
 title: Agent environments (the image an agent runs in)
 kind: feature
-pages: 
+pages: /agents
 nodes: 
 err_codes: environment-not-found, environment-version-not-found, environment-name-taken, environment-version-conflict, environment-secret-in-dockerfile, image-registry-in-use, environment-build-not-found, environment-build-unavailable, environment-build-no-write-secret, environment-build-running, environment-scan-not-found, environment-sbom-unavailable, environment-build-not-ready, environment-build-logs-unavailable, environment-scan-refused
 tools: 
@@ -10,7 +10,12 @@ tags: environment, dockerfile, image, version, build, agent, context
 ---
 An environment describes the image an agent runs in. Its source lives in PneX: a Dockerfile, its text context files and its build arguments, with no git repository involved. It also names the image registry its images go to.
 
-They are listed in the Agents page, Environments tab, with their active image and their isolation; their source is managed through the API.
+They are listed in the Agents page, Environments tab, with their active image and their isolation. **New environment** asks for a name, a description and the image registry; the new environment opens on its editor. **Open** on a row opens the editor of an environment.
+
+## The editor
+- The Dockerfile and each context file are tabs. Under the tabs, type a path and click **Add a file**; **Rename** and **Remove the file** act on the open file.
+- **Save** creates a new version. **History** lists the versions: **Open** loads one into the editor, **Compare** shows its differences with the latest one, **Restore** saves it again as a new version.
+- **Build** builds the version shown, once it is saved; it takes `environments:build`. The builds are listed beside the editor, newest first; **Refresh** reloads them.
 
 ## Versions
 - Each save creates a new numbered version, which never changes afterwards. Its fingerprint is the SHA-256 of its source.
@@ -23,10 +28,10 @@ An Admin starts the build of a version. It runs in a pod created by a runner of 
 Builds reuse what earlier builds of the same environment produced, when the deployment has a cache store: a second build of an unchanged Dockerfile is much shorter. Each environment has its own cache, and a build can reach no other.
 
 ## Activating
-An Admin chooses the active build: the image the runs of this environment execute. Going back means activating an earlier build. Only a build that produced an image can be activated. A scan result does not block it for now.
+An Admin chooses the active build with **Activate** on a build: the image the runs of this environment execute. Going back means activating an earlier build. Only a build that produced an image can be activated. With the scan policy set to refuse, a build over the threshold cannot be activated.
 
 ## Scans
-When the deployment has a scanner, each successful build is scanned for known vulnerabilities. The build shows the count per severity, and its scan lists each finding with the version that fixes it, when one exists. A rebuild often picks up that fix through a newer base image. The active build is scanned again every day, since a flaw is often published after the build. A failed scan leaves the build usable. The scan sees the image only: not what a setup step installs later, nor the code of the project.
+When the deployment has a scanner, each successful build is scanned for known vulnerabilities. The build shows its critical, high and fixable counts; clicking them opens its flaws, each with the version that fixes it when one exists, and how many count against the threshold of the organization. A rebuild often picks up that fix through a newer base image. The active build is scanned again every day, since a flaw is often published after the build. A failed scan leaves the build usable. The scan sees the image only: not what a setup step installs later, nor the code of the project.
 
 ## SBOM and ontology
 Each scan produces an SBOM, the list of what the image contains, in the CycloneDX format. The document can be downloaded from the build, and the follow-up of an environment lists each of its scans with its counts per severity. The scan also fills the ontology, with the Software supply pack installed on first use: the image, its SBOM, its components and the vulnerabilities it is exposed to. A component is shared by every image that holds it, so a query can answer where a package runs. A vulnerability a later scan no longer finds closes its link, which stays in the history.
@@ -37,7 +42,7 @@ Each scan produces an SBOM, the list of what the image contains, in the CycloneD
 
 ## Troubleshooting
 - **"This deployment has no builder image"**: the platform administrator has not configured builds.
-- **"The registry has no write secret"**: add a write secret to the registry of this environment.
+- **"The registry has no write secret"**: in the Image registries tab, edit the registry of this environment and add its write secret.
 - **"A build is not finished"**: wait for it to end, then start the next one.
 - **"This source holds what looks like a credential"**: the message names the file or build argument. Remove the value. A build argument stays readable in the image history, so it is no place for a secret either.
 - **"This environment changed since you opened it"**: reload it, then save your changes again.
@@ -49,7 +54,7 @@ Each scan produces an SBOM, the list of what the image contains, in the CycloneD
 
 ## The scan policy
 - Each image is scanned for known flaws. By default, a critical flaw that a newer package fixes is only signaled: a notice says the image should be rebuilt.
-- An admin can lower the threshold to high flaws, or turn it off, and can choose to refuse: then an image over the threshold can neither be activated nor run (`environment-scan-refused`) until it is rebuilt.
+- The threshold and its effect are the two lists above the environments. An admin can lower the threshold to high flaws, or turn it off, and can choose to refuse: then an image over the threshold can neither be activated nor run (`environment-scan-refused`) until it is rebuilt.
 - A change of the policy applies at once to the next activation and the next run.
 
 ## Isolation
