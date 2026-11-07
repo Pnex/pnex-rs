@@ -276,6 +276,8 @@ les règles plus anciennes qui les contredisent.
 | Accès enregistré à un registre OCI, secrets de lecture et d'écriture distincts (D703) | Registre d'images | Image registry | pas « connecteur » (= base externe), pas « dépôt » (= chemin dans le registre) |
 | Jeton à usage unique qui inscrit un runner | Jeton d'inscription | Join token | pas « token » en français, pas « clé » |
 | Proposition de fusionner la branche poussée par un agent codeur, ouverte sur la forge ; la fusion reste humaine (D388, D775) | Demande de fusion | Merge request | pas « pull request » ni « PR » en français |
+| Service démarré à côté d'un agent à chaque exécution, mot de passe `@generated` (D717) | Service de test | Test service | pas « service annexe », pas « sidecar » (= conteneur interne de PNeX) |
+| Dossier gardé d'une exécution à l'autre, indexé par des fichiers de verrouillage (D730) | Cache de dépendances | Dependency cache | pas « cache de build » ; « cache live » reste la mémoire Valkey |
 | Seuil et effet du scan des images de l'org (D748) | Politique de scan | Scan policy | — |
 | Faille connue trouvée par le scan d'une image (D720) | Faille | Flaw | pas « vulnérabilité », pas « CVE » à l'écran |
 | Lignes écrites par les conteneurs d'une exécution ou d'un build (D733) | Journal | Log | pas « logs » en français |

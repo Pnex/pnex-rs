@@ -21,6 +21,7 @@ use pnex_core::agent_runs::{
 use pnex_core::agents::{Agent, AgentCreate, AgentRole, AgentRunStart, AgentSpec};
 use pnex_core::runners::{RunnerJobOutcome, RunnerJobState};
 
+mod agent_editor;
 mod builds;
 mod env_editor;
 mod environments;
@@ -115,7 +116,7 @@ pub fn HostedAgents() -> Element {
             },
             match tab() {
                 Tab::Agents => rsx! {
-                    AgentsTab { reload, adding }
+                    AgentsTab { reload, adding, tab }
                 },
                 Tab::Runs => rsx! {
                     RunsTab { reload }
@@ -138,8 +139,10 @@ pub fn HostedAgents() -> Element {
 }
 
 #[component]
-fn AgentsTab(reload: Signal<u32>, adding: Signal<bool>) -> Element {
+fn AgentsTab(reload: Signal<u32>, adding: Signal<bool>, tab: Signal<Tab>) -> Element {
+    let mut tab = tab;
     let page = use_signal(|| 0i64);
+    let mut editing = use_signal(|| Option::<String>::None);
     let mut error = use_signal(|| Option::<ApiError>::None);
     let mut confirm_delete = use_signal(|| Option::<String>::None);
     let mut starting = use_signal(|| Option::<Agent>::None);
@@ -203,8 +206,14 @@ fn AgentsTab(reload: Signal<u32>, adding: Signal<bool>) -> Element {
             let agent = a.clone();
             let id = a.id.clone();
             let confirm_id = id.clone();
+            let open_id = id.clone();
             rsx! {
                 div { class: "flex gap-1",
+                    button {
+                        class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
+                        onclick: move |_| editing.set(Some(open_id.clone())),
+                        {t!("agents-edit-open")}
+                    }
                     if can_run {
                         button {
                             class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
@@ -244,6 +253,21 @@ fn AgentsTab(reload: Signal<u32>, adding: Signal<bool>) -> Element {
         })
         .actions(),
     );
+    if let Some(agent_id) = editing() {
+        return rsx! {
+            agent_editor::AgentEditor {
+                agent_id,
+                on_back: move |_| {
+                    editing.set(None);
+                    reload.with_mut(|r| *r += 1);
+                },
+                on_skills: move |_| {
+                    editing.set(None);
+                    tab.set(Tab::Skills);
+                },
+            }
+        };
+    }
     rsx! {
         if adding() {
             NewAgent { adding, reload }

@@ -3,7 +3,7 @@
 //! ever downloaded, never shown.
 
 use pnex_core::agent_runs::{AgentArtifact, AgentRun};
-use pnex_core::agents::{Agent, AgentCreate, AgentRunStart};
+use pnex_core::agents::{Agent, AgentCreate, AgentRunStart, AgentVersion};
 use pnex_core::environments::{
     Environment, EnvironmentActivate, EnvironmentBuild, EnvironmentInput, EnvironmentScan,
     EnvironmentVersion, EnvironmentVersionInput, EnvironmentVersionSummary, IsolationInput,
@@ -32,6 +32,20 @@ pub async fn agents(limit: i64, offset: i64) -> Result<Paginated<Agent>, ApiErro
 
 pub async fn create_agent(input: &AgentCreate) -> Result<Agent, ApiError> {
     client::request(reqwest::Method::POST, "/api/v1/agents", Some(body(input)?)).await
+}
+
+pub async fn agent(id: &str) -> Result<Agent, ApiError> {
+    client::request(reqwest::Method::GET, &format!("/api/v1/agents/{id}"), None).await
+}
+
+/// Versions of an agent's record, newest first, each with its spec.
+pub async fn agent_versions(id: &str) -> Result<Paginated<AgentVersion>, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/agents/{id}/versions?limit=50&offset=0"),
+        None,
+    )
+    .await
 }
 
 pub async fn delete_agent(id: &str) -> Result<(), ApiError> {

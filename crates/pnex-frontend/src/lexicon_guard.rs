@@ -485,6 +485,20 @@ const RULES: &[Rule] = &[
         use_instead: "demande de fusion",
         allowed_keys: &[],
     },
+    // D717: a service started beside an agent at each run is a « service de test ».
+    Rule {
+        scope: Scope::Fr,
+        term: "service annexe",
+        use_instead: "service de test (agents, D717)",
+        allowed_keys: &[],
+    },
+    // D730: folders kept between runs of an agent are « caches de dépendances ».
+    Rule {
+        scope: Scope::Fr,
+        term: "cache de build",
+        use_instead: "cache de dépendances (agents, D730)",
+        allowed_keys: &[],
+    },
 ];
 
 /// Fluent placeables (`{ $label }`, selectors) are code, not words.

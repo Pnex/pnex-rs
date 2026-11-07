@@ -19,6 +19,10 @@ The Agents page lists the agents and their runs. From it a person creates an age
 - Every change of the record is a new version. A run starts from the current version and may only ask for less: a shorter time, fewer model calls. It must be given every file the record names.
 - The tier of the organization caps how many agents it can have, apart from its members (`agent-quota`).
 - Deleting an agent removes its identity, keys and roles; its past runs stay readable.
+- To change an agent, open it from its row on the Agents tab: its whole record is one form (environment, command one argument per line, variables, limits, inputs, outputs, repositories, test services, dependency caches, model provider). Save makes a new version; History lists the versions, compares two, opens one into the form or makes it current again.
+- If someone saved the agent meanwhile, the save is refused (`agent-version-conflict`) and the agent is shown again at its latest version: redo the change there.
+- The role is chosen when the agent is created and is shown read only afterwards. The skills it runs with are pinned from the Skills tab and only listed in the form.
+- A variable that looks like a secret is refused: pick the token from the vault on the repository, or ask a test service for a generated password.
 
 ## The model
 - The agent reaches the model of the organization through the PneX gateway only. The provider key stays in the vault and never enters the sandbox.

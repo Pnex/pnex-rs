@@ -80,6 +80,17 @@ test.describe('agents', { tag: '@agents' }, () => {
     await expect(row).toContainText(app.t('agents-role-viewer'));
     await capture('agents-list', { caption: 'Agents: an agent and the files it takes and leaves' });
 
+    // Its record opens on the editor: a shorter timeout saved makes version 2.
+    await row.getByRole('button', { name: app.t('agents-edit-open') }).click();
+    const timeout = main.locator('#agent-edit-timeout');
+    await expect(timeout).toHaveValue('1800');
+    await timeout.fill('1200');
+    await main.getByRole('button', { name: app.t('agents-edit-save') }).click();
+    await expect(main.getByText('v2', { exact: true })).toBeVisible();
+    await capture('agents-editor', { caption: 'Agents: the record of an agent, edited and versioned' });
+    await main.getByRole('button', { name: app.t('agents-edit-back') }).click();
+    await expect(row).toContainText('v2');
+
     // Start a run, giving the ticket.
     await row.getByRole('button', { name: app.t('agents-start') }).click();
     dlg = page.getByRole('dialog');

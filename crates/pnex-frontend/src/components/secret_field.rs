@@ -104,9 +104,13 @@ pub fn SecretField(
     /// Viewer: shows the state, no action.
     #[props(default)]
     read_only: bool,
+    /// Only an existing secret may be picked: the consumer stores a secret id, not a value.
+    #[props(default)]
+    pick_only: bool,
 ) -> Element {
     let mut draft = draft;
     let managers_only = !read_only && !can_manage;
+    let can_type = can_manage && !pick_only;
     let read_only = read_only || !can_manage;
     // A reference loaded from a graph has no name yet: look it up (re-run
     // on draft changes, network only while a name is missing).
@@ -125,7 +129,7 @@ pub fn SecretField(
     });
     let initial = match &*draft.peek() {
         SecretDraft::Keep(_) | SecretDraft::Pick(_) => Mode::Show,
-        _ if can_manage => Mode::Type,
+        _ if can_type => Mode::Type,
         _ => Mode::Pick,
     };
     let mut mode = use_signal(|| initial);
@@ -205,7 +209,7 @@ pub fn SecretField(
                         button {
                             r#type: "button",
                             class: "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50",
-                            onclick: move |_| mode.set(if can_manage { Mode::Type } else { Mode::Pick }),
+                            onclick: move |_| mode.set(if can_type { Mode::Type } else { Mode::Pick }),
                             {t!("secret-field-change")}
                         }
                     }
@@ -216,7 +220,7 @@ pub fn SecretField(
                 span { class: "text-xs text-gray-500", {t!("secret-field-unset")} }
             } else {
                 div { class: "inline-flex rounded-lg bg-gray-100 p-0.5",
-                    if can_manage {
+                    if can_type {
                         button {
                             r#type: "button",
                             class: if mode() == Mode::Type { TAB_ON } else { TAB },
