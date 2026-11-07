@@ -20,10 +20,10 @@ use std::time::{Duration, Instant};
 
 use axum::body::Bytes;
 use loco_rs::app::AppContext;
-use pnex_core::browser_agent::fold;
 use pnex_core::site_recipe::{
-    fill, reason, site_base, site_host, AssertSpec, ExtractKind, ExtractSpec, PdfSpec, Recipe,
-    RunExtract, RunStatus, RunStep, Step, StepStatus, Target, WaitSpec,
+    between, contains_loose, fill, page_call, reason, site_base, site_host, AssertSpec,
+    ExtractKind, ExtractSpec, ForEachSpec, PdfSpec, Recipe, RunExtract, RunStatus, RunStep, Step,
+    StepStatus, Target, TypeSpec, WaitSpec,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -536,54 +536,6 @@ async fn judge(
 
 /// Finds the target, outlines it and brings it into view. Text matches
 /// ignore case, accents and spacing; the innermost visible match wins.
-const FIND_JS: &str = r#"(function (spec) {
-  const norm = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-  // What a person can see: a box, not hidden, and no transparent ancestor
-  // (closed menus are often opacity 0).
-  const visible = e => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
-    if (!(r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none')) return false;
-    for (let a = e; a && a.nodeType === 1; a = a.parentElement) { if (parseFloat(getComputedStyle(a).opacity) === 0) return false; }
-    return true; };
-  document.querySelectorAll('[data-pnex-target]').forEach(e => { e.style.removeProperty('outline'); e.style.removeProperty('box-shadow'); e.removeAttribute('data-pnex-target'); });
-  let c = [];
-  try {
-    if (spec.selector) c = [...document.querySelectorAll(spec.selector)];
-    else if (spec.role) {
-      c = [...document.querySelectorAll('[role="' + spec.role.replace(/"/g, '') + '"]' + (spec.role === 'button' ? ',button' : spec.role === 'link' ? ',a[href]' : spec.role === 'tab' ? ',[role=tab]' : ''))];
-      if (spec.name) c = c.filter(e => norm(e.getAttribute('aria-label') || e.innerText).includes(norm(spec.name)));
-    } else if (spec.href_contains || spec.link_text_contains) {
-      c = [...document.querySelectorAll('a[href]')].filter(a => spec.href_contains
-        ? a.href.toLowerCase().includes(spec.href_contains.toLowerCase())
-        : norm(a.innerText).includes(norm(spec.link_text_contains)));
-    } else {
-      const want = norm(spec.text || spec.text_contains);
-      c = [...document.querySelectorAll('body *')].filter(e => {
-        const t = norm(e.innerText); return spec.text ? t === want : t.includes(want); });
-      c = c.filter(e => !c.some(o => o !== e && e.contains(o)));
-    }
-  } catch (err) { return { found: 0, error: String(err) }; }
-  c = c.filter(visible);
-  if (!c.length) return { found: 0 };
-  const el = c[0];
-  el.scrollIntoView({ block: 'center' });
-  el.setAttribute('data-pnex-target', '1');
-  el.style.setProperty('outline', '4px solid #e11d48', 'important');
-  el.style.setProperty('box-shadow', '0 0 0 8px rgba(225, 29, 72, 0.25)', 'important');
-  return { found: c.length, href: el.closest('a[href]') ? el.closest('a[href]').href : null };
-})"#;
-
-const CLICK_JS: &str = r#"(function () {
-  const el = document.querySelector('[data-pnex-target]');
-  if (!el) return false;
-  el.style.removeProperty('outline');
-  el.style.removeProperty('box-shadow');
-  el.removeAttribute('data-pnex-target');
-  const target = el.closest('a,button,[role=button],[role=tab],[role=link],summary,label') || el;
-  // Clicked after this call returns: a navigation must not swallow its reply.
-  setTimeout(() => target.click(), 0);
-  return true;
-})()"#;
-
 impl Run {
     async fn eval<T: serde::de::DeserializeOwned>(&self, js: String) -> Option<T> {
         self.eval_within(js, Duration::from_secs(10)).await
@@ -606,7 +558,7 @@ impl Run {
         let until = Instant::now() + FIND_GRACE;
         loop {
             let out: serde_json::Value = self
-                .eval(format!("{FIND_JS}({spec})"))
+                .eval(page_call("pnexFind", &[spec.clone()]))
                 .await
                 .unwrap_or_default();
             let found = out["found"].as_u64().unwrap_or(0);
@@ -738,7 +690,12 @@ impl Run {
         }
         for (i, step) in steps.iter().enumerate().skip(first) {
             let started = Instant::now();
-            let outcome = tokio::time::timeout(STEP_TIMEOUT, self.step(i, step))
+            // A loop bounds each of its own steps; the run bounds the loop.
+            let limit = match step {
+                Step::ForEach(_) => RUN_TIMEOUT,
+                _ => STEP_TIMEOUT,
+            };
+            let outcome = tokio::time::timeout(limit, self.step(i, step))
                 .await
                 .unwrap_or(Err(Fail::of(reason::TIMEOUT)));
             let shot = match self.pre_shot.take() {
@@ -792,7 +749,99 @@ impl Run {
             Step::FollowPdf(p) => self.follow_pdf(i, p).await,
             Step::Extract(e) => self.extract(i, e).await,
             Step::Assert(a) => self.assert(a).await,
+            Step::Type(t) => self.type_text(t).await,
+            Step::Press(k) => self.press(k).await,
+            // Boxed: a loop plays steps, and an inline future would carry
+            // a whole step inside every step.
+            Step::ForEach(f) => Box::pin(self.for_each(i, f)).await,
         }
+    }
+
+    /// Types into a search field (D789); anything else is refused by the
+    /// page side.
+    async fn type_text(&mut self, t: &TypeSpec) -> StepResult {
+        let f = |o: &Option<String>| o.as_deref().map(|s| self.fill(s));
+        let spec =
+            json!({ "text": self.fill(&t.text), "selector": f(&t.selector), "role": f(&t.role) });
+        let out: serde_json::Value = self
+            .eval(page_call("pnexType", &[spec]))
+            .await
+            .unwrap_or_default();
+        if out["ok"].as_bool() == Some(true) {
+            return Ok(StepOk::default());
+        }
+        match out["reason"].as_str() {
+            Some(reason::NOT_A_SEARCH_FIELD) => Err(Fail::of(reason::NOT_A_SEARCH_FIELD)),
+            _ if t.optional => Ok(StepOk { skipped: true }),
+            _ => Err(Fail::of(reason::TARGET_NOT_FOUND)),
+        }
+    }
+
+    /// One key on the focused field; Enter may navigate.
+    async fn press(&mut self, key: &str) -> StepResult {
+        self.guard.lock().expect("guard").status = None;
+        let _: Option<bool> = self.eval(page_call("pnexPress", &[json!(key)])).await;
+        self.wait_loaded().await;
+        if let Some(f) = self.page_failure().await {
+            return Err(f);
+        }
+        self.still_on_site().await
+    }
+
+    /// Opens each link of a cards extract and plays the sub-steps on it
+    /// (D790); their extracts are named `<as>.<n>`. Each sub-step is a row
+    /// of the journal, labelled with its link number.
+    async fn for_each(&mut self, i: usize, f: &ForEachSpec) -> StepResult {
+        let links: Vec<String> = self
+            .extracts
+            .iter()
+            .find(|e| e.name == f.from)
+            .map(|e| {
+                e.cards
+                    .iter()
+                    .filter_map(|c| c.get(&f.link).filter(|l| !l.is_empty()).cloned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let max = f.max.unwrap_or(pnex_core::site_recipe::FOR_EACH_MAX) as usize;
+        for (n, link) in links.into_iter().take(max).enumerate() {
+            let n = n + 1;
+            if !on_site(&self.site, &link) {
+                return Err(Fail(reason::OFF_SITE, Some(link)));
+            }
+            let opened = tokio::time::timeout(STEP_TIMEOUT, self.open(&link))
+                .await
+                .unwrap_or(Err(Fail::of(reason::TIMEOUT)));
+            opened?;
+            for (j, sub) in f.steps.iter().enumerate() {
+                let sub = numbered(sub, j, n);
+                let started = Instant::now();
+                let outcome = tokio::time::timeout(STEP_TIMEOUT, Box::pin(self.step(j, &sub)))
+                    .await
+                    .unwrap_or(Err(Fail::of(reason::TIMEOUT)));
+                let (status, why, detail) = match &outcome {
+                    Ok(o) if o.skipped => {
+                        (StepStatus::Skipped, Some(reason::TARGET_NOT_FOUND), None)
+                    }
+                    Ok(_) => (StepStatus::Ok, None, None),
+                    Err(Fail(w, d)) => (StepStatus::Failed, Some(*w), d.clone()),
+                };
+                self.steps.push(RunStep {
+                    index: i as u32,
+                    action: sub.action().into(),
+                    label: format!("{n} · {}", self.fill(&sub.label())),
+                    status,
+                    reason: why.map(str::to_string),
+                    detail,
+                    url: self.url().await,
+                    ms: started.elapsed().as_millis() as u64,
+                    screenshot: None,
+                });
+                self.save().await;
+                outcome?;
+            }
+        }
+        Ok(StepOk::default())
     }
 
     async fn open(&mut self, path: &str) -> StepResult {
@@ -873,7 +922,7 @@ impl Run {
         // The step keeps the capture of the outlined target: where it clicks.
         self.pre_shot = self.screenshot(self.steps.len()).await;
         self.guard.lock().expect("guard").status = None;
-        let _: Option<bool> = self.eval(CLICK_JS.into()).await;
+        let _: Option<bool> = self.eval(page_call("pnexClick", &[])).await;
         self.wait_loaded().await;
         if let Some(f) = self.page_failure().await {
             return Err(f);
@@ -995,6 +1044,7 @@ impl Run {
             from: Some(href),
             file: stored.then_some(file),
             bytes: Some(bytes),
+            cards: Vec::new(),
         });
         Ok(StepOk::default())
     }
@@ -1005,6 +1055,39 @@ impl Run {
     }
 
     async fn extract(&mut self, i: usize, e: &ExtractSpec) -> StepResult {
+        if let Some(c) = &e.cards {
+            let spec = json!({
+                "selector": self.fill(&c.selector),
+                "fields": c.fields,
+                "max": c.max.unwrap_or(pnex_core::site_recipe::CARDS_MAX),
+            });
+            let out: serde_json::Value = self
+                .eval(page_call("pnexCards", &[spec]))
+                .await
+                .unwrap_or_default();
+            let cards: Vec<BTreeMap<String, String>> =
+                serde_json::from_value(out["cards"].clone()).unwrap_or_default();
+            if cards.is_empty() {
+                return if e.optional {
+                    Ok(StepOk { skipped: true })
+                } else {
+                    Err(Fail::of(reason::TARGET_NOT_FOUND))
+                };
+            }
+            let text = serde_json::to_string(&cards).unwrap_or_default();
+            self.push_extract(RunExtract {
+                name: e.name.clone().unwrap_or_else(|| format!("extract-{i}")),
+                kind: ExtractKind::Cards,
+                chars: text.chars().count() as u64,
+                sha256: sha256_hex(text.as_bytes()),
+                text: text.chars().take(EXTRACT_MAX).collect(),
+                from: Some(self.url().await),
+                file: None,
+                bytes: None,
+                cards,
+            });
+            return Ok(StepOk::default());
+        }
         let text = if let Some(sel) = &e.selector {
             let (found, _) = self.find(json!({ "selector": self.fill(sel) })).await;
             if found == 0 {
@@ -1014,12 +1097,9 @@ impl Run {
                     Err(Fail::of(reason::TARGET_NOT_FOUND))
                 };
             }
-            let sel = serde_json::to_string(&self.fill(sel)).unwrap_or_default();
-            self.eval::<String>(format!(
-                "[...document.querySelectorAll({sel})].map(e => e.innerText.trim()).filter(Boolean).join('\\n\\n')"
-            ))
-            .await
-            .unwrap_or_default()
+            self.eval::<String>(page_call("pnexSelectorText", &[json!(self.fill(sel))]))
+                .await
+                .unwrap_or_default()
         } else if let Some([a, b]) = &e.between {
             match between(&self.text().await, &self.fill(a), &self.fill(b)) {
                 Some(t) => t,
@@ -1039,6 +1119,7 @@ impl Run {
             from: Some(self.url().await),
             file: None,
             bytes: None,
+            cards: Vec::new(),
         });
         Ok(StepOk::default())
     }
@@ -1051,9 +1132,8 @@ impl Run {
                 .iter()
                 .any(|e| &e.name == n && !e.text.trim().is_empty())
         } else if let Some(c) = &a.count_min {
-            let sel = serde_json::to_string(&self.fill(&c.selector)).unwrap_or_default();
             let n: u64 = self
-                .eval(format!("document.querySelectorAll({sel}).length"))
+                .eval(page_call("pnexCount", &[json!(self.fill(&c.selector))]))
                 .await
                 .unwrap_or(0);
             n >= u64::from(c.min)
@@ -1087,97 +1167,21 @@ async fn pdf_text(bytes: Vec<u8>) -> String {
     }
 }
 
-/// Folded text without any whitespace (U+00A0, U+202F, U+2009 included),
-/// each folded char paired with the index of the original char it comes
-/// from: "RS 7511" and "RS7511" compare equal, and a ligature folded to two
-/// chars keeps both of them.
-fn squash(text: &str) -> Vec<(char, usize)> {
-    text.chars()
-        .enumerate()
-        .filter(|(_, c)| !c.is_whitespace())
-        .flat_map(|(i, c)| {
-            fold(&c.to_string())
-                .chars()
-                .map(move |f| (f, i))
-                .collect::<Vec<_>>()
-        })
-        .collect()
-}
-
-/// Folded char stream index where `needle` starts, from stream index `from`.
-fn find_squashed(hay: &[(char, usize)], needle: &str, from: usize) -> Option<usize> {
-    let n: Vec<char> = squash(needle).into_iter().map(|(c, _)| c).collect();
-    if n.is_empty() || hay.len() < n.len() || from > hay.len() - n.len() {
-        return None;
+/// A sub-step of a loop for link `n`: its extract named `<as>.<n>`.
+fn numbered(step: &Step, j: usize, n: usize) -> Step {
+    let mut step = step.clone();
+    let name = step.output_name(j).map(|o| format!("{o}.{n}"));
+    match &mut step {
+        Step::Extract(e) => e.name = name,
+        Step::FollowPdf(p) => p.name = name,
+        _ => {}
     }
-    (from..=hay.len() - n.len()).find(|&i| {
-        hay[i..i + n.len()]
-            .iter()
-            .map(|(c, _)| *c)
-            .eq(n.iter().copied())
-    })
-}
-
-/// `needle` in `text`, ignoring case, accents and whitespace.
-fn contains_loose(text: &str, needle: &str) -> bool {
-    find_squashed(&squash(text), needle, 0).is_some()
-}
-
-/// Text between the first `a` and the next `b` after it (case, accents and
-/// whitespace ignored); `None` when `a` is missing. Without `b`, up to the end.
-fn between(text: &str, a: &str, b: &str) -> Option<String> {
-    let chars: Vec<char> = text.chars().collect();
-    let hay = squash(text);
-    let a_len = squash(a).len();
-    let k = find_squashed(&hay, a, 0)?;
-    // Original index right after the last char of the matched marker.
-    let start = hay[k + a_len - 1].1 + 1;
-    let end = find_squashed(&hay, b, k + a_len)
-        .map(|j| hay[j].1)
-        .unwrap_or(chars.len());
-    Some(
-        chars[start..end]
-            .iter()
-            .collect::<String>()
-            .trim()
-            .to_string(),
-    )
+    step
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn between_ignores_case_and_accents() {
-        let t = "Accueil\nPROGRAMME de la formation\nModule 1 (4 h)\nModalités : présentiel";
-        assert_eq!(
-            between(t, "programme", "modalites").as_deref(),
-            Some("de la formation\nModule 1 (4 h)")
-        );
-        assert_eq!(between(t, "absent", "x"), None);
-        assert_eq!(
-            between(t, "Module 1", "nothing").as_deref(),
-            Some("(4 h)\nModalités : présentiel")
-        );
-    }
-
-    #[test]
-    fn matching_ignores_no_break_spaces_and_ligatures() {
-        // U+00A0 in the page and in the marker, U+202F before the colon.
-        let t = "Accueil\nContenu\u{a0}de la formation\nPartie 1\nCertification RS\u{a0}7511\u{202f}: oui";
-        assert_eq!(
-            between(t, "Contenu de\u{a0}la formation", "Certification").as_deref(),
-            Some("Partie 1")
-        );
-        assert!(contains_loose(t, "RS7511"));
-        assert!(contains_loose(t, "rs 7511 : OUI"));
-        assert!(!contains_loose(t, "RS7512"));
-        // Ligatures fold to two chars on both sides; the cut lands after the marker.
-        let l = "Le cœur du métier\nSuite";
-        assert_eq!(between(l, "COEUR", "suite").as_deref(), Some("du métier"));
-        assert_eq!(between(l, "cœur du", "").as_deref(), Some("métier\nSuite"));
-    }
 
     /// Live probe of a CDP endpoint: `PNEX_BROWSER_URL=http://127.0.0.1:9222
     /// cargo test -p pnex-backend browser_probe -- --ignored --nocapture`.
@@ -1223,6 +1227,87 @@ mod tests {
                 .map(|t| t.chars().take(50).collect::<String>())
         );
         assert!(!tab.screenshot().await.expect("screenshot").is_empty());
+        tab.close().await;
+    }
+
+    /// The page side of a rule (D789, D790) in a real browser: typed into a
+    /// search field only, submitted by Enter, the result cards read.
+    /// `PNEX_RULE_HOST` is the address the browser reaches this machine at
+    /// (the Docker network gateway for the compose browser):
+    /// `PNEX_RULE_HOST=172.18.0.1 cargo test -p pnex-backend --lib page_side -- --ignored`.
+    #[tokio::test]
+    #[ignore = "needs a running browser"]
+    async fn page_side_types_a_search_and_reads_its_cards() {
+        use axum::{extract::Query, response::Html, routing::get, Router};
+        let home = Html(
+            "<form role=search action=/results><input name=q aria-label=Search></form>\
+             <form><input id=user><input type=password id=pw></form>",
+        );
+        let results = |Query(q): Query<HashMap<String, String>>| async move {
+            let q = q.get("q").cloned().unwrap_or_default();
+            Html(format!(
+                "<h1>{q}</h1><ul><li class=result><span class=name>Jane Doe</span>\
+                 <a href=/in/jane>profile</a></li><li class=result><span class=name>John Roe</span>\
+                 <a href=/in/john>profile</a></li><li class=other>ad</li></ul>"
+            ))
+        };
+        let app = Router::new()
+            .route("/", get(move || async move { home.clone() }))
+            .route("/results", get(results));
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let host = std::env::var("PNEX_RULE_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+        let base = format!("http://{host}:{port}");
+
+        let target = super::super::endpoints::resolve_platform_for_tests();
+        let (cdp, _) = super::super::endpoints::connect(&target)
+            .await
+            .expect("connect");
+        let tab = Tab::open(cdp).await.expect("tab");
+        let t = Duration::from_secs(5);
+        let go = format!("(location.href = {}, true)", json!(format!("{base}/")));
+        tab.eval(&go, t).await.expect("open");
+        tokio::time::sleep(Duration::from_millis(800)).await;
+
+        let typed = tab
+            .eval(
+                &page_call("pnexType", &[json!({"selector": "#user", "text": "x"})]),
+                t,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            typed["reason"], "not-a-search-field",
+            "a login form is never filled"
+        );
+        let typed = tab
+            .eval(&page_call("pnexType", &[json!({"text": "jane doe"})]), t)
+            .await
+            .unwrap();
+        assert_eq!(typed["ok"], true, "{typed}");
+        tab.eval(&page_call("pnexPress", &[json!("Enter")]), t)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        assert!(
+            tab.url().await.contains("q=jane+doe"),
+            "{}",
+            tab.url().await
+        );
+
+        let spec = json!({"selector": "li.result", "max": 5, "fields": {
+            "name": {"selector": ".name"}, "link": {"selector": "a", "attr": "href"}}});
+        let out = tab.eval(&page_call("pnexCards", &[spec]), t).await.unwrap();
+        let cards = out["cards"].as_array().cloned().unwrap_or_default();
+        assert_eq!(cards.len(), 2, "{out}");
+        assert_eq!(cards[0]["name"], "Jane Doe");
+        assert_eq!(cards[1]["link"], format!("{base}/in/john"));
+        let n = tab
+            .eval(&page_call("pnexCount", &[json!("li")]), t)
+            .await
+            .unwrap();
+        assert_eq!(n, 3);
         tab.close().await;
     }
 

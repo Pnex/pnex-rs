@@ -1,4 +1,4 @@
-# Unification règles, navigation et agents (D780–D788)
+# Unification règles, navigation et agents (D780–D790)
 
 > Décidé le 2026-11-07 (choix de Shan, même jour). **Rien n'est codé.** Ce document réunit
 > trois mécanismes construits séparément : les recettes de site (`site-recipes.md`,
@@ -117,6 +117,34 @@ servira de base :
 
 Ce qui reste à décider avant de coder : l'envoi seul ou soumis à validation, selon l'agent ;
 les quotas d'envoi ; la tenue de D123 (aucune action physique).
+
+### D789 — Une règle tape dans un champ de recherche, jamais dans un formulaire (2026-11-07)
+
+Choix de Shan : le format interdisait toute saisie (D254, D258). Une recherche par la barre
+(D788) demande d'y taper. Nouvelle étape `type` : elle écrit seulement dans un **champ de
+recherche** (`input type=search`, rôle `searchbox` ou `combobox`, champ d'une zone
+`role=search`, ou champ dont le nom, l'étiquette ou l'indication dit « recherche »), en
+général avec un paramètre de la règle. Un mot de passe, un champ d'un formulaire qui en
+contient un, un champ d'identifiant ou d'adresse mail sont refusés au moment de jouer,
+par les deux moteurs (`not-a-search-field`). Étape `press` : une touche d'une liste fermée
+(`Enter`, `Tab`, `Escape`, flèches) ; `Enter` soumet le formulaire du champ quand la page
+ne l'a pas fait. « Pas de connexion, pas de formulaire » reste vrai.
+
+### D790 — Une liste de résultats et chacun de ses liens (2026-11-07)
+
+Choix de Shan : posé dès U2, pour que le lecteur de l'extension soit écrit une fois.
+`extract` gagne la forme `cards` : un sélecteur par carte, un sous-sélecteur par champ,
+le texte ou un attribut d'une liste fermée (`href`, `src`, `title`, `alt`, `aria-label`,
+`datetime`), liens rendus absolus, 50 cartes au plus. `for_each` ouvre chaque lien d'un
+extrait `cards` (sur le site seulement, 10 liens au plus) et y joue ses étapes (10 au
+plus, ni `open` ni boucle imbriquée) ; leurs extraits s'appellent `<as>.<n>`.
+
+**Un seul code dans la page** (2026-11-07) : `pnex-core/js/rule_page.js` porte toutes les
+fonctions qui tournent dans la page visitée (trouver, cliquer, taper, touche, cartes,
+textes). Le navigateur du serveur l'embarque et l'évalue par CDP ; l'extension l'importe et
+passe une fonction à `scripting.executeScript`, qui la sérialise seule : chaque fonction est
+donc autonome. Les deux moteurs ne peuvent pas diverger sur ce que fait une étape dans la
+page ; seul l'enchaînement des étapes est écrit deux fois (serveur, extension).
 
 ### D788 — Identifier une personne saisie par un commercial (2026-11-07)
 

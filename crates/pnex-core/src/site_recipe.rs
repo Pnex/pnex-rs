@@ -19,6 +19,19 @@ pub const PARAMS_MAX: usize = 10;
 pub const WAIT_MAX_MS: u32 = 15_000;
 /// Name length.
 pub const NAME_MAX: usize = 120;
+/// Cards one `cards` extract keeps (D790).
+pub const CARDS_MAX: u32 = 50;
+/// Fields of a card.
+pub const CARD_FIELDS_MAX: usize = 10;
+/// Links one `for_each` opens (D790): a reader's pace, never a crawl.
+pub const FOR_EACH_MAX: u32 = 10;
+/// Steps played on each link of a `for_each`.
+pub const FOR_EACH_STEPS_MAX: usize = 10;
+/// Keys a `press` step may send (D789): validating or moving in a list,
+/// never a shortcut.
+pub const KEYS: [&str; 5] = ["Enter", "Tab", "Escape", "ArrowDown", "ArrowUp"];
+/// Attributes a card field may read besides its text.
+pub const CARD_ATTRS: [&str; 6] = ["href", "src", "title", "alt", "aria-label", "datetime"];
 
 /// Locates an element: exactly one of `text`, `text_contains`,
 /// `selector`, `role` (with an optional accessible `name`).
@@ -87,11 +100,75 @@ pub struct ExtractSpec {
     /// The whole page text.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub all_text: bool,
+    /// One card per element matching a selector, each with named fields
+    /// (D790): a list of results, a field per line of a card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cards: Option<CardsSpec>,
     /// Name of the output (default `extract-<step>`).
     #[serde(default, rename = "as", skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub optional: bool,
+}
+
+/// A list of cards (D790): `selector` finds each card, every field reads a
+/// sub-element of it (the card itself without a selector).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct CardsSpec {
+    pub selector: String,
+    pub fields: BTreeMap<String, CardField>,
+    /// Cards kept, in page order ([`CARDS_MAX`] at most).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u32>,
+}
+
+/// One field of a card: the text of a sub-element, or one of its
+/// attributes ([`CARD_ATTRS`]); a link is read absolute.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct CardField {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attr: Option<String>,
+}
+
+/// Types into a search field (D789): the field is found by `selector` or
+/// `role`, else the page's first search field; anything but a search field
+/// (a password, a login form, a plain form field) is refused at play time.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct TypeSpec {
+    /// What is typed; usually a parameter (`{{query}}`).
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
+}
+
+/// Opens each link of a `cards` extract and plays `steps` on it (D790), in
+/// card order, [`FOR_EACH_MAX`] links at most. The extracts of the steps are
+/// named `<as>.<n>` (n from 1).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct ForEachSpec {
+    /// Name of an earlier `cards` extract.
+    pub from: String,
+    /// Its field holding the link.
+    pub link: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u32>,
+    /// A step list again: the schema refers to it instead of unrolling it.
+    #[cfg_attr(feature = "openapi", schema(no_recursion))]
+    pub steps: Vec<Step>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,7 +197,8 @@ pub struct AssertSpec {
     pub url_contains: Option<String>,
 }
 
-/// One closed action. No form input, no login, no script (D254, D258).
+/// One closed action. No login, no script, no form input but a search
+/// field (D254, D258, D789).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -134,6 +212,12 @@ pub enum Step {
     FollowPdf(PdfSpec),
     Extract(ExtractSpec),
     Assert(AssertSpec),
+    /// Types into a search field (D789).
+    Type(TypeSpec),
+    /// One key of [`KEYS`] on the focused field (D789).
+    Press(String),
+    /// Each link of a list of cards (D790).
+    ForEach(ForEachSpec),
 }
 
 impl Step {
@@ -146,6 +230,9 @@ impl Step {
             Step::FollowPdf(_) => "follow_pdf",
             Step::Extract(_) => "extract",
             Step::Assert(_) => "assert",
+            Step::Type(_) => "type",
+            Step::Press(_) => "press",
+            Step::ForEach(_) => "for_each",
         }
     }
 
@@ -156,7 +243,12 @@ impl Step {
             Step::Wait(w) => w.optional,
             Step::FollowPdf(p) => p.optional,
             Step::Extract(e) => e.optional,
-            Step::Open(_) | Step::Scroll(_) | Step::Assert(_) => false,
+            Step::Type(t) => t.optional,
+            Step::Open(_)
+            | Step::Scroll(_)
+            | Step::Assert(_)
+            | Step::Press(_)
+            | Step::ForEach(_) => false,
         }
     }
 
@@ -191,7 +283,11 @@ impl Step {
                 .as_ref()
                 .map(|[a, b]| format!("{a} … {b}"))
                 .or_else(|| e.selector.clone())
+                .or_else(|| e.cards.as_ref().map(|c| c.selector.clone()))
                 .unwrap_or_else(|| "*".into()),
+            Step::Type(t) => t.text.clone(),
+            Step::Press(k) => k.clone(),
+            Step::ForEach(f) => format!("{} · {}", f.from, f.link),
             Step::Assert(a) => a
                 .page_contains
                 .clone()
@@ -351,8 +447,27 @@ fn strings(step: &Step) -> Vec<&str> {
             if let Some([a, b]) = &e.between {
                 out.extend([a.as_str(), b.as_str()]);
             }
+            if let Some(c) = &e.cards {
+                out.push(&c.selector);
+                for (k, f) in &c.fields {
+                    out.push(k);
+                    out.extend(
+                        [&f.selector, &f.attr]
+                            .into_iter()
+                            .flatten()
+                            .map(String::as_str),
+                    );
+                }
+            }
             out
         }
+        Step::Type(t) => [Some(&t.text), t.selector.as_ref(), t.role.as_ref()]
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
+            .collect(),
+        Step::Press(k) => vec![k],
+        Step::ForEach(f) => vec![&f.from, &f.link],
         Step::Assert(a) => {
             let mut out: Vec<&str> = [&a.page_contains, &a.not_empty, &a.url_contains]
                 .into_iter()
@@ -365,6 +480,19 @@ fn strings(step: &Step) -> Vec<&str> {
             out
         }
     }
+}
+
+/// Marks, in the names seen so far, an extract that is a list of cards.
+const CARDS_MARK: &str = "cards:";
+
+fn cards_of(names: &[String], name: &str) -> bool {
+    names
+        .iter()
+        .any(|n| n.strip_prefix(CARDS_MARK) == Some(name))
+}
+
+fn field_name_ok(k: &str) -> bool {
+    !k.is_empty() && k.len() <= 40 && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// Number of `Some`/`true` among the alternatives of a step.
@@ -397,14 +525,20 @@ fn check_step(i: usize, step: &Step, params: &[String], names: &mut Vec<String>)
         ]),
         Step::Wait(w) => chosen(&[w.ms.is_some(), w.text.is_some()]),
         Step::FollowPdf(p) => chosen(&[p.link_text_contains.is_some(), p.href_contains.is_some()]),
-        Step::Extract(e) => chosen(&[e.selector.is_some(), e.between.is_some(), e.all_text]),
+        Step::Extract(e) => chosen(&[
+            e.selector.is_some(),
+            e.between.is_some(),
+            e.all_text,
+            e.cards.is_some(),
+        ]),
+        Step::Type(t) => usize::from(!(t.selector.is_some() && t.role.is_some())),
         Step::Assert(a) => chosen(&[
             a.page_contains.is_some(),
             a.not_empty.is_some(),
             a.count_min.is_some(),
             a.url_contains.is_some(),
         ]),
-        Step::Open(_) | Step::Scroll(_) => 1,
+        Step::Open(_) | Step::Scroll(_) | Step::Press(_) | Step::ForEach(_) => 1,
     };
     if one_of != 1 {
         out.push(v(&at, "one_of"));
@@ -413,7 +547,51 @@ fn check_step(i: usize, step: &Step, params: &[String], names: &mut Vec<String>)
         Step::Wait(w) if w.ms.or(w.timeout_ms).is_some_and(|ms| ms > WAIT_MAX_MS) => {
             out.push(v(&at, format!("max:{WAIT_MAX_MS}")));
         }
-        Step::Extract(_) | Step::FollowPdf(_) => names.extend(step.output_name(i)),
+        Step::Press(k) if !KEYS.contains(&k.as_str()) => out.push(v(&at, "invalid")),
+        Step::Extract(ExtractSpec { cards: Some(c), .. })
+            if c.fields.is_empty()
+                || c.fields.len() > CARD_FIELDS_MAX
+                || c.max.is_some_and(|m| m == 0 || m > CARDS_MAX)
+                || c.fields.iter().any(|(k, f)| {
+                    !field_name_ok(k) || f.attr.as_deref().is_some_and(|a| !CARD_ATTRS.contains(&a))
+                }) =>
+        {
+            out.push(v(&at, "invalid"));
+        }
+        Step::ForEach(f) => {
+            if !cards_of(names, &f.from) {
+                out.push(v(&at, format!("unknown_extract:{}", f.from)));
+            }
+            if f.max.is_some_and(|m| m == 0 || m > FOR_EACH_MAX) {
+                out.push(v(&at, format!("max:{FOR_EACH_MAX}")));
+            }
+            if f.steps.is_empty() {
+                out.push(v(&at, "required"));
+            } else if f.steps.len() > FOR_EACH_STEPS_MAX {
+                out.push(v(&at, format!("max_items:{FOR_EACH_STEPS_MAX}")));
+            }
+            // One level, and each link is the page: no nested loop, no open.
+            let mut inner = names.clone();
+            for (j, sub) in f.steps.iter().enumerate() {
+                if matches!(sub, Step::ForEach(_) | Step::Open(_)) {
+                    out.push(v(format!("{at}.steps.{j}"), "invalid"));
+                    continue;
+                }
+                for mut x in check_step(j, sub, params, &mut inner) {
+                    x.path = x.path.replacen("steps.", &format!("{at}.steps."), 1);
+                    out.push(x);
+                }
+            }
+        }
+        Step::Extract(_) | Step::FollowPdf(_) => {
+            if let Step::Extract(ExtractSpec { cards: Some(_), .. }) = step {
+                names.push(format!(
+                    "{CARDS_MARK}{}",
+                    step.output_name(i).unwrap_or_default()
+                ));
+            }
+            names.extend(step.output_name(i));
+        }
         Step::Assert(AssertSpec {
             not_empty: Some(n), ..
         }) if !names.contains(n) => out.push(v(&at, format!("unknown_extract:{n}"))),
@@ -543,6 +721,83 @@ pub fn validate(doc: &Value) -> Result<Recipe, Vec<Violation>> {
     })
 }
 
+// ───────────────────────────── page text ─────────────────────────────
+
+/// Folded text without any whitespace (U+00A0, U+202F, U+2009 included),
+/// each folded char paired with the index of the original char it comes
+/// from: "RS 7511" and "RS7511" compare equal, and a ligature folded to two
+/// chars keeps both of them.
+fn squash(text: &str) -> Vec<(char, usize)> {
+    text.chars()
+        .enumerate()
+        .filter(|(_, c)| !c.is_whitespace())
+        .flat_map(|(i, c)| {
+            crate::fold::fold(&c.to_string())
+                .chars()
+                .map(move |f| (f, i))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Folded char stream index where `needle` starts, from stream index `from`.
+fn find_squashed(hay: &[(char, usize)], needle: &str, from: usize) -> Option<usize> {
+    let n: Vec<char> = squash(needle).into_iter().map(|(c, _)| c).collect();
+    if n.is_empty() || hay.len() < n.len() || from > hay.len() - n.len() {
+        return None;
+    }
+    (from..=hay.len() - n.len()).find(|&i| {
+        hay[i..i + n.len()]
+            .iter()
+            .map(|(c, _)| *c)
+            .eq(n.iter().copied())
+    })
+}
+
+/// `needle` in `text`, ignoring case, accents and whitespace.
+pub fn contains_loose(text: &str, needle: &str) -> bool {
+    find_squashed(&squash(text), needle, 0).is_some()
+}
+
+/// Text between the first `a` and the next `b` after it (case, accents and
+/// whitespace ignored); `None` when `a` is missing. Without `b`, up to the end.
+pub fn between(text: &str, a: &str, b: &str) -> Option<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let hay = squash(text);
+    let a_len = squash(a).len();
+    let k = find_squashed(&hay, a, 0)?;
+    // Original index right after the last char of the matched marker.
+    let start = hay[k + a_len - 1].1 + 1;
+    let end = find_squashed(&hay, b, k + a_len)
+        .map(|j| hay[j].1)
+        .unwrap_or(chars.len());
+    Some(
+        chars[start..end]
+            .iter()
+            .collect::<String>()
+            .trim()
+            .to_string(),
+    )
+}
+
+// ───────────────────────────── page side ─────────────────────────────
+
+/// The code a rule runs inside the visited page, shared by both players
+/// (D780): the server browser evaluates it over CDP, the browser extension
+/// imports the same file (`js/rule_page.js`).
+pub const PAGE_JS: &str = include_str!("../js/rule_page.js");
+
+/// An expression calling `function` of [`PAGE_JS`] with JSON arguments, for
+/// an engine that evaluates source (CDP).
+pub fn page_call(function: &str, args: &[Value]) -> String {
+    let src = PAGE_JS.replace("export function", "function");
+    let args: Vec<String> = args.iter().map(Value::to_string).collect();
+    format!(
+        "(() => {{\n{src}\nreturn {function}({});\n}})()",
+        args.join(", ")
+    )
+}
+
 // ───────────────────────────── browser endpoints ─────────────────────────────
 
 /// A CDP browser of the org (site-recipes.md D325). The token is a vault
@@ -608,9 +863,11 @@ pub struct BrowserTestResult {
 // ───────────────────────────── visual editing ─────────────────────────────
 
 /// The closed actions, in palette order.
-pub const ACTIONS: [&str; 7] = [
+pub const ACTIONS: [&str; 9] = [
     "open",
     "click",
+    "type",
+    "press",
     "scroll",
     "wait",
     "follow_pdf",
@@ -643,6 +900,11 @@ pub fn new_step(action: &str) -> Option<Step> {
             page_contains: Some(String::new()),
             ..AssertSpec::default()
         }),
+        "type" => Step::Type(TypeSpec {
+            text: String::new(),
+            ..TypeSpec::default()
+        }),
+        "press" => Step::Press("Enter".into()),
         _ => return None,
     })
 }
@@ -813,6 +1075,8 @@ pub mod reason {
     pub const BROWSER: &str = "browser-unavailable";
     pub const PARAM_MISSING: &str = "param-missing";
     pub const INTERRUPTED: &str = "interrupted";
+    /// A `type` step aimed at a field that is not a search (D789).
+    pub const NOT_A_SEARCH_FIELD: &str = "not-a-search-field";
     /// Step taken over from the run a resumed run started from.
     pub const REUSED: &str = "reused";
     pub const ALL: &[&str] = &[
@@ -829,6 +1093,7 @@ pub mod reason {
         BROWSER,
         PARAM_MISSING,
         INTERRUPTED,
+        NOT_A_SEARCH_FIELD,
         REUSED,
     ];
 }
@@ -870,6 +1135,8 @@ pub struct RunStep {
 pub enum ExtractKind {
     Text,
     Pdf,
+    /// A list of cards (D790): `cards` holds them, `text` their JSON.
+    Cards,
 }
 
 /// What a run brought back.
@@ -890,6 +1157,9 @@ pub struct RunExtract {
     pub file: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bytes: Option<u64>,
+    /// The cards of a `cards` extract, field by field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cards: Vec<BTreeMap<String, String>>,
 }
 
 /// One run of a recipe (journal row; the single read adds the diff).
@@ -1134,6 +1404,127 @@ mod tests {
             ),
             "{y}"
         );
+    }
+
+    /// A people search of a network (D788–D790): typed in its search bar,
+    /// the result cards read, each profile opened.
+    fn people_search() -> Value {
+        json!({
+            "name": "people-search",
+            "site": "https://www.example.org",
+            "params": ["query"],
+            "steps": [
+                {"open": "/"},
+                {"type": {"text": "{{query}}", "role": "combobox"}},
+                {"press": "Enter"},
+                {"wait": {"text": "results"}},
+                {"extract": {"cards": {"selector": "li.result", "max": 5, "fields": {
+                    "name": {"selector": ".name"},
+                    "headline": {"selector": ".headline"},
+                    "link": {"selector": "a.profile", "attr": "href"}
+                }}, "as": "results"}},
+                {"for_each": {"from": "results", "link": "link", "max": 3, "steps": [
+                    {"extract": {"selector": "h1", "as": "name"}},
+                    {"extract": {"all_text": true, "as": "profile"}}
+                ]}}
+            ]
+        })
+    }
+
+    #[test]
+    fn a_search_typed_then_its_cards_followed_is_a_valid_rule() {
+        let r = validate(&people_search()).unwrap();
+        assert_eq!(r.steps[1].action(), "type");
+        assert_eq!(r.steps[1].label(), "{{query}}");
+        assert_eq!(r.steps[5].label(), "results · link");
+        let y = to_yaml(&r);
+        assert!(y.contains("  - press: \"Enter\"\n"), "{y}");
+        assert!(y.contains("for_each"), "{y}");
+    }
+
+    #[test]
+    fn typing_keys_cards_and_loops_stay_bounded() {
+        let bad = |path: &str, step: Value, want: &str| {
+            let mut d = people_search();
+            let i: usize = path.parse().unwrap();
+            d["steps"][i] = step;
+            let errs = validate(&d).unwrap_err();
+            assert!(
+                errs.iter().any(|e| e.token == want),
+                "{path} {want}: {errs:?}"
+            );
+        };
+        bad("2", json!({"press": "Control+a"}), "invalid");
+        bad(
+            "1",
+            json!({"type": {"text": "x", "role": "a", "selector": "b"}}),
+            "one_of",
+        );
+        bad(
+            "1",
+            json!({"type": {"text": "{{password}}"}}),
+            "unknown_param:password",
+        );
+        bad(
+            "4",
+            json!({"extract": {"cards": {"selector": "li", "fields": {"x": {"attr": "onclick"}}}, "as": "results"}}),
+            "invalid",
+        );
+        bad(
+            "4",
+            json!({"extract": {"cards": {"selector": "li", "fields": {}}, "as": "results"}}),
+            "invalid",
+        );
+        bad(
+            "5",
+            json!({"for_each": {"from": "nope", "link": "link", "steps": [{"extract": {"all_text": true}}]}}),
+            "unknown_extract:nope",
+        );
+        bad(
+            "5",
+            json!({"for_each": {"from": "results", "link": "link", "max": 99, "steps": [{"extract": {"all_text": true}}]}}),
+            "max:10",
+        );
+        // No loop in a loop, no open: each link is the page.
+        let mut d = people_search();
+        d["steps"][5]["for_each"]["steps"][0] = json!({"open": "/x"});
+        let errs = validate(&d).unwrap_err();
+        assert!(errs.contains(&v("steps.5.steps.0", "invalid")), "{errs:?}");
+        // A text extract is not a list of cards.
+        let mut d = people_search();
+        d["steps"][4] = json!({"extract": {"all_text": true, "as": "results"}});
+        assert!(validate(&d).is_err());
+    }
+
+    #[test]
+    fn between_ignores_case_and_accents() {
+        let t = "Accueil\nPROGRAMME de la formation\nModule 1 (4 h)\nModalités : présentiel";
+        assert_eq!(
+            between(t, "programme", "modalites").as_deref(),
+            Some("de la formation\nModule 1 (4 h)")
+        );
+        assert_eq!(between(t, "absent", "x"), None);
+        assert_eq!(
+            between(t, "Module 1", "nothing").as_deref(),
+            Some("(4 h)\nModalités : présentiel")
+        );
+    }
+
+    #[test]
+    fn matching_ignores_no_break_spaces_and_ligatures() {
+        // U+00A0 in the page and in the marker, U+202F before the colon.
+        let t = "Accueil\nContenu\u{a0}de la formation\nPartie 1\nCertification RS\u{a0}7511\u{202f}: oui";
+        assert_eq!(
+            between(t, "Contenu de\u{a0}la formation", "Certification").as_deref(),
+            Some("Partie 1")
+        );
+        assert!(contains_loose(t, "RS7511"));
+        assert!(contains_loose(t, "rs 7511 : OUI"));
+        assert!(!contains_loose(t, "RS7512"));
+        // Ligatures fold to two chars on both sides; the cut lands after the marker.
+        let l = "Le cœur du métier\nSuite";
+        assert_eq!(between(l, "COEUR", "suite").as_deref(), Some("du métier"));
+        assert_eq!(between(l, "cœur du", "").as_deref(), Some("métier\nSuite"));
     }
 
     #[test]

@@ -398,6 +398,7 @@ fn ExtractCard(
     let kind = match extract.kind {
         ExtractKind::Text => t!("web-sites-extract-text").to_string(),
         ExtractKind::Pdf => t!("web-sites-extract-pdf").to_string(),
+        ExtractKind::Cards => t!("web-sites-extract-cards", n : extract.cards.len()).to_string(),
     };
     let pdf_file = extract.file.clone();
     let download = move |_| {

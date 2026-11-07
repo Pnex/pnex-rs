@@ -4410,6 +4410,57 @@
         ],
         "type": "string"
       },
+      "CardField": {
+        "additionalProperties": false,
+        "description": "One field of a card: the text of a sub-element, or one of its\nattributes ([`CARD_ATTRS`]); a link is read absolute.",
+        "properties": {
+          "attr": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "CardsSpec": {
+        "additionalProperties": false,
+        "description": "A list of cards (D790): `selector` finds each card, every field reads a\nsub-element of it (the card itself without a selector).",
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CardField"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "max": {
+            "description": "Cards kept, in page order ([`CARDS_MAX`] at most).",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "fields"
+        ],
+        "type": "object"
+      },
       "CaseAttachInput": {
         "description": "Attach an object to an event of the case (`event_id`), or put it among\nthe undated pieces (no `event_id`). The role defaults by object type.",
         "properties": {
@@ -9081,7 +9132,8 @@
       "ExtractKind": {
         "enum": [
           "text",
-          "pdf"
+          "pdf",
+          "cards"
         ],
         "type": "string"
       },
@@ -9108,6 +9160,10 @@
               "array",
               "null"
             ]
+          },
+          "cards": {
+            "$ref": "#/components/schemas/CardsSpec",
+            "description": "One card per element matching a selector, each with named fields\n(D790): a list of results, a field per line of a card."
           },
           "optional": {
             "type": "boolean"
@@ -10132,6 +10188,41 @@
         "required": [
           "platform",
           "handle"
+        ],
+        "type": "object"
+      },
+      "ForEachSpec": {
+        "additionalProperties": false,
+        "description": "Opens each link of a `cards` extract and plays `steps` on it (D790), in\ncard order, [`FOR_EACH_MAX`] links at most. The extracts of the steps are\nnamed `<as>.<n>` (n from 1).",
+        "properties": {
+          "from": {
+            "description": "Name of an earlier `cards` extract.",
+            "type": "string"
+          },
+          "link": {
+            "description": "Its field holding the link.",
+            "type": "string"
+          },
+          "max": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "steps": {
+            "description": "A step list again: the schema refers to it instead of unrolling it.",
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "from",
+          "link",
+          "steps"
         ],
         "type": "object"
       },
@@ -25658,6 +25749,19 @@
               "null"
             ]
           },
+          "cards": {
+            "description": "The cards of a `cards` extract, field by field.",
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
           "chars": {
             "format": "int64",
             "minimum": 0,
@@ -28479,7 +28583,7 @@
         "type": "object"
       },
       "Step": {
-        "description": "One closed action. No form input, no login, no script (D254, D258).",
+        "description": "One closed action. No login, no script, no form input but a search\nfield (D254, D258, D789).",
         "oneOf": [
           {
             "description": "A path or an address of the site.",
@@ -28559,6 +28663,45 @@
             },
             "required": [
               "assert"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Types into a search field (D789).",
+            "properties": {
+              "type": {
+                "$ref": "#/components/schemas/TypeSpec",
+                "description": "Types into a search field (D789)."
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "One key of [`KEYS`] on the focused field (D789).",
+            "properties": {
+              "press": {
+                "description": "One key of [`KEYS`] on the focused field (D789).",
+                "type": "string"
+              }
+            },
+            "required": [
+              "press"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Each link of a list of cards (D790).",
+            "properties": {
+              "for_each": {
+                "$ref": "#/components/schemas/ForEachSpec",
+                "description": "Each link of a list of cards (D790)."
+              }
+            },
+            "required": [
+              "for_each"
             ],
             "type": "object"
           }
@@ -30622,6 +30765,35 @@
         "required": [
           "type_key",
           "property"
+        ],
+        "type": "object"
+      },
+      "TypeSpec": {
+        "additionalProperties": false,
+        "description": "Types into a search field (D789): the field is found by `selector` or\n`role`, else the page's first search field; anything but a search field\n(a password, a login form, a plain form field) is refused at play time.",
+        "properties": {
+          "optional": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "description": "What is typed; usually a parameter (`{{query}}`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
         ],
         "type": "object"
       },

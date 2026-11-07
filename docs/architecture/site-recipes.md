@@ -36,8 +36,14 @@ Entité `site_recipes` (org, `site` = hôte normalisé, `name` unique par site, 
   `browser` (nom d'un navigateur de l'org), `steps` (≤ 60) ;
 - actions fermées : `open`, `click` (`text` | `text_contains` | `selector` | `role`+`name`),
   `scroll`, `wait` (`ms` | `text`, ≤ 15 s), `follow_pdf` (`link_text_contains` |
-  `href_contains`), `extract` (`selector` | `between` | `all_text`), `assert`
-  (`page_contains` | `not_empty` | `count_min` | `url_contains`) ;
+  `href_contains`), `extract` (`selector` | `between` | `all_text` | `cards`), `assert`
+  (`page_contains` | `not_empty` | `count_min` | `url_contains`) ; depuis D789–D790
+  (2026-11-07) : `type` (`text`, `selector` | `role`, champ de recherche seulement),
+  `press` (`Enter`, `Tab`, `Escape`, `ArrowDown`, `ArrowUp`), `for_each` (`from` : un
+  extrait `cards`, `link` : son champ lien, `max` ≤ 10, `steps` ≤ 10 sans `open` ni boucle,
+  extraits nommés `<as>.<n>`) ;
+- le code qui tourne dans la page est **un seul fichier**, `pnex-core/js/rule_page.js`,
+  évalué par le navigateur du serveur (CDP) et importé par l'extension (D780) ;
   `url_matches` de la proposition devient `url_contains` (pas d'expression régulière) ;
 - stricte : cible introuvable ou vérification fausse = arrêt ; seules les étapes
   `optional: true` passent ;

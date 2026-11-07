@@ -20,6 +20,9 @@ A navigation rule is YAML bound to one website: `name`, `site` (a host or an add
 - `follow_pdf: {link_text_contains: "programme", as: programme_pdf}`: fetches the linked PDF (from the site or an `allow_hosts` host) and reads its text.
 - `extract: {between: ["Programme", "Modalités"], as: programme}`, or `selector`, or `all_text: true`.
 - `assert: {page_contains: "RS0101"}`, `{not_empty: programme}`, `{count_min: {selector: "a", min: 3}}`, `{url_contains: "/formation"}`.
+- `type: {text: "{{query}}"}` then `press: Enter`: types into the site's search field (or the one `selector`/`role` names) and submits. Only a search field: a sign-in or any other form field stops the run with "The field is not a search field".
+- `extract: {cards: {selector: "li.result", fields: {name: {selector: ".name"}, link: {selector: "a", attr: href}}, max: 10}, as: results}`: one card per result, a field per line of it.
+- `for_each: {from: results, link: link, max: 5, steps: [...]}`: opens each result link of the site and plays the steps on it (no `open`, no loop inside); its extracts are named `name.1`, `name.2`…
 
 ## What you can do
 

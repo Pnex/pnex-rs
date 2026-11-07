@@ -7119,3 +7119,10 @@ err-hosted-only = Only a hosted agent has this field.
 err-internal-only = Only an internal agent has this field.
 err-unknown-tool = This tool does not exist.
 err-write-needs-member = A write tool needs an agent with the member role.
+
+## D780 U2: rule player (pnex-rust-df)
+web-sites-reason-not-a-search-field = The field is not a search field: a rule types only into a search, never a form nor a sign-in
+web-sites-extract-cards = { $n } results
+web-sites-action-type = Type in the search
+web-sites-action-press = Press a key
+web-sites-action-for-each = For each result

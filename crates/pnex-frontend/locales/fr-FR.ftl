@@ -7115,3 +7115,10 @@ err-hosted-only = Seul un agent hébergé a ce champ.
 err-internal-only = Seul un agent interne a ce champ.
 err-unknown-tool = Cet outil n'existe pas.
 err-write-needs-member = Un outil d'écriture demande un agent au rôle membre.
+
+## D780 U2: rule player (pnex-rust-df)
+web-sites-reason-not-a-search-field = Ce champ n'est pas un champ de recherche : une règle ne tape que dans une recherche, jamais dans un formulaire ni une connexion
+web-sites-extract-cards = { $n } résultats
+web-sites-action-type = Taper dans la recherche
+web-sites-action-press = Appuyer sur une touche
+web-sites-action-for-each = Pour chaque résultat
