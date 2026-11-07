@@ -50,9 +50,11 @@ pub fn Gerbe(
         (false, false) => "pnex-gerbe pnex-gerbe-color text-signal",
         (false, true) => "pnex-gerbe",
     };
+    // A short dash pattern under 24 px (C16, style/tailwind.css).
+    let small = if size < 24 { "pnex-gerbe-small" } else { "" };
     rsx! {
         svg {
-            class: "{base} {class}",
+            class: "{base} {small} {class}",
             width: "{size}",
             height: "{height}",
             view_box: "0 0 40 24",

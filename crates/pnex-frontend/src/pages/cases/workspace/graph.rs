@@ -211,9 +211,12 @@ pub(super) fn build(
 
 /// Families the graph can hide; `piece` and `claim` go together as the
 /// evidence layer, hidden by default (K49).
-pub(super) const FAMILIES: [&str; 6] = [
+pub(super) const FAMILIES: [&str; 7] = [
     "person",
     "organization",
+    // Hideable like the others: thousands of imported contracts can fill
+    // the whole graph.
+    "event",
     "place",
     "identifier",
     "other",
@@ -228,6 +231,7 @@ fn family_token(family: &str) -> &'static str {
         "organization" => "ok",
         "place" | "identifier" => "warn",
         EVIDENCE => "mark",
+        "event" => "ink",
         _ => "idle",
     }
 }
@@ -1608,6 +1612,21 @@ mod tests {
         assert_eq!((ids, capped), (vec!["acme", "globex"], 0));
         let (nodes, _, capped) = cut(build(&w, None, &[], &[], usize::MAX), 2);
         assert_eq!((nodes.len(), capped), (2, 3));
+    }
+
+    #[test]
+    fn events_can_be_hidden_like_any_family() {
+        let w = workspace(
+            vec![event("e1", "2025-01-01T00:00:00Z", &["p1"])],
+            &["p1"],
+        );
+        let all = build(&w, None, &[], &[], usize::MAX);
+        assert!(all.0.iter().any(|n| n.family == "event"));
+        assert!(FAMILIES.contains(&"event"), "no chip to hide them");
+        let hide: HashSet<String> = ["event".to_string()].into();
+        let (nodes, edges, _) = cut(without(all, &hide), usize::MAX);
+        let ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!((ids, edges.len()), (vec!["p1"], 0));
     }
 
     #[test]
