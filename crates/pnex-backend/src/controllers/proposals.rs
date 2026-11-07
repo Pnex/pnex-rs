@@ -220,7 +220,7 @@ async fn accept_tool_call(
     let decider = Decider {
         user_id: org.auth.user.id,
         email: &org.auth.user.email,
-        role: org.role.clone(),
+        role: org.role,
         grants: org.grants.clone(),
     };
     match internal_agents::accept_tool_call(ctx, org.org.id, decider, id, reason).await {
