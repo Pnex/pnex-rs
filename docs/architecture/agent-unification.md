@@ -1,11 +1,12 @@
 # Unification règles, navigation et agents (D780–D790)
 
-> Décidé le 2026-11-07 (choix de Shan, même jour). **Rien n'est codé.** Ce document réunit
+> Décidé le 2026-11-07 (choix de Shan, même jour). **Codé le 2026-11-07** : U1, U2, U3, U6 livrés ;
+> U4 et U5 livrés en partie (reste U4b et la question D786, §3) ; U7 plus tard. Ce document réunit
 > trois mécanismes construits séparément : les recettes de site (`site-recipes.md`,
 > D323–D328), les missions de l'agent navigateur (`extension-collector.md`, D254–D284,
 > D333, D779) et les runs d'agents hébergés (`agent-environments.md`, D700–D775). Il
 > remplace le lot A1 « missions → runs » d'`autonomous-agents.md` §17, jamais commencé,
-> et met A2 (agents internes à LLM) en attente derrière lui.
+> et reprend A2 (agents internes à LLM) en lot U6.
 
 ## 1. Constat (2026-11-07)
 
@@ -234,15 +235,15 @@ d'utilisation du réseau (suspension du compte connecté).
 
 | Lot | Contenu | Dépend de |
 |---|---|---|
-| **U1** | Run unifié : moteur `server_browser` ; un passage de recette devient un run (état, `job_logs`, extraits en `agent_artifacts`) ; nœud `site-recipe` et page des recettes branchés dessus ; migration des passages existants | — |
-| **U2** | Lecteur de recettes dans l'extension : primitives click, wait, assert, type, press (D788) dans `host.js` ; moteur `extension` ; plan scellé au bail (D783) ; contrôle des pages visitées au retour | U1 |
-| **U3** | Routage D782 (`session: required`, repli, choix forcé) ; file et plafonds côté serveur | U2 |
-| **U4** | Recettes fournies : `capture_profile`, `capture_people` (D779), `collect_page`… réécrites en recettes ; `linkedin_person_match` (D784 devenu D788) et flow *Prospecting · identify people* (garde, file, score, écriture) ; retrait des types de mission codés en dur | U3 |
-| **U5** | Nœud `agent-run` unique et page Agents tous moteurs (D786) | U1 |
-| **U6** | A2 : moteur `internal_llm`, outils de l'assistant, écritures en propositions, niveau dans la fiche agent (choix du 2026-11-07). Avancé en parallèle de U1–U4 (Shan, 2026-11-07) : il pose le moteur sur `runner_jobs` + `agent_runs`, comme D781. **Livré 2026-11-07** (voir §5) | — |
+| **U1** ✅ | Run unifié : moteur `server_browser` ; un passage de recette devient un run (état, `job_logs`, extraits en `agent_artifacts`) ; nœud `site-recipe` et page des recettes branchés dessus ; migration des passages existants | — |
+| **U2** ✅ | Lecteur de recettes dans l'extension : primitives click, wait, assert, type, press (D788) dans `host.js` ; moteur `extension` ; plan scellé au bail (D783) ; contrôle des pages visitées au retour | U1 |
+| **U3** ✅ | Routage D782 (`session: required`, repli, choix forcé) ; file et plafonds côté serveur | U2 |
+| **U4** ◐ (U4b reste) | Recettes fournies : `capture_profile`, `capture_people` (D779), `collect_page`… réécrites en recettes ; `linkedin_person_match` (D784 devenu D788) et flow *Prospecting · identify people* (garde, file, score, écriture) ; retrait des types de mission codés en dur | U3 |
+| **U5** ◐ (D786 ouverte) | Nœud `agent-run` unique et page Agents tous moteurs (D786) | U1 |
+| **U6** ✅ | A2 : moteur `internal_llm`, outils de l'assistant, écritures en propositions, niveau dans la fiche agent (choix du 2026-11-07). Avancé en parallèle de U1–U4 (Shan, 2026-11-07) : il pose le moteur sur `runner_jobs` + `agent_runs`, comme D781. **Livré 2026-11-07** (voir §5) | — |
 | **U7** (plus tard) | Canaux d'un agent : mail en entrée et en sortie, téléphone, Slack, Telegram (D787) | U5 |
 
-**U2 en cours (2026-11-07).** Fait : format (`type`, `press`, `cards`, `for_each`, D789–D790)
+**U2 (2026-11-07).** Fait : format (`type`, `press`, `cards`, `for_each`, D789–D790)
 et code de page partagé `rule_page.js` (1fb15e83) ; moteur `extension` côté serveur : un
 passage lancé avec `engine: extension` est un job `extension` en file (30 min), loué par
 le lien de l'agent qui peut le jouer (son navigateur au lanceur, sinon un commun, D550),
@@ -356,8 +357,9 @@ reprendre sans rien perdre :
 - Le contrôle au retour (D783) arrive après coup : une page hors plan a déjà été ouverte
   dans le navigateur de l'utilisateur. On l'accepte, parce que le plan est scellé et que
   l'extension ne joue que lui.
-- Il faut un plan de migration des missions en cours (D779 est poussé par une autre
-  session) avant le retrait des types codés en dur, prévu à U4.
+- ~~Plan de migration des missions en cours avant le retrait des types codés en dur~~ :
+  tranché à U4 (bêta) — les missions `capture_profile` et `capture_people` sont supprimées
+  (migration 000121), les autres types attendent U4b.
 
 ## 5. U6 livré (2026-11-07)
 
@@ -381,6 +383,9 @@ reprendre sans rien perdre :
 - **Entrées** : le texte des fichiers d'entrée (64 Kio chacun au plus, balisé comme donnée)
   est la tâche ; les compétences activées épinglées sont les consignes. La réponse finale
   est la sortie `report`.
-- **Écarts assumés** : pas de planification, pas de priorités (D400), pas d'étapes
-  reprenables (D397 : un backend tué rejoue le run du début après expiration du bail) ; le
-  journal part dans OpenObserve à la fin du run, pas au fil de l'eau.
+- **Écarts assumés** : pas de priorités (D400), pas d'étapes
+  reprenables (D397 : un backend tué rejoue le run du début après expiration du bail).
+- **Journal** : envoyé dans OpenObserve après chaque appel au modèle et chaque outil, donc
+  lisible pendant le run (2026-11-07).
+- **Planification** : un flow avec un `inject` périodique et le nœud `agent_run` lance
+  l'agent à heure fixe ; la fiche n'a pas d'horaire propre.

@@ -1,6 +1,6 @@
 # Reconnaissance vocale par enrôlement consenti (Voice ID)
 
-**Statut :** implémenté 2026-10-11 (non commité au départ). Lève le
+**Statut :** implémenté 2026-10-11. Lève le
 non-objectif « identifier une personne par sa voix » (`media-ingest.md` §2)
 **dans la seule forme K19 variante A** de `cases.md` : enrôlement consenti,
 contrôle humain. Numéro D à attribuer à la validation (D192+ réservé).

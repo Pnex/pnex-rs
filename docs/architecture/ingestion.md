@@ -240,7 +240,7 @@ Q9 du PRD).
   (perte du tout-ou-rien D301) et publier une progression : à trancher.
 - **Q-I4** — rar : pas en V1.
 
-## 7. État (2026-10-20, non commité)
+## 7. État (2026-10-20)
 
 I1–I5 codés, test bout en bout `tests/partner_watch.rs::open_data_ingestion_chain`
 (mock data.gouv, S3 RustFS : résolution, téléchargement, inchangé, extraction,

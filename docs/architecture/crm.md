@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Livré** (lots DP, CRM1, CRM2, CRM4 ; CRM3 : mails livrés ; tableaux de bord : `sales-dashboards.md`, codés, non commités). Flows essayés sur le vrai runtime : `e2e/tests/crm.spec.ts` (2026-11-04) |
+| Statut | **Livré** (lots DP, CRM1, CRM2, CRM4 ; CRM3 : mails livrés ; tableaux de bord : `sales-dashboards.md`, livrés, volet clos le 2026-11-06). Flows essayés sur le vrai runtime : `e2e/tests/crm.spec.ts` (2026-11-04) |
 | Déclencheur | Outillage commercial (P2.28) : après la cartographie et les signaux, le suivi des opportunités, des activités et des relances, sans ressaisie dans un second outil. Avant de vendre : D341 fini |
 | Repose sur | `account-mapping.md` (D329–D343, pack `prospecting_b2b`), `proposals.md` (D367, D371–D377), `ontology.md` (D176–D191, D368 réglages de pack, D370 libellés d'énumération), `iam.md` (D298 classification, D296 portées), `partner-watch.md` (nœuds ontologie D312) |
 | Numérotation | **D442…D452**, lots **DP**, **CRM1…CRM3** ; **D514…D517**, lot **CRM4** ; **D522** (2026-10-29) |
@@ -254,7 +254,7 @@ Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennen
 
 ## 9. État d'implémentation
 
-### Lot DP — 2026-10-26, non commité
+### Lot DP — 2026-10-26
 
 | Brique | Où | Tests |
 |---|---|---|
@@ -271,11 +271,11 @@ Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennen
 
 Reste : le masquage des titres dans les pages générées pour leurs lecteurs suivants (I5). Décidé le 2026-11-06, à la clôture du volet CRM : **pas d'export du registre des traitements** dans PneX. Le registre (RGPD art. 30) est tenu par le responsable de traitement, c'est-à-dire l'org cliente, pour tous ses outils ; PneX lui fournit les éléments à y recopier, déjà visibles dans l'interface : base légale et durée de rétention (réglages de `prospecting_b2b`), catégories de données (classification `personal` des propriétés), effacements et oppositions (fiche de l'objet). Un export généré ferait croire à un registre complet alors qu'il ne couvrirait que PneX.
 
-### Lots CRM1–CRM2 — 2026-10-26, non commité
+### Lots CRM1–CRM2 — 2026-10-26
 
 Pack `crm` 1.0.0 (`packs/crm.yaml`) : types, liens, hiérarchie `opportunities`, modèle `opportunity_sheet`, 11 fonctions Starlark, 5 flows modèles (plan de relance, dernière activité, critères manquants, brouillons, ma journée). Tests : `pnex-node-starlark/tests/pack_rules.rs` (échéances à travers les fins de mois et années bissextiles, opposition, critères, dernière activité, digest) et `tests/crm.rs` (installation, brouillons de flows, cardinalité, hiérarchie, fiche). Fiches de l'assistant `sales-follow-up` et `personal-data` ; lexique §7 + garde.
 
-### Lot CRM4 — 2026-10-29, non commité
+### Lot CRM4 — 2026-10-29
 
 Pack `crm` 3.1.0 : types `lead`, `quote`, `invoice`, propriété `opportunity.ref`, liens `lead_of`, `lead_contact`, `quote_for`, `invoice_for`, `invoices_quote`, action `convert`, modèle `quote_sheet`, 6 fonctions Starlark, 2 flows modèles (9 au total). Tests : `pack_rules.rs` (`a_converted_lead_becomes_an_opportunity_of_its_account`, `an_overdue_invoice_is_marked_and_reminded`, digest avec pistes) et `tests/crm.rs` (piste, cardinalités, numéros uniques, page devis, action refusée sans flow déployé).
 

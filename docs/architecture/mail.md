@@ -232,7 +232,7 @@ Limites : une annulation envoyée à un seul participant retiré de la réunion 
 
 ## 9. État
 
-### 2026-10-26 — M1, M2 et M6 codés (non commité)
+### 2026-10-26 — M1, M2 et M6 codés
 
 Arbitrages pris par défaut (recommandations du §7, réversibles) : messages stockés (Q-M1), boîte personnelle illisible par l'admin (Q-M2), pas d'envoi (Q-M3 sans objet tant que M3 n'est pas fait : PneX collecte et range), Microsoft reporté (Q-M4, §10), 90 jours (Q-M5).
 
@@ -252,7 +252,7 @@ Arbitrages pris par défaut (recommandations du §7, réversibles) : messages st
 
 Reste : l'écran de la liste des boîtes (CRUD) et le test réel sur une boîte jetable o2switch ; `mail_message` comme type système de l'ontologie (D455, liens et recherche depuis l'ontologie) ; l'envoi (M3) ; OAuth (M4, §10) ; les pièces jointes en médias (M5).
 
-### 2026-10-29 — M3 : envoi (D518–D521), non commité
+### 2026-10-29 — M3 : envoi (D518–D521)
 
 Demande de Shan (2026-10-29), avec le choix recommandé de Q-M3 : envoi direct autorisé pour les boîtes partagées et de service, désactivé par défaut.
 

@@ -344,7 +344,7 @@ scoring de risque, accès aux registres restreints.
 
 ## 16. Avancement
 
-### 2026-10-16 — M0 partiel, M2, M4, K51, K56 (non commité)
+### 2026-10-16 — M0 partiel, M2, M4, K51, K56
 
 - **Noyau** : type de propriété `money` (`schema::Money`, montant fini,
   devise ISO 4217 en majuscules, `estimated`) ; propriété `amount` de

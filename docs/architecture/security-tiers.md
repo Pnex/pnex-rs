@@ -301,7 +301,7 @@ D157 : reflash USB de toutes les cartes à la mise à jour).
   wildcard), gardé sur le site vitrine. ESP8266 : TLS mutuel tenté,
   repli D157 seulement si le banc échoue. TLS partout, CA locale en LAN.
   Décisions figées, implémentation L1 lancée.
-- **2026-10-08 (quater)** — Lot L1 livré (non commité) : couche interne
+- **2026-10-08 (quater)** — Lot L1 livré : couche interne
   Noise `NNpsk0_25519_ChaChaPoly_SHA256` côté serveur (`/ws/device`,
   `/ws/sensor/ingest`, `/ws/camera`, PING/PONG caméra scellé compris),
   agent edge (`snow`) et firmware (C++ portable : `pnex_noise.cpp` +
@@ -312,7 +312,7 @@ D157 : reflash USB de toutes les cartes à la mise à jour).
   jeton volé sans la clé ne bloque plus le vrai device). Close 4011 =
   poignée de main refusée. Les 7 firmwares compilent ; **validation HIL à
   faire par l'utilisateur** (heap 8266, durée du X25519). Reste L2–L6.
-- **2026-10-09** — Lots L2 à L5 livrés (non commités) et validés sur le
+- **2026-10-09** — Lots L2 à L5 livrés et validés sur le
   banc (NodeMCU V3 OLED, ESP32-C6-Zero) : jeton en en-tête, TLS
   obligatoire, PKI par org, certificat client par build, point d'entrée
   devices dédié (4443 en LAN) vérifié par le backend. Contre-épreuves :

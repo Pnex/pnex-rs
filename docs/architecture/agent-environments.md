@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Validé le 2026-11-04. E0, E1 et le build de E2 codés, non commités** ; build réel validé sur cluster et Scaleway sans le serveur ni le runner complets ; cache S3 des couches, scan Trivy, activation et nouveau scan quotidien codés ; SBOM stocké et tracé dans l'ontologie (D728) ; restent seuil et notification du scan (Q-E6), cache de dépendances, build sur VM. E3 : pod du bac prouvé sur cluster et branché au runner, pas encore à des runs. Recette sur cluster et sur VM en fin de chantier, API seule (pas de page) |
+| Statut | **Validé le 2026-11-04. E0, E1 et le build de E2 poussés** ; build réel validé sur cluster et Scaleway sans le serveur ni le runner complets ; cache S3 des couches, scan Trivy, activation et nouveau scan quotidien codés ; SBOM stocké et tracé dans l'ontologie (D728) ; restent seuil et notification du scan (Q-E6), cache de dépendances, build sur VM. E3 : pod du bac prouvé sur cluster et branché au runner, pas encore à des runs. Recette sur cluster et sur VM en fin de chantier, API seule (pas de page) |
 | Numérotation | **D700…D720, D728…D733, D744…D759**, lots **E0…E6** ; PRD clos le 2026-11-06 (§11) |
 | Complète | `worker-fabric.md` §14 (runner, bacs à sable), `autonomous-agents.md` (D378–D401), `operational-platform.md` D561 |
 | Amende | D561 et fabric §14 : BuildKit au lieu de buildah (D700), secrets en variables d'environnement (D705) ; D394 : le catalogue de moteurs devient un usage des environnements (D704) |

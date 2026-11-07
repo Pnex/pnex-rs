@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **En cours — 2026-10-12** : GS-L1 et GS-L2 implémentés, non commités ; GS-L3 et GS-L4 partiels (§9). Relu contre le code le 2026-10-12 (§8) |
+| Statut | **En cours — 2026-10-12** : GS-L1 et GS-L2 implémentés ; GS-L3 et GS-L4 partiels (§9). Relu contre le code le 2026-10-12 (§8) |
 | Contexte | Le graphe L4 natif (`cases-workspace.md` K31, `workspace/graph.rs`) devient illisible au-delà d'une quarantaine de nœuds : rangées collées aux bords, libellés superposés, pile de libellés d'arêtes autour des hubs, nœuds tous identiques |
 | Repose sur | K31 (graphe biparti dérivé, borné, stable), K39 (accessibilité, thèmes, téléphone), disposition enregistrée par dossier (`case_layouts`, migration 000013, `GET/PUT /cases/{id}/layout`), expansion à facettes (`POST /cases/{id}/expand`), estompage au curseur (`faded`, `relation_at`), pont JS de la carte (`map_viewer.rs` + `js/map.js`) |
 | Remplace | La partie **rendu** de K31 (SVG natif). Le principe K31 reste : graphe dérivé, borné à 300 nœuds (`CAP`), stable d'une ouverture à l'autre |

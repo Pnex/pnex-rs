@@ -397,7 +397,7 @@ PW0–PW3 ne dépendent pas de l'IAM. PW7 attend I0, I1, I3, I4, I6 de
 | D315 | Webhook | mode HMAC horodaté |
 | D316 | Règles | dans le pack (Starlark + LLM), constat LLM toujours « à valider » ; amende D190 (fonctions et flows livrés par un pack) |
 
-## 8. État d'implémentation (2026-10-19, non commité)
+## 8. État d'implémentation (2026-10-19)
 
 PW0, PW1, PW2, PW3, PW4, PW5, PW6 et PW8 sont codés et testés ; **PW7**
 (compte de service en écriture) attend le lot IAM. Tests :

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Proposition — 2026-10-21** ; CC1 en cours (pack, voir §10) |
+| Statut | **Proposition — 2026-10-21, livrée par lots** (CC1, CC2, CC4, CC5, CC6, réunions, collecte, D779, D788 ; état en §10). Ouvert : registres étrangers, §8 |
 | Déclencheur | Besoin de prospection B2B : développer les comptes existants (filiales, sites, décideurs), cibler de nouvelles entreprises, repérer les événements déclencheurs, garder une trace de qui a recommandé qui |
 | Repose sur | `ontology.md` (D176–D191), `partner-watch.md` (D300–D316 : imports, clé naturelle, pack `companies_fr`, vue Hiérarchie, crawl, preuves, nœuds ontologie), `extension-collector.md` (D254–D284), `cases-money.md` et `cases-graph-sigma.md` (graphe, chemins K51), `iam.md` (D298 classification) |
 | Numérotation | **D329…D343**, lots **CC0…CC6** |
@@ -120,7 +120,7 @@ Nouveau nœud `org_resolve` : entrée nom + ville (ou code postal) ; il interrog
 Choix de Shan (2026-11-07) : les pages entreprise et les flux de presse sont laissés de côté ; sur LinkedIn, ce qui sert, ce sont **les gens qui travaillent** dans les entreprises déjà connues. Entre une collecte automatique (abandon de D254) et l'onglet envoyé par l'humain, Shan retient la seconde voie : déclenchement humain, une page à la fois.
 
 - **Amende D333 pour une seule page** : `linkedin.com/company/<nom>/people/` (`browser_agent::people_page_of`). Recherches, listes de relations et profils restent refusés (`ext-target-not-people-page`).
-- Bouton « Capturer les salariés (LinkedIn) » sur la fiche d'une `organization` : l'humain colle l'adresse, une mission `capture_people` est créée par le serveur seul (`POST /api/v1/extension/organizations/{id}/people-captures`, exclue du MCP et de l'assistant, motif « outward »). L'agent l'ouvre une fois dans sa session connectée, fait défiler **5 écrans** au rythme D258 et lit la page ; un renvoi vers la connexion ou une vérification bloque (`ext-login-required`, `ext-challenge`).
+- Bouton « Capturer les salariés (LinkedIn) » sur la fiche d'une `organization` : l'humain colle l'adresse, un passage de la règle par défaut « liste des salariés LinkedIn » est lancé par le serveur seul sur l'agent de l'auteur (mission `capture_people` jusqu'à U4, `agent-unification.md`) (`POST /api/v1/extension/organizations/{id}/people-captures`, exclue du MCP et de l'assistant, motif « outward »). L'agent l'ouvre une fois dans sa session connectée, fait défiler **5 écrans** au rythme D258 et lit la page ; un renvoi vers la connexion ou une vérification bloque (`ext-login-required`, `ext-challenge`).
 - Le moteur ne nomme aucun type (D441, corrigé en 55ef2e0c) : la capture s'ouvre sur tout type dont le pack déclare `people_to_read`, c'est-à-dire `organization` avec `prospecting_b2b` ; sans ce pack, la demande répond 404.
 - Plafond compilé : **10 listes par jour et par org** (`ext-people-daily-cap`). Texte purgé à 30 jours avec les profils.
 - À l'arrivée : document `published_by` l'organisation, propriété `people_to_read` posée sur elle (`prospecting_b2b` 3.5.0). Le flow *Prospecting · captured employee lists* (horaire, 5 organisations par passage, LLM de l'org) écrit **un `list_contact` par personne nommée** (nom, poste, liste « LinkedIn · <entreprise> », clé `linkedin|<org>|<nom>`) et **propose** le lien `contact_of` vers l'entreprise, à valider. Aucune `person` créée, aucun profil ouvert, aucun lien du réseau suivi.
@@ -258,7 +258,7 @@ CC1 et CC2 ne touchent aucune donnée personnelle hors dirigeants (déjà couver
 
 ## 10. État d'implémentation
 
-### CC1 — pack `prospecting_b2b` (2026-10-21, non commité)
+### CC1 — pack `prospecting_b2b` (2026-10-21)
 
 Livré : `crates/pnex-backend/packs/prospecting_b2b.yaml` (D329), inscrit
 dans la liste des packs livrés ; les gardes existantes de validité des
@@ -318,7 +318,7 @@ Appels réels sur Globex (732829320) et Mecaworks France (429853351) :
   manuelle pour le reste. Le stock SIRENE complet est inutile pour un ICP :
   l'API suffit (D337).
 
-### CC2 — liens de groupe et rapprochement (2026-10-22, non commité)
+### CC2 — liens de groupe et rapprochement (2026-10-22)
 
 - **`subsidiary_of` passe dans `companies` 1.1.0** (la structure de groupe
   n'est pas propre à la vente), avec un attribut `state` (`to_validate`,
@@ -362,7 +362,7 @@ Limites :
 - Une mère créée par Wikidata ou GLEIF n'a que son nom, son SIREN ou son LEI
   et son pays ; l'import du registre l'enrichit à son tour.
 
-### CC5, première partie — listes de ciblage et score (2026-10-22, non commité)
+### CC5, première partie — listes de ciblage et score (2026-10-22)
 
 - **Pack `prospecting_b2b_fr` 1.0.0** (`requires: [companies_fr, prospecting_b2b]`) :
   le croisement pays × prospection (D343) ; ni `companies_fr` ni
@@ -400,7 +400,7 @@ Limites :
   - `revenue_year` n'est pas rempli par la liste (l'année reste une clé de
     l'API) ;
 
-### CC1, fin — couleurs (D339) et couverture (D330) (2026-10-22, non commité)
+### CC1, fin — couleurs (D339) et couverture (D330) (2026-10-22)
 
 - **D339, noyau générique** : `PropertyDef.colors` (valeur d'énumération →
   jeton de la palette fermée `green`, `amber`, `red`, `blue`, `violet`,
@@ -430,7 +430,7 @@ Limites :
   unitaires `colours_name_enum_values_from_the_palette`,
   `last_segment_takes_the_latest_key_or_element`.
 
-### CC5, D338 — chemin d'introduction (2026-10-22, non commité)
+### CC5, D338 — chemin d'introduction (2026-10-22)
 
 - `GET /api/v1/ontology/path` prend `links` (types de liens séparés par des
   virgules, 20 au plus). Le filtre s'applique **dans** la marche récursive,
@@ -449,7 +449,7 @@ Limites :
   peut me présenter ? En partant de » sur la page d'un objet (choix du type
   de lien, par exemple `follows_account`). Testé dans le même test.
 
-### CC4, première partie — signaux et BODACC (2026-10-22, non commité)
+### CC4, première partie — signaux et BODACC (2026-10-22)
 
 - **`sales_signal`** dans `prospecting_b2b` :
   - propriétés : `ref` unique, `kind` (liste fermée D335), `topic`
@@ -516,7 +516,7 @@ Limites :
 - Tests : `pack_rules` (fonctions Starlark des deux packs) ; la chaîne
   crawl → signal n'a pas de test de bout en bout (LLM réel).
 
-### CC6, D340 — pages remplies depuis un objet (2026-10-22, non commité)
+### CC6, D340 — pages remplies depuis un objet (2026-10-22)
 
 - **Noyau générique** (`pnex_core::ontology::page_render`) : un modèle de
   page de pack peut déclarer `subject` (type d'objet) et `link` (lien
@@ -546,7 +546,7 @@ Limites :
 - Limite : instantané, pas une vue vivante. Pour rafraîchir, on recrée
   la page.
 
-### Réunions : préparation, enregistrement, compte rendu, coaching (2026-10-22, non commité)
+### Réunions : préparation, enregistrement, compte rendu, coaching (2026-10-22)
 
 - **Préparation** : modèle `meeting_prep` (voir D340 ci-dessus), ouvert
   depuis l'organisation.
@@ -582,7 +582,7 @@ Limites :
     transcription (`text_decide` sur la liste de l'org) ;
   - ratio de temps de parole par côté (diarisation).
 
-### Collecte : groupes vers le bas, actualités, profils capturés (2026-11-02, non commité)
+### Collecte : groupes vers le bas, actualités, profils capturés (2026-11-02)
 
 Demande de Shan (2026-11-02) : d'abord la collecte d'informations, grandes entreprises, liens, actualités, LinkedIn. Relevé réel sur Globex : GLEIF déclare 9 filiales (dont Inde, Belgique, Royaume-Uni), Wikidata en nomme 39, dont 15 sans SIREN, que l'import écartait.
 

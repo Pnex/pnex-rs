@@ -237,7 +237,7 @@ C1 et C2 sont indépendants et utiles hors création : on peut les livrer sans l
 
 ## 14. Avancement
 
-### 2026-10-16 — C1 livré (non commité)
+### 2026-10-16 — C1 livré
 
 - **Noyau** : lien système `depicts` (média → tout objet), attributs `role` (`reference`, `model`, `voice`, `pose`, `render`), `name`, `pose` (quaternions par articulation, JSON validé côté serveur), `model` (le modèle 3D d'une pose).
 - **Médias** : format GLB (glTF binaire 2.0) admis par la liste blanche, type de média `mesh` (« Modèle 3D »), servi en octets opaques (SEC-5).

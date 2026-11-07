@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Validé par Shan le 2026-11-04.** AG0, AG1, AG2, AG3 codés, non commités ; AG4 partiel (§12) ; AG5 attend OP1.2 |
+| Statut | **Validé par Shan le 2026-11-04.** AG0, AG1, AG2, AG3 codés ; AG4 partiel (§12) ; AG5 attend OP1.2 |
 | Déclencheur | Tableaux de bord commerciaux (`crm.md`, CRM3), resté sans spec. Demande de Shan (2026-11-04) : passer par le système SCADA et son runner plutôt que par un widget métier |
 | Repose sur | `operational-platform.md` (premier morceau d'OP5, D557), `data-pipelines.md` §9 (D569–D578), `ontology.md` (D185 requête, D187 dashboards de type), `external-apps.md` (D434 ensembles d'objets), `app-builder.md` (D506–D512), `viz-bases.md` (D31, D40), `crm.md` (D442–D443 masquage) |
 | Numérotation | **D579…D588**, lots **AG0…AG5** |
@@ -219,7 +219,7 @@ AG2 et AG3 touchent le constructeur d'application, mis en pause le 2026-11-02 : 
 | D587 | MCP, assistant, flows, SDK par la même route |
 | D588 | Le pack `crm` ne livre que des données d'écran |
 
-## 12. État d'implémentation (2026-11-04, non commité)
+## 12. État d'implémentation (2026-11-04)
 
 | Lot | Où | Tests |
 |---|---|---|

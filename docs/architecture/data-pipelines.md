@@ -528,7 +528,7 @@ lance les règles du pack (écarts, alertes). `NodeDoc` + fiche
 | **L6** | D355 : studio `/pipelines/:id` sur le modèle du studio des sites web (blocs, correspondance glissée, Code, Versions) ; `Drag`/`drop_at` et `VersionsDrawer` rendus génériques | confort d'édition | M (la mise en page existe) |
 | **L7** | D353 : mesure DataFusion contre Polars (binaire, build, mémoire) sur `Partenaires`, puis décision | seulement si un cas réel le demande | S (étude) |
 
-**Avancement (2026-10-22, non commité)** — lot **L1+**, le plus petit qui fait
+**Avancement (2026-10-22)** — lot **L1+**, le plus petit qui fait
 passer France Compétences de bout en bout sans flow (décision de Shan : plus
 de rustines sur le flow 9) :
 
@@ -631,7 +631,7 @@ au-delà de la récurrence (point 6). Tout le reste est à arbitrer.
    ligne écartée par sa clé fige les fermetures de liens de l'autre
    extrémité pour ce run (la certification).
 6. **Planification.** La récurrence était refusée sur une import fichier à
-   étapes (corrigé le 23, non commité). `RUN_HOUR` est fixe à 03:00 pour
+   étapes (corrigé le 23). `RUN_HOUR` est fixe à 03:00 pour
    tous et il n'y a pas d'enchaînement : les cinq imports sont étalés sur la
    semaine (certificateurs lundi … RS vendredi) pour garder leur ordre.
    → C'est le travail de L4 (`import.applied` → `import_trigger`) : on n'y
@@ -993,7 +993,7 @@ Le premier lot est une mesure. Ces lots remplacent L2, L4, L6 et L7 ; L5
 | **OP1.5** | §9.5 : studio en canevas, page de lignage | Autonomie sans YAML | M |
 | **OP1.6** | D578 : incrémental `append` | Sur besoin mesuré seulement | M |
 
-**Avancement OP1.1 (2026-11-04, non commité)** : catalogue et transactions
+**Avancement OP1.1 (2026-11-04)** : catalogue et transactions
 (migration 000070, `services/datasets/`), routes `/api/v1/datasets` (liste, création,
 lecture, suppression, transactions, chargement CSV, échantillon, `as_of`), purge.
 Acceptance tenue : 500 Mo de CSV (8,5 M de lignes, 94 Mo de Parquet) en 22 s en
@@ -1016,7 +1016,7 @@ assumés au regard de D569, à reprendre :
 - **Pas d'écran ni de fiche `assistant-kb`** : rien de visible avant OP1.5, qui
   apporte l'écran, la fiche, la ligne de lexique « Table » et sa garde.
 
-**Avancement OP1.2 (2026-11-04, non commité)** : binaire
+**Avancement OP1.2 (2026-11-04)** : binaire
 `crates/pnex-pipeline-worker` (DataFusion, image à part, service compose sous profil
 `pipelines`, `task pipeline-worker:up`), routes `/api/v1/pipelines` (document YAML,
 versions, exécutions) et `/datasets/{id}/lineage`, migration 000071. Acceptance tenue
@@ -1050,7 +1050,7 @@ autre org, rôle sans accès aux tables métier, délai, saut quand rien n'a cha
   déjà avec la fusion ;
 - **Le quota n'est lu qu'au début de chaque transformation**, comme pour un chargement.
 
-**Effacement dans les datasets (2026-11-04, non commité)**, prérequis d'OP1.3 : une
+**Effacement dans les datasets (2026-11-04)**, prérequis d'OP1.3 : une
 ligne de dataset n'a aucun lien avec un objet tant qu'on ne le déclare pas. `PUT
 /datasets/{id}/identity` dit donc quelle colonne identifie quel type d'objet, par quelle
 propriété ou par son titre (migration 000072). OP1.3 écrira cette déclaration depuis le
@@ -1101,7 +1101,7 @@ Limites assumées, à trancher avant de promettre un effacement complet :
 - **Version amont purgée** : une table n'ayant plus la personne ne déclenche pas la voie aval,
   et une sortie calculée avant reste en l'état tant qu'elle n'est pas recalculée.
 
-**Avancement OP1.3, première partie (2026-11-04, non commité)** : la synchro par
+**Avancement OP1.3, première partie (2026-11-04)** : la synchro par
 entités planifiées (D577, §9.7 ter). Un import peut avoir pour source une table
 (`source: dataset`, l'id de la table dans `source_url`, migration 000073). Chaque run
 planifie les transactions de la vue courante et celles du dernier run appliqué, avec
@@ -1168,7 +1168,7 @@ Corrections trouvées en branchant les packs :
 Bug corrigé en route, sur tous les imports en mode liste complète : archiver un objet
 ferme ses liens, et fermer ensuite le même lien échouait en annulant tout le run.
 
-**Avancement OP1.4 (2026-11-04, non commité)** : ordonnanceur, contrôles au commit,
+**Avancement OP1.4 (2026-11-04)** : ordonnanceur, contrôles au commit,
 événements (migration 000077, `services/data_builds.rs`, routes `/api/v1/data-builds` et
 `PUT /pipelines/{id}/schedule`, `PUT /datasets/{id}/freshness`, nœud `dataset_trigger`).
 Acceptance tenue de bout en bout (`france_competences_from_one_schedule`, faux data.gouv.fr,
@@ -1228,7 +1228,7 @@ Choix laissés ouverts par le PRD, tranchés au plus prudent en l'absence de Sha
 
 `fc_rs_xml` reste sur l'ancien chemin (hors table) : il prend part à la build comme les autres.
 
-**Connecteurs, premier lot (2026-11-05, non commité)** : D352 sur ce socle (OP2), pour
+**Connecteurs, premier lot (2026-11-05)** : D352 sur ce socle (OP2), pour
 PostgreSQL seul. Routes `/api/v1/connectors` (admin d'org), migration 000078,
 `services/connectors.rs`, étape `connector_query` d'un import : le résultat part en CSV dans le
 staging, puis suit le chemin de tout fichier (table versionnée, synchro, planification,
@@ -1263,12 +1263,12 @@ staging, puis suit le chemin de tout fichier (table versionnée, synchro, planif
   seul celui d'octets (500 Mo par défaut, `max_bytes` jusqu'à 2 Go), et 30 min par requête ;
 - **Conversion de types** : le CSV de `COPY` met tout en texte, comme tout chargement.
 
-**Rétention de l'historique (Q-P1, 2026-11-05, non commité)** : `history_retention_days`, 3 650
+**Rétention de l'historique (Q-P1, 2026-11-05)** : `history_retention_days`, 3 650
 jours par défaut, `PUT /system/retention/history` (admin plateforme), posé sur le flux
 `object_changes` par la réconciliation horaire, vérifié sur OpenObserve local (`type=logs`). Un flux
 créé entre deux passes suit le défaut de l'instance jusqu'à la passe suivante.
 
-**Avancement OP1.5 (2026-11-05, non commité)** : `/pipelines` (onglets Pipelines, Tables, Exécutions
+**Avancement OP1.5 (2026-11-05)** : `/pipelines` (onglets Pipelines, Tables, Exécutions
 enchaînées, Connecteurs), `/pipelines/:id` (studio), `/pipelines/tables/:id` (page d'une table), nouvelle
 route `POST /pipelines/validate`, `PipelineDocument::to_yaml` et `starter`, `VersionsDrawer` devenu un
 composant partagé avec les règles de navigation. Un pipeline se crée, s'édite, se lance et se planifie

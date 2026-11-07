@@ -528,7 +528,7 @@ la règle CPF-01 ne relie pas l'écart à l'organisme (l'offre, oui).
 > au MVP, à partir de programmes **déposés** (QW3b). Codé **après la
 > recette sur dev** de R1–R5, pour ne pas mélanger.
 
-> **Statut : implémenté hors OCR et LLM (2026-10-28, non commité)**, voir
+> **Statut : implémenté hors OCR et LLM (2026-10-28)**, voir
 > « État » en fin de section.
 
 Exemple à reproduire : `tableau croisé du pilote`, une
@@ -694,7 +694,7 @@ vidéos.
   - le choix automatique (titre ou contenu « programme » et code de la
     certification) est en V2 avec D413.
 
-### État (2026-10-28, non commité)
+### État (2026-10-28)
 
 Livré (pack `quali_watch` 3.2.0) :
 
@@ -779,7 +779,7 @@ Reste :
 
 ## 9. Trace des contrôles et dossiers de veille (D426–D431)
 
-> **Statut : implémenté (2026-10-28, non commité)**, voir « État » en fin de
+> **Statut : implémenté (2026-10-28)**, voir « État » en fin de
 > section. Demande de Shan relayée par la session
 > `pnex-quali-watch` : « rendre visible, partenaire par partenaire, tout le
 > déroulement de Quali-Watch dans un case, avec la chronologie de chaque
@@ -977,7 +977,7 @@ version du flow. Seul `check_record` écrit cette origine en V1.
 | **T3** | D430 `checks` dans l'espace de travail, panneau « Contrôles » | intégration + e2e du panneau |
 | **T4** | D431 : `qw_passage`, flows 15, 17 et 18, imports en fin de run, packs montés | `pack_rules.rs` (regroupement par partenaire), `partner_watch.rs` (case ouvert et alimenté de bout en bout) |
 
-### État (2026-10-28, non commité)
+### État (2026-10-28)
 
 Q-N9 à Q-N12 : les défauts. Livré :
 

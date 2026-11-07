@@ -32,10 +32,10 @@ d'enquête. Le pack d'org `supply_chain` (lien `supplies`, `partner_of`, clé
 | # | Constat | Gravité | Porteur | État |
 |---|---|---|---|---|
 | C1 | Worker de pipelines jamais déployé (`pipelineWorker.enabled: false`) : tout run restait `queued` | bloquant | Shan (chart) | déployé (helm rev 17) |
-| C2 | Le rôle `pnex_pipeline_worker` n'a pas `USAGE` sur `public` (CNPG retire le droit à PUBLIC) : « relation does not exist » en boucle | bloquant | c2 | GRANT manuel en prod ; migration 000102 non commitée |
-| C3 | Worker de pipelines tué (OOMKilled 4 Gi) sur 105 × 44,5 M : `prefer_hash_join=false` planifie un SortMergeJoin qui trie 44,5 M lignes hors du pool | bloquant | c2 | `prefer_hash_join=true` + test, non commité |
+| C2 | Le rôle `pnex_pipeline_worker` n'a pas `USAGE` sur `public` (CNPG retire le droit à PUBLIC) : « relation does not exist » en boucle | bloquant | c2 | GRANT manuel en prod  |
+| C3 | Worker de pipelines tué (OOMKilled 4 Gi) sur 105 × 44,5 M : `prefer_hash_join=false` planifie un SortMergeJoin qui trie 44,5 M lignes hors du pool | bloquant | c2 | `prefer_hash_join=true` + test |
 | C4 | Un job qui tue le worker est rejoué jusqu'à `MAX_ATTEMPTS` : le worker tombe à chaque reprise (crash en boucle), le run reste `running` entre deux | majeur | c2 | à faire |
-| C5 | La conversion des uploads tourne sur tous les pods, flow-worker compris (1 Gi) : OOMKilled, flows déployés coupés | majeur | c2 | conversion réservée aux pods API + vidage par taille réelle, non commité ; flow-worker à 3 Gi en attendant |
+| C5 | La conversion des uploads tourne sur tous les pods, flow-worker compris (1 Gi) : OOMKilled, flows déployés coupés | majeur | c2 | conversion réservée aux pods API + vidage par taille réelle ; flow-worker à 3 Gi en attendant |
 | C6 | Une jointure grosse × grosse (44,5 M × 38 M) ne peut pas déborder sur disque : arrêt propre `pipeline-memory-exceeded`, mais aucun moyen de la faire | majeur | c2 | à concevoir (jointure partitionnée ou tri-fusion compté dans le pool) |
 | C7 | Après la mort d'un pod, une conversion attend 10 min (battement) avant reprise ; vécu deux fois de suite | mineur | c2 | à arbitrer (seuil plus court ou reprise au démarrage du pod) |
 | C8 | Un import depuis une table ne peut pas écrire de séries datées : `observations` exige `per_object` (source API) ; les finances restent en table | majeur (produit) | c2 / ontologie | à faire : `observations` sur source `dataset` |
@@ -45,7 +45,7 @@ d'enquête. Le pack d'org `supply_chain` (lien `supplies`, `partner_of`, clé
 | C12 | L'import API « Établissements (registre) » ne prend que la 1re page par société (84 sites pour 10 groupes) | moyen | prospection FR | à vérifier `max_pages` / pagination |
 | C13 | GLEIF niveau 2 couvre mal les groupes industriels (filiales majeures sans relation déclarée) | donnée | — | compensé par les candidats « même nom » en propositions |
 | C14 | Préfixe de nom seul = bruit (restaurants, SCI) ; filtré par forme juridique et NAF, il reste quelques faux positifs | donnée | — | propositions à valider par un humain |
-| C15 | Carte : au retour sur `/map` par le menu, 0 marqueur (vue périmée de l'ancienne carte, puis `setItems([])` au `load`) | majeur (UI) | 3a | corrigé dans `js/map.js`, non commité |
+| C15 | Carte : au retour sur `/map` par le menu, 0 marqueur (vue périmée de l'ancienne carte, puis `setItems([])` au `load`) | majeur (UI) | 3a | corrigé dans `js/map.js` |
 | C16 | Loader 16 px : l'animation tourne mais le motif de tirets (12 px écran, `non-scaling-stroke`) est plus long qu'un faisceau : paraît figé | mineur (UI) | design | à trancher : motif proportionnel ou variante < 24 px |
 | C17 | Dossier : une personne ne s'attache qu'après déclaration de la base légale (`case-legal-basis-required`) | voulu | — | base « test interne, données publiques » déclarée |
 | C18 | Vue Argent vide : elle ne lit que des événements avec montant + payeur/bénéficiaire ; les liens `owns`/`supplies` portant un montant ne l'alimentent pas | majeur (produit) | dossiers | à concevoir (voir §3) |

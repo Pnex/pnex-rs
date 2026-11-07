@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Validée par Shan le 2026-11-05** (§6). TB1, TB2 et TB3 codés, non commités, sauf le filtre par propriétaire et l'écran Équipe |
+| Statut | **Validée par Shan le 2026-11-05** (§6). TB1, TB2 et TB3 livrés ; volet clos le 2026-11-06 (§8), hors filtre par propriétaire et écran Équipe |
 | Déclencheur | CRM3 attendait une spec. Demande de Shan (2026-11-05) : partir de ce que font les autres logiciels |
 | Repose sur | `object-aggregates.md` (D579–D588), `crm.md` |
 | Numérotation | **D721…D727**, lots **TB1…TB3** |

@@ -1,6 +1,6 @@
 # Contrat d'API HTTP : spec OpenAPI et harmonisation (D238–D245)
 
-> Statut : **H0–H5 livrés et validés** (2026-10-17, non commité) :
+> Statut : **H0–H5 livrés et validés** (2026-10-17) :
 > `cargo test --workspace` vert (165 binaires), 8 gardes du spec vertes,
 > Redocly valide, SDK TS (421 opérations, `tsc --strict`) et Rust (hors
 > bug connu du générateur sur les uploads binaires), e2e Playwright

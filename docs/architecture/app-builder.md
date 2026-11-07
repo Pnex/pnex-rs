@@ -1,7 +1,7 @@
 # Applications construites dans PneX : écrans métier sur l'ontologie (D506–D513)
 
 > **Statut : PRD validé par Shan le 2026-10-29, lots AB0–AB5 codés le
-> 2026-11-02, non commité** (§11). Questions Q-B1 à Q-B6 tranchées : les
+> 2026-11-02** (§11). Questions Q-B1 à Q-B6 tranchées : les
 > défauts (§10).
 >
 > Demande de Shan (2026-10-29) : faire évoluer la partie supervision
@@ -201,7 +201,7 @@ Premier lot de valeur : AB0 → AB2 (application de consultation, sans
 | Q-B5 | Résultat d'une action : D183 est sans retour. Un retour du flow pour l'écran ? | Non en V1 : « envoyé », puis rechargement |
 | Q-B6 | Mobile ? | PC d'abord (AB1–AB4), mobile en AB5 |
 
-## 11. État d'implémentation (2026-11-02, non commité)
+## 11. État d'implémentation (2026-11-02)
 
 Choix pris en codant, sans demande à Shan (réversibles) :
 

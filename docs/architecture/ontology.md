@@ -701,7 +701,7 @@ ni masquage. Le taux de troncature de ce test est sous-estimé par un défaut du
 (doublons d'une même arête comptés par le `LIMIT`) : il ne faut pas s'y fier, et le
 code devra signaler la coupe dès que le `LIMIT` est atteint. Les temps restent valides.
 
-**Livré le 2026-11-04** (`services/ontology/graph.rs`, non commité à cette date) :
+**Livré le 2026-11-04** (`services/ontology/graph.rs`) :
 
 - voisinage et impact lisent niveau par niveau, plafonnés à 5 000 liens, avec
   `truncated` dans la réponse et une note dans l'UI. Sans index ajouté ;

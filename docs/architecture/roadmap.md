@@ -344,7 +344,7 @@ pas pour l'utilisateur — c'est le plus grand trou user-facing du socle.
 > et où vit l'arbre (page dédiée « Organisation » vs extension du tiroir
 > POI déjà en arbre mixte).
 >
-> **2026-10-09 (tranché, livré non commité)** : un seul arbre, celui des
+> **2026-10-09 (tranché, livré)** : un seul arbre, celui des
 > lieux, deux entrées — la Carte et la page **Sites** (`/sites`, menu
 > Visualisation : liste pleine page des repères, même tiroir que la carte,
 > « Vue carte » / « Vue liste » pour basculer) ; fil d'Ariane
@@ -1034,7 +1034,7 @@ ontologie, e-mail à destinataire dynamique, webhook HMAC, compte de service
 en écriture bornée. Lots PW0 → PW8 ; PW0–PW3 sans attendre l'IAM, PW7
 après les comptes de service (P2.25).
 
-### P2.27 — Cartographie commerciale des comptes (ajout 2026-10-21) — **CC1 en cours : pack `prospecting_b2b` écrit**
+### P2.27 — Cartographie commerciale des comptes (ajout 2026-10-21) — **CC1, CC2, CC4, CC5, CC6, réunions, collecte, D779 et D788 livrés** ; ouvert : registres étrangers
 
 `account-mapping.md`, D329–D342 : un compte vu comme un réseau daté
 (groupe, filiales, établissements, dirigeants, contacts, recommandations)
@@ -1061,18 +1061,18 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 | D369 | `external_ref` de premier rang + événements de changement sortants (D356 généralisé) ; écritures chiffrées dans des tables dédiées en ajout seul, à côté de l'ontologie | principe acté, code au démarrage CRM/ERP |
 | D370 | Clé d'énumération stable, jamais renommée ; libellé séparé | règle immédiate |
 
-**Livré en local (2026-10-22, non commité)**
+**Livré (codé le 2026-10-22, poussé depuis)**
 
 | Bloc | Contenu | État |
 |---|---|---|
-| CC2 | Liens de groupe GLEIF + Wikidata (`subsidiary_of` passe dans `companies`), nœud `org_resolve` | codé, à commiter |
-| D337 / D336 | Liste de ciblage par recherche enregistrée (`prospecting_b2b_fr`), score de ciblage par critères d'org | codé, à commiter |
-| D339 / D330 | Couleurs par valeur (carte, hiérarchie, graphe), couverture et espace blanc | codé, à commiter |
-| D338 | Chemin d'introduction (liens entre personnes) | codé, à commiter |
-| W2–W4 | `link_upsert` `skip_closed`, pack `web_presence`, nœud `web_visit`, flow d'identification, « Sites à valider » | codé, à commiter |
-| CC4 | `sales_signal`, annonces BODACC des comptes suivis, flow de résumé | codé, à commiter |
-| D340 | Pages remplies depuis un objet : plan de compte, fiche concurrent, préparation de rendez-vous | codé, à commiter |
-| Réunions | `meeting`, `coaching_criterion`, compte rendu, coaching par critère, `focus` du résumé de média | codé, à commiter |
+| CC2 | Liens de groupe GLEIF + Wikidata (`subsidiary_of` passe dans `companies`), nœud `org_resolve` | poussé |
+| D337 / D336 | Liste de ciblage par recherche enregistrée (`prospecting_b2b_fr`), score de ciblage par critères d'org | poussé |
+| D339 / D330 | Couleurs par valeur (carte, hiérarchie, graphe), couverture et espace blanc | poussé |
+| D338 | Chemin d'introduction (liens entre personnes) | poussé |
+| W2–W4 | `link_upsert` `skip_closed`, pack `web_presence`, nœud `web_visit`, flow d'identification, « Sites à valider » | poussé |
+| CC4 | `sales_signal`, annonces BODACC des comptes suivis, flow de résumé | poussé |
+| D340 | Pages remplies depuis un objet : plan de compte, fiche concurrent, préparation de rendez-vous | poussé |
+| Réunions | `meeting`, `coaching_criterion`, compte rendu, coaching par critère, `focus` du résumé de média | poussé |
 | Personas | Correspondance des personas d'un client vers la liste du pack | donnée d'org, hors dépôt |
 
 **Suites identifiées**
@@ -1104,7 +1104,7 @@ tous les packs livrés. Ils sont analysés une fois par processus : la suite
 retombe à 118 s (`ontology` 72 → 31 s, `personal_data` 64 → 13 s), et
 l'installation d'un pack sur un serveur est d'autant plus rapide.
 
-### P2.29 — Agents autonomes : gouvernance, passerelle LLM, bacs à sable (ajout 2026-10-23) — **PRD proposé, rien d'implémenté**
+### P2.29 — Agents autonomes : gouvernance, passerelle LLM, bacs à sable (ajout 2026-10-23) — **Environnements d'agents (D700–D720) livrés ; A1 et A2 repris dans `agent-unification.md` (D780–D790, U1–U6 livrés le 2026-11-07, U4b et D786 ouverts)**
 
 Doc : `autonomous-agents.md` (D378–D401, lots A0–A5) ; infrastructure dans
 `worker-fabric.md` §14. Trois niveaux (interne, hébergé, libre), agent =
@@ -1152,8 +1152,8 @@ d'`account-mapping.md` en gardant le CRM dans un pack.
 | CRM4 | Pistes et conversion (action `convert`), devis (modèle `quote_sheet`) et factures suivis (émises par l'outil de facturation), devis expirés et factures en retard avec relance, pistes au digest (D514–D517) | poussé |
 | CRM3 | Mail entrant rattaché à la fiche → lot M6 de `mail.md` (boîtes mail génériques D453–D462, réflexion) ; tableaux de bord (ROI par salon, taux par étape de relance) | M1, M2, M6 codés (2026-10-26) : boîtes IMAP, relève, déclencheur `mail_received`, flow « CRM · mails reçus » ; **essai de bout en bout le 2026-10-26** sur une vraie boîte o2switch (pack `crm` 1.1.0) : 7 défauts trouvés et corrigés (SEC-51 oracle de requête, SEC-52 effacement annulable et en-tête d'authentification forgeable, DKIM vérifié par PneX, date de transfert, chaîne de transferts, refus silencieux des nœuds d'ontologie, mails effacés par correspondant) ; rejeu des mails manqués par un nœud qui redémarre (D464, curseur par nœud, vérifié en réel le 2026-10-26) ; écran `/mailboxes` le 2026-10-27 (ajout, test de connexion qui signale un dossier spam non relevé, pause, suppression, fiche des mails relevés en texte avec la vérification de l'expéditeur, lien depuis le nœud Mail reçu) ; envoi (M3) codé le 2026-10-29 : SMTP sur la boîte, boîte d'envoi relue par un humain, nœud `mail_send`, garde-fous au serveur (D518–D521), essayé sur un vrai serveur le 2026-11-03 ; relances `crm` branchées sur la boîte d'envoi (D522) ; flows `crm` exécutés sur le vrai runtime en e2e le 2026-11-04 (`e2e/tests/crm.spec.ts`) ; restent Microsoft, reporté par Shan le 2026-11-03 (`mail.md` §9–§10), et le nœud de flow d'agrégat. Tableaux de bord : `object-aggregates.md` (D579–D588, pack `crm` 3.3.0, 2026-11-04) |
 | CRM5 | Pistes depuis une liste de salon (D590) et depuis une boîte partagée (D591), `crm.md` | poussé |
-| CRM6 | Effacement complet et empreinte hachée des points de contact (D610, SEC-63), une piste par adresse (D611) | codé, non commité |
-| CRM7 | Tableaux de bord commerciaux (`sales-dashboards.md`, D721–D727) : Résultats, Prévision, Passage par étape, Prospection, objectifs, historique d'étape dans O2 | codé, non commité ; filtres de visionnage et écran Équipe à faire |
+| CRM6 | Effacement complet et empreinte hachée des points de contact (D610, SEC-63), une piste par adresse (D611) | poussé (70103cd7) |
+| CRM7 | Tableaux de bord commerciaux (`sales-dashboards.md`, D721–D727) : Résultats, Prévision, Passage par étape, Prospection, objectifs, historique d'étape dans O2 | livré, volet clos le 2026-11-06 ; filtre par propriétaire et écran Équipe hors volet (avis juridique) |
 
 Écrans (bouton « Effacer », base légale affichée, vues dédiées) : hors de ce
 lot, l'application commerciale viendra sur l'API.
@@ -1196,7 +1196,7 @@ requêtes nommées et flows, doctrine interne dans la même recherche avec
 la source de chaque extrait marquée, instance autonome par
 synchronisation.
 
-### P2.34 — Applications construites dans PneX : écrans métier sur l'ontologie (ajout 2026-10-29) — **AB0–AB5 codés le 2026-11-02, à commiter, essai navigateur hors dépôt, pas de spec e2e**
+### P2.34 — Applications construites dans PneX : écrans métier sur l'ontologie (ajout 2026-10-29) — **AB0–AB5 poussés (546904b9), en pause, essai navigateur hors dépôt, pas de spec e2e**
 
 Doc : `app-builder.md` (D506–D513, lots AB0–AB5). L'application D433
 (périmètre, ensembles d'objets, actions permises) gagne une interface
@@ -1240,7 +1240,7 @@ failles (demande du 2026-11-05, D728).
 | OP2 | Cadre de connecteurs, SaaS/ERP, stockage cloud, CDC, tables virtuelles, écriture retour |
 | OP3 | Lignes, marquages, habilitations, finalité, données sensibles, pseudonymisation, SAML, droits des personnes |
 | OP4 | Branches transverses, interfaces d'ontologie |
-| OP5 | Agrégats (`object-aggregates.md`, D579–D588, validé et codé le 2026-11-04, non commité ; passe avant OP1), analyse sans code, SQL en lecture, règles avec rejeu, blocs vivants |
+| OP5 | Agrégats (`object-aggregates.md`, D579–D588, validé et codé le 2026-11-04 ; passe avant OP1), analyse sans code, SQL en lecture, règles avec rejeu, blocs vivants |
 | OP6 | Tableur et traitement de texte (GridCraft, WordCraft), après POC |
 | OP7 | Notebooks Python en déploiement séparé, SDK d'accès aux données |
 | OP8 | SDK typés, applications en code sur origine isolée, génération par l'IA, hors ligne |
@@ -1644,7 +1644,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   fin de D341 (classification, masquage par rôle, file de rétention,
   effacement en coquille, opposition au moteur) et pack `crm`
   (opportunités, qualification, activités, plan de relance, brouillons
-  relus, digest du matin). Codé en local, à commiter ; écrans hors lot.
+  relus, digest du matin). Poussé ; écrans hors lot.
 - **2026-10-27 (due diligence)** — Ajout de P2.32 (`due-diligence.md`,
   D468–D483, lots DD0–DD7) : dossier de transaction, grand livre FEC,
   faits financiers normalisés, moteur de ratios, flux, pro forma. PRD

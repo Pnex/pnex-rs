@@ -277,7 +277,7 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   `pack_upgrade_follows_untouched_imports` vérifie le refus et la
   suppression du flow retiré.
 
-**Avancement (2026-10-22, non commité)** — **W1 codé** :
+**Avancement (2026-10-22)** — **W1 codé** :
 
 - table `web_search_providers` (migration 000044), service
   `services/web_search.rs` (CRUD au modèle des navigateurs, clé au coffre
@@ -297,7 +297,7 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   `web-search.md`, ligne au lexique et règle de garde (« moteur de
   recherche » refusé).
 
-**Avancement (2026-10-22, non commité)** — **W2, W3 (texte), W4 codés** :
+**Avancement (2026-10-22)** — **W2, W3 (texte), W4 codés** :
 
 - **W2** : `link_upsert` gagne `skip_closed` (une paire déjà fermée répond
   son dernier lien fermé, jamais rouvert) ; `close` fusionne d'abord les

@@ -928,7 +928,7 @@ instant » (`workspace.rs`, `snapshot.rs`) ; outils assistant
 
 ## 17. Avancement
 
-### 2026-10-12 — socle L0, frise L1, glisser L2 (non commité)
+### 2026-10-12 — socle L0, frise L1, glisser L2
 
 Beta : aucune donnée existante n'est préservée (accord de Shan). L'ancien
 écran et ce qu'il portait sont retirés, pas mis en cohabitation.
@@ -954,7 +954,7 @@ rejeté. Avant L3 : soit relever ce plafond dans le déploiement (et le
 documenter), soit stocker les traces importées hors d'O2 (table dédiée ou
 Parquet par import). À trancher.
 
-### 2026-10-12 (suite) — carte L3 (partiel), détecteurs L5 (non commité)
+### 2026-10-12 (suite) — carte L3 (partiel), détecteurs L5
 
 | Élément | Où | État |
 |---|---|---|
@@ -976,7 +976,7 @@ début à cheval sur une minute peut se dédoubler après un recalcul sur une
 autre fenêtre). Le test e2e des détections attend un moyen d'injecter des
 positions dans l'O2 de test.
 
-### 2026-10-12 (suite) — zones et import de traces (non commité)
+### 2026-10-12 (suite) — zones et import de traces
 
 **Décision K26 (tranchée)** : les traces importées vivent dans **Postgres**
 (`track_imports`, `track_points`), pas dans O2. Le plafond d'ingestion
@@ -1006,7 +1006,7 @@ empreinte) ; dessiner un cercle à la souris sur la carte reste à faire
 peut être traversée sans être vue ; `map_pin` (POI) n'a pas encore de zone
 (seul `place` en porte une).
 
-### 2026-10-12 (suite) — seuils par dossier (fin de L5), gels, export Markdown et réimport (L6) (non commité)
+### 2026-10-12 (suite) — seuils par dossier (fin de L5), gels, export Markdown et réimport (L6)
 
 | Élément | Où | État |
 |---|---|---|
@@ -1026,7 +1026,7 @@ format serde_json), pas la forme RFC 8785 des nombres ; le code d'erreur
 le réimport ne vise que la même org (un import inter-org devrait recréer
 les objets) ; l'aide clavier de L6 reste à faire.
 
-### 2026-10-12 (suite) — frise longue durée, aide clavier (fin de L6), journal K38, graphe L4 (non commité)
+### 2026-10-12 (suite) — frise longue durée, aide clavier (fin de L6), journal K38, graphe L4
 
 Demande de Shan : bornes saisissables, ajustement sur toute l'enquête
 « même si elle a duré 20 ans », et une façon de compacter.
@@ -1056,7 +1056,7 @@ Pas de regroupement par type au-delà de 300 nœuds (simple compte). Le
 graphe garde la taille de son panneau (pas de zoom ni de panoramique).
 La pastille « +N » cadre ce qu'elle cache, pas tout le groupe voisin.
 
-### 2026-10-12 (suite) — refonte plein écran (retour de Shan : « très horrible… mais il y a du potentiel ») (non commité)
+### 2026-10-12 (suite) — refonte plein écran (retour de Shan : « très horrible… mais il y a du potentiel »)
 
 Maquette validée (artefact « Espace d'enquête plein écran »), puis :
 
