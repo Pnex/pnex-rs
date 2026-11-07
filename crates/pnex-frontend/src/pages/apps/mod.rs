@@ -108,7 +108,10 @@ pub fn Apps() -> Element {
             add_label: t!("apps-declare").to_string(),
             can_write: can_declare,
             on_add: move |_| {
-                navigator.push(Route::Access {});
+                navigator
+                    .push(Route::Access {
+                        tab: "apps".into(),
+                    });
             },
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             ListStates {

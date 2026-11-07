@@ -219,8 +219,8 @@ pub enum Route {
 
         // Access management (iam.md §9): roles, teams, assignments,
         // service accounts and their access keys.
-        #[route("/access")]
-        Access {},
+        #[route("/access?:tab")]
+        Access { tab: String },
 
         #[route("/profile")]
         Profile {},

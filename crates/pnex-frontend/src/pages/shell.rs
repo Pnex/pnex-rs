@@ -340,7 +340,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
         || at(Route::Models {})
         || at(Route::FluidMixtures {});
     let settings = matches!(route, Route::Orgs {} | Route::OrgsCurrent {})
-        || at(Route::Access {})
+        || matches!(route, Route::Access { .. })
         || at(Route::Secrets {})
         || at(Route::System {})
         || at(Route::AdminStatus {});
@@ -631,9 +631,11 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                 }
                 if crate::state::access::can("iam:read") {
                     NavItem {
-                        to: Route::Access {},
+                        to: Route::Access {
+                            tab: String::new(),
+                        },
                         label: t!("nav-access"),
-                        active: at(Route::Access {}),
+                        active: matches!(route, Route::Access { .. }),
                         on_navigate,
                     }
                 }

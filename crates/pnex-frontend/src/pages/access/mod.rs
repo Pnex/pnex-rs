@@ -35,10 +35,18 @@ enum Tab {
 pub(crate) struct AddRequest(u32);
 
 #[component]
-pub fn Access() -> Element {
-    let mut tab = use_signal(|| Tab::Roles);
+pub fn Access(tab: String) -> Element {
+    // `?tab=apps` opens on that tab (the Applications page links here to declare one).
+    let first = if tab == "apps" { Tab::Apps } else { Tab::Roles };
+    let mut tab = use_signal(|| first);
     let mut reload = use_signal(|| 0u32);
     let mut add = use_signal(AddRequest::default);
+    // Sent here to declare an application: its form opens at once, once.
+    use_effect(move || {
+        if first == Tab::Apps {
+            add.with_mut(|a| a.0 += 1);
+        }
+    });
     let can_write = access::can("iam:write");
     let can_write_apps = access::can("apps:write");
     let add_label = match tab() {
