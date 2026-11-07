@@ -15,21 +15,7 @@ const GITHUB_API: &str = "api.github.com";
 /// Why a merge request was not opened: codes only, the outside server's text stays in logs.
 pub type Refusal = &'static str;
 
-/// `(owner, repository)` of an `https://github.com/<owner>/<repo>[.git]` URL.
-pub fn github_repo(url: &str) -> Option<(String, String)> {
-    let rest = url.strip_prefix("https://github.com/")?;
-    let rest = rest.trim_end_matches('/');
-    let rest = rest.strip_suffix(".git").unwrap_or(rest);
-    let (owner, repo) = rest.split_once('/')?;
-    let ok = |s: &str| {
-        !s.is_empty()
-            && s != "."
-            && s != ".."
-            && s.chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-    };
-    (ok(owner) && ok(repo)).then(|| (owner.to_string(), repo.to_string()))
-}
+pub use pnex_core::agent_runs::github_repo;
 
 /// The branch a run pushes: never the base, never a name an agent chose.
 pub fn run_branch(run_id: &str) -> String {

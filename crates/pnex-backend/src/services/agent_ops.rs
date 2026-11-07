@@ -295,9 +295,16 @@ async fn project_locked(db: &DatabaseConnection, org_id: i64, job: Uuid) -> Resu
 pub fn spawn_projection(ctx: &loco_rs::app::AppContext, org_id: i64, job: Uuid) {
     let db = ctx.db.clone();
     let config = ctx.config.clone();
+    let ring = crate::controllers::secrets::keyring(ctx).ok();
     tokio::spawn(async move {
         if let Err(e) = project_run(&db, org_id, job).await {
             tracing::warn!(org_id, %job, error = ?e, "agent run not projected to the ontology");
+        }
+        // Before the end is published: the next step of a chain sees the merge request.
+        if let Err(e) =
+            crate::services::agent_runs::open_merge_requests(&db, ring.as_ref(), org_id, job).await
+        {
+            tracing::warn!(org_id, %job, error = %e, "merge requests not recorded");
         }
         let valkey = crate::services::shared_valkey::conn(&config).await;
         if let Err(e) =

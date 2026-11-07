@@ -621,6 +621,32 @@ fn RunsTab(reload: Signal<u32>) -> Element {
     }
 }
 
+/// Merge requests opened for the run's branches (D388). Only forge URLs PneX opened:
+/// https on the forge's host, never a `javascript:` or other scheme (R11).
+#[component]
+fn MergeRequests(urls: Vec<String>) -> Element {
+    let urls: Vec<String> = urls
+        .into_iter()
+        .filter(|u| u.starts_with("https://github.com/"))
+        .collect();
+    if urls.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        h3 { class: "text-sm font-semibold text-ink", {t!("agents-merge-requests")} }
+        for url in urls {
+            a {
+                key: "{url}",
+                class: "block truncate text-sm text-signal-600 hover:underline",
+                href: "{url}",
+                target: "_blank",
+                rel: "noopener noreferrer",
+                {url.clone()}
+            }
+        }
+    }
+}
+
 #[component]
 fn RunDetail(run: AgentRun, open: Signal<Option<AgentRun>>, reload: Signal<u32>) -> Element {
     let id = run.id.clone();
@@ -685,6 +711,7 @@ fn RunDetail(run: AgentRun, open: Signal<Option<AgentRun>>, reload: Signal<u32>)
                         }
                     }
                 }
+                MergeRequests { urls: run.merge_requests.clone() }
                 h3 { class: "text-sm font-semibold text-ink", {t!("agents-log")} }
                 if lines.is_empty() {
                     p { class: "text-sm text-slate", {t!("agents-no-log")} }

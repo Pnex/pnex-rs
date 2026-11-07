@@ -43,6 +43,7 @@ The Agents page lists the agents and their runs. From it a person creates an age
 - A run, or an agent's record, can name repositories to clone (`https` only) and test services to start beside the agent, such as a database.
 - A repository's read token is a secret of the vault: only the clone step gets it, never the agent.
 - A service variable set to `@generated` becomes a fresh password at every run; the agent reads it as `<SERVICE>_<VARIABLE>`. No password is ever written in the record.
+- A coder agent's changes can go out as a branch: give the repository a write token of the vault (GitHub only for now). At the end of the run its changes are pushed as branch `pnex/run-<run id>` and a merge request is opened onto the cloned branch; its link appears under "Merge requests" in the run. The agent never holds the write token, and nothing is ever merged: merging stays your decision.
 
 ## Dependency caches
 - A run, or an agent's record, can keep folders from one run to the next, such as the downloaded packages of a build tool.

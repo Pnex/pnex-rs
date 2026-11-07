@@ -109,7 +109,8 @@ fn select() -> String {
            j.spec->>'image' AS image, \
            to_char(a.created_at AT TIME ZONE 'UTC', {ISO}) AS created_at, \
            to_char(j.started_at AT TIME ZONE 'UTC', {ISO}) AS started_at, \
-           to_char(j.finished_at AT TIME ZONE 'UTC', {ISO}) AS finished_at \
+           to_char(j.finished_at AT TIME ZONE 'UTC', {ISO}) AS finished_at, \
+           a.merge_requests \
          FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id"
     )
 }
@@ -141,6 +142,8 @@ fn view(r: &QueryResult) -> Result<AgentRun, DbErr> {
         created_at: r.try_get("", "created_at")?,
         started_at: r.try_get("", "started_at")?,
         finished_at: r.try_get("", "finished_at")?,
+        merge_requests: serde_json::from_value(r.try_get("", "merge_requests")?)
+            .unwrap_or_default(),
     })
 }
 
@@ -417,7 +420,7 @@ pub async fn sandbox_input(
     let row = db
         .query_one_raw(stmt(
             "UPDATE agent_runs SET token_hash = $3 WHERE org_id = $1 AND job_id = $2 \
-             RETURNING env, inputs, outputs, repos, services, caches",
+             RETURNING id, env, inputs, outputs, repos, services, caches",
             vec![org_id.into(), job.into(), hash(&token).into()],
         ))
         .await
@@ -489,12 +492,24 @@ pub async fn sandbox_input(
             }
             None => None,
         };
+        // A branch output: the write token goes to the push sidecar only (D388).
+        let push = match &repo.push_secret_id {
+            Some(id) => {
+                let id = Uuid::parse_str(id).ok()?;
+                let run: Uuid = row.try_get("", "id").ok()?;
+                Some(pnex_core::runners::SandboxPush {
+                    branch: crate::services::forge::run_branch(&run.to_string()),
+                    token: store::reveal(db, ring?, Some(org_id), id).await.ok()?,
+                })
+            }
+            None => None,
+        };
         sandbox_repos.push(SandboxRepo {
             url: repo.url.clone(),
             git_ref: repo.git_ref.clone(),
             path: repo.path.clone(),
             token,
-            push: None,
+            push,
         });
     }
     let mut sandbox_services = Vec::new();
@@ -532,6 +547,64 @@ pub async fn sandbox_input(
         egress,
         artifacts,
     })
+}
+
+/// Opens the merge request of each branch the run pushed (D388), once its job ended, and
+/// keeps their URLs on the run. A refusal is logged as a code, never the forge's text.
+pub async fn open_merge_requests(
+    db: &DatabaseConnection,
+    ring: Option<&Keyring>,
+    org_id: i64,
+    job: Uuid,
+) -> Result<(), DbErr> {
+    let Some(row) = db
+        .query_one_raw(stmt(
+            "SELECT id, repos FROM agent_runs WHERE org_id = $1 AND job_id = $2",
+            vec![org_id.into(), job.into()],
+        ))
+        .await?
+    else {
+        return Ok(());
+    };
+    let run: Uuid = row.try_get("", "id")?;
+    let repos: Vec<RunRepo> = serde_json::from_value(row.try_get("", "repos")?).unwrap_or_default();
+    let mut urls = Vec::new();
+    for repo in repos.iter().filter(|r| r.push_secret_id.is_some()) {
+        let token = match (ring, repo.push_secret_id.as_deref().map(Uuid::parse_str)) {
+            (Some(ring), Some(Ok(id))) => store::reveal(db, ring, Some(org_id), id).await.ok(),
+            _ => None,
+        };
+        let Some(token) = token else {
+            tracing::warn!(org_id, %run, "merge request not opened: write token unreadable");
+            continue;
+        };
+        let branch = crate::services::forge::run_branch(&run.to_string());
+        let body = format!(
+            "Changes of PneX agent run `{run}`. Review them before merging: merging stays a human act."
+        );
+        match crate::services::forge::open_merge_request(
+            &repo.url,
+            &repo.git_ref,
+            &branch,
+            &token,
+            &format!("Agent run {}", &run.to_string()[..8]),
+            &body,
+        )
+        .await
+        {
+            Ok(Some(url)) => urls.push(url),
+            Ok(None) => tracing::info!(org_id, %run, "no branch pushed, no merge request"),
+            Err(code) => tracing::warn!(org_id, %run, code, "merge request not opened"),
+        }
+    }
+    if !urls.is_empty() {
+        db.execute_raw(stmt(
+            "UPDATE agent_runs SET merge_requests = $3 WHERE org_id = $1 AND id = $2",
+            vec![org_id.into(), run.into(), serde_json::json!(urls).into()],
+        ))
+        .await?;
+    }
+    Ok(())
 }
 
 /// A password for a test service, fresh at each claim (D717).

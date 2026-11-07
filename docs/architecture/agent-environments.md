@@ -1302,6 +1302,19 @@ runners, le runner s'installe à part du serveur : chart `pnex-runner` de `pnex-
 jeton dans le Secret `pnex-runner-token`. `deploy/runner/runner.yaml` reste comme exemple
 sans Helm.
 
+**D775 — Sortie en branche : un conteneur `push` à part, la demande de fusion par le serveur**
+(2026-11-07, application de D388 et D714). Un dépôt du run peut porter `push_secret_id`, un
+jeton d'écriture du coffre limité à ce dépôt. Le bac reçoit alors un sidecar natif `push-<i>`,
+seul à recevoir ce jeton : avant l'agent, il clone la ref de base dans son propre volume, hors
+de portée de l'agent ; à la fin de l'agent, il commite l'arbre de l'agent, monté en lecture
+seule, comme work tree de **son** dépôt git, puis pousse `pnex/run-<id du run>`. Git ne tourne
+jamais dans le `.git` de l'agent (hooks, `credential.helper`, `url.insteadOf` pourraient
+détourner le jeton) ; les liens symboliques sont stockés comme liens, jamais suivis. Jamais la
+branche de base, jamais une branche choisie par l'agent. Le serveur ouvre ensuite la demande
+de fusion par l'API de la forge (GitHub seul en V1, D752), à travers la règle d'egress, et
+garde son URL sur le run (`merge_requests`, migration 000112). La fusion reste un geste humain.
+Reste : la même sortie pour l'exécuteur micro-VM (le runner pousse côté hôte), GitLab.
+
 ### 11.3 Gestes attendus de Shan (pas de discussion)
 
 1. Sortir `scw-regsecert.yaml` du dépôt, vers `~/.config/pnex/` (il est déjà ignoré).

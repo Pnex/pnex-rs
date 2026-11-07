@@ -478,6 +478,13 @@ const RULES: &[Rule] = &[
         use_instead: "join token",
         allowed_keys: &[],
     },
+    // A coder agent's branch is proposed as a merge request (« demande de fusion », D775).
+    Rule {
+        scope: Scope::Fr,
+        term: "pull request",
+        use_instead: "demande de fusion",
+        allowed_keys: &[],
+    },
 ];
 
 /// Fluent placeables (`{ $label }`, selectors) are code, not words.

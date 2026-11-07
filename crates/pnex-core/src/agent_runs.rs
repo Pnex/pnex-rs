@@ -127,6 +127,29 @@ pub struct RunRepo {
     #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub secret_id: Option<String>,
+    /// Write token of the vault, limited to this repository and to creating branches: the
+    /// agent's changes go out as branch `pnex/run-<run id>` and a merge request onto
+    /// `git_ref` (D388). Only a push sidecar gets it, never the agent. GitHub in V1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub push_secret_id: Option<String>,
+}
+
+/// `(owner, repository)` of an `https://github.com/<owner>/<repo>[.git]` URL: the only
+/// forge a branch output speaks in V1 (D752).
+pub fn github_repo(url: &str) -> Option<(String, String)> {
+    let rest = url.strip_prefix("https://github.com/")?;
+    let rest = rest.trim_end_matches('/');
+    let rest = rest.strip_suffix(".git").unwrap_or(rest);
+    let (owner, repo) = rest.split_once('/')?;
+    let ok = |s: &str| {
+        !s.is_empty()
+            && s != "."
+            && s != ".."
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
+    (ok(owner) && ok(repo)).then(|| (owner.to_string(), repo.to_string()))
 }
 
 fn default_ref() -> String {
@@ -362,6 +385,9 @@ pub struct AgentRun {
     pub started_at: Option<String>,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub finished_at: Option<String>,
+    /// Merge requests opened for its branches at the end (D388): forge URLs.
+    #[serde(default)]
+    pub merge_requests: Vec<String>,
 }
 
 /// Tokens of one LLM answer, read from its body or its stream.
@@ -473,6 +499,13 @@ pub fn create_error(body: &AgentRunCreate) -> Option<(&'static str, &'static str
     if body.repos.iter().any(repo_error) {
         return Some(("repos", "invalid"));
     }
+    if body.repos.iter().any(|r| {
+        r.push_secret_id
+            .as_deref()
+            .is_some_and(|id| uuid::Uuid::parse_str(id).is_err() || github_repo(&r.url).is_none())
+    }) {
+        return Some(("repos", "push_unsupported"));
+    }
     let mut paths = std::collections::BTreeSet::new();
     if !body.repos.iter().all(|r| paths.insert(r.path.as_str())) {
         return Some(("repos", "duplicate"));
@@ -583,6 +616,7 @@ mod tests {
             git_ref: "main".into(),
             path: path.into(),
             secret_id: None,
+            push_secret_id: None,
         };
         body.repos = vec![repo("https://github.com/acme/app.git", "app")];
         assert_eq!(create_error(&body), None);
@@ -604,6 +638,26 @@ mod tests {
             repo("https://github.com/a/c.git", "app"),
         ];
         assert_eq!(create_error(&body), Some(("repos", "duplicate")));
+        // A branch output: a GitHub repository and a vault id only (D388, D752).
+        let uuid = "6f9619ff-8b86-d011-b42d-00cf4fc964ff";
+        let mut push = repo("https://github.com/acme/app.git", "app");
+        push.push_secret_id = Some(uuid.into());
+        body.repos = vec![push.clone()];
+        assert_eq!(create_error(&body), None);
+        for (url, id) in [
+            ("https://gitlab.com/acme/app.git", uuid),
+            ("https://github.com/acme/app.git", "x"),
+        ] {
+            let mut bad = push.clone();
+            bad.url = url.into();
+            bad.push_secret_id = Some(id.into());
+            body.repos = vec![bad];
+            assert_eq!(
+                create_error(&body),
+                Some(("repos", "push_unsupported")),
+                "{url} {id}"
+            );
+        }
         body.repos = vec![];
 
         let digest = "0".repeat(64);

@@ -275,6 +275,7 @@ les règles plus anciennes qui les contredisent.
 | Suite d'exécutions d'agents lancées par un flow, avec un budget, un nombre de tours et au plus un sujet (D716, D718) | Chaîne d'exécutions | Chain of runs | pas « exécution enchaînée » (= pipeline, D575), pas « workflow » |
 | Accès enregistré à un registre OCI, secrets de lecture et d'écriture distincts (D703) | Registre d'images | Image registry | pas « connecteur » (= base externe), pas « dépôt » (= chemin dans le registre) |
 | Jeton à usage unique qui inscrit un runner | Jeton d'inscription | Join token | pas « token » en français, pas « clé » |
+| Proposition de fusionner la branche poussée par un agent codeur, ouverte sur la forge ; la fusion reste humaine (D388, D775) | Demande de fusion | Merge request | pas « pull request » ni « PR » en français |
 | Seuil et effet du scan des images de l'org (D748) | Politique de scan | Scan policy | — |
 | Faille connue trouvée par le scan d'une image (D720) | Faille | Flaw | pas « vulnérabilité », pas « CVE » à l'écran |
 | Lignes écrites par les conteneurs d'une exécution ou d'un build (D733) | Journal | Log | pas « logs » en français |
