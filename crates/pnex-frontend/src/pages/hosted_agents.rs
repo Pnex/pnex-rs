@@ -609,7 +609,7 @@ fn RunDetail(run: AgentRun, open: Signal<Option<AgentRun>>, reload: Signal<u32>)
     let outputs_id = id.clone();
     let logs = use_resource(move || {
         let id = logs_id.clone();
-        async move { api::hosted_agents::run_logs(&id, 500, 0).await }
+        async move { api::hosted_agents::run_logs(&id).await }
     });
     let outputs = use_resource(move || {
         let id = outputs_id.clone();
@@ -619,7 +619,7 @@ fn RunDetail(run: AgentRun, open: Signal<Option<AgentRun>>, reload: Signal<u32>)
         && matches!(run.state, RunnerJobState::Queued | RunnerJobState::Running);
     let can_download = access::can("agent-artifacts:read");
     let lines = match &*logs.value().read() {
-        Some(Ok(p)) => p.results.clone(),
+        Some(Ok(lines)) => lines.clone(),
         _ => Vec::new(),
     };
     let files = match &*outputs.value().read() {
@@ -852,7 +852,6 @@ fn BuildsDialog(env: Environment, open: Signal<Option<Environment>>) -> Element 
             match log_of() {
                 Some(build) => api::hosted_agents::build_logs(&env, &build)
                     .await
-                    .map(|p| p.results)
                     .unwrap_or_default(),
                 None => Vec::new(),
             }

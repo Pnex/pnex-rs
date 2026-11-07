@@ -66,17 +66,40 @@ pub async fn stop_run(id: &str) -> Result<AgentRun, ApiError> {
     .await
 }
 
-pub async fn run_logs(
-    id: &str,
-    limit: i64,
-    offset: i64,
-) -> Result<Paginated<RunnerJobLogLine>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/agent-runs/{id}/logs?limit={limit}&offset={offset}"),
-        None,
-    )
-    .await
+/// Lines a journal dialog shows: the end of the journal, where a run or a build ends.
+const JOURNAL_SHOWN: i64 = 2000;
+/// Largest page the server serves.
+const JOURNAL_PAGE: i64 = 100;
+
+/// The last `JOURNAL_SHOWN` lines of a journal at `path`, oldest first, page after page.
+async fn journal_tail(path: &str) -> Result<Vec<RunnerJobLogLine>, ApiError> {
+    let page = |offset: i64| {
+        let url = format!("{path}?limit={JOURNAL_PAGE}&offset={offset}");
+        async move {
+            client::request::<Paginated<RunnerJobLogLine>>(reqwest::Method::GET, &url, None).await
+        }
+    };
+    let first = page(0).await?;
+    let start = (first.count - JOURNAL_SHOWN).max(0);
+    let mut lines = if start == 0 {
+        first.results
+    } else {
+        Vec::new()
+    };
+    let mut offset = start + lines.len() as i64;
+    while offset < first.count {
+        let next = page(offset).await?.results;
+        if next.is_empty() {
+            break;
+        }
+        offset += next.len() as i64;
+        lines.extend(next);
+    }
+    Ok(lines)
+}
+
+pub async fn run_logs(id: &str) -> Result<Vec<RunnerJobLogLine>, ApiError> {
+    journal_tail(&format!("/api/v1/agent-runs/{id}/logs")).await
 }
 
 pub async fn run_outputs(id: &str) -> Result<Paginated<AgentArtifact>, ApiError> {
@@ -136,15 +159,10 @@ pub async fn builds(environment: &str) -> Result<Paginated<EnvironmentBuild>, Ap
     .await
 }
 
-pub async fn build_logs(
-    environment: &str,
-    build: &str,
-) -> Result<Paginated<RunnerJobLogLine>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/environments/{environment}/builds/{build}/logs?limit=500&offset=0"),
-        None,
-    )
+pub async fn build_logs(environment: &str, build: &str) -> Result<Vec<RunnerJobLogLine>, ApiError> {
+    journal_tail(&format!(
+        "/api/v1/environments/{environment}/builds/{build}/logs"
+    ))
     .await
 }
 
