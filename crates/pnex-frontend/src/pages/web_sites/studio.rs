@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::site_recipe::{
-    new_step, to_yaml, validate, Recipe, RunInput, RunResume, RunStatus, SiteRecipe, SiteRecipeRun,
-    SiteRecipeVersion, Violation, ACTIONS,
+    new_step, to_yaml, validate, Recipe, RunEngine, RunInput, RunResume, RunStatus, SiteRecipe,
+    SiteRecipeRun, SiteRecipeVersion, Violation, ACTIONS,
 };
 
 use super::blocks::{ActionStrip, Drag, RecipeSettings, StepBlocks};
@@ -273,7 +273,7 @@ pub fn WebSiteStudio(site: String) -> Element {
         });
     };
 
-    let mut start = move |resume: Option<RunResume>| {
+    let mut start = move |resume: Option<RunResume>, engine: Option<RunEngine>| {
         let input = RunInput {
             recipe_id: match editing() {
                 Some(Editing::Saved { id, .. }) => Some(id),
@@ -282,6 +282,7 @@ pub fn WebSiteStudio(site: String) -> Element {
             yaml: Some(current_yaml()),
             params: params(),
             resume,
+            engine,
         };
         message.set(None);
         spawn(async move {
@@ -296,13 +297,18 @@ pub fn WebSiteStudio(site: String) -> Element {
             }
         });
     };
-    let play = move |_| start(None);
+    let play = move |_| start(None, None);
+    // D781: the same rule in the user's own session, by their browser agent.
+    let play_mine = move |_| start(None, Some(RunEngine::Extension));
     let resume = move |step: u32| {
         let Some(r) = run() else {
             return;
         };
-        start(Some(RunResume { run_id: r.id, step }));
+        start(Some(RunResume { run_id: r.id, step }), None);
     };
+    let waiting_browser = run().is_some_and(|r| {
+        r.engine == RunEngine::Extension && r.status == RunStatus::Running && r.steps.is_empty()
+    });
 
     let save = move |_| {
         message.set(None);
@@ -509,6 +515,17 @@ pub fn WebSiteStudio(site: String) -> Element {
                     } else {
                         {t!("web-sites-play")}
                     }
+                }
+                button {
+                    class: BTN_SECONDARY_SM,
+                    disabled: !can_write || has_errors || missing_param || running,
+                    title: t!("web-sites-play-browser-help").to_string(),
+                    "data-testid": "web-sites-play-browser",
+                    onclick: play_mine,
+                    {t!("web-sites-play-browser")}
+                }
+                if waiting_browser {
+                    span { class: "text-xs text-slate", {t!("web-sites-waiting-browser")} }
                 }
                 button {
                     class: BTN_PRIMARY_SM,

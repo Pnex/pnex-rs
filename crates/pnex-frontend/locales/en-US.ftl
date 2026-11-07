@@ -7126,3 +7126,6 @@ web-sites-extract-cards = { $n } results
 web-sites-action-type = Type in the search
 web-sites-action-press = Press a key
 web-sites-action-for-each = For each result
+web-sites-play-browser = Play in my browser
+web-sites-play-browser-help = Your browser agent plays the rule in your own session, for sites that need you signed in; the run waits up to 30 minutes for it.
+web-sites-waiting-browser = Waiting for your browser agent…

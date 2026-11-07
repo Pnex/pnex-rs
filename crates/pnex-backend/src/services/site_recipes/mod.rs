@@ -8,13 +8,14 @@
 pub mod browser;
 pub mod cdp;
 pub mod endpoints;
+pub mod extension_engine;
 pub mod flow_node;
 
 use std::collections::BTreeMap;
 
 use pnex_core::site_recipe::{
-    site_host, validate, Recipe, RunExtract, RunStatus, RunStep, SiteRecipe, SiteRecipeRun,
-    SiteRecipeVersion, Violation, WebSite,
+    site_host, validate, Recipe, RunEngine, RunExtract, RunStatus, RunStep, SiteRecipe,
+    SiteRecipeRun, SiteRecipeVersion, Violation, WebSite,
 };
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::{
@@ -371,14 +372,18 @@ struct RunRow {
     keys: serde_json::Value,
     started_at: DateTimeWithTimeZone,
     finished_at: Option<DateTimeWithTimeZone>,
+    engine: String,
 }
 
 const RUN_COLUMNS: &str = "id, recipe_id, recipe_version, site, name, trigger, status, \
-     failed_step, reason, steps, extracts, keys, started_at, finished_at";
+     failed_step, reason, steps, extracts, keys, started_at, finished_at, engine";
 
 impl RunRow {
     fn view(&self) -> SiteRecipeRun {
+        let engine = RunEngine::parse(&self.engine).unwrap_or_default();
+        // A run of a browser agent waits in its queue; the reaper ends it.
         let stale = self.status == "running"
+            && engine == RunEngine::ServerBrowser
             && self.started_at < chrono::Utc::now() - chrono::Duration::minutes(STALE_MINUTES);
         let (status, reason) = if stale {
             (
@@ -415,6 +420,7 @@ impl RunRow {
             changes: BTreeMap::new(),
             started_at: self.started_at.to_rfc3339(),
             finished_at: self.finished_at.map(|t| t.to_rfc3339()),
+            engine,
         }
     }
 
@@ -433,7 +439,11 @@ pub struct NewRun<'a> {
     pub params: &'a BTreeMap<String, String>,
     pub trigger: &'a str,
     pub user_id: Option<i64>,
+    pub engine: RunEngine,
 }
+
+/// How long a run for a browser agent waits for one (D782).
+const EXTENSION_QUEUE: &str = "30 minutes";
 
 pub async fn insert_run(
     db: &DatabaseConnection,
@@ -445,10 +455,22 @@ pub async fn insert_run(
     // the engine and the state, the run row what the recipe played.
     let id = Uuid::new_v4();
     let txn = db.begin().await?;
+    let sql = match run.engine {
+        RunEngine::ServerBrowser => {
+            "INSERT INTO runner_jobs (id, org_id, kind, spec, state, created_by, started_at, \
+               queue_expires_at) \
+             VALUES ($1, $2, 'server_browser', '{}', 'running', $3, now(), now())"
+                .to_string()
+        }
+        // Queued until a browser agent of the org leases it.
+        RunEngine::Extension => format!(
+            "INSERT INTO runner_jobs (id, org_id, kind, spec, state, created_by, \
+               queue_expires_at) \
+             VALUES ($1, $2, 'extension', '{{}}', 'queued', $3, now() + interval '{EXTENSION_QUEUE}')"
+        ),
+    };
     txn.execute_raw(stmt(
-        "INSERT INTO runner_jobs (id, org_id, kind, spec, state, created_by, started_at, \
-           queue_expires_at) \
-         VALUES ($1, $2, 'server_browser', '{}', 'running', $3, now(), now())",
+        &sql,
         vec![id.into(), org_id.into(), run.user_id.into()],
     ))
     .await?;
@@ -842,6 +864,11 @@ pub async fn start_run(
     if let Some(missing) = recipe.params.iter().find(|p| !params.contains_key(*p)) {
         return Err(StartError::ParamMissing(missing.clone()));
     }
+    let engine = input.engine.unwrap_or_default();
+    // A browser agent plays a rule from its start (D783).
+    if engine == RunEngine::Extension && input.resume.is_some() {
+        return Err(StartError::BadResume);
+    }
     let resume = match &input.resume {
         None => None,
         Some(r) => match resume_point(&ctx.db, org_id, &recipe, r).await {
@@ -859,12 +886,15 @@ pub async fn start_run(
         params: &params,
         trigger,
         user_id,
+        engine,
     };
     let run = insert_run(&ctx.db, org_id, &new)
         .await
         .map_err(|e| StartError::Recipe(RecipeError::Db(e)))?;
-    let run_id = Uuid::parse_str(&run.id).expect("uuid");
-    browser::spawn(ctx.clone(), org_id, run_id, recipe, params, resume);
+    if engine == RunEngine::ServerBrowser {
+        let run_id = Uuid::parse_str(&run.id).expect("uuid");
+        browser::spawn(ctx.clone(), org_id, run_id, recipe, params, resume);
+    }
     Ok(run)
 }
 

@@ -26,6 +26,8 @@ A navigation rule is YAML bound to one website: `name`, `site` (a host or an add
 
 ## What you can do
 
+- **Play in my browser** (studio header): the same rule is played by your browser agent, in your own session, for sites that need you signed in. The run waits up to 30 minutes for the agent ("Waiting for your browser agent…"), always starts from the first step, and stops as failed if a page leaves the rule's site. Without a paired browser agent of yours (Sources > Browser agents), a common one of the organization plays it.
+
 - **Add a website** (header), type its host: the studio opens with a starter rule.
 - The studio is laid out like the Vision Lab: the screenshot of the selected step fills the page, the player is under it, the rule in a column on the right. The **Code** tab shows the rule as YAML (a YAML with an error must be fixed before leaving the tab); **Extracts** shows what the run read.
 - **Rule** tab (right column, the **Rule** button shows or hides it): drag an action (**+ Open**, **+ Click**, **+ Wait**…) into the column, or click it to add it after the chosen step; drag a block to reorder it; click a block to edit it in place (target, value, optional) or **Delete the step**.

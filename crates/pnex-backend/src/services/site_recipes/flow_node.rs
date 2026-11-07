@@ -72,6 +72,7 @@ pub async fn run(
         params: &params,
         trigger: "flow",
         user_id: None,
+        engine: pnex_core::site_recipe::RunEngine::ServerBrowser,
     };
     let Ok(started) = super::insert_run(&ctx.db, org_id, &new).await else {
         return Ok(unavailable());

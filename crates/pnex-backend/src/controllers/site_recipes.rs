@@ -408,7 +408,7 @@ async fn versions_restore(
     tag = "site-recipes",
     operation_id = "site_recipes_runs_create",
     summary = "Play a site recipe",
-    description = "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server. Requires a writer role.",
+    description = "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server, or with `engine: extension` from a browser agent of the org in the user's own session (the caller's browser, else a common one): the run waits queued up to 30 minutes for one, is played from its start (no `resume`), and its pages are checked against the rule's site on return. Requires a writer role.",
     request_body = RunInput,
     responses(
         (status = 202, body = SiteRecipeRun),

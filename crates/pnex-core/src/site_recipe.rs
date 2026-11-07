@@ -1108,7 +1108,7 @@ pub enum StepStatus {
 }
 
 /// One played step.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RunStep {
     pub index: u32,
@@ -1140,7 +1140,7 @@ pub enum ExtractKind {
 }
 
 /// What a run brought back.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RunExtract {
     pub name: String,
@@ -1189,6 +1189,52 @@ pub struct SiteRecipeRun {
     pub started_at: String,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub finished_at: Option<String>,
+    /// Where it plays (D781).
+    #[serde(default)]
+    pub engine: RunEngine,
+}
+
+/// Engine of a rule run (D781): the server browser, or a browser agent of
+/// the org playing it in the user's own session.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RunEngine {
+    #[default]
+    ServerBrowser,
+    Extension,
+}
+
+impl RunEngine {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ServerBrowser => "server_browser",
+            Self::Extension => "extension",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "server_browser" => Some(Self::ServerBrowser),
+            "extension" => Some(Self::Extension),
+            _ => None,
+        }
+    }
+}
+
+/// What a browser agent plays (D783): sealed by the server when it leases
+/// the run, played to the end without asking anything back. Its pages are
+/// checked again on return against `site` and `allow_hosts`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RulePlan {
+    pub run_id: String,
+    /// Address the run opens first ([`site_base`]).
+    pub base: String,
+    /// Host of the site ([`site_host`]).
+    pub site: String,
+    pub recipe: Recipe,
+    /// Values of the rule's parameters, already checked.
+    pub params: BTreeMap<String, String>,
 }
 
 /// Play a recipe: a saved one (`recipe_id`) or a draft (`yaml`).
@@ -1206,6 +1252,10 @@ pub struct RunInput {
     /// Start at a step instead of the first one (studio only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume: Option<RunResume>,
+    /// Play on a browser agent of the org instead of the server browser
+    /// (D781); the caller's own browser, else a common one (D550).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<RunEngine>,
 }
 
 /// Resume point of a run: starts on the page an earlier run of the same

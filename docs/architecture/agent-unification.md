@@ -242,6 +242,18 @@ d'utilisation du réseau (suspension du compte connecté).
 | **U6** | A2 : moteur `internal_llm`, outils de l'assistant, écritures en propositions, niveau dans la fiche agent (choix du 2026-11-07). Avancé en parallèle de U1–U4 (Shan, 2026-11-07) : il pose le moteur sur `runner_jobs` + `agent_runs`, comme D781. **Livré 2026-11-07** (voir §5) | — |
 | **U7** (plus tard) | Canaux d'un agent : mail en entrée et en sortie, téléphone, Slack, Telegram (D787) | U5 |
 
+**U2 en cours (2026-11-07).** Fait : format (`type`, `press`, `cards`, `for_each`, D789–D790)
+et code de page partagé `rule_page.js` (1fb15e83) ; moteur `extension` côté serveur : un
+passage lancé avec `engine: extension` est un job `extension` en file (30 min), loué par
+le lien de l'agent qui peut le jouer (son navigateur au lanceur, sinon un commun, D550),
+un à la fois, bail de 2 min renouvelé par chaque message ; le plan scellé (`RulePlan` :
+règle relue, valeurs vérifiées, site) part dans `ServerMsg::Runs` ; l'agent renvoie
+`run_step`, `run_extract`, `run_done` ; une étape hors du site et des hôtes permis termine
+le passage en échec (`off-site`), un extrait hors plan ou d'un profil opposé (D341) est
+écarté ; pas de capture d'écran ni de fichier stocké pour un agent ; bouton « Jouer dans
+mon navigateur » du studio. Reste : le lecteur dans l'extension (wasm + `host.js` qui
+importe `rule_page.js`).
+
 **Notes pour U4 (`capture_people`, D779, poussé en 8b220d62).** Ce qu'une recette doit
 reprendre sans rien perdre :
 

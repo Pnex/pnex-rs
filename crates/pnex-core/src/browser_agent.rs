@@ -1412,6 +1412,11 @@ pub enum ServerMsg {
         #[serde(default)]
         captions: Vec<String>,
     },
+    /// The rule runs this agent holds the lease of (D783), each with its
+    /// sealed plan; sent when the set changes.
+    Runs {
+        runs: Vec<crate::site_recipe::RulePlan>,
+    },
     Pong,
 }
 
@@ -1443,6 +1448,25 @@ pub enum AgentMsg {
         /// The list stopped loading: the start of the account is reached.
         #[serde(default)]
         end_reached: bool,
+    },
+    /// One step of a rule run played, in order (D781).
+    RunStep {
+        run_id: String,
+        step: crate::site_recipe::RunStep,
+    },
+    /// One extract of a rule run (a later one of the same name replaces it).
+    RunExtract {
+        run_id: String,
+        extract: crate::site_recipe::RunExtract,
+    },
+    /// The rule run ended: `failed_step` and `reason` when it failed.
+    RunDone {
+        run_id: String,
+        ok: bool,
+        #[serde(default)]
+        failed_step: Option<u32>,
+        #[serde(default)]
+        reason: Option<String>,
     },
     Ping,
 }

@@ -1476,3 +1476,83 @@ async fn a_personal_browser_runs_only_its_owners_missions() {
     })
     .await;
 }
+
+/// D781–D783: a rule run started for a browser agent waits queued, is
+/// leased by the starter's own browser with its sealed plan, and keeps what
+/// the agent sends back only from the rule's site; a step off the site ends
+/// it as failed.
+#[tokio::test]
+#[serial]
+async fn a_rule_run_plays_on_the_starters_browser_and_stays_on_its_site() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+        let yaml = "name: search\nsite: example.org\nparams: [query]\nsteps:\n  - open: \"/\"\n  - type: {text: \"{{query}}\"}\n  - press: Enter\n  - extract: {all_text: true, as: page}\n";
+        let start = |query: &str| json!({ "yaml": yaml, "params": { "query": query }, "engine": "extension" });
+        let (s, run) = call(&server, "POST", "/api/v1/site-recipes/runs", &env.alice, org, Some(start("jane doe"))).await;
+        assert_eq!(s, 202, "{run}");
+        assert_eq!(run["engine"], "extension");
+        let id = run["id"].as_str().unwrap().to_string();
+        // No resume on a browser agent: it plays a rule from its start.
+        let mut resumed = start("x");
+        resumed["resume"] = json!({ "run_id": id, "step": 1 });
+        let (s, _) = call(&server, "POST", "/api/v1/site-recipes/runs", &env.alice, org, Some(resumed)).await;
+        assert_eq!(s, 400);
+
+        let mut ws = open(&server, &install, &a).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else {
+            panic!("the run is leased with its plan");
+        };
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].run_id, id);
+        assert_eq!(runs[0].site, "example.org");
+        assert_eq!(runs[0].params["query"], "jane doe");
+        assert_eq!(runs[0].recipe.steps.len(), 4);
+
+        let step = |index: u32, action: &str, url: &str| AgentMsg::RunStep {
+            run_id: id.clone(),
+            step: serde_json::from_value(json!({
+                "index": index, "action": action, "label": action, "status": "ok", "url": url, "ms": 5,
+                "screenshot": "step.jpg" })).unwrap(),
+        };
+        send(&mut ws, &step(0, "open", "https://example.org/")).await;
+        let extract = |name: &str, from: &str| AgentMsg::RunExtract {
+            run_id: id.clone(),
+            extract: serde_json::from_value(json!({
+                "name": name, "kind": "text", "text": "results for jane doe", "chars": 20,
+                "sha256": "x", "from": from })).unwrap(),
+        };
+        send(&mut ws, &extract("page", "https://www.example.org/search?q=jane")).await;
+        send(&mut ws, &extract("elsewhere", "https://evil.example/page")).await;
+        send(&mut ws, &AgentMsg::RunDone { run_id: id.clone(), ok: true, failed_step: None, reason: None }).await;
+        // Its end frees the agent, told at once.
+        assert_eq!(recv(&mut ws).await, ServerMsg::Runs { runs: vec![] });
+        sync(&mut ws).await;
+        let (_, done) = call(&server, "GET", &format!("/api/v1/site-recipes/runs/{id}"), &env.alice, org, None).await;
+        assert_eq!(done["status"], "ok", "{done}");
+        assert_eq!(done["steps"].as_array().unwrap().len(), 1);
+        assert!(done["steps"][0].get("screenshot").is_none(), "an agent stores no screenshot");
+        let names: Vec<&str> = done["extracts"].as_array().unwrap().iter().filter_map(|e| e["name"].as_str()).collect();
+        assert_eq!(names, ["page"], "an extract from off the site is dropped");
+
+        // A step off the site ends the run as failed.
+        let (_, second) = call(&server, "POST", "/api/v1/site-recipes/runs", &env.alice, org, Some(start("john"))).await;
+        let id2 = second["id"].as_str().unwrap().to_string();
+        let mut ws = { drop(ws); open(&server, &install, &a).await };
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else { panic!("second run leased") };
+        assert_eq!(runs[0].run_id, id2);
+        send(&mut ws, &AgentMsg::RunStep {
+            run_id: id2.clone(),
+            step: serde_json::from_value(json!({
+                "index": 0, "action": "open", "label": "/", "status": "ok", "url": "https://evil.example/", "ms": 5 })).unwrap(),
+        }).await;
+        sync(&mut ws).await;
+        let (_, failed) = call(&server, "GET", &format!("/api/v1/site-recipes/runs/{id2}"), &env.alice, org, None).await;
+        assert_eq!((failed["status"].as_str(), failed["reason"].as_str()), (Some("failed"), Some("off-site")), "{failed}");
+        assert_eq!(failed["steps"][0]["reason"], "off-site");
+    })
+    .await;
+}

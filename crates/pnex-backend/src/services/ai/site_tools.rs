@@ -147,6 +147,8 @@ pub async fn try_site_recipe(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOu
         yaml: None,
         params,
         resume,
+        // The assistant plays on the server browser only, never in a person's session.
+        engine: None,
     };
     let user = deps.actor.as_ref().and_then(|a| a.user_id);
     let run = match recipes::start_run(app, deps.org_id, user, input, "assistant").await {

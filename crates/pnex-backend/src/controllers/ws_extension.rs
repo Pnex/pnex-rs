@@ -9,10 +9,12 @@
 //! - presence: the device liveness lease (D108), one session per agent
 //!   (4003);
 //! - every [`REFRESH`]: re-reads the missions, claims or renews the lease
-//!   of their targets (D257) and sends the held set when it changed;
+//!   of their targets (D257) and sends the held set when it changed; the
+//!   same for the rule runs it leases (`runs`, D783);
 //! - agent → server: `report` (value of a `collect_value`), `seen` (posts
 //!   of a `follow_account`, answered by `capture`), `state`, `ping`; only
-//!   for missions this session holds.
+//!   for missions this session holds. `run_step`, `run_extract`, `run_done`
+//!   for the rule runs it leases, checked against their plans.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
@@ -28,6 +30,7 @@ use super::device_link::{close_socket, reject, FrameCodec};
 use crate::services::device_liveness;
 use crate::services::extension::{self, AgentAuth};
 use crate::services::settings::IngestSettings;
+use crate::services::site_recipes::extension_engine;
 use crate::services::telemetry::{self, TelemetryPoint};
 
 /// Missions re-read, leases renewed (well under `LEASE_TTL_MS`).
@@ -94,6 +97,7 @@ async fn ws_extension(
                 touch_every: settings.liveness_touch_interval(),
                 held: BTreeMap::new(),
                 announced: false,
+                runs: None,
                 seen_window: (tokio::time::Instant::now(), 0),
             };
             link.run(socket, codec).await;
@@ -113,6 +117,8 @@ struct Link {
     held: BTreeMap<String, AssignedMission>,
     /// The held set was sent at least once.
     announced: bool,
+    /// Ids of the rule runs last sent; `None` before the first lease check.
+    runs: Option<Vec<String>>,
     /// Start of the current minute and `seen` batches recorded in it.
     seen_window: (tokio::time::Instant, u32),
 }
@@ -150,6 +156,11 @@ impl Link {
                     }
                     if self.refresh().await && !send(&mut socket, &mut codec, &self.desired()).await {
                         return;
+                    }
+                    if let Some(runs) = self.refresh_runs().await {
+                        if !send(&mut socket, &mut codec, &runs).await {
+                            return;
+                        }
                     }
                 }
                 incoming = socket.recv() => {
@@ -238,9 +249,62 @@ impl Link {
         changed
     }
 
+    /// Renews or leases the rule runs; the plans when the set changed (an
+    /// agent holding none is told only once it held some).
+    async fn refresh_runs(&mut self) -> Option<ServerMsg> {
+        let plans = match extension_engine::held(&self.ctx.db, &self.agent).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(agent = %self.agent.device_id, error = %e, "rule runs unavailable");
+                return None;
+            }
+        };
+        let ids: Vec<String> = plans.iter().map(|p| p.run_id.clone()).collect();
+        let before = self.runs.replace(ids.clone());
+        let changed = match &before {
+            None => !ids.is_empty(),
+            Some(b) => *b != ids,
+        };
+        changed.then_some(ServerMsg::Runs { runs: plans })
+    }
+
     async fn handle(&mut self, msg: AgentMsg) -> Option<ServerMsg> {
+        let db_error = |e: sea_orm::DbErr| {
+            tracing::warn!(error = %e, "rule run message not recorded");
+        };
         match msg {
             AgentMsg::Ping => Some(ServerMsg::Pong),
+            AgentMsg::RunStep { run_id, step } => {
+                let _ = extension_engine::step(&self.ctx, &self.agent, &run_id, step)
+                    .await
+                    .map_err(db_error);
+                None
+            }
+            AgentMsg::RunExtract { run_id, extract } => {
+                let _ = extension_engine::extract(&self.ctx, &self.agent, &run_id, extract)
+                    .await
+                    .map_err(db_error);
+                None
+            }
+            AgentMsg::RunDone {
+                run_id,
+                ok,
+                failed_step,
+                reason,
+            } => {
+                let _ = extension_engine::done(
+                    &self.ctx,
+                    &self.agent,
+                    &run_id,
+                    ok,
+                    failed_step,
+                    reason.as_deref(),
+                )
+                .await
+                .map_err(db_error);
+                // The next queued run is leased at once, not at the next tick.
+                self.refresh_runs().await
+            }
             AgentMsg::Seen {
                 mission_id,
                 posts,

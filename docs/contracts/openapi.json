@@ -25738,6 +25738,14 @@
         ],
         "type": "object"
       },
+      "RunEngine": {
+        "description": "Engine of a rule run (D781): the server browser, or a browser agent of\nthe org playing it in the user's own session.",
+        "enum": [
+          "server_browser",
+          "extension"
+        ],
+        "type": "string"
+      },
       "RunExtract": {
         "description": "What a run brought back.",
         "properties": {
@@ -25807,6 +25815,10 @@
       "RunInput": {
         "description": "Play a recipe: a saved one (`recipe_id`) or a draft (`yaml`).",
         "properties": {
+          "engine": {
+            "$ref": "#/components/schemas/RunEngine",
+            "description": "Play on a browser agent of the org instead of the server browser\n(D781); the caller's own browser, else a common one (D550)."
+          },
           "params": {
             "additionalProperties": {
               "type": "string"
@@ -28015,6 +28027,10 @@
               "type": "string"
             },
             "type": "object"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/RunEngine",
+            "description": "Where it plays (D781)."
           },
           "extracts": {
             "items": {
@@ -86831,7 +86847,7 @@
         ]
       },
       "post": {
-        "description": "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server. Requires a writer role.",
+        "description": "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server, or with `engine: extension` from a browser agent of the org in the user's own session (the caller's browser, else a common one): the run waits queued up to 30 minutes for one, is played from its start (no `resume`), and its pages are checked against the rule's site on return. Requires a writer role.",
         "operationId": "site_recipes_runs_create",
         "parameters": [
           {

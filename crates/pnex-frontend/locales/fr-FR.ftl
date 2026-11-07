@@ -7122,3 +7122,6 @@ web-sites-extract-cards = { $n } résultats
 web-sites-action-type = Taper dans la recherche
 web-sites-action-press = Appuyer sur une touche
 web-sites-action-for-each = Pour chaque résultat
+web-sites-play-browser = Jouer dans mon navigateur
+web-sites-play-browser-help = Votre agent navigateur joue la règle dans votre propre session, pour les sites qui demandent d’être connecté ; le passage l’attend jusqu’à 30 minutes.
+web-sites-waiting-browser = En attente de votre agent navigateur…
