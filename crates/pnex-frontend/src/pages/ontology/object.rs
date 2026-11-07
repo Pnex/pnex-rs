@@ -26,8 +26,9 @@ use crate::state::toasts;
 const BTN: &str = crate::components::ui::BTN_SECONDARY_SM;
 const SECTION: &str = "bg-white rounded-lg border border-gray-200 p-4 space-y-3";
 const INPUT: &str = "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white";
-/// Type whose employee list on LinkedIn can be captured (D779).
-const ORGANIZATION_TYPE: &str = "organization";
+/// Property a pack declares on the types whose employee list on LinkedIn
+/// can be captured (D779): the engine names no type (D441).
+const PEOPLE_TO_READ: &str = "people_to_read";
 
 #[component]
 pub fn OntologyObject(id: String) -> Element {
@@ -154,6 +155,7 @@ pub fn OntologyObject(id: String) -> Element {
     if o.type_key != pnex_core::resources::KIND_MEDIA_ASSET {
         tabs.insert(2, ("gallery", t!("onto-tab-gallery")));
     }
+    let has_people = tv.def.properties.iter().any(|p| p.key == PEOPLE_TO_READ);
     let icon = icon_of(&tv.def);
     let kind = type_label(&tv.def);
     let type_key = o.type_key.clone();
@@ -199,7 +201,7 @@ pub fn OntologyObject(id: String) -> Element {
                         {t!("profile-capture-open")}
                     }
                 }
-                if can_capture && !closed && o.type_key == ORGANIZATION_TYPE {
+                if can_capture && !closed && has_people {
                     button {
                         class: BTN,
                         "data-testid": "people-capture",
@@ -324,11 +326,11 @@ pub fn OntologyObject(id: String) -> Element {
                     crate::components::voice_id::VoiceProfilePanel { object_id: o.id.clone() }
                 } else {
                     PropertiesPanel { object: o.clone(), type_view: tv.clone() }
-                    if o.type_key == pnex_core::voice_id::PERSON_TYPE || o.type_key == ORGANIZATION_TYPE {
+                    if o.type_key == pnex_core::voice_id::PERSON_TYPE || has_people {
                         super::profile_capture::ProfileCaptures {
                             key: "{o.id}",
                             person_id: o.id.clone(),
-                            people: o.type_key == ORGANIZATION_TYPE,
+                            people: has_people,
                             reload: captures_reload,
                         }
                     }
@@ -358,7 +360,7 @@ pub fn OntologyObject(id: String) -> Element {
             if capturing() {
                 super::profile_capture::ProfileCaptureDialog {
                     person_id: o.id.clone(),
-                    people: o.type_key == ORGANIZATION_TYPE,
+                    people: has_people,
                     on_close: move |_| {
                         capturing.set(false);
                         captures_reload.with_mut(|r| *r += 1);

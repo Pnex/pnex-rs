@@ -505,17 +505,32 @@ pub async fn captured(
     disable(&ctx.db, mission_id).await
 }
 
-/// The live `organization` object of the org.
+/// A live object of the org whose type declares [`PEOPLE_TO_READ`]: the
+/// pack that reads employee lists says which types have one (D441).
 async fn organization(
     db: &DatabaseConnection,
     org_id: i64,
     id: Uuid,
 ) -> Result<String, ExtensionError> {
-    match ontology::objects::find(db, org_id, id).await {
-        Ok(o) if o.type_key == "organization" && o.valid_to.is_none() => Ok(o.title),
-        Ok(_) | Err(ontology::OntologyError::NotFound) => Err(ExtensionError::OrganizationNotFound),
-        Err(e) => Err(ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string()))),
+    let o = match ontology::objects::find(db, org_id, id).await {
+        Ok(o) if o.valid_to.is_none() => o,
+        Ok(_) | Err(ontology::OntologyError::NotFound) => {
+            return Err(ExtensionError::OrganizationNotFound)
+        }
+        Err(e) => return Err(ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string()))),
+    };
+    let declared = ontology::schema(db, org_id)
+        .await
+        .ok()
+        .and_then(|s| {
+            s.object_type(&o.type_key)
+                .map(|t| t.properties.iter().any(|p| p.key == PEOPLE_TO_READ))
+        })
+        .unwrap_or(false);
+    if !declared {
+        return Err(ExtensionError::OrganizationNotFound);
     }
+    Ok(o.title)
 }
 
 /// Asks one capture of a company's employee list on LinkedIn for the
@@ -655,14 +670,8 @@ pub async fn people_captured(
 ) -> Result<(), ExtensionError> {
     crate::services::extension::link_publisher(ctx, agent, asset_id, &params.organization_id).await;
     if let Ok(id) = Uuid::parse_str(&params.organization_id) {
-        let known = ontology::schema(&ctx.db, agent.org_id)
-            .await
-            .ok()
-            .and_then(|s| {
-                s.object_type("organization")
-                    .map(|t| t.properties.iter().any(|p| p.key == PEOPLE_TO_READ))
-            })
-            .unwrap_or(false);
+        // The type may have lost the property since the capture was asked.
+        let known = organization(&ctx.db, agent.org_id, id).await.is_ok();
         if known {
             // Written in place: a stamp, not an edit of the organization.
             ctx.db
