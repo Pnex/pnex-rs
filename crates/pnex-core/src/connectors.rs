@@ -25,6 +25,8 @@ pub enum ConnectorKind {
     Rest,
     /// Calls an outside system sends, signed, kept until an import reads them (D795).
     Webhook,
+    /// A MySQL or MariaDB database, under TLS only (D792).
+    Mysql,
 }
 
 impl ConnectorKind {
@@ -33,6 +35,7 @@ impl ConnectorKind {
             Self::Postgres => "postgres",
             Self::Rest => "rest",
             Self::Webhook => "webhook",
+            Self::Mysql => "mysql",
         }
     }
 
@@ -41,6 +44,7 @@ impl ConnectorKind {
             "postgres" => Some(Self::Postgres),
             "rest" => Some(Self::Rest),
             "webhook" => Some(Self::Webhook),
+            "mysql" => Some(Self::Mysql),
             _ => None,
         }
     }
@@ -329,6 +333,10 @@ impl ConnectorInput {
             .or_else(|| match self.kind {
                 ConnectorKind::Postgres => required("database", &self.database)
                     .or_else(|| required("username", &self.username)),
+                // Without TLS, sqlx encrypts the password with RSA (D792).
+                ConnectorKind::Mysql => required("database", &self.database)
+                    .or_else(|| required("username", &self.username))
+                    .or_else(|| (!self.tls).then(|| ("tls", "required".to_string()))),
                 ConnectorKind::Rest => match &self.rest {
                     None => Some(("rest", "required".to_string())),
                     Some(r) => r.violation(&self.username),
@@ -503,5 +511,17 @@ mod tests {
         assert_eq!(ts.signed_payload(Some("17"), b"{}"), b"17.{}");
         assert!(webhook_fresh("1000", 1200) && !webhook_fresh("1000", 1400));
         assert!(!webhook_fresh("soon", 1000));
+    }
+
+    #[test]
+    fn a_mysql_connector_requires_tls() {
+        let my = ConnectorInput {
+            kind: ConnectorKind::Mysql,
+            port: 3306,
+            ..input()
+        };
+        assert!(my.violation().is_none());
+        let clear = ConnectorInput { tls: false, ..my };
+        assert_eq!(clear.violation().unwrap(), ("tls", "required".to_string()));
     }
 }

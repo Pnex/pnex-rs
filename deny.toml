@@ -10,9 +10,12 @@ version = 2
 yanked = "warn"
 ignore = [
     # rsa (Marvin, timing on PKCS#1 v1.5 decryption) via loco-rs → jsonwebtoken.
-    # We only verify RS256 signatures with Rauthy's public keys: no private-key
-    # operation runs in the process. No fixed release upstream.
-    { id = "RUSTSEC-2023-0071", reason = "public-key verification only, no fix upstream" },
+    # We only verify RS256 signatures with Rauthy's public keys, and sqlx-mysql
+    # encrypts a password with the server's public key: no private-key operation
+    # (the Marvin timing attack needs one) runs in the process. MySQL connectors
+    # also require TLS, so that path is never taken (connectors.md D792). No fixed
+    # release upstream.
+    { id = "RUSTSEC-2023-0071", reason = "public-key operations only, MySQL under TLS, no fix upstream" },
     # Unmaintained, no vulnerability, no maintained drop-in upstream.
     { id = "RUSTSEC-2025-0141", reason = "bincode unmaintained (edgelinkd / flow nodes)" },
     { id = "RUSTSEC-2026-0215", reason = "smallstr unmaintained (edgelinkd / flow nodes)" },

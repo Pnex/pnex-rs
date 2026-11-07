@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1, CN2 et CN3 codés le 2026-11-07/08** (§9) ; CN4–CN5 à faire |
+| Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1 à CN4 codés le 2026-11-07/08** (§9) ; CN5 à faire |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; OP1 livré en grande partie |
 | Repose sur | `operational-platform.md` (D555), `data-pipelines.md` (D352, §9.6 « Connecteurs, premier lot »), `secrets.md` (D113, D115), `security.md` (R1, R2, R4, R8, R16), `iam.md`, `crm.md` (D369) |
 | Numérotation | **D791…D797**, lots **CN1…CN5** |
@@ -221,3 +221,12 @@ Choix techniques :
 Limites : des appels aux champs différents d'un run à l'autre changent les colonnes et cassent
 l'ajout à la table (déclarer `rest.columns`) ; le limiteur compte par adresse cliente, pas par
 webhook.
+
+**CN4 (2026-11-08)** : sorte `mysql` (migration 000126), feature `mysql` de sqlx, exception
+`RUSTSEC-2023-0071` de `deny.toml` élargie avec son motif. TLS exigé à la saisie et revérifié à
+la connexion ; session `READ ONLY`, `MAX_EXECUTION_TIME` (MySQL seul, MariaDB garde la limite du
+run) ; l'instruction est d'abord préparée seule et doit renvoyer des lignes (refuse un `SET`) ;
+lignes lues par le protocole texte, chaque valeur telle que le serveur l'écrit. Curseur : `QUOTE()`
+côté source, lignes et maximum dans `START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY`.
+Test `an_import_reads_a_mysql_database_under_tls`, ignoré sans `TEST_MYSQL_URL` (conteneur
+`mysql:8.4`, commande dans le test), passé le 2026-11-08.

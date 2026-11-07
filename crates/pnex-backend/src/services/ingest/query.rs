@@ -131,6 +131,7 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Out
         Ok(connectors::Target::Pg(t)) => t,
         Ok(connectors::Target::Rest(mut t)) => return rest(cx, cfg, &mut t, cap, room, read).await,
         Ok(connectors::Target::Webhook { id, .. }) => return inbox(cx, cfg, id, cap, room).await,
+        Ok(connectors::Target::My(t)) => return mysql(cx, cfg, *t, cap, room, read).await,
         Err(code) => return refused(code),
     };
     if cfg.query.trim().is_empty() || cfg.query.len() > QUERY_MAX_BYTES {
@@ -548,4 +549,144 @@ async fn inbox(cx: &Cx<'_>, cfg: &IngestConfig, connector: Uuid, cap: u64, room:
     // without a call would have no real columns for the next ones.
     let full = stored.is_none() && count > 0;
     staged(cfg, key, written, hasher, Some(full), top, Some(count))
+}
+
+/// One read-only statement on a MySQL connector, its rows as CSV (D792). No COPY:
+/// rows come by the text protocol, each value as the server writes it.
+async fn mysql(
+    cx: &Cx<'_>,
+    cfg: &IngestConfig,
+    t: connectors::MyTarget,
+    cap: u64,
+    room: u64,
+    read: Option<Read>,
+) -> Outcome {
+    use sqlx::{Column, Row, Statement};
+    if cfg.query.trim().is_empty() || cfg.query.len() > QUERY_MAX_BYTES {
+        return refused(err_codes::CONNECTOR_QUERY_INVALID);
+    }
+    let mut conn = match t.connect(QUERY_TIMEOUT).await {
+        Ok(c) => c,
+        Err(code) => return refused(code),
+    };
+    let mut query = cfg.query.clone();
+    if let Some(read) = &read {
+        // One snapshot for the rows and their highest cursor, as for PostgreSQL.
+        let begun = (&mut conn)
+            .execute("START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY")
+            .await;
+        // The source quotes the value: it comes from its own data, never trusted.
+        let literal = sqlx::query_scalar::<_, String>("SELECT QUOTE(?)")
+            .bind(&read.from)
+            .fetch_one(&mut conn)
+            .await;
+        match (begun, literal) {
+            (Ok(_), Ok(lit)) => query = query.replace(CURSOR_PLACEHOLDER, &lit),
+            _ => return refused(err_codes::CONNECTOR_UNREACHABLE),
+        }
+    }
+    // A prepared statement is one statement; it must return rows, which refuses a
+    // `SET` that would change the session.
+    let names: Vec<String> = match (&mut conn)
+        .prepare(sqlx::AssertSqlSafe(query.clone()).into_sql_str())
+        .await
+    {
+        Ok(p) if !p.columns().is_empty() => {
+            p.columns().iter().map(|c| c.name().to_string()).collect()
+        }
+        Ok(_) => return refused(err_codes::CONNECTOR_QUERY_INVALID),
+        Err(e) => {
+            let state = e
+                .as_database_error()
+                .and_then(|d| d.code())
+                .map(|c| c.to_string());
+            tracing::info!(error = %e, "connector query refused");
+            return Outcome::fail(
+                err_codes::CONNECTOR_QUERY_INVALID,
+                json!({ "sqlstate": state }),
+            );
+        }
+    };
+    let key = cx.key("raw", FILE_NAME);
+    let Ok(mut w) = cx.store.writer(&key).await else {
+        return unavailable();
+    };
+    let mut hasher = Sha256::new();
+    let mut bytes = 0u64;
+    let copied = async {
+        let mut chunk = rest::csv_line(&names);
+        let mut stream = sqlx::raw_sql(sqlx::AssertSqlSafe(query.clone())).fetch(&mut conn);
+        loop {
+            let row = match stream.try_next().await {
+                Ok(Some(row)) => Some(row),
+                Ok(None) => None,
+                Err(e) => {
+                    tracing::info!(error = %e, "connector query stopped");
+                    return Err(refused(err_codes::CONNECTOR_QUERY_INVALID));
+                }
+            };
+            if let Some(row) = &row {
+                let cells = (0..row.len()).map(|i| {
+                    row.try_get_unchecked::<Option<Vec<u8>>, _>(i)
+                        .ok()
+                        .flatten()
+                        .map(|b| String::from_utf8_lossy(&b).into_owned())
+                        .unwrap_or_default()
+                });
+                chunk.push_str(&rest::csv_line(cells));
+            }
+            if chunk.len() >= 1 << 20 || (row.is_none() && !chunk.is_empty()) {
+                bytes += chunk.len() as u64;
+                if bytes > cap {
+                    let args = json!({ "bytes": bytes, "max": cap });
+                    return Err(Outcome::fail(err_codes::IMPORT_SOURCE_TOO_LARGE, args));
+                }
+                if bytes > room {
+                    return Err(Outcome::fail(err_codes::INGEST_STAGING_QUOTA, Value::Null));
+                }
+                hasher.update(chunk.as_bytes());
+                if w.write(std::mem::take(&mut chunk).into_bytes())
+                    .await
+                    .is_err()
+                {
+                    return Err(unavailable());
+                }
+            }
+            if row.is_none() {
+                return Ok(());
+            }
+        }
+    }
+    .await;
+    if let Err(out) = copied {
+        let _ = w.abort().await;
+        return out;
+    }
+    if w.close().await.is_err() {
+        return unavailable();
+    }
+    let (mut top, mut rows) = (String::new(), None);
+    if let (Some(c), Some(_)) = (&cfg.cursor, &read) {
+        let ident = format!("`{}`", c.column.replace('`', "``"));
+        let sql = format!("SELECT CAST(MAX(q.{ident}) AS CHAR), COUNT(*) FROM ({query}\n) q");
+        match sqlx::query_as::<_, (Option<String>, i64)>(sqlx::AssertSqlSafe(sql))
+            .fetch_one(&mut conn)
+            .await
+        {
+            Ok((v, n)) => {
+                top = v.unwrap_or_default();
+                rows = Some(n.max(0) as u64);
+            }
+            Err(e) => {
+                tracing::info!(error = %e, "connector cursor not read");
+                return Outcome::fail(
+                    err_codes::CONNECTOR_QUERY_INVALID,
+                    json!({ "cursor": c.column }),
+                );
+            }
+        }
+        let _ = (&mut conn).execute("COMMIT").await;
+    }
+    let _ = conn.close().await;
+    staged(cfg, key, bytes, hasher, read.map(|r| r.full), top, rows)
 }

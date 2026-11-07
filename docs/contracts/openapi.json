@@ -6008,7 +6008,8 @@
         "enum": [
           "postgres",
           "rest",
-          "webhook"
+          "webhook",
+          "mysql"
         ],
         "type": "string"
       },

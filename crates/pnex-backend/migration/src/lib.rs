@@ -117,6 +117,7 @@ mod m20261107_000122_person_matches;
 mod m20261107_000123_connector_settings;
 mod m20261107_000124_import_cursor;
 mod m20261108_000125_webhook_inbox;
+mod m20261108_000126_mysql_connectors;
 
 pub struct Migrator;
 
@@ -230,6 +231,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261107_000123_connector_settings::Migration),
             Box::new(m20261107_000124_import_cursor::Migration),
             Box::new(m20261108_000125_webhook_inbox::Migration),
+            Box::new(m20261108_000126_mysql_connectors::Migration),
         ]
     }
 }

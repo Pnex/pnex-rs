@@ -929,3 +929,139 @@ async fn a_webhook_keeps_signed_calls_for_an_import() {
     })
     .await;
 }
+
+/// Needs a MySQL server with TLS (any MySQL 8 generates its certificates):
+/// `docker run -d -p 127.0.0.1:33306:3306 -e MYSQL_ROOT_PASSWORD=pnex
+/// -e MYSQL_DATABASE=outside -e MYSQL_USER=reader -e MYSQL_PASSWORD=reader mysql:8.4`,
+/// then `TEST_MYSQL_URL=mysql://root:pnex@127.0.0.1:33306/outside`.
+#[tokio::test]
+#[serial]
+#[ignore = "needs a MySQL server: TEST_MYSQL_URL"]
+async fn an_import_reads_a_mysql_database_under_tls() {
+    use sqlx::Connection;
+    let url = std::env::var("TEST_MYSQL_URL").expect("TEST_MYSQL_URL");
+    let mut root = sqlx::MySqlConnection::connect(&url).await.unwrap();
+    for q in [
+        "DROP TABLE IF EXISTS suppliers",
+        "CREATE TABLE suppliers (code varchar(10), name varchar(50), updated int, price decimal(6,2))",
+        "INSERT INTO suppliers VALUES ('A1', 'Acme, Inc', 1, 9.50), ('B2', NULL, 2, 3.00)",
+        "GRANT SELECT, INSERT, UPDATE, DELETE, DROP ON outside.* TO 'reader'@'%'",
+    ] {
+        sqlx::raw_sql(q).execute(&mut root).await.unwrap();
+    }
+    let u = reqwest::Url::parse(&url).unwrap();
+    let port = u.port().unwrap();
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let api = Api {
+            server: &server,
+            token: &env.alice,
+            org,
+        };
+        install_pack(&api).await;
+        let body = json!({ "name": "erp", "kind": "mysql", "host": "127.0.0.1", "port": port,
+                           "database": "outside", "username": "reader", "tls": true,
+                           "password": { "value": "reader" } });
+        let mut clear = body.clone();
+        clear["tls"] = json!(false);
+        let (s, e) = api.call("POST", "/api/v1/connectors", Some(clear)).await;
+        assert_eq!(s, 400, "TLS is required: {e}");
+        let (s, c) = api.call("POST", "/api/v1/connectors", Some(body)).await;
+        assert_eq!(s, 201, "{c}");
+        let id = c["id"].as_str().unwrap().to_string();
+        let (_, t) = api
+            .call("POST", &format!("/api/v1/connectors/{id}/test"), None)
+            .await;
+        assert_eq!(t["ok"], true, "{t}");
+
+        let import = |q: &str| {
+            json!({ "name": "suppliers", "mapping": mapping(q), "source": "file",
+                    "mode": "incremental" })
+        };
+        let (s, i) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(import("SELECT code, COALESCE(name, code) AS name, price FROM suppliers ORDER BY code")),
+            )
+            .await;
+        assert_eq!(s, 201, "{i}");
+        let imp = i["id"].as_str().unwrap().to_string();
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["run"]["counts"]["created"], 2, "{r}");
+        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
+        let table = list["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == "suppliers_table")
+            .unwrap()
+            .clone();
+        let (_, sample) = api
+            .call(
+                "GET",
+                &format!("/api/v1/datasets/{}/sample", table["id"].as_str().unwrap()),
+                None,
+            )
+            .await;
+        assert_eq!(sample["rows"][0][1], "Acme, Inc", "{sample}");
+        assert_eq!(sample["rows"][0][2], "9.50", "{sample}");
+
+        // Rows only, one statement, read only.
+        for hostile in [
+            "DELETE FROM suppliers",
+            "SELECT 1; DELETE FROM suppliers",
+            "SET SESSION TRANSACTION READ WRITE",
+            "DROP TABLE suppliers",
+        ] {
+            let (_, read) = api
+                .call("GET", &format!("/api/v1/ontology/imports/{imp}"), None)
+                .await;
+            let mut b = import(hostile);
+            b["expected_version"] = read["version"].clone();
+            let (s, e) = api
+                .call("PUT", &format!("/api/v1/ontology/imports/{imp}"), Some(b))
+                .await;
+            assert_eq!(s, 200, "{e}");
+            let r = api.run(&imp).await;
+            assert_eq!(r["run"]["state"], "failed", "{hostile}: {r}");
+            assert_eq!(r["run"]["state_code"], "connector-query-invalid", "{hostile}: {r}");
+        }
+
+        // A cursor reads past the highest value, quoted by MySQL itself.
+        let q = "SELECT code, COALESCE(name, code) AS name, updated FROM suppliers WHERE updated > {{cursor}}";
+        let cursor = mapping(q).replace(
+            "    query:",
+            "    cursor:\n      column: updated\n      start: '0'\n    query:",
+        );
+        let (_, read) = api
+            .call("GET", &format!("/api/v1/ontology/imports/{imp}"), None)
+            .await;
+        let b = json!({ "name": "suppliers", "mapping": cursor, "source": "file",
+                        "mode": "incremental", "expected_version": read["version"] });
+        let (s, e) = api
+            .call("PUT", &format!("/api/v1/ontology/imports/{imp}"), Some(b))
+            .await;
+        assert_eq!(s, 200, "{e}");
+        // The changed mapping stops the sync at a preview; the read itself is what
+        // this checks, in the step's journal.
+        let manifest = |r: &Value| r["steps"][0]["manifest"].clone();
+        let r = api.run(&imp).await;
+        let m = manifest(&r);
+        assert_eq!((m["full_read"].as_bool(), m["cursor"].as_str()), (Some(true), Some("2")), "{r}");
+        let r = api.run(&imp).await;
+        let m = manifest(&r);
+        assert_eq!((m["full_read"].as_bool(), m["read_rows"].as_i64()), (Some(false), Some(0)), "{r}");
+    })
+    .await;
+    let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM suppliers")
+        .fetch_one(&mut root)
+        .await
+        .unwrap();
+    assert_eq!(left, 2, "nothing was written");
+    sqlx::raw_sql("DROP TABLE suppliers")
+        .execute(&mut root)
+        .await
+        .unwrap();
+}

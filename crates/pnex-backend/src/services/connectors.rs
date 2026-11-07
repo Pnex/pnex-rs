@@ -14,8 +14,9 @@ use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryResult, Statement,
     TransactionTrait,
 };
+use sqlx::mysql::{MySqlConnectOptions, MySqlConnection, MySqlSslMode};
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
-use sqlx::{ConnectOptions, Connection, PgConnection};
+use sqlx::{ConnectOptions, Connection, Executor, PgConnection};
 use uuid::Uuid;
 
 use crate::services::secrets::store::{self, StoreError, Writer};
@@ -93,7 +94,7 @@ fn settings_json(input: &ConnectorInput) -> String {
         ConnectorKind::Webhook => Some(serde_json::to_string(
             &input.webhook.clone().unwrap_or_default(),
         )),
-        ConnectorKind::Postgres => None,
+        ConnectorKind::Postgres | ConnectorKind::Mysql => None,
     };
     json.and_then(Result::ok).unwrap_or_else(|| "{}".into())
 }
@@ -384,6 +385,7 @@ pub async fn set_allowed_hosts(
 /// A checked way to reach a connector. Holds its secret as long as the run needs it.
 pub(crate) enum Target {
     Pg(Box<PgTarget>),
+    My(Box<MyTarget>),
     Rest(Box<RestTarget>),
     /// Reached by nobody: an import reads its inbox (D795).
     Webhook {
@@ -484,6 +486,28 @@ pub(crate) async fn target<C: ConnectionTrait>(
         return RestTarget::new(host, addr, tls, settings, username, secret)
             .map(|t| Target::Rest(Box::new(t)));
     }
+    if kind == ConnectorKind::Mysql {
+        // TLS is required by the input check; a row older than it is refused here
+        // too, so that the password never goes out RSA-encrypted (D792).
+        if !tls {
+            return Err(err_codes::CONNECTOR_HOST_REFUSED);
+        }
+        let mut options = MySqlConnectOptions::new()
+            .host(&addr.ip().to_string())
+            .port(addr.port())
+            .database(
+                row.try_get::<String>("", "database")
+                    .map_err(by_db)?
+                    .as_str(),
+            )
+            .username(&username)
+            // shortcut: TLS without checking the certificate, as for PostgreSQL above.
+            .ssl_mode(MySqlSslMode::Required);
+        if let Some(password) = &secret {
+            options = options.password(password);
+        }
+        return Ok(Target::My(Box::new(MyTarget { options })));
+    }
     let mut options = PgConnectOptions::new()
         .host(&addr.ip().to_string())
         .port(addr.port())
@@ -528,6 +552,36 @@ impl PgTarget {
             }
             Err(_) => Err(err_codes::CONNECTOR_UNREACHABLE),
         }
+    }
+}
+
+pub(crate) struct MyTarget {
+    options: MySqlConnectOptions,
+}
+
+impl MyTarget {
+    /// A session that reads only, with a time limit per statement.
+    pub(crate) async fn connect(self, timeout: Duration) -> Result<MySqlConnection, Refusal> {
+        let options = self.options.disable_statement_logging();
+        let mut conn = match tokio::time::timeout(CONNECT_TIMEOUT, options.connect()).await {
+            Ok(Ok(conn)) => conn,
+            Ok(Err(e)) => {
+                tracing::info!(error = %e, "connector not connected");
+                return Err(err_codes::CONNECTOR_UNREACHABLE);
+            }
+            Err(_) => return Err(err_codes::CONNECTOR_UNREACHABLE),
+        };
+        if (&mut conn)
+            .execute("SET SESSION TRANSACTION READ ONLY")
+            .await
+            .is_err()
+        {
+            return Err(err_codes::CONNECTOR_UNREACHABLE);
+        }
+        // MySQL only; MariaDB has no such variable and keeps the run's own limit.
+        let limit = format!("SET SESSION MAX_EXECUTION_TIME = {}", timeout.as_millis());
+        let _ = (&mut conn).execute(sqlx::AssertSqlSafe(limit)).await;
+        Ok(conn)
     }
 }
 
@@ -715,6 +769,14 @@ pub async fn test(
     let outcome = async {
         match target(db, ring, org_id, None, Some(id)).await? {
             Target::Pg(target) => {
+                let mut conn = target.connect(Duration::from_secs(10)).await?;
+                conn.ping().await.map_err(|e| {
+                    tracing::info!(error = %e, "connector ping failed");
+                    err_codes::CONNECTOR_UNREACHABLE
+                })?;
+                let _ = conn.close().await;
+            }
+            Target::My(target) => {
                 let mut conn = target.connect(Duration::from_secs(10)).await?;
                 conn.ping().await.map_err(|e| {
                     tracing::info!(error = %e, "connector ping failed");

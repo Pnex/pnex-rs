@@ -18,7 +18,7 @@ A table keeps its past versions. Create one and load a CSV from its page (5 GB a
 **Run** works on the saved version. If the pipeline depends on other pipelines or imports, the page lists what will run first: an API import spends its quota. **Schedule** sets one schedule, on the last table of a chain: what it depends on runs before it, and a failure blocks only what depends on it, which keeps its data. An import whose run was cut by a server restart starts again once by itself.
 
 ## Connectors
-Organization admins save access to an outside PostgreSQL database; the password stays in the vault. **Test** tries to connect. An import reads it with a `connector_query` step, always read only. A private address is refused (*connector-host-refused*) until the platform admin allows that host.
+Organization admins save access to an outside PostgreSQL or MySQL database; the password stays in the vault. A MySQL connector always uses TLS. **Test** tries to connect. An import reads it with a `connector_query` step, always read only. A private address is refused (*connector-host-refused*) until the platform admin allows that host.
 
 A connector can also point to a **REST API**: a host, a base path and how it authenticates (a bearer token, a key in a header, a user and password, or an OAuth2 client). The import then names the path, where the records sit in the JSON answer, the columns to keep, and how to page (page number, offset, cursor, or the `Link` header). It only reads, page after page, and never follows a next page to another host.
 
