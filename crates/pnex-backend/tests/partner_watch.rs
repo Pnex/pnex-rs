@@ -1740,7 +1740,15 @@ async fn message_recipients_need_an_admin_flag_and_respect_the_caps() {
         let org = personal_org(&server, &env.alice).await;
         // A member cannot turn recipients from messages on.
         personal_org(&server, &env.bob).await;
-        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "member").await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "member",
+        )
+        .await;
         let (st, e) = smtp_channel(&server, &env.bob, org, "bob", true).await;
         assert_eq!(
             (st, e["error"].as_str()),
