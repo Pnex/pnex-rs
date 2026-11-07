@@ -6,6 +6,8 @@
 > **N2 codé le 2026-10-20** (D327 nœud de flow, notification ok → échec, prochains
 > passages, extraits versés à la médiathèque, rétention des captures D268) ; D328 (`llm_extract`) reste à faire.
 
+> 2026-11-07 : la recette devient le format unique, joué aussi par l'extension Chrome (`agent-unification.md`, D780–D783). N4 « exécutant agent » y est repris (lot U2).
+
 ## 1. Principe
 
 Voir **quand** une collecte passe, **comment** sa règle est posée et **ce qu'elle extrait** ;

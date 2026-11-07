@@ -509,6 +509,8 @@ référencer qu'une opération `EXPOSED`.
 
 ## 17. Lots
 
+> 2026-11-07 : A1 (reprise des missions en runs) et A2 sont repris dans `agent-unification.md` (D780–D787, lots U1–U7). Ce tableau reste comme historique.
+
 | Lot | Contenu | Dépend de |
 |---|---|---|
 | **A0** | Passerelle LLM : usage `agent`, compteurs par usage (D383, D384), page de consommation par usage | D212 (livré) |
