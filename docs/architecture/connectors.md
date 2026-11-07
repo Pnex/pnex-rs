@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1 et CN2 codés le 2026-11-07/08** (§9) ; CN3–CN5 à faire |
+| Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1, CN2 et CN3 codés le 2026-11-07/08** (§9) ; CN4–CN5 à faire |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; OP1 livré en grande partie |
 | Repose sur | `operational-platform.md` (D555), `data-pipelines.md` (D352, §9.6 « Connecteurs, premier lot »), `secrets.md` (D113, D115), `security.md` (R1, R2, R4, R8, R16), `iam.md`, `crm.md` (D369) |
 | Numérotation | **D791…D797**, lots **CN1…CN5** |
@@ -158,8 +158,7 @@ Ordre : CN1, CN2, CN3, CN4, CN5.
 
 ## 8. Questions ouvertes (techniques)
 
-- **Q-CN1** — Boîte de réception : table dédiée ou réutiliser la file des jobs ? À trancher à CN3
-  par le débit visé.
+- ~~**Q-CN1**~~ — Boîte de réception : table dédiée `connector_inbox` (tranché à CN3, §9).
 - **Q-CN2** — Un `POST` en lecture (API de recherche) : drapeau explicite sur la requête, à
   ouvrir au premier besoin réel.
 
@@ -199,3 +198,26 @@ chemin de base piégé). Six codes `connector-rest-*`, fiche `pipelines` complé
 
 Limite connue : une ligne validée à la source avec une valeur de curseur inférieure au maximum déjà
 lu (longue transaction côté source) est manquée ; `full_every` la rattrape.
+
+**CN3 (2026-11-08)** : sorte `webhook` (migration 000125, table `connector_inbox`), route publique
+`POST /api/v1/hooks/{id}` (`hooks_receive`, `Public` au registre IAM, exclue du MCP au motif auth),
+`POST /connectors/{id}/secret` (`connectors_secret`, `connectors:write`, secret montré une fois).
+Choix techniques :
+
+- **Signature** : HMAC-SHA256 (`hmac` 0.12, déjà au lock) vérifiée en temps constant, avant tout
+  parsing ; inconnu, sans secret, mal signé ou périmé = même `401 hook-signature-invalid` ;
+- **Secret** (provisoire, §3) : généré par `connectors_secret`, ou collé comme mot de passe du
+  connecteur quand l'émetteur impose le sien ;
+- **Boîte** : 1 Mio par appel, 100 000 appels non lus sur 7 jours par webhook (`503 hook-inbox-full`
+  au-delà), appels de plus de 7 jours effacés à la lecture suivante, lus ou non ; 600 appels par minute
+  et par adresse cliente (règle `hooks` du limiteur commun) ;
+- **Lecture** : pas d'ordonnanceur à part. L'import qui nomme le connecteur lit les appels au-delà du
+  dernier id lu (curseur implicite de CN2), par lots de 1 000, 100 000 enregistrements par run ;
+  la forme vient de `rest.records` / `rest.columns`. Une boîte vide ne crée aucune version ;
+- **Synchro** : toute lecture par connecteur rend `Planned::replace` vrai (la dernière ligne d'une
+  clé gagne) ; pour PostgreSQL et REST sans curseur, cela retire seulement l'avertissement
+  « conflit » sur une clé répétée dans une même lecture.
+
+Limites : des appels aux champs différents d'un run à l'autre changent les colonnes et cassent
+l'ajout à la table (déclarer `rest.columns`) ; le limiteur compte par adresse cliente, pas par
+webhook.

@@ -5916,6 +5916,10 @@
           "version": {
             "format": "int32",
             "type": "integer"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/WebhookSettings",
+            "description": "Settings of a `webhook` connector."
           }
         },
         "required": [
@@ -5964,6 +5968,7 @@
             ]
           },
           "host": {
+            "description": "Empty for a webhook.",
             "type": "string"
           },
           "kind": {
@@ -5988,21 +5993,36 @@
           },
           "username": {
             "type": "string"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/WebhookSettings",
+            "description": "For a `webhook` connector; absent = the defaults."
           }
         },
         "required": [
-          "name",
-          "host",
-          "port"
+          "name"
         ],
         "type": "object"
       },
       "ConnectorKind": {
         "enum": [
           "postgres",
-          "rest"
+          "rest",
+          "webhook"
         ],
         "type": "string"
+      },
+      "ConnectorSecret": {
+        "description": "A secret PneX generated, shown once.",
+        "properties": {
+          "secret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "type": "object"
       },
       "ConnectorTest": {
         "description": "Outcome of a connection test: no data, and no text from the server.",
@@ -32275,6 +32295,22 @@
         ],
         "type": "object"
       },
+      "WebhookSettings": {
+        "description": "How the sender of a webhook signs its calls (connectors.md D795): HMAC-SHA256 of\nthe body, or of `<timestamp>.<body>` when a timestamp header is named, with the\nconnector's secret, hex encoded after `signature_prefix`.",
+        "properties": {
+          "signature_header": {
+            "type": "string"
+          },
+          "signature_prefix": {
+            "type": "string"
+          },
+          "timestamp_header": {
+            "description": "Header holding the Unix time of the call; empty = no replay window.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Widget": {
         "description": "A widget placed on the canvas.",
         "properties": {
@@ -45556,6 +45592,85 @@
           }
         ],
         "summary": "Replace a connector",
+        "tags": [
+          "connectors"
+        ]
+      }
+    },
+    "/api/v1/connectors/{id}/secret": {
+      "post": {
+        "description": "Gives the connector a new random secret, kept in the vault and returned this once; the previous one stops working at once. For a webhook, the sender signs its calls with it. Requires `connectors:write`.",
+        "operationId": "connectors_secret",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Connector id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorSecret"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `connectors:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`connector-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Generate a connector secret",
         "tags": [
           "connectors"
         ]
@@ -61901,6 +62016,84 @@
         "summary": "Compute a route",
         "tags": [
           "geo"
+        ]
+      }
+    },
+    "/api/v1/hooks/{id}": {
+      "post": {
+        "description": "Keeps one JSON call for the webhook connector `id`, read later by an import into a table. Public: the call must carry the HMAC-SHA256 signature of its body (or of `<timestamp>.<body>` when the connector names a timestamp header) made with the connector's secret, hex encoded in the connector's signature header. 1 MiB at most.",
+        "operationId": "hooks_receive",
+        "parameters": [
+          {
+            "description": "Webhook connector id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Kept"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`hook-body-invalid`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`hook-signature-invalid`: no such webhook, or a missing, wrong or stale signature"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`rate-limited`: rate limit reached (`Retry-After` header)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`hook-inbox-full`"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Receive a webhook call",
+        "tags": [
+          "connectors"
         ]
       }
     },

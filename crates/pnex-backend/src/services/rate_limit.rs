@@ -108,6 +108,16 @@ pub const RULES: &[Rule] = &[
         code: pnex_core::err_codes::RATE_LIMITED,
         message: "Too many requests, retry later.",
     },
+    // Incoming webhooks (D795): a sender's burst, and signature guessing.
+    Rule {
+        name: "hooks",
+        path: "/api/v1/hooks/",
+        exact: false,
+        limit: 600,
+        window: MINUTE,
+        code: pnex_core::err_codes::RATE_LIMITED,
+        message: "Too many requests, retry later.",
+    },
     // Public share links (token guessing); assets of a tour count too.
     Rule {
         name: "public-tours",

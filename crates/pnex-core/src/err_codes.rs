@@ -736,6 +736,14 @@ pub const CONNECTOR_REST_NO_RECORDS: &str = "connector-rest-no-records";
 pub const CONNECTOR_REST_HOST_CHANGED: &str = "connector-rest-host-changed";
 /// More pages than the request allows.
 pub const CONNECTOR_REST_PAGE_LIMIT: &str = "connector-rest-page-limit";
+/// A webhook call without a valid signature, or to no webhook: one answer for both.
+pub const HOOK_SIGNATURE_INVALID: &str = "hook-signature-invalid";
+/// A signed webhook call whose body is not JSON.
+pub const HOOK_BODY_INVALID: &str = "hook-body-invalid";
+/// The webhook's inbox holds too many unread calls.
+pub const HOOK_INBOX_FULL: &str = "hook-inbox-full";
+/// A webhook connector without a secret yet.
+pub const HOOK_SECRET_MISSING: &str = "hook-secret-missing";
 pub const IMAGE_REGISTRY_NOT_FOUND: &str = "image-registry-not-found";
 pub const IMAGE_REGISTRY_NAME_TAKEN: &str = "image-registry-name-taken";
 /// The registry changed since it was read (args `current`).
@@ -1293,6 +1301,10 @@ pub const ALL: &[&str] = &[
     CONNECTOR_REST_NO_RECORDS,
     CONNECTOR_REST_HOST_CHANGED,
     CONNECTOR_REST_PAGE_LIMIT,
+    HOOK_SIGNATURE_INVALID,
+    HOOK_BODY_INVALID,
+    HOOK_INBOX_FULL,
+    HOOK_SECRET_MISSING,
     IMAGE_REGISTRY_NOT_FOUND,
     IMAGE_REGISTRY_NAME_TAKEN,
     IMAGE_REGISTRY_VERSION_CONFLICT,

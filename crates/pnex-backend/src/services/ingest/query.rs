@@ -130,6 +130,7 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, _msg: IngestMsg) -> Out
     let target = match target {
         Ok(connectors::Target::Pg(t)) => t,
         Ok(connectors::Target::Rest(mut t)) => return rest(cx, cfg, &mut t, cap, room, read).await,
+        Ok(connectors::Target::Webhook { id, .. }) => return inbox(cx, cfg, id, cap, room).await,
         Err(code) => return refused(code),
     };
     if cfg.query.trim().is_empty() || cfg.query.len() > QUERY_MAX_BYTES {
@@ -432,4 +433,119 @@ async fn rest(
     }
     let rows = read.as_ref().map(|_| count);
     staged(cfg, key, written, hasher, read.map(|r| r.full), top, rows)
+}
+
+/// Calls read from an inbox per query.
+const INBOX_BATCH: i64 = 1_000;
+/// Records one run reads at most; the next run goes on from there.
+const INBOX_RUN_MAX: u64 = 100_000;
+
+/// Reads the calls a webhook kept past the last one read into a CSV (D795). The
+/// cursor is the inbox id, implicit: the first run reads all, then each run only
+/// the new calls, added to the table. Shape from `rest.records` and `rest.columns`:
+/// without them a call is one record, or a list of records.
+async fn inbox(cx: &Cx<'_>, cfg: &IngestConfig, connector: Uuid, cap: u64, room: u64) -> Outcome {
+    let shape = cfg.rest.clone().unwrap_or_default();
+    if shape.check().is_some() {
+        return refused(err_codes::CONNECTOR_QUERY_INVALID);
+    }
+    let (stored, _) = cursor_state(cx).await;
+    let from: i64 = stored.as_deref().and_then(|v| v.parse().ok()).unwrap_or(0);
+    // Calls past the retention go, read or not (connectors.md D795).
+    let _ = cx
+        .db
+        .execute_raw(stmt(
+            "DELETE FROM connector_inbox WHERE connector_id = $1 \
+               AND received_at < now() - make_interval(days => $2::int)",
+            vec![
+                connector.into(),
+                (crate::services::hooks::INBOX_DAYS as i32).into(),
+            ],
+        ))
+        .await;
+    let key = cx.key("raw", FILE_NAME);
+    let Ok(mut w) = cx.store.writer(&key).await else {
+        return unavailable();
+    };
+    let mut hasher = Sha256::new();
+    let (mut written, mut received, mut count) = (0u64, 0u64, 0u64);
+    let mut last = from;
+    let mut columns = None::<Vec<RestColumn>>;
+    let read = async {
+        loop {
+            let rows = cx
+                .db
+                .query_all_raw(stmt(
+                    "SELECT id, body::text AS body FROM connector_inbox \
+                     WHERE org_id = $1 AND connector_id = $2 AND id > $3 ORDER BY id LIMIT $4",
+                    vec![
+                        cx.node.org_id.into(),
+                        connector.into(),
+                        last.into(),
+                        INBOX_BATCH.into(),
+                    ],
+                ))
+                .await
+                .map_err(|_| unavailable())?;
+            if rows.is_empty() {
+                return Ok(());
+            }
+            let mut csv = String::new();
+            for row in &rows {
+                let id: i64 = row.try_get("", "id").map_err(|_| unavailable())?;
+                let text: String = row.try_get("", "body").map_err(|_| unavailable())?;
+                received += text.len() as u64;
+                if received > cap {
+                    let args = json!({ "bytes": received, "max": cap });
+                    return Err(Outcome::fail(err_codes::IMPORT_SOURCE_TOO_LARGE, args));
+                }
+                let body: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+                let records: Vec<&Value> = match body.pointer(&shape.records) {
+                    Some(Value::Array(a)) => a.iter().collect(),
+                    Some(v @ Value::Object(_)) => vec![v],
+                    _ => Vec::new(),
+                };
+                let cols = columns.get_or_insert_with(|| {
+                    let c = shape.columns_for(records.first().copied());
+                    csv.push_str(&rest::csv_line(c.iter().map(|c| c.name.as_str())));
+                    c
+                });
+                for r in records {
+                    csv.push_str(&rest::csv_line(
+                        cols.iter().map(|c| rest::cell(r, &c.pointer)),
+                    ));
+                    count += 1;
+                }
+                last = id;
+            }
+            written += csv.len() as u64;
+            if written > room {
+                return Err(Outcome::fail(err_codes::INGEST_STAGING_QUOTA, Value::Null));
+            }
+            hasher.update(csv.as_bytes());
+            if w.write(csv.into_bytes()).await.is_err() {
+                return Err(unavailable());
+            }
+            if count >= INBOX_RUN_MAX || (rows.len() as i64) < INBOX_BATCH {
+                return Ok(());
+            }
+        }
+    }
+    .await;
+    if let Err(out) = read {
+        let _ = w.abort().await;
+        return out;
+    }
+    if w.close().await.is_err() {
+        return unavailable();
+    }
+    let top = if last > from {
+        last.to_string()
+    } else {
+        String::new()
+    };
+    // An empty inbox is "nothing new", even before the first read: a first version
+    // without a call would have no real columns for the next ones.
+    let full = stored.is_none() && count > 0;
+    staged(cfg, key, written, hasher, Some(full), top, Some(count))
 }

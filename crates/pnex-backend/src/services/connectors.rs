@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use pnex_core::connectors::{
     egress_policy, Connector, ConnectorHosts, ConnectorInput, ConnectorKind, ConnectorTest,
-    RestAuth, RestSettings, ALLOWED_HOSTS_MAX, HOST_MAX,
+    RestAuth, RestSettings, WebhookSettings, ALLOWED_HOSTS_MAX, HOST_MAX,
 };
 use pnex_core::err_codes;
 use sea_orm::{
@@ -78,12 +78,24 @@ fn rest_of(r: &QueryResult, kind: ConnectorKind) -> Result<Option<RestSettings>,
     Ok(Some(serde_json::from_value(v).unwrap_or_default()))
 }
 
+fn webhook_of(r: &QueryResult, kind: ConnectorKind) -> Result<Option<WebhookSettings>, DbErr> {
+    if kind != ConnectorKind::Webhook {
+        return Ok(None);
+    }
+    let v: serde_json::Value = r.try_get("", "settings")?;
+    Ok(Some(serde_json::from_value(v).unwrap_or_default()))
+}
+
 /// What goes into the `settings` column.
 fn settings_json(input: &ConnectorInput) -> String {
-    match (input.kind, &input.rest) {
-        (ConnectorKind::Rest, Some(r)) => serde_json::to_string(r).unwrap_or_else(|_| "{}".into()),
-        _ => "{}".into(),
-    }
+    let json = match input.kind {
+        ConnectorKind::Rest => input.rest.as_ref().map(serde_json::to_string),
+        ConnectorKind::Webhook => Some(serde_json::to_string(
+            &input.webhook.clone().unwrap_or_default(),
+        )),
+        ConnectorKind::Postgres => None,
+    };
+    json.and_then(Result::ok).unwrap_or_else(|| "{}".into())
 }
 
 fn view(r: &QueryResult) -> Result<Connector, DbErr> {
@@ -98,6 +110,7 @@ fn view(r: &QueryResult) -> Result<Connector, DbErr> {
         username: r.try_get("", "username")?,
         tls: r.try_get("", "tls")?,
         rest: rest_of(r, kind)?,
+        webhook: webhook_of(r, kind)?,
         has_password: r.try_get("", "has_password")?,
         version: r.try_get("", "version")?,
         created_at: r.try_get("", "created_at")?,
@@ -372,6 +385,11 @@ pub async fn set_allowed_hosts(
 pub(crate) enum Target {
     Pg(Box<PgTarget>),
     Rest(Box<RestTarget>),
+    /// Reached by nobody: an import reads its inbox (D795).
+    Webhook {
+        id: Uuid,
+        has_secret: bool,
+    },
 }
 
 pub(crate) struct PgTarget {
@@ -391,7 +409,7 @@ pub(crate) async fn target<C: ConnectionTrait>(
 ) -> Result<Target, Refusal> {
     let by_db = |_e: DbErr| err_codes::CONNECTOR_UNREACHABLE;
     const COLUMNS: &str =
-        "SELECT kind, host, port, database, username, tls, settings, secret_id FROM connectors";
+        "SELECT id, kind, host, port, database, username, tls, settings, secret_id FROM connectors";
     let row = match (name, id) {
         (Some(name), _) => {
             db.query_one_raw(stmt(
@@ -412,6 +430,13 @@ pub(crate) async fn target<C: ConnectionTrait>(
     .map_err(by_db)?
     .ok_or(err_codes::CONNECTOR_NOT_FOUND)?;
     let kind = kind_of(&row).map_err(by_db)?;
+    if kind == ConnectorKind::Webhook {
+        let secret: Option<Uuid> = row.try_get("", "secret_id").map_err(by_db)?;
+        return Ok(Target::Webhook {
+            id: row.try_get("", "id").map_err(by_db)?,
+            has_secret: secret.is_some(),
+        });
+    }
     let host: String = row.try_get("", "host").map_err(by_db)?;
     let port: i32 = row.try_get("", "port").map_err(by_db)?;
     let tls: bool = row.try_get("", "tls").map_err(by_db)?;
@@ -701,6 +726,11 @@ pub async fn test(
                 let base = target.url("");
                 target.get(base, &[]).await?;
             }
+            Target::Webhook { has_secret, .. } => {
+                if !has_secret {
+                    return Err(err_codes::HOOK_SECRET_MISSING);
+                }
+            }
         }
         Ok::<(), Refusal>(())
     }
@@ -715,4 +745,50 @@ pub async fn test(
             code: Some(code.to_string()),
         },
     })
+}
+
+/// Gives the connector a new secret PneX generated, returned this once (D795). The
+/// sender must be given it again: the previous one stops working at once.
+pub async fn regenerate_secret(
+    db: &DatabaseConnection,
+    ring: &Keyring,
+    org_id: i64,
+    by: Author,
+    id: Uuid,
+) -> Result<String, ConnectorError> {
+    let current = get(db, org_id, id).await?;
+    let mut bytes = [0u8; 32];
+    rand::RngExt::fill(&mut rand::rng(), &mut bytes);
+    let secret: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let txn = db.begin().await?;
+    let row = txn
+        .query_one_raw(stmt(
+            "SELECT secret_id FROM connectors WHERE org_id = $1 AND id = $2 FOR UPDATE",
+            vec![org_id.into(), id.into()],
+        ))
+        .await?
+        .ok_or(ConnectorError::NotFound)?;
+    let held: Option<Uuid> = row.try_get("", "secret_id")?;
+    let saved = vault::save(
+        &txn,
+        ring,
+        writer(org_id, by),
+        by.can_write_secrets,
+        id,
+        &current.name,
+        Some(&current.name),
+        held,
+        Some(&pnex_core::SecretFieldInput::Value {
+            value: secret.clone(),
+        }),
+    )
+    .await?;
+    txn.execute_raw(stmt(
+        "UPDATE connectors SET secret_id = $3, version = version + 1, updated_at = now() \
+         WHERE org_id = $1 AND id = $2",
+        vec![org_id.into(), id.into(), saved.into()],
+    ))
+    .await?;
+    txn.commit().await?;
+    Ok(secret)
 }

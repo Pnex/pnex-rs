@@ -4,8 +4,8 @@ title: Pipelines, tables and connectors
 kind: feature
 pages: /pipelines, /pipelines/:id, /pipelines/tables/:id
 nodes: dataset_trigger
-err_codes: pipeline-not-found, pipeline-name-taken, pipeline-version-conflict, pipeline-document-invalid, pipeline-run-active, pipeline-input-missing, pipeline-input-empty, pipeline-sql-invalid, pipeline-memory-exceeded, pipeline-timeout, pipeline-worker-lost, pipeline-check-failed, build-not-found, build-cycle, build-too-long, build-author-forbidden, build-timeout, dataset-name-taken, dataset-reserved, dataset-csv-invalid, dataset-schema-mismatch, dataset-quota, dataset-source-too-large, dataset-unchanged, connector-name-taken, connector-unreachable, connector-host-refused, connector-rest-denied, connector-rest-status, connector-rest-not-json, connector-rest-no-records, connector-rest-host-changed, connector-rest-page-limit
-tags: pipeline, table, dataset, transform, traitement, sql, lineage, lignage, version, retention, rétention, check, contrôle, freshness, fraîcheur, schedule, planification, chained run, exécution enchaînée, connector, connecteur, csv, rest, api, pagination
+err_codes: pipeline-not-found, pipeline-name-taken, pipeline-version-conflict, pipeline-document-invalid, pipeline-run-active, pipeline-input-missing, pipeline-input-empty, pipeline-sql-invalid, pipeline-memory-exceeded, pipeline-timeout, pipeline-worker-lost, pipeline-check-failed, build-not-found, build-cycle, build-too-long, build-author-forbidden, build-timeout, dataset-name-taken, dataset-reserved, dataset-csv-invalid, dataset-schema-mismatch, dataset-quota, dataset-source-too-large, dataset-unchanged, connector-name-taken, connector-unreachable, connector-host-refused, connector-rest-denied, connector-rest-status, connector-rest-not-json, connector-rest-no-records, connector-rest-host-changed, connector-rest-page-limit, hook-signature-invalid, hook-body-invalid, hook-inbox-full, hook-secret-missing
+tags: pipeline, table, dataset, transform, traitement, sql, lineage, lignage, version, retention, rétention, check, contrôle, freshness, fraîcheur, schedule, planification, chained run, exécution enchaînée, connector, connecteur, csv, rest, api, pagination, webhook
 ---
 The Pipelines page (Sources › Pipelines) holds versioned **tables**, the **pipelines** that compute them in SQL, the **chained runs** and the **connectors**.
 
@@ -24,10 +24,14 @@ A connector can also point to a **REST API**: a host, a base path and how it aut
 
 An import can read **only what is new** with a cursor: a column (or a field of the API's records) that grows, such as a modification date. The first run reads everything from the start value; each next run reads past the highest value seen and adds those rows to the table, so a changed record updates its object. A run that finds nothing new adds no version. Deletions at the source are not seen, unless the import reads everything again every so many runs (`full_every`).
 
+A **webhook** connector receives the calls another system sends to its own address. **Generate a secret** shows it once: give it to the sender, which signs each call with it (or paste in PneX the secret the sender imposes). Unsigned or wrongly signed calls are refused. Each call waits up to 7 days in the webhook; an import that names the connector reads the new calls into its table, a later call of the same record updating its object. Declare the columns of the import when the calls do not all carry the same fields.
+
 ## Troubleshooting
 - ***connector-rest-denied*.** The API refused the credentials: save the connector again with the right token, key or client secret, then **Test**.
 - ***connector-rest-no-records*.** The JSON answer holds no list where the import looks: fix the records path of the import.
 - ***connector-rest-page-limit*.** More pages than the import allows: raise its page limit or narrow its parameters.
+- ***hook-signature-invalid*.** The sender signs with another secret, or with the old one after **Generate a secret**: give it the current secret.
+- ***hook-inbox-full*.** Calls pile up unread: schedule the import that reads the webhook.
 - ***connector-rest-host-changed*.** The API sent a next page on another host; the import stopped and kept nothing from that run.
 - **A run stays queued, then ends in *build-timeout*.** No pipeline worker is running on this server: ask the platform admin.
 - ***pipeline-input-missing* or *pipeline-input-empty*.** A table read does not exist or has no version: load it or run what fills it.

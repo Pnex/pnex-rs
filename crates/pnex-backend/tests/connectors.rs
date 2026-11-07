@@ -786,3 +786,146 @@ async fn a_rest_cursor_sends_the_last_value() {
     })
     .await;
 }
+
+fn signature(secret: &str, body: &[u8]) -> String {
+    use hmac::{Hmac, Mac};
+    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(body);
+    let hex: String = mac
+        .finalize()
+        .into_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("sha256={hex}")
+}
+
+async fn call_hook(
+    server: &axum_test::TestServer,
+    id: &str,
+    signature: Option<String>,
+    body: &str,
+) -> (u16, Value) {
+    let mut req = server
+        .post(&format!("/api/v1/hooks/{id}"))
+        .content_type("application/json");
+    if let Some(s) = signature {
+        req = req.add_header("X-Signature", s);
+    }
+    let res = req.bytes(body.to_string().into()).await;
+    let status = res.status_code().as_u16();
+    let text = res.text();
+    (
+        status,
+        serde_json::from_str(&text).unwrap_or(Value::String(text)),
+    )
+}
+
+#[tokio::test]
+#[serial]
+async fn a_webhook_keeps_signed_calls_for_an_import() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let api = Api {
+            server: &server,
+            token: &env.alice,
+            org,
+        };
+        install_pack(&api).await;
+        let (s, c) = api
+            .call(
+                "POST",
+                "/api/v1/connectors",
+                Some(json!({ "name": "hook", "kind": "webhook" })),
+            )
+            .await;
+        assert_eq!(s, 201, "{c}");
+        assert_eq!(c["webhook"]["signature_header"], "X-Signature", "{c}");
+        let id = c["id"].as_str().unwrap().to_string();
+        let (_, t) = api
+            .call("POST", &format!("/api/v1/connectors/{id}/test"), None)
+            .await;
+        assert_eq!(t["code"], "hook-secret-missing", "{t}");
+
+        // No secret yet: nothing is kept.
+        let one = r#"{"code":"A1","name":"Acme"}"#;
+        let (s, e) = call_hook(&server, &id, Some(signature("x", one.as_bytes())), one).await;
+        assert_eq!((s, e["error"].as_str()), (401, Some("hook-signature-invalid")), "{e}");
+
+        let (s, sec) = api
+            .call("POST", &format!("/api/v1/connectors/{id}/secret"), None)
+            .await;
+        assert_eq!(s, 200, "{sec}");
+        let secret = sec["secret"].as_str().unwrap().to_string();
+        assert_eq!(secret.len(), 64);
+        let (_, c) = api.call("GET", &format!("/api/v1/connectors/{id}"), None).await;
+        assert!(!c.to_string().contains(&secret), "never read back: {c}");
+        let (_, t) = api
+            .call("POST", &format!("/api/v1/connectors/{id}/test"), None)
+            .await;
+        assert_eq!(t["ok"], true, "{t}");
+
+        // Unsigned, wrongly signed, unknown: one answer.
+        let unknown = uuid::Uuid::new_v4().to_string();
+        for (target, sig) in [
+            (id.as_str(), None),
+            (id.as_str(), Some(signature("wrong", one.as_bytes()))),
+            (id.as_str(), Some("sha256=zz".to_string())),
+            (unknown.as_str(), Some(signature(&secret, one.as_bytes()))),
+            ("not-a-uuid", Some(signature(&secret, one.as_bytes()))),
+        ] {
+            let (s, e) = call_hook(&server, target, sig, one).await;
+            assert_eq!((s, e["error"].as_str()), (401, Some("hook-signature-invalid")), "{e}");
+        }
+        let (s, e) = call_hook(&server, &id, Some(signature(&secret, b"nope")), "nope").await;
+        assert_eq!((s, e["error"].as_str()), (400, Some("hook-body-invalid")), "{e}");
+
+        let two = r#"[{"code":"B2","name":"Beta"},{"code":"C3","name":"Gamma"}]"#;
+        for body in [one, two] {
+            let (s, e) = call_hook(&server, &id, Some(signature(&secret, body.as_bytes())), body)
+                .await;
+            assert_eq!(s, 202, "{e}");
+        }
+        let kept = sql(
+            &ctx.db,
+            &format!("SELECT count(*) AS n FROM connector_inbox WHERE org_id = {org}"),
+        )
+        .await[0]
+            .try_get::<i64>("", "n")
+            .unwrap();
+        assert_eq!(kept, 2, "kept in the connector's org");
+
+        let mapping = "key: hook_table\nname: Hook\nformat: csv\nsteps:\n  - step: connector_query\n    connector: hook\nobjects:\n  - as: org\n    type: certification\n    key: code\n    title: { from: name }\n    properties:\n      code: { from: code }\n";
+        let (s, i) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/imports",
+                Some(json!({ "name": "hook", "mapping": mapping, "source": "file",
+                             "mode": "incremental" })),
+            )
+            .await;
+        assert_eq!(s, 201, "{i}");
+        let imp = i["id"].as_str().unwrap().to_string();
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["counts"]["created"], 3, "{r}");
+
+        // A later call is the newer state of its object; only it is read.
+        let again = r#"{"code":"A1","name":"Acme two"}"#;
+        let (s, _) = call_hook(&server, &id, Some(signature(&secret, again.as_bytes())), again)
+            .await;
+        assert_eq!(s, 202);
+        let r = api.run(&imp).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["run"]["counts"]["updated"], 1, "{r}");
+        let (_, list) = api.call("GET", "/api/v1/datasets", None).await;
+        assert_eq!(table_rows(&list, "hook_table"), 4, "{list}");
+
+        // A new secret: the old one stops at once.
+        let (_, _) = api
+            .call("POST", &format!("/api/v1/connectors/{id}/secret"), None)
+            .await;
+        let (s, _) = call_hook(&server, &id, Some(signature(&secret, one.as_bytes())), one).await;
+        assert_eq!(s, 401);
+    })
+    .await;
+}

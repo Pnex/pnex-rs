@@ -236,6 +236,8 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
 /// Every operationId of the spec, with who may call it.
 pub const OPERATIONS: &[(&str, Access)] = &[
     ("agent_download", Access::Public),
+    // The signature with the connector's secret authenticates (D795).
+    ("hooks_receive", Access::Public),
     ("agent_enroll", Access::Machine),
     ("runner_register", Access::Machine),
     ("runner_jobs_claim", Access::Machine),
@@ -485,6 +487,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("connectors_delete", Access::Org("connectors:delete")),
     ("connectors_get", Access::Org("connectors:read")),
     ("connectors_list", Access::Org("connectors:read")),
+    ("connectors_secret", Access::Org("connectors:write")),
     ("connectors_test", Access::Org("connectors:test")),
     ("connectors_update", Access::Org("connectors:write")),
     (

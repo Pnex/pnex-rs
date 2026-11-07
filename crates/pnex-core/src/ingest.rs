@@ -349,11 +349,10 @@ impl IngestConfig {
             IngestStep::RowsFilter if self.column.trim().is_empty() => {
                 unset("a column is required")
             }
-            IngestStep::ConnectorQuery
-                if self.connector.trim().is_empty()
-                    || (self.query.trim().is_empty() && self.rest.is_none()) =>
-            {
-                unset("a connector and a query or a REST request are required")
+            // The query or request each kind needs is checked when it runs: a webhook
+            // needs neither.
+            IngestStep::ConnectorQuery if self.connector.trim().is_empty() => {
+                unset("a connector is required")
             }
             IngestStep::RowsFilter => match self.op {
                 FilterOp::In if self.setting.is_some() => None,

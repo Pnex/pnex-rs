@@ -21,6 +21,7 @@ pub mod cmd_acks;
 /// Per-pod concurrency caps (CoolProp, vision, runtime checks, uploads).
 pub mod compute_limits;
 pub mod connectors;
+pub mod hooks;
 pub mod controls;
 pub mod crawl;
 pub mod dashboard;

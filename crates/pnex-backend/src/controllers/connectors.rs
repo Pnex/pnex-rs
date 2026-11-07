@@ -22,11 +22,12 @@ pub fn routes() -> Routes {
         .add("/connectors", get(list).post(create))
         .add("/connectors/{id}", get(one).put(update).delete(remove))
         .add("/connectors/{id}/test", post(test))
+        .add("/connectors/{id}/secret", post(secret))
 }
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
-    #[openapi(paths(list, one, create, update, remove, test))]
+    #[openapi(paths(list, one, create, update, remove, test, secret))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
 }
@@ -256,6 +257,37 @@ async fn test(
     };
     match connectors::test(&ctx.db, &ring, org.org.id, id).await {
         Ok(t) => format::json(t),
+        Err(e) => connector_error(e),
+    }
+}
+
+/// `POST /api/v1/connectors/{id}/secret`
+#[utoipa::path(
+    post,
+    path = "/api/v1/connectors/{id}/secret",
+    tag = "connectors",
+    operation_id = "connectors_secret",
+    summary = "Generate a connector secret",
+    description = "Gives the connector a new random secret, kept in the vault and returned this once; the previous one stops working at once. For a webhook, the sender signs its calls with it. Requires `connectors:write`.",
+    params(("id" = String, Path, format = "uuid", description = "Connector id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::connectors::ConnectorSecret),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`connector-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn secret(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    let ring = match crate::controllers::secrets::keyring(&ctx) {
+        Ok(ring) => ring,
+        Err(e) => return crate::controllers::secrets::store_error(e),
+    };
+    match connectors::regenerate_secret(&ctx.db, &ring, org.org.id, author(&org), id).await {
+        Ok(secret) => format::json(pnex_core::connectors::ConnectorSecret { secret }),
         Err(e) => connector_error(e),
     }
 }

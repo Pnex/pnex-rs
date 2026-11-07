@@ -164,12 +164,13 @@ fn ConnectorForm(
     let id = initial.as_ref().map(|c| c.id.clone());
     let version = initial.as_ref().map(|c| c.version);
     // The form edits database fields only: a REST connector keeps its kind and settings.
-    let (kind, rest) = initial
+    let (kind, rest, webhook) = initial
         .as_ref()
-        .map(|c| (c.kind, c.rest.clone()))
+        .map(|c| (c.kind, c.rest.clone(), c.webhook.clone()))
         .unwrap_or_default();
-    // A signal keeps `input` below Copy.
+    // Signals keep `input` below Copy.
     let rest = use_signal(move || rest);
+    let webhook = use_signal(move || webhook);
     let title = if initial.is_some() {
         t!("pipe-connector-edit")
     } else {
@@ -184,6 +185,7 @@ fn ConnectorForm(
         username: username().trim().to_string(),
         tls: tls(),
         rest: rest(),
+        webhook: webhook(),
         password: password().to_input(),
         expected_version: version,
     };

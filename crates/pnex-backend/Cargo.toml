@@ -119,6 +119,8 @@ base64 = "0.22"
 yrs = "0.28"
 # sha256 fingerprint of firmware artifacts (integrity, firmware_artifacts table)
 sha2 = "0.10"
+# HMAC-SHA256 of incoming webhook calls (connectors.md D795)
+hmac = "0.12"
 # Browser agent signatures (WebCrypto ECDSA P-256, D266); already in the tree via rustls-webpki.
 ring = "0.17"
 # S3 backend for firmware artifacts (D5 v2, industrial tier) — direct

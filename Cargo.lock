@@ -9995,6 +9995,7 @@ dependencies = [
  "flate2",
  "form_urlencoded",
  "futures-util",
+ "hmac 0.12.1",
  "http",
  "if-addrs",
  "image",

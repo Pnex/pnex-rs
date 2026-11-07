@@ -149,6 +149,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::datasets::routes())
         .add_route(controllers::pipelines::routes())
         .add_route(controllers::connectors::routes())
+        .add_route(controllers::hooks::routes())
         .add_route(controllers::image_registries::routes())
         .add_route(controllers::environments::routes())
         .add_route(controllers::agent_runs::routes())

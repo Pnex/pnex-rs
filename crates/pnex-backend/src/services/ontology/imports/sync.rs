@@ -208,7 +208,13 @@ async fn plan(
         }
     };
     let mut planned = Planned::default();
-    planned.replace = m.steps.iter().any(|s| s.cursor.is_some());
+    // Rows read with a cursor, or from a webhook's inbox, are a history: the
+    // later row of a key is its newer state. Any connector read counts, since a
+    // webhook import carries no cursor of its own.
+    planned.replace = m
+        .steps
+        .iter()
+        .any(|s| s.cursor.is_some() || s.step == pnex_core::ingest::IngestStep::ConnectorQuery);
     let mut observed = Vec::new();
     // Line 1 of a CSV holds the headers: line numbers read as in the source.
     let mut row_no = 1;

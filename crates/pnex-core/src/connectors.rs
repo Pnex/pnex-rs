@@ -23,6 +23,8 @@ pub enum ConnectorKind {
     Postgres,
     /// An HTTP API read with GET (connectors.md D793).
     Rest,
+    /// Calls an outside system sends, signed, kept until an import reads them (D795).
+    Webhook,
 }
 
 impl ConnectorKind {
@@ -30,6 +32,7 @@ impl ConnectorKind {
         match self {
             Self::Postgres => "postgres",
             Self::Rest => "rest",
+            Self::Webhook => "webhook",
         }
     }
 
@@ -37,6 +40,7 @@ impl ConnectorKind {
         match s {
             "postgres" => Some(Self::Postgres),
             "rest" => Some(Self::Rest),
+            "webhook" => Some(Self::Webhook),
             _ => None,
         }
     }
@@ -79,6 +83,106 @@ pub struct RestSettings {
 
 fn root() -> String {
     "/".into()
+}
+
+/// How the sender of a webhook signs its calls (connectors.md D795): HMAC-SHA256 of
+/// the body, or of `<timestamp>.<body>` when a timestamp header is named, with the
+/// connector's secret, hex encoded after `signature_prefix`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WebhookSettings {
+    #[serde(default = "signature_header")]
+    pub signature_header: String,
+    #[serde(default = "signature_prefix")]
+    pub signature_prefix: String,
+    /// Header holding the Unix time of the call; empty = no replay window.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub timestamp_header: String,
+}
+
+impl Default for WebhookSettings {
+    fn default() -> Self {
+        Self {
+            signature_header: signature_header(),
+            signature_prefix: signature_prefix(),
+            timestamp_header: String::new(),
+        }
+    }
+}
+
+fn signature_header() -> String {
+    "X-Signature".into()
+}
+
+fn signature_prefix() -> String {
+    "sha256=".into()
+}
+
+/// Seconds a signed timestamp stays valid either way.
+pub const WEBHOOK_SKEW_SECS: i64 = 300;
+/// Bytes of one webhook call.
+pub const WEBHOOK_BODY_MAX: usize = 1024 * 1024;
+
+fn header_name_ok(h: &str) -> bool {
+    !h.is_empty() && h.len() <= 100 && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+impl WebhookSettings {
+    fn violation(&self) -> Option<(&'static str, String)> {
+        if !header_name_ok(&self.signature_header) {
+            return Some(("webhook.signature_header", "invalid".into()));
+        }
+        if !self.timestamp_header.is_empty() && !header_name_ok(&self.timestamp_header) {
+            return Some(("webhook.timestamp_header", "invalid".into()));
+        }
+        if self.signature_prefix.len() > 20
+            || !self.signature_prefix.chars().all(|c| c.is_ascii_graphic())
+        {
+            return Some(("webhook.signature_prefix", "invalid".into()));
+        }
+        None
+    }
+
+    /// The bytes the sender signed.
+    pub fn signed_payload(&self, timestamp: Option<&str>, body: &[u8]) -> Vec<u8> {
+        match timestamp {
+            Some(t) if !self.timestamp_header.is_empty() => {
+                let mut out = Vec::with_capacity(t.len() + 1 + body.len());
+                out.extend_from_slice(t.as_bytes());
+                out.push(b'.');
+                out.extend_from_slice(body);
+                out
+            }
+            _ => body.to_vec(),
+        }
+    }
+
+    /// The signature bytes of a header value, without the prefix; `None` if malformed.
+    pub fn signature(&self, header: &str) -> Option<Vec<u8>> {
+        let hex = header.trim().strip_prefix(self.signature_prefix.as_str())?;
+        if hex.len() % 2 != 0 || hex.len() > 256 {
+            return None;
+        }
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
+            .collect()
+    }
+}
+
+/// Whether a signed Unix timestamp is within [`WEBHOOK_SKEW_SECS`] of `now`.
+pub fn webhook_fresh(timestamp: &str, now: i64) -> bool {
+    timestamp
+        .trim()
+        .parse::<i64>()
+        .is_ok_and(|t| (now - t).abs() <= WEBHOOK_SKEW_SECS)
+}
+
+/// A secret PneX generated, shown once.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ConnectorSecret {
+    pub secret: String,
 }
 
 /// A path piece: no scheme, query, fragment or whitespace to smuggle.
@@ -146,6 +250,9 @@ pub struct Connector {
     /// Settings of a `rest` connector.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rest: Option<RestSettings>,
+    /// Settings of a `webhook` connector.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webhook: Option<WebhookSettings>,
     /// Whether a password is set.
     pub has_password: bool,
     pub version: i32,
@@ -162,7 +269,10 @@ pub struct ConnectorInput {
     pub name: String,
     #[serde(default)]
     pub kind: ConnectorKind,
+    /// Empty for a webhook.
+    #[serde(default)]
     pub host: String,
+    #[serde(default)]
     pub port: i32,
     #[serde(default)]
     pub database: String,
@@ -173,6 +283,9 @@ pub struct ConnectorInput {
     /// Required for a `rest` connector, ignored otherwise.
     #[serde(default)]
     pub rest: Option<RestSettings>,
+    /// For a `webhook` connector; absent = the defaults.
+    #[serde(default)]
+    pub webhook: Option<WebhookSettings>,
     #[serde(default)]
     pub password: Option<SecretFieldInput>,
     /// The version read, on an update.
@@ -192,8 +305,12 @@ impl ConnectorInput {
         };
         let required =
             |field, s: &str| s.trim().is_empty().then(|| (field, "required".to_string()));
-        required("name", &self.name)
-            .or_else(|| long("name", &self.name, NAME_MAX))
+        let named = required("name", &self.name).or_else(|| long("name", &self.name, NAME_MAX));
+        // A webhook is called, it calls nothing: no host, port or user.
+        if self.kind == ConnectorKind::Webhook {
+            return named.or_else(|| self.webhook.clone().unwrap_or_default().violation());
+        }
+        named
             .or_else(|| required("host", &self.host))
             .or_else(|| long("host", &self.host, HOST_MAX))
             .or_else(|| {
@@ -216,6 +333,7 @@ impl ConnectorInput {
                     None => Some(("rest", "required".to_string())),
                     Some(r) => r.violation(&self.username),
                 },
+                ConnectorKind::Webhook => None,
             })
     }
 }
@@ -266,6 +384,7 @@ mod tests {
             username: "reader".into(),
             tls: true,
             rest: None,
+            webhook: None,
             password: None,
             expected_version: None,
         }
@@ -349,5 +468,40 @@ mod tests {
         assert_eq!(egress_policy(true, Public), Lan);
         assert_eq!(egress_policy(false, Public), Public);
         assert_eq!(egress_policy(false, Open), Open);
+    }
+
+    #[test]
+    fn a_webhook_checks_its_signature_headers() {
+        let hook = ConnectorInput {
+            kind: ConnectorKind::Webhook,
+            host: String::new(),
+            port: 0,
+            database: String::new(),
+            username: String::new(),
+            ..input()
+        };
+        assert!(hook.violation().is_none());
+        let bad = ConnectorInput {
+            webhook: Some(WebhookSettings {
+                signature_header: "X-Sig\r\nHost".into(),
+                ..Default::default()
+            }),
+            ..hook.clone()
+        };
+        assert_eq!(bad.violation().unwrap().0, "webhook.signature_header");
+
+        let w = WebhookSettings::default();
+        assert_eq!(w.signature("sha256=0aff"), Some(vec![0x0a, 0xff]));
+        assert_eq!(w.signature("0aff"), None);
+        assert_eq!(w.signature("sha256=0af"), None);
+        assert_eq!(w.signature("sha256=zz"), None);
+        assert_eq!(w.signed_payload(Some("17"), b"{}"), b"{}");
+        let ts = WebhookSettings {
+            timestamp_header: "X-Timestamp".into(),
+            ..w
+        };
+        assert_eq!(ts.signed_payload(Some("17"), b"{}"), b"17.{}");
+        assert!(webhook_fresh("1000", 1200) && !webhook_fresh("1000", 1400));
+        assert!(!webhook_fresh("soon", 1000));
     }
 }
