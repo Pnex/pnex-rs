@@ -4797,6 +4797,7 @@ err-notify-dynamic-recipients-off = This node reads its recipient from the messa
 err-notify-dynamic-recipients-admin = Only owners and admins let a channel send to recipients read from flow messages.
 err-ontology-node-unknown = This node names a type, a key or a link type that does not exist in the organization's ontology: pick another one in the node.
 err-import-run-stale = This preview is out of date (already applied, or the import or the data changed): preview again.
+err-import-org-busy = Another import of the organization kept writing for more than 10 minutes: this run wrote nothing, it goes again at its next time.
 err-import-preview-required = The mapping changed or a version was purged since the last run: open the preview and apply it.
 err-dataset-unchanged = Same content as the current version of the table: nothing new.
 err-dataset-reserved = This table is filled by an import: neither a load nor a pipeline can write it.
@@ -6021,6 +6022,7 @@ cw-graph-family = { $family ->
     [place] Places
     [identifier] Identifiers
     [evidence] Evidence
+    [event] Events
    *[other] Other
 } ({ $count })
 cw-path-to = How is it linked to…

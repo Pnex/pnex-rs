@@ -83,10 +83,11 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
 }
 
-/// Stores a run's values: what the object already holds at that date
-/// unchanged is skipped. A value without a publication day counts as known
-/// now, and the first ones of a metric are flagged `backfilled`: their real
-/// publication date is lost, a past-dated test must not read them. A filing
+/// Stores a run's values and says how many were written: what the object
+/// already holds at that date unchanged is skipped. A value without a
+/// publication day counts as known now, and the first ones of a metric are
+/// flagged `backfilled`: their real publication date is lost, a past-dated
+/// test must not read them. A filing
 /// counts as known at the end of its day, never before the market could
 /// have read it.
 pub async fn store<C: ConnectionTrait>(
@@ -95,7 +96,8 @@ pub async fn store<C: ConnectionTrait>(
     target: &ObservationTarget,
     rows: &[PlannedObservation],
     source_ref: &str,
-) -> Result<(), DbErr> {
+) -> Result<usize, DbErr> {
+    let mut stored = 0;
     // One instant for the whole run: a later batch must still see the metric
     // as new, or only the first batch of a long history would be flagged.
     let run_at = chrono::Utc::now().fixed_offset();
@@ -103,8 +105,9 @@ pub async fn store<C: ConnectionTrait>(
         let col = |f: fn(&PlannedObservation) -> String| -> sea_orm::Value {
             chunk.iter().map(f).collect::<Vec<String>>().into()
         };
-        db.execute_raw(stmt(
-            "WITH input AS ( \
+        stored += db
+            .execute_raw(stmt(
+                "WITH input AS ( \
                SELECT t.key, t.metric, t.unit, t.p_start::date AS p_start, t.p_end::date AS p_end, \
                  t.value, NULLIF(t.source, '') AS source, \
                  (NULLIF(t.known, '')::date + 1)::timestamp AT TIME ZONE 'UTC' \
@@ -133,25 +136,26 @@ pub async fn store<C: ConnectionTrait>(
              ) latest ON true \
              WHERE latest.value IS DISTINCT FROM i.value \
              ON CONFLICT DO NOTHING",
-            vec![
-                org_id.into(),
-                target.type_key.clone().into(),
-                target.property.clone().into(),
-                col(|o| o.key.clone()),
-                col(|o| o.metric.clone()),
-                col(|o| o.unit.clone()),
-                col(|o| o.period_start.clone()),
-                col(|o| o.period_end.clone()),
-                col(|o| o.known_on.clone().unwrap_or_default()),
-                chunk.iter().map(|o| o.value).collect::<Vec<f64>>().into(),
-                col(|o| o.source.clone().unwrap_or_default()),
-                source_ref.into(),
-                run_at.into(),
-            ],
-        ))
-        .await?;
+                vec![
+                    org_id.into(),
+                    target.type_key.clone().into(),
+                    target.property.clone().into(),
+                    col(|o| o.key.clone()),
+                    col(|o| o.metric.clone()),
+                    col(|o| o.unit.clone()),
+                    col(|o| o.period_start.clone()),
+                    col(|o| o.period_end.clone()),
+                    col(|o| o.known_on.clone().unwrap_or_default()),
+                    chunk.iter().map(|o| o.value).collect::<Vec<f64>>().into(),
+                    col(|o| o.source.clone().unwrap_or_default()),
+                    source_ref.into(),
+                    run_at.into(),
+                ],
+            ))
+            .await?
+            .rows_affected() as usize;
     }
-    Ok(())
+    Ok(stored)
 }
 
 /// The values of an object, latest period first: for each period the last

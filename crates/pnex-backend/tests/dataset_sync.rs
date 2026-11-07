@@ -546,6 +546,8 @@ async fn a_table_of_dated_values_becomes_series() {
         .map(|r| r.try_get("", "value").unwrap())
         .collect();
         assert_eq!(values, [1_500_000.0, 1_750_000.5]);
+        // The run counts what it stored, not the row naming no object.
+        assert_eq!(r["run"]["counts"]["observations"], 2, "{r}");
 
         // Elsewhere the key comes from the run: without per_object, refused.
         let (s, e) = api

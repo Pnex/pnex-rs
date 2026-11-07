@@ -4796,6 +4796,7 @@ err-notify-dynamic-recipients-off = Ce nœud lit son destinataire dans le messag
 err-notify-dynamic-recipients-admin = Seuls les propriétaires et les administrateurs autorisent un canal à envoyer aux destinataires lus dans les messages des flows.
 err-ontology-node-unknown = Ce nœud nomme un type, une clé ou un type de lien absent de l'ontologie de l'organisation : choisissez-en un autre dans le nœud.
 err-import-run-stale = Cet aperçu n'est plus à jour (déjà appliqué, ou l'import ou les données ont changé) : refaites l'aperçu.
+err-import-org-busy = Un autre import de l'organisation a écrit pendant plus de 10 minutes : cette exécution n'a rien écrit, elle repasse à sa prochaine échéance.
 err-import-preview-required = Depuis la dernière exécution, la correspondance a changé ou une version a été purgée : ouvrez l'aperçu et appliquez-le.
 err-dataset-unchanged = Même contenu que la version courante de la table : rien de nouveau.
 err-dataset-reserved = Cette table est remplie par un import : ni un chargement ni un pipeline ne peuvent l'écrire.
@@ -6017,6 +6018,7 @@ cw-graph-family = { $family ->
     [place] Lieux
     [identifier] Identifiants
     [evidence] Preuves
+    [event] Événements
    *[other] Autres
 } ({ $count })
 cw-path-to = Comment est-il relié à…

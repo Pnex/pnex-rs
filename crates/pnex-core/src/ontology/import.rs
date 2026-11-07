@@ -2136,10 +2136,17 @@ pub struct ImportDiff {
     /// Dated values read (D541); those already known are skipped at writing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub observations: Vec<crate::markets::PlannedObservation>,
+    /// What the write really did, once applied: a creation left out at
+    /// write time and values naming no object or already known do not count.
+    #[serde(skip)]
+    pub written: Option<ImportCounts>,
 }
 
 impl ImportDiff {
     pub fn counts(&self) -> ImportCounts {
+        if let Some(c) = &self.written {
+            return c.clone();
+        }
         ImportCounts {
             created: self.created.len(),
             updated: self.updated.len(),

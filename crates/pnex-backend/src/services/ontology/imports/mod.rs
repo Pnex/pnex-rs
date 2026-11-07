@@ -1050,7 +1050,8 @@ pub async fn apply(
             current: imp.version,
         });
     }
-    let Some(diff) = diff.filter(|_| run.state == "preview" && run.import_version == imp.version)
+    let Some(mut diff) =
+        diff.filter(|_| run.state == "preview" && run.import_version == imp.version)
     else {
         return Err(coded(err_codes::IMPORT_RUN_STALE));
     };
@@ -1086,7 +1087,7 @@ pub async fn apply(
     let db = db.clone();
     tokio::spawn(async move {
         let _held = stop::hold(run.id);
-        let outcome = write_locked(&db, &imp, &actor, &diff).await;
+        let outcome = write_locked(&db, &imp, &actor, &mut diff).await;
         let (state, code) = match &outcome {
             Ok(()) => ("applied", None),
             Err(OntologyError::VersionConflict { .. }) => {
@@ -1117,9 +1118,20 @@ pub fn release_memory() {
     }
 }
 
+/// Another write changed the objects since the difference was computed.
+pub(crate) fn is_stale(e: &OntologyError) -> bool {
+    matches!(
+        e,
+        OntologyError::KeyTaken | OntologyError::VersionConflict { .. }
+    )
+}
+
 /// Machine code journaled for a failed application.
 pub(crate) fn error_code(e: &OntologyError) -> &'static str {
     match e {
+        OntologyError::Db(e) if crate::services::db_lock::is_lock_timeout(e) => {
+            err_codes::IMPORT_ORG_BUSY
+        }
         OntologyError::Import { code, .. } => code,
         OntologyError::KeyTaken | OntologyError::VersionConflict { .. } => {
             err_codes::IMPORT_RUN_STALE
@@ -1132,11 +1144,12 @@ pub(crate) fn error_code(e: &OntologyError) -> &'static str {
 }
 
 /// One application per org at a time.
+/// Once applied, `diff.written` holds what was really written.
 async fn write_locked(
     db: &DatabaseConnection,
     imp: &ImportRow,
     actor: &Actor,
-    diff: &ImportDiff,
+    diff: &mut ImportDiff,
 ) -> Result<()> {
     use crate::services::db_lock::{ns, TenantLock};
     let lock = TenantLock::acquire(
@@ -1146,7 +1159,10 @@ async fn write_locked(
         Duration::from_secs(600),
     )
     .await?;
-    let mut out = write(db, imp.org_id, actor, diff).await;
+    let mut written = diff.counts();
+    let mut out = write(db, imp.org_id, actor, diff).await.map(|left_out| {
+        written.created -= left_out;
+    });
     // After the objects: a series created by this run must exist. A failure
     // here is repaired by the next run, which skips what is already stored.
     if out.is_ok() {
@@ -1159,8 +1175,12 @@ async fn write_locked(
                 &actor.source_ref,
             )
             .await
+            .map(|n| written.observations = n)
             .map_err(OntologyError::from);
         }
+    }
+    if out.is_ok() {
+        diff.written = Some(written);
     }
     // Derived objects under the same lock: two runs at once would both find
     // a move or a lead missing and write it twice (refs are not unique in
@@ -1203,13 +1223,14 @@ async fn write_locked(
     out
 }
 
-/// Writes a difference in one transaction: all or nothing.
+/// Writes a difference in one transaction: all or nothing. Returns how many
+/// creations were left out at write time.
 async fn write(
     db: &DatabaseConnection,
     org_id: i64,
     actor: &Actor,
     diff: &ImportDiff,
-) -> Result<()> {
+) -> Result<usize> {
     crate::services::ontology::changes::deferred(async {
         use super::{links, objects};
         let txn = db.begin().await?;
@@ -1225,8 +1246,7 @@ async fn write(
         let (mut at, mut inputs) = (Vec::new(), Vec::new());
         // A file must not bring back an address that objected or was erased
         // (crm.md D610). The preview left out those known then; this catches
-        // one recorded since. shortcut: the run's counts still include such a
-        // late one, recount here if it ever matters.
+        // one recorded since; the run's counts leave it out too.
         let to_create: Vec<_> = diff
             .created
             .iter()
@@ -1353,7 +1373,7 @@ async fn write(
         }
         txn.commit().await?;
         crate::services::ontology::changes::flush();
-        Ok(())
+        Ok(left_out.len())
     })
     .await
 }
@@ -1788,7 +1808,7 @@ pub async fn run_staged(
     };
     // Incremental: the valid records go, the bad ones stay in the journal.
     let errors = std::mem::take(&mut d.errors);
-    let written = write_locked(db, &imp, &actor, &d).await;
+    let written = write_locked(db, &imp, &actor, &mut d).await;
     d.errors = errors;
     match written {
         Ok(()) => end("applied", None, Value::Null, Some(d), false).await,
@@ -1912,35 +1932,52 @@ async fn scheduled(
             ))
         }
     };
-    let mut d = match diff::compute(db, imp.org_id, imp.id, &s, m, snapshot, &rows, 1).await {
-        Ok(d) => d,
-        Err(OntologyError::Import { code, .. }) => return Err(("failed", code, Value::Null, None)),
-        Err(_) => {
-            return Err((
-                "failed",
-                err_codes::IMPORT_SOURCE_UNREADABLE,
-                Value::Null,
-                None,
-            ))
-        }
-    };
-    // A snapshot with bad records would close what they hold: refused.
-    if snapshot && !d.errors.is_empty() {
-        return refused(err_codes::IMPORT_HAS_ERRORS, Value::Null, Some(Box::new(d)));
-    }
     let actor = Actor {
         user_id: imp.created_by,
         role,
         source_ref: format!("import:{}@{number}", imp.id),
     };
-    // Incremental: the valid records go, the bad ones stay in the journal.
-    let errors = std::mem::take(&mut d.errors);
-    if let Err(e) = write_locked(db, imp, &actor, &d).await {
-        tracing::warn!(import = %imp.id, error = %e, "scheduled import failed");
-        d.errors = errors;
-        return Err(("failed", error_code(&e), Value::Null, Some(Box::new(d))));
-    }
-    d.errors = errors;
+    // The difference is computed outside the org lock: another import writing
+    // the same objects meanwhile makes it stale (audit B1). It is computed
+    // again once, on what that import left.
+    let mut again = true;
+    let d = loop {
+        let mut d = match diff::compute(db, imp.org_id, imp.id, &s, m, snapshot, &rows, 1).await {
+            Ok(d) => d,
+            Err(OntologyError::Import { code, .. }) => {
+                return Err(("failed", code, Value::Null, None))
+            }
+            Err(_) => {
+                return Err((
+                    "failed",
+                    err_codes::IMPORT_SOURCE_UNREADABLE,
+                    Value::Null,
+                    None,
+                ))
+            }
+        };
+        // A snapshot with bad records would close what they hold: refused.
+        if snapshot && !d.errors.is_empty() {
+            return refused(err_codes::IMPORT_HAS_ERRORS, Value::Null, Some(Box::new(d)));
+        }
+        // Incremental: the valid records go, the bad ones stay in the journal.
+        let errors = std::mem::take(&mut d.errors);
+        match write_locked(db, imp, &actor, &mut d).await {
+            Ok(()) => {
+                d.errors = errors;
+                break d;
+            }
+            Err(e) if again && is_stale(&e) => {
+                again = false;
+                tracing::info!(import = %imp.id, "difference stale, computed again");
+            }
+            Err(e) => {
+                tracing::warn!(import = %imp.id, error = %e, "scheduled import failed");
+                d.errors = errors;
+                return Err(("failed", error_code(&e), Value::Null, Some(Box::new(d))));
+            }
+        }
+    };
     if let Some(p) = &m.per_object {
         let pages = imp.max_pages.map_or(DEFAULT_PAGES, |n| n as u32);
         if let Some(last) = per_object_values(db, imp, p, pages)
@@ -2381,6 +2418,21 @@ mod tests {
         assert!(!try_lock().await, "held by the application");
         lock.release().await;
         assert!(try_lock().await, "free once it ends");
+    }
+
+    #[test]
+    fn a_lock_timeout_and_a_stale_write_are_told_apart() {
+        let busy = OntologyError::Db(sea_orm::DbErr::Custom(
+            "error returned from database: 55P03 canceling statement due to lock timeout".into(),
+        ));
+        assert_eq!(error_code(&busy), err_codes::IMPORT_ORG_BUSY);
+        assert!(!is_stale(&busy));
+        assert!(is_stale(&OntologyError::KeyTaken));
+        assert!(is_stale(&OntologyError::VersionConflict { current: 3 }));
+        assert_eq!(
+            error_code(&OntologyError::KeyTaken),
+            err_codes::IMPORT_RUN_STALE
+        );
     }
 
     #[test]

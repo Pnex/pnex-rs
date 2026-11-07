@@ -275,6 +275,31 @@ pub(super) async fn run(
     apply: bool,
 ) -> Result<()> {
     let _one_at_a_time = PLANNING.acquire().await;
+    // The difference is computed outside the org lock: another import writing
+    // the same objects meanwhile makes it stale (audit B1). It is computed
+    // again once, on what that import left.
+    let mut stale = false;
+    attempt(db, store, imp, id, m, run, apply, Some(&mut stale)).await?;
+    if stale {
+        tracing::info!(import = %imp.id, "difference stale, computed again");
+        attempt(db, store, imp, id, m, run, apply, None).await?;
+    }
+    Ok(())
+}
+
+/// One computation and write of the run; with `stale`, a write that finds
+/// the objects changed since sets it and leaves the run open.
+#[allow(clippy::too_many_arguments)]
+async fn attempt(
+    db: &DatabaseConnection,
+    store: &S3Store,
+    imp: &ImportRow,
+    id: Uuid,
+    m: &Mapping,
+    run: &RunRow,
+    apply: bool,
+    stale: Option<&mut bool>,
+) -> Result<()> {
     let end = |state: &'static str,
                code: Option<&'static str>,
                args: Value,
@@ -471,8 +496,14 @@ pub(super) async fn run(
         role,
         source_ref: format!("import:{}@{}", imp.id, run.number),
     };
-    match write_locked(db, imp, &actor, &d).await {
+    match write_locked(db, imp, &actor, &mut d).await {
         Ok(()) => end("applied", None, Value::Null, Some(d)).await,
+        Err(e) if stale.is_some() && super::is_stale(&e) => {
+            if let Some(s) = stale {
+                *s = true;
+            }
+            Ok(())
+        }
         Err(e) => {
             tracing::warn!(import = %imp.id, error = %e, "dataset sync failed");
             end("failed", Some(super::error_code(&e)), Value::Null, Some(d)).await

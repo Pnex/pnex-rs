@@ -189,6 +189,17 @@ fn cli(ops: &[Op]) -> Command {
                                 .help("Wait for the end of the run"),
                         )
                         .arg(yes_arg()),
+                )
+                .subcommand(
+                    Command::new("update")
+                        .about("Replace the mapping of an import; the version is read for you")
+                        .arg(Arg::new("id").required(true).help("Import id"))
+                        .arg(
+                            Arg::new("mapping")
+                                .long("mapping")
+                                .required(true)
+                                .help("The mapping, YAML: inline, @file or -"),
+                        ),
                 ),
         )
         .subcommand(
@@ -606,6 +617,45 @@ fn post_json(
     Ok((status, serde_json::from_slice(&res.bytes()?)?))
 }
 
+/// `pnex import update`: the update needs the version it replaces; reading it just
+/// before keeps the check (a change made meanwhile still answers 409).
+fn update_import(
+    http: &Client,
+    session: &mut Session,
+    org: Option<i64>,
+    id: &str,
+    mapping: &str,
+) -> Result<Value> {
+    let path = format!("/api/v1/ontology/imports/{}", encode(id));
+    let (status, current) = call_json(http, session, org, Method::GET, &path)?;
+    if !status.is_success() {
+        bail!("HTTP {status}: {current}");
+    }
+    // Absent fields keep their value: only the mapping changes.
+    let body = serde_json::json!({
+        "name": current["name"],
+        "mode": current["mode"],
+        "source": current["source"],
+        "mapping": mapping,
+        "expected_version": current["version"],
+    });
+    let token = session.token(http)?.to_string();
+    let mut req = http
+        .put(format!("{}{path}", session.url))
+        .bearer_auth(token)
+        .json(&body);
+    if let Some(org) = org {
+        req = req.header(ORG_HEADER, org.to_string());
+    }
+    let res = req.send()?;
+    let status = res.status();
+    let answer: Value = serde_json::from_slice(&res.bytes()?)?;
+    if !status.is_success() {
+        bail!("HTTP {status}: {answer}");
+    }
+    Ok(answer)
+}
+
 /// `pnex import run`: the run ends on the server whatever happens here, so a poll that
 /// fails (a pod replaced, a busy server) is retried for `patience` polls in a row.
 fn run_import(
@@ -749,6 +799,22 @@ fn run() -> Result<()> {
                 150,
             )
             .map(drop)
+        }
+        ("import", m) if m.subcommand_name() == Some("update") => {
+            let (_, m) = m.subcommand().expect("subcommand required");
+            let mut session = Session::load()?;
+            let org = org.or(session.org);
+            if org.is_none() {
+                bail!("no organisation: pick one with `pnex org <id>` or pass --org");
+            }
+            let mapping = String::from_utf8(read_body(
+                m.get_one::<String>("mapping").expect("required"),
+            )?)
+            .context("the mapping is not UTF-8")?;
+            let id = m.get_one::<String>("id").expect("required");
+            let answer = update_import(&http, &mut session, org, id, &mapping)?;
+            println!("{}", serde_json::to_string_pretty(&answer)?);
+            Ok(())
         }
         ("import", m) => {
             let (_, m) = m.subcommand().expect("subcommand required");
@@ -919,6 +985,40 @@ mod tests {
         ]);
         let e = run_import(&http, &mut session(&url), Some(7), "i1", true, tick, 2).unwrap_err();
         assert!(e.to_string().contains("still unknown after 2 polls"), "{e}");
+    }
+
+    #[test]
+    fn update_reads_the_version_then_replaces_the_mapping() {
+        let http = Client::new();
+        let (url, requests) = mock(vec![
+            (
+                200,
+                r#"{"id": "i1", "name": "Sites", "mode": "snapshot", "source": "dataset", "version": 4}"#,
+            ),
+            (200, r#"{"id": "i1", "version": 5}"#),
+        ]);
+        let out = update_import(&http, &mut session(&url), Some(7), "i1", "key: x").unwrap();
+        assert_eq!(out["version"], 5);
+        let lines: Vec<String> = requests.try_iter().collect();
+        assert!(
+            lines[0].starts_with("GET /api/v1/ontology/imports/i1 "),
+            "{lines:?}"
+        );
+        assert!(
+            lines[1].starts_with("PUT /api/v1/ontology/imports/i1 "),
+            "{lines:?}"
+        );
+
+        // Changed meanwhile: the server's 409 reaches the user.
+        let (url, _) = mock(vec![
+            (
+                200,
+                r#"{"id": "i1", "name": "Sites", "mode": "snapshot", "source": "dataset", "version": 4}"#,
+            ),
+            (409, r#"{"error": "ontology-version-conflict"}"#),
+        ]);
+        let e = update_import(&http, &mut session(&url), Some(7), "i1", "key: x").unwrap_err();
+        assert!(e.to_string().contains("409"), "{e}");
     }
 
     #[test]

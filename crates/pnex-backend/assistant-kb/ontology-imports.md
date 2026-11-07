@@ -3,7 +3,7 @@ id: ontology-imports
 title: Ontology imports — sheets, files and APIs into objects
 kind: feature
 pages: /ontology
-err_codes: import-preview-required, dataset-erasure-pending, dataset-reserved, dataset-name-taken, dataset-not-found, dataset-version-purged, ingest-entry-missing, import-source-unreadable, import-source-too-large, import-source-unreachable, import-schema-changed, import-suspicious-drop, import-has-errors, import-run-stale, ontology-unique-duplicates, ontology-version-conflict
+err_codes: import-preview-required, dataset-erasure-pending, dataset-reserved, dataset-name-taken, dataset-not-found, dataset-version-purged, ingest-entry-missing, import-source-unreadable, import-source-too-large, import-source-unreachable, import-schema-changed, import-suspicious-drop, import-has-errors, import-run-stale, import-org-busy, ontology-unique-duplicates, ontology-version-conflict
 tags: import, imports, excel, xlsx, csv, json, xml, zip, api, sync, synchronisation, synchronization, mapping, correspondance, column, colonne, preview, aperçu, snapshot, liste complète, schedule, calendrier, siren, siret, unique, clé naturelle, natural key, register, registre, recherche d'entreprises, réseau, partenaires, habilitation, hierarchy, hiérarchie, run now, lancer maintenant, steps, étapes, pipeline, data.gouv
 ---
 Ontology › **Imports** turns the rows of a sheet (Excel, CSV), a file at an address (CSV, XML, JSON, possibly zipped) or a JSON API into objects and links. Nothing is written before you have seen the preview and pressed **Apply**.
@@ -28,6 +28,7 @@ Ontology › **Imports** turns the rows of a sheet (Excel, CSV), a file at an ad
 
 ## Schedules (file at an address, API, or an import with its own steps)
 - A schedule (every day, week or month) runs the import at night and applies it without preview. An import of a sent file can be scheduled once it has its own steps (it then fetches its file itself); without steps it cannot.
+- Two scheduled imports of the organization that write the same objects the same night no longer fail: the second one waits, then computes its changes again on what the first one left. *import-org-busy*: the other import kept writing for more than 10 minutes; the run wrote nothing and goes again at its next time (or run it now from the import).
 - It is **refused without writing anything** when the source changed shape (*import-schema-changed*: missing columns, or no record while the last run had some) or, in *Full list* mode, when it lost more than 30 % of its records (*import-suspicious-drop*). You get an in-app notice; the history keeps every run with its counters.
 - *import-source-unreachable*: the address cannot be reached (refused internal address, network, server error). *import-source-unreadable*: the file is not in the expected format. *import-source-too-large*: over 200 MB once decompressed, 250,000 records or 500,000 objects (lists expanded) per run.
 
