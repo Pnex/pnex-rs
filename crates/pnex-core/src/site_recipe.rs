@@ -325,6 +325,10 @@ pub struct Recipe {
     /// format (`none`, `days:N`, `keep`); [`CAPTURES_DEFAULT`] when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub captures: Option<String>,
+    /// `required`: the site needs the user signed in, so the rule plays on a
+    /// browser agent of the org, never on the server browser (D782).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
     pub steps: Vec<Step>,
 }
 
@@ -332,7 +336,26 @@ pub struct Recipe {
 pub const CAPTURES_DEFAULT: crate::media_ingest::AudioRetention =
     crate::media_ingest::AudioRetention::Days(30);
 
+/// The one value of `session`.
+pub const SESSION_REQUIRED: &str = "required";
+
 impl Recipe {
+    /// Plays only in the user's own session (D782).
+    pub fn needs_session(&self) -> bool {
+        self.session.as_deref() == Some(SESSION_REQUIRED)
+    }
+
+    /// The engine a run plays on (D782): the launcher's choice, else a
+    /// browser agent for a rule that needs a session, else the server
+    /// browser.
+    pub fn engine(&self, forced: Option<RunEngine>) -> RunEngine {
+        forced.unwrap_or(if self.needs_session() {
+            RunEngine::Extension
+        } else {
+            RunEngine::ServerBrowser
+        })
+    }
+
     /// Retention of the run files (screenshots, PDFs); the text extracts
     /// stay in the journal for good.
     pub fn capture_retention(&self) -> crate::media_ingest::AudioRetention {
@@ -610,7 +633,14 @@ pub fn validate(doc: &Value) -> Result<Recipe, Vec<Violation>> {
     for k in obj.keys() {
         if !matches!(
             k.as_str(),
-            "name" | "site" | "allow_hosts" | "params" | "browser" | "captures" | "steps"
+            "name"
+                | "site"
+                | "allow_hosts"
+                | "params"
+                | "browser"
+                | "captures"
+                | "session"
+                | "steps"
         ) {
             out.push(v(k, "unknown"));
         }
@@ -687,6 +717,16 @@ pub fn validate(doc: &Value) -> Result<Recipe, Vec<Violation>> {
             None
         }
     };
+    let session = match obj.get("session") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(v)) if v.trim() == SESSION_REQUIRED => {
+            Some(SESSION_REQUIRED.to_string())
+        }
+        Some(_) => {
+            out.push(v("session", "invalid"));
+            None
+        }
+    };
     let mut steps = Vec::new();
     match obj.get("steps").and_then(Value::as_array) {
         None => out.push(v("steps", "required")),
@@ -717,6 +757,7 @@ pub fn validate(doc: &Value) -> Result<Recipe, Vec<Violation>> {
         params,
         browser,
         captures,
+        session,
         steps,
     })
 }
@@ -945,6 +986,9 @@ pub fn to_yaml(r: &Recipe) -> String {
     }
     if let Some(c) = &r.captures {
         out += &format!("captures: {}\n", s(c));
+    }
+    if let Some(x) = &r.session {
+        out += &format!("session: {}\n", s(x));
     }
     out += "steps:\n";
     for step in &r.steps {
@@ -1495,6 +1539,23 @@ mod tests {
                 ]}}
             ]
         })
+    }
+
+    #[test]
+    fn a_rule_needing_a_session_goes_to_a_browser_agent() {
+        let mut d = people_search();
+        let r = validate(&d).unwrap();
+        assert_eq!(r.engine(None), RunEngine::ServerBrowser);
+        d["session"] = json!("required");
+        let r = validate(&d).unwrap();
+        assert_eq!(r.engine(None), RunEngine::Extension);
+        assert_eq!(
+            r.engine(Some(RunEngine::ServerBrowser)),
+            RunEngine::ServerBrowser
+        );
+        assert!(to_yaml(&r).contains("session: \"required\"\n"));
+        d["session"] = json!("maybe");
+        assert!(validate(&d).unwrap_err().contains(&v("session", "invalid")));
     }
 
     #[test]

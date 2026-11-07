@@ -166,13 +166,17 @@ pub fn spawn(
     recipe: Recipe,
     params: BTreeMap<String, String>,
     resume: Option<super::Resume>,
+    fallback: bool,
 ) {
     tokio::spawn(play_to_end(
-        ctx, org_id, run_id, recipe, params, resume, true,
+        ctx, org_id, run_id, recipe, params, resume, true, fallback,
     ));
 }
 
-/// Plays a run and journals its outcome (flow nodes wait for it).
+/// Plays a run and journals its outcome (flow nodes wait for it). With
+/// `fallback`, a run the site blocked (429, 403) goes on to a browser agent
+/// of the org instead (D782): `Running` is answered then.
+#[allow(clippy::too_many_arguments)]
 pub async fn play_to_end(
     ctx: AppContext,
     org_id: i64,
@@ -181,6 +185,7 @@ pub async fn play_to_end(
     params: BTreeMap<String, String>,
     resume: Option<super::Resume>,
     live: bool,
+    fallback: bool,
 ) -> RunStatus {
     let db = ctx.db.clone();
     let journal_ctx = ctx.clone();
@@ -194,11 +199,44 @@ pub async fn play_to_end(
         Ok(()) => (RunStatus::Ok, None, None),
         Err((step, why)) => (RunStatus::Failed, step, Some(why)),
     };
+    if fallback
+        && blocked(&db, run_id, why).await
+        && super::hand_to_extension(&db, org_id, run_id).await
+    {
+        return RunStatus::Running;
+    }
     if let Err(e) = super::finish(&db, run_id, status, step, why).await {
         tracing::error!(error = %e, run = %run_id, "site recipe run not finished");
     }
     super::journal(&journal_ctx, org_id, run_id).await;
     status
+}
+
+/// The site refused the server browser: a 429, or a 403 on the failed step.
+async fn blocked(db: &sea_orm::DatabaseConnection, run_id: Uuid, why: Option<&str>) -> bool {
+    use sea_orm::ConnectionTrait as _;
+    match why {
+        Some(reason::RATE_LIMITED) => true,
+        Some(reason::HTTP_STATUS) => {
+            let steps: Vec<RunStep> = db
+                .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                    sea_orm::DatabaseBackend::Postgres,
+                    "SELECT steps FROM agent_runs WHERE id = $1",
+                    vec![run_id.into()],
+                ))
+                .await
+                .ok()
+                .flatten()
+                .and_then(|r| r.try_get::<serde_json::Value>("", "steps").ok())
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default();
+            steps
+                .last()
+                .and_then(|s| s.detail.as_deref())
+                .is_some_and(|d| d.contains("403"))
+        }
+        _ => false,
+    }
 }
 
 /// Longest setup call to the browser (context, page, interception).

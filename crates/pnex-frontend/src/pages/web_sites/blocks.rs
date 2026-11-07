@@ -593,6 +593,7 @@ mod tests {
             params: vec![],
             browser: None,
             captures: None,
+            session: None,
             steps: (0..n).map(|i| Step::Open(format!("/{i}"))).collect(),
         }
     }

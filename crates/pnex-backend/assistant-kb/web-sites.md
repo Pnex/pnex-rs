@@ -26,6 +26,7 @@ A navigation rule is YAML bound to one website: `name`, `site` (a host or an add
 
 ## What you can do
 
+- `session: required` (top of the rule, next to `site`): the site needs the user signed in, so the rule always plays in a browser agent of the organization, never on the server browser; Play does that by itself. The assistant cannot try such a rule ("This rule needs your own signed-in session"): the user plays it from the studio. A rule the server browser gets blocked on (too many requests, forbidden) also goes on to a browser agent of the organization by itself.
 - **Play in my browser** (studio header): the same rule is played by your browser agent, in your own session, for sites that need you signed in. The run waits up to 30 minutes for the agent ("Waiting for your browser agent…"), always starts from the first step, and stops as failed if a page leaves the rule's site. Without a paired browser agent of yours (Sources > Browser agents), a common one of the organization plays it.
 
 - **Add a website** (header), type its host: the studio opens with a starter rule.

@@ -7126,3 +7126,6 @@ web-sites-play-browser = Jouer dans mon navigateur
 web-sites-play-browser-help = Votre agent navigateur joue la règle dans votre propre session, pour les sites qui demandent d’être connecté ; le passage l’attend jusqu’à 30 minutes.
 web-sites-waiting-browser = En attente de votre agent navigateur…
 web-sites-reason-permission-missing = Votre agent navigateur n'a pas encore le droit d'ouvrir ce site : autorisez-le depuis la page d'options de l'agent
+err-site-recipe-no-agent = Cette règle se joue dans un agent navigateur, et l'organisation n'en a encore aucun : appairez-en un depuis Sources > Agents navigateur.
+err-site-recipe-daily-cap = L'organisation a joué aujourd'hui autant de règles dans ses agents navigateur que permis ({ $max }) : réessayez demain.
+err-site-recipe-needs-session = Cette règle demande votre propre session connectée : jouez-la depuis le studio du site.

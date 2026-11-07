@@ -38,6 +38,7 @@ fn starter(site: &str) -> Recipe {
         params: Vec::new(),
         browser: None,
         captures: None,
+        session: None,
         steps: ["open", "extract"]
             .iter()
             .filter_map(|a| new_step(a))

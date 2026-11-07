@@ -828,7 +828,109 @@ pub enum StartError {
     /// The resume point does not fit the recipe.
     BadResume,
     ResumeRunNotFound,
+    /// For a browser agent, and the org has none (D782).
+    NoAgent,
+    /// Runs on browser agents today reached.
+    DailyCap {
+        max: i64,
+    },
+    /// A rule that needs a person's session, asked by the assistant.
+    NeedsSession,
     Recipe(RecipeError),
+}
+
+/// Runs an org plays on its browser agents per day (D782, D258): compiled,
+/// whatever the launcher.
+pub const EXTENSION_RUNS_PER_DAY: i64 = 100;
+
+/// Whether the org has a paired browser agent.
+pub async fn has_agent(db: &DatabaseConnection, org_id: i64) -> Result<bool, sea_orm::DbErr> {
+    Ok(db
+        .query_one_raw(stmt(
+            "SELECT 1 AS x FROM extension_agents WHERE org_id = $1 LIMIT 1",
+            vec![org_id.into()],
+        ))
+        .await?
+        .is_some())
+}
+
+/// May the org queue one more run for a browser agent now?
+pub async fn check_extension_run(db: &DatabaseConnection, org_id: i64) -> Result<(), StartError> {
+    let db_err = |e| StartError::Recipe(RecipeError::Db(e));
+    if !has_agent(db, org_id).await.map_err(db_err)? {
+        return Err(StartError::NoAgent);
+    }
+    let today = db
+        .query_one_raw(stmt(
+            "SELECT count(*) AS n FROM runner_jobs WHERE org_id = $1 AND kind = 'extension'
+               AND created_at > now() - interval '24 hours'",
+            vec![org_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .and_then(|r| r.try_get::<i64>("", "n").ok())
+        .unwrap_or(0);
+    if today >= EXTENSION_RUNS_PER_DAY {
+        return Err(StartError::DailyCap {
+            max: EXTENSION_RUNS_PER_DAY,
+        });
+    }
+    Ok(())
+}
+
+/// A server run the site blocked goes on to a browser agent (D782): the
+/// same run, queued again for the `extension` engine, so whoever follows
+/// it keeps following it. `false` when the org has no agent to take it.
+pub async fn hand_to_extension(db: &DatabaseConnection, org_id: i64, run_id: Uuid) -> bool {
+    if check_extension_run(db, org_id).await.is_err() {
+        return false;
+    }
+    let moved = db
+        .execute_raw(stmt(
+            &format!(
+                "UPDATE runner_jobs SET kind = 'extension', state = 'queued', started_at = NULL,
+                   attempts = 0, finished_at = NULL,
+                   queue_expires_at = now() + interval '{EXTENSION_QUEUE}'
+                 WHERE id = $1 AND org_id = $2 AND kind = 'server_browser'"
+            ),
+            vec![run_id.into(), org_id.into()],
+        ))
+        .await
+        .map(|r| r.rows_affected() == 1)
+        .unwrap_or(false);
+    if moved {
+        tracing::info!(run = %run_id, "site blocked the server browser, run handed to a browser agent");
+    }
+    moved
+}
+
+/// Waits for the end of a run played elsewhere (a browser agent), up to
+/// `limit`; `Running` when it is still not over.
+pub async fn wait_finished(
+    db: &DatabaseConnection,
+    run_id: Uuid,
+    limit: std::time::Duration,
+) -> RunStatus {
+    let until = tokio::time::Instant::now() + limit;
+    loop {
+        let state = db
+            .query_one_raw(stmt(
+                "SELECT state FROM runner_jobs WHERE id = $1",
+                vec![run_id.into()],
+            ))
+            .await
+            .ok()
+            .flatten()
+            .and_then(|r| r.try_get::<String>("", "state").ok())
+            .unwrap_or_default();
+        match state.as_str() {
+            "succeeded" => return RunStatus::Ok,
+            "queued" | "running" if tokio::time::Instant::now() < until => {}
+            "queued" | "running" => return RunStatus::Running,
+            _ => return RunStatus::Failed,
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
 }
 
 /// Starts a run on the server browser (studio or assistant): a saved
@@ -864,10 +966,17 @@ pub async fn start_run(
     if let Some(missing) = recipe.params.iter().find(|p| !params.contains_key(*p)) {
         return Err(StartError::ParamMissing(missing.clone()));
     }
-    let engine = input.engine.unwrap_or_default();
+    // The assistant never plays in a person's session (D123, D782).
+    if trigger == "assistant" && recipe.needs_session() {
+        return Err(StartError::NeedsSession);
+    }
+    let engine = recipe.engine(input.engine);
     // A browser agent plays a rule from its start (D783).
     if engine == RunEngine::Extension && input.resume.is_some() {
         return Err(StartError::BadResume);
+    }
+    if engine == RunEngine::Extension {
+        check_extension_run(&ctx.db, org_id).await?;
     }
     let resume = match &input.resume {
         None => None,
@@ -893,7 +1002,17 @@ pub async fn start_run(
         .map_err(|e| StartError::Recipe(RecipeError::Db(e)))?;
     if engine == RunEngine::ServerBrowser {
         let run_id = Uuid::parse_str(&run.id).expect("uuid");
-        browser::spawn(ctx.clone(), org_id, run_id, recipe, params, resume);
+        // A launcher who chose the server browser keeps it, even when blocked.
+        let fallback = input.engine.is_none();
+        browser::spawn(
+            ctx.clone(),
+            org_id,
+            run_id,
+            recipe,
+            params,
+            resume,
+            fallback,
+        );
     }
     Ok(run)
 }

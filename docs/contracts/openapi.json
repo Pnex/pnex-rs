@@ -25004,6 +25004,13 @@
             },
             "type": "array"
           },
+          "session": {
+            "description": "`required`: the site needs the user signed in, so the rule plays on a\nbrowser agent of the org, never on the server browser (D782).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "site": {
             "description": "Host or address of the site; normalised by [`site_host`].",
             "type": "string"
@@ -86847,7 +86854,7 @@
         ]
       },
       "post": {
-        "description": "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server, or with `engine: extension` from a browser agent of the org in the user's own session (the caller's browser, else a common one): the run waits queued up to 30 minutes for one, is played from its start (no `resume`), and its pages are checked against the rule's site on return. Requires a writer role.",
+        "description": "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server, or from a browser agent of the org in the user's own session (the caller's browser, else a common one) when the rule declares `session: required` or `engine: extension` is asked: the run waits queued up to 30 minutes for one, is played from its start (no `resume`), and its pages are checked against the rule's site on return (100 such runs per day). A run the site blocks on the server browser (429, 403) goes on to a browser agent of the org, unless `engine: server_browser` was asked. Requires a writer role.",
         "operationId": "site_recipes_runs_create",
         "parameters": [
           {
@@ -86921,6 +86928,16 @@
               }
             },
             "description": "`site-recipe-not-found`, or `site-recipe-run-not-found` for the run of `resume`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "For a browser agent: `site-recipe-no-agent` (none paired in the organization) or `site-recipe-daily-cap` (`args.max`); `site-recipe-needs-session` when the caller may not play a rule that needs a person's session"
           }
         },
         "security": [

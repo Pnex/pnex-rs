@@ -1556,3 +1556,119 @@ async fn a_rule_run_plays_on_the_starters_browser_and_stays_on_its_site() {
     })
     .await;
 }
+
+/// D782: a rule that needs a session goes to a browser agent by itself, is
+/// refused when the org has none, and a run the site blocked on the server
+/// browser goes on to the agent under the same id.
+#[tokio::test]
+#[serial]
+async fn a_rule_needing_a_session_goes_to_an_agent_and_a_blocked_run_moves_over() {
+    use pnex_backend::services::site_recipes::{self as recipes, NewRun};
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let yaml = "name: needs\nsite: example.org\nsession: required\nsteps:\n  - open: \"/\"\n";
+        let (s, e) = call(
+            &server,
+            "POST",
+            "/api/v1/site-recipes/runs",
+            &env.alice,
+            org,
+            Some(json!({ "yaml": yaml })),
+        )
+        .await;
+        assert_eq!(
+            (s, e["error"].as_str()),
+            (409, Some("site-recipe-no-agent")),
+            "{e}"
+        );
+
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+        let (s, run) = call(
+            &server,
+            "POST",
+            "/api/v1/site-recipes/runs",
+            &env.alice,
+            org,
+            Some(json!({ "yaml": yaml })),
+        )
+        .await;
+        assert_eq!(s, 202, "{run}");
+        assert_eq!(run["engine"], "extension", "routed by `session: required`");
+
+        // A server run the site blocked: the same id, queued for the agent.
+        let plain =
+            recipes::parse("name: blocked\nsite: example.org\nsteps:\n  - open: \"/\"\n").unwrap();
+        let params = Default::default();
+        // Started by alice, like the run above: her own browser may take it (D550).
+        use sea_orm::ConnectionTrait as _;
+        let alice_id: i64 = env
+            .db
+            .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT created_by FROM runner_jobs WHERE id = $1",
+                vec![uuid::Uuid::parse_str(run["id"].as_str().unwrap())
+                    .unwrap()
+                    .into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "created_by")
+            .unwrap();
+        let new = NewRun {
+            recipe_id: None,
+            recipe_version: None,
+            recipe: &plain,
+            yaml: "name: blocked\nsite: example.org\nsteps:\n  - open: \"/\"\n",
+            params: &params,
+            trigger: "studio",
+            user_id: Some(alice_id),
+            engine: pnex_core::site_recipe::RunEngine::ServerBrowser,
+        };
+        let blocked = recipes::insert_run(&env.db, org, &new).await.unwrap();
+        let id = uuid::Uuid::parse_str(&blocked.id).unwrap();
+        assert!(recipes::hand_to_extension(&env.db, org, id).await);
+        assert!(
+            !recipes::hand_to_extension(&env.db, org, id).await,
+            "moved once"
+        );
+        let (_, moved) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/site-recipes/runs/{}", blocked.id),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(
+            (moved["engine"].as_str(), moved["status"].as_str()),
+            (Some("extension"), Some("running")),
+            "{moved}"
+        );
+
+        // The first queued run is leased first; the moved one waits its turn.
+        let mut ws = open(&server, &install, &a).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else {
+            panic!("leased")
+        };
+        assert_eq!(runs[0].run_id, run["id"].as_str().unwrap());
+        send(
+            &mut ws,
+            &AgentMsg::RunDone {
+                run_id: runs[0].run_id.clone(),
+                ok: true,
+                failed_step: None,
+                reason: None,
+            },
+        )
+        .await;
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else {
+            panic!("next leased")
+        };
+        assert_eq!(runs[0].run_id, blocked.id);
+    })
+    .await;
+}

@@ -28,6 +28,10 @@ fn refused(code: &str, args: Value) -> SiteRecipeNodeReply {
     }
 }
 
+/// Longest wait of a node for a run on a browser agent, its queue and its
+/// play: under the 20 min the node's call allows (pnex-node-ui-control).
+const AGENT_WAIT: std::time::Duration = std::time::Duration::from_secs(18 * 60);
+
 /// Plays the rule of the deployed node `req.node` and answers its outcome.
 pub async fn run(
     ctx: &AppContext,
@@ -64,6 +68,24 @@ pub async fn run(
             json!({ "param": missing }),
         ));
     }
+    // A rule that needs a session plays on a common browser agent (D782): a
+    // flow has no person whose own browser it could use.
+    let engine = recipe.engine(None);
+    if engine == pnex_core::site_recipe::RunEngine::Extension {
+        match super::check_extension_run(&ctx.db, org_id).await {
+            Ok(()) => {}
+            Err(super::StartError::NoAgent) => {
+                return Ok(refused(err_codes::SITE_RECIPE_NO_AGENT, Value::Null))
+            }
+            Err(super::StartError::DailyCap { max }) => {
+                return Ok(refused(
+                    err_codes::SITE_RECIPE_DAILY_CAP,
+                    json!({ "max": max.to_string() }),
+                ))
+            }
+            Err(_) => return Ok(unavailable()),
+        }
+    }
     let new = NewRun {
         recipe_id: Some(recipe_id),
         recipe_version: Some(saved.version),
@@ -72,22 +94,32 @@ pub async fn run(
         params: &params,
         trigger: "flow",
         user_id: None,
-        engine: pnex_core::site_recipe::RunEngine::ServerBrowser,
+        engine,
     };
     let Ok(started) = super::insert_run(&ctx.db, org_id, &new).await else {
         return Ok(unavailable());
     };
     let run_id = Uuid::parse_str(&started.id).expect("uuid");
-    let status = browser::play_to_end(
-        ctx.clone(),
-        org_id,
-        run_id,
-        recipe,
-        params.clone(),
-        None,
-        false,
-    )
-    .await;
+    let mut status = if engine == pnex_core::site_recipe::RunEngine::Extension {
+        RunStatus::Running
+    } else {
+        browser::play_to_end(
+            ctx.clone(),
+            org_id,
+            run_id,
+            recipe,
+            params.clone(),
+            None,
+            false,
+            true,
+        )
+        .await
+    };
+    // On a browser agent (asked, or handed over by a blocked site): the node
+    // waits for its end, the queue and the play included.
+    if status == RunStatus::Running {
+        status = super::wait_finished(&ctx.db, run_id, AGENT_WAIT).await;
+    }
     let Ok(view) = super::run(&ctx.db, org_id, run_id).await else {
         return Ok(unavailable());
     };

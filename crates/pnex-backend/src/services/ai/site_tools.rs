@@ -147,8 +147,9 @@ pub async fn try_site_recipe(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOu
         yaml: None,
         params,
         resume,
-        // The assistant plays on the server browser only, never in a person's session.
-        engine: None,
+        // The assistant plays on the server browser only, never in a person's
+        // session: forced, so a blocked site is not handed to a browser agent.
+        engine: Some(pnex_core::site_recipe::RunEngine::ServerBrowser),
     };
     let user = deps.actor.as_ref().and_then(|a| a.user_id);
     let run = match recipes::start_run(app, deps.org_id, user, input, "assistant").await {
@@ -171,6 +172,16 @@ pub async fn try_site_recipe(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOu
                 "no such run to resume from",
                 None,
             ))
+        }
+        Err(StartError::NeedsSession) => {
+            return Err(coded(
+                err_codes::SITE_RECIPE_NEEDS_SESSION,
+                "this rule needs the user's own session (session: required): the user plays it from the website studio, never the assistant",
+                None,
+            ))
+        }
+        Err(StartError::NoAgent | StartError::DailyCap { .. }) => {
+            return Err("this rule plays on a browser agent, never from the assistant".into())
         }
         Err(StartError::Recipe(e)) => return Err(recipe_error(e)),
     };
@@ -338,7 +349,7 @@ pub(super) fn tools() -> Vec<ToolDef> {
         ToolDef {
             spec: ToolSpec {
                 name: "propose_site_recipe",
-                description: "Proposes a navigation rule to the user: the YAML is checked, nothing is saved. The user opens it in the website studio from the button under your answer, plays it and saves it (a new rule, or a new version of recipe_id). Steps: open (path of the site), click {text|text_contains|selector|role+name, optional}, scroll, wait {ms|text}, follow_pdf {link_text_contains|href_contains, as}, extract {selector|between [a,b]|all_text: true|cards {selector, fields {name: {selector, attr}}, max}, as}, assert {page_contains|not_empty|count_min|url_contains}, type {text, selector|role} (a search field only, never a form nor a sign-in), press (Enter|Tab|Escape|ArrowDown|ArrowUp), for_each {from: cards extract, link: its link field, max ≤ 10, steps} (each link opened, its extracts named as.n). Once saved, try it with try_site_recipe.",
+                description: "Proposes a navigation rule to the user: the YAML is checked, nothing is saved. The user opens it in the website studio from the button under your answer, plays it and saves it (a new rule, or a new version of recipe_id). Steps: open (path of the site), click {text|text_contains|selector|role+name, optional}, scroll, wait {ms|text}, follow_pdf {link_text_contains|href_contains, as}, extract {selector|between [a,b]|all_text: true|cards {selector, fields {name: {selector, attr}}, max}, as}, assert {page_contains|not_empty|count_min|url_contains}, type {text, selector|role} (a search field only, never a form nor a sign-in), press (Enter|Tab|Escape|ArrowDown|ArrowUp), for_each {from: cards extract, link: its link field, max ≤ 10, steps} (each link opened, its extracts named as.n). A site that needs the user signed in gets `session: required`: such a rule plays in the user's browser agent, never through try_site_recipe. Once saved, try it with try_site_recipe.",
                 input_schema: serde_json::from_str(r#"{"type":"object","properties":{"yaml":{"type":"string"},"recipe_id":{"type":"string"}},"required":["yaml"]}"#).expect("static schema"),
             },
             summary: |v| {

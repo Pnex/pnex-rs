@@ -263,6 +263,18 @@ agent, sauf `optional`). Vérifié : tests unitaires, protocole de bout en bout 
 `browser-agent.spec.ts` (extension réelle dans Chromium) tournera sur l'image suivante.
 **U2 livré.**
 
+**U3 livré (2026-11-07).** `session: required` dans le format (seule valeur) ; le moteur
+d'un passage = le choix du lanceur, sinon l'agent pour une règle qui exige une session,
+sinon le navigateur du serveur (`Recipe::engine`). Un passage pour un agent est refusé tout
+de suite quand l'org n'a aucun agent appairé (`site-recipe-no-agent`) ou a déjà mis
+100 passages en file dans la journée (`site-recipe-daily-cap`, plafond compilé). Repli : un
+passage que le site bloque sur le navigateur du serveur (429, ou 403 sur l'étape) repart en
+file pour un agent **sous le même id** (le studio le suit sans rien changer), sauf si le
+lanceur a forcé `server_browser`. Le nœud de flow joue une règle à session sur un agent
+**commun** (un flow n'a pas de personne dont il emprunterait le navigateur) et attend sa fin
+18 min au plus (son appel en accorde 20). L'assistant ne joue jamais une règle à session
+(`site-recipe-needs-session`) et ne passe jamais la main à un agent (moteur forcé).
+
 **Notes pour U4 (`capture_people`, D779, poussé en 8b220d62).** Ce qu'une recette doit
 reprendre sans rien perdre :
 

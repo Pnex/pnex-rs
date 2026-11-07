@@ -408,12 +408,13 @@ async fn versions_restore(
     tag = "site-recipes",
     operation_id = "site_recipes_runs_create",
     summary = "Play a site recipe",
-    description = "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server, or with `engine: extension` from a browser agent of the org in the user's own session (the caller's browser, else a common one): the run waits queued up to 30 minutes for one, is played from its start (no `resume`), and its pages are checked against the rule's site on return. Requires a writer role.",
+    description = "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server, or from a browser agent of the org in the user's own session (the caller's browser, else a common one) when the rule declares `session: required` or `engine: extension` is asked: the run waits queued up to 30 minutes for one, is played from its start (no `resume`), and its pages are checked against the rule's site on return (100 such runs per day). A run the site blocks on the server browser (429, 403) goes on to a browser agent of the org, unless `engine: server_browser` was asked. Requires a writer role.",
     request_body = RunInput,
     responses(
         (status = 202, body = SiteRecipeRun),
         (status = 400, description = "`site-recipe-invalid` (violations), `site-recipe-param-missing` (`args.param`) or `field-invalid` (`recipe_id = required` with neither a recipe nor a draft; `resume` when the earlier run is of another site, its step failed or the step is out of range)", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`site-recipe-not-found`, or `site-recipe-run-not-found` for the run of `resume`", body = crate::openapi::ErrorDetail)
+        (status = 404, description = "`site-recipe-not-found`, or `site-recipe-run-not-found` for the run of `resume`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "For a browser agent: `site-recipe-no-agent` (none paired in the organization) or `site-recipe-daily-cap` (`args.max`); `site-recipe-needs-session` when the caller may not play a rule that needs a person's session", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -447,6 +448,30 @@ async fn run_create(
                 return Ok(super::field_error("resume", err_codes::FIELD_INVALID))
             }
             Err(StartError::ResumeRunNotFound) => return Err(run_not_found()),
+            Err(StartError::NoAgent) => {
+                return Err(super::coded_error(
+                    StatusCode::CONFLICT,
+                    err_codes::SITE_RECIPE_NO_AGENT,
+                    "This rule plays on a browser agent and the organization has none paired.",
+                    None,
+                ))
+            }
+            Err(StartError::DailyCap { max }) => {
+                return Err(super::coded_error(
+                    StatusCode::CONFLICT,
+                    err_codes::SITE_RECIPE_DAILY_CAP,
+                    "The organization played as many rules on its browser agents today as allowed.",
+                    Some(serde_json::json!({ "max": max.to_string() })),
+                ))
+            }
+            Err(StartError::NeedsSession) => {
+                return Err(super::coded_error(
+                    StatusCode::CONFLICT,
+                    err_codes::SITE_RECIPE_NEEDS_SESSION,
+                    "This rule needs a person's own session.",
+                    None,
+                ))
+            }
             Err(StartError::Recipe(e)) => return recipe_error(e),
         };
     Ok((StatusCode::ACCEPTED, format::json(run)).into_response())

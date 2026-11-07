@@ -921,6 +921,12 @@ pub const SITE_RECIPE_VERSION_CONFLICT: &str = "site-recipe-version-conflict";
 pub const SITE_RECIPE_RUN_NOT_FOUND: &str = "site-recipe-run-not-found";
 /// A run is missing a value of the recipe's `params`; `args.param`.
 pub const SITE_RECIPE_PARAM_MISSING: &str = "site-recipe-param-missing";
+/// A rule for a browser agent, and the org has none paired (D782).
+pub const SITE_RECIPE_NO_AGENT: &str = "site-recipe-no-agent";
+/// Runs on browser agents of the org today reached (D782). Args: `max`.
+pub const SITE_RECIPE_DAILY_CAP: &str = "site-recipe-daily-cap";
+/// The rule needs a person's session: the assistant never plays it (D782).
+pub const SITE_RECIPE_NEEDS_SESSION: &str = "site-recipe-needs-session";
 /// A flow node could not have its rule played (server unreachable, no
 /// object storage, run not journaled).
 pub const SITE_RECIPE_UNAVAILABLE: &str = "site-recipe-unavailable";
@@ -1358,6 +1364,9 @@ pub const ALL: &[&str] = &[
     SITE_RECIPE_VERSION_CONFLICT,
     SITE_RECIPE_RUN_NOT_FOUND,
     SITE_RECIPE_PARAM_MISSING,
+    SITE_RECIPE_NO_AGENT,
+    SITE_RECIPE_DAILY_CAP,
+    SITE_RECIPE_NEEDS_SESSION,
     SITE_RECIPE_UNAVAILABLE,
     BROWSER_ENDPOINT_NOT_FOUND,
     BROWSER_ENDPOINT_NAME_TAKEN,

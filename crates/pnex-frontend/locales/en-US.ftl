@@ -7130,3 +7130,6 @@ web-sites-play-browser = Play in my browser
 web-sites-play-browser-help = Your browser agent plays the rule in your own session, for sites that need you signed in; the run waits up to 30 minutes for it.
 web-sites-waiting-browser = Waiting for your browser agent…
 web-sites-reason-permission-missing = Your browser agent may not open this site yet: allow it from the agent's options page
+err-site-recipe-no-agent = This rule plays in a browser agent, and the organization has none paired yet: pair one from Sources > Browser agents.
+err-site-recipe-daily-cap = The organization played as many rules in its browser agents today as allowed ({ $max }): try again tomorrow.
+err-site-recipe-needs-session = This rule needs your own signed-in session: play it from the website studio.
