@@ -4,31 +4,34 @@
 //! docs/architecture/flow-engine.md). All graph mutations go
 //! through the pure reducers of `state.rs`, the geometry is tested in
 //! `geometry.rs`, rendering/gestures in `canvas.rs`, node config
-//! in `inspector.rs`, history in `versions.rs`.
+//! in `inspector.rs`, history in `versions.rs`; the editor's loading,
+//! save/409, staleness and deploy/runtime concerns live in `load.rs`,
+//! `save.rs`, `staleness.rs` and `runtime.rs`.
 
 pub(crate) mod canvas;
 pub(crate) mod debug;
 pub(crate) mod function_picker;
 pub(crate) mod geometry;
 pub(crate) mod inspector;
+mod load;
+mod runtime;
+mod save;
+mod staleness;
 pub(crate) mod state;
 pub(crate) mod versions;
 pub(crate) mod wire_types;
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::{validate_graph, FlowGraph, FlowVersionDetail, FlowViolation, UpdateFlow};
+use pnex_core::{FlowGraph, FlowVersionDetail, FlowViolation};
 
 use crate::api;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::editor_shell::{
-    Chip, EditorShell, EditorStatus, InspectorPanel, PalettePopover, StatusTone,
+    Chip, EditorShell, InspectorPanel, PalettePopover, StatusTone,
 };
 use crate::components::icons;
 use crate::components::modal::Modal;
-use crate::state::session;
-use crate::state::toasts;
-use pnex_core::err_codes;
 pub(crate) mod cx;
 
 use crate::components::gerbe::Gerbe;
@@ -53,55 +56,20 @@ pub fn FlowEditor(
     // --- Editor state (the signals live in the `cx` bundle) ---
     let mut graph = use_signal(FlowGraph::default);
     let mut saved_graph = use_signal(FlowGraph::default);
-    let mut saved_version = use_signal(|| 0i64);
+    let saved_version = use_signal(|| 0i64);
     let mut selected_node = use_signal(|| None::<String>);
     let interaction = use_signal(|| Interaction::Idle);
     let pan = use_signal(|| (0.0_f64, 0.0_f64));
     let zoom = use_signal(|| 1.0_f64);
     let mut violations = use_signal(Vec::<FlowViolation>::new);
-    let mut stale = use_signal(Vec::<FlowViolation>::new);
+    let stale = use_signal(Vec::<FlowViolation>::new);
     let mut loaded_from = use_signal(|| None::<i64>);
-    let mut display_values =
-        use_signal(std::collections::HashMap::<String, debug::DisplayBadge>::new);
+    let display_values = use_signal(std::collections::HashMap::<String, debug::DisplayBadge>::new);
     let mut expanded_display = use_signal(|| None::<(String, String)>);
 
-    // Vision model names for the `vision-detect` canvas subtitles — one
-    // fetch per editor mount (scoped task, render-safe global write).
-    use_hook(|| {
-        spawn(async move {
-            if let Ok(page) = api::ml_models::list(Some(100), None).await {
-                crate::state::vision::remember(&page.results);
-            }
-            // Control keys for the `control-source` subtitles (O30: the raw
-            // id showed until the inspector was opened); `list` fills the
-            // key cache.
-            let _ = api::controls::list().await;
-        });
-    });
+    load::use_subtitle_caches();
 
-    // Initial load guard (never a `.set()` during render).
-    let mut loaded = use_signal(|| false);
-    use_effect(move || {
-        let resource = detail.value();
-        let value = resource.read();
-        let Some(Ok(flow)) = &*value else {
-            return;
-        };
-        if loaded() {
-            return;
-        }
-        let mut fresh = flow.graph.clone();
-        geometry::ensure_positions(&mut fresh);
-        // Auto tracking from load: a split in auto mode regenerates its
-        // keys (hence its ports) from its upstream without waiting for an edit.
-        state::sync_split_keys_auto(&mut fresh);
-        graph.set(fresh.clone());
-        saved_graph.set(fresh);
-        saved_version.set(flow.latest_version_number);
-        // Stored nodes the server left out (retired kind…): shown until saved.
-        violations.set(flow.unreadable_nodes.clone());
-        loaded.set(true);
-    });
+    load::use_initial_load(detail, graph, saved_graph, saved_version, violations);
 
     let mut cx = EditorCx {
         graph,
@@ -120,459 +88,35 @@ pub fn FlowEditor(
     // Derived dirty — never a dedicated signal to keep up to date.
     let dirty = graph() != saved_graph();
 
-    // ─── Pin/device staleness (Phase 6) ───
-    // A structurally valid graph may no longer return anything: the pin
-    // switched in↔out (set_mode), the pin disappeared from the pinout, the device
-    // was deleted, disabled, or is simply offline. Each state has
-    // its own message — a device waiting to reconnect (server restart,
-    // wifi…) must never show as "deleted or inactive".
-    // Client-only violations (never persisted) → node + wire in red.
-    // Re-fetched when the read config changes (not on drag: the signature
-    // leaves positions out) and on the presence tick below.
-    let mut stale_signature = use_signal(String::new);
-    // Presence changes without any edit (a device drops or comes back): the
-    // check is re-run on this tick, not only when the config changes.
-    let mut presence_tick = use_signal(|| 0u32);
-    let mut presence_polling = use_signal(|| false);
-    if !presence_polling() {
-        presence_polling.set(true);
-        spawn(async move {
-            crate::util::sleep(std::time::Duration::from_secs(15)).await;
-            presence_polling.set(false);
-            presence_tick.with_mut(|t| *t += 1);
-        });
-    }
-    use_effect(move || {
-        let tick = presence_tick();
-        let g = graph.cloned(); // tracked read: re-triggers on change
-                                // (node_id, device_slug, pin, is_write) — the usage qualifies the
-                                // check (a written pin needs no subscription).
-        let mut reads: Vec<(String, String, String, bool)> = Vec::new();
-        let mut signature = String::new();
-        for n in &g.nodes {
-            if let pnex_core::FlowNodeKind::DeviceRead { config } = &n.kind {
-                // Only complete pairs are judged: a read being
-                // typed (empty device or pin) is not a staleness
-                // violation — `device_bad_read` on save covers it (otherwise the
-                // banner shouts 'device "" not found' on a mere click on
-                // "Add a read").
-                for pin in config
-                    .pins
-                    .iter()
-                    .filter(|pin| !config.device_id.is_empty() && !pin.trim().is_empty())
-                {
-                    reads.push((n.id.clone(), config.device_id.clone(), pin.clone(), false));
-                    signature.push_str(&format!("{}:{}/{};", n.id, config.device_id, pin));
-                }
-            } else if let pnex_core::FlowNodeKind::DeviceWrite { config } = &n.kind {
-                for pin in config
-                    .pins
-                    .iter()
-                    .filter(|pin| !config.device_id.is_empty() && !pin.trim().is_empty())
-                {
-                    reads.push((n.id.clone(), config.device_id.clone(), pin.clone(), true));
-                    signature.push_str(&format!("{}:{}/{}#w;", n.id, config.device_id, pin));
-                }
-            }
-        }
-        signature.push_str(&format!("tick:{tick}"));
-        if signature == *stale_signature.cloned() {
-            return; // unchanged config (drag/pan): nothing to re-scan
-        }
-        stale_signature.set(signature);
-        spawn(async move {
-            if reads.is_empty() {
-                stale.set(Vec::new());
-                return;
-            }
-            /// Machine code per device state — never deduplicated away
-            /// (dedup key = node + code + serialized args). `message` is the
-            /// canonical English fallback; display resolves `err-<kebab>`
-            /// with `args` at render time (error_i18n).
-            fn push(
-                found: &mut Vec<FlowViolation>,
-                seen: &mut std::collections::HashSet<(String, String, String)>,
-                node_id: &str,
-                code: &str,
-                message: &str,
-                args: serde_json::Value,
-            ) {
-                if seen.insert((node_id.to_owned(), code.to_owned(), args.to_string())) {
-                    found.push(FlowViolation::with_args(Some(node_id), code, message, args));
-                }
-            }
-            // ── 1. State of each device — one exact query per slug ──
-            // The `device_id` filter is exact and has no `active` filter:
-            // immune to pagination truncation, and an active but
-            // offline device stays in the response (`active` is a DB flag,
-            // not a connection state).
-            enum DeviceState {
-                /// The devices/pinout API is unreachable — we know NOTHING about the
-                /// device, we must not say "not found".
-                ApiError(String),
-                /// Missing from the registry (deleted, or never existed).
-                Deleted,
-                /// Present but disabled (`active = false`).
-                Inactive,
-                /// Present and active — the connection state comes from the pinout.
-                Active { pk: i64 },
-            }
-            let mut states: std::collections::HashMap<String, DeviceState> =
-                std::collections::HashMap::new();
-            for slug in reads
-                .iter()
-                .map(|(_, d, _, _)| d.clone())
-                .collect::<std::collections::HashSet<_>>()
-            {
-                let state = match api::devices::list(&api::devices::DeviceFilters {
-                    device_id: Some(slug.clone()),
-                    limit: Some(1),
-                    ..Default::default()
-                })
-                .await
-                {
-                    Err(err) => DeviceState::ApiError(err.message),
-                    Ok(page) if page.results.is_empty() => DeviceState::Deleted,
-                    Ok(page) => match page.results[0].active {
-                        false => DeviceState::Inactive,
-                        true => DeviceState::Active {
-                            pk: page.results[0].id,
-                        },
-                    },
-                };
-                states.insert(slug, state);
-            }
-            // ── 2. Pinout of active devices (instances + overlay + connection) ──
-            let mut pinouts: std::collections::HashMap<String, Result<api::pins::Pinout, String>> =
-                std::collections::HashMap::new();
-            for slug in reads
-                .iter()
-                .map(|(_, d, _, _)| d.clone())
-                .collect::<std::collections::HashSet<_>>()
-            {
-                if let Some(DeviceState::Active { pk }) = states.get(&slug) {
-                    // Same source as the inspector (`/pinout`: instances +
-                    // overlay) — `/pins` (instances only) would declare
-                    // "missing" a pin the editor offers via the overlay
-                    // (board default of a never-configured device): false red.
-                    let result = api::pins::pinout(*pk).await.map_err(|e| e.message);
-                    pinouts.insert(slug, result);
-                }
-            }
-            // ── 2b. Metrics published by the devices (custom firmware
-            // `addMetric`): a device-read entry that is not a pin is valid
-            // when the device publishes a series of that name. ──
-            let needs_catalog = reads.iter().any(|(_, slug, pin, is_write)| {
-                !is_write
-                    && matches!(
-                        pinouts.get(slug),
-                        Some(Ok(p)) if !p.pins.iter().any(|x| &x.label == pin)
-                    )
-            });
-            let published: std::collections::HashSet<(String, String)> = if needs_catalog {
-                api::telemetry::catalog()
-                    .await
-                    .map(|c| {
-                        c.series
-                            .into_iter()
-                            .map(|s| (s.device_id, s.metric.to_ascii_lowercase()))
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            } else {
-                Default::default()
-            };
-            // ── 3. One violation per read, deduplicated (node, code, message) ──
-            let mut found: Vec<FlowViolation> = Vec::new();
-            let mut seen = std::collections::HashSet::new();
-            for (node_id, device_slug, pin_label, is_write) in reads {
-                let Some(state) = states.get(&device_slug) else {
-                    continue;
-                };
-                match state {
-                    DeviceState::ApiError(err) => push(
-                        &mut found,
-                        &mut seen,
-                        &node_id,
-                        err_codes::PIN_CHECK_UNAVAILABLE,
-                        "check unavailable",
-                        serde_json::json!({ "device": device_slug, "msg": err }),
-                    ),
-                    DeviceState::Deleted => push(
-                        &mut found,
-                        &mut seen,
-                        &node_id,
-                        err_codes::DEVICE_DELETED,
-                        "device not found (deleted)",
-                        serde_json::json!({ "device": device_slug }),
-                    ),
-                    DeviceState::Inactive => push(
-                        &mut found,
-                        &mut seen,
-                        &node_id,
-                        err_codes::DEVICE_INACTIVE,
-                        "device inactive — re-enable it from the Devices page",
-                        serde_json::json!({ "device": device_slug }),
-                    ),
-                    DeviceState::Active { .. } => match pinouts.get(&device_slug) {
-                        None => {} // active slug not scanned: impossible here
-                        Some(Err(err)) => push(
-                            &mut found,
-                            &mut seen,
-                            &node_id,
-                            err_codes::PIN_CHECK_UNAVAILABLE,
-                            "pinout unavailable",
-                            serde_json::json!({ "device": device_slug, "msg": err }),
-                        ),
-                        Some(Ok(pinout)) => {
-                            if !pinout.connected {
-                                push(
-                                    &mut found,
-                                    &mut seen,
-                                    &node_id,
-                                    err_codes::DEVICE_OFFLINE,
-                                    "device offline — reads resume on reconnect",
-                                    serde_json::json!({ "device": device_slug }),
-                                );
-                            }
-                            match pinout.pins.iter().find(|p| p.label == pin_label) {
-                                None if !is_write
-                                    && published.contains(&(
-                                        device_slug.clone(),
-                                        pin_label.to_ascii_lowercase(),
-                                    )) => {}
-                                None => push(
-                                    &mut found,
-                                    &mut seen,
-                                    &node_id,
-                                    err_codes::PIN_MISSING,
-                                    "pin missing from device",
-                                    serde_json::json!({ "pin": pin_label, "device": device_slug }),
-                                ),
-                                // ── Write usage (device-write) ──
-                                Some(pin)
-                                    if is_write
-                                        && !pin
-                                            .mode
-                                            .as_deref()
-                                            .unwrap_or_default()
-                                            .ends_with("_out") =>
-                                {
-                                    push(
-                                        &mut found,
-                                        &mut seen,
-                                        &node_id,
-                                        err_codes::DEVICE_WRITE_PIN_MODE,
-                                        "pin is not an output (digital_out/pwm_out required to write)",
-                                        serde_json::json!({ "pin": pin_label }),
-                                    )
-                                }
-                                // ── Read usage ──
-                                Some(pin)
-                                    if !is_write && pin.mode.as_deref() == Some("digital_out") =>
-                                {
-                                    push(
-                                        &mut found,
-                                        &mut seen,
-                                        &node_id,
-                                        err_codes::PIN_IS_OUTPUT,
-                                        "pin is an output (digital_out) — reads will stay empty",
-                                        serde_json::json!({ "pin": pin_label }),
-                                    )
-                                }
-                                // Other output modes read (no subscription
-                                // expected, same doctrine as digital_out).
-                                Some(pin)
-                                    if pin
-                                        .mode
-                                        .as_deref()
-                                        .unwrap_or_default()
-                                        .ends_with("_out") => {}
-                                // Device online, pin as input, but no
-                                // subscription: the generic firmware
-                                // publishes nothing — the flow will read empty (payload
-                                // `{}`) without ever knowing otherwise. (Never
-                                // for writing: an output needs no
-                                // subscription.)
-                                Some(pin) if !is_write && pin.subscribed_ms.is_none() => push(
-                                    &mut found,
-                                    &mut seen,
-                                    &node_id,
-                                    err_codes::PIN_NOT_SUBSCRIBED,
-                                    "pin not subscribed — the device publishes nothing; subscribe it (interval) from Devices → Pins tab",
-                                    serde_json::json!({ "pin": pin_label, "device": device_slug }),
-                                ),
-                                _ => {}
-                            }
-                        }
-                    },
-                }
-            }
-            stale.set(found);
-        });
-    });
+    staleness::use_pin_staleness(graph, stale);
 
-    // --- Save (validate → PATCH) ---
-    let mut saving = use_signal(|| false);
-    let mut conflict = use_signal(|| None::<String>);
-    // Deploy offer after saving an already deployed flow: the running
-    // version stays the old one (an update never reloads the
-    // engine) — small "Deploy vN?" box rather than an auto-deploy
-    // that would purge the debug feed on every iteration (user choice).
-    let mut propose_deploy = use_signal(|| None::<i64>);
-    // Save (button, unchanged name) and rename (shell title)
-    // share the same PATCH — the graph travels with it: renaming means
-    // saving the current state.
-    let save = Callback::new(move |name: Option<String>| {
-        if saving() {
-            return;
-        }
-        let local = validate_graph(&graph.peek().clone());
-        if !local.is_empty() {
-            violations.set(local);
-            return;
-        }
-        saving.set(true);
-        let renamed = name.is_some();
-        let params = UpdateFlow {
-            expected_version_number: saved_version(),
-            graph: graph(),
-            name,
-            author: session::user().map(|user| user.username),
-            note: None,
-        };
-        spawn(async move {
-            match api::flows::update(flow_id, params).await {
-                Ok(flow) => {
-                    graph.with_mut(|g| state::adopt_stored_secrets(g, &flow.graph));
-                    saved_graph.set(flow.graph.clone());
-                    saved_version.set(flow.latest_version_number);
-                    violations.set(Vec::new());
-                    loaded_from.set(None);
-                    toasts::success("toast-flow-saved");
-                    // Flow already deployed: the running version stays
-                    // the old one — offer the deploy (a later edit
-                    // hides the box, the render condition depends on dirty).
-                    if flow.status == pnex_core::FlowStatus::Deployed {
-                        propose_deploy.set(Some(flow.latest_version_number));
-                    }
-                    // The header title comes from the detail resource.
-                    if renamed {
-                        reload_meta.with_mut(|r| *r += 1);
-                    }
-                    on_changed.call(());
-                }
-                Err(err) => match api::flows::classify_save_error(&err) {
-                    api::flows::SaveError::Conflict { description } => {
-                        conflict.set(Some(description));
-                    }
-                    api::flows::SaveError::Invalid(invalid) => violations.set(invalid),
-                    api::flows::SaveError::Other(message) => toasts::error(message),
-                },
-            }
-            saving.set(false);
-        });
-    });
+    let (saving, mut conflict, mut propose_deploy, save) =
+        save::use_save(flow_id, cx, loaded_from, reload_meta, on_changed);
 
-    // --- 409 conflict resolution ---
-    let mut conflict_reload = move |_: ()| {
-        conflict.set(None);
-        spawn(async move {
-            match api::flows::detail(flow_id).await {
-                Ok(flow) => {
-                    let mut fresh = flow.graph.clone();
-                    geometry::ensure_positions(&mut fresh);
-                    graph.set(fresh.clone());
-                    saved_graph.set(fresh);
-                    saved_version.set(flow.latest_version_number);
-                    violations.set(Vec::new());
-                }
-                Err(err) => toasts::error(err),
-            }
-        });
-    };
-    let conflict_overwrite = move |_| {
-        conflict.set(None);
-        spawn(async move {
-            let Ok(server) = api::flows::detail(flow_id).await else {
-                toasts::error(t!("common-error").to_string());
-                return;
-            };
-            let params = UpdateFlow {
-                // Fresh server version: deliberate overwrite.
-                expected_version_number: server.latest_version_number,
-                graph: graph.peek().clone(),
-                name: None,
-                author: session::user().map(|user| user.username),
-                note: None,
-            };
-            match api::flows::update(flow_id, params).await {
-                Ok(flow) => {
-                    graph.with_mut(|g| state::adopt_stored_secrets(g, &flow.graph));
-                    saved_graph.set(flow.graph.clone());
-                    saved_version.set(flow.latest_version_number);
-                    violations.set(Vec::new());
-                    toasts::success("toast-flow-saved");
-                    on_changed.call(());
-                }
-                Err(err) => toasts::error(err),
-            }
-        });
-    };
+    let mut conflict_reload = save::conflict_reload(flow_id, cx, conflict);
+    let conflict_overwrite = save::conflict_overwrite(flow_id, cx, conflict, on_changed);
 
     // --- Deploy ---
-    let mut deploying = use_signal(|| false);
+    let deploying = use_signal(|| false);
     // Multi-user awareness (fed by the 5 s runtime poll): last deployed
     // version observed (`None` = not observed yet) and the newer version
     // saved by someone else, if any.
-    let mut seen_deployed = use_signal(|| None::<Option<i64>>);
+    let seen_deployed = use_signal(|| None::<Option<i64>>);
     let mut remote_version = use_signal(|| None::<i64>);
-    let mut deploy = move |_| {
-        if deploying() {
-            return;
-        }
-        deploying.set(true);
-        // Deploy exactly the version shown in the editor: without it the
-        // server picks the latest saved version, possibly one saved by
-        // another user that this editor never displayed.
-        let version = Some(saved_version()).filter(|v| *v > 0);
-        spawn(async move {
-            match api::flows::deploy(flow_id, version).await {
-                Ok(deployed) => {
-                    // Our own deploy: never reported as a remote change.
-                    seen_deployed.set(Some(deployed.flow.deployed_version_number));
-                    toasts::success("toast-flow-deployed");
-                    // Stale notify references (D50): dedicated info toast —
-                    // the deploy goes through, but missing or disabled
-                    // channels/templates will send nothing (degraded node, warn).
-                    let stale = deployed.stale_notify_nodes.len();
-                    if stale > 0 {
-                        toasts::info(t!("flows-deploy-stale-notify", count: stale).to_string());
-                    }
-                    // Tabs of other flows isolated at projection (unreadable
-                    // graph): the deploy goes through, but those flows no longer
-                    // run — to rebuild or delete.
-                    let skipped = deployed.skipped_tabs.len();
-                    if skipped > 0 {
-                        toasts::info(t!("flows-deploy-skipped-tabs", count: skipped).to_string());
-                    }
-                    on_changed.call(());
-                    reload_meta.with_mut(|r| *r += 1);
-                    propose_deploy.set(None);
-                }
-                // Pre-flight rejected (400 engine_load): the **real** engine
-                // message is shown — never again a bare "HTTP 400".
-                // `ToastMessage::Api` resolves violations + code at render.
-                Err(err) => toasts::error(err),
-            }
-            deploying.set(false);
-        });
-    };
+    let mut deploy = runtime::deploy_action(
+        flow_id,
+        saved_version,
+        deploying,
+        seen_deployed,
+        reload_meta,
+        propose_deploy,
+        on_changed,
+    );
 
     // --- Runtime controls (Stop / Start / Restart) ---
     // A single busy signal: stop/start/restart all touch the same
     // runtime, no concurrent action.
-    let mut runtime_busy = use_signal(|| false);
+    let runtime_busy = use_signal(|| false);
     // --- Versions drawer ---
     let mut versions_open = use_signal(|| false);
     // Debug drawer (same dev/debug guard as the button).
@@ -580,204 +124,27 @@ pub fn FlowEditor(
     // Wire to cut (from, port, to) — confirmation on demand.
     let mut pending_wire = use_signal(|| None::<(String, usize, String, String)>);
 
-    // --- Runtime chip (5 s poll, devices.rs pattern) ---
-    let mut reload_runtime = use_signal(|| 0u32);
-    let mut runtime_polling = use_signal(|| false);
-    let runtime = use_resource(move || async move {
-        let _ = reload_runtime();
-        api::flows::runtime(flow_id).await
-    });
+    let (reload_runtime, runtime) = runtime::use_runtime_poll(flow_id);
+    let mut runtime_action = runtime::runtime_action(
+        flow_id,
+        runtime_busy,
+        reload_meta,
+        reload_runtime,
+        on_changed,
+    );
+    runtime::use_remote_watch(
+        runtime,
+        detail,
+        saved_version,
+        remote_version,
+        seen_deployed,
+        deploying,
+        runtime_busy,
+        reload_meta,
+    );
 
-    let mut runtime_action = move |action: RuntimeAction| {
-        if runtime_busy() {
-            return;
-        }
-        runtime_busy.set(true);
-        spawn(async move {
-            let outcome = match action {
-                RuntimeAction::Stop => api::flows::stop(flow_id).await.map(|_| ()),
-                RuntimeAction::Start => api::flows::start(flow_id).await.map(|_| ()),
-                RuntimeAction::Restart => api::flows::restart(flow_id).await.map(|_| ()),
-            };
-            match outcome {
-                Ok(()) => {
-                    toasts::success(match action {
-                        RuntimeAction::Stop => "toast-flow-stopped",
-                        RuntimeAction::Start => "toast-flow-started",
-                        RuntimeAction::Restart => "toast-flow-restarted",
-                    });
-                    on_changed.call(());
-                    reload_meta.with_mut(|r| *r += 1);
-                    // The chip reflects the new health on the next poll.
-                    reload_runtime.with_mut(|r| *r += 1);
-                }
-                Err(err) => toasts::error(err),
-            }
-            runtime_busy.set(false);
-        });
-    };
-    // Changes made by another user, observed through the runtime poll: a
-    // newer saved version (banner offering a reload) and a redeploy or a
-    // status change (detail refresh so the runtime controls stay right).
-    use_effect(move || {
-        let value = runtime.value();
-        let value = value.read();
-        let Some(Ok(status)) = &*value else {
-            return;
-        };
-        let mine = *saved_version.peek();
-        if let Some(latest) = status.latest_version_number {
-            if mine > 0 && latest > mine && *remote_version.peek() != Some(latest) {
-                remote_version.set(Some(latest));
-            }
-        }
-        let mut refresh = false;
-        let deployed = status.deployed_version_number;
-        let previous_seen = *seen_deployed.peek();
-        match previous_seen {
-            None => seen_deployed.set(Some(deployed)),
-            Some(previous) if previous != deployed => {
-                seen_deployed.set(Some(deployed));
-                if deployed.is_some() && !*deploying.peek() && !*runtime_busy.peek() {
-                    toasts::info("toast-flow-deployed-remote");
-                }
-                refresh = true;
-            }
-            _ => {}
-        }
-        let detail_status = match &*detail.peek() {
-            Some(Ok(flow)) => Some(flow.status),
-            _ => None,
-        };
-        if status.flow_status.is_some()
-            && detail_status.is_some()
-            && status.flow_status != detail_status
-        {
-            refresh = true;
-        }
-        if refresh {
-            reload_meta.with_mut(|r| *r += 1);
-        }
-    });
-    if !runtime_polling() {
-        runtime_polling.set(true);
-        spawn(async move {
-            crate::util::sleep(std::time::Duration::from_secs(5)).await;
-            runtime_polling.set(false);
-            reload_runtime.with_mut(|r| *r += 1);
-        });
-    }
-
-    // Debug tools enabled? Carried by the runtime chip (no dedicated
-    // endpoint) — run mode: buttons not rendered, no poll. Signal (not a
-    // derived boolean): the feed resource must **track** it.
-    let mut debug_tools = use_signal(|| false);
-    use_effect(move || {
-        let active = match &*runtime.value().read() {
-            Some(Ok(status)) => status.debug_tools,
-            _ => false,
-        };
-        if debug_tools() != active {
-            debug_tools.set(active);
-        }
-    });
-
-    // --- Debug feed (Display badges) — 5 s poll while debug_tools ---
-    let mut reload_debug = use_signal(|| 0u32);
-    let mut debug_polling = use_signal(|| false);
-    let debug_feed = use_resource(move || async move {
-        let _ = reload_debug();
-        if !debug_tools() {
-            return None;
-        }
-        api::flows::debug(flow_id).await.ok()
-    });
-    if debug_tools() && !debug_polling() {
-        debug_polling.set(true);
-        spawn(async move {
-            crate::util::sleep(std::time::Duration::from_secs(5)).await;
-            debug_polling.set(false);
-            reload_debug.with_mut(|r| *r += 1);
-        });
-    }
-    // --- Camera/vision node statuses (D103) — polled 5 s in every mode
-    // (health, not debug output: no debug_tools gate) ---
-    let mut reload_status = use_signal(|| 0u32);
-    let mut status_polling = use_signal(|| false);
-    let node_status = use_resource(move || async move {
-        let _ = reload_status();
-        api::flows::node_status(flow_id).await.ok()
-    });
-    if !status_polling() {
-        status_polling.set(true);
-        spawn(async move {
-            crate::util::sleep(std::time::Duration::from_secs(5)).await;
-            status_polling.set(false);
-            reload_status.with_mut(|r| *r += 1);
-        });
-    }
-    // Folding: last value per Display node, purged if the engine is
-    // stopped (the values of a stopped engine are no longer true) —
-    // and the open pretty modal closes with them.
-    use_effect(move || {
-        let running = match &*runtime.value().read() {
-            Some(Ok(status)) => status.running,
-            // Unknown status: no purge, out of caution.
-            _ => true,
-        };
-        let mut fresh: std::collections::HashMap<String, debug::DisplayBadge> =
-            std::collections::HashMap::new();
-        if running {
-            if let Some(Some(feed)) = &*debug_feed.value().read() {
-                for entry in feed.entries.iter().filter(|e| e.source == "pnex-display") {
-                    fresh.insert(
-                        entry.node_id.clone(),
-                        debug::DisplayBadge {
-                            label: debug::display_value_label(&entry.msg),
-                            pretty: debug::display_value_pretty(&entry.msg),
-                            status: None,
-                        },
-                    );
-                }
-            }
-            // Camera/vision node statuses (D103): latest one per node;
-            // label and detail are localized at render time. Same poll: the
-            // last message of every debug/display node, in every mode (the
-            // side panel history alone stays behind debug_tools).
-            if let Some(Some(feed)) = &*node_status.value().read() {
-                for entry in &feed.entries {
-                    if matches!(entry.source.as_str(), "debug" | "pnex-display") {
-                        fresh.insert(
-                            entry.node_id.clone(),
-                            debug::DisplayBadge {
-                                label: debug::debug_value_label(&entry.msg),
-                                pretty: debug::display_value_pretty(&entry.msg)
-                                    .or_else(|| Some(debug::display_value_compact(&entry.msg))),
-                                status: None,
-                            },
-                        );
-                        continue;
-                    }
-                    if let Ok(st) =
-                        serde_json::from_value::<pnex_core::vision::NodeStatus>(entry.msg.clone())
-                    {
-                        fresh.insert(
-                            entry.node_id.clone(),
-                            debug::DisplayBadge {
-                                label: String::new(),
-                                pretty: None,
-                                status: Some(st),
-                            },
-                        );
-                    }
-                }
-            }
-        }
-        display_values.set(fresh);
-        if !running && expanded_display.read().is_some() {
-            expanded_display.set(None);
-        }
-    });
+    let debug_tools =
+        runtime::use_display_values(flow_id, runtime, display_values, expanded_display);
 
     // DB status gating the runtime controls (Stop/Restart
     // on `deployed`, Start on `stopped`).
@@ -786,71 +153,7 @@ pub fn FlowEditor(
         _ => "",
     };
 
-    // ─── Unified status (dot + label) — merge of the DB status and the
-    // runtime health (the old "Engine active · v12" chip). Priority:
-    // engine error > stopped > stale ("Deployed · to redeploy") > deployed
-    // > not deployed > detail not loaded. The tooltip keeps pid · vN + the
-    // last engine error, verbatim.
-    let editor_status: EditorStatus = {
-        let detail_value = detail.value();
-        let runtime_value = runtime.value();
-        let detail_ref = detail_value.read();
-        let runtime_ref = runtime_value.read();
-        match (&*detail_ref, &*runtime_ref) {
-            (Some(Ok(_flow)), Some(Ok(status))) => {
-                let engine_error = status.engine_status == Some(pnex_core::FlowEngineStatus::Error);
-                let engine_stopped =
-                    status.engine_status == Some(pnex_core::FlowEngineStatus::Stopped);
-                let deployed_version = status.deployed_version_number;
-                let outdated = status.running
-                    && !engine_error
-                    && !engine_stopped
-                    && deployed_version.is_some()
-                    && deployed_version != Some(saved_version());
-                let tooltip = {
-                    let base = match (status.pid, deployed_version) {
-                        (Some(pid), Some(version)) => format!("pid {pid} · v{version}"),
-                        (Some(pid), None) => format!("pid {pid}"),
-                        _ => String::new(),
-                    };
-                    match &status.last_error {
-                        Some(err) if !err.is_empty() => format!("{base} — {err}"),
-                        _ => base,
-                    }
-                };
-                if engine_error {
-                    EditorStatus::new(StatusTone::Red, t!("flows-status-error"))
-                        .with_tooltip(tooltip)
-                } else if engine_stopped || !status.running {
-                    EditorStatus::new(StatusTone::Slate, t!("flows-status-stopped"))
-                        .with_tooltip(tooltip)
-                } else if outdated {
-                    EditorStatus::new(
-                        StatusTone::Amber,
-                        format!(
-                            "{} · {}",
-                            t!("flows-status-deployed"),
-                            t!("flows-runtime-outdated")
-                        ),
-                    )
-                    .with_tooltip(tooltip)
-                } else if deployed_version.is_some() {
-                    EditorStatus::new(StatusTone::Green, t!("flows-status-deployed"))
-                        .with_tooltip(tooltip)
-                } else {
-                    EditorStatus::new(StatusTone::Slate, t!("flows-status-draft"))
-                        .with_tooltip(tooltip)
-                }
-            }
-            (Some(Ok(flow)), _) => match flow.status.as_str() {
-                "deployed" => EditorStatus::new(StatusTone::Green, t!("flows-status-deployed")),
-                "stopped" => EditorStatus::new(StatusTone::Slate, t!("flows-status-stopped")),
-                "error" => EditorStatus::new(StatusTone::Red, t!("flows-status-error")),
-                _ => EditorStatus::new(StatusTone::Slate, t!("flows-status-draft")),
-            },
-            _ => EditorStatus::new(StatusTone::Slate, t!("common-loading")),
-        }
-    };
+    let editor_status = runtime::editor_status(detail, runtime, saved_version);
 
     // Header name + ref (None until the detail is loaded).
     let (flow_name, flow_subtitle) = match &*detail.value().read() {
