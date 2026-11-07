@@ -1,4 +1,4 @@
-# Unification règles, navigation et agents (D780–D787)
+# Unification règles, navigation et agents (D780–D788)
 
 > Décidé le 2026-11-07 (choix de Shan, même jour). **Rien n'est codé.** Ce document réunit
 > trois mécanismes construits séparément : les recettes de site (`site-recipes.md`,
@@ -118,14 +118,98 @@ servira de base :
 Ce qui reste à décider avant de coder : l'envoi seul ou soumis à validation, selon l'agent ;
 les quotas d'envoi ; la tenue de D123 (aucune action physique).
 
+### D788 — Identifier une personne saisie par un commercial (2026-11-07)
+
+Choix de Shan après le test de D779 sur dev (2026-11-07) : la capture d'une page
+`/company/<nom>/people/` par un bouton ne sert qu'au test. L'adresse dépend d'un nom
+LinkedIn qu'il faut deviner, et rien ne tourne seul. **L'entrée, c'est la personne** :
+le commercial la saisit après un rendez-vous, une carte de visite, un salon, un mail,
+rattachée à une entreprise. PneX fait la suite : recherche, ouverture, score, validation.
+D784 devient ce pipeline. D779 reste comme outil de test manuel.
+
+**Entrée.** Une `person` liée à une `organization` (`employs` ou `contact_of`), avec
+prénom et nom. Une entreprise saisie en texte libre est d'abord résolue en organisation,
+ou proposée.
+
+**Garde avant toute recherche** (étape du pipeline, sans navigateur) :
+
+- opposition D341 sur la personne et chez l'entreprise ;
+- profil déjà validé sur la personne ;
+- proposition en attente pour cette personne dans « À valider » ;
+- recherche faite il y a moins de N jours (réglage du pack) ;
+- périmètre : personnes des organisations au statut `target` ou `prospect`, meilleur
+  `target_score` d'abord ;
+- plafond compilé par org, par réseau et par jour (recherches et profils ouverts),
+  cadence D258.
+
+**Recherche par la barre de recherche, jamais par une adresse devinée.** Les requêtes
+vont de la plus précise à la plus large. On s'arrête dès qu'un candidat dépasse le seuil
+d'écriture.
+
+1. « prénom nom » avec le filtre Personnes et l'entreprise actuelle, si sa page est
+   connue ou résolue par la même barre ;
+2. « prénom nom entreprise » sans filtre d'entreprise : la société est mal renseignée sur
+   le réseau, ou rattachée à une autre page ;
+3. « prénom nom » avec les autres noms de l'organisation : sigle, marque, `press_names`,
+   nom d'usage, groupe, filiales et maison mère (hiérarchie GLEIF/SIRENE déjà en base),
+   ancien nom ;
+4. « prénom nom » seul, puis départagé par le lieu (villes des sites de l'organisation).
+
+Chaque requête retient les N premiers candidats (réglage, 5 par défaut), dans une
+limite de K profils ouverts par personne.
+
+**Ouverture de chaque candidat retenu (profil complet).** Extraction par sélecteurs,
+**sans LLM** (D785) : intitulé, lieu, postes (entreprise, titre, dates), écoles. Le texte
+est gardé 30 jours, comme les profils capturés.
+
+**Score de correspondance**, déterministe et expliqué (détail écrit comme
+`score_detail`) :
+
+- nom normalisé (accents, ordre prénom/nom, initiales, particules, nom composé) ;
+- poste **actuel** chez l'organisation ou l'un de ses autres noms : fort ;
+- poste **passé** chez l'organisation : moyen. C'est le cas du changement d'emploi, voir
+  plus bas ;
+- même groupe (filiale, maison mère) : moyen ;
+- lieu cohérent avec un site de l'organisation : faible ;
+- intitulé cohérent avec le persona saisi ou les personas visés : faible ;
+- dates cohérentes avec la date de la rencontre (un poste commencé après la carte de
+  visite ne l'explique pas).
+
+**Écriture, sur le modèle de Présence web (deux seuils, réglages du pack)** :
+
+- au-dessus du seuil haut : profil rattaché à la personne (adresse, postes, écoles), lien
+  `employs` mis à jour, source tracée ;
+- entre les deux seuils : proposition dans « À valider », avec tous les candidats et leur
+  détail ; l'utilisateur choisit, les autres sont écartés avec leur texte ;
+- sous le seuil bas : écarté, recherche suivante.
+
+**Changement d'emploi.** Un candidat sûr dont le poste chez l'organisation est terminé
+n'est jamais réécrit seul. On propose « a quitté X le …, est chez Y » : le lien `employs`
+est fermé à sa date de fin, le lien vers Y est ouvert, et Y est créée comme `organization`
+proposée si elle est inconnue.
+
+**Rien trouvé** après toutes les requêtes : état `not_found` sur la personne, nouvel
+essai après N jours. L'utilisateur peut coller l'adresse du profil, qui passe par la même
+ouverture, le même score et la même écriture.
+
+**Exécution.** Une recette fournie (`linkedin_person_match`) sur le moteur `extension`,
+avec `session: required` (D782). Elle est lancée par un flow horaire du pack, *Prospecting
+· identify people*, qui fait la garde, la file et l'écriture. La recette ne fait que
+chercher, ouvrir et extraire. Il lui faut, dans `host.js`, la saisie dans un champ et la
+validation (`type`, `press`), en plus de click, wait et assert (U2).
+
+Restent en place : l'opposition D341 et l'empreinte D447, le plafond quotidien,
+l'avertissement D254 dans l'UI, et la responsabilité de l'org pour les conditions
+d'utilisation du réseau (suspension du compte connecté).
+
 ## 3. Lots
 
 | Lot | Contenu | Dépend de |
 |---|---|---|
 | **U1** | Run unifié : moteur `server_browser` ; un passage de recette devient un run (état, `job_logs`, extraits en `agent_artifacts`) ; nœud `site-recipe` et page des recettes branchés dessus ; migration des passages existants | — |
-| **U2** | Lecteur de recettes dans l'extension : primitives click, wait, assert dans `host.js` ; moteur `extension` ; plan scellé au bail (D783) ; contrôle des pages visitées au retour | U1 |
+| **U2** | Lecteur de recettes dans l'extension : primitives click, wait, assert, type, press (D788) dans `host.js` ; moteur `extension` ; plan scellé au bail (D783) ; contrôle des pages visitées au retour | U1 |
 | **U3** | Routage D782 (`session: required`, repli, choix forcé) ; file et plafonds côté serveur | U2 |
-| **U4** | Recettes fournies : `capture_profile`, `capture_people` (D779), `collect_page`… réécrites en recettes ; `linkedin_profile_by_name` (D784) ; retrait des types de mission codés en dur | U3 |
+| **U4** | Recettes fournies : `capture_profile`, `capture_people` (D779), `collect_page`… réécrites en recettes ; `linkedin_person_match` (D784 devenu D788) et flow *Prospecting · identify people* (garde, file, score, écriture) ; retrait des types de mission codés en dur | U3 |
 | **U5** | Nœud `agent-run` unique et page Agents tous moteurs (D786) | U1 |
 | **U6** | A2 : moteur `internal_llm`, outils de l'assistant, écritures en propositions, niveau dans la fiche agent (choix du 2026-11-07). Avancé en parallèle de U1–U4 (Shan, 2026-11-07) : il pose le moteur sur `runner_jobs` + `agent_runs`, comme D781. **Livré 2026-11-07** (voir §5) | — |
 | **U7** (plus tard) | Canaux d'un agent : mail en entrée et en sortie, téléphone, Slack, Telegram (D787) | U5 |
