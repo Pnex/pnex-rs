@@ -1902,3 +1902,132 @@ async fn a_rule_needing_a_session_goes_to_an_agent_and_a_blocked_run_moves_over(
     })
     .await;
 }
+
+/// D788: a person entered with their company is searched by the default
+/// rule in the author's browser agent; a profile at the company is attached,
+/// a past position only proposed, and nobody who objected is searched.
+#[tokio::test]
+#[serial]
+async fn a_person_is_matched_through_the_search_rule_and_a_job_change_is_proposed() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        for pack in ["investigation", "companies", "prospecting_b2b"] {
+            let (s, e) = call(&server, "POST", &format!("/api/v1/ontology/packs/{pack}/install"), &env.alice, org, None).await;
+            assert_eq!(s, 200, "{pack} {e}");
+        }
+        let new = |type_key: &str, title: &str| json!({ "type_key": type_key, "title": title, "properties": {} });
+        let id_of = |v: &Value| v["id"].as_str().unwrap().to_string();
+        let (_, acme) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(new("organization", "ACME INDUSTRIES SAS"))).await;
+        let acme = id_of(&acme);
+        let person = |name: &'static str| {
+            let (server, alice, acme) = (&server, env.alice.clone(), acme.clone());
+            async move {
+                let (_, p) = call(server, "POST", "/api/v1/ontology/objects", &alice, org, Some(json!({ "type_key": "person", "title": name, "properties": {} }))).await;
+                let p = p["id"].as_str().unwrap().to_string();
+                let (s, l) = call(server, "POST", "/api/v1/ontology/links", &alice, org, Some(json!({"link_type": "employs", "source_id": acme, "target_id": p}))).await;
+                assert_eq!(s, 201, "{l}");
+                p
+            }
+        };
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+
+        // Nobody without a company, nobody who objected.
+        let (_, lone) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(new("person", "Lone Wolf"))).await;
+        let (s, e) = call(&server, "POST", &format!("/api/v1/extension/people/{}/matches", id_of(&lone)), &env.alice, org, None).await;
+        assert_eq!((s, e["error"].as_str()), (409, Some("ext-person-without-company")), "{e}");
+        let objecting = person("Olga Object").await;
+        call(&server, "POST", &format!("/api/v1/extension/people/{objecting}/opposition"), &env.alice, org, None).await;
+        let (s, e) = call(&server, "POST", &format!("/api/v1/extension/people/{objecting}/matches"), &env.alice, org, None).await;
+        assert_eq!((s, e["error"].as_str()), (409, Some("prospecting-opposed")), "{e}");
+
+        let elodie = person("Élodie Martin").await;
+        let (s, m) = call(&server, "POST", &format!("/api/v1/extension/people/{elodie}/matches"), &env.alice, org, None).await;
+        assert_eq!(s, 201, "{m}");
+        assert_eq!(m["state"], "searching");
+        assert_eq!(m["queries"][0], "elodie martin acme industries");
+        assert_eq!(m["queries"].as_array().unwrap().last().unwrap(), "elodie martin");
+
+        // The agent plays the search: the cards, the first profile opened.
+        let mut ws = open(&server, &install, &a).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else { panic!("the search is a rule run") };
+        assert_eq!(runs[0].params["query"], "elodie martin acme industries");
+        assert!(runs[0].recipe.needs_session());
+        assert!(runs[0].recipe.steps.iter().any(|s| s.action() == "type"), "typed in the search bar");
+        let cards = json!([
+            {"card": "Élodie Martin · Head of purchasing at ACME Industries", "link": "https://www.linkedin.com/in/elodie-martin-1?trk=x"},
+            {"card": "Elodie Martinez · Nurse", "link": "https://www.linkedin.com/in/elodie-martinez"},
+        ]);
+        play_search(&mut ws, runs[0].run_id.clone(), cards, "Elodie Martin\nHead of purchasing at ACME Industries\nToulouse").await;
+        let (_, listed) = call(&server, "GET", &format!("/api/v1/extension/people/{elodie}/matches"), &env.alice, org, None).await;
+        let found = &listed["results"][0];
+        assert_eq!(found["state"], "matched", "{found}");
+        assert_eq!(found["candidates"][0]["verdict"], "write");
+        let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{elodie}/links"), &env.alice, org, None).await;
+        let links = links.to_string();
+        assert!(links.contains("uses_identifier") && links.contains("published_by"), "{links}");
+        let (_, p) = call(&server, "GET", &format!("/api/v1/ontology/objects/{elodie}"), &env.alice, org, None).await;
+        assert_eq!(p["properties"]["profile_to_read"].as_str().map(str::len), Some(36), "{p}");
+
+        // A job change: the company far down the history, proposed only.
+        let john = person("John Roe").await;
+        let (s, _) = call(&server, "POST", &format!("/api/v1/extension/people/{john}/matches"), &env.alice, org, None).await;
+        assert_eq!(s, 201);
+        drop(ws);
+        let mut ws = open(&server, &install, &a).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else { panic!("second search") };
+        let filler = "lorem ipsum ".repeat(80);
+        let profile = format!("John Roe\nEngineer at Initech\nParis\n{filler}\nExperience\nBuyer · ACME Industries · 2018 - 2022");
+        let cards = json!([{"card": "John Roe · Engineer at Initech", "link": "https://www.linkedin.com/in/john-roe"}]);
+        play_search(&mut ws, runs[0].run_id.clone(), cards, &profile).await;
+        let (_, listed) = call(&server, "GET", &format!("/api/v1/extension/people/{john}/matches"), &env.alice, org, None).await;
+        let proposed = &listed["results"][0];
+        assert_eq!(proposed["state"], "proposed", "{proposed}");
+        assert_eq!(proposed["candidates"][0]["left_company"], true);
+        let (_, inbox) = call(&server, "GET", "/api/v1/proposals?limit=50", &env.alice, org, None).await;
+        assert!(inbox.to_string().contains("person_match"), "{inbox}");
+    })
+    .await;
+}
+
+/// The agent side of a search run (D788): the result cards, the first
+/// profile opened, the run over.
+async fn play_search(ws: &mut common::DevWs, run: String, cards: Value, profile: &str) {
+    send(
+        ws,
+        &AgentMsg::RunExtract {
+            run_id: run.clone(),
+            extract: serde_json::from_value(json!({
+            "name": "results", "kind": "cards", "text": cards.to_string(), "chars": 10,
+            "sha256": "x", "from": "https://www.linkedin.com/search/results/all/?keywords=x",
+            "cards": cards }))
+            .unwrap(),
+        },
+    )
+    .await;
+    send(
+        ws,
+        &AgentMsg::RunExtract {
+            run_id: run.clone(),
+            extract: serde_json::from_value(json!({
+            "name": "profile.1", "kind": "text", "text": profile, "chars": 10,
+            "sha256": "x", "from": "https://www.linkedin.com/in/someone" }))
+            .unwrap(),
+        },
+    )
+    .await;
+    send(
+        ws,
+        &AgentMsg::RunDone {
+            run_id: run,
+            ok: true,
+            failed_step: None,
+            reason: None,
+        },
+    )
+    .await;
+    assert!(matches!(recv(ws).await, ServerMsg::Runs { .. }));
+    sync(ws).await;
+}

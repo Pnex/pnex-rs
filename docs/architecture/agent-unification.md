@@ -297,6 +297,29 @@ intervalle, la lecture des réponses JSON d'une plateforme (`hook.js`), l'enregi
 vidéo, la preuve signée et le parcours de site. Chacun deviendra une étape ou une sortie
 déclarée d'une règle, jamais un type de mission.
 
+**D788 livré (2026-11-07).** Règle par défaut `person_search` (LinkedIn) : ouverture du
+fil, saisie de la requête dans la barre de recherche (`type`, champ de recherche seul),
+Entrée, filtre « Personnes » s'il est là, cartes des résultats (texte de la carte et lien
+de profil, sélecteurs visant ce que voit un lecteur), ouverture des trois premiers
+profils (`for_each`, textes `profile.<n>`). Pipeline côté serveur, sans site nommé
+(`services/person_match.rs`, table `person_matches`, migration 000122) : sujet = nom de
+la personne, noms de l'organisation qui l'emploie (titre, `press_names`, `aliases`),
+groupe (`subsidiary_of` dans les deux sens), villes de ses sites (adresse SIRENE) ;
+échelle de 5 requêtes au plus finissant toujours par le nom seul ; chaque requête =
+un passage de la règle dans l'agent de l'auteur de la personne (`manual:<id>`, D550) ;
+score déterministe sur la carte et le profil ouvert (`pnex_core::person_match`), deux
+seuils et quotas en réglages de `prospecting_b2b` 3.6.0 (80 / 40, 20 recherches par jour,
+30 au plus, nouvel essai à 90 jours). Retenu : identifiant + lien `uses_identifier` +
+document + `profile_to_read`. Proposé : lien `uses_identifier` à valider ; un profil d'un
+inconnu (sous le seuil) n'est jamais stocké. Un passage qui échoue (connexion demandée,
+site non autorisé) arrête la recherche avec sa raison au lieu de réessayer. Passage
+horaire : propositions décidées suivies (acceptée → rattachée ; toutes refusées → requête
+suivante), puis nouvelles recherches des personnes des comptes `target`/`prospect`.
+
+Limite connue : les sélecteurs des cartes et l'appui sur Entrée n'ont pas encore été joués
+sur une vraie session LinkedIn ; la règle étant de la donnée, elle se corrige dans le
+studio (copie dans l'org) sans code.
+
 **Notes pour U4 (`capture_people`, D779, poussé en 8b220d62).** Ce qu'une recette doit
 reprendre sans rien perdre :
 

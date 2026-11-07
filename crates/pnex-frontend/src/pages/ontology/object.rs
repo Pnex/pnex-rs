@@ -159,6 +159,7 @@ pub fn OntologyObject(id: String) -> Element {
     let icon = icon_of(&tv.def);
     let kind = type_label(&tv.def);
     let type_key = o.type_key.clone();
+    let match_id = o.id.clone();
 
     rsx! {
         ListLayout {
@@ -199,6 +200,25 @@ pub fn OntologyObject(id: String) -> Element {
                         "data-testid": "profile-capture",
                         onclick: move |_| capturing.set(true),
                         {t!("profile-capture-open")}
+                    }
+                    // D788: the browser agent searches the profile from the name and company.
+                    button {
+                        class: BTN,
+                        "data-testid": "person-match",
+                        onclick: move |_| {
+                            let id = match_id.clone();
+                            let done = t!("person-match-started").to_string();
+                            spawn(async move {
+                                match api::extension::match_person(&id).await {
+                                    Ok(_) => {
+                                        toasts::success(done);
+                                        captures_reload.with_mut(|r| *r += 1);
+                                    }
+                                    Err(e) => toasts::error(e),
+                                }
+                            });
+                        },
+                        {t!("person-match-open")}
                     }
                 }
                 if can_capture && !closed && has_people {
@@ -331,6 +351,13 @@ pub fn OntologyObject(id: String) -> Element {
                             key: "{o.id}",
                             person_id: o.id.clone(),
                             people: has_people,
+                            reload: captures_reload,
+                        }
+                    }
+                    if o.type_key == pnex_core::voice_id::PERSON_TYPE {
+                        super::profile_capture::PersonMatches {
+                            key: "m{o.id}",
+                            person_id: o.id.clone(),
                             reload: captures_reload,
                         }
                     }

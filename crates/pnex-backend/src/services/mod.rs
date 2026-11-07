@@ -89,6 +89,7 @@ pub mod ota_signing;
 pub mod pages;
 pub mod pipelines;
 pub mod pois;
+pub mod person_match;
 pub mod profiles;
 pub mod proofs;
 pub mod provisioning;

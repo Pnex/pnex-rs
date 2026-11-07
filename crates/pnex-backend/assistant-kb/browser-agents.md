@@ -40,6 +40,13 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 - **Record their objection to prospecting** (in the same window, confirmed twice): no capture of that person or of their profile addresses anymore, even if the person is deleted later.
 - The platform's terms may forbid automated access; the suspension risk falls on the account signed in within the agent.
 
+## Finding a person's profile
+
+- On a **person** linked to their company (works for), **Find on LinkedIn**: your browser agent types the person's name and company in LinkedIn's search bar, in your own signed-in session, then the name with the company's other names, its group, a city of its sites, and the name alone, until a result fits. It opens the first profiles found, at a human pace. PNeX scores each one against the company (current position, past position, group, city) and explains the score.
+- Above the score set by the prospecting pack (80 by default) the profile is attached to the person (account identifier, document kept 30 days); between the two scores the candidates wait in **To validate**; a profile where the company is only a past position (a job change) is always proposed, never attached alone. The person's page lists each search, its candidates, their score and what became of them.
+- The prospecting pack also searches by itself, every hour, the people of the accounts whose status is target or prospect, best target score first: 20 searches a day by default (setting, 0 turns it off, 30 at most), never someone who objected, never a person already having a LinkedIn account, a person not found again after 90 days.
+- "This person works for no company yet": link the person to their company first. Without a browser agent paired, the search is refused; a search your agent could not play (sign-in asked, site not allowed) stops with that reason.
+
 ## Capturing a company's employees
 
 - On an **organization** page, **Capture employees (LinkedIn)**: paste the company's People page (`linkedin.com/company/<name>/people/`). Your browser agent (or a common one) opens it once in its signed-in session, scrolls the first screens at a human pace and reads them; the text becomes a document of the company, kept 30 days. The organization's page lists each capture and where it stands. Like a profile capture, it is a default navigation rule played in the browser agent, refused when the organization has none.

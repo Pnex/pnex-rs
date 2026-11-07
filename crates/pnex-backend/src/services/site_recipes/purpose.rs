@@ -26,6 +26,9 @@ pub enum Purpose {
         organization_id: String,
         url: String,
     },
+    /// One query of a person match (D788): extracts `results` (cards) and
+    /// `profile.<n>` (the profiles opened).
+    PersonMatch { match_id: String, step: u32 },
 }
 
 impl Purpose {
@@ -33,6 +36,7 @@ impl Purpose {
         match self {
             Self::ProfileCapture { .. } => "profile_capture",
             Self::PeopleCapture { .. } => "people_capture",
+            Self::PersonMatch { .. } => "person_match",
         }
     }
 }
@@ -141,6 +145,12 @@ pub async fn on_finished(ctx: &AppContext, org_id: i64, run_id: Uuid) {
             }
             None => Ok(()),
         },
+        Purpose::PersonMatch { match_id, step } => {
+            crate::services::person_match::search_finished(
+                ctx, org_id, run_id, match_id, *step, ok, &extracts,
+            )
+            .await
+        }
     };
     if let Err(e) = outcome {
         tracing::warn!(run = %run_id, error = %e, "outcome of a default rule not applied");

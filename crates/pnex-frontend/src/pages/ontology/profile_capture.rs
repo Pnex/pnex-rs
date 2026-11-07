@@ -256,3 +256,118 @@ fn capture_label(c: &pnex_core::browser_agent::ProfileCapture) -> String {
         t!("profile-capture-state-stopped").to_string()
     }
 }
+
+/// Searches of the person's network profile (D788), on its page: the query
+/// reached, each candidate with its score and what became of it. Refreshed
+/// while one runs: the browser agent plays them at its own pace.
+#[component]
+pub fn PersonMatches(person_id: String, reload: Signal<u32>) -> Element {
+    let mut tick = use_signal(|| 0u32);
+    let id = person_id.clone();
+    let matches = use_resource(move || {
+        let id = id.clone();
+        async move {
+            let _ = (reload(), tick());
+            api::extension::person_matches(&id).await.ok()
+        }
+    });
+    use_future(move || async move {
+        loop {
+            crate::util::sleep(std::time::Duration::from_secs(15)).await;
+            if matches
+                .peek()
+                .clone()
+                .flatten()
+                .is_some_and(|r| r.iter().any(|m| m.state.open()))
+            {
+                tick.with_mut(|t| *t += 1);
+            }
+        }
+    });
+    let rows = matches.read().clone().flatten().unwrap_or_default();
+    if rows.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        div { class: "mt-6 space-y-3", "data-testid": "person-matches",
+            h3 { class: "text-sm font-medium text-ink", {t!("person-matches-title")} }
+            for m in rows {
+                div { key: "{m.id}", class: "space-y-1 text-sm",
+                    div { class: "flex flex-wrap items-baseline gap-x-3",
+                        span {
+                            class: "font-medium text-ink",
+                            "data-testid": "person-match-state",
+                            {match_state_label(&m)}
+                        }
+                        span { class: "text-gray-600", {match_query_label(&m)} }
+                        span { class: "text-xs text-gray-500", {date_label(&m.created_at)} }
+                    }
+                    ul { class: "space-y-1 pl-3",
+                        for c in m.candidates.clone() {
+                            li {
+                                key: "{c.url}",
+                                class: "flex flex-wrap items-baseline gap-x-2",
+                                a {
+                                    class: "break-all text-signal underline",
+                                    href: "{c.url}",
+                                    target: "_blank",
+                                    rel: "noopener noreferrer",
+                                    "{c.url}"
+                                }
+                                span { class: "text-gray-600", {candidate_label(&c)} }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn match_query_label(m: &pnex_core::person_match::PersonMatch) -> String {
+    let n = (m.step as usize + 1).min(m.queries.len());
+    t!("person-match-query", n : n, total : m.queries.len()).to_string()
+}
+
+fn match_state_label(m: &pnex_core::person_match::PersonMatch) -> String {
+    use pnex_core::person_match::MatchState as S;
+    let state = match m.state {
+        S::Searching => t!("person-match-state-searching"),
+        S::Matched => t!("person-match-state-matched"),
+        S::Proposed => t!("person-match-state-proposed"),
+        S::NotFound => t!("person-match-state-not_found"),
+        S::Stopped => t!("person-match-state-stopped"),
+    }
+    .to_string();
+    match m.state_code.as_deref() {
+        // A registered error code, else a rule run reason (permission, sign-in wall…).
+        Some(code) => {
+            let reason = crate::api::error_i18n::resolve(&format!("web-sites-reason-{code}"), None);
+            let text = crate::api::error_i18n::localize_code(code, None, &reason);
+            format!("{state} · {text}")
+        }
+        None => state,
+    }
+}
+
+fn candidate_label(c: &pnex_core::person_match::MatchCandidate) -> String {
+    use pnex_core::person_match::Verdict;
+    let mut parts = Vec::new();
+    if let Some(score) = c.score {
+        parts.push(t!("person-match-score", score : score).to_string());
+    }
+    if let Some(v) = c.verdict {
+        parts.push(
+            match v {
+                Verdict::Write => t!("person-match-verdict-write"),
+                Verdict::Propose => t!("person-match-verdict-propose"),
+                Verdict::Drop => t!("person-match-verdict-drop"),
+            }
+            .to_string(),
+        );
+    }
+    if c.left_company {
+        parts.push(t!("person-match-left").to_string());
+    }
+    parts.join(" · ")
+}

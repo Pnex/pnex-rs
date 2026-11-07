@@ -34,7 +34,11 @@ fn person_key(person_id: Uuid) -> String {
 }
 
 /// The live `person` object of the org.
-async fn person(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<(), ExtensionError> {
+pub(crate) async fn person(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+) -> Result<(), ExtensionError> {
     match ontology::objects::find(db, org_id, id).await {
         Ok(o) if o.type_key == "person" && o.valid_to.is_none() => Ok(()),
         Ok(_) | Err(ontology::OntologyError::NotFound) => Err(ExtensionError::PersonNotFound),
@@ -43,7 +47,7 @@ async fn person(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<(), Ex
 }
 
 /// Whether the person, or this profile address, is on the opposition list.
-async fn opposed_any(
+pub(crate) async fn opposed_any(
     db: &impl ConnectionTrait,
     org_id: i64,
     keys: &[String],
@@ -381,8 +385,8 @@ pub async fn captures(
         .into_iter()
         .map(|(id, p, state, reason, at)| {
             let url = match p {
-                Purpose::ProfileCapture { url, .. } => url,
-                Purpose::PeopleCapture { url, .. } => url,
+                Purpose::ProfileCapture { url, .. } | Purpose::PeopleCapture { url, .. } => url,
+                Purpose::PersonMatch { .. } => String::new(),
             };
             capture_view(id, &url, &state, reason, at)
         })
@@ -474,6 +478,42 @@ async fn stamp_to_read(
             .await?;
     }
     Ok(())
+}
+
+/// A candidate profile of a person match (D788): its text stored as a
+/// document of the person, purged after 30 days like any captured profile,
+/// attached only once the match retains it.
+pub(crate) async fn store_profile_text(
+    ctx: &AppContext,
+    org_id: i64,
+    person_id: &str,
+    url: &str,
+    text: &str,
+) -> Result<Uuid, ExtensionError> {
+    let meta = serde_json::json!({ "profile_person_id": person_id });
+    store_text(ctx, org_id, &format!("Profile · {url}"), url, text, meta).await
+}
+
+/// The address an account identifier of the person, nothing else (a match
+/// retained on its card alone, D788).
+pub(crate) async fn attach_identifier(
+    ctx: &AppContext,
+    org_id: i64,
+    source_ref: &str,
+    person_id: &str,
+    url: &str,
+) {
+    if let Some(identifier) = identifier_of(&ctx.db, org_id, source_ref, url).await {
+        let input = pnex_core::ontology::api::LinkInput {
+            link_type: "uses_identifier".into(),
+            source_id: person_id.to_string(),
+            target_id: identifier,
+            attributes: serde_json::Map::new(),
+            valid_from: None,
+            valid_to: None,
+        };
+        let _ = ontology::links::create(&ctx.db, org_id, &actor_of(source_ref), &input).await;
+    }
 }
 
 /// A profile captured by its rule run: unless the person or the address
@@ -668,6 +708,7 @@ pub async fn people_captures(
         .map(|(id, p, state, reason, at)| {
             let url = match p {
                 Purpose::PeopleCapture { url, .. } | Purpose::ProfileCapture { url, .. } => url,
+                Purpose::PersonMatch { .. } => String::new(),
             };
             capture_view(id, &url, &state, reason, at)
         })

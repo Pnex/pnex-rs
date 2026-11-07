@@ -1139,6 +1139,7 @@ mod tests {
             .map(|n| d::profile_capture(n).unwrap())
             .collect();
         rules.push(d::people_capture());
+        rules.push(d::person_search());
         for y in &rules {
             let r = super::parse(y).unwrap_or_else(|e| panic!("{e:?}\n{y}"));
             assert!(r.needs_session(), "{y}");

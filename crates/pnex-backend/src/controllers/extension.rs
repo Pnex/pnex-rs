@@ -72,6 +72,10 @@ pub fn routes() -> Routes {
             "/organizations/{id}/people-captures",
             get(people_captures).post(capture_people),
         )
+        .add(
+            "/people/{id}/matches",
+            get(person_matches).post(match_person),
+        )
         .add("/people/{id}/opposition", get(opposition).post(oppose))
         .add("/missions", get(missions).post(create_mission))
         .add(
@@ -110,6 +114,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         capture_profile,
         people_captures,
         capture_people,
+        person_matches,
+        match_person,
         opposition,
         oppose
     ))]
@@ -203,6 +209,17 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
             "The organization captured as many employee lists today as allowed.",
             Some(serde_json::json!({ "max": max.to_string() })),
         )),
+        ExtensionError::MatchDailyCap { max } => Err(super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::EXT_MATCH_DAILY_CAP,
+            "The organization ran as many person searches today as allowed.",
+            Some(serde_json::json!({ "max": max.to_string() })),
+        )),
+        ExtensionError::PersonWithoutCompany => coded(
+            StatusCode::CONFLICT,
+            err_codes::EXT_PERSON_WITHOUT_COMPANY,
+            "The person works for no company yet: link them to one first.",
+        ),
         ExtensionError::NoAgent => coded(
             StatusCode::CONFLICT,
             err_codes::SITE_RECIPE_NO_AGENT,
@@ -1341,6 +1358,67 @@ async fn capture_profile(
 ) -> Result<Response> {
     use crate::services::profiles;
     match profiles::request(&ctx, org.org.id, org.auth.user.id, id, &input.url).await {
+        Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `GET /api/v1/extension/people/{id}/matches` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/people/{id}/matches",
+    tag = "extension",
+    operation_id = "extension_person_matches_list",
+    summary = "List the profile matches of a person",
+    description = "The latest searches of this person's network profile (D788), newest first: the queries typed in the network's search bar, the candidates found with their score and reasons, and where the match stands (searching, matched, proposed in To validate, not found, stopped). Paginated (`limit`/`offset`). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::person_match::PersonMatch>),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn person_matches(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    match crate::services::person_match::list(&ctx.db, org.org.id, id).await {
+        Ok(rows) => pagination::paged(
+            &format!("/api/v1/extension/people/{id}/matches"),
+            &[],
+            q.page(),
+            rows,
+        ),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/people/{id}/matches` — `can_write`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/people/{id}/matches",
+    tag = "extension",
+    operation_id = "extension_person_matches_create",
+    summary = "Find a person's network profile",
+    description = "Starts a search of this person's profile on LinkedIn (D788), from the name and the company they work for: the caller's browser agent plays the default navigation rule of the search, typing each query in the network's search bar, from the most precise (name and company) to the widest (name alone), and opening the first profiles found in its signed-in session; the server scores them against the company, its other names, its group and the cities of its sites. Above the pack's write threshold the profile is attached to the person; between its two thresholds the candidates wait in To validate; a job change is only proposed. Refused for someone who objected. A match still running is returned as is. At most 30 searches per day. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)")),
+    responses(
+        (status = 201, body = pnex_core::person_match::PersonMatch),
+        (status = 400, description = "`field-required` (`title`): the person has no name", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`prospecting-opposed`: the person objected; `ext-person-without-company`: linked to no company; `ext-match-daily-cap` (`args.max`): daily searches reached; `site-recipe-no-agent`: no browser agent paired; `site-recipe-daily-cap` (`args.max`): runs on browser agents reached", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn match_person(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    use crate::services::person_match;
+    match person_match::request(&ctx, org.org.id, Some(org.auth.user.id), id, false).await {
         Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
         Err(e) => extension_error(e),
     }

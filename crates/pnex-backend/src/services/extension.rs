@@ -85,6 +85,12 @@ pub enum ExtensionError {
     /// Runs on browser agents of the org today reached (D782).
     #[error("rule run daily cap")]
     RunDailyCap { max: i64 },
+    /// Daily searches of person matches reached (D788).
+    #[error("match daily cap")]
+    MatchDailyCap { max: i64 },
+    /// The person works for no company: nothing to match them with (D788).
+    #[error("person without company")]
+    PersonWithoutCompany,
     #[error(transparent)]
     Db(#[from] DbErr),
 }

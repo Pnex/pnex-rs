@@ -14140,12 +14140,78 @@
         ],
         "type": "object"
       },
+      "MatchCandidate": {
+        "description": "One profile found by a query, with its score.",
+        "properties": {
+          "asset_id": {
+            "description": "The profile text, a document of the person kept 30 days.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "detail": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "left_company": {
+            "type": "boolean"
+          },
+          "proposal_id": {
+            "description": "The proposal in \"To validate\", for a proposed candidate.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "query": {
+            "description": "Index of the query that found it.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "score": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          }
+        },
+        "required": [
+          "url",
+          "query"
+        ],
+        "type": "object"
+      },
       "MatchKind": {
         "description": "How a relevance rule reads the page text (closed list, D307).",
         "enum": [
           "word",
           "phrase",
           "regex"
+        ],
+        "type": "string"
+      },
+      "MatchState": {
+        "description": "Where a match stands (D788).",
+        "enum": [
+          "searching",
+          "matched",
+          "proposed",
+          "not_found",
+          "stopped"
         ],
         "type": "string"
       },
@@ -21309,6 +21375,42 @@
         ],
         "type": "object"
       },
+      "Paginated_PersonMatch": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/PersonMatch"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_Pipeline": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -23013,6 +23115,74 @@
         "required": [
           "key",
           "level"
+        ],
+        "type": "object"
+      },
+      "PersonMatch": {
+        "description": "A match of a person, as listed on the person's page.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/MatchCandidate"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "organization_id": {
+            "description": "The company the person was entered with.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "person_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "queries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MatchState"
+          },
+          "state_code": {
+            "description": "Last obstacle (`ext-no-agent`, `ext-login-required`…).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "step": {
+            "description": "Index of the current query.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "person_id",
+          "state",
+          "step",
+          "queries",
+          "candidates",
+          "created_at",
+          "updated_at"
         ],
         "type": "object"
       },
@@ -31133,6 +31303,15 @@
           "date",
           "object",
           "enum"
+        ],
+        "type": "string"
+      },
+      "Verdict": {
+        "description": "What a score allows (D788): written, proposed to a human, or dropped.",
+        "enum": [
+          "write",
+          "propose",
+          "drop"
         ],
         "type": "string"
       },
@@ -55927,6 +56106,200 @@
           }
         ],
         "summary": "Capture a company's employee list",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/people/{id}/matches": {
+      "get": {
+        "description": "The latest searches of this person's network profile (D788), newest first: the queries typed in the network's search bar, the candidates found with their score and reasons, and where the match stands (searching, matched, proposed in To validate, not found, stopped). Paginated (`limit`/`offset`). Any member.",
+        "operationId": "extension_person_matches_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_PersonMatch"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the profile matches of a person",
+        "tags": [
+          "extension"
+        ]
+      },
+      "post": {
+        "description": "Starts a search of this person's profile on LinkedIn (D788), from the name and the company they work for: the caller's browser agent plays the default navigation rule of the search, typing each query in the network's search bar, from the most precise (name and company) to the widest (name alone), and opening the first profiles found in its signed-in session; the server scores them against the company, its other names, its group and the cities of its sites. Above the pack's write threshold the profile is attached to the person; between its two thresholds the candidates wait in To validate; a job change is only proposed. Refused for someone who objected. A match still running is returned as is. At most 30 searches per day. Requires owner, admin or member role.",
+        "operationId": "extension_person_matches_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonMatch"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-required` (`title`): the person has no name"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no such person"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`prospecting-opposed`: the person objected; `ext-person-without-company`: linked to no company; `ext-match-daily-cap` (`args.max`): daily searches reached; `site-recipe-no-agent`: no browser agent paired; `site-recipe-daily-cap` (`args.max`): runs on browser agents reached"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Find a person's network profile",
         "tags": [
           "extension"
         ]

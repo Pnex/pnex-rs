@@ -59,10 +59,11 @@
 # country layer (`prospecting_b2b_fr` for France); nothing here is French.
 # Since 2.0.0 every identifier is English (breaking).
 # Since 3.0.0 the `personal` classification value and the flow names are English (breaking).
+# Since 3.6.0 the settings of the person match (D788).
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "3.5.0"
+version: "3.6.0"
 requires: [companies, web_presence]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -83,6 +84,42 @@ settings:
     default: 36
     min: 6
     max: 120
+  - key: match_write_threshold
+    name: Score that attaches a profile
+    names: {fr: "Score qui rattache un profil"}
+    description: From this score a network profile found for a person is attached to them without a human (D788); a job change is always proposed instead.
+    descriptions: {fr: "À partir de ce score, un profil trouvé pour une personne lui est rattaché sans validation humaine (D788) ; un changement d'emploi est toujours proposé."}
+    kind: number
+    default: 80
+    min: 1
+    max: 100
+  - key: match_propose_threshold
+    name: Score that proposes a profile
+    names: {fr: "Score qui propose un profil"}
+    description: From this score (and below the attaching one) a profile found for a person waits in To validate; below, it is dropped.
+    descriptions: {fr: "À partir de ce score (et sous celui qui rattache), un profil trouvé pour une personne attend dans « À valider » ; en dessous, il est écarté."}
+    kind: number
+    default: 40
+    min: 1
+    max: 100
+  - key: match_searches_per_day
+    name: Automatic profile searches per day
+    names: {fr: "Recherches de profil automatiques par jour"}
+    description: Searches the hourly pass may start for the people of targets and prospects (at most 30); 0 turns the automatic search off, the button on a person stays.
+    descriptions: {fr: "Recherches que le passage horaire peut lancer pour les personnes des cibles et des prospects (30 au plus) ; 0 coupe la recherche automatique, le bouton d'une personne reste."}
+    kind: number
+    default: 20
+    min: 0
+    max: 30
+  - key: match_retry_days
+    name: Days before searching someone again
+    names: {fr: "Jours avant de rechercher à nouveau une personne"}
+    description: A person searched without a match is searched again after this many days.
+    descriptions: {fr: "Une personne recherchée sans résultat est recherchée à nouveau après ce nombre de jours."}
+    kind: number
+    default: 90
+    min: 1
+    max: 365
 extends:
   - type: organization
     properties:

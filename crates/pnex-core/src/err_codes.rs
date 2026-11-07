@@ -1168,6 +1168,10 @@ pub const EXT_PROFILE_DAILY_CAP: &str = "ext-profile-daily-cap";
 pub const EXT_TARGET_NOT_PEOPLE_PAGE: &str = "ext-target-not-people-page";
 /// Daily employee list captures of the org reached (D779). Args: `max`.
 pub const EXT_PEOPLE_DAILY_CAP: &str = "ext-people-daily-cap";
+/// Daily person searches of the org reached (D788). Args: `max`.
+pub const EXT_MATCH_DAILY_CAP: &str = "ext-match-daily-cap";
+/// The person works for no company: nothing to match them with (D788).
+pub const EXT_PERSON_WITHOUT_COMPANY: &str = "ext-person-without-company";
 /// The person objected to prospecting: no capture, no re-creation (D341).
 pub const PROSPECTING_OPPOSED: &str = "prospecting-opposed";
 /// The object was erased: a shell, never edited nor linked again (D446).
@@ -1221,6 +1225,8 @@ pub const ALL: &[&str] = &[
     EXT_PROFILE_DAILY_CAP,
     EXT_TARGET_NOT_PEOPLE_PAGE,
     EXT_PEOPLE_DAILY_CAP,
+    EXT_MATCH_DAILY_CAP,
+    EXT_PERSON_WITHOUT_COMPANY,
     PROSPECTING_OPPOSED,
     ONTOLOGY_ERASED,
     ONTOLOGY_AGGREGATE_TIMEOUT,
