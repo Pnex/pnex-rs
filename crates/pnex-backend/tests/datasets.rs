@@ -290,13 +290,15 @@ async fn isolation_between_orgs_and_viewer_read_only() {
         assert_eq!(s, 404);
 
         // A viewer reads, never writes (R2).
-        let res = server
-            .post(&format!("/api/v1/orgs/{org_a}/members"))
-            .add_header("Authorization", format!("Bearer {}", env.alice))
-            .add_header("X-Org-Id", org_a.to_string())
-            .json(&json!({ "email": "bob@example.com", "role": "viewer" }))
-            .await;
-        assert!(res.status_code().is_success());
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org_a,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
         let (s, _) = get(
             &server,
             &format!("/api/v1/datasets/{id}/sample"),
@@ -854,19 +856,45 @@ async fn a_conversion_lost_with_its_server_starts_again_a_few_times() {
         let start = || async {
             let (_, u) = send(&server, "POST", &uploads, &env.alice, org, json!({})).await;
             let upload = format!("{uploads}/{}", u["id"].as_str().unwrap());
-            put_part(&server, &env.alice, org, &format!("{upload}/parts/1"), b"a\n1\n".to_vec()).await;
-            let (s, u) = send(&server, "POST", &format!("{upload}/complete"), &env.alice, org, json!({ "parts": 1 })).await;
+            put_part(
+                &server,
+                &env.alice,
+                org,
+                &format!("{upload}/parts/1"),
+                b"a\n1\n".to_vec(),
+            )
+            .await;
+            let (s, u) = send(
+                &server,
+                "POST",
+                &format!("{upload}/complete"),
+                &env.alice,
+                org,
+                json!({ "parts": 1 }),
+            )
+            .await;
             assert_eq!(s, 202, "{u}");
             upload
         };
+        // Four minutes without a beat is lost (C7): no need to wait ten.
         let lost = |attempts: i32| {
             format!(
                 "UPDATE dataset_uploads SET state = 'converting', attempts = {attempts}, \
-                 heartbeat_at = now() - interval '11 minutes' WHERE state IN ('ready', 'converting')"
+                 heartbeat_at = now() - interval '4 minutes' WHERE state IN ('ready', 'converting')"
             )
         };
         let upload = start().await;
         sql(&ctx.db, &lost(1)).await;
+        // The lost pod had opened its transaction: it does not hold the table.
+        sql(
+            &ctx.db,
+            &format!(
+                "INSERT INTO dataset_transactions (org_id, dataset_id, kind, heartbeat_at) \
+                 VALUES ({org}, '{}', 'snapshot', now() - interval '4 minutes')",
+                d["id"].as_str().unwrap()
+            ),
+        )
+        .await;
         let end = upload_end(&server, &env.alice, org, &upload).await;
         assert_eq!(end["state"], "done", "{end}");
 

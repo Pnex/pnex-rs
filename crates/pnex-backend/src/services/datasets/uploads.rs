@@ -250,19 +250,25 @@ pub async fn complete(
     get(db, org_id, dataset_id, id).await
 }
 
+/// A conversion beats every minute: three missed beats and its pod is gone (C7,
+/// it waited 10 minutes before).
+const LOST_AFTER_MINUTES: i64 = 3;
+
 /// Takes one upload to convert, ready or lost with its pod, and converts it. `Ok(false)`
 /// when there is nothing to do now.
 pub async fn convert_next(db: &DatabaseConnection, store: &S3Store) -> Result<bool, DatasetError> {
     let Some(row) = db
         .query_one_raw(stmt(
-            "UPDATE dataset_uploads \
-             SET state = 'converting', attempts = attempts + 1, heartbeat_at = now(), updated_at = now() \
-             WHERE id = (SELECT id FROM dataset_uploads \
-               WHERE state = 'ready' \
-               OR (state = 'converting' AND heartbeat_at < now() - interval '10 minutes') \
-               ORDER BY updated_at FOR UPDATE SKIP LOCKED LIMIT 1) \
-             RETURNING id, org_id, dataset_id, kind, delimiter, attempts, \
-               (SELECT count(*) FROM jsonb_object_keys(parts))::int AS part_count",
+            &format!(
+                "UPDATE dataset_uploads \
+                 SET state = 'converting', attempts = attempts + 1, heartbeat_at = now(), updated_at = now() \
+                 WHERE id = (SELECT id FROM dataset_uploads \
+                   WHERE state = 'ready' \
+                   OR (state = 'converting' AND heartbeat_at < now() - interval '{LOST_AFTER_MINUTES} minutes') \
+                   ORDER BY updated_at FOR UPDATE SKIP LOCKED LIMIT 1) \
+                 RETURNING id, org_id, dataset_id, kind, delimiter, attempts, \
+                   (SELECT count(*) FROM jsonb_object_keys(parts))::int AS part_count"
+            ),
             vec![],
         ))
         .await?
@@ -273,6 +279,22 @@ pub async fn convert_next(db: &DatabaseConnection, store: &S3Store) -> Result<bo
     let org_id: i64 = row.try_get("", "org_id")?;
     let dataset_id: Uuid = row.try_get("", "dataset_id")?;
     let attempts: i32 = row.try_get("", "attempts")?;
+    if attempts > 1 {
+        // The transaction the lost pod opened beats as often: dead as long, it
+        // would hold the table until the general 10 minutes.
+        db.execute_raw(stmt(
+            &format!(
+                "UPDATE dataset_transactions SET state = 'aborted', code = $2 \
+                 WHERE dataset_id = $1 AND state = 'open' \
+                 AND heartbeat_at < now() - interval '{LOST_AFTER_MINUTES} minutes'"
+            ),
+            vec![
+                dataset_id.into(),
+                err_codes::DATASET_TRANSACTION_ABORTED.into(),
+            ],
+        ))
+        .await?;
+    }
     if attempts > CONVERT_ATTEMPTS {
         // One that keeps killing its pod does not get another one.
         finish(
