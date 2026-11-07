@@ -137,12 +137,14 @@ animations »).
 Les URL ne changent pas, seul le menu est regroupé :
 
 - Accueil
-- **Surveiller** : Dashboards, Graphes rapides, Carte, Sites, Événements
-- **Connaissance** : Pages, Ontologie, Dossiers
+- **Opérer** : Applications, Tableaux de bord, Carte, Dossiers d'enquête,
+  Calendrier (les outils de travail quotidiens ; Graphiques rapides retiré
+  le 2026-11-07 : tableaux de bord et flows suffisent à vérifier les données)
+- **Connaissance** : Pages, Ontologie, À valider, Sites
 - **Médias** : Bibliothèque, Caméras, Flux, Visites 3D, Annotations
 - **Devices** : Devices et agents, Catalogue, Firmware custom, Référentiels
-- **Automatisation** : Flows, Fonctions, Contrôles, Notifications, Modèles
-  vision, Mélanges fluides
+- **Automatisation** : Agents, Flows, Fonctions, Contrôles, Notifications,
+  Événements (journal écrit par les flows), Modèles vision, Mélanges fluides
 - **Réglages** (sous un filet) : Organisation, Secrets, Système, État
   plateforme (admin)
 - Pied de barre : Assistant IA (remplace le bouton rond flottant qui masquait

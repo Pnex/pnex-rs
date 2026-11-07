@@ -296,13 +296,17 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
     let is_platform_admin = session::user().is_some_and(|u| u.platform_admin);
     let at = |r: Route| route == r;
 
-    let monitor = matches!(
+    let operate = matches!(
         route,
-        Route::Dashboards { .. } | Route::Apps {} | Route::AppBuild { .. } | Route::AppRun { .. }
-    ) || at(Route::Visualisation {})
-        || at(Route::Map {})
-        || at(Route::Sites {})
-        || at(Route::Events {});
+        Route::Apps {}
+            | Route::AppBuild { .. }
+            | Route::AppRun { .. }
+            | Route::Dashboards { .. }
+            | Route::Map {}
+            | Route::Cases {}
+            | Route::CaseWorkspace { .. }
+            | Route::Calendar {}
+    );
     let knowledge = matches!(
         route,
         Route::Docs { .. }
@@ -310,9 +314,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             | Route::OntologyObject { .. }
             | Route::OntologyType { .. }
             | Route::Proposals { .. }
-            | Route::Cases {}
-            | Route::CaseWorkspace { .. }
-            | Route::Calendar {}
+            | Route::Sites {}
     );
     let media = matches!(route, Route::Media { .. })
         || at(Route::Cameras {})
@@ -334,6 +336,8 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
         || matches!(route, Route::Mailboxes {} | Route::MailboxMessages { .. })
         || at(Route::Firmware {});
     let automation = matches!(route, Route::Flows { .. })
+        || at(Route::HostedAgents {})
+        || at(Route::Events {})
         || at(Route::Functions {})
         || at(Route::Controls {})
         || at(Route::Notifications {})
@@ -358,23 +362,19 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                 rail,
                 on_navigate,
             }
-            NavItem {
-                to: Route::HostedAgents {},
-                label: t!("nav-agents"),
-                active: at(Route::HostedAgents {}),
-                icon: rsx! {
-                    crate::components::icons::Sparkles { class: icon }
-                },
-                rail,
-                on_navigate,
-            }
             NavGroup {
-                label: t!("nav-group-monitor"),
-                active: monitor,
+                label: t!("nav-group-operate"),
+                active: operate,
                 rail,
                 icon: rsx! {
                     crate::components::icons::Gauge { class: icon }
                 },
+                NavItem {
+                    to: Route::Apps {},
+                    label: t!("nav-apps"),
+                    active: matches!(route, Route::Apps {} | Route::AppBuild { .. } | Route::AppRun { .. }),
+                    on_navigate,
+                }
                 NavItem {
                     to: Route::Dashboards {
                         id: String::new(),
@@ -385,33 +385,21 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     on_navigate,
                 }
                 NavItem {
-                    to: Route::Apps {},
-                    label: t!("nav-apps"),
-                    active: matches!(route, Route::Apps {} | Route::AppBuild { .. } | Route::AppRun { .. }),
-                    on_navigate,
-                }
-                NavItem {
-                    to: Route::Visualisation {},
-                    label: t!("nav-quick-charts"),
-                    active: at(Route::Visualisation {}),
-                    on_navigate,
-                }
-                NavItem {
                     to: Route::Map {},
                     label: t!("nav-map"),
                     active: at(Route::Map {}),
                     on_navigate,
                 }
                 NavItem {
-                    to: Route::Sites {},
-                    label: t!("nav-sites"),
-                    active: at(Route::Sites {}),
+                    to: Route::Cases {},
+                    label: t!("nav-cases"),
+                    active: matches!(route, Route::Cases {} | Route::CaseWorkspace { .. }),
                     on_navigate,
                 }
                 NavItem {
-                    to: Route::Events {},
-                    label: t!("nav-events"),
-                    active: at(Route::Events {}),
+                    to: Route::Calendar {},
+                    label: t!("nav-calendar"),
+                    active: at(Route::Calendar {}),
                     on_navigate,
                 }
             }
@@ -451,15 +439,9 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     on_navigate,
                 }
                 NavItem {
-                    to: Route::Cases {},
-                    label: t!("nav-cases"),
-                    active: matches!(route, Route::Cases {} | Route::CaseWorkspace { .. }),
-                    on_navigate,
-                }
-                NavItem {
-                    to: Route::Calendar {},
-                    label: t!("nav-calendar"),
-                    active: at(Route::Calendar {}),
+                    to: Route::Sites {},
+                    label: t!("nav-sites"),
+                    active: at(Route::Sites {}),
                     on_navigate,
                 }
             }
@@ -579,6 +561,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     crate::components::icons::Workflow { class: icon }
                 },
                 NavItem {
+                    to: Route::HostedAgents {},
+                    label: t!("nav-agents"),
+                    active: at(Route::HostedAgents {}),
+                    on_navigate,
+                }
+                NavItem {
                     to: Route::Flows { id: String::new() },
                     label: t!("nav-flows"),
                     active: matches!(route, Route::Flows { .. }),
@@ -600,6 +588,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::Notifications {},
                     label: t!("nav-notifications"),
                     active: at(Route::Notifications {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Events {},
+                    label: t!("nav-events"),
+                    active: at(Route::Events {}),
                     on_navigate,
                 }
                 NavItem {

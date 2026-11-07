@@ -10,14 +10,14 @@ test.describe('shell', { tag: '@shell' }, () => {
       .filter({ has: page.getByRole('link', { name: app.t('nav-dashboard'), exact: true }) })
       .first();
     const automation = nav.getByRole('button', { name: app.t('nav-automation'), exact: true });
-    const monitor = nav.getByRole('button', { name: app.t('nav-group-monitor'), exact: true });
+    const operate = nav.getByRole('button', { name: app.t('nav-group-operate'), exact: true });
     await expect(automation).toHaveAttribute('aria-expanded', 'true');
     await expect(nav.getByRole('link', { name: app.t('nav-flows'), exact: true })).toHaveAttribute('aria-current', 'page');
-    await expect(monitor).toHaveAttribute('aria-expanded', 'false');
+    await expect(operate).toHaveAttribute('aria-expanded', 'false');
     await expect(nav.getByRole('link', { name: app.t('nav-dashboards'), exact: true })).toHaveCount(0);
 
-    await monitor.click();
-    await expect(monitor).toHaveAttribute('aria-expanded', 'true');
+    await operate.click();
+    await expect(operate).toHaveAttribute('aria-expanded', 'true');
     await nav.getByRole('link', { name: app.t('nav-dashboards'), exact: true }).click();
     await expect(page).toHaveURL(/\/dashboards/);
     await expect(page.locator('main h1')).toHaveText(app.t('nav-dashboards'));

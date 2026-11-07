@@ -20,7 +20,7 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 - Changing what a colleague's mission does makes it yours: it moves to your browser. When a member leaves the organization, the browser agents they paired are disconnected; edit their missions to take them over.
 - **Rename** or **Delete** a browser agent. Deleting revokes its credentials.
 - **Missions** tab, **New mission**, four kinds:
-  - **Read a value**: a page, a CSS selector, a series name, an interval; the value appears on the browser agent in Visualisation.
+  - **Read a value**: a page, a CSS selector, a series name, an interval; the value is stored as a series on the browser agent, usable in dashboards.
   - **Keep the page**: the page's readable text becomes a document of the media library, a new version only when the text changes; it is searchable.
   - **Follow an account**: pick X, YouTube or TikTok and type the account. The agent collects the account's whole history (a little deeper at each visit, until the start of the account), then its new posts. By default it keeps posts, text and the platform's own captions (no file). Tick **Force the video collection** to download or record every video, then transcribed by PNeX.
   - **Record a live**: the page of a live; the agent records it in parts of 30 minutes while it is on air, each part a video of the media library.

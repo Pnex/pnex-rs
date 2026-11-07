@@ -769,7 +769,7 @@ fn LiveSubView(
             }
             if any_degraded {
                 p { class: "mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500",
-                    {t!("vis-unavailable")}
+                    {t!("dashboards-telemetry-unavailable")}
                 }
             }
 

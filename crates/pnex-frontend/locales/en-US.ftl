@@ -10,8 +10,7 @@ nav-browser-agents = Browser agents
 
 nav-orgs = Organizations
 nav-profile = Profile
-nav-quick-charts = Quick charts
-nav-group-monitor = Monitor
+nav-group-operate = Operate
 nav-group-knowledge = Knowledge
 nav-group-media = Media
 nav-group-devices = Sources
@@ -157,11 +156,11 @@ home-recent-flows = Latest flows
 home-see-all = See all
 home-empty = Nothing yet
 home-spaces = Workspaces
-home-space-monitor = Dashboards, map and events.
-home-space-knowledge = Pages, ontology, cases and calendar.
+home-space-operate = Applications, dashboards, map, cases and calendar.
+home-space-knowledge = Pages, ontology, items to validate and sites.
 home-space-media = Library, cameras, transcription and Lab.
 home-space-sources = Devices, browser agents, websites and mailboxes.
-home-space-automation = Flows, functions, notifications and models.
+home-space-automation = Agents, flows, functions, notifications and events.
 dash-quotas = Tier capacities
 dash-quota-sensor = Sensor devices
 dash-quota-actuator = Actuator devices
@@ -362,22 +361,6 @@ flash-replug-hint = After a failure, the board's serial port often stays busy �
 
 pagination-previous = Previous
 pagination-next = Next
-
-# Visualisation (per-sensor curves)
-vis-subtitle = Curves of the measurements kept in the telemetry store, sensor by sensor
-vis-series-age = { $age } ago
-vis-series = Available series
-vis-metric = Metric
-vis-device = Sensor
-vis-window = Window
-vis-window-1h = 1h
-vis-window-6h = 6h
-vis-window-24h = 24h
-vis-add = Add
-vis-chart = Chart
-vis-empty = Add a series to display its curve
-vis-no-data = No telemetry data in this organization
-vis-unavailable = Telemetry unavailable (telemetry store unreachable or organization not provisioned)
 
 # ─────────────── Brick 0 — pins of generic devices ───────────────
 pins-title = Pins
@@ -666,7 +649,7 @@ calc-err-trailing-symbol = Unexpected “{ $got }” after the end of the expres
 calc-err-at = (position { $pos })
 flows-metric-name = Metric name
 flows-metric-preview = Written series:
-flows-metric-labels-help = Written with device_id=flow_{ $id } · source_type=etl — appears in Visualization like a sensor.
+flows-metric-labels-help = Written with device_id=flow_{ $id } · source_type=etl — usable in dashboards like a sensor.
 flows-metric-labels = Series dimensions
 flows-metric-label-name = name
 flows-metric-label-source = msg.topic, payload.x or fixed value
@@ -1046,6 +1029,7 @@ viz-save = Save
 viz-saving = Saving…
 media-kind-floorplan = Floor plan
 nav-dashboards = Dashboards
+dashboards-telemetry-unavailable = Telemetry unavailable (telemetry store unreachable or organization not provisioned)
 nav-apps = Applications
 apps-subtitle = Work screens built on your objects.
 apps-declare = Declare an application
@@ -1570,7 +1554,7 @@ browser-missions-field-selector-help = The element that shows the value, for exa
 browser-missions-field-attr = What to read
 browser-missions-field-attr-help = text reads the element's text; attr:name reads one of its attributes (for example attr:data-value).
 browser-missions-field-metric = Series name
-browser-missions-field-metric-help = Lowercase letters, digits and _ (for example price). The value appears under this name on the browser agent in Visualisation.
+browser-missions-field-metric-help = Lowercase letters, digits and _ (for example price). The value is stored under this name on the browser agent, usable in dashboards.
 browser-missions-field-interval = Interval (seconds)
 browser-missions-field-interval-help = { $min } seconds at least; each refresh varies a little so the pace stays human.
 browser-missions-field-agent = Browser agent

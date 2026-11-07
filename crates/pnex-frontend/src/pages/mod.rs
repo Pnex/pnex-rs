@@ -68,7 +68,6 @@ pub mod studio;
 pub mod system;
 /// Trust-on-first-use dialog for a self-hosted server root CA (D70).
 pub mod trust_ca;
-pub mod visualisation;
 pub mod voice_id;
 pub mod web_sites;
 
@@ -104,5 +103,4 @@ pub use showcase::Showcase;
 pub use streams::{StreamReview, Streams};
 pub use studio::Studio;
 pub use system::System;
-pub use visualisation::Visualisation;
 pub use voice_id::VoiceId;

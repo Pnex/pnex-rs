@@ -2,7 +2,7 @@
 id: troubleshooting-no-telemetry
 title: Device connected but no telemetry
 kind: troubleshooting
-pages: /devices, /visualisation, /flows
+pages: /devices, /dashboards, /flows
 nodes: device_read
 err_codes: pin_not_subscribed
 tools: 
@@ -12,7 +12,7 @@ A generic board shows as connected but no measurement ever arrives: charts stay 
 
 ## Symptom
 
-- The device is online on Devices & agents, yet Quick charts shows no series for it, or "Telemetry unavailable (telemetry store unreachable or organization not provisioned)" for a brand-new organization.
+- The device is online on Devices & agents, yet dashboard widgets show no series for it, or "Telemetry unavailable (telemetry store unreachable or organization not provisioned)" for a brand-new organization.
 - A Device (read) node in a flow outputs `{}` (no value is ever invented), and the flow editor banner says the pin "is not subscribed — the device publishes nothing".
 - On the device detail, an amber banner says: "Connected, but no pin is subscribed: the device publishes nothing".
 
@@ -25,6 +25,6 @@ A generic PNeX board only sends the pins you subscribed. Without any read interv
 1. Open **Devices & agents**, find the device and click **Detail**.
 2. On the board pinout, click an input pin (digital or analog input).
 3. In the pin panel, choose a **Read interval** (Read every 1 s, 5 s, 15 s or 60 s) instead of "Manual read" and click **Apply**.
-4. Values appear within seconds; Quick charts and Device (read) nodes then see the pin.
+4. Values appear within seconds; dashboards and Device (read) nodes then see the pin.
 
 Repeat for every input pin you need. Output pins are not subscribed. Note that deleting and re-registering a device under a new identifier starts from zero: subscriptions must be set again and older series stay under the old identifier.

@@ -306,8 +306,6 @@ icon!(
     "M12 20h.01"
 );
 icon!(LineChart, "M3 3v18h18", "m19 9-5 5-4-4-3 3");
-// Quick charts ("Visualisation" nav) — lucide trending-up.
-icon!(TrendingUp, "m22 7-8.5 8.5-5-5L2 17", "M16 7h6v6");
 icon!(
     Workflow,
     "M15 13H19A2 2 0 0 1 21 15V19A2 2 0 0 1 19 21H15A2 2 0 0 1 13 19V15A2 2 0 0 1 15 13Z",

@@ -10,8 +10,7 @@ nav-browser-agents = Agents navigateur
 
 nav-orgs = Organisations
 nav-profile = Profil
-nav-quick-charts = Graphiques rapides
-nav-group-monitor = Surveiller
+nav-group-operate = Opérer
 nav-group-knowledge = Connaissance
 nav-group-media = Médias
 nav-group-devices = Sources
@@ -157,11 +156,11 @@ home-recent-flows = Derniers flows
 home-see-all = Tout voir
 home-empty = Rien pour l'instant
 home-spaces = Espaces de travail
-home-space-monitor = Tableaux de bord, carte et événements.
-home-space-knowledge = Pages, ontologie, dossiers d'enquête et calendrier.
+home-space-operate = Applications, tableaux de bord, carte, dossiers d'enquête et calendrier.
+home-space-knowledge = Pages, ontologie, éléments à valider et sites.
 home-space-media = Bibliothèque, caméras, transcription et Lab.
 home-space-sources = Appareils, agents navigateur, sites web et boîtes mail.
-home-space-automation = Flows, fonctions, notifications et modèles.
+home-space-automation = Agents, flows, fonctions, notifications et événements.
 dash-quotas = Capacités du tier
 dash-quota-sensor = Appareils capteurs
 dash-quota-actuator = Appareils actionneurs
@@ -362,22 +361,6 @@ flash-replug-hint = Après un échec, le port série de la carte reste souvent o
 
 pagination-previous = Précédent
 pagination-next = Suivant
-
-# Visualisation (courbes capteur par capteur)
-vis-subtitle = Courbes des mesures conservées dans le stockage de télémétrie, capteur par capteur
-vis-series-age = il y a { $age }
-vis-series = Séries disponibles
-vis-metric = Métrique
-vis-device = Capteur
-vis-window = Fenêtre
-vis-window-1h = 1 h
-vis-window-6h = 6 h
-vis-window-24h = 24 h
-vis-add = Ajouter
-vis-chart = Courbe
-vis-empty = Ajoutez une série pour afficher sa courbe
-vis-no-data = Aucune donnée de télémétrie dans cette organisation
-vis-unavailable = Télémétrie indisponible (stockage de télémétrie injoignable ou organisation non provisionnée)
 
 # ─────────────── Brick 0 — pins devices génériques ───────────────
 pins-title = Pins
@@ -693,7 +676,7 @@ flows-reg-safe-high = Relais activé (high)
 flows-reg-tt-heat-hint = Chauffage : relais ON sous (consigne − hystérésis), OFF au retour à la consigne.
 flows-reg-tt-cool-hint = Clim : relais ON au-dessus de (consigne + hystérésis), OFF au retour à la consigne.
 flows-reg-pid-hint = PID : le duty % est réparti sur le cycle relais (anti-windup, dérivée sur la mesure).
-flows-metric-labels-help = Écrite avec device_id=flow_{ $id } · source_type=etl — apparaît dans Visualisation comme un capteur.
+flows-metric-labels-help = Écrite avec device_id=flow_{ $id } · source_type=etl — utilisable dans les tableaux de bord comme un capteur.
 flows-metric-labels = Dimensions de la série
 flows-metric-label-name = nom
 flows-metric-label-source = msg.topic, payload.x ou valeur fixe
@@ -1045,6 +1028,7 @@ viz-save = Enregistrer
 viz-saving = Enregistrement…
 media-kind-floorplan = Plan d'étage
 nav-dashboards = Tableaux de bord
+dashboards-telemetry-unavailable = Télémétrie indisponible (stockage de télémétrie injoignable ou organisation non provisionnée)
 nav-apps = Applications
 apps-subtitle = Des écrans de travail construits sur vos objets.
 apps-declare = Déclarer une application
@@ -1569,7 +1553,7 @@ browser-missions-field-selector-help = L'élément qui affiche la valeur, par ex
 browser-missions-field-attr = Ce qu'on lit
 browser-missions-field-attr-help = text lit le texte de l'élément ; attr:nom lit l'un de ses attributs (par exemple attr:data-value).
 browser-missions-field-metric = Nom de la série
-browser-missions-field-metric-help = Minuscules, chiffres et _ (par exemple price). La valeur apparaît sous ce nom sur l'agent navigateur, dans Visualisation.
+browser-missions-field-metric-help = Minuscules, chiffres et _ (par exemple price). La valeur est enregistrée sous ce nom sur l'agent navigateur, utilisable dans les tableaux de bord.
 browser-missions-field-interval = Intervalle (secondes)
 browser-missions-field-interval-help = { $min } secondes au minimum ; chaque rafraîchissement varie un peu pour garder un rythme humain.
 browser-missions-field-agent = Agent navigateur

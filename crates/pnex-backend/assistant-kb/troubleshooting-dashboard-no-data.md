@@ -2,7 +2,7 @@
 id: troubleshooting-dashboard-no-data
 title: Dashboard widget shows no data or stale data
 kind: troubleshooting
-pages: /dashboards, /visualisation
+pages: /dashboards, /devices
 nodes: metric, memory_write
 err_codes: 
 tools: 
@@ -29,7 +29,7 @@ A dashboard widget or card stays empty, shows "No data over the window", "No rec
 1. Switch the dashboard to **Live**.
 2. In **Edit**, select the widget and check **Source** and **Metric** in the **Inspector**; for home cards, pick a source for each value read.
 3. In **Devices**, open the device, tab **Pins**, and choose a read interval (e.g. "Read every 5 s") for the pins you display. Check the device is online.
-4. Confirm the series exists in **Monitor › Quick charts**: if it is missing there, the problem is upstream of the dashboard.
+4. Confirm the series exists: open **Devices & agents**, then the device detail, and check its last values; if they are missing there, the problem is upstream of the dashboard.
 5. For memory sources, open the flow in **Automation › Flows**, check it is deployed and that the **Memory write** lifetime is longer than the time between two messages.
 6. Raise **Stale after (seconds)** (or set it to **Never**) if the source legitimately reports rarely.
 7. If every widget says "Telemetry unavailable", check **System**: the organization's telemetry space is created with the first measurement; otherwise ask the platform administrator.

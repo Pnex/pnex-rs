@@ -8,7 +8,6 @@ export interface RouteCase {
 
 export const ROUTES: RouteCase[] = [
   { path: '/', title: 'home-greeting' },
-  { path: '/visualisation', title: 'nav-quick-charts' },
   { path: '/map', title: 'viz-map-title' },
   { path: '/dashboards', title: 'nav-dashboards' },
   { path: '/pages', title: 'docs-title' },

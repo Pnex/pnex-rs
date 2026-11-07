@@ -1,9 +1,7 @@
-//! Home-made SVG charts — zero dependency (`pages/visualisation.rs`
-//! 2026-08-19 + viz PRD D30 patterns). Two families:
+//! Home-made SVG charts — zero dependency (viz PRD D30 patterns). Two
+//! families:
 //!
-//! 1. [`TimeSeriesChart`] — the **extraction** of the multi-series chart of the
-//!    Visualisation page (**identical** rendering: same viewBox, same
-//!    grid, same polylines + points);
+//! 1. [`TimeSeriesChart`] — the multi-series time chart (object page);
 //! 2. the **instrument renderings** of the SCADA studio — radial gauge,
 //!    value tile, sparkline, indicator — drawn to fill a canvas widget
 //!    (the frame/selection is drawn by the editor, never here).
@@ -18,7 +16,7 @@ pub mod thermo;
 use pnex_core::TelemetryPoint;
 
 /// Series palette (literals — SVG `stroke`/`fill` attributes, not
-/// classes). Same palette as the original Visualisation page.
+/// classes).
 pub const PALETTE: [&str; 6] = [
     "#0d9488", "#4f46e5", "#db2777", "#f59e0b", "#0284c7", "#65a30d",
 ];
@@ -84,8 +82,7 @@ fn polyline_of(
     (path, coords)
 }
 
-/// Multi-series chart — rendering identical to the original of the
-/// Visualisation page (global Y scale, 4-line grid, min/max labels +
+/// Multi-series chart (global Y scale, 4-line grid, min/max labels +
 /// edge times, polyline + circles per point).
 #[component]
 pub fn TimeSeriesChart(series: Vec<ChartSeries>) -> Element {

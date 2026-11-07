@@ -255,12 +255,9 @@ pub fn Dashboard() -> Element {
             h2 { class: "mb-3 text-base font-semibold text-ink", {t!("home-spaces")} }
             div { class: "mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5",
                 Space {
-                    to: Route::Dashboards {
-                        id: String::new(),
-                        mode: String::new(),
-                    },
-                    title: t!("nav-group-monitor"),
-                    desc: t!("home-space-monitor"),
+                    to: Route::Apps {},
+                    title: t!("nav-group-operate"),
+                    desc: t!("home-space-operate"),
                     crate::components::icons::Gauge { class: "h-5 w-5" }
                 }
                 Space {
@@ -355,7 +352,7 @@ pub fn Dashboard() -> Element {
                         }
                         Section {
                             title: t!("dash-last-measurements"),
-                            to: Route::Visualisation {},
+                            to: Route::Devices {},
                             {measurements(&x.telemetry)}
                         }
                     }

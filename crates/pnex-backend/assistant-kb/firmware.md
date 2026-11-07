@@ -22,7 +22,7 @@ The Custom firmware page (Devices menu) is a C++ editor in the browser: you writ
 
 - Call the PNeX loop on every iteration and never block in long delays, or the server marks the device offline and outputs fall back to their safe state.
 - Wi-Fi, device token and encryption key never appear in your code: they are injected at build time.
-- Metrics published with `addMetric` / `publish` show up in Quick charts, and in a flow through the **Device (read)** node: pick the device and check the metric, listed as "(metric)" after the board pins (it appears once the device has published).
+- Metrics published with `addMetric` / `publish` show up in dashboard widgets, and in a flow through the **Device (read)** node: pick the device and check the metric, listed as "(metric)" after the board pins (it appears once the device has published).
 - Commands registered with `onCommand` are driven from a flow through the **Device (write)** node: pick the device and check the command under **Firmware commands** (it appears once the device has announced it, after the update). The handler receives the wired value in `args["value"]`; keep it short and do the work in `loop()`.
 - Libraries outside the catalog are refused. Absolute or ".." includes, embedded files and sketches over 256 KiB are refused too.
 - Only generic models accept a custom firmware; predefined boards keep their PNeX firmware.

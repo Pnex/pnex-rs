@@ -23,7 +23,7 @@ use crate::pages::{
     Controls, Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures,
     Functions, Lab, LabProjectPage, Map, Media, MediaReview, Models, NotFound, Notifications,
     Ontology, OntologyObject, OntologyType, Orgs, OrgsCurrent, Profile, Secrets, ShareTour,
-    Showcase, Sites, StreamReview, Streams, Studio, System, Visualisation, VoiceId,
+    Showcase, Sites, StreamReview, Streams, Studio, System, VoiceId,
 };
 use dioxus::prelude::*;
 
@@ -45,8 +45,6 @@ pub enum Route {
         #[route("/")]
         Dashboard {},
 
-        #[route("/visualisation")]
-        Visualisation {},
 
         #[route("/map")]
         Map {},

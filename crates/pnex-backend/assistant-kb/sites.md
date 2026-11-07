@@ -8,7 +8,7 @@ err_codes: access-denied, poi-device-already-placed
 tools: 
 tags: sites, site, tree, arbre, folders, dossiers, building, bâtiment, room, local, location, emplacement, breadcrumb, organisation
 ---
-Sites (Monitor › Sites) lists every site of the organization on a full page, without the map: the "where" view of everything installed. A site is the same object as a point of interest on the Map; Sites and Map are two views of one tree.
+Sites (Knowledge › Sites) lists every site of the organization on a full page, without the map: the "where" view of everything installed. A site is the same object as a point of interest on the Map; Sites and Map are two views of one tree.
 
 ## What you can do
 - **Search** a site, open it: the panel shows its tree — folders (building, floor, room…), then the attached devices, dashboards, media and 3D tours. Drag objects between folders with the ⠿ handle, create a folder (**+ Folder**), attach an object (**Attach an object**), preview it, pin it (★), set the site's **Labels**.

@@ -8,7 +8,7 @@ err_codes: access-denied, time-range-not-found
 tools: list_calendar, propose_occurrence_change, create_object, update_object
 tags: calendar, calendrier, agenda, planning, planification, maintenance plan, plan de maintenance, préventif, preventive, gmao, cmms, recurrence, récurrence, periodicity, périodicité, every, tous les, floating, flottant, fixed, fixe, occurrence, late, en retard, overdue, done, réalisé, cancel, annuler, move, déplacer, reschedule, replanifier, work order, ordre de travail, intervention
 ---
-The Calendar page (Knowledge › Calendar) shows every time range of the organization by month, and in particular the **occurrences of maintenance plans**.
+The Calendar page (Operate › Calendar) shows every time range of the organization by month, and in particular the **occurrences of maintenance plans**.
 
 ## Planning a recurring job
 1. Install the *Augmented maintenance* pack (Ontology › Packs). It adds the **Maintenance plan** type.
