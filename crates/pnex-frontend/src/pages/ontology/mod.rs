@@ -6,6 +6,7 @@
 
 pub mod imports;
 pub mod object;
+mod chart;
 mod observations;
 pub mod packs;
 pub mod profile_capture;

@@ -7241,3 +7241,14 @@ agents-filter-engine = Moteur
 agents-filter-engine-all = Tous les moteurs
 agents-col-what = Passage
 agents-open-rule = Ouvrir le site
+
+## D813 graphique de cours
+onto-tab-chart = Cours
+onto-chart-title = Cours de clôture
+onto-chart-title-ticker = Cours de clôture de { $ticker }
+onto-chart-aria = Cours de clôture de { $ticker }, avec les séances anormales et les dépôts
+onto-chart-range-1y = 1 an
+onto-chart-range-5y = 5 ans
+onto-chart-range-10y = 10 ans
+onto-chart-hint = Survolez ou parcourez au clavier un triangle (séance anormale) ou un trait sur l'axe (dépôt) pour le nommer ici.
+onto-chart-empty = Aucun cours lu sur cette période. Lancez l'import « Daily prices (Tiingo) » de l'onglet Imports, avec votre clé Tiingo au coffre.

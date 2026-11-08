@@ -115,6 +115,10 @@ pub fn OntologyObject(id: String) -> Element {
     if o.type_key == "instrument" || o.type_key == "macro_series" {
         tabs.insert(5, ("reaction", t!("onto-tab-reaction")));
     }
+    // D813: the price line of an instrument, or of the one a company issues.
+    if o.type_key == "instrument" || o.properties.contains_key("cik") {
+        tabs.insert(4, ("chart", t!("onto-tab-chart")));
+    }
     // D738, D742: the session of a move, or the moves around a world event.
     // The code a reaction is measured on: a ticker or a series code (D743).
     let reaction_series = o
@@ -337,6 +341,8 @@ pub fn OntologyObject(id: String) -> Element {
                     }
                 } else if tab() == "session" {
                     super::session::SessionPanel { date: event_day.clone().unwrap_or_default() }
+                } else if tab() == "chart" {
+                    super::chart::ChartPanel { id: o.id.clone() }
                 } else if tab() == "figures" {
                     super::observations::ObservationsPanel { id: o.id.clone() }
                 } else if tab() == "provenance" {

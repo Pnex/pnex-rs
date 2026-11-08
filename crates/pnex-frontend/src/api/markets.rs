@@ -73,3 +73,16 @@ pub async fn world_events(
     )
     .await
 }
+
+/// Closes of an issuer's instrument with its sessions and filings (D813).
+pub async fn issuer_chart(
+    id: &str,
+    days: u32,
+) -> Result<pnex_core::markets::chart::IssuerChart, ApiError> {
+    client::request(
+        Method::GET,
+        &format!("{BASE}/issuers/{id}/chart?days={days}"),
+        None,
+    )
+    .await
+}

@@ -95,7 +95,15 @@ pub fn draw(chart: &IssuerChart) -> Option<Drawing> {
     let span_d = ((d1 - d0) as f64).max(1.0);
     let span_v = (max - min).max(1e-9);
     let x = |d: i64| PAD_L + (d - d0) as f64 / span_d * (W - PAD_L - PAD_R);
-    let y = |v: f64| PAD_T + (1.0 - (v - min) / span_v) * (H - PAD_T - PAD_B);
+    // A flat series sits in the middle, not on the axis.
+    let flat = max - min < 1e-12;
+    let y = |v: f64| {
+        if flat {
+            (PAD_T + H - PAD_B) / 2.0
+        } else {
+            PAD_T + (1.0 - (v - min) / span_v) * (H - PAD_T - PAD_B)
+        }
+    };
     let line = pts
         .iter()
         .map(|&(d, v)| format!("{:.1},{:.1}", x(d), y(v)))
@@ -172,6 +180,18 @@ mod tests {
             (d.first.as_str(), d.last.as_str()),
             ("2026-01-01", "2026-01-21")
         );
+    }
+
+    #[test]
+    fn a_flat_series_is_drawn_in_the_middle() {
+        let chart = IssuerChart {
+            instrument_id: None,
+            ticker: None,
+            closes: vec![p("2026-01-01", 42.0), p("2026-01-02", 42.0)],
+            events: vec![],
+        };
+        let mid = format!("{:.1}", (PLOT.1 + PLOT.3) / 2.0);
+        assert!(draw(&chart).unwrap().line.ends_with(&mid));
     }
 
     #[test]

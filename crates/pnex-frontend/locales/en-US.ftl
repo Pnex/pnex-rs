@@ -7245,3 +7245,14 @@ agents-filter-engine = Engine
 agents-filter-engine-all = All engines
 agents-col-what = Run
 agents-open-rule = Open the site
+
+## D813 price chart
+onto-tab-chart = Prices
+onto-chart-title = Closing prices
+onto-chart-title-ticker = Closing prices of { $ticker }
+onto-chart-aria = Closing prices of { $ticker }, with abnormal sessions and filings
+onto-chart-range-1y = 1 year
+onto-chart-range-5y = 5 years
+onto-chart-range-10y = 10 years
+onto-chart-hint = Hover or tab to a triangle (abnormal session) or a tick on the axis (filing) to name it here.
+onto-chart-empty = No price read over this period. Run the import “Daily prices (Tiingo)” from the Imports tab, with your Tiingo key in the vault.
