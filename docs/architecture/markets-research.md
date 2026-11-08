@@ -652,11 +652,15 @@ MK11 codé, non poussé. Pièces :
 - **Une requête à la fois, pause de 250 ms**, au lieu d'une concurrence de 4 par hôte. Un 429, un 503 ou une source injoignable arrêtent le passage sans rien compter.
 - **Un mois clos dont un jour est déjà chargé continue par jours.** Ainsi, aucune minute n'est chargée deux fois quand le mois courant se ferme.
 - **Fichier publié sans `.CHECKSUM`** : il est chargé sans contrôle (marqué `shortcut:` dans le code).
-- **Questions prises par défaut, à confirmer par Shan :**
-  - Q-MK9 : univers vide par défaut ; l'org liste ses symboles, profondeur depuis 2017-08 ;
+- **Réponses de Shan (2026-11-08 au soir)** :
+  - Q-MK9 : univers vide par défaut, l'org liste ses symboles ; acceptation MK12 sur EURUSD et USDJPY, une année ;
   - Q-MK10 : bougies seulement ;
-  - Q-MK13 : une table par forme, avec `interval` en colonne ;
-  - Q-MK11 : conditions de Binance non vérifiées ; `license_note` le dit et la table reste privée à l'org.
+  - Q-MK11 : table privée à l'org, `license_note` qui dit que les conditions ne sont pas vérifiées, aucun partage entre orgs ;
+  - Q-MK12 : 20 Go par défaut, relevé à la main en local pour l'acceptation ;
+  - Q-MK13 : une table par forme, `interval` en colonne (pris par défaut, non contredit) ;
+  - LZMA de Dukascopy : `lzma-rs` ;
+  - D816 : l'EA pousse les bougies M1 **et** les ticks, vers des tables dataset (`ohlcv`, `quote_tick`) ; secret du webhook collé dans les paramètres de l'EA, montré une fois par l'UI ; test par envois signés simulés ;
+  - MK3 : PRD d'abord, pas de code ; pas de nouvelle UI cette nuit.
 - **Pas encore mesuré** :
   - le vrai `data.binance.vision`, jamais appelé ;
   - l'acceptation MK11 sur BTCUSDT et ETHUSDT depuis 2017-08, soit environ 220 partitions, à peu près 50 minutes de remplissage ;
