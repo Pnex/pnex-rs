@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **AN1 et AN2 codés le 2026-11-08** (§6) ; AN3 à faire |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **AN1, AN2 et AN3 codés le 2026-11-08** (§6) ; OP5 complet hors AN4 |
 | Déclencheur | Ordre OP1 → OP2 → OP3, puis OP5 (`operational-platform.md` §2) ; agrégats déjà livrés (`object-aggregates.md`) |
 | Repose sur | `operational-platform.md` (D557 : lecture seule, droits de l'appelant), `data-pipelines.md` (worker D571–D574), `governance.md` (marquages D801), `crm.md` (masque D443), `ontology.md` (D185 requête), `pages` |
 | Numérotation | **D825…D832**, lots **AN1…AN3** (AN4, analyse sans code, plus tard) |
@@ -128,3 +128,28 @@ pager, formulaire, rejeu avec liens vers les objets), fiche `assistant-kb/rules.
 est livrée (choix de Shan pour AN2), la proposition attend OP9. `break-ui` : la colonne « Surveille »
 montrait la clé du type au lieu de son nom, et l'état disait « fausse au dernier passage » pour une
 règle jamais évaluée ; corrigés (nom du type, « Déclenchée / Non déclenchée », pluriel des filtres).
+
+**AN3 (2026-11-08)** : nœud de page `live_block` (liste blanche `pnex_core::pages`, attributs
+chaînes bornés et validés côté serveur : source `sql` ou `objects`, SQL ≤ 64 Ko, calcul JSON relu
+comme `AggregateQuery`, titre ≤ 200). Choix de Shan : SQL et calcul sur des objets, requête rangée
+dans la page, cache de 5 min par lecteur, export de flow sans calcul. Éditeur : entrée « Bloc
+vivant » du menu `/`, rendu par une vue ProseMirror (texte seulement, jamais de HTML), réglages dans
+une fenêtre Dioxus (titre, source ; type, calcul, nombre, répartition ; ou SQL). Le calcul se fait
+côté client, avec les droits du lecteur, un bloc après l'autre : `analysis_queries_create` reçoit
+`max_age_secs` (≤ 300) et répond par la requête du même lecteur en cours ou finie depuis moins de
+5 min ; « Recalculer » force un nouveau calcul ; un bloc est recalculé quand ses réglages changent
+ou au bout de 5 min. Un lecteur sans droit voit la raison traduite (D831). PDF (D832) : la route
+`docs_versions_pdf` recalcule chaque bloc avec les droits de la personne qui exporte, tableau daté
+« Valeur au … UTC » (200 lignes au plus, nouveau bloc `Table` de `pnex-pdf`), noms des propriétés
+et des valeurs d'énumération dans la langue du PDF ; le nœud `page_pdf` laisse le bloc vide (« Non
+calculé dans un export automatique »). Export Markdown : un bloc SQL devient sa requête, un calcul
+son titre. Tests : `live_block_takes_bounded_string_attributes`, `live_block_attributes_are_bounded`,
+`an_automatic_export_leaves_live_blocks_uncomputed`, `a_table_cuts_long_cells_and_breaks_pages`,
+réutilisation dans `tests/analysis.rs`, `e2e/tests/live-blocks.spec.ts`.
+
+Écarts à relire : l'aperçu d'une version figée (panneau Versions) montre le titre du bloc sans le
+calculer ; les nombres ne portent pas de séparateur de milliers ; un bloc dont la requête échoue
+dans un PDF dit seulement « ouvrez la page » (la raison détaillée est dans la page, traduite).
+`break-ui` : colonnes écrasées lettre par lettre sur téléphone (`overflow-wrap:anywhere`), en-tête
+qui se cassait avec un long titre, blocs insérés à l'envers faute de ligne après un bloc en fin de
+page, PDF sans titre de bloc et avec les clés internes en en-têtes ; tout corrigé.

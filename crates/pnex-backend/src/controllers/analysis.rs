@@ -62,7 +62,7 @@ fn analysis_error(e: AnalysisError) -> Result<Response> {
     tag = "analysis",
     operation_id = "analysis_queries_create",
     summary = "Send a read-only SQL query",
-    description = "Queues one read-only SELECT on the tables of the org and on `objects.<type>` (the objects of a type as the caller sees them), run by the pipeline worker before any pipeline: 60 s at most, 1,000 rows returned. A marked table the caller is not cleared for fails the query with `marking-required`. Read the result with `GET /analysis/queries/{id}`. One query at a time per person. Requires `analysis:run`.",
+    description = "Queues one read-only SELECT on the tables of the org and on `objects.<type>` (the objects of a type as the caller sees them), run by the pipeline worker before any pipeline: 60 s at most, 1,000 rows returned. A marked table the caller is not cleared for fails the query with `marking-required`. Read the result with `GET /analysis/queries/{id}`. One query at a time per person; with `max_age_secs` (300 at most) the caller's own running or recent run of the same text is answered instead. Requires `analysis:run`.",
     request_body = pnex_core::analysis::AnalysisQueryInput,
     responses(
         (status = 202, body = pnex_core::analysis::AnalysisQuery),
@@ -98,6 +98,7 @@ async fn submit(
         org.auth.user.id,
         hide,
         &input.sql,
+        input.max_age_secs,
     )
     .await;
     match sent {

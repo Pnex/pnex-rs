@@ -8,7 +8,8 @@
 
 use std::time::Duration;
 
-use serde::Deserialize;
+use pnex_core::pages::LiveBlock;
+use serde::{Deserialize, Serialize};
 
 /// Live state of a mounted editor.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -27,6 +28,8 @@ pub struct DocState {
     pub comments_seq: u64,
     /// Comment whose highlighted text was clicked.
     pub active_comment: Option<ActiveComment>,
+    /// Live blocks of the page, in order (analysis.md D831).
+    pub blocks: Vec<LiveBlock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -45,8 +48,23 @@ pub struct SelectionAnchor {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Request {
     pub seq: u64,
-    /// `link` | `comment`.
+    /// `link` | `comment` | `live-edit` | `live-refresh`.
     pub kind: String,
+    /// Live block asked about.
+    #[serde(default)]
+    pub bid: Option<String>,
+}
+
+/// What a live block shows, computed in Rust (text only).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct LiveResult {
+    /// `loading` | `done` | `error`.
+    pub status: &'static str,
+    pub note: String,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    /// "… and N more rows", empty when all are shown.
+    pub more: String,
 }
 
 /// One block of a version diff.
@@ -193,6 +211,27 @@ pub async fn focus_anchor(host: &str, anchor: &str) -> bool {
         "return window.pnexDoc?.focusAnchor({}, {}) === true",
         lit(host),
         lit(anchor)
+    ))
+    .await
+}
+
+pub async fn set_live_result(host: &str, bid: &str, result: &LiveResult) -> bool {
+    let r = serde_json::to_string(result).unwrap_or_else(|_| "null".into());
+    eval_bool(&format!(
+        "return window.pnexDoc?.setLiveResult({}, {}, {r}) === true",
+        lit(host),
+        lit(bid)
+    ))
+    .await
+}
+
+/// New settings of the live block `bid` (an undoable edit).
+pub async fn set_live(host: &str, block: &LiveBlock) -> bool {
+    let attrs = serde_json::to_string(block).unwrap_or_else(|_| "{}".into());
+    eval_bool(&format!(
+        "return window.pnexDoc?.setLive({}, {}, {attrs}) === true",
+        lit(host),
+        lit(&block.bid)
     ))
     .await
 }

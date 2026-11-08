@@ -293,6 +293,7 @@ les règles plus anciennes qui les contredisent.
 | Raison déclarée d'une habilitation, gardée au journal avec chaque lecture (D799) | Finalité | Purpose | pas « motif » (= justification d'une déclassification) |
 | Retrait justifié d'un marquage (D802) | Déclassifier | Declassify | pas « démarquer », pas « retirer le marquage » |
 | Condition surveillée sur des objets ou une mesure, qui prévient quand elle devient vraie (D829) | Règle | Rule | pas « règle d'alerte », pas « alarme » (= seuil d'un appareil) ; rejouer une règle = « Rejouer » |
+| Bloc de page calculé à l'affichage, avec les droits du lecteur (D831) | Bloc vivant | Live block | pas « bloc dynamique », pas « widget » (= tableau de bord) |
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | Réglage de transcription d'un flux : modèle, langue, détection de voix, diarisation (D164) | Profil de transcription | Transcription profile | pas « modèle » (= le fichier importé) |
 | Profil de transcription pris quand rien d'autre n'est choisi, un par org | Profil par défaut | Default profile | pas « modèle par défaut », pas « profil principal » |

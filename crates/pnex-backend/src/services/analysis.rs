@@ -8,7 +8,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
 use pnex_core::analysis::{
-    object_types, AnalysisQuery, AnalysisState, OBJECT_TYPES_MAX, SQL_MAX_BYTES,
+    object_types, AnalysisQuery, AnalysisState, OBJECT_TYPES_MAX, REUSE_MAX_SECS, SQL_MAX_BYTES,
 };
 use pnex_core::err_codes;
 use sea_orm::{
@@ -59,6 +59,7 @@ pub async fn submit(
     user: i64,
     hide: Redaction,
     sql: &str,
+    max_age_secs: Option<u32>,
 ) -> Result<AnalysisQuery, AnalysisError> {
     let sql = sql.trim();
     if sql.is_empty() {
@@ -72,6 +73,25 @@ pub async fn submit(
             field: "sql",
             token: format!("max_length:{SQL_MAX_BYTES}"),
         });
+    }
+    if let Some(age) = max_age_secs.map(|a| a.min(REUSE_MAX_SECS)) {
+        let earlier = db
+            .query_one_raw(stmt(
+                "SELECT id FROM analysis_queries WHERE org_id = $1 AND user_id = $2 AND sql = $3 \
+                 AND (state IN ('queued', 'running') \
+                   OR (state = 'done' AND finished_at > now() - make_interval(secs => $4))) \
+                 ORDER BY created_at DESC LIMIT 1",
+                vec![
+                    org_id.into(),
+                    user.into(),
+                    sql.into(),
+                    f64::from(age).into(),
+                ],
+            ))
+            .await?;
+        if let Some(r) = earlier {
+            return get(db, org_id, user, r.try_get("", "id")?).await;
+        }
     }
     let busy = db
         .query_one_raw(stmt(

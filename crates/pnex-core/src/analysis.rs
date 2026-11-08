@@ -15,7 +15,14 @@ pub const OBJECTS_SCHEMA: &str = "objects";
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnalysisQueryInput {
     pub sql: String,
+    /// Answer with the caller's own run of the same text when one is still
+    /// running or finished less than this many seconds ago (live blocks, D831).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_age_secs: Option<u32>,
 }
+
+/// Longest reuse of an earlier run (`max_age_secs`).
+pub const REUSE_MAX_SECS: u32 = 300;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

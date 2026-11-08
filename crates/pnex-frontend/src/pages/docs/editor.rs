@@ -25,6 +25,7 @@ const BLOCKS: &[(&str, &str)] = &[
     ("quote", "docs-cmd-quote"),
     ("codeblock", "docs-cmd-codeblock"),
     ("rule", "docs-cmd-rule"),
+    ("live", "docs-cmd-live"),
 ];
 
 /// Other texts drawn by doc.js: (label name, key).
@@ -38,7 +39,15 @@ const CHROME: &[(&str, &str)] = &[
     ("code", "docs-cmd-code"),
     ("link", "docs-cmd-link"),
     ("comment", "docs-cmd-comment"),
+    ("liveRefresh", "live-refresh"),
+    ("liveEdit", "live-edit"),
+    ("liveUntitled", "live-untitled"),
+    ("liveWaiting", "live-waiting"),
+    ("liveNoRows", "live-no-rows"),
 ];
+
+/// Live blocks are computed again after this long (the SQL reuse window).
+const LIVE_STALE_MS: u64 = 300_000;
 
 const HEADER_BTN: &str =
     "inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100";
@@ -63,6 +72,8 @@ pub fn DocEditor(id: Uuid) -> Element {
     let mut draft = use_signal(|| Option::<doc_editor::SelectionAnchor>::None);
     let mut link_href = use_signal(|| Option::<String>::None);
     let notice = use_signal(|| Option::<String>::None);
+    let mut live_edit = use_signal(|| Option::<pnex_core::pages::LiveBlock>::None);
+    let mut live_refresh = use_signal(Vec::<String>::new);
     // Resolved here (render scope), never inside the mount task.
     let labels = use_hook(|| {
         let map = BLOCKS
@@ -137,6 +148,28 @@ pub fn DocEditor(id: Uuid) -> Element {
                 if asked.as_ref().map(|r| r.seq) != state.peek().request.as_ref().map(|r| r.seq) {
                     match asked.as_ref().map(|r| r.kind.as_str()) {
                         Some("link") => link_href.set(Some(String::new())),
+                        Some("live-edit") => {
+                            let bid = asked.as_ref().and_then(|r| r.bid.clone());
+                            // A block just inserted may not be reported yet.
+                            let block = s
+                                .blocks
+                                .iter()
+                                .find(|b| Some(&b.bid) == bid.as_ref())
+                                .cloned()
+                                .or_else(|| {
+                                    bid.map(|bid| pnex_core::pages::LiveBlock {
+                                        bid,
+                                        source: "sql".into(),
+                                        ..Default::default()
+                                    })
+                                });
+                            live_edit.set(block);
+                        }
+                        Some("live-refresh") => {
+                            if let Some(bid) = asked.as_ref().and_then(|r| r.bid.clone()) {
+                                live_refresh.write().push(bid);
+                            }
+                        }
                         Some("comment") => {
                             if let Some(a) = doc_editor::selection_anchor(&host).await {
                                 draft.set(Some(a));
@@ -148,6 +181,43 @@ pub fn DocEditor(id: Uuid) -> Element {
                 }
                 if *state.peek() != s {
                     state.set(s);
+                }
+            }
+        }
+    });
+    // Live blocks (D831): computed one after the other with the reader's
+    // rights, again when their settings change, on "Refresh", or once stale.
+    let host_live = host.clone();
+    use_future(move || {
+        let host = host_live.clone();
+        async move {
+            let mut computed: std::collections::HashMap<
+                String,
+                (pnex_core::pages::LiveBlock, u64),
+            > = Default::default();
+            let mut types = None;
+            let mut clock_ms = 0u64;
+            loop {
+                crate::util::sleep(Duration::from_millis(400)).await;
+                clock_ms += 400;
+                let blocks = state.peek().blocks.clone();
+                let forced: Vec<String> = live_refresh.write().drain(..).collect();
+                for b in blocks {
+                    let force = forced.contains(&b.bid);
+                    let fresh = computed.get(&b.bid).is_some_and(|(seen, at)| {
+                        *seen == b && clock_ms.saturating_sub(*at) < LIVE_STALE_MS
+                    });
+                    if fresh && !force {
+                        continue;
+                    }
+                    if b.source == "objects" && types.is_none() {
+                        types = api::ontology::types().await.ok();
+                    }
+                    doc_editor::set_live_result(&host, &b.bid, &super::live::loading()).await;
+                    let r =
+                        super::live::compute(&b, force, types.as_deref().unwrap_or_default()).await;
+                    doc_editor::set_live_result(&host, &b.bid, &r).await;
+                    computed.insert(b.bid.clone(), (b, clock_ms));
                 }
             }
         }
@@ -279,6 +349,14 @@ pub fn DocEditor(id: Uuid) -> Element {
                 }
                 if show_versions() {
                     super::versions::VersionsPanel { id, host: host.clone(), can_write }
+                }
+            }
+            if let Some(block) = live_edit() {
+                super::live::LiveBlockDialog {
+                    key: "{block.bid}",
+                    host: host.clone(),
+                    block,
+                    on_close: move |_| live_edit.set(None),
                 }
             }
         }

@@ -6,9 +6,11 @@ use reqwest::Method;
 use super::client;
 use super::error::ApiError;
 
-pub async fn submit(sql: &str) -> Result<AnalysisQuery, ApiError> {
+/// `max_age_secs`: reuse the caller's recent run of the same text (live blocks).
+pub async fn submit(sql: &str, max_age_secs: Option<u32>) -> Result<AnalysisQuery, ApiError> {
     let body = AnalysisQueryInput {
         sql: sql.to_string(),
+        max_age_secs,
     };
     let body = Some(serde_json::to_value(body).unwrap_or_default());
     client::request(Method::POST, "/api/v1/analysis/queries", body).await

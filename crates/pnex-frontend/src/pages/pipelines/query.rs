@@ -29,7 +29,7 @@ pub(super) fn QueryPanel() -> Element {
         }
         error.set(None);
         spawn(async move {
-            let mut q = match api::analysis::submit(&text).await {
+            let mut q = match api::analysis::submit(&text, None).await {
                 Ok(q) => q,
                 Err(e) => {
                     error.set(Some(localize(&e)));

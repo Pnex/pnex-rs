@@ -164,8 +164,18 @@ async fn a_query_fixes_what_its_author_may_read() {
         assert!(text.contains("Ada") && text.contains("Bob") && !text.contains("Cy"), "frozen view");
 
         // One at a time; a query of someone else does not exist for them.
-        let (s, e) = call(&server, a, org, "POST", "/api/v1/analysis/queries", Some(body)).await;
+        let (s, e) = call(&server, a, org, "POST", "/api/v1/analysis/queries", Some(body.clone())).await;
         assert_eq!((s, e["error"].as_str()), (409, Some("analysis-busy")), "{e}");
+        // A live block asks for reuse: the same text answers the running query.
+        let mut reuse = body.clone();
+        reuse["max_age_secs"] = json!(300);
+        let (s, again) = call(&server, a, org, "POST", "/api/v1/analysis/queries", Some(reuse.clone())).await;
+        assert_eq!((s, again["id"].as_str()), (202, Some(id.as_str())), "{again}");
+        // Done ten minutes ago: too old, a new run.
+        sql(&ctx.db, &format!("UPDATE analysis_queries SET state = 'done', finished_at = now() - interval '10 minutes' WHERE id = '{id}'")).await;
+        let (s, fresh) = call(&server, a, org, "POST", "/api/v1/analysis/queries", Some(reuse)).await;
+        assert_eq!(s, 202, "{fresh}");
+        assert_ne!(fresh["id"].as_str(), Some(id.as_str()), "not reused past 5 minutes");
         let (s, _) = call(&server, a, org, "GET", &format!("/api/v1/analysis/queries/{id}"), None).await;
         assert_eq!(s, 200);
         let (s, _) = call(&server, &env.bob, org, "GET", &format!("/api/v1/analysis/queries/{id}"), None).await;

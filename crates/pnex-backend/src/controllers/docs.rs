@@ -559,7 +559,7 @@ struct PdfQuery {
     tag = "docs",
     operation_id = "docs_versions_pdf",
     summary = "Download a version as PDF",
-    description = "Renders a named version as an A4 PDF attachment; an AI-generated version not yet approved carries a 'not reviewed' notice. Any member.",
+    description = "Renders a named version as an A4 PDF attachment; an AI-generated version not yet approved carries a 'not reviewed' notice. Live blocks are computed at export with the caller's rights and dated. Any member.",
     params(("id" = String, Path, format = "uuid", description = "Page id"), ("n" = i64, Path, description = "Version number"), PdfQuery),
     responses(
         (status = 200, content_type = "application/pdf", body = Vec<u8>),
@@ -576,7 +576,18 @@ async fn version_pdf(
     Path((id, n)): Path<(Uuid, i64)>,
     axum::extract::Query(q): axum::extract::Query<PdfQuery>,
 ) -> Result<Response> {
-    let rendered = pages::pdf::render_version(&ctx.db, org.org.id, id, n, &q.lang)
+    let hide = super::ontology::redaction(&ctx, &org)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    // Live blocks are computed now, with the rights of the person exporting (D832).
+    let reader = pages::pdf::Reader {
+        user: org.auth.user.id,
+        hide,
+        can_sql: org.can("analysis:run"),
+        can_objects: org.can("ontology:read"),
+        store: crate::services::datasets::store_of(&ctx.config).ok(),
+    };
+    let rendered = pages::pdf::render_version(&ctx.db, org.org.id, id, n, &q.lang, Some(&reader))
         .await
         .map_err(|e| {
             tracing::warn!(doc_id = %id, error = %e, "pages: pdf not rendered");

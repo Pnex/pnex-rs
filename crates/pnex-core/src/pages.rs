@@ -27,7 +27,59 @@ pub const NODES: &[(&str, &[&str])] = &[
     ("bullet_list", &[]),
     ("ordered_list", &["order"]),
     ("list_item", &[]),
+    (LIVE_BLOCK, &["bid", "source", "sql", "query", "title"]),
 ];
+
+/// Live block (analysis.md D831): a SQL query or a calculation on objects,
+/// computed at display under the reader's rights. All its attributes are strings.
+pub const LIVE_BLOCK: &str = "live_block";
+/// What a live block computes: `sql` (analysis D825) or `objects` (D579).
+pub const LIVE_SOURCES: &[&str] = &["sql", "objects"];
+pub const LIVE_TITLE_MAX: usize = 200;
+/// Length of the JSON of the calculation on objects.
+pub const LIVE_QUERY_MAX: usize = 16 * 1024;
+
+/// Is `value` an acceptable value of attribute `key` of a live block?
+pub fn live_attr_ok(key: &str, value: &str) -> bool {
+    match key {
+        "bid" => {
+            (1..=64).contains(&value.len())
+                && value
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        }
+        "source" => LIVE_SOURCES.contains(&value),
+        "sql" => value.len() <= crate::analysis::SQL_MAX_BYTES,
+        "query" => {
+            value.is_empty()
+                || (value.len() <= LIVE_QUERY_MAX
+                    && serde_json::from_str::<crate::ontology::aggregate::AggregateQuery>(value)
+                        .is_ok())
+        }
+        "title" => value.chars().count() <= LIVE_TITLE_MAX,
+        _ => false,
+    }
+}
+
+/// The attributes of a live block, as the editor reports them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LiveBlock {
+    pub bid: String,
+    pub source: String,
+    pub sql: String,
+    pub query: String,
+    pub title: String,
+}
+
+impl LiveBlock {
+    /// The calculation on objects, when the block holds a valid one.
+    pub fn aggregate(&self) -> Option<crate::ontology::aggregate::AggregateQuery> {
+        (self.source == "objects")
+            .then(|| serde_json::from_str(&self.query).ok())
+            .flatten()
+    }
+}
 
 /// ProseMirror mark types (formatting attributes of a `Y.XmlText`).
 pub const MARKS: &[&str] = &["em", "strong", "code", "link"];
@@ -67,6 +119,26 @@ pub fn link_allowed(href: &str) -> bool {
 /// Allowed attributes of node `name`, `None` for an unknown node.
 pub fn node_attrs(name: &str) -> Option<&'static [&'static str]> {
     NODES.iter().find(|(n, _)| *n == name).map(|(_, a)| *a)
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    #[test]
+    fn live_block_attributes_are_bounded() {
+        assert!(live_attr_ok("bid", "3f2a-91"));
+        assert!(!live_attr_ok("bid", "<b>"));
+        assert!(live_attr_ok("source", "sql") && !live_attr_ok("source", "html"));
+        assert!(live_attr_ok("query", ""));
+        assert!(live_attr_ok(
+            "query",
+            r#"{"metrics":[{"key":"value","op":"count"}]}"#
+        ));
+        assert!(!live_attr_ok("query", "{not json"));
+        assert!(!live_attr_ok("title", &"x".repeat(LIVE_TITLE_MAX + 1)));
+        assert!(!live_attr_ok("onclick", "x"));
+    }
 }
 
 /// One page in a list.

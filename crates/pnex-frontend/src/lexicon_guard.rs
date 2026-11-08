@@ -44,6 +44,13 @@ const RULES: &[Rule] = &[
         use_instead: "invite",
         allowed_keys: &["iam-", "access-"],
     },
+    // analysis.md D831: a computed block of a page is a live block.
+    Rule {
+        scope: Scope::Fr,
+        term: "bloc dynamique",
+        use_instead: "bloc vivant",
+        allowed_keys: &[],
+    },
     // analysis.md D829: a watched condition is a rule.
     Rule {
         scope: Scope::Fr,

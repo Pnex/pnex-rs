@@ -189,10 +189,16 @@ pub async fn export_pdf(
             Some(version.version_number),
         ));
     }
-    let rendered =
-        super::pdf::render_version(db, req.org_id, id, version.version_number, &req.language)
-            .await?
-            .ok_or(FlowPageError::NotFound)?;
+    let rendered = super::pdf::render_version(
+        db,
+        req.org_id,
+        id,
+        version.version_number,
+        &req.language,
+        None,
+    )
+    .await?
+    .ok_or(FlowPageError::NotFound)?;
     let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
     let asset = media_assets::ActiveModel {
         id: Set(Uuid::new_v4()),

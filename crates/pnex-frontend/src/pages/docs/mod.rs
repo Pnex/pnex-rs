@@ -3,6 +3,7 @@
 
 mod comments;
 mod editor;
+mod live;
 mod versions;
 
 use dioxus::prelude::*;

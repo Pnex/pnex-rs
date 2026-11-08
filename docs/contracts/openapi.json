@@ -1984,6 +1984,15 @@
       },
       "AnalysisQueryInput": {
         "properties": {
+          "max_age_secs": {
+            "description": "Answer with the caller's own run of the same text when one is still\nrunning or finished less than this many seconds ago (live blocks, D831).",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "sql": {
             "type": "string"
           }
@@ -38104,7 +38113,7 @@
     },
     "/api/v1/analysis/queries": {
       "post": {
-        "description": "Queues one read-only SELECT on the tables of the org and on `objects.<type>` (the objects of a type as the caller sees them), run by the pipeline worker before any pipeline: 60 s at most, 1,000 rows returned. A marked table the caller is not cleared for fails the query with `marking-required`. Read the result with `GET /analysis/queries/{id}`. One query at a time per person. Requires `analysis:run`.",
+        "description": "Queues one read-only SELECT on the tables of the org and on `objects.<type>` (the objects of a type as the caller sees them), run by the pipeline worker before any pipeline: 60 s at most, 1,000 rows returned. A marked table the caller is not cleared for fails the query with `marking-required`. Read the result with `GET /analysis/queries/{id}`. One query at a time per person; with `max_age_secs` (300 at most) the caller's own running or recent run of the same text is answered instead. Requires `analysis:run`.",
         "operationId": "analysis_queries_create",
         "parameters": [
           {
@@ -53286,7 +53295,7 @@
     },
     "/api/v1/docs/{id}/versions/{n}/pdf": {
       "get": {
-        "description": "Renders a named version as an A4 PDF attachment; an AI-generated version not yet approved carries a 'not reviewed' notice. Any member.",
+        "description": "Renders a named version as an A4 PDF attachment; an AI-generated version not yet approved carries a 'not reviewed' notice. Live blocks are computed at export with the caller's rights and dated. Any member.",
         "operationId": "docs_versions_pdf",
         "parameters": [
           {

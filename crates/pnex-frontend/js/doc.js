@@ -27,12 +27,12 @@ import { addListNodes, wrapInList, splitListItem, liftListItem, sinkListItem } f
 import { keymap } from 'prosemirror-keymap';
 import { baseKeymap, toggleMark, setBlockType, wrapIn } from 'prosemirror-commands';
 import { inputRules, wrappingInputRule, textblockTypeInputRule } from 'prosemirror-inputrules';
-import { MarkdownParser, defaultMarkdownSerializer } from 'prosemirror-markdown';
+import { MarkdownParser, MarkdownSerializer, defaultMarkdownSerializer } from 'prosemirror-markdown';
 import MarkdownIt from 'markdown-it';
 
 // ── Schema (mirror of pnex_core::pages::NODES / MARKS) ──────────────────
 // Nodes: paragraph heading blockquote horizontal_rule code_block hard_break
-// bullet_list ordered_list list_item (image removed: media blocks come in L4).
+// bullet_list ordered_list list_item live_block (image removed: media blocks come in L4).
 const LINK_SCHEMES = ['http:', 'https:', 'mailto:'];
 function linkAllowed(href) {
   const h = String(href || '').trim();
@@ -46,8 +46,18 @@ const marks = basic.spec.marks.update('link', {
   parseDOM: [{ tag: 'a[href]', getAttrs: (dom) => ({ href: dom.getAttribute('href'), title: dom.getAttribute('title') }) }],
   toDOM: (node) => ['a', { href: node.attrs.href, title: node.attrs.title, rel: 'noopener noreferrer nofollow', target: '_blank' }, 0],
 });
+// Live block (analysis.md D831): a SQL query or a calculation on objects,
+// computed by Rust under the reader's rights and drawn by LiveView. Never
+// parsed from pasted HTML: only the "/" menu creates one.
+const liveBlock = {
+  group: 'block',
+  atom: true,
+  selectable: true,
+  attrs: { bid: { default: '' }, source: { default: 'sql' }, sql: { default: '' }, query: { default: '' }, title: { default: '' } },
+  toDOM: (n) => ['div', { 'data-live-block': n.attrs.bid }],
+};
 const schema = new Schema({
-  nodes: addListNodes(basic.spec.nodes.remove('image'), 'paragraph block*', 'block'),
+  nodes: addListNodes(basic.spec.nodes.remove('image'), 'paragraph block*', 'block').addToEnd('live_block', liveBlock),
   marks,
 });
 
@@ -105,6 +115,18 @@ const COMMANDS = {
     if (dispatch) dispatch(state.tr.replaceSelectionWith(S.horizontal_rule.create()).scrollIntoView());
     return true;
   },
+  // An empty live block, whose settings Rust opens at once.
+  live: () => (state, dispatch, view) => {
+    if (!dispatch) return true;
+    const bid = crypto.randomUUID();
+    let tr = state.tr.replaceSelectionWith(S.live_block.create({ bid }));
+    // A block at the very end leaves a line to keep writing on.
+    if (!tr.doc.lastChild || tr.doc.lastChild.type === S.live_block) tr = tr.insert(tr.doc.content.size, S.paragraph.create());
+    dispatch(tr.scrollIntoView());
+    const host = view && view.dom.parentNode && view.dom.parentNode.id;
+    if (host) report(host, { request: { seq: ++seq, kind: 'live-edit', bid } });
+    return true;
+  },
   undo: () => undo,
   redo: () => redo,
 };
@@ -143,6 +165,7 @@ const BLOCK_ITEMS = [
   ['quote', '\u275D', '>'],
   ['codeblock', '</>', '```'],
   ['rule', '\u2014', '---'],
+  ['live', '\u03A3', ''],
 ];
 
 function el(tag, cls, text) {
@@ -597,6 +620,137 @@ class Provider {
   }
 }
 
+// ── Live blocks ──────────────────────────────────────────────────────────
+// Rust computes each block and hands the result over with setLiveResult:
+// {status: 'loading'|'done'|'error', note, columns, rows, more}. Text only
+// (textContent), never HTML.
+const liveResults = {};
+const liveViews = {};
+
+class LiveView {
+  constructor(node, host, labels, editable) {
+    this.node = node;
+    this.host = host;
+    this.labels = labels;
+    this.dom = el('div', 'pnex-live');
+    this.dom.contentEditable = 'false';
+    const head = el('div', 'pnex-live-head');
+    this.title = el('span', 'pnex-live-title');
+    this.note = el('span', 'pnex-live-note');
+    this.note.setAttribute('aria-live', 'polite');
+    const ask = (kind, text) => {
+      const b = el('button', 'pnex-live-btn', text);
+      b.type = 'button';
+      b.onclick = () => report(host, { request: { seq: ++seq, kind, bid: this.node.attrs.bid } });
+      return b;
+    };
+    const actions = el('div', 'pnex-live-actions');
+    actions.append(ask('live-refresh', labels.liveRefresh || ''));
+    if (editable) actions.append(ask('live-edit', labels.liveEdit || ''));
+    head.append(this.title, actions);
+    this.body = el('div', 'pnex-live-body');
+    this.dom.append(head, this.note, this.body);
+    (liveViews[host] = liveViews[host] || new Set()).add(this);
+    this.render();
+  }
+  update(node) {
+    if (node.type !== this.node.type) return false;
+    this.node = node;
+    this.render();
+    return true;
+  }
+  render() {
+    const a = this.node.attrs;
+    this.title.textContent = a.title || this.labels.liveUntitled || '';
+    const r = (liveResults[this.host] || {})[a.bid];
+    this.note.textContent = r ? r.note || '' : this.labels.liveWaiting || '';
+    this.dom.classList.toggle('is-error', !!r && r.status === 'error');
+    this.dom.classList.toggle('is-loading', !r || r.status === 'loading');
+    if (!r || r.status !== 'done') {
+      if (!r || r.status === 'error') this.body.replaceChildren();
+      return;
+    }
+    if (!r.rows.length) {
+      this.body.replaceChildren(el('p', 'pnex-live-empty', this.labels.liveNoRows || ''));
+      return;
+    }
+    // One number: shown as a figure, not a one-cell table.
+    if (r.rows.length === 1 && r.columns.length === 1) {
+      this.body.replaceChildren(el('div', 'pnex-live-figure', r.rows[0][0]), el('div', 'pnex-live-caption', r.columns[0]));
+      return;
+    }
+    const wrap = el('div', 'pnex-live-scroll');
+    const table = el('table', 'pnex-live-table');
+    const thead = el('thead');
+    const hr = el('tr');
+    r.columns.forEach((c) => hr.append(el('th', null, c)));
+    thead.append(hr);
+    const tbody = el('tbody');
+    r.rows.forEach((row) => {
+      const tr = el('tr');
+      // Numbers stay on one line, aligned right.
+      row.forEach((c) => tr.append(el('td', /^[-+]?[\d\s.,]+(?:\s?[A-Z]{3})?$/.test(c) ? 'is-num' : null, c)));
+      tbody.append(tr);
+    });
+    table.append(thead, tbody);
+    wrap.append(table);
+    this.body.replaceChildren(wrap);
+    if (r.more) this.body.append(el('p', 'pnex-live-empty', r.more));
+  }
+  stopEvent() {
+    return true;
+  }
+  ignoreMutation() {
+    return true;
+  }
+  destroy() {
+    const set = liveViews[this.host];
+    if (set) set.delete(this);
+  }
+}
+
+// Reports the live blocks of the page to Rust when they change.
+function livePlugin(host) {
+  let last = '';
+  const send = (view) => {
+    const list = [];
+    view.state.doc.descendants((n) => {
+      if (n.type === S.live_block) list.push({ ...n.attrs });
+      return n.isBlock && !n.isTextblock;
+    });
+    const key = JSON.stringify(list);
+    if (key !== last) {
+      last = key;
+      report(host, { blocks: list });
+    }
+  };
+  return new Plugin({
+    view: (view) => {
+      send(view);
+      return { update: send };
+    },
+  });
+}
+
+// Markdown: a SQL block becomes its query, a calculation its title.
+const mdSerializer = new MarkdownSerializer(
+  {
+    ...defaultMarkdownSerializer.nodes,
+    live_block(state, node) {
+      if (node.attrs.source === 'sql' && node.attrs.sql) {
+        state.write('```sql\n');
+        state.text(node.attrs.sql, false);
+        state.ensureNewLine();
+        state.write('```');
+      } else {
+        state.text(node.attrs.title || '', true);
+      }
+      state.closeBlock(node);
+    },
+  },
+  defaultMarkdownSerializer.marks,
+);
+
 // ── Editor ───────────────────────────────────────────────────────────────
 function makeView(host, doc, opts, extra) {
   const el = document.getElementById(host);
@@ -627,8 +781,10 @@ function makeView(host, doc, opts, extra) {
       handlePlugin(labels),
     );
   }
+  plugins.push(livePlugin(host));
   return new EditorView(el, {
     state: EditorState.create({ schema, plugins }),
+    nodeViews: { live_block: (node) => new LiveView(node, host, labels, !!opts.editable) },
     editable: () => !!opts.editable,
     attributes: { class: 'pnex-doc-content', spellcheck: 'true' },
   });
@@ -651,7 +807,7 @@ function blocksOf(pm) {
   const out = [];
   pm.descendants((n) => {
     if (n.isTextblock || n.isLeaf) {
-      out.push(n.type.name + '\u0000' + n.textContent);
+      out.push(n.type.name + '\u0000' + (n.type === S.live_block ? n.attrs.title : n.textContent));
       return false;
     }
     return true;
@@ -725,6 +881,8 @@ window.pnexDoc = {
     ed.doc.destroy();
     delete editors[host];
     delete window.__pnexDoc[host];
+    delete liveResults[host];
+    delete liveViews[host];
   },
   // Header command (undo, redo).
   command(host, name) {
@@ -776,7 +934,29 @@ window.pnexDoc = {
   },
   exportMarkdown(host) {
     const ed = editors[host];
-    return ed ? defaultMarkdownSerializer.serialize(ed.view.state.doc) : '';
+    return ed ? mdSerializer.serialize(ed.view.state.doc) : '';
+  },
+  // Result of a live block, computed by Rust.
+  setLiveResult(host, bid, result) {
+    (liveResults[host] = liveResults[host] || {})[bid] = result;
+    (liveViews[host] || new Set()).forEach((v) => {
+      if (v.node.attrs.bid === bid) v.render();
+    });
+    return true;
+  },
+  // New settings of a live block (an ordinary, undoable edit).
+  setLive(host, bid, attrs) {
+    const ed = editors[host];
+    if (!ed) return false;
+    let at = -1;
+    ed.view.state.doc.descendants((n, pos) => {
+      if (at < 0 && n.type === S.live_block && n.attrs.bid === bid) at = pos;
+      return at < 0;
+    });
+    if (at < 0) return false;
+    const node = ed.view.state.doc.nodeAt(at);
+    ed.view.dispatch(ed.view.state.tr.setNodeMarkup(at, null, { ...node.attrs, ...attrs, bid }));
+    return true;
   },
   // Appends the parsed Markdown at the end of the page.
   importMarkdown(host, md) {
@@ -880,6 +1060,25 @@ window.pnexDoc = {
 .pnex-doc-bubble-btn.is-bold{font-weight:700}
 .pnex-doc-bubble-btn.is-italic{font-style:italic;font-family:Georgia,serif}
 .pnex-doc-bubble-btn.is-code{font:12px ui-monospace,monospace}
+.pnex-live{margin:8px 0;border:1px solid rgba(var(--pd-ink-rgb),.14);border-radius:8px;padding:10px 12px;background:var(--pd-surface)}
+.pnex-live.ProseMirror-selectednode{outline:2px solid #8cf}
+.pnex-live.is-error .pnex-live-note{color:#b91c1c}
+.pnex-live.is-loading .pnex-live-body{opacity:.55}
+.pnex-live-head{display:flex;align-items:flex-start;gap:10px;font-size:13px}
+.pnex-live-title{flex:1;min-width:0;font-weight:600;color:var(--pd-ink);overflow-wrap:break-word}
+.pnex-live-actions{display:flex;gap:6px;flex:none}
+.pnex-live-note{display:block;margin-top:2px;font-size:12px;color:rgba(var(--pd-ink-rgb),.55);font-variant-numeric:tabular-nums}
+.pnex-live-btn{border:1px solid rgba(var(--pd-ink-rgb),.16);background:transparent;border-radius:6px;padding:2px 8px;font:inherit;font-size:12px;color:var(--pd-ink);cursor:pointer}
+.pnex-live-btn:hover{background:rgba(var(--pd-ink-rgb),.06)}
+.pnex-live-btn:focus-visible{outline:2px solid #2383e2;outline-offset:1px}
+.pnex-live-body{margin-top:8px;transition:opacity .15s}
+.pnex-live-scroll{overflow-x:auto;max-height:24rem;overflow-y:auto}
+.pnex-live-table{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+.pnex-live-table th{position:sticky;top:0;background:var(--pd-surface);text-align:left;font-weight:600;border-bottom:1px solid rgba(var(--pd-ink-rgb),.2);padding:4px 8px;white-space:nowrap}
+.pnex-live-table td{border-bottom:1px solid rgba(var(--pd-ink-rgb),.08);padding:4px 8px;min-width:7rem;max-width:24rem;overflow-wrap:break-word;vertical-align:top}
+.pnex-live-table td.is-num{min-width:0;white-space:nowrap;text-align:right}
+.pnex-live-figure{font-size:2rem;font-weight:600;line-height:1.1;font-variant-numeric:tabular-nums;color:var(--pd-ink)}
+.pnex-live-caption,.pnex-live-empty{font-size:13px;color:rgba(var(--pd-ink-rgb),.55);margin:2px 0 0}
 .pnex-doc-bubble-sep{width:1px;height:18px;margin:0 3px;background:rgba(var(--pd-ink-rgb),.16)}
 `;
   document.head.appendChild(s);

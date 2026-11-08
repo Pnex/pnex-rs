@@ -44,7 +44,7 @@ async fn read(
 }
 
 /// `10 EUR · 5 USD`, in a fixed order.
-fn money_text(v: &AggregateValue, decimals: u8) -> String {
+pub(crate) fn money_text(v: &AggregateValue, decimals: u8) -> String {
     let d = decimals as usize;
     v.by_currency
         .iter()
@@ -54,7 +54,7 @@ fn money_text(v: &AggregateValue, decimals: u8) -> String {
 }
 
 /// The number of a value: its value, or its only currency's.
-fn single(v: &AggregateValue) -> Option<f64> {
+pub(crate) fn single(v: &AggregateValue) -> Option<f64> {
     v.value.or_else(|| match v.by_currency.len() {
         1 => v.by_currency.values().next().copied(),
         _ => None,
@@ -69,7 +69,7 @@ fn day_secs(day: &str) -> Option<f64> {
 
 /// What a group is called: the object's title, the enum's label, the date;
 /// the objects without a value have their own line.
-fn group_label(
+pub(crate) fn group_label(
     g: &AggregateGroup,
     types: &[pnex_core::ontology::api::ObjectTypeView],
     type_key: Option<&str>,

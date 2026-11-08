@@ -44,7 +44,11 @@ fn check_node<T: ReadTxn>(txn: &T, node: XmlOut, depth: usize) -> Result<(), Inv
                 if !allowed.contains(&key) {
                     return Err(Invalid(format!("attribute `{key}` on `{tag}`")));
                 }
-                check_attr(key, &value)?;
+                if tag.as_ref() == pnex_core::pages::LIVE_BLOCK {
+                    check_live_attr(key, &value)?;
+                } else {
+                    check_attr(key, &value)?;
+                }
             }
             for child in el.children(txn) {
                 check_node(txn, child, depth + 1)?;
@@ -88,6 +92,14 @@ fn check_attr(key: &str, value: &Out) -> Result<(), Invalid> {
         Ok(())
     } else {
         Err(Invalid(format!("attribute `{key}` out of range")))
+    }
+}
+
+/// Live block attributes are bounded strings (D831).
+fn check_live_attr(key: &str, value: &Out) -> Result<(), Invalid> {
+    match value {
+        Out::Any(Any::String(s)) if pnex_core::pages::live_attr_ok(key, s) => Ok(()),
+        _ => Err(Invalid(format!("live block attribute `{key}`"))),
     }
 }
 
@@ -181,6 +193,27 @@ mod tests {
             t.insert_with_attributes(txn, 0, "x", link("javascript:alert(1)"));
         });
         assert!(validate(&js).is_err());
+    }
+
+    #[test]
+    fn live_block_takes_bounded_string_attributes() {
+        let ok = page(|txn, root| {
+            let b = root.push_back(txn, XmlElementPrelim::empty("live_block"));
+            b.insert_attribute(txn, "bid", "a1-b2");
+            b.insert_attribute(txn, "source", "sql");
+            b.insert_attribute(txn, "sql", "SELECT 1");
+        });
+        assert_eq!(validate(&ok), Ok(()));
+        let bad = page(|txn, root| {
+            let b = root.push_back(txn, XmlElementPrelim::empty("live_block"));
+            b.insert_attribute(txn, "source", "script");
+        });
+        assert!(validate(&bad).is_err());
+        let number = page(|txn, root| {
+            let b = root.push_back(txn, XmlElementPrelim::empty("live_block"));
+            b.insert_attribute(txn, "title", 3);
+        });
+        assert!(validate(&number).is_err());
     }
 
     /// State written by the real editor stack (Yjs 13.6 + y-prosemirror 1.3,

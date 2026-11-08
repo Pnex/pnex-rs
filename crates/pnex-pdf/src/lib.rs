@@ -62,6 +62,12 @@ pub enum Block {
     Quote(Vec<Span>),
     Rule,
     Code(String),
+    /// A header row and rows of text; columns of equal width, each cell on
+    /// one line, cut with "…" when too long.
+    Table {
+        columns: Vec<String>,
+        rows: Vec<Vec<String>>,
+    },
 }
 
 /// What surrounds the content.
@@ -312,6 +318,48 @@ impl<'f> Layout<'f> {
         }
     }
 
+    /// `text` cut with "…" to fit `max` points.
+    fn fit(&self, text: &str, face: Face, size: f32, max: f32) -> String {
+        let mut t: String = text.chars().take(CUT_PROBE).collect();
+        if t.chars().count() == text.chars().count() && self.fonts.width(face, &t, size) <= max {
+            return t;
+        }
+        while !t.is_empty() && self.fonts.width(face, &format!("{t}…"), size) > max {
+            t.pop();
+        }
+        format!("{t}…")
+    }
+
+    fn table_row(&mut self, cells: &[String], n: usize, face: Face) {
+        let size = BODY - 1.5;
+        let line_h = size * LEADING + 4.0;
+        let width = PAGE_W - 2.0 * MARGIN_X;
+        let col_w = width / n as f32;
+        self.reserve(line_h);
+        let y = self.y + size + 2.0;
+        let pieces = cells
+            .iter()
+            .take(n)
+            .enumerate()
+            .map(|(i, c)| Piece {
+                x: MARGIN_X + i as f32 * col_w + 2.0,
+                text: self.fit(c, face, size, col_w - 6.0),
+                face,
+                size,
+                color: (30, 41, 59),
+            })
+            .collect();
+        self.push(Item::Text { y, pieces });
+        self.y += line_h;
+        self.push(Item::Bar {
+            x: MARGIN_X,
+            y: self.y - 2.0,
+            w: width,
+            h: 0.4,
+            color: (226, 232, 240),
+        });
+    }
+
     fn block(&mut self, b: &Block) {
         let body = (30, 41, 59);
         match b {
@@ -394,6 +442,14 @@ impl<'f> Layout<'f> {
                     } else {
                         self.text(&[span], MARGIN_X + INDENT / 2.0, size, false, (51, 65, 85));
                     }
+                }
+                self.y += BODY * 0.6;
+            }
+            Block::Table { columns, rows } => {
+                let n = columns.len().max(1);
+                self.table_row(columns, n, Face::Bold);
+                for r in rows {
+                    self.table_row(r, n, Face::Regular);
                 }
                 self.y += BODY * 0.6;
             }
@@ -565,6 +621,25 @@ mod tests {
         assert!(started.elapsed().as_secs() < 60, "{:?}", started.elapsed());
     }
     use super::*;
+
+    #[test]
+    fn a_table_cuts_long_cells_and_breaks_pages() {
+        let long = "bartholomew.fitzgerald@northwind-industries-holdings.example.com".repeat(4);
+        let rows: Vec<Vec<String>> = (0..120)
+            .map(|i| vec![format!("{i}"), long.clone(), String::new()])
+            .collect();
+        let fonts = Fonts::load().unwrap();
+        let mut l = Layout::new(&fonts);
+        l.block(&Block::Table {
+            columns: vec!["n".into(), "email".into(), "empty".into()],
+            rows,
+        });
+        assert!(l.pages.len() > 1, "120 rows span pages");
+        let Item::Text { pieces, .. } = &l.pages[0][2] else {
+            panic!("a row")
+        };
+        assert!(pieces[1].text.ends_with('…'));
+    }
 
     fn bold(t: &str) -> Span {
         Span {
