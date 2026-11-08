@@ -143,6 +143,47 @@ fn luhn(args: &[ColumnarValue]) -> DfResult<ColumnarValue> {
     Ok(ColumnarValue::Array(Arc::new(out)))
 }
 
+/// Key of `pseudonym()` for one org (governance.md D805): derived from the worker's
+/// master key and the org, never stored, the same for every run of that org.
+pub fn org_key(master: &[u8], org_id: i64) -> [u8; 32] {
+    use hmac::{Hmac, Mac};
+    let mut mac = <Hmac<sha2::Sha256> as Mac>::new_from_slice(master)
+        .unwrap_or_else(|_| unreachable!("HMAC takes a key of any length"));
+    mac.update(format!("pseudonym:{org_id}").as_bytes());
+    mac.finalize().into_bytes().into()
+}
+
+/// `pseudonym(text)`: a stable stand-in for a value, the same within an org so that
+/// joins still match, telling nothing of the value without the key (D805).
+pub fn register_pseudonym(ctx: &SessionContext, key: [u8; 32]) {
+    let f = move |args: &[ColumnarValue]| -> DfResult<ColumnarValue> {
+        use hmac::{Hmac, Mac};
+        let input = text_arg(args)?;
+        let out: StringArray = as_text(&input)?
+            .iter()
+            .map(|v| {
+                v.map(|v| {
+                    let mut mac = <Hmac<sha2::Sha256> as Mac>::new_from_slice(&key)
+                        .unwrap_or_else(|_| unreachable!("HMAC takes a key of any length"));
+                    mac.update(v.as_bytes());
+                    mac.finalize().into_bytes()[..16]
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<String>()
+                })
+            })
+            .collect();
+        Ok(ColumnarValue::Array(Arc::new(out)))
+    };
+    ctx.register_udf(create_udf(
+        "pseudonym",
+        vec![DataType::Utf8],
+        DataType::Utf8,
+        Volatility::Immutable,
+        Arc::new(f),
+    ));
+}
+
 /// How a session joins.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Joins {
@@ -410,5 +451,43 @@ mod tests {
         let windows = datafusion::functions_window::all_default_window_functions();
         let windows = windows.iter().map(|f| f.name().to_string()).collect();
         assert_eq!(missing(WINDOW_FUNCTIONS, windows), Vec::<&str>::new());
+    }
+
+    #[tokio::test]
+    async fn a_pseudonym_is_stable_in_an_org_and_differs_across_orgs() {
+        let master = b"test-master-key-of-at-least-32-bytes!";
+        let one =
+            |org: i64| async move {
+                let ctx = with_table().await;
+                register_pseudonym(&ctx, org_key(master, org));
+                let batches = ctx
+                .sql("SELECT pseudonym('ada@example.org') AS a, pseudonym('ada@example.org') AS b, \
+                      pseudonym('bob@example.org') AS c, pseudonym(NULL) AS n")
+                .await
+                .unwrap()
+                .collect()
+                .await
+                .unwrap();
+                let col = |i: usize| {
+                    let a = batches[0]
+                        .column(i)
+                        .as_any()
+                        .downcast_ref::<StringArray>()
+                        .unwrap();
+                    (!a.is_null(0)).then(|| a.value(0).to_string())
+                };
+                (col(0), col(1), col(2), col(3))
+            };
+        let (a, b, c, n) = one(1).await;
+        assert_eq!(a, b, "stable: joins still match");
+        assert_ne!(a, c);
+        assert_eq!(a.as_ref().map(String::len), Some(32));
+        assert!(!a.as_ref().unwrap().contains("ada"));
+        assert_eq!(n, None, "NULL stays NULL");
+        let (other, ..) = one(2).await;
+        assert_ne!(a, other, "another org, another stand-in");
+        // Without the key the function does not exist: the transform fails.
+        let ctx = with_table().await;
+        assert!(ctx.sql("SELECT pseudonym('x')").await.is_err());
     }
 }

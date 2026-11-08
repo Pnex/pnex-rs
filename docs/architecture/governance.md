@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 à G4 codés le 2026-11-08** (§7) |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 à G5 codés le 2026-11-08** (§7) |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; D715 : aucun client réel avant OP3 |
 | Repose sur | `iam.md` (D285–D299, I4, I5), `crm.md` (D442 classification, D443 masquage, D446 effacement), `data-pipelines.md` (D569–D578, lignage), `connectors.md` |
 | Numérotation | **D798…D806**, lots **G1…G7** |
@@ -84,8 +84,8 @@ seul ; une proposition refusée ne revient pas pour la même colonne.
 
 ### D805 — La pseudonymisation remplace la valeur à l'écriture
 
-Fonction SQL `pseudonym(col)` des pipelines : HMAC-SHA256 de la valeur avec une clé par org (au
-coffre, jamais montrée), encodée en hexadécimal court. Stable dans l'org : les jointures marchent.
+Fonction SQL `pseudonym(col)` des pipelines : HMAC-SHA256 de la valeur avec une clé par org,
+encodée en hexadécimal court (la clé est dérivée d'une clé maître du worker, §7 G5). Stable dans l'org : les jointures marchent.
 La valeur réelle n'entre pas dans la table dérivée, qui peut alors perdre le marquage par
 déclassification justifiée (D802). Pas de réidentification dans PneX.
 
@@ -165,3 +165,11 @@ chaque version non lue (`datasets.detected_seq`, migration 000129), table déjà
 Proposition `dataset_mark` (une par colonne, jamais reproposée après refus), acceptée seulement par
 une personne avec `governance:write` : la table reçoit le marquage `personal`, créé au premier
 accord. Choix à relire : un seul marquage proposé (`personal`), quelle que soit la catégorie.
+
+**G5 (2026-11-08)** : `pseudonym(text)` dans le moteur du worker (`engine::register_pseudonym`) :
+HMAC-SHA256, 16 premiers octets en hexadécimal, NULL conservé. Écart à D805 : la clé n'est pas au
+coffre (le worker n'y a aucun accès, par conception) ; elle est **dérivée** par HMAC de
+`pseudonym:<org>` avec une clé maître `PNEX_PSEUDONYM_KEY` (32 octets au moins) de l'environnement
+du worker. Sans elle, la fonction n'existe pas et la transformation échoue. **À faire hors dépôt** :
+la clé dans le chart `pipelineWorker` de `pnex-deploy`, en secret ; la changer change tous les
+pseudonymes.

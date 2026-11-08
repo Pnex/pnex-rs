@@ -35,6 +35,6 @@ A **webhook** connector receives the calls another system sends to its own addre
 - ***connector-rest-host-changed*.** The API sent a next page on another host; the import stopped and kept nothing from that run.
 - **A run stays queued, then ends in *build-timeout*.** No pipeline worker is running on this server: ask the platform admin.
 - ***pipeline-input-missing* or *pipeline-input-empty*.** A table read does not exist or has no version: load it or run what fills it.
-- ***pipeline-sql-invalid*.** The query was refused: it can only read, and only the tables listed in the transform, under the names given there.
+- ***pipeline-sql-invalid*.** The query was refused: it can only read, and only the tables listed in the transform, under the names given there. To keep a personal value out of a computed table while still joining on it, write `pseudonym(column)`: the same value gives the same stand-in within the organization, and the real value never enters the new table.
 - ***dataset-unchanged*.** The file is identical to the current version: nothing new was kept.
 - ***dataset-schema-mismatch*.** The columns of the file differ from those of the table: create another table, or fix the file.

@@ -64,6 +64,9 @@ pub struct Config {
     /// All the transforms of a run together: the worker runs one at a time, and a
     /// long document must not hold every other org back.
     pub run_timeout: Duration,
+    /// Master key of `pseudonym()` (governance.md D805); without it the function
+    /// does not exist and a transform calling it fails.
+    pub pseudonym_key: Option<Vec<u8>>,
 }
 
 fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
@@ -102,6 +105,11 @@ impl Config {
                 3600u64,
             )),
             run_timeout: Duration::from_secs(env_or("PNEX_PIPELINE_RUN_TIMEOUT_SECS", 4 * 3600u64)),
+            // At least 32 bytes: a short key would make the stand-ins guessable.
+            pseudonym_key: std::env::var("PNEX_PSEUDONYM_KEY")
+                .ok()
+                .filter(|k| k.len() >= 32)
+                .map(String::into_bytes),
         })
     }
 }
@@ -654,10 +662,14 @@ impl Worker {
     /// A session holding the inputs of one transform.
     async fn session(
         &self,
+        org_id: i64,
         inputs: &[Input],
         joins: engine::Joins,
     ) -> Result<SessionContext, DataFusionError> {
         let ctx = engine::session(&self.config.limits, joins)?;
+        if let Some(master) = &self.config.pseudonym_key {
+            engine::register_pseudonym(&ctx, engine::org_key(master, org_id));
+        }
         let url = format!("s3://{}", self.config.s3_bucket)
             .parse::<url::Url>()
             .map_err(|e| DataFusionError::External(Box::new(e)))?;
@@ -710,7 +722,7 @@ impl Worker {
             let mut joins = engine::Joins::Hash;
             let written = loop {
                 let ctx = self
-                    .session(&inputs, joins)
+                    .session(org_id, &inputs, joins)
                     .await
                     .map_err(|e| Failure::of_engine(&t.output, e))?;
                 match self.write_query(&ctx, t, &key, room, &erased).await {

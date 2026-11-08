@@ -10639,6 +10639,7 @@ dependencies = [
  "bytes",
  "datafusion",
  "futures",
+ "hmac 0.12.1",
  "object_store",
  "pnex-core",
  "pnex-migration",

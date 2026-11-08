@@ -42,6 +42,7 @@ fn config() -> Config {
         },
         transform_timeout: Duration::from_secs(60),
         run_timeout: Duration::from_secs(300),
+        pseudonym_key: Some(b"test-master-key-of-at-least-32-bytes!".to_vec()),
     }
 }
 
