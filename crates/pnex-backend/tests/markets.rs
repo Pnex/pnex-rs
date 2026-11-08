@@ -1475,7 +1475,8 @@ async fn world_events_volume() {
 }
 
 /// F6: the subsidiaries a (fictitious) group declares in the Exhibit 21 of
-/// its 10-K become organizations linked to it, read once per filing.
+/// its 10-K become organizations linked to it, read once per filing. A
+/// link starts at the filing date and closes when a later report drops it.
 #[tokio::test]
 #[serial]
 async fn exhibit_21_subsidiaries_become_organizations() {
@@ -1496,6 +1497,7 @@ async fn exhibit_21_subsidiaries_become_organizations() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let dir = "/Archives/edgar/data/42/000004226000001";
+        let dir2 = "/Archives/edgar/data/42/000004227000001";
         let app = Router::new()
             .route(
                 &format!("{dir}/0000042-26-000001-index.htm"),
@@ -1516,6 +1518,23 @@ async fn exhibit_21_subsidiaries_become_organizations() {
                          <tr><td>Acme Widgets (UK) Limited</td><td>England and Wales</td></tr></table>",
                     )
                 }),
+            )
+            .route(
+                &format!("{dir2}/0000042-27-000001-index.htm"),
+                get(move || async move {
+                    axum::response::Html(format!(
+                        "<table><tr><td>5</td><td><a href=\"{dir2}/ex21.htm\">ex21.htm</a></td><td>EX-21</td></tr></table>"
+                    ))
+                }),
+            )
+            .route(
+                &format!("{dir2}/ex21.htm"),
+                get(|| async {
+                    axum::response::Html(
+                        "<table><tr><td>Acme Widgets LLC</td><td>Delaware</td></tr>\
+                         <tr><td>Acme Widgets B.V.</td><td>Netherlands</td></tr></table>",
+                    )
+                }),
             );
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         pnex_backend::services::markets::allow_test_host(&base);
@@ -1533,8 +1552,8 @@ async fn exhibit_21_subsidiaries_become_organizations() {
             .call(
                 "POST",
                 "/api/v1/ontology/objects",
-                Some(json!({"type_key": "filing", "title": "10-K 2026-02-01",
-                            "properties": {"accession": "0000042-26-000001", "form": "10-K",
+                Some(json!({"type_key": "filing", "title": "10-K 2025-02-01",
+                            "properties": {"accession": "0000042-26-000001", "form": "10-K", "filed_on": "2025-02-01",
                                            "url": format!("{base}{dir}/acme-10k.htm"), "document_state": "kept"}})),
             )
             .await;
@@ -1572,6 +1591,58 @@ async fn exhibit_21_subsidiaries_become_organizations() {
             .call("GET", &format!("/api/v1/ontology/objects/{}", filing["id"].as_str().unwrap()), None)
             .await;
         assert_eq!(f["properties"]["subsidiaries_state"], "read", "{f}");
+        let parent_id = parent["id"].as_str().unwrap();
+        let from = count(
+            &db,
+            format!(
+                "SELECT count(*) AS n FROM resource_edges WHERE org_id = {org} AND relation = 'subsidiary_of' \
+                 AND target_object_id = '{parent_id}' AND valid_from = '2025-02-01T00:00:00Z'"
+            ),
+        )
+        .await;
+        assert_eq!(from, 3, "each link starts at the filing date");
+
+        // The next report drops the British subsidiary: its link closes then.
+        let (st, next) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/objects",
+                Some(json!({"type_key": "filing", "title": "10-K 2026-02-01",
+                            "properties": {"accession": "0000042-27-000001", "form": "10-K", "filed_on": "2026-02-01",
+                                           "url": format!("{base}{dir2}/acme-10k.htm"), "document_state": "kept"}})),
+            )
+            .await;
+        assert_eq!(st, 201, "{next}");
+        let (st, r) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/links",
+                Some(json!({"link_type": "filed_by", "source_id": next["id"], "target_id": parent["id"]})),
+            )
+            .await;
+        assert_eq!(st, 201, "{r}");
+        pnex_backend::services::markets::documents::sweep(&ctx).await.unwrap();
+        let uk = object_id(&db, org, "organization", "declared_key", "GB|ACME WIDGETS UK LIMITED")
+            .await
+            .expect("British subsidiary");
+        let closed = count(
+            &db,
+            format!(
+                "SELECT count(*) AS n FROM resource_edges WHERE org_id = {org} AND relation = 'subsidiary_of' \
+                 AND source_object_id = '{uk}' AND valid_to = '2026-02-01T00:00:00Z'"
+            ),
+        )
+        .await;
+        assert_eq!(closed, 1, "dropped from the later report");
+        let open = count(
+            &db,
+            format!(
+                "SELECT count(*) AS n FROM resource_edges WHERE org_id = {org} AND relation = 'subsidiary_of' \
+                 AND target_object_id = '{parent_id}' AND valid_to IS NULL AND valid_from = '2025-02-01T00:00:00Z'"
+            ),
+        )
+        .await;
+        assert_eq!(open, 2, "still declared, still dated from the first report");
     })
     .await;
 }

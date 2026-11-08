@@ -117,7 +117,7 @@ async fn exhibits(ctx: &AppContext) -> Result<(), sea_orm::DbErr> {
            AND properties ->> 'form' IN ('10-K', '10-K405', '10-KT') \
            AND properties ->> 'url' LIKE ANY($3) \
            AND NOT properties ? $1 \
-         ORDER BY random() LIMIT $2",
+         ORDER BY properties ->> 'filed_on' NULLS FIRST, id LIMIT $2",
         vec![EXHIBIT_STATE.into(), PER_SWEEP.into(), prefixes.into()],
     ))
     .all(&ctx.db)
@@ -221,7 +221,12 @@ async fn subsidiaries(ctx: &AppContext, filing: &Pending) {
 
 /// Each declared subsidiary as an organization found again by its country
 /// and name, linked to the filer by `subsidiary_of` (nature `declared`, the
-/// exhibit as source). Returns how many links were opened.
+/// exhibit as source), from the filing date. A declared link whose
+/// subsidiary is missing from the filer's latest report is closed at that
+/// report's date. Returns how many links were opened.
+// shortcut: reports are swept oldest first, so a report read after a newer
+// one (an older filing imported later) neither closes nor back-dates links;
+// rebuild the intervals from every report if that case shows up.
 async fn write_subsidiaries(
     ctx: &AppContext,
     filing: &Pending,
@@ -249,9 +254,17 @@ async fn write_subsidiaries(
     };
     let actor = actor(org);
     let s = schema(&ctx.db, org).await?;
+    let filed_on = filing
+        .properties
+        .get("filed_on")
+        .and_then(Value::as_str)
+        .filter(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok())
+        .map(str::to_string);
+    let since = filed_on.as_deref().map(|d| format!("{d}T00:00:00Z"));
     changes::deferred(async {
         let txn = ctx.db.begin().await?;
         let mut opened = 0;
+        let mut listed = Vec::with_capacity(found.len());
         for d in found {
             let key = d.key();
             let sub = match objects::find_by_key(&txn, org, "organization", "declared_key", &json!(key)).await? {
@@ -277,6 +290,7 @@ async fn write_subsidiaries(
             if sub == parent {
                 continue;
             }
+            listed.push(sub);
             let exists = txn
                 .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
@@ -302,18 +316,65 @@ async fn write_subsidiaries(
                     source_id: sub.to_string(),
                     target_id: parent.to_string(),
                     attributes: attrs,
-                    valid_from: None,
+                    valid_from: since.clone(),
                     valid_to: None,
                 },
             )
             .await?;
             opened += 1;
         }
+        if let Some(day) = &filed_on {
+            close_dropped(&txn, org, &actor, parent, &listed, day, since.as_deref()).await?;
+        }
         txn.commit().await?;
         changes::flush();
         Ok(opened)
     })
     .await
+}
+
+/// Closes the declared links of `parent` whose subsidiary this report no
+/// longer lists, when no newer report of the filer was read already.
+async fn close_dropped<C: ConnectionTrait>(
+    db: &C,
+    org: i64,
+    actor: &Actor,
+    parent: Uuid,
+    listed: &[Uuid],
+    day: &str,
+    at: Option<&str>,
+) -> Result<(), crate::services::ontology::OntologyError> {
+    use crate::services::ontology::links;
+    let newer = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 AS x FROM resource_edges e JOIN objects o ON o.id = e.source_object_id \
+             WHERE e.org_id = $1 AND e.relation = 'filed_by' AND e.target_object_id = $2 \
+               AND e.valid_to IS NULL AND o.valid_to IS NULL AND o.type_key = 'filing' \
+               AND o.properties ->> $3 = 'read' AND o.properties ->> 'filed_on' > $4 LIMIT 1",
+            vec![org.into(), parent.into(), EXHIBIT_STATE.into(), day.into()],
+        ))
+        .await?;
+    if newer.is_some() {
+        return Ok(());
+    }
+    let dropped = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id FROM resource_edges WHERE org_id = $1 AND relation = 'subsidiary_of' \
+               AND target_object_id = $2 AND valid_to IS NULL AND attributes ->> 'nature' = 'declared' \
+               AND NOT (source_object_id = ANY($3))",
+            vec![org.into(), parent.into(), listed.to_vec().into()],
+        ))
+        .await?;
+    for row in dropped {
+        let id: i64 = row.try_get("", "id")?;
+        // A link opened before links were dated starts after the report: left open.
+        if let Err(e) = links::close(db, org, actor, id, at).await {
+            tracing::info!(link = id, error = %e, "declared subsidiary link not closed");
+        }
+    }
+    Ok(())
 }
 
 async fn contact<C: ConnectionTrait>(db: &C, org_id: i64) -> Option<String> {
