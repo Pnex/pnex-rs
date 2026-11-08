@@ -695,6 +695,15 @@ MK11 codé, non poussé. Pièces :
 - Pack `markets` 1.6.0 : `history_trade_symbols` (vide) et `history_trade_from` (vide = un mois en arrière) ; 4 jours par passage.
 - Le service est refait autour d'un `Job` (bougies, ticks, transactions) : réglages, plan, budget et lecture par source, une seule boucle de passage.
 - **Écart à l'acceptation** : « 20 symboles sur 5 ans sous un quota de 2 To » est impossible sur la machine de dev (≈ 100 Go libres). La mesure est faite à échelle réduite, voir plus bas.
+- **Mesure de la vue courante (2026-11-09, test `the_view_holds_many_appends`)** : une table, transactions `append` d'une ligne, base et stockage locaux.
+
+  | Transactions | Liste des fichiers | Aperçu (200 lignes) | Lecture de la table |
+  |---|---|---|---|
+  | 1 000 | 86 ms | 129 ms | 13 ms |
+  | 10 000 | 48 ms | 77 ms | 11 ms |
+  | 100 000 | 431 ms | 438 ms | 30 ms |
+
+  La vue tient à 10⁵ : **le compactage mensuel prévu par D808 n'est pas nécessaire à cette échelle**. Pour comparer : 236 partitions pour deux symboles Binance depuis 2017, 36 fichiers par paire HistData, 36 500 jours pour 20 symboles de transactions sur 5 ans. L'écriture, elle, ralentit : 37 ms par `append` sur les 10 000 premières, 54 ms en moyenne sur les 100 000 (1 h 31). La place restante (`room`) additionne à chaque écriture les octets de toutes les transactions de l'org ; à reprendre (compteur tenu au commit) si une charge réelle le montre.
 
 #### MK14 (lecture pour l'entraînement)
 
