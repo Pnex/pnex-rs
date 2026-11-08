@@ -1228,7 +1228,7 @@ thèse avec journal et positions fictives, test de règle point-in-time
 (`known_at`). Ni temps réel actions, ni ordre passé, ni signal diffusé.
 Premier ensemble utile sans LLM : MK0 → MK2 + MK4.
 
-### P2.36 — Plateforme opérationnelle complète (ajout 2026-11-03) — **OP1 en grande partie livré, OP2 (connecteurs) et OP3 (gouvernance) codés le 2026-11-08, agrégats d'OP5 codés**
+### P2.36 — Plateforme opérationnelle complète (ajout 2026-11-03) — **OP1 en grande partie livré ; OP2, OP3, OP5 (hors AN4) et OP9 codés le 2026-11-08 ; état réel : `operational-platform.md` §11**
 
 Doc : `operational-platform.md` (D551–D568, lots OP1–OP15). Chaque lot a son
 PRD avant le code. La priorité en cours (robustesse et tests) et P0 passent
@@ -1249,11 +1249,11 @@ failles (demande du 2026-11-05, D728).
 | OP2 | Cadre de connecteurs (`connectors.md`, D791–D797) : PostgreSQL, MySQL sous TLS, REST générique, lecture incrémentale par curseur, webhooks entrants, écran — codés le 2026-11-08 ; écriture retour à OP9, tables virtuelles après OP3, stockage cloud réduit au S3 de PneX (D796) |
 | OP3 | Gouvernance (`governance.md`, D798–D806) : marquages, habilitations à finalité, héritage par lignage, objets masqués, détection proposée, `pseudonym()`, export d'une personne, écrans — codés le 2026-11-08 ; SAML à la demande, I4 général (droits par ligne de toutes les listes) ensuite |
 | OP4 | Branches transverses, interfaces d'ontologie |
-| OP5 | Agrégats (`object-aggregates.md`, D579–D588, validé et codé le 2026-11-04 ; passe avant OP1), analyse sans code, SQL en lecture, règles avec rejeu, blocs vivants |
+| OP5 | Agrégats (`object-aggregates.md`, D579–D588, validé et codé le 2026-11-04 ; passe avant OP1) ; analyse (`analysis.md`, D825–D832) : SQL en lecture par le worker, règles avec rejeu (`/rules`), blocs vivants dans les pages et PDF daté — codés le 2026-11-08 ; analyse sans code (AN4) ensuite |
 | OP6 | Tableur et traitement de texte (GridCraft, WordCraft), après POC |
 | OP7 | Notebooks Python en déploiement séparé, SDK d'accès aux données |
 | OP8 | SDK typés, applications en code sur origine isolée, génération par l'IA, hors ligne |
-| OP9 | Validation générique par agent ou personne, sur toute opération |
+| OP9 | Porte de validation des agents (`validation-gate.md`, D833–D840) : mode par outil d'écriture (personne, autonome, validateur, chaîne), compte de service de l'agent, agent validateur, jamais délégable, disjoncteur — codé le 2026-11-08 |
 | OP10 | Action physique gouvernée : enveloppes, mode fantôme, vérification d'effet, état sûr |
 | OP11 | Agents (P2.29), évaluations LLM, OCR, vecteurs, scénarios, modèles tabulaires |
 | OP12 | Centre de livraison, SBOM de parc, air-gap, hub de kits dégelé |

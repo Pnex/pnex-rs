@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Périmètre validé le 2026-11-03, rien d'implémenté.** Chaque lot a son PRD avant le code |
+| Statut | **Périmètre validé le 2026-11-03.** Au 2026-11-08 : OP1 en grande partie, OP2, OP3, OP5 (hors AN4) et OP9 codés ; état réel et reprise au **§11**. Chaque lot a son PRD avant le code |
 | Numérotation | **D551…D568**, lots **OP1…OP15** |
 | Repose sur | `ontology.md`, `data-pipelines.md`, `iam.md`, `proposals.md`, `autonomous-agents.md`, `worker-fabric.md` §14, `surfaces-controls.md`, `security-tiers.md`, `app-builder.md`, `external-apps.md` |
 | Sécurité | Chaque lot passe `security.md` §6 ; finding = ligne SEC-n au §7 |
@@ -330,6 +330,41 @@ secteur n'entre dans le noyau.
 **Inchangé** : R1–R23, frontière org puis plateforme, briques permissives,
 pas de reconnaissance faciale, flow déployé par un humain seul à agir sur le
 physique, `expected_version`, secrets jamais en sortie d'outil.
+
+## 11. État réel au 2026-11-08 (à lire en reprenant)
+
+Tout ce qui suit est **commité en local sur `main`, pas encore poussé** au moment de l'écriture
+(Shan pousse). L'ordre fixé (OP1 → OP2 → OP3, puis OP5 et OP9) est terminé ; la suite dépend
+de la demande client.
+
+| Lot | État | PRD (section avancement) | Commits | Reste |
+|---|---|---|---|---|
+| OP1 | En grande partie livré | `data-pipelines.md` | antérieurs | voir le PRD |
+| OP2 | Codé (CN1–CN5) | `connectors.md` §9 | `c412bbb9` → `f0e2372c` | choix du secret HMAC des webhooks provisoire (§3) ; tables virtuelles après OP3 ; écriture retour = action D563 |
+| OP3 | Codé (G1–G7) | `governance.md` §7 | `a1d33bf5` → `5a93eefd` | SAML à la demande ; I4 général (droits par ligne de toutes les listes) ; SEC-80 (garde au démarrage) |
+| OP5 | Codé (AN1–AN3) + agrégats | `analysis.md` §6, `object-aggregates.md` | `e43e71b4` → `8d5fcda0` | AN4 (analyse sans code) ; règle → proposition (D829) ; aperçu de version des blocs vivants ; séparateur de milliers |
+| OP9 | Codé (VG1–VG3) | `validation-gate.md` §6 | `c705641d`, `4e6d66c6`, `2b1cc076` | boîte « À valider » jamais vue en navigateur avec une demande chez le validateur ; choix du validateur limité aux 200 premiers agents |
+| OP4, OP6–OP8, OP10–OP15 | Non commencés | — | — | OP10 dépend d'OP9 (fait), P0.1, P0.3 |
+
+Migrations prises par ces lots : 000123–000129 (OP2, OP3), 000131–000132 (OP5), 000134 (OP9).
+Décisions : D791–D806 (OP2, OP3), D825–D832 (OP5), D833–D840 (OP9). La session marchés
+(markets-research.md) tient en parallèle D807–D824, D841–D846 et les migrations 000130, 000133,
+000135 ; on se coordonne par message avant de prendre un numéro ou de commiter un fichier
+partagé (`iam.rs`, `exposure.rs`, `openapi.json`, `err_codes.rs`, les deux `.ftl`), commité par
+morceaux.
+
+Actions en attente de Shan :
+
+1. Pousser les commits.
+2. `helm upgrade` du dev : `PNEX_PSEUDONYM_KEY` est ajoutée dans `pnex-deploy/helm/values-dev.yaml`
+   (fichier ignoré par git, `pipelineWorker.extraEnv`) ; une vraie installation la prendra d'un
+   secret du chart (à ajouter au chart quand une prod en aura besoin).
+3. Trancher le secret HMAC des webhooks (généré par PneX ou collé), `connectors.md` §3.
+
+Dettes connues, non bloquantes : axe (accessibilité) non passé sur les nouveaux onglets et la
+page Règles ; deux marquages peuvent porter le même nom ; la détection ne propose que le marquage
+« personnel » ; sur téléphone, les filtres du formulaire de règle (composant partagé
+`FilterRow`) se suivent sans séparation.
 
 ## 10. Questions ouvertes
 
