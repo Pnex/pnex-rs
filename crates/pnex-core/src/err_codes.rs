@@ -751,6 +751,8 @@ pub const MARKING_KEY_TAKEN: &str = "marking-key-taken";
 /// A marking still carried by data cannot be deleted.
 pub const MARKING_IN_USE: &str = "marking-in-use";
 pub const CLEARANCE_NOT_FOUND: &str = "clearance-not-found";
+/// The governance journal store does not answer.
+pub const GOVERNANCE_JOURNAL_UNAVAILABLE: &str = "governance-journal-unavailable";
 pub const IMAGE_REGISTRY_NOT_FOUND: &str = "image-registry-not-found";
 pub const IMAGE_REGISTRY_NAME_TAKEN: &str = "image-registry-name-taken";
 /// The registry changed since it was read (args `current`).
@@ -1317,6 +1319,7 @@ pub const ALL: &[&str] = &[
     MARKING_KEY_TAKEN,
     MARKING_IN_USE,
     CLEARANCE_NOT_FOUND,
+    GOVERNANCE_JOURNAL_UNAVAILABLE,
     IMAGE_REGISTRY_NOT_FOUND,
     IMAGE_REGISTRY_NAME_TAKEN,
     IMAGE_REGISTRY_VERSION_CONFLICT,

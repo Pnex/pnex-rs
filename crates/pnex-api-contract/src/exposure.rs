@@ -699,6 +699,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     (
         "binary: the request or the answer is not JSON",
         &[
+            "governance_journal_export",
             "ontology_imports_dry_run",
             "asr_models_test",
             "cameras_recordings_export",

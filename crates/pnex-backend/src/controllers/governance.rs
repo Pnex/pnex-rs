@@ -24,6 +24,7 @@ pub fn routes() -> Routes {
         .add("/governance/markings/{id}", delete(delete_marking))
         .add("/governance/clearances", get(clearances).post(grant))
         .add("/governance/clearances/{id}/revoke", post(revoke))
+        .add("/governance/journal", get(journal))
         .add("/datasets/{id}/markings", post(mark_dataset))
         .add("/datasets/{id}/declassify", post(declassify_dataset))
         .add(
@@ -42,6 +43,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         clearances,
         grant,
         revoke,
+        journal,
         mark_dataset,
         declassify_dataset,
         object_markings,
@@ -462,4 +464,84 @@ async fn declassify_object(
     markings_answer(
         governance::declassify_object(&ctx.db, org.org.id, org.auth.user.id, id, &input).await,
     )
+}
+
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct JournalQuery {
+    /// Start of the period (RFC 3339); 30 days before `to` when absent.
+    #[param(format = "date-time", value_type = Option<String>)]
+    from: Option<String>,
+    /// End of the period (RFC 3339); now when absent.
+    #[param(format = "date-time", value_type = Option<String>)]
+    to: Option<String>,
+}
+
+/// `GET /api/v1/governance/journal`
+#[utoipa::path(
+    get,
+    path = "/api/v1/governance/journal",
+    tag = "governance",
+    operation_id = "governance_journal_export",
+    summary = "Export the governance journal",
+    description = "Every read of marked data and every change of markings and clearances in a period, newest first, as CSV (10,000 lines at most): who, what, which markings, under which purposes. Never the data read. Requires `governance:write`.",
+    params(JournalQuery),
+    responses(
+        (status = 200, description = "CSV of the journal", content_type = "text/csv", body = String),
+        (status = 400, description = "`field-invalid` on `from` or `to`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`governance-journal-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn journal(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<JournalQuery>,
+) -> Result<Response> {
+    let instant = |field: &str, v: &Option<String>| -> std::result::Result<Option<i64>, Response> {
+        match v.as_deref().filter(|s| !s.is_empty()) {
+            None => Ok(None),
+            Some(s) => chrono::DateTime::parse_from_rfc3339(s)
+                .map(|t| Some(t.timestamp_micros()))
+                .map_err(|_| super::field_error(field, "invalid")),
+        }
+    };
+    let to = match instant("to", &q.to) {
+        Ok(t) => t.unwrap_or_else(|| chrono::Utc::now().timestamp_micros()),
+        Err(r) => return Ok(r),
+    };
+    let from = match instant("from", &q.from) {
+        Ok(f) => f.unwrap_or(to - 30 * 24 * 3600 * 1_000_000),
+        Err(r) => return Ok(r),
+    };
+    if from > to {
+        return Ok(super::field_error("from", "invalid"));
+    }
+    let unavailable = || {
+        Err(super::coded_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            err_codes::GOVERNANCE_JOURNAL_UNAVAILABLE,
+            "The governance journal cannot be read.",
+            None,
+        ))
+    };
+    match governance::read_journal(&ctx, org.org.id, from, to).await {
+        Ok(Some(csv)) => Ok((
+            [
+                (axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+                (
+                    axum::http::header::CONTENT_DISPOSITION,
+                    "attachment; filename=\"governance-journal.csv\"",
+                ),
+            ],
+            csv,
+        )
+            .into_response()),
+        Ok(None) => unavailable(),
+        Err(e) => {
+            tracing::warn!(error = %e, "governance journal read failed");
+            unavailable()
+        }
+    }
 }

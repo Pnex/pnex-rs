@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 et G2 codés le 2026-11-08** (§7) |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 à G3 codés le 2026-11-08** (§7) |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; D715 : aucun client réel avant OP3 |
 | Repose sur | `iam.md` (D285–D299, I4, I5), `crm.md` (D442 classification, D443 masquage, D446 effacement), `data-pipelines.md` (D569–D578, lignage), `connectors.md` |
 | Numérotation | **D798…D806**, lots **G1…G7** |
@@ -152,3 +152,8 @@ personal_data, apps, ai, proposals, dataset_sync, connectors vertes.
 Limites : l'existence d'un objet caviardé reste visible dans une lecture directe ou un lien ; un
 parcours de graphe peut passer par un objet caché ; l'ensemble caché est chargé entier par requête
 (`shortcut:` dans le code).
+
+**G3 (2026-11-08)** : `GET /governance/journal?from&to` (`governance_journal_export`,
+`governance:write`, exclue du MCP au motif binaire) : CSV des lignes du flux `governance_reads`,
+10 000 au plus, plus récentes d'abord, période de 30 jours par défaut ; O2 absent =
+`503 governance-journal-unavailable`. Conversion CSV testée à part.

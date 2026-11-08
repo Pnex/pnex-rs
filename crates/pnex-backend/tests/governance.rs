@@ -346,3 +346,54 @@ async fn a_sync_needs_a_cleared_author_and_marks_what_it_writes() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn the_journal_exports_to_the_admin_only() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "member",
+        )
+        .await;
+        let (s, _) = call(
+            &server,
+            &env.bob,
+            org,
+            "GET",
+            "/api/v1/governance/journal",
+            None,
+        )
+        .await;
+        assert_eq!(s, 403);
+        let (s, e) = call(
+            &server,
+            &env.alice,
+            org,
+            "GET",
+            "/api/v1/governance/journal?from=yesterday",
+            None,
+        )
+        .await;
+        assert_eq!(s, 400, "{e}");
+        let res = server
+            .get("/api/v1/governance/journal")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        let status = res.status_code().as_u16();
+        let text = res.text();
+        // OpenObserve may be absent where the tests run: then a coded refusal.
+        match status {
+            200 => assert!(text.starts_with("_timestamp,action,user_id"), "{text}"),
+            503 => assert!(text.contains("governance-journal-unavailable"), "{text}"),
+            other => panic!("{other}: {text}"),
+        }
+    })
+    .await;
+}

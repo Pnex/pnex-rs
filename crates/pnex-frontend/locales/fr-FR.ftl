@@ -4542,6 +4542,7 @@ err-marking-not-found = Ce marquage n'existe pas.
 err-marking-key-taken = Un marquage de cette organisation porte déjà cette clé.
 err-marking-in-use = Des données portent encore ce marquage : déclassifiez-les d'abord.
 err-clearance-not-found = Cette habilitation n'existe pas.
+err-governance-journal-unavailable = Le journal des lectures gouvernées est illisible pour le moment : réessayez plus tard.
 err-image-registry-not-found = Ce registre n'existe pas.
 err-image-registry-name-taken = Un registre de cette organisation porte déjà ce nom.
 err-image-registry-version-conflict = Ce registre a changé depuis son ouverture : rechargez-le.

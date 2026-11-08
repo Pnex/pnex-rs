@@ -585,3 +585,102 @@ pub async fn propagate_sync(
     .await?;
     Ok(())
 }
+
+/// Columns of the exported journal, in order (D803).
+pub const JOURNAL_COLUMNS: [&str; 12] = [
+    "_timestamp",
+    "action",
+    "user_id",
+    "dataset",
+    "object",
+    "what",
+    "markings",
+    "purposes",
+    "marking",
+    "justification",
+    "origin",
+    "user_email",
+];
+/// Lines one export holds at most, newest first.
+pub const JOURNAL_EXPORT_MAX: i64 = 10_000;
+
+/// The journal lines as CSV, the timestamp as RFC 3339.
+pub fn journal_csv(hits: &[serde_json::Value]) -> String {
+    use pnex_core::connectors::rest::csv_line;
+    let mut out = csv_line(JOURNAL_COLUMNS);
+    for h in hits {
+        out.push_str(&csv_line(JOURNAL_COLUMNS.iter().map(|c| {
+            match (*c, h.get(*c)) {
+                ("_timestamp", Some(v)) => v
+                    .as_i64()
+                    .and_then(chrono::DateTime::from_timestamp_micros)
+                    .map(|t| t.to_rfc3339())
+                    .unwrap_or_default(),
+                (_, Some(serde_json::Value::String(s))) => s.clone(),
+                (_, Some(serde_json::Value::Null)) | (_, None) => String::new(),
+                (_, Some(v)) => v.to_string(),
+            }
+        })));
+    }
+    out
+}
+
+/// The journal of an org between two instants (µs), newest first. `None` = no
+/// journal store for this org.
+pub async fn read_journal(
+    ctx: &loco_rs::app::AppContext,
+    org_id: i64,
+    from_us: i64,
+    to_us: i64,
+) -> Result<Option<String>, String> {
+    use crate::services::openobserve::{provisioned_credentials, Client, OpenobserveSettings};
+    let Some(settings) = OpenobserveSettings::from_config(&ctx.config) else {
+        return Ok(None);
+    };
+    let client = Client::new(&settings);
+    let Some(creds) = provisioned_credentials(&ctx.db, org_id).await? else {
+        return Ok(None);
+    };
+    let sql = format!("SELECT * FROM \"{GOVERNANCE_STREAM}\" ORDER BY _timestamp DESC");
+    let page = client
+        .search_logs(
+            &creds.o2_org,
+            &sql,
+            from_us,
+            to_us,
+            0,
+            JOURNAL_EXPORT_MAX,
+            &creds.email_passcode,
+        )
+        .await;
+    match page {
+        Ok(p) => Ok(Some(journal_csv(&p.hits))),
+        // A journal never written reads as empty.
+        Err(e) if e.contains("not found") => Ok(Some(journal_csv(&[]))),
+        Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_journal_exports_as_csv() {
+        let hits = [
+            json!({ "_timestamp": 1_700_000_000_000_000_i64, "action": "read",
+                            "user_id": 7, "dataset": "d1", "markings": "[\"hr\",\"health\"]",
+                            "purposes": "[\"payroll, 2026\"]" }),
+        ];
+        let csv = journal_csv(&hits);
+        let mut lines = csv.lines();
+        assert_eq!(lines.next().unwrap().split(',').next(), Some("_timestamp"));
+        let row = lines.next().unwrap();
+        assert!(
+            row.starts_with("2023-11-14T22:13:20+00:00,read,7,d1,,,"),
+            "{row}"
+        );
+        assert!(row.contains("\"[\"\"payroll, 2026\"\"]\""), "{row}");
+        assert_eq!(journal_csv(&[]).lines().count(), 1);
+    }
+}
