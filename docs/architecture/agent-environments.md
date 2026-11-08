@@ -323,6 +323,18 @@ flowchart LR
 | Sortie | Commentaire Jira, mail | Action PneX soumise à la politique (D563), jamais de jeton tiers dans le bac |
 | Entrée et sortie | Fichier ou dossier | Artefact déclaré, transporté par PneX (D729) |
 
+**État au 2026-11-08** (traçabilité, aucune décision nouvelle) :
+
+| Sens | Exemple | État | Où |
+|---|---|---|---|
+| Entrée | Ticket Jira | ⬜ Pas de connecteur Jira. Le webhook signé d'OP2 (CN3, D795) sait recevoir un webhook Jira dans une table ; aucun déclencheur ne lance un run sur cet événement (D398 : seul le nœud de flow `agent_run` existe, source non branchée) | `connectors.md`, nœud `agent_run` |
+| Entrée | Mail | 🟡 Boîtes livrées (`services/mail`) ; aucun déclencheur de run sur un message entrant | `mail.md` |
+| Entrée | Données | ✅ MCP PneX avec le token de run | passerelle D732 |
+| Sortie | Code | ✅ GitHub seul (D752) : branche `pnex/run-<id>` poussée par le sidecar (D775), demande de fusion ouverte par le serveur, lien gardé dans `agent_runs.merge_requests`. Démontré le 2026-11-08 (`agent-environments-recette.md` §6). GitLab et Forgejo absents. Un push refusé laisse le run réussi | `services/forge.rs`, `services/agent_runs.rs` `open_merge_requests` |
+| Sortie | Fait, document | 🟡 Propositions (D367) ; porte générique D563 au lot OP9 | `proposals.md`, `operational-platform.md` |
+| Sortie | Commentaire Jira, mail | ⬜ Attend les actions gouvernées (D563, OP9) ; aucune sortie déclarable vers un tiers | `operational-platform.md` §6 |
+| Entrée et sortie | Fichier ou dossier | ✅ Artefacts déclarés (D729) | `agent-environments.md` D729 |
+
 Passer par PneX est ce qui rend le journal complet : un jeton Jira monté dans le
 bac ferait sortir l'échange de l'audit. L'egress vers un tiers reste possible par
 politique, et la fiche du run le signale alors comme non observé (même règle que
@@ -348,6 +360,21 @@ rythme, le graphe et son journal de changements se rempliraient de bruit. L'obje
 `agent_run` porte le résumé (usage, coût, verdict, liens) et renvoie au journal
 O2. Les liens `read` et `produced` viennent de la provenance D389 ; ils répondent
 à « qui a touché à cet objet, et avec quel environnement ».
+
+**Écart au 2026-11-08** entre ce tableau et le pack livré (`packs/agent_ops.yaml`,
+`services/agent_ops.rs`, projeté en fin de job et à l'arrêt) :
+
+| Prévu | Livré |
+|---|---|
+| `agent` | ✅ `hosted_agent` (id, nom) |
+| `agent_environment` | ✅ (id, nom) |
+| `environment_version` (empreinte, registre, digest, SBOM) | ⬜ ; le run ne porte que l'image en texte, sans lien vers `software_image` (`software_supply`) |
+| `agent_run` : `runs_as`, `uses` | ✅ `run_of_agent`, `run_in_environment` (vers l'environnement, pas la version) ; issue, image, version de l'agent, appels et jetons, erreur |
+| `agent_run` : `started_by` personne ou déclencheur | ⬜ |
+| `agent_run` : `read` et `produced` objets (D389) | 🟡 fichiers seulement (`run_read_file`, `file_produced_by`), pas les objets de l'ontologie |
+| `container_registry` | ⬜ |
+| `agent_artifact` | ✅ sous le nom `agent_file` (empreinte, taille, état) |
+| Demande de fusion, dépôt | ⬜ hors du tableau : la demande de fusion n'est qu'une URL dans `agent_runs.merge_requests`, ni objet ni lien vers le run ou le dépôt ; pas de type dépôt. Rejoint le pack `software` de la roadmap (Dépôt) |
 
 ### D709 — Audit LLM : prévu dès la passerelle, contenu activé plus tard
 

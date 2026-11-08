@@ -336,6 +336,11 @@ règles du point de vue de l'agent.
   secret git du run est limité à un dépôt et à la création de branches ;
   pas de push sur la branche par défaut, pas de fusion. La fusion reste
   un geste humain, comme une proposition retenue.
+  *État au 2026-11-08* : livré pour GitHub seul (Q-A3 close par D752, D775 :
+  sidecar de push, demande de fusion ouverte par le serveur), démontré sur
+  dev.pnex.io (`agent-environments-recette.md` §6). Restent GitLab et
+  Forgejo, la demande de fusion comme objet de l'ontologie (`agent-environments.md`
+  D708, écart) et l'échec du push qui ne fait pas échouer le run.
 - Espace de travail : checkout, caches de dépendances par org (jamais
   partagés entre orgs), artefacts déposés dans le MediaStore et rattachés
   au run.

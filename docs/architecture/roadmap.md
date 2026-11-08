@@ -937,7 +937,12 @@ temps, les flows, les dossiers et les pages déjà en place.
 - **Ontologie (pack `software`)** : Application, Version, Composant (purl),
   Dépôt, Image, Vulnérabilité (CVE, GHSA), Constat, Licence ; liens datés
   « version contient composant », « composant affecté par », « image déployée
-  sur ». **Pont avec le socle IoT** : chaque build firmware enregistré produit
+  sur ». *État au 2026-11-08* : seule la partie image est livrée, par le pack
+  `software_supply` (image, SBOM, composant, vulnérabilité, D728) ; Application,
+  Version, Dépôt, Constat, Licence, pipelines CI/CD et demandes de fusion n'ont
+  ni type ni ingestion. Les demandes de fusion des agents codeurs n'existent que
+  comme URL sur le run (`agent-environments.md` D708, écart).
+  **Pont avec le socle IoT** : chaque build firmware enregistré produit
   son SBOM, chaque appareil sait ce qu'il exécute → exposition d'une flotte à
   une CVE en une requête (exigence CRA).
 - **Sources de vulnérabilités** : OSV, NVD, GHSA, EPSS, catalogue KEV, via le

@@ -34,6 +34,7 @@ déjà livré, sans écrire de code par éditeur.
 | MySQL | TLS obligatoire, exception `deny.toml` motivée par ça |
 | CDC | Incrémental par colonne curseur ; pas de réplication logique |
 | Écriture retour | Attend OP9 (D563) : OP2 est en lecture seule |
+| Jira, forges (état au 2026-11-08) | Aucun connecteur dédié. Un webhook Jira ou GitHub peut arriver dans une table par le webhook signé (D795) ; ni objet ticket ou demande de fusion, ni déclencheur de run d'agent (D398) derrière. Entrées et sorties visées par les agents : `agent-environments.md` D707 |
 | Stockage cloud | Aucun stockage externe : seulement le S3 déjà en place pour PneX, « sinon ça fait trop de config à gérer » |
 | Tables virtuelles | Plus tard, après OP3 |
 | Webhooks entrants | Vers une table versionnée |
