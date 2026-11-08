@@ -518,6 +518,7 @@ pub struct ViewFile {
     pub transaction: Uuid,
     pub key: String,
     pub bytes: u64,
+    pub rows: u64,
 }
 
 /// Files of the current view of a dataset of the org, in commit order.
@@ -526,19 +527,40 @@ pub async fn current_files(
     org_id: i64,
     id: Uuid,
 ) -> Result<Vec<ViewFile>, DatasetError> {
+    view_files(db, org_id, id, None).await
+}
+
+/// Files of the view of a dataset of the org, current or at `as_of`, in
+/// commit order.
+pub async fn view_files(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    as_of: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<Vec<ViewFile>, DatasetError> {
     get(db, org_id, id).await?;
-    let view = VIEW_TRANSACTIONS
-        .replace(" AS_OF_S", "")
-        .replace(" AS_OF", "");
+    let mut values: Vec<sea_orm::Value> = vec![id.into()];
+    let view = match as_of {
+        Some(t) => {
+            values.push(t.into());
+            VIEW_TRANSACTIONS
+                .replace(" AS_OF_S", " AND s.committed_at <= $2")
+                .replace(" AS_OF", " AND t.committed_at <= $2")
+        }
+        None => VIEW_TRANSACTIONS
+            .replace(" AS_OF_S", "")
+            .replace(" AS_OF", ""),
+    };
     let rows = db
         .query_all_raw(stmt(
             &format!(
-                "SELECT t.id, f.key, f.bytes, t.purged_at IS NOT NULL AS purged FROM datasets d \
+                "SELECT t.id, f.key, f.bytes, f.rows, t.purged_at IS NOT NULL AS purged \
+                 FROM datasets d \
                  JOIN dataset_transactions t ON {view} \
                  JOIN dataset_files f ON f.transaction_id = t.id \
                  WHERE d.id = $1 ORDER BY t.seq, f.key"
             ),
-            vec![id.into()],
+            values,
         ))
         .await?;
     rows.iter().map(view_file).collect()
@@ -554,7 +576,7 @@ pub async fn files_of_transactions(
 ) -> Result<Option<Vec<ViewFile>>, DatasetError> {
     let rows = db
         .query_all_raw(stmt(
-            "SELECT t.id, f.key, f.bytes, t.purged_at IS NOT NULL AS purged \
+            "SELECT t.id, f.key, f.bytes, f.rows, t.purged_at IS NOT NULL AS purged \
              FROM dataset_transactions t JOIN dataset_files f ON f.transaction_id = t.id \
              WHERE t.org_id = $1 AND t.dataset_id = $2 AND t.state = 'committed' AND t.id = ANY($3) \
              ORDER BY t.seq, f.key",
@@ -588,6 +610,7 @@ fn view_file(row: &QueryResult) -> Result<ViewFile, DatasetError> {
         transaction: row.try_get("", "id")?,
         key: row.try_get("", "key")?,
         bytes: row.try_get::<i64>("", "bytes")?.max(0) as u64,
+        rows: row.try_get::<i64>("", "rows")?.max(0) as u64,
     })
 }
 

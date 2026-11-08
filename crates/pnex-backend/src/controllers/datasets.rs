@@ -43,6 +43,8 @@ pub fn routes() -> Routes {
         )
         .add("/datasets/{id}/sample", get(sample))
         .add("/datasets/{id}/profile", get(profile))
+        .add("/datasets/{id}/files", get(files))
+        .add("/datasets/{id}/files/{index}", get(file))
 }
 
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
@@ -63,7 +65,9 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             upload_part,
             upload_complete,
             sample,
-            profile
+            profile,
+            files,
+            file
         ),
         components(schemas(DatasetTransactionKind, pnex_core::datasets::DatasetUploadState))
     )]
@@ -781,4 +785,146 @@ async fn profile(
         Ok(p) => format::json(p),
         Err(e) => dataset_error(e),
     }
+}
+
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct FilesQuery {
+    /// Reads the view as it was at this instant; pass the same one to every
+    /// call so the files do not move between them.
+    #[param(format = "date-time", value_type = Option<String>)]
+    as_of: Option<chrono::DateTime<chrono::Utc>>,
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+/// `GET /api/v1/datasets/{id}/files`
+#[utoipa::path(
+    get,
+    path = "/api/v1/datasets/{id}/files",
+    tag = "datasets",
+    operation_id = "datasets_files_list",
+    summary = "List the Parquet files of a dataset",
+    description = "Files of the current view, or of the view at `as_of`, in commit order; each is read whole by `GET /datasets/{id}/files/{index}`. For training code that reads Parquet directly. Requires `datasets:read`. Paginated (`limit`/`offset`).",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Dataset id (UUID)"),
+        FilesQuery
+    ),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::datasets::DatasetFile>),
+        (status = 403, description = "`access-denied`, or `marking-required` (args `markings`): a clearance is missing", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`dataset-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 410, description = "`dataset-version-purged`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn files(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<FilesQuery>,
+) -> Result<Response> {
+    if let Some(refused) = governed(&ctx, &org, id, "files").await {
+        return refused;
+    }
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let all = match datasets::view_files(&ctx.db, org.org.id, id, q.as_of).await {
+        Ok(f) => f,
+        Err(e) => return dataset_error(e),
+    };
+    let count = all.len() as i64;
+    let results: Vec<pnex_core::datasets::DatasetFile> = all
+        .into_iter()
+        .enumerate()
+        .skip(page.offset.max(0) as usize)
+        .take(page.limit.max(0) as usize)
+        .map(|(i, f)| pnex_core::datasets::DatasetFile {
+            index: i as i64,
+            transaction_id: f.transaction.to_string(),
+            rows: f.rows as i64,
+            bytes: f.bytes as i64,
+        })
+        .collect();
+    let filters: Vec<(String, String)> = q
+        .as_of
+        .map(|t| ("as_of".to_string(), t.to_rfc3339()))
+        .into_iter()
+        .collect();
+    format::json(pagination::envelope(
+        &format!("/api/v1/datasets/{id}/files"),
+        &filters,
+        page,
+        count,
+        results,
+    ))
+}
+
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct FileQuery {
+    /// The `as_of` of the listing the index comes from.
+    #[param(format = "date-time", value_type = Option<String>)]
+    as_of: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// `GET /api/v1/datasets/{id}/files/{index}`
+#[utoipa::path(
+    get,
+    path = "/api/v1/datasets/{id}/files/{index}",
+    tag = "datasets",
+    operation_id = "datasets_files_get",
+    summary = "Download a Parquet file of a dataset",
+    description = "The Parquet file at `index` of the view listed by `GET /datasets/{id}/files` with the same `as_of`. Requires `datasets:read`.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Dataset id (UUID)"),
+        ("index" = i64, Path, description = "Position of the file in the view, from 0"),
+        FileQuery
+    ),
+    responses(
+        (status = 200, content_type = "application/vnd.apache.parquet", body = Vec<u8>),
+        (status = 403, description = "`access-denied`, or `marking-required` (args `markings`): a clearance is missing", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`dataset-not-found`: no such dataset or no file at this index", body = crate::openapi::ErrorDetail),
+        (status = 410, description = "`dataset-version-purged`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn file(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, index)): Path<(Uuid, usize)>,
+    Query(q): Query<FileQuery>,
+) -> Result<Response> {
+    if let Some(refused) = governed(&ctx, &org, id, "file").await {
+        return refused;
+    }
+    let found = match datasets::view_files(&ctx.db, org.org.id, id, q.as_of).await {
+        Ok(f) => f.into_iter().nth(index),
+        Err(e) => return dataset_error(e),
+    };
+    let Some(found) = found else {
+        return dataset_error(DatasetError::NotFound);
+    };
+    let store = match datasets::store_of(&ctx.config) {
+        Ok(s) => s,
+        Err(e) => return dataset_error(e),
+    };
+    let stream = crate::services::agent_artifacts::read_stream(store, found.key, found.bytes);
+    let mut res = Body::from_stream(stream).into_response();
+    let h = res.headers_mut();
+    h.insert(
+        axum::http::header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static("application/vnd.apache.parquet"),
+    );
+    h.insert(
+        axum::http::header::CONTENT_LENGTH,
+        axum::http::HeaderValue::from(found.bytes),
+    );
+    h.insert(
+        axum::http::header::X_CONTENT_TYPE_OPTIONS,
+        axum::http::HeaderValue::from_static("nosniff"),
+    );
+    Ok(res)
 }

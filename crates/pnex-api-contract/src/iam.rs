@@ -621,6 +621,8 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("datasets_list", Access::Org("datasets:read")),
     ("datasets_sample", Access::Org("datasets:read")),
     ("datasets_profile", Access::Org("datasets:read")),
+    ("datasets_files_list", Access::Org("datasets:read")),
+    ("datasets_files_get", Access::Org("datasets:read")),
     ("datasets_transactions_list", Access::Org("datasets:read")),
     (
         "datasets_transactions_load_csv",

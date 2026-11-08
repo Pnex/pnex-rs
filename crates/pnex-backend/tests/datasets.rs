@@ -1021,3 +1021,155 @@ async fn the_quota_is_set_by_the_platform_admin_only() {
     })
     .await;
 }
+
+/// D823: training code lists the Parquet files of a view and reads each whole.
+#[tokio::test]
+#[serial]
+async fn the_files_of_a_view_are_read_as_parquet() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (s, d) = create(&server, &env.alice, org, "bars").await;
+        assert_eq!(s, 201, "{d}");
+        let id = d["id"].as_str().unwrap().to_string();
+        let (s, t) = load(
+            &server,
+            &env.alice,
+            org,
+            &id,
+            "?kind=append",
+            "a,b\n1,x\n2,y\n",
+        )
+        .await;
+        assert_eq!(s, 201, "{t}");
+        let as_of = t["committed_at"].as_str().unwrap().to_string();
+        let (s, t) = load(&server, &env.alice, org, &id, "?kind=append", "a,b\n3,z\n").await;
+        assert_eq!(s, 201, "{t}");
+
+        let (s, list) = get(
+            &server,
+            &format!("/api/v1/datasets/{id}/files"),
+            &env.alice,
+            org,
+        )
+        .await;
+        assert_eq!(s, 200, "{list}");
+        assert_eq!(list["count"], 2);
+        assert_eq!(list["results"][0]["index"], 0);
+        assert_eq!(list["results"][0]["rows"], 2);
+        assert_eq!(list["results"][1]["rows"], 1);
+        let (_, old) = get(
+            &server,
+            &format!("/api/v1/datasets/{id}/files?as_of={as_of}"),
+            &env.alice,
+            org,
+        )
+        .await;
+        assert_eq!(old["count"], 1, "{old}");
+
+        let res = server
+            .get(&format!("/api/v1/datasets/{id}/files/1"))
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(res.status_code().as_u16(), 200);
+        assert_eq!(
+            res.headers()["content-type"],
+            "application/vnd.apache.parquet"
+        );
+        let body = bytes::Bytes::from(res.as_bytes().to_vec());
+        assert!(body.starts_with(b"PAR1"));
+        let reader = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(body)
+            .unwrap()
+            .build()
+            .unwrap();
+        let rows: usize = reader.map(|b| b.unwrap().num_rows()).sum();
+        assert_eq!(rows, 1);
+
+        let (s, e) = get(
+            &server,
+            &format!("/api/v1/datasets/{id}/files/2"),
+            &env.alice,
+            org,
+        )
+        .await;
+        assert_eq!(s, 404, "{e}");
+        let bob_org = personal_org(&server, &env.bob).await;
+        let (s, _) = get(
+            &server,
+            &format!("/api/v1/datasets/{id}/files/0"),
+            &env.bob,
+            bob_org,
+        )
+        .await;
+        assert_eq!(s, 404, "another org's table is not found");
+    })
+    .await;
+}
+
+/// MK13 (markets-research.md D808): how the current view of a table holds
+/// up under many `append` transactions. Prints timings, asserts the rows.
+/// `VIEW_APPENDS` sets the count (default 100 000).
+#[tokio::test]
+#[serial]
+#[ignore = "writes up to 100 000 transactions to the object store"]
+async fn the_view_holds_many_appends() {
+    use std::sync::Arc;
+    with_app(|server, env, ctx| async move {
+        use arrow_array::{Int64Array, RecordBatch};
+        use arrow_schema::{DataType, Field, Schema};
+        let org = personal_org(&server, &env.alice).await;
+        let id: uuid::Uuid = datasets::create(&ctx.db, org, "many")
+            .await
+            .unwrap()
+            .id
+            .parse()
+            .unwrap();
+        let store = datasets::store_of(&ctx.config).unwrap();
+        let total: usize = std::env::var("VIEW_APPENDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100_000);
+        let schema = Arc::new(Schema::new(vec![Field::new("n", DataType::Int64, false)]));
+        let started = std::time::Instant::now();
+        let mut next_mark = 1_000;
+        for i in 0..total {
+            let batch = RecordBatch::try_new(
+                schema.clone(),
+                vec![Arc::new(Int64Array::from(vec![i as i64]))],
+            )
+            .unwrap();
+            datasets::append_batch(&ctx.db, &store, org, id, &batch)
+                .await
+                .unwrap();
+            if i + 1 == next_mark || i + 1 == total {
+                let t = std::time::Instant::now();
+                let files = datasets::current_files(&ctx.db, org, id).await.unwrap();
+                let list = t.elapsed();
+                let t = std::time::Instant::now();
+                let (s, sample) = get(
+                    &server,
+                    &format!("/api/v1/datasets/{id}/sample?limit=10"),
+                    &env.alice,
+                    org,
+                )
+                .await;
+                let read = t.elapsed();
+                let t = std::time::Instant::now();
+                let (_, one) =
+                    get(&server, &format!("/api/v1/datasets/{id}"), &env.alice, org).await;
+                eprintln!(
+                    "{} appends in {:?}: files listed in {list:?}, sample {s} in {read:?}, \
+                     dataset read in {:?}, rows {}",
+                    i + 1,
+                    started.elapsed(),
+                    t.elapsed(),
+                    one["rows"]
+                );
+                assert_eq!(files.len(), i + 1);
+                assert_eq!(sample["rows"].as_array().map(Vec::len), Some(10));
+                next_mark *= 10;
+            }
+        }
+    })
+    .await;
+}

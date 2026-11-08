@@ -32,6 +32,8 @@ const SCALAR_FUNCTIONS: &[&str] = &[
     "coalesce",
     "concat",
     "concat_ws",
+    // Bars of N minutes from a finer history (markets-research.md D823).
+    "date_bin",
     "date_part",
     "date_trunc",
     "ends_with",
@@ -406,6 +408,98 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(out.iter().map(|b| b.num_rows()).sum::<usize>(), 2);
+    }
+
+    /// D823: 1-minute bars become 1-hour and 5-minute bars in SQL alone.
+    #[tokio::test]
+    async fn minute_bars_are_resampled() {
+        use datafusion::arrow::array::{Decimal128Array, TimestampMicrosecondArray};
+        use datafusion::arrow::datatypes::TimeUnit;
+        let limits = Limits {
+            memory_bytes: 64 * 1024 * 1024,
+            partitions: 2,
+            spill_dir: std::env::temp_dir(),
+            spill_max_bytes: 1024 * 1024 * 1024,
+        };
+        let ctx = session(&limits, Joins::Hash).unwrap();
+        let dec = DataType::Decimal128(38, 8);
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("instrument", DataType::Utf8, false),
+            Field::new(
+                "ts",
+                DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
+                false,
+            ),
+            Field::new("open", dec.clone(), false),
+            Field::new("high", dec.clone(), false),
+            Field::new("low", dec.clone(), false),
+            Field::new("close", dec.clone(), false),
+            Field::new("volume", dec, false),
+        ]));
+        // 10:58, 10:59, 11:00, 11:07 of 2025-01-01, minutes in µs.
+        let at = |h: i64, m: i64| (1_735_725_600 + (h - 10) * 3600 + m * 60) * 1_000_000;
+        let ts = vec![at(10, 58), at(10, 59), at(11, 0), at(11, 7)];
+        let d = |v: Vec<i128>| -> ArrayRef {
+            Arc::new(
+                Decimal128Array::from(v.into_iter().map(|x| x * 100_000_000).collect::<Vec<_>>())
+                    .with_precision_and_scale(38, 8)
+                    .unwrap(),
+            )
+        };
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(StringArray::from(vec!["BTCUSDT"; 4])),
+                Arc::new(TimestampMicrosecondArray::from(ts).with_timezone("UTC")),
+                d(vec![10, 11, 20, 21]),
+                d(vec![12, 13, 25, 22]),
+                d(vec![9, 10, 19, 18]),
+                d(vec![11, 12, 21, 20]),
+                d(vec![1, 2, 3, 4]),
+            ],
+        )
+        .unwrap();
+        ctx.register_table(
+            "m1",
+            Arc::new(MemTable::try_new(schema, vec![vec![batch]]).unwrap()),
+        )
+        .unwrap();
+        let bars = |bucket: &str| {
+            format!(
+                "SELECT instrument, bucket AS ts, first_value(open ORDER BY ts) AS open, \
+                 max(high) AS high, min(low) AS low, last_value(close ORDER BY ts) AS close, \
+                 sum(volume) AS volume \
+                 FROM (SELECT *, {bucket} AS bucket FROM m1) b \
+                 GROUP BY instrument, bucket ORDER BY ts"
+            )
+        };
+        let text = |out: &[RecordBatch]| {
+            datafusion::arrow::util::pretty::pretty_format_batches(out)
+                .unwrap()
+                .to_string()
+        };
+        let h1 = run(&ctx, &bars("date_trunc('hour', ts)")).await.unwrap();
+        let h1 = text(&h1);
+        assert!(
+            h1.contains("| 10.00000000 | 13.00000000 | 9.00000000  | 12.00000000 | 3.00000000"),
+            "{h1}"
+        );
+        assert!(
+            h1.contains("| 20.00000000 | 25.00000000 | 18.00000000 | 20.00000000 | 7.00000000"),
+            "{h1}"
+        );
+        let m5 = run(
+            &ctx,
+            &bars("date_bin(INTERVAL '5 minutes', ts, TIMESTAMP '1970-01-01T00:00:00Z')"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            m5.iter().map(|b| b.num_rows()).sum::<usize>(),
+            3,
+            "{}",
+            text(&m5)
+        );
     }
 
     /// A few rows joined to a big table build a hash table of the few rows:

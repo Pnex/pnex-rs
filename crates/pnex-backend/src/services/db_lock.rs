@@ -42,6 +42,9 @@ pub mod ns {
     pub const SOFTWARE_SUPPLY: i32 = 0x504e_000c;
     /// Projection of ended agent runs of one org (agent-environments.md D761).
     pub const AGENT_OPS: i32 = 0x504e_000d;
+    /// Price history passes of one org (markets-research.md D808): two
+    /// passes would load the same partition twice.
+    pub const MARKET_HISTORY: i32 = 0x504e_000e;
 }
 
 /// Advisory lock key used by the boot migration (single int8 form).

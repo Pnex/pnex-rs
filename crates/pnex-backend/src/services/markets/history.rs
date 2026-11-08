@@ -1,6 +1,7 @@
 //! Fine price history into a table (markets-research.md MK11–MK12:
-//! D807–D809, D820, D822): the 1-minute bars of the Binance symbols and the
-//! ticks of the Dukascopy pairs an org lists, read from the public files
+//! D807–D809, D820, D822): the 1-minute bars and the trades of the Binance
+//! symbols and the ticks of the Dukascopy pairs an org lists, read from the
+//! public files
 //! one partition at a time, each one an `append` transaction of the
 //! source's table. The registry `market_history_partitions` makes a cut run
 //! go on where it stopped.
@@ -15,7 +16,8 @@ use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use chrono::NaiveDate;
 use loco_rs::app::AppContext;
 use pnex_core::markets::history::{
-    self, HistorySource, Kline, Period, Tick, BINANCE_SPOT_1M, DUKASCOPY_TICKS,
+    self, HistorySource, Kline, Period, Tick, Trade, BINANCE_SPOT_1M, BINANCE_SPOT_TRADES,
+    DUKASCOPY_TICKS, MT5_OHLCV_1M, MT5_TICKS,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sha2::{Digest, Sha256};
@@ -23,28 +25,119 @@ use uuid::Uuid;
 
 use crate::services::artifact_store::S3Store;
 use crate::services::datasets::{self, DatasetError};
+use crate::services::db_lock::{ns, TenantLock};
 use crate::services::ontology::imports::source;
 
-const SYMBOLS: &str = "markets.history_symbols";
-const FROM: &str = "markets.history_from";
-/// The first month Binance has spot files for.
-const FROM_DEFAULT: &str = "2017-08";
 const SYMBOLS_MAX: usize = 50;
-/// Partitions fetched per org and pass: the backfill spreads over passes.
 // shortcut: one request at a time per pass, no per-host concurrency (D808 says 4); raise it if a backfill measured too slow.
-const PER_PASS: usize = 24;
 const PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
-const FX_PAIRS: &str = "markets.history_fx_pairs";
-const FX_FROM: &str = "markets.history_fx_from";
-/// Days of ticks per org and pass (24 hour files each).
-const FX_DAYS_PER_PASS: usize = 14;
 const FX_PAUSE: std::time::Duration = std::time::Duration::from_millis(100);
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
+/// UTC as an offset: a named zone needs `chrono-tz` to be read back (the
+/// table sample formats values with arrow).
+const UTC: &str = "+00:00";
+
+/// What a pass loads: one source, one shape, its two settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Job {
+    /// Binance spot 1-minute bars (MK11).
+    Klines,
+    /// Dukascopy forex ticks (MK12).
+    Ticks,
+    /// Binance spot trades (MK13).
+    Trades,
+}
+
+const JOBS: [Job; 3] = [Job::Klines, Job::Ticks, Job::Trades];
+
+impl Job {
+    fn src(self) -> HistorySource {
+        match self {
+            Self::Klines => BINANCE_SPOT_1M,
+            Self::Ticks => DUKASCOPY_TICKS,
+            Self::Trades => BINANCE_SPOT_TRADES,
+        }
+    }
+
+    /// The settings of the instruments and of the first month.
+    fn settings(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Klines => ("history_symbols", "history_from"),
+            Self::Ticks => ("history_fx_pairs", "history_fx_from"),
+            Self::Trades => ("history_trade_symbols", "history_trade_from"),
+        }
+    }
+
+    /// Partitions per org and pass: the backfill spreads over passes.
+    fn budget(self) -> usize {
+        match self {
+            Self::Klines => 24,
+            // 24 hour files each.
+            Self::Ticks => 14,
+            // Up to a few hundred MB unzipped each.
+            Self::Trades => 4,
+        }
+    }
+
+    fn instruments(self, raw: &str) -> Vec<String> {
+        let ok: fn(&str) -> bool = match self {
+            Self::Ticks => |s| history::fx_scale(s).is_some(),
+            Self::Klines | Self::Trades => history::symbol_ok,
+        };
+        let mut seen = HashSet::new();
+        raw.split(',')
+            .map(|s| s.trim().to_ascii_uppercase())
+            .filter(|s| ok(s) && seen.insert(s.clone()))
+            .take(SYMBOLS_MAX)
+            .collect()
+    }
+
+    /// A `YYYY-MM` setting, else the job's default: Binance's first month
+    /// for bars, twelve months back for ticks, one for trades.
+    fn from(self, raw: &str, today: NaiveDate) -> NaiveDate {
+        if let Ok(d) = NaiveDate::parse_from_str(&format!("{}-01", raw.trim()), "%Y-%m-%d") {
+            return d;
+        }
+        let back = |months| {
+            today
+                .checked_sub_months(chrono::Months::new(months))
+                .unwrap_or(today)
+        };
+        match self {
+            Self::Klines => NaiveDate::from_ymd_opt(2017, 8, 1).unwrap_or(today),
+            Self::Ticks => back(12),
+            Self::Trades => back(1),
+        }
+    }
+
+    fn plan(self, from: NaiveDate, today: NaiveDate, known: &HashSet<Period>) -> Vec<Period> {
+        match self {
+            Self::Klines => history::plan(from, today, known),
+            Self::Ticks | Self::Trades => history::plan_days(from, today, known),
+        }
+    }
+
+    /// `None` when the source did not answer (down, 429, 503): try again later.
+    async fn fetch(self, base: &str, instrument: &str, p: Period) -> Option<Fetched> {
+        match self {
+            Self::Klines => {
+                let path = history::binance_klines_path(instrument, BINANCE_SPOT_1M.interval, p);
+                fetch_binance(base, &path, instrument, klines_of).await
+            }
+            Self::Trades => {
+                let path = history::binance_trades_path(instrument, p.start());
+                fetch_binance(base, &path, instrument, trades_of).await
+            }
+            Self::Ticks => fetch_day(base, instrument, p).await,
+        }
+    }
+}
 
 fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
 }
 
-/// One pass over the orgs that list symbols. `base` is the source's host
+/// One pass over the orgs that list instruments. `base` is Binance's host
 /// (a mock in tests).
 pub async fn sweep(ctx: &AppContext, base: &str, today: NaiveDate) -> Result<(), DatasetError> {
     sweep_from(ctx, base, DUKASCOPY_TICKS.base, today).await
@@ -62,7 +155,9 @@ pub async fn sweep_from(
         .query_all_raw(stmt(
             "SELECT org_id FROM packs WHERE key = 'markets' \
                AND (coalesce(settings ->> 'history_symbols', '') <> '' \
-                 OR coalesce(settings ->> 'history_fx_pairs', '') <> '') ORDER BY org_id",
+                 OR coalesce(settings ->> 'history_fx_pairs', '') <> '' \
+                 OR coalesce(settings ->> 'history_trade_symbols', '') <> '' \
+                 OR coalesce(settings ->> 'mt5_connector', '') <> '') ORDER BY org_id",
             vec![],
         ))
         .await?
@@ -74,12 +169,27 @@ pub async fn sweep_from(
     }
     let store = datasets::store_of(&ctx.config)?;
     for org in orgs {
-        if let Err(e) = org_pass(&ctx.db, &store, binance, org, today).await {
-            tracing::warn!(org, code = e.code(), "price history pass stopped");
+        // A pass outliving its sweep turn must not run beside the next one:
+        // both would read the registry before the other writes it.
+        let Ok(lock) = TenantLock::acquire(&ctx.db, ns::MARKET_HISTORY, org, LOCK_WAIT).await
+        else {
+            tracing::info!(org, "price history pass already running");
+            continue;
+        };
+        for job in JOBS {
+            let base = if job == Job::Ticks {
+                dukascopy
+            } else {
+                binance
+            };
+            if let Err(e) = pass(&ctx.db, &store, base, org, today, job).await {
+                tracing::warn!(org, ?job, code = e.code(), "price history pass stopped");
+            }
         }
-        if let Err(e) = fx_pass(&ctx.db, &store, dukascopy, org, today).await {
-            tracing::warn!(org, code = e.code(), "tick history pass stopped");
+        if let Err(e) = mt5_pass(&ctx.db, &store, org).await {
+            tracing::warn!(org, code = e.code(), "MT5 bridge pass stopped");
         }
+        lock.release().await;
     }
     Ok(())
 }
@@ -90,72 +200,133 @@ async fn text_setting(
     key: &str,
 ) -> Result<String, DatasetError> {
     Ok(
-        crate::services::ontology::packs::setting_value(db, org, key)
+        crate::services::ontology::packs::setting_value(db, org, &format!("markets.{key}"))
             .await?
             .and_then(|v| v.as_str().map(str::to_string))
             .unwrap_or_default(),
     )
 }
 
-/// The symbols of a setting: upper-cased, those unsafe in a path left out.
-fn symbols_of(raw: &str) -> Vec<String> {
-    let mut seen = HashSet::new();
-    raw.split(',')
-        .map(|s| s.trim().to_ascii_uppercase())
-        .filter(|s| history::symbol_ok(s) && seen.insert(s.clone()))
-        .take(SYMBOLS_MAX)
-        .collect()
-}
+/// Calls of the MT5 bridge read per pass, oldest first.
+const MT5_CALLS_PER_PASS: i64 = 1000;
 
-/// The forex pairs of a setting whose scale is known (D820).
-fn pairs_of(raw: &str) -> Vec<String> {
-    let mut seen = HashSet::new();
-    raw.split(',')
-        .map(|s| s.trim().to_ascii_uppercase())
-        .filter(|s| history::fx_scale(s).is_some() && seen.insert(s.clone()))
-        .take(SYMBOLS_MAX)
-        .collect()
-}
-
-/// A `YYYY-MM` setting, else twelve months back.
-fn fx_from_of(raw: &str, today: NaiveDate) -> NaiveDate {
-    NaiveDate::parse_from_str(&format!("{}-01", raw.trim()), "%Y-%m-%d").unwrap_or_else(|_| {
-        today
-            .checked_sub_months(chrono::Months::new(12))
-            .unwrap_or(today)
-    })
-}
-
-fn from_of(raw: &str) -> NaiveDate {
-    let raw = if raw.trim().is_empty() {
-        FROM_DEFAULT
-    } else {
-        raw.trim()
+/// Empties the inbox of the org's MT5 webhook connector (D816) into
+/// `mt5_ohlcv_1m` and `mt5_ticks`: one transaction per table and source,
+/// then the calls read leave the inbox. An unreadable call is dropped.
+// shortcut: a pod killed between the commit and the delete loads those calls again (rows twice); key the calls in the registry if that is ever seen.
+async fn mt5_pass(db: &DatabaseConnection, store: &S3Store, org: i64) -> Result<(), DatasetError> {
+    let name = text_setting(db, org, "mt5_connector").await?;
+    if name.trim().is_empty() {
+        return Ok(());
+    }
+    // In the org (R1), a webhook connector only: never another org's inbox.
+    let Some(connector) = db
+        .query_one_raw(stmt(
+            "SELECT id FROM connectors WHERE org_id = $1 AND name = $2 AND kind = 'webhook'",
+            vec![org.into(), name.trim().into()],
+        ))
+        .await?
+        .map(|r| r.try_get::<Uuid>("", "id"))
+        .transpose()?
+    else {
+        return Ok(());
     };
-    NaiveDate::parse_from_str(&format!("{raw}-01"), "%Y-%m-%d")
-        .unwrap_or_else(|_| NaiveDate::from_ymd_opt(2017, 8, 1).unwrap_or_default())
+    loop {
+        let calls = db
+            .query_all_raw(stmt(
+                "SELECT id, body FROM connector_inbox WHERE org_id = $1 AND connector_id = $2 \
+                 ORDER BY id LIMIT $3",
+                vec![org.into(), connector.into(), MT5_CALLS_PER_PASS.into()],
+            ))
+            .await?;
+        let Some(last) = calls
+            .last()
+            .map(|r| r.try_get::<i64>("", "id"))
+            .transpose()?
+        else {
+            return Ok(());
+        };
+        let mut bars: std::collections::BTreeMap<String, Vec<(String, Kline)>> = Default::default();
+        let mut ticks: std::collections::BTreeMap<String, Vec<(String, Tick)>> = Default::default();
+        let mut digest = Sha256::new();
+        for call in &calls {
+            let body: serde_json::Value = call.try_get("", "body")?;
+            match history::mt5_payload(&body) {
+                Ok(b) => {
+                    digest.update(body.to_string().as_bytes());
+                    bars.entry(b.source.clone()).or_default().extend(b.bars);
+                    ticks.entry(b.source).or_default().extend(b.ticks);
+                }
+                Err(token) => tracing::warn!(org, %connector, token, "MT5 bridge call dropped"),
+            }
+        }
+        let sha256 = hex(&digest.finalize());
+        for (source, rows) in bars.into_iter().filter(|(_, r)| !r.is_empty()) {
+            let names: Vec<&str> = rows.iter().map(|(s, _)| s.as_str()).collect();
+            let klines: Vec<Kline> = rows.iter().map(|(_, k)| k.clone()).collect();
+            let batch = ohlcv_batch(MT5_OHLCV_1M.interval, &source, &names, &klines)
+                .map_err(|e| DatasetError::Storage(e.to_string()))?;
+            mt5_write(db, store, org, &MT5_OHLCV_1M, batch, &sha256).await?;
+        }
+        for (source, rows) in ticks.into_iter().filter(|(_, r)| !r.is_empty()) {
+            let names: Vec<&str> = rows.iter().map(|(s, _)| s.as_str()).collect();
+            let quotes: Vec<Tick> = rows.iter().map(|(_, t)| t.clone()).collect();
+            let batch = quote_tick_batch(&source, &names, &quotes)
+                .map_err(|e| DatasetError::Storage(e.to_string()))?;
+            mt5_write(db, store, org, &MT5_TICKS, batch, &sha256).await?;
+        }
+        db.execute_raw(stmt(
+            "DELETE FROM connector_inbox WHERE org_id = $1 AND connector_id = $2 AND id <= $3",
+            vec![org.into(), connector.into(), last.into()],
+        ))
+        .await?;
+        if (calls.len() as i64) < MT5_CALLS_PER_PASS {
+            return Ok(());
+        }
+    }
 }
 
-async fn org_pass(
+/// [`write`] for the bridge: a refusal stops the pass and keeps the calls.
+async fn mt5_write(
+    db: &DatabaseConnection,
+    store: &S3Store,
+    org: i64,
+    src: &HistorySource,
+    batch: RecordBatch,
+    sha256: &str,
+) -> Result<(), DatasetError> {
+    match write(db, store, org, src, batch, sha256.to_string()).await {
+        Fetched::Done { .. } => Ok(()),
+        Fetched::Failed("quota") => Err(DatasetError::QuotaExceeded),
+        _ => Err(DatasetError::Storage("MT5 rows not written".into())),
+    }
+}
+
+async fn pass(
     db: &DatabaseConnection,
     store: &S3Store,
     base: &str,
     org: i64,
     today: NaiveDate,
+    job: Job,
 ) -> Result<(), DatasetError> {
-    let symbols = symbols_of(&text_setting(db, org, SYMBOLS).await?);
-    let from = from_of(&text_setting(db, org, FROM).await?);
-    let src = BINANCE_SPOT_1M;
-    let mut budget = PER_PASS;
-    for symbol in symbols {
-        let known = settled(db, org, &src, &symbol, today).await?;
-        for p in history::plan(from, today, &known) {
+    let (items, from) = job.settings();
+    let items = job.instruments(&text_setting(db, org, items).await?);
+    if items.is_empty() {
+        return Ok(());
+    }
+    let from = job.from(&text_setting(db, org, from).await?, today);
+    let src = job.src();
+    let mut budget = job.budget();
+    for instrument in items {
+        let known = settled(db, org, &src, &instrument, today).await?;
+        for p in job.plan(from, today, &known) {
             if budget == 0 {
                 return Ok(());
             }
             budget -= 1;
             // An unreachable source stops the pass, nothing is counted.
-            let Some(outcome) = fetch(base, &src, &symbol, p).await else {
+            let Some(outcome) = job.fetch(base, &instrument, p).await else {
                 return Ok(());
             };
             let outcome = match outcome {
@@ -163,46 +334,11 @@ async fn org_pass(
                 other => other,
             };
             let stop = matches!(&outcome, Fetched::Failed("quota"));
-            record(db, org, &src, &symbol, p, &outcome).await?;
+            record(db, org, &src, &instrument, p, &outcome).await?;
             if stop {
                 return Err(DatasetError::QuotaExceeded);
             }
             tokio::time::sleep(PAUSE).await;
-        }
-    }
-    Ok(())
-}
-
-async fn fx_pass(
-    db: &DatabaseConnection,
-    store: &S3Store,
-    base: &str,
-    org: i64,
-    today: NaiveDate,
-) -> Result<(), DatasetError> {
-    let pairs = pairs_of(&text_setting(db, org, FX_PAIRS).await?);
-    let from = fx_from_of(&text_setting(db, org, FX_FROM).await?, today);
-    let src = DUKASCOPY_TICKS;
-    let mut budget = FX_DAYS_PER_PASS;
-    for pair in pairs {
-        let known = settled(db, org, &src, &pair, today).await?;
-        for p in history::plan_days(from, today, &known) {
-            if budget == 0 {
-                return Ok(());
-            }
-            budget -= 1;
-            let Some(outcome) = fetch_day(base, &pair, p).await else {
-                return Ok(());
-            };
-            let outcome = match outcome {
-                Fetched::Rows(batch, sha256) => write(db, store, org, &src, batch, sha256).await,
-                other => other,
-            };
-            let stop = matches!(&outcome, Fetched::Failed("quota"));
-            record(db, org, &src, &pair, p, &outcome).await?;
-            if stop {
-                return Err(DatasetError::QuotaExceeded);
-            }
         }
     }
     Ok(())
@@ -248,15 +384,29 @@ async fn fetch_day(base: &str, pair: &str, p: Period) -> Option<Fetched> {
     if ticks.is_empty() {
         return Some(Fetched::Empty);
     }
-    let sha256: String = digest
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    Some(match quote_tick_batch(&DUKASCOPY_TICKS, pair, &ticks) {
-        Ok(b) => Fetched::Rows(b, sha256),
-        Err(_) => Fetched::Failed("unreadable"),
-    })
+    Some(
+        match quote_tick_batch(DUKASCOPY_TICKS.key, &vec![pair; ticks.len()], &ticks) {
+            Ok(b) => Fetched::Rows(b, hex(&digest.finalize())),
+            Err(_) => Fetched::Failed("unreadable"),
+        },
+    )
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The rows of a klines CSV, `None` when unreadable.
+fn klines_of(csv: &[u8], symbol: &str) -> Option<RecordBatch> {
+    let rows = history::binance_klines(csv).ok()?;
+    let src = BINANCE_SPOT_1M;
+    ohlcv_batch(src.interval, src.key, &vec![symbol; rows.len()], &rows).ok()
+}
+
+/// The rows of a trades CSV, `None` when unreadable.
+fn trades_of(csv: &[u8], symbol: &str) -> Option<RecordBatch> {
+    let rows = history::binance_trades(csv).ok()?;
+    trade_tick_batch(&BINANCE_SPOT_TRADES, symbol, &rows).ok()
 }
 
 async fn settled(
@@ -297,9 +447,13 @@ enum Fetched {
     },
 }
 
-/// `None` when the source did not answer (down, 429, 503): try again later.
-async fn fetch(base: &str, src: &HistorySource, symbol: &str, p: Period) -> Option<Fetched> {
-    let path = history::binance_klines_path(symbol, src.interval, p);
+/// A Binance zip and its `.CHECKSUM`, decoded by `decode`.
+async fn fetch_binance(
+    base: &str,
+    path: &str,
+    symbol: &str,
+    decode: fn(&[u8], &str) -> Option<RecordBatch>,
+) -> Option<Fetched> {
     let url = source::check_url(&format!("{base}/{path}")).ok()?;
     let by = source::Declared::default();
     let zip = match source::get_found(&url, &by).await {
@@ -310,10 +464,7 @@ async fn fetch(base: &str, src: &HistorySource, symbol: &str, p: Period) -> Opti
             return None;
         }
     };
-    let sha256: String = Sha256::digest(&zip)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let sha256 = hex(&Sha256::digest(&zip));
     let check_url = source::check_url(&format!("{url}.CHECKSUM")).ok()?;
     match source::get_found(&check_url, &by).await {
         Ok(Some(text)) => {
@@ -326,32 +477,31 @@ async fn fetch(base: &str, src: &HistorySource, symbol: &str, p: Period) -> Opti
         Ok(None) => {}
         Err(_) => return None,
     }
+    let symbol = symbol.to_string();
     let decoded = tokio::task::spawn_blocking(move || {
         let csv = pnex_core::import_read::unzip_csv(&zip).ok()?;
-        history::binance_klines(&csv).ok()
+        decode(&csv, &symbol)
     })
     .await
     .ok()
     .flatten();
     Some(match decoded {
         None => Fetched::Failed("unreadable"),
-        Some(rows) if rows.is_empty() => Fetched::Empty,
-        Some(rows) => match ohlcv_batch(src, symbol, &rows) {
-            Ok(b) => Fetched::Rows(b, sha256),
-            Err(_) => Fetched::Failed("unreadable"),
-        },
+        Some(b) if b.num_rows() == 0 => Fetched::Empty,
+        Some(b) => Fetched::Rows(b, sha256),
     })
 }
 
-/// Columns of the `ohlcv` shape (D809).
+/// Columns of the `ohlcv` shape (D809); `instruments` holds one per row.
 pub fn ohlcv_batch(
-    src: &HistorySource,
-    symbol: &str,
+    interval: &str,
+    source: &str,
+    instruments: &[&str],
     rows: &[Kline],
 ) -> Result<RecordBatch, arrow_schema::ArrowError> {
     let scale = history::SCALE as i8;
     let dec = || DataType::Decimal128(38, scale);
-    let ts = DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()));
+    let ts = DataType::Timestamp(TimeUnit::Microsecond, Some(UTC.into()));
     let schema = Arc::new(Schema::new(vec![
         Field::new("instrument", DataType::Utf8, false),
         Field::new("ts", ts, false),
@@ -373,42 +523,45 @@ pub fn ohlcv_batch(
     RecordBatch::try_new(
         schema,
         vec![
-            Arc::new(StringArray::from(vec![symbol; n])),
+            Arc::new(StringArray::from(instruments.to_vec())),
             Arc::new(
                 TimestampMicrosecondArray::from(rows.iter().map(|k| k.open_us).collect::<Vec<_>>())
-                    .with_timezone("UTC"),
+                    .with_timezone(UTC),
             ),
-            Arc::new(StringArray::from(vec![src.interval; n])),
+            Arc::new(StringArray::from(vec![interval; n])),
             Arc::new(col(|k| k.open)?),
             Arc::new(col(|k| k.high)?),
             Arc::new(col(|k| k.low)?),
             Arc::new(col(|k| k.close)?),
             Arc::new(col(|k| k.volume)?),
-            Arc::new(col(|k| k.quote_volume)?),
+            Arc::new(
+                Decimal128Array::from(rows.iter().map(|k| k.quote_volume).collect::<Vec<_>>())
+                    .with_precision_and_scale(38, scale)?,
+            ),
             Arc::new(Int64Array::from(
                 rows.iter().map(|k| k.trades).collect::<Vec<_>>(),
             )),
-            Arc::new(StringArray::from(vec![src.key; n])),
+            Arc::new(StringArray::from(vec![source; n])),
         ],
     )
 }
 
-/// Columns of the `quote_tick` shape (D809).
+/// Columns of the `quote_tick` shape (D809); `instruments` holds one per row.
 pub fn quote_tick_batch(
-    src: &HistorySource,
-    instrument: &str,
+    source: &str,
+    instruments: &[&str],
     rows: &[Tick],
 ) -> Result<RecordBatch, arrow_schema::ArrowError> {
     let scale = history::SCALE as i8;
     let dec = || DataType::Decimal128(38, scale);
-    let ts = DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()));
+    let ts = DataType::Timestamp(TimeUnit::Microsecond, Some(UTC.into()));
     let schema = Arc::new(Schema::new(vec![
         Field::new("instrument", DataType::Utf8, false),
         Field::new("ts", ts, false),
         Field::new("bid", dec(), false),
         Field::new("ask", dec(), false),
-        Field::new("bid_volume", DataType::Float64, false),
-        Field::new("ask_volume", DataType::Float64, false),
+        Field::new("bid_volume", DataType::Float64, true),
+        Field::new("ask_volume", DataType::Float64, true),
         Field::new("source", DataType::Utf8, false),
     ]));
     let n = rows.len();
@@ -419,10 +572,10 @@ pub fn quote_tick_batch(
     RecordBatch::try_new(
         schema,
         vec![
-            Arc::new(StringArray::from(vec![instrument; n])),
+            Arc::new(StringArray::from(instruments.to_vec())),
             Arc::new(
                 TimestampMicrosecondArray::from(rows.iter().map(|t| t.ts_us).collect::<Vec<_>>())
-                    .with_timezone("UTC"),
+                    .with_timezone(UTC),
             ),
             Arc::new(col(|t| t.bid)?),
             Arc::new(col(|t| t.ask)?),
@@ -431,6 +584,50 @@ pub fn quote_tick_batch(
             )),
             Arc::new(Float64Array::from(
                 rows.iter().map(|t| t.ask_volume).collect::<Vec<_>>(),
+            )),
+            Arc::new(StringArray::from(vec![source; n])),
+        ],
+    )
+}
+
+/// Columns of the `trade_tick` shape (D809).
+pub fn trade_tick_batch(
+    src: &HistorySource,
+    instrument: &str,
+    rows: &[Trade],
+) -> Result<RecordBatch, arrow_schema::ArrowError> {
+    let scale = history::SCALE as i8;
+    let dec = || DataType::Decimal128(38, scale);
+    let ts = DataType::Timestamp(TimeUnit::Microsecond, Some(UTC.into()));
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("instrument", DataType::Utf8, false),
+        Field::new("ts", ts, false),
+        Field::new("price", dec(), false),
+        Field::new("qty", dec(), false),
+        Field::new("side", DataType::Utf8, true),
+        Field::new("trade_id", DataType::Int64, false),
+        Field::new("source", DataType::Utf8, false),
+    ]));
+    let n = rows.len();
+    let col = |f: fn(&Trade) -> i128| {
+        Decimal128Array::from(rows.iter().map(f).collect::<Vec<_>>())
+            .with_precision_and_scale(38, scale)
+    };
+    RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(StringArray::from(vec![instrument; n])),
+            Arc::new(
+                TimestampMicrosecondArray::from(rows.iter().map(|t| t.ts_us).collect::<Vec<_>>())
+                    .with_timezone(UTC),
+            ),
+            Arc::new(col(|t| t.price)?),
+            Arc::new(col(|t| t.qty)?),
+            Arc::new(StringArray::from(
+                rows.iter().map(|t| Some(t.side)).collect::<Vec<_>>(),
+            )),
+            Arc::new(Int64Array::from(
+                rows.iter().map(|t| t.trade_id).collect::<Vec<_>>(),
             )),
             Arc::new(StringArray::from(vec![src.key; n])),
         ],
@@ -488,8 +685,7 @@ async fn write(
         Err(e) => {
             let detail = match &e {
                 DatasetError::Storage(m) => m.clone(),
-                DatasetError::Db(d) => d.to_string(),
-                _ => String::new(),
+                other => format!("{other:?}"),
             };
             tracing::warn!(org, table = src.table, code = e.code(), %detail, "price history not written");
             Fetched::Failed("storage")
@@ -561,31 +757,21 @@ mod tests {
 
     #[test]
     fn settings_are_read_safely() {
+        let today = NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
+        let d = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
         assert_eq!(
-            symbols_of(" btcusdt, ETHUSDT ,../x,,BTCUSDT"),
+            Job::Klines.instruments(" btcusdt, ETHUSDT ,../x,,BTCUSDT"),
             vec!["BTCUSDT", "ETHUSDT"]
         );
-        assert_eq!(from_of(""), NaiveDate::from_ymd_opt(2017, 8, 1).unwrap());
         assert_eq!(
-            from_of("2024-03"),
-            NaiveDate::from_ymd_opt(2024, 3, 1).unwrap()
-        );
-        assert_eq!(
-            from_of("junk"),
-            NaiveDate::from_ymd_opt(2017, 8, 1).unwrap()
-        );
-        assert_eq!(
-            pairs_of("eurusd, XAUUSD,usdjpy,EURUSD"),
+            Job::Ticks.instruments("eurusd, XAUUSD,usdjpy,EURUSD"),
             vec!["EURUSD", "USDJPY"]
         );
-        let today = NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
-        assert_eq!(
-            fx_from_of("", today),
-            NaiveDate::from_ymd_opt(2025, 11, 8).unwrap()
-        );
-        assert_eq!(
-            fx_from_of("2025-03", today),
-            NaiveDate::from_ymd_opt(2025, 3, 1).unwrap()
-        );
+        assert_eq!(Job::Klines.from("", today), d(2017, 8, 1));
+        assert_eq!(Job::Klines.from("junk", today), d(2017, 8, 1));
+        assert_eq!(Job::Klines.from("2024-03", today), d(2024, 3, 1));
+        assert_eq!(Job::Ticks.from("", today), d(2025, 11, 8));
+        assert_eq!(Job::Ticks.from("2025-03", today), d(2025, 3, 1));
+        assert_eq!(Job::Trades.from("", today), d(2026, 10, 8));
     }
 }

@@ -170,6 +170,20 @@ impl DatasetUploadState {
     }
 }
 
+/// A Parquet file of a view, read whole by `GET /datasets/{id}/files/{index}`
+/// (markets-research.md D823): training code reads the rows without the JSON API.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DatasetFile {
+    /// Position in the view, from 0, in commit order.
+    pub index: i64,
+    /// The version that wrote it.
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub transaction_id: String,
+    pub rows: i64,
+    pub bytes: i64,
+}
+
 /// A file sent in several requests.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

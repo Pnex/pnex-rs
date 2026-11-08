@@ -101,6 +101,7 @@ pub const EXPOSED: &[&str] = &[
     "datasets_list",
     "datasets_sample",
     "datasets_profile",
+    "datasets_files_list",
     "datasets_transactions_list",
     "datasets_uploads_get",
     "dashboards_create",
@@ -713,6 +714,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
         "binary: the request or the answer is not JSON",
         &[
             "governance_journal_export",
+            "datasets_files_get",
             "ontology_imports_dry_run",
             "asr_models_test",
             "cameras_recordings_export",

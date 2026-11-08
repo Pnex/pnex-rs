@@ -7437,6 +7437,36 @@
         ],
         "type": "object"
       },
+      "DatasetFile": {
+        "description": "A Parquet file of a view, read whole by `GET /datasets/{id}/files/{index}`\n(markets-research.md D823): training code reads the rows without the JSON API.",
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "index": {
+            "description": "Position in the view, from 0, in commit order.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "rows": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "transaction_id": {
+            "description": "The version that wrote it.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "transaction_id",
+          "rows",
+          "bytes"
+        ],
+        "type": "object"
+      },
       "DatasetFreshnessInput": {
         "description": "How often a dataset must get a new version; `null` stops the check.",
         "properties": {
@@ -19575,6 +19605,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/Dataset"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_DatasetFile": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/DatasetFile"
             },
             "type": "array"
           }
@@ -48860,6 +48926,243 @@
         "summary": "Declassify a dataset",
         "tags": [
           "governance"
+        ]
+      }
+    },
+    "/api/v1/datasets/{id}/files": {
+      "get": {
+        "description": "Files of the current view, or of the view at `as_of`, in commit order; each is read whole by `GET /datasets/{id}/files/{index}`. For training code that reads Parquet directly. Requires `datasets:read`. Paginated (`limit`/`offset`).",
+        "operationId": "datasets_files_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Reads the view as it was at this instant; pass the same one to every\ncall so the files do not move between them.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_DatasetFile"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied`, or `marking-required` (args `markings`): a clearance is missing · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-version-purged`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the Parquet files of a dataset",
+        "tags": [
+          "datasets"
+        ]
+      }
+    },
+    "/api/v1/datasets/{id}/files/{index}": {
+      "get": {
+        "description": "The Parquet file at `index` of the view listed by `GET /datasets/{id}/files` with the same `as_of`. Requires `datasets:read`.",
+        "operationId": "datasets_files_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Position of the file in the view, from 0",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The `as_of` of the listing the index comes from.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.apache.parquet": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied`, or `marking-required` (args `markings`): a clearance is missing · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found`: no such dataset or no file at this index"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-version-purged`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Download a Parquet file of a dataset",
+        "tags": [
+          "datasets"
         ]
       }
     },

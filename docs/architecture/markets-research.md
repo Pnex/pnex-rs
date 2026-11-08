@@ -506,7 +506,7 @@ Recensement : aucune import marchés ni monde ne passe par un flow. Toutes sont 
 
 | | |
 |---|---|
-| Statut | Proposé le 2026-11-08 ; MK11 et MK12 codés le 2026-11-08 (§C.7), MK13–MK14 en cours |
+| Statut | Proposé le 2026-11-08 ; MK11 à MK14 codés le 2026-11-08 (§C.7) ; mesure MK13 à 10⁵ transactions faite à échelle réduite |
 | Lots | **MK11…MK14** |
 | Origine | volet trading de PNeX : un modèle entraîné sur des images de graphiques, du texte et la frise des événements (`geo_event`, `market_event`), puis une boucle qui cherche les meilleurs trades. Ici, **seulement la collecte de l'historique** : ni le modèle, ni l'entraînement, ni le flux continu |
 | Repose sur | tables et pipelines (`data-pipelines.md` D569–D578 : Parquet sur S3, transactions `append`, worker DataFusion, ordonnanceur D575), D526 (une source = une import, liste blanche), D531 (lecture à la date t), D540 (sources primaires), D543 (sources fixées dans le code, R9), §7 bis (aucun import marchés par flow) |
@@ -682,3 +682,36 @@ MK11 codé, non poussé. Pièces :
 - Réglage plateforme dans `system_settings` (clé `dataset_quota_bytes:<org>`), sans migration ; absent = 20 Go (`QUOTA_BYTES`).
 - `GET` et `PUT /api/v1/system/orgs/{org_id}/dataset-quota`, admin plateforme seulement (`Access::Platform`, exclus du MCP avec les hôtes de connecteurs) ; `null` revient au défaut.
 - L'argument `max` de l'erreur `dataset-quota` disparaît : il donnait le défaut, faux pour une org relevée ; le message n'en dépendait pas.
+
+#### Passes exclusives par org (constaté pendant l'acceptation MK11)
+
+- Premier run réel : 37 partitions chargées deux fois (1,6 M de lignes en trop). La boucle de fond de l'application tournait en même temps que le balayage du test. Chaque passe lit le registre au départ, avant que l'autre n'y écrive, et recharge donc ce que l'autre vient de commiter.
+- Le même cas existe en production quand une passe dure plus que son tour (`singleton::my_turn`) : un autre pod prend le tour et la double.
+- Remède : verrou consultatif `db_lock::ns::MARKET_HISTORY` par org (`TenantLock`, 1 s d'attente, sinon l'org est sautée à ce passage). Le test des transactions lance deux balayages à la fois.
+
+#### MK13 (transactions Binance)
+
+- `binance_trades` et `binance_trades_path` (un fichier par jour, D821), table `binance_spot_trades` de forme `trade_tick` ; `side` vaut `sell` quand l'acheteur est le teneur de marché, `buy` sinon.
+- Pack `markets` 1.6.0 : `history_trade_symbols` (vide) et `history_trade_from` (vide = un mois en arrière) ; 4 jours par passage.
+- Le service est refait autour d'un `Job` (bougies, ticks, transactions) : réglages, plan, budget et lecture par source, une seule boucle de passage.
+- **Écart à l'acceptation** : « 20 symboles sur 5 ans sous un quota de 2 To » est impossible sur la machine de dev (≈ 100 Go libres). La mesure est faite à échelle réduite, voir plus bas.
+
+#### MK14 (lecture pour l'entraînement)
+
+- `GET /api/v1/datasets/{id}/files` (liste paginée des fichiers Parquet de la vue courante ou de `as_of`) et `GET /api/v1/datasets/{id}/files/{index}` (le fichier entier, `application/vnd.apache.parquet`, lu par morceaux de 8 Mo). Droit `datasets:read`, mêmes marquages que l'aperçu (D801, journalisé). La liste est exposée au MCP, le téléchargement exclu (binaire).
+- Rééchantillonnage : `date_bin` ajouté à la liste blanche du moteur ; test `minute_bars_are_resampled` (M1 → H1 avec `date_trunc`, M1 → M5 avec `date_bin`). Le SQL d'exemple est dans la fiche `pipelines.md`, pas dans le pack : un pack ne porte pas de pipeline aujourd'hui.
+
+#### Acceptations réelles (2026-11-08, nuit, machine de dev, base de test dédiée)
+
+- **MK11 Binance : réussie.** BTCUSDT et ETHUSDT de 2017-08 au 2026-11-07 : 236 partitions (2 × 111 mois + 2 × 7 jours), 9 687 997 lignes pour 9 751 680 minutes (99,35 %, les trous publiés restent des trous), 327 Mo de Parquet, 16 min. Aucune partition `failed` ; lignes de la table = somme du registre ; second passage : aucun téléchargement.
+- **MK12 Dukascopy : bloquée, à trancher par Shan.** `datafeed.dukascopy.com` refuse notre client (`PNEX-Import/<version>`, réponse non 2xx et non 404, donc `import-source-unreachable`) dès la première heure. Un contournement par un faux User-Agent de navigateur est exclu. Pistes : demander un accès à Dukascopy, passer par leur outil officiel d'export puis un envoi CSV, ou une autre source de ticks forex. Le code et le test simulé restent valides.
+- **Fuseau des horodatages** : `+00:00` au lieu de `UTC`. L'aperçu d'une table (formatage arrow sans `chrono-tz`) échouait sur un fuseau nommé, donc sur toutes les tables d'historique.
+
+#### D816 (pont MetaTrader 5, lecture seule)
+
+- L'org crée un connecteur `webhook` (CN3), colle son URL et son secret dans les paramètres de l'Expert Advisor `examples/mt5/PnexBridge.mq5`, et nomme le connecteur dans le réglage `mt5_connector` (pack 1.6.0).
+- Appel : `{"v": 1, "broker", "bars": [{symbol, time (s UTC), open, high, low, close, volume}], "ticks": [{symbol, time_msc (ms UTC), bid, ask}]}`, prix en texte décimal. L'EA convertit l'heure du serveur du courtier en UTC, signe le corps (HMAC-SHA256, même convention que le webhook), plafonne un appel à 3 000 bougies et 3 000 ticks, et n'avance ses curseurs que sur un `202`.
+- Le balayage marchés vide la boîte du connecteur (1 000 appels par lot, dans l'org seulement) vers `mt5_ohlcv_1m` (forme `ohlcv`) et `mt5_ticks` (forme `quote_tick`), `source = mt5:<courtier>` ; un appel illisible est écarté et journalisé. Volumes absents (MT5 n'en publie pas par côté, ni en devise de cotation) = `null`, jamais zéro.
+- Au moins une fois : une réponse perdue, ou un pod tué entre le commit et l'effacement, rejoue des appels (marqué `shortcut:`) ; d'où le contrôle `unique` conseillé dans la fiche.
+- **Non fait** : l'EA n'est pas compilé ici (pas de MetaEditor) ; pas de téléchargement de l'EA depuis l'UI (fichier du dépôt).
+

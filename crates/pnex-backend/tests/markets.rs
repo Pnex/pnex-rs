@@ -2487,3 +2487,272 @@ async fn tick_history_real_dukascopy() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn trade_history_is_loaded_by_days() {
+    with_app(|server, ctx, token| async move {
+        use axum::{extract::Path, http::StatusCode, response::IntoResponse, routing::get, Router};
+        use sha2::{Digest, Sha256};
+        use std::io::Write;
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api {
+            server: &server,
+            token,
+            org,
+        };
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/packs/markets/install", None)
+            .await;
+        assert_eq!(st, 200, "{r}");
+        api.settings(
+            json!({ "history_trade_symbols": "BTCUSDT", "history_trade_from": "2026-11" }),
+        )
+        .await;
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        w.start_file(
+            "BTCUSDT-trades-2026-11-01.csv",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        w.write_all(
+            b"1,100.50000000,0.20000000,20.10000000,1793491200000000,true,true\n\
+2,100.60000000,0.10000000,10.06000000,1793491200500000,false,true\n",
+        )
+        .unwrap();
+        let day1 = w.finish().unwrap().into_inner();
+        let files: Arc<std::collections::HashMap<String, Vec<u8>>> = Arc::new(
+            [
+                (
+                    "daily/trades/BTCUSDT/BTCUSDT-trades-2026-11-01.zip",
+                    day1.clone(),
+                ),
+                ("daily/trades/BTCUSDT/BTCUSDT-trades-2026-11-02.zip", day1),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+        );
+        let app = Router::new().route(
+            "/data/spot/{*path}",
+            get({
+                let files = files.clone();
+                move |Path(path): Path<String>| async move {
+                    if let Some(zip) = path.strip_suffix(".CHECKSUM") {
+                        let Some(body) = files.get(zip) else {
+                            return StatusCode::NOT_FOUND.into_response();
+                        };
+                        let mut hex: String = Sha256::digest(body)
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect();
+                        if zip.contains("11-02") {
+                            hex = "0".repeat(64);
+                        }
+                        return format!("{hex}  {zip}\n").into_response();
+                    }
+                    match files.get(&path) {
+                        Some(b) => b.clone().into_response(),
+                        None => StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::markets::allow_test_host(&base);
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 4).unwrap();
+        // Two sweeps at once (a pass outliving its turn): nothing loaded twice.
+        let sweep = || pnex_backend::services::markets::history::sweep(&ctx, &base, today);
+        let (a, b) = tokio::join!(sweep(), sweep());
+        a.unwrap();
+        b.unwrap();
+        let states: Vec<String> = ctx
+            .db
+            .query_all_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT source || ':' || period_start::text || ':' || state || ':' \
+                 || coalesce(code, '') || ':' || rows::text AS s \
+                 FROM market_history_partitions ORDER BY period_start"
+                    .to_string(),
+            ))
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.try_get::<String>("", "s").unwrap())
+            .collect();
+        assert_eq!(
+            states,
+            vec![
+                "binance_public_trades:2026-11-01:done::2",
+                "binance_public_trades:2026-11-02:failed:checksum:0",
+                "binance_public_trades:2026-11-03:empty::0",
+            ]
+        );
+        let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
+        assert_eq!(st, 200, "{list}");
+        let table = list["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == "binance_spot_trades")
+            .unwrap_or_else(|| panic!("{list}"))
+            .clone();
+        assert_eq!(table["rows"], 2);
+        let names: Vec<&str> = table["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "instrument",
+                "ts",
+                "price",
+                "qty",
+                "side",
+                "trade_id",
+                "source"
+            ]
+        );
+    })
+    .await;
+}
+
+/// D816: the PneX bridge for MetaTrader 5 posts signed calls to a webhook
+/// connector; the markets sweep turns them into the bars and ticks tables.
+#[tokio::test]
+#[serial]
+async fn mt5_bridge_calls_become_tables() {
+    with_app(|server, ctx, token| async move {
+        use hmac::{Hmac, Mac};
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api {
+            server: &server,
+            token,
+            org,
+        };
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/packs/markets/install", None)
+            .await;
+        assert_eq!(st, 200, "{r}");
+        let (st, c) = api
+            .call(
+                "POST",
+                "/api/v1/connectors",
+                Some(json!({ "name": "mt5", "kind": "webhook" })),
+            )
+            .await;
+        assert_eq!(st, 201, "{c}");
+        let id = c["id"].as_str().unwrap().to_string();
+        let (_, sec) = api
+            .call("POST", &format!("/api/v1/connectors/{id}/secret"), None)
+            .await;
+        let secret = sec["secret"].as_str().unwrap().to_string();
+        let post = |body: String| {
+            let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+            mac.update(body.as_bytes());
+            let sig: String = mac
+                .finalize()
+                .into_bytes()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            server
+                .post(&format!("/api/v1/hooks/{id}"))
+                .content_type("application/json")
+                .add_header("X-Signature", format!("sha256={sig}"))
+                .bytes(body.into())
+        };
+        let call = json!({
+            "v": 1,
+            "broker": "Demo",
+            "bars": [
+                {"symbol": "EURUSD", "time": 1_735_689_600, "open": "1.03456", "high": "1.03470",
+                 "low": "1.03400", "close": "1.03450", "volume": 120},
+                {"symbol": "XAUUSD", "time": 1_735_689_600, "open": "2624.10", "high": "2625.00",
+                 "low": "2623.90", "close": "2624.55", "volume": 80}
+            ],
+            "ticks": [{"symbol": "EURUSD", "time_msc": 1_735_689_600_123_i64,
+                       "bid": "1.03450", "ask": "1.03452"}]
+        });
+        assert_eq!(post(call.to_string()).await.status_code().as_u16(), 202);
+        assert_eq!(
+            post(json!({"v": 1, "bars": [{"symbol": "../x"}]}).to_string())
+                .await
+                .status_code()
+                .as_u16(),
+            202
+        );
+
+        // Not named in the setting yet: the inbox is left alone.
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
+        let sweep =
+            || pnex_backend::services::markets::history::sweep(&ctx, "http://unused", today);
+        sweep().await.unwrap();
+        let inbox = || async {
+            ctx.db
+                .query_one_raw(Statement::from_string(
+                    sea_orm::DatabaseBackend::Postgres,
+                    format!("SELECT count(*) AS n FROM connector_inbox WHERE org_id = {org}"),
+                ))
+                .await
+                .unwrap()
+                .unwrap()
+                .try_get::<i64>("", "n")
+                .unwrap()
+        };
+        assert_eq!(inbox().await, 2);
+
+        api.settings(json!({ "mt5_connector": "mt5" })).await;
+        sweep().await.unwrap();
+        assert_eq!(
+            inbox().await,
+            0,
+            "read calls leave the inbox, the bad one too"
+        );
+        let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
+        assert_eq!(st, 200, "{list}");
+        let rows = |name: &str| {
+            list["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|d| d["name"] == name)
+                .unwrap_or_else(|| panic!("{name}: {list}"))["rows"]
+                .clone()
+        };
+        assert_eq!(rows("mt5_ohlcv_1m"), 2);
+        assert_eq!(rows("mt5_ticks"), 1);
+        let id = list["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == "mt5_ohlcv_1m")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (_, sample) = api
+            .call("GET", &format!("/api/v1/datasets/{id}/sample"), None)
+            .await;
+        assert!(sample.to_string().contains("mt5:Demo"), "{sample}");
+        assert!(sample.to_string().contains("2624.55"), "{sample}");
+    })
+    .await;
+}

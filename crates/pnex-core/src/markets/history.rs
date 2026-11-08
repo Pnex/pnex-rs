@@ -180,8 +180,9 @@ pub struct Kline {
     pub low: i128,
     pub close: i128,
     pub volume: i128,
-    pub quote_volume: i128,
-    pub trades: i64,
+    /// Absent when the source does not publish it (MT5).
+    pub quote_volume: Option<i128>,
+    pub trades: Option<i64>,
 }
 
 /// The 1-based line that could not be read.
@@ -225,8 +226,81 @@ pub fn binance_klines(csv: &[u8]) -> Result<Vec<Kline>, DecodeError> {
             low: n(3)?,
             close: n(4)?,
             volume: n(5)?,
-            quote_volume: n(7)?,
-            trades: f[8].parse().map_err(|_| bad)?,
+            quote_volume: Some(n(7)?),
+            trades: Some(f[8].parse().map_err(|_| bad)?),
+        });
+    }
+    Ok(out)
+}
+
+pub const BINANCE_SPOT_TRADES: HistorySource = HistorySource {
+    key: "binance_public_trades",
+    base: "https://data.binance.vision",
+    interval: "trade",
+    table: "binance_spot_trades",
+    license_note: "Binance public data files; terms of use not checked for redistribution \
+                   or SaaS (Q-MK11): private to the org",
+};
+
+/// Path of a Binance spot trades file of one day (D821: by day, a month
+/// would pass the unzip cap).
+pub fn binance_trades_path(symbol: &str, day: NaiveDate) -> String {
+    format!(
+        "data/spot/daily/trades/{symbol}/{symbol}-trades-{}.zip",
+        day.format("%Y-%m-%d")
+    )
+}
+
+/// One trade of a trades file, price and quantity at [`SCALE`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Trade {
+    pub trade_id: i64,
+    /// µs since the epoch, UTC.
+    pub ts_us: i64,
+    pub price: i128,
+    pub qty: i128,
+    /// `buy` when the taker bought, `sell` when the buyer was the maker.
+    pub side: &'static str,
+}
+
+/// A Binance trades CSV: id, price, qty, quote qty, time, buyer is maker,
+/// best match. Same header and time unit rules as [`binance_klines`].
+pub fn binance_trades(csv: &[u8]) -> Result<Vec<Trade>, DecodeError> {
+    let text = std::str::from_utf8(csv).map_err(|_| DecodeError { line: 1 })?;
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let f: Vec<&str> = line.split(',').map(str::trim).collect();
+        let bad = DecodeError { line: i + 1 };
+        let Ok(trade_id) = f[0].parse::<i64>() else {
+            if i == 0 {
+                continue;
+            }
+            return Err(bad);
+        };
+        if f.len() < 6 {
+            return Err(bad);
+        }
+        let time: i64 = f[4].parse().map_err(|_| bad)?;
+        let ts_us = if time >= 1_000_000_000_000_000 {
+            time
+        } else {
+            time.checked_mul(1000).ok_or(bad)?
+        };
+        let side = match f[5].to_ascii_lowercase().as_str() {
+            "true" => "sell",
+            "false" => "buy",
+            _ => return Err(bad),
+        };
+        out.push(Trade {
+            trade_id,
+            ts_us,
+            price: scaled(f[1], SCALE).ok_or(bad)?,
+            qty: scaled(f[2], SCALE).ok_or(bad)?,
+            side,
         });
     }
     Ok(out)
@@ -290,8 +364,9 @@ pub struct Tick {
     pub ts_us: i64,
     pub bid: i128,
     pub ask: i128,
-    pub bid_volume: f64,
-    pub ask_volume: f64,
+    /// Absent when the source has no volume per side (MT5).
+    pub bid_volume: Option<f64>,
+    pub ask_volume: Option<f64>,
 }
 
 /// A decompressed `.bi5`: 20-byte big-endian records of (ms since the
@@ -320,11 +395,146 @@ pub fn dukascopy_bi5(raw: &[u8], hour_start_us: i64, scale: u32) -> Result<Vec<T
             ts_us: hour_start_us + i64::from(ms) * 1000,
             ask: i128::from(u32_at(r, 4)) * up,
             bid: i128::from(u32_at(r, 8)) * up,
-            ask_volume: vol(r, 12),
-            bid_volume: vol(r, 16),
+            ask_volume: Some(vol(r, 12)),
+            bid_volume: Some(vol(r, 16)),
         });
     }
     Ok(out)
+}
+
+/// Bars pushed by the PneX bridge for MetaTrader 5 (D816); the `source`
+/// column says `mt5:<broker>`.
+pub const MT5_OHLCV_1M: HistorySource = HistorySource {
+    key: "mt5",
+    base: "",
+    interval: "1m",
+    table: "mt5_ohlcv_1m",
+    license_note: "Quotes of the org's own broker, pushed by its terminal: private to the org",
+};
+
+/// Ticks pushed by the PneX bridge for MetaTrader 5 (D816).
+pub const MT5_TICKS: HistorySource = HistorySource {
+    key: "mt5",
+    base: "",
+    interval: "tick",
+    table: "mt5_ticks",
+    license_note: "Quotes of the org's own broker, pushed by its terminal: private to the org",
+};
+
+/// One call of the PneX bridge Expert Advisor for MetaTrader 5 (D816):
+/// closed 1-minute bars and ticks of a broker, times already in UTC.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mt5Batch {
+    /// `mt5:<broker>`, the `source` column (D824).
+    pub source: String,
+    pub bars: Vec<(String, Kline)>,
+    pub ticks: Vec<(String, Tick)>,
+}
+
+/// Bars plus ticks of one call; the 1 MiB body holds far fewer.
+pub const MT5_ROWS_MAX: usize = 50_000;
+
+/// A broker symbol, kept as a column only: `EURUSD`, `US500.cash`, `XAUUSD#`.
+pub fn mt5_symbol_ok(s: &str) -> bool {
+    (1..=32).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._#-".contains(&b))
+}
+
+/// Reads one call: `{"v": 1, "broker": "…", "bars": [{"symbol", "time" (s),
+/// "open", "high", "low", "close", "volume"}], "ticks": [{"symbol",
+/// "time_msc" (ms), "bid", "ask"}]}`. Prices are decimal texts (numbers
+/// pass too); the error is a machine token.
+pub fn mt5_payload(body: &serde_json::Value) -> Result<Mt5Batch, &'static str> {
+    use serde_json::Value;
+    if body.get("v").and_then(Value::as_i64) != Some(1) {
+        return Err("version");
+    }
+    let broker: String = body
+        .get("broker")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || "._-".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(48)
+        .collect();
+    let broker = if broker.is_empty() {
+        "unknown".into()
+    } else {
+        broker
+    };
+    let list = |key: &str| match body.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(a)) => Ok(a.clone()),
+        Some(_) => Err("shape"),
+    };
+    let (bars_in, ticks_in) = (list("bars")?, list("ticks")?);
+    if bars_in.len() + ticks_in.len() > MT5_ROWS_MAX {
+        return Err("too_many");
+    }
+    let symbol = |r: &Value| {
+        r.get("symbol")
+            .and_then(Value::as_str)
+            .filter(|s| mt5_symbol_ok(s))
+            .map(str::to_string)
+            .ok_or("symbol")
+    };
+    let price = |r: &Value, k: &str| {
+        let text = match r.get(k) {
+            Some(Value::String(s)) => s.clone(),
+            Some(Value::Number(n)) => n.to_string(),
+            _ => return Err("price"),
+        };
+        scaled(text.trim(), SCALE)
+            .filter(|v| *v >= 0)
+            .ok_or("price")
+    };
+    let int = |r: &Value, k: &str| r.get(k).and_then(Value::as_i64).ok_or("time");
+    let mut bars = Vec::with_capacity(bars_in.len());
+    for r in &bars_in {
+        let open_us = int(r, "time")?.checked_mul(1_000_000).ok_or("time")?;
+        let volume = match r.get("volume") {
+            None | Some(Value::Null) => 0,
+            Some(_) => price(r, "volume")?,
+        };
+        bars.push((
+            symbol(r)?,
+            Kline {
+                open_us,
+                open: price(r, "open")?,
+                high: price(r, "high")?,
+                low: price(r, "low")?,
+                close: price(r, "close")?,
+                volume,
+                quote_volume: None,
+                trades: None,
+            },
+        ));
+    }
+    let mut ticks = Vec::with_capacity(ticks_in.len());
+    for r in &ticks_in {
+        ticks.push((
+            symbol(r)?,
+            Tick {
+                ts_us: int(r, "time_msc")?.checked_mul(1000).ok_or("time")?,
+                bid: price(r, "bid")?,
+                ask: price(r, "ask")?,
+                bid_volume: None,
+                ask_volume: None,
+            },
+        ));
+    }
+    Ok(Mt5Batch {
+        source: format!("mt5:{broker}"),
+        bars,
+        ticks,
+    })
 }
 
 #[cfg(test)]
@@ -358,9 +568,9 @@ mod tests {
         assert_eq!(k.len(), 2);
         assert_eq!(k[0].open_us, 1_502_942_400_000_000);
         assert_eq!(k[0].close, 426_148_000_000);
-        assert_eq!(k[0].trades, 3);
+        assert_eq!(k[0].trades, Some(3));
         assert_eq!(k[1].open_us, 1_735_689_600_000_000);
-        assert_eq!(k[1].quote_volume, 76_897_826_748_550);
+        assert_eq!(k[1].quote_volume, Some(76_897_826_748_550));
         assert_eq!(
             binance_klines(b"1,2,3\n"),
             Err(DecodeError { line: 1 }),
@@ -451,8 +661,8 @@ mod tests {
         assert_eq!(t[0].ts_us, 1_000_000 + 1_500_000);
         assert_eq!(t[0].ask, 103_456_000, "1.03456 at 8 places");
         assert_eq!(t[0].bid, 103_452_000);
-        assert_eq!(t[0].ask_volume, 1.23);
-        assert_eq!(t[0].bid_volume, 0.75);
+        assert_eq!(t[0].ask_volume, Some(1.23));
+        assert_eq!(t[0].bid_volume, Some(0.75));
         // JPY: 157.123 published as 157123.
         let mut jpy = raw.clone();
         jpy[4..8].copy_from_slice(&157_123_u32.to_be_bytes());
@@ -464,5 +674,57 @@ mod tests {
             plan_days(d("2025-01-01"), d("2025-01-04"), &known),
             vec![Period::Day(d("2025-01-01")), Period::Day(d("2025-01-03"))]
         );
+    }
+
+    #[test]
+    fn trades_by_day_in_both_units() {
+        assert_eq!(
+            binance_trades_path("BTCUSDT", d("2025-03-04")),
+            "data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2025-03-04.zip"
+        );
+        let csv = b"id,price,qty,quote_qty,time,is_buyer_maker,is_best_match\n\
+12,4261.48000000,0.00500000,21.30740000,1502942428322,True,True\n\
+13,98000.10000000,0.10000000,9800.01000000,1735689600000123,false,true\n";
+        let t = binance_trades(csv).unwrap();
+        assert_eq!(t.len(), 2);
+        assert_eq!(t[0].ts_us, 1_502_942_428_322_000);
+        assert_eq!((t[0].trade_id, t[0].side, t[0].qty), (12, "sell", 500_000));
+        assert_eq!((t[1].ts_us, t[1].side), (1_735_689_600_000_123, "buy"));
+        assert!(binance_trades(b"1,2,3,4,5,maybe,true\n").is_err());
+    }
+
+    #[test]
+    fn mt5_calls_are_read_strictly() {
+        let body = serde_json::json!({
+            "v": 1,
+            "broker": "Demo Broker/Live",
+            "bars": [{"symbol": "EURUSD", "time": 1_735_689_600, "open": "1.03456",
+                      "high": "1.03470", "low": "1.03400", "close": 1.0345, "volume": 120}],
+            "ticks": [{"symbol": "US500.cash", "time_msc": 1_735_689_600_123_i64,
+                       "bid": "5881.25", "ask": "5881.75"}]
+        });
+        let b = mt5_payload(&body).unwrap();
+        assert_eq!(b.source, "mt5:Demo_Broker_Live");
+        assert_eq!(b.bars[0].0, "EURUSD");
+        assert_eq!(b.bars[0].1.open_us, 1_735_689_600_000_000);
+        assert_eq!(b.bars[0].1.close, 103_450_000);
+        assert_eq!(b.bars[0].1.volume, 12_000_000_000);
+        assert_eq!(b.bars[0].1.trades, None);
+        assert_eq!(b.ticks[0].1.ts_us, 1_735_689_600_123_000);
+        assert_eq!(b.ticks[0].1.ask, 588_175_000_000);
+        for (bad, token) in [
+            (serde_json::json!({"v": 2}), "version"),
+            (serde_json::json!({"v": 1, "bars": {}}), "shape"),
+            (
+                serde_json::json!({"v": 1, "bars": [{"symbol": "../x", "time": 1}]}),
+                "symbol",
+            ),
+            (
+                serde_json::json!({"v": 1, "ticks": [{"symbol": "X", "time_msc": 1, "bid": "-1", "ask": "1"}]}),
+                "price",
+            ),
+        ] {
+            assert_eq!(mt5_payload(&bad), Err(token));
+        }
     }
 }

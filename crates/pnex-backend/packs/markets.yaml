@@ -31,10 +31,14 @@
 # Since 1.5.0 (MK12) the pairs of `history_fx_pairs` get their bid/ask ticks
 # from Dukascopy's public hour files into the table `dukascopy_ticks`, one
 # day per transaction. Broker quotes, not exchange data; same terms caveat.
+# Since 1.6.0 (MK13) the symbols of `history_trade_symbols` get every spot
+# trade from Binance's daily files into the table `binance_spot_trades`, and
+# `mt5_connector` names the webhook the PneX bridge for MetaTrader 5 pushes
+# to (D816): its bars and ticks go to `mt5_ohlcv_1m` and `mt5_ticks`.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.5.0"
+version: "1.6.0"
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
 descriptions: {fr: "Sociétés suivies par ticker avec leurs dépôts et chiffres publiés (SEC EDGAR), et séries macroéconomiques (FRED), chaque valeur datée par sa publication. Une aide à l'analyse, pas un conseil en investissement."}
@@ -121,6 +125,27 @@ settings:
     descriptions: {fr: "AAAA-MM. L'historique est chargé à partir de ce mois ; 2017-08, le premier de Binance, si vide."}
     kind: text
     default: "2017-08"
+  - key: history_trade_symbols
+    name: Symbols of the trade history (Binance)
+    names: {fr: "Symboles de l'historique des transactions (Binance)"}
+    description: "Comma-separated Binance spot symbols whose every trade is loaded into the table binance_spot_trades, one day per file. Much bigger than the minute bars: a busy symbol weighs hundreds of MB a day. Empty: nothing is loaded."
+    descriptions: {fr: "Symboles spot Binance, séparés par des virgules, dont chaque transaction est chargée dans la table binance_spot_trades, un fichier par jour. Bien plus lourd que les bougies minute : un symbole actif pèse des centaines de Mo par jour. Vide : rien n'est chargé."}
+    kind: text
+    default: ""
+  - key: history_trade_from
+    name: First month of the trade history
+    names: {fr: "Premier mois de l'historique des transactions"}
+    description: "YYYY-MM. The trades are loaded from this month; one month back when empty."
+    descriptions: {fr: "AAAA-MM. Les transactions sont chargées à partir de ce mois ; un mois en arrière si vide."}
+    kind: text
+    default: ""
+  - key: mt5_connector
+    name: Webhook of the MetaTrader 5 bridge
+    names: {fr: "Webhook du pont MetaTrader 5"}
+    description: "Name of the org's webhook connector the PneX bridge Expert Advisor pushes to. Its 1-minute bars go to the table mt5_ohlcv_1m and its ticks to mt5_ticks, read only: no order is ever sent. Empty: nothing is read."
+    descriptions: {fr: "Nom du connecteur webhook de l'organisation vers lequel l'Expert Advisor pont de PneX pousse. Ses bougies d'une minute vont dans la table mt5_ohlcv_1m et ses ticks dans mt5_ticks, en lecture seule : aucun ordre n'est jamais envoyé. Vide : rien n'est lu."}
+    kind: text
+    default: ""
   - key: history_fx_pairs
     name: Pairs of the tick history (Dukascopy)
     names: {fr: "Paires de l'historique des ticks (Dukascopy)"}
