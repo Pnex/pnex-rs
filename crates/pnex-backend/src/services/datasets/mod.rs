@@ -29,8 +29,9 @@ use self::csv::{CsvBatches, CsvError};
 use self::parquet::S3Sink;
 use crate::services::artifact_store::{S3Config, S3Store};
 
-/// Parquet bytes an org holds in its datasets.
-// shortcut: one quota for everyone, move it to the tier (D569) when tiers sell storage.
+/// Parquet bytes an org holds in its datasets, unless a platform admin set
+/// another value for it (D821).
+// shortcut: a per-org platform setting, move it to the tier (D569) when tiers sell storage.
 pub const QUOTA_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 /// CSV bytes of one load.
 pub use pnex_core::datasets::SOURCE_MAX_BYTES;
@@ -133,7 +134,6 @@ impl DatasetError {
                 json!({ "reason": "field_count", "line": line, "expected": expected, "got": got })
             }
             Self::SchemaMismatch { columns } => json!({ "columns": columns }),
-            Self::QuotaExceeded => json!({ "max": QUOTA_BYTES }),
             Self::SourceTooLarge => json!({ "max": SOURCE_MAX_BYTES }),
             _ => return None,
         })
@@ -592,7 +592,7 @@ fn view_file(row: &QueryResult) -> Result<ViewFile, DatasetError> {
 }
 
 /// Bytes of the org's committed files still in storage.
-async fn used_bytes(db: &DatabaseConnection, org_id: i64) -> Result<u64, DbErr> {
+pub async fn used_bytes(db: &DatabaseConnection, org_id: i64) -> Result<u64, DbErr> {
     let row = db
         .query_one_raw(stmt(
             "SELECT coalesce(sum(bytes), 0)::bigint AS b FROM dataset_transactions \
@@ -601,6 +601,57 @@ async fn used_bytes(db: &DatabaseConnection, org_id: i64) -> Result<u64, DbErr> 
         ))
         .await?;
     Ok(row.map_or(Ok(0), |r| r.try_get::<i64>("", "b"))?.max(0) as u64)
+}
+
+fn quota_key(org_id: i64) -> String {
+    format!("dataset_quota_bytes:{org_id}")
+}
+
+/// The quota a platform admin set for the org, `None` = [`QUOTA_BYTES`].
+pub async fn quota_override(db: &DatabaseConnection, org_id: i64) -> Result<Option<u64>, DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT value FROM system_settings WHERE key = $1",
+            vec![quota_key(org_id).into()],
+        ))
+        .await?;
+    Ok(row
+        .and_then(|r| r.try_get::<String>("", "value").ok())
+        .and_then(|v| v.parse().ok()))
+}
+
+/// Sets (or with `None` drops) the org's quota. Platform admin only (D821):
+/// every member owns a personal org, an org admin never raises its own.
+pub async fn set_quota(
+    db: &DatabaseConnection,
+    org_id: i64,
+    bytes: Option<u64>,
+    by: i64,
+) -> Result<(), DbErr> {
+    let key = quota_key(org_id);
+    match bytes {
+        Some(b) => db.execute_raw(stmt(
+            "INSERT INTO system_settings (key, value, updated_by, created_at, updated_at) \
+             VALUES ($1, $2, $3, now(), now()) ON CONFLICT (key) DO UPDATE SET \
+               value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = now()",
+            vec![key.into(), b.to_string().into(), by.into()],
+        )),
+        None => db.execute_raw(stmt(
+            "DELETE FROM system_settings WHERE key = $1",
+            vec![key.into()],
+        )),
+    }
+    .await?;
+    Ok(())
+}
+
+/// Bytes the org may still write, refused when none.
+async fn room(db: &DatabaseConnection, org_id: i64) -> Result<u64, DatasetError> {
+    let quota = quota_override(db, org_id).await?.unwrap_or(QUOTA_BYTES);
+    quota
+        .checked_sub(used_bytes(db, org_id).await?)
+        .filter(|n| *n > 0)
+        .ok_or(DatasetError::QuotaExceeded)
 }
 
 /// Opens a transaction, after retiring a dead one of this dataset.
@@ -855,10 +906,7 @@ where
     S: Stream<Item = Result<Bytes, E>> + Unpin,
 {
     let dataset = get(db, org_id, id).await?;
-    let room = QUOTA_BYTES
-        .checked_sub(used_bytes(db, org_id).await?)
-        .filter(|n| *n > 0)
-        .ok_or(DatasetError::QuotaExceeded)?;
+    let room = room(db, org_id).await?;
     // In this order: an erasure queued after `begin` waits for this transaction,
     // one queued before is read here.
     let transaction_id = begin(db, org_id, id, kind).await?;
@@ -947,10 +995,7 @@ pub async fn append_batch(
             columns: dataset.columns.iter().map(|c| c.name.clone()).collect(),
         });
     }
-    let room = QUOTA_BYTES
-        .checked_sub(used_bytes(db, org_id).await?)
-        .filter(|n| *n > 0)
-        .ok_or(DatasetError::QuotaExceeded)?;
+    let room = room(db, org_id).await?;
     let kind = DatasetTransactionKind::Append;
     let transaction_id = begin(db, org_id, id, kind).await?;
     let key = format!(

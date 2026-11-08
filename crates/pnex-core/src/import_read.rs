@@ -93,6 +93,35 @@ pub fn unzip_csv(bytes: &[u8]) -> Result<Vec<u8>, ReadError> {
     unzip(bytes, Some(SourceFormat::Csv)).map(|(b, _)| b)
 }
 
+/// A raw LZMA stream (`.lzma`, as Dukascopy's `.bi5`), capped at
+/// [`UNZIPPED_MAX`] like a zip.
+pub fn unlzma(bytes: &[u8]) -> Result<Vec<u8>, ReadError> {
+    struct Capped(Vec<u8>, bool);
+    impl std::io::Write for Capped {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if (self.0.len() + buf.len()) as u64 > UNZIPPED_MAX {
+                self.1 = true;
+                return Err(std::io::Error::other("too large"));
+            }
+            self.0.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut out = Capped(Vec::new(), false);
+    match lzma_rs::lzma_decompress(&mut std::io::BufReader::new(bytes), &mut out) {
+        Ok(()) => Ok(out.0),
+        Err(_) if out.1 => Err(Limit::of(
+            "unzipped_bytes",
+            out.0.len(),
+            UNZIPPED_MAX as usize,
+        )),
+        Err(_) => Err(ReadError::Malformed),
+    }
+}
+
 /// UTF-8, else Latin-1 (a CSV saved by a spreadsheet on Windows).
 pub fn text_of(bytes: &[u8]) -> String {
     match std::str::from_utf8(bytes) {
@@ -424,5 +453,14 @@ mod tests {
             read_records(b"x", "noext", &mapping(None, "")),
             Err(ReadError::UnknownFormat)
         );
+    }
+
+    #[test]
+    fn lzma_streams_are_read_and_junk_refused() {
+        let raw: Vec<u8> = (0..4000_u32).flat_map(|i| i.to_be_bytes()).collect();
+        let mut packed = Vec::new();
+        lzma_rs::lzma_compress(&mut std::io::Cursor::new(&raw), &mut packed).unwrap();
+        assert_eq!(unlzma(&packed).unwrap(), raw);
+        assert!(matches!(unlzma(b"not lzma"), Err(ReadError::Malformed)));
     }
 }

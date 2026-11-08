@@ -1,19 +1,22 @@
-//! Fine price history into a table (markets-research.md MK11: D807–D809,
-//! D820, D822): the 1-minute bars of the symbols an org lists, read from
-//! Binance's public files one partition at a time, each one an `append`
-//! transaction of the table `binance_spot_klines_1m`. The registry
-//! `market_history_partitions` makes a cut run go on where it stopped.
+//! Fine price history into a table (markets-research.md MK11–MK12:
+//! D807–D809, D820, D822): the 1-minute bars of the Binance symbols and the
+//! ticks of the Dukascopy pairs an org lists, read from the public files
+//! one partition at a time, each one an `append` transaction of the
+//! source's table. The registry `market_history_partitions` makes a cut run
+//! go on where it stopped.
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use arrow_array::{
-    Decimal128Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
+    Decimal128Array, Float64Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
 };
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use chrono::NaiveDate;
 use loco_rs::app::AppContext;
-use pnex_core::markets::history::{self, HistorySource, Kline, Period, BINANCE_SPOT_1M};
+use pnex_core::markets::history::{
+    self, HistorySource, Kline, Period, Tick, BINANCE_SPOT_1M, DUKASCOPY_TICKS,
+};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -31,6 +34,11 @@ const SYMBOLS_MAX: usize = 50;
 // shortcut: one request at a time per pass, no per-host concurrency (D808 says 4); raise it if a backfill measured too slow.
 const PER_PASS: usize = 24;
 const PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
+const FX_PAIRS: &str = "markets.history_fx_pairs";
+const FX_FROM: &str = "markets.history_fx_from";
+/// Days of ticks per org and pass (24 hour files each).
+const FX_DAYS_PER_PASS: usize = 14;
+const FX_PAUSE: std::time::Duration = std::time::Duration::from_millis(100);
 
 fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
@@ -39,11 +47,22 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
 /// One pass over the orgs that list symbols. `base` is the source's host
 /// (a mock in tests).
 pub async fn sweep(ctx: &AppContext, base: &str, today: NaiveDate) -> Result<(), DatasetError> {
+    sweep_from(ctx, base, DUKASCOPY_TICKS.base, today).await
+}
+
+/// [`sweep`] with each source's host (mocks in tests).
+pub async fn sweep_from(
+    ctx: &AppContext,
+    binance: &str,
+    dukascopy: &str,
+    today: NaiveDate,
+) -> Result<(), DatasetError> {
     let orgs: Vec<i64> = ctx
         .db
         .query_all_raw(stmt(
             "SELECT org_id FROM packs WHERE key = 'markets' \
-               AND coalesce(settings ->> 'history_symbols', '') <> '' ORDER BY org_id",
+               AND (coalesce(settings ->> 'history_symbols', '') <> '' \
+                 OR coalesce(settings ->> 'history_fx_pairs', '') <> '') ORDER BY org_id",
             vec![],
         ))
         .await?
@@ -55,8 +74,11 @@ pub async fn sweep(ctx: &AppContext, base: &str, today: NaiveDate) -> Result<(),
     }
     let store = datasets::store_of(&ctx.config)?;
     for org in orgs {
-        if let Err(e) = org_pass(&ctx.db, &store, base, org, today).await {
+        if let Err(e) = org_pass(&ctx.db, &store, binance, org, today).await {
             tracing::warn!(org, code = e.code(), "price history pass stopped");
+        }
+        if let Err(e) = fx_pass(&ctx.db, &store, dukascopy, org, today).await {
+            tracing::warn!(org, code = e.code(), "tick history pass stopped");
         }
     }
     Ok(())
@@ -83,6 +105,25 @@ fn symbols_of(raw: &str) -> Vec<String> {
         .filter(|s| history::symbol_ok(s) && seen.insert(s.clone()))
         .take(SYMBOLS_MAX)
         .collect()
+}
+
+/// The forex pairs of a setting whose scale is known (D820).
+fn pairs_of(raw: &str) -> Vec<String> {
+    let mut seen = HashSet::new();
+    raw.split(',')
+        .map(|s| s.trim().to_ascii_uppercase())
+        .filter(|s| history::fx_scale(s).is_some() && seen.insert(s.clone()))
+        .take(SYMBOLS_MAX)
+        .collect()
+}
+
+/// A `YYYY-MM` setting, else twelve months back.
+fn fx_from_of(raw: &str, today: NaiveDate) -> NaiveDate {
+    NaiveDate::parse_from_str(&format!("{}-01", raw.trim()), "%Y-%m-%d").unwrap_or_else(|_| {
+        today
+            .checked_sub_months(chrono::Months::new(12))
+            .unwrap_or(today)
+    })
 }
 
 fn from_of(raw: &str) -> NaiveDate {
@@ -118,9 +159,7 @@ async fn org_pass(
                 return Ok(());
             };
             let outcome = match outcome {
-                Fetched::Rows(rows, sha256) => {
-                    write(db, store, org, &src, &symbol, rows, sha256).await
-                }
+                Fetched::Rows(batch, sha256) => write(db, store, org, &src, batch, sha256).await,
                 other => other,
             };
             let stop = matches!(&outcome, Fetched::Failed("quota"));
@@ -132,6 +171,92 @@ async fn org_pass(
         }
     }
     Ok(())
+}
+
+async fn fx_pass(
+    db: &DatabaseConnection,
+    store: &S3Store,
+    base: &str,
+    org: i64,
+    today: NaiveDate,
+) -> Result<(), DatasetError> {
+    let pairs = pairs_of(&text_setting(db, org, FX_PAIRS).await?);
+    let from = fx_from_of(&text_setting(db, org, FX_FROM).await?, today);
+    let src = DUKASCOPY_TICKS;
+    let mut budget = FX_DAYS_PER_PASS;
+    for pair in pairs {
+        let known = settled(db, org, &src, &pair, today).await?;
+        for p in history::plan_days(from, today, &known) {
+            if budget == 0 {
+                return Ok(());
+            }
+            budget -= 1;
+            let Some(outcome) = fetch_day(base, &pair, p).await else {
+                return Ok(());
+            };
+            let outcome = match outcome {
+                Fetched::Rows(batch, sha256) => write(db, store, org, &src, batch, sha256).await,
+                other => other,
+            };
+            let stop = matches!(&outcome, Fetched::Failed("quota"));
+            record(db, org, &src, &pair, p, &outcome).await?;
+            if stop {
+                return Err(DatasetError::QuotaExceeded);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The 24 hour files of a day, one batch. An hour without ticks is a 404
+/// or an empty file; a day without any is `Empty`.
+async fn fetch_day(base: &str, pair: &str, p: Period) -> Option<Fetched> {
+    let day = p.start();
+    let scale = history::fx_scale(pair)?;
+    let by = source::Declared::default();
+    let mut ticks: Vec<Tick> = Vec::new();
+    let mut digest = Sha256::new();
+    for hour in 0..24 {
+        let path = history::dukascopy_path(pair, day, hour);
+        let url = source::check_url(&format!("{base}/{path}")).ok()?;
+        let body = match source::get_found(&url, &by).await {
+            Ok(Some(b)) => b,
+            Ok(None) => continue,
+            Err(code) => {
+                tracing::info!(%url, code, "tick history source not read");
+                return None;
+            }
+        };
+        tokio::time::sleep(FX_PAUSE).await;
+        if body.is_empty() {
+            continue;
+        }
+        digest.update(&body);
+        let start_us = day.and_hms_opt(hour, 0, 0)?.and_utc().timestamp_micros();
+        let decoded = tokio::task::spawn_blocking(move || {
+            let raw = pnex_core::import_read::unlzma(&body).ok()?;
+            history::dukascopy_bi5(&raw, start_us, scale).ok()
+        })
+        .await
+        .ok()
+        .flatten();
+        match decoded {
+            Some(t) => ticks.extend(t),
+            None => return Some(Fetched::Failed("unreadable")),
+        }
+    }
+    if ticks.is_empty() {
+        return Some(Fetched::Empty);
+    }
+    let sha256: String = digest
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    Some(match quote_tick_batch(&DUKASCOPY_TICKS, pair, &ticks) {
+        Ok(b) => Fetched::Rows(b, sha256),
+        Err(_) => Fetched::Failed("unreadable"),
+    })
 }
 
 async fn settled(
@@ -161,7 +286,7 @@ async fn settled(
 }
 
 enum Fetched {
-    Rows(Vec<Kline>, String),
+    Rows(RecordBatch, String),
     Empty,
     Failed(&'static str),
     Done {
@@ -211,7 +336,10 @@ async fn fetch(base: &str, src: &HistorySource, symbol: &str, p: Period) -> Opti
     Some(match decoded {
         None => Fetched::Failed("unreadable"),
         Some(rows) if rows.is_empty() => Fetched::Empty,
-        Some(rows) => Fetched::Rows(rows, sha256),
+        Some(rows) => match ohlcv_batch(src, symbol, &rows) {
+            Ok(b) => Fetched::Rows(b, sha256),
+            Err(_) => Fetched::Failed("unreadable"),
+        },
     })
 }
 
@@ -265,6 +393,50 @@ pub fn ohlcv_batch(
     )
 }
 
+/// Columns of the `quote_tick` shape (D809).
+pub fn quote_tick_batch(
+    src: &HistorySource,
+    instrument: &str,
+    rows: &[Tick],
+) -> Result<RecordBatch, arrow_schema::ArrowError> {
+    let scale = history::SCALE as i8;
+    let dec = || DataType::Decimal128(38, scale);
+    let ts = DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into()));
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("instrument", DataType::Utf8, false),
+        Field::new("ts", ts, false),
+        Field::new("bid", dec(), false),
+        Field::new("ask", dec(), false),
+        Field::new("bid_volume", DataType::Float64, false),
+        Field::new("ask_volume", DataType::Float64, false),
+        Field::new("source", DataType::Utf8, false),
+    ]));
+    let n = rows.len();
+    let col = |f: fn(&Tick) -> i128| {
+        Decimal128Array::from(rows.iter().map(f).collect::<Vec<_>>())
+            .with_precision_and_scale(38, scale)
+    };
+    RecordBatch::try_new(
+        schema,
+        vec![
+            Arc::new(StringArray::from(vec![instrument; n])),
+            Arc::new(
+                TimestampMicrosecondArray::from(rows.iter().map(|t| t.ts_us).collect::<Vec<_>>())
+                    .with_timezone("UTC"),
+            ),
+            Arc::new(col(|t| t.bid)?),
+            Arc::new(col(|t| t.ask)?),
+            Arc::new(Float64Array::from(
+                rows.iter().map(|t| t.bid_volume).collect::<Vec<_>>(),
+            )),
+            Arc::new(Float64Array::from(
+                rows.iter().map(|t| t.ask_volume).collect::<Vec<_>>(),
+            )),
+            Arc::new(StringArray::from(vec![src.key; n])),
+        ],
+    )
+}
+
 /// The org's table of this source, created the first time.
 async fn table_of(
     db: &DatabaseConnection,
@@ -296,14 +468,11 @@ async fn write(
     store: &S3Store,
     org: i64,
     src: &HistorySource,
-    symbol: &str,
-    rows: Vec<Kline>,
+    batch: RecordBatch,
     sha256: String,
 ) -> Fetched {
     let out = async {
         let table = table_of(db, org, src).await?;
-        let batch =
-            ohlcv_batch(src, symbol, &rows).map_err(|e| DatasetError::Storage(e.to_string()))?;
         datasets::append_batch(db, store, org, table, &batch).await
     }
     .await;
@@ -317,7 +486,12 @@ async fn write(
         Err(DatasetError::QuotaExceeded) => Fetched::Failed("quota"),
         Err(DatasetError::SchemaMismatch { .. }) => Fetched::Failed("schema"),
         Err(e) => {
-            tracing::warn!(org, symbol, code = e.code(), "price history not written");
+            let detail = match &e {
+                DatasetError::Storage(m) => m.clone(),
+                DatasetError::Db(d) => d.to_string(),
+                _ => String::new(),
+            };
+            tracing::warn!(org, table = src.table, code = e.code(), %detail, "price history not written");
             Fetched::Failed("storage")
         }
     }
@@ -399,6 +573,19 @@ mod tests {
         assert_eq!(
             from_of("junk"),
             NaiveDate::from_ymd_opt(2017, 8, 1).unwrap()
+        );
+        assert_eq!(
+            pairs_of("eurusd, XAUUSD,usdjpy,EURUSD"),
+            vec!["EURUSD", "USDJPY"]
+        );
+        let today = NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
+        assert_eq!(
+            fx_from_of("", today),
+            NaiveDate::from_ymd_opt(2025, 11, 8).unwrap()
+        );
+        assert_eq!(
+            fx_from_of("2025-03", today),
+            NaiveDate::from_ymd_opt(2025, 3, 1).unwrap()
         );
     }
 }

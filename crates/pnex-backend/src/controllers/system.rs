@@ -63,6 +63,10 @@ pub fn routes() -> Routes {
             "/orgs/{org_id}/connector-hosts",
             get(connector_hosts_get).put(connector_hosts_put),
         )
+        .add(
+            "/orgs/{org_id}/dataset-quota",
+            get(dataset_quota_get).put(dataset_quota_put),
+        )
         .add("/tiers", get(tiers_list))
         .add("/agent-limits", get(agent_limits_get).put(agent_limits_put))
         .add("/status", get(status))
@@ -79,6 +83,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         retention_history_put,
         connector_hosts_get,
         connector_hosts_put,
+        dataset_quota_get,
+        dataset_quota_put,
         o2_streams,
         o2_stream_delete,
         o2_stream_delete_range,
@@ -405,6 +411,93 @@ async fn connector_hosts_put(
         Ok(hosts) => format::json(hosts),
         Err(e) => crate::controllers::connectors::connector_error(e),
     }
+}
+
+/// Body of `PUT …/dataset-quota`.
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct DatasetQuotaUpdate {
+    /// Bytes of table files the org may hold; `null` returns to the default.
+    #[schema(value_type = Option<i64>, minimum = 0)]
+    pub bytes: Option<u64>,
+}
+
+/// Table storage of an org (D821).
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct DatasetQuota {
+    /// Value set by a platform admin, `null` when the default applies.
+    #[schema(value_type = Option<i64>)]
+    pub bytes: Option<u64>,
+    /// The deployment default.
+    #[schema(value_type = i64)]
+    pub default_bytes: u64,
+    /// Bytes of committed table files the org holds.
+    #[schema(value_type = i64)]
+    pub used_bytes: u64,
+}
+
+async fn dataset_quota_of(ctx: &AppContext, org_id: i64) -> Result<DatasetQuota> {
+    use crate::services::datasets;
+    Ok(DatasetQuota {
+        bytes: datasets::quota_override(&ctx.db, org_id)
+            .await
+            .map_err(db_err)?,
+        default_bytes: datasets::QUOTA_BYTES,
+        used_bytes: datasets::used_bytes(&ctx.db, org_id)
+            .await
+            .map_err(db_err)?,
+    })
+}
+
+/// `GET /api/v1/system/orgs/{org_id}/dataset-quota` — platform admin.
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/orgs/{org_id}/dataset-quota",
+    tag = "system",
+    operation_id = "system_dataset_quota_get",
+    summary = "Read an org's table storage quota",
+    description = "Platform admin only. The quota of table files set for this org (null = the default), the default and the bytes used.",
+    params(("org_id" = i64, Path, description = "Organization id")),
+    responses(
+        (status = 200, body = DatasetQuota),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn dataset_quota_get(
+    _admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Path(org_id): Path<i64>,
+) -> Result<Response> {
+    format::json(dataset_quota_of(&ctx, org_id).await?)
+}
+
+/// `PUT /api/v1/system/orgs/{org_id}/dataset-quota` — platform admin.
+#[utoipa::path(
+    put,
+    path = "/api/v1/system/orgs/{org_id}/dataset-quota",
+    tag = "system",
+    operation_id = "system_dataset_quota_set",
+    summary = "Set an org's table storage quota",
+    description = "Platform admin only, never an org admin: anyone who signs up owns an org and would raise its own. Sets the bytes of table files this org may hold; null returns to the default. Files already written are kept.",
+    params(("org_id" = i64, Path, description = "Organization id")),
+    request_body = DatasetQuotaUpdate,
+    responses(
+        (status = 200, body = DatasetQuota),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn dataset_quota_put(
+    admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Path(org_id): Path<i64>,
+    Json(body): Json<DatasetQuotaUpdate>,
+) -> Result<Response> {
+    crate::services::datasets::set_quota(&ctx.db, org_id, body.bytes, admin.0.user.id)
+        .await
+        .map_err(db_err)?;
+    tracing::info!(by = admin.0.user.id, org_id, bytes = ?body.bytes, "dataset quota set");
+    format::json(dataset_quota_of(&ctx, org_id).await?)
 }
 
 // ───────────────────────────── O2 cleanup ─────────────────────────────

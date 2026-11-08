@@ -968,3 +968,56 @@ async fn parts_at_once_all_count_and_a_cut_one_does_not() {
     })
     .await;
 }
+
+/// D821: the table storage quota of an org is a platform setting.
+#[tokio::test]
+#[serial]
+async fn the_quota_is_set_by_the_platform_admin_only() {
+    use sea_orm::ConnectionTrait;
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let path = format!("/api/v1/system/orgs/{org}/dataset-quota");
+        let auth = format!("Bearer {}", env.alice);
+        let call = |method: &'static str, body: Option<Value>| {
+            let req = match method {
+                "PUT" => server.put(&path).json(&body.unwrap()),
+                _ => server.get(&path),
+            }
+            .add_header("Authorization", auth.clone());
+            async move {
+                let res = req.await;
+                (res.status_code().as_u16(), res.json::<Value>())
+            }
+        };
+        // The org's owner is not enough: anyone who signs up owns an org.
+        let (s, e) = call("PUT", Some(json!({ "bytes": 1 }))).await;
+        assert_eq!(s, 403, "{e}");
+        assert_eq!(e["error"], "platform-admin-required");
+        ctx.db
+            .execute_unprepared(
+                "UPDATE users SET platform_admin = true WHERE email = 'alice@example.com'",
+            )
+            .await
+            .unwrap();
+        let (s, q) = call("GET", None).await;
+        assert_eq!(s, 200, "{q}");
+        assert_eq!(q["bytes"], Value::Null);
+        assert_eq!(q["default_bytes"], datasets::QUOTA_BYTES);
+        let (s, q) = call("PUT", Some(json!({ "bytes": 0 }))).await;
+        assert_eq!(s, 200, "{q}");
+        assert_eq!(q["bytes"], 0);
+
+        let (s, d) = create(&server, &env.alice, org, "full").await;
+        assert_eq!(s, 201, "{d}");
+        let id = d["id"].as_str().unwrap().to_string();
+        let (s, e) = load(&server, &env.alice, org, &id, "", "a\n1\n").await;
+        assert_eq!(e["error"], "dataset-quota", "{s} {e}");
+
+        let (s, q) = call("PUT", Some(json!({ "bytes": null }))).await;
+        assert_eq!(s, 200, "{q}");
+        assert_eq!(q["bytes"], Value::Null);
+        let (s, t) = load(&server, &env.alice, org, &id, "", "a\n1\n").await;
+        assert_eq!(s, 201, "{t}");
+    })
+    .await;
+}

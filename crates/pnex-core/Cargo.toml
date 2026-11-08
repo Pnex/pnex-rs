@@ -19,7 +19,7 @@ frame-crypto = ["dep:snow", "dep:base64"]
 # user-chosen hosts (R8) — backend, notify and http-fetch only.
 egress = ["dep:reqwest", "dep:tokio"]
 # Document text extraction (doc-search.md P1) — backend worker only.
-doc-extract = ["dep:zip", "dep:quick-xml", "dep:lopdf", "dep:calamine"]
+doc-extract = ["dep:zip", "dep:quick-xml", "dep:lopdf", "dep:calamine", "dep:lzma-rs"]
 # OpenAPI schemas of the API DTOs (docs/contracts/openapi.json) — backend only.
 openapi = ["dep:utoipa"]
 
@@ -46,6 +46,8 @@ tokio = { version = "1", default-features = false, features = ["net"], optional 
 # Document extraction (all MIT): docx/xlsx containers, docx XML, PDF text (lopdf, no ttf-parser since 0.45), sheets.
 zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
 quick-xml = { version = "0.41", optional = true }
+# Raw LZMA of Dukascopy tick files (markets-research.md D820), MIT, pure Rust.
+lzma-rs = { version = "0.3", optional = true }
 lopdf = { version = "0.45", default-features = false, optional = true }
 calamine = { version = "0.38", optional = true }
 # Fingerprints of erased values (`datasets::fingerprint`); also the digest of the

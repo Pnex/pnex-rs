@@ -6,7 +6,7 @@ pages: /ontology
 nodes:
 err_codes: import-contact-required, import-key-required, import-key-host
 tools: market_figures, market_rule_test
-tags: markets, marchés, subsidiaries, filiales, Exhibit 21, group structure, structure de groupe, investment, investissement, trading, ticker, SEC, EDGAR, FRED, filing, dépôt, 10-K, 10-Q, 8-K, reported figures, chiffres publiés, macro, inflation, known at, connu au, point in time, Tiingo, closing price, cours de clôture, event study, étude d'événement, reaction, réaction, abnormal return, rendement anormal, ECB, BCE, ESEF, GDELT, press, presse, thesis, thèse, catalyst, catalyseur, paper position, position fictive, Binance, crypto, minute bars, bougies minute, price history, historique de prix
+tags: markets, marchés, subsidiaries, filiales, Exhibit 21, group structure, structure de groupe, investment, investissement, trading, ticker, SEC, EDGAR, FRED, filing, dépôt, 10-K, 10-Q, 8-K, reported figures, chiffres publiés, macro, inflation, known at, connu au, point in time, Tiingo, closing price, cours de clôture, event study, étude d'événement, reaction, réaction, abnormal return, rendement anormal, ECB, BCE, ESEF, GDELT, press, presse, thesis, thèse, catalyst, catalyseur, paper position, position fictive, Binance, crypto, minute bars, bougies minute, price history, historique de prix, Dukascopy, forex, ticks, bid, ask
 ---
 The **Markets** pack reads primary sources instead of press articles: what a company files with the SEC and what public statistics publish. It is an aid to analysis, not investment advice: never present a figure as a recommendation.
 
@@ -44,6 +44,10 @@ An instrument gets a **Reaction** tab:
 List Binance spot symbols in the setting **Symbols of the minute history (Binance)** (for example `BTCUSDT, ETHUSDT`) and, if needed, **First month of the minute history**. Their 1-minute bars are loaded from Binance's public files into the table `binance_spot_klines_1m` of the **Pipelines** page: one month at a time, the current month day by day, a few dozen files every five minutes until the history is complete, then the new days. Nothing becomes an object. Prices are kept as published, never adjusted or filled; a missing minute stays missing. Binance's terms are not checked for redistribution: keep the table inside the org.
 - **A month is missing from the table**: its file had a wrong checksum or could not be read; it is fetched again on the next passes. A day Binance has not published yet is asked again for a week.
 - **The table stops growing**: the org's table storage is full. Remove symbols or old tables.
+
+## Tick history (forex)
+List forex pairs in the setting **Pairs of the tick history (Dukascopy)** (for example `EURUSD, USDJPY`) and, if needed, **First month of the tick history** (twelve months back when empty). Their bid and ask quotes are loaded from Dukascopy's public files into the table `dukascopy_ticks` of the **Pipelines** page, one day at a time, two weeks of days every five minutes. Only pairs between EUR, USD, GBP, JPY, CHF, AUD, CAD, NZD, SEK and NOK are read; a metal or an index is ignored, its price scale is not known. These are a broker's quotes, not exchange prices, and their terms are not checked for redistribution: keep the table inside the org.
+- **A day is missing**: one of its hour files could not be read; the day is fetched again on the next passes. Saturdays stay empty, the market is closed.
 
 ## Press
 **Press leads (GDELT)** lists the press naming a followed company. An article is a lead, marked *Unconfirmed*: it feeds no figure. Check it against a filing. If a company is missed, add the name the press uses in **Names in the press** on the company (for example Nvidia).

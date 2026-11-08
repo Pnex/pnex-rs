@@ -232,6 +232,101 @@ pub fn binance_klines(csv: &[u8]) -> Result<Vec<Kline>, DecodeError> {
     Ok(out)
 }
 
+pub const DUKASCOPY_TICKS: HistorySource = HistorySource {
+    key: "dukascopy_public",
+    base: "https://datafeed.dukascopy.com",
+    interval: "tick",
+    table: "dukascopy_ticks",
+    license_note: "Dukascopy public tick files: broker quotes, not exchange data; terms of \
+                   use not checked for redistribution or SaaS (Q-MK11): private to the org",
+};
+
+/// Currencies of the forex pairs whose scale is known. Metals, indices and
+/// CFDs have other scales: refused until listed, never guessed (D820).
+const FX_CURRENCIES: [&str; 10] = [
+    "EUR", "USD", "GBP", "JPY", "CHF", "AUD", "CAD", "NZD", "SEK", "NOK",
+];
+
+/// Decimal places of a Dukascopy pair's integer prices: 3 for a JPY
+/// quote, 5 for the other forex pairs, `None` when unknown.
+pub fn fx_scale(pair: &str) -> Option<u32> {
+    if pair.len() != 6 || !pair.is_ascii() {
+        return None;
+    }
+    let (base, quote) = pair.split_at(3);
+    if base == quote || !FX_CURRENCIES.contains(&base) || !FX_CURRENCIES.contains(&quote) {
+        return None;
+    }
+    Some(if quote == "JPY" { 3 } else { 5 })
+}
+
+/// Path of a Dukascopy hour of ticks; the month is counted from 0.
+pub fn dukascopy_path(pair: &str, day: NaiveDate, hour: u32) -> String {
+    format!(
+        "datafeed/{pair}/{:04}/{:02}/{:02}/{hour:02}h_ticks.bi5",
+        day.year(),
+        day.month0(),
+        day.day()
+    )
+}
+
+/// The days still to fetch from `from` up to yesterday, `known` left out.
+pub fn plan_days(from: NaiveDate, today: NaiveDate, known: &HashSet<Period>) -> Vec<Period> {
+    let mut out = Vec::new();
+    let mut d = from;
+    while d < today {
+        if !known.contains(&Period::Day(d)) {
+            out.push(Period::Day(d));
+        }
+        d = d + Days::new(1);
+    }
+    out
+}
+
+/// One quote of a tick file, prices at [`SCALE`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tick {
+    /// µs since the epoch, UTC.
+    pub ts_us: i64,
+    pub bid: i128,
+    pub ask: i128,
+    pub bid_volume: f64,
+    pub ask_volume: f64,
+}
+
+/// A decompressed `.bi5`: 20-byte big-endian records of (ms since the
+/// hour, ask, bid, ask volume, bid volume). `scale` is the pair's
+/// ([`fx_scale`]). `line` of the error is the 1-based record.
+pub fn dukascopy_bi5(raw: &[u8], hour_start_us: i64, scale: u32) -> Result<Vec<Tick>, DecodeError> {
+    if !raw.len().is_multiple_of(20) || scale > SCALE {
+        return Err(DecodeError {
+            line: raw.len() / 20 + 1,
+        });
+    }
+    let up = 10_i128.pow(SCALE - scale);
+    let u32_at = |r: &[u8], i: usize| u32::from_be_bytes([r[i], r[i + 1], r[i + 2], r[i + 3]]);
+    // The shortest text of the f32, so 1.23 stays 1.23 and not 1.2300000190734863.
+    let vol = |r: &[u8], i: usize| {
+        let v = f32::from_bits(u32_at(r, i));
+        v.to_string().parse::<f64>().unwrap_or(f64::from(v))
+    };
+    let mut out = Vec::with_capacity(raw.len() / 20);
+    for (n, r) in raw.as_chunks::<20>().0.iter().enumerate() {
+        let ms = u32_at(r, 0);
+        if ms >= 3_600_000 {
+            return Err(DecodeError { line: n + 1 });
+        }
+        out.push(Tick {
+            ts_us: hour_start_us + i64::from(ms) * 1000,
+            ask: i128::from(u32_at(r, 4)) * up,
+            bid: i128::from(u32_at(r, 8)) * up,
+            ask_volume: vol(r, 12),
+            bid_volume: vol(r, 16),
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,5 +426,43 @@ mod tests {
             Some("a".repeat(64))
         );
         assert_eq!(checksum_of("nope"), None);
+    }
+
+    #[test]
+    fn dukascopy_scales_paths_and_records() {
+        assert_eq!(fx_scale("EURUSD"), Some(5));
+        assert_eq!(fx_scale("USDJPY"), Some(3));
+        assert_eq!(fx_scale("XAUUSD"), None, "a metal is never guessed");
+        assert_eq!(fx_scale("EUREUR"), None);
+        assert_eq!(
+            dukascopy_path("EURUSD", d("2025-01-06"), 7),
+            "datafeed/EURUSD/2025/00/06/07h_ticks.bi5",
+            "months from 0"
+        );
+        let mut raw = Vec::new();
+        let (ms, ask, bid, av, bv) = (1500_u32, 103_456_u32, 103_452_u32, 1.23_f32, 0.75_f32);
+        raw.extend(ms.to_be_bytes());
+        raw.extend(ask.to_be_bytes());
+        raw.extend(bid.to_be_bytes());
+        raw.extend(av.to_bits().to_be_bytes());
+        raw.extend(bv.to_bits().to_be_bytes());
+        let t = dukascopy_bi5(&raw, 1_000_000, 5).unwrap();
+        assert_eq!(t.len(), 1);
+        assert_eq!(t[0].ts_us, 1_000_000 + 1_500_000);
+        assert_eq!(t[0].ask, 103_456_000, "1.03456 at 8 places");
+        assert_eq!(t[0].bid, 103_452_000);
+        assert_eq!(t[0].ask_volume, 1.23);
+        assert_eq!(t[0].bid_volume, 0.75);
+        // JPY: 157.123 published as 157123.
+        let mut jpy = raw.clone();
+        jpy[4..8].copy_from_slice(&157_123_u32.to_be_bytes());
+        assert_eq!(dukascopy_bi5(&jpy, 0, 3).unwrap()[0].ask, 15_712_300_000);
+        assert!(dukascopy_bi5(&raw[..19], 0, 5).is_err(), "a cut record");
+        assert!(dukascopy_bi5(&[], 0, 5).unwrap().is_empty());
+        let known: HashSet<Period> = [Period::Day(d("2025-01-02"))].into();
+        assert_eq!(
+            plan_days(d("2025-01-01"), d("2025-01-04"), &known),
+            vec![Period::Day(d("2025-01-01")), Period::Day(d("2025-01-03"))]
+        );
     }
 }

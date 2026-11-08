@@ -506,7 +506,7 @@ Recensement : aucune import marchés ni monde ne passe par un flow. Toutes sont 
 
 | | |
 |---|---|
-| Statut | Proposé le 2026-11-08 ; MK11 codé le 2026-11-08 (§C.7), MK12–MK14 à faire |
+| Statut | Proposé le 2026-11-08 ; MK11 et MK12 codés le 2026-11-08 (§C.7), MK13–MK14 en cours |
 | Lots | **MK11…MK14** |
 | Origine | volet trading de PNeX : un modèle entraîné sur des images de graphiques, du texte et la frise des événements (`geo_event`, `market_event`), puis une boucle qui cherche les meilleurs trades. Ici, **seulement la collecte de l'historique** : ni le modèle, ni l'entraînement, ni le flux continu |
 | Repose sur | tables et pipelines (`data-pipelines.md` D569–D578 : Parquet sur S3, transactions `append`, worker DataFusion, ordonnanceur D575), D526 (une source = une import, liste blanche), D531 (lecture à la date t), D540 (sources primaires), D543 (sources fixées dans le code, R9), §7 bis (aucun import marchés par flow) |
@@ -665,3 +665,20 @@ MK11 codé, non poussé. Pièces :
   - le vrai `data.binance.vision`, jamais appelé ;
   - l'acceptation MK11 sur BTCUSDT et ETHUSDT depuis 2017-08, soit environ 220 partitions, à peu près 50 minutes de remplissage ;
   - la vue courante à 10⁵ transactions (MK13).
+
+#### MK12 (2026-11-08, nuit)
+
+- `pnex_core::markets::history` : `DUKASCOPY_TICKS`, `fx_scale` (table des échelles : 10 devises, 3 places pour une cotation en JPY, 5 sinon ; métal, indice ou CFD refusés), `dukascopy_path` (mois comptés de 0), `plan_days`, `dukascopy_bi5` ; `import_read::unlzma` (plafond `UNZIPPED_MAX`) ; `lzma-rs` 0.3, déjà dans `Cargo.lock`.
+- `services::markets::history` : `fx_pass` et `fetch_day`, `quote_tick_batch` ; `Fetched::Rows` porte désormais un `RecordBatch`, l'écriture et le registre sont communs aux sources.
+- Pack `markets` 1.5.0 : réglages `history_fx_pairs` (vide) et `history_fx_from` (vide = douze mois en arrière).
+- **Écart : une partition Dukascopy est un jour, pas une heure.** Les 24 fichiers horaires d'un jour forment une seule transaction `append` ; une heure illisible fait échouer le jour entier, qui est retenté. Sans cela, une année de deux paires ferait 17 500 transactions au lieu de 730. Pas de migration : `period = 'day'` existait, la colonne `source` distingue les sources.
+- Une heure sans tick est un 404 ou un fichier vide ; un jour sans aucun tick est `empty` (le samedi en particulier).
+- Pas de somme de contrôle publiée par Dukascopy : `sha256` est celui des fichiers du jour mis bout à bout.
+- 14 jours par org et par passage, pause de 100 ms entre deux fichiers.
+- Pas de fixture réelle dans le dépôt (données tierces) : le test compresse ses propres fichiers avec `lzma-rs`.
+
+#### D821 (quota par org)
+
+- Réglage plateforme dans `system_settings` (clé `dataset_quota_bytes:<org>`), sans migration ; absent = 20 Go (`QUOTA_BYTES`).
+- `GET` et `PUT /api/v1/system/orgs/{org_id}/dataset-quota`, admin plateforme seulement (`Access::Platform`, exclus du MCP avec les hôtes de connecteurs) ; `null` revient au défaut.
+- L'argument `max` de l'erreur `dataset-quota` disparaît : il donnait le défaut, faux pour une org relevée ; le message n'en dépendait pas.

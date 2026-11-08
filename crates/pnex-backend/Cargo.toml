@@ -193,3 +193,5 @@ serial_test = { version = "3.1" }
 image = { version = "0.25", default-features = false, features = ["png"] }
 # Temporary files and directories of the tests
 tempfile = "3"
+# Dukascopy-like .bi5 files of the tick history test (already a pnex-core dep).
+lzma-rs = "0.3"

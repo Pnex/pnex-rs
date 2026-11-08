@@ -586,6 +586,8 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "image_registries_update",
             "system_connector_hosts_get",
             "system_connector_hosts_set",
+            "system_dataset_quota_get",
+            "system_dataset_quota_set",
         ],
     ),
     (

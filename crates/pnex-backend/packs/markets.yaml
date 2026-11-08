@@ -28,10 +28,13 @@
 # `binance_spot_klines_1m`, one month (or one day of the current month) per
 # transaction, never into objects. Binance's terms for redistribution or a
 # SaaS use are not checked: the table stays private to the org.
+# Since 1.5.0 (MK12) the pairs of `history_fx_pairs` get their bid/ask ticks
+# from Dukascopy's public hour files into the table `dukascopy_ticks`, one
+# day per transaction. Broker quotes, not exchange data; same terms caveat.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.4.0"
+version: "1.5.0"
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
 descriptions: {fr: "Sociétés suivies par ticker avec leurs dépôts et chiffres publiés (SEC EDGAR), et séries macroéconomiques (FRED), chaque valeur datée par sa publication. Une aide à l'analyse, pas un conseil en investissement."}
@@ -118,6 +121,20 @@ settings:
     descriptions: {fr: "AAAA-MM. L'historique est chargé à partir de ce mois ; 2017-08, le premier de Binance, si vide."}
     kind: text
     default: "2017-08"
+  - key: history_fx_pairs
+    name: Pairs of the tick history (Dukascopy)
+    names: {fr: "Paires de l'historique des ticks (Dukascopy)"}
+    description: "Comma-separated forex pairs (EURUSD, USDJPY…) whose bid/ask ticks are loaded into the table dukascopy_ticks, from Dukascopy's public files. Only pairs of EUR, USD, GBP, JPY, CHF, AUD, CAD, NZD, SEK and NOK are read. Empty: nothing is loaded."
+    descriptions: {fr: "Paires forex (EURUSD, USDJPY…), séparées par des virgules, dont les ticks bid/ask sont chargés dans la table dukascopy_ticks, depuis les fichiers publics de Dukascopy. Seules les paires entre EUR, USD, GBP, JPY, CHF, AUD, CAD, NZD, SEK et NOK sont lues. Vide : rien n'est chargé."}
+    kind: text
+    default: ""
+  - key: history_fx_from
+    name: First month of the tick history
+    names: {fr: "Premier mois de l'historique des ticks"}
+    description: "YYYY-MM. The ticks are loaded from this month; twelve months back when empty."
+    descriptions: {fr: "AAAA-MM. Les ticks sont chargés à partir de ce mois ; douze mois en arrière si vide."}
+    kind: text
+    default: ""
   - key: move_notify_channels
     name: Channels of the abnormal session notice
     names: {fr: "Canaux de l'avis de séance anormale"}
