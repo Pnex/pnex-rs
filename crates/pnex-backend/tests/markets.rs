@@ -1756,3 +1756,102 @@ async fn fred_first_releases_date_the_moves() {
     })
     .await;
 }
+
+/// D812: a company created by its SEC number is looked up in GLEIF; a
+/// single match is proposed, as a link to the organization that already
+/// holds that LEI or as the LEI itself, and nothing is written before a
+/// member accepts.
+#[tokio::test]
+#[serial]
+async fn sec_companies_are_matched_to_their_lei_by_proposal() {
+    with_app(|server, ctx, token| async move {
+        use axum::extract::Query;
+        use axum::{routing::get, Router};
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        assert_eq!(st, 200, "{r}");
+        let rec = |lei: &str, name: &str| json!({"attributes": {"lei": lei, "entity": {"legalName": {"name": name}}}});
+        let (acme, beta) = ("5493000000000000ACME", "5493000000000000BETA");
+        let answers = json!({
+            "ACME CORP": [rec(acme, "Acme Corporation"), rec("5493000000000000AHLD", "Acme Holdings Inc.")],
+            "BETA INC": [rec(beta, "Beta, Inc.")],
+            "GAMMA CORP": [rec("5493000000000000GAM1", "Gamma Corp"), rec("5493000000000000GAM2", "Gamma Corporation")],
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/api/v1/lei-records",
+            get(move |Query(q): Query<std::collections::HashMap<String, String>>| {
+                let answers = answers.clone();
+                async move {
+                    assert_eq!(q.get("filter[entity.legalAddress.country]").map(String::as_str), Some("US"));
+                    let name = q.get("filter[fulltext]").cloned().unwrap_or_default();
+                    axum::Json(json!({ "data": answers.get(&name).cloned().unwrap_or(json!([])) }))
+                }
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let api = &api;
+        let create = |title: &str, props: Value| {
+            let body = json!({"type_key": "organization", "title": title, "properties": props});
+            async move {
+                let (st, o) = api.call("POST", "/api/v1/ontology/objects", Some(body)).await;
+                assert_eq!(st, 201, "{o}");
+                o["id"].as_str().unwrap().to_string()
+            }
+        };
+        let known = create("Acme Corporation", json!({"lei": acme, "kind": "company"})).await;
+        let sec_acme = create("ACME CORP", json!({"cik": "0000000042", "kind": "company"})).await;
+        let sec_beta = create("BETA INC", json!({"cik": "0000000043", "kind": "company"})).await;
+        let sec_gamma = create("GAMMA CORP", json!({"cik": "0000000044", "kind": "company"})).await;
+        let sec_delta = create("DELTA INC", json!({"cik": "0000000045", "kind": "company"})).await;
+
+        pnex_backend::services::markets::identity::sweep(&ctx, &base).await.unwrap();
+        pnex_backend::services::markets::identity::sweep(&ctx, &base).await.unwrap();
+        let state = |id: String| async move {
+            let (_, o) = api.call("GET", &format!("/api/v1/ontology/objects/{id}"), None).await;
+            o["properties"].clone()
+        };
+        assert_eq!(state(sec_acme.clone()).await["lei_state"], "proposed");
+        assert_eq!(state(sec_gamma).await["lei_state"], "ambiguous");
+        assert_eq!(state(sec_delta).await["lei_state"], "none");
+        assert!(state(sec_beta.clone()).await.get("lei").is_none(), "nothing written before a decision");
+
+        let (st, page) = api.call("GET", "/api/v1/proposals?limit=50", None).await;
+        assert_eq!(st, 200, "{page}");
+        let list = page["results"].as_array().unwrap();
+        assert_eq!(list.len(), 2, "one per single match, the second sweep adds none: {page}");
+        let link = list.iter().find(|p| p["kind"] == "link_create").expect("link proposal");
+        assert_eq!(link["type_key"], "same_company_as");
+        let update = list.iter().find(|p| p["kind"] == "object_update").expect("lei proposal");
+        assert_eq!(update["values"]["lei"], beta);
+
+        for p in [link, update] {
+            let (st, r) = api
+                .call("POST", &format!("/api/v1/proposals/{}/decision", p["id"].as_str().unwrap()),
+                      Some(json!({"decision": "accept"})))
+                .await;
+            assert_eq!(st, 200, "{r}");
+        }
+        assert_eq!(state(sec_beta).await["lei"], beta);
+        let linked = count(
+            &db,
+            format!(
+                "SELECT count(*) AS n FROM resource_edges WHERE org_id = {org} AND relation = 'same_company_as' \
+                 AND source_object_id = '{sec_acme}' AND target_object_id = '{known}' AND valid_to IS NULL"
+            ),
+        )
+        .await;
+        assert_eq!(linked, 1);
+    })
+    .await;
+}

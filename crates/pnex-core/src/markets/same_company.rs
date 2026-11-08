@@ -104,7 +104,10 @@ mod tests {
     #[test]
     fn register_spellings_meet() {
         assert_eq!(legal_key("NVIDIA CORP"), legal_key("NVIDIA Corporation"));
-        assert_eq!(legal_key("COCA COLA CO"), legal_key("The Coca-Cola Company"));
+        assert_eq!(
+            legal_key("COCA COLA CO"),
+            legal_key("The Coca-Cola Company")
+        );
         assert_eq!(legal_key("MERCK & CO INC"), legal_key("Merck & Co., Inc."));
         assert_eq!(legal_key("Société Générale"), "SOCIETE GENERALE");
         assert_ne!(legal_key("ACME INC"), legal_key("ACME HOLDINGS INC"));
@@ -119,14 +122,23 @@ mod tests {
         ]});
         let found = candidates(&doc).unwrap();
         assert_eq!(found.len(), 2, "a malformed LEI is left aside");
-        assert_eq!(unique_match("ACME CORP", &found).unwrap().lei, "5493000000000000ACME");
-        assert!(unique_match("ACME", &found).is_none(), "no legal name is just ACME");
+        assert_eq!(
+            unique_match("ACME CORP", &found).unwrap().lei,
+            "5493000000000000ACME"
+        );
+        assert!(
+            unique_match("ACME", &found).is_none(),
+            "no legal name is just ACME"
+        );
 
         let two = json!({"data": [
             record("5493000000000000AAAA", "Acme Corporation", &[]),
             record("5493000000000000BBBB", "Old Name", &["ACME CORP"]),
         ]});
-        assert!(unique_match("ACME CORP", &candidates(&two).unwrap()).is_none(), "two companies: ambiguous");
+        assert!(
+            unique_match("ACME CORP", &candidates(&two).unwrap()).is_none(),
+            "two companies: ambiguous"
+        );
         assert!(candidates(&json!({"errors": []})).is_none());
     }
 }

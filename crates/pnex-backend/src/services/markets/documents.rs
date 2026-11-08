@@ -70,6 +70,10 @@ pub fn spawn_scheduler(ctx: &AppContext) {
                 if let Err(e) = sweep(&ctx).await {
                     tracing::warn!("market documents sweep failed: {e}");
                 }
+                let gleif = super::identity::GLEIF_BASE;
+                if let Err(e) = super::identity::sweep(&ctx, gleif).await {
+                    tracing::warn!("market identity sweep failed: {e}");
+                }
             }
             tokio::time::sleep(SWEEP_EVERY).await;
         }

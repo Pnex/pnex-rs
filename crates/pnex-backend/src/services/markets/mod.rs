@@ -3,6 +3,7 @@
 //! known at t" takes, for each period, the last row known by then.
 
 pub mod documents;
+pub mod identity;
 pub mod moves;
 pub mod study;
 pub mod world;

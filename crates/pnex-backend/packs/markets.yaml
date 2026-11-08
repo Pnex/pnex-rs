@@ -20,6 +20,9 @@
 # traded volume into a `market_move` too (measure `volume`, up only), and
 # ALFRED gives each FRED value as first published, with the org's FRED key
 # (vault secret `markets_fred_key`, D811), so a past-dated test can read it.
+# A company created by its SEC number is looked up in GLEIF (D812): a single
+# match is proposed, as its LEI or as `same_company_as` the organization that
+# already holds that LEI; nothing is merged.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
@@ -111,6 +114,14 @@ extends:
       - { key: declared_key, name: Declared as, names: {fr: "Déclarée comme"}, description: "Country and name of a company known by a group's declaration only (Exhibit 21 of a 10-K): the key it is found again by.", descriptions: {fr: "Pays et nom d'une société connue seulement par la déclaration d'un groupe (Exhibit 21 d'un 10-K) : la clé qui la retrouve."}, kind: text, max_len: 400, unique: true }
       - { key: incorporated_in, name: Incorporated in, names: {fr: "Immatriculée en"}, description: "The jurisdiction as the declaration writes it (a US state, a country).", descriptions: {fr: "La juridiction telle que la déclaration l'écrit (un État américain, un pays)."}, kind: text, max_len: 120 }
       - { key: market_names, name: Names in the press, names: {fr: "Noms dans la presse"}, description: "Comma-separated names the press uses, such as Nvidia for NVIDIA CORP.", descriptions: {fr: "Noms utilisés par la presse, séparés par des virgules, par exemple Nvidia pour NVIDIA CORP."}, kind: text, max_len: 500 }
+      - key: lei_state
+        name: LEI lookup (GLEIF)
+        names: {fr: "Recherche du LEI (GLEIF)"}
+        description: "The SEC does not publish LEIs: the SEC name was looked up in GLEIF. Proposed = a single company with the same legal name, waiting in the proposals."
+        descriptions: {fr: "La SEC ne publie pas les LEI : le nom SEC a été cherché dans GLEIF. Proposé = une seule société au même nom légal, en attente dans les propositions."}
+        kind: enum
+        values: [proposed, ambiguous, none]
+        labels: {proposed: {fr: "Proposé", en: "Proposed"}, ambiguous: {fr: "Plusieurs candidats", en: "Several candidates"}, none: {fr: "Introuvable", en: "Not found"}}
 types:
   - key: instrument
     name: Instrument
@@ -271,6 +282,17 @@ link_types:
     attributes:
       - { key: url, name: Address, names: {fr: "Adresse"}, kind: url }
       - { key: sha256, name: SHA-256, names: {fr: "SHA-256"}, kind: text, max_len: 64 }
+  - key: same_company_as
+    name: is the same company as
+    names: {fr: "est la même société que"}
+    inverse_name: is the same company as
+    inverse_names: {fr: "est la même société que"}
+    description: "A company known by its SEC number and the same one known by its LEI: proposed from GLEIF (D812), written once a member accepts it. Nothing is merged."
+    descriptions: {fr: "Une société connue par son numéro SEC et la même connue par son LEI : proposé depuis GLEIF (D812), écrit quand un membre l'accepte. Rien n'est fusionné."}
+    from_types: [organization]
+    to_types: [organization]
+    attributes:
+      - { key: lei, name: LEI, names: {fr: "LEI"}, kind: text, max_len: 20 }
 imports:
   - name: Companies followed (SEC)
     source: url

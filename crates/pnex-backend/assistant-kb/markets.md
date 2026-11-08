@@ -25,6 +25,11 @@ Then, on the **Imports** tab, run in this order: **Companies followed (SEC)**, *
 ## Subsidiaries (Exhibit 21)
 For each annual report (10-K) of a followed company, PNEX also reads its **Exhibit 21**, the list of subsidiaries the group declares, worldwide. Each subsidiary becomes an organization with its country and its jurisdiction (**Incorporated in**), linked to the group by **is a subsidiary of** with the nature *Declared* and the exhibit's address as source. A subsidiary already known by the same country and name is reused, never duplicated. The filing then shows **Subsidiaries (Exhibit 21)**: *Read*, *No Exhibit 21*, or *Unreadable* when the list has a form PNEX does not understand. A jurisdiction PNEX does not know leaves its row out.
 
+The link starts on the date of the report that declares it. When the latest report read no longer lists a subsidiary, its link is closed on that report's date: it reads "declared from this date to that date".
+
+## LEI of a SEC company
+The SEC does not publish LEIs. For each company created from its SEC number, PNEX looks its name up in GLEIF. When exactly one company has the same legal name, a proposal waits in **Proposals**: either the LEI itself, or, when another organization of the org already has that LEI, the link **is the same company as** between the two. Nothing is written or merged before a member accepts. The company shows **LEI lookup (GLEIF)**: *Proposed*, *Several candidates* or *Not found*; in the last two cases, set the LEI by hand if you know it.
+
 ## Prices and reactions
 Closing prices need a Tiingo API key of your own: store it in **Secrets** under the exact name `markets_tiingo_key`, then run **Benchmark prices (Tiingo)** and **Daily prices (Tiingo)**. The key goes only to Tiingo's address. Its free plan covers personal internal use; a commercial use needs its commercial plan. Prices are read in turns, 40 instruments per run.
 
