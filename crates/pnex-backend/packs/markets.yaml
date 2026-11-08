@@ -92,6 +92,13 @@ settings:
     descriptions: {fr: "Mêmes entrées que ci-dessus pour des tickers, lus avec la clé Tiingo de l'org : SPY suit le S&P 500, QQQ le Nasdaq-100. Le mode volume surveille le volume échangé au lieu du cours : une séance à plusieurs fois son volume habituel (k sigmas, au moins le double par défaut)."}
     kind: text
     default: "SPY:log_return:equity_index, QQQ:log_return:equity_index, SPY:volume:equity_index, QQQ:volume:equity_index"
+  - key: session_summary
+    name: Daily session summary (AI)
+    names: {fr: "Synthèse quotidienne de séance (IA)"}
+    description: "on: after a session with abnormal moves, the org's own AI provider (file analyses) writes a short note sent with the session notice. It reads only the session's moves, filings and world events, never decides nor writes. off by default."
+    descriptions: {fr: "on : après une séance avec des mouvements anormaux, le fournisseur d'IA de l'org (analyses de fichiers) rédige une note courte envoyée avec l'avis de séance. Il lit seulement les mouvements, dépôts et événements du monde de la séance, ne décide ni n'écrit. off par défaut."}
+    kind: text
+    default: "off"
   - key: move_notify_channels
     name: Channels of the abnormal session notice
     names: {fr: "Canaux de l'avis de séance anormale"}

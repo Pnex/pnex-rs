@@ -21,6 +21,8 @@ Each entry reads `CODE:mode:class`:
 - class `equity_index`, `commodity`, `rates`, `volatility`, `fx` or `crypto`;
 - optionally `:k:floor` to change the thresholds of one series.
 
+**Daily session summary (AI)**: set it to `on` and, the day after a session with abnormal moves, your org's own AI provider (the one used for file analyses) writes a short note from the session's moves, filings and world events. It comes with the session notice, once per session. It never claims a cause, never advises, and writes nothing. Without a provider, nothing is sent.
+
 The imports **Watched series (FRED)** and **Watched prices (Tiingo)** read them every day. A session counts as abnormal when its change is at least 3 times the series' usual volatility over the year before (sigma) **and** at least a floor: 2 % for a price, 0.75 % for a currency, 0.15 for a rate or the VIX. Each one becomes a **Market event** of kind *Series move*, linked to its series. The org gets one notice per session listing its moves.
 
 To also get it by e-mail, Slack, ntfy or any other channel of the organization, write the channel names in the setting **Channels of the abnormal session notice**, separated by commas.

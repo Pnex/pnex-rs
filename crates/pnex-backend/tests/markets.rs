@@ -1855,3 +1855,82 @@ async fn sec_companies_are_matched_to_their_lei_by_proposal() {
     })
     .await;
 }
+
+/// D814: a session with moves gets one note from the org's own AI, built
+/// from the session view only, sent once however many sweeps run.
+#[tokio::test]
+#[serial]
+async fn the_session_summary_is_written_once_by_the_orgs_ai() {
+    with_app(|server, ctx, token| async move {
+        use axum::{routing::post, Router};
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        assert_eq!(st, 200, "{r}");
+        let day = chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap();
+        let (st, ev) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/objects",
+                Some(json!({"type_key": "market_event", "title": "TESTIDX -5.5 % · 2026-11-05",
+                    "properties": {"ref": "move:TESTIDX:2026-11-05:log_return", "kind": "market_move",
+                        "event_at": day.to_string(), "known_at": "2026-11-05T23:59:59Z", "backfilled": false,
+                        "series_code": "TESTIDX", "asset_class": "equity_index", "move_direction": "down",
+                        "mode": "log_return", "measure": -0.057, "sigma": 0.012, "score": 4.75}})),
+            )
+            .await;
+        assert_eq!(st, 201, "{ev}");
+
+        let asked = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let log = asked.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let llm = format!("http://{}/v1", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/v1/chat/completions",
+            post(move |axum::Json(body): axum::Json<Value>| {
+                let log = log.clone();
+                async move {
+                    log.lock().unwrap().push(body);
+                    axum::Json(json!({"choices": [{"message": {"content": "TESTIDX fell 4.75 sigmas.", "tool_calls": null},
+                                                   "finish_reason": "stop"}]}))
+                }
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let sweep = || pnex_backend::services::markets::summary::sweep(&ctx, day);
+        sweep().await.unwrap();
+        assert!(asked.lock().unwrap().is_empty(), "off by default");
+        api.settings(json!({ "session_summary": "on" })).await;
+        sweep().await.unwrap();
+        assert!(asked.lock().unwrap().is_empty(), "no provider: nothing");
+
+        let (st, r) = api
+            .call("POST", "/api/v1/ai/providers",
+                  Some(json!({"name": "main", "kind": "openai_compat", "model": "m1", "base_url": llm,
+                              "api_key": {"value": "k-llm"}})))
+            .await;
+        assert_eq!(st, 201, "{r}");
+        sweep().await.unwrap();
+        sweep().await.unwrap();
+        let calls = asked.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1, "written once: {calls:?}");
+        let sent = calls[0].to_string();
+        assert!(sent.contains("TESTIDX") && sent.contains("4.75"), "{sent}");
+        assert!(calls[0]["tools"].as_array().is_none_or(|t| t.is_empty()), "no tool: read only");
+        let state = count(
+            &db,
+            format!("SELECT count(*) AS n FROM market_session_summaries WHERE org_id = {org} AND state = 'sent'"),
+        )
+        .await;
+        assert_eq!(state, 1);
+    })
+    .await;
+}

@@ -6,6 +6,7 @@ pub mod documents;
 pub mod identity;
 pub mod moves;
 pub mod study;
+pub mod summary;
 pub mod world;
 
 use std::collections::HashMap;

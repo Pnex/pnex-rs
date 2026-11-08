@@ -295,7 +295,7 @@ async fn notify(db: &DatabaseConnection, org_id: i64, created: &[Created]) {
 /// The org's channels named in `move_notify_channels` (D738): e-mail, Slack,
 /// ntfy… any kind but the websocket, which always gets the notice. An
 /// unknown or disabled name is skipped; every send is journaled.
-async fn to_channels(db: &DatabaseConnection, org_id: i64, msg: &pnex_notify::Message) {
+pub(super) async fn to_channels(db: &DatabaseConnection, org_id: i64, msg: &pnex_notify::Message) {
     use crate::models::_entities::notify_channels;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     let names = crate::services::ontology::packs::setting_value(db, org_id, NOTIFY_SETTING)

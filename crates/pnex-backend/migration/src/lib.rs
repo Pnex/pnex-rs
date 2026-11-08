@@ -121,6 +121,7 @@ mod m20261108_000126_mysql_connectors;
 mod m20261108_000127_markings;
 mod m20261108_000128_object_markings;
 mod m20261108_000129_dataset_mark_proposals;
+mod m20261108_000130_market_session_summaries;
 
 pub struct Migrator;
 
@@ -238,6 +239,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261108_000127_markings::Migration),
             Box::new(m20261108_000128_object_markings::Migration),
             Box::new(m20261108_000129_dataset_mark_proposals::Migration),
+            Box::new(m20261108_000130_market_session_summaries::Migration),
         ]
     }
 }
