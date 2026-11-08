@@ -100,6 +100,10 @@ pub struct Dataset {
     pub stale: bool,
     /// The import that fills it: neither a load nor a pipeline may write it.
     pub import_name: Option<String>,
+    /// Keys of its markings (governance.md D800): reading its rows needs a clearance
+    /// for each.
+    #[serde(default)]
+    pub markings: Vec<String>,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub created_at: String,
 }

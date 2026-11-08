@@ -90,6 +90,7 @@ pub const EXPOSED: &[&str] = &[
     "pipelines_runs_list",
     "pipelines_versions_list",
     "datasets_lineage",
+    "governance_markings_list",
     "datasets_get",
     "datasets_list",
     "datasets_sample",
@@ -582,6 +583,14 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     (
         "access: membership and roles stay human decisions",
         &[
+            // governance.md D798: who reads marked data stays a human decision.
+            "governance_markings_create",
+            "governance_markings_delete",
+            "governance_clearances_list",
+            "governance_clearances_create",
+            "governance_clearances_revoke",
+            "datasets_markings_add",
+            "datasets_declassify",
             "agents_create",
             "environments_scan_policy_set",
             "environments_isolation_set",

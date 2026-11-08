@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). Rien de codé |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 codé le 2026-11-08** (§7) |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; D715 : aucun client réel avant OP3 |
 | Repose sur | `iam.md` (D285–D299, I4, I5), `crm.md` (D442 classification, D443 masquage, D446 effacement), `data-pipelines.md` (D569–D578, lignage), `connectors.md` |
 | Numérotation | **D798…D806**, lots **G1…G7** |
@@ -121,3 +121,19 @@ l'admin, journalisé. L'effacement existe déjà (D446).
   listes ;
 - pas de marquage de colonne (D800) ;
 - pas de séparation des tâches : l'admin d'org peut s'habiliter, mais chaque geste est tracé.
+
+## 7. Avancement
+
+**G1 (2026-11-08)** : migration 000127 (`markings`, `clearances`, `dataset_markings`, trigger
+`dataset_markings_inherit` sur `dataset_transaction_inputs`, en `SECURITY DEFINER` pour que le rôle
+restreint du worker n'ait aucun droit sur les marquages), `pnex_core::governance`,
+`services/governance.rs`, `controllers/governance.rs` (8 routes, `governance:read|write|delete`),
+contrôle de `datasets_sample` et `datasets_profile`, champ `markings` du `Dataset`, journal O2
+`governance_reads` par l'écrivain commun de l'audit (rendu générique), fiche `governance` de
+l'assistant. Test `tests/governance.rs` : refus pour tous dont le propriétaire, habilitation,
+isolation entre orgs (404 sans nommer les marquages), héritage par le trigger, déclassification
+justifiée, marquage utilisé non supprimable, révocation immédiate.
+
+Écart à relire : **pas de contrôle de l'auteur au lancement d'un run** en G1. Le lignage suffit à
+fermer la fuite (une table calculée d'une table marquée est marquée, donc illisible pour un
+non-habilité) ; la vérification de l'auteur vient avec G2, quand la synchro écrit des objets.

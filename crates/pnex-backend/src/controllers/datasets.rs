@@ -75,6 +75,47 @@ fn coded(status: StatusCode, code: &str, text: &str, args: Option<serde_json::Va
     super::coded_error(status, code, text, args)
 }
 
+/// D801: the content of a table in the caller's org needs a clearance for each of
+/// its markings. `Some` is the answer to send instead of the content.
+async fn governed(
+    ctx: &AppContext,
+    org: &OrgContext,
+    id: Uuid,
+    what: &str,
+) -> Option<Result<Response>> {
+    // In the org first: a refusal must not name the markings of another org's table.
+    if let Err(e) = datasets::get(&ctx.db, org.org.id, id).await {
+        return Some(dataset_error(e));
+    }
+    let origin = if org.auth.service.is_some() {
+        "access-key"
+    } else {
+        "ui"
+    };
+    match crate::services::governance::check_dataset_read(
+        &ctx.db,
+        org.org.id,
+        org.auth.user.id,
+        id,
+        what,
+        origin,
+    )
+    .await
+    {
+        Ok(missing) if missing.is_empty() => None,
+        Ok(missing) => Some(Err(super::coded_error(
+            StatusCode::FORBIDDEN,
+            err_codes::MARKING_REQUIRED,
+            "A clearance is missing for a marking of this dataset.",
+            Some(serde_json::json!({ "markings": missing })),
+        ))),
+        Err(e) => {
+            tracing::error!(error = %e, "governance check failed");
+            Some(Err(Error::InternalServerError))
+        }
+    }
+}
+
 fn dataset_error(e: DatasetError) -> Result<Response> {
     let args = e.args();
     Err(match e {
@@ -680,7 +721,7 @@ struct SampleQuery {
     ),
     responses(
         (status = 200, body = pnex_core::datasets::DatasetSample),
-        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`, or `marking-required` (args `markings`): a clearance is missing", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`dataset-not-found`", body = crate::openapi::ErrorDetail),
         (status = 410, description = "`dataset-version-purged`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
@@ -693,6 +734,9 @@ async fn sample(
     Path(id): Path<Uuid>,
     Query(q): Query<SampleQuery>,
 ) -> Result<Response> {
+    if let Some(refused) = governed(&ctx, &org, id, "sample").await {
+        return refused;
+    }
     let limit = q.limit.unwrap_or(DEFAULT_SAMPLE_ROWS);
     let result = match datasets::store_of(&ctx.config) {
         Ok(store) => datasets::sample(&ctx.db, &store, org.org.id, id, limit, q.as_of).await,
@@ -715,7 +759,7 @@ async fn sample(
     params(("id" = String, Path, format = "uuid", description = "Dataset id (UUID)")),
     responses(
         (status = 200, body = pnex_core::datasets::DatasetProfile),
-        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`, or `marking-required` (args `markings`): a clearance is missing", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`dataset-not-found`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
     ),
@@ -726,6 +770,9 @@ async fn profile(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
+    if let Some(refused) = governed(&ctx, &org, id, "profile").await {
+        return refused;
+    }
     let result = match datasets::store_of(&ctx.config) {
         Ok(store) => datasets::profile(&ctx.db, &store, org.org.id, id).await,
         Err(e) => Err(e),

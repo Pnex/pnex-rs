@@ -744,6 +744,13 @@ pub const HOOK_BODY_INVALID: &str = "hook-body-invalid";
 pub const HOOK_INBOX_FULL: &str = "hook-inbox-full";
 /// A webhook connector without a secret yet.
 pub const HOOK_SECRET_MISSING: &str = "hook-secret-missing";
+/// Reading this data needs a clearance for each of its markings (`args.markings`).
+pub const MARKING_REQUIRED: &str = "marking-required";
+pub const MARKING_NOT_FOUND: &str = "marking-not-found";
+pub const MARKING_KEY_TAKEN: &str = "marking-key-taken";
+/// A marking still carried by data cannot be deleted.
+pub const MARKING_IN_USE: &str = "marking-in-use";
+pub const CLEARANCE_NOT_FOUND: &str = "clearance-not-found";
 pub const IMAGE_REGISTRY_NOT_FOUND: &str = "image-registry-not-found";
 pub const IMAGE_REGISTRY_NAME_TAKEN: &str = "image-registry-name-taken";
 /// The registry changed since it was read (args `current`).
@@ -1305,6 +1312,11 @@ pub const ALL: &[&str] = &[
     HOOK_BODY_INVALID,
     HOOK_INBOX_FULL,
     HOOK_SECRET_MISSING,
+    MARKING_REQUIRED,
+    MARKING_NOT_FOUND,
+    MARKING_KEY_TAKEN,
+    MARKING_IN_USE,
+    CLEARANCE_NOT_FOUND,
     IMAGE_REGISTRY_NOT_FOUND,
     IMAGE_REGISTRY_NAME_TAKEN,
     IMAGE_REGISTRY_VERSION_CONFLICT,

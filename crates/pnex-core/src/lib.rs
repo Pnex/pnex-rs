@@ -173,6 +173,7 @@ pub mod connectors;
 pub mod datasets;
 /// Agent environments (agent-environments.md D702, D704).
 pub mod environments;
+pub mod governance;
 /// OCI image registries (agent-environments.md D703).
 pub mod image_registries;
 /// Media files sent in parts (data-pipelines.md §9.9).

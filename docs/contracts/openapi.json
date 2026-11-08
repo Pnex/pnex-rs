@@ -5581,6 +5581,84 @@
         ],
         "type": "string"
       },
+      "Clearance": {
+        "description": "A person cleared for a marking, for a purpose, until a date.",
+        "properties": {
+          "active": {
+            "description": "Neither revoked nor expired.",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "marking_key": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_email": {
+            "type": "string"
+          },
+          "user_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "user_email",
+          "marking_key",
+          "purpose",
+          "expires_at",
+          "active",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "ClearanceInput": {
+        "properties": {
+          "days": {
+            "description": "Days from now, 1 to 365.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "marking_key": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "user_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "marking_key",
+          "purpose",
+          "days"
+        ],
+        "type": "object"
+      },
       "ClockSource": {
         "description": "Where the absolute time of a segment comes from (D160): a statistic must\nbe able to say where its clock comes from.",
         "enum": [
@@ -7128,6 +7206,13 @@
               "null"
             ]
           },
+          "markings": {
+            "description": "Keys of its markings (governance.md D800): reading its rows needs a clearance\nfor each.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "max_age_hours": {
             "description": "Longest wait for a new version before the org is warned (D576).",
             "format": "int32",
@@ -7548,6 +7633,22 @@
           "reject"
         ],
         "type": "string"
+      },
+      "Declassify": {
+        "description": "Removes one marking, for a reason kept in the journal (D802).",
+        "properties": {
+          "justification": {
+            "type": "string"
+          },
+          "marking": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "marking",
+          "justification"
+        ],
+        "type": "object"
       },
       "DeliverySource": {
         "description": "What triggered a delivery attempt.",
@@ -14181,6 +14282,75 @@
         ],
         "type": "object"
       },
+      "Marking": {
+        "description": "A compartment of the org: seeing data that carries it needs a clearance.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uses": {
+            "description": "Tables and objects that carry it: a carried marking cannot be deleted.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "description",
+          "uses",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "MarkingInput": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "type": "object"
+      },
+      "MarkingsAdd": {
+        "description": "Markings added to a table; removing one is a declassification.",
+        "properties": {
+          "markings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "markings"
+        ],
+        "type": "object"
+      },
       "MatchCandidate": {
         "description": "One profile found by a query, with its score.",
         "properties": {
@@ -19076,6 +19246,42 @@
         ],
         "type": "object"
       },
+      "Paginated_Clearance": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Clearance"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_Connector": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -20398,6 +20604,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/Mailbox"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_Marking": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Marking"
             },
             "type": "array"
           }
@@ -47875,6 +48117,105 @@
         ]
       }
     },
+    "/api/v1/datasets/{id}/declassify": {
+      "post": {
+        "description": "Removes one marking from a dataset, with a justification kept in the journal. A later run whose input still carries the marking puts it back. Requires `governance:write`.",
+        "operationId": "datasets_declassify",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Declassify"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `governance:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found` or `marking-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Declassify a dataset",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
     "/api/v1/datasets/{id}/freshness": {
       "put": {
         "description": "Past this many hours without a new version the dataset reads as stale and the org is warned once; `null` stops the check. Requires `datasets:write`.",
@@ -48162,6 +48503,95 @@
         ]
       }
     },
+    "/api/v1/datasets/{id}/markings": {
+      "post": {
+        "description": "Adds markings to a dataset: reading its rows then needs a clearance for each, and what pipelines compute from it inherits them. Removing one is a declassification. Requires `governance:write`.",
+        "operationId": "datasets_markings_add",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Dataset id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkingsAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `governance:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-not-found` or `marking-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mark a dataset",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
     "/api/v1/datasets/{id}/profile": {
       "get": {
         "description": "Row count, and for each column its type and its empty values, from the file footers of the current view. No value is read. Requires `datasets:read`.",
@@ -48217,7 +48647,7 @@
                 }
               }
             },
-            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+            "description": "`access-denied`, or `marking-required` (args `markings`): a clearance is missing · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
           },
           "404": {
             "content": {
@@ -48326,7 +48756,7 @@
                 }
               }
             },
-            "description": "`access-denied` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+            "description": "`access-denied`, or `marking-required` (args `markings`): a clearance is missing · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
           },
           "404": {
             "content": {
@@ -62017,6 +62447,488 @@
         "summary": "Compute a route",
         "tags": [
           "geo"
+        ]
+      }
+    },
+    "/api/v1/governance/clearances": {
+      "get": {
+        "description": "Who is cleared for which marking, for which purpose, until when; active ones first. Requires `governance:write`. Paginated (`limit`/`offset`).",
+        "operationId": "governance_clearances_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Clearance"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `governance:write`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the clearances",
+        "tags": [
+          "governance"
+        ]
+      },
+      "post": {
+        "description": "Lets a member of the org read data that carries a marking, for a declared purpose, for 1 to 365 days. Never a service account. Requires `governance:write`.",
+        "operationId": "governance_clearances_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearanceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Clearance"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`; `user_id`: `not_member`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `governance:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`marking-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Clear a member for a marking",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/api/v1/governance/clearances/{id}/revoke": {
+      "post": {
+        "description": "Ends a clearance at once; it stays in the list as revoked. Requires `governance:write`.",
+        "operationId": "governance_clearances_revoke",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Clearance id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `governance:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`clearance-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revoke a clearance",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/api/v1/governance/markings": {
+      "get": {
+        "description": "The compartments of the org, with how many tables carry each. Never the data. Requires `governance:read`. Paginated (`limit`/`offset`).",
+        "operationId": "governance_markings_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Marking"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `governance:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the markings",
+        "tags": [
+          "governance"
+        ]
+      },
+      "post": {
+        "description": "Adds a compartment to the org: data that carries it is read only by people cleared for it. Requires `governance:write`.",
+        "operationId": "governance_markings_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkingInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Marking"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `governance:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`marking-key-taken`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a marking",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
+    "/api/v1/governance/markings/{id}": {
+      "delete": {
+        "description": "Removes a compartment no data carries any more, and its clearances. Requires `governance:delete`.",
+        "operationId": "governance_markings_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Marking id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `governance:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`marking-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`marking-in-use`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a marking",
+        "tags": [
+          "governance"
         ]
       }
     },

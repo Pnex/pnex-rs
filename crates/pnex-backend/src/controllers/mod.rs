@@ -14,6 +14,7 @@ pub mod cameras;
 pub mod cases;
 /// Pipelines (data-pipelines.md D571).
 pub mod connectors;
+pub mod governance;
 pub mod hooks;
 pub mod controls;
 pub mod dashboard;

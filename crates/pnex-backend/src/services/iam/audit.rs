@@ -54,30 +54,47 @@ pub fn document_of(e: &Entry, ts_us: i64) -> serde_json::Value {
     doc
 }
 
-static WRITER: LazyLock<Mutex<Option<mpsc::UnboundedSender<Entry>>>> =
+/// One document for one stream of an org.
+struct Queued {
+    org_id: i64,
+    stream: &'static str,
+    doc: serde_json::Value,
+}
+
+static WRITER: LazyLock<Mutex<Option<mpsc::UnboundedSender<Queued>>>> =
     LazyLock::new(|| Mutex::new(None));
 
 /// Queues an entry for the background writer.
 pub fn submit(entry: Entry) {
+    let doc = document_of(&entry, chrono::Utc::now().timestamp_micros());
+    submit_doc(entry.org_id, IAM_DECISIONS_STREAM, doc);
+}
+
+/// Queues any audit document for `stream` (the governance journal shares the writer).
+pub fn submit_doc(org_id: i64, stream: &'static str, doc: serde_json::Value) {
     let tx = WRITER.lock().ok().and_then(|w| w.clone());
+    let queued = Queued {
+        org_id,
+        stream,
+        doc,
+    };
     match tx {
-        Some(tx) if tx.send(entry).is_ok() => {}
-        _ => tracing::debug!("iam audit writer not running, entry dropped"),
+        Some(tx) if tx.send(queued).is_ok() => {}
+        _ => tracing::debug!(stream, "audit writer not running, entry dropped"),
     }
 }
 
-async fn record(ctx: &AppContext, e: &Entry) -> std::result::Result<(), String> {
+async fn record(ctx: &AppContext, e: &Queued) -> std::result::Result<(), String> {
     let Some(settings) = OpenobserveSettings::from_config(&ctx.config) else {
         return Err("openobserve is not configured".into());
     };
     let client = Client::new(&settings);
     let creds = ensure_org_credentials(&ctx.db, &client, e.org_id).await?;
-    let ts = chrono::Utc::now().timestamp_micros();
     client
         .ingest_json(
             &creds.o2_org,
-            IAM_DECISIONS_STREAM,
-            &[document_of(e, ts)],
+            e.stream,
+            std::slice::from_ref(&e.doc),
             &creds.email_passcode,
         )
         .await
@@ -85,7 +102,7 @@ async fn record(ctx: &AppContext, e: &Entry) -> std::result::Result<(), String> 
 
 /// Background writer, spawned at boot (`after_routes`).
 pub fn spawn_writer(ctx: &AppContext) {
-    let (tx, mut rx) = mpsc::unbounded_channel::<Entry>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<Queued>();
     if let Ok(mut w) = WRITER.lock() {
         *w = Some(tx);
     }
@@ -101,7 +118,7 @@ pub fn spawn_writer(ctx: &AppContext) {
                 },
             };
             if let Err(err) = record(&ctx, &e).await {
-                tracing::warn!(operation = %e.operation, "iam audit write failed: {err}");
+                tracing::warn!(stream = e.stream, "audit write failed: {err}");
             }
         }
         while let Ok(e) = rx.try_recv() {

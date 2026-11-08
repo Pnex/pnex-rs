@@ -182,7 +182,9 @@ const DATASET_COLUMNS: &str = "\
     to_char(v.committed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS committed_at, \
     coalesce((SELECT jsonb_agg(jsonb_build_object('column', i.column_name, 'type_key', i.type_key, \
       'property', i.property) ORDER BY i.column_name, i.type_key) \
-      FROM dataset_identity_columns i WHERE i.dataset_id = d.id), '[]'::jsonb) AS identity";
+      FROM dataset_identity_columns i WHERE i.dataset_id = d.id), '[]'::jsonb) AS identity, \
+    coalesce((SELECT jsonb_agg(m.key ORDER BY m.key) FROM dataset_markings dm \
+      JOIN markings m ON m.id = dm.marking_id WHERE dm.dataset_id = d.id), '[]'::jsonb) AS markings";
 
 fn dataset_select() -> String {
     let view = VIEW_TRANSACTIONS
@@ -210,6 +212,7 @@ fn dataset_of(row: &QueryResult) -> Result<Dataset, DbErr> {
         max_age_hours: row.try_get("", "max_age_hours")?,
         stale: row.try_get("", "stale")?,
         import_name: row.try_get("", "import_name")?,
+        markings: serde_json::from_value(row.try_get("", "markings")?).unwrap_or_default(),
         created_at: row.try_get("", "created_at")?,
     })
 }

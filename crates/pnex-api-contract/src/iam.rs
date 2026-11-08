@@ -98,6 +98,11 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("datasets:delete", Level::Member),
     ("datasets:read", Level::Viewer),
     ("datasets:write", Level::Member),
+    // governance.md D798: the org admin sets markings and clearances; anyone
+    // may see which markings exist, never the data.
+    ("governance:delete", Level::Admin),
+    ("governance:read", Level::Viewer),
+    ("governance:write", Level::Admin),
     ("dashboards:delete", Level::Member),
     ("dashboards:read", Level::Viewer),
     ("dashboards:write", Level::Member),
@@ -558,6 +563,29 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("data_builds_start", Access::Org("pipelines:run")),
     ("pipelines_versions_list", Access::Org("pipelines:read")),
     ("datasets_lineage", Access::Org("datasets:read")),
+    ("datasets_markings_add", Access::Org("governance:write")),
+    ("datasets_declassify", Access::Org("governance:write")),
+    ("governance_markings_list", Access::Org("governance:read")),
+    (
+        "governance_markings_create",
+        Access::Org("governance:write"),
+    ),
+    (
+        "governance_markings_delete",
+        Access::Org("governance:delete"),
+    ),
+    (
+        "governance_clearances_list",
+        Access::Org("governance:write"),
+    ),
+    (
+        "governance_clearances_create",
+        Access::Org("governance:write"),
+    ),
+    (
+        "governance_clearances_revoke",
+        Access::Org("governance:write"),
+    ),
     ("datasets_create", Access::Org("datasets:write")),
     ("datasets_delete", Access::Org("datasets:delete")),
     ("datasets_get", Access::Org("datasets:read")),
