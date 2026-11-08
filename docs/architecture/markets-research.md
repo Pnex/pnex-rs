@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
-| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), lots **MK0…MK14** |
+| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), lots **MK0…MK14** |
 | Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`data-pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
@@ -480,11 +480,11 @@ Après la séance, une note de synthèse (mouvements, dépôts, événements du 
 
 #### D815 — MK3 (extraction par LLM) après tout le reste
 
-Les rubriques 8-K (D544) couvrent l'essentiel ; l'extraction à citation vérifiée attend le mécanisme `extractors:` (D476), en cohérence avec D780 (LLM en dernier).
+Les rubriques 8-K (D544) couvrent l'essentiel ; l'extraction à citation vérifiée attend le mécanisme `extractors:` (D476), en cohérence avec D780 (LLM en dernier). PRD : appendice D.
 
 #### D816 — Cours en direct : un connecteur MetaTrader 5 maison
 
-Shan, 2026-11-08 : « pour les cours il y aura un connecteur MT5 qui va envoyer des données en live (PneX maison, pour éviter que les gens payent) ». Cela lève en partie le hors-périmètre « prix temps réel » du §8 pour la lecture (jamais d'ordre, D534). **Forme (Shan, 2026-11-08)** : un Expert Advisor MQL5 fourni par PneX pousse les barres par `WebRequest` vers un webhook signé (CN3, `connectors.md` D795), lecture seule, jamais d'ordre. Le stockage suit l'appendice C (D824 : même forme de table que l'historique). PRD de détail à écrire.
+Shan, 2026-11-08 : « pour les cours il y aura un connecteur MT5 qui va envoyer des données en live (PneX maison, pour éviter que les gens payent) ». Cela lève en partie le hors-périmètre « prix temps réel » du §8 pour la lecture (jamais d'ordre, D534). **Forme (Shan, 2026-11-08)** : un Expert Advisor MQL5 fourni par PneX pousse les barres par `WebRequest` vers un webhook signé (CN3, `connectors.md` D795), lecture seule, jamais d'ordre. Le stockage suit l'appendice C (D824 : même forme de table que l'historique). Détail et réponses de Shan : §C.7, « D816 ».
 
 ### B.2 Imports et pipelines (§7 bis, vérifié le 2026-11-08)
 
@@ -714,4 +714,65 @@ MK11 codé, non poussé. Pièces :
 - Le balayage marchés vide la boîte du connecteur (1 000 appels par lot, dans l'org seulement) vers `mt5_ohlcv_1m` (forme `ohlcv`) et `mt5_ticks` (forme `quote_tick`), `source = mt5:<courtier>` ; un appel illisible est écarté et journalisé. Volumes absents (MT5 n'en publie pas par côté, ni en devise de cotation) = `null`, jamais zéro.
 - Au moins une fois : une réponse perdue, ou un pod tué entre le commit et l'effacement, rejoue des appels (marqué `shortcut:`) ; d'où le contrôle `unique` conseillé dans la fiche.
 - **Non fait** : l'EA n'est pas compilé ici (pas de MetaEditor) ; pas de téléchargement de l'EA depuis l'UI (fichier du dépôt).
+
+## Appendice D — MK3 : événements extraits par LLM, à citation vérifiée
+
+| | |
+|---|---|
+| Statut | **Proposé le 2026-11-08, rien de codé** (choix de Shan : PRD d'abord). Questions Q-MK15 à Q-MK20 à trancher avant tout code |
+| Décisions | **D841…D846** |
+| S'appuie sur | D476 (`extractors:`, `due-diligence.md`), D477 (file de propositions), D529 (`market_event` sourcé), D531 (`known_at`), D544 (rubriques 8-K), D119 (aucun LLM plateforme), D780 (LLM en dernier) |
+
+### D.1 Le besoin
+
+Les rubriques 8-K (D544) disent la nature d'un dépôt (2.02 résultats, 5.02 dirigeants…), pas son contenu : « résultats publiés » sans dire s'ils dépassent la prévision, « prévision relevée » sans le chiffre. Le texte des communiqués joints (pièces 99.x des 8-K) porte ce contenu. MK3 en tire des `market_event` (D529) dont chaque champ cite le texte, sous forme de propositions qu'un humain accepte.
+
+### D.2 Ce qui existe (relevé dans le code le 2026-11-08)
+
+- Le balayage des documents de marché télécharge déjà les dépôts SEC des sociétés suivies, avec le contact déclaré de l'org : aucune nouvelle sortie réseau n'est nécessaire.
+- La file de propositions existe (D812 s'en sert pour les LEI) ; l'assistant de l'org (D119) sait appeler le fournisseur d'IA de l'org (D814).
+- **Absent** : le mécanisme `extractors:` de D476 (aucune occurrence dans le code), la vérification de citation, tout extracteur.
+
+### D.3 Décisions proposées
+
+#### D841 — `extractors:` dans les packs, mécanisme commun
+
+Implémente le cœur de D476, pour les marchés comme pour la due diligence : pour une classe de document, un schéma JSON et une consigne. Le fournisseur d'IA de l'org rend du JSON, validé contre le schéma ; chaque champ porte `quote` (≤ 300 caractères), qui doit se retrouver mot pour mot dans le texte source (espaces normalisés, rien d'autre), sinon le champ est rejeté, et l'élément entier s'il était requis. Fonctions pures de validation et de recherche de citation dans `pnex_core`, testées sans réseau ni LLM ; l'appel au fournisseur passe par le service partagé de l'assistant.
+
+#### D842 — Extracteur `market_event` sur les communiqués SEC seulement (V1)
+
+Entrée : les pièces 99.x des 8-K déjà téléchargées, des sociétés suivies. Pas d'article de presse (les pistes GDELT restent « non confirmées », D544), pas de 10-Q ni de document européen en V1 (voir Q-MK16). Une pièce est extraite une fois ; un changement de version du pack ne relance que sur demande.
+
+#### D843 — Toujours une proposition, `known_at` donné par le dépôt
+
+Le LLM propose, l'humain accepte (D477) : jamais d'objet écrit directement. À l'acceptation, `market_event` reçoit `published_at` et `known_at` = horodatage d'acceptation du dépôt à la SEC, jamais une date lue par le LLM ; `event_at` vient d'une citation. Le lien `concerne` pointe l'émetteur du dépôt, pas un nom extrait. Pas de `backfilled` : la date de connaissance est celle du dépôt.
+
+#### D844 — La direction est celle que dit la source
+
+`direction` (`positive`, `negative`, `neutral`, `unknown`) n'est remplie que si une citation la porte (« relève sa prévision », « en dessous des attentes ») ; sinon `unknown`. Aucun score de sentiment. Les chiffres cités (BPA, chiffre d'affaires, prévision) restent du texte cité, jamais recalculés.
+
+#### D845 — Coût borné et visible
+
+Rien sans fournisseur configuré. Plafond quotidien de documents extraits par org (réglage du pack), sociétés suivies seulement ; jetons et refus comptés par passage et visibles dans l'historique des runs. Un document trop long est découpé par sections du dépôt, jamais tronqué en silence.
+
+#### D846 — Alertes sur événement accepté
+
+Un `market_event` accepté d'une société suivie rejoint l'avis de séance (D814) et les canaux `move_notify_channels`, avec sa citation. Pas d'alerte sur une proposition non revue.
+
+### D.4 Lots
+
+| Lot | Contenu | Acceptation |
+|---|---|---|
+| **MK3a** | D841 : `extractors:` (schéma, consigne), validation et recherche de citation pures, appel au fournisseur de l'org, faux fournisseur de test | une citation inventée ou retouchée est rejetée ; un JSON hors schéma est refusé avec son chemin ; aucun appel sans fournisseur |
+| **MK3b** | D842–D845 : extracteur `market_event` du pack `markets`, propositions, plafond, fiche `assistant-kb` | sur dix communiqués réels (résultats, prévision, dirigeant), chaque proposition a ses citations retrouvées ; `known_at` égal à l'acceptation SEC |
+| **MK3c** | D846 : alertes, test e2e d'une acceptation | un événement accepté apparaît dans l'avis de séance avec sa citation |
+
+### D.5 Questions pour Shan
+
+- **Q-MK15** : acceptation toujours humaine, ou acceptation automatique possible (réglage d'org) pour un événement dont toutes les citations sont retrouvées ?
+- **Q-MK16** : sources V1 : communiqués 8-K seulement, ou aussi les 10-Q (prévisions dans le rapport de gestion) et les rapports ESEF européens ?
+- **Q-MK17** : plafond quotidien par défaut (proposé : 50 documents par org et par jour).
+- **Q-MK18** : langue : anglais seulement en V1 (sources SEC), ou dès le départ le français et l'allemand pour l'ESEF ?
+- **Q-MK19** : rattrapage de l'historique (coût en jetons) ou seulement les nouveaux dépôts à partir de l'activation ?
+- **Q-MK20** : `extractors:` sert aussi la due diligence (D476) : on livre le mécanisme commun dans MK3a, ou un lot à part dans `due-diligence.md` dont MK3 dépend ?
 
