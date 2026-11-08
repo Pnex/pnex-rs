@@ -5379,6 +5379,63 @@
         ],
         "type": "object"
       },
+      "ChartEvent": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "type": "string"
+          },
+          "detail": {
+            "description": "`up` / `down` for a move, the form (`8-K`…) for a filing.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Object id of the event or the filing.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ChartEventKind"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "date",
+          "kind",
+          "title",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "ChartEventKind": {
+        "description": "What a marker on the time line is.",
+        "enum": [
+          "move",
+          "filing"
+        ],
+        "type": "string"
+      },
+      "ChartPoint": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "type": "string"
+          },
+          "value": {
+            "description": "Raw close as last known, never adjusted (D525).",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "value"
+        ],
+        "type": "object"
+      },
       "CheckQueued": {
         "description": "Answer of `POST /api/v1/firmware-projects/{id}/check`.",
         "properties": {
@@ -12068,6 +12125,43 @@
         "required": [
           "isolation",
           "expected_version"
+        ],
+        "type": "object"
+      },
+      "IssuerChart": {
+        "properties": {
+          "closes": {
+            "description": "Oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/ChartPoint"
+            },
+            "type": "array"
+          },
+          "events": {
+            "description": "Oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/ChartEvent"
+            },
+            "type": "array"
+          },
+          "instrument_id": {
+            "description": "The instrument drawn; `None` when the issuer has none.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ticker": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "closes",
+          "events"
         ],
         "type": "object"
       },
@@ -69318,6 +69412,105 @@
           }
         ],
         "summary": "Measure how an instrument moved around a date",
+        "tags": [
+          "markets"
+        ]
+      }
+    },
+    "/api/v1/markets/issuers/{id}/chart": {
+      "get": {
+        "description": "Raw closes of the issuer's instrument (or of the instrument itself), with its abnormal sessions and the issuer's filings on the same days, oldest first. Empty closes when no price was read. Any org member.",
+        "operationId": "markets_issuer_chart",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Organization or instrument object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Days back from today, 1 to 3650; 365 by default.",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuerChart"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `days` (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the price chart of an issuer with its sessions and filings",
         "tags": [
           "markets"
         ]

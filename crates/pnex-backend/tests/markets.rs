@@ -512,6 +512,18 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         .await;
         assert_eq!(volume_moves, 1, "one volume move");
         assert!(object_id(&db, org, "market_event", "ref", &spike).await.is_some(), "{spike}");
+        // D813: the chart of the instrument, its session and its issuer's filings.
+        let (st, chart) = api
+            .call("GET", &format!("/api/v1/markets/issuers/{acme}/chart?days=3650"), None)
+            .await;
+        assert_eq!(st, 200, "{chart}");
+        assert_eq!(chart["ticker"], "ACME");
+        assert_eq!(chart["closes"].as_array().unwrap().len(), 340);
+        let kinds: Vec<&str> = chart["events"].as_array().unwrap().iter().filter_map(|e| e["kind"].as_str()).collect();
+        assert!(kinds.contains(&"move"), "{chart}");
+        assert!(kinds.contains(&"filing"), "the issuer's filings: {chart}");
+        let (st, _) = api.call("GET", &format!("/api/v1/markets/issuers/{acme}/chart?days=0"), None).await;
+        assert_eq!(st, 400);
 
         // A daily read asks only for the recent days.
         api.run("Daily prices (Tiingo)").await;

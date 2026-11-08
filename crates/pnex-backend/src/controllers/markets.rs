@@ -14,12 +14,14 @@ use serde::Deserialize;
 use super::field_error;
 use crate::auth::OrgContext;
 use crate::services::markets::study::{self, DateSource, DatedRule, Rule};
+use pnex_core::markets::chart::{ChartEvent, ChartEventKind, ChartPoint, IssuerChart};
 use pnex_core::markets::moves::{MarketSession, SessionMove, SessionWorldEvent, WorldEventPoint};
 
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/markets")
         .add("/instruments/{id}/event-study", get(event_study))
+        .add("/issuers/{id}/chart", get(issuer_chart))
         .add("/rule-test", get(rule_test))
         .add("/sessions/{date}", get(session))
         .add("/world-events", get(world_events))
@@ -29,8 +31,19 @@ pub fn routes() -> Routes {
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(event_study, rule_test, position_result, session, world_events),
+        paths(
+            event_study,
+            issuer_chart,
+            rule_test,
+            position_result,
+            session,
+            world_events
+        ),
         components(schemas(
+            IssuerChart,
+            ChartPoint,
+            ChartEvent,
+            ChartEventKind,
             DateSource,
             MarketSession,
             SessionMove,
@@ -99,6 +112,53 @@ async fn event_study(
         return super::ontology::onto_error(e);
     }
     format::json(study::one(&ctx.db, org.org.id, id, date).await?)
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ChartQuery {
+    /// Days back from today, 1 to 3650; 365 by default.
+    days: Option<i64>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/issuers/{id}/chart",
+    tag = "markets",
+    operation_id = "markets_issuer_chart",
+    summary = "Read the price chart of an issuer with its sessions and filings",
+    description = "Raw closes of the issuer's instrument (or of the instrument itself), with its abnormal sessions and the issuer's filings on the same days, oldest first. Empty closes when no price was read. Any org member.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Organization or instrument object id (UUID)"),
+        ChartQuery
+    ),
+    responses(
+        (status = 200, body = IssuerChart),
+        (status = 400, description = "Invalid `days` (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn issuer_chart(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<String>,
+    Query(q): Query<ChartQuery>,
+) -> Result<Response> {
+    let id = super::ontology::parse_uuid(&id)?;
+    let days = q.days.unwrap_or(365);
+    if !(1..=3650).contains(&days) {
+        return Ok(field_error("days", err_codes::FIELD_INVALID));
+    }
+    let object = match crate::services::ontology::objects::find(&ctx.db, org.org.id, id).await {
+        Ok(o) => o,
+        Err(e) => return super::ontology::onto_error(e),
+    };
+    let since = chrono::Utc::now().date_naive() - chrono::Duration::days(days);
+    format::json(
+        crate::services::markets::chart::issuer(&ctx.db, org.org.id, id, &object.type_key, since)
+            .await?,
+    )
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
