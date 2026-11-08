@@ -9,7 +9,6 @@ use super::panels::{ApiMenu, LibChips, LibMenu, RevisionsDrawer};
 use crate::api;
 use crate::components::code_editing::CodeLang;
 use crate::components::code_highlight::{AreaHandle, FunctionCodeEditor, LineMark, MarkSeverity};
-use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY_SM};
 use crate::state::toasts;
@@ -295,6 +294,14 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
     }
 }
 
+/// Keeps the sidebar logo gerbe lit while mounted: a compile is polled, so
+/// between two requests the in-flight count would drop to zero.
+#[component]
+fn HoldBusy() -> Element {
+    use_hook(|| std::rc::Rc::new(crate::state::ui::InFlight::start()));
+    rsx! {}
+}
+
 /// Bottom report: guard violations, then the last check (running spinner,
 /// success, diagnostics list, or infra error log).
 #[component]
@@ -341,13 +348,13 @@ fn CheckReport(
     match (checking, check) {
         (true, None) => rsx! {
             div { class: "{box_class} border-gray-200 bg-gray-50 text-gray-700 flex items-center gap-2",
-                Gerbe { size: 18 }
+                HoldBusy {}
                 {t!("firmware-check-running")}
             }
         },
         (_, Some(status)) if matches!(status.status.as_str(), "queued" | "running") => rsx! {
             div { class: "{box_class} border-gray-200 bg-gray-50 text-gray-700 flex items-center gap-2",
-                Gerbe { size: 18 }
+                HoldBusy {}
                 {t!("firmware-check-running")}
             }
         },
