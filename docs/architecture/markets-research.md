@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
-| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), lots **MK0…MK14** |
+| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), lots **MK0…MK14** |
 | Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`data-pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
@@ -785,4 +785,55 @@ Un `market_event` accepté d'une société suivie rejoint l'avis de séance (D81
 - **Correctif commun** : dans un passage, les partitions jamais demandées passent avant celles qu'on redemande (vides récentes, échecs). Sans cela, avec un budget d'un fichier, une année pas encore publiée bloquait les mois de l'année en cours.
 - **À trancher par Shan** : écrire à HistData pour un accord d'usage (ou prendre leur offre payante) avant tout usage en SaaS.
 - **Acceptation réelle (2026-11-08)** : EURUSD de 2000 à 2026-10 : 36 fichiers (26 années + 10 mois), 9 028 816 bougies, 120 Mo de Parquet, 4 min 30 s en boucle de test (en production : un fichier toutes les 5 minutes, ≈ 3 h). Aucun échec. 2023 n'a que 322 638 minutes (environ 372 000 les autres années pleines) : un trou publié par HistData, gardé tel quel. Analyse du fichier : 679 trous de 31 à 180 minutes, dont 587 d'exactement une heure et 85 de deux, tous finis à :00, presque tous entre 9 h et 23 h UTC et de février à juillet (8 000 à 9 500 minutes manquantes par mois). Ce sont des heures entières perdues par la source de HistData, pas un défaut de lecture. Aucun comblement (D525).
+
+## Appendice E — MT5 comme une source enregistrée, à la manière des devices
+
+| | |
+|---|---|
+| Statut | **Proposé le 2026-11-08 au soir, rien de codé.** Demande de Shan : « pour MT5 c'est comme une source, donc générateur de code… idéalement on doit pouvoir tout choper (instruments depuis l'expert, ou filtrer quelques instruments) », « un peu comme les devices ». Questions Q-MT1 à Q-MT6 à trancher avant tout code |
+| Décisions | **D847…D849** |
+| Remplace | la sélection des symboles par les paramètres de l'EA (D816 tel que codé en 8dc9ea35) ; le chemin de données (boîte, tables `mt5_ohlcv_1m` et `mt5_ticks`) est gardé |
+
+### E.1 Le parallèle avec les devices
+
+| Device | Terminal MT5 |
+|---|---|
+| Fiche créée dans l'UI | Fiche « terminal MT5 » : nom, courtier, serveur, numéro de compte (pas un secret) |
+| Firmware ou code généré par device, identité intégrée (Tier 2 : code à copier) | EA généré par terminal, URL et jeton du terminal intégrés ; régénérer révoque l'ancien jeton |
+| Annonce des capacités (`Announce.pins`) | Annonce du catalogue : tous les symboles du courtier, avec description, chemin, devises, décimales, taille de contrat, premier M1 et premier tick disponibles |
+| Configuration décidée côté serveur | Choix dans l'UI : tout, des filtres (`EUR*`, `XAU*`) ou une liste, séparément pour les bougies et les ticks ; l'EA relit sa configuration |
+| Présence (D108) | Battement de l'EA : en ligne, en retard, hors ligne ; version de l'EA, build du terminal |
+| Lecture seule des mesures | Bougies M1 et ticks vers les tables ; rattrapage d'historique demandé depuis l'UI. **Jamais d'ordre** (D534, D123) |
+
+### E.2 Décisions proposées
+
+#### D847 — Le terminal est une source enregistrée, son EA est généré
+
+Registre `mt5_terminals` (org, nom, courtier, serveur, compte, empreinte du jeton, version de l'EA, vu pour la dernière fois). L'EA est rendu depuis un modèle embarqué dans `pnex_core` (fonction pure, testée) avec l'URL et le jeton du terminal ; l'UI le propose au téléchargement comme le code d'un device Tier 2. Le jeton n'est lisible que dans le fichier généré à cet instant ; il n'est jamais relu (R4, R16).
+
+#### D848 — L'EA annonce tout, PneX choisit
+
+Au démarrage puis chaque jour, l'EA envoie le catalogue complet du courtier (`SymbolsTotal(false)`), avec la profondeur d'historique de chaque symbole (premier M1 par `SERIES_SERVER_FIRSTDATE`, premier tick trouvé par `CopyTicksRange`). Le catalogue va dans une table par terminal. L'UI y choisit les instruments ; l'EA relit sa configuration (instruments, ticks oui ou non, jours de rattrapage) toutes les quelques minutes par une route en lecture authentifiée par son jeton. **La profondeur annoncée répond aussi à la question « quel courtier a l'historique le plus large »** : il suffit de brancher un compte démo de chaque courtier et de comparer.
+
+#### D849 — Un point d'entrée dédié, la même file, la même écriture
+
+Route d'ingestion propre aux terminaux (accès `Machine` au registre IAM, jeton du terminal, org du terminal : R1), réponse `202` après mise en boîte comme CN3 ; le balayage marchés écrit les mêmes tables (D824). Plafonds par terminal : appels par minute, taille d'appel, ticks par symbole. Le battement est un appel sans données.
+
+### E.3 Lots
+
+| Lot | Contenu | Acceptation |
+|---|---|---|
+| **MT5-1** | D847, D849 : registre, jeton, ingestion, configuration, IAM, OpenAPI, MCP (exclu : machine) | un terminal simulé s'enregistre, envoie, reçoit sa configuration ; un jeton révoqué est refusé |
+| **MT5-2** | D847 : modèle de l'EA, rendu pur, écran « terminaux MT5 » (tableau et pager, skills de design, `break-ui`), téléchargement | parcours e2e : créer un terminal, télécharger l'EA, voir le terminal en ligne (simulé) |
+| **MT5-3** | D848 : catalogue, profondeur, sélection par filtres, rattrapage | 1 000 symboles annoncés, filtre `EUR*` appliqué, rattrapage de 30 jours de M1 en paquets de moins de 1 Mio |
+| **MT5-4** | Compilation et essai réel dans MetaTrader 5 sur deux comptes démo | profondeur mesurée et comparée ; aucune requête refusée |
+
+### E.4 Questions pour Shan
+
+- **Q-MT1** : place dans l'UI : page « Terminaux MT5 » sous Sources, ou dans les devices et edges ?
+- **Q-MT2** : authentification : jeton par terminal (comme les devices, `Authorization: Bearer`), ou garder la signature HMAC du webhook CN3 ?
+- **Q-MT3** : sélection par défaut d'un nouveau terminal : rien tant qu'on n'a pas choisi, les bougies de tout le catalogue, ou la seule fenêtre Market Watch ?
+- **Q-MT4** : ticks pour « tout » autorisés, avec un plafond par terminal, ou seulement sur une liste ?
+- **Q-MT5** : le catalogue annoncé crée-t-il des objets `instrument` dans l'ontologie (en propositions), ou reste-t-il une table ?
+- **Q-MT6** : le pont actuel par webhook (8dc9ea35) reste-t-il comme mode simple, ou est-il remplacé ?
 
