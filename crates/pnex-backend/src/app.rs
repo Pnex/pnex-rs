@@ -152,6 +152,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::hooks::routes())
         .add_route(controllers::governance::routes())
         .add_route(controllers::analysis::routes())
+        .add_route(controllers::rules::routes())
         .add_route(controllers::image_registries::routes())
         .add_route(controllers::environments::routes())
         .add_route(controllers::agent_runs::routes())
@@ -287,6 +288,7 @@ impl Hooks for App {
         crate::services::site_recipes::spawn_pruner(ctx);
         // Captured profile texts past 30 days (D333).
         crate::services::profiles::spawn_pruner(ctx);
+        crate::services::rules::spawn(ctx);
         crate::services::person_match::spawn_sweeper(ctx);
         // Mailboxes polled every two minutes (mail.md D460).
         crate::services::mail::poller::spawn(ctx);

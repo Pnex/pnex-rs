@@ -341,6 +341,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
         || at(Route::Functions {})
         || at(Route::Controls {})
         || at(Route::Notifications {})
+        || at(Route::Rules {})
         || at(Route::Models {})
         || at(Route::FluidMixtures {});
     let settings = matches!(route, Route::Orgs {} | Route::OrgsCurrent {})
@@ -589,6 +590,14 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     label: t!("nav-notifications"),
                     active: at(Route::Notifications {}),
                     on_navigate,
+                }
+                if crate::state::access::can("rules:read") {
+                    NavItem {
+                        to: Route::Rules {},
+                        label: t!("nav-rules"),
+                        active: at(Route::Rules {}),
+                        on_navigate,
+                    }
                 }
                 NavItem {
                     to: Route::Events {},

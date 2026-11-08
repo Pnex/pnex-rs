@@ -123,6 +123,7 @@ mod m20261108_000128_object_markings;
 mod m20261108_000129_dataset_mark_proposals;
 mod m20261108_000130_market_session_summaries;
 mod m20261108_000131_analysis_queries;
+mod m20261108_000132_rules;
 mod m20261108_000133_market_history_partitions;
 
 pub struct Migrator;
@@ -243,6 +244,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261108_000129_dataset_mark_proposals::Migration),
             Box::new(m20261108_000130_market_session_summaries::Migration),
             Box::new(m20261108_000131_analysis_queries::Migration),
+            Box::new(m20261108_000132_rules::Migration),
             Box::new(m20261108_000133_market_history_partitions::Migration),
         ]
     }

@@ -44,6 +44,13 @@ const RULES: &[Rule] = &[
         use_instead: "invite",
         allowed_keys: &["iam-", "access-"],
     },
+    // analysis.md D829: a watched condition is a rule.
+    Rule {
+        scope: Scope::Fr,
+        term: "règle d'alerte",
+        use_instead: "règle",
+        allowed_keys: &[],
+    },
     // governance.md D798–D799: a compartment is a marking, a person's right to read
     // marked data is a clearance.
     Rule {

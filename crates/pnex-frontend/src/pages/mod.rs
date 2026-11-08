@@ -56,6 +56,7 @@ pub mod pipelines;
 pub mod profile;
 /// Web sites and their navigation studio (site-recipes.md D323–D326).
 pub mod proposals;
+pub mod rules;
 pub mod secrets;
 pub mod server_url;
 pub mod share;

@@ -76,6 +76,7 @@ pub mod proposals;
 pub mod public_tours;
 /// Cross-cutting organization layer (D42) — kind-agnostic endpoints.
 pub mod resources;
+pub mod rules;
 pub mod runners;
 /// Org secrets vault (D110–D118).
 pub mod secrets;

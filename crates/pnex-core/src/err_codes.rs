@@ -769,6 +769,12 @@ pub const ANALYSIS_SQL_INVALID: &str = "analysis-sql-invalid";
 pub const ANALYSIS_TIMEOUT: &str = "analysis-timeout";
 /// The rows returned weigh more than allowed.
 pub const ANALYSIS_RESULT_TOO_LARGE: &str = "analysis-result-too-large";
+/// No such rule in the org.
+pub const RULE_NOT_FOUND: &str = "rule-not-found";
+/// A rule of the org already has this name.
+pub const RULE_NAME_TAKEN: &str = "rule-name-taken";
+/// The rule changed since it was read.
+pub const RULE_VERSION_CONFLICT: &str = "rule-version-conflict";
 pub const IMAGE_REGISTRY_NOT_FOUND: &str = "image-registry-not-found";
 pub const IMAGE_REGISTRY_NAME_TAKEN: &str = "image-registry-name-taken";
 /// The registry changed since it was read (args `current`).
@@ -1344,6 +1350,9 @@ pub const ALL: &[&str] = &[
     ANALYSIS_SQL_INVALID,
     ANALYSIS_TIMEOUT,
     ANALYSIS_RESULT_TOO_LARGE,
+    RULE_NOT_FOUND,
+    RULE_NAME_TAKEN,
+    RULE_VERSION_CONFLICT,
     IMAGE_REGISTRY_NOT_FOUND,
     IMAGE_REGISTRY_NAME_TAKEN,
     IMAGE_REGISTRY_VERSION_CONFLICT,

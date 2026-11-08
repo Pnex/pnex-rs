@@ -4,9 +4,9 @@
 //! specialised pages (devices, media…) stay; they are views of system
 //! types and link here through their object page.
 
+mod chart;
 pub mod imports;
 pub mod object;
-mod chart;
 mod observations;
 pub mod packs;
 pub mod profile_capture;

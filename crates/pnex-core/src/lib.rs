@@ -181,6 +181,7 @@ pub mod image_registries;
 pub mod media_upload;
 /// Pipeline documents and DTOs (data-pipelines.md D571).
 pub mod pipelines;
+pub mod rules;
 /// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
 /// classifier, `topic_classify` node config.
 pub mod taxonomy;

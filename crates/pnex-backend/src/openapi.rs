@@ -114,6 +114,7 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         controllers::hooks::openapi(),
         controllers::governance::openapi(),
         controllers::analysis::openapi(),
+        controllers::rules::openapi(),
         controllers::image_registries::openapi(),
         controllers::environments::openapi(),
         controllers::agent_runs::openapi(),

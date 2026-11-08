@@ -102,6 +102,7 @@ pub mod regulator;
 /// Cross-cutting organization layer (D42): labels / containment / edges.
 pub mod resources;
 pub mod retention;
+pub mod rules;
 pub mod runners;
 /// Shared Valkey connection for small cross-pod auth/security state.
 pub mod runtime_local;

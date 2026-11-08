@@ -66,6 +66,7 @@ pub mod pipelines;
 pub mod proposals;
 /// Cross-cutting organisation layer (D42).
 pub mod resources;
+pub mod rules;
 /// Global search typeahead (D69).
 pub mod search;
 /// Org secrets vault (D110–D117).

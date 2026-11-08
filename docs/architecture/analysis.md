@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **AN1 codé le 2026-11-08** (§6) ; AN2, AN3 à faire |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **AN1 et AN2 codés le 2026-11-08** (§6) ; AN3 à faire |
 | Déclencheur | Ordre OP1 → OP2 → OP3, puis OP5 (`operational-platform.md` §2) ; agrégats déjà livrés (`object-aggregates.md`) |
 | Repose sur | `operational-platform.md` (D557 : lecture seule, droits de l'appelant), `data-pipelines.md` (worker D571–D574), `governance.md` (marquages D801), `crm.md` (masque D443), `ontology.md` (D185 requête), `pages` |
 | Numérotation | **D825…D832**, lots **AN1…AN3** (AN4, analyse sans code, plus tard) |
@@ -111,3 +111,20 @@ apparaît dans le texte (une correspondance de mot, pas l'analyse du moteur) ; u
 requête jamais exécutée reste jusqu'à la purge du lendemain (`shortcut:` dans le code). `break-ui` :
 le message d'une requête refusée disait « pas un seul SELECT » pour une colonne inconnue ; reformulé
 en « le moteur a refusé : sa raison suit ».
+
+**AN2 (2026-11-08)** : migration 000132 (`rules`, canal de notification optionnel, nom unique par
+org), `pnex_core::rules` (condition objets ou série, filtres D185, évaluation pure des événements),
+`services/rules.rs` (CRUD à `expected_version`, une condition changée remet l'état à zéro ; passage
+toutes les 5 min en singleton `rules-pass`, sous le masque de l'auteur recalculé à chaque passage ;
+objets : le premier passage note les objets qui correspondent sans rien envoyer, les suivants
+notifient les nouveaux ; série : notifie quand le seuil tient la durée demandée ; envoi sur le canal
+choisi, sinon notification dans l'app ; rejeu sur 24 h, 7 j ou 30 j sans rien envoyer),
+`controllers/rules.rs` (`rules:read` Lecteur, `rules:write` et `rules:delete` Membre ; lecture et
+rejeu exposés au MCP, écriture et suppression exclues). Page `/rules` sous Automatisation (tableau +
+pager, formulaire, rejeu avec liens vers les objets), fiche `assistant-kb/rules.md`, ligne
+« Règle » au lexique. Tests : `tests/rules.rs`, tests du cœur, `e2e/tests/rules.spec.ts`.
+
+Écarts à relire : D829 prévoit « une notification **ou une proposition** » ; seule la notification
+est livrée (choix de Shan pour AN2), la proposition attend OP9. `break-ui` : la colonne « Surveille »
+montrait la clé du type au lieu de son nom, et l'état disait « fausse au dernier passage » pour une
+règle jamais évaluée ; corrigés (nom du type, « Déclenchée / Non déclenchée », pluriel des filtres).

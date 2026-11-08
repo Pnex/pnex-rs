@@ -93,6 +93,9 @@ pub const EXPOSED: &[&str] = &[
     "governance_markings_list",
     "analysis_queries_create",
     "analysis_queries_get",
+    "rules_list",
+    "rules_get",
+    "rules_replay_preview",
     "ontology_objects_markings",
     "datasets_get",
     "datasets_list",
@@ -435,6 +438,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     (
         "destructive: deletes, purges or archives data (D245)",
         &[
+            "rules_delete",
             "agents_delete",
             "agent_skills_delete",
             "runners_delete",
@@ -641,6 +645,9 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     (
         "outward: sends a real message or opens a public link",
         &[
+            // A rule sends notifications once enabled (analysis.md D829).
+            "rules_create",
+            "rules_update",
             "mailboxes_messages_send",
             "mailboxes_outbox_send",
             "extension_missions_create",

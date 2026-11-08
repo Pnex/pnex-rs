@@ -102,6 +102,10 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     // may see which markings exist, never the data.
     // analysis.md D825: a read-only query, run by the worker under the caller's rights.
     ("analysis:run", Level::Member),
+    // analysis.md D829: rules notify, they never write data.
+    ("rules:read", Level::Viewer),
+    ("rules:write", Level::Member),
+    ("rules:delete", Level::Member),
     ("governance:delete", Level::Admin),
     ("governance:read", Level::Viewer),
     ("governance:write", Level::Admin),
@@ -570,6 +574,12 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("governance_markings_list", Access::Org("governance:read")),
     ("analysis_queries_create", Access::Org("analysis:run")),
     ("analysis_queries_get", Access::Org("analysis:run")),
+    ("rules_list", Access::Org("rules:read")),
+    ("rules_get", Access::Org("rules:read")),
+    ("rules_replay_preview", Access::Org("rules:read")),
+    ("rules_create", Access::Org("rules:write")),
+    ("rules_update", Access::Org("rules:write")),
+    ("rules_delete", Access::Org("rules:delete")),
     ("governance_journal_export", Access::Org("governance:write")),
     ("ontology_objects_markings", Access::Org("governance:read")),
     (

@@ -17,6 +17,7 @@ use crate::pages::mailbox_messages::MailboxMessages;
 use crate::pages::mailboxes::Mailboxes;
 use crate::pages::pipelines::{PipelineStudio, PipelineTable, Pipelines};
 use crate::pages::proposals::Proposals;
+use crate::pages::rules::Rules;
 use crate::pages::web_sites::{WebSiteStudio, WebSites};
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Calendar, Cameras, CaseWorkspace, Cases, Catalog,
@@ -197,6 +198,10 @@ pub enum Route {
         // Data pipelines: tables, studio, chained runs, connectors (data-pipelines.md §9.5).
         #[route("/pipelines")]
         Pipelines {},
+
+        // Rules: conditions that notify, and their replay (analysis.md D829–D830).
+        #[route("/rules")]
+        Rules {},
 
         #[route("/pipelines/tables/:id")]
         PipelineTable { id: String },
