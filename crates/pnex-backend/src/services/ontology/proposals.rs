@@ -104,7 +104,8 @@ pub async fn propose<C: ConnectionTrait>(
         ProposalKind::ObjectUpdate
         | ProposalKind::LinkUpdate
         | ProposalKind::LinkClose
-        | ProposalKind::ObjectErase => needs("target_id", &p.target_id)?,
+        | ProposalKind::ObjectErase
+        | ProposalKind::DatasetMark => needs("target_id", &p.target_id)?,
         ProposalKind::VoiceSpan => return Err(invalid("kind", FIELD_INVALID)),
         ProposalKind::ToolCall => {
             if p.values
@@ -476,9 +477,12 @@ async fn apply<C: ConnectionTrait>(
         // accepting it lands here and leaves it to validate.
         // A tool call runs through `internal_agents::accept_tool_call`, with the rights of
         // the person deciding: an org rule accepting it lands here and leaves it to them.
-        ProposalKind::VoiceSpan | ProposalKind::ObjectErase | ProposalKind::ToolCall => {
-            return Err(invalid("kind", FIELD_INVALID))
-        }
+        // A marking (governance.md D804) is set through `governance::accept_dataset_mark`,
+        // by a person with `governance:write`.
+        ProposalKind::VoiceSpan
+        | ProposalKind::ObjectErase
+        | ProposalKind::ToolCall
+        | ProposalKind::DatasetMark => return Err(invalid("kind", FIELD_INVALID)),
         ProposalKind::CaseEvent => {
             let case_id = text("target_id")
                 .and_then(|t| Uuid::parse_str(&t).ok())

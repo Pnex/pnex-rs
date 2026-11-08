@@ -922,6 +922,14 @@ pub fn spawn_pruner(ctx: &AppContext) {
                 Ok(_) => {}
                 Err(e) => tracing::warn!(error = %e, "retention queue failed"),
             }
+            // governance.md D804: personal data in new table versions, proposed only.
+            if let Ok(store) = crate::services::datasets::store_of(&ctx.config) {
+                match crate::services::governance::detect_pass(&ctx.db, &store).await {
+                    Ok(n) if n > 0 => tracing::info!(proposed = n, "personal data detection"),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "personal data detection failed"),
+                }
+            }
         }
     });
 }

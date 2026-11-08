@@ -7143,6 +7143,7 @@ err-reserved = This name is reserved.
 
 ## Internal agents (D785)
 proposals-kind-tool_call = Agent action
+proposals-kind-dataset_mark = Personal data in a table
 proposals-origin-filter = Only the proposals of { $origin }.
 agents-field-level = Level
 agents-level-hosted = Hosted

@@ -136,6 +136,143 @@ impl Declassify {
     }
 }
 
+/// What the detection recognizes in a column (D804).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sensitive {
+    Email,
+    Phone,
+    Iban,
+    Card,
+    Nir,
+}
+
+impl Sensitive {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Email => "email",
+            Self::Phone => "phone",
+            Self::Iban => "iban",
+            Self::Card => "card",
+            Self::Nir => "nir",
+        }
+    }
+
+    fn matches(self, v: &str) -> bool {
+        let digits: String = v.chars().filter(char::is_ascii_digit).collect();
+        match self {
+            Self::Email => v.split_once('@').is_some_and(|(l, d)| {
+                !l.is_empty() && d.contains('.') && !d.starts_with('.') && !v.contains(' ')
+            }),
+            Self::Phone => {
+                v.chars()
+                    .all(|c| c.is_ascii_digit() || " +.-()".contains(c))
+                    && (9..=15).contains(&digits.len())
+                    && (v.starts_with('+') || v.starts_with('0'))
+            }
+            Self::Iban => iban_ok(v),
+            Self::Card => {
+                v.chars()
+                    .all(|c| c.is_ascii_digit() || c == ' ' || c == '-')
+                    && (13..=19).contains(&digits.len())
+                    && luhn(&digits)
+            }
+            Self::Nir => nir_ok(&v.replace(' ', "")),
+        }
+    }
+}
+
+fn luhn(digits: &str) -> bool {
+    let sum: u32 = digits
+        .chars()
+        .rev()
+        .filter_map(|c| c.to_digit(10))
+        .enumerate()
+        .map(|(i, d)| {
+            if i % 2 == 1 {
+                if d * 2 > 9 {
+                    d * 2 - 9
+                } else {
+                    d * 2
+                }
+            } else {
+                d
+            }
+        })
+        .sum();
+    sum % 10 == 0
+}
+
+fn mod97(s: &str) -> Option<u32> {
+    s.chars().try_fold(0u32, |acc, c| {
+        let n = c.to_digit(36)?;
+        Some(if n > 9 {
+            (acc * 100 + n) % 97
+        } else {
+            (acc * 10 + n) % 97
+        })
+    })
+}
+
+fn iban_ok(v: &str) -> bool {
+    let s: String = v
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_uppercase();
+    if !(15..=34).contains(&s.len())
+        || !s[..2].chars().all(|c| c.is_ascii_uppercase())
+        || !s.chars().all(|c| c.is_ascii_alphanumeric())
+    {
+        return false;
+    }
+    mod97(&format!("{}{}", &s[4..], &s[..4])) == Some(1)
+}
+
+/// A French social security number: 13 digits (Corsica: 2A/2B) and a key of 2.
+fn nir_ok(s: &str) -> bool {
+    if s.len() != 15 || !matches!(s.as_bytes()[0], b'1' | b'2') {
+        return false;
+    }
+    let body = s[..13].replace("2A", "19").replace("2B", "18");
+    let (Ok(n), Ok(key)) = (body.parse::<u64>(), s[13..].parse::<u64>()) else {
+        return false;
+    };
+    97 - n % 97 == key
+}
+
+/// Values of a column to judge: at least this many non-empty ones.
+pub const DETECT_MIN_VALUES: usize = 5;
+/// Share of non-empty values that must match, in percent.
+pub const DETECT_SHARE: u32 = 60;
+
+/// The category most values of a column match, with its share in percent.
+pub fn detect<'a>(values: impl IntoIterator<Item = &'a str>) -> Option<(Sensitive, u32)> {
+    let values: Vec<&str> = values
+        .into_iter()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .collect();
+    if values.len() < DETECT_MIN_VALUES {
+        return None;
+    }
+    [
+        Sensitive::Iban,
+        Sensitive::Card,
+        Sensitive::Nir,
+        Sensitive::Email,
+        Sensitive::Phone,
+    ]
+    .into_iter()
+    .map(|c| {
+        (
+            c,
+            (values.iter().filter(|v| c.matches(v)).count() * 100 / values.len()) as u32,
+        )
+    })
+    .filter(|(_, share)| *share >= DETECT_SHARE)
+    .max_by_key(|(_, share)| *share)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +334,61 @@ mod tests {
             justification: "too short".into(),
         };
         assert_eq!(d.violation().unwrap().0, "justification");
+    }
+
+    #[test]
+    fn sensitive_columns_are_recognized() {
+        let col = |v: &[&'static str]| detect(v.iter().copied()).map(|(c, _)| c);
+        assert_eq!(
+            col(&[
+                "ada@example.org",
+                "bob@x.fr",
+                "c@d.io",
+                "e@f.com",
+                "g@h.net"
+            ]),
+            Some(Sensitive::Email)
+        );
+        assert_eq!(
+            col(&[
+                "+33 6 12 34 56 78",
+                "0612345678",
+                "01.23.45.67.89",
+                "+44 20 7946 0958",
+                "0698765432"
+            ]),
+            Some(Sensitive::Phone)
+        );
+        // Valid check digits only: the same shape with a wrong key is not an IBAN.
+        let ibans = [
+            "FR14 2004 1010 0505 0001 3M02 606",
+            "DE89370400440532013000",
+            "GB82WEST12345698765432",
+            "FR7630006000011234567890189",
+            "NL91ABNA0417164300",
+        ];
+        assert_eq!(col(&ibans), Some(Sensitive::Iban));
+        assert!(!iban_ok("FR15 2004 1010 0505 0001 3M02 606"));
+        assert_eq!(
+            col(&[
+                "4111 1111 1111 1111",
+                "5500-0000-0000-0004",
+                "340000000000009",
+                "4012888888881881",
+                "6011000000000004"
+            ]),
+            Some(Sensitive::Card)
+        );
+        assert!(!luhn("4111111111111112"));
+        assert!(nir_ok("255081416802538"));
+        assert!(!nir_ok("255081416802539"));
+        // Ordinary data stays unflagged, and too few values say nothing.
+        assert_eq!(col(&["Lyon", "Nantes", "Brest", "Paris", "Lille"]), None);
+        assert_eq!(col(&["12", "15", "18", "21", "24"]), None);
+        assert_eq!(col(&["ada@example.org", "bob@x.fr"]), None);
+        assert_eq!(
+            col(&["ada@example.org", "b@x.fr", "Lyon", "Paris", "Lille"]),
+            None
+        );
     }
 }

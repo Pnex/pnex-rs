@@ -24989,7 +24989,8 @@
           "case_event",
           "voice_span",
           "object_erase",
-          "tool_call"
+          "tool_call",
+          "dataset_mark"
         ],
         "type": "string"
       },
@@ -85345,7 +85346,7 @@
     },
     "/api/v1/proposals/{id}/decision": {
       "post": {
-        "description": "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Accepting a `tool_call` (a write of an internal agent, D785) runs its exact arguments with the decider's rights; a refusal of the tool keeps it open (409 with the tool's code, or `proposal-tool-failed`). Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
+        "description": "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Accepting a `tool_call` (a write of an internal agent, D785) runs its exact arguments with the decider's rights; a refusal of the tool keeps it open (409 with the tool's code, or `proposal-tool-failed`). Accepting a `dataset_mark` (personal data detected in a table) marks the table and needs `governance:write`. Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
         "operationId": "proposals_decide",
         "parameters": [
           {

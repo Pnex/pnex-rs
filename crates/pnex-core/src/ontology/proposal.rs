@@ -35,10 +35,14 @@ pub enum ProposalKind {
     /// holds `tool`, `arguments` and `run_id`. Accepting runs those exact arguments with
     /// the deciding person's rights; never accepted by an org rule.
     ToolCall,
+    /// Mark a table found holding personal data (governance.md D804): `target_id` is
+    /// the dataset, `values` hold `column`, `category`, `share` and `marking`. Accepted
+    /// by a person with `governance:write`, never by an org rule.
+    DatasetMark,
 }
 
 impl ProposalKind {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::ObjectCreate,
         Self::ObjectUpdate,
         Self::LinkCreate,
@@ -48,6 +52,7 @@ impl ProposalKind {
         Self::VoiceSpan,
         Self::ObjectErase,
         Self::ToolCall,
+        Self::DatasetMark,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -61,6 +66,7 @@ impl ProposalKind {
             Self::VoiceSpan => "voice_span",
             Self::ObjectErase => "object_erase",
             Self::ToolCall => "tool_call",
+            Self::DatasetMark => "dataset_mark",
         }
     }
 
@@ -208,6 +214,16 @@ pub fn slot(p: &ProposalInput) -> Option<String> {
         ),
         // Not proposed through this table.
         ProposalKind::VoiceSpan => return None,
+        // One proposal per column of a table.
+        ProposalKind::DatasetMark => format!(
+            "{}|{}|{}",
+            kind.as_str(),
+            id(&p.target_id),
+            p.values
+                .get("column")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        ),
         // Each call of a run stands alone: never in competition with another.
         ProposalKind::ToolCall => format!(
             "{}|{}|{}|{}",

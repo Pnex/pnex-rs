@@ -15,6 +15,8 @@ An **object** of the ontology can carry markings too, set by an administrator or
 
 What a pipeline computes from a marked table carries the same markings. Removing a marking from a table is a **declassification**: it needs a written reason, kept in the journal, and a later run that still reads marked data puts the marking back.
 
+PneX also reads the first rows of each new table version and, when a column looks like e-mails, phone numbers, IBANs, card numbers or social security numbers, proposes in **To validate** to mark the table *personal*. Nothing changes until an administrator accepts.
+
 ## Troubleshooting
 - ***marking-required* on a table page.** The table carries a marking you are not cleared for, or your clearance ended: ask an administrator for a clearance, with the purpose.
 - ***marking-in-use* when deleting a marking.** A table still carries it: declassify that table first.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 à G3 codés le 2026-11-08** (§7) |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 à G4 codés le 2026-11-08** (§7) |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; D715 : aucun client réel avant OP3 |
 | Repose sur | `iam.md` (D285–D299, I4, I5), `crm.md` (D442 classification, D443 masquage, D446 effacement), `data-pipelines.md` (D569–D578, lignage), `connectors.md` |
 | Numérotation | **D798…D806**, lots **G1…G7** |
@@ -157,3 +157,11 @@ parcours de graphe peut passer par un objet caché ; l'ensemble caché est charg
 `governance:write`, exclue du MCP au motif binaire) : CSV des lignes du flux `governance_reads`,
 10 000 au plus, plus récentes d'abord, période de 30 jours par défaut ; O2 absent =
 `503 governance-journal-unavailable`. Conversion CSV testée à part.
+
+**G4 (2026-11-08)** : détecteur pur `pnex_core::governance::detect` (e-mail, téléphone, IBAN avec
+clé mod 97, carte avec Luhn, NIR avec sa clé ; 5 valeurs au moins, 60 % de la colonne), passe
+`governance::detect_pass` dans la boucle horaire de la file de rétention : 200 premières lignes de
+chaque version non lue (`datasets.detected_seq`, migration 000129), table déjà marquée ignorée.
+Proposition `dataset_mark` (une par colonne, jamais reproposée après refus), acceptée seulement par
+une personne avec `governance:write` : la table reçoit le marquage `personal`, créé au premier
+accord. Choix à relire : un seul marquage proposé (`personal`), quelle que soit la catégorie.

@@ -661,6 +661,147 @@ pub async fn read_journal(
     }
 }
 
+/// Marking a detection proposes, created on first acceptance (D804).
+pub const DETECTED_MARKING: &str = "personal";
+/// Rows of a version the detection reads.
+const DETECT_ROWS: usize = 200;
+/// Tables one pass reads at most; the next pass goes on.
+const DETECT_TABLES: i64 = 50;
+
+/// D804: reads the first rows of each table version not read yet, and proposes to
+/// mark a table where a column holds personal data. Changes nothing by itself; a
+/// table that already carries a marking is left alone.
+pub async fn detect_pass(
+    db: &DatabaseConnection,
+    store: &crate::services::artifact_store::S3Store,
+) -> Result<u64, DbErr> {
+    use pnex_core::ontology::proposal::{ProposalInput, ProposalKind};
+    let due = db
+        .query_all_raw(stmt(
+            "SELECT d.id, d.org_id, max(t.seq) AS seq FROM datasets d \
+               JOIN dataset_transactions t ON t.dataset_id = d.id AND t.state = 'committed' \
+             GROUP BY d.id, d.org_id, d.detected_seq HAVING max(t.seq) > d.detected_seq \
+             LIMIT $1",
+            vec![DETECT_TABLES.into()],
+        ))
+        .await?;
+    let mut proposed = 0;
+    for row in &due {
+        let id: Uuid = row.try_get("", "id")?;
+        let org_id: i64 = row.try_get("", "org_id")?;
+        let seq: i64 = row.try_get("", "seq")?;
+        if dataset_markings(db, id).await?.is_empty() {
+            let sample =
+                crate::services::datasets::sample(db, store, org_id, id, DETECT_ROWS, None).await;
+            if let Ok(sample) = sample {
+                for (c, name) in sample.columns.iter().enumerate() {
+                    let values = sample
+                        .rows
+                        .iter()
+                        .filter_map(|r| r.get(c).and_then(|v| v.as_deref()));
+                    let Some((category, share)) = pnex_core::governance::detect(values) else {
+                        continue;
+                    };
+                    let mut values = serde_json::Map::new();
+                    values.insert("dataset".into(), id.to_string().into());
+                    values.insert("column".into(), name.clone().into());
+                    values.insert("category".into(), category.as_str().into());
+                    values.insert("share".into(), share.into());
+                    values.insert("marking".into(), DETECTED_MARKING.into());
+                    let input = ProposalInput {
+                        kind: Some(ProposalKind::DatasetMark),
+                        type_key: "dataset".into(),
+                        target_id: Some(id.to_string()),
+                        title: Some(name.clone()),
+                        evidence: serde_json::Value::Object(values.clone()),
+                        values,
+                        origin: format!("detection:{id}"),
+                        confidence: Some(share as f64),
+                        ..Default::default()
+                    };
+                    match crate::services::ontology::proposals::propose(db, org_id, &input).await {
+                        Ok(Some(_)) => proposed += 1,
+                        Ok(None) => {}
+                        Err(e) => {
+                            tracing::warn!(dataset = %id, error = %e, "detection not proposed")
+                        }
+                    }
+                }
+            }
+        }
+        db.execute_raw(stmt(
+            "UPDATE datasets SET detected_seq = $2 WHERE id = $1",
+            vec![id.into(), seq.into()],
+        ))
+        .await?;
+    }
+    Ok(proposed)
+}
+
+/// Accepts a `dataset_mark` proposal: the table gets the proposed marking, created
+/// if the org has none of that key yet (D804).
+pub async fn accept_dataset_mark(
+    db: &DatabaseConnection,
+    org_id: i64,
+    actor: &crate::services::ontology::Actor,
+    id: Uuid,
+    d: &pnex_core::ontology::proposal::ProposalDecision,
+) -> crate::services::ontology::Result<pnex_core::ontology::proposal::ProposalView> {
+    use crate::services::ontology::{proposals, OntologyError};
+    use pnex_core::ontology::proposal::{ProposalKind, ProposalStatus, REASON_MAX};
+    let p = proposals::get(db, org_id, id).await?;
+    if p.kind != ProposalKind::DatasetMark {
+        return Err(OntologyError::NotFound);
+    }
+    match p.status {
+        ProposalStatus::Accepted => return Ok(p),
+        ProposalStatus::Proposed => {}
+        _ => return Err(OntologyError::ProposalDecided),
+    }
+    let user = actor.user_id.ok_or(OntologyError::WriteForbidden)?;
+    let dataset = p
+        .values
+        .get("dataset")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|t| Uuid::parse_str(t).ok())
+        .ok_or(OntologyError::NotFound)?;
+    let key = p
+        .values
+        .get("marking")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(DETECTED_MARKING)
+        .to_string();
+    let failed = |e: GovernanceError| match e {
+        GovernanceError::Db(e) => OntologyError::from(e),
+        _ => OntologyError::NotFound,
+    };
+    let exists = markings(db, org_id).await?.iter().any(|m| m.key == key);
+    if !exists {
+        let input = MarkingInput {
+            key: key.clone(),
+            name: "Personal data".into(),
+            description: "Created by accepting a detection of personal data.".into(),
+        };
+        match create_marking(db, org_id, user, &input).await {
+            Ok(_) | Err(GovernanceError::KeyTaken) => {}
+            Err(e) => return Err(failed(e)),
+        }
+    }
+    add_dataset_markings(db, org_id, user, dataset, std::slice::from_ref(&key))
+        .await
+        .map_err(failed)?;
+    let reason = d.reason.as_deref().map(str::trim).filter(|r| !r.is_empty());
+    proposals::mark_accepted(
+        db,
+        org_id,
+        actor,
+        id,
+        &dataset.to_string(),
+        reason.map(|r| r.chars().take(REASON_MAX).collect()),
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

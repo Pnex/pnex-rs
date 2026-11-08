@@ -159,7 +159,7 @@ async fn detail(
     tag = "proposals",
     operation_id = "proposals_decide",
     summary = "Accept or reject a proposal",
-    description = "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Accepting a `tool_call` (a write of an internal agent, D785) runs its exact arguments with the decider's rights; a refusal of the tool keeps it open (409 with the tool's code, or `proposal-tool-failed`). Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
+    description = "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Accepting a `tool_call` (a write of an internal agent, D785) runs its exact arguments with the decider's rights; a refusal of the tool keeps it open (409 with the tool's code, or `proposal-tool-failed`). Accepting a `dataset_mark` (personal data detected in a table) marks the table and needs `governance:write`. Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
     params(("id" = String, Path, format = "uuid", description = "Proposal id")),
     request_body = ProposalDecision,
     responses(
@@ -184,6 +184,24 @@ async fn decide(
     };
     if kind == ProposalKind::ToolCall && body.decision == DecisionKind::Accept {
         return accept_tool_call(&ctx, &org, id, &body).await;
+    }
+    // Marking a table is a governance decision (governance.md D804).
+    if kind == ProposalKind::DatasetMark && body.decision == DecisionKind::Accept {
+        if !org.can("governance:write") {
+            return Err(crate::auth::access_denied("governance:write"));
+        }
+        let accepted = crate::services::governance::accept_dataset_mark(
+            &ctx.db,
+            org.org.id,
+            &actor(&org),
+            id,
+            &body,
+        )
+        .await;
+        return match accepted {
+            Ok(v) => format::json(v),
+            Err(e) => onto_error(e),
+        };
     }
     match crate::services::ontology::erase::decide(&ctx, org.org.id, &actor(&org), id, &body).await
     {

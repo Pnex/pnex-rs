@@ -397,3 +397,132 @@ async fn the_journal_exports_to_the_admin_only() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn personal_data_in_a_table_is_proposed_not_marked() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "member",
+        )
+        .await;
+        let (a, b) = (env.alice.as_str(), env.bob.as_str());
+        let (_, d) = call(
+            &server,
+            a,
+            org,
+            "POST",
+            "/api/v1/datasets",
+            Some(json!({ "name": "contacts" })),
+        )
+        .await;
+        let id = d["id"].as_str().unwrap().to_string();
+        let csv = "name,email,city\nAda,ada@example.org,Lyon\nBob,bob@example.org,Nantes\n\
+                   Cy,cy@example.net,Brest\nDi,di@example.com,Paris\nEd,ed@example.fr,Lille\n";
+        let res = server
+            .post(&format!("/api/v1/datasets/{id}/transactions/csv"))
+            .add_header("Authorization", format!("Bearer {a}"))
+            .add_header("X-Org-Id", org.to_string())
+            .text(csv.to_string())
+            .await;
+        assert!(res.status_code().is_success(), "{}", res.text());
+
+        let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+        let n = pnex_backend::services::governance::detect_pass(&ctx.db, &store)
+            .await
+            .unwrap();
+        assert!(n >= 1, "one column of e-mails");
+        // Read once: a second pass on the same version proposes nothing.
+        let again = pnex_backend::services::governance::detect_pass(&ctx.db, &store)
+            .await
+            .unwrap();
+        assert_eq!(again, 0);
+
+        // Nothing changed by itself.
+        let (_, t) = call(
+            &server,
+            a,
+            org,
+            "GET",
+            &format!("/api/v1/datasets/{id}"),
+            None,
+        )
+        .await;
+        assert_eq!(t["markings"], json!([]), "{t}");
+        let (_, l) = call(
+            &server,
+            a,
+            org,
+            "GET",
+            "/api/v1/proposals?status=proposed",
+            None,
+        )
+        .await;
+        let p = l["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["kind"] == "dataset_mark")
+            .cloned()
+            .expect("a proposal");
+        assert_eq!(
+            (
+                p["values"]["column"].as_str(),
+                p["values"]["category"].as_str()
+            ),
+            (Some("email"), Some("email")),
+            "{p}"
+        );
+        let pid = p["id"].as_str().unwrap();
+        let decide = format!("/api/v1/proposals/{pid}/decision");
+
+        // A member may decide proposals, not set a marking.
+        let (s, e) = call(
+            &server,
+            b,
+            org,
+            "POST",
+            &decide,
+            Some(json!({ "decision": "accept" })),
+        )
+        .await;
+        assert_eq!(s, 403, "{e}");
+        let (s, v) = call(
+            &server,
+            a,
+            org,
+            "POST",
+            &decide,
+            Some(json!({ "decision": "accept" })),
+        )
+        .await;
+        assert_eq!((s, v["status"].as_str()), (200, Some("accepted")), "{v}");
+        let (_, t) = call(
+            &server,
+            a,
+            org,
+            "GET",
+            &format!("/api/v1/datasets/{id}"),
+            None,
+        )
+        .await;
+        assert_eq!(t["markings"], json!(["personal"]), "{t}");
+        let (s, _) = call(
+            &server,
+            a,
+            org,
+            "GET",
+            &format!("/api/v1/datasets/{id}/sample"),
+            None,
+        )
+        .await;
+        assert_eq!(s, 403, "marked now: a clearance is needed");
+    })
+    .await;
+}

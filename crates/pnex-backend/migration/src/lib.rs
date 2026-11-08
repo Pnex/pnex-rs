@@ -120,6 +120,7 @@ mod m20261108_000125_webhook_inbox;
 mod m20261108_000126_mysql_connectors;
 mod m20261108_000127_markings;
 mod m20261108_000128_object_markings;
+mod m20261108_000129_dataset_mark_proposals;
 
 pub struct Migrator;
 
@@ -236,6 +237,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261108_000126_mysql_connectors::Migration),
             Box::new(m20261108_000127_markings::Migration),
             Box::new(m20261108_000128_object_markings::Migration),
+            Box::new(m20261108_000129_dataset_mark_proposals::Migration),
         ]
     }
 }
