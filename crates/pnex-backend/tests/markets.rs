@@ -2756,3 +2756,220 @@ async fn mt5_bridge_calls_become_tables() {
     })
     .await;
 }
+
+/// HistData: the page's own form is sent back for the file, a closed year
+/// per file, times turned from EST (no daylight saving) to UTC.
+#[tokio::test]
+#[serial]
+async fn histdata_years_are_loaded_from_the_page_form() {
+    with_app(|server, ctx, token| async move {
+        use axum::{extract::RawQuery, http::HeaderMap, http::StatusCode, response::IntoResponse, routing::{get, post}, Form, Router};
+        use std::io::Write;
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api {
+            server: &server,
+            token,
+            org,
+        };
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/packs/markets/install", None)
+            .await;
+        assert_eq!(st, 200, "{r}");
+        api.settings(json!({ "histdata_pairs": "eurusd", "histdata_from": "2023" }))
+            .await;
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        w.start_file("DAT_MT_EURUSD_M1_2024.csv", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        w.write_all(
+            b"2024.01.01,17:00,1.104270,1.104290,1.104250,1.104290,0\n\
+2024.01.01,17:01,1.104290,1.104290,1.104290,1.104290,0\n",
+        )
+        .unwrap();
+        w.start_file("DAT_MT_EURUSD_M1_2024.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        w.write_all(b"gaps report").unwrap();
+        let zip = w.finish().unwrap().into_inner();
+        let posts: Arc<Mutex<Vec<String>>> = Arc::default();
+        let app = Router::new()
+            .route(
+                "/download-free-forex-historical-data/",
+                get(|RawQuery(q): RawQuery| async move {
+                    // 2024 has a file; 2023 (before this mock's first) and 2025 not yet.
+                    match q.as_deref() {
+                        Some("/metatrader/1-minute-bar-quotes/eurusd/2024") => r#"<html>
+<form id="file_down" name="file_down" target="nullDisplay" method="POST" action="/get.php">
+<input type="hidden" name="tk" id="tk" value="0123456789abcdef0123456789abcdef" />
+<input type="hidden" name="date" id="date" value="2024" />
+<input type="hidden" name="fxpair" id="fxpair" value="EURUSD" /></form></html>"#
+                            .into_response(),
+                        _ => "<html>no file here</html>".into_response(),
+                    }
+                }),
+            )
+            .route(
+                "/get.php",
+                post({
+                    let posts = posts.clone();
+                    move |headers: HeaderMap, Form(f): Form<std::collections::HashMap<String, String>>| async move {
+                        let referer = headers
+                            .get("referer")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("")
+                            .to_string();
+                        posts.lock().unwrap().push(format!(
+                            "{}:{}:{}",
+                            f.get("tk").cloned().unwrap_or_default(),
+                            f.get("date").cloned().unwrap_or_default(),
+                            referer.ends_with("eurusd/2024")
+                        ));
+                        if f.get("tk").map(String::as_str) != Some("0123456789abcdef0123456789abcdef") {
+                            return StatusCode::FORBIDDEN.into_response();
+                        }
+                        zip.clone().into_response()
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::markets::allow_test_host(&base);
+
+        // One file per pass: 2023, 2024, 2025, then the months of 2026.
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 2, 10).unwrap();
+        for _ in 0..5 {
+            pnex_backend::services::markets::history::sweep(&ctx, &base, today)
+                .await
+                .unwrap();
+        }
+        let states: Vec<String> = ctx
+            .db
+            .query_all_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT period || ':' || period_start::text || ':' || state || ':' || rows::text AS s \
+                 FROM market_history_partitions WHERE source = 'histdata' ORDER BY period_start"
+                    .to_string(),
+            ))
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.try_get::<String>("", "s").unwrap())
+            .collect();
+        assert_eq!(
+            states,
+            vec![
+                "year:2023-01-01:empty:0",
+                "year:2024-01-01:done:2",
+                "year:2025-01-01:empty:0",
+                "month:2026-01-01:empty:0",
+            ]
+        );
+        assert_eq!(
+            posts.lock().unwrap().clone(),
+            vec!["0123456789abcdef0123456789abcdef:2024:true"],
+            "the page's own fields, with the page as referer"
+        );
+        let (_, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
+        let id = list["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == "histdata_ohlcv_1m")
+            .unwrap_or_else(|| panic!("{list}"))["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (st, sample) = api
+            .call("GET", &format!("/api/v1/datasets/{id}/sample"), None)
+            .await;
+        assert_eq!(st, 200, "{sample}");
+        // 17:00 EST is 22:00 UTC.
+        assert!(sample.to_string().contains("2024-01-01T22:00:00"), "{sample}");
+    })
+    .await;
+}
+
+/// HistData acceptance: EURUSD from 2000 from the real histdata.com, one
+/// file at a time (about 36 files, 5 s apart).
+#[tokio::test]
+#[serial]
+#[ignore = "downloads the full HistData EURUSD history"]
+async fn histdata_real_eurusd() {
+    with_app(|server, ctx, token| async move {
+        use pnex_backend::services::markets::history::sweep;
+        use pnex_core::markets::history::HISTDATA_M1;
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api {
+            server: &server,
+            token,
+            org,
+        };
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/packs/markets/install", None)
+            .await;
+        assert_eq!(st, 200, "{r}");
+        api.settings(json!({ "histdata_pairs": "EURUSD", "histdata_from": "2000" }))
+            .await;
+        let today = chrono::Utc::now().date_naive();
+        let started = std::time::Instant::now();
+        let count = || async {
+            ctx.db
+                .query_one_raw(Statement::from_string(
+                    sea_orm::DatabaseBackend::Postgres,
+                    "SELECT count(*) AS n FROM market_history_partitions WHERE source = 'histdata'"
+                        .to_string(),
+                ))
+                .await
+                .unwrap()
+                .unwrap()
+                .try_get::<i64>("", "n")
+                .unwrap()
+        };
+        let (mut known, mut still) = (-1_i64, 0);
+        for pass in 0..80 {
+            sweep(&ctx, HISTDATA_M1.base, today).await.unwrap();
+            let n = count().await;
+            eprintln!("pass {pass}: {n} partitions, {:?}", started.elapsed());
+            still = if n == known { still + 1 } else { 0 };
+            if still == 2 {
+                break;
+            }
+            known = n;
+        }
+        let summary: Vec<String> = ctx
+            .db
+            .query_all_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT period || ':' || period_start::text || ':' || state || ':' \
+                   || coalesce(code, '') || ':' || rows::text AS s \
+                 FROM market_history_partitions WHERE source = 'histdata' ORDER BY period_start"
+                    .to_string(),
+            ))
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.try_get::<String>("", "s").unwrap())
+            .collect();
+        eprintln!("{summary:#?} in {:?}", started.elapsed());
+        assert!(
+            !summary.iter().any(|s| s.contains(":failed:")),
+            "{summary:?}"
+        );
+        assert!(
+            summary.contains(&"year:2024-01-01:done::372379".to_string()),
+            "{summary:?}"
+        );
+    })
+    .await;
+}

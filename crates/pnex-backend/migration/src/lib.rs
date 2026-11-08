@@ -126,6 +126,7 @@ mod m20261108_000131_analysis_queries;
 mod m20261108_000132_rules;
 mod m20261108_000133_market_history_partitions;
 mod m20261108_000134_validation_gate;
+mod m20261108_000135_market_history_years;
 
 pub struct Migrator;
 
@@ -248,6 +249,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261108_000132_rules::Migration),
             Box::new(m20261108_000133_market_history_partitions::Migration),
             Box::new(m20261108_000134_validation_gate::Migration),
+            Box::new(m20261108_000135_market_history_years::Migration),
         ]
     }
 }

@@ -116,6 +116,35 @@ pub async fn get_found(url: &reqwest::Url, by: &Declared) -> Result<Option<Vec<u
     for (name, value) in &by.headers {
         req = req.header(*name, value);
     }
+    read_found(url, req).await
+}
+
+/// A form sent to `url` the way its page sends it (`fields` read from that
+/// page, `referer` the page itself): `None` on a 404.
+pub async fn post_form_found(
+    url: &reqwest::Url,
+    by: &Declared,
+    referer: &reqwest::Url,
+    fields: &[(String, String)],
+) -> Result<Option<Vec<u8>>, &'static str> {
+    let mut req = http()
+        .post(url.clone())
+        .header(reqwest::header::REFERER, referer.as_str())
+        .form(fields);
+    if let Some(c) = &by.contact {
+        req = req.header(
+            reqwest::header::USER_AGENT,
+            format!("PNEX-Import/{} {c}", env!("CARGO_PKG_VERSION")),
+        );
+    }
+    read_found(url, req).await
+}
+
+/// The body of a response, under [`UNZIPPED_MAX`]; `None` on a 404.
+async fn read_found(
+    url: &reqwest::Url,
+    req: reqwest::RequestBuilder,
+) -> Result<Option<Vec<u8>>, &'static str> {
     let mut resp = req.send().await.map_err(|e| {
         // The error would print the request URL, key included.
         let e = e.without_url();

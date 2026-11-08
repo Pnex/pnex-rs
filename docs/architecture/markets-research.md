@@ -776,3 +776,13 @@ Un `market_event` accepté d'une société suivie rejoint l'avis de séance (D81
 - **Q-MK19** : rattrapage de l'historique (coût en jetons) ou seulement les nouveaux dépôts à partir de l'activation ?
 - **Q-MK20** : `extractors:` sert aussi la due diligence (D476) : on livre le mécanisme commun dans MK3a, ou un lot à part dans `due-diligence.md` dont MK3 dépend ?
 
+#### MK11 bis — HistData (Shan, 2026-11-08 : « on peut démarrer sur ce site », Dukascopy en attente)
+
+- **Pourquoi** : bougies bid d'une minute gratuites, 66 instruments (forex majeur et croisé, or, argent, WTI, Brent, indices), depuis 2000 à 2010 selon la paire ; aucun captcha ni pare-feu. Le site ne publie ni licence ni conditions (`/terms-of-use/` en 404), ne nomme pas sa source et vend l'accès automatisé (FTP 27 $ pour 15 jours, mises à jour 7 $ par mois).
+- **Comment, sans scraping agressif** : la page de la période est lue, et son propre formulaire (`/get.php`, jeton `tk` et champs cachés, renvoyés tels quels, lettres et chiffres seulement) est renvoyé avec la page en referer et notre nom de client (`PNEX-Import`). **Un fichier par org et par passage de 5 minutes**, 5 s de pause ; une année close = un fichier, jamais redemandé ; l'année en cours par mois clos. EURUSD depuis 2000 ≈ 36 fichiers.
+- **Données** : `histdata_ohlcv_1m` (forme `ohlcv`), heure EST fixe (UTC−5, sans heure d'été) convertie en UTC, volume publié à 0 gardé tel quel, `quote_volume` et `trades` nuls ; table privée à l'org (`license_note`).
+- **Registre** : migration 000135, période `year`. Une année vide (avant la première de la paire, ou pas encore publiée) est redemandée pendant un an.
+- **Correctif commun** : dans un passage, les partitions jamais demandées passent avant celles qu'on redemande (vides récentes, échecs). Sans cela, avec un budget d'un fichier, une année pas encore publiée bloquait les mois de l'année en cours.
+- **À trancher par Shan** : écrire à HistData pour un accord d'usage (ou prendre leur offre payante) avant tout usage en SaaS.
+- **Acceptation réelle (2026-11-08)** : EURUSD de 2000 à 2026-10 : 36 fichiers (26 années + 10 mois), 9 028 816 bougies, 120 Mo de Parquet, 4 min 30 s en boucle de test (en production : un fichier toutes les 5 minutes, ≈ 3 h). Aucun échec. 2023 n'a que 322 638 minutes (environ 372 000 les autres années pleines) : un trou publié par HistData, gardé tel quel.
+

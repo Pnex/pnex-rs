@@ -36,6 +36,8 @@ pub const BINANCE_SPOT_1M: HistorySource = HistorySource {
 /// A partition of a source: one file, one transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Period {
+    /// A closed year in one file (HistData), from January 1.
+    Year(NaiveDate),
     Month(NaiveDate),
     Day(NaiveDate),
 }
@@ -44,6 +46,7 @@ impl Period {
     /// `month` or `day`, the `period` column of the registry.
     pub fn kind(self) -> &'static str {
         match self {
+            Self::Year(_) => "year",
             Self::Month(_) => "month",
             Self::Day(_) => "day",
         }
@@ -51,13 +54,14 @@ impl Period {
 
     pub fn start(self) -> NaiveDate {
         match self {
-            Self::Month(d) | Self::Day(d) => d,
+            Self::Year(d) | Self::Month(d) | Self::Day(d) => d,
         }
     }
 
     /// First day after the period.
     pub fn end(self) -> NaiveDate {
         match self {
+            Self::Year(d) => d + Months::new(12),
             Self::Month(d) => d + Months::new(1),
             Self::Day(d) => d + Days::new(1),
         }
@@ -65,6 +69,7 @@ impl Period {
 
     pub fn of(kind: &str, start: NaiveDate) -> Option<Self> {
         match kind {
+            "year" => Some(Self::Year(start.with_day(1)?.with_month(1)?)),
             "month" => Some(Self::Month(start.with_day(1)?)),
             "day" => Some(Self::Day(start)),
             _ => None,
@@ -75,6 +80,8 @@ impl Period {
     pub fn settled(self, state: &str, today: NaiveDate) -> bool {
         match state {
             "done" => true,
+            // A year file appears weeks after the year closes: asked for a year.
+            "empty" if matches!(self, Self::Year(_)) => self.end() + Months::new(12) <= today,
             "empty" => self.end() + Days::new(EMPTY_RETRY_DAYS) <= today,
             _ => false,
         }
@@ -91,7 +98,8 @@ pub fn symbol_ok(s: &str) -> bool {
 /// Path of a Binance spot klines file, under the source's base.
 pub fn binance_klines_path(symbol: &str, interval: &str, p: Period) -> String {
     match p {
-        Period::Month(d) => format!(
+        // Binance has no yearly file: never planned for it.
+        Period::Year(d) | Period::Month(d) => format!(
             "data/spot/monthly/klines/{symbol}/{interval}/{symbol}-{interval}-{}.zip",
             d.format("%Y-%m")
         ),
@@ -301,6 +309,124 @@ pub fn binance_trades(csv: &[u8]) -> Result<Vec<Trade>, DecodeError> {
             price: scaled(f[1], SCALE).ok_or(bad)?,
             qty: scaled(f[2], SCALE).ok_or(bad)?,
             side,
+        });
+    }
+    Ok(out)
+}
+
+pub const HISTDATA_M1: HistorySource = HistorySource {
+    key: "histdata",
+    base: "https://www.histdata.com",
+    interval: "1m",
+    table: "histdata_ohlcv_1m",
+    license_note: "HistData.com free files: bid prices, no license or terms published, \
+                   source unstated, no warranty: private to the org, never redistributed",
+};
+
+/// The HistData page of a pair's MetaTrader 1-minute file for a year or a
+/// month; the file is the answer to the form of that page.
+pub fn histdata_page_path(pair: &str, p: Period) -> String {
+    let base = format!(
+        "download-free-forex-historical-data/?/metatrader/1-minute-bar-quotes/{}",
+        pair.to_ascii_lowercase()
+    );
+    match p {
+        Period::Year(d) => format!("{base}/{}", d.year()),
+        Period::Month(d) | Period::Day(d) => format!("{base}/{}/{}", d.year(), d.month()),
+    }
+}
+
+/// The hidden fields of the page's download form (`id="file_down"`), in
+/// order, to send back as the page does. `None` when the page has no file.
+pub fn histdata_form(html: &str) -> Option<Vec<(String, String)>> {
+    let start = html.find("id=\"file_down\"")?;
+    let end = start + html[start..].find("</form>")?;
+    let attr = |tag: &str, name: &str| {
+        let at = tag.find(&format!("{name}=\""))? + name.len() + 2;
+        Some(tag[at..at + tag[at..].find('"')?].to_string())
+    };
+    let mut out = Vec::new();
+    let mut rest = &html[start..end];
+    while let Some(i) = rest.find("<input") {
+        let tag = &rest[i..i + rest[i..].find('>')?];
+        if let (Some(n), Some(v)) = (attr(tag, "name"), attr(tag, "value")) {
+            let safe = |t: &str| {
+                t.len() <= 64 && t.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            };
+            if !safe(&n) || !safe(&v) {
+                return None;
+            }
+            out.push((n, v));
+        }
+        rest = &rest[i + tag.len()..];
+    }
+    (out.iter().any(|(n, _)| n == "tk")).then_some(out)
+}
+
+/// The partitions still to fetch from `from` up to today, the HistData way:
+/// closed years whole, the current year month by month (closed months).
+/// A closed year of which a month is already known goes on by months.
+pub fn plan_years(from: NaiveDate, today: NaiveDate, known: &HashSet<Period>) -> Vec<Period> {
+    let (Some(mut year), Some(current)) = (
+        from.with_day(1).and_then(|d| d.with_month(1)),
+        today.with_day(1).and_then(|d| d.with_month(1)),
+    ) else {
+        return Vec::new();
+    };
+    let this_month = today.with_day(1).unwrap_or(today);
+    let mut out = Vec::new();
+    while year <= current {
+        let next = year + Months::new(12);
+        let by_months = year == current
+            || known
+                .iter()
+                .any(|p| matches!(p, Period::Month(d) if *d >= year && *d < next));
+        if by_months {
+            let mut m = year;
+            while m < next.min(this_month) {
+                if !known.contains(&Period::Month(m)) {
+                    out.push(Period::Month(m));
+                }
+                m = m + Months::new(1);
+            }
+        } else if !known.contains(&Period::Year(year)) {
+            out.push(Period::Year(year));
+        }
+        year = next;
+    }
+    out
+}
+
+/// A HistData MetaTrader 1-minute CSV: `YYYY.MM.DD,HH:MM,open,high,low,
+/// close,volume`, bid prices, EST without daylight saving (UTC-5), turned
+/// to UTC. HistData publishes a volume of 0: kept as published.
+pub fn histdata_mt_m1(csv: &[u8]) -> Result<Vec<Kline>, DecodeError> {
+    let text = std::str::from_utf8(csv).map_err(|_| DecodeError { line: 1 })?;
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let bad = DecodeError { line: i + 1 };
+        let f: Vec<&str> = line.split(',').map(str::trim).collect();
+        if f.len() < 7 {
+            return Err(bad);
+        }
+        let at =
+            chrono::NaiveDateTime::parse_from_str(&format!("{} {}", f[0], f[1]), "%Y.%m.%d %H:%M")
+                .map_err(|_| bad)?;
+        let open_us = (at.and_utc().timestamp() + 5 * 3600) * 1_000_000;
+        let n = |k: usize| scaled(f[k], SCALE).ok_or(bad);
+        out.push(Kline {
+            open_us,
+            open: n(2)?,
+            high: n(3)?,
+            low: n(4)?,
+            close: n(5)?,
+            volume: n(6)?,
+            quote_volume: None,
+            trades: None,
         });
     }
     Ok(out)
@@ -726,5 +852,58 @@ mod tests {
         ] {
             assert_eq!(mt5_payload(&bad), Err(token));
         }
+    }
+
+    #[test]
+    fn histdata_years_pages_forms_and_rows() {
+        let known: HashSet<Period> = [Period::Year(d("2024-01-01"))].into();
+        assert_eq!(
+            plan_years(d("2023-06-01"), d("2026-03-10"), &known),
+            vec![
+                Period::Year(d("2023-01-01")),
+                Period::Year(d("2025-01-01")),
+                Period::Month(d("2026-01-01")),
+                Period::Month(d("2026-02-01")),
+            ]
+        );
+        let by_month: HashSet<Period> = [Period::Month(d("2025-11-01"))].into();
+        assert_eq!(
+            plan_years(d("2025-01-01"), d("2026-01-05"), &by_month).len(),
+            11,
+            "a year begun by months goes on by months, never whole again"
+        );
+        assert!(!Period::Year(d("2025-01-01")).settled("empty", d("2026-02-01")));
+        assert!(Period::Year(d("2024-01-01")).settled("empty", d("2026-01-01")));
+        assert_eq!(
+            histdata_page_path("EURUSD", Period::Month(d("2026-10-01"))),
+            "download-free-forex-historical-data/?/metatrader/1-minute-bar-quotes/eurusd/2026/10"
+        );
+        let html = r#"<form id="file_down" name="file_down" method="POST" action="/get.php">
+<input type="hidden" name="tk" id="tk" value="13f41008164167f78d67ca5eeba86ad0" />
+<input type="hidden" name="date" id="date" value="2024" />
+<input type="hidden" name="fxpair" id="fxpair" value="EURUSD" /></form>"#;
+        assert_eq!(
+            histdata_form(html).unwrap(),
+            vec![
+                (
+                    "tk".to_string(),
+                    "13f41008164167f78d67ca5eeba86ad0".to_string()
+                ),
+                ("date".to_string(), "2024".to_string()),
+                ("fxpair".to_string(), "EURUSD".to_string()),
+            ]
+        );
+        assert_eq!(histdata_form("<html>no file</html>"), None);
+        assert_eq!(
+            histdata_form(&html.replace("2024", "a&b=c")),
+            None,
+            "a field is sent back only as plain letters"
+        );
+        let rows =
+            histdata_mt_m1(b"2024.01.01,17:00,1.104270,1.104290,1.104250,1.104290,0\n").unwrap();
+        // 17:00 EST is 22:00 UTC.
+        assert_eq!(rows[0].open_us, 1_704_146_400_000_000);
+        assert_eq!(rows[0].close, 110_429_000);
+        assert!(histdata_mt_m1(b"2024-01-01,17:00,1,1,1,1,0\n").is_err());
     }
 }

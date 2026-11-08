@@ -17,7 +17,7 @@ use chrono::NaiveDate;
 use loco_rs::app::AppContext;
 use pnex_core::markets::history::{
     self, HistorySource, Kline, Period, Tick, Trade, BINANCE_SPOT_1M, BINANCE_SPOT_TRADES,
-    DUKASCOPY_TICKS, MT5_OHLCV_1M, MT5_TICKS,
+    DUKASCOPY_TICKS, HISTDATA_M1, MT5_OHLCV_1M, MT5_TICKS,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sha2::{Digest, Sha256};
@@ -46,9 +46,11 @@ enum Job {
     Ticks,
     /// Binance spot trades (MK13).
     Trades,
+    /// HistData 1-minute bars: a year per file, one file at a time.
+    HistData,
 }
 
-const JOBS: [Job; 3] = [Job::Klines, Job::Ticks, Job::Trades];
+const JOBS: [Job; 4] = [Job::Klines, Job::Ticks, Job::Trades, Job::HistData];
 
 impl Job {
     fn src(self) -> HistorySource {
@@ -56,6 +58,7 @@ impl Job {
             Self::Klines => BINANCE_SPOT_1M,
             Self::Ticks => DUKASCOPY_TICKS,
             Self::Trades => BINANCE_SPOT_TRADES,
+            Self::HistData => HISTDATA_M1,
         }
     }
 
@@ -65,6 +68,7 @@ impl Job {
             Self::Klines => ("history_symbols", "history_from"),
             Self::Ticks => ("history_fx_pairs", "history_fx_from"),
             Self::Trades => ("history_trade_symbols", "history_trade_from"),
+            Self::HistData => ("histdata_pairs", "histdata_from"),
         }
     }
 
@@ -76,13 +80,23 @@ impl Job {
             Self::Ticks => 14,
             // Up to a few hundred MB unzipped each.
             Self::Trades => 4,
+            // A free site: one file per pass, as a person would.
+            Self::HistData => 1,
+        }
+    }
+
+    /// Pause after each partition.
+    fn pause(self) -> std::time::Duration {
+        match self {
+            Self::HistData => std::time::Duration::from_secs(5),
+            _ => PAUSE,
         }
     }
 
     fn instruments(self, raw: &str) -> Vec<String> {
         let ok: fn(&str) -> bool = match self {
             Self::Ticks => |s| history::fx_scale(s).is_some(),
-            Self::Klines | Self::Trades => history::symbol_ok,
+            Self::Klines | Self::Trades | Self::HistData => history::symbol_ok,
         };
         let mut seen = HashSet::new();
         raw.split(',')
@@ -98,6 +112,11 @@ impl Job {
         if let Ok(d) = NaiveDate::parse_from_str(&format!("{}-01", raw.trim()), "%Y-%m-%d") {
             return d;
         }
+        if let Ok(y) = raw.trim().parse::<i32>() {
+            if let Some(d) = NaiveDate::from_ymd_opt(y, 1, 1) {
+                return d;
+            }
+        }
         let back = |months| {
             today
                 .checked_sub_months(chrono::Months::new(months))
@@ -107,6 +126,8 @@ impl Job {
             Self::Klines => NaiveDate::from_ymd_opt(2017, 8, 1).unwrap_or(today),
             Self::Ticks => back(12),
             Self::Trades => back(1),
+            // HistData's first year.
+            Self::HistData => NaiveDate::from_ymd_opt(2000, 1, 1).unwrap_or(today),
         }
     }
 
@@ -114,6 +135,7 @@ impl Job {
         match self {
             Self::Klines => history::plan(from, today, known),
             Self::Ticks | Self::Trades => history::plan_days(from, today, known),
+            Self::HistData => history::plan_years(from, today, known),
         }
     }
 
@@ -129,6 +151,7 @@ impl Job {
                 fetch_binance(base, &path, instrument, trades_of).await
             }
             Self::Ticks => fetch_day(base, instrument, p).await,
+            Self::HistData => fetch_histdata(base, instrument, p).await,
         }
     }
 }
@@ -157,7 +180,8 @@ pub async fn sweep_from(
                AND (coalesce(settings ->> 'history_symbols', '') <> '' \
                  OR coalesce(settings ->> 'history_fx_pairs', '') <> '' \
                  OR coalesce(settings ->> 'history_trade_symbols', '') <> '' \
-                 OR coalesce(settings ->> 'mt5_connector', '') <> '') ORDER BY org_id",
+                 OR coalesce(settings ->> 'mt5_connector', '') <> '' \
+                 OR coalesce(settings ->> 'histdata_pairs', '') <> '') ORDER BY org_id",
             vec![],
         ))
         .await?
@@ -319,8 +343,14 @@ async fn pass(
     let src = job.src();
     let mut budget = job.budget();
     for instrument in items {
-        let known = settled(db, org, &src, &instrument, today).await?;
-        for p in job.plan(from, today, &known) {
+        let (known, seen) = settled(db, org, &src, &instrument, today).await?;
+        // Never asked first: a partition asked again (empty or failed) must
+        // not hold back the rest when the budget is one file.
+        let (fresh, again): (Vec<Period>, Vec<Period>) = job
+            .plan(from, today, &known)
+            .into_iter()
+            .partition(|p| !seen.contains(p));
+        for p in fresh.into_iter().chain(again) {
             if budget == 0 {
                 return Ok(());
             }
@@ -338,7 +368,7 @@ async fn pass(
             if stop {
                 return Err(DatasetError::QuotaExceeded);
             }
-            tokio::time::sleep(PAUSE).await;
+            tokio::time::sleep(job.pause()).await;
         }
     }
     Ok(())
@@ -392,6 +422,57 @@ async fn fetch_day(base: &str, pair: &str, p: Period) -> Option<Fetched> {
     )
 }
 
+/// A HistData file: its page, then the page's own download form sent back
+/// with the page as referer. A page without a file is `Empty` (a year
+/// before the pair's first, or not published yet).
+async fn fetch_histdata(base: &str, pair: &str, p: Period) -> Option<Fetched> {
+    let by = source::Declared::default();
+    let page =
+        source::check_url(&format!("{base}/{}", history::histdata_page_path(pair, p))).ok()?;
+    let html = match source::get_found(&page, &by).await {
+        Ok(Some(b)) => String::from_utf8_lossy(&b).into_owned(),
+        Ok(None) => return Some(Fetched::Empty),
+        Err(code) => {
+            tracing::info!(%page, code, "HistData page not read");
+            return None;
+        }
+    };
+    let Some(fields) = history::histdata_form(&html) else {
+        return Some(Fetched::Empty);
+    };
+    let get = source::check_url(&format!("{base}/get.php")).ok()?;
+    let zip = match source::post_form_found(&get, &by, &page, &fields).await {
+        Ok(Some(z)) => z,
+        Ok(None) => return Some(Fetched::Empty),
+        Err(code) => {
+            tracing::info!(%page, code, "HistData file not read");
+            return None;
+        }
+    };
+    let sha256 = hex(&Sha256::digest(&zip));
+    let pair = pair.to_string();
+    let decoded = tokio::task::spawn_blocking(move || {
+        let csv = pnex_core::import_read::unzip_csv(&zip).ok()?;
+        let rows = history::histdata_mt_m1(&csv).ok()?;
+        let src = HISTDATA_M1;
+        ohlcv_batch(
+            src.interval,
+            src.key,
+            &vec![pair.as_str(); rows.len()],
+            &rows,
+        )
+        .ok()
+    })
+    .await
+    .ok()
+    .flatten();
+    Some(match decoded {
+        None => Fetched::Failed("unreadable"),
+        Some(b) if b.num_rows() == 0 => Fetched::Empty,
+        Some(b) => Fetched::Rows(b, sha256),
+    })
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -415,7 +496,7 @@ async fn settled(
     src: &HistorySource,
     symbol: &str,
     today: NaiveDate,
-) -> Result<HashSet<Period>, DatasetError> {
+) -> Result<(HashSet<Period>, HashSet<Period>), DatasetError> {
     let rows = db
         .query_all_raw(stmt(
             "SELECT period, period_start, state FROM market_history_partitions \
@@ -423,16 +504,19 @@ async fn settled(
             vec![org.into(), src.key.into(), symbol.into()],
         ))
         .await?;
-    let mut out = HashSet::new();
+    let (mut done, mut seen) = (HashSet::new(), HashSet::new());
     for r in rows {
         let kind: String = r.try_get("", "period")?;
         let start: NaiveDate = r.try_get("", "period_start")?;
         let state: String = r.try_get("", "state")?;
-        if let Some(p) = Period::of(&kind, start).filter(|p| p.settled(&state, today)) {
-            out.insert(p);
+        if let Some(p) = Period::of(&kind, start) {
+            seen.insert(p);
+            if p.settled(&state, today) {
+                done.insert(p);
+            }
         }
     }
-    Ok(out)
+    Ok((done, seen))
 }
 
 enum Fetched {
@@ -773,5 +857,11 @@ mod tests {
         assert_eq!(Job::Ticks.from("", today), d(2025, 11, 8));
         assert_eq!(Job::Ticks.from("2025-03", today), d(2025, 3, 1));
         assert_eq!(Job::Trades.from("", today), d(2026, 10, 8));
+        assert_eq!(Job::HistData.from("", today), d(2000, 1, 1));
+        assert_eq!(Job::HistData.from("2010", today), d(2010, 1, 1));
+        assert_eq!(
+            Job::HistData.instruments("eurusd, XAUUSD,spxusd,eur/usd"),
+            vec!["EURUSD", "XAUUSD", "SPXUSD"]
+        );
     }
 }
