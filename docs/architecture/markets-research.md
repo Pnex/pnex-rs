@@ -495,8 +495,8 @@ Recensement : aucune import marchés ni monde ne passe par un flow. Toutes sont 
 |---|---|
 | 7 ter datation des filiales | codé, d40f7f60 |
 | D810 | codé : `pnex_core::markets::moves` (mode `Volume`), `services::markets::moves::metric_of`, pack 1.3.0, test `prices_with_a_vault_key_and_the_reaction_to_a_filing` |
-| D811 | à coder |
-| D812 | à coder |
+| D811 | codé, b0cb1567 : forme `alfred_vintages` (`output_type=4`, premières publications), source à clé `fred` (clé en paramètre de requête ajoutée à l'envoi seulement, jamais dans l'URL stockée ni un journal), imports « Watched series first releases (ALFRED) » et « Macroeconomic series first releases (ALFRED) » chaque semaine ; un mouvement trouvé sur une valeur rattrapée prend la date d'une publication datée de même valeur. Jamais essayé sur le vrai ALFRED (pas de clé) ; test `fred_first_releases_date_the_moves` |
+| D812 | codé, 54765942 : `pnex_core::markets::same_company` (clé de nom légal, candidat unique), `services::markets::identity` (10 sociétés par passage, avec le balayage des documents), réglage d'état `lei_state`, lien `same_company_as` ; test `sec_companies_are_matched_to_their_lei_by_proposal`. Jamais essayé sur le vrai GLEIF |
 | D813 | à coder |
 | D814 | à coder |
 | D816 | PRD à écrire |
