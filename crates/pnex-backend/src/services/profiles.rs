@@ -922,6 +922,12 @@ pub fn spawn_pruner(ctx: &AppContext) {
                 Ok(_) => {}
                 Err(e) => tracing::warn!(error = %e, "retention queue failed"),
             }
+            // analysis.md D826: queries and their frozen objects kept a day.
+            if let Ok(store) = crate::services::datasets::store_of(&ctx.config) {
+                if let Err(e) = crate::services::analysis::purge(&ctx.db, &store).await {
+                    tracing::warn!(error = %e, "analysis purge failed");
+                }
+            }
             // governance.md D804: personal data in new table versions, proposed only.
             if let Ok(store) = crate::services::datasets::store_of(&ctx.config) {
                 match crate::services::governance::detect_pass(&ctx.db, &store).await {

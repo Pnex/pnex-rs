@@ -6158,6 +6158,7 @@ iam-service-environments = Environnements
 iam-service-agents = Agents
 iam-service-agent-artifacts = Fichiers d'exécution
 iam-service-datasets = Tables
+iam-service-analysis = Analyse
 iam-service-governance = Marquages et habilitations
 iam-service-taxonomies = Taxonomies
 iam-service-telemetry = Télémétrie

@@ -3,6 +3,7 @@ pub mod agent_runs;
 pub mod agent_skills;
 pub mod agents;
 pub mod ai;
+pub mod analysis;
 pub mod annotation_layers;
 pub mod apps;
 /// Board profiles (/api/v1/boards catalogue — pinout editor + wizard).
@@ -14,8 +15,6 @@ pub mod cameras;
 pub mod cases;
 /// Pipelines (data-pipelines.md D571).
 pub mod connectors;
-pub mod governance;
-pub mod hooks;
 pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
@@ -41,7 +40,9 @@ pub mod functions;
 pub mod geo;
 /// Global typeahead across the org's objects (D69).
 pub mod global_search;
+pub mod governance;
 pub mod health;
+pub mod hooks;
 /// Access management API (iam.md §8).
 pub mod iam;
 pub mod image_registries;

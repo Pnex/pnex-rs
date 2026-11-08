@@ -1917,6 +1917,82 @@
         ],
         "type": "object"
       },
+      "AnalysisQuery": {
+        "description": "A query and, once done, its rows as text.",
+        "properties": {
+          "args": {
+            "type": "object"
+          },
+          "code": {
+            "description": "Machine code of a failure.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "sql": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AnalysisState"
+          },
+          "truncated": {
+            "description": "More rows than [`ROWS_MAX`]: only the first ones are here.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "sql",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "AnalysisQueryInput": {
+        "properties": {
+          "sql": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "type": "object"
+      },
       "AnalysisState": {
         "description": "State of an analysis step (wire form of [`STATE_QUEUED`]…).",
         "enum": [
@@ -37744,6 +37820,194 @@
         "summary": "Get the assistant status",
         "tags": [
           "ai"
+        ]
+      }
+    },
+    "/api/v1/analysis/queries": {
+      "post": {
+        "description": "Queues one read-only SELECT on the tables of the org and on `objects.<type>` (the objects of a type as the caller sees them), run by the pipeline worker before any pipeline: 60 s at most, 1,000 rows returned. A marked table the caller is not cleared for fails the query with `marking-required`. Read the result with `GET /analysis/queries/{id}`. One query at a time per person. Requires `analysis:run`.",
+        "operationId": "analysis_queries_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisQueryInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisQuery"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` on `sql`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `analysis:run`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`analysis-busy`"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`analysis-too-many-objects` (args `type`, `max`)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`analysis-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send a read-only SQL query",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/api/v1/analysis/queries/{id}": {
+      "get": {
+        "description": "The state of one of the caller's queries; once `done`, its columns and first rows as text (`truncated` when there were more), once `failed`, its code: `analysis-sql-invalid` (args `reason`), `analysis-table-unknown` (args `table`), `marking-required` (args `table`), `analysis-timeout`, `analysis-result-too-large`, `pipeline-memory-exceeded`. Kept a day. Requires `analysis:run`.",
+        "operationId": "analysis_queries_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Query id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisQuery"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `analysis:run`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`analysis-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read a query and its rows",
+        "tags": [
+          "analysis"
         ]
       }
     },

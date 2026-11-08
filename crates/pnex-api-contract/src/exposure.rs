@@ -91,6 +91,8 @@ pub const EXPOSED: &[&str] = &[
     "pipelines_versions_list",
     "datasets_lineage",
     "governance_markings_list",
+    "analysis_queries_create",
+    "analysis_queries_get",
     "ontology_objects_markings",
     "datasets_get",
     "datasets_list",

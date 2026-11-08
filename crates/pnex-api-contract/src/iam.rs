@@ -100,6 +100,8 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("datasets:write", Level::Member),
     // governance.md D798: the org admin sets markings and clearances; anyone
     // may see which markings exist, never the data.
+    // analysis.md D825: a read-only query, run by the worker under the caller's rights.
+    ("analysis:run", Level::Member),
     ("governance:delete", Level::Admin),
     ("governance:read", Level::Viewer),
     ("governance:write", Level::Admin),
@@ -566,6 +568,8 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("datasets_markings_add", Access::Org("governance:write")),
     ("datasets_declassify", Access::Org("governance:write")),
     ("governance_markings_list", Access::Org("governance:read")),
+    ("analysis_queries_create", Access::Org("analysis:run")),
+    ("analysis_queries_get", Access::Org("analysis:run")),
     ("governance_journal_export", Access::Org("governance:write")),
     ("ontology_objects_markings", Access::Org("governance:read")),
     (

@@ -4,6 +4,7 @@
 //! access, and sees no business table. Keys and commits follow
 //! `pnex-backend/src/services/datasets`, which purges what this writes.
 
+mod analysis;
 pub mod engine;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -384,6 +385,11 @@ impl Worker {
     /// Runs the next queued run. `false` when there is none.
     pub async fn run_next(&self) -> Result<bool, sqlx::Error> {
         self.sweep_dead().await?;
+        // A person waits on a query: it goes before any run (analysis.md D827).
+        if let Some(q) = self.claim_query().await? {
+            self.run_query(q).await?;
+            return Ok(true);
+        }
         let Some((job, org_id, pipeline_id, version, attempts)) = self.claim().await? else {
             return Ok(false);
         };

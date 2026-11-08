@@ -6162,6 +6162,7 @@ iam-service-environments = Environments
 iam-service-agents = Agents
 iam-service-agent-artifacts = Agent artifacts
 iam-service-datasets = Tables
+iam-service-analysis = Analysis
 iam-service-governance = Markings and clearances
 iam-service-taxonomies = Taxonomies
 iam-service-telemetry = Telemetry

@@ -821,3 +821,147 @@ async fn a_failed_check_keeps_the_current_version() {
         assert_eq!(visible, [("committed".to_string(), 4)], "{checks}");
     }
 }
+
+/// A query of `sql` queued as the server would, run by the worker.
+async fn query(
+    e: &Env,
+    org: i64,
+    user: i64,
+    sql: &str,
+    tables: serde_json::Value,
+    refused: serde_json::Value,
+    objects: serde_json::Value,
+) -> (String, serde_json::Value, Option<String>) {
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO analysis_queries (id, org_id, user_id, sql, tables, refused, objects) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(id)
+    .bind(org)
+    .bind(user)
+    .bind(sql)
+    .bind(tables)
+    .bind(refused)
+    .bind(objects)
+    .execute(&e.admin)
+    .await
+    .unwrap();
+    assert!(
+        e.worker.run_next().await.unwrap(),
+        "the query is taken first"
+    );
+    let r = sqlx::query("SELECT state, result, code FROM analysis_queries WHERE id = $1")
+        .bind(id)
+        .fetch_one(&e.admin)
+        .await
+        .unwrap();
+    (
+        r.get("state"),
+        r.get::<Option<serde_json::Value>, _>("result")
+            .unwrap_or_default(),
+        r.get("code"),
+    )
+}
+
+#[tokio::test]
+#[serial]
+async fn a_query_reads_only_what_the_server_fixed() {
+    let e = env().await;
+    sqlx::query("DELETE FROM analysis_queries")
+        .execute(&e.admin)
+        .await
+        .unwrap();
+    let org = org(&e).await;
+    let user: i64 = sqlx::query("INSERT INTO users (email) VALUES ($1) RETURNING id")
+        .bind(format!("{}@example.org", Uuid::new_v4()))
+        .fetch_one(&e.admin)
+        .await
+        .unwrap()
+        .get("id");
+    let staff = seed(
+        &e,
+        org,
+        "staff",
+        &["name", "salary"],
+        &[&["Ada", "5000"], &["Bob", "4000"]],
+    )
+    .await;
+    seed(&e, org, "secret", &["x"], &[&["1"]]).await;
+    let tables = serde_json::json!({ "staff": staff.to_string() });
+
+    let (state, result, _) = query(
+        &e,
+        org,
+        user,
+        "SELECT name FROM staff ORDER BY salary DESC",
+        tables.clone(),
+        serde_json::json!([]),
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(state, "done");
+    assert_eq!(result["columns"], serde_json::json!(["name"]));
+    assert_eq!(result["rows"], serde_json::json!([["Ada"], ["Bob"]]));
+    assert_eq!(result["truncated"], false);
+
+    // Frozen objects read as `objects.<type>`.
+    let key = format!("org_{org}/analysis/{}/employee.parquet", Uuid::new_v4());
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Utf8, true),
+        Field::new("title", DataType::Utf8, true),
+    ]));
+    let batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![
+            Arc::new(StringArray::from(vec!["o1"])) as ArrayRef,
+            Arc::new(StringArray::from(vec!["Ada"])) as ArrayRef,
+        ],
+    )
+    .unwrap();
+    let mut bytes = Vec::new();
+    let mut w = ArrowWriter::try_new(&mut bytes, schema, None).unwrap();
+    w.write(&batch).unwrap();
+    w.close().unwrap();
+    e.store
+        .put(&Path::from(key.as_str()), bytes.into())
+        .await
+        .unwrap();
+    let (state, result, _) = query(
+        &e,
+        org,
+        user,
+        "SELECT o.title, s.salary FROM objects.employee o JOIN staff s ON s.name = o.title",
+        tables.clone(),
+        serde_json::json!([]),
+        serde_json::json!({ "employee": key }),
+    )
+    .await;
+    assert_eq!(state, "done", "{result}");
+    assert_eq!(result["rows"], serde_json::json!([["Ada", "5000"]]));
+
+    // Refused, unknown, written: a code each, nothing read.
+    for (sql, code) in [
+        ("SELECT * FROM secret", "marking-required"),
+        ("SELECT * FROM missing_table", "analysis-table-unknown"),
+        ("SELECT * FROM objects.nope", "analysis-table-unknown"),
+        ("DELETE FROM staff", "analysis-sql-invalid"),
+        ("SELECT 1; SELECT 2", "analysis-sql-invalid"),
+    ] {
+        let (state, _, got) = query(
+            &e,
+            org,
+            user,
+            sql,
+            tables.clone(),
+            serde_json::json!(["secret"]),
+            serde_json::json!({}),
+        )
+        .await;
+        assert_eq!(
+            (state.as_str(), got.as_deref()),
+            ("failed", Some(code)),
+            "{sql}"
+        );
+    }
+}

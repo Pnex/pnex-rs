@@ -9,6 +9,7 @@ pub mod agent_runs;
 pub mod agent_skills;
 pub mod agents;
 pub mod ai;
+pub mod analysis;
 /// Media annotations (D55–D60) — writes of the versioned layers.
 pub mod annotation_layer;
 pub mod apps;
@@ -21,8 +22,6 @@ pub mod cmd_acks;
 /// Per-pod concurrency caps (CoolProp, vision, runtime checks, uploads).
 pub mod compute_limits;
 pub mod connectors;
-pub mod governance;
-pub mod hooks;
 pub mod controls;
 pub mod crawl;
 pub mod dashboard;
@@ -52,6 +51,8 @@ pub mod flow_supervisor;
 pub mod forge;
 pub mod functions;
 pub mod geo;
+pub mod governance;
+pub mod hooks;
 /// Authorization engine and action registry checks (iam.md D285–D299).
 pub mod iam;
 pub mod image_registries;

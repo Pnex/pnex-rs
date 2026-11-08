@@ -167,6 +167,7 @@ pub mod person_match;
 /// Mailboxes as sources, messages, the `mail_received` trigger (mail.md).
 pub mod mail;
 
+pub mod analysis;
 /// Connectors to outside databases (data-pipelines.md D352).
 pub mod connectors;
 /// Dataset catalogue DTOs (data-pipelines.md D569).
