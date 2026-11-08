@@ -331,7 +331,7 @@ impl<A: Api, E: Executor> Runner<A, E> {
 
     async fn take_work(&mut self) {
         while self.held.len() < self.max_jobs {
-            let job = match self.api.claim().await {
+            let mut job = match self.api.claim().await {
                 Ok(Some(job)) => job,
                 Ok(None) => return,
                 Err(e) => {
@@ -349,6 +349,9 @@ impl<A: Api, E: Executor> Runner<A, E> {
                 ending: None,
                 secrets: job.secret_values(),
             };
+            if let Some(sandbox) = job.sandbox.as_mut() {
+                resolve_here(sandbox).await;
+            }
             // The server checked it too; a runner does not trust what it runs.
             if let Some((field, _)) = spec_error(&job.spec) {
                 tracing::warn!(job = job.id, field, "invalid job spec refused");
@@ -397,11 +400,85 @@ impl<A: Api, E: Executor> Runner<A, E> {
     }
 }
 
+/// Adds this runner's own answers for the repo hosts and the gateway to the egress rule.
+/// The server resolved them on its side, but a name may answer differently here (GitHub
+/// answers by region), and the clone then dials an address the rule refuses.
+async fn resolve_here(sandbox: &mut RunnerSandboxInput) {
+    let urls: Vec<String> = sandbox
+        .repos
+        .iter()
+        .map(|r| r.url.clone())
+        .chain(sandbox.env.get("PNEX_GATEWAY_URL").cloned())
+        .collect();
+    for url in urls {
+        let Ok(parsed) = reqwest::Url::parse(&url) else {
+            continue;
+        };
+        let (Some(host), Some(port)) = (parsed.host_str(), parsed.port_or_known_default()) else {
+            continue;
+        };
+        // shortcut: resolved once at the start, a name that changes address mid-run is refused.
+        let Ok(found) = tokio::net::lookup_host((host, port)).await else {
+            tracing::warn!(host, "egress host not resolved on this runner");
+            continue;
+        };
+        for a in found {
+            let cidr = match a.ip() {
+                std::net::IpAddr::V4(ip) => format!("{ip}/32"),
+                std::net::IpAddr::V6(ip) => format!("{ip}/128"),
+            };
+            let entry = pnex_core::runners::SandboxEgress { cidr, port };
+            if !sandbox.egress.contains(&entry) {
+                sandbox.egress.push(entry);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use pnex_core::runners::RunnerJobKind;
     use std::sync::Mutex;
+
+    #[tokio::test]
+    async fn runner_adds_its_own_answers_to_the_egress_rule() {
+        use pnex_core::runners::{SandboxEgress, SandboxRepo};
+        let kept = SandboxEgress {
+            cidr: "203.0.113.7/32".into(),
+            port: 443,
+        };
+        let mut s = RunnerSandboxInput {
+            init_image: "git@sha256:abc".into(),
+            repos: vec![SandboxRepo {
+                url: "http://127.0.0.1:8080/team/app.git".into(),
+                git_ref: "main".into(),
+                path: "app".into(),
+                token: None,
+                push: None,
+            }],
+            services: vec![],
+            setup: vec![],
+            env: [(
+                "PNEX_GATEWAY_URL".to_string(),
+                "https://127.0.0.2".to_string(),
+            )]
+            .into(),
+            secrets: Default::default(),
+            egress: vec![kept.clone()],
+            artifacts: None,
+        };
+        resolve_here(&mut s).await;
+        resolve_here(&mut s).await;
+        let want = |cidr: &str, port| SandboxEgress {
+            cidr: cidr.into(),
+            port,
+        };
+        assert_eq!(
+            s.egress,
+            vec![kept, want("127.0.0.1/32", 8080), want("127.0.0.2/32", 443)]
+        );
+    }
 
     const IMAGE: &str = "x@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 

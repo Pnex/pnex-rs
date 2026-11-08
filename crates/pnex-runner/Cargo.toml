@@ -17,7 +17,7 @@ path = "src/main.rs"
 pnex-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { version = "1.45", features = ["rt-multi-thread", "macros", "time", "signal", "process"] }
+tokio = { version = "1.45", features = ["rt-multi-thread", "macros", "time", "signal", "process", "net"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 base64 = "0.22"
 tracing = "0.1"
