@@ -636,6 +636,7 @@ lecteur ; ✔ = relu dans le code à la main.
 | SEC-77 | LOW | **Promotion admin plateforme sans `email_verified`** (C2) — prolonge SEC-W5 | R1 | **corrigé** (2026-11-07) : promotion admin plateforme et resynchronisation d'email exigent `email_verified == Some(true)` ; test |
 | SEC-78 | LOW | **Contrôle de version non atomique de `update_notification_template` (assistant)** (C5) | D144 | **corrigé** (2026-11-07) : `notify_templates::update_if_unchanged`, un seul `UPDATE … WHERE updated_at = <lu>`, conflit sinon ; test |
 | SEC-79 | LOW | **`authorize_tool` ouvert sur un outil hors registre IAM** (C6) — rien d'exposé aujourd'hui | R2 | **corrigé** (2026-11-07) : nom hors registre IAM refusé avant toute exécution ; test |
+| SEC-80 | LOW | **L'extracteur `OrgContext` laisse passer une route absente du registre IAM** (`operation_of` → `None` : aucune décision) — vu au lot G6 de `governance.md`, une route oubliée au registre répondait à un simple membre | R2 | **ouvert** : seule la garde `tests/iam.rs` (couverture exacte du spec) empêche une livraison ; à fermer en refusant par défaut une route `/api/v1` sans entrée, après inventaire des routes hors spec (WebSockets, `/internal`) |
 
 ### Reste à faire
 
