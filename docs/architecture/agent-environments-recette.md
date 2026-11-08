@@ -74,13 +74,13 @@ La démonstration de D752 a suivi le 2026-11-08 (§6).
 
 ## 6. Démonstration de D752 (dev.pnex.io, 2026-11-08)
 
-Un agent hébergé corrige le test rouge du dépôt privé `shanisma/agent-bugfix-demo` et ouvre
-la demande de fusion : https://github.com/shanisma/agent-bugfix-demo/pull/1.
+Un agent hébergé corrige le test rouge du dépôt privé `agent-bugfix-demo` (GitHub) et ouvre
+la demande de fusion n° 1.
 
 | Pièce | Où |
 |---|---|
 | Serveur | `dev.pnex.io`, org 3 ; `api.extraEnv` porte `PNEX_SANDBOX_INIT_IMAGE` et `PNEX_IMAGE_BUILDER` épinglées par digest (`pnex-deploy/helm/values-dev.yaml`, hors git) |
-| Runner | chart `pnex-runner` dans un cluster kind local, inscrit sur l'org 3 (`kind-local-shan`) ; `jobEgress` vers le registre kind |
+| Runner | chart `pnex-runner` dans un cluster kind local, inscrit sur l'org 3 ; `jobEgress` vers le registre kind |
 | Registre | `kind-registry:5000`, dépôt `agents-demo` |
 | Environnement | `bugfix-demo` : `wolfi-base` épinglé, `nodejs`, `curl`, `jq`, et `agent.sh` |
 | Agent | `bugfix-demo`, niveau hébergé, rôle `viewer` ; dépôt en `/workspace/app` avec `secret_id` et `push_secret_id` sur le même jeton fin (Contents et Pull requests en écriture, ce seul dépôt) ; sortie `report` requise |

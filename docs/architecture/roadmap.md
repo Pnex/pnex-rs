@@ -886,6 +886,8 @@ Premiers lots : C1 (assets + visionneuse 3D) et C2 (espace de travail génériqu
 
 ### P2.23 — Observabilité IT : ingestion des protocoles classiques (ajout 2026-10-17) — **pas démarré, à cadrer**
 
+> **2026-11-08** : la jointure télémétrie → service, version, déploiement est décrite par P2.38 (`software-delivery.md` D855, lot SD8).
+
 Directive : PneX porte **toute donnée**, pas seulement le monde physique.
 Logs, traces et métriques applicatifs entrent dans la même org que la
 télémétrie des appareils et se relient aux mêmes objets (un serveur, un
@@ -913,6 +915,8 @@ aujourd'hui ; aucune annonce « disponible » avant le code.
   `remote_write`) ; fiche assistant (D142) et clés fluent dès la première UI.
 
 ### P2.24 — Sécurité logicielle et qualité du code : un seul endroit (ajout 2026-10-17) — **pas démarré, à cadrer**
+
+> **2026-11-08** : modèle d'ontologie et collecte repris par P2.38 (`software-delivery.md`).
 
 Constat : SBOM, scans de vulnérabilités, analyse statique, secrets, licences,
 couverture et qualité vivent dans des outils séparés, chacun avec sa base et
@@ -1277,6 +1281,16 @@ niveaux, à arbitrer avant implémentation :
   pagination), loco-rs sans options par défaut (SQLite/MySQL), Arrow en
   double.
 - Tableau du poids des domaines secondaires (§5) pour arbitrer le périmètre.
+
+### P2.38 — Chaîne de livraison logicielle dans l'ontologie (ajout 2026-11-08) — **PRD proposé, rien d'implémenté**
+
+Doc : `software-delivery.md` (D850–D866 proposées, lots SD0–SD9, questions Q-SD1–Q-SD8).
+Ingérer sans les remplacer tickets, support, design, forges, CI, registres, paquets,
+attestations, stores, IaC, GitOps, Kubernetes, télémétrie, vulnérabilités et qualité ; les
+recouper dans l'ontologie avec leur historique (identités canoniques, alias datés, observé
+contre déclaré) pour répondre aux dix questions de traçabilité (quoi tourne où, issu de quoi,
+avec quel risque, à qui). Absorbe le pack `software` de P2.24 ; s'appuie sur P2.23 pour la
+télémétrie et sur OP2 pour la collecte. Plusieurs mois de travail.
 
 ## P3 — Horizons (décisions de phase explicites)
 
