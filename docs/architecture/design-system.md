@@ -288,6 +288,10 @@ les règles plus anciennes qui les contredisent.
 | Condition sur le résultat d'un traitement avant sa validation (D576) | Contrôle | Check | — |
 | Accès enregistré à une base ou une API externe, ou point d'arrivée d'appels signés, identifiants au coffre (D352, D791) | Connecteur | Connector | pas « connexion » (= se connecter), pas « source » |
 | Connecteur qui reçoit les appels signés d'un autre système (D795) | Webhook | Webhook | pas « crochet », pas « point de terminaison » |
+| Compartiment de l'org porté par une table ou un objet : il faut une habilitation pour chacun (D798) | Marquage | Marking | pas « étiquette » (= classement libre D288), pas « label de sécurité » |
+| Droit d'un membre à lire des données marquées, pour une finalité, jusqu'à une échéance (D799) | Habilitation | Clearance | pas « autorisation » (= permission d'un rôle), pas « accréditation » |
+| Raison déclarée d'une habilitation, gardée au journal avec chaque lecture (D799) | Finalité | Purpose | pas « motif » (= justification d'une déclassification) |
+| Retrait justifié d'un marquage (D802) | Déclassifier | Declassify | pas « démarquer », pas « retirer le marquage » |
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | Réglage de transcription d'un flux : modèle, langue, détection de voix, diarisation (D164) | Profil de transcription | Transcription profile | pas « modèle » (= le fichier importé) |
 | Profil de transcription pris quand rien d'autre n'est choisi, un par org | Profil par défaut | Default profile | pas « modèle par défaut », pas « profil principal » |

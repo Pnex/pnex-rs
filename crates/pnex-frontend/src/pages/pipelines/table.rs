@@ -15,6 +15,7 @@ use crate::api::error_i18n::localize;
 use crate::app::Route;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::layout::ListLayout;
+use crate::components::markings::MarkingsPanel;
 use crate::components::ontology::short_time;
 use crate::components::ui::{
     BTN_DANGER, BTN_SECONDARY_SM, FIELD_ERROR, FIELD_HELP, FIELD_LABEL, INPUT, PANEL,
@@ -308,6 +309,31 @@ pub fn PipelineTable(id: String) -> Element {
                         table: current.clone(),
                         lineage: l,
                         on_select: open_by_name,
+                    }
+                }
+                section { class: "{PANEL} p-3",
+                    MarkingsPanel {
+                        markings: current.markings.clone(),
+                        on_add: move |key: String| {
+                            spawn(async move {
+                                match api::governance::mark_dataset(&id(), vec![key]).await {
+                                    Ok(_) => reload.with_mut(|r| *r += 1),
+                                    Err(e) => toasts::error(localize(&e)),
+                                }
+                            });
+                        },
+                        on_declassify: move |(marking, justification): (String, String)| {
+                            spawn(async move {
+                                let body = pnex_core::governance::Declassify {
+                                    marking,
+                                    justification,
+                                };
+                                match api::governance::declassify_dataset(&id(), &body).await {
+                                    Ok(_) => reload.with_mut(|r| *r += 1),
+                                    Err(e) => toasts::error(localize(&e)),
+                                }
+                            });
+                        },
                     }
                 }
                 section { class: PANEL,

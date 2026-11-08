@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 à G6 codés le 2026-11-08** (§7) ; G7 (écrans) à faire |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 à G7 codés le 2026-11-08** (§7) ; OP3 livré hors SAML et I4 général |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; D715 : aucun client réel avant OP3 |
 | Repose sur | `iam.md` (D285–D299, I4, I5), `crm.md` (D442 classification, D443 masquage, D446 effacement), `data-pipelines.md` (D569–D578, lignage), `connectors.md` |
 | Numérotation | **D798…D806**, lots **G1…G7** |
@@ -181,3 +181,19 @@ plus ; `history_complete: false` si le journal O2 ne répond pas), passés au ma
 journalisés, en pièce jointe JSON. Constat en route : une opération absente du registre IAM n'est
 pas contrôlée par l'extracteur (seule la garde `tests/iam.rs` l'empêche d'être livrée) ; un oubli
 pendant ce lot l'a montré, rattrapé par le test.
+
+**G7 (2026-11-08)** : écrans, conçus avec `frontend-design` et `emil-design-eng`, passés à
+`break-ui`. Onglet « Marquages et habilitations » de `/access` (`?tab=governance`, condition
+`governance:read`) : marquages (tableau + pager, suppression d'un marquage non porté), habilitations
+(habiliter un membre pour une finalité et une durée, révoquer, exporter le journal). Panneau
+`components/markings.rs` sur la page d'une table et sur la fiche d'un objet (marquer, déclassifier
+avec justification de 10 caractères au moins) ; bouton « Exporter tout ce qui est détenu » sur la
+fiche. Lexique : Marquage, Habilitation, Finalité, Déclassifier ; règles `accréditation` et
+`étiquette de sécurité`. E2E `e2e/tests/governance.spec.ts` (parcours complet, export d'un objet),
+stable deux fois de suite ; axe strict des routes `/access` et `/pipelines` vert.
+
+`break-ui` (données extrêmes réalistes : nom de 100 caractères, clé de 64, finalité de 200,
+40 habilitations) : une clé longue poussait le bouton « Déclassifier » hors de la pastille (corrigé :
+la pastille passe à la ligne) ; sur téléphone, clés et échéances tronquées (corrigé : colonnes
+secondaires sous `md`). Choix à relire : **deux marquages peuvent porter le même nom** (seule la clé
+est unique), ce qui rend les listes de choix ambiguës ; l'onglet lui-même n'est pas couvert par axe.

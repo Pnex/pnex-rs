@@ -238,6 +238,7 @@ pub fn OntologyObject(id: String) -> Element {
                 if can_write && !closed && !tv.def.native() {
                     button { class: DANGER_BTN, onclick: move |_| archiving.set(true), {t!("onto-archive")} }
                 }
+                crate::components::markings::ExportObjectButton { id: o.id.clone(), class: BTN }
                 if can_erase {
                     button {
                         class: DANGER_BTN,
@@ -370,6 +371,9 @@ pub fn OntologyObject(id: String) -> Element {
                             id: o.native_id.clone(),
                             can_write: can_write && !closed,
                         }
+                    }
+                    div { class: "mt-6",
+                        crate::components::markings::ObjectMarkings { key: "{o.id}", id: o.id.clone() }
                     }
                 }
             }

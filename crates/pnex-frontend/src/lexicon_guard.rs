@@ -44,6 +44,20 @@ const RULES: &[Rule] = &[
         use_instead: "invite",
         allowed_keys: &["iam-", "access-"],
     },
+    // governance.md D798–D799: a compartment is a marking, a person's right to read
+    // marked data is a clearance.
+    Rule {
+        scope: Scope::Fr,
+        term: "accréditation",
+        use_instead: "habilitation",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "étiquette de sécurité",
+        use_instead: "marquage",
+        allowed_keys: &[],
+    },
     // connectors.md D795: a connector that receives signed calls is a webhook.
     // A lifting hook in a SCADA symbol (`sym-`) is a real hook.
     Rule {

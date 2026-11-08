@@ -59,6 +59,7 @@ pub mod loading_overlay;
 pub mod location_breadcrumb;
 pub mod map_panel;
 pub mod markdown;
+pub mod markings;
 pub mod mesh_viewer;
 pub mod modal;
 /// Notifications (D49–D54) — channel (field_spec) and template forms.

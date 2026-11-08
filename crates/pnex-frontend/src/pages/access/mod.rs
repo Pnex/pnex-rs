@@ -8,6 +8,7 @@
 
 mod apps;
 mod assignments;
+mod governance;
 mod grid;
 mod roles;
 mod service_accounts;
@@ -28,6 +29,7 @@ enum Tab {
     Assignments,
     ServiceAccounts,
     Apps,
+    Governance,
 }
 
 /// Opens the create form of the active tab (bumped by the header button).
@@ -37,7 +39,11 @@ pub(crate) struct AddRequest(u32);
 #[component]
 pub fn Access(tab: String) -> Element {
     // `?tab=apps` opens on that tab (the Applications page links here to declare one).
-    let first = if tab == "apps" { Tab::Apps } else { Tab::Roles };
+    let first = match tab.as_str() {
+        "apps" => Tab::Apps,
+        "governance" => Tab::Governance,
+        _ => Tab::Roles,
+    };
     let mut tab = use_signal(|| first);
     let mut reload = use_signal(|| 0u32);
     let mut add = use_signal(AddRequest::default);
@@ -49,12 +55,14 @@ pub fn Access(tab: String) -> Element {
     });
     let can_write = access::can("iam:write");
     let can_write_apps = access::can("apps:write");
+    let can_write_governance = access::can("governance:write");
     let add_label = match tab() {
         Tab::Roles => t!("access-new-role"),
         Tab::Teams => t!("access-new-team"),
         Tab::Assignments => t!("access-new-assignment"),
         Tab::ServiceAccounts => t!("access-new-service-account"),
         Tab::Apps => t!("access-new-app"),
+        Tab::Governance => t!("gov-new-marking"),
     };
     let tabs = [
         (Tab::Roles, "access-tab-roles"),
@@ -62,13 +70,18 @@ pub fn Access(tab: String) -> Element {
         (Tab::Assignments, "access-tab-assignments"),
         (Tab::ServiceAccounts, "access-tab-service-accounts"),
         (Tab::Apps, "access-tab-apps"),
+        (Tab::Governance, "access-tab-governance"),
     ];
 
     rsx! {
         ListLayout {
             title: t!("access-title").to_string(),
             subtitle: Some(t!("access-subtitle").to_string()),
-            can_write: if tab() == Tab::Apps { can_write_apps } else { can_write },
+            can_write: match tab() {
+                Tab::Apps => can_write_apps,
+                Tab::Governance => can_write_governance,
+                _ => can_write,
+            },
             add_label: Some(add_label.to_string()),
             on_add: move |_| add.with_mut(|a| a.0 += 1),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
@@ -92,6 +105,14 @@ pub fn Access(tab: String) -> Element {
             },
             if org::current().is_none() {
                 p { class: "text-slate text-center py-12", {t!("orgs-empty")} }
+            } else if tab() == Tab::Governance {
+                // Markings are listed to anyone who reads them; the data stays behind
+                // clearances (governance.md D798).
+                if access::can("governance:read") {
+                    governance::GovernanceTab { reload, add }
+                } else {
+                    p { class: "text-slate text-center py-12", {t!("access-not-allowed")} }
+                }
             } else if !access::can("iam:read") {
                 p { class: "text-slate text-center py-12", {t!("access-not-allowed")} }
             } else {
@@ -111,6 +132,7 @@ pub fn Access(tab: String) -> Element {
                     Tab::Apps => rsx! {
                         apps::AppsTab { reload, add, can_write: can_write_apps }
                     },
+                    Tab::Governance => rsx! {},
                 }
             }
         }
@@ -135,6 +157,9 @@ fn TabIcon(tab: Tab) -> Element {
         },
         Tab::Apps => rsx! {
             icons::Layers { class }
+        },
+        Tab::Governance => rsx! {
+            icons::Check { class }
         },
     }
 }

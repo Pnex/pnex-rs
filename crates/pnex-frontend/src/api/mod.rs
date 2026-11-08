@@ -44,6 +44,7 @@ pub mod flows;
 /// "Functions" registry ("Automation" group) — versioned functions.
 pub mod functions;
 pub mod geo;
+pub mod governance;
 pub mod hosted_agents;
 pub mod lab;
 pub mod mailboxes;

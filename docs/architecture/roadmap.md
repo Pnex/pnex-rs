@@ -1219,7 +1219,7 @@ thèse avec journal et positions fictives, test de règle point-in-time
 (`known_at`). Ni temps réel actions, ni ordre passé, ni signal diffusé.
 Premier ensemble utile sans LLM : MK0 → MK2 + MK4.
 
-### P2.36 — Plateforme opérationnelle complète (ajout 2026-11-03) — **OP1 en grande partie livré, OP2 (connecteurs CN1–CN5) codé le 2026-11-08, agrégats d'OP5 codés**
+### P2.36 — Plateforme opérationnelle complète (ajout 2026-11-03) — **OP1 en grande partie livré, OP2 (connecteurs) et OP3 (gouvernance) codés le 2026-11-08, agrégats d'OP5 codés**
 
 Doc : `operational-platform.md` (D551–D568, lots OP1–OP15). Chaque lot a son
 PRD avant le code. La priorité en cours (robustesse et tests) et P0 passent
@@ -1238,7 +1238,7 @@ failles (demande du 2026-11-05, D728).
 |---|---|
 | OP1 | Datasets versionnés, lignage, santé des données, ordonnanceur à dépendances |
 | OP2 | Cadre de connecteurs (`connectors.md`, D791–D797) : PostgreSQL, MySQL sous TLS, REST générique, lecture incrémentale par curseur, webhooks entrants, écran — codés le 2026-11-08 ; écriture retour à OP9, tables virtuelles après OP3, stockage cloud réduit au S3 de PneX (D796) |
-| OP3 | Lignes, marquages, habilitations, finalité, données sensibles, pseudonymisation, SAML, droits des personnes |
+| OP3 | Gouvernance (`governance.md`, D798–D806) : marquages, habilitations à finalité, héritage par lignage, objets masqués, détection proposée, `pseudonym()`, export d'une personne, écrans — codés le 2026-11-08 ; SAML à la demande, I4 général (droits par ligne de toutes les listes) ensuite |
 | OP4 | Branches transverses, interfaces d'ontologie |
 | OP5 | Agrégats (`object-aggregates.md`, D579–D588, validé et codé le 2026-11-04 ; passe avant OP1), analyse sans code, SQL en lecture, règles avec rejeu, blocs vivants |
 | OP6 | Tableur et traitement de texte (GridCraft, WordCraft), après POC |
