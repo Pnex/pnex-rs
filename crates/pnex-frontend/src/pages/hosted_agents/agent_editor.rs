@@ -16,7 +16,7 @@ use crate::state::toasts;
 use pnex_core::agent_runs::{ArtifactOutput, RunCache, RunRepo, RunService};
 use pnex_core::agent_skills::SkillPin;
 use pnex_core::agents::{
-    Agent, AgentLevel, AgentRole, AgentSpec, AgentToolInfo, AgentUpdate, AgentVersion,
+    Agent, AgentLevel, AgentRole, AgentSpec, AgentToolInfo, AgentUpdate, AgentVersion, GateMode,
 };
 
 mod sections;
@@ -69,6 +69,10 @@ pub(super) struct Draft {
     pub tools: Vec<String>,
     /// Internal only; empty: the default.
     pub max_steps: String,
+    /// Internal only (D833): who decides each write tool; absent = a person.
+    pub gate: std::collections::BTreeMap<String, GateMode>,
+    /// Internal only (D836); empty: none.
+    pub validator_id: String,
 }
 
 /// Non-empty trimmed lines.
@@ -133,7 +137,16 @@ impl Draft {
             skills: s.skills.clone(),
             tools: s.tools.clone(),
             max_steps: s.max_steps.map(|n| n.to_string()).unwrap_or_default(),
+            gate: s.gate.clone(),
+            validator_id: s.validator_id.clone().unwrap_or_default(),
         }
+    }
+
+    /// Some tool goes through the validator agent.
+    pub(super) fn needs_validator(&self) -> bool {
+        self.gate
+            .iter()
+            .any(|(t, m)| m.validated() && self.tools.contains(t))
     }
 
     /// The spec to send; a number that does not parse goes as an invalid one, refused by
@@ -152,9 +165,19 @@ impl Draft {
         };
         // Only the fields of the level go: the others stay in the form, not in the record.
         if self.level == AgentLevel::Internal {
+            // Only the modes of ticked tools, and never the default: the record stays small.
+            let gate = self
+                .gate
+                .iter()
+                .filter(|(t, m)| **m != GateMode::Human && self.tools.contains(t))
+                .map(|(t, m)| (t.clone(), *m))
+                .collect();
             return AgentSpec {
                 tools: self.tools.clone(),
                 max_steps: (!steps.is_empty()).then(|| steps.parse().unwrap_or(0)),
+                gate,
+                validator_id: (self.needs_validator() && !self.validator_id.is_empty())
+                    .then(|| self.validator_id.clone()),
                 ..common
             };
         }
@@ -228,6 +251,8 @@ fn field_label(field: &str) -> String {
         "level" => "agents-field-level",
         "tools" => "agents-edit-tools",
         "max_steps" => "agents-field-max-steps",
+        "gate" => "agents-gate-title",
+        "validator_id" => "agents-field-validator",
         "description" => "agents-edit-description",
         other => return other.to_string(),
     };
@@ -412,15 +437,26 @@ pub(super) fn AgentEditor(
             if !can_write {
                 p { class: "text-sm text-slate", {t!("agents-edit-read-only")} }
             }
+            if let Some(reason) = current.validator_tripped.clone() {
+                TrippedBanner {
+                    agent_id: current.id.clone(),
+                    reason,
+                    can_write,
+                    on_rearmed: move |a: Agent| agent.set(Some(a)),
+                }
+            }
             if let Some(err) = form_error() {
                 div { class: "bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700",
                     {error_text(&err)}
                 }
             }
-            fieldset { class: "space-y-6", disabled: !can_write,
+            fieldset { class: "min-w-0 space-y-6", disabled: !can_write,
                 GeneralSection { draft }
                 if draft().level == AgentLevel::Internal {
                     ToolsSection { draft, role: current.role }
+                    if draft().needs_validator() {
+                        ValidatorField { draft, self_id: current.id.clone() }
+                    }
                 } else {
                     div {
                         h3 { class: FIELD_LABEL, {t!("agents-edit-env")} }
@@ -673,29 +709,168 @@ fn ToolsSection(draft: Signal<Draft>, role: AgentRole) -> Element {
     }
 }
 
+fn mode_label(m: GateMode) -> String {
+    match m {
+        GateMode::Human => t!("agents-gate-human"),
+        GateMode::Autonomous => t!("agents-gate-autonomous"),
+        GateMode::Validator => t!("agents-gate-validator"),
+        GateMode::Chain => t!("agents-gate-chain"),
+    }
+    .to_string()
+}
+
+const MODES: [GateMode; 4] = [
+    GateMode::Human,
+    GateMode::Validator,
+    GateMode::Chain,
+    GateMode::Autonomous,
+];
+
+fn mode_of(value: &str) -> GateMode {
+    MODES
+        .into_iter()
+        .find(|m| m.as_str() == value)
+        .unwrap_or_default()
+}
+
 #[component]
 fn ToolRow(tool: AgentToolInfo, checked: bool, disabled: bool, draft: Signal<Draft>) -> Element {
     let mut draft = draft;
     let name = tool.name.clone();
+    let gate_name = tool.name.clone();
+    let mode = draft().gate.get(&tool.name).copied().unwrap_or_default();
+    let select_id = format!("agent-gate-{}", tool.name);
     rsx! {
-        label { class: "flex items-start gap-2 p-2 text-sm",
-            input {
-                r#type: "checkbox",
-                class: "mt-1",
-                disabled,
-                checked,
-                onchange: move |e: FormEvent| toggle(&mut draft.write().tools, &name, e.checked()),
-            }
-            span { class: "min-w-0",
-                span { class: "font-mono text-ink", {tool.name.clone()} }
-                if tool.write {
-                    span { class: "ml-2 text-xs text-amber-700", {t!("agents-tool-proposed")} }
+        div { class: "flex flex-wrap items-start gap-x-3 gap-y-2 p-2 text-sm",
+            label { class: "flex min-w-0 flex-1 basis-64 items-start gap-2",
+                input {
+                    r#type: "checkbox",
+                    class: "mt-1",
+                    disabled,
+                    checked,
+                    onchange: move |e: FormEvent| toggle(&mut draft.write().tools, &name, e.checked()),
                 }
-                span { class: "block text-xs text-slate", {tool.summary.clone()} }
+                span { class: "min-w-0",
+                    span { class: "font-mono text-ink break-words", {tool.name.clone()} }
+                    span { class: "block text-xs text-slate", {tool.summary.clone()} }
+                }
+            }
+            // Who decides a write (D833); a never-delegated one stays with a person (D838).
+            if tool.write && checked {
+                div { class: "flex shrink-0 items-center gap-2",
+                    label { r#for: "{select_id}", class: "text-xs text-slate",
+                        {t!("agents-gate-who")}
+                    }
+                    select {
+                        id: "{select_id}",
+                        class: "rounded border border-gray-300 bg-white px-2 py-1 text-xs",
+                        disabled: tool.never_delegated,
+                        onchange: move |e| {
+                            draft.write().gate.insert(gate_name.clone(), mode_of(&e.value()));
+                        },
+                        for m in MODES {
+                            option {
+                                key: "{m.as_str()}",
+                                value: "{m.as_str()}",
+                                selected: mode == m,
+                                {mode_label(m)}
+                            }
+                        }
+                    }
+                    if tool.never_delegated {
+                        span { class: "text-xs text-slate", {t!("agents-gate-never")} }
+                    }
+                }
             }
         }
     }
 }
+
+/// The agent that validates the requests of `validator` and `chain` tools (D836): another
+/// internal agent of the org.
+#[component]
+fn ValidatorField(draft: Signal<Draft>, self_id: String) -> Element {
+    let mut draft = draft;
+    let agents = use_resource(move || async move { api::hosted_agents::agents(200, 0).await });
+    let choices: Vec<(String, String)> = match &*agents.read() {
+        Some(Ok(p)) => p
+            .results
+            .iter()
+            .filter(|a| a.spec.level == AgentLevel::Internal && a.id != self_id)
+            .map(|a| (a.id.clone(), a.name.clone()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let chosen = draft().validator_id;
+    rsx! {
+        div { class: "max-w-md",
+            label { r#for: "agent-edit-validator", class: FIELD_LABEL, {t!("agents-field-validator")} }
+            select {
+                id: "agent-edit-validator",
+                class: INPUT,
+                onchange: move |e| draft.write().validator_id = e.value(),
+                option { value: "", selected: chosen.is_empty(), {t!("gov-choose")} }
+                for (id, name) in choices {
+                    option { key: "{id}", value: "{id}", selected: chosen == id, "{name}" }
+                }
+            }
+            p { class: "text-xs text-slate mt-1", {t!("agents-field-validator-hint")} }
+        }
+    }
+}
+
+/// D839: a validator that tripped hands its requests to a person until re-armed.
+#[component]
+fn TrippedBanner(
+    agent_id: String,
+    reason: String,
+    can_write: bool,
+    on_rearmed: Callback<Agent>,
+) -> Element {
+    let mut busy = use_signal(|| false);
+    let why = if reason == "rate" {
+        t!("agents-tripped-rate", count : RATE_PER_HOUR)
+    } else {
+        t!("agents-tripped-all-accepted", count : ALL_ACCEPTED)
+    };
+    let rearm = move |_| {
+        let id = agent_id.clone();
+        busy.set(true);
+        spawn(async move {
+            match api::hosted_agents::rearm_validator(&id).await {
+                Ok(a) => {
+                    toasts::success(t!("agents-rearmed").to_string());
+                    on_rearmed.call(a);
+                }
+                Err(e) => toasts::error(e),
+            }
+            busy.set(false);
+        });
+    };
+    rsx! {
+        div {
+            class: "flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900",
+            role: "status",
+            p { class: "min-w-0 flex-1 basis-64",
+                strong { class: "block font-semibold", {t!("agents-tripped-title")} }
+                "{why}"
+            }
+            if can_write {
+                button {
+                    class: BTN_SECONDARY_SM,
+                    r#type: "button",
+                    disabled: busy(),
+                    onclick: rearm,
+                    {t!("agents-rearm")}
+                }
+            }
+        }
+    }
+}
+
+/// D839: limits of a validator, as the server applies them.
+pub(super) const RATE_PER_HOUR: i64 = 30;
+pub(super) const ALL_ACCEPTED: i64 = 20;
 
 /// Adds or removes `name`, keeping the order of the list.
 fn toggle(tools: &mut Vec<String>, name: &str, on: bool) {
@@ -767,6 +942,29 @@ mod tests {
         assert_eq!(d.spec().llm_calls_max, Some(0));
         d.calls = String::new();
         assert_eq!(d.spec().llm_calls_max, None);
+    }
+
+    #[test]
+    fn only_the_modes_of_ticked_writes_are_sent() {
+        let mut d = Draft {
+            level: AgentLevel::Internal,
+            tools: vec!["create_object".into()],
+            validator_id: "v1".into(),
+            ..Default::default()
+        };
+        d.gate.insert("create_object".into(), GateMode::Human);
+        d.gate.insert("update_object".into(), GateMode::Autonomous);
+        let spec = d.spec();
+        assert!(
+            spec.gate.is_empty(),
+            "a person is the default; an unticked tool goes away"
+        );
+        assert_eq!(spec.validator_id, None, "no validator when none is needed");
+        d.gate.insert("create_object".into(), GateMode::Chain);
+        let spec = d.spec();
+        assert_eq!(spec.gate.get("create_object"), Some(&GateMode::Chain));
+        assert_eq!(spec.validator_id.as_deref(), Some("v1"));
+        assert_eq!(Draft::of("", &spec).spec(), spec);
     }
 
     #[test]

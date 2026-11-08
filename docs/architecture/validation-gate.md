@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2) |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **VG1–VG3 codés le 2026-11-08** (§6) |
 | Lot de la roadmap | OP9 de `operational-platform.md` : validation générique (D563) |
 | Repose sur | `proposals.md` (D367, D371–D377), `autonomous-agents.md` (D380, D381, D390), `agent-unification.md` (U6 : écritures d'un agent interne en propositions `tool_call`), `iam.md` (comptes de service) |
 | Numérotation | **D833…D840**, lots **VG1…VG3** |
@@ -115,4 +115,32 @@ possibles (le validateur lit la demande, pas le contenu).
 
 ## 6. Avancement
 
-(à remplir lot par lot)
+**VG1–VG2 (2026-11-08, `4e6d66c6`)** : `AgentSpec.gate` (outil → mode) et `validator_id`,
+contrôlés au cœur (outil de l'agent, validateur exigé) et au serveur (outil d'écriture, jamais
+délégable, validateur interne de l'org, pas soi-même). Migration 000134 : état du disjoncteur
+sur `agents` (`validator_tripped_at`, motif, `validator_rearmed_at`) et index sur le validateur
+des propositions. **Écart à D835** : l'état de la porte vit dans les `values` de la proposition
+(`gate`, `gate_stage`, `validator`), pas dans des colonnes : la boîte « À valider » est une union
+avec les voix, et rien ne change pour elle. Module `services/agent_gate.rs` : mode effectif
+(D838, D840), exécution autonome par le compte de service (une écriture refusée est rejetée et
+le refus rendu à l'agent), run du validateur (la demande en fichier d'entrée `request`, hors des
+entrées déclarées), lecture de `ACCEPT` / `REJECT` sur la première ligne, repli sur une personne
+(réponse illisible, run en échec, validateur dans la chaîne, déclenché ou inutilisable),
+disjoncteur (30 décisions par heure, 20 acceptations d'affilée depuis le réarmement), route
+`POST /agents/{id}/validator/rearm` (`agents:write`, exclue du MCP sous « sign-off »).
+Tests : `the_gate_runs_validates_or_hands_writes_to_a_person` (autonome, validateur qui accepte,
+chaîne qui refuse puis accepte, disjoncteur et réarmement, sur le faux modèle),
+`the_verdict_reads_the_first_word_only`, `some_writes_are_never_delegated`,
+`a_gate_names_tools_of_the_agent_and_a_validator`.
+
+**VG3 (2026-11-08)** : fiche de l'agent : « Qui décide » à côté de chaque outil d'écriture coché
+(verrouillé sur « Une personne » pour un outil jamais délégable), « Agent validateur » dès qu'un
+outil passe par lui, bandeau du validateur déclenché avec « Réarmer » ; boîte « À valider » :
+une phrase dit où en est la demande (chez le validateur, acceptée par lui et à vous, ou sans
+réponse et à vous), les clés de la porte ne sont plus listées parmi les valeurs. Fiche
+`assistant-kb/internal-agents.md`, ligne « Agent validateur » au lexique. e2e
+`agent-gate.spec.ts`. `break-ui` : un nom de validateur long élargissait tout le formulaire sur
+téléphone (largeur minimale d'un `fieldset`) ; corrigé.
+
+Reste : la boîte n'a pas été vue avec une vraie demande en attente du validateur (couverte par le
+test serveur, pas en navigateur) ; un validateur ne se choisit que parmi les 200 premiers agents.

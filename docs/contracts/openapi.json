@@ -1249,6 +1249,10 @@
           "name": {
             "type": "string"
           },
+          "never_delegated": {
+            "description": "A write only a person may decide, whatever the record says (validation-gate.md D838).",
+            "type": "boolean"
+          },
           "summary": {
             "description": "What the model is told the tool does (English).",
             "type": "string"

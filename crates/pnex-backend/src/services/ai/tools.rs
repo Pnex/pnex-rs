@@ -192,6 +192,7 @@ pub fn tool_infos() -> Vec<pnex_core::agents::AgentToolInfo> {
             name: t.spec.name.to_string(),
             summary: t.spec.description.to_string(),
             write: super::agent::is_write_tool(t.spec.name),
+            never_delegated: crate::services::agent_gate::never_delegated(t.spec.name),
         })
         .collect()
 }

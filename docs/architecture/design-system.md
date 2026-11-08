@@ -335,6 +335,7 @@ les règles plus anciennes qui les contredisent.
 | Rencontre avec un compte, ses participants, son enregistrement (account-mapping.md, réunions) | Rendez-vous | Meeting | pas « réunion commerciale » ni « RDV » |
 | Point de la méthode de vente de l'org, suivi rendez-vous par rendez-vous | Critère du playbook | Playbook criterion | pas « note » ni « score » d'une personne : on agrège par critère |
 | Écriture proposée par une machine (import, flow, détecteur, modèle), en attente d'un humain (proposals.md D371) | Proposition ; la page « À valider » | Proposal ; « To validate » | pas « suggestion » ni « recommandation » (= lien `recommended`) |
+| Agent interne qui lit la demande d'écriture d'un autre agent et l'accepte ou la refuse (validation-gate.md D836) | Agent validateur ; « Qui décide » ; « Réarmer » | Validator agent ; « Who decides » ; « Rearm » | pas « agent de contrôle », pas « approbateur » |
 | Affaire suivie avec un compte, de la découverte à la signature (crm.md D449) | Opportunité | Opportunity | pas « affaire », pas « deal » |
 | Passage consigné d'un contrôle de veille sur un sujet (network-check.md D426), son résultat | Vérification | Check | pas « contrôle » (= surface pilotable D123), pas « audit » |
 | Ce qui est fait ou à faire pour un compte : appel, mail, message… (crm.md D450) | Activité | Activity | pas « tâche » seule (= une nature d'activité) |

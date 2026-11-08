@@ -44,6 +44,13 @@ const RULES: &[Rule] = &[
         use_instead: "invite",
         allowed_keys: &["iam-", "access-"],
     },
+    // validation-gate.md D836: the agent that accepts or refuses requests is a validator.
+    Rule {
+        scope: Scope::Fr,
+        term: "agent de contrôle",
+        use_instead: "agent validateur",
+        allowed_keys: &[],
+    },
     // analysis.md D831: a computed block of a page is a live block.
     Rule {
         scope: Scope::Fr,

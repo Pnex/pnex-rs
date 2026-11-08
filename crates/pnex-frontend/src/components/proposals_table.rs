@@ -66,9 +66,13 @@ pub fn ProposalsTable(
     let mut columns = vec![
         Column::new(t!("proposals-col-what").to_string(), |p: &ProposalView| {
             let kind = label("proposals-kind", p.kind.as_str());
+            let gate = gate_note(p);
             rsx! {
                 span { class: "font-medium text-ink", "{kind}" }
                 span { class: "ml-1 font-mono text-xs text-slate", "{p.type_key}" }
+                if let Some(g) = gate {
+                    span { class: "mt-1 block text-xs text-amber-800", "{g}" }
+                }
             }
         }),
         Column::new(
@@ -309,7 +313,43 @@ fn DecisionDialog(
 
 /// What the values column shows: a case detection by its detector and span
 /// (its key and members are internal; the members are in Objects).
+/// Where an agent's open request stands in the validation gate (validation-gate.md D836).
+fn gate_note(p: &ProposalView) -> Option<String> {
+    if p.kind != ProposalKind::ToolCall || p.status != ProposalStatus::Proposed {
+        return None;
+    }
+    let stage = p
+        .values
+        .get("gate_stage")
+        .and_then(serde_json::Value::as_str)?;
+    let accepted = p
+        .values
+        .get("validator")
+        .and_then(|v| v.get("decision"))
+        .and_then(serde_json::Value::as_str)
+        == Some("accept");
+    Some(
+        match (stage, accepted) {
+            ("validator", _) => t!("proposals-gate-validator"),
+            ("human", true) => t!("proposals-gate-validated"),
+            ("human", false) if p.values.get("validator").is_some() => {
+                t!("proposals-gate-human")
+            }
+            _ => return None,
+        }
+        .to_string(),
+    )
+}
+
 fn shown_values(p: &ProposalView) -> serde_json::Map<String, serde_json::Value> {
+    if p.kind == ProposalKind::ToolCall {
+        // The gate's own bookkeeping is shown as a sentence, not as values.
+        let mut out = p.values.clone();
+        for k in ["gate", "gate_stage", "validator"] {
+            out.remove(k);
+        }
+        return out;
+    }
     if p.kind == ProposalKind::VoiceSpan {
         let clock = |k: &str| {
             let s = p

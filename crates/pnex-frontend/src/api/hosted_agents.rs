@@ -53,6 +53,16 @@ pub async fn agent_tools() -> Result<Vec<AgentToolInfo>, ApiError> {
     }
 }
 
+/// Lets a tripped validator agent decide again (validation-gate.md D839).
+pub async fn rearm_validator(id: &str) -> Result<Agent, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/agents/{id}/validator/rearm"),
+        None,
+    )
+    .await
+}
+
 pub async fn agent(id: &str) -> Result<Agent, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/agents/{id}"), None).await
 }

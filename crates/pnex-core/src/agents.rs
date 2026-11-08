@@ -139,6 +139,9 @@ pub struct AgentToolInfo {
     pub summary: String,
     /// A write: on an internal agent, each call becomes a proposal.
     pub write: bool,
+    /// A write only a person may decide, whatever the record says (validation-gate.md D838).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub never_delegated: bool,
 }
 
 /// Role of the service account of an agent: never `admin` (D293), never above its author.
