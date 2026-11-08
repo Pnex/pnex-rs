@@ -74,6 +74,11 @@ pub fn spawn_scheduler(ctx: &AppContext) {
                 if let Err(e) = super::identity::sweep(&ctx, gleif).await {
                     tracing::warn!("market identity sweep failed: {e}");
                 }
+                let today = chrono::Utc::now().date_naive();
+                let binance = pnex_core::markets::history::BINANCE_SPOT_1M.base;
+                if let Err(e) = super::history::sweep(&ctx, binance, today).await {
+                    tracing::warn!(code = e.code(), "price history sweep failed");
+                }
             }
             tokio::time::sleep(SWEEP_EVERY).await;
         }

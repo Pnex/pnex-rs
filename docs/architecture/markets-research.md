@@ -506,7 +506,7 @@ Recensement : aucune import marchés ni monde ne passe par un flow. Toutes sont 
 
 | | |
 |---|---|
-| Statut | Proposé le 2026-11-08, rien de codé |
+| Statut | Proposé le 2026-11-08 ; MK11 codé le 2026-11-08 (§C.7), MK12–MK14 à faire |
 | Lots | **MK11…MK14** |
 | Origine | volet trading de PNeX : un modèle entraîné sur des images de graphiques, du texte et la frise des événements (`geo_event`, `market_event`), puis une boucle qui cherche les meilleurs trades. Ici, **seulement la collecte de l'historique** : ni le modèle, ni l'entraînement, ni le flux continu |
 | Repose sur | tables et pipelines (`data-pipelines.md` D569–D578 : Parquet sur S3, transactions `append`, worker DataFusion, ordonnanceur D575), D526 (une source = une import, liste blanche), D531 (lecture à la date t), D540 (sources primaires), D543 (sources fixées dans le code, R9), §7 bis (aucun import marchés par flow) |
@@ -633,3 +633,31 @@ Premier ensemble utile : **MK11 seul**. Il valide toute la chaîne (origine en p
 ### C.6 Hors périmètre
 
 Entraînement et modèle ; génération d'images ; carnets d'ordres et profondeur de marché ; données de bourse payantes (CME, OPRA, actions US L2/L3) ; fournisseurs à clé (à ajouter plus tard sous D543) ; adaptateur MT5 (D824, PRD à part) ; toute exécution d'ordre.
+
+### C.7 Avancement et écarts (2026-11-08)
+
+MK11 codé, non poussé. Pièces :
+
+- `pnex_core::markets::history` : `plan` (mois clos entiers, mois courant par jours), `binance_klines` (unité ms ou µs lue par valeur), `scaled` (décimal à 8 places, jamais arrondi), `checksum_of`, source `BINANCE_SPOT_1M` ;
+- `services::markets::history` : balayage, écriture et registre ;
+- `datasets::append_batch` : une transaction `append` typée ;
+- migration 000133 `market_history_partitions` ;
+- pack `markets` 1.4.0 : réglages `history_symbols` (vide par défaut) et `history_from` (`2017-08` par défaut) ;
+- fiche `markets.md` ;
+- test `minute_history_is_loaded_by_partitions_and_resumed`.
+
+Écarts au texte :
+
+- **Pas de nouvelle origine d'import ni de planification D575.** Les pipelines n'ont pas encore d'origine dans le code : seules les transformations existent. Une import d'ontologie, elle, finit toujours en objets. L'historique est donc lu par un balayage du service marchés, comme les documents et GLEIF : toutes les 5 minutes, 24 partitions au plus par org et par passage. Le registre n'a pas de colonne `import_id` ; sa clé est (org, source, instrument, période). À reprendre quand les pipelines auront des origines.
+- **Une requête à la fois, pause de 250 ms**, au lieu d'une concurrence de 4 par hôte. Un 429, un 503 ou une source injoignable arrêtent le passage sans rien compter.
+- **Un mois clos dont un jour est déjà chargé continue par jours.** Ainsi, aucune minute n'est chargée deux fois quand le mois courant se ferme.
+- **Fichier publié sans `.CHECKSUM`** : il est chargé sans contrôle (marqué `shortcut:` dans le code).
+- **Questions prises par défaut, à confirmer par Shan :**
+  - Q-MK9 : univers vide par défaut ; l'org liste ses symboles, profondeur depuis 2017-08 ;
+  - Q-MK10 : bougies seulement ;
+  - Q-MK13 : une table par forme, avec `interval` en colonne ;
+  - Q-MK11 : conditions de Binance non vérifiées ; `license_note` le dit et la table reste privée à l'org.
+- **Pas encore mesuré** :
+  - le vrai `data.binance.vision`, jamais appelé ;
+  - l'acceptation MK11 sur BTCUSDT et ETHUSDT depuis 2017-08, soit environ 220 partitions, à peu près 50 minutes de remplissage ;
+  - la vue courante à 10⁵ transactions (MK13).

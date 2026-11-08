@@ -87,6 +87,12 @@ pub struct Declared {
 }
 
 pub async fn get_as(url: &reqwest::Url, by: &Declared) -> Result<Vec<u8>, &'static str> {
+    get_found(url, by).await?.ok_or(UNREACHABLE)
+}
+
+/// Like [`get_as`], a 404 being `None`: a file the source does not have
+/// (a price partition not published) is not a failure.
+pub async fn get_found(url: &reqwest::Url, by: &Declared) -> Result<Option<Vec<u8>>, &'static str> {
     let client = if by.authorization.is_some() || !by.headers.is_empty() || by.query_key.is_some() {
         http_keyed()
     } else {
@@ -116,6 +122,9 @@ pub async fn get_as(url: &reqwest::Url, by: &Declared) -> Result<Vec<u8>, &'stat
         tracing::info!(url = %url, error = %e, "import source unreachable");
         UNREACHABLE
     })?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
     if !resp.status().is_success() {
         return Err(UNREACHABLE);
     }
@@ -126,7 +135,7 @@ pub async fn get_as(url: &reqwest::Url, by: &Declared) -> Result<Vec<u8>, &'stat
         }
         body.extend_from_slice(&chunk);
     }
-    Ok(body)
+    Ok(Some(body))
 }
 
 /// Records of a file at `url`.

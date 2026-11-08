@@ -915,6 +915,100 @@ where
     transaction_by_id(db, transaction_id).await
 }
 
+/// Appends rows our own code typed (a decoded price file, D809) as one
+/// transaction: one Parquet file, visible only once committed. The first
+/// append gives the dataset its columns; a later one must have the same.
+pub async fn append_batch(
+    db: &DatabaseConnection,
+    store: &S3Store,
+    org_id: i64,
+    id: Uuid,
+    batch: &arrow_array::RecordBatch,
+) -> Result<DatasetTransaction, DatasetError> {
+    use arrow_schema::DataType;
+    let dataset = get(db, org_id, id).await?;
+    let columns: Vec<DatasetColumn> = batch
+        .schema()
+        .fields()
+        .iter()
+        .map(|f| DatasetColumn {
+            name: f.name().clone(),
+            // Same names as the pipeline worker's.
+            data_type: match f.data_type() {
+                DataType::Utf8 => "text".into(),
+                DataType::Timestamp(..) => "timestamp".into(),
+                DataType::Decimal128(..) => "decimal".into(),
+                other => format!("{other:?}").to_lowercase(),
+            },
+        })
+        .collect();
+    if !dataset.columns.is_empty() && dataset.columns != columns {
+        return Err(DatasetError::SchemaMismatch {
+            columns: dataset.columns.iter().map(|c| c.name.clone()).collect(),
+        });
+    }
+    let room = QUOTA_BYTES
+        .checked_sub(used_bytes(db, org_id).await?)
+        .filter(|n| *n > 0)
+        .ok_or(DatasetError::QuotaExceeded)?;
+    let kind = DatasetTransactionKind::Append;
+    let transaction_id = begin(db, org_id, id, kind).await?;
+    let key = format!(
+        "{}part-0.parquet",
+        transaction_prefix(org_id, id, transaction_id)
+    );
+    let result = async {
+        let erased = erasure::targets_of(db, id).await?;
+        let kept;
+        let batch = if erased.is_empty() {
+            batch
+        } else {
+            kept = parquet::without(batch, &erased).map_err(storage)?;
+            &kept
+        };
+        let properties = WriterProperties::builder()
+            .set_compression(Compression::ZSTD(ZstdLevel::default()))
+            .build();
+        let sink = S3Sink::new(store.writer(&key).await.map_err(storage)?);
+        let mut w =
+            AsyncArrowWriter::try_new(sink, batch.schema(), Some(properties)).map_err(storage)?;
+        let written = async {
+            w.write(batch).await.map_err(storage)?;
+            w.flush().await.map_err(storage)?;
+            if w.bytes_written() as u64 > room {
+                return Err(DatasetError::QuotaExceeded);
+            }
+            Ok(())
+        }
+        .await;
+        if let Err(e) = written.and(w.finish().await.map(|_| ()).map_err(storage)) {
+            w.into_inner().abort().await;
+            return Err(e);
+        }
+        let sink = w.into_inner();
+        let written = Written {
+            key: key.clone(),
+            bytes: sink.bytes,
+            rows: batch.num_rows() as u64,
+            sha256: sink.sha256(),
+            columns,
+        };
+        commit(db, id, transaction_id, kind, &written).await
+    }
+    .await;
+    if let Err(e) = result {
+        // The purge removes what the transaction wrote.
+        db.execute_raw(stmt(
+            "UPDATE dataset_transactions SET state = 'aborted', code = $2 \
+             WHERE id = $1 AND state = 'open'",
+            vec![transaction_id.into(), e.code().into()],
+        ))
+        .await?;
+        return Err(e);
+    }
+    transaction_by_id(db, transaction_id).await
+}
+
 async fn transaction_by_id(
     db: &DatabaseConnection,
     id: Uuid,

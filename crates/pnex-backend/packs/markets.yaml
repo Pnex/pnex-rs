@@ -23,10 +23,15 @@
 # A company created by its SEC number is looked up in GLEIF (D812): a single
 # match is proposed, as its LEI or as `same_company_as` the organization that
 # already holds that LEI; nothing is merged.
+# Since 1.4.0 (MK11, D807-D809) the symbols of `history_symbols` get their
+# 1-minute bars from Binance's public files into the table
+# `binance_spot_klines_1m`, one month (or one day of the current month) per
+# transaction, never into objects. Binance's terms for redistribution or a
+# SaaS use are not checked: the table stays private to the org.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.3.0"
+version: "1.4.0"
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
 descriptions: {fr: "Sociétés suivies par ticker avec leurs dépôts et chiffres publiés (SEC EDGAR), et séries macroéconomiques (FRED), chaque valeur datée par sa publication. Une aide à l'analyse, pas un conseil en investissement."}
@@ -99,6 +104,20 @@ settings:
     descriptions: {fr: "on : après une séance avec des mouvements anormaux, le fournisseur d'IA de l'org (analyses de fichiers) rédige une note courte envoyée avec l'avis de séance. Il lit seulement les mouvements, dépôts et événements du monde de la séance, ne décide ni n'écrit. off par défaut."}
     kind: text
     default: "off"
+  - key: history_symbols
+    name: Symbols of the minute history (Binance)
+    names: {fr: "Symboles de l'historique à la minute (Binance)"}
+    description: "Comma-separated Binance spot symbols (BTCUSDT, ETHUSDT…) whose 1-minute bars are loaded into the table binance_spot_klines_1m, from Binance's public files. Empty: nothing is loaded."
+    descriptions: {fr: "Symboles spot Binance (BTCUSDT, ETHUSDT…), séparés par des virgules, dont les bougies d'une minute sont chargées dans la table binance_spot_klines_1m, depuis les fichiers publics de Binance. Vide : rien n'est chargé."}
+    kind: text
+    default: ""
+  - key: history_from
+    name: First month of the minute history
+    names: {fr: "Premier mois de l'historique à la minute"}
+    description: "YYYY-MM. The history is loaded from this month; 2017-08, Binance's first, when empty."
+    descriptions: {fr: "AAAA-MM. L'historique est chargé à partir de ce mois ; 2017-08, le premier de Binance, si vide."}
+    kind: text
+    default: "2017-08"
   - key: move_notify_channels
     name: Channels of the abnormal session notice
     names: {fr: "Canaux de l'avis de séance anormale"}

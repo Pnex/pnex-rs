@@ -88,6 +88,11 @@ fn unzip(bytes: &[u8], want: Option<SourceFormat>) -> Result<(Vec<u8>, SourceFor
     Err(ReadError::UnknownFormat)
 }
 
+/// The CSV file of a zip, under the same caps as an import's source.
+pub fn unzip_csv(bytes: &[u8]) -> Result<Vec<u8>, ReadError> {
+    unzip(bytes, Some(SourceFormat::Csv)).map(|(b, _)| b)
+}
+
 /// UTF-8, else Latin-1 (a CSV saved by a spreadsheet on Windows).
 pub fn text_of(bytes: &[u8]) -> String {
     match std::str::from_utf8(bytes) {

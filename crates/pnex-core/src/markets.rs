@@ -10,6 +10,7 @@ use crate::ontology::import::{parse_csv, table_rows};
 
 pub mod chart;
 pub mod exhibit21;
+pub mod history;
 pub mod moves;
 pub mod same_company;
 

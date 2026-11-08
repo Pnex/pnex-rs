@@ -1946,3 +1946,172 @@ async fn the_session_summary_is_written_once_by_the_orgs_ai() {
     })
     .await;
 }
+
+/// MK11: the minute bars of the listed symbols go into a table, one
+/// partition per transaction, against a mock of Binance's public files. A
+/// done partition is never fetched again; a wrong checksum and an
+/// unpublished day are asked again on the next pass.
+#[tokio::test]
+#[serial]
+async fn minute_history_is_loaded_by_partitions_and_resumed() {
+    with_app(|server, ctx, token| async move {
+        use axum::{extract::Path, http::StatusCode, response::IntoResponse, routing::get, Router};
+        use sha2::{Digest, Sha256};
+        use std::io::Write;
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api {
+            server: &server,
+            token,
+            org,
+        };
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/packs/markets/install", None)
+            .await;
+        assert_eq!(st, 200, "{r}");
+        api.settings(json!({ "history_symbols": "btcusdt", "history_from": "2026-09" }))
+            .await;
+
+        fn zip_of(name: &str, csv: &str) -> Vec<u8> {
+            let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            w.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            w.write_all(csv.as_bytes()).unwrap();
+            w.finish().unwrap().into_inner()
+        }
+        let line = |ms: i64| format!("{ms},100.5,101,100,100.25000000,2,0,200.5,7,1,100,0\n");
+        let sep = zip_of(
+            "BTCUSDT-1m-2026-09.csv",
+            &format!(
+                "{}{}{}",
+                line(1_788_220_800_000),
+                line(1_788_220_860_000),
+                line(1_788_220_920_000)
+            ),
+        );
+        let oct = zip_of("BTCUSDT-1m-2026-10.csv", &line(1_790_812_800_000));
+        // November 2 in microseconds, as Binance publishes since 2025.
+        let nov2 = zip_of("BTCUSDT-1m-2026-11-02.csv", &line(1_793_577_600_000_000));
+        let hits: Arc<Mutex<Vec<String>>> = Arc::default();
+        let files: Arc<std::collections::HashMap<String, Vec<u8>>> = Arc::new(
+            [
+                ("monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2026-09.zip", sep),
+                ("monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2026-10.zip", oct),
+                ("daily/klines/BTCUSDT/1m/BTCUSDT-1m-2026-11-02.zip", nov2),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+        );
+        let app = Router::new().route(
+            "/data/spot/{*path}",
+            get({
+                let (hits, files) = (hits.clone(), files.clone());
+                move |Path(path): Path<String>| async move {
+                    hits.lock().unwrap().push(path.clone());
+                    if let Some(zip) = path.strip_suffix(".CHECKSUM") {
+                        let Some(body) = files.get(zip) else {
+                            return StatusCode::NOT_FOUND.into_response();
+                        };
+                        let mut hex: String = Sha256::digest(body)
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect();
+                        if zip.contains("2026-10") {
+                            hex = "0".repeat(64);
+                        }
+                        return format!("{hex}  {zip}\n").into_response();
+                    }
+                    match files.get(&path) {
+                        Some(b) => b.clone().into_response(),
+                        None => StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::markets::allow_test_host(&base);
+
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
+        pnex_backend::services::markets::history::sweep(&ctx, &base, today)
+            .await
+            .unwrap();
+        let states = || async {
+            ctx.db
+                .query_all_raw(Statement::from_string(
+                    sea_orm::DatabaseBackend::Postgres,
+                    "SELECT period || ':' || period_start::text || ':' || state || ':' \
+                     || coalesce(code, '') || ':' || rows::text AS s \
+                     FROM market_history_partitions ORDER BY period_start"
+                        .to_string(),
+                ))
+                .await
+                .unwrap()
+                .iter()
+                .map(|r| r.try_get::<String>("", "s").unwrap())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            states().await,
+            vec![
+                "month:2026-09-01:done::3",
+                "month:2026-10-01:failed:checksum:0",
+                "day:2026-11-01:empty::0",
+                "day:2026-11-02:done::1",
+            ]
+        );
+        let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
+        assert_eq!(st, 200, "{list}");
+        let table = list["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == "binance_spot_klines_1m")
+            .unwrap_or_else(|| panic!("{list}"))
+            .clone();
+        let types: Vec<String> = table["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                format!(
+                    "{}:{}",
+                    c["name"].as_str().unwrap(),
+                    c["data_type"].as_str().unwrap()
+                )
+            })
+            .collect();
+        assert!(types.contains(&"ts:timestamp".to_string()), "{types:?}");
+        assert!(types.contains(&"close:decimal".to_string()), "{types:?}");
+        assert_eq!(table["rows"], 4, "3 September minutes and 1 of November 2");
+
+        // Second pass: only what is not settled is asked again.
+        hits.lock().unwrap().clear();
+        pnex_backend::services::markets::history::sweep(&ctx, &base, today)
+            .await
+            .unwrap();
+        let asked: Vec<String> = hits
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|p| p.ends_with(".zip"))
+            .cloned()
+            .collect();
+        assert_eq!(
+            asked,
+            vec![
+                "monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2026-10.zip",
+                "daily/klines/BTCUSDT/1m/BTCUSDT-1m-2026-11-01.zip",
+            ],
+            "a done partition is never fetched again"
+        );
+    })
+    .await;
+}
