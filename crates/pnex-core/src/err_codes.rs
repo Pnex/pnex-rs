@@ -753,6 +753,22 @@ pub const MARKING_IN_USE: &str = "marking-in-use";
 pub const CLEARANCE_NOT_FOUND: &str = "clearance-not-found";
 /// The governance journal store does not answer.
 pub const GOVERNANCE_JOURNAL_UNAVAILABLE: &str = "governance-journal-unavailable";
+/// The query cannot be prepared right now (storage or ontology).
+pub const ANALYSIS_UNAVAILABLE: &str = "analysis-unavailable";
+/// An object type holds more objects than a query reads (`args.type`, `args.max`).
+pub const ANALYSIS_TOO_MANY_OBJECTS: &str = "analysis-too-many-objects";
+/// A query of the same person is already queued or running.
+pub const ANALYSIS_BUSY: &str = "analysis-busy";
+/// No such query of the caller.
+pub const ANALYSIS_NOT_FOUND: &str = "analysis-not-found";
+/// The query names a table or an object type that does not exist (`args.table`).
+pub const ANALYSIS_TABLE_UNKNOWN: &str = "analysis-table-unknown";
+/// The query is not one read-only statement the engine accepts (`args.reason`).
+pub const ANALYSIS_SQL_INVALID: &str = "analysis-sql-invalid";
+/// The query ran longer than allowed.
+pub const ANALYSIS_TIMEOUT: &str = "analysis-timeout";
+/// The rows returned weigh more than allowed.
+pub const ANALYSIS_RESULT_TOO_LARGE: &str = "analysis-result-too-large";
 pub const IMAGE_REGISTRY_NOT_FOUND: &str = "image-registry-not-found";
 pub const IMAGE_REGISTRY_NAME_TAKEN: &str = "image-registry-name-taken";
 /// The registry changed since it was read (args `current`).
@@ -1320,6 +1336,14 @@ pub const ALL: &[&str] = &[
     MARKING_IN_USE,
     CLEARANCE_NOT_FOUND,
     GOVERNANCE_JOURNAL_UNAVAILABLE,
+    ANALYSIS_UNAVAILABLE,
+    ANALYSIS_TOO_MANY_OBJECTS,
+    ANALYSIS_BUSY,
+    ANALYSIS_NOT_FOUND,
+    ANALYSIS_TABLE_UNKNOWN,
+    ANALYSIS_SQL_INVALID,
+    ANALYSIS_TIMEOUT,
+    ANALYSIS_RESULT_TOO_LARGE,
     IMAGE_REGISTRY_NOT_FOUND,
     IMAGE_REGISTRY_NAME_TAKEN,
     IMAGE_REGISTRY_VERSION_CONFLICT,
