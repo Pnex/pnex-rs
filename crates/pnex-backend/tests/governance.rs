@@ -204,3 +204,145 @@ async fn a_marked_table_reads_only_with_a_clearance() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn a_marked_object_is_masked_and_cannot_be_written() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "member").await;
+        let (a, b) = (env.alice.as_str(), env.bob.as_str());
+        let (s, t) = call(&server, a, org, "POST", "/api/v1/ontology/types", Some(json!({
+            "def": { "key": "employee", "name": "Employee",
+                     "properties": [{ "key": "salary", "name": "Salary", "kind": "text", "max_len": 16 }] } }))).await;
+        assert_eq!(s, 201, "{t}");
+        let mk = |title: &str, salary: &str| json!({ "type_key": "employee", "title": title,
+                                                    "properties": { "salary": salary } });
+        let (_, ada) = call(&server, a, org, "POST", "/api/v1/ontology/objects", Some(mk("Ada", "5000"))).await;
+        let (_, joe) = call(&server, a, org, "POST", "/api/v1/ontology/objects", Some(mk("Joe", "3000"))).await;
+        let ada_id = ada["id"].as_str().unwrap().to_string();
+        call(&server, a, org, "POST", "/api/v1/governance/markings",
+            Some(json!({ "key": "hr", "name": "HR" }))).await;
+        let (s, m) = call(&server, a, org, "POST", &format!("/api/v1/ontology/objects/{ada_id}/markings"),
+            Some(json!({ "markings": ["hr"] }))).await;
+        assert_eq!((s, m["markings"].clone()), (200, json!(["hr"])), "{m}");
+
+        // Masked whole for everyone not cleared, owner included.
+        let one = format!("/api/v1/ontology/objects/{ada_id}");
+        for t in [a, b] {
+            let (s, o) = call(&server, t, org, "GET", &one, None).await;
+            assert_eq!(s, 200, "{o}");
+            assert!(o["title"].as_str().unwrap().starts_with("••••"), "{o}");
+            assert!(o["properties"].as_object().unwrap().is_empty(), "{o}");
+        }
+        // A query neither lists it nor counts it: a filter on salary would tell.
+        let (s, q) = call(&server, b, org, "POST", "/api/v1/ontology/query",
+            Some(json!({ "type_key": "employee" }))).await;
+        assert_eq!(s, 200, "{q}");
+        assert_eq!(q["count"], 1, "{q}");
+        assert_eq!(q["rows"][0]["object"]["id"], joe["id"], "{q}");
+        // No write on what one cannot read.
+        let (s, e) = call(&server, b, org, "DELETE", &one, None).await;
+        assert_eq!((s, e["error"].as_str()), (403, Some("marking-required")), "{e}");
+
+        // Cleared, bob reads it as it is.
+        let bob_id: i64 = sql(&ctx.db, "SELECT id FROM users WHERE email = 'bob@example.com'").await[0]
+            .try_get("", "id").unwrap();
+        call(&server, a, org, "POST", "/api/v1/governance/clearances",
+            Some(json!({ "user_id": bob_id, "marking_key": "hr", "purpose": "payroll", "days": 1 }))).await;
+        let (_, o) = call(&server, b, org, "GET", &one, None).await;
+        assert_eq!((o["title"].as_str(), o["properties"]["salary"].as_str()), (Some("Ada"), Some("5000")), "{o}");
+        let (_, q) = call(&server, b, org, "POST", "/api/v1/ontology/query",
+            Some(json!({ "type_key": "employee" }))).await;
+        assert_eq!(q["count"], 2, "{q}");
+
+        // Declassified with a reason: alice reads it too.
+        let (s, m) = call(&server, a, org, "POST", &format!("/api/v1/ontology/objects/{ada_id}/declassify"),
+            Some(json!({ "marking": "hr", "justification": "salary moved to the payroll table" }))).await;
+        assert_eq!((s, m["markings"].clone()), (200, json!([])), "{m}");
+        let (_, o) = call(&server, a, org, "GET", &one, None).await;
+        assert_eq!(o["title"], "Ada", "{o}");
+    })
+    .await;
+}
+
+async fn run_import(server: &axum_test::TestServer, token: &str, org: i64, import: &str) -> Value {
+    let (s, r) = call(
+        server,
+        token,
+        org,
+        "POST",
+        &format!("/api/v1/ontology/imports/{import}/runs"),
+        None,
+    )
+    .await;
+    assert_eq!(s, 202, "{r}");
+    let run = r["id"].as_str().unwrap().to_string();
+    for _ in 0..300 {
+        let (_, v) = call(
+            server,
+            token,
+            org,
+            "GET",
+            &format!("/api/v1/ontology/imports/{import}/runs/{run}"),
+            None,
+        )
+        .await;
+        if v["run"]["state"] != "running" {
+            return v;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("run {run} never settled");
+}
+
+#[tokio::test]
+#[serial]
+async fn a_sync_needs_a_cleared_author_and_marks_what_it_writes() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = env.alice.as_str();
+        let (s, t) = call(&server, a, org, "POST", "/api/v1/ontology/types", Some(json!({
+            "def": { "key": "employee", "name": "Employee",
+                     "properties": [{ "key": "code", "name": "Code", "kind": "text", "max_len": 16,
+                                      "unique": true }] } }))).await;
+        assert_eq!(s, 201, "{t}");
+        let (s, d) = call(&server, a, org, "POST", "/api/v1/datasets", Some(json!({ "name": "staff" }))).await;
+        assert_eq!(s, 201, "{d}");
+        let staff = d["id"].as_str().unwrap().to_string();
+        let res = server
+            .post(&format!("/api/v1/datasets/{staff}/transactions/csv"))
+            .add_header("Authorization", format!("Bearer {a}"))
+            .add_header("X-Org-Id", org.to_string())
+            .text("code,name\nA1,Ada\nB2,Bob\n".to_string())
+            .await;
+        assert!(res.status_code().is_success(), "{}", res.text());
+        call(&server, a, org, "POST", "/api/v1/governance/markings", Some(json!({ "key": "hr", "name": "HR" }))).await;
+        call(&server, a, org, "POST", &format!("/api/v1/datasets/{staff}/markings"),
+            Some(json!({ "markings": ["hr"] }))).await;
+
+        let mapping = "key: staff_sync\nname: Staff\nformat: csv\nobjects:\n  - as: e\n    type: employee\n    key: code\n    title: { from: name }\n    properties:\n      code: { from: code }\n";
+        let (s, imp) = call(&server, a, org, "POST", "/api/v1/ontology/imports", Some(json!({
+            "name": "staff", "mapping": mapping, "source": "dataset", "source_url": staff,
+            "mode": "snapshot" }))).await;
+        assert_eq!(s, 201, "{imp}");
+        let id = imp["id"].as_str().unwrap().to_string();
+
+        // Its author is not cleared: the run reads nothing.
+        let r = run_import(&server, a, org, &id).await;
+        assert_eq!(r["run"]["state_code"], "marking-required", "{r}");
+
+        let alice: i64 = sql(&ctx.db, "SELECT id FROM users WHERE email = 'alice@example.com'").await[0]
+            .try_get("", "id").unwrap();
+        call(&server, a, org, "POST", "/api/v1/governance/clearances",
+            Some(json!({ "user_id": alice, "marking_key": "hr", "purpose": "staff sync", "days": 1 }))).await;
+        let r = run_import(&server, a, org, &id).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let marked: i64 = sql(&ctx.db, &format!(
+            "SELECT count(*) AS n FROM object_markings om JOIN objects o ON o.id = om.object_id \
+             WHERE o.org_id = {org} AND o.type_key = 'employee'")).await[0]
+            .try_get("", "n").unwrap();
+        assert_eq!(marked, 2, "what the sync wrote carries the table's marking: {r}");
+    })
+    .await;
+}

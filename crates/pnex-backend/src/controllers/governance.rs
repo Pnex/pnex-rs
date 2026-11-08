@@ -26,6 +26,11 @@ pub fn routes() -> Routes {
         .add("/governance/clearances/{id}/revoke", post(revoke))
         .add("/datasets/{id}/markings", post(mark_dataset))
         .add("/datasets/{id}/declassify", post(declassify_dataset))
+        .add(
+            "/ontology/objects/{id}/markings",
+            get(object_markings).post(mark_object),
+        )
+        .add("/ontology/objects/{id}/declassify", post(declassify_object))
 }
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
@@ -38,7 +43,10 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         grant,
         revoke,
         mark_dataset,
-        declassify_dataset
+        declassify_dataset,
+        object_markings,
+        mark_object,
+        declassify_object
     ))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
@@ -61,6 +69,11 @@ fn governance_error(e: GovernanceError) -> Result<Response> {
             StatusCode::CONFLICT,
             err_codes::MARKING_IN_USE,
             "Data still carries this marking.",
+        ),
+        GovernanceError::ObjectNotFound => (
+            StatusCode::NOT_FOUND,
+            err_codes::ONTOLOGY_NOT_FOUND,
+            "Object not found.",
         ),
         GovernanceError::ClearanceNotFound => (
             StatusCode::NOT_FOUND,
@@ -360,4 +373,93 @@ async fn declassify_dataset(
         Ok(_) => dataset_answer(&ctx, &org, id).await,
         Err(e) => governance_error(e),
     }
+}
+
+fn markings_answer(r: Result<Vec<String>, GovernanceError>) -> Result<Response> {
+    match r {
+        Ok(markings) => format::json(MarkingsAdd { markings }),
+        Err(e) => governance_error(e),
+    }
+}
+
+/// `GET /api/v1/ontology/objects/{id}/markings`
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/markings",
+    tag = "governance",
+    operation_id = "ontology_objects_markings",
+    summary = "Read the markings of an object",
+    description = "Keys of the markings an object carries; reading its title and properties needs a clearance for each. Requires `governance:read`.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::governance::MarkingsAdd),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn object_markings(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    markings_answer(governance::object_markings_in_org(&ctx.db, org.org.id, id).await)
+}
+
+/// `POST /api/v1/ontology/objects/{id}/markings`
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/objects/{id}/markings",
+    tag = "governance",
+    operation_id = "ontology_objects_markings_add",
+    summary = "Mark an object",
+    description = "Adds markings to an object: a caller not cleared for each sees it masked, and cannot change or archive it. Requires `governance:write`.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)")),
+    request_body = pnex_core::governance::MarkingsAdd,
+    responses(
+        (status = 200, body = pnex_core::governance::MarkingsAdd),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found` or `marking-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn mark_object(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<MarkingsAdd>,
+) -> Result<Response> {
+    markings_answer(
+        governance::add_object_markings(&ctx.db, org.org.id, org.auth.user.id, id, &input.markings)
+            .await,
+    )
+}
+
+/// `POST /api/v1/ontology/objects/{id}/declassify`
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/objects/{id}/declassify",
+    tag = "governance",
+    operation_id = "ontology_objects_declassify",
+    summary = "Declassify an object",
+    description = "Removes one marking from an object, with a justification kept in the journal; the next sync of a table that still carries it puts it back. Requires `governance:write`.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)")),
+    request_body = pnex_core::governance::Declassify,
+    responses(
+        (status = 200, body = pnex_core::governance::MarkingsAdd),
+        (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found` or `marking-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn declassify_object(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<Declassify>,
+) -> Result<Response> {
+    markings_answer(
+        governance::declassify_object(&ctx.db, org.org.id, org.auth.user.id, id, &input).await,
+    )
 }

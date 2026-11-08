@@ -157,7 +157,8 @@ pub async fn from_object(
         // A hierarchy the org lacks leaves its placeholder as written.
         // shortcut: the page keeps what its author reads; masking it again
         // for a later reader needs object visibility (iam.md I5).
-        if let Ok(mut v) = super::super::hierarchy::tree(db, org_id, id, Some(&k), None, hide).await
+        if let Ok(mut v) =
+            super::super::hierarchy::tree(db, org_id, id, Some(&k), None, hide.clone()).await
         {
             hide.hierarchy(&schema, &mut v);
             if v.key == k {

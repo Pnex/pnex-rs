@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 codé le 2026-11-08** (§7) |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 et G2 codés le 2026-11-08** (§7) |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; D715 : aucun client réel avant OP3 |
 | Repose sur | `iam.md` (D285–D299, I4, I5), `crm.md` (D442 classification, D443 masquage, D446 effacement), `data-pipelines.md` (D569–D578, lignage), `connectors.md` |
 | Numérotation | **D798…D806**, lots **G1…G7** |
@@ -137,3 +137,18 @@ justifiée, marquage utilisé non supprimable, révocation immédiate.
 Écart à relire : **pas de contrôle de l'auteur au lancement d'un run** en G1. Le lignage suffit à
 fermer la fuite (une table calculée d'une table marquée est marquée, donc illisible pour un
 non-habilité) ; la vérification de l'auteur vient avec G2, quand la synchro écrit des objets.
+
+**G2 (2026-11-08)** : migration 000128 (`object_markings`), routes `ontology_objects_markings`,
+`…_markings_add`, `…_declassify`. Le masque D443 (`Redaction`) porte l'ensemble des objets marqués
+que l'appelant ne peut pas lire (`with_markings`, chargé une fois par requête) : objet caviardé entier
+partout où le masque passe (lecture, liens, voisinage, hiérarchie, journal, dossiers, assistant) ;
+**absent des requêtes et des agrégats** (CTE `vis` du plan de requête), sinon un filtre ou une somme
+révélerait ses valeurs ; mise à jour et archivage refusés (`403 marking-required`). La synchro d'une
+table marquée exige un auteur habilité (`marking-required` sur le run) et marque les objets écrits
+**avant** de déclarer le run fini (une course sinon, trouvée par le test). `Redaction` n'est plus
+`Copy` (sites adaptés). Tests : trois cas dans `tests/governance.rs` ; suites ontology,
+personal_data, apps, ai, proposals, dataset_sync, connectors vertes.
+
+Limites : l'existence d'un objet caviardé reste visible dans une lecture directe ou un lien ; un
+parcours de graphe peut passer par un objet caché ; l'ensemble caché est chargé entier par requête
+(`shortcut:` dans le code).

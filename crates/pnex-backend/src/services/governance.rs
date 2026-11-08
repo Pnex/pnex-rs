@@ -23,6 +23,7 @@ pub enum GovernanceError {
     KeyTaken,
     InUse,
     ClearanceNotFound,
+    ObjectNotFound,
     Db(DbErr),
 }
 
@@ -59,7 +60,8 @@ fn marking_of(r: &QueryResult) -> Result<Marking, DbErr> {
 pub async fn markings(db: &DatabaseConnection, org_id: i64) -> Result<Vec<Marking>, DbErr> {
     let sql = format!(
         "SELECT m.id, m.key, m.name, m.description, \
-           (SELECT count(*) FROM dataset_markings d WHERE d.marking_id = m.id) AS uses, \
+           (SELECT count(*) FROM dataset_markings d WHERE d.marking_id = m.id) \
+           + (SELECT count(*) FROM object_markings o WHERE o.marking_id = m.id) AS uses, \
            to_char(m.created_at AT TIME ZONE 'UTC', {TS}) AS created_at \
          FROM markings m WHERE m.org_id = $1 ORDER BY m.key"
     );
@@ -323,11 +325,7 @@ pub async fn check_dataset_read(
         return Ok(Vec::new());
     }
     let cleared = cleared(db, org_id, user).await?;
-    let missing: Vec<String> = carried
-        .iter()
-        .filter(|k| !cleared.iter().any(|(c, _)| c == *k))
-        .cloned()
-        .collect();
+    let missing = missing(&carried, &cleared);
     let purposes: BTreeSet<&str> = cleared
         .iter()
         .filter(|(k, _)| carried.contains(k))
@@ -425,4 +423,165 @@ pub fn journal(org_id: i64, user: i64, action: &str, detail: serde_json::Value) 
         }
     }
     audit::submit_doc(org_id, GOVERNANCE_STREAM, doc);
+}
+
+/// The carried markings not among the cleared ones.
+fn missing(carried: &[String], cleared: &[(String, String)]) -> Vec<String> {
+    carried
+        .iter()
+        .filter(|k| !cleared.iter().any(|(c, _)| c == *k))
+        .cloned()
+        .collect()
+}
+
+/// The markings of a table `user` lacks, without a journal line: for a run that
+/// reads it under its author's rights.
+pub async fn missing_for(
+    db: &DatabaseConnection,
+    org_id: i64,
+    user: i64,
+    dataset: Uuid,
+) -> Result<Vec<String>, DbErr> {
+    let carried = dataset_markings(db, dataset).await?;
+    if carried.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(missing(&carried, &cleared(db, org_id, user).await?))
+}
+
+/// Ids of the objects of the org that carry a marking `user` is not cleared for.
+// shortcut: loaded whole once per request; fine for thousands of marked objects,
+// look up only the ids of a response when an org marks far more.
+pub async fn hidden_objects(
+    db: &impl ConnectionTrait,
+    org_id: i64,
+    user: i64,
+) -> Result<std::collections::HashSet<String>, DbErr> {
+    let rows = db
+        .query_all_raw(stmt(
+            "SELECT DISTINCT om.object_id FROM object_markings om \
+               JOIN markings m ON m.id = om.marking_id \
+             WHERE m.org_id = $1 AND NOT EXISTS ( \
+               SELECT 1 FROM clearances c WHERE c.marking_id = om.marking_id \
+                 AND c.user_id = $2 AND c.revoked_at IS NULL AND c.expires_at > now())",
+            vec![org_id.into(), user.into()],
+        ))
+        .await?;
+    rows.iter()
+        .map(|r| r.try_get::<Uuid>("", "object_id").map(|u| u.to_string()))
+        .collect()
+}
+
+/// Keys of the markings an object carries.
+pub async fn object_markings(db: &DatabaseConnection, object: Uuid) -> Result<Vec<String>, DbErr> {
+    let rows = db
+        .query_all_raw(stmt(
+            "SELECT m.key FROM object_markings om JOIN markings m ON m.id = om.marking_id \
+             WHERE om.object_id = $1 ORDER BY m.key",
+            vec![object.into()],
+        ))
+        .await?;
+    rows.iter().map(|r| r.try_get("", "key")).collect()
+}
+
+async fn object_in_org(
+    db: &DatabaseConnection,
+    org_id: i64,
+    object: Uuid,
+) -> Result<(), GovernanceError> {
+    db.query_one_raw(stmt(
+        "SELECT 1 AS x FROM objects WHERE org_id = $1 AND id = $2",
+        vec![org_id.into(), object.into()],
+    ))
+    .await?
+    .map(|_| ())
+    .ok_or(GovernanceError::ObjectNotFound)
+}
+
+/// The markings of an object of the org.
+pub async fn object_markings_in_org(
+    db: &DatabaseConnection,
+    org_id: i64,
+    object: Uuid,
+) -> Result<Vec<String>, GovernanceError> {
+    object_in_org(db, org_id, object).await?;
+    Ok(object_markings(db, object).await?)
+}
+
+pub async fn add_object_markings(
+    db: &DatabaseConnection,
+    org_id: i64,
+    by: i64,
+    object: Uuid,
+    keys: &[String],
+) -> Result<Vec<String>, GovernanceError> {
+    object_in_org(db, org_id, object).await?;
+    let mut ids = Vec::new();
+    for k in keys {
+        ids.push(marking_id(db, org_id, k).await?);
+    }
+    for id in ids {
+        db.execute_raw(stmt(
+            "INSERT INTO object_markings (object_id, marking_id) VALUES ($1, $2) \
+             ON CONFLICT DO NOTHING",
+            vec![object.into(), id.into()],
+        ))
+        .await?;
+    }
+    journal(
+        org_id,
+        by,
+        "object_marked",
+        json!({ "object": object.to_string(), "markings": keys }),
+    );
+    Ok(object_markings(db, object).await?)
+}
+
+pub async fn declassify_object(
+    db: &DatabaseConnection,
+    org_id: i64,
+    by: i64,
+    object: Uuid,
+    input: &Declassify,
+) -> Result<Vec<String>, GovernanceError> {
+    if let Some((field, token)) = input.violation() {
+        return Err(invalid(field, &token));
+    }
+    object_in_org(db, org_id, object).await?;
+    let id = marking_id(db, org_id, &input.marking).await?;
+    db.execute_raw(stmt(
+        "DELETE FROM object_markings WHERE object_id = $1 AND marking_id = $2",
+        vec![object.into(), id.into()],
+    ))
+    .await?;
+    journal(
+        org_id,
+        by,
+        "object_declassified",
+        json!({ "object": object.to_string(), "marking": input.marking,
+                "justification": input.justification.trim() }),
+    );
+    Ok(object_markings(db, object).await?)
+}
+
+/// D802: the objects an import wrote from a table carry the table's markings.
+pub async fn propagate_sync(
+    db: &DatabaseConnection,
+    org_id: i64,
+    import: Uuid,
+    dataset: Uuid,
+) -> Result<(), DbErr> {
+    db.execute_raw(stmt(
+        "INSERT INTO object_markings (object_id, marking_id) \
+         SELECT o.id, dm.marking_id FROM objects o, dataset_markings dm \
+         WHERE o.org_id = $1 AND o.source_ref LIKE $2 AND dm.dataset_id = $3 \
+         ON CONFLICT DO NOTHING",
+        vec![
+            org_id.into(),
+            format!("import:{import}@%").into(),
+            dataset.into(),
+        ],
+    ))
+    .await?;
+    Ok(())
 }

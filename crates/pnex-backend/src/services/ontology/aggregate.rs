@@ -200,7 +200,7 @@ pub fn validate(s: &OrgSchema, req: &AggregateQuery, hide: Redaction) -> Result<
         let field = format!("group_by.{i}");
         match g.property.as_deref() {
             Some(k) => {
-                let kinds = readable_kinds(&types, k, &field, hide)?;
+                let kinds = readable_kinds(&types, k, &field, hide.clone())?;
                 let dated =
                     |k: &&PropertyKind| matches!(k, PropertyKind::Date | PropertyKind::DateTime);
                 if g.bucket.is_some() && !kinds.iter().all(dated) {
@@ -210,14 +210,14 @@ pub fn validate(s: &OrgSchema, req: &AggregateQuery, hide: Redaction) -> Result<
                     return Err(invalid(field, FIELD_INVALID));
                 }
             }
-            None => check_hops(s, &g.hops, &field, hide)?,
+            None => check_hops(s, &g.hops, &field, hide.clone())?,
         }
     }
     let money_metric = |m: &Metric| m.property.as_deref().is_some_and(|k| is_money(&types, k));
     for (i, m) in req.metrics.iter().enumerate() {
         if let Some(k) = m.property.as_deref() {
             let field = format!("metrics.{i}.property");
-            let kinds = readable_kinds(&types, k, &field, hide)?;
+            let kinds = readable_kinds(&types, k, &field, hide.clone())?;
             let summable =
                 |k: &&PropertyKind| matches!(k, PropertyKind::Number { .. } | PropertyKind::Money);
             if m.op.is_some_and(MetricOp::numeric) && !kinds.iter().all(summable) {
@@ -226,7 +226,7 @@ pub fn validate(s: &OrgSchema, req: &AggregateQuery, hide: Redaction) -> Result<
         }
         if let Some(w) = m.weight.as_deref() {
             let field = format!("metrics.{i}.weight");
-            let kinds = readable_kinds(&types, w, &field, hide)?;
+            let kinds = readable_kinds(&types, w, &field, hide.clone())?;
             if !kinds
                 .iter()
                 .all(|k| matches!(k, PropertyKind::Number { .. }))
@@ -235,7 +235,12 @@ pub fn validate(s: &OrgSchema, req: &AggregateQuery, hide: Redaction) -> Result<
             }
         }
         if let Some(f) = &m.filter {
-            readable_kinds(&types, &f.key, &format!("metrics.{i}.where.key"), hide)?;
+            readable_kinds(
+                &types,
+                &f.key,
+                &format!("metrics.{i}.where.key"),
+                hide.clone(),
+            )?;
         }
         // A ratio has no meaning across currencies (D580).
         if m.ratio
@@ -270,7 +275,7 @@ pub async fn run(
         last,
         at,
         ..
-    } = plan(db, org_id, &q, hide).await?;
+    } = plan(db, org_id, &q, hide.clone()).await?;
     validate(&s, req, hide)?;
     let types = end_types(&s, &q);
     let money_metric = |m: &Metric| m.property.as_deref().is_some_and(|k| is_money(&types, k));

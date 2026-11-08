@@ -289,7 +289,7 @@ struct ThroughApp {
 /// The caller's masking by classification (crm.md D443) with the schema it
 /// reads; `None` when the role reads everything.
 pub(crate) async fn masking(ctx: &AppContext, org: &OrgContext) -> onto::Result<Option<Masking>> {
-    let r = Redaction::of(|p| org.can(p));
+    let r = redaction(ctx, org).await?;
     if r.is_none() {
         return Ok(None);
     }
@@ -297,6 +297,29 @@ pub(crate) async fn masking(ctx: &AppContext, org: &OrgContext) -> onto::Result<
 }
 
 pub(crate) struct Masking(pub Redaction, pub onto::OrgSchema);
+
+/// A write on an object the caller may not read would overwrite what it never saw
+/// (governance.md D801): `Some` is the refusal to send.
+async fn hidden_object(ctx: &AppContext, org: &OrgContext, id: Uuid) -> Option<Result<Response>> {
+    match redaction(ctx, org).await {
+        Ok(r) if r.hides_object(&id.to_string()) => Some(Err(super::coded_error(
+            StatusCode::FORBIDDEN,
+            err_codes::MARKING_REQUIRED,
+            "A clearance is missing for a marking of this object.",
+            None,
+        ))),
+        Ok(_) => None,
+        Err(e) => Some(onto_error(e)),
+    }
+}
+
+/// The caller's mask: classification by role (D443) and the marked objects it is
+/// not cleared for (governance.md D801).
+pub(crate) async fn redaction(ctx: &AppContext, org: &OrgContext) -> onto::Result<Redaction> {
+    Ok(Redaction::of(|p| org.can(p))
+        .with_markings(&ctx.db, org.org.id, org.auth.user.id)
+        .await?)
+}
 
 /// `r` with the caller's masking applied.
 async fn masked<T>(
@@ -774,7 +797,7 @@ async fn get_object(
     responses(
         (status = 200, body = pnex_core::ontology::api::ObjectView),
         (status = 400, description = "Invalid field (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-write-forbidden`, `app-out-of-scope`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`, `app-out-of-scope`, or `marking-required`: the object carries a marking the caller is not cleared for", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-version-conflict` (args.current), `ontology-system-read-only`, `ontology-erased` (an erased object is a read-only shell)", body = crate::openapi::ErrorDetail)
     ),
@@ -796,6 +819,9 @@ async fn update_object(
         if let Err(e) = guard {
             return super::apps::app_error(e);
         }
+    }
+    if let Some(refused) = hidden_object(&ctx, &org, id).await {
+        return refused;
     }
     let kept: onto::Result<()> = async {
         if let Some(Masking(m, s)) = masking(&ctx, &org).await? {
@@ -823,7 +849,7 @@ async fn update_object(
     params(("id" = String, Path, format = "uuid", description = "Object id (UUID)")),
     responses(
         (status = 204, description = "Archived"),
-        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`, or `marking-required`: the object carries a marking the caller is not cleared for", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-system-read-only`", body = crate::openapi::ErrorDetail)
     ),
@@ -835,6 +861,9 @@ async fn archive_object(
     Path(id): Path<String>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
+    if let Some(refused) = hidden_object(&ctx, &org, id).await {
+        return refused;
+    }
     let r: onto::Result<()> = changes::deferred(async {
         let txn = ctx.db.begin().await?;
         objects::archive(&txn, org.org.id, &actor(&org), id).await?;
@@ -1024,7 +1053,9 @@ async fn object_hierarchy(
         Ok(t) => t,
         Err(e) => return onto_error(e),
     };
-    let hide = onto::redact::Redaction::of(|p| org.can(p));
+    let hide = redaction(&ctx, &org)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let r = onto::hierarchy::tree(
         &ctx.db,
         org.org.id,
@@ -1096,7 +1127,9 @@ async fn object_page(
     Json(input): Json<pnex_core::ontology::api::ObjectPageInput>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
-    let hide = Redaction::of(|p| org.can(p));
+    let hide = redaction(&ctx, &org)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     created(
         onto::cases::pages::from_object(&ctx.db, org.org.id, &actor(&org), id, &input, hide).await,
     )
@@ -1579,7 +1612,9 @@ async fn run_query(
     Json(q): Json<OntologyQuery>,
 ) -> Result<Response> {
     let client = o2(&ctx);
-    let hide = onto::redact::Redaction::of(|p| org.can(p));
+    let hide = redaction(&ctx, &org)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let r = query::run(&ctx.db, client.as_ref(), org.org.id, &q, hide).await;
     reply(masked(&ctx, &org, r, |Masking(m, s), r| m.query(s, r)).await)
 }
@@ -1605,7 +1640,9 @@ async fn run_aggregate(
     org: OrgContext,
     Json(q): Json<pnex_core::ontology::aggregate::AggregateQuery>,
 ) -> Result<Response> {
-    let hide = onto::redact::Redaction::of(|p| org.can(p));
+    let hide = redaction(&ctx, &org)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     reply(onto::aggregate::run(&ctx.db, org.org.id, &q, hide).await)
 }
 

@@ -194,6 +194,9 @@ async fn run_set(
         (k, descending)
     });
     params.remove("desc");
+    let hide = super::ontology::redaction(ctx, org)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let client = super::ontology::o2(ctx);
     match apps::run_set(
         &ctx.db,
@@ -205,7 +208,7 @@ async fn run_set(
         limit,
         offset,
         sort,
-        crate::services::ontology::redact::Redaction::of(|p| org.can(p)),
+        hide,
     )
     .await
     {
@@ -282,7 +285,9 @@ async fn object_set_aggregate(
     Path((id, name)): Path<(Uuid, String)>,
     Json(req): Json<pnex_core::ontology::aggregate::SetAggregateQuery>,
 ) -> Result<Response> {
-    let hide = crate::services::ontology::redact::Redaction::of(|p| org.can(p));
+    let hide = super::ontology::redaction(&ctx, &org)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let run = async {
         let app = apps::get(&ctx.db, org.org.id, id).await?;
         apps::aggregate_set(&ctx.db, org.org.id, &app, &name, &req, hide).await

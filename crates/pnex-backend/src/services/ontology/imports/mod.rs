@@ -1626,6 +1626,18 @@ async fn run_sync(
         (None, _) => Some(err_codes::DATASET_STORAGE_UNAVAILABLE),
         (_, None) => Some(err_codes::DATASET_NOT_FOUND),
         (Some(store), Some(table)) => {
+            // The sync reads the table under its author's rights (governance.md D801).
+            let author = imp.created_by.unwrap_or(-1);
+            let missing = crate::services::governance::missing_for(db, imp.org_id, author, table)
+                .await
+                .unwrap_or_else(|_| vec!["?".into()]);
+            if !missing.is_empty() {
+                let args = serde_json::json!({ "markings": missing });
+                if let Err(e) = fail_run(db, run.id, err_codes::MARKING_REQUIRED, args).await {
+                    tracing::warn!(run = %run.id, error = %e, "import run not recorded");
+                }
+                return;
+            }
             match sync::run(db, &store, imp, table, m, run, apply).await {
                 Ok(()) => None,
                 Err(e) => {

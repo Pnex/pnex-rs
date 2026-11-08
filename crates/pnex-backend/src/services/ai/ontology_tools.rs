@@ -173,10 +173,20 @@ pub async fn describe_ontology(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolE
 }
 
 /// What the member may not read (crm.md D443), with the schema it needs.
+/// The member's mask: classification (D443) and marked objects (governance.md D801).
+/// Without a known member every marked object stays hidden.
+async fn redaction(deps: &ToolDeps<'_>) -> Result<onto::redact::Redaction, ToolError> {
+    let user = deps.actor.as_ref().and_then(|a| a.user_id).unwrap_or(-1);
+    onto::redact::Redaction::of(|p| deps.grants.can(p))
+        .with_markings(deps.db, deps.org_id, user)
+        .await
+        .map_err(|e| ToolError::from(e.to_string()))
+}
+
 async fn masking(
     deps: &ToolDeps<'_>,
 ) -> Result<Option<(onto::redact::Redaction, onto::OrgSchema)>, ToolError> {
-    let m = onto::redact::Redaction::of(|p| deps.grants.can(p));
+    let m = redaction(deps).await?;
     if m.is_none() {
         return Ok(None);
     }
@@ -206,7 +216,7 @@ pub async fn query_ontology(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
         serde_json::from_value(args.get("query").cloned().unwrap_or(json!({})))
             .map_err(|e| ToolError::from(format!("invalid query: {e}")))?;
     q.limit = Some(q.limit.unwrap_or(20).min(QUERY_CAP));
-    let hide = onto::redact::Redaction::of(|p| deps.grants.can(p));
+    let hide = redaction(deps).await?;
     let mut r = query::run(deps.db, deps.o2, deps.org_id, &q, hide)
         .await
         .map_err(onto_error)?;
@@ -224,7 +234,7 @@ pub async fn aggregate_objects(
 ) -> Result<ToolOutcome, ToolError> {
     let req: pnex_core::ontology::aggregate::AggregateQuery = serde_json::from_value(args.clone())
         .map_err(|e| ToolError::from(format!("invalid aggregate: {e}")))?;
-    let hide = onto::redact::Redaction::of(|p| deps.grants.can(p));
+    let hide = redaction(deps).await?;
     let r = onto::aggregate::run(deps.db, deps.org_id, &req, hide)
         .await
         .map_err(onto_error)?;

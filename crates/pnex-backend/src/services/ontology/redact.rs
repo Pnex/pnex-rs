@@ -7,6 +7,9 @@ use pnex_core::ontology::api::{
     ChangeFeed, ChangeView, HierarchyView, LinkView, Neighborhood, ObjectInput, ObjectRef,
     ObjectView, QueryResult,
 };
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use pnex_core::ontology::schema::Classification;
 use serde_json::{Map, Value};
 
@@ -21,10 +24,13 @@ pub const SENSITIVE_READ: &str = "ontology.sensitive:read";
 pub const TITLE: &str = "title";
 
 /// What the caller may not read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Redaction {
     pub personal: bool,
     pub sensitive: bool,
+    /// Objects carrying a marking the caller is not cleared for (governance.md
+    /// D801): masked whole, title and every property.
+    pub objects: Option<Arc<HashSet<String>>>,
 }
 
 impl Redaction {
@@ -32,11 +38,13 @@ impl Redaction {
     pub const NONE: Self = Self {
         personal: false,
         sensitive: false,
+        objects: None,
     };
     /// Everything classified hidden: the history of an erased object (D446).
     pub const ALL: Self = Self {
         personal: true,
         sensitive: true,
+        objects: None,
     };
 
     /// From the caller's permissions.
@@ -44,11 +52,29 @@ impl Redaction {
         Self {
             personal: !can(PERSONAL_READ),
             sensitive: !can(SENSITIVE_READ),
+            objects: None,
         }
     }
 
+    /// Adds the marked objects `user` is not cleared for.
+    pub async fn with_markings(
+        mut self,
+        db: &impl sea_orm::ConnectionTrait,
+        org_id: i64,
+        user: i64,
+    ) -> Result<Self, sea_orm::DbErr> {
+        let hidden = crate::services::governance::hidden_objects(db, org_id, user).await?;
+        self.objects = (!hidden.is_empty()).then(|| Arc::new(hidden));
+        Ok(self)
+    }
+
     pub fn is_none(&self) -> bool {
-        !self.personal && !self.sensitive
+        !self.personal && !self.sensitive && self.objects.is_none()
+    }
+
+    /// The object carries a marking the caller lacks.
+    pub fn hides_object(&self, id: &str) -> bool {
+        self.objects.as_ref().is_some_and(|o| o.contains(id))
     }
 
     pub fn hides(&self, c: Classification) -> bool {
@@ -123,6 +149,16 @@ impl Redaction {
         if self.is_none() {
             return;
         }
+        if self.hides_object(&v.id) {
+            let mut hidden: Vec<String> = std::mem::take(&mut v.properties)
+                .into_iter()
+                .map(|(k, _)| k)
+                .collect();
+            v.title = masked(&v.id);
+            hidden.push(TITLE.into());
+            v.redacted = hidden;
+            return;
+        }
         let mut hidden = self.properties(s, &v.type_key, &mut v.properties);
         if self.hides_title(s, &v.type_key) {
             v.title = masked(&v.id);
@@ -168,7 +204,7 @@ impl Redaction {
     }
 
     pub fn object_ref(&self, s: &OrgSchema, r: &mut ObjectRef) {
-        if !self.is_none() && self.hides_title(s, &r.type_key) {
+        if !self.is_none() && (self.hides_object(&r.id) || self.hides_title(s, &r.type_key)) {
             r.title = masked(&r.id);
         }
     }
@@ -177,7 +213,9 @@ impl Redaction {
         if self.is_none() {
             return;
         }
-        if let Some(def) = s.link_type(&l.link_type) {
+        if self.hides_object(&l.source.id) || self.hides_object(&l.target.id) {
+            l.attributes.clear();
+        } else if let Some(def) = s.link_type(&l.link_type) {
             for a in &def.attributes {
                 if self.hides(a.classification) {
                     l.attributes.remove(&a.key);
@@ -208,7 +246,7 @@ impl Redaction {
             return;
         }
         for n in &mut h.nodes {
-            if self.hides_title(s, &n.type_key) {
+            if self.hides_object(&n.id) || self.hides_title(s, &n.type_key) {
                 n.title = masked(&n.id);
             }
         }
@@ -226,6 +264,9 @@ impl Redaction {
     }
 
     pub fn query(&self, s: &OrgSchema, r: &mut QueryResult) {
+        // A filter on a value would tell which hidden objects hold it: they leave
+        // the result instead of showing masked.
+        r.rows.retain(|row| !self.hides_object(&row.object.id));
         for row in &mut r.rows {
             self.object(s, &mut row.object);
         }
@@ -267,10 +308,15 @@ impl Redaction {
                 }
                 let key = |k: &str| o.get(k).and_then(Value::as_str).map(String::from);
                 if let (Some(t), Some(id)) = (key("type_key"), key("id")) {
+                    let whole = self.hides_object(&id);
                     if let Some(Value::Object(props)) = o.get_mut("properties") {
-                        self.properties(s, &t, props);
+                        if whole {
+                            props.clear();
+                        } else {
+                            self.properties(s, &t, props);
+                        }
                     }
-                    if self.hides_title(s, &t) && o.contains_key(TITLE) {
+                    if (whole || self.hides_title(s, &t)) && o.contains_key(TITLE) {
                         o.insert(TITLE.into(), Value::String(masked(&id)));
                     }
                 }
@@ -302,12 +348,17 @@ impl Redaction {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
-        let title_hidden = self.hides_title(s, &type_key);
+        let whole = self.hides_object(&id);
+        let title_hidden = whole || self.hides_title(s, &type_key);
         let Some(o) = doc.as_object_mut() else {
             return;
         };
         if let Some(Value::Object(props)) = o.get_mut("properties") {
-            self.properties(s, &type_key, props);
+            if whole {
+                props.clear();
+            } else {
+                self.properties(s, &type_key, props);
+            }
         }
         if title_hidden && o.contains_key(TITLE) {
             o.insert(TITLE.into(), Value::String(masked(&id)));

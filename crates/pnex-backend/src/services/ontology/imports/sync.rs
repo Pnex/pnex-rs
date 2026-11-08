@@ -312,6 +312,11 @@ async fn attempt(
                args: Value,
                d: Option<ImportDiff>| async move {
         let keep = matches!(state, "preview" | "refused");
+        if state == "applied" {
+            // D802: what the sync wrote carries the table's markings before the run
+            // is seen as done.
+            crate::services::governance::propagate_sync(db, imp.org_id, imp.id, id).await?;
+        }
         finish_run(db, run.id, state, code, &args, d.as_ref(), keep).await?;
         if state == "refused" {
             notify_refused(db, imp, code.unwrap_or_default(), args).await;

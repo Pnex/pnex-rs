@@ -55,7 +55,7 @@ async fn people(
         limit: Some(5),
         ..Default::default()
     };
-    match crate::services::ontology::query::run(db, None, org_id, &q, *hide).await {
+    match crate::services::ontology::query::run(db, None, org_id, &q, hide.clone()).await {
         Ok(r) => r.rows.into_iter().map(|row| row.object.id).collect(),
         Err(_) => Vec::new(),
     }

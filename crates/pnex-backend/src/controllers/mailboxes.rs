@@ -432,7 +432,9 @@ async fn add_invitation(
     org: OrgContext,
     Path((id, message)): Path<(Uuid, Uuid)>,
 ) -> Result<Response> {
-    let hide = crate::services::ontology::redact::Redaction::of(|p| org.can(p));
+    let hide = super::ontology::redaction(&ctx, &org)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     match mail::invitations::add_to_calendar(&ctx.db, org.org.id, caller(&org), &hide, id, message)
         .await
     {

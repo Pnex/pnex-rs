@@ -148,7 +148,7 @@ pub async fn run(
         last,
         title_hidden,
         ..
-    } = plan(db, org_id, q, hide).await?;
+    } = plan(db, org_id, q, hide.clone()).await?;
     let limit = q.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, QUERY_LIMIT_MAX);
     let offset = q.offset.unwrap_or(0);
     let backend = sea_orm::DatabaseBackend::Postgres;
@@ -360,11 +360,21 @@ pub(super) async fn plan(
             },
         ));
     }
+    let mut last = format!("h{}", q.traverse.len());
+    // Marked objects the caller is not cleared for are no row and no count
+    // (governance.md D801): a filter or an aggregate would read their values.
+    if let Some(hidden) = hide.objects.as_ref().filter(|h| !h.is_empty()) {
+        let p = sql.bind(hidden.iter().cloned().collect::<Vec<String>>());
+        ctes.push(format!(
+            "vis AS (SELECT * FROM {last} WHERE NOT (id::text = ANY({p})))"
+        ));
+        last = "vis".into();
+    }
     Ok(Plan {
         s,
         sql,
         with: ctes.join(", "),
-        last: format!("h{}", q.traverse.len()),
+        last,
         at,
         title_hidden,
     })
