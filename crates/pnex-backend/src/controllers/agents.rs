@@ -25,12 +25,13 @@ pub fn routes() -> Routes {
         .add("/agents/{id}", get(one).put(update).delete(remove))
         .add("/agents/{id}/versions", get(versions))
         .add("/agents/{id}/runs", post(start_run))
+        .add("/agents/{id}/validator/rearm", post(rearm))
 }
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(list, tools, create, one, update, remove, versions, start_run),
+        paths(list, tools, create, one, update, remove, versions, start_run, rearm),
         components(schemas(
             Agent,
             AgentCreate,
@@ -40,7 +41,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             pnex_core::agents::AgentSpec,
             pnex_core::agents::AgentRole,
             pnex_core::agents::AgentLevel,
-            pnex_core::agents::AgentToolInfo
+            pnex_core::agents::AgentToolInfo,
+            pnex_core::agents::GateMode
         ))
     )]
     struct Doc;
@@ -251,6 +253,39 @@ async fn update(
     Json(body): Json<AgentUpdate>,
 ) -> Result<Response> {
     match agents::update(&ctx.db, org.org.id, org.auth.user.id, id, &body).await {
+        Ok(a) => format::json(a),
+        Err(e) => agent_error(e),
+    }
+}
+
+/// `POST /api/v1/agents/{id}/validator/rearm` (validation-gate.md D839)
+#[utoipa::path(
+    post,
+    path = "/api/v1/agents/{id}/validator/rearm",
+    tag = "agents",
+    operation_id = "agents_validator_rearm",
+    summary = "Re-arm a validator agent",
+    description = "After its circuit breaker tripped (too many decisions in an hour, or every recent request accepted), the agent validates requests again; its earlier decisions no longer count. Requires `agents:write` (Admin).",
+    params(("id" = String, Path, format = "uuid", description = "Agent id (UUID)")),
+    responses(
+        (status = 200, body = Agent),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`agent-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn rearm(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    if let Err(e) = agents::get(&ctx.db, org.org.id, id).await {
+        return agent_error(e);
+    }
+    crate::services::agent_gate::rearm(&ctx.db, org.org.id, id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    match agents::get(&ctx.db, org.org.id, id).await {
         Ok(a) => format::json(a),
         Err(e) => agent_error(e),
     }

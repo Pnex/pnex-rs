@@ -449,3 +449,209 @@ async fn an_internal_agent_reads_proposes_its_writes_and_reports() {
     })
     .await;
 }
+
+/// Plays the validation run of request `p` (validation-gate.md D836).
+async fn play_validator(
+    server: &axum_test::TestServer,
+    ctx: &loco_rs::app::AppContext,
+    token: &str,
+    org: i64,
+    p: &Value,
+) {
+    let run = p["values"]["validator"]["run_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("handed to the validator: {p}"));
+    let (_, r) = call(
+        server,
+        token,
+        org,
+        "GET",
+        &format!("/api/v1/agent-runs/{run}"),
+        None,
+    )
+    .await;
+    let job = Uuid::parse_str(r["job_id"].as_str().unwrap()).unwrap();
+    let claimed = internal_agents::claim(&ctx.db, Some(job))
+        .await
+        .unwrap()
+        .expect("queued validation job");
+    internal_agents::run_job(ctx, claimed).await;
+}
+
+/// The newest request of agent `id`, whatever its status.
+async fn last_request(
+    server: &axum_test::TestServer,
+    ctx: &loco_rs::app::AppContext,
+    token: &str,
+    org: i64,
+    id: &str,
+) -> Value {
+    let pid: Uuid = ctx
+        .db
+        .query_one_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "SELECT id FROM proposals WHERE org_id = {org} AND origin = 'agent:{id}' \
+                 ORDER BY created_at DESC LIMIT 1"
+            ),
+        ))
+        .await
+        .unwrap()
+        .expect("a request")
+        .try_get("", "id")
+        .unwrap();
+    call(
+        server,
+        token,
+        org,
+        "GET",
+        &format!("/api/v1/proposals/{pid}"),
+        None,
+    )
+    .await
+    .1
+}
+
+#[tokio::test]
+#[serial]
+async fn the_gate_runs_validates_or_hands_writes_to_a_person() {
+    with_db(|server, env, ctx| async move {
+        let (model, script) = fake_model().await;
+        let org = personal_org(&server, &env.alice).await;
+        let a = env.alice.as_str();
+        let (s, p) = call(&server, a, org, "POST", "/api/v1/ai/providers", Some(json!({
+            "name": "agents", "kind": "anthropic", "base_url": model, "model": "m",
+            "api_key": { "value": "sk-test-key-value" }, "usages": ["agent"] }))).await;
+        assert_eq!(s, 201, "{p}");
+        let flows = |name: &'static str| {
+            let db = ctx.db.clone();
+            async move {
+                db.query_one_raw(sea_orm::Statement::from_string(
+                    sea_orm::DatabaseBackend::Postgres,
+                    format!("SELECT count(*) AS n FROM flows WHERE org_id = {org} AND name = '{name}'"),
+                ))
+                .await
+                .unwrap()
+                .unwrap()
+                .try_get::<i64>("", "n")
+                .unwrap()
+            }
+        };
+        let graph = json!({ "nodes": [
+            { "id": "n1", "kind": "inject", "config": { "repeat_secs": 30 },
+              "outputs": [{ "port": 0, "targets": ["n2"] }] },
+            { "id": "n2", "kind": "metric", "config": { "metric_name": "x" } } ] });
+
+        let checker = json!({ "level": "internal", "timeout_secs": 120, "llm_calls_max": 10,
+                              "tools": ["list_flows"], "max_steps": 3 });
+        let (s, v) = agent(&server, a, org, "checker", "viewer", checker).await;
+        assert_eq!(s, 201, "{v}");
+        let vid = v["id"].as_str().unwrap().to_string();
+
+        // The record: a mode on a write tool of the agent, a validator when one is needed.
+        let base = json!({ "level": "internal", "timeout_secs": 120, "llm_calls_max": 10,
+                           "tools": ["list_flows", "create_flow"], "max_steps": 5 });
+        let mut read_gate = base.clone();
+        read_gate["gate"] = json!({ "list_flows": "autonomous" });
+        let (s, b) = agent(&server, a, org, "x1", "member", read_gate).await;
+        assert!(s == 400 && b.to_string().contains("not_write_tool"), "{b}");
+        let mut no_validator = base.clone();
+        no_validator["gate"] = json!({ "create_flow": "chain" });
+        let (s, b) = agent(&server, a, org, "x2", "member", no_validator).await;
+        assert!(s == 400 && b.to_string().contains("validator_id"), "{b}");
+
+        // Autonomous: runs at once with the agent's service account, recorded as decided.
+        let mut auto = base.clone();
+        auto["gate"] = json!({ "create_flow": "autonomous" });
+        let (s, w) = agent(&server, a, org, "writer", "member", auto).await;
+        assert_eq!(s, 201, "{w}");
+        let wid = w["id"].as_str().unwrap().to_string();
+        {
+            let mut s = script.lock().unwrap();
+            s.push_back(tool("t1", "create_flow", json!({ "name": "auto", "graph": graph })));
+            s.push_back(text("done"));
+        }
+        let done = run(&server, &ctx, a, org, &wid).await;
+        assert_eq!(done["state"], "succeeded", "{done}");
+        assert_eq!(flows("auto").await, 1, "written without a person");
+        let p = last_request(&server, &ctx, a, org, &wid).await;
+        assert_eq!((p["status"].as_str(), p["reason"].as_str()), (Some("accepted"), Some("autonomous")), "{p}");
+        assert_eq!(p["values"]["gate"], "autonomous");
+
+        // A validator that accepts: the write runs with the asking agent's account.
+        let put = |gate: &'static str, version: i64| {
+            let mut spec = base.clone();
+            spec["gate"] = json!({ "create_flow": gate });
+            spec["validator_id"] = json!(vid);
+            json!({ "spec": spec, "expected_version": version })
+        };
+        let (s, w) = call(&server, a, org, "PUT", &format!("/api/v1/agents/{wid}"), Some(put("validator", 1))).await;
+        assert_eq!(s, 200, "{w}");
+        {
+            let mut s = script.lock().unwrap();
+            s.push_back(tool("t1", "create_flow", json!({ "name": "checked", "graph": graph })));
+            s.push_back(text("done"));
+        }
+        run(&server, &ctx, a, org, &wid).await;
+        assert_eq!(flows("checked").await, 0, "waits for the validator");
+        let p = last_request(&server, &ctx, a, org, &wid).await;
+        assert_eq!(p["values"]["gate_stage"], "validator", "{p}");
+        script.lock().unwrap().push_back(text("ACCEPT\nA small metric flow."));
+        play_validator(&server, &ctx, a, org, &p).await;
+        assert_eq!(flows("checked").await, 1, "accepted by the validator");
+        let p = last_request(&server, &ctx, a, org, &wid).await;
+        assert_eq!(p["status"], "accepted", "{p}");
+        assert_eq!(p["values"]["validator"]["decision"], "accept");
+
+        // A chain: the validator refuses → rejected; accepts → a person still decides.
+        let (s, w) = call(&server, a, org, "PUT", &format!("/api/v1/agents/{wid}"), Some(put("chain", 2))).await;
+        assert_eq!(s, 200, "{w}");
+        {
+            let mut s = script.lock().unwrap();
+            s.push_back(tool("t1", "create_flow", json!({ "name": "refused", "graph": graph })));
+            s.push_back(text("done"));
+        }
+        run(&server, &ctx, a, org, &wid).await;
+        let p = last_request(&server, &ctx, a, org, &wid).await;
+        script.lock().unwrap().push_back(text("REJECT: the name is not allowed"));
+        play_validator(&server, &ctx, a, org, &p).await;
+        let p = last_request(&server, &ctx, a, org, &wid).await;
+        assert_eq!(p["status"], "rejected", "{p}");
+        assert!(p["reason"].as_str().unwrap().contains("not allowed"), "{p}");
+        {
+            let mut s = script.lock().unwrap();
+            s.push_back(tool("t1", "create_flow", json!({ "name": "chained", "graph": graph })));
+            s.push_back(text("done"));
+        }
+        run(&server, &ctx, a, org, &wid).await;
+        let p = last_request(&server, &ctx, a, org, &wid).await;
+        script.lock().unwrap().push_back(text("ACCEPT"));
+        play_validator(&server, &ctx, a, org, &p).await;
+        let p = last_request(&server, &ctx, a, org, &wid).await;
+        assert_eq!((p["status"].as_str(), p["values"]["gate_stage"].as_str()), (Some("proposed"), Some("human")), "{p}");
+        assert_eq!(flows("chained").await, 0, "a person still decides");
+
+        // A tripped validator: requests go to a person until it is re-armed.
+        ctx.db
+            .execute_unprepared(&format!(
+                "UPDATE agents SET validator_tripped_at = now(), validator_tripped_reason = 'rate' WHERE id = '{vid}'"
+            ))
+            .await
+            .unwrap();
+        {
+            let mut s = script.lock().unwrap();
+            s.push_back(tool("t1", "create_flow", json!({ "name": "tripped", "graph": graph })));
+            s.push_back(text("done"));
+        }
+        run(&server, &ctx, a, org, &wid).await;
+        let p = last_request(&server, &ctx, a, org, &wid).await;
+        assert_eq!(p["values"]["gate_stage"], "human", "{p}");
+        assert!(p["values"].get("validator").is_none(), "{p}");
+        let (_, v) = call(&server, a, org, "GET", &format!("/api/v1/agents/{vid}"), None).await;
+        assert_eq!(v["validator_tripped"], "rate");
+        let (s, v) = call(&server, a, org, "POST", &format!("/api/v1/agents/{vid}/validator/rearm"), None).await;
+        assert_eq!(s, 200, "{v}");
+        assert!(v.get("validator_tripped").is_none(), "{v}");
+    })
+    .await;
+}

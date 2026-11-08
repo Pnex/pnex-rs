@@ -268,6 +268,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("agents_update", Access::Org("agents:write")),
     ("agents_delete", Access::Org("agents:delete")),
     ("agents_runs_start", Access::Org("agents:run")),
+    ("agents_validator_rearm", Access::Org("agents:write")),
     ("agent_skills_list", Access::Org("agents:read")),
     ("agent_skills_get", Access::Org("agents:read")),
     ("agent_skills_versions_list", Access::Org("agents:read")),

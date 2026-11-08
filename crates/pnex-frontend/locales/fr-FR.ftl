@@ -7304,6 +7304,10 @@ err-hosted-only = Seul un agent hébergé a ce champ.
 err-internal-only = Seul un agent interne a ce champ.
 err-unknown-tool = Cet outil n'existe pas.
 err-write-needs-member = Un outil d'écriture demande un agent au rôle membre.
+err-not-write-tool = Seul un outil d'écriture prend un mode de validation.
+err-not-delegable = Seule une personne peut décider cet outil : il touche aux accès, aux secrets, aux marquages, aux appareils, ou supprime des données.
+err-validator-self = Un agent ne peut pas valider ses propres demandes.
+err-not-internal = Le validateur doit être un agent interne.
 
 ## D780 U2: rule player (pnex-rust-df)
 web-sites-reason-not-a-search-field = Ce champ n'est pas un champ de recherche : une règle ne tape que dans une recherche, jamais dans un formulaire ni une connexion

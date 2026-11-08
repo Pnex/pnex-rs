@@ -669,6 +669,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     (
         "sign-off: approving a document version or deciding a proposal is a human act",
         &[
+            "agents_validator_rearm",
             "cases_proposals_reject",
             "cases_proposals_retain",
             "docs_versions_approve",

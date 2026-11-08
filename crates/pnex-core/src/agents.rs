@@ -80,6 +80,54 @@ pub struct AgentSpec {
     /// Internal only: most model calls of one run; 20 when absent.
     #[serde(default)]
     pub max_steps: Option<i32>,
+    /// Internal only: who decides each write tool (validation-gate.md D833); a tool absent
+    /// here is decided by a person.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gate: BTreeMap<String, GateMode>,
+    /// Internal only: the agent that validates the requests of tools in `validator` or
+    /// `chain` mode (D836).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub validator_id: Option<String>,
+}
+
+/// Who decides a write of an internal agent (D563, D833).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum GateMode {
+    /// A person, in the proposals inbox.
+    #[default]
+    Human,
+    /// Runs at once with the rights of the agent's service account, recorded as decided.
+    Autonomous,
+    /// The validator agent accepts (then it runs) or rejects.
+    Validator,
+    /// The validator agent, then a person.
+    Chain,
+}
+
+impl GateMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Human => "human",
+            Self::Autonomous => "autonomous",
+            Self::Validator => "validator",
+            Self::Chain => "chain",
+        }
+    }
+
+    /// Goes through the validator agent.
+    pub fn validated(self) -> bool {
+        matches!(self, Self::Validator | Self::Chain)
+    }
+}
+
+impl AgentSpec {
+    /// The mode of `tool`: a person when the record says nothing.
+    pub fn gate_of(&self, tool: &str) -> GateMode {
+        self.gate.get(tool).copied().unwrap_or_default()
+    }
 }
 
 /// One tool an internal agent may be given (`GET /agents/tools`).
@@ -138,6 +186,10 @@ pub struct Agent {
     pub role: AgentRole,
     pub version: i32,
     pub spec: AgentSpec,
+    /// As a validator, its circuit breaker tripped (validation-gate.md D839): `rate` or
+    /// `all_accepted`. Its requests go to a person until it is re-armed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validator_tripped: Option<String>,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
@@ -191,6 +243,12 @@ pub fn spec_error(spec: &AgentSpec) -> Option<(&'static str, &'static str)> {
             if spec.max_steps.is_some() {
                 return Some(("max_steps", "internal_only"));
             }
+            if !spec.gate.is_empty() {
+                return Some(("gate", "internal_only"));
+            }
+            if spec.validator_id.is_some() {
+                return Some(("validator_id", "internal_only"));
+            }
         }
         AgentLevel::Internal => {
             // Nothing of a sandbox reaches an internal agent: no image, env, repo or secret.
@@ -218,6 +276,20 @@ pub fn spec_error(spec: &AgentSpec) -> Option<(&'static str, &'static str)> {
                 .is_some_and(|n| !(1..=MAX_STEPS_MAX).contains(&n))
             {
                 return Some(("max_steps", "invalid"));
+            }
+            if spec.gate.keys().any(|t| !spec.tools.contains(t)) {
+                return Some(("gate", "unknown_tool"));
+            }
+            let validated = spec.gate.values().any(|m| m.validated());
+            if validated && spec.validator_id.is_none() {
+                return Some(("validator_id", "required"));
+            }
+            if spec
+                .validator_id
+                .as_deref()
+                .is_some_and(|v| uuid::Uuid::parse_str(v).is_err())
+            {
+                return Some(("validator_id", "invalid"));
             }
         }
     }
@@ -396,6 +468,29 @@ mod tests {
             name: name.into(),
             artifact_id: uuid::Uuid::nil().to_string(),
         }
+    }
+
+    #[test]
+    fn a_gate_names_tools_of_the_agent_and_a_validator() {
+        let mut s = AgentSpec {
+            level: AgentLevel::Internal,
+            timeout_secs: 600,
+            tools: vec!["create_object".into()],
+            ..Default::default()
+        };
+        assert_eq!(spec_error(&s), None);
+        s.gate.insert("update_object".into(), GateMode::Autonomous);
+        assert_eq!(spec_error(&s), Some(("gate", "unknown_tool")));
+        s.gate.clear();
+        s.gate.insert("create_object".into(), GateMode::Chain);
+        assert_eq!(spec_error(&s), Some(("validator_id", "required")));
+        s.validator_id = Some(uuid::Uuid::nil().to_string());
+        assert_eq!(spec_error(&s), None);
+        assert_eq!(s.gate_of("create_object"), GateMode::Chain);
+        assert_eq!(s.gate_of("update_object"), GateMode::Human);
+        let mut hosted = spec();
+        hosted.gate.insert("x".into(), GateMode::Human);
+        assert_eq!(spec_error(&hosted), Some(("gate", "internal_only")));
     }
 
     #[test]

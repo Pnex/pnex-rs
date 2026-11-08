@@ -3,6 +3,7 @@
 
 pub mod agent_artifacts;
 pub mod agent_chains;
+pub mod agent_gate;
 pub mod agent_gateway;
 pub mod agent_ops;
 pub mod agent_runs;

@@ -7308,6 +7308,10 @@ err-hosted-only = Only a hosted agent has this field.
 err-internal-only = Only an internal agent has this field.
 err-unknown-tool = This tool does not exist.
 err-write-needs-member = A write tool needs an agent with the member role.
+err-not-write-tool = Only a write tool takes a validation mode.
+err-not-delegable = Only a person may decide this tool: it touches access, secrets, markings, devices, or deletes data.
+err-validator-self = An agent cannot validate its own requests.
+err-not-internal = The validator must be an internal agent.
 
 ## D780 U2: rule player (pnex-rust-df)
 web-sites-reason-not-a-search-field = The field is not a search field: a rule types only into a search, never a form nor a sign-in

@@ -78,6 +78,7 @@ const ISO: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
 fn select() -> String {
     format!(
         "SELECT id, name, description, service_account_id, role, version, spec, \
+           validator_tripped_reason, \
            to_char(created_at AT TIME ZONE 'UTC', {ISO}) AS created_at, \
            to_char(updated_at AT TIME ZONE 'UTC', {ISO}) AS updated_at \
          FROM agents"
@@ -110,6 +111,7 @@ fn view(r: &QueryResult) -> Result<Agent, DbErr> {
         version: r.try_get("", "version")?,
         spec: serde_json::from_value(r.try_get("", "spec")?)
             .map_err(|e| DbErr::Custom(e.to_string()))?,
+        validator_tripped: r.try_get("", "validator_tripped_reason")?,
         created_at: r.try_get("", "created_at")?,
         updated_at: r.try_get("", "updated_at")?,
     })
@@ -118,6 +120,7 @@ fn view(r: &QueryResult) -> Result<Agent, DbErr> {
 async fn check_spec<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
+    self_id: Option<Uuid>,
     role: AgentRole,
     spec: &AgentSpec,
 ) -> Result<(), AgentError> {
@@ -147,6 +150,32 @@ async fn check_spec<C: ConnectionTrait>(
                 return Err(invalid("spec.tools", "write_needs_member"))
             }
             Some(_) => {}
+        }
+    }
+    // D833, D838: a mode only on a write tool; some writes are only ever decided by a person.
+    for (tool, mode) in &spec.gate {
+        if !known.iter().any(|t| &t.name == tool && t.write) {
+            return Err(invalid("spec.gate", "not_write_tool"));
+        }
+        if *mode != pnex_core::agents::GateMode::Human
+            && crate::services::agent_gate::never_delegated(tool)
+        {
+            return Err(invalid("spec.gate", "not_delegable"));
+        }
+    }
+    // D836, D837: the validator is another internal agent of the org.
+    if let Some(v) = &spec.validator_id {
+        let v = Uuid::parse_str(v).map_err(|_| invalid("spec.validator_id", "invalid"))?;
+        if Some(v) == self_id {
+            return Err(invalid("spec.validator_id", "validator_self"));
+        }
+        let validator = match get(db, org_id, v).await {
+            Ok(a) => a,
+            Err(AgentError::NotFound) => return Err(invalid("spec.validator_id", "not_found")),
+            Err(e) => return Err(e),
+        };
+        if validator.spec.level != AgentLevel::Internal {
+            return Err(invalid("spec.validator_id", "not_internal"));
         }
     }
     if let Some(p) = &spec.provider_id {
@@ -234,7 +263,7 @@ pub async fn create(
     if body.description.chars().count() > DESCRIPTION_MAX {
         return Err(invalid("description", "max_length:1000"));
     }
-    check_spec(db, org_id, body.role, &body.spec).await?;
+    check_spec(db, org_id, None, body.role, &body.spec).await?;
     if let Some(max) = cap_of(db, org_id).await? {
         let n: i64 = db
             .query_one_raw(stmt(
@@ -351,7 +380,7 @@ pub async fn update(
             return Err(invalid("description", "max_length:1000"));
         }
     }
-    check_spec(db, org_id, current.role, &body.spec).await?;
+    check_spec(db, org_id, Some(id), current.role, &body.spec).await?;
     let spec = serde_json::to_value(&body.spec).map_err(|e| DbErr::Custom(e.to_string()))?;
     let txn = db.begin().await?;
     let next = body.expected_version + 1;
@@ -431,6 +460,39 @@ pub async fn start_run(
     start: &AgentRunStart,
 ) -> Result<pnex_core::agent_runs::AgentRun, AgentError> {
     let agent = get(db, org_id, id).await?;
+    start_agent(db, artifacts, org_id, caller_id, agent, start).await
+}
+
+/// A validation run of agent `id` (validation-gate.md D836): the request is its one input,
+/// which its record need not declare.
+pub async fn start_validation(
+    db: &DatabaseConnection,
+    artifacts: ArtifactSettings,
+    org_id: i64,
+    caller_id: i64,
+    id: Uuid,
+    request: pnex_core::agent_runs::ArtifactInput,
+) -> Result<pnex_core::agent_runs::AgentRun, AgentError> {
+    let mut agent = get(db, org_id, id).await?;
+    if !agent.spec.inputs.contains(&request.name) {
+        agent.spec.inputs.push(request.name.clone());
+    }
+    let start = AgentRunStart {
+        inputs: vec![request],
+        ..Default::default()
+    };
+    start_agent(db, artifacts, org_id, caller_id, agent, &start).await
+}
+
+async fn start_agent(
+    db: &DatabaseConnection,
+    artifacts: ArtifactSettings,
+    org_id: i64,
+    caller_id: i64,
+    agent: Agent,
+    start: &AgentRunStart,
+) -> Result<pnex_core::agent_runs::AgentRun, AgentError> {
+    let id = Uuid::parse_str(&agent.id).map_err(|e| DbErr::Custom(e.to_string()))?;
     // A skill removed since the record was saved: said now, not missing from the sandbox.
     if let Some((field, token)) =
         crate::services::agent_skills::check_pins(db, org_id, &agent.spec.skills).await?

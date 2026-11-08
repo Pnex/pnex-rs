@@ -82,8 +82,14 @@ pub(crate) trait LoopPolicy {
     /// Every write becomes a proposal (agents); else a write is held only once the loop
     /// read untrusted content (chat, SEC-71).
     fn proposes_writes(&self) -> bool;
-    /// A write turned into a proposal: its trace entry and what the model reads.
-    async fn propose(&mut self, name: &str, arguments: &serde_json::Value) -> (ToolTrace, String);
+    /// A write turned into a proposal: its trace entry and what the model reads. `tainted`:
+    /// the loop read untrusted content before it (D840).
+    async fn propose(
+        &mut self,
+        name: &str,
+        arguments: &serde_json::Value,
+        tainted: bool,
+    ) -> (ToolTrace, String);
     /// After each tool call, with its trace entry.
     async fn after_tool(&mut self, entry: &ToolTrace);
 }
@@ -126,7 +132,12 @@ impl LoopPolicy for Chat {
     fn proposes_writes(&self) -> bool {
         false
     }
-    async fn propose(&mut self, name: &str, arguments: &serde_json::Value) -> (ToolTrace, String) {
+    async fn propose(
+        &mut self,
+        name: &str,
+        arguments: &serde_json::Value,
+        _tainted: bool,
+    ) -> (ToolTrace, String) {
         (held(name, arguments), HELD_NOTE.to_string())
     }
     async fn after_tool(&mut self, _entry: &ToolTrace) {}
@@ -241,7 +252,7 @@ pub(crate) async fn run_loop<P: LoopPolicy>(
                     continue;
                 }
                 tracing::info!(tool = %call.name, "assistant write held for a human decision");
-                let (entry, content) = policy.propose(&call.name, &call.arguments).await;
+                let (entry, content) = policy.propose(&call.name, &call.arguments, tainted).await;
                 policy.after_tool(&entry).await;
                 trace.push(entry);
                 messages.push(Msg::ToolResult {
