@@ -565,6 +565,6 @@ async fn watched_mode<C: ConnectionTrait>(
     Ok(super::moves::watched(db, org_id)
         .await?
         .into_iter()
-        .find(|w| w.code == code)
+        .find(|w| w.code == code && w.mode != mv::MoveMode::Volume)
         .map_or(mv::MoveMode::LogReturn, |w| w.mode))
 }

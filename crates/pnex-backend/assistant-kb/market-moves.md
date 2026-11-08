@@ -16,7 +16,7 @@ With the **Markets** pack, two settings list the series to watch:
 - **Tickers watched for abnormal sessions (Tiingo)**: by default SPY (S&P 500) and QQQ (Nasdaq-100), read with your own Tiingo key (secret `markets_tiingo_key`), by the import **Watched prices (Tiingo)**.
 
 Each entry reads `CODE:mode:class`:
-- mode `log_return` for prices and indices, `diff` for rates and the VIX;
+- mode `log_return` for prices and indices, `diff` for rates and the VIX, `volume` for the traded volume of a ticker (a session at several times its usual volume, up only);
 - class `equity_index`, `commodity`, `rates`, `volatility`, `fx` or `crypto`;
 - optionally `:k:floor` to change the thresholds of one series.
 

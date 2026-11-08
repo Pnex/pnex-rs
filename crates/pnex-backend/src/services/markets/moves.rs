@@ -54,7 +54,8 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
 /// The metric of the stored values a watched series is read from.
 fn metric_of(target: &ObservationTarget, w: &WatchedSeries) -> Option<String> {
     match target.type_key.as_str() {
-        "macro_series" => Some(w.code.clone()),
+        "macro_series" if w.mode != MoveMode::Volume => Some(w.code.clone()),
+        "instrument" if w.mode == MoveMode::Volume => Some("volume".into()),
         "instrument" => Some("close".into()),
         _ => None,
     }
@@ -65,6 +66,7 @@ fn shown(mode: MoveMode, v: f64) -> String {
     match mode {
         MoveMode::LogReturn => format!("{:+.1} %", (v.exp() - 1.0) * 100.0),
         MoveMode::Diff => format!("{v:+.2}"),
+        MoveMode::Volume => format!("volume x{:.1}", v.exp()),
     }
 }
 

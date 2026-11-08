@@ -13,6 +13,9 @@ pub enum MoveMode {
     LogReturn,
     /// `p[t] - p[t-1]` in the series' unit, for rates and the VIX.
     Diff,
+    /// `ln(v[t])` against the mean of `ln(v)` over the window, for traded
+    /// volumes (D810): only an unusually high volume is a move.
+    Volume,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,6 +48,8 @@ impl MoveParams {
         let floor = match mode {
             MoveMode::LogReturn => 0.02,
             MoveMode::Diff => 0.15,
+            // At least twice the usual volume.
+            MoveMode::Volume => std::f64::consts::LN_2,
         };
         Self {
             k: 3.0,
@@ -73,6 +78,8 @@ fn change(mode: MoveMode, prev: f64, cur: f64) -> Option<f64> {
         MoveMode::LogReturn if prev > 0.0 && cur > 0.0 => (cur / prev).ln(),
         MoveMode::LogReturn => return None,
         MoveMode::Diff => cur - prev,
+        MoveMode::Volume if cur > 0.0 => cur.ln(),
+        MoveMode::Volume => return None,
     };
     v.is_finite().then_some(v)
 }
@@ -112,10 +119,14 @@ pub fn detect(series: &[(NaiveDate, f64)], mode: MoveMode, params: &MoveParams) 
         if past.len() < min_history {
             continue;
         }
-        let (date, value) = changes[i];
+        let (date, mut value) = changes[i];
+        if mode == MoveMode::Volume {
+            // A level, not a change: measured against the window's mean.
+            value -= past.iter().sum::<f64>() / past.len() as f64;
+        }
         let sigma = sample_sd(&past);
         let threshold = (params.k * sigma).max(params.floor);
-        if value.abs() >= threshold {
+        if value.abs() >= threshold && (mode != MoveMode::Volume || value > 0.0) {
             let direction = if value > 0.0 {
                 MoveDirection::Up
             } else {
@@ -138,6 +149,7 @@ impl MoveMode {
         match self {
             Self::LogReturn => "log_return",
             Self::Diff => "diff",
+            Self::Volume => "volume",
         }
     }
 }
@@ -209,6 +221,7 @@ pub fn watched_series(raw: &str) -> Vec<WatchedSeries> {
             let mode = match *parts.get(1)? {
                 "log_return" => MoveMode::LogReturn,
                 "diff" => MoveMode::Diff,
+                "volume" => MoveMode::Volume,
                 _ => return None,
             };
             let asset_class = AssetClass::parse(parts.get(2)?)?;
@@ -278,6 +291,8 @@ pub fn series_windows(
                 MoveMode::LogReturn if p0 > 0.0 => p1 / p0 - 1.0,
                 MoveMode::LogReturn => return None,
                 MoveMode::Diff => p1 - p0,
+                // A volume has no price window to measure.
+                MoveMode::Volume => return None,
             };
             Some(crate::market_study::WindowResult {
                 from,
@@ -404,6 +419,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_volume_spike_is_an_up_move_and_a_quiet_day_is_not() {
+        let d0 = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        let mut series: Vec<(NaiveDate, f64)> = (0..100)
+            .map(|i| {
+                (
+                    d0 + chrono::Duration::days(i),
+                    1_000.0 + 50.0 * ((i % 7) as f64),
+                )
+            })
+            .collect();
+        series.push((d0 + chrono::Duration::days(100), 5_000.0));
+        series.push((d0 + chrono::Duration::days(101), 100.0));
+        let got = detect(
+            &series,
+            MoveMode::Volume,
+            &MoveParams::defaults(MoveMode::Volume),
+        );
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(got[0].date, d0 + chrono::Duration::days(100));
+        assert_eq!(got[0].direction, MoveDirection::Up);
+        assert!(
+            (got[0].value.exp() - 4.0).abs() < 0.5,
+            "about four times the usual volume"
+        );
+        assert_eq!(
+            watched_series("SPY:volume:equity_index")[0].mode,
+            MoveMode::Volume
+        );
+    }
+
+    #[test]
     fn the_setting_reads_entries_and_overrides() {
         let got = watched_series(
             "sp500:log_return:equity_index, VIXCLS:diff:volatility:4:2 ; bad:x:rates, DGS10:diff, X:diff:rates:-1",
@@ -470,7 +516,7 @@ mod tests {
                 if i > 0 {
                     let s = if i % 2 == 0 { step } else { -step };
                     p = match mode {
-                        MoveMode::LogReturn => p * s.exp(),
+                        MoveMode::LogReturn | MoveMode::Volume => p * s.exp(),
                         MoveMode::Diff => p + s,
                     };
                 }

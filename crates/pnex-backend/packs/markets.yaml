@@ -16,10 +16,12 @@
 # Since 1.2.0 the subsidiaries a group declares in the Exhibit 21 of its
 # 10-K become organizations (`declared_key` = country and name) linked to it
 # by `subsidiary_of`, nature `declared`, the exhibit as source.
+# Since 1.3.0 (D810) a ticker entry of mode `volume` turns an unusually high
+# traded volume into a `market_move` too (measure `volume`, up only).
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.2.0"
+version: "1.3.0"
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
 descriptions: {fr: "Sociétés suivies par ticker avec leurs dépôts et chiffres publiés (SEC EDGAR), et séries macroéconomiques (FRED), chaque valeur datée par sa publication. Une aide à l'analyse, pas un conseil en investissement."}
@@ -81,10 +83,10 @@ settings:
   - key: move_tickers
     name: Tickers watched for abnormal sessions (Tiingo)
     names: {fr: "Tickers surveillés (séances anormales, Tiingo)"}
-    description: "Same entries as above for tickers, read with the org's Tiingo key: SPY follows the S&P 500, QQQ the Nasdaq-100."
-    descriptions: {fr: "Mêmes entrées que ci-dessus pour des tickers, lus avec la clé Tiingo de l'org : SPY suit le S&P 500, QQQ le Nasdaq-100."}
+    description: "Same entries as above for tickers, read with the org's Tiingo key: SPY follows the S&P 500, QQQ the Nasdaq-100. Mode volume watches the traded volume instead of the price: a session at several times its usual volume (k sigmas, at least twice by default)."
+    descriptions: {fr: "Mêmes entrées que ci-dessus pour des tickers, lus avec la clé Tiingo de l'org : SPY suit le S&P 500, QQQ le Nasdaq-100. Le mode volume surveille le volume échangé au lieu du cours : une séance à plusieurs fois son volume habituel (k sigmas, au moins le double par défaut)."}
     kind: text
-    default: "SPY:log_return:equity_index, QQQ:log_return:equity_index"
+    default: "SPY:log_return:equity_index, QQQ:log_return:equity_index, SPY:volume:equity_index, QQQ:volume:equity_index"
   - key: move_notify_channels
     name: Channels of the abnormal session notice
     names: {fr: "Canaux de l'avis de séance anormale"}
@@ -219,8 +221,8 @@ types:
         name: Measure
         names: {fr: "Mesure"}
         kind: enum
-        values: [log_return, diff]
-        labels: {log_return: {fr: "Rendement logarithmique", en: "Log return"}, diff: {fr: "Écart", en: "Difference"}}
+        values: [log_return, diff, volume]
+        labels: {log_return: {fr: "Rendement logarithmique", en: "Log return"}, diff: {fr: "Écart", en: "Difference"}, volume: {fr: "Volume échangé", en: "Traded volume"}}
       - { key: measure, name: Change, names: {fr: "Variation"}, kind: number }
       - { key: sigma, name: Usual volatility (sigma), names: {fr: "Volatilité habituelle (sigma)"}, kind: number }
       - { key: threshold, name: Threshold crossed, names: {fr: "Seuil franchi"}, kind: number }

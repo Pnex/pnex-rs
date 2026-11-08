@@ -208,7 +208,7 @@ Premier ensemble utile : MK0 → MK2 + MK4 (suivre ses valeurs, lire leur fil, v
 - MK0 : GLEIF/OpenFIGI/FIRDS, rapprochement avec une organisation existante (aujourd'hui une société SEC est créée par CIK, un doublon est possible avec une société déjà connue par LEI ou SIREN).
 - MK3 : extraction LLM à citation vérifiée (D476 absent du code), règles d'acceptation.
 - Répartition du balayage des documents entre orgs ; millésimes FRED antérieurs à la première lecture ; dépôts plus anciens que `filings.recent` ; alertes `anomaly` sur volume ; synthèse quotidienne de l'assistant ; widget de fiche émetteur.
-- **Imports : passer sur les pipelines de données en masse** (`data-pipelines.md` D344–D358, prévus pour les gros volumes et les fichiers volumineux). Une partie des imports du domaine a été commencée par flow ; recenser ce qui passe encore par un flow (cours, FRED, dépôts, documents) et le transférer sur les pipelines avant de reprendre le domaine marchés. Aucun nouvel import marchés par flow, y compris pour l’appendice A (MK7–MK10). Noté le 2026-11-06, à traiter.
+- ~~**Imports : passer sur les pipelines de données en masse**~~ (clos, appendice B.2) (`data-pipelines.md` D344–D358, prévus pour les gros volumes et les fichiers volumineux). Une partie des imports du domaine a été commencée par flow ; recenser ce qui passe encore par un flow (cours, FRED, dépôts, documents) et le transférer sur les pipelines avant de reprendre le domaine marchés. Aucun nouvel import marchés par flow, y compris pour l’appendice A (MK7–MK10). Noté le 2026-11-06, à traiter.
 
 ### 7 ter. Filiales déclarées : Exhibit 21 des 10-K (lot F6 du test grandeur nature, 2026-11-06)
 
@@ -448,3 +448,55 @@ Assistant : outil `market_session` (lecture) et `market_rule_test` étendu ; fic
 - **Constat moteur, non corrigé ici (`ontology/changes.rs`, D184, D350)** : la file du journal est plafonnée à 100 000 changements par transaction et laisse tomber le surplus. 47 000 créations de l'import GED sont sans historique dans O2. Il faudrait un journal résumé pour les imports en masse, ou une contre-pression dans l'import, qui est asynchrone.
 - **Constat** : pendant l'import, une lecture de l'API a attendu une connexion du pool (`sqlx::pool::acquire` lent). L'import monopolise des connexions.
 - **Corrigé** : la carte ne montrait que les 300 événements les plus récents sur 12 883 ; elle montre désormais les 300 plus importants (morts, puis sources, puis date).
+
+## Appendice B — Fin du domaine (D810–D816, 2026-11-08)
+
+| | |
+|---|---|
+| Statut | Questions tranchées par Shan le 2026-11-08 ; avancement en §B.3 |
+
+### B.1 Décisions
+
+#### D810 — Volume anormal : un mode du détecteur, pas un second détecteur
+
+Une entrée `CODE:volume:classe` de `move_tickers` surveille le volume échangé d'un ticker. La mesure est `ln(v[t])` moins la moyenne de `ln(v)` sur la fenêtre, comparée à `k` × l'écart type de cette même fenêtre, avec un plancher de `ln 2` (au moins le double du volume habituel). Seule une hausse est un mouvement : un volume faible ne dit rien. L'événement est un `market_move` de mesure `volume` (pack `markets` 1.3.0), même avis de séance, même `known_at` hérité (D736). Un volume n'a pas de fenêtre de cours : le test de règle sur une série garde le mode de cours de cette série. Valeurs par défaut : `SPY` et `QQQ` en volume, en plus de leur cours.
+
+#### D811 — Millésimes FRED par ALFRED, clé d'org au coffre
+
+Une import optionnelle lit les millésimes ALFRED (valeurs telles que publiées à chaque date) avec la clé FRED de l'org au coffre, sous la même garde d'hôte que D543. Sans clé, rien ne change : l'historique lu d'un coup reste `backfilled`. Chaque millésime devient une observation datée par sa date de publication (`realtime_start`), donc lisible par le test de règle.
+
+#### D812 — Rapprochement CIK ↔ LEI : une proposition, jamais une fusion
+
+La SEC ne publie pas le LEI. Pour une société créée par son CIK, une recherche GLEIF par nom légal et pays (`US`) qui renvoie exactement un candidat, déjà connu dans l'org par son LEI, produit une proposition « même société » (D375) qu'un humain accepte. Aucune fusion automatique.
+
+#### D813 — Fiche émetteur : cours et événements
+
+La fiche d'une organisation qui a un instrument montre le graphique des clôtures et, sur la même frise, ses `market_event` et ses dépôts.
+
+#### D814 — Synthèse quotidienne : l'assistant de l'org, en lecture
+
+Après la séance, une note de synthèse (mouvements, dépôts, événements du monde de la fenêtre) est rédigée par le fournisseur d'IA de l'org (D119 : aucun LLM plateforme), sans action ni écriture d'objet. Sans fournisseur configuré, rien n'est produit.
+
+#### D815 — MK3 (extraction par LLM) après tout le reste
+
+Les rubriques 8-K (D544) couvrent l'essentiel ; l'extraction à citation vérifiée attend le mécanisme `extractors:` (D476), en cohérence avec D780 (LLM en dernier).
+
+#### D816 — Cours en direct : un connecteur MetaTrader 5 maison
+
+Shan, 2026-11-08 : « pour les cours il y aura un connecteur MT5 qui va envoyer des données en live (PneX maison, pour éviter que les gens payent) ». Cela lève en partie le hors-périmètre « prix temps réel » du §8 pour la lecture (jamais d'ordre, D534). PRD séparé à écrire : forme du connecteur (expert MT5 qui pousse vers un webhook signé CN3, ou agent local), granularité, stockage, et quelles séries alimentent `market_observations`.
+
+### B.2 Imports et pipelines (§7 bis, vérifié le 2026-11-08)
+
+Recensement : aucune import marchés ni monde ne passe par un flow. Toutes sont des imports de pack (`imports:` de `markets.yaml` et `world_events.yaml`), lues par sources `url` / `api`, la plupart `per_object` (une requête par instrument ou série). D571 garde ce chemin pour l'enrichissement `per_object`, qui n'est pas un calcul d'ensemble. Les observations vont dans `market_observations` (D541), pas dans des objets, donc pas par `ontology_sync`. Le point du §7 bis est clos sans transfert ; une source en masse (fichier GLEIF complet, MT5) passera par un pipeline.
+
+### B.3 Avancement
+
+| Décision | État |
+|---|---|
+| 7 ter datation des filiales | codé, d40f7f60 |
+| D810 | codé : `pnex_core::markets::moves` (mode `Volume`), `services::markets::moves::metric_of`, pack 1.3.0, test `prices_with_a_vault_key_and_the_reaction_to_a_filing` |
+| D811 | à coder |
+| D812 | à coder |
+| D813 | à coder |
+| D814 | à coder |
+| D816 | PRD à écrire |

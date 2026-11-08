@@ -372,7 +372,9 @@ fn mock_prices(ticker: &str) -> Value {
                 r = 2.0 * r + if i == 300 { 0.05 } else { 0.0 };
             }
             close *= 1.0 + r;
-            json!({"date": format!("{}T00:00:00.000Z", price_day(i)), "close": close, "volume": 1000,
+            // ACME trades six times its usual volume on the day of its jump.
+            let volume = if ticker.eq_ignore_ascii_case("ACME") && i == 300 { 6000 } else { 1000 + 40 * (i % 5) };
+            json!({"date": format!("{}T00:00:00.000Z", price_day(i)), "close": close, "volume": volume,
                    "divCash": 0.0, "splitFactor": 1.0, "adjClose": close / 2.0})
         })
         .collect();
@@ -454,7 +456,8 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         assert_eq!(st, 200, "{r}");
         api.settings(json!({
             "source_contact": CONTACT, "covered_tickers": "ACME", "benchmark_ticker": "SPY",
-            "ecb_series": "FM.D.U2.EUR", "covered_leis": "LEITEST"
+            "ecb_series": "FM.D.U2.EUR", "covered_leis": "LEITEST",
+            "move_tickers": "ACME:volume:equity_index"
         }))
         .await;
 
@@ -497,6 +500,18 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         assert_eq!(whole, 2, "first read of each instrument: {calls:?}");
         let last = "ACME";
         let acme = object_id(&db, org, "instrument", "ticker", last).await.expect("instrument");
+        // D810: the volume spike is a move of measure `volume`, the only one.
+        let spike = format!("move:ACME:{}:volume", price_day(300));
+        let volume_moves = count(
+            &db,
+            format!(
+                "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event' \
+                 AND properties ->> 'mode' = 'volume'"
+            ),
+        )
+        .await;
+        assert_eq!(volume_moves, 1, "one volume move");
+        assert!(object_id(&db, org, "market_event", "ref", &spike).await.is_some(), "{spike}");
 
         // A daily read asks only for the recent days.
         api.run("Daily prices (Tiingo)").await;
