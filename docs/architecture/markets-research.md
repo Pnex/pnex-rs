@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
-| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), lots **MK0…MK10** |
+| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), lots **MK0…MK14** |
 | Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`data-pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
@@ -199,6 +199,7 @@ Pack `investment_thesis` conforme à D533–D534. Le résultat d'une position se
 | **MK5** | dossier thèse, journal, positions fictives, revue de clôture | oui |
 | **MK6** | test de règle point-in-time | oui |
 | **MK7…MK10** | mouvements de marché et événements géopolitiques : voir appendice A (§A.3) | oui |
+| **MK11…MK14** | historique de prix en masse (minute, tick) en tables, pour l'entraînement : voir appendice C (§C.4) | oui |
 
 Premier ensemble utile : MK0 → MK2 + MK4 (suivre ses valeurs, lire leur fil, voir la réaction aux publications réglementaires), avant toute extraction LLM.
 
@@ -475,7 +476,7 @@ La fiche d'une organisation qui a un instrument montre le graphique des clôture
 
 #### D814 — Synthèse quotidienne : l'assistant de l'org, en lecture
 
-Après la séance, une note de synthèse (mouvements, dépôts, événements du monde de la fenêtre) est rédigée par le fournisseur d'IA de l'org (D119 : aucun LLM plateforme), sans action ni écriture d'objet. Sans fournisseur configuré, rien n'est produit.
+Après la séance, une note de synthèse (mouvements, dépôts, événements du monde de la fenêtre) est rédigée par le fournisseur d'IA de l'org (D119 : aucun LLM plateforme), sans action ni écriture d'objet. Sans fournisseur configuré, rien n'est produit. **Placement (Shan, 2026-11-08)** : un paragraphe de l'avis de séance (application et canaux `move_notify_channels`), une fois par jour ; rien n'est stocké comme objet.
 
 #### D815 — MK3 (extraction par LLM) après tout le reste
 
@@ -483,7 +484,7 @@ Les rubriques 8-K (D544) couvrent l'essentiel ; l'extraction à citation vérifi
 
 #### D816 — Cours en direct : un connecteur MetaTrader 5 maison
 
-Shan, 2026-11-08 : « pour les cours il y aura un connecteur MT5 qui va envoyer des données en live (PneX maison, pour éviter que les gens payent) ». Cela lève en partie le hors-périmètre « prix temps réel » du §8 pour la lecture (jamais d'ordre, D534). PRD séparé à écrire : forme du connecteur (expert MT5 qui pousse vers un webhook signé CN3, ou agent local), granularité, stockage, et quelles séries alimentent `market_observations`.
+Shan, 2026-11-08 : « pour les cours il y aura un connecteur MT5 qui va envoyer des données en live (PneX maison, pour éviter que les gens payent) ». Cela lève en partie le hors-périmètre « prix temps réel » du §8 pour la lecture (jamais d'ordre, D534). **Forme (Shan, 2026-11-08)** : un Expert Advisor MQL5 fourni par PneX pousse les barres par `WebRequest` vers un webhook signé (CN3, `connectors.md` D795), lecture seule, jamais d'ordre. Le stockage suit l'appendice C (D824 : même forme de table que l'historique). PRD de détail à écrire.
 
 ### B.2 Imports et pipelines (§7 bis, vérifié le 2026-11-08)
 
@@ -499,4 +500,136 @@ Recensement : aucune import marchés ni monde ne passe par un flow. Toutes sont 
 | D812 | codé, 54765942 : `pnex_core::markets::same_company` (clé de nom légal, candidat unique), `services::markets::identity` (10 sociétés par passage, avec le balayage des documents), réglage d'état `lei_state`, lien `same_company_as` ; test `sec_companies_are_matched_to_their_lei_by_proposal`. Jamais essayé sur le vrai GLEIF |
 | D813 | à coder |
 | D814 | à coder |
-| D816 | PRD à écrire |
+| D816 | forme tranchée, PRD de détail à écrire (avec D824) |
+
+## Appendice C — Historique de prix en masse pour l'entraînement (D807–D809, D820–D824)
+
+| | |
+|---|---|
+| Statut | Proposé le 2026-11-08, rien de codé |
+| Lots | **MK11…MK14** |
+| Origine | volet trading de PNeX : un modèle entraîné sur des images de graphiques, du texte et la frise des événements (`geo_event`, `market_event`), puis une boucle qui cherche les meilleurs trades. Ici, **seulement la collecte de l'historique** : ni le modèle, ni l'entraînement, ni le flux continu |
+| Repose sur | tables et pipelines (`data-pipelines.md` D569–D578 : Parquet sur S3, transactions `append`, worker DataFusion, ordonnanceur D575), D526 (une source = une import, liste blanche), D531 (lecture à la date t), D540 (sources primaires), D543 (sources fixées dans le code, R9), §7 bis (aucun import marchés par flow) |
+| Sécurité | `security.md` §6 avant chaque lot ; hôtes fixés dans le code, egress R8 |
+
+### C.1 Le besoin
+
+1. Charger **l'historique complet** de prix à granularité fine (minute, tick) sur un univers choisi : crypto (Binance), forex et CFD (Dukascopy), des années d'historique par instrument.
+2. Le garder **tel que la source l'a publié**, en colonnes typées, pour le relire par fenêtre de temps et le joindre aux événements datés (`known_at`) déjà dans PNeX.
+3. Reprendre un chargement coupé sans tout retélécharger, puis suivre la source chaque jour.
+
+Volume visé : de quelques Go (bougies minute) à plusieurs To (ticks, trades). Le volume ne passe ni par PostgreSQL ni par l'ontologie.
+
+Hors du besoin : l'entraînement, les images (générées à la lecture, jamais stockées), le flux continu MT5 (D824), l'affichage de graphiques intrajournaliers.
+
+### C.2 Ce qui bloque aujourd'hui (relevé dans le code)
+
+| Point | Où | Effet |
+|---|---|---|
+| Une import lit **une** URL ou **un** fichier | `services/ingest` (`source_resolve` → `file_download`) | Binance publie un zip par symbole et par mois, Dukascopy un fichier par heure et par instrument : 10⁴ à 10⁵ fichiers par instrument |
+| Format binaire | — | les `.bi5` Dukascopy sont du LZMA brut, pas du CSV |
+| `QUOTA_BYTES` = 20 Go, constante | `services/datasets/mod.rs` | bloque bien avant le To (§9.9, ligne Quota) |
+| `UNZIPPED_MAX` = 200 Mo par fichier extrait | `pnex_core::import_read` | un fichier mensuel de trades BTCUSDT le dépasse |
+| `STAGING_QUOTA_BYTES` = 2 Go | `pnex_core::ingest` | une zone de transit par run, faite pour un fichier, pas pour une série |
+| Colonnes tout en texte au chargement | D569, OP1.1 | les types viennent d'une transformation : un passage SQL de plus sur des To |
+| Cours dans `market_observations` | D541, D543 | une ligne PostgreSQL par valeur quotidienne : adapté au journalier, pas à 10⁹ ticks |
+
+### C.3 Décisions
+
+#### D807 — L'historique fin vit dans des tables, jamais dans l'ontologie ni dans `market_observations`
+
+Application de D570 : une bougie ou un tick n'est pas un objet. `market_observations` reste la source du journalier, des études d'événement et du test de règle (D541, D543), sans changement. L'historique fin est une **table** (D569) par (source, forme), par exemple `binance_spot_klines_1m`, `dukascopy_ticks`. L'instrument est une colonne, pas une table : un univers de 300 symboles reste une table.
+
+Le lien avec l'ontologie passe par la colonne `instrument`, rapprochée de `listing.ticker` ou d'un code de source (`instrument.source_codes`, à ajouter au pack `markets`). Pas de déclaration d'identité (D569, effacement) : ces tables ne contiennent aucune personne.
+
+#### D808 — Origine `partitioned_download` : un modèle d'URL, une plage, une partition = une transaction `append`
+
+Nouvelle origine d'import, exécutée par le backend (D573 : l'origine voit l'egress, le worker non).
+
+- **Partition** = (instrument, période). La période vaut `month`, `day` ou `hour` selon la source. Les URLs viennent d'un modèle fixé par la source (D822), jamais d'une URL saisie.
+- **Univers** : liste d'instruments lue dans un réglage d'org (même école que `move_series`, D737), plage `from` / `to` (`to` absent = jusqu'à la dernière période close).
+- **Registre de partitions** : table `market_history_partitions` (`org_id`, `import_id`, `instrument`, `period_start`, `state` `done|empty|failed`, `bytes`, `rows`, `sha256`, `transaction_id`, `fetched_at`). Une partition `done` n'est jamais relue. Un run reprend donc là où le précédent s'est arrêté, après un pod tué compris (D346 sans le staging).
+- **404 = partition vide** (`empty`, week-end, instrument pas encore coté), pas un échec. Une partition `empty` plus récente que 7 jours est retentée (publication tardive).
+- **Écriture** : chaque partition est décodée en flux (D820) et commitée en transaction `append` dans la table. La zone de transit D318 n'est pas utilisée : le fichier source est petit et lu une fois.
+- **Somme de contrôle** : vérifiée quand la source la publie (`.CHECKSUM` Binance). Un écart = `failed`, partition retentée au run suivant.
+- **Débit** : concurrence bornée par hôte (défaut 4) et pause entre requêtes, fixées par la source. Un 429 ou un 503 met la source en attente, sans compter d'échec.
+- **Suivi quotidien** : la planification D575 relance l'import, qui ne prend que les partitions nouvelles. Pas de cron à part, pas de flow (§7 bis).
+
+Ce qui reste à vérifier dans le lot : la vue courante d'une table à 10⁵ transactions `append` (lecture du catalogue, nombre de fichiers par requête DataFusion). Si elle ne tient pas, un compactage par mois (une transaction `snapshot` d'un mois remplace ses `append`) est le remède prévu, pas avant la mesure.
+
+#### D809 — Deux formes de table, colonnes typées dès l'écriture
+
+Écart assumé à « un fichier chargé est tout en texte » (OP1.1) : le décodeur est notre code, sur une source fixée, les types sont donc connus.
+
+| Forme | Colonnes |
+|---|---|
+| `ohlcv` | `instrument` text, `ts` timestamp µs UTC (ouverture de la bougie), `interval` text, `open`, `high`, `low`, `close` decimal, `volume` decimal, `quote_volume` decimal null, `trades` int64 null, `source` text |
+| `quote_tick` | `instrument` text, `ts` timestamp µs UTC, `bid`, `ask` decimal, `bid_volume`, `ask_volume` float64, `source` text |
+| `trade_tick` (MK13) | `instrument` text, `ts` timestamp µs UTC, `price` decimal, `qty` decimal, `side` text null, `trade_id` int64, `source` text |
+
+- **Prix en décimal**, jamais en flottant : Dukascopy publie un entier à l'échelle de l'instrument, Binance une chaîne décimale.
+- **Horodatage normalisé en µs UTC** : Binance passe des millisecondes aux microsecondes sur le spot à partir du 2025-01-01 (README de `binance-public-data`). Le décodeur détecte l'unité par fichier, pas par date codée en dur.
+- **Pas de `known_at`** : un prix brut est connu à `ts` (D531 : `ts <= t` pour les cours bruts). Une jointure avec un événement lit `known_at` côté événement, `ts` côté prix.
+- **Valeurs brutes** : pas d'ajustement, pas de bougie reconstruite, pas de jour comblé (D525, D735). Un trou reste un trou.
+
+#### D820 — Décodeurs natifs, purs, dans `pnex_core::market_history`
+
+Fonctions pures (octets → lignes typées), testées sur des fichiers réels mis en fixtures, sans réseau.
+
+- `binance_klines` et `binance_trades` : zip contenant un CSV, sans en-tête selon la période. Lecteur `csv-core` existant.
+- `dukascopy_bi5` : LZMA brut (crate `lzma-rs`, pure Rust, licence à vérifier par `task security:deps`), enregistrements de 20 octets gros-boutistes : décalage en ms depuis le début de l'heure (u32), ask (u32), bid (u32), volume ask (f32), volume bid (f32). Prix = entier / échelle de l'instrument (10⁵ pour la plupart des paires, 10³ pour les paires en JPY, autre pour métaux et indices). **Table des échelles dans le code**, un instrument absent est refusé (`market-history-unknown-scale`), jamais deviné. Mois numérotés de 0 dans l'URL Dukascopy.
+- Un fichier qui ne se décode pas = partition `failed` avec son code, jamais une table à moitié écrite (la transaction n'est commitée qu'entière).
+
+#### D821 — Les plafonds deviennent des réglages plateforme
+
+- `QUOTA_BYTES` des tables devient un réglage plateforme par org (`dataset_quota_bytes`, défaut 20 Go inchangé), posé par l'admin plateforme seulement (même école que Q-P1, Q-P2). En SaaS il suivra le tier (§9.9, ligne Quota).
+- `UNZIPPED_MAX` reste à 200 Mo : il protège d'un zip hostile, et une partition le respecte si sa période est bien choisie. Les trades Binance se lisent par **jour**, pas par mois.
+- Le staging (2 Go) n'est pas concerné : D808 ne l'utilise pas.
+- La rétention `retain_days` ne touche que des versions remplacées : une table en `append` garde tout son historique.
+
+#### D822 — Sources fixées dans le code, conditions notées
+
+Comme `KEYED_SOURCES` (D543, R9) : une import nomme une source de `HISTORY_SOURCES`, jamais un hôte. Chaque source fixe son hôte, ses modèles d'URL, ses périodes, sa concurrence et son `license_note`.
+
+| Source | Hôte | Contenu | Période | Clé |
+|---|---|---|---|---|
+| `binance_public` | `data.binance.vision` | spot et futures USD-M / COIN-M : klines (1s à 1mo), trades, aggTrades | mois clos, jour pour le mois en cours | non |
+| `dukascopy_public` | `datafeed.dukascopy.com` | ticks bid/ask forex, métaux, CFD indices et actions | heure | non |
+
+- **Conditions d'usage à vérifier avant MK11 et MK12** et à écrire dans `license_note` : usage interne, redistribution, SaaS. Dukascopy en particulier, dont les prix de CFD sont des cotations de courtier, pas des données de bourse.
+- Les tables restent privées à l'org (même règle que D527) : jamais exposées par un lien public ni une page publiée.
+- Les données de bourse en profondeur (CME, actions US L2/L3) restent hors V1 : fournisseur payant, licences d'échange, voir B.6.
+
+#### D823 — Lecture pour l'entraînement : fenêtres, rééchantillonnage en SQL, pas d'image stockée
+
+- Le rééchantillonnage (M1 → M5, H1, D1 ; ticks → M1) est une **transformation SQL** du pipeline (D572), sortie dans une table, avec `checks:` (D576). Pas de fonction dédiée.
+- Les images de graphiques sont générées par le code d'entraînement à partir de l'OHLCV, jamais stockées dans PNeX.
+- Export : lecture des fichiers Parquet de la vue courante (ou `as_of`) par une route de lecture paginée par fichier, droits `datasets:read`. Le code d'entraînement lit le Parquet directement, sans passer les lignes par l'API JSON. La route exacte se décide dans MK14.
+- La jointure prix × événements respecte D531 : un événement n'entre dans une fenêtre qu'à partir de son `known_at`, un `backfilled` est exclu par défaut. La règle « mesure à partir de la séance qui suit le jour de connaissance » (A.7, point 8) vaut aussi ici.
+
+#### D824 — Le flux continu (MT5) écrit la même forme, plus tard
+
+Un adaptateur MT5 (agent desktop, `agent-environments.md`) écrira des transactions `append` dans une table de forme `quote_tick` ou `ohlcv`, avec `source = mt5:<courtier>`. Même schéma que l'historique : le modèle voit la même donnée à l'entraînement et en direct. PRD à part, rien n'est prévu ici au-delà du schéma commun. Aucun ordre passé par PNeX (D534, D123).
+
+### C.4 Lots
+
+| Lot | Contenu | Acceptance |
+|---|---|---|
+| **MK11** | D807, D808, D809 (`ohlcv`), D820 (`binance_klines`), D822 (`binance_public`) ; registre de partitions ; planification | BTCUSDT et ETHUSDT spot 1m depuis 2017-08 : nombre de lignes égal au nombre de minutes moins les trous publiés ; pod tué au milieu → le run suivant ne retélécharge que les partitions non `done` ; second run complet = zéro téléchargement ; une partition au `.CHECKSUM` faux reste `failed` |
+| **MK12** | D809 (`quote_tick`), D820 (`dukascopy_bi5` + table des échelles), D822 (`dukascopy_public`) | EURUSD et USDJPY, une année de ticks : prix comparés à un échantillon décodé à part ; échelle JPY juste ; heure sans tick = `empty` ; débit tenu sans 429 |
+| **MK13** | D821 (quota par org), `trade_tick` + `binance_trades` par jour, mesure de la vue courante à 10⁵ transactions (compactage seulement si elle échoue) | un univers de 20 symboles sur 5 ans sous un quota posé à 2 To ; temps de lecture d'une fenêtre d'un mois mesuré et noté |
+| **MK14** | D823 : transformations de rééchantillonnage d'exemple dans le pack, lecture Parquet pour l'entraînement | M1 → H1 d'une année BTCUSDT, contrôle `unique` sur (`instrument`, `ts`) ; un script externe lit une fenêtre de la vue courante sans passer par l'API JSON |
+
+Premier ensemble utile : **MK11 seul**. Il valide toute la chaîne (origine en partitions, reprise, `append`, planification) sur une source simple, avant le format binaire de Dukascopy.
+
+### C.5 Questions ouvertes
+
+- **Q-MK9** : univers de départ (quels symboles Binance, quelles paires Dukascopy) et profondeur d'historique.
+- **Q-MK10** : klines seulement en MK11, ou aussi `aggTrades` (bien plus volumineux) ?
+- **Q-MK11** : conditions d'usage Dukascopy et Binance pour le mode SaaS (B.3, D822).
+- **Q-MK12** : quota par défaut d'une org self-hosted : 20 Go inchangé, ou plus haut puisque le disque est celui de l'utilisateur ?
+- **Q-MK13** : table par (source, forme) avec `interval` en colonne, ou table par intervalle ? Proposé : par forme, `interval` en colonne, une table par intervalle seulement si la lecture mesurée (MK13) le demande.
+
+### C.6 Hors périmètre
+
+Entraînement et modèle ; génération d'images ; carnets d'ordres et profondeur de marché ; données de bourse payantes (CME, OPRA, actions US L2/L3) ; fournisseurs à clé (à ajouter plus tard sous D543) ; adaptateur MT5 (D824, PRD à part) ; toute exécution d'ordre.
