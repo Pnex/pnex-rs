@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). Rien de codé |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **AN1 codé le 2026-11-08** (§6) ; AN2, AN3 à faire |
 | Déclencheur | Ordre OP1 → OP2 → OP3, puis OP5 (`operational-platform.md` §2) ; agrégats déjà livrés (`object-aggregates.md`) |
 | Repose sur | `operational-platform.md` (D557 : lecture seule, droits de l'appelant), `data-pipelines.md` (worker D571–D574), `governance.md` (marquages D801), `crm.md` (masque D443), `ontology.md` (D185 requête), `pages` |
 | Numérotation | **D825…D832**, lots **AN1…AN3** (AN4, analyse sans code, plus tard) |
@@ -92,3 +92,22 @@ Un bloc est recalculé à l'export et porte « au <date> ».
 | **AN2** | D829–D830 : règles et rejeu |
 | **AN3** | D831–D832 : blocs vivants dans les pages |
 | AN4 | Analyse sans code (tableau croisé), plus tard |
+
+## 6. Avancement
+
+**AN1 (2026-11-08)** : migration 000131 (`analysis_queries`, droits du rôle restreint du worker),
+`pnex_core::analysis`, `services/analysis.rs` (envoi : tables lisibles et refusées, objets figés en
+Parquet sous le masque de l'auteur ; lecture ; purge à un jour dans la boucle horaire),
+`controllers/analysis.rs` (`analysis_queries_create`, `analysis_queries_get`, `analysis:run` Membre,
+exposés au MCP), module `analysis.rs` du worker (pris avant les runs, tables enregistrées seulement si
+autorisées, schéma `objects`, 60 s, 1 000 lignes, 10 Mo ; une requête bloquée plus de 5 min échoue
+d'elle-même). Onglet « Requête SQL » de `/pipelines` (Ctrl+Entrée, suivi de l'état, résultat en
+tableau, raison du moteur affichée telle quelle sous le message traduit). Tests : `tests/analysis.rs`
+(backend), `a_query_reads_only_what_the_server_fixed` (worker, vraie base et vrai stockage),
+`e2e/tests/analysis.spec.ts` avec un vrai worker, deux fois vert.
+
+Écarts à relire : la journalisation D828 se fait **à l'envoi**, pour les tables marquées dont le nom
+apparaît dans le texte (une correspondance de mot, pas l'analyse du moteur) ; un objet figé d'une
+requête jamais exécutée reste jusqu'à la purge du lendemain (`shortcut:` dans le code). `break-ui` :
+le message d'une requête refusée disait « pas un seul SELECT » pour une colonne inconnue ; reformulé
+en « le moteur a refusé : sa raison suit ».

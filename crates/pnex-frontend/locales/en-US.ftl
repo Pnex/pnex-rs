@@ -4549,9 +4549,21 @@ err-analysis-too-many-objects = This object type holds too many objects for a qu
 err-analysis-busy = One of your queries is still running: wait for it to finish.
 err-analysis-not-found = This query does not exist, or it is no longer kept.
 err-analysis-table-unknown = The query names a table or an object type that does not exist.
-err-analysis-sql-invalid = The query is not a single read-only SELECT the engine accepts.
+err-analysis-sql-invalid = The engine refused the query: its reason follows. Only one read-only SELECT is accepted.
 err-analysis-timeout = The query took too long: narrow it.
 err-analysis-result-too-large = The result is too large: select fewer columns or rows.
+pipe-tab-query = SQL query
+pipe-query-label = Query
+pipe-query-help = One read-only SELECT on your tables, and on the objects of a type written objects.<type>. First 1,000 rows, 60 seconds at most.
+pipe-query-run = Run
+pipe-query-shortcut = Ctrl+Enter runs it.
+pipe-query-queued = Queued
+pipe-query-running = Running
+pipe-query-rows = { $count ->
+    [one] 1 row
+   *[other] { $count } rows
+}
+pipe-query-truncated = First 1,000 rows only.
 err-image-registry-not-found = This registry does not exist.
 err-image-registry-name-taken = A registry of this organization already has this name.
 err-image-registry-version-conflict = This registry changed since you opened it: reload it.

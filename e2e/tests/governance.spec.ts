@@ -49,8 +49,8 @@ test.describe('governance', { tag: '@pipelines' }, () => {
     await app.goto('/access?tab=governance');
     await row.getByRole('button', { name: app.t('gov-revoke') }).click();
     await confirmDialog(page, app.t('gov-revoke-title')).getByRole('button', { name: app.t('gov-revoke') }).click();
-    // Active ones list first: the revoked one leaves the page, checked through the API.
-    await expect(row).toHaveCount(0);
+    // Revoked: no Revoke button any more (it may sit on another page among active ones).
+    await expect(row.getByRole('button', { name: app.t('gov-revoke') })).toHaveCount(0);
     const mine = (await api.list<any>('/governance/clearances')).find((c) => c.purpose === `payroll ${key}`);
     expect(mine.active).toBe(false);
 

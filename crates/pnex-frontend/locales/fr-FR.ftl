@@ -4548,9 +4548,21 @@ err-analysis-too-many-objects = Ce type d'objet en compte trop pour une requête
 err-analysis-busy = Une de vos requêtes est encore en cours : attendez qu'elle se termine.
 err-analysis-not-found = Cette requête n'existe pas, ou elle n'est plus gardée.
 err-analysis-table-unknown = La requête nomme une table ou un type d'objet qui n'existe pas.
-err-analysis-sql-invalid = La requête n'est pas un seul SELECT en lecture que le moteur accepte.
+err-analysis-sql-invalid = Le moteur a refusé la requête : sa raison suit. Seul un SELECT en lecture est accepté.
 err-analysis-timeout = La requête a duré trop longtemps : resserrez-la.
 err-analysis-result-too-large = Le résultat est trop gros : choisissez moins de colonnes ou de lignes.
+pipe-tab-query = Requête SQL
+pipe-query-label = Requête
+pipe-query-help = Un SELECT en lecture sur vos tables, et sur les objets d'un type écrits objects.<type>. 1 000 premières lignes, 60 secondes au plus.
+pipe-query-run = Exécuter
+pipe-query-shortcut = Ctrl+Entrée l'exécute.
+pipe-query-queued = En file
+pipe-query-running = En cours
+pipe-query-rows = { $count ->
+    [one] 1 ligne
+   *[other] { $count } lignes
+}
+pipe-query-truncated = Seules les 1 000 premières lignes.
 err-image-registry-not-found = Ce registre n'existe pas.
 err-image-registry-name-taken = Un registre de cette organisation porte déjà ce nom.
 err-image-registry-version-conflict = Ce registre a changé depuis son ouverture : rechargez-le.
