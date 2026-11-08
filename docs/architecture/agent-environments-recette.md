@@ -70,4 +70,47 @@ Résultats du premier run (agent de test sans moteur, qui échoue exprès en cod
 
 Trouvé en route : l'image d'init de test sans `curl` ouvrait la porte d'egress sans sonder (SEC-E7, corrigé).
 
-Reste pour la démonstration de D752 : clés de test saisies dans l'UI (D751), jeton GitHub fin en lecture seule sur `agent-bugfix-demo`, et environnement du moteur OpenAI-compatible.
+La démonstration de D752 a suivi le 2026-11-08 (§6).
+
+## 6. Démonstration de D752 (dev.pnex.io, 2026-11-08)
+
+Un agent hébergé corrige le test rouge du dépôt privé `shanisma/agent-bugfix-demo` et ouvre
+la demande de fusion : https://github.com/shanisma/agent-bugfix-demo/pull/1.
+
+| Pièce | Où |
+|---|---|
+| Serveur | `dev.pnex.io`, org 3 ; `api.extraEnv` porte `PNEX_SANDBOX_INIT_IMAGE` et `PNEX_IMAGE_BUILDER` épinglées par digest (`pnex-deploy/helm/values-dev.yaml`, hors git) |
+| Runner | chart `pnex-runner` dans un cluster kind local, inscrit sur l'org 3 (`kind-local-shan`) ; `jobEgress` vers le registre kind |
+| Registre | `kind-registry:5000`, dépôt `agents-demo` |
+| Environnement | `bugfix-demo` : `wolfi-base` épinglé, `nodejs`, `curl`, `jq`, et `agent.sh` |
+| Agent | `bugfix-demo`, niveau hébergé, rôle `viewer` ; dépôt en `/workspace/app` avec `secret_id` et `push_secret_id` sur le même jeton fin (Contents et Pull requests en écriture, ce seul dépôt) ; sortie `report` requise |
+| Modèle | fournisseur `together` de l'org, usage `agent` seul, `openai/gpt-oss-120b` |
+
+`agent.sh` joue `node --test`, envoie `csv.js`, le test et la sortie au modèle par la passerelle
+(`$OPENAI_BASE_URL`, modèle imposé), remplace `csv.js`, rejoue les tests et écrit le rapport
+(avant, après, diff). Le run réussi : 1 appel, 695 jetons en entrée et 368 en sortie, tests verts,
+branche `pnex/run-<id>` poussée par le sidecar, demande de fusion ouverte par le serveur et
+listée dans `merge_requests`.
+
+Trouvé en route :
+
+- **Image non épinglée refusée** : avec un tag, `builds-create` répond 409
+  `environment-build-unavailable` (« no builder image »). Le serveur exige `@sha256:` ;
+  le message ne le dit pas.
+- **Egress résolu du mauvais côté** : le serveur résolvait l'hôte du dépôt depuis son réseau ;
+  GitHub répond par région, et le clone visait depuis kind une adresse absente de la règle
+  (clone en délai dépassé). Corrigé : le runner ajoute ses propres réponses DNS pour les dépôts
+  et la passerelle (`resolve_here`, `crates/pnex-runner/src/lib.rs`).
+- **Modèles** : `lfm3` sous Ollama en CPU (19 jetons/s, raisonnement long) dépasse les 90 s du
+  fournisseur ; chez Together, `Llama-3.3-70B-Instruct-Turbo` n'est pas serverless et les
+  Qwen 3.7/3.8 exigent le streaming.
+- **Jeton GitHub** : un jeton qui ne couvre pas le dépôt fait échouer le clone en 403 (« Write
+  access to repository not granted », même en lecture) ; en lecture seule, c'est le push qui
+  échoue.
+
+Reste ouvert :
+
+- clone en délai dépassé sur 2 runs sur 8, alors que l'adresse de GitHub figure dans la règle ;
+  piste non vérifiée : règle d'autorisation posée par kindnet après la porte d'egress ;
+- un push refusé laisse le run « succeeded », l'échec n'est que dans le journal ;
+- titre de la demande de fusion générique (« Agent run <id> »).
