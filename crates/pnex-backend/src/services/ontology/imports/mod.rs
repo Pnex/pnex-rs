@@ -610,12 +610,17 @@ async fn records<C: ConnectionTrait>(
         },
         None => None,
     };
+    let key = match keyed_credential(db, imp, m).await {
+        Ok(k) => k,
+        Err(code) => return Err(coded(code)),
+    };
     let by = source::Declared {
         contact,
-        authorization: match keyed_authorization(db, imp, m).await {
-            Ok(a) => a,
-            Err(code) => return Err(coded(code)),
-        },
+        authorization: key
+            .as_ref()
+            .filter(|(src, _)| src.query.is_none())
+            .map(|(src, value)| format!("{} {value}", src.scheme)),
+        query_key: key.and_then(|(src, value)| src.query.map(|q| (q, value))),
         ..Default::default()
     };
     let by = &by;
@@ -712,13 +717,13 @@ async fn records<C: ConnectionTrait>(
     })
 }
 
-/// The `Authorization` of a source that takes a key: from the vault, to that
-/// source's host only. The mapping cannot name another secret or host (R9).
-async fn keyed_authorization<C: ConnectionTrait>(
+/// The key of a source that takes one: from the vault, to that source's
+/// host only. The mapping cannot name another secret or host (R9).
+async fn keyed_credential<C: ConnectionTrait>(
     db: &C,
     imp: &ImportRow,
     m: &Mapping,
-) -> std::result::Result<Option<String>, &'static str> {
+) -> std::result::Result<Option<(pnex_core::markets::KeyedSource, String)>, &'static str> {
     let Some(key) = &m.keyed_source else {
         return Ok(None);
     };
@@ -743,7 +748,7 @@ async fn keyed_authorization<C: ConnectionTrait>(
     let value = store::reveal(db, ring, Some(imp.org_id), row.id)
         .await
         .map_err(|_| required)?;
-    Ok(Some(format!("{} {}", src.scheme, value.trim())))
+    Ok(Some((src, value.trim().to_string())))
 }
 
 /// The org's credentials of a conflict source, from the vault, for the

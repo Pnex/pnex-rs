@@ -81,15 +81,22 @@ pub struct Declared {
     pub authorization: Option<String>,
     /// Other headers of a source's own scheme (UCDP's token header).
     pub headers: Vec<(&'static str, String)>,
+    /// A key a source only takes in its query (FRED): added to the request
+    /// alone, so the logged and stored URL never carries it.
+    pub query_key: Option<(&'static str, String)>,
 }
 
 pub async fn get_as(url: &reqwest::Url, by: &Declared) -> Result<Vec<u8>, &'static str> {
-    let client = if by.authorization.is_some() || !by.headers.is_empty() {
+    let client = if by.authorization.is_some() || !by.headers.is_empty() || by.query_key.is_some() {
         http_keyed()
     } else {
         http()
     };
-    let mut req = client.get(url.clone());
+    let mut target = url.clone();
+    if let Some((param, key)) = &by.query_key {
+        target.query_pairs_mut().append_pair(param, key);
+    }
+    let mut req = client.get(target);
     // An invalid header value fails the request, it never goes out raw.
     if let Some(c) = &by.contact {
         req = req.header(
@@ -104,6 +111,8 @@ pub async fn get_as(url: &reqwest::Url, by: &Declared) -> Result<Vec<u8>, &'stat
         req = req.header(*name, value);
     }
     let mut resp = req.send().await.map_err(|e| {
+        // The error would print the request URL, key included.
+        let e = e.without_url();
         tracing::info!(url = %url, error = %e, "import source unreachable");
         UNREACHABLE
     })?;
@@ -218,6 +227,10 @@ pub async fn fetch_per_object(
                 for r in &mut found {
                     if let Some(o) = r.as_object_mut() {
                         o.insert(QUERIED.to_string(), Value::String(v.clone()));
+                        // An ALFRED answer does not name its series: it is the code asked.
+                        if m.shape == Some(pnex_core::markets::ResponseShape::AlfredVintages) {
+                            o.insert("metric".to_string(), Value::String(v.clone()));
+                        }
                     }
                 }
                 rows.extend(found);

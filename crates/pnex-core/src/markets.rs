@@ -10,6 +10,7 @@ use crate::ontology::import::{parse_csv, table_rows};
 
 pub mod exhibit21;
 pub mod moves;
+pub mod same_company;
 
 /// Field of a per-object record holding the value it was queried with.
 pub const QUERIED: &str = "@queried";
@@ -75,6 +76,10 @@ pub enum ResponseShape {
     /// filings.xbrl.org: the European annual and half-year reports of a
     /// company (ESEF), JSON:API with the entity included.
     EsefFilings,
+    /// ALFRED `series/observations` in JSON, first releases only
+    /// (`output_type=4`): each value dated by the day it was first published
+    /// (D811). The series is the one queried.
+    AlfredVintages,
 }
 
 /// A source that takes a key: fixed host, fixed vault name. A mapping names
@@ -86,16 +91,29 @@ pub struct KeyedSource {
     pub host: &'static str,
     /// Name of the org's vault secret.
     pub secret: &'static str,
-    /// `Authorization` scheme: a header, so the key is never in a URL or a log.
+    /// `Authorization` scheme, when the key goes in a header.
     pub scheme: &'static str,
+    /// Query parameter, for a source that only takes its key in the URL
+    /// (FRED): added at request time, never stored with the URL nor logged.
+    pub query: Option<&'static str>,
 }
 
-pub const KEYED_SOURCES: [KeyedSource; 1] = [KeyedSource {
-    key: "tiingo",
-    host: "api.tiingo.com",
-    secret: "markets_tiingo_key",
-    scheme: "Token",
-}];
+pub const KEYED_SOURCES: [KeyedSource; 2] = [
+    KeyedSource {
+        key: "tiingo",
+        host: "api.tiingo.com",
+        secret: "markets_tiingo_key",
+        scheme: "Token",
+        query: None,
+    },
+    KeyedSource {
+        key: "fred",
+        host: "api.stlouisfed.org",
+        secret: "markets_fred_key",
+        scheme: "",
+        query: Some("api_key"),
+    },
+];
 
 pub fn keyed_source(key: &str) -> Option<KeyedSource> {
     KEYED_SOURCES.iter().copied().find(|s| s.key == key)
@@ -123,6 +141,7 @@ pub fn records(shape: ResponseShape, body: &[u8]) -> Option<Vec<Value>> {
         ResponseShape::XbrlFacts => xbrl_facts(&doc),
         ResponseShape::DailyPrices => daily_prices(&doc),
         ResponseShape::EsefFilings => esef_filings(&doc),
+        ResponseShape::AlfredVintages => alfred_vintages(&doc),
         ResponseShape::DatedCsv | ResponseShape::EcbCsv => None,
     }
 }
@@ -306,6 +325,23 @@ fn dated_csv(text: &str) -> Option<Vec<Value>> {
         let raw = r.get(&series).and_then(Value::as_str).unwrap_or("").trim();
         if let Some(value) = raw.parse::<f64>().ok().filter(|v| v.is_finite()) {
             rows.push(json!({ "metric": series, "end": date, "value": value }));
+        }
+    }
+    Some(rows)
+}
+
+fn alfred_vintages(doc: &Value) -> Option<Vec<Value>> {
+    let mut rows = Vec::new();
+    for o in doc.get("observations")?.as_array()? {
+        let date = o.get("date")?.as_str()?;
+        let known = o.get("realtime_start")?.as_str()?;
+        if !is_date(date) || !is_date(known) {
+            return None;
+        }
+        // A missing value is a dot, as in the CSV.
+        let raw = o.get("value").and_then(Value::as_str).unwrap_or("").trim();
+        if let Some(value) = raw.parse::<f64>().ok().filter(|v| v.is_finite()) {
+            rows.push(json!({ "end": date, "value": value, "known_on": known }));
         }
     }
     Some(rows)
@@ -581,6 +617,19 @@ mod tests {
         assert_eq!(r.len(), 1);
         assert_eq!(r[0]["metric"], "Assets");
         assert_eq!(r[0]["known_on"], "2026-02-01");
+    }
+
+    #[test]
+    fn alfred_first_releases_are_dated_by_their_publication() {
+        let body = br#"{"observations": [
+            {"realtime_start": "2026-02-13", "realtime_end": "2026-03-12", "date": "2026-01-01", "value": "3.1"},
+            {"realtime_start": "2026-03-13", "realtime_end": "9999-12-31", "date": "2026-02-01", "value": "."}
+        ]}"#;
+        let r = records(ResponseShape::AlfredVintages, body).unwrap();
+        assert_eq!(r.len(), 1, "the dot is a missing value");
+        assert_eq!(r[0]["known_on"], "2026-02-13");
+        assert_eq!(r[0]["end"], "2026-01-01");
+        assert!(records(ResponseShape::AlfredVintages, br#"{"error_code": 400}"#).is_none());
     }
 
     #[test]

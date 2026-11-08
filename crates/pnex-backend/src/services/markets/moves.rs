@@ -144,14 +144,25 @@ async fn detect_one(
         return Ok(Vec::new());
     };
     let series_id: Uuid = row.try_get("", "id")?;
-    // The last value known for each session, with when it became known.
+    // The last value known for each session, with when it became known: a
+    // value caught up from history takes the date of a dated release that
+    // gave the same value (ALFRED, D811), so the move is not backfilled.
     let values = db
         .query_all_raw(stmt(
-            "SELECT DISTINCT ON (period_end) period_end::text AS d, value, \
-               to_char(known_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS k, \
-               backfilled \
-             FROM market_observations WHERE org_id = $1 AND object_id = $2 AND metric = $3 \
-             ORDER BY period_end, known_at DESC",
+            "SELECT DISTINCT ON (l.period_end) l.period_end::text AS d, l.value, \
+               to_char(COALESCE(r.known_at, l.known_at) AT TIME ZONE 'UTC', \
+                 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS k, \
+               l.backfilled AND r.known_at IS NULL AS backfilled \
+             FROM market_observations l \
+             LEFT JOIN LATERAL ( \
+               SELECT f.known_at FROM market_observations f \
+               WHERE l.backfilled AND f.org_id = l.org_id AND f.object_id = l.object_id \
+                 AND f.metric = l.metric AND f.period_end = l.period_end \
+                 AND NOT f.backfilled AND f.value = l.value \
+               ORDER BY f.known_at DESC LIMIT 1 \
+             ) r ON true \
+             WHERE l.org_id = $1 AND l.object_id = $2 AND l.metric = $3 \
+             ORDER BY l.period_end, l.known_at DESC",
             vec![org_id.into(), series_id.into(), metric.into()],
         ))
         .await?;

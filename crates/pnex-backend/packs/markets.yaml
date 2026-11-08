@@ -17,7 +17,9 @@
 # 10-K become organizations (`declared_key` = country and name) linked to it
 # by `subsidiary_of`, nature `declared`, the exhibit as source.
 # Since 1.3.0 (D810) a ticker entry of mode `volume` turns an unusually high
-# traded volume into a `market_move` too (measure `volume`, up only).
+# traded volume into a `market_move` too (measure `volume`, up only), and
+# ALFRED gives each FRED value as first published, with the org's FRED key
+# (vault secret `markets_fred_key`, D811), so a past-dated test can read it.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
@@ -383,6 +385,50 @@ imports:
       names: {fr: "Séries surveillées"}
       description: The series of the move_series setting; each run is followed by the search for abnormal sessions (D735).
       shape: dated_csv
+      contact_setting: markets.source_contact
+      per_setting_code: markets.move_series
+      observations: { type: macro_series, property: code }
+      objects:
+        - as: series
+          type: macro_series
+          key: code
+          title: metric
+          properties:
+            code: metric
+  - name: Macroeconomic series first releases (ALFRED)
+    source: api
+    source_url: "https://api.stlouisfed.org/fred/series/observations?series_id={value}&output_type=4&realtime_start=1776-07-04&realtime_end=9999-12-31&file_type=json"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 7, unit: day }
+    mapping:
+      key: alfred_series
+      name: Macroeconomic series first releases
+      names: {fr: "Premières publications des séries macroéconomiques"}
+      description: "Each value of the macro_series setting as first published, dated by its publication (D811), read with the org's FRED key (vault secret markets_fred_key)."
+      shape: alfred_vintages
+      keyed_source: fred
+      contact_setting: markets.source_contact
+      per_setting_code: markets.macro_series
+      observations: { type: macro_series, property: code }
+      objects:
+        - as: series
+          type: macro_series
+          key: code
+          title: metric
+          properties:
+            code: metric
+  - name: Watched series first releases (ALFRED)
+    source: api
+    source_url: "https://api.stlouisfed.org/fred/series/observations?series_id={value}&output_type=4&realtime_start=1776-07-04&realtime_end=9999-12-31&file_type=json"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 7, unit: day }
+    mapping:
+      key: alfred_move_series
+      name: Watched series first releases
+      names: {fr: "Premières publications des séries surveillées"}
+      description: "Each value of the move_series setting as first published, dated by its publication (D811): the abnormal sessions found are dated too, not caught up from history."
+      shape: alfred_vintages
+      keyed_source: fred
       contact_setting: markets.source_contact
       per_setting_code: markets.move_series
       observations: { type: macro_series, property: code }

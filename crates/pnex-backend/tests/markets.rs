@@ -1661,3 +1661,98 @@ async fn exhibit_21_subsidiaries_become_organizations() {
     })
     .await;
 }
+
+/// D811: ALFRED gives each value as first published, with the org's FRED
+/// key sent in the query only; an abnormal session found on these values is
+/// dated by the release, not caught up from history.
+#[tokio::test]
+#[serial]
+async fn fred_first_releases_date_the_moves() {
+    with_app(|server, ctx, token| async move {
+        use axum::extract::RawQuery;
+        use axum::{routing::get, Router};
+        let db = ctx.db.clone();
+        pnex_backend::services::markets::init(&ctx);
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        assert_eq!(st, 200, "{r}");
+        api.settings(json!({ "source_contact": CONTACT, "move_series": "testidx:log_return:equity_index" }))
+            .await;
+        let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let log = seen.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/fred/series/observations",
+            get(move |RawQuery(q): RawQuery| {
+                let log = log.clone();
+                async move {
+                    log.lock().unwrap().push(q.unwrap_or_default());
+                    let mut p = 100.0f64;
+                    let obs: Vec<Value> = (0..150)
+                        .map(|i| {
+                            if i > 0 {
+                                p *= if i == 120 { 0.94 } else if i % 2 == 0 { 1.004 } else { 0.996 };
+                            }
+                            json!({"realtime_start": move_day(i + 1).to_string(), "realtime_end": "9999-12-31",
+                                   "date": move_day(i).to_string(), "value": format!("{p:.4}")})
+                        })
+                        .collect();
+                    axum::Json(json!({ "observations": obs }))
+                }
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        db.execute_raw(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "UPDATE object_imports SET source_url = replace(source_url, 'https://api.stlouisfed.org', '{base}') \
+                 WHERE org_id = {org}"
+            ),
+        ))
+        .await
+        .unwrap();
+        pnex_backend::services::markets::allow_test_host(&base);
+        let name = "Watched series first releases (ALFRED)";
+
+        let r = api.run(name).await;
+        assert_eq!(r["run"]["state_code"], "import-key-required", "{r}");
+        assert!(seen.lock().unwrap().is_empty(), "nothing sent without a key");
+        let (st, r) = api
+            .call("POST", "/api/v1/secrets", Some(json!({"name": "markets_fred_key", "value": "k-fred"})))
+            .await;
+        assert_eq!(st, 201, "{r}");
+        let r = api.run(name).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let q = seen.lock().unwrap().last().cloned().unwrap();
+        assert!(q.contains("series_id=TESTIDX") && q.ends_with("&api_key=k-fred"), "{q}");
+        let stored: Value = db
+            .query_one_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!("SELECT source_url AS u FROM object_imports WHERE org_id = {org} AND name = '{name}'"),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<String>("", "u")
+            .map(Value::String)
+            .unwrap();
+        assert!(!stored.to_string().contains("k-fred"), "the key is never stored with the URL");
+
+        let day = move_day(120).to_string();
+        let ev = object_id(&db, org, "market_event", "ref", &format!("move:TESTIDX:{day}:log_return"))
+            .await
+            .expect("the drop is a move");
+        let (_, o) = api.call("GET", &format!("/api/v1/ontology/objects/{ev}"), None).await;
+        assert_eq!(o["properties"]["backfilled"], false, "dated by the release: {o}");
+        assert_eq!(o["properties"]["known_at"], format!("{}T23:59:59Z", move_day(121)), "{o}");
+    })
+    .await;
+}
