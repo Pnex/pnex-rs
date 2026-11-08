@@ -576,6 +576,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         "ontology_objects_declassify",
         Access::Org("governance:write"),
     ),
+    ("ontology_objects_export", Access::Org("governance:write")),
     (
         "governance_markings_create",
         Access::Org("governance:write"),

@@ -594,6 +594,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "datasets_declassify",
             "ontology_objects_markings_add",
             "ontology_objects_declassify",
+            "ontology_objects_export",
             "agents_create",
             "environments_scan_policy_set",
             "environments_isolation_set",

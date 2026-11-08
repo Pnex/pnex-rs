@@ -17,6 +17,8 @@ What a pipeline computes from a marked table carries the same markings. Removing
 
 PneX also reads the first rows of each new table version and, when a column looks like e-mails, phone numbers, IBANs, card numbers or social security numbers, proposes in **To validate** to mark the table *personal*. Nothing changes until an administrator accepts.
 
+When a person asks for the data the organization holds about them, an administrator exports their object: one JSON file with the object, every link it has or had (the cases and pages where it appears) and the history of its changes.
+
 ## Troubleshooting
 - ***marking-required* on a table page.** The table carries a marking you are not cleared for, or your clearance ended: ask an administrator for a clearance, with the purpose.
 - ***marking-in-use* when deleting a marking.** A table still carries it: declassify that table first.

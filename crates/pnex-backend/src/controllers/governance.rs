@@ -32,6 +32,7 @@ pub fn routes() -> Routes {
             get(object_markings).post(mark_object),
         )
         .add("/ontology/objects/{id}/declassify", post(declassify_object))
+        .add("/ontology/objects/{id}/export", get(export_object))
 }
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
@@ -48,7 +49,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         declassify_dataset,
         object_markings,
         mark_object,
-        declassify_object
+        declassify_object,
+        export_object
     ))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
@@ -544,4 +546,67 @@ async fn journal(
             unavailable()
         }
     }
+}
+
+/// `GET /api/v1/ontology/objects/{id}/export`
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/export",
+    tag = "governance",
+    operation_id = "ontology_objects_export",
+    summary = "Export everything held about an object",
+    description = "For a person's request to access their data (governance.md D806): the object, every link it has or had (cases and pages it appears in are link ends), and the history of its changes, as one JSON document to hand over. Masked like any read of the caller; journaled. Requires `governance:write`.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)")),
+    responses(
+        (status = 200, description = "`object`, `links`, `history`, `history_complete`, `exported_at`", body = Object),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn export_object(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    use crate::services::ontology::{changes, links, objects};
+    let object = match objects::get(&ctx.db, org.org.id, id).await {
+        Ok(o) => o,
+        Err(e) => return super::ontology::onto_error(e),
+    };
+    let links = match links::for_object(&ctx.db, org.org.id, id, None, true).await {
+        Ok(l) => l,
+        Err(e) => return super::ontology::onto_error(e),
+    };
+    // The history lives in the journal store: without it the export says so.
+    let history = changes::history(&ctx, org.org.id, &id.to_string(), 10_000)
+        .await
+        .ok()
+        .flatten();
+    let mut doc = serde_json::json!({
+        "exported_at": chrono::Utc::now().to_rfc3339(),
+        "object": object,
+        "links": links,
+        "history_complete": history.is_some(),
+        "history": history.unwrap_or_default(),
+    });
+    match super::ontology::masking(&ctx, &org).await {
+        Ok(Some(super::ontology::Masking(m, s))) => m.json(&s, &mut doc),
+        Ok(None) => {}
+        Err(e) => return super::ontology::onto_error(e),
+    }
+    governance::journal(
+        org.org.id,
+        org.auth.user.id,
+        "object_exported",
+        serde_json::json!({ "object": id.to_string() }),
+    );
+    Ok((
+        [(
+            axum::http::header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"export-{id}.json\""),
+        )],
+        Json(doc),
+    )
+        .into_response())
 }

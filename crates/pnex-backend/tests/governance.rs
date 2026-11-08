@@ -526,3 +526,36 @@ async fn personal_data_in_a_table_is_proposed_not_marked() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn an_object_exports_whole_to_the_admin_masked_by_markings() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "member").await;
+        let a = env.alice.as_str();
+        let (_, _) = call(&server, a, org, "POST", "/api/v1/ontology/types", Some(json!({
+            "def": { "key": "client", "name": "Client",
+                     "properties": [{ "key": "phone", "name": "Phone", "kind": "text", "max_len": 32 }] } }))).await;
+        let (_, o) = call(&server, a, org, "POST", "/api/v1/ontology/objects",
+            Some(json!({ "type_key": "client", "title": "Ada", "properties": { "phone": "0612345678" } }))).await;
+        let id = o["id"].as_str().unwrap().to_string();
+        let export = format!("/api/v1/ontology/objects/{id}/export");
+
+        let (s, _) = call(&server, &env.bob, org, "GET", &export, None).await;
+        assert_eq!(s, 403);
+        let (s, e) = call(&server, a, org, "GET", &export, None).await;
+        assert_eq!(s, 200, "{e}");
+        assert_eq!((e["object"]["title"].as_str(), e["object"]["properties"]["phone"].as_str()),
+            (Some("Ada"), Some("0612345678")), "{e}");
+        assert!(e["links"].is_array() && e["history"].is_array(), "{e}");
+
+        // Marked and not cleared: the export hides it like any read.
+        call(&server, a, org, "POST", "/api/v1/governance/markings", Some(json!({ "key": "vip", "name": "VIP" }))).await;
+        call(&server, a, org, "POST", &format!("/api/v1/ontology/objects/{id}/markings"),
+            Some(json!({ "markings": ["vip"] }))).await;
+        let (_, e) = call(&server, a, org, "GET", &export, None).await;
+        assert!(!e.to_string().contains("0612345678"), "{e}");
+    })
+    .await;
+}

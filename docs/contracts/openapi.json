@@ -79878,6 +79878,85 @@
         ]
       }
     },
+    "/api/v1/ontology/objects/{id}/export": {
+      "get": {
+        "description": "For a person's request to access their data (governance.md D806): the object, every link it has or had (cases and pages it appears in are link ends), and the history of its changes, as one JSON document to hand over. Masked like any read of the caller; journaled. Requires `governance:write`.",
+        "operationId": "ontology_objects_export",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "`object`, `links`, `history`, `history_complete`, `exported_at`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `governance:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Export everything held about an object",
+        "tags": [
+          "governance"
+        ]
+      }
+    },
     "/api/v1/ontology/objects/{id}/graph": {
       "get": {
         "description": "Objects within `depth` hops (clamped to 1–2) through open links, and the links among them. `truncated` is true when the walk stopped at its cap of 5,000 links: more links exist than shown. `upstream` is ignored here. Any org member.",

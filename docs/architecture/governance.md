@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 à G5 codés le 2026-11-08** (§7) |
+| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **G1 à G6 codés le 2026-11-08** (§7) ; G7 (écrans) à faire |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; D715 : aucun client réel avant OP3 |
 | Repose sur | `iam.md` (D285–D299, I4, I5), `crm.md` (D442 classification, D443 masquage, D446 effacement), `data-pipelines.md` (D569–D578, lignage), `connectors.md` |
 | Numérotation | **D798…D806**, lots **G1…G7** |
@@ -173,3 +173,11 @@ coffre (le worker n'y a aucun accès, par conception) ; elle est **dérivée** p
 du worker. Sans elle, la fonction n'existe pas et la transformation échoue. **À faire hors dépôt** :
 la clé dans le chart `pipelineWorker` de `pnex-deploy`, en secret ; la changer change tous les
 pseudonymes.
+
+**G6 (2026-11-08)** : `GET /ontology/objects/{id}/export` (`ontology_objects_export`,
+`governance:write`, exclu du MCP au motif accès) : objet, tous ses liens passés et présents (les
+dossiers et les pages où il figure sont des bouts de liens), historique des changements (10 000 au
+plus ; `history_complete: false` si le journal O2 ne répond pas), passés au masque de l'appelant,
+journalisés, en pièce jointe JSON. Constat en route : une opération absente du registre IAM n'est
+pas contrôlée par l'extracteur (seule la garde `tests/iam.rs` l'empêche d'être livrée) ; un oubli
+pendant ce lot l'a montré, rattrapé par le test.
