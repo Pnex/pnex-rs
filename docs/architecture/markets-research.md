@@ -786,7 +786,7 @@ Un `market_event` accepté d'une société suivie rejoint l'avis de séance (D81
 - **À trancher par Shan** : écrire à HistData pour un accord d'usage (ou prendre leur offre payante) avant tout usage en SaaS.
 - **Acceptation réelle (2026-11-08)** : EURUSD de 2000 à 2026-10 : 36 fichiers (26 années + 10 mois), 9 028 816 bougies, 120 Mo de Parquet, 4 min 30 s en boucle de test (en production : un fichier toutes les 5 minutes, ≈ 3 h). Aucun échec. 2023 n'a que 322 638 minutes (environ 372 000 les autres années pleines) : un trou publié par HistData, gardé tel quel. Analyse du fichier : 679 trous de 31 à 180 minutes, dont 587 d'exactement une heure et 85 de deux, tous finis à :00, presque tous entre 9 h et 23 h UTC et de février à juillet (8 000 à 9 500 minutes manquantes par mois). Ce sont des heures entières perdues par la source de HistData, pas un défaut de lecture. Aucun comblement (D525).
 
-## Appendice E — MT5 comme une source enregistrée, à la manière des devices
+## Appendice E — MT5 comme source de données enregistrée
 
 | | |
 |---|---|
@@ -794,7 +794,10 @@ Un `market_event` accepté d'une société suivie rejoint l'avis de séance (D81
 | Décisions | **D847…D849** |
 | Remplace | la sélection des symboles par les paramètres de l'EA (D816 tel que codé en 8dc9ea35) ; le chemin de données (boîte, tables `mt5_ohlcv_1m` et `mt5_ticks`) est gardé |
 
-### E.1 Le parallèle avec les devices
+### E.1 Le parcours, emprunté aux devices
+
+Un terminal MT5 **n'est pas un device** et n'entre pas dans ce domaine : ni registre de devices, ni flows, ni OTA, ni identité X.509. C'est une source de données, rangée avec les autres sources (pipelines, connecteurs). Seul le parcours est emprunté :
+
 
 | Device | Terminal MT5 |
 |---|---|
@@ -830,7 +833,7 @@ Route d'ingestion propre aux terminaux (accès `Machine` au registre IAM, jeton 
 
 ### E.4 Questions pour Shan
 
-- **Q-MT1** : place dans l'UI : page « Terminaux MT5 » sous Sources, ou dans les devices et edges ?
+- **Q-MT1** : place dans l'UI, côté sources : un onglet « Terminaux MT5 » de la page Pipelines (à côté des connecteurs), ou une page à part sous Sources ?
 - **Q-MT2** : authentification : jeton par terminal (comme les devices, `Authorization: Bearer`), ou garder la signature HMAC du webhook CN3 ?
 - **Q-MT3** : sélection par défaut d'un nouveau terminal : rien tant qu'on n'a pas choisi, les bougies de tout le catalogue, ou la seule fenêtre Market Watch ?
 - **Q-MT4** : ticks pour « tout » autorisés, avec un plafond par terminal, ou seulement sur une liste ?
