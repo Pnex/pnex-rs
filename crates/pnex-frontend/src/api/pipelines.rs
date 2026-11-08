@@ -1,7 +1,7 @@
 //! Data pipelines API (data-pipelines.md D571–D578): tables, pipelines, chained runs
 //! and connectors.
 
-use pnex_core::connectors::{Connector, ConnectorInput, ConnectorTest};
+use pnex_core::connectors::{Connector, ConnectorInput, ConnectorSecret, ConnectorTest};
 use std::time::Duration;
 
 use futures::StreamExt;
@@ -291,5 +291,11 @@ pub async fn delete_connector(id: &str) -> Result<(), ApiError> {
 
 pub async fn test_connector(id: &str) -> Result<ConnectorTest, ApiError> {
     let path = format!("{}/test", connector_path(id));
+    client::request(Method::POST, &path, None).await
+}
+
+/// A new secret for the connector, returned this once.
+pub async fn connector_secret(id: &str) -> Result<ConnectorSecret, ApiError> {
+    let path = format!("{}/secret", connector_path(id));
     client::request(Method::POST, &path, None).await
 }

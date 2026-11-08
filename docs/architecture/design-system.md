@@ -286,7 +286,8 @@ les règles plus anciennes qui les contredisent.
 | Lignes écrites par les conteneurs d'une exécution ou d'un build (D733) | Journal | Log | pas « logs » en français |
 | Une cible et ce dont elle dépend, exécutés dans l'ordre (D575) | Exécution enchaînée | Chained run | pas « build » (= compilation de firmware) |
 | Condition sur le résultat d'un traitement avant sa validation (D576) | Contrôle | Check | — |
-| Accès enregistré à une base externe, identifiants au coffre (D352) | Connecteur | Connector | pas « connexion » (= se connecter), pas « source » |
+| Accès enregistré à une base ou une API externe, ou point d'arrivée d'appels signés, identifiants au coffre (D352, D791) | Connecteur | Connector | pas « connexion » (= se connecter), pas « source » |
+| Connecteur qui reçoit les appels signés d'un autre système (D795) | Webhook | Webhook | pas « crochet », pas « point de terminaison » |
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | Réglage de transcription d'un flux : modèle, langue, détection de voix, diarisation (D164) | Profil de transcription | Transcription profile | pas « modèle » (= le fichier importé) |
 | Profil de transcription pris quand rien d'autre n'est choisi, un par org | Profil par défaut | Default profile | pas « modèle par défaut », pas « profil principal » |

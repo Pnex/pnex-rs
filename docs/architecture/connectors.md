@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1 à CN4 codés le 2026-11-07/08** (§9) ; CN5 à faire |
+| Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1 à CN5 codés le 2026-11-07/08** (§9) ; reste à confirmer le choix du secret des webhooks (§3) |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; OP1 livré en grande partie |
 | Repose sur | `operational-platform.md` (D555), `data-pipelines.md` (D352, §9.6 « Connecteurs, premier lot »), `secrets.md` (D113, D115), `security.md` (R1, R2, R4, R8, R16), `iam.md`, `crm.md` (D369) |
 | Numérotation | **D791…D797**, lots **CN1…CN5** |
@@ -177,8 +177,7 @@ chemin de base piégé). Six codes `connector-rest-*`, fiche `pipelines` complé
 - **Erreur de statut sans le code HTTP** dans `args` : le journal le garde, l'UI montre seulement
   `connector-rest-status` ou `connector-rest-denied` (401, 403) ;
 - **Jeton OAuth2 non rafraîchi** pendant un run (`shortcut:` dans le code) ;
-- **Formulaire existant** : il garde la sorte et les réglages d'un connecteur REST mais ne sait pas
-  en créer un ; c'est CN5, en attendant l'API seule ;
+- ~~**Formulaire existant**~~ : remplacé par l'écran de CN5 ;
 - **Paramètres de requête** : en clair dans la config de l'import. Une clé d'API va dans
   l'authentification du connecteur (coffre), jamais dans `params`.
 
@@ -230,3 +229,26 @@ lignes lues par le protocole texte, chaque valeur telle que le serveur l'écrit.
 côté source, lignes et maximum dans `START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY`.
 Test `an_import_reads_a_mysql_database_under_tls`, ignoré sans `TEST_MYSQL_URL` (conteneur
 `mysql:8.4`, commande dans le test), passé le 2026-11-08.
+
+**CN5 (2026-11-08)** : onglet Connecteurs refait (`pages/pipelines/connectors.rs`,
+`connector_form.rs`), avec les skills `frontend-design` et `emil-design-eng`, puis `break-ui`.
+
+- **Formulaire** : la nature d'abord (boutons radio avec une phrase chacun, figée après création),
+  puis seulement les champs de cette nature ; le port suit la nature s'il n'a pas été touché ;
+  libellé du secret selon l'authentification (jeton, clé, mot de passe, secret client) ; MySQL sans
+  case TLS ; liste d'authentification marquée `selected` par option (piège du select fantôme) ;
+- **Liste** : colonne Nature, adresse selon la nature, pager (`page_slice`, règle des listes CRUD),
+  actions épinglées à droite (`.actions()`), adresse masquée sous `md` (`.secondary()`) ;
+- **Webhook** : à la création sans secret collé, le secret est généré tout de suite et montré une
+  seule fois avec l'adresse, chacun avec Copier ; « Générer un secret » demande confirmation dès
+  qu'un secret existe (bogue trouvé par l'e2e : la liste rechargée avant la génération ne le savait
+  pas, corrigé par un rechargement après chaque génération) ;
+- **Lexique** : ligne Connecteur élargie, ligne Webhook, règle `crochet` dans `lexicon_guard.rs` ;
+- **Tests** : `e2e/tests/connectors.spec.ts` (webhook de bout en bout avec appel signé, REST,
+  MySQL) et l'ancien test PostgreSQL de `pipelines.spec.ts`, verts sur un serveur isolé (port 5171,
+  base dédiée) ; axe strict de `/pipelines` vert.
+
+`break-ui` (données extrêmes par l'API, 1600, 390 et 320 px) : boutons empilés sur trois lignes à
+1600 px, adresse coupée lettre par lettre et bouton hors cadre sur téléphone ; corrigés comme
+ci-dessus. Non vérifié : zoom 200 % réel du navigateur (la simulation CSS `zoom` ne déclenche pas
+les points de rupture).

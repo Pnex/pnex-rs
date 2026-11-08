@@ -2,6 +2,7 @@
 //! tables, chained runs and connectors; `/pipelines/:id` is the studio of a pipeline,
 //! `/pipelines/tables/:id` the page of a table.
 
+mod connector_form;
 mod connectors;
 mod graph;
 mod studio;
