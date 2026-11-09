@@ -164,6 +164,8 @@ struct NotifyNodeState {
     window_start: Option<Instant>,
     /// Sends counted in the current window.
     sent_in_window: u32,
+    /// Window whose first blocked send was already logged at warn level.
+    blocked_warned: Option<Instant>,
     /// Trigger gate: data messages only render+send while armed (meaningful
     /// only when the trigger input is wired, `config.trigger`).
     armed: bool,
@@ -673,17 +675,30 @@ impl PnexNotifyNode {
         // node's job, not a failure). In accumulation mode the set stays
         // pending: the send is deferred, not lost.
         if let Some(anti) = self.config.anti_spam {
-            let allowed = {
+            let (allowed, first_block) = {
                 let mut st = self.state.lock().expect("pnex-notify state");
                 let NotifyNodeState {
                     window_start,
                     sent_in_window,
+                    blocked_warned,
                     ..
                 } = &mut *st;
-                anti_spam_gate(window_start, sent_in_window, anti, Instant::now())
+                let allowed = anti_spam_gate(window_start, sent_in_window, anti, Instant::now());
+                // One warn per window: a chatty input would log every message.
+                let first_block = !allowed && *blocked_warned != *window_start;
+                if first_block {
+                    *blocked_warned = *window_start;
+                }
+                (allowed, first_block)
             };
             if !allowed {
-                log::warn!(
+                let level = if first_block {
+                    log::Level::Warn
+                } else {
+                    log::Level::Debug
+                };
+                log::log!(
+                    level,
                     "pnex-notify [{}] : send blocked (anti-spam max {} / {} s)",
                     self.name(),
                     anti.max_msgs,
