@@ -73,7 +73,9 @@ pub enum ResponseShape {
     DatedCsv,
     /// A JSON list of daily prices: raw close, volume, dividend, split.
     DailyPrices,
-    /// ECB Data Portal `csvdata`: one row per date of one series.
+    /// SDMX CSV (ECB Data Portal `csvdata`, BIS `format=csv`): one row per
+    /// date of one series. Without a `KEY` column (BIS), the series is the one
+    /// queried.
     EcbCsv,
     /// filings.xbrl.org: the European annual and half-year reports of a
     /// company (ESEF), JSON:API with the entity included.
@@ -396,7 +398,7 @@ fn period_start(raw: &str) -> Option<String> {
 fn ecb_csv(text: &str) -> Option<Vec<Value>> {
     let table = parse_csv(text, Some(','));
     let header = table.first()?;
-    if !["KEY", "TIME_PERIOD", "OBS_VALUE"]
+    if !["TIME_PERIOD", "OBS_VALUE"]
         .iter()
         .all(|h| header.iter().any(|c| c.trim() == *h))
     {
@@ -417,7 +419,11 @@ fn ecb_csv(text: &str) -> Option<Vec<Value>> {
             .ok()
             .filter(|v| v.is_finite())
         {
-            rows.push(json!({ "metric": text("KEY"), "end": end, "value": value }));
+            let mut row = json!({ "end": end, "value": value });
+            if !text("KEY").is_empty() {
+                row["metric"] = json!(text("KEY"));
+            }
+            rows.push(row);
         }
     }
     Some(rows)
@@ -672,6 +678,11 @@ mod tests {
         assert_eq!(r[0]["end"], "2026-09-01");
         assert_eq!(r[1]["end"], "2026-07-01");
         assert!(records(ResponseShape::EcbCsv, b"a,b\n1,2\n").is_none());
+        // BIS: no KEY column, the source fills in the queried series.
+        let bis =
+            b"FREQ,REF_AREA,TITLE,TIME_PERIOD,OBS_VALUE\nD,US, Policy rate,2026-10-01,3.875\n";
+        let r = records(ResponseShape::EcbCsv, bis).unwrap();
+        assert_eq!(r, vec![json!({"end": "2026-10-01", "value": 3.875})]);
         assert_eq!(
             url_value(Some(ResponseShape::EcbCsv), "FM.D.U2.EUR"),
             "FM/D.U2.EUR"

@@ -265,8 +265,11 @@ pub async fn fetch_per_object(
                 for r in &mut found {
                     if let Some(o) = r.as_object_mut() {
                         o.insert(QUERIED.to_string(), Value::String(v.clone()));
-                        // An ALFRED answer does not name its series: it is the code asked.
-                        if m.shape == Some(pnex_core::markets::ResponseShape::AlfredVintages) {
+                        // An ALFRED or BIS answer does not name its series: it is the code asked.
+                        use pnex_core::markets::ResponseShape::{AlfredVintages, EcbCsv};
+                        if matches!(m.shape, Some(AlfredVintages | EcbCsv))
+                            && !o.contains_key("metric")
+                        {
                             o.insert("metric".to_string(), Value::String(v.clone()));
                         }
                     }

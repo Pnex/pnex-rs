@@ -37,10 +37,15 @@
 # to (D816): its bars and ticks go to `mt5_ohlcv_1m` and `mt5_ticks`.
 # `histdata_pairs` loads HistData.com's free 1-minute bid bars (forex, metals,
 # oil, indices) into `histdata_ohlcv_1m`, a closed year per file.
+# Since 1.7.0 (D880) the series of `bis_series` come from the BIS Data Portal
+# (SDMX CSV): by default the policy rates of the G10 central banks, daily
+# since 2000. BIS terms: free for a non-commercial use, the BIS cited as the
+# source; its statistics have their own terms ("About BIS statistics"), to
+# check before any use outside the org.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.6.0"
+version: "1.7.0"
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
 descriptions: {fr: "Sociétés suivies par ticker avec leurs dépôts et chiffres publiés (SEC EDGAR), et séries macroéconomiques (FRED), chaque valeur datée par sa publication. Une aide à l'analyse, pas un conseil en investissement."}
@@ -80,6 +85,13 @@ settings:
     descriptions: {fr: "Clés de séries BCE séparées par des virgules : taux directeur, inflation, euro-dollar par défaut."}
     kind: text
     default: "FM.D.U2.EUR.4F.KR.MRR_FR.LEV, ICP.M.U2.N.000000.4.ANR, EXR.D.USD.EUR.SP00.A"
+  - key: bis_series
+    name: Central bank series (BIS)
+    names: {fr: "Séries des banques centrales (BRI)"}
+    description: "Comma-separated BIS series keys (dataflow.key). Policy rates of the G10 central banks by default: WS_CBPOL.D.<country>, XM = euro area."
+    descriptions: {fr: "Clés de séries BRI (flux.clé) séparées par des virgules. Taux directeurs des banques centrales du G10 par défaut : WS_CBPOL.D.<pays>, XM = zone euro."}
+    kind: text
+    default: "WS_CBPOL.D.US, WS_CBPOL.D.XM, WS_CBPOL.D.JP, WS_CBPOL.D.GB, WS_CBPOL.D.CA, WS_CBPOL.D.CH, WS_CBPOL.D.AU, WS_CBPOL.D.NZ, WS_CBPOL.D.SE, WS_CBPOL.D.NO"
   - key: macro_series
     name: Macroeconomic series (FRED)
     names: {fr: "Séries macroéconomiques (FRED)"}
@@ -612,6 +624,25 @@ imports:
       names: {fr: "Séries européennes"}
       shape: ecb_csv
       per_setting_code: markets.ecb_series
+      observations: { type: macro_series, property: code }
+      objects:
+        - as: series
+          type: macro_series
+          key: code
+          title: metric
+          properties:
+            code: "@queried"
+  - name: Central bank series (BIS)
+    source: api
+    source_url: "https://stats.bis.org/api/v1/data/{value}/all?format=csv&startPeriod=2000-01-01"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: bis_series
+      name: Central bank series
+      names: {fr: "Séries des banques centrales"}
+      shape: ecb_csv
+      per_setting_code: markets.bis_series
       observations: { type: macro_series, property: code }
       objects:
         - as: series

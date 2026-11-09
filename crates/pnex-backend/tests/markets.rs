@@ -425,6 +425,12 @@ async fn mock_keyed_sources(seen: Arc<Mutex<Vec<(String, String)>>>) -> String {
             }),
         )
         .route(
+            "/api/v1/data/WS_CBPOL/{key}/all",
+            get(|| async {
+                "FREQ,REF_AREA,TITLE,TIME_PERIOD,OBS_VALUE\nD,JP, Policy rate - Japan,2026-10-30,0.5\nD,JP, Policy rate - Japan,2026-10-31,0.75\n"
+            }),
+        )
+        .route(
             "/api/filings",
             get(|| async {
                 axum::Json(json!({
@@ -456,7 +462,7 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         assert_eq!(st, 200, "{r}");
         api.settings(json!({
             "source_contact": CONTACT, "covered_tickers": "ACME", "benchmark_ticker": "SPY",
-            "ecb_series": "FM.D.U2.EUR", "covered_leis": "LEITEST",
+            "ecb_series": "FM.D.U2.EUR", "bis_series": "WS_CBPOL.D.JP", "covered_leis": "LEITEST",
             "move_tickers": "ACME:volume:equity_index"
         }))
         .await;
@@ -470,7 +476,7 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
             db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, q))
         };
         for host in ["https://www.sec.gov", "https://data.sec.gov", "https://api.tiingo.com",
-                     "https://data-api.ecb.europa.eu", "https://filings.xbrl.org"] {
+                     "https://data-api.ecb.europa.eu", "https://filings.xbrl.org", "https://stats.bis.org"] {
             sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') WHERE org_id = {org}"))
                 .await
                 .unwrap();
@@ -629,6 +635,13 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         assert_eq!(r["run"]["state"], "applied", "{r}");
         let series = object_id(&db, org, "macro_series", "code", "FM.D.U2.EUR").await.expect("series");
         assert_eq!(api.observations(&series, "metric=FM.D.U2.EUR").await[0]["period_end"], "2026-09-01");
+        // D880: a BIS answer names no series, the queried key is its metric.
+        let r = api.run("Central bank series (BIS)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let rate = object_id(&db, org, "macro_series", "code", "WS_CBPOL.D.JP").await.expect("BIS series");
+        let rates = api.observations(&rate, "metric=WS_CBPOL.D.JP").await;
+        assert_eq!(rates.len(), 2, "{rates:?}");
+        assert_eq!(rates[0]["period_end"], "2026-10-31");
         let r = api.run("European reports (ESEF)").await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
         let f = object_id(&db, org, "filing", "accession", "LEITEST-2025").await;
@@ -667,6 +680,7 @@ async fn markets_real_sources() {
             "Reported figures (SEC EDGAR)",
             "Macroeconomic series (FRED)",
             "European series (ECB)",
+            "Central bank series (BIS)",
             "European reports (ESEF)",
             "Press leads (GDELT)",
         ] {
