@@ -34,6 +34,12 @@ ignore = [
     # never runs on a secret. Drop when jsonwebtoken moves to the next
     # RustCrypto curves.
     { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 via jsonwebtoken EC curves, unused on secrets (RS256 verify only)" },
+    # libsqlite3-sys 0.30 (bundled SQLite < 3.54: stale page-cache bytes when a
+    # crafted -wal file sits next to the database). sqlx 0.9 (loco-rs, sea-orm)
+    # pins ^0.30, so the fixed 0.39 cannot be locked yet. The server never opens
+    # SQLite (PostgreSQL only); pnex-mirror opens only the mirror
+    # file it writes itself. Drop when sqlx moves to libsqlite3-sys 0.39.
+    { id = "RUSTSEC-2026-0459", reason = "SQLite wal page-size bug: no SQLite file from a less trusted party is opened; sqlx pins 0.30" },
     # zstd 0.13 / zstd-safe 7 (stream state reused, Vec length, legacy frame
     # memory) only through zip 2 in the build script of sherpa-onnx-sys 1.13,
     # which unpacks sherpa's own release archive: never linked in a binary,
