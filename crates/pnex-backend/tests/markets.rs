@@ -3151,3 +3151,80 @@ END:VCALENDAR\r\n".to_string())
     })
     .await;
 }
+
+/// MK21 (D883, D887): a followed product gets one price series per shop.
+#[tokio::test]
+#[serial]
+async fn open_prices_give_one_series_per_shop() {
+    use axum::extract::RawQuery;
+    use axum::http::HeaderMap;
+    use axum::routing::get;
+    with_app(|server, ctx, token| async move {
+        let db = ctx.db.clone();
+        pnex_backend::services::markets::init(&ctx);
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/consumer_prices/install", None).await;
+        assert_eq!(st, 200, "{r}");
+        let (st, r) = api
+            .call(
+                "PATCH",
+                "/api/v1/ontology/packs/consumer_prices/settings",
+                Some(json!({"values": {"source_contact": CONTACT, "tracked_products": "3017620422003"}})),
+            )
+            .await;
+        assert_eq!(st, 200, "{r}");
+        let asked = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+        let log = asked.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().route(
+            "/api/v1/prices",
+            get(move |RawQuery(q): RawQuery, h: HeaderMap| {
+                let log = log.clone();
+                async move {
+                    let ua = h.get("user-agent").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+                    log.lock().unwrap().push((q.unwrap_or_default(), ua));
+                    axum::Json(json!({"items": [
+                        {"price": 4.45, "currency": "EUR", "date": "2026-10-06", "location_osm_id": 7, "price_is_discounted": false,
+                         "product": {"product_name": "Nutella"}, "location": {"osm_name": "Shop A", "osm_address_city": "Nancy", "osm_address_country_code": "FR"}},
+                        {"price": 4.05, "currency": "EUR", "date": "2026-11-05", "location_osm_id": 7, "price_is_discounted": false,
+                         "product": {"product_name": "Nutella"}, "location": {"osm_name": "Shop A", "osm_address_city": "Nancy", "osm_address_country_code": "FR"}},
+                        {"price": 4.68, "currency": "EUR", "date": "2026-09-13", "location_osm_id": 9, "price_is_discounted": false,
+                         "product": {"product_name": "Nutella"}, "location": {"osm_name": "Shop B", "osm_address_city": "La Tronche", "osm_address_country_code": "FR"}}
+                    ]}))
+                }
+            }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::markets::allow_test_host(&base);
+        db.execute_raw(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!("UPDATE object_imports SET source_url = replace(source_url, 'https://prices.openfoodfacts.org', '{base}') WHERE org_id = {org}"),
+        ))
+        .await
+        .unwrap();
+        let r = api.run("Product prices (Open Prices)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let (q, ua) = asked.lock().unwrap()[0].clone();
+        assert!(q.contains("product_code=3017620422003") && q.contains("date__gte=2000-01-01"), "{q}");
+        assert!(ua.contains("test@example.com"), "the declared contact: {ua}");
+        let product = object_id(&db, org, "consumer_product", "ean", "3017620422003").await.expect("product");
+        let (_, obj) = api.call("GET", &format!("/api/v1/ontology/objects/{product}"), None).await;
+        assert_eq!(obj["title"], "Nutella", "{obj}");
+        let enc = |m: &str| format!("metric={}", m.replace(' ', "%20").replace(',', "%2C").replace('(', "%28").replace(')', "%29"));
+        let a = api.observations(&product, &enc("Shop A, Nancy FR (7)")).await;
+        assert_eq!(a.len(), 2, "{a:?}");
+        assert_eq!(a[0]["unit"], "EUR");
+        assert_eq!(a[0]["value"], 4.05);
+        let b = api.observations(&product, &enc("Shop B, La Tronche FR (9)")).await;
+        assert_eq!(b.len(), 1);
+    })
+    .await;
+}

@@ -88,6 +88,10 @@ pub enum ResponseShape {
     /// IMF PortWatch daily transits of a chokepoint (ArcGIS JSON), per day:
     /// vessels by kind and capacity (D885). The chokepoint is the one queried.
     PortwatchDaily,
+    /// Open Prices (`prices.openfoodfacts.org`): one price of the queried
+    /// product per shop and day; the shop is the metric, the currency the
+    /// unit (pack `consumer_prices`, D883).
+    OpenPrices,
 }
 
 /// A source that takes a key: fixed host, fixed vault name. A mapping names
@@ -153,6 +157,7 @@ pub fn records(shape: ResponseShape, body: &[u8]) -> Option<Vec<Value>> {
         ResponseShape::EsefFilings => esef_filings(&doc),
         ResponseShape::AlfredVintages => alfred_vintages(&doc),
         ResponseShape::PortwatchDaily => portwatch_daily(&doc),
+        ResponseShape::OpenPrices => open_prices(&doc),
         ResponseShape::DatedCsv | ResponseShape::EcbCsv => None,
     }
 }
@@ -446,6 +451,66 @@ const PORTWATCH_METRICS: [&str; 6] = [
     "capacity",
 ];
 
+/// A shop as a series name: readable, and unique by its OpenStreetMap id.
+fn shop_metric(item: &Value) -> String {
+    let loc = item.get("location");
+    let text = |k: &str| {
+        loc.and_then(|l| l.get(k))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+    };
+    let id = item
+        .get("location_osm_id")
+        .and_then(Value::as_i64)
+        .map_or_else(|| "online".to_string(), |i| i.to_string());
+    let place = [text("osm_address_city"), text("osm_address_country_code")]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut m = match text("osm_name") {
+        Some(n) if !place.is_empty() => format!("{n}, {place} ({id})"),
+        Some(n) => format!("{n} ({id})"),
+        None => format!("shop {id}"),
+    };
+    if item.get("price_is_discounted").and_then(Value::as_bool) == Some(true) {
+        m.push_str(" [discount]");
+    }
+    m
+}
+
+fn open_prices(doc: &Value) -> Option<Vec<Value>> {
+    let mut rows = Vec::new();
+    for item in doc.get("items")?.as_array()? {
+        let Some(date) = item
+            .get("date")
+            .and_then(Value::as_str)
+            .filter(|d| is_date(d))
+        else {
+            continue;
+        };
+        let (Some(price), Some(currency)) = (
+            item.get("price")
+                .and_then(Value::as_f64)
+                .filter(|v| v.is_finite() && *v > 0.0),
+            item.get("currency").and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        let name = item
+            .get("product")
+            .and_then(|p| p.get("product_name"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        rows.push(json!({
+            "metric": shop_metric(item), "unit": currency, "end": date,
+            "known_on": date, "value": price, "name": name,
+        }));
+    }
+    Some(rows)
+}
+
 fn portwatch_daily(doc: &Value) -> Option<Vec<Value>> {
     let mut rows = Vec::new();
     for f in doc.get("features")?.as_array()? {
@@ -710,6 +775,24 @@ mod tests {
         assert_eq!(r[0]["known_on"], "2026-10-30");
         assert_eq!(r[0]["value"], 10.0, "never the adjusted close");
         assert!(records(ResponseShape::DailyPrices, b"{\"detail\":\"no\"}").is_none());
+    }
+
+    #[test]
+    fn open_prices_become_one_series_per_shop() {
+        let body = br#"{"items":[
+            {"price":4.05,"currency":"EUR","date":"2026-11-05","location_osm_id":2111106074,"price_is_discounted":false,
+             "product":{"product_name":"Nutella"},"location":{"osm_name":"Carrefour City","osm_address_city":"Nancy","osm_address_country_code":"FR"}},
+            {"price":3.5,"currency":"EUR","date":"2026-11-04","location_osm_id":42,"price_is_discounted":true,"location":{}},
+            {"price":0,"currency":"EUR","date":"2026-11-04"},
+            {"price":2,"currency":"EUR","date":"soon"}
+        ]}"#;
+        let r = records(ResponseShape::OpenPrices, body).unwrap();
+        assert_eq!(r.len(), 2);
+        assert_eq!(r[0]["metric"], "Carrefour City, Nancy FR (2111106074)");
+        assert_eq!(r[0]["unit"], "EUR");
+        assert_eq!(r[0]["name"], "Nutella");
+        assert_eq!(r[1]["metric"], "shop 42 [discount]");
+        assert!(records(ResponseShape::OpenPrices, b"[]").is_none());
     }
 
     #[test]

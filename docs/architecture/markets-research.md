@@ -929,7 +929,7 @@ Navires (AIS) et avions (ADS-B) : agrégats pour les marchés et positions brute
 
 | Lot | Contenu | Vérification |
 |---|---|---|
-| **MK21** | Open Prices : prix produit par produit, pack `consumer_prices` | un produit suivi, ses prix datés par relevé, conditions ODbL notées |
+| **MK21** | Open Prices : prix produit par produit, pack `consumer_prices` | codé : type `consumer_product` (EAN), réglages `tracked_products` et `source_contact`, forme `open_prices` : une série par magasin (nom, ville, pays, identifiant OpenStreetMap), devise en unité, prix remisé en série à part ; lecture par `{since}`, 100 prix par requête. Test `open_prices_give_one_series_per_shop` |
 | **MK22** | DVF : transactions, pipeline vers une table, pack `real_estate` | un millésime chargé, médiane au m² par commune en SQL |
 | **MK23** | AIS : historiques ouverts (NOAA, autorité maritime danoise) en table, sans temps réel (Q-F7) | une journée chargée, la trace d'un navire dans un dossier |
 | **MK24** | ADS-B : adsb.lol (ODbL) en table | une journée chargée, la trace d'un avion dans un dossier |

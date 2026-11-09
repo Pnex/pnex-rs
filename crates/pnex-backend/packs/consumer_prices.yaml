@@ -1,0 +1,59 @@
+# Pack "Consumer prices" (markets-research.md D883, D887, MK21): the shelf
+# price of the products an org follows, shop by shop, from Open Prices
+# (Open Food Facts): prices recorded by contributors from receipts and
+# price tags, each one dated by the day it was seen. A product is followed
+# by its barcode (EAN); each shop becomes a series of the product, the
+# currency its unit, a discounted price a series of its own.
+# Terms: Open Prices data is under the Open Database License (ODbL): cite
+# Open Food Facts and share a derived database under the same licence.
+# Coverage depends on contributors: mostly France and Europe, uneven.
+key: consumer_prices
+name: Consumer prices
+names: {fr: "Prix à la consommation"}
+version: "1.0.0"
+requires: []
+description: Shelf prices of the products followed, shop by shop, from Open Prices (Open Food Facts, ODbL).
+descriptions: {fr: "Prix en rayon des produits suivis, magasin par magasin, issus d'Open Prices (Open Food Facts, ODbL)."}
+settings:
+  - key: source_contact
+    name: Contact declared to the sources
+    names: {fr: "Contact déclaré aux sources"}
+    description: Name and e-mail sent in the User-Agent of each request, as Open Food Facts asks of automated clients.
+    descriptions: {fr: "Nom et adresse envoyés dans le User-Agent de chaque requête, comme Open Food Facts le demande aux clients automatiques."}
+    kind: text
+    default: ""
+  - key: tracked_products
+    name: Products followed (barcodes)
+    names: {fr: "Produits suivis (codes-barres)"}
+    description: "Comma-separated EAN barcodes, for example 3017620422003. Empty: nothing is read."
+    descriptions: {fr: "Codes-barres EAN séparés par des virgules, par exemple 3017620422003. Vide : rien n'est lu."}
+    kind: text
+    default: ""
+types:
+  - key: consumer_product
+    name: Consumer product
+    names: {fr: "Produit de consommation"}
+    icon: package
+    properties:
+      - { key: ean, name: Barcode, names: {fr: "Code-barres"}, kind: text, max_len: 14, unique: true, required: true }
+imports:
+  - name: Product prices (Open Prices)
+    source: api
+    source_url: "https://prices.openfoodfacts.org/api/v1/prices?product_code={value}&date__gte={since}&order_by=date&size=100"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: open_prices
+      name: Product prices
+      names: {fr: "Prix des produits"}
+      shape: open_prices
+      contact_setting: consumer_prices.source_contact
+      per_setting_code: consumer_prices.tracked_products
+      observations: { type: consumer_product, property: ean }
+      objects:
+        - as: product
+          type: consumer_product
+          key: ean
+          title: name
+          properties:
+            ean: "@queried"
