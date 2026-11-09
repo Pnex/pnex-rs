@@ -43,6 +43,47 @@ fn http() -> &'static reqwest::Client {
     })
 }
 
+/// A client for files of several hundred MB (MK22–MK24): no total
+/// timeout, only one per connection and per read.
+fn http_long() -> &'static reqwest::Client {
+    static HTTP: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    HTTP.get_or_init(|| {
+        pnex_core::egress::guarded(reqwest::Client::builder())
+            .redirect(pnex_core::egress::redirect_policy(5))
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .read_timeout(std::time::Duration::from_secs(120))
+            .user_agent(concat!("PNEX-Import/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .expect("reqwest client")
+    })
+}
+
+/// A large file read as it arrives: the response, `None` on a 404. The
+/// caller reads its chunks; nothing is held whole.
+pub async fn open_large(
+    url: &reqwest::Url,
+    by: &Declared,
+) -> Result<Option<reqwest::Response>, &'static str> {
+    let mut req = http_long().get(url.clone());
+    if let Some(c) = &by.contact {
+        req = req.header(
+            reqwest::header::USER_AGENT,
+            format!("PNEX-Import/{} {c}", env!("CARGO_PKG_VERSION")),
+        );
+    }
+    let resp = req.send().await.map_err(|e| {
+        tracing::info!(url = %url, error = %e.without_url(), "large file unreachable");
+        UNREACHABLE
+    })?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Err(UNREACHABLE);
+    }
+    Ok(Some(resp))
+}
+
 /// A URL an import may fetch: `http(s)`, host allowed by the policy.
 pub fn check_url(raw: &str) -> Result<reqwest::Url, &'static str> {
     let u = reqwest::Url::parse(raw.trim()).map_err(|_| "invalid")?;

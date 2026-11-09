@@ -3228,3 +3228,213 @@ async fn open_prices_give_one_series_per_shop() {
     })
     .await;
 }
+
+fn zip_of(name: &str, text: &str) -> Vec<u8> {
+    use std::io::Write;
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let opts = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    w.start_file(name, opts).unwrap();
+    w.write_all(text.as_bytes()).unwrap();
+    w.finish().unwrap().into_inner()
+}
+
+fn gz_of(bytes: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    e.write_all(bytes).unwrap();
+    e.finish().unwrap()
+}
+
+/// MK22–MK24 (D889, Q-F7, Q-F8): AIS, ADS-B and DVF files read as they
+/// arrive into tables, one transaction per file, committed only whole.
+#[tokio::test]
+#[serial]
+async fn bulk_files_become_tables() {
+    use axum::extract::Path;
+    use axum::routing::get;
+    with_app(|server, ctx, token| async move {
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        for (pack, values) in [
+            ("trade_flows", json!({"source_contact": CONTACT, "ais_dk_from": "2026-11-01", "ais_noaa_from": "2026-11-01", "adsb_from": "2026-11-01"})),
+            ("real_estate", json!({"dvf_from": "2025"})),
+        ] {
+            let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
+            assert_eq!(st, 200, "{r}");
+            let (st, r) = api
+                .call("PATCH", &format!("/api/v1/ontology/packs/{pack}/settings"), Some(json!({ "values": values })))
+                .await;
+            assert_eq!(st, 200, "{r}");
+        }
+        let dk = zip_of(
+            "aisdk-2026-11-01.csv",
+            "# Timestamp,Type of mobile,MMSI,Latitude,Longitude,Navigational status,ROT,SOG,COG,Heading,IMO,Callsign,Name,Ship type,Cargo type,Width,Length,Type of position fixing device,Draught,Destination,ETA,Data source type,A,B,C,D\n\
+             01/11/2026 00:00:00,Base Station,2190064,56.716647,11.518977,Unknown value,,,,,Unknown,Unknown,,Undefined,,,,GPS,,Unknown,,AIS,,,,\n\
+             01/11/2026 00:00:01,Class A,305287000,57.402440,8.739752,Under way using engine,0.0,15.7,225.0,222,Unknown,Unknown,NORD STAR,Cargo,,32,190,GPS,9.5,ROTTERDAM,,AIS,,,,\n\
+             01/11/2026 00:00:02,Class B,219573000,56.161667,8.014000,Unknown value,,5.6,82.0,72,Unknown,Unknown,,Pleasure,,,,GPS,,Unknown,,AIS,,,,\n",
+        );
+        // The next day's file is cut: never committed.
+        let cut = dk[..dk.len() / 2].to_vec();
+        let mut tar = tar::Builder::new(Vec::new());
+        for (path, data) in [
+            ("./heatmap/41.bin.ttf", b"binary".to_vec()),
+            (
+                "./traces/ab/trace_full_ab32ab.json",
+                gz_of(br#"{"icao":"ab32ab","r":"N820UP","t":"B350","timestamp":1793491200.0,"trace":[[1.0,31.2,-81.3,3775,144.2,356.8,5,3008,null,"adsb_icao"],[2.0,31.21,-81.31,"ground",3.0,10.0,0,null,null,"mlat"]]}"#),
+            ),
+            ("./traces/cd/trace_full_0d11cd.json", br#"{"icao":"0d11cd","timestamp":1793491200.0,"trace":[[5.0,19.4,-99.0,6950,67.2,135.6,5,320,null,"adsb_icao"]]}"#.to_vec()),
+        ] {
+            let mut h = tar::Header::new_gnu();
+            h.set_size(data.len() as u64);
+            h.set_mode(0o644);
+            h.set_cksum();
+            tar.append_data(&mut h, path, &data[..]).unwrap();
+        }
+        let whole = tar.into_inner().unwrap();
+        let (aa, ab) = whole.split_at(whole.len() / 3);
+        let (aa, ab) = (aa.to_vec(), ab.to_vec());
+        let dvf = gz_of(
+            b"id_mutation,date_mutation,numero_disposition,nature_mutation,valeur_fonciere,adresse_numero,adresse_suffixe,adresse_nom_voie,adresse_code_voie,code_postal,code_commune,nom_commune,code_departement,ancien_code_commune,ancien_nom_commune,id_parcelle,ancien_id_parcelle,numero_volume,lot1_numero,lot1_surface_carrez,lot2_numero,lot2_surface_carrez,lot3_numero,lot3_surface_carrez,lot4_numero,lot4_surface_carrez,lot5_numero,lot5_surface_carrez,nombre_lots,code_type_local,type_local,surface_reelle_bati,nombre_pieces_principales,code_nature_culture,nature_culture,code_nature_culture_speciale,nature_culture_speciale,surface_terrain,longitude,latitude\n\
+2025-1,2025-01-03,000001,Vente,430500,88,,RUE MARCADET,5995,75018,75118,Paris 18e Arrondissement,75,,,75118000BJ0092,,,226,49.48,,,,,,,,,1,2,Appartement,49,2,,,,,,2.346344,48.890689\n\
+2025-2,2025-02-10,000001,Vente,250000,1,,RUE X,1,54000,54395,Nancy,54,,,54395000AB0001,,,,,,,,,,,,,0,1,Maison,90,4,S,sols,,,300,6.18,48.69\n",
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new()
+            .route("/aisdk-2026-11-01.zip", get(move || { let b = dk.clone(); async move { b } }))
+            .route("/aisdk-2026-11-02.zip", get(move || { let b = cut.clone(); async move { b } }))
+            .route(
+                "/adsblol/globe_history_2026/releases/download/{tag}/{file}",
+                get(move |Path((_, file)): Path<(String, String)>| {
+                    let (aa, ab) = (aa.clone(), ab.clone());
+                    async move {
+                        match file.rsplit('.').next() {
+                            Some("aa") => (axum::http::StatusCode::OK, aa),
+                            Some("ab") => (axum::http::StatusCode::OK, ab),
+                            _ => (axum::http::StatusCode::NOT_FOUND, Vec::new()),
+                        }
+                    }
+                }),
+            )
+            .route("/geo-dvf/latest/csv/2025/full.csv.gz", get(move || { let b = dvf.clone(); async move { b } }));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::markets::allow_test_host(&base);
+
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 11, d).unwrap();
+        pnex_backend::services::bulk_history::sweep_with(&ctx, day(2), Some(&base)).await.unwrap();
+        let part = |src: &str| {
+            let db = db.clone();
+            let src = src.to_string();
+            async move {
+                db.query_all_raw(Statement::from_string(
+                    sea_orm::DatabaseBackend::Postgres,
+                    format!(
+                        "SELECT period_start::text AS d, state, coalesce(code, '') AS code, rows FROM market_history_partitions \
+                         WHERE org_id = {org} AND source = '{src}' ORDER BY period_start"
+                    ),
+                ))
+                .await
+                .unwrap()
+                .iter()
+                .map(|r| {
+                    let d: String = r.try_get("", "d").unwrap();
+                    let s: String = r.try_get("", "state").unwrap();
+                    let c: String = r.try_get("", "code").unwrap();
+                    let n: i64 = r.try_get("", "rows").unwrap();
+                    format!("{d} {s}{c} {n}")
+                })
+                .collect::<Vec<_>>()
+            }
+        };
+        assert_eq!(part("ais_dk").await, ["2026-11-01 done 2"], "vessels only, the base station left out");
+        assert_eq!(part("adsb_lol").await, ["2026-11-01 done 3"], "two parts read as one tar");
+        assert_eq!(part("dvf").await, ["2025-01-01 done 2"]);
+        assert!(part("ais_noaa").await.is_empty(), "NOAA waits on a day not yet published");
+        let tables = count(
+            &db,
+            format!(
+                "SELECT count(*) AS n FROM datasets WHERE org_id = {org} \
+                 AND name IN ('ais_dk_positions', 'adsb_lol_positions', 'dvf_mutations')"
+            ),
+        )
+        .await;
+        assert_eq!(tables, 3);
+
+        // The next day: the cut file is refused and its transaction aborted.
+        pnex_backend::services::bulk_history::sweep_with(&ctx, day(3), Some(&base)).await.unwrap();
+        assert_eq!(part("ais_dk").await, ["2026-11-01 done 2", "2026-11-02 failedunreadable 0"]);
+        let open = count(
+            &db,
+            format!("SELECT count(*) AS n FROM dataset_transactions WHERE state = 'committed' AND dataset_id IN (SELECT id FROM datasets WHERE org_id = {org} AND name = 'ais_dk_positions')"),
+        )
+        .await;
+        assert_eq!(open, 1, "only the whole file is committed");
+        let (st, sample) = api
+            .call("GET", "/api/v1/datasets?limit=50", None)
+            .await;
+        assert_eq!(st, 200, "{sample}");
+    })
+    .await;
+}
+
+/// The real files, by hand: `BULK_REAL=dvf|ais_dk|adsb cargo test -p
+/// pnex-backend --test markets bulk_real -- --ignored --nocapture`.
+#[tokio::test]
+#[serial]
+#[ignore = "downloads hundreds of MB to several GB"]
+async fn bulk_real_files() {
+    let which = std::env::var("BULK_REAL").unwrap_or_else(|_| "dvf".into());
+    with_app(|server, ctx, token| async move {
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        let today = chrono::Utc::now().date_naive();
+        let yesterday = std::env::var("BULK_FROM").unwrap_or_else(|_| (today - chrono::Duration::days(2)).to_string());
+        let (pack, values) = match which.as_str() {
+            "dvf" => ("real_estate", json!({"dvf_from": (chrono::Datelike::year(&today) - 1).to_string()})),
+            "ais_dk" => ("trade_flows", json!({"ais_dk_from": yesterday})),
+            _ => ("trade_flows", json!({"adsb_from": "2025-12-30"})),
+        };
+        api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
+        let (st, r) = api
+            .call("PATCH", &format!("/api/v1/ontology/packs/{pack}/settings"), Some(json!({ "values": values })))
+            .await;
+        assert_eq!(st, 200, "{r}");
+        let started = std::time::Instant::now();
+        pnex_backend::services::bulk_history::sweep(&ctx, today).await.unwrap();
+        let rows = db
+            .query_all_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!("SELECT source, period_start::text AS d, state, coalesce(code, '') AS code, rows, bytes FROM market_history_partitions WHERE org_id = {org}"),
+            ))
+            .await
+            .unwrap();
+        for r in rows {
+            println!(
+                "{} {} {} {} rows={} bytes={} in {:?}",
+                r.try_get::<String>("", "source").unwrap(),
+                r.try_get::<String>("", "d").unwrap(),
+                r.try_get::<String>("", "state").unwrap(),
+                r.try_get::<String>("", "code").unwrap(),
+                r.try_get::<i64>("", "rows").unwrap(),
+                r.try_get::<i64>("", "bytes").unwrap(),
+                started.elapsed()
+            );
+        }
+    })
+    .await;
+}

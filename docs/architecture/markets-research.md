@@ -853,7 +853,7 @@ Route d'ingestion propre aux terminaux (accès `Machine` au registre IAM, jeton 
 
 | | |
 |---|---|
-| Statut | **Proposé le 2026-11-09 ; MK15 à MK20 codés le même jour ; questions F.4 tranchées par Shan**, le reste à faire dans l'ordre des lots |
+| Statut | **Proposé le 2026-11-09 ; MK15 à MK24 codés le même jour ; questions F.4 tranchées par Shan**, le reste à faire dans l'ordre des lots |
 | Cible | Shan d'abord, trader particulier, puis d'autres clients (§1) : ce qui lui sert passe en premier ; ce qu'un client exigerait seul (gros volumes, conformité) est reporté, pas refusé |
 
 ### F.1 Le besoin
@@ -930,11 +930,18 @@ Navires (AIS) et avions (ADS-B) : agrégats pour les marchés et positions brute
 | Lot | Contenu | Vérification |
 |---|---|---|
 | **MK21** | Open Prices : prix produit par produit, pack `consumer_prices` | codé : type `consumer_product` (EAN), réglages `tracked_products` et `source_contact`, forme `open_prices` : une série par magasin (nom, ville, pays, identifiant OpenStreetMap), devise en unité, prix remisé en série à part ; lecture par `{since}`, 100 prix par requête. Test `open_prices_give_one_series_per_shop` |
-| **MK22** | DVF : transactions, pipeline vers une table, pack `real_estate` | un millésime chargé, médiane au m² par commune en SQL |
-| **MK23** | AIS : historiques ouverts (NOAA, autorité maritime danoise) en table, sans temps réel (Q-F7) | une journée chargée, la trace d'un navire dans un dossier |
-| **MK24** | ADS-B : adsb.lol (ODbL) en table | une journée chargée, la trace d'un avion dans un dossier |
+| **MK22** | DVF : transactions, pack `real_estate` | codé : réglage `dvf_from` (année), table `dvf_mutations` (une ligne par bien d'une vente), années closes, une par passage. Écart : pas un pipeline D344 mais le chargement en flux commun à MK23–MK24 (`services::bulk_history`). Essai réel : 2025 entier, 3 714 829 lignes, 75 Mo, 30 s |
+| **MK23** | AIS : historiques ouverts en table, sans temps réel (Q-F7) | codé : pack `trade_flows`, réglages `ais_dk_from` et `ais_noaa_from`, tables `ais_dk_positions` et `ais_noaa_positions` (navires seulement), un jour par passage ; la NOAA attend son premier jour non publié. Essai réel : 1er et 2 novembre 2026 danois, 14,6 et 14,4 M positions, 320 Mo chacun, 2 min 15, 485 Mo de mémoire au plus |
+| **MK24** | ADS-B : adsb.lol (ODbL) en table | codé : réglage `adsb_from`, table `adsb_lol_positions`, les morceaux `.aa`, `.ab`… lus comme un seul tar, une trace par avion. Essai réel : 30 décembre 2025, 87,5 M positions, 2 Go stockés, 9 min 30, 540 Mo de mémoire au plus |
 
 ### F.6 Questions tranchées ensuite (Shan, 2026-11-09)
 
 - **Q-F7** : AIS par fichiers historiques seulement (NOAA, autorité maritime danoise), pas de temps réel pour l'instant. MK23 sans clé ni flux continu.
 - **Q-F8** : tout garder, plafonné par le quota de jeux de données de l'org (D821, 20 Go par défaut) ; pas d'échantillonnage ni de zone imposés.
+
+### F.7 Chargement en flux (MK22–MK24) et écarts
+
+- **Socle** : `datasets::append_stream` reçoit des lots sur un canal et les écrit dans un seul fichier Parquet d'une seule transaction ; le lecteur envoie une marque de fin quand le fichier est lu jusqu'au bout, et seulement alors la transaction est validée. Un canal fermé avant (téléchargement coupé, ligne illisible) l'annule. `append_batch` en est le cas d'un lot. Le quota est vérifié au fil de l'écriture.
+- **Téléchargement** : `source::open_large` (même garde sortante, contact déclaré, aucun délai total, 120 s par lecture) ; un pompage asynchrone passe les morceaux à un fil bloquant qui décompresse (zip en flux, tar, gzip) et décode ligne à ligne (`pnex_core::bulk`), 200 000 lignes par lot. Rien n'est tenu entier en mémoire.
+- **Registre** : celui de l'historique de prix (`market_history_partitions`), source = `ais_dk`, `ais_noaa`, `adsb_lol`, `dvf` ; un fichier coupé n'est pas inscrit et revient au passage suivant, un fichier illisible est inscrit `failed`.
+- **Écarts à D889** : un navire ou un avion suivi n'est pas encore relié à sa trace dans un dossier (`tracks`, K25) ; le pont table → trace reste à faire. L'autorité maritime danoise ne sert ses fichiers qu'en HTTP clair, sans somme de contrôle.

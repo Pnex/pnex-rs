@@ -1,0 +1,31 @@
+# Pack "Real estate" (markets-research.md D884, D887, MK22): every property
+# sale recorded in France (DVF, Demandes de valeurs foncières, published by
+# the DGFiP and geolocated by Etalab), a year per file, into the table
+# `dvf_mutations` of the org (one line per property of a sale: a sale of
+# several lots has several lines with the same mutation id). The indices
+# (BIS, Eurostat, FHFA) stay in the Markets pack. Terms: Licence Ouverte
+# 2.0; the data must never be used to re-identify a person, nor exposed to
+# search engines. DVF covers the last five years, Alsace-Moselle and Mayotte
+# excepted.
+key: real_estate
+name: Real estate
+names: {fr: "Immobilier"}
+version: "1.0.0"
+requires: []
+description: Every property sale recorded in France (DVF), a year per file, into a table of the organization.
+descriptions: {fr: "Toutes les ventes immobilières enregistrées en France (DVF), une année par fichier, dans une table de l'organisation."}
+settings:
+  - key: source_contact
+    name: Contact declared to the sources
+    names: {fr: "Contact déclaré aux sources"}
+    description: Name and e-mail sent in the User-Agent of each request.
+    descriptions: {fr: "Nom et adresse envoyés dans le User-Agent de chaque requête."}
+    kind: text
+    default: ""
+  - key: dvf_from
+    name: DVF sales from (year)
+    names: {fr: "Ventes DVF à partir de (année)"}
+    description: "First year loaded, YYYY (DVF keeps the last five), into the table dvf_mutations; closed years only. Empty: not read."
+    descriptions: {fr: "Première année chargée, AAAA (DVF garde les cinq dernières), dans la table dvf_mutations ; années closes seulement. Vide : non lu."}
+    kind: text
+    default: ""

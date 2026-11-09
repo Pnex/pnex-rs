@@ -83,6 +83,9 @@ pub fn spawn_scheduler(ctx: &AppContext) {
                 if let Err(e) = super::history::sweep(&ctx, binance, today).await {
                     tracing::warn!(code = e.code(), "price history sweep failed");
                 }
+                if let Err(e) = crate::services::bulk_history::sweep(&ctx, today).await {
+                    tracing::warn!(code = e.code(), "bulk history sweep failed");
+                }
             }
             tokio::time::sleep(SWEEP_EVERY).await;
         }

@@ -996,10 +996,18 @@ pub async fn append_batch(
     id: Uuid,
     batch: &arrow_array::RecordBatch,
 ) -> Result<DatasetTransaction, DatasetError> {
+    let (tx, rx) = tokio::sync::mpsc::channel(2);
+    // The receiver is alive and has room: the sends cannot fail.
+    let _ = tx.send(Some(batch.clone())).await;
+    let _ = tx.send(None).await;
+    append_stream(db, store, org_id, id, rx)
+        .await?
+        .ok_or(DatasetError::NotFound)
+}
+
+fn columns_of(schema: &arrow_schema::Schema) -> Vec<DatasetColumn> {
     use arrow_schema::DataType;
-    let dataset = get(db, org_id, id).await?;
-    let columns: Vec<DatasetColumn> = batch
-        .schema()
+    schema
         .fields()
         .iter()
         .map(|f| DatasetColumn {
@@ -1012,7 +1020,30 @@ pub async fn append_batch(
                 other => format!("{other:?}").to_lowercase(),
             },
         })
-        .collect();
+        .collect()
+}
+
+/// [`append_batch`] for a file too large to hold: the batches arrive on
+/// `batches` while it is read (a day of AIS positions, MK23) and all go to
+/// one Parquet file of one transaction. The reader sends `None` once the
+/// file is read whole: only then is it committed; a channel closed before
+/// (a cut download, an unreadable line) aborts it. `None` when the file had
+/// no row. The quota is checked as it grows.
+pub async fn append_stream(
+    db: &DatabaseConnection,
+    store: &S3Store,
+    org_id: i64,
+    id: Uuid,
+    mut batches: tokio::sync::mpsc::Receiver<Option<arrow_array::RecordBatch>>,
+) -> Result<Option<DatasetTransaction>, DatasetError> {
+    let cut = || DatasetError::Storage("the source stopped before its end".into());
+    let dataset = get(db, org_id, id).await?;
+    let first = match batches.recv().await {
+        Some(Some(b)) => b,
+        Some(None) => return Ok(None),
+        None => return Err(cut()),
+    };
+    let columns = columns_of(&first.schema());
     if !dataset.columns.is_empty() && dataset.columns != columns {
         return Err(DatasetError::SchemaMismatch {
             columns: dataset.columns.iter().map(|c| c.name.clone()).collect(),
@@ -1027,21 +1058,37 @@ pub async fn append_batch(
     );
     let result = async {
         let erased = erasure::targets_of(db, id).await?;
-        let kept;
-        let batch = if erased.is_empty() {
-            batch
-        } else {
-            kept = parquet::without(batch, &erased).map_err(storage)?;
-            &kept
-        };
         let properties = WriterProperties::builder()
             .set_compression(Compression::ZSTD(ZstdLevel::default()))
             .build();
         let sink = S3Sink::new(store.writer(&key).await.map_err(storage)?);
+        let schema = first.schema();
         let mut w =
-            AsyncArrowWriter::try_new(sink, batch.schema(), Some(properties)).map_err(storage)?;
+            AsyncArrowWriter::try_new(sink, schema.clone(), Some(properties)).map_err(storage)?;
+        let mut rows = 0u64;
         let written = async {
-            w.write(batch).await.map_err(storage)?;
+            let mut next = Some(first);
+            while let Some(batch) = next {
+                if batch.schema().fields() != schema.fields() {
+                    return Err(DatasetError::SchemaMismatch {
+                        columns: columns.iter().map(|c| c.name.clone()).collect(),
+                    });
+                }
+                let batch = if erased.is_empty() {
+                    batch
+                } else {
+                    parquet::without(&batch, &erased).map_err(storage)?
+                };
+                rows += batch.num_rows() as u64;
+                w.write(&batch).await.map_err(storage)?;
+                if w.bytes_written() as u64 > room {
+                    return Err(DatasetError::QuotaExceeded);
+                }
+                next = match batches.recv().await {
+                    Some(b) => b,
+                    None => return Err(cut()),
+                };
+            }
             w.flush().await.map_err(storage)?;
             if w.bytes_written() as u64 > room {
                 return Err(DatasetError::QuotaExceeded);
@@ -1057,9 +1104,9 @@ pub async fn append_batch(
         let written = Written {
             key: key.clone(),
             bytes: sink.bytes,
-            rows: batch.num_rows() as u64,
+            rows,
             sha256: sink.sha256(),
-            columns,
+            columns: columns.clone(),
         };
         commit(db, id, transaction_id, kind, &written).await
     }
@@ -1074,7 +1121,7 @@ pub async fn append_batch(
         .await?;
         return Err(e);
     }
-    transaction_by_id(db, transaction_id).await
+    transaction_by_id(db, transaction_id).await.map(Some)
 }
 
 async fn transaction_by_id(

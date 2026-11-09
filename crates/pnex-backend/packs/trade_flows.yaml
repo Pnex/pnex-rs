@@ -1,0 +1,46 @@
+# Pack "Trade flows" (markets-research.md D885, D887, D889, MK23, MK24): the
+# raw positions of vessels (AIS) and aircraft (ADS-B), a day per file, into
+# tables of the org, never into objects. Read from historical files only
+# (Q-F7), everything kept under the org's dataset quota (Q-F8): a day of the
+# Danish file is about 20 million positions, a day of adsb.lol several GB.
+# Each source starts from the day of its setting; empty, it is not read.
+# Terms: Danish Maritime Authority (its own terms, to check before any use
+# outside the org; served over plain HTTP only); NOAA MarineCadastre (US
+# public domain, cite the source; published months late); adsb.lol (Open
+# Database License: cite adsb.lol, share a derived database alike).
+key: trade_flows
+name: Trade flows
+names: {fr: "Flux physiques"}
+version: "1.0.0"
+requires: []
+description: Raw vessel positions (AIS, Danish Maritime Authority and NOAA) and aircraft positions (ADS-B, adsb.lol), a day per file, into tables of the organization.
+descriptions: {fr: "Positions brutes des navires (AIS, autorité maritime danoise et NOAA) et des avions (ADS-B, adsb.lol), un jour par fichier, dans des tables de l'organisation."}
+settings:
+  - key: source_contact
+    name: Contact declared to the sources
+    names: {fr: "Contact déclaré aux sources"}
+    description: Name and e-mail sent in the User-Agent of each request.
+    descriptions: {fr: "Nom et adresse envoyés dans le User-Agent de chaque requête."}
+    kind: text
+    default: ""
+  - key: ais_dk_from
+    name: Danish AIS from (day)
+    names: {fr: "AIS danois à partir du (jour)"}
+    description: "First day loaded, YYYY-MM-DD, into the table ais_dk_positions (vessels only, about 20 million positions a day). Empty: not read."
+    descriptions: {fr: "Premier jour chargé, AAAA-MM-JJ, dans la table ais_dk_positions (navires seulement, environ 20 millions de positions par jour). Vide : non lu."}
+    kind: text
+    default: ""
+  - key: ais_noaa_from
+    name: US AIS (NOAA) from (day)
+    names: {fr: "AIS américain (NOAA) à partir du (jour)"}
+    description: "First day loaded, YYYY-MM-DD, into the table ais_noaa_positions. NOAA publishes months late: the loading waits on the first day not yet published. Empty: not read."
+    descriptions: {fr: "Premier jour chargé, AAAA-MM-JJ, dans la table ais_noaa_positions. La NOAA publie avec des mois de retard : le chargement attend le premier jour pas encore publié. Vide : non lu."}
+    kind: text
+    default: ""
+  - key: adsb_from
+    name: Aircraft (adsb.lol) from (day)
+    names: {fr: "Avions (adsb.lol) à partir du (jour)"}
+    description: "First day loaded, YYYY-MM-DD, into the table adsb_lol_positions (every aircraft seen worldwide, several GB a day). Empty: not read."
+    descriptions: {fr: "Premier jour chargé, AAAA-MM-JJ, dans la table adsb_lol_positions (tous les avions vus dans le monde, plusieurs Go par jour). Vide : non lu."}
+    kind: text
+    default: ""

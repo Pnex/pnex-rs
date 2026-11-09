@@ -35,7 +35,7 @@ const FX_PAUSE: std::time::Duration = std::time::Duration::from_millis(100);
 const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 /// UTC as an offset: a named zone needs `chrono-tz` to be read back (the
 /// table sample formats values with arrow).
-const UTC: &str = "+00:00";
+pub(crate) const UTC: &str = "+00:00";
 
 /// What a pass loads: one source, one shape, its two settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -490,7 +490,7 @@ fn trades_of(csv: &[u8], symbol: &str) -> Option<RecordBatch> {
     trade_tick_batch(&BINANCE_SPOT_TRADES, symbol, &rows).ok()
 }
 
-async fn settled(
+pub(crate) async fn settled(
     db: &DatabaseConnection,
     org: i64,
     src: &HistorySource,
@@ -519,7 +519,7 @@ async fn settled(
     Ok((done, seen))
 }
 
-enum Fetched {
+pub(crate) enum Fetched {
     Rows(RecordBatch, String),
     Empty,
     Failed(&'static str),
@@ -719,7 +719,7 @@ pub fn trade_tick_batch(
 }
 
 /// The org's table of this source, created the first time.
-async fn table_of(
+pub(crate) async fn table_of(
     db: &DatabaseConnection,
     org: i64,
     src: &HistorySource,
@@ -777,7 +777,7 @@ async fn write(
     }
 }
 
-async fn record(
+pub(crate) async fn record(
     db: &DatabaseConnection,
     org: i64,
     src: &HistorySource,
