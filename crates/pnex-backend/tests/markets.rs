@@ -4247,6 +4247,24 @@ async fn price_moves_get_candidate_causal_chains() {
             .await;
         assert_eq!(r["count"], 0, "no bars in the last 7 days");
 
+        // R2: datasets:read alone is not enough, the chains read the ontology.
+        let (_, sa) = api.call("POST", "/api/v1/iam/service-accounts", Some(json!({ "name": "bars-only" }))).await;
+        let (_, role) = api
+            .call("POST", "/api/v1/iam/roles", Some(json!({
+                "key": "bars-only", "name": "Bars only",
+                "statements": [{ "effect": "allow", "permissions": ["datasets:read"] }]
+            })))
+            .await;
+        api.call("POST", "/api/v1/iam/assignments", Some(json!({ "service_account_id": sa["id"], "role_id": role["id"] }))).await;
+        let exp = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339();
+        let (_, key) = api.call("POST", &format!("/api/v1/iam/service-accounts/{}/keys", sa["id"].as_str().unwrap()), Some(json!({ "expires_at": exp }))).await;
+        let res = server
+            .get("/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of=2026-01-07T00:00:00Z&from=2026-01-05T00:00:00Z")
+            .add_header("Authorization", format!("Bearer {}", key["secret"].as_str().unwrap()))
+            .await;
+        assert_eq!(res.status_code().as_u16(), 403, "{}", res.text());
+        assert!(res.text().contains("ontology:read"), "{}", res.text());
+
         // Unknown ticker, window too wide.
         let (st, e) = api.call("GET", "/api/v1/markets/chains?instrument=NOPE&source=histdata&as_of=2026-01-07T00:00:00Z", None).await;
         assert_eq!((st, e["errors"]["fields"]["instrument"].as_str()), (400, Some("unknown")), "{e}");

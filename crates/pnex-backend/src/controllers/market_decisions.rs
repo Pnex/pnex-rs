@@ -264,8 +264,32 @@ async fn chains(
         from,
         as_of,
     };
+    // A chain touching an object the caller is not cleared for (marking,
+    // governance.md D801) is left out whole: its ids would reveal it.
+    let hidden = match super::ontology::redaction(&ctx, &org).await {
+        Ok(r) => r.objects,
+        Err(e) => {
+            tracing::error!(error = %e, "markings read failed");
+            return Err(Error::InternalServerError);
+        }
+    };
+    let visible = |s: &Signal| {
+        hidden.as_ref().is_none_or(|h| {
+            !h.contains(&s.on)
+                && s.source_ref
+                    .strip_prefix("object:")
+                    .is_none_or(|id| !h.contains(id))
+        })
+    };
     match ch::chains(&ctx.db, &store, org.org.id, &query).await {
-        Ok(rows) => pagination::paged("/api/v1/markets/chains", &filters, page, rows),
+        Ok(mut rows) => {
+            rows.retain(|c| {
+                c.hops
+                    .iter()
+                    .all(|h| visible(&h.cause) && visible(&h.effect))
+            });
+            pagination::paged("/api/v1/markets/chains", &filters, page, rows)
+        }
         Err(ChainsError::UnknownInstrument) => Ok(field_error("instrument", "unknown")),
         Err(ChainsError::Bars(e)) => bars_error(e),
         Err(ChainsError::Db(e)) => Err(e.into()),
