@@ -467,6 +467,7 @@ fn case_properties() -> Vec<PropertyDef> {
         threshold(CASE_STOP_DIAMETER_M, "m", 1.0, 1_000.0),
         threshold(CASE_STOP_MIN_S, "s", 60.0, 86_400.0),
         threshold(CASE_SIGNAL_GAP_S, "s", 10.0, 86_400.0),
+        threshold(CASE_CAUSAL_MIN_LIFT, "", 1.0, 1_000.0),
         prop(
             CASE_CONCLUSION_PAGE,
             PropertyKind::Ref {
@@ -502,6 +503,8 @@ pub const CASE_COPRESENCE_MIN_S: &str = "copresence_min_s";
 pub const CASE_STOP_DIAMETER_M: &str = "stop_diameter_m";
 pub const CASE_STOP_MIN_S: &str = "stop_min_s";
 pub const CASE_SIGNAL_GAP_S: &str = "signal_gap_s";
+/// Lift a causal chain must reach to be proposed (cases-workspace.md D908).
+pub const CASE_CAUSAL_MIN_LIFT: &str = "causal_min_lift";
 /// The page holding the conclusion (K8), versioned when the case concludes.
 pub const CASE_CONCLUSION_PAGE: &str = "conclusion_page";
 /// Key by which a check run finds its watch case (D429), unique per org.

@@ -893,6 +893,9 @@ pub struct PackView {
     /// `source`, `source_url`, `mapping.<key>`.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub differs: std::collections::BTreeMap<String, Vec<String>>,
+    /// How each causal pair of the pack fared in the org's cases (D911).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub causal_stats: Vec<crate::rca::PairStats>,
 }
 
 /// `POST /ontology/packs/{key}/take`: the pack's version of functions,

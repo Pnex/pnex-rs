@@ -169,6 +169,14 @@ link_types:
     from_types: [pump, machine]
     to_types: [pump, machine]
     one_target: true
+settings:
+  - key: causal_chains_enabled
+    name: Causal chains in cases
+    names: {fr: "Chaînes causales dans les dossiers"}
+    description: "Proposes, in the cases, chains of signals that preceded an alert upstream (D909). Off until measured on the org's own incidents: leads, never facts."
+    descriptions: {fr: "Propose, dans les dossiers, les chaînes de signaux qui ont précédé une alerte en amont (D909). Désactivé tant qu'il n'est pas mesuré sur les incidents de l'org : des pistes, jamais des faits."}
+    kind: bool
+    default: false
 # Cause → effect pairs of the causal chain detector (D906): each one is two
 # settings (prior, maximal gap) the org may set.
 causal_pairs:

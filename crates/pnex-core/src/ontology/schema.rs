@@ -72,6 +72,12 @@ pub enum PropertyKind {
         metric: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         unit: Option<String>,
+        /// Declared bounds: a value leaving them is a `series.threshold`
+        /// signal of the causal chains (cases-workspace.md D904).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        min: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max: Option<f64>,
     },
     /// An O2 log stream, filtered on the object (`object=<id>` field).
     Events {
@@ -360,6 +366,8 @@ impl<'de> Deserialize<'de> for PropertyDef {
             "series" => PropertyKind::Series {
                 metric: c.metric,
                 unit: c.unit,
+                min: c.min,
+                max: c.max,
             },
             "events" => PropertyKind::Events {
                 stream: c.stream.ok_or_else(|| missing("stream"))?,
@@ -854,6 +862,8 @@ mod tests {
                 PropertyKind::Series {
                     metric: None,
                     unit: None,
+                    min: None,
+                    max: None,
                 },
             ),
         ]

@@ -245,6 +245,26 @@ fn SettingsDialog(pack: PackView, on_close: EventHandler<bool>) -> Element {
     let mut busy = use_signal(|| false);
     let defs = pack.settings.clone();
     let key = pack.key.clone();
+    // How each causal pair fared (D911): shown, never acted on.
+    let stats: Vec<(String, bool)> = pack
+        .causal_stats
+        .iter()
+        .map(|c| {
+            let rank = c
+                .mean_rank
+                .map(|r| format!("{r:.1}"))
+                .unwrap_or_else(|| "–".into());
+            let line = t!(
+                "onto-causal-stat",
+                rule: format!("{} → {}", c.cause.as_str(), c.effect.as_str()),
+                proposed: c.proposed,
+                retained: c.retained,
+                rank: rank
+            )
+            .to_string();
+            (line, c.flagged)
+        })
+        .collect();
     let submit = move |_| {
         let sent: Map<String, Value> = defs
             .iter()
@@ -292,6 +312,23 @@ fn SettingsDialog(pack: PackView, on_close: EventHandler<bool>) -> Element {
                             {tr(&s.def.description, &s.def.descriptions)}
                             " "
                             {t!("onto-pack-setting-default", value : s.def.default.to_string())}
+                        }
+                    }
+                }
+                if !stats.is_empty() {
+                    div { "data-testid": "onto-causal-stats",
+                        h3 { class: FIELD_LABEL, {t!("onto-causal-stats")} }
+                        ul { class: "space-y-1 text-xs text-slate",
+                            for (line, flagged) in stats {
+                                li { key: "{line}",
+                                    "{line}"
+                                    if flagged {
+                                        span { class: "ml-2 text-alarm",
+                                            {t!("onto-causal-stat-flagged")}
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

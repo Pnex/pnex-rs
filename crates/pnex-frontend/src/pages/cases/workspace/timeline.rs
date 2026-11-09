@@ -145,10 +145,16 @@ pub(super) fn Timeline() -> Element {
         .collect();
     marks.extend(pending.iter().filter_map(|p| {
         let at = model::ms(&p.t_start)?;
+        // A causal chain spans from its root cause to its effect.
+        let to = if p.kind == "causal_chain" {
+            p.t_end.as_deref().and_then(model::ms).unwrap_or(at)
+        } else {
+            at
+        };
         Some(Item {
             id: format!("p{}", p.id),
             from: at,
-            to: at,
+            to,
             label: super::proposal_title(p),
             tip: Some(format!(
                 "{} · {}",

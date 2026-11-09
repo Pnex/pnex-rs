@@ -148,6 +148,57 @@ impl PackPair {
     }
 }
 
+/// How a pair fared in the org's cases (D911): chains proposed with a hop
+/// of this pair, how many a member retained, the mean rank of the retained
+/// ones. `flagged` past [`FLAG_MIN_PROPOSED`] proposals under
+/// [`FLAG_MAX_PRECISION`]: shown, never switched off.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PairStats {
+    pub cause: SignalKind,
+    pub effect: SignalKind,
+    pub proposed: u32,
+    pub retained: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_rank: Option<f64>,
+    pub flagged: bool,
+}
+
+pub const FLAG_MIN_PROPOSED: u32 = 20;
+pub const FLAG_MAX_PRECISION: f64 = 0.2;
+
+/// The stats of each pair from the decided and open chain proposals:
+/// (rules of its hops, retained, rank).
+pub fn pair_stats(
+    pairs: &[PackPair],
+    proposals: &[(Vec<(SignalKind, SignalKind)>, bool, u32)],
+) -> Vec<PairStats> {
+    pairs
+        .iter()
+        .map(|p| {
+            let mine: Vec<_> = proposals
+                .iter()
+                .filter(|(rules, _, _)| rules.contains(&(p.cause, p.effect)))
+                .collect();
+            let retained: Vec<_> = mine.iter().filter(|(_, r, _)| *r).collect();
+            let proposed = mine.len() as u32;
+            let kept = retained.len() as u32;
+            let mean_rank = (!retained.is_empty()).then(|| {
+                retained.iter().map(|(_, _, k)| f64::from(*k)).sum::<f64>() / retained.len() as f64
+            });
+            PairStats {
+                cause: p.cause,
+                effect: p.effect,
+                proposed,
+                retained: kept,
+                mean_rank,
+                flagged: proposed >= FLAG_MIN_PROPOSED
+                    && f64::from(kept) / f64::from(proposed) < FLAG_MAX_PRECISION,
+            }
+        })
+        .collect()
+}
+
 /// One step of a chain: `cause` precedes `effect` by `gap` seconds,
 /// `distance` links apart.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -235,6 +286,16 @@ impl Topology {
             }
         }
         None
+    }
+}
+
+/// A gap as people read it: `12 min`, `3 h 05`, `2 d 4 h`.
+pub fn gap_text(secs: i64) -> String {
+    let m = secs.max(0) / 60;
+    match m {
+        0..=59 => format!("{m} min"),
+        60..=1_439 => format!("{} h {:02}", m / 60, m % 60),
+        _ => format!("{} d {} h", m / 1_440, (m % 1_440) / 60),
     }
 }
 
@@ -623,6 +684,34 @@ mod tests {
                 first
             );
         }
+    }
+
+    #[test]
+    fn gaps_read_like_people_write_them() {
+        assert_eq!(gap_text(12 * M), "12 min");
+        assert_eq!(gap_text(3 * H + 5 * M), "3 h 05");
+        assert_eq!(gap_text(2 * 86_400 + 4 * H), "2 d 4 h");
+    }
+
+    #[test]
+    fn pair_stats_count_and_flag() {
+        let pair = PackPair {
+            cause: SignalKind::ChangeConfig,
+            effect: SignalKind::Alert,
+            max_gap_min: 30,
+            prior: 0.6,
+        };
+        let rule = vec![(SignalKind::ChangeConfig, SignalKind::Alert)];
+        let mut props: Vec<_> = (0..19).map(|_| (rule.clone(), false, 1)).collect();
+        props.push((rule.clone(), true, 2));
+        props.push((
+            vec![(SignalKind::DeviceOffline, SignalKind::Alert)],
+            true,
+            1,
+        ));
+        let s = &pair_stats(&[pair], &props)[0];
+        assert_eq!((s.proposed, s.retained, s.mean_rank), (20, 1, Some(2.0)));
+        assert!(s.flagged, "5 % of 20");
     }
 
     #[test]

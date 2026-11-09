@@ -935,6 +935,128 @@ async fn imported_tracks_feed_the_tracks_and_the_detectors() {
 }
 
 /// `path?k=v&…` of a flat JSON object: the query of a GET read.
+/// Appendix I (D904–D909): a maintenance window on a device followed by
+/// its going offline is proposed as a causal chain once the org turns the
+/// chains on, once per recomputation; retaining it writes the event with a
+/// note citing the hop. Device transitions are journaled by a trigger.
+#[tokio::test]
+#[serial]
+async fn causal_chains_are_proposed_from_typed_signals() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, r) = call(&server, "POST", "/api/v1/ontology/packs/maintenance/install", &env.alice, org, None).await;
+        assert_eq!(st, 200, "{r}");
+        let case = object(&server, &env.alice, org, "case", "Cold room 3", json!({"status": "open"})).await;
+        let cid = case["id"].as_str().unwrap();
+        let dev = device(&server, &env, org, "cr-3").await;
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.alice, org, Some(json!({"object_id": dev}))).await;
+        assert_eq!(st, 200, "{w}");
+        let registry: i64 = env
+            .db
+            .query_one_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!("SELECT id FROM device_registries WHERE device_id = 'cr-3' AND org_id = {org}"),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "id")
+            .unwrap();
+
+        // The trigger journals the reaper's flips and firmware changes.
+        for sql in [
+            format!("UPDATE device_registries SET active = true WHERE id = {registry}"),
+            format!("UPDATE device_registries SET active = false WHERE id = {registry}"),
+            format!("UPDATE device_registries SET fw_version = '1.0' WHERE id = {registry}"),
+            format!("UPDATE device_registries SET fw_version = '1.1' WHERE id = {registry}"),
+        ] {
+            env.db.execute_unprepared(&sql).await.unwrap();
+        }
+        let kinds: Vec<String> = env
+            .db
+            .query_all_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!("SELECT kind FROM device_events WHERE device_registry_id = {registry} ORDER BY id"),
+            ))
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.try_get("", "kind").unwrap())
+            .collect();
+        assert_eq!(kinds, vec!["online", "offline", "firmware"]);
+
+        // A maintenance window at 14:00, the device offline at 14:30.
+        let (st, r) = call(&server, "POST", "/api/v1/time-ranges", &env.alice, org, Some(json!({
+            "scope_kind": "object", "scope_id": dev, "label": "Defrost service", "category": "maintenance",
+            "planned_start": "2026-10-10T14:00:00Z", "planned_end": "2026-10-10T15:00:00Z"
+        }))).await;
+        assert_eq!(st, 201, "{r}");
+        env.db
+            .execute_unprepared(&format!(
+                "INSERT INTO device_events (org_id, device_registry_id, at, kind) \
+                 VALUES ({org}, {registry}, '2026-10-10T14:30:00Z', 'offline')"
+            ))
+            .await
+            .unwrap();
+        let window = json!({"from": "2026-10-10T13:00:00Z", "to": "2026-10-10T16:00:00Z"});
+        let detect_path = format!("/api/v1/cases/{cid}/detect");
+        let detect = || call(&server, "POST", &detect_path, &env.alice, org, Some(window.clone()));
+        let chains = || async {
+            let (st, list) = call(&server, "GET", &format!("/api/v1/cases/{cid}/proposals"), &env.alice, org, None).await;
+            assert_eq!(st, 200, "{list}");
+            list["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|p| p["detector"] == "causal_chain@1")
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+
+        // Off by default (D909): nothing proposed.
+        let (st, d) = detect().await;
+        assert_eq!(st, 200, "{d}");
+        assert!(chains().await.is_empty());
+
+        let (st, r) = call(&server, "PATCH", "/api/v1/ontology/packs/maintenance/settings", &env.alice, org,
+            Some(json!({"values": {"causal_chains_enabled": true}}))).await;
+        assert_eq!(st, 200, "{r}");
+        let (st, d) = detect().await;
+        assert_eq!(st, 200, "{d}");
+        let found = chains().await;
+        assert_eq!(found.len(), 1, "{found:?}");
+        let p = &found[0];
+        assert_eq!(p["kind"], "causal_chain");
+        let hop = &p["payload"]["hops"][0];
+        assert_eq!(hop["cause"]["kind"], "range.maintenance");
+        assert_eq!(hop["effect"]["kind"], "device.offline");
+        assert_eq!(hop["gap_s"], 30 * 60);
+        assert!(p["payload"]["lift"].as_f64().unwrap() >= 2.0, "{p}");
+        // A recomputation proposes nothing new.
+        let (_, d) = detect().await;
+        assert_eq!(d["inserted"], 0, "{d}");
+
+        // Retain: an event with the device and a note citing the hop.
+        let pid = p["id"].as_str().unwrap();
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/proposals/{pid}/retain"), &env.alice, org,
+            Some(json!({"title": "Chain: defrost service → offline"}))).await;
+        assert_eq!(st, 200, "{w}");
+        let ev = w["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["event"]["title"] == "Chain: defrost service → offline")
+            .cloned()
+            .unwrap();
+        let note = ev["event"]["properties"]["note"].as_str().unwrap();
+        assert!(note.contains("range.maintenance → device.offline: 30 min before"), "{note}");
+        assert!(note.contains("A lead, not a fact."), "{note}");
+        assert_eq!(attached(&w, "Chain: defrost service → offline"), vec![("cr-3".to_string(), "context".to_string())]);
+
+    })
+    .await;
+}
+
 fn qs(path: &str, body: &Value) -> String {
     let pairs: Vec<String> = body
         .as_object()

@@ -18893,6 +18893,13 @@
       "PackView": {
         "description": "A pack the server offers, and whether the org installed it.",
         "properties": {
+          "causal_stats": {
+            "description": "How each causal pair of the pack fared in the org's cases (D911).",
+            "items": {
+              "$ref": "#/components/schemas/PairStats"
+            },
+            "type": "array"
+          },
           "description": {
             "type": "string"
           },
@@ -24440,6 +24447,45 @@
         ],
         "type": "object"
       },
+      "PairStats": {
+        "description": "How a pair fared in the org's cases (D911): chains proposed with a hop\nof this pair, how many a member retained, the mean rank of the retained\nones. `flagged` past [`FLAG_MIN_PROPOSED`] proposals under\n[`FLAG_MAX_PRECISION`]: shown, never switched off.",
+        "properties": {
+          "cause": {
+            "$ref": "#/components/schemas/SignalKind"
+          },
+          "effect": {
+            "$ref": "#/components/schemas/SignalKind"
+          },
+          "flagged": {
+            "type": "boolean"
+          },
+          "mean_rank": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "proposed": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "retained": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cause",
+          "effect",
+          "proposed",
+          "retained",
+          "flagged"
+        ],
+        "type": "object"
+      },
       "ParentRef": {
         "properties": {
           "id": {
@@ -26010,9 +26056,24 @@
                 ],
                 "type": "string"
               },
+              "max": {
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
               "metric": {
                 "type": [
                   "string",
+                  "null"
+                ]
+              },
+              "min": {
+                "description": "Declared bounds: a value leaving them is a `series.threshold`\nsignal of the causal chains (cases-workspace.md D904).",
+                "format": "double",
+                "type": [
+                  "number",
                   "null"
                 ]
               },

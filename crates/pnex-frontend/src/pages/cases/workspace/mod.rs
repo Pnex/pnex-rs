@@ -77,6 +77,10 @@ pub(super) fn proposal_title(p: &CaseProposal) -> String {
         "co_presence" => t!("cw-proposal-co-presence", a : who(0), b : who(1)).to_string(),
         "stop" => t!("cw-proposal-stop", who : who(0)).to_string(),
         "signal_loss" => t!("cw-proposal-signal-loss", who : who(0)).to_string(),
+        "causal_chain" => {
+            let last = p.refs.len().saturating_sub(1);
+            t!("cw-proposal-causal-chain", cause : who(0), effect : who(last)).to_string()
+        }
         "zone" => {
             let zone = p
                 .payload

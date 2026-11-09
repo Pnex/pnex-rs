@@ -150,6 +150,49 @@ pub fn parse(yaml: &str) -> Result<Pack> {
     Ok(pack)
 }
 
+/// How the causal pairs of `pack` fared in the org's cases (D911).
+async fn causal_stats(
+    db: &DatabaseConnection,
+    org_id: i64,
+    pack: &Pack,
+) -> Result<Vec<pnex_core::rca::PairStats>> {
+    use pnex_core::rca::SignalKind;
+    if pack.causal_pairs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT vals -> 'payload' AS payload, status FROM proposals \
+             WHERE org_id = $1 AND kind = 'case_event' AND vals ->> 'detector' = $2 \
+               AND status <> 'superseded'",
+            vec![org_id.into(), super::cases::detect::CAUSAL_CHAIN.into()],
+        ))
+        .await?;
+    let kind = |h: &Value, end: &str| {
+        h.get(end)
+            .and_then(|e| e.get("kind"))
+            .and_then(Value::as_str)
+            .and_then(SignalKind::parse)
+    };
+    let decided: Vec<_> = rows
+        .iter()
+        .filter_map(|r| {
+            let payload: Value = r.try_get("", "payload").ok()?;
+            let status: String = r.try_get("", "status").ok()?;
+            let rules = payload
+                .get("hops")?
+                .as_array()?
+                .iter()
+                .filter_map(|h| Some((kind(h, "cause")?, kind(h, "effect")?)))
+                .collect();
+            let rank = payload.get("rank").and_then(Value::as_u64).unwrap_or(1) as u32;
+            Some((rules, status == "accepted", rank))
+        })
+        .collect();
+    Ok(pnex_core::rca::pair_stats(&pack.causal_pairs, &decided))
+}
+
 pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>> {
     let installed = packs::Entity::find()
         .filter(packs::Column::OrgId.eq(org_id))
@@ -162,12 +205,13 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
             .iter()
             .find(|i| i.key == p.key)
             .map(|i| i.version.clone());
-        let (settings, (kept, differs)) = match installed_version {
+        let (settings, (kept, differs), causal_stats) = match installed_version {
             Some(_) => (
                 settings_view(&p, layers.get(&p.key).unwrap_or(&Value::Null)),
                 edited(db, org_id, &p).await?,
+                causal_stats(db, org_id, &p).await?,
             ),
-            None => (Vec::new(), Default::default()),
+            None => (Vec::new(), Default::default(), Vec::new()),
         };
         out.push(PackView {
             descriptions: p.descriptions.clone(),
@@ -176,6 +220,7 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
             settings,
             kept,
             differs,
+            causal_stats,
             key: p.key,
             name: p.name,
             version: p.version,
@@ -702,6 +747,7 @@ async fn install_locked(
             settings: Vec::new(),
             kept: Vec::new(),
             differs: Default::default(),
+            causal_stats: Vec::new(),
         });
     }
     // A pack is written against the shipped version of what it builds on:
@@ -837,6 +883,7 @@ async fn install_locked(
         settings: Vec::new(),
         kept,
         differs,
+        causal_stats: Vec::new(),
     })
 }
 

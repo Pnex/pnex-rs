@@ -197,6 +197,9 @@ fn AtCursor(workspace: CaseWorkspace) -> Element {
                     div { class: "font-mono text-xs text-slate",
                         {model::ms(&p.t_start).map(|t| model::stamp(t, local)).unwrap_or_default()}
                     }
+                    if p.kind == "causal_chain" {
+                        ChainHops { payload: p.payload.clone() }
+                    }
                 }
                 if ws.can_write {
                     button {
@@ -1004,5 +1007,46 @@ fn Ownership(id: String) -> Element {
                 }
             }
         }
+    }
+}
+
+/// The hops of a proposed causal chain (cases-workspace.md D907): rule,
+/// gap and distance of each, then confidence and lift against the placebo.
+#[component]
+fn ChainHops(payload: serde_json::Value) -> Element {
+    let rows: Vec<String> = payload
+        .get("hops")
+        .and_then(|h| h.as_array())
+        .into_iter()
+        .flatten()
+        .map(|h| {
+            let rule = h.get("rule").and_then(|v| v.as_str()).unwrap_or_default();
+            let gap = h.get("gap_s").and_then(|v| v.as_i64()).unwrap_or(0);
+            let distance = h.get("distance").and_then(|v| v.as_u64()).unwrap_or(0);
+            t!(
+                "cw-chain-hop",
+                rule: rule.to_string(),
+                gap: pnex_core::rca::gap_text(gap),
+                distance: distance
+            )
+            .to_string()
+        })
+        .collect();
+    let num = |k: &str| payload.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let score = t!(
+        "cw-chain-score",
+        confidence: format!("{:.2}", num("confidence")),
+        lift: format!("{:.1}", num("lift"))
+    )
+    .to_string();
+    rsx! {
+        ol {
+            class: "mt-1 space-y-0.5 text-xs text-slate",
+            "data-testid": "case-chain-hops",
+            for (i, row) in rows.into_iter().enumerate() {
+                li { key: "{i}", class: "border-l-2 border-signal pl-2", "{row}" }
+            }
+        }
+        p { class: "mt-0.5 text-xs text-slate", "{score}" }
     }
 }

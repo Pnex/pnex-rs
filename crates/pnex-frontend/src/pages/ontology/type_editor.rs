@@ -73,6 +73,8 @@ fn kind_default(kind: &str) -> PropertyKind {
         "series" => PropertyKind::Series {
             metric: None,
             unit: None,
+            min: None,
+            max: None,
         },
         "events" => PropertyKind::Events {
             stream: String::new(),
@@ -761,17 +763,56 @@ fn KindConfig(index: usize, def: Signal<ObjectTypeDef>, choices: Vec<(String, St
                 }
             }
         }
-        PropertyKind::Series { metric, unit } => {
-            let unit_s = unit.unwrap_or_default();
+        PropertyKind::Series {
+            metric,
+            unit,
+            min,
+            max,
+        } => {
+            let unit_s = unit.clone().unwrap_or_default();
+            let min_s = min.map(|v| v.to_string()).unwrap_or_default();
+            let max_s = max.map(|v| v.to_string()).unwrap_or_default();
+            let (m1, m2, m3) = (metric.clone(), metric.clone(), metric.clone());
+            let (u1, u2) = (unit.clone(), unit.clone());
             rsx! {
-                input {
-                    class: INPUT,
-                    placeholder: t!("onto-unit"),
-                    value: unit_s,
-                    oninput: move |e| set_kind(PropertyKind::Series {
-                        metric: metric.clone(),
-                        unit: Some(e.value()).filter(|u| !u.is_empty()),
-                    }),
+                div { class: "grid grid-cols-3 gap-2",
+                    input {
+                        class: INPUT,
+                        placeholder: t!("onto-unit"),
+                        value: unit_s,
+                        oninput: move |e| set_kind(PropertyKind::Series {
+                            metric: m1.clone(),
+                            unit: Some(e.value()).filter(|u| !u.is_empty()),
+                            min,
+                            max,
+                        }),
+                    }
+                    input {
+                        class: INPUT,
+                        r#type: "number",
+                        title: t!("onto-series-bounds-help"),
+                        placeholder: t!("onto-min"),
+                        value: min_s,
+                        oninput: move |e| set_kind(PropertyKind::Series {
+                            metric: m2.clone(),
+                            unit: u1.clone(),
+                            min: e.value().parse().ok(),
+                            max,
+                        }),
+                    }
+                    input {
+                        class: INPUT,
+                        r#type: "number",
+                        title: t!("onto-series-bounds-help"),
+                        placeholder: t!("onto-max"),
+                        value: max_s,
+                        oninput: move |e| set_kind(PropertyKind::Series {
+                            metric: m3.clone(),
+                            unit: u2.clone(),
+                            min,
+                            max: e.value().parse().ok(),
+                        }),
+                    }
                 }
             }
         }

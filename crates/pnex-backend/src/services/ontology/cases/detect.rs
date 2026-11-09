@@ -16,8 +16,8 @@ use pnex_core::ontology::api::{
 };
 use pnex_core::ontology::proposal::{DecisionKind, ProposalDecision, ProposalInput, ProposalKind};
 use pnex_core::ontology::{
-    CASE_COPRESENCE_DISTANCE_M, CASE_COPRESENCE_MIN_S, CASE_SIGNAL_GAP_S, CASE_STOP_DIAMETER_M,
-    CASE_STOP_MIN_S, EVENT_LOCATION, EVENT_NOTE, KIND_EVENT,
+    CASE_CAUSAL_MIN_LIFT, CASE_COPRESENCE_DISTANCE_M, CASE_COPRESENCE_MIN_S, CASE_SIGNAL_GAP_S,
+    CASE_STOP_DIAMETER_M, CASE_STOP_MIN_S, EVENT_LOCATION, EVENT_NOTE, KIND_EVENT,
 };
 use pnex_core::resources::KIND_MAP_PIN;
 use pnex_core::track::detect::{
@@ -41,6 +41,7 @@ const CO_PRESENCE: &str = "co_presence@1";
 const STOP: &str = "stop@1";
 const SIGNAL_LOSS: &str = "signal_loss@1";
 const ZONE: &str = "zone@1";
+pub(crate) const CAUSAL_CHAIN: &str = "causal_chain@1";
 const DEFAULT_SPAN_HOURS: i64 = 24;
 
 /// Detector thresholds of a case: its properties, else the defaults.
@@ -51,6 +52,7 @@ pub(super) struct Thresholds {
     pub stop_min_s: i64,
     /// `None` = the track reader's default.
     pub signal_gap_s: Option<i64>,
+    pub causal_min_lift: f64,
 }
 
 impl Thresholds {
@@ -62,6 +64,7 @@ impl Thresholds {
             stop_diameter_m: num(CASE_STOP_DIAMETER_M).unwrap_or(STOP_DIAMETER_M),
             stop_min_s: num(CASE_STOP_MIN_S).map_or(STOP_MIN_S, |v| v as i64),
             signal_gap_s: num(CASE_SIGNAL_GAP_S).map(|v| v as i64),
+            causal_min_lift: num(CASE_CAUSAL_MIN_LIFT).unwrap_or(pnex_core::rca::DEFAULT_MIN_LIFT),
         }
     }
 }
@@ -74,6 +77,9 @@ struct Found {
     from_ms: i64,
     to_ms: Option<i64>,
     payload: Value,
+    /// Identity across recomputations when not the default fingerprint
+    /// (a chain: detector, root signal, effect signal, D909).
+    key: Option<String>,
 }
 
 fn kind_of(detector: &str) -> &str {
@@ -99,6 +105,19 @@ fn instant(ms: i64) -> DateTimeWithTimeZone {
     chrono::DateTime::from_timestamp_millis(ms)
         .unwrap_or_default()
         .into()
+}
+
+/// Whether the org turned the causal chains of its cases on (pack setting,
+/// off by default until measured, D909).
+async fn causal_enabled(db: &DatabaseConnection, org_id: i64) -> Result<bool> {
+    Ok(crate::services::ontology::packs::setting_value(
+        db,
+        org_id,
+        "maintenance.causal_chains_enabled",
+    )
+    .await?
+    .and_then(|v| v.as_bool())
+    .unwrap_or(false))
 }
 
 /// Runs the detectors over a window (default: the span of the events, then
@@ -150,6 +169,7 @@ pub async fn detect(
                     from_ms: s.from_ms,
                     to_ms: Some(s.to_ms),
                     payload: json!({ "at": [s.at.0, s.at.1] }),
+                    key: None,
                 });
             }
         }
@@ -162,6 +182,7 @@ pub async fn detect(
                 from_ms: l.from_ms,
                 to_ms: l.to_ms,
                 payload: json!({ "at": [l.at.0, l.at.1] }),
+                key: None,
             });
         }
     }
@@ -185,6 +206,7 @@ pub async fn detect(
                     payload: json!({
                         "at": [at.0, at.1], "zone": zone, "entered": v.entered, "left": v.left,
                     }),
+                    key: None,
                 });
             }
         }
@@ -205,6 +227,80 @@ pub async fn detect(
                     payload: json!({
                         "at": [c.at.0, c.at.1],
                         "min_distance_m": (c.min_distance_m * 10.0).round() / 10.0,
+                    }),
+                    key: None,
+                });
+            }
+        }
+    }
+
+    // Causal chains (cases-workspace.md D909): leads over the members'
+    // typed signals, only when the org turned them on and they beat the
+    // placebo by the case's lift.
+    if causal_enabled(db, org_id).await? {
+        let pairs = crate::services::ontology::packs::causal_pairs(db, org_id).await?;
+        if !pairs.is_empty() {
+            let longest = pairs.iter().map(|p| p.max_gap).max().unwrap_or(0);
+            let shift = pnex_core::rca::PLACEBO_SHIFTS
+                .iter()
+                .max()
+                .copied()
+                .unwrap_or(0);
+            let back = chrono::Duration::seconds(longest + shift);
+            let (f, t) = (
+                from.with_timezone(&chrono::Utc),
+                to.with_timezone(&chrono::Utc),
+            );
+            let signals = super::causal::signals(db, client, org_id, case_id, f - back, t).await?;
+            let effects: Vec<_> = pnex_core::rca::effects_of(&signals, &pairs)
+                .into_iter()
+                .filter(|s| s.at >= f.timestamp() && s.at <= t.timestamp())
+                .collect();
+            let topology = crate::services::rca::topology(db, org_id, f - back, t).await?;
+            let mut ranks: std::collections::HashMap<String, u32> = Default::default();
+            for c in pnex_core::rca::chains(&effects, &signals, &topology, &pairs) {
+                // Rank among the chains of the same effect (D911).
+                let rank = ranks.entry(c.effect().id.clone()).or_insert(0);
+                *rank += 1;
+                let rank = *rank;
+                if c.lift < th.causal_min_lift {
+                    continue;
+                }
+                let mut refs: Vec<Uuid> = Vec::new();
+                for h in &c.hops {
+                    for on in [&h.cause.on, &h.effect.on] {
+                        if let Ok(id) = Uuid::parse_str(on) {
+                            if !refs.contains(&id) {
+                                refs.push(id);
+                            }
+                        }
+                    }
+                }
+                let (root, effect) = (c.root().clone(), c.effect().clone());
+                found.push(Found {
+                    detector: CAUSAL_CHAIN,
+                    params: json!({ "min_lift": th.causal_min_lift }),
+                    key: Some(hex::encode(Sha256::digest(format!(
+                        "{}|{}|{}",
+                        kind_of(CAUSAL_CHAIN),
+                        root.id,
+                        effect.id
+                    )))),
+                    refs,
+                    from_ms: root.at * 1_000,
+                    to_ms: Some(effect.at * 1_000),
+                    payload: json!({
+                        "hops": c.hops.iter().map(|h| json!({
+                            "cause": h.cause, "effect": h.effect, "gap_s": h.gap,
+                            "distance": h.distance, "score": h.score,
+                            "rule": format!("{} → {}", h.cause.kind.as_str(), h.effect.kind.as_str()),
+                        })).collect::<Vec<_>>(),
+                        "confidence": c.confidence,
+                        "placebo": c.placebo,
+                        "lift": c.lift,
+                        "rank": rank,
+                        "root": root.on,
+                        "effect": effect.on,
                     }),
                 });
             }
@@ -228,9 +324,17 @@ pub async fn detect(
             kind: Some(ProposalKind::CaseEvent),
             type_key: KIND_EVENT.into(),
             target_id: Some(case_id.to_string()),
-            title: Some(format!("{}: {}", kind_of(f.detector), names.join(" · "))),
+            title: Some(format!(
+                "{}: {}",
+                kind_of(f.detector),
+                names.join(if f.detector == CAUSAL_CHAIN {
+                    " → "
+                } else {
+                    " · "
+                })
+            )),
             values: json!({
-                "key": fingerprint(f.detector, &refs, f.from_ms),
+                "key": f.key.clone().unwrap_or_else(|| fingerprint(f.detector, &refs, f.from_ms)),
                 "detector": f.detector,
                 "params": f.params,
                 "members": refs.iter().map(Uuid::to_string).collect::<Vec<_>>(),
@@ -362,6 +466,9 @@ pub(crate) async fn event_of<C: ConnectionTrait>(
         .get("detector")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    if detector == CAUSAL_CHAIN {
+        return causal_event(db, org_id, actor, case_id, vals, from_ms, title).await;
+    }
     let params = vals.get("params").cloned().unwrap_or_default();
     let mut props = Map::new();
     props.insert(EVENT_NOTE.into(), format!("{detector} {params}").into());
@@ -390,6 +497,139 @@ pub(crate) async fn event_of<C: ConnectionTrait>(
                 }
             })
             .collect(),
+    };
+    create_event_in(db, org_id, actor, case_id, &event, props).await
+}
+
+/// The event of a retained causal chain (D909): the root cause as context,
+/// the effect as evidence, the flow that alerted as source, a note citing
+/// every hop; with the Investigation pack, a hypothesis whose hops are the
+/// claims for it.
+async fn causal_event<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    actor: &Actor,
+    case_id: Uuid,
+    vals: &Map<String, Value>,
+    from_ms: i64,
+    title: &str,
+) -> Result<Uuid> {
+    let payload = vals.get("payload").cloned().unwrap_or_default();
+    let hops = payload
+        .get("hops")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let text = |v: &Value, k: &str| {
+        v.get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let root = text(&payload, "root");
+    let effect = text(&payload, "effect");
+    // The flow that alerted: `notification:<ts>:<flow object>`.
+    let flow = hops
+        .last()
+        .and_then(|h| h.get("effect"))
+        .map(|e| text(e, "source_ref"))
+        .and_then(|r| r.strip_prefix("notification:").map(str::to_string))
+        .and_then(|r| r.split_once(':').map(|(_, f)| f.to_string()));
+    let mut lines: Vec<String> = hops
+        .iter()
+        .map(|h| {
+            format!(
+                "{}: {} before, {} link(s) apart, score {:.3}",
+                text(h, "rule"),
+                pnex_core::rca::gap_text(h.get("gap_s").and_then(Value::as_i64).unwrap_or(0)),
+                h.get("distance").and_then(Value::as_u64).unwrap_or(0),
+                h.get("score").and_then(Value::as_f64).unwrap_or(0.0),
+            )
+        })
+        .collect();
+    let num = |k: &str| payload.get(k).and_then(Value::as_f64).unwrap_or(0.0);
+    lines.push(format!(
+        "{CAUSAL_CHAIN}: confidence {:.3}, lift {:.1} against the placebo. A lead, not a fact.",
+        num("confidence"),
+        num("lift")
+    ));
+    let mut attach: Vec<CaseAttachInput> = Vec::new();
+    let mut add = |id: &str, role: &str| {
+        if !id.is_empty() && attach.iter().all(|a| a.object_id != id) {
+            attach.push(CaseAttachInput {
+                object_id: id.to_string(),
+                role: Some(role.into()),
+                ..Default::default()
+            });
+        }
+    };
+    add(&root, "context");
+    add(&effect, "evidence");
+    if let Some(f) = &flow {
+        add(f, "source");
+    }
+    for h in &hops {
+        for end in ["cause", "effect"] {
+            add(&text(h.get(end).unwrap_or(&Value::Null), "on"), "context");
+        }
+    }
+    // Investigation pack installed: a hypothesis the hops support.
+    let s = super::super::schema(db, org_id).await?;
+    if s.object_type("hypothesis").is_some() && s.object_type("claim").is_some() {
+        let hypothesis = super::super::objects::create(
+            db,
+            org_id,
+            actor,
+            &pnex_core::ontology::api::ObjectInput {
+                type_key: "hypothesis".into(),
+                title: title.to_string(),
+                properties: json!({ "statement": title, "status": "open" })
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default(),
+                expected_version: None,
+            },
+        )
+        .await?;
+        for line in lines.iter().take(hops.len()) {
+            let claim = super::super::objects::create(
+                db,
+                org_id,
+                actor,
+                &pnex_core::ontology::api::ObjectInput {
+                    type_key: "claim".into(),
+                    title: line.chars().take(200).collect(),
+                    properties: json!({ "statement": line, "status": "unverified" })
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default(),
+                    expected_version: None,
+                },
+            )
+            .await?;
+            links::create(
+                db,
+                org_id,
+                actor,
+                &pnex_core::ontology::api::LinkInput {
+                    link_type: "supports".into(),
+                    source_id: claim.id.clone(),
+                    target_id: hypothesis.id.clone(),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        }
+        add(&hypothesis.id, "hypothesis");
+    }
+    let to_ms = vals.get("to_ms").and_then(Value::as_i64);
+    let mut props = Map::new();
+    props.insert(EVENT_NOTE.into(), lines.join("\n").into());
+    let event = CaseEventInput {
+        title: title.to_string(),
+        occurred: occurred(from_ms, to_ms),
+        origin: Some("detection".into()),
+        attach,
     };
     create_event_in(db, org_id, actor, case_id, &event, props).await
 }

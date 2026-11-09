@@ -8,8 +8,8 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{BoardClaim, CaseWorkspace, ObjectRef};
 use pnex_core::ontology::{
-    CASE_COPRESENCE_DISTANCE_M, CASE_COPRESENCE_MIN_S, CASE_LEGAL_BASIS, CASE_QUESTION,
-    CASE_SIGNAL_GAP_S, CASE_STATUS, CASE_STOP_DIAMETER_M, CASE_STOP_MIN_S,
+    CASE_CAUSAL_MIN_LIFT, CASE_COPRESENCE_DISTANCE_M, CASE_COPRESENCE_MIN_S, CASE_LEGAL_BASIS,
+    CASE_QUESTION, CASE_SIGNAL_GAP_S, CASE_STATUS, CASE_STOP_DIAMETER_M, CASE_STOP_MIN_S,
 };
 use pnex_core::resources::KIND_DOC;
 use pnex_core::track::detect as defaults;
@@ -113,6 +113,11 @@ pub(super) fn Frame(workspace: CaseWorkspace) -> Element {
             CASE_SIGNAL_GAP_S,
             t!("cw-th-gap"),
             defaults::DEFAULT_SIGNAL_GAP_S as f64,
+        ),
+        (
+            CASE_CAUSAL_MIN_LIFT,
+            t!("cw-th-causal-lift"),
+            pnex_core::rca::DEFAULT_MIN_LIFT,
         ),
     ];
     let close = move |_| {

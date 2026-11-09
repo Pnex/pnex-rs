@@ -7,6 +7,7 @@
 //! validations, same role lock D188), inside one transaction per gesture.
 
 mod board;
+mod causal;
 pub(crate) mod detect;
 mod export;
 mod graph;
