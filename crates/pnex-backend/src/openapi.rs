@@ -112,6 +112,7 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         controllers::pipelines::openapi(),
         controllers::connectors::openapi(),
         controllers::hooks::openapi(),
+        controllers::mt5::openapi(),
         controllers::governance::openapi(),
         controllers::analysis::openapi(),
         controllers::rules::openapi(),

@@ -414,7 +414,7 @@ fn dist_dir() -> std::path::PathBuf {
 /// Base URL the browser reached this server on (`X-Forwarded-*` from the
 /// edge, else `Host`); `None` when the host is not a plain host[:port].
 /// Fallback only: behind a proxy that ends TLS the scheme may be wrong.
-fn public_base(headers: &axum::http::HeaderMap) -> Option<String> {
+pub(crate) fn public_base(headers: &axum::http::HeaderMap) -> Option<String> {
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
     let host = header("x-forwarded-host")
         .or_else(|| header("host"))?

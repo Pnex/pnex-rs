@@ -80,6 +80,8 @@ pub mod media_sniff;
 /// Media files sent in parts (data-pipelines.md §9.9).
 pub mod media_uploads;
 pub mod memory;
+/// MT5 terminals as registered data sources (markets-research.md D847–D849).
+pub mod mt5;
 /// Notifications (D49–D54) — WS broker, journal, pruner, delivery.
 pub mod notify;
 pub mod notify_journal;

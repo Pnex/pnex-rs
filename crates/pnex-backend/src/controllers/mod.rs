@@ -60,6 +60,7 @@ pub mod media_ingest;
 pub mod memory;
 pub mod meta;
 pub mod ml_models;
+pub mod mt5;
 /// Notifications (D49–D54) — CRUD channels/templates + test/preview/journal.
 pub mod notify;
 pub mod oauth2;

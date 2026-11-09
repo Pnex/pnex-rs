@@ -16390,6 +16390,260 @@
         ],
         "type": "object"
       },
+      "Mt5Backfill": {
+        "description": "Body of a backfill request.",
+        "properties": {
+          "days": {
+            "description": "Days of 1-minute bars sent again, 1 to 3650.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "days"
+        ],
+        "type": "object"
+      },
+      "Mt5Config": {
+        "description": "What the EA reads: the symbols to push and the backfill to do.",
+        "properties": {
+          "backfill_from": {
+            "description": "UTC seconds the backfill starts from; 0: none.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "backfill_id": {
+            "description": "Changes each time a backfill is asked; 0: none.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "bars": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "poll_seconds": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ticks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "bars",
+          "ticks",
+          "poll_seconds",
+          "backfill_id",
+          "backfill_from"
+        ],
+        "type": "object"
+      },
+      "Mt5Symbol": {
+        "description": "One symbol of a terminal's catalogue.",
+        "properties": {
+          "bars": {
+            "description": "Whether the selection sends its bars, its ticks.",
+            "type": "boolean"
+          },
+          "base": {
+            "type": "string"
+          },
+          "contract_size": {
+            "format": "double",
+            "type": "number"
+          },
+          "description": {
+            "type": "string"
+          },
+          "digits": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "first_m1": {
+            "description": "First 1-minute bar the broker keeps (UTC), when announced.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "profit": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "ticks": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "symbol",
+          "description",
+          "path",
+          "base",
+          "profit",
+          "digits",
+          "contract_size",
+          "bars",
+          "ticks"
+        ],
+        "type": "object"
+      },
+      "Mt5Terminal": {
+        "description": "A terminal as read: never its token (R4, R16).",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "backfill_days": {
+            "description": "Last backfill asked: its days and when.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "backfill_requested_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bars": {
+            "description": "Symbols whose 1-minute bars are pushed: `*` for the whole catalogue,\nelse comma-separated names or prefixes (`XAU*`).",
+            "type": "string"
+          },
+          "broker": {
+            "description": "Broker, server and account number as typed (not secrets).",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "ea_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "has_token": {
+            "description": "Whether an EA was generated (a token exists).",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "presence": {
+            "$ref": "#/components/schemas/Presence"
+          },
+          "server": {
+            "type": "string"
+          },
+          "symbols": {
+            "description": "Symbols the terminal announced.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "terminal_build": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "ticks": {
+            "description": "Symbols whose ticks are pushed, same form; empty: none.",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "broker",
+          "server",
+          "account",
+          "bars",
+          "ticks",
+          "has_token",
+          "presence",
+          "symbols",
+          "backfill_days",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "Mt5TerminalInput": {
+        "description": "A terminal as written. `bars` absent: the whole catalogue (Q-MT3).",
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "bars": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "broker": {
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "On an update, the version read (optimistic concurrency).",
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "server": {
+            "type": "string"
+          },
+          "ticks": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "MyInvitation": {
         "description": "Invitation waiting for the caller's answer.",
         "properties": {
@@ -21310,6 +21564,78 @@
         ],
         "type": "object"
       },
+      "Paginated_Mt5Symbol": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Mt5Symbol"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_Mt5Terminal": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Mt5Terminal"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_MyInvitation": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -24702,6 +25028,16 @@
           "board"
         ],
         "type": "object"
+      },
+      "Presence": {
+        "description": "What the EA's heartbeat says of the terminal (D108-like presence).",
+        "enum": [
+          "never",
+          "online",
+          "late",
+          "offline"
+        ],
+        "type": "string"
       },
       "PreviewBody": {
         "properties": {
@@ -76263,6 +76599,863 @@
         "summary": "Run a vision model on a live camera frame",
         "tags": [
           "ml"
+        ]
+      }
+    },
+    "/api/v1/mt5/announce": {
+      "post": {
+        "description": "Called by the terminal's Expert Advisor with its token, no user session: the broker's symbols with their description, currencies, digits, contract size and first 1-minute bar (`{\"v\": 1, \"symbols\": [...]}`), upserted into the terminal's catalogue. 4 MiB at most.",
+        "operationId": "mt5_announce",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Kept"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-body-invalid` (args `token`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-token-invalid`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Announce the catalogue of the calling MT5 terminal",
+        "tags": [
+          "mt5"
+        ]
+      }
+    },
+    "/api/v1/mt5/config": {
+      "get": {
+        "description": "Called by the terminal's Expert Advisor with its token, no user session: the symbols whose bars and ticks it sends, resolved on its catalogue, and the backfill asked. Counts as a heartbeat.",
+        "operationId": "mt5_config",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mt5Config"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-token-invalid`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Configuration of the calling MT5 terminal",
+        "tags": [
+          "mt5"
+        ]
+      }
+    },
+    "/api/v1/mt5/ingest": {
+      "post": {
+        "description": "Called by the terminal's Expert Advisor with its token, no user session: closed 1-minute bars and ticks, times in UTC (`{\"v\": 1, \"broker\", \"bars\": [...], \"ticks\": [...]}`), kept for the tables `mt5_ohlcv_1m` and `mt5_ticks`. A call without bars nor ticks is the heartbeat. 1 MiB at most.",
+        "operationId": "mt5_ingest",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Kept"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-body-invalid` (args `token`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-token-invalid`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-inbox-full`: too many calls of the org's terminals waiting"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send bars and ticks from the calling MT5 terminal",
+        "tags": [
+          "mt5"
+        ]
+      }
+    },
+    "/api/v1/mt5/terminals": {
+      "get": {
+        "description": "MetaTrader 5 terminals registered as data sources of the org, with their presence and their selection, never their token. Requires `metatrader:read`. Paginated (`limit`/`offset`).",
+        "operationId": "mt5_terminals_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Mt5Terminal"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `metatrader:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the MT5 terminals",
+        "tags": [
+          "mt5"
+        ]
+      },
+      "post": {
+        "description": "Registers a MetaTrader 5 terminal as a data source. Without `bars` it sends the 1-minute bars of its whole catalogue, without `ticks` no tick. It has no token until its Expert Advisor is generated. Requires `metatrader:write`.",
+        "operationId": "mt5_terminals_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Mt5TerminalInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mt5Terminal"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `metatrader:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-terminal-name-taken`, or `mt5-terminals-limit` (args `max`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Register an MT5 terminal",
+        "tags": [
+          "mt5"
+        ]
+      }
+    },
+    "/api/v1/mt5/terminals/{id}": {
+      "delete": {
+        "description": "Removes the terminal, its catalogue and its waiting calls; its EA is refused from then on. The bars and ticks already in the tables are kept. Requires `metatrader:delete`.",
+        "operationId": "mt5_terminals_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Terminal id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `metatrader:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-terminal-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete an MT5 terminal",
+        "tags": [
+          "mt5"
+        ]
+      },
+      "get": {
+        "description": "One terminal, its presence and selection, never its token. Requires `metatrader:read`.",
+        "operationId": "mt5_terminals_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Terminal id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mt5Terminal"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `metatrader:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-terminal-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get an MT5 terminal",
+        "tags": [
+          "mt5"
+        ]
+      },
+      "put": {
+        "description": "Replaces the terminal's name, broker details and selection (`bars`, `ticks`: `*`, names or prefixes such as `XAU*`), on the version that was read (`expected_version`). An absent selection keeps the current one; the EA reads it within five minutes. Requires `metatrader:write`.",
+        "operationId": "mt5_terminals_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Terminal id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Mt5TerminalInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mt5Terminal"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `metatrader:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-terminal-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-terminal-name-taken` or `mt5-terminal-version-conflict` (args `current`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Replace an MT5 terminal",
+        "tags": [
+          "mt5"
+        ]
+      }
+    },
+    "/api/v1/mt5/terminals/{id}/backfill": {
+      "post": {
+        "description": "Asks the terminal to send again `days` of 1-minute bars of its selection, as far as its broker keeps them; the EA reads it within five minutes. Requires `metatrader:write`.",
+        "operationId": "mt5_terminals_backfill",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Terminal id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Mt5Backfill"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mt5Terminal"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (`errors.fields`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `metatrader:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-terminal-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ask an MT5 terminal for past bars",
+        "tags": [
+          "mt5"
+        ]
+      }
+    },
+    "/api/v1/mt5/terminals/{id}/ea": {
+      "post": {
+        "description": "Returns the terminal's Expert Advisor (MQL5 source to compile in MetaEditor) with this server's address and a new token written in; the token is shown nowhere else, and the previous EA of the terminal stops working at once. Read only: the EA never places an order. Requires `metatrader:write`.",
+        "operationId": "mt5_terminals_ea",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Terminal id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The `.mq5` source"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `metatrader:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-terminal-not-found`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-base-unknown`: the server's public address cannot be told"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Generate the Expert Advisor of an MT5 terminal",
+        "tags": [
+          "mt5"
+        ]
+      }
+    },
+    "/api/v1/mt5/terminals/{id}/symbols": {
+      "get": {
+        "description": "The catalogue the terminal announced: description, currencies, digits, contract size, first 1-minute bar the broker keeps, and whether the selection sends its bars and ticks. Filter `q` on the symbol or its description. Requires `metatrader:read`. Paginated (`limit`/`offset`).",
+        "operationId": "mt5_terminals_symbols",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Terminal id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A part of the symbol or of its description.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Mt5Symbol"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `metatrader:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mt5-terminal-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the symbols of an MT5 terminal",
+        "tags": [
+          "mt5"
         ]
       }
     },

@@ -92,6 +92,16 @@ pub enum ResponseShape {
     /// product per shop and day; the shop is the metric, the currency the
     /// unit (pack `consumer_prices`, D883).
     OpenPrices,
+    /// CFTC Commitments of Traders (legacy futures only, Socrata JSON): one
+    /// weekly report of the queried market, positions by kind of trader.
+    /// Positions are of Tuesday, published the Friday after: `known_on` is
+    /// the report day plus three days.
+    CftcCot,
+    /// EIA API v2 `seriesid` (oil and gas statistics): `response.data` rows of
+    /// `period` and `value`; the series is the one queried. A weekly series
+    /// (the Weekly Petroleum Status Report) is known five days after the
+    /// Friday its week ends, on the Wednesday it is published.
+    EiaSeries,
 }
 
 /// A source that takes a key: fixed host, fixed vault name. A mapping names
@@ -110,7 +120,7 @@ pub struct KeyedSource {
     pub query: Option<&'static str>,
 }
 
-pub const KEYED_SOURCES: [KeyedSource; 2] = [
+pub const KEYED_SOURCES: [KeyedSource; 3] = [
     KeyedSource {
         key: "tiingo",
         host: "api.tiingo.com",
@@ -122,6 +132,13 @@ pub const KEYED_SOURCES: [KeyedSource; 2] = [
         key: "fred",
         host: "api.stlouisfed.org",
         secret: "markets_fred_key",
+        scheme: "",
+        query: Some("api_key"),
+    },
+    KeyedSource {
+        key: "eia",
+        host: "api.eia.gov",
+        secret: "markets_eia_key",
         scheme: "",
         query: Some("api_key"),
     },
@@ -158,6 +175,8 @@ pub fn records(shape: ResponseShape, body: &[u8]) -> Option<Vec<Value>> {
         ResponseShape::AlfredVintages => alfred_vintages(&doc),
         ResponseShape::PortwatchDaily => portwatch_daily(&doc),
         ResponseShape::OpenPrices => open_prices(&doc),
+        ResponseShape::CftcCot => cftc_cot(&doc),
+        ResponseShape::EiaSeries => eia_series(&doc),
         ResponseShape::DatedCsv | ResponseShape::EcbCsv => None,
     }
 }
@@ -395,6 +414,10 @@ fn period_start(raw: &str) -> Option<String> {
     if is_date(raw) {
         return Some(raw.to_string());
     }
+    // An annual period (EIA): its first day.
+    if raw.len() == 4 && raw.bytes().all(|b| b.is_ascii_digit()) {
+        return Some(format!("{raw}-01-01"));
+    }
     let (year, rest) = raw.split_once('-')?;
     let month = match rest.strip_prefix('Q') {
         Some(q) => format!(
@@ -507,6 +530,97 @@ fn open_prices(doc: &Value) -> Option<Vec<Value>> {
             "metric": shop_metric(item), "unit": currency, "end": date,
             "known_on": date, "value": price, "name": name,
         }));
+    }
+    Some(rows)
+}
+
+/// Days between the end of an EIA petroleum week (Friday) and its report.
+// shortcut: a report delayed by a holiday keeps the five days; read the EIA release schedule if a past-dated test shows it matters.
+const EIA_WEEKLY_RELEASE_DAYS: u64 = 5;
+
+fn eia_series(doc: &Value) -> Option<Vec<Value>> {
+    let resp = doc.get("response")?;
+    let weekly = resp
+        .get("frequency")
+        .and_then(Value::as_str)
+        .is_some_and(|f| f.eq_ignore_ascii_case("weekly"));
+    let mut rows = Vec::new();
+    for r in resp.get("data")?.as_array()? {
+        let Some(end) = r
+            .get("period")
+            .and_then(Value::as_str)
+            .and_then(period_start)
+        else {
+            continue;
+        };
+        let value = match r.get("value") {
+            Some(Value::Number(n)) => n.as_f64(),
+            Some(Value::String(s)) => s.trim().parse::<f64>().ok(),
+            _ => None,
+        };
+        let Some(value) = value.filter(|v| v.is_finite()) else {
+            continue;
+        };
+        let mut row = json!({ "end": end, "value": value });
+        if let Some(u) = r.get("units").and_then(Value::as_str) {
+            row["unit"] = json!(u);
+        }
+        if weekly {
+            let known = chrono::NaiveDate::parse_from_str(&end, "%Y-%m-%d")
+                .ok()?
+                .checked_add_days(chrono::Days::new(EIA_WEEKLY_RELEASE_DAYS))?;
+            row["known_on"] = json!(known.to_string());
+        }
+        rows.push(row);
+    }
+    Some(rows)
+}
+
+/// Days between the positions of a COT report (Tuesday) and its release.
+// shortcut: a release delayed by a holiday or a shutdown is dated three days after anyway; read the CFTC release calendar if a past-dated test shows it matters.
+const COT_RELEASE_DAYS: u64 = 3;
+
+fn cftc_cot(doc: &Value) -> Option<Vec<Value>> {
+    let mut rows = Vec::new();
+    for r in doc.as_array()? {
+        let Some(day) = r
+            .get("report_date_as_yyyy_mm_dd")
+            .and_then(Value::as_str)
+            .and_then(|d| d.get(..10))
+            .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+        else {
+            continue;
+        };
+        let known = day.checked_add_days(chrono::Days::new(COT_RELEASE_DAYS))?;
+        let n = |k: &str| {
+            r.get(k)
+                .and_then(Value::as_str)
+                .and_then(|v| v.trim().parse::<f64>().ok())
+        };
+        let name = r
+            .get("market_and_exchange_names")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let (end, known) = (day.to_string(), known.to_string());
+        let mut push = |metric: &str, v: Option<f64>| {
+            if let Some(value) = v {
+                rows.push(json!({ "metric": metric, "end": end, "known_on": known, "value": value, "name": name }));
+            }
+        };
+        let (nl, ns) = (
+            n("noncomm_positions_long_all"),
+            n("noncomm_positions_short_all"),
+        );
+        let (cl, cs) = (n("comm_positions_long_all"), n("comm_positions_short_all"));
+        push("open_interest", n("open_interest_all"));
+        push("noncommercial_long", nl);
+        push("noncommercial_short", ns);
+        push("noncommercial_net", nl.zip(ns).map(|(l, s)| l - s));
+        push("commercial_long", cl);
+        push("commercial_short", cs);
+        push("commercial_net", cl.zip(cs).map(|(l, s)| l - s));
+        push("nonreportable_long", n("nonrept_positions_long_all"));
+        push("nonreportable_short", n("nonrept_positions_short_all"));
     }
     Some(rows)
 }
@@ -775,6 +889,49 @@ mod tests {
         assert_eq!(r[0]["known_on"], "2026-10-30");
         assert_eq!(r[0]["value"], 10.0, "never the adjusted close");
         assert!(records(ResponseShape::DailyPrices, b"{\"detail\":\"no\"}").is_none());
+    }
+
+    #[test]
+    fn eia_weekly_stocks_are_known_the_wednesday_after() {
+        let body = br#"{"response":{"frequency":"weekly","data":[
+            {"period":"2026-10-30","value":"421345","units":"MBBL"},
+            {"period":"2026-10-23","value":null}]}}"#;
+        let r = records(ResponseShape::EiaSeries, body).unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0]["known_on"], "2026-11-04");
+        assert_eq!(r[0]["unit"], "MBBL");
+        let monthly =
+            br#"{"response":{"frequency":"monthly","data":[{"period":"2026-08","value":13.4}]}}"#;
+        let r = records(ResponseShape::EiaSeries, monthly).unwrap();
+        assert_eq!(r[0]["end"], "2026-08-01");
+        assert!(
+            r[0].get("known_on").is_none(),
+            "unknown release day: left to the reading"
+        );
+        assert_eq!(keyed_source("eia").unwrap().host, "api.eia.gov");
+    }
+
+    #[test]
+    fn cot_reports_are_known_the_friday_after() {
+        let body = br#"[{"report_date_as_yyyy_mm_dd":"2026-11-03T00:00:00.000","market_and_exchange_names":"GOLD - COMMODITY EXCHANGE INC.",
+            "open_interest_all":"399169","noncomm_positions_long_all":"220530","noncomm_positions_short_all":"40982",
+            "comm_positions_long_all":"64326","comm_positions_short_all":"269228",
+            "nonrept_positions_long_all":"46024","nonrept_positions_short_all":"20670"},
+            {"report_date_as_yyyy_mm_dd":"soon"}]"#;
+        let r = records(ResponseShape::CftcCot, body).unwrap();
+        assert_eq!(r.len(), 9);
+        let net = r
+            .iter()
+            .find(|x| x["metric"] == "noncommercial_net")
+            .unwrap();
+        assert_eq!(net["value"], 179548.0);
+        assert_eq!(net["end"], "2026-11-03");
+        assert_eq!(
+            net["known_on"], "2026-11-06",
+            "a Tuesday report, released on Friday"
+        );
+        assert_eq!(net["name"], "GOLD - COMMODITY EXCHANGE INC.");
+        assert!(records(ResponseShape::CftcCot, b"{}").is_none());
     }
 
     #[test]

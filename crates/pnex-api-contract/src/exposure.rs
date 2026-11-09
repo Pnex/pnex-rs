@@ -432,6 +432,12 @@ pub const EXPOSED: &[&str] = &[
     "proposals_list",
     "proposals_get",
     "web_sites_list",
+    "mt5_terminals_backfill",
+    "mt5_terminals_create",
+    "mt5_terminals_get",
+    "mt5_terminals_list",
+    "mt5_terminals_symbols",
+    "mt5_terminals_update",
 ];
 
 /// Operations never served as tools, grouped by reason.
@@ -498,6 +504,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "resources_folders_delete",
             "secrets_delete",
             "connectors_delete",
+            "mt5_terminals_delete",
             "image_registries_delete",
             "environments_delete",
             "site_recipes_delete",
@@ -578,6 +585,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "connectors_get",
             "connectors_list",
             "connectors_secret",
+            "mt5_terminals_ea",
             "connectors_test",
             "connectors_update",
             "image_registries_create",
@@ -764,6 +772,9 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "agent_download",
             "agent_enroll",
             "hooks_receive",
+            "mt5_config",
+            "mt5_announce",
+            "mt5_ingest",
             "agent_install_ps1",
             "agent_install_sh",
             "download_firmware",

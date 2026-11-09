@@ -334,6 +334,10 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
         || matches!(route, Route::WebSites {} | Route::WebSiteStudio { .. })
         || pipelines
         || matches!(route, Route::Mailboxes {} | Route::MailboxMessages { .. })
+        || matches!(
+            route,
+            Route::Mt5Terminals {} | Route::Mt5TerminalDetail { .. }
+        )
         || at(Route::Firmware {});
     let automation = matches!(route, Route::Flows { .. })
         || at(Route::HostedAgents {})
@@ -545,6 +549,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::Pipelines {},
                     label: t!("nav-pipelines"),
                     active: pipelines,
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Mt5Terminals {},
+                    label: t!("nav-mt5-terminals"),
+                    active: matches!(route, Route::Mt5Terminals {} | Route::Mt5TerminalDetail { .. }),
                     on_navigate,
                 }
                 NavItem {

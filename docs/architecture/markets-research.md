@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
-| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), lots **MK0…MK14**, **MK15…MK24** (appendice F) |
+| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), lots **MK0…MK14**, **MK15…MK26** (appendice F) |
 | Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`data-pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
@@ -718,7 +718,7 @@ MK11 codé, non poussé. Pièces :
 
 #### D816 (pont MetaTrader 5, lecture seule)
 
-- L'org crée un connecteur `webhook` (CN3), colle son URL et son secret dans les paramètres de l'Expert Advisor `examples/mt5/PnexBridge.mq5`, et nomme le connecteur dans le réglage `mt5_connector` (pack 1.6.0).
+- ~~L'org crée un connecteur `webhook` (CN3), colle son URL et son secret dans les paramètres de l'Expert Advisor `examples/mt5/PnexBridge.mq5`, et nomme le connecteur dans le réglage `mt5_connector` (pack 1.6.0).~~ Remplacé le 2026-11-09 par les terminaux enregistrés (appendice E, Q-MT6).
 - Appel : `{"v": 1, "broker", "bars": [{symbol, time (s UTC), open, high, low, close, volume}], "ticks": [{symbol, time_msc (ms UTC), bid, ask}]}`, prix en texte décimal. L'EA convertit l'heure du serveur du courtier en UTC, signe le corps (HMAC-SHA256, même convention que le webhook), plafonne un appel à 3 000 bougies et 3 000 ticks, et n'avance ses curseurs que sur un `202`.
 - Le balayage marchés vide la boîte du connecteur (1 000 appels par lot, dans l'org seulement) vers `mt5_ohlcv_1m` (forme `ohlcv`) et `mt5_ticks` (forme `quote_tick`), `source = mt5:<courtier>` ; un appel illisible est écarté et journalisé. Volumes absents (MT5 n'en publie pas par côté, ni en devise de cotation) = `null`, jamais zéro.
 - Au moins une fois : une réponse perdue, ou un pod tué entre le commit et l'effacement, rejoue des appels (marqué `shortcut:`) ; d'où le contrôle `unique` conseillé dans la fiche.
@@ -799,7 +799,7 @@ Un `market_event` accepté d'une société suivie rejoint l'avis de séance (D81
 
 | | |
 |---|---|
-| Statut | **Proposé le 2026-11-08 au soir, rien de codé.** Demande de Shan : « pour MT5 c'est comme une source, donc générateur de code… idéalement on doit pouvoir tout choper (instruments depuis l'expert, ou filtrer quelques instruments) », « un peu comme les devices ». Questions Q-MT1 à Q-MT6 à trancher avant tout code |
+| Statut | **Proposé le 2026-11-08 au soir ; questions tranchées et MT5-1 à MT5-3 codés le 2026-11-09 (E.5) ; MT5-4 (essai dans MetaTrader) reste à Shan.** Demande de Shan : « pour MT5 c'est comme une source, donc générateur de code… idéalement on doit pouvoir tout choper (instruments depuis l'expert, ou filtrer quelques instruments) », « un peu comme les devices ». Questions Q-MT1 à Q-MT6 à trancher avant tout code |
 | Décisions | **D847…D849** |
 | Remplace | la sélection des symboles par les paramètres de l'EA (D816 tel que codé en 8dc9ea35) ; le chemin de données (boîte, tables `mt5_ohlcv_1m` et `mt5_ticks`) est gardé |
 
@@ -839,6 +839,15 @@ Route d'ingestion propre aux terminaux (accès `Machine` au registre IAM, jeton 
 | **MT5-2** | D847 : modèle de l'EA, rendu pur, écran « terminaux MT5 » (tableau et pager, skills de design, `break-ui`), téléchargement | parcours e2e : créer un terminal, télécharger l'EA, voir le terminal en ligne (simulé) |
 | **MT5-3** | D848 : catalogue, profondeur, sélection par filtres, rattrapage | 1 000 symboles annoncés, filtre `EUR*` appliqué, rattrapage de 30 jours de M1 en paquets de moins de 1 Mio |
 | **MT5-4** | Compilation et essai réel dans MetaTrader 5 sur deux comptes démo | profondeur mesurée et comparée ; aucune requête refusée |
+
+### E.4 bis Questions tranchées (Shan, 2026-11-09)
+
+- **Q-MT1** : une page à part sous **Sources**.
+- **Q-MT2** : un **jeton par terminal** (`Authorization: Bearer`, comme les devices), révocable ; la signature HMAC du webhook CN3 n'est plus utilisée.
+- **Q-MT3** : un nouveau terminal envoie par défaut **les bougies M1 de tout son catalogue**.
+- **Q-MT4** : les ticks **seulement pour une liste choisie** (XAUUSD d'abord).
+- **Q-MT5** : le catalogue **reste une table** du terminal ; un objet `instrument` n'est créé que pour un symbole suivi.
+- **Q-MT6** : le pont par webhook (8dc9ea35) est **remplacé** (installation neuve, aucune migration) ; les tables `mt5_ohlcv_1m` et `mt5_ticks` restent.
 
 ### E.4 Questions pour Shan
 
@@ -899,7 +908,7 @@ Peu utiles au trading hors compagnies aériennes. Si on les prend : adsb.lol (OD
 | **MK15** | D880 : import BRI, réglage `bis_series`, forme SDMX sans `KEY` (pack 1.7.0) | codé, test `prices_with_a_vault_key_and_the_reaction_to_a_filing` ; essai réel à faire |
 | **MK16** | D881, D888 : décisions de taux en `market_move`, valeurs par défaut de `move_series` | codé : entrées `bis:` (k 1, plancher 0,05) pour le G10, ignorées par les imports FRED ; tests `a_policy_rate_decision_is_a_move_and_a_flat_rate_none` et `prices_with_a_vault_key_and_the_reaction_to_a_filing`. Rejoué hors ligne sur les vraies séries BRI depuis 2000 : JP 14/14 décisions, NO 74/74, XM 58/59, GB 54/56, CA 74/76 ; AU 72/109 (petits ajustements avant 2008 sous le plancher) |
 | **MK17** | D882 : calendrier des publications | codé : réglage `calendars` (`bls, fomc, ecb`), lus chaque jour avec le contact déclaré (le BLS refuse sans) et écrits en **plages de temps de l'org** (D182, réutilisées : page calendrier, outils calendrier de l'assistant, lecteur ICS existant), `external_id` `bls:<UID>`, `fomc:<jour>`, `ecb:<jour>` ; une publication dure une minute (le BLS donne `PT0M`). Pages réelles relues : 16 décisions FOMC 2026–2027, réunions BCE jusqu'en 2028. Test `calendars_eurostat_and_chokepoints` |
-| **MK18** | D883 : sous-indices d'inflation | codé : import Eurostat (SDMX CSV, même forme que BCE et BRI), réglage `eurostat_series` (IPCH zone euro : ensemble, énergie, alimentation, services, sous-jacent), `CPILFESL` dans FRED. Écarts : INSEE laissé de côté (SDMX en XML seulement ; la France est couverte par l'IPCH Eurostat), FAO laissé de côté (le fichier à adresse fixe s'arrête en 2018, le courant change de nom chaque mois) |
+| **MK18** | D883 : sous-indices d'inflation | codé : import Eurostat (SDMX CSV, même forme que BCE et BRI), réglage `eurostat_series` (IPCH zone euro : ensemble, énergie, alimentation, services, sous-jacent) — depuis 2026 en COICOP 2018 (`prc_hicp_minr`, ensemble = `AP`), l'ancien `prc_hicp_manr` s'arrête en décembre 2025 (vu à l'essai réel du 2026-11-09), `CPILFESL` dans FRED. Écarts : INSEE laissé de côté (SDMX en XML seulement ; la France est couverte par l'IPCH Eurostat), FAO laissé de côté (le fichier à adresse fixe s'arrête en 2018, le courant change de nom chaque mois) |
 | **MK19** | D884 : indices immobiliers | codé, configuration seule : BRI `WS_SPP` (US, zone euro, Royaume-Uni), Eurostat `prc_hpi_q` (zone euro, France, Allemagne), FHFA `USSTHPI` sur FRED. Case-Shiller écarté : propriété de S&P Dow Jones Indices, même règle que SP500 |
 | **MK20** | D885 : agrégats maritimes PortWatch | codé : forme `portwatch_daily` (ArcGIS JSON), réglage `chokepoints` (8 passages par défaut), une série par passage (`n_total`, `n_tanker`, `n_container`, `n_dry_bulk`, `n_cargo`, `capacity`), lecture par `{since}` et 1 000 jours au plus par requête (l'historique se rattrape en quelques passages) |
 
@@ -939,9 +948,45 @@ Navires (AIS) et avions (ADS-B) : agrégats pour les marchés et positions brute
 - **Q-F7** : AIS par fichiers historiques seulement (NOAA, autorité maritime danoise), pas de temps réel pour l'instant. MK23 sans clé ni flux continu.
 - **Q-F8** : tout garder, plafonné par le quota de jeux de données de l'org (D821, 20 Go par défaut) ; pas d'échantillonnage ni de zone imposés.
 
+### F.6 bis Cas réel : l'or (2026-11-09)
+
+Shan teste un premier cas réel sur l'or (XAUUSD), les modèles étant faits dans un projet à part : PNEX fournit les données datées. Ce qui sert à l'or et ce qui a été ajouté pour lui :
+
+| Besoin | Source dans PNEX | État |
+|---|---|---|
+| Cours minute XAUUSD | HistData (`histdata_pairs` = `XAUUSD`), MT5 en direct | existant |
+| Taux réel, point mort d'inflation | FRED `DFII10`, `T10YIE` | **ajoutés** aux séries macro par défaut |
+| Dollar, taux directeurs | FRED `DTWEXBGS`, BRI `WS_CBPOL` (décisions en `market_move`) | existant (MK15–MK16) |
+| Positionnement des spéculateurs | CFTC Commitments of Traders, rapport hebdomadaire (lot **MK25**) | **ajouté** : réglage `cot_markets` (or, argent, WTI par défaut), forme `cftc_cot`, positions du mardi connues le vendredi |
+| Calendrier (Fed, BCE, IPC, emploi) | MK17 | existant |
+| Géopolitique | GDELT, UCDP, ACLED (`world_events`) | existant, réglage `geo_watch` à remplir |
+| Achats d'or des banques centrales | — | **non couvert** : le World Gold Council n'a pas d'accès ouvert ; les réserves du FMI (jeu `IL`, SDMX) demandent un en-tête `Accept` propre et des codes d'indicateur à résoudre, à étudier |
+| Encours des ETF or | — | **non couvert** (pas de source primaire ouverte relue) |
+
+**Essai réel du cas or (2026-11-09, test ignoré `gold_real_sources`, 52 s)** : FRED `DFII10` 5 966 valeurs (2003–2026), `T10YIE` 5 967, `DTWEXBGS` 5 222, `FEDFUNDS` 868 ; BRI taux directeurs US, zone euro, Japon 25 094 valeurs, 218 décisions en `market_move` ; COT or 1 401 semaines × 9 mesures (2000–2026) ; IPCH zone euro 298 mois jusqu'en septembre 2026 ; 387 dates au calendrier ; XAUUSD 2025 en barres minute 354 011 lignes. Corrigé en route : l'IPCH Eurostat a changé de jeu en 2026 (`prc_hicp_minr`).
+
+#### MK26 — Statistiques pétrole et gaz de l'EIA
+
+Pour l'étape pétrole : API v2 de l'EIA (domaine public américain) avec la clé gratuite de l'org (secret `markets_eia_key`, source à clé `eia` liée à `api.eia.gov`, clé en paramètre ajoutée à l'envoi seulement, comme FRED). Réglage `eia_series` : stocks hebdomadaires de brut hors réserve stratégique, d'essence, de distillats, production hebdomadaire de brut. Une série hebdomadaire est connue cinq jours après la fin de sa semaine (le mercredi du rapport). Jamais essayé sur la vraie API (pas de clé) ; identifiants de séries à vérifier au premier essai. Test : `calendars_eurostat_and_chokepoints`.
+
+#### MK25 — Rapport COT de la CFTC
+
+Données publiques (domaine public américain), API Socrata `publicreporting.cftc.gov` (jeu `6dca-aqww`, legacy futures only). Par marché : positions ouvertes, acheteuses, vendeuses et nettes des non-commerciaux et des commerciaux, non déclarées. Une valeur est de la date du rapport (mardi) et connue trois jours plus tard (vendredi) : une lecture « connu au » antérieure ne la voit pas. Écart : un vendredi décalé (jour férié, fermeture) reste daté à J+3. Essai réel : 1 401 rapports de l'or de 2000 à 2026. Test `calendars_eurostat_and_chokepoints`.
+
 ### F.7 Chargement en flux (MK22–MK24) et écarts
 
 - **Socle** : `datasets::append_stream` reçoit des lots sur un canal et les écrit dans un seul fichier Parquet d'une seule transaction ; le lecteur envoie une marque de fin quand le fichier est lu jusqu'au bout, et seulement alors la transaction est validée. Un canal fermé avant (téléchargement coupé, ligne illisible) l'annule. `append_batch` en est le cas d'un lot. Le quota est vérifié au fil de l'écriture.
 - **Téléchargement** : `source::open_large` (même garde sortante, contact déclaré, aucun délai total, 120 s par lecture) ; un pompage asynchrone passe les morceaux à un fil bloquant qui décompresse (zip en flux, tar, gzip) et décode ligne à ligne (`pnex_core::bulk`), 200 000 lignes par lot. Rien n'est tenu entier en mémoire.
 - **Registre** : celui de l'historique de prix (`market_history_partitions`), source = `ais_dk`, `ais_noaa`, `adsb_lol`, `dvf` ; un fichier coupé n'est pas inscrit et revient au passage suivant, un fichier illisible est inscrit `failed`.
 - **Écarts à D889** : un navire ou un avion suivi n'est pas encore relié à sa trace dans un dossier (`tracks`, K25) ; le pont table → trace reste à faire. L'autorité maritime danoise ne sert ses fichiers qu'en HTTP clair, sans somme de contrôle.
+- **Revue de sécurité (2026-11-09)** : SEC-81 (AIS danois en HTTP clair, accepté), SEC-82 (chargements massifs réservés aux orgs dont un admin plateforme a fixé le quota de tables, réglage ajouté à `/admin/status`), SEC-83 (lectures bornées). Corrigé en route : une transaction de plus de 10 minutes sans battement était annulée et effacée par la purge (un jour ADS-B dure 9 min 30) ; `append_stream` bat toutes les minutes et vide ses groupes de lignes à 64 Mio comme le chemin CSV.
+
+### E.5 Ce qui est codé (2026-11-09) et écarts
+
+- **Registre et parcours** : migration 000136 (`mt5_terminals`, `mt5_symbols`, `mt5_inbox`), `pnex_core::mt5` (types, sélection `*` / noms / préfixes, présence en ligne < 3 min, en retard < 1 h, hors ligne ensuite, lecture de l'annonce, rendu de l'EA), `services::mt5`, `controllers::mt5`. Routes de l'UI (`metatrader:read` membre, `metatrader:write` et `metatrader:delete` admin) : liste, création, lecture, remplacement sur la version lue, suppression, génération de l'EA, demande de rattrapage, catalogue filtré. Routes de l'EA (`Machine`, jeton porteur) : `GET /api/v1/mt5/config`, `POST /api/v1/mt5/announce` (4 Mio), `POST /api/v1/mt5/ingest` (1 Mio, 202). MCP : lecture et écriture de la sélection exposées, génération de l'EA exclue (secret), suppression exclue (destructif), routes de l'EA exclues (canal machine).
+- **Jeton** : `pnex_mt5_` + 32 octets aléatoires, seul son SHA-256 est gardé ; il n'apparaît que dans le fichier généré ; régénérer révoque l'ancien aussitôt.
+- **EA** : modèle `crates/pnex-core/src/mt5_ea.mq5` rempli par `render_ea` (adresse publique lue de `X-Forwarded-*` / `Host`, vérifiée, jeton, nom du terminal neutralisé). Annonce le catalogue au démarrage puis chaque jour (premier M1 par `SERIES_SERVER_FIRSTDATE`), relit sa configuration toutes les cinq minutes, pousse les M1 fermées par paquets de moins de 700 Ko, les ticks de la liste choisie, un battement par minute sans données. Horloge locale pour l'ordonnancement (celle du serveur s'arrête marché fermé). Aucun appel d'ordre (test : `OrderSend` absent du rendu).
+- **Rattrapage** : la demande donne `backfill_id` et `backfill_from` ; l'EA recule ses curseurs une fois par demande (variable globale du terminal). Écart : les bougies déjà présentes sont renvoyées, donc en double dans la table ; à dédoublonner à la lecture (D823).
+- **Plafonds (SEC-84)** : 20 terminaux par org, 2 000 appels en attente par org ; la boîte est vidée par le balayage marchés même sans le pack.
+- **UI** : pages `/mt5-terminals` (liste, création) et `/mt5-terminals/:id` (état, mise en route en trois étapes, sélection, rattrapage, catalogue avec recherche, suppression), menu Sources ; fiche de l'assistant `mt5-terminals`.
+- **Pas fait** : la compilation et l'essai réel dans MetaTrader 5 (MT5-4, à Shan) ; l'e2e Playwright de l'écran ; un test 403 sans la permission (couvert par la garde du registre IAM, pas par un appel).

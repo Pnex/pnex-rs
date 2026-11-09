@@ -713,6 +713,20 @@ pub const BUILD_AUTHOR_FORBIDDEN: &str = "build-author-forbidden";
 /// A step did not finish in time, usually because no worker takes the queue.
 pub const BUILD_TIMEOUT: &str = "build-timeout";
 pub const CONNECTOR_NOT_FOUND: &str = "connector-not-found";
+/// MT5 terminals (markets-research.md D847–D849).
+pub const MT5_TERMINAL_NOT_FOUND: &str = "mt5-terminal-not-found";
+pub const MT5_TERMINAL_NAME_TAKEN: &str = "mt5-terminal-name-taken";
+pub const MT5_TERMINAL_VERSION_CONFLICT: &str = "mt5-terminal-version-conflict";
+/// The org already has [`crate::mt5::TERMINALS_MAX`] terminals; args `max`.
+pub const MT5_TERMINALS_LIMIT: &str = "mt5-terminals-limit";
+/// The EA's token is unknown or was replaced by a newer EA.
+pub const MT5_TOKEN_INVALID: &str = "mt5-token-invalid";
+/// A call of the EA that is not of this API; args `token`.
+pub const MT5_BODY_INVALID: &str = "mt5-body-invalid";
+/// Too many calls of the terminal waiting; the EA sends again later.
+pub const MT5_INBOX_FULL: &str = "mt5-inbox-full";
+/// The public address PneX writes into a generated EA is not set.
+pub const MT5_BASE_UNKNOWN: &str = "mt5-base-unknown";
 pub const CONNECTOR_NAME_TAKEN: &str = "connector-name-taken";
 /// The connector changed since it was read (args `current`).
 pub const CONNECTOR_VERSION_CONFLICT: &str = "connector-version-conflict";
@@ -1320,6 +1334,14 @@ pub const ALL: &[&str] = &[
     PIPELINE_CHECK_FAILED,
     BUILD_NOT_FOUND,
     CONNECTOR_NOT_FOUND,
+    MT5_TERMINAL_NOT_FOUND,
+    MT5_TERMINAL_NAME_TAKEN,
+    MT5_TERMINAL_VERSION_CONFLICT,
+    MT5_TERMINALS_LIMIT,
+    MT5_TOKEN_INVALID,
+    MT5_BODY_INVALID,
+    MT5_INBOX_FULL,
+    MT5_BASE_UNKNOWN,
     CONNECTOR_NAME_TAKEN,
     CONNECTOR_VERSION_CONFLICT,
     CONNECTOR_UNREACHABLE,

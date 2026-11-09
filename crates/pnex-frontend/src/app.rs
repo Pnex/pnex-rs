@@ -15,6 +15,7 @@ use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::hosted_agents::HostedAgents;
 use crate::pages::mailbox_messages::MailboxMessages;
 use crate::pages::mailboxes::Mailboxes;
+use crate::pages::mt5_terminals::{Mt5TerminalDetail, Mt5Terminals};
 use crate::pages::pipelines::{PipelineStudio, PipelineTable, Pipelines};
 use crate::pages::proposals::Proposals;
 use crate::pages::rules::Rules;
@@ -198,6 +199,13 @@ pub enum Route {
         // Data pipelines: tables, studio, chained runs, connectors (data-pipelines.md §9.5).
         #[route("/pipelines")]
         Pipelines {},
+
+        // MetaTrader 5 terminals as data sources (markets-research.md D847–D849).
+        #[route("/mt5-terminals")]
+        Mt5Terminals {},
+
+        #[route("/mt5-terminals/:id")]
+        Mt5TerminalDetail { id: String },
 
         // Rules: conditions that notify, and their replay (analysis.md D829–D830).
         #[route("/rules")]

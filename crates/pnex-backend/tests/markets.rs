@@ -55,6 +55,8 @@ impl Api<'_> {
         let req = match method {
             "GET" => self.server.get(path),
             "POST" => self.server.post(path),
+            "PUT" => self.server.put(path),
+            "DELETE" => self.server.delete(path),
             _ => self.server.patch(path),
         }
         .add_header("Authorization", format!("Bearer {}", self.token))
@@ -2662,13 +2664,13 @@ async fn trade_history_is_loaded_by_days() {
     .await;
 }
 
-/// D816: the PneX bridge for MetaTrader 5 posts signed calls to a webhook
-/// connector; the markets sweep turns them into the bars and ticks tables.
+/// D847–D849: an MT5 terminal registered in the UI, its generated EA with
+/// its own token, the catalogue it announces, the configuration it reads,
+/// the calls it pushes; the markets sweep turns them into the tables.
 #[tokio::test]
 #[serial]
-async fn mt5_bridge_calls_become_tables() {
+async fn mt5_terminals_push_into_tables() {
     with_app(|server, ctx, token| async move {
-        use hmac::{Hmac, Mac};
         let org = server
             .get("/api/v1/user-info")
             .add_header("Authorization", format!("Bearer {token}"))
@@ -2676,117 +2678,184 @@ async fn mt5_bridge_calls_become_tables() {
             .json::<Value>()["orgs"][0]["id"]
             .as_i64()
             .unwrap();
-        let api = Api {
-            server: &server,
-            token,
-            org,
-        };
-        let (st, r) = api
-            .call("POST", "/api/v1/ontology/packs/markets/install", None)
-            .await;
+        let api = Api { server: &server, token: token.clone(), org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
         assert_eq!(st, 200, "{r}");
-        let (st, c) = api
+        let (st, t) = api
+            .call("POST", "/api/v1/mt5/terminals", Some(json!({ "name": "Demo gold", "account": "123456" })))
+            .await;
+        assert_eq!(st, 201, "{t}");
+        assert_eq!(t["bars"], "*", "the whole catalogue by default (Q-MT3)");
+        assert_eq!(t["ticks"], "", "no tick until chosen (Q-MT4)");
+        assert_eq!(t["presence"], "never");
+        assert_eq!(t["has_token"], false);
+        let id = t["id"].as_str().unwrap().to_string();
+        let (st, dup) = api.call("POST", "/api/v1/mt5/terminals", Some(json!({ "name": "Demo gold" }))).await;
+        assert_eq!((st, dup["error"].as_str()), (409, Some("mt5-terminal-name-taken")), "{dup}");
+        let (st, bad) = api
+            .call("POST", "/api/v1/mt5/terminals", Some(json!({ "name": "x", "bars": "EUR USD" })))
+            .await;
+        assert_eq!(st, 400, "{bad}");
+
+        // The generated EA carries the address and a token shown nowhere else.
+        let ea = |server: &axum_test::TestServer| {
+            server
+                .post(&format!("/api/v1/mt5/terminals/{id}/ea"))
+                .add_header("Authorization", format!("Bearer {token}"))
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("x-forwarded-host", "pnex.test")
+                .add_header("x-forwarded-proto", "https")
+        };
+        let res = ea(&server).await;
+        assert_eq!(res.status_code().as_u16(), 200, "{}", res.text());
+        let source = res.text();
+        assert!(source.contains("#define PNEX_BASE    \"https://pnex.test\""), "{}", &source[..600]);
+        let mt5_token = source
+            .split("#define PNEX_TOKEN   \"")
+            .nth(1)
+            .and_then(|r| r.split('"').next())
+            .unwrap()
+            .to_string();
+        assert!(mt5_token.starts_with("pnex_mt5_"));
+        let (_, read) = api.call("GET", &format!("/api/v1/mt5/terminals/{id}"), None).await;
+        assert_eq!(read["has_token"], true);
+        assert!(!read.to_string().contains(&mt5_token), "never read back");
+
+        let machine = |method: &str, path: &str, token: &str, body: Option<Value>| {
+            let req = match method {
+                "GET" => server.get(path),
+                _ => server.post(path),
+            }
+            .add_header("Authorization", format!("Bearer {token}"));
+            match body {
+                Some(b) => req.json(&b),
+                None => req,
+            }
+        };
+        let res = machine("GET", "/api/v1/mt5/config", "pnex_mt5_00", None).await;
+        assert_eq!(res.status_code().as_u16(), 401);
+        assert_eq!(res.json::<Value>()["error"], "mt5-token-invalid");
+        let res = machine("GET", "/api/v1/mt5/config", &mt5_token, None).await;
+        assert_eq!(res.status_code().as_u16(), 200);
+        assert_eq!(res.json::<Value>()["bars"], json!([]), "nothing announced yet");
+
+        // The catalogue, then a selection chosen in the UI.
+        let res = machine(
+            "POST",
+            "/api/v1/mt5/announce",
+            &mt5_token,
+            Some(json!({"v": 1, "broker": "Demo Broker Ltd", "server": "Demo-Server", "symbols": [
+                {"symbol": "XAUUSD", "description": "Gold vs US Dollar", "base": "XAU", "profit": "USD",
+                 "digits": 2, "contract_size": 100.0, "first_m1": 1_104_537_600},
+                {"symbol": "EURUSD", "description": "Euro vs US Dollar", "digits": 5, "contract_size": 100000.0}
+            ]})),
+        )
+        .await;
+        assert_eq!(res.status_code().as_u16(), 204, "{}", res.text());
+        let cfg = machine("GET", "/api/v1/mt5/config", &mt5_token, None).await.json::<Value>();
+        assert_eq!(cfg["bars"], json!(["EURUSD", "XAUUSD"]));
+        assert_eq!(cfg["ticks"], json!([]));
+        let (_, now) = api.call("GET", &format!("/api/v1/mt5/terminals/{id}"), None).await;
+        assert_eq!(now["broker"], "Demo Broker Ltd", "an empty broker takes the announced one");
+        assert_eq!(now["symbols"], 2);
+        let (st, up) = api
             .call(
-                "POST",
-                "/api/v1/connectors",
-                Some(json!({ "name": "mt5", "kind": "webhook" })),
+                "PUT",
+                &format!("/api/v1/mt5/terminals/{id}"),
+                Some(json!({"name": "Demo gold", "ticks": "XAU*", "expected_version": now["version"]})),
             )
             .await;
-        assert_eq!(st, 201, "{c}");
-        let id = c["id"].as_str().unwrap().to_string();
-        let (_, sec) = api
-            .call("POST", &format!("/api/v1/connectors/{id}/secret"), None)
+        assert_eq!(st, 200, "{up}");
+        let (st, stale) = api
+            .call(
+                "PUT",
+                &format!("/api/v1/mt5/terminals/{id}"),
+                Some(json!({"name": "Demo gold", "expected_version": now["version"]})),
+            )
             .await;
-        let secret = sec["secret"].as_str().unwrap().to_string();
-        let post = |body: String| {
-            let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes()).unwrap();
-            mac.update(body.as_bytes());
-            let sig: String = mac
-                .finalize()
-                .into_bytes()
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect();
-            server
-                .post(&format!("/api/v1/hooks/{id}"))
-                .content_type("application/json")
-                .add_header("X-Signature", format!("sha256={sig}"))
-                .bytes(body.into())
-        };
+        assert_eq!((st, stale["error"].as_str()), (409, Some("mt5-terminal-version-conflict")));
+        let cfg = machine("GET", "/api/v1/mt5/config", &mt5_token, None).await.json::<Value>();
+        assert_eq!(cfg["ticks"], json!(["XAUUSD"]));
+        let (_, sym) = api
+            .call("GET", &format!("/api/v1/mt5/terminals/{id}/symbols?q=gold"), None)
+            .await;
+        assert_eq!(sym["count"], 1, "{sym}");
+        assert_eq!(sym["results"][0]["ticks"], true);
+        assert_eq!(sym["results"][0]["first_m1"], "2005-01-01T00:00:00+00:00");
+
+        // Calls of bars and ticks, a heartbeat, a bad call.
         let call = json!({
-            "v": 1,
-            "broker": "Demo",
+            "v": 1, "broker": "Demo", "ea_version": "2.00", "build": 4755,
             "bars": [
                 {"symbol": "EURUSD", "time": 1_735_689_600, "open": "1.03456", "high": "1.03470",
                  "low": "1.03400", "close": "1.03450", "volume": 120},
                 {"symbol": "XAUUSD", "time": 1_735_689_600, "open": "2624.10", "high": "2625.00",
                  "low": "2623.90", "close": "2624.55", "volume": 80}
             ],
-            "ticks": [{"symbol": "EURUSD", "time_msc": 1_735_689_600_123_i64,
-                       "bid": "1.03450", "ask": "1.03452"}]
+            "ticks": [{"symbol": "XAUUSD", "time_msc": 1_735_689_600_123_i64, "bid": "2624.50", "ask": "2624.80"}]
         });
-        assert_eq!(post(call.to_string()).await.status_code().as_u16(), 202);
-        assert_eq!(
-            post(json!({"v": 1, "bars": [{"symbol": "../x"}]}).to_string())
-                .await
-                .status_code()
-                .as_u16(),
-            202
-        );
+        let res = machine("POST", "/api/v1/mt5/ingest", &mt5_token, Some(call)).await;
+        assert_eq!(res.status_code().as_u16(), 202, "{}", res.text());
+        let res = machine("POST", "/api/v1/mt5/ingest", &mt5_token, Some(json!({"v": 1, "bars": [{"symbol": "../x", "time": 1, "open": "1", "high": "1", "low": "1", "close": "1"}]}))).await;
+        assert_eq!(res.status_code().as_u16(), 400);
+        assert_eq!(res.json::<Value>()["errors"]["args"]["token"], "symbol");
+        let res = machine("POST", "/api/v1/mt5/ingest", &mt5_token, Some(json!({"v": 1}))).await;
+        assert_eq!(res.status_code().as_u16(), 202, "a heartbeat");
+        let (_, seen) = api.call("GET", &format!("/api/v1/mt5/terminals/{id}"), None).await;
+        assert_eq!(seen["presence"], "online");
+        assert_eq!(seen["ea_version"], "2.00");
+        assert_eq!(seen["terminal_build"], 4755);
 
-        // Not named in the setting yet: the inbox is left alone.
         let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
-        let sweep =
-            || pnex_backend::services::markets::history::sweep(&ctx, "http://unused", today);
-        sweep().await.unwrap();
-        let inbox = || async {
-            ctx.db
-                .query_one_raw(Statement::from_string(
-                    sea_orm::DatabaseBackend::Postgres,
-                    format!("SELECT count(*) AS n FROM connector_inbox WHERE org_id = {org}"),
-                ))
-                .await
-                .unwrap()
-                .unwrap()
-                .try_get::<i64>("", "n")
-                .unwrap()
-        };
-        assert_eq!(inbox().await, 2);
-
-        api.settings(json!({ "mt5_connector": "mt5" })).await;
-        sweep().await.unwrap();
-        assert_eq!(
-            inbox().await,
-            0,
-            "read calls leave the inbox, the bad one too"
-        );
+        pnex_backend::services::markets::history::sweep(&ctx, "http://unused", today).await.unwrap();
+        let inbox = count(&ctx.db, format!("SELECT count(*) AS n FROM mt5_inbox WHERE org_id = {org}")).await;
+        assert_eq!(inbox, 0, "read calls leave the inbox");
         let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
         assert_eq!(st, 200, "{list}");
-        let rows = |name: &str| {
+        let table = |name: &str| {
             list["results"]
                 .as_array()
                 .unwrap()
                 .iter()
                 .find(|d| d["name"] == name)
-                .unwrap_or_else(|| panic!("{name}: {list}"))["rows"]
+                .unwrap_or_else(|| panic!("{name}: {list}"))
                 .clone()
         };
-        assert_eq!(rows("mt5_ohlcv_1m"), 2);
-        assert_eq!(rows("mt5_ticks"), 1);
-        let id = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|d| d["name"] == "mt5_ohlcv_1m")
-            .unwrap()["id"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let (_, sample) = api
-            .call("GET", &format!("/api/v1/datasets/{id}/sample"), None)
-            .await;
+        assert_eq!(table("mt5_ohlcv_1m")["rows"], 2);
+        assert_eq!(table("mt5_ticks")["rows"], 1);
+        let bars_id = table("mt5_ohlcv_1m")["id"].as_str().unwrap().to_string();
+        let (_, sample) = api.call("GET", &format!("/api/v1/datasets/{bars_id}/sample"), None).await;
         assert!(sample.to_string().contains("mt5:Demo"), "{sample}");
         assert!(sample.to_string().contains("2624.55"), "{sample}");
+
+        // A backfill moves the EA's cursors back; a new EA revokes the old one.
+        let (st, bf) = api
+            .call("POST", &format!("/api/v1/mt5/terminals/{id}/backfill"), Some(json!({"days": 30})))
+            .await;
+        assert_eq!(st, 200, "{bf}");
+        let cfg = machine("GET", "/api/v1/mt5/config", &mt5_token, None).await.json::<Value>();
+        let (bid, from) = (cfg["backfill_id"].as_i64().unwrap(), cfg["backfill_from"].as_i64().unwrap());
+        assert!(bid > 0 && bid - from == 30 * 86_400, "{cfg}");
+        let (st, _) = api
+            .call("POST", &format!("/api/v1/mt5/terminals/{id}/backfill"), Some(json!({"days": 0})))
+            .await;
+        assert_eq!(st, 400);
+        assert_eq!(ea(&server).await.status_code().as_u16(), 200);
+        let res = machine("GET", "/api/v1/mt5/config", &mt5_token, None).await;
+        assert_eq!(res.status_code().as_u16(), 401, "the previous EA stops at once");
+
+        let (st, _) = api.call("DELETE", &format!("/api/v1/mt5/terminals/{id}"), None).await;
+        assert_eq!(st, 204);
+        let (st, gone) = api.call("GET", &format!("/api/v1/mt5/terminals/{id}"), None).await;
+        assert_eq!((st, gone["error"].as_str()), (404, Some("mt5-terminal-not-found")));
+
+        // Anyone who signs up owns an org: its terminals are bounded (SEC-84).
+        for i in 0..pnex_core::mt5::TERMINALS_MAX {
+            let (st, r) = api.call("POST", "/api/v1/mt5/terminals", Some(json!({ "name": format!("t{i}") }))).await;
+            assert_eq!(st, 201, "{r}");
+        }
+        let (st, over) = api.call("POST", "/api/v1/mt5/terminals", Some(json!({ "name": "one more" }))).await;
+        assert_eq!((st, over["error"].as_str()), (409, Some("mt5-terminals-limit")), "{over}");
     })
     .await;
 }
@@ -3031,7 +3100,8 @@ async fn calendars_eurostat_and_chokepoints() {
         assert_eq!(st, 200, "{r}");
         api.settings(json!({
             "source_contact": CONTACT, "calendars": "bls, fomc, ecb",
-            "eurostat_series": "prc_hicp_manr.M.RCH_A.NRG.EA", "chokepoints": "chokepoint6"
+            "eurostat_series": "prc_hicp_manr.M.RCH_A.NRG.EA", "chokepoints": "chokepoint6",
+            "cot_markets": "088691", "eia_series": "PET.WCESTUS1.W"
         }))
         .await;
         let asked = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -3072,6 +3142,26 @@ END:VCALENDAR\r\n".to_string())
                     "DATAFLOW,LAST UPDATE,freq,unit,coicop,geo,TIME_PERIOD,OBS_VALUE,OBS_FLAG\n\
                      ESTAT:PRC_HICP_MANR(1.0),06/02/26 23:00:00,M,RCH_A,NRG,EA,2026-08,-1.9,\n\
                      ESTAT:PRC_HICP_MANR(1.0),06/02/26 23:00:00,M,RCH_A,NRG,EA,2026-09,-0.4,\n"
+                }),
+            )
+            .route(
+                "/v2/seriesid/{id}",
+                get(|axum::extract::Path(id): axum::extract::Path<String>, RawQuery(q): RawQuery| async move {
+                    let q = q.unwrap_or_default();
+                    if id != "PET.WCESTUS1.W" || q != "api_key=k-eia" {
+                        return (axum::http::StatusCode::FORBIDDEN, axum::Json(json!({})));
+                    }
+                    (axum::http::StatusCode::OK, axum::Json(json!({"response": {"frequency": "weekly",
+                        "data": [{"period": "2026-10-30", "value": "421345", "units": "MBBL"}]}})))
+                }),
+            )
+            .route(
+                "/resource/6dca-aqww.json",
+                get(|| async {
+                    axum::Json(json!([{"report_date_as_yyyy_mm_dd": "2026-11-03T00:00:00.000",
+                        "market_and_exchange_names": "GOLD - COMMODITY EXCHANGE INC.",
+                        "open_interest_all": "399169", "noncomm_positions_long_all": "220530",
+                        "noncomm_positions_short_all": "40982"}]))
                 }),
             )
             .route(
@@ -3120,7 +3210,7 @@ END:VCALENDAR\r\n".to_string())
         assert_eq!(ranges("").await, 4);
 
         // Eurostat and PortWatch: dated series.
-        for host in ["https://ec.europa.eu", "https://services9.arcgis.com"] {
+        for host in ["https://ec.europa.eu", "https://services9.arcgis.com", "https://publicreporting.cftc.gov", "https://api.eia.gov"] {
             db.execute_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
                 format!("UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') WHERE org_id = {org}"),
@@ -3134,6 +3224,36 @@ END:VCALENDAR\r\n".to_string())
         let v = api.observations(&energy, "metric=PRC_HICP_MANR.M.RCH_A.NRG.EA").await;
         assert_eq!(v.len(), 2, "{v:?}");
         assert_eq!(v[0]["period_end"], "2026-09-01");
+
+        // EIA: with the org's key, sent at request time only.
+        let r = api.run("Oil and gas statistics (EIA)").await;
+        assert_eq!(r["run"]["state_code"], "import-key-required", "{r}");
+        let (st, r) = api
+            .call("POST", "/api/v1/secrets", Some(json!({"name": "markets_eia_key", "value": "k-eia"})))
+            .await;
+        assert_eq!(st, 201, "{r}");
+        let r = api.run("Oil and gas statistics (EIA)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let crude = object_id(&db, org, "macro_series", "code", "PET.WCESTUS1.W").await.expect("EIA series");
+        let stocks = api.observations(&crude, "metric=PET.WCESTUS1.W").await;
+        assert_eq!(stocks[0]["value"], 421345.0, "{stocks:?}");
+        assert!(stocks[0]["known_at"].as_str().unwrap().starts_with("2026-11-04"), "{stocks:?}");
+        let stored = count(
+            &db,
+            format!("SELECT count(*) AS n FROM object_imports WHERE org_id = {org} AND source_url LIKE '%k-eia%'"),
+        )
+        .await;
+        assert_eq!(stored, 0, "the key is never stored with the URL");
+
+        // CFTC COT: positions of Tuesday, known on Friday (no look-ahead).
+        let r = api.run("Positions of traders (CFTC COT)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let gold = object_id(&db, org, "macro_series", "code", "088691").await.expect("COT series");
+        let net = api.observations(&gold, "metric=noncommercial_net").await;
+        assert_eq!(net[0]["value"], 179548.0, "{net:?}");
+        assert!(net[0]["known_at"].as_str().unwrap().starts_with("2026-11-06"), "{net:?}");
+        let before = api.observations(&gold, "metric=noncommercial_net&as_of=2026-11-05T00:00:00Z").await;
+        assert!(before.is_empty(), "not known before its release: {before:?}");
 
         let r = api.run("Shipping chokepoints (IMF PortWatch)").await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
@@ -3274,6 +3394,25 @@ async fn bulk_files_become_tables() {
                 .await;
             assert_eq!(st, 200, "{r}");
         }
+        // Only an org whose quota a platform administrator set loads bulk files.
+        let quota = |org: i64| {
+            Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!(
+                    "INSERT INTO system_settings (key, value, created_at, updated_at) \
+                     VALUES ('dataset_quota_bytes:{org}', '30000000000', now(), now()) ON CONFLICT (key) DO NOTHING"
+                ),
+            )
+        };
+        pnex_backend::services::bulk_history::sweep_with(&ctx, chrono::NaiveDate::from_ymd_opt(2026, 11, 2).unwrap(), Some("http://127.0.0.1:9"))
+            .await
+            .unwrap();
+        assert_eq!(
+            count(&db, format!("SELECT count(*) AS n FROM market_history_partitions WHERE org_id = {org}")).await,
+            0,
+            "no quota set: nothing asked"
+        );
+        db.execute_raw(quota(org)).await.unwrap();
         let dk = zip_of(
             "aisdk-2026-11-01.csv",
             "# Timestamp,Type of mobile,MMSI,Latitude,Longitude,Navigational status,ROT,SOG,COG,Heading,IMO,Callsign,Name,Ship type,Cargo type,Width,Length,Type of position fixing device,Draught,Destination,ETA,Data source type,A,B,C,D\n\
@@ -3414,6 +3553,15 @@ async fn bulk_real_files() {
             .call("PATCH", &format!("/api/v1/ontology/packs/{pack}/settings"), Some(json!({ "values": values })))
             .await;
         assert_eq!(st, 200, "{r}");
+        db.execute_raw(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "INSERT INTO system_settings (key, value, created_at, updated_at) \
+                 VALUES ('dataset_quota_bytes:{org}', '30000000000', now(), now()) ON CONFLICT (key) DO NOTHING"
+            ),
+        ))
+        .await
+        .unwrap();
         let started = std::time::Instant::now();
         pnex_backend::services::bulk_history::sweep(&ctx, today).await.unwrap();
         let rows = db
@@ -3433,6 +3581,93 @@ async fn bulk_real_files() {
                 r.try_get::<i64>("", "rows").unwrap(),
                 r.try_get::<i64>("", "bytes").unwrap(),
                 started.elapsed()
+            );
+        }
+    })
+    .await;
+}
+
+/// The gold case on the real sources, by hand (appendix F.6 bis):
+/// `MARKETS_CONTACT="Name mail" cargo test -p pnex-backend --test markets
+/// gold_real -- --ignored --nocapture`. Prints what each source gave.
+#[tokio::test]
+#[serial]
+#[ignore = "reaches FRED, the BIS, the CFTC, Eurostat, the BLS, the Fed, the ECB and HistData"]
+async fn gold_real_sources() {
+    let contact = std::env::var("MARKETS_CONTACT").expect("MARKETS_CONTACT");
+    with_app(|server, ctx, token| async move {
+        use pnex_backend::services::markets::history::sweep;
+        use pnex_core::markets::history::HISTDATA_M1;
+        let db = ctx.db.clone();
+        pnex_backend::services::markets::init(&ctx);
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        api.settings(json!({
+            "source_contact": contact, "covered_tickers": "",
+            "macro_series": "DFII10, T10YIE, DTWEXBGS, FEDFUNDS",
+            "bis_series": "WS_CBPOL.D.US, WS_CBPOL.D.XM, WS_CBPOL.D.JP",
+            "cot_markets": "088691", "eurostat_series": "prc_hicp_minr.M.RCH_A.AP.EA",
+            "calendars": "bls, fomc, ecb", "histdata_pairs": "XAUUSD", "histdata_from": "2025",
+        }))
+        .await;
+        for name in [
+            "Macroeconomic series (FRED)",
+            "Central bank series (BIS)",
+            "Positions of traders (CFTC COT)",
+            "European statistics (Eurostat)",
+        ] {
+            let started = std::time::Instant::now();
+            let r = api.run(name).await;
+            println!("{name}: {} in {:?}: {}", r["run"]["state"], started.elapsed(), r["run"]["counts"]);
+            assert_eq!(r["run"]["state"], "applied", "{r}");
+        }
+        let per_metric = db
+            .query_all_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!(
+                    "SELECT metric, count(*) AS n, min(period_end)::text AS a, max(period_end)::text AS b \
+                     FROM market_observations WHERE org_id = {org} GROUP BY metric ORDER BY metric"
+                ),
+            ))
+            .await
+            .unwrap();
+        for r in per_metric {
+            println!(
+                "  {:<40} {:>6} values {} .. {}",
+                r.try_get::<String>("", "metric").unwrap(),
+                r.try_get::<i64>("", "n").unwrap(),
+                r.try_get::<String>("", "a").unwrap(),
+                r.try_get::<String>("", "b").unwrap()
+            );
+        }
+        let moves = count(&db, format!("SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event'")).await;
+        println!("market moves (rate decisions): {moves}");
+        pnex_backend::services::markets::calendar::sweep(&ctx, &Default::default()).await.unwrap();
+        let ranges = count(&db, format!("SELECT count(*) AS n FROM time_ranges WHERE org_id = {org} AND scope_kind = 'org'")).await;
+        println!("calendar ranges: {ranges}");
+        assert!(ranges > 0);
+        let today = chrono::Utc::now().date_naive();
+        sweep(&ctx, HISTDATA_M1.base, today).await.unwrap();
+        let bars = db
+            .query_all_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!("SELECT period_start::text AS d, state, rows FROM market_history_partitions WHERE org_id = {org} AND source = 'histdata'"),
+            ))
+            .await
+            .unwrap();
+        for r in bars {
+            println!(
+                "XAUUSD {} {} rows={}",
+                r.try_get::<String>("", "d").unwrap(),
+                r.try_get::<String>("", "state").unwrap(),
+                r.try_get::<i64>("", "rows").unwrap()
             );
         }
     })

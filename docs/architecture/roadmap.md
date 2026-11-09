@@ -1216,7 +1216,7 @@ lecteur intersectés avec le périmètre de l'application. Le dashboard
 reste l'outil de supervision. Ni connecteur externe, ni code, ni HTML.
 Premier lot de valeur : AB0 → AB2 (application de consultation).
 
-### P2.35 — Recherche et décision d'investissement (ajout 2026-10-31) — **codé en grande partie (D540–D546), reste : `markets-research.md` §7 bis**
+### P2.35 — Recherche et décision d'investissement (ajout 2026-10-31) — **codé en grande partie (D540–D546) ; appendices B, C, E (terminaux MT5) et F (banques centrales, calendriers, COT, EIA, flux physiques, prix, immobilier) codés le 2026-11-09 ; reste : MK3 (appendice D), essai MT5 réel, achats d'or des banques centrales**
 
 Doc : `markets-research.md` (D523–D536, lots MK0–MK6). Pack `markets`
 (instrument, cotation, émetteur = organisation existante), référentiels

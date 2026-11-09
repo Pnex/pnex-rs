@@ -306,9 +306,11 @@ pub async fn fetch_per_object(
                 for r in &mut found {
                     if let Some(o) = r.as_object_mut() {
                         o.insert(QUERIED.to_string(), Value::String(v.clone()));
-                        // An ALFRED or BIS answer does not name its series: it is the code asked.
-                        use pnex_core::markets::ResponseShape::{AlfredVintages, EcbCsv};
-                        if matches!(m.shape, Some(AlfredVintages | EcbCsv))
+                        // An ALFRED, BIS or EIA answer does not name its series: it is the code asked.
+                        use pnex_core::markets::ResponseShape::{
+                            AlfredVintages, EcbCsv, EiaSeries,
+                        };
+                        if matches!(m.shape, Some(AlfredVintages | EcbCsv | EiaSeries))
                             && !o.contains_key("metric")
                         {
                             o.insert("metric".to_string(), Value::String(v.clone()));

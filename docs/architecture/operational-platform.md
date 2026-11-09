@@ -348,8 +348,8 @@ de la demande client.
 
 Migrations prises par ces lots : 000123–000129 (OP2, OP3), 000131–000132 (OP5), 000134 (OP9).
 Décisions : D791–D806 (OP2, OP3), D825–D832 (OP5), D833–D840 (OP9). La session marchés
-(markets-research.md) tient en parallèle D807–D824, D841–D846 et les migrations 000130, 000133,
-000135 ; on se coordonne par message avant de prendre un numéro ou de commiter un fichier
+(markets-research.md) tient en parallèle D807–D824, D841–D849, D880–D889 et les migrations 000130, 000133,
+000135, 000136 ; on se coordonne par message avant de prendre un numéro ou de commiter un fichier
 partagé (`iam.rs`, `exposure.rs`, `openapi.json`, `err_codes.rs`, les deux `.ftl`), commité par
 morceaux.
 

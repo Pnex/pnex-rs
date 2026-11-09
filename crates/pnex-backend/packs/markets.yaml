@@ -32,9 +32,9 @@
 # from Dukascopy's public hour files into the table `dukascopy_ticks`, one
 # day per transaction. Broker quotes, not exchange data; same terms caveat.
 # Since 1.6.0 (MK13) the symbols of `history_trade_symbols` get every spot
-# trade from Binance's daily files into the table `binance_spot_trades`, and
-# `mt5_connector` names the webhook the PneX bridge for MetaTrader 5 pushes
-# to (D816): its bars and ticks go to `mt5_ohlcv_1m` and `mt5_ticks`.
+# trade from Binance's daily files into the table `binance_spot_trades`.
+# MetaTrader 5 terminals are registered data sources (D847-D849, page MT5
+# terminals): their bars and ticks go to `mt5_ohlcv_1m` and `mt5_ticks`.
 # `histdata_pairs` loads HistData.com's free 1-minute bid bars (forex, metals,
 # oil, indices) into `histdata_ohlcv_1m`, a closed year per file.
 # Since 1.7.0 (D880) the series of `bis_series` come from the BIS Data Portal
@@ -49,12 +49,20 @@
 # contact), the FOMC and ECB meeting pages; each date is a time range of the
 # org (D182), on the calendar page, updated in place when it moves.
 # `eurostat_series` reads Eurostat (SDMX CSV, reusable with a citation):
-# HICP sub-indices and house prices by default (D883, D884). `chokepoints` reads IMF PortWatch's daily transits
+# HICP sub-indices and house prices by default (D883, D884). Since 2026 the
+# HICP is published in COICOP 2018 (`prc_hicp_minr`, all items = `AP`); the
+# former `prc_hicp_manr` stops in December 2025. `chokepoints` reads IMF PortWatch's daily transits
 # (D885); its terms ask for a citation of the IMF and its partners.
+# `cot_markets` reads the CFTC's weekly Commitments of Traders (US public
+# domain): gold, silver and WTI by default, dated by the Friday release.
+# DFII10 (10-year real yield) and T10YIE (breakeven inflation) join the
+# FRED series: with the dollar, the macro drivers of gold. `eia_series`
+# reads the EIA (US public domain) with the org's own key (vault secret
+# `markets_eia_key`): weekly oil stocks and production by default.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.8.0"
+version: "1.9.0"
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
 descriptions: {fr: "Sociétés suivies par ticker avec leurs dépôts et chiffres publiés (SEC EDGAR), et séries macroéconomiques (FRED), chaque valeur datée par sa publication. Une aide à l'analyse, pas un conseil en investissement."}
@@ -108,13 +116,27 @@ settings:
     descriptions: {fr: "Calendriers séparés par des virgules, lus chaque jour dans le calendrier de l'org : bls (publications américaines : IPC, emploi, prix à la production), fomc (décisions de la Réserve fédérale), ecb (décisions de politique monétaire de la BCE)."}
     kind: text
     default: "bls, fomc, ecb"
+  - key: cot_markets
+    name: Positions of traders (CFTC COT)
+    names: {fr: "Positions des opérateurs (CFTC COT)"}
+    description: "Comma-separated CFTC market codes of the weekly Commitments of Traders: 088691 gold, 084691 silver, 067651 WTI crude oil by default. Each code becomes a series of open interest and of long, short and net positions by kind of trader, dated by its Friday release."
+    descriptions: {fr: "Codes de marché CFTC séparés par des virgules, du rapport hebdomadaire Commitments of Traders : 088691 or, 084691 argent, 067651 pétrole WTI par défaut. Chaque code devient une série de positions ouvertes et de positions acheteuses, vendeuses et nettes par type d'opérateur, datée par sa publication du vendredi."}
+    kind: text
+    default: "088691, 084691, 067651"
+  - key: eia_series
+    name: Oil and gas statistics (EIA)
+    names: {fr: "Statistiques pétrole et gaz (EIA)"}
+    description: "Comma-separated EIA series ids, read with the org's EIA key (vault secret markets_eia_key, free on eia.gov). By default the weekly US stocks of crude oil (excluding the strategic reserve), gasoline and distillates, and the weekly crude production, each known on the Wednesday it is published."
+    descriptions: {fr: "Identifiants de séries EIA séparés par des virgules, lus avec la clé EIA de l'org (secret markets_eia_key au coffre, gratuite sur eia.gov). Par défaut, les stocks hebdomadaires américains de pétrole brut (hors réserve stratégique), d'essence et de distillats, et la production hebdomadaire de brut, chacun connu le mercredi de sa publication."}
+    kind: text
+    default: "PET.WCESTUS1.W, PET.WGTSTUS1.W, PET.WDISTUS1.W, PET.WCRFPUS2.W"
   - key: eurostat_series
     name: European statistics (Eurostat)
     names: {fr: "Statistiques européennes (Eurostat)"}
     description: "Comma-separated Eurostat series keys (dataflow.key). By default the euro area HICP (all items, energy, food, services, core) and the house prices of the euro area, France and Germany."
     descriptions: {fr: "Clés de séries Eurostat (flux.clé) séparées par des virgules. Par défaut l'IPCH de la zone euro (ensemble, énergie, alimentation, services, sous-jacent) et les prix des logements de la zone euro, de la France et de l'Allemagne."}
     kind: text
-    default: "prc_hicp_manr.M.RCH_A.CP00.EA, prc_hicp_manr.M.RCH_A.NRG.EA, prc_hicp_manr.M.RCH_A.FOOD.EA, prc_hicp_manr.M.RCH_A.SERV.EA, prc_hicp_manr.M.RCH_A.TOT_X_NRG_FOOD.EA, prc_hpi_q.Q.TOTAL.RCH_A.EA, prc_hpi_q.Q.TOTAL.RCH_A.FR, prc_hpi_q.Q.TOTAL.RCH_A.DE"
+    default: "prc_hicp_minr.M.RCH_A.AP.EA, prc_hicp_minr.M.RCH_A.NRG.EA, prc_hicp_minr.M.RCH_A.FOOD.EA, prc_hicp_minr.M.RCH_A.SERV.EA, prc_hicp_minr.M.RCH_A.AP_X_NRG_FOOD.EA, prc_hpi_q.Q.TOTAL.RCH_A.EA, prc_hpi_q.Q.TOTAL.RCH_A.FR, prc_hpi_q.Q.TOTAL.RCH_A.DE"
   - key: chokepoints
     name: Shipping chokepoints (IMF PortWatch)
     names: {fr: "Points de passage maritimes (FMI PortWatch)"}
@@ -128,7 +150,7 @@ settings:
     description: Comma-separated FRED codes.
     descriptions: {fr: "Codes FRED séparés par des virgules."}
     kind: text
-    default: "CPIAUCSL, CPILFESL, UNRATE, FEDFUNDS, DGS10, GDPC1, USSTHPI"
+    default: "CPIAUCSL, CPILFESL, UNRATE, FEDFUNDS, DGS10, GDPC1, USSTHPI, DFII10, T10YIE"
   # D737: series watched for abnormal sessions. The defaults are public
   # domain (EIA oil, Federal Reserve dollar and rate) or need a citation
   # (VIX: Chicago Board Options Exchange). FRED's SP500 and NASDAQCOM are
@@ -195,13 +217,6 @@ settings:
     names: {fr: "Première année de l'historique HistData"}
     description: "YYYY. Loaded from this year; 2000, HistData's first, when empty. A year before a pair's first stays empty."
     descriptions: {fr: "AAAA. Chargé à partir de cette année ; 2000, la première de HistData, si vide. Une année antérieure au début d'une paire reste vide."}
-    kind: text
-    default: ""
-  - key: mt5_connector
-    name: Webhook of the MetaTrader 5 bridge
-    names: {fr: "Webhook du pont MetaTrader 5"}
-    description: "Name of the org's webhook connector the PneX bridge Expert Advisor pushes to. Its 1-minute bars go to the table mt5_ohlcv_1m and its ticks to mt5_ticks, read only: no order is ever sent. Empty: nothing is read."
-    descriptions: {fr: "Nom du connecteur webhook de l'organisation vers lequel l'Expert Advisor pont de PneX pousse. Ses bougies d'une minute vont dans la table mt5_ohlcv_1m et ses ticks dans mt5_ticks, en lecture seule : aucun ordre n'est jamais envoyé. Vide : rien n'est lu."}
     kind: text
     default: ""
   - key: history_fx_pairs
@@ -698,6 +713,46 @@ imports:
           type: macro_series
           key: code
           title: metric
+          properties:
+            code: "@queried"
+  - name: Oil and gas statistics (EIA)
+    source: api
+    source_url: "https://api.eia.gov/v2/seriesid/{value}"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: eia_series
+      name: Oil and gas statistics
+      names: {fr: "Statistiques pétrole et gaz"}
+      description: "The series of the eia_series setting, read with the org's EIA key (vault secret markets_eia_key)."
+      shape: eia_series
+      keyed_source: eia
+      per_setting_code: markets.eia_series
+      observations: { type: macro_series, property: code }
+      objects:
+        - as: series
+          type: macro_series
+          key: code
+          title: metric
+          properties:
+            code: "@queried"
+  - name: Positions of traders (CFTC COT)
+    source: api
+    source_url: "https://publicreporting.cftc.gov/resource/6dca-aqww.json?%24where=cftc_contract_market_code%3D%27{value}%27%20AND%20report_date_as_yyyy_mm_dd%3E%3D%27{since}T00%3A00%3A00%27&%24order=report_date_as_yyyy_mm_dd&%24limit=5000"
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: cftc_cot
+      name: Positions of traders
+      names: {fr: "Positions des opérateurs"}
+      shape: cftc_cot
+      per_setting_code: markets.cot_markets
+      observations: { type: macro_series, property: code }
+      objects:
+        - as: series
+          type: macro_series
+          key: code
+          title: name
           properties:
             code: "@queried"
   - name: Shipping chokepoints (IMF PortWatch)

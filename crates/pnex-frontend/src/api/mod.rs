@@ -55,6 +55,7 @@ pub mod media;
 pub mod media_streams;
 pub mod memory;
 pub mod ml_models;
+pub mod mt5;
 /// Notifications (D49–D54) — channels/templates/journal/tests.
 pub mod notify;
 pub mod ontology;

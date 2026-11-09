@@ -180,8 +180,9 @@ pub async fn sweep_from(
                AND (coalesce(settings ->> 'history_symbols', '') <> '' \
                  OR coalesce(settings ->> 'history_fx_pairs', '') <> '' \
                  OR coalesce(settings ->> 'history_trade_symbols', '') <> '' \
-                 OR coalesce(settings ->> 'mt5_connector', '') <> '' \
-                 OR coalesce(settings ->> 'histdata_pairs', '') <> '') ORDER BY org_id",
+                 OR coalesce(settings ->> 'histdata_pairs', '') <> '' \
+                 OR EXISTS (SELECT 1 FROM mt5_inbox i WHERE i.org_id = packs.org_id)) \
+             UNION SELECT DISTINCT org_id FROM mt5_inbox ORDER BY org_id",
             vec![],
         ))
         .await?
@@ -211,7 +212,7 @@ pub async fn sweep_from(
             }
         }
         if let Err(e) = mt5_pass(&ctx.db, &store, org).await {
-            tracing::warn!(org, code = e.code(), "MT5 bridge pass stopped");
+            tracing::warn!(org, code = e.code(), "MT5 terminals pass stopped");
         }
         lock.release().await;
     }
@@ -231,36 +232,20 @@ async fn text_setting(
     )
 }
 
-/// Calls of the MT5 bridge read per pass, oldest first.
+/// Calls of the MT5 terminals read per pass, oldest first.
 const MT5_CALLS_PER_PASS: i64 = 1000;
 
-/// Empties the inbox of the org's MT5 webhook connector (D816) into
-/// `mt5_ohlcv_1m` and `mt5_ticks`: one transaction per table and source,
-/// then the calls read leave the inbox. An unreadable call is dropped.
+/// Empties the inbox of the org's MT5 terminals (D849) into `mt5_ohlcv_1m`
+/// and `mt5_ticks`: one transaction per table and source, then the calls
+/// read leave the inbox. An unreadable call is dropped.
 // shortcut: a pod killed between the commit and the delete loads those calls again (rows twice); key the calls in the registry if that is ever seen.
 async fn mt5_pass(db: &DatabaseConnection, store: &S3Store, org: i64) -> Result<(), DatasetError> {
-    let name = text_setting(db, org, "mt5_connector").await?;
-    if name.trim().is_empty() {
-        return Ok(());
-    }
-    // In the org (R1), a webhook connector only: never another org's inbox.
-    let Some(connector) = db
-        .query_one_raw(stmt(
-            "SELECT id FROM connectors WHERE org_id = $1 AND name = $2 AND kind = 'webhook'",
-            vec![org.into(), name.trim().into()],
-        ))
-        .await?
-        .map(|r| r.try_get::<Uuid>("", "id"))
-        .transpose()?
-    else {
-        return Ok(());
-    };
     loop {
+        // In the org (R1): the inbox row carries the org of its terminal.
         let calls = db
             .query_all_raw(stmt(
-                "SELECT id, body FROM connector_inbox WHERE org_id = $1 AND connector_id = $2 \
-                 ORDER BY id LIMIT $3",
-                vec![org.into(), connector.into(), MT5_CALLS_PER_PASS.into()],
+                "SELECT id, body FROM mt5_inbox WHERE org_id = $1 ORDER BY id LIMIT $2",
+                vec![org.into(), MT5_CALLS_PER_PASS.into()],
             ))
             .await?;
         let Some(last) = calls
@@ -281,7 +266,7 @@ async fn mt5_pass(db: &DatabaseConnection, store: &S3Store, org: i64) -> Result<
                     bars.entry(b.source.clone()).or_default().extend(b.bars);
                     ticks.entry(b.source).or_default().extend(b.ticks);
                 }
-                Err(token) => tracing::warn!(org, %connector, token, "MT5 bridge call dropped"),
+                Err(token) => tracing::warn!(org, token, "MT5 terminal call dropped"),
             }
         }
         let sha256 = hex(&digest.finalize());
@@ -300,8 +285,8 @@ async fn mt5_pass(db: &DatabaseConnection, store: &S3Store, org: i64) -> Result<
             mt5_write(db, store, org, &MT5_TICKS, batch, &sha256).await?;
         }
         db.execute_raw(stmt(
-            "DELETE FROM connector_inbox WHERE org_id = $1 AND connector_id = $2 AND id <= $3",
-            vec![org.into(), connector.into(), last.into()],
+            "DELETE FROM mt5_inbox WHERE org_id = $1 AND id <= $2",
+            vec![org.into(), last.into()],
         ))
         .await?;
         if (calls.len() as i64) < MT5_CALLS_PER_PASS {

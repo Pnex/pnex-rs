@@ -47,6 +47,7 @@ pub mod map;
 pub mod media;
 /// Vision model registry (camera-video.md D81).
 pub mod models;
+pub mod mt5_terminals;
 pub mod not_found;
 pub mod notifications;
 /// Ontology explorer, object page, type editor (ontology.md D186).
