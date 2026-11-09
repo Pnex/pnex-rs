@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
-| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), lots **MK0…MK14**, **MK15…MK26** (appendice F) |
+| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), **D890…D897** (appendice G), lots **MK0…MK14**, **MK15…MK26** (appendice F), **MK27…MK30** (appendice G) |
 | Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`data-pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
@@ -990,3 +990,161 @@ Données publiques (domaine public américain), API Socrata `publicreporting.cft
 - **Plafonds (SEC-84)** : 20 terminaux par org, 2 000 appels en attente par org ; la boîte est vidée par le balayage marchés même sans le pack.
 - **UI** : pages `/mt5-terminals` (liste, création) et `/mt5-terminals/:id` (état, mise en route en trois étapes, sélection, rattrapage, catalogue avec recherche, suppression), menu Sources ; fiche de l'assistant `mt5-terminals`.
 - **Pas fait** : la compilation et l'essai réel dans MetaTrader 5 (MT5-4, à Shan) ; l'e2e Playwright de l'écran ; un test 403 sans la permission (couvert par la garde du registre IAM, pas par un appel).
+
+## Appendice G — Modèle de décision externe : entraîné à part, branché en direct (D890–D897)
+
+| | |
+|---|---|
+| Statut | **Proposé le 2026-11-09 ; questions G.5 tranchées par Shan le même jour ; MK27 à MK30 codés (G.7).** Demande de Shan : PNeX sert de référence de données ; un petit projet Python à côté entraîne le modèle ; en direct, PNeX fournit les flux et l'interface, le modèle s'y connecte pour décider |
+| Décisions | **D890…D897** |
+| Lots | **MK27…MK30** |
+| Repose sur | D553 et D559 (Python hors du cœur, client de l'API), comptes de service et clés d'accès (`iam.md` §7), D823 et MK14 (lecture Parquet pour l'entraînement), D824 et D849 (MT5 en direct, même forme de table), D531 (`known_at`), D197 (forme des décisions de `text_decide`), D534 et D123 (jamais d'ordre), D813 (onglet Cours) |
+| Premier cas | l'or (XAUUSD), F.6 bis |
+
+### G.1 Le besoin
+
+1. Un **projet Python à part** (hors de `pnex-rs`) entraîne un petit modèle de décision sur l'historique de PNeX : une question à options (`buy`, `neutral`, `sell`), une probabilité calibrée par option, comme Laya (§4.5bis de `media-vision-studio.md`).
+2. En direct, **le même projet** tourne en service (le « runner ») : il lit dans PNeX ce qui est connu maintenant (barres, séries macro, calendrier, événements), décide, et renvoie sa décision à PNeX.
+3. PNeX **range, affiche et mesure** les décisions. Il n'exécute ni le modèle ni Python, et ne passe aucun ordre.
+
+### G.2 Ce qui existe, ce qui manque (relevé dans le code le 2026-11-09)
+
+| Besoin | État |
+|---|---|
+| Historique en masse pour l'entraînement | **existe** : `GET /api/v1/datasets/{id}/files?as_of=` (MK14), Parquet lu directement |
+| Séries datées (taux réels, dollar, COT, IPCH…) à une date donnée | **existe** : `GET /api/v1/ontology/objects/{id}/observations?as_of=` (« la dernière valeur connue à `as_of` ») |
+| Calendrier des publications | **existe** : `GET /api/v1/time-ranges` (`from` / `to`) |
+| Événements géopolitiques connus à une date | **existe** : `POST /api/v1/ontology/query` sur `geo_event`, filtre `known_at` ≤ `as_of` (Q-MD6) |
+| Flux MT5 en direct, même forme que l'historique | **existe** : D849, tables `mt5_ohlcv_1m` et `mt5_ticks` ; doublons possibles après un rattrapage (E.5) |
+| Identité non humaine, clé révocable, dernière utilisation | **existe** : comptes de service, clés `pnex_sk_…` (expiration ≤ 1 an, deux clés actives pour la rotation) ; **lecture seule en V1** (`auth/mod.rs`) |
+| Lire les dernières barres closes d'un instrument, rééchantillonnées, sans doublon | **manque** : `sample` rend les premières lignes de la vue, pas les dernières |
+| Renvoyer une décision à PNeX | **manque** |
+| Voir les décisions sur le graphique, mesurer après coup | **manque** |
+
+### G.3 Décisions
+
+#### D890 — Le modèle vit hors de PNeX ; PNeX ne voit qu'un client
+
+- Le projet Python (entraînement + runner) est un **dépôt privé à part** (Q-MD1). Pour PNeX, c'est un client de l'API comme un notebook (D559) : HTTP ou SDK généré du spec, Parquet pour le volume (D823). Aucun accès direct à PostgreSQL, S3, Valkey ou O2.
+- **Le même code de features sert à l'entraînement et en direct**, seule la date de lecture change (`as_of` passé contre maintenant). C'est la raison de ce choix : exporter le modèle en ONNX vers PNeX (tract, comme D197) obligerait à réécrire les features en Rust, avec un risque d'écart silencieux. Possible plus tard, pas en V1.
+- PNeX ne stocke pas le modèle en V1 (pas d'entrée `ml_models`) : chaque décision porte le nom et la version du modèle qui l'a prise.
+- **Les alertes sont faites par le projet Python** (Shan, 2026-11-09) : PNeX n'écrit pas de flux d'événements `ev_market_decisions` et ne prévoit pas de flow d'alerte.
+
+#### D891 — Le runner est un compte de service ; une seule écriture lui est ouverte
+
+- Identité = un **compte de service** de l'org, avec sa clé d'accès (`Authorization: Bearer pnex_sk_…`). Pas de registre ni de jeton maison : la rotation, l'expiration, la révocation, l'audit et la dernière utilisation existent déjà. Contrairement à D847, il n'y a aucun code généré à distribuer.
+- Lecture : un rôle avec `ontology:read`, `datasets:read`, `time-ranges:read`, `market-decisions:read`.
+- **Amendement de la règle V1 « un compte de service ne fait que lire »** : une liste blanche fermée des écritures permises aux comptes de service, qui ne contient que `market-decisions:write`. C'est un ajout seul : ni modification, ni suppression, ni effet physique. Tout le reste reste refusé (test dédié). Revue `security.md` §6 avant le lot ; ligne au registre §7.
+
+#### D892 — Barres de cours : une route de lecture, à une date donnée
+
+`GET /api/v1/markets/bars`, permission `datasets:read`.
+
+- Paramètres :
+  - `instrument` ;
+  - `source`, **obligatoire** (`histdata`, `mt5:<courtier>`…), jamais de mélange implicite entre sources ;
+  - `interval` (`1m`, `5m`, `15m`, `1h`, `4h`, `1d`) ;
+  - `from` / `to`, ou `limit` (les N dernières barres, 5 000 au plus) ;
+  - `as_of` (défaut : maintenant).
+- **Une barre est connue à sa clôture** (`ts + interval`), pas à son ouverture (`ts` est l'ouverture, D809). À `as_of`, seules les barres closes sont rendues ; la barre en cours ne l'est jamais. C'est ce qui empêche le runner de voir en direct ce que l'entraînement ne voyait pas.
+- Rééchantillonnage depuis la M1, barres alignées sur l'époque UTC (comme `date_bin` avec l'origine 1970-01-01, D823). Dédoublonnage sur (`instrument`, `ts`, `source`), ce qui règle à la lecture les doublons du rattrapage MT5 (E.5).
+- Réponse `Paginated` (contrat d'API). Lecture exposée au MCP.
+- Deux usages : le runner en direct, et le projet Python pour vérifier que sa propre lecture Parquet + rééchantillonnage donne exactement les mêmes barres (test de parité dans le projet).
+
+#### D893 — La source lue en direct est celle de l'entraînement, ou l'écart est mesuré
+
+HistData et le flux MT5 d'un courtier ne cotent pas le même prix (cotations du courtier, fuseau, spread). Chaque décision porte sa `source`. **Choix pour l'or (Q-MD4)** : entraînement sur HistData, direct sur MT5 du courtier ; avant tout usage en direct, l'écart entre HistData et `mt5:<courtier>` est mesuré sur une période commune (|Δ clôture| / ATR, moyenne et maximum par intervalle) et noté. Si l'écart est trop grand, le modèle est entraîné sur l'historique MT5 du courtier, rattrapé par D848 (qui donne aussi la profondeur disponible par courtier).
+
+#### D894 — Une décision = une distribution datée, à la forme de `text_decide`
+
+`POST /api/v1/markets/decisions`, permission `market-decisions:write`.
+
+- Corps :
+  - `model`, `model_version` ;
+  - `instrument`, `source`, `interval`, `horizon_bars` ;
+  - `as_of` : l'instant des données lues ;
+  - `options` : fixées à `buy`, `neutral`, `sell` (Q-MD2) ;
+  - `probabilities`, dans l'ordre des options ;
+  - `barriers` (optionnel) : `take_profit_atr`, `stop_atr`, `atr_period` ;
+  - `inputs` (optionnel) : JSON libre de 4 Kio au plus, pour la traçabilité (dernière barre lue, dates des séries).
+- **Re-vérifié côté serveur** (comme les questions de D197) :
+  - probabilités dans [0, 1], somme à 1 ± 1e-3 ;
+  - `as_of` ≤ maintenant, et pas plus vieux que deux intervalles (sinon `decision-stale`) ;
+  - instrument connu.
+- `best` et `confidence` (1 − entropie normalisée, même formule que `pnex-decide`) sont **calculés par le serveur**, jamais crus.
+- Idempotence : une seule décision par (`model`, `model_version`, `instrument`, `interval`, `as_of`). La même renvoyée = 200, une différente = 409.
+- Stockage : table PostgreSQL `market_decisions` (Q-MD5). Le volume est faible : une décision par barre et par instrument. Plafond : 2 000 décisions par jour et par org (ligne SEC au registre).
+
+#### D895 — Conseil seulement
+
+Aucun ordre (D534, D123). Aucune route ne relie une décision à MT5, et le compte de service n'a aucune écriture `metatrader:*`. L'avertissement produit du domaine s'affiche sur l'écran des décisions. Passer d'une décision à une position fictive (D546) est un geste humain, jamais automatique.
+
+#### D896 — PNeX mesure les décisions après coup
+
+- Fonction pure `pnex_core::markets::decisions::outcome` : à partir des barres de **la même source** après `as_of`, elle donne l'issue réalisée.
+  - Si la décision a déclaré ses barrières : triple barrière. Le take-profit et le stop sont exprimés en ATR, calculés sur la clôture à `as_of` ; premier contact sur le haut ou le bas des barres suivantes, dans la limite de `horizon_bars`.
+    - Take-profit haussier touché en premier → `buy` ; stop touché en premier → `sell` ; rien de touché → `neutral`.
+    - Les deux touchés dans la même barre → `neutral`.
+  - Sans barrières déclarées : seulement le rendement à l'horizon.
+- **Cette définition est le contrat d'étiquetage** : le projet Python étiquette son jeu d'entraînement avec exactement la même règle (même ATR, même convention pour une barre ambiguë). Sinon la mesure en direct ne compare pas la même chose. Précisions du code : ATR = **moyenne simple** du true range des `atr_period` dernières barres closes à `as_of` (true range = max(haut − bas, |haut − clôture précédente|, |bas − clôture précédente|)) ; barrière haute = clôture + `take_profit_atr` × ATR, basse = clôture − `stop_atr` × ATR ; les barres suivantes sont celles qui ouvrent à `as_of` ou après ; issue mesurée seulement quand les `horizon_bars` barres sont toutes closes.
+- Par (modèle, version, instrument) :
+  - taux de réussite ;
+  - score de Brier ;
+  - courbe de fiabilité par tranche de probabilité (0–0,1, …, 0,9–1) ;
+  - nombre de décisions au-dessus d'un seuil.
+
+  Une courbe de fiabilité qui s'écarte de la diagonale est le premier signe que le modèle dérive.
+
+#### D897 — Affichage
+
+- Onglet **Cours** de la fiche instrument (D813) : la décision s'affiche en marqueur sur le graphique, coloré par option, d'autant plus opaque que la probabilité est haute. Filtre par modèle.
+- Page **Décisions** (menu Marchés) : liste paginée (filtres modèle, version, instrument), et le tableau de mesure de D896.
+- Fiche assistant `market-decisions`, clés `.ftl` dans les deux langues, et ligne au lexique pour « Décision » / « Decision » (vérifier la collision avec `text_decide`).
+
+### G.4 Lots
+
+| Lot | Contenu | Acceptation |
+|---|---|---|
+| **MK27** | D891 (liste blanche d'écriture des comptes de service), D892 (`GET /markets/bars`), IAM, OpenAPI, MCP (lecture exposée) | un compte de service lit 500 barres H4 XAUUSD `histdata` à un `as_of` donné ; une barre non close à `as_of` n'est jamais rendue (test à la minute près) ; des doublons MT5 en table ne sortent qu'une fois ; un compte de service reste refusé sur toute autre écriture (test) |
+| **MK28** | D894, D895 : `POST` et `GET /markets/decisions`, table, re-vérifications, plafond | un runner simulé (script de test) poste 100 décisions ; probabilités fausses → 400 ; `as_of` trop vieux → `decision-stale` ; renvoi identique → 200, différent → 409 |
+| **MK29** | D896 : `outcome`, mesures par modèle et version, route de lecture | fixtures de barres à issue connue : take-profit touché, stop touché, aucun, les deux dans la même barre ; Brier et fiabilité exacts sur 1 000 décisions simulées |
+| **MK30** | D897 : marqueurs sur l'onglet Cours, page Décisions, fiche assistant, lexique | e2e : les décisions d'un runner simulé apparaissent sur le graphique XAUUSD et dans la liste, avec la mesure une fois l'horizon passé |
+
+Ordre : MK27 puis MK28 suffisent pour brancher le runner en direct. MK29 et MK30 rendent les décisions lisibles et mesurables.
+
+**Côté projet Python (hors de ce dépôt, pour mémoire)** : lecture Parquet (MK14) et séries à `as_of` pour l'entraînement ; étiquetage selon D896 ; test de parité des barres contre D892 ; en direct, une boucle à la clôture de chaque barre H4 : lecture D892 + séries, décision, `POST` D894 ; alertes.
+
+### G.5 Questions tranchées (Shan, 2026-11-09)
+
+- **Q-MD1** : le projet Python est privé ; son nom et sa licence ne sont pas notés ici.
+- **Q-MD2** : options fixées en V1 : `buy`, `neutral`, `sell`.
+- **Q-MD3** : intervalle de décision H4 en V1 (la route accepte les autres intervalles).
+- **Q-MD4** : HistData à l'entraînement, MT5 du courtier en direct, écart mesuré (D893).
+- **Q-MD5** : décisions en PostgreSQL.
+- **Q-MD6** : `POST /ontology/query` sur `geo_event` filtré par `known_at` ≤ `as_of`, rien à coder. Limite : la requête lit l'état courant de l'objet ; un statut `confirmed` posé après `as_of` serait vu. Le projet Python ignore `status`, ou ne garde que les événements UCDP/ACLED (vérifiés dès leur `known_at`).
+- **Alertes** : côté projet Python (D890).
+
+### G.6 Hors périmètre
+
+Le modèle et son entraînement (projet à part) ; l'exécution du modèle dans PNeX (ONNX + tract, possible plus tard si les features sont portées en Rust) ; tout ordre ; le backtest (fait par le projet Python) ; plusieurs modèles combinés ; les alertes (projet Python).
+
+### G.7 Ce qui est codé (2026-11-09) et écarts
+
+- **Cœur pur** `pnex_core::markets::decisions` : intervalles et tables par source (`bar_table`), `resample` (barres alignées sur l'époque UTC, seulement celles closes à `as_of`, une minute écrite deux fois garde sa dernière écriture), `decimal_text`, contrôle des probabilités, `best_and_confidence`, `outcome` (triple barrière, contrat d'étiquetage de D896), `scores` (réussite, Brier multi-classe, fiabilité par dixième, seuil). Tests sur fixtures à issue connue, dont 1 000 décisions simulées.
+- **MK27** : `GET /api/v1/markets/bars` (`datasets:read`, marquages de la table D801, exposé au MCP). Liste blanche `SERVICE_WRITES` = `market-decisions:write` dans `pnex_api_contract::iam`, appliquée par l'extracteur `OrgContext`. Permissions `market-decisions:read` (lecteur) et `market-decisions:write` (membre).
+- **MK28** : `POST` et `GET /api/v1/markets/decisions`, table `market_decisions` (migration 000137), 201 à la création, 200 au renvoi identique, 409 `market-decision-conflict`, 400 `market-decision-stale`, 429 `market-decisions-quota`. Le `POST` est exclu du MCP (canal machine, comme les routes de l'EA).
+- **MK29** : `GET /api/v1/markets/decisions/scores` (`market-decisions:read`, exposé au MCP), par (modèle, version, instrument, source, intervalle).
+- **MK30** : marqueurs ronds sur l'onglet Cours (vert achat, rouge vente, gris neutre, opacité = probabilité, la dernière décision du jour par modèle), liste de modèles au-dessus du graphique ; page **Décisions de modèles** (`/market-decisions`) avec la mesure et une petite courbe de fiabilité par modèle ; fiche `assistant-kb/market-decisions.md` ; lexique « Décision de modèle » (distincte de « Décision sur texte ») et règle de garde.
+- Test d'intégration `tests/markets.rs::an_external_model_reads_bars_and_posts_decisions` : un compte de service lit 500 barres H4 XAUUSD `histdata` à un `as_of` donné, une minute de moins retire la dernière barre, l'heure MT5 écrite deux fois sort une fois, 100 décisions postées, renvoi 200, conflit 409, probabilités fausses 400, `as_of` trop vieux, instrument inconnu, autre écriture refusée même si le rôle la donne, mesures exactes sur deux décisions passées, graphique de l'instrument (clôtures et marqueurs).
+
+Écarts au texte :
+- **Rééchantillonnage en Rust, pas en SQL** : le backend n'embarque pas DataFusion (il vit dans le worker de pipelines). Les fichiers Parquet de la vue courante sont lus avec un élagage par statistiques de `ts`, et par date de commit (une ligne n'est jamais plus récente que son commit, donc un fichier commité avant `from` est sauté). Les barres restent alignées comme `date_bin` sur 1970-01-01 : la parité avec le projet Python tient.
+- **Bornes de lecture** : 20 000 fichiers par lecture (`market-bars-too-many-files`), 5 000 barres ; une table MT5 en direct écrit ≈ 288 fichiers par jour, donc une fenêtre H4 longue sur MT5 peut atteindre la borne. Remède prévu : le compactage mensuel de D808, si une charge réelle le montre (marqué `shortcut:`).
+- **Mesures** : calculées à la lecture, sans stockage de l'issue ; 5 000 décisions au plus par groupe, sur une fenêtre de 5 000 barres, 100 groupes au plus. Les plus anciennes sont comptées dans `decisions` mais pas mesurées.
+- **Instrument connu** = une partition `done` de l'historique de prix ou un symbole annoncé par un terminal MT5 de l'org, pas un objet `instrument`.
+- **Graphique** : un instrument sans clôtures journalières (cas de XAUUSD, qui n'a que des barres minute) affiche les barres journalières de la source de sa dernière décision, si l'appelant a `datasets:read`.
+- **Codes d'erreur** préfixés `market-` (`market-decision-stale` et non `decision-stale`), comme les autres codes du domaine.
+- **Menu** : la page est dans le groupe **Connaissance** (il n'y a pas de menu Marchés).
+- **Pas de flux d'événements ni de flow d'alerte** (alertes côté Python, G.5).
+- **Pas fait** : l'e2e Playwright `e2e/tests/market-decisions.spec.ts` est écrit (liste, mesure, pire cas, filtre par modèle sur le graphique) mais pas lancé ici ; la mesure de l'écart HistData / MT5 (D893) attend un vrai flux MT5 (MT5-4).
+- Sécurité : SEC-85.
