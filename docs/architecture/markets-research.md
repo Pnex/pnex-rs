@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
-| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), lots **MK0…MK14**, **MK15…MK20** (appendice F) |
+| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), lots **MK0…MK14**, **MK15…MK24** (appendice F) |
 | Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`data-pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
@@ -853,7 +853,7 @@ Route d'ingestion propre aux terminaux (accès `Machine` au registre IAM, jeton 
 
 | | |
 |---|---|
-| Statut | **Proposé le 2026-11-09 ; MK15 codé le même jour**, le reste à faire dans l'ordre des lots |
+| Statut | **Proposé le 2026-11-09 ; MK15 codé le même jour ; questions F.4 tranchées par Shan**, le reste à faire dans l'ordre des lots |
 | Cible | Shan d'abord, trader particulier, puis d'autres clients (§1) : ce qui lui sert passe en premier ; ce qu'un client exigerait seul (gros volumes, conformité) est reporté, pas refusé |
 
 ### F.1 Le besoin
@@ -903,10 +903,38 @@ Peu utiles au trading hors compagnies aériennes. Si on les prend : adsb.lol (OD
 | **MK19** | D884 : indices immobiliers (BRI `WS_SPP`, Eurostat, Case-Shiller) | trimestriels, `known_at` au jour de lecture |
 | **MK20** | D885 : agrégats maritimes PortWatch | passages quotidiens de Suez et d'Ormuz en séries |
 
-### F.4 Questions pour Shan
+#### D887 — Les flux physiques vivent dans des packs à part
 
-- **Q-F1** : ce que tu trades surtout (indices, forex, actions, matières premières, crypto) et à quel horizon : décide de l'ordre MK17–MK20.
-- **Q-F2** : prix à la consommation : sous-indices officiels seulement, ou aussi des prix produit par produit ?
-- **Q-F3** : immobilier : indices seulement, ou aussi les transactions DVF ?
-- **Q-F4** : navires et avions : agrégats pour les marchés seulement, ou aussi les positions pour les dossiers d'enquête ?
-- **Q-F5** : les flux physiques dans le pack `markets`, ou dans un pack à part (`trade_flows`) ?
+Navires, avions, prix des produits et transactions immobilières servent aussi les dossiers d'enquête et la due diligence : packs `trade_flows` (navires, avions), `consumer_prices` (prix des produits) et `real_estate` (indices et transactions), hors de `markets`. Les séries d'indices officielles (D883, D884) restent dans `markets`, à côté des taux.
+
+#### D888 — Un mouvement de série BRI se déclare dans `move_series`, préfixé
+
+Une entrée `bis:WS_CBPOL.D.US:diff:rates:…` voisine les codes FRED dans le même réglage : une seule liste à tenir.
+
+#### D889 — Positions brutes dès maintenant, en tables
+
+Navires (AIS) et avions (ADS-B) : agrégats pour les marchés et positions brutes pour les dossiers dans la même vague. Les positions vont dans des tables (D807), jamais dans l'ontologie ; un navire ou un avion suivi devient un objet relié à sa trace (`tracks`, K25), à la demande.
+
+### F.4 Questions tranchées (Shan, 2026-11-09)
+
+- **Q-F1** : forex (MT5), indices et actions, matières premières, crypto ; horizons mixtes. Rien ne tombe : l'ordre suit l'effort, le calendrier (MK17) d'abord.
+- **Q-F2** : sous-indices officiels **et** prix produit par produit (Open Prices) : lot MK21, pack `consumer_prices`.
+- **Q-F3** : indices **et** transactions DVF : lot MK22, pack `real_estate`, pipeline vers une table.
+- **Q-F4** : agrégats **et** positions brutes, maintenant (D889) : lots MK23 (AIS) et MK24 (ADS-B), pack `trade_flows`.
+- **Q-F5** : packs à part (D887).
+- **Q-F6** : même réglage `move_series`, préfixe de source (D888).
+- Pousser : en fin de session.
+
+### F.5 Lots ajoutés
+
+| Lot | Contenu | Vérification |
+|---|---|---|
+| **MK21** | Open Prices : prix produit par produit, pack `consumer_prices` | un produit suivi, ses prix datés par relevé, conditions ODbL notées |
+| **MK22** | DVF : transactions, pipeline vers une table, pack `real_estate` | un millésime chargé, médiane au m² par commune en SQL |
+| **MK23** | AIS : historiques ouverts (NOAA, autorité maritime danoise) en table, flux temps réel par clé d'org | une journée chargée, la trace d'un navire dans un dossier |
+| **MK24** | ADS-B : adsb.lol (ODbL) en table | une journée chargée, la trace d'un avion dans un dossier |
+
+### F.6 Questions encore ouvertes
+
+- **Q-F7** : AIS temps réel : quel fournisseur (aisstream.io par clé, autre) et quelle zone ?
+- **Q-F8** : volume accepté pour AIS et ADS-B (une journée mondiale d'AIS se compte en Go) : zones, échantillonnage, durée de rétention ?
