@@ -23,6 +23,8 @@ pub enum ChartEventKind {
     Move,
     /// A filing of the issuer (8-K, 10-Q, 10-K…).
     Filing,
+    /// The last decision of a day of an external model (D897).
+    Decision,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -35,8 +37,15 @@ pub struct ChartEvent {
     pub date: String,
     pub kind: ChartEventKind,
     pub title: String,
-    /// `up` / `down` for a move, the form (`8-K`…) for a filing.
+    /// `up` / `down` for a move, the form (`8-K`…) for a filing, the most
+    /// likely option for a decision.
     pub detail: String,
+    /// Model and version of a decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Probability of the most likely option of a decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub probability: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -149,6 +158,8 @@ mod tests {
             kind: ChartEventKind::Filing,
             title: "8-K".into(),
             detail: "8-K".into(),
+            model: None,
+            probability: None,
         }
     }
 

@@ -4,6 +4,7 @@
 
 pub mod calendar;
 pub mod chart;
+pub mod decisions;
 pub mod documents;
 pub mod history;
 pub mod identity;

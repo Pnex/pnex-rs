@@ -44,6 +44,7 @@ pub mod mailbox_messages;
 pub mod mailbox_outbox;
 pub mod mailboxes;
 pub mod map;
+pub mod market_decisions;
 pub mod media;
 /// Vision model registry (camera-video.md D81).
 pub mod models;

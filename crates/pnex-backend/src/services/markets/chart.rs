@@ -93,6 +93,8 @@ pub async fn issuer<C: ConnectionTrait>(
                 kind: ChartEventKind::Move,
                 title: r.try_get("", "title")?,
                 detail: text("move_direction"),
+                model: None,
+                probability: None,
             });
         }
     }
@@ -120,6 +122,8 @@ pub async fn issuer<C: ConnectionTrait>(
                 kind: ChartEventKind::Filing,
                 title: r.try_get("", "title")?,
                 detail: text("form"),
+                model: None,
+                probability: None,
             });
         }
     }

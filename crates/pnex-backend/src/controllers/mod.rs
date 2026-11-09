@@ -52,6 +52,7 @@ pub mod internal_notify;
 /// Time ranges (media-ingest.md D169).
 pub mod lab;
 pub mod mailboxes;
+pub mod market_decisions;
 pub mod markets;
 pub mod mcp;
 pub mod media;

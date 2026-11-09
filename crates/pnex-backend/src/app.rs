@@ -171,6 +171,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::lab::routes())
         .add_route(controllers::ontology::routes())
         .add_route(controllers::markets::routes())
+        .add_route(controllers::market_decisions::routes())
         .add_route(controllers::ontology_imports::routes())
         .add_route(controllers::ontology_feed::routes())
         .add_route(controllers::apps::routes())

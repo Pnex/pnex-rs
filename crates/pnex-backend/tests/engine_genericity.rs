@@ -187,6 +187,16 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "market routes built on the markets pack: OpenAPI tag, paper positions",
     ),
     (
+        "pnex-frontend/src/api/markets.rs",
+        &["instrument"],
+        "the `instrument` query parameter of the model decisions (markets-research.md D894), a column of the price tables, not the pack type",
+    ),
+    (
+        "pnex-backend/src/controllers/market_decisions.rs",
+        &["markets", "instrument"],
+        "bars and decisions of an external model (markets-research.md D892, D894): OpenAPI tag, and `instrument` the column of the price tables, not the pack type",
+    ),
+    (
         "pnex-backend/src/services/markets/",
         &[
             "instrument",

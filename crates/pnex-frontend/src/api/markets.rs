@@ -86,3 +86,41 @@ pub async fn issuer_chart(
     )
     .await
 }
+
+fn decision_filters(model: &str, instrument: &str) -> String {
+    [("model", model), ("instrument", instrument)]
+        .iter()
+        .filter(|(_, v)| !v.trim().is_empty())
+        .map(|(k, v)| format!("&{k}={}", urlencode(v.trim())))
+        .collect()
+}
+
+/// Decisions of external models, newest first (D894).
+pub async fn decisions(
+    model: &str,
+    instrument: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<pnex_core::Paginated<pnex_core::markets::decisions::Decision>, ApiError> {
+    let f = decision_filters(model, instrument);
+    client::request(
+        Method::GET,
+        &format!("{BASE}/decisions?limit={limit}&offset={offset}{f}"),
+        None,
+    )
+    .await
+}
+
+/// Scores of each model, version and instrument (D896).
+pub async fn decision_scores(
+    model: &str,
+    instrument: &str,
+) -> Result<pnex_core::Paginated<pnex_core::markets::decisions::ModelScores>, ApiError> {
+    let f = decision_filters(model, instrument);
+    client::request(
+        Method::GET,
+        &format!("{BASE}/decisions/scores?threshold=0.6{f}"),
+        None,
+    )
+    .await
+}

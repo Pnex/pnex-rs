@@ -116,6 +116,58 @@ impl AsyncFileReader for S3Reader {
     }
 }
 
+/// Rows of a file whose row group may hold `time_column` values in
+/// [`from_us`, `to_us`), only `columns`: the footer statistics skip the other
+/// groups, rows are not filtered here.
+pub async fn read_time_range(
+    store: &S3Store,
+    key: &str,
+    size: u64,
+    columns: &[&str],
+    time_column: &str,
+    from_us: i64,
+    to_us: i64,
+) -> ParquetResult<Vec<RecordBatch>> {
+    use parquet::file::statistics::Statistics;
+    let reader = S3Reader {
+        store: store.clone(),
+        key: key.to_string(),
+        size,
+    };
+    let builder = ParquetRecordBatchStreamBuilder::new(reader).await?;
+    let schema = builder.parquet_schema();
+    let index = |name: &str| (0..schema.num_columns()).find(|i| schema.column(*i).name() == name);
+    let Some(time) = index(time_column) else {
+        return Ok(Vec::new());
+    };
+    let wanted: Vec<usize> = columns.iter().filter_map(|c| index(c)).collect();
+    let groups: Vec<usize> = builder
+        .metadata()
+        .row_groups()
+        .iter()
+        .enumerate()
+        .filter(|(_, g)| match g.column(time).statistics() {
+            Some(Statistics::Int64(st)) => match (st.min_opt(), st.max_opt()) {
+                (Some(min), Some(max)) => *max >= from_us && *min < to_us,
+                _ => true,
+            },
+            // No statistics: the group is read.
+            _ => true,
+        })
+        .map(|(i, _)| i)
+        .collect();
+    if groups.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mask = ProjectionMask::leaves(schema, wanted);
+    builder
+        .with_row_groups(groups)
+        .with_projection(mask)
+        .build()?
+        .try_collect()
+        .await
+}
+
 /// Column names and the first `limit` rows of a file, values as text cut to
 /// [`SAMPLE_VALUE_MAX`] characters.
 /// Empty values per column of a file, from its footer: no row is read. `None` when a

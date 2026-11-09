@@ -81,7 +81,7 @@ fn coded(status: StatusCode, code: &str, text: &str, args: Option<serde_json::Va
 
 /// D801: the content of a table in the caller's org needs a clearance for each of
 /// its markings. `Some` is the answer to send instead of the content.
-async fn governed(
+pub(crate) async fn governed(
     ctx: &AppContext,
     org: &OrgContext,
     id: Uuid,
@@ -120,7 +120,7 @@ async fn governed(
     }
 }
 
-fn dataset_error(e: DatasetError) -> Result<Response> {
+pub(crate) fn dataset_error(e: DatasetError) -> Result<Response> {
     let args = e.args();
     Err(match e {
         DatasetError::Invalid { field, token } => return Ok(super::field_error(&field, &token)),

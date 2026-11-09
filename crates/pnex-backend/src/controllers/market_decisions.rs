@@ -1,0 +1,423 @@
+//! Bars and decisions of an external model (markets-research.md appendix G,
+//! D891–D896). The runner is a service account: it reads bars and posts
+//! decisions, the only write open to it. Advice only: nothing here orders.
+
+use axum::extract::{Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
+use chrono::{DateTime, Utc};
+use loco_rs::prelude::*;
+use pnex_core::err_codes;
+use pnex_core::markets::decisions::{
+    self as dec, BarOut, Barriers, Decision, ModelScores, NewDecision, ReliabilityBin, Scores,
+};
+use pnex_core::Paginated;
+use serde::Deserialize;
+
+use super::{coded_error, field_error};
+use crate::auth::OrgContext;
+use crate::controllers::pagination::{self, PageParams};
+use crate::services::markets::decisions::{self as svc, BarsError, BarsQuery, CreateError, Filter};
+
+pub fn routes() -> Routes {
+    Routes::new()
+        .prefix("/api/v1/markets")
+        .add("/bars", get(bars))
+        .add("/decisions", get(list).post(create))
+        .add("/decisions/scores", get(scores))
+}
+
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(
+        paths(bars, create, list, scores),
+        components(schemas(
+            BarOut,
+            NewDecision,
+            Decision,
+            Barriers,
+            ModelScores,
+            Scores,
+            ReliabilityBin
+        ))
+    )]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
+fn instant(field: &str, raw: Option<&str>) -> std::result::Result<Option<DateTime<Utc>>, Response> {
+    match raw.filter(|s| !s.is_empty()) {
+        None => Ok(None),
+        Some(s) => DateTime::parse_from_rfc3339(s)
+            .map(|t| Some(t.with_timezone(&Utc)))
+            .map_err(|_| field_error(field, err_codes::FIELD_INVALID)),
+    }
+}
+
+fn bars_error(e: BarsError) -> Result<Response> {
+    match e {
+        BarsError::TooManyFiles => Err(coded_error(
+            StatusCode::BAD_REQUEST,
+            err_codes::MARKET_BARS_TOO_MANY_FILES,
+            "This read would open too many files: narrow the period.",
+            Some(serde_json::json!({ "max": svc::FILES_MAX })),
+        )),
+        BarsError::Dataset(e) => super::datasets::dataset_error(e),
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct BarsParams {
+    /// Instrument as written in the table (`XAUUSD`, `BTCUSDT`…).
+    instrument: String,
+    /// `source` column: `histdata`, `binance_public` or `mt5:<broker>`. Never mixed.
+    source: String,
+    /// `1m`, `5m`, `15m`, `1h`, `4h` or `1d`, aligned on 1970-01-01 UTC.
+    interval: String,
+    /// First bar open (RFC 3339); without it, the last `limit` bars.
+    #[param(format = DateTime)]
+    from: Option<String>,
+    /// Bars opening before this instant (RFC 3339).
+    #[param(format = DateTime)]
+    to: Option<String>,
+    /// Bars returned, 1 to 5000; 500 by default.
+    limit: Option<i64>,
+    /// Instant of the read (RFC 3339), now by default: only bars closed then.
+    #[param(format = DateTime)]
+    as_of: Option<String>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/bars",
+    tag = "markets",
+    operation_id = "markets_bars",
+    summary = "Read the price bars of an instrument as known at a date",
+    description = "Bars of one instrument and one source, resampled from the minute bars of the price tables, oldest first. A bar is known at its close: at `as_of` (now by default) the bar in progress is never returned. A minute written twice counts once. Requires `datasets:read`, and a clearance for each marking of the table. Raw prices, never adjusted.",
+    params(BarsParams),
+    responses(
+        (status = 200, body = Paginated<BarOut>),
+        (status = 400, description = "Invalid parameter (field → token) or `market-bars-too-many-files`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied` or `marking-required`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn bars(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<BarsParams>,
+) -> Result<Response> {
+    let Some(interval_us) = dec::interval_us(&q.interval) else {
+        return Ok(field_error("interval", err_codes::FIELD_INVALID));
+    };
+    if dec::bar_table(&q.source).is_none() {
+        return Ok(field_error("source", err_codes::FIELD_INVALID));
+    }
+    if q.instrument.is_empty() || q.instrument.len() > 64 {
+        return Ok(field_error("instrument", err_codes::FIELD_INVALID));
+    }
+    let limit = q.limit.unwrap_or(500);
+    if !(1..=dec::BARS_MAX as i64).contains(&limit) {
+        return Ok(field_error("limit", "range:1..5000"));
+    }
+    let (from, to, as_of) = match (
+        instant("from", q.from.as_deref()),
+        instant("to", q.to.as_deref()),
+        instant("as_of", q.as_of.as_deref()),
+    ) {
+        (Ok(a), Ok(b), Ok(c)) => (a, b, c),
+        (Err(r), _, _) | (_, Err(r), _) | (_, _, Err(r)) => return Ok(r),
+    };
+    let empty = || {
+        format::json(Paginated::<BarOut> {
+            count: 0,
+            next: None,
+            previous: None,
+            results: Vec::new(),
+        })
+    };
+    let Some(table) = svc::table_of(&ctx.db, org.org.id, &q.source).await? else {
+        return empty();
+    };
+    if let Some(refused) = super::datasets::governed(&ctx, &org, table, "bars").await {
+        return refused;
+    }
+    let store = match crate::services::datasets::store_of(&ctx.config) {
+        Ok(s) => s,
+        Err(e) => return super::datasets::dataset_error(e),
+    };
+    let query = BarsQuery {
+        instrument: &q.instrument,
+        source: &q.source,
+        interval_us,
+        from_us: from.map(|t| t.timestamp_micros()),
+        to_us: to.map(|t| t.timestamp_micros()),
+        limit: limit as usize,
+        as_of_us: as_of.unwrap_or_else(Utc::now).timestamp_micros(),
+    };
+    match svc::bars(&ctx.db, &store, org.org.id, table, &query).await {
+        Ok(rows) => format::json(Paginated {
+            count: rows.len() as i64,
+            next: None,
+            previous: None,
+            results: rows.iter().map(svc::bar_out).collect::<Vec<_>>(),
+        }),
+        Err(e) => bars_error(e),
+    }
+}
+
+/// Field defects of a posted decision, `None` when it may be stored.
+fn defects(d: &NewDecision, now: DateTime<Utc>) -> Option<Response> {
+    let mut fields = serde_json::Map::new();
+    let mut bad = |f: &str, token: &str| {
+        fields.entry(f.to_string()).or_insert(token.into());
+    };
+    for (f, v, max) in [
+        ("model", &d.model, 64),
+        ("model_version", &d.model_version, 64),
+        ("instrument", &d.instrument, 64),
+    ] {
+        if v.trim().is_empty() {
+            bad(f, err_codes::FIELD_REQUIRED);
+        } else if v.len() > max {
+            bad(f, "max_length:64");
+        }
+    }
+    if dec::bar_table(&d.source).is_none() {
+        bad("source", err_codes::FIELD_INVALID);
+    }
+    if dec::interval_us(&d.interval).is_none() {
+        bad("interval", err_codes::FIELD_INVALID);
+    }
+    if !(1..=10_000).contains(&d.horizon_bars) {
+        bad("horizon_bars", "range:1..10000");
+    }
+    if d.options != dec::OPTIONS {
+        bad("options", err_codes::FIELD_INVALID);
+    }
+    if let Some(token) = dec::probabilities_defect(&d.probabilities) {
+        bad("probabilities", token);
+    }
+    if let Some(b) = d.barriers {
+        let ok = |x: f64| x.is_finite() && x > 0.0 && x <= 100.0;
+        if !ok(b.take_profit_atr) || !ok(b.stop_atr) || !(1..=500).contains(&b.atr_period) {
+            bad("barriers", err_codes::FIELD_INVALID);
+        }
+    }
+    if d.inputs
+        .as_ref()
+        .is_some_and(|v| v.to_string().len() > dec::INPUTS_MAX)
+    {
+        bad("inputs", "max_bytes:4096");
+    }
+    match DateTime::parse_from_rfc3339(&d.as_of) {
+        Err(_) => bad("as_of", err_codes::FIELD_INVALID),
+        Ok(t) if t.with_timezone(&Utc) > now => bad("as_of", "future"),
+        Ok(_) => {}
+    }
+    (!fields.is_empty()).then(|| super::fields_error(StatusCode::BAD_REQUEST, fields))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/markets/decisions",
+    tag = "markets",
+    operation_id = "markets_decisions_create",
+    summary = "Post a decision of an external model",
+    description = "Stores one decision (probabilities of `buy`, `neutral`, `sell`) of a model run outside PNeX, about data read at `as_of`. The server checks it and computes `best` and `confidence`. One decision per model, version, instrument, interval and `as_of`: the same one again answers 200, a different one 409. Advice only: nothing is ordered. Requires `market-decisions:write`, the only write a service account may make.",
+    request_body = NewDecision,
+    responses(
+        (status = 201, body = Decision),
+        (status = 200, description = "The very same decision was already stored", body = Decision),
+        (status = 400, description = "Invalid field (field → token) or `market-decision-stale`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`market-decision-conflict`", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`market-decisions-quota`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn create(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Json(d): Json<NewDecision>,
+) -> Result<Response> {
+    let now = Utc::now();
+    if let Some(r) = defects(&d, now) {
+        return Ok(r);
+    }
+    let as_of = DateTime::parse_from_rfc3339(&d.as_of)
+        .map(|t| t.with_timezone(&Utc))
+        .unwrap_or(now);
+    let iv = dec::interval_us(&d.interval).unwrap_or_default();
+    if now.timestamp_micros() - as_of.timestamp_micros() > 2 * iv {
+        return Err(coded_error(
+            StatusCode::BAD_REQUEST,
+            err_codes::MARKET_DECISION_STALE,
+            "The decision reads data older than two intervals.",
+            Some(serde_json::json!({ "interval": d.interval })),
+        ));
+    }
+    if !svc::known_instrument(&ctx.db, org.org.id, &d.instrument).await? {
+        return Ok(field_error("instrument", "unknown"));
+    }
+    let principal = org.auth.service.as_ref().map(|s| s.id);
+    match svc::create(&ctx.db, org.org.id, principal, &d, as_of).await {
+        Ok((true, stored)) => Ok((StatusCode::CREATED, Json(stored)).into_response()),
+        Ok((false, stored)) => format::json(stored),
+        Err(CreateError::Conflict) => Err(coded_error(
+            StatusCode::CONFLICT,
+            err_codes::MARKET_DECISION_CONFLICT,
+            "Another decision exists for this model, version, instrument, interval and date.",
+            None,
+        )),
+        Err(CreateError::Quota) => Err(coded_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            err_codes::MARKET_DECISIONS_QUOTA,
+            "The organization reached its decisions of the day.",
+            Some(serde_json::json!({ "max": dec::DAILY_MAX })),
+        )),
+        Err(CreateError::Db(e)) => Err(e.into()),
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ListParams {
+    model: Option<String>,
+    model_version: Option<String>,
+    instrument: Option<String>,
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+fn filter<'a>(
+    model: &'a Option<String>,
+    version: &'a Option<String>,
+    instrument: &'a Option<String>,
+) -> Filter<'a> {
+    let keep = |v: &'a Option<String>| v.as_deref().filter(|s| !s.is_empty());
+    Filter {
+        model: keep(model),
+        model_version: keep(version),
+        instrument: keep(instrument),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/decisions",
+    tag = "markets",
+    operation_id = "markets_decisions_list",
+    summary = "List the decisions of external models",
+    description = "Decisions posted by the runners of the org, newest first, filtered by model, version or instrument. Advice only, not investment advice. Requires `market-decisions:read`. Paginated (`limit`/`offset`).",
+    params(ListParams),
+    responses(
+        (status = 200, body = Paginated<Decision>),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn list(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ListParams>,
+) -> Result<Response> {
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let f = filter(&q.model, &q.model_version, &q.instrument);
+    let (count, rows) = svc::list(
+        &ctx.db,
+        org.org.id,
+        &f,
+        page.limit as u64,
+        page.offset as u64,
+    )
+    .await?;
+    let filters: Vec<(String, String)> = [
+        ("model", &q.model),
+        ("model_version", &q.model_version),
+        ("instrument", &q.instrument),
+    ]
+    .into_iter()
+    .filter_map(|(k, v)| {
+        v.clone()
+            .filter(|s| !s.is_empty())
+            .map(|v| (k.to_string(), v))
+    })
+    .collect();
+    format::json(pagination::envelope(
+        "/api/v1/markets/decisions",
+        &filters,
+        page,
+        count as i64,
+        rows,
+    ))
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ScoresParams {
+    model: Option<String>,
+    model_version: Option<String>,
+    instrument: Option<String>,
+    /// Top probability counted as confident, 0 to 1; 0.6 by default.
+    threshold: Option<f64>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/decisions/scores",
+    tag = "markets",
+    operation_id = "markets_decisions_scores",
+    summary = "Measure the decisions of external models",
+    description = "For each model, version, instrument, source and interval: hit rate, Brier score and reliability by tenth of probability, measured by the triple barrier on the bars of the decision's own source once its horizon has passed. A group whose table needs a clearance the caller lacks is left out; at most 100 groups. Advice only, not investment advice. Requires `market-decisions:read`.",
+    params(ScoresParams),
+    responses(
+        (status = 200, body = Paginated<ModelScores>),
+        (status = 400, description = "Invalid `threshold` (field → token) or `market-bars-too-many-files`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn scores(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ScoresParams>,
+) -> Result<Response> {
+    let threshold = q.threshold.unwrap_or(0.6);
+    if !(0.0..=1.0).contains(&threshold) {
+        return Ok(field_error("threshold", "range:0..1"));
+    }
+    let f = filter(&q.model, &q.model_version, &q.instrument);
+    let store = match crate::services::datasets::store_of(&ctx.config) {
+        Ok(s) => s,
+        Err(e) => return super::datasets::dataset_error(e),
+    };
+    let mut out = Vec::new();
+    for g in svc::groups(&ctx.db, org.org.id, &f).await? {
+        let table = svc::table_of(&ctx.db, org.org.id, &g.3).await?;
+        if let Some(t) = table {
+            if super::datasets::governed(&ctx, &org, t, "scores")
+                .await
+                .is_some()
+            {
+                continue;
+            }
+        }
+        match svc::score_group(&ctx.db, &store, org.org.id, table, &g, threshold).await {
+            Ok(s) => out.push(s),
+            Err(e) => return bars_error(e),
+        }
+    }
+    format::json(Paginated {
+        count: out.len() as i64,
+        next: None,
+        previous: None,
+        results: out,
+    })
+}

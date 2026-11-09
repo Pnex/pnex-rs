@@ -287,11 +287,13 @@ impl FromRequestParts<AppContext> for OrgContext {
         let decision = match crate::services::iam::operation_of(&parts.method, matched) {
             Some((_, Access::Org(permission))) => {
                 let d = grants.decide(permission);
-                // V1 service accounts read, and never the access service.
+                // V1 service accounts read, never the access service, and
+                // write only the closed list of D891.
                 let service_ok = auth.service.is_none()
                     || (permission.ends_with(":read")
                         && !permission.starts_with("iam:")
-                        && !permission.starts_with("iam."));
+                        && !permission.starts_with("iam."))
+                    || pnex_api_contract::iam::SERVICE_WRITES.contains(&permission);
                 if !service_ok {
                     refused = Some(permission);
                     Some(crate::services::iam::Decision::Deny(

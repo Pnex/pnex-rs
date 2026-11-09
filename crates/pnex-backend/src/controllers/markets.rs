@@ -155,10 +155,83 @@ async fn issuer_chart(
         Err(e) => return super::ontology::onto_error(e),
     };
     let since = chrono::Utc::now().date_naive() - chrono::Duration::days(days);
-    format::json(
+    let mut chart =
         crate::services::markets::chart::issuer(&ctx.db, org.org.id, id, &object.type_key, since)
-            .await?,
-    )
+            .await?;
+    if let Some(ticker) = chart.ticker.clone() {
+        decisions_on_chart(&ctx, &org, &mut chart, &ticker, since).await?;
+    }
+    format::json(chart)
+}
+
+/// D897: the decisions of external models about this ticker; without daily
+/// closes, the daily bars of the source of its latest decision are drawn.
+async fn decisions_on_chart(
+    ctx: &AppContext,
+    org: &OrgContext,
+    chart: &mut IssuerChart,
+    ticker: &str,
+    since: NaiveDate,
+) -> Result<()> {
+    use crate::services::markets::decisions as dec;
+    let mut marks = dec::chart_markers(&ctx.db, org.org.id, ticker, since).await?;
+    if marks.is_empty() || !org.can("market-decisions:read") {
+        return Ok(());
+    }
+    // The daily bars are table content: they need the table right too.
+    if chart.closes.is_empty() && org.can("datasets:read") {
+        let latest = dec::list(
+            &ctx.db,
+            org.org.id,
+            &dec::Filter {
+                instrument: Some(ticker),
+                ..Default::default()
+            },
+            1,
+            0,
+        )
+        .await?
+        .1;
+        let source = latest.first().map(|d| d.source.clone()).unwrap_or_default();
+        let table = dec::table_of(&ctx.db, org.org.id, &source).await?;
+        let store = crate::services::datasets::store_of(&ctx.config).ok();
+        if let (Some(table), Some(store)) = (table, store) {
+            if super::datasets::governed(ctx, org, table, "chart")
+                .await
+                .is_none()
+            {
+                let q = dec::BarsQuery {
+                    instrument: ticker,
+                    source: &source,
+                    interval_us: 86_400_000_000,
+                    from_us: since
+                        .and_hms_opt(0, 0, 0)
+                        .map(|t| t.and_utc().timestamp_micros()),
+                    to_us: None,
+                    limit: pnex_core::markets::decisions::BARS_MAX,
+                    as_of_us: chrono::Utc::now().timestamp_micros(),
+                };
+                // A table that cannot be read leaves the chart without closes.
+                if let Ok(bars) = dec::bars(&ctx.db, &store, org.org.id, table, &q).await {
+                    let unit = 10f64.powi(pnex_core::markets::history::SCALE as i32);
+                    chart.closes = bars
+                        .iter()
+                        .filter_map(|b| {
+                            Some(ChartPoint {
+                                date: chrono::DateTime::from_timestamp_micros(b.ts_us)?
+                                    .date_naive()
+                                    .to_string(),
+                                value: b.close as f64 / unit,
+                            })
+                        })
+                        .collect();
+                }
+            }
+        }
+    }
+    chart.events.append(&mut marks);
+    chart.events.sort_by(|a, b| a.date.cmp(&b.date));
+    Ok(())
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]

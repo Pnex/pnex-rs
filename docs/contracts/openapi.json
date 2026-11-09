@@ -3540,6 +3540,64 @@
         },
         "type": "object"
       },
+      "BarOut": {
+        "description": "A bar as the API returns it, prices as exact decimal text.",
+        "properties": {
+          "close": {
+            "type": "string"
+          },
+          "high": {
+            "type": "string"
+          },
+          "low": {
+            "type": "string"
+          },
+          "open": {
+            "type": "string"
+          },
+          "ts": {
+            "description": "Open of the bar (UTC); the bar is known at `ts` + interval.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "volume": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "open",
+          "high",
+          "low",
+          "close",
+          "volume"
+        ],
+        "type": "object"
+      },
+      "Barriers": {
+        "description": "Barriers of a decision, in ATR (D896).",
+        "properties": {
+          "atr_period": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stop_atr": {
+            "format": "double",
+            "type": "number"
+          },
+          "take_profit_atr": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "take_profit_atr",
+          "stop_atr",
+          "atr_period"
+        ],
+        "type": "object"
+      },
       "Basemap": {
         "description": "Basemap the map opens on (`GET /api/v1/geo/basemaps`). A basemap key\nis a browser key (like a Google Maps key, restricted by referrer at the\nprovider): it is already in `style_url`.",
         "properties": {
@@ -5500,7 +5558,7 @@
             "type": "string"
           },
           "detail": {
-            "description": "`up` / `down` for a move, the form (`8-K`…) for a filing.",
+            "description": "`up` / `down` for a move, the form (`8-K`…) for a filing, the most\nlikely option for a decision.",
             "type": "string"
           },
           "id": {
@@ -5510,6 +5568,21 @@
           },
           "kind": {
             "$ref": "#/components/schemas/ChartEventKind"
+          },
+          "model": {
+            "description": "Model and version of a decision.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "probability": {
+            "description": "Probability of the most likely option of a decision.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "title": {
             "type": "string"
@@ -5528,7 +5601,8 @@
         "description": "What a marker on the time line is.",
         "enum": [
           "move",
-          "filing"
+          "filing",
+          "decision"
         ],
         "type": "string"
       },
@@ -7879,6 +7953,88 @@
           "market_moves"
         ],
         "type": "string"
+      },
+      "Decision": {
+        "description": "A stored decision; `best` and `confidence` are the server's.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "barriers": {
+            "$ref": "#/components/schemas/Barriers"
+          },
+          "best": {
+            "type": "string"
+          },
+          "confidence": {
+            "format": "double",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "horizon_bars": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "inputs": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "interval": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "model_version": {
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "probabilities": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "model",
+          "model_version",
+          "instrument",
+          "source",
+          "interval",
+          "horizon_bars",
+          "as_of",
+          "options",
+          "probabilities",
+          "best",
+          "confidence",
+          "created_at"
+        ],
+        "type": "object"
       },
       "DecisionKind": {
         "enum": [
@@ -16348,6 +16504,38 @@
         },
         "type": "object"
       },
+      "ModelScores": {
+        "description": "Scores of one (model, version, instrument, source, interval).",
+        "properties": {
+          "instrument": {
+            "type": "string"
+          },
+          "interval": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "model_version": {
+            "type": "string"
+          },
+          "scores": {
+            "$ref": "#/components/schemas/Scores"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "model_version",
+          "instrument",
+          "source",
+          "interval",
+          "scores"
+        ],
+        "type": "object"
+      },
       "ModelSpec": {
         "description": "Inference spec of a registered model.",
         "properties": {
@@ -16748,6 +16936,75 @@
         "required": [
           "nodes",
           "links"
+        ],
+        "type": "object"
+      },
+      "NewDecision": {
+        "description": "A decision posted by the runner of an external model (D894).",
+        "properties": {
+          "as_of": {
+            "description": "Instant of the data read (RFC 3339).",
+            "format": "date-time",
+            "type": "string"
+          },
+          "barriers": {
+            "$ref": "#/components/schemas/Barriers"
+          },
+          "horizon_bars": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "inputs": {
+            "description": "Free JSON for traceability, 4 KiB at most.",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "instrument": {
+            "type": "string"
+          },
+          "interval": {
+            "description": "`1m`, `5m`, `15m`, `1h`, `4h` or `1d`.",
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "model_version": {
+            "type": "string"
+          },
+          "options": {
+            "description": "`buy`, `neutral`, `sell`, in this order (V1).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "probabilities": {
+            "description": "One per option, in [0, 1], summing to 1.",
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "source": {
+            "description": "`source` column of the bars read (`histdata`, `mt5:<broker>`…).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "model_version",
+          "instrument",
+          "source",
+          "interval",
+          "horizon_bars",
+          "as_of",
+          "options",
+          "probabilities"
         ],
         "type": "object"
       },
@@ -19404,6 +19661,42 @@
         ],
         "type": "object"
       },
+      "Paginated_BarOut": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/BarOut"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_Basemap": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -19970,6 +20263,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/DatasetTransaction"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_Decision": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Decision"
             },
             "type": "array"
           }
@@ -21554,6 +21883,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/MlModel"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_ModelScores": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/ModelScores"
             },
             "type": "array"
           }
@@ -26212,6 +26577,42 @@
         ],
         "type": "object"
       },
+      "ReliabilityBin": {
+        "description": "A tenth of the probability axis.",
+        "properties": {
+          "count": {
+            "description": "(decision, option) pairs whose probability fell here.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "from": {
+            "format": "double",
+            "type": "number"
+          },
+          "mean_probability": {
+            "format": "double",
+            "type": "number"
+          },
+          "observed": {
+            "description": "Share of those pairs whose option was realized.",
+            "format": "double",
+            "type": "number"
+          },
+          "to": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "count",
+          "mean_probability",
+          "observed"
+        ],
+        "type": "object"
+      },
       "ReplayInput": {
         "properties": {
           "window": {
@@ -28357,6 +28758,77 @@
           "object"
         ],
         "type": "string"
+      },
+      "Scores": {
+        "description": "Scores of a model on its measured decisions (D896).",
+        "properties": {
+          "above_threshold": {
+            "description": "Measured decisions whose top probability reaches `threshold`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "above_threshold_hit_rate": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "brier": {
+            "description": "Multi-class Brier score, 0 (perfect) to 2.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "decisions": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hit_rate": {
+            "description": "Share of measured decisions whose most likely option was realized.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "mean_return": {
+            "description": "Mean return at the horizon, decisions without barriers included.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "measured": {
+            "description": "Decisions with barriers whose horizon has passed.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reliability": {
+            "items": {
+              "$ref": "#/components/schemas/ReliabilityBin"
+            },
+            "type": "array"
+          },
+          "threshold": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "decisions",
+          "measured",
+          "reliability",
+          "threshold",
+          "above_threshold"
+        ],
+        "type": "object"
       },
       "SearchEntityType": {
         "description": "Entity type of a result group.",
@@ -70624,6 +71096,473 @@
         "summary": "Test a mailbox",
         "tags": [
           "mail"
+        ]
+      }
+    },
+    "/api/v1/markets/bars": {
+      "get": {
+        "description": "Bars of one instrument and one source, resampled from the minute bars of the price tables, oldest first. A bar is known at its close: at `as_of` (now by default) the bar in progress is never returned. A minute written twice counts once. Requires `datasets:read`, and a clearance for each marking of the table. Raw prices, never adjusted.",
+        "operationId": "markets_bars",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Instrument as written in the table (`XAUUSD`, `BTCUSDT`…).",
+            "in": "query",
+            "name": "instrument",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`source` column: `histdata`, `binance_public` or `mt5:<broker>`. Never mixed.",
+            "in": "query",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "`1m`, `5m`, `15m`, `1h`, `4h` or `1d`, aligned on 1970-01-01 UTC.",
+            "in": "query",
+            "name": "interval",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "First bar open (RFC 3339); without it, the last `limit` bars.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bars opening before this instant (RFC 3339).",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bars returned, 1 to 5000; 500 by default.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Instant of the read (RFC 3339), now by default: only bars closed then.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_BarOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid parameter (field → token) or `market-bars-too-many-files`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` or `marking-required` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the price bars of an instrument as known at a date",
+        "tags": [
+          "markets"
+        ]
+      }
+    },
+    "/api/v1/markets/decisions": {
+      "get": {
+        "description": "Decisions posted by the runners of the org, newest first, filtered by model, version or instrument. Advice only, not investment advice. Requires `market-decisions:read`. Paginated (`limit`/`offset`).",
+        "operationId": "markets_decisions_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model_version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Decision"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `market-decisions:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the decisions of external models",
+        "tags": [
+          "markets"
+        ]
+      },
+      "post": {
+        "description": "Stores one decision (probabilities of `buy`, `neutral`, `sell`) of a model run outside PNeX, about data read at `as_of`. The server checks it and computes `best` and `confidence`. One decision per model, version, instrument, interval and `as_of`: the same one again answers 200, a different one 409. Advice only: nothing is ordered. Requires `market-decisions:write`, the only write a service account may make.",
+        "operationId": "markets_decisions_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            },
+            "description": "The very same decision was already stored"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid field (field → token) or `market-decision-stale`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `market-decisions:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`market-decision-conflict`"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`market-decisions-quota`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Post a decision of an external model",
+        "tags": [
+          "markets"
+        ]
+      }
+    },
+    "/api/v1/markets/decisions/scores": {
+      "get": {
+        "description": "For each model, version, instrument, source and interval: hit rate, Brier score and reliability by tenth of probability, measured by the triple barrier on the bars of the decision's own source once its horizon has passed. A group whose table needs a clearance the caller lacks is left out; at most 100 groups. Advice only, not investment advice. Requires `market-decisions:read`.",
+        "operationId": "markets_decisions_scores",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model_version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "instrument",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Top probability counted as confident, 0 to 1; 0.6 by default.",
+            "in": "query",
+            "name": "threshold",
+            "required": false,
+            "schema": {
+              "format": "double",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ModelScores"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `threshold` (field → token) or `market-bars-too-many-files`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `market-decisions:read`): the caller's role does not grant it"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Measure the decisions of external models",
+        "tags": [
+          "markets"
         ]
       }
     },

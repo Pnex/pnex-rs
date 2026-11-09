@@ -20,6 +20,7 @@ const RANGES: [(u32, &str); 3] = [
 pub fn ChartPanel(id: String) -> Element {
     let mut days = use_signal(|| 365u32);
     let mut picked = use_signal(|| None::<usize>);
+    let mut model = use_signal(String::new);
     let chart = use_resource(move || {
         let id = id.clone();
         let days = days();
@@ -27,7 +28,14 @@ pub fn ChartPanel(id: String) -> Element {
     });
     let read = chart.read();
     let c = match &*read {
-        Some(Ok(c)) => c.clone(),
+        Some(Ok(c)) => {
+            let mut c = c.clone();
+            // D897: one model's decisions at a time when asked.
+            let pick = model();
+            c.events
+                .retain(|e| pick.is_empty() || e.model.as_ref().is_none_or(|m| *m == pick));
+            c
+        }
         Some(Err(e)) => {
             return rsx! {
                 p { class: "text-sm text-alarm", {crate::api::error_i18n::localize(e)} }
@@ -40,6 +48,10 @@ pub fn ChartPanel(id: String) -> Element {
     let (left, top, right, bottom) = PLOT;
     let label = t!("onto-chart-aria", ticker: ticker.clone());
     let picked_event = picked().and_then(|i| c.events.get(i).cloned());
+    let models: std::collections::BTreeSet<String> = match &*read {
+        Some(Ok(all)) => all.events.iter().filter_map(|e| e.model.clone()).collect(),
+        _ => Default::default(),
+    };
     rsx! {
         div {
             class: "bg-surface rounded-lg border border-line p-4 space-y-3",
@@ -50,6 +62,28 @@ pub fn ChartPanel(id: String) -> Element {
                         {t!("onto-chart-title")}
                     } else {
                         {t!("onto-chart-title-ticker", ticker : ticker.clone())}
+                    }
+                }
+                if !models.is_empty() {
+                    select {
+                        class: "rounded-md border border-line-strong bg-surface px-2 py-1 text-sm text-ink",
+                        "aria-label": t!("onto-chart-filter-model"),
+                        "data-testid": "onto-chart-model",
+                        onchange: move |e| {
+                            picked.set(None);
+                            model.set(e.value());
+                        },
+                        option { value: "", selected: model().is_empty(),
+                            {t!("onto-chart-all-models")}
+                        }
+                        for m in models {
+                            option {
+                                key: "{m}",
+                                value: "{m}",
+                                selected: model() == m,
+                                "{m}"
+                            }
+                        }
                     }
                 }
                 div { class: "flex gap-1", role: "group",
@@ -131,6 +165,8 @@ pub fn ChartPanel(id: String) -> Element {
                             index: i,
                             kind: c.events[i].kind,
                             up: c.events[i].detail == "up",
+                            option: c.events[i].detail.clone(),
+                            probability: c.events[i].probability.unwrap_or(1.0),
                             title: c.events[i].title.clone(),
                             on: picked() == Some(i),
                             onpick: move |i| picked.set(Some(i)),
@@ -140,7 +176,14 @@ pub fn ChartPanel(id: String) -> Element {
                 div {
                     class: "min-h-6 text-sm break-words",
                     "data-testid": "onto-chart-picked",
-                    if let Some(e) = picked_event {
+                    if let Some(e) = picked_event.clone().filter(|e| e.kind == ChartEventKind::Decision) {
+                        span { class: "text-slate mr-2", "{e.date}" }
+                        Link {
+                            class: "text-signal hover:underline",
+                            to: Route::MarketDecisions {},
+                            "{e.title}: {e.detail} {e.probability.unwrap_or_default() * 100.0:.0} %"
+                        }
+                    } else if let Some(e) = picked_event {
                         span { class: "text-slate mr-2", "{e.date}" }
                         Link {
                             class: "text-signal hover:underline",
@@ -172,6 +215,8 @@ fn Marker(
     index: usize,
     kind: ChartEventKind,
     up: bool,
+    option: String,
+    probability: f64,
     title: String,
     on: bool,
     onpick: EventHandler<usize>,
@@ -205,7 +250,13 @@ fn Marker(
                 top + 10.0
             )
         }
-        ChartEventKind::Filing => String::new(),
+        ChartEventKind::Filing | ChartEventKind::Decision => String::new(),
+    };
+    // Buy and sell keep the colours of the decisions page.
+    let dot = match option.as_str() {
+        "buy" => "fill-ok",
+        "sell" => "fill-alarm",
+        _ => "fill-slate",
     };
     rsx! {
         g {
@@ -232,6 +283,15 @@ fn Marker(
                     width: "8",
                     height: "12",
                     fill: "transparent",
+                }
+            } else if kind == ChartEventKind::Decision {
+                // A faint dot is an unsure decision.
+                circle {
+                    cx: "{x}",
+                    cy: "{top + 22.0}",
+                    r: if on { "5" } else { "3.5" },
+                    class: if on { "fill-signal" } else { dot },
+                    fill_opacity: "{0.25 + 0.75 * probability.clamp(0.0, 1.0):.2}",
                 }
             } else {
                 polygon { points: "{shape}", class: "{tone}" }

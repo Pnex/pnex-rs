@@ -3673,3 +3673,231 @@ async fn gold_real_sources() {
     })
     .await;
 }
+
+/// Minute bars of `instrument` from `start` (µs), one per minute, a close
+/// rising by 0.01 a minute, as the `ohlcv` shape (D809).
+fn minute_rows(instrument: &str, source: &str, start_us: i64, n: i64) -> arrow_array::RecordBatch {
+    use pnex_core::markets::history::Kline;
+    let u: i128 = 100_000_000;
+    let rows: Vec<Kline> = (0..n)
+        .map(|i| {
+            let c = 2000 * u + i128::from(i) * u / 100;
+            Kline {
+                open_us: start_us + i * 60_000_000,
+                open: c,
+                high: c + u,
+                low: c - u,
+                close: c,
+                volume: u,
+                quote_volume: None,
+                trades: None,
+            }
+        })
+        .collect();
+    let names = vec![instrument; rows.len()];
+    pnex_backend::services::markets::history::ohlcv_batch("1m", source, &names, &rows).unwrap()
+}
+
+/// Appendix G (MK27–MK29): a service account reads bars as known at a date
+/// and posts decisions, its only write; PNeX checks, stores and measures them,
+/// and draws them on the instrument's chart.
+#[tokio::test]
+#[serial]
+async fn an_external_model_reads_bars_and_posts_decisions() {
+    with_app(|server, ctx, token| async move {
+        use pnex_backend::services::datasets;
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token: token.clone(), org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        assert_eq!(st, 200, "{r}");
+
+        // 100 days of XAUUSD minutes from 2026-01-05 (HistData), and 3 days
+        // up to now; plus an MT5 hour written twice (a backfill).
+        let store = datasets::store_of(&ctx.config).unwrap();
+        let hist = datasets::create(&ctx.db, org, "histdata_ohlcv_1m").await.unwrap();
+        let hist_id: uuid::Uuid = hist.id.parse().unwrap();
+        let start = chrono::DateTime::parse_from_rfc3339("2026-01-05T00:00:00Z").unwrap().timestamp_micros();
+        let min = 60_000_000i64;
+        datasets::append_batch(&ctx.db, &store, org, hist_id, &minute_rows("XAUUSD", "histdata", start, 100 * 1440))
+            .await
+            .unwrap();
+        datasets::append_batch(&ctx.db, &store, org, hist_id, &minute_rows("EURUSD", "histdata", start, 1440))
+            .await
+            .unwrap();
+        let now = chrono::Utc::now().timestamp_micros();
+        let recent = now - now.rem_euclid(min) - 3 * 1440 * min;
+        datasets::append_batch(&ctx.db, &store, org, hist_id, &minute_rows("XAUUSD", "histdata", recent, 3 * 1440))
+            .await
+            .unwrap();
+        let mt5 = datasets::create(&ctx.db, org, "mt5_ohlcv_1m").await.unwrap();
+        let mt5_id: uuid::Uuid = mt5.id.parse().unwrap();
+        for _ in 0..2 {
+            datasets::append_batch(&ctx.db, &store, org, mt5_id, &minute_rows("XAUUSD", "mt5:Demo", start, 60))
+                .await
+                .unwrap();
+        }
+        ctx.db
+            .execute_unprepared(&format!(
+                "INSERT INTO market_history_partitions (org_id, source, instrument, period, period_start, state) \
+                 VALUES ({org}, 'histdata', 'XAUUSD', 'year', '2026-01-01', 'done')"
+            ))
+            .await
+            .unwrap();
+
+        // The runner: a service account with a role that reads and decides.
+        let (st, sa) = api.call("POST", "/api/v1/iam/service-accounts", Some(json!({ "name": "gold-runner" }))).await;
+        assert_eq!(st, 201, "{sa}");
+        let sa_id = sa["id"].as_str().unwrap().to_string();
+        let (st, role) = api
+            .call("POST", "/api/v1/iam/roles", Some(json!({
+                "key": "decision-runner", "name": "Decision runner",
+                "statements": [{ "effect": "allow", "permissions": [
+                    "datasets:read", "ontology:read", "time-ranges:read",
+                    "market-decisions:read", "market-decisions:write", "taxonomies:write"
+                ] }]
+            })))
+            .await;
+        assert_eq!(st, 201, "{role}");
+        let (st, a) = api
+            .call("POST", "/api/v1/iam/assignments", Some(json!({ "service_account_id": sa_id, "role_id": role["id"] })))
+            .await;
+        assert_eq!(st, 201, "{a}");
+        let expires = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+        let (st, key) = api
+            .call("POST", &format!("/api/v1/iam/service-accounts/{sa_id}/keys"), Some(json!({ "expires_at": expires })))
+            .await;
+        assert_eq!(st, 201, "{key}");
+        let secret = key["secret"].as_str().unwrap().to_string();
+        let runner = |method: &str, path: &str, body: Option<Value>| {
+            let req = match method {
+                "GET" => server.get(path),
+                _ => server.post(path),
+            }
+            .add_header("Authorization", format!("Bearer {secret}"));
+            async move {
+                let res = match body {
+                    Some(b) => req.json(&b).await,
+                    None => req.await,
+                };
+                (res.status_code().as_u16(), serde_json::from_str::<Value>(&res.text()).unwrap_or(Value::Null))
+            }
+        };
+
+        // 500 H4 bars as known at a date; the bar in progress never shows.
+        let close_of = |h: i64| chrono::DateTime::from_timestamp_micros(start + h * 3_600 * 1_000_000).unwrap();
+        let as_of = close_of(4 * 520).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let path = format!("/api/v1/markets/bars?instrument=XAUUSD&source=histdata&interval=4h&limit=500&as_of={as_of}");
+        let (st, page) = runner("GET", &path, None).await;
+        assert_eq!(st, 200, "{page}");
+        let bars = page["results"].as_array().unwrap();
+        assert_eq!(bars.len(), 500);
+        assert_eq!(bars[499]["ts"], close_of(4 * 519).to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+        // First bar: open of minute 4h·20, close 4 hours of minutes later.
+        let first_min = 4 * 20 * 60;
+        assert_eq!(bars[0]["open"], format!("{}", 2000.0 + first_min as f64 / 100.0));
+        assert_eq!(bars[0]["volume"], "240");
+        let minute_before = (close_of(4 * 520) - chrono::Duration::minutes(1)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let path = format!("/api/v1/markets/bars?instrument=XAUUSD&source=histdata&interval=4h&limit=500&as_of={minute_before}");
+        let (_, page) = runner("GET", &path, None).await;
+        let last = page["results"].as_array().unwrap().last().unwrap().clone();
+        assert_eq!(last["ts"], close_of(4 * 518).to_rfc3339_opts(chrono::SecondsFormat::Secs, true), "one minute short: not closed");
+        // A range, and the MT5 hour written twice counted once.
+        let from = close_of(0).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let (st, page) = runner("GET", &format!("/api/v1/markets/bars?instrument=XAUUSD&source=mt5:Demo&interval=1h&from={from}"), None).await;
+        assert_eq!(st, 200, "{page}");
+        assert_eq!(page["count"], 1);
+        assert_eq!(page["results"][0]["volume"], "60");
+        let (_, page) = runner("GET", &format!("/api/v1/markets/bars?instrument=XAUUSD&source=mt5:Demo&interval=1m&from={from}"), None).await;
+        assert_eq!(page["count"], 60);
+        let (st, e) = runner("GET", "/api/v1/markets/bars?instrument=XAUUSD&source=elsewhere&interval=4h", None).await;
+        assert_eq!((st, e["errors"]["fields"]["source"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, e) = runner("GET", "/api/v1/markets/bars?instrument=XAUUSD&source=histdata&interval=3h", None).await;
+        assert_eq!(st, 400, "{e}");
+
+        // Decisions: 100 by one runner, each its own version.
+        let bar_now = now - now.rem_euclid(4 * 3_600 * 1_000_000);
+        let as_of_now = chrono::DateTime::from_timestamp_micros(bar_now).unwrap().to_rfc3339();
+        let decision = |version: &str, p: [f64; 3]| {
+            json!({
+                "model": "gold", "model_version": version, "instrument": "XAUUSD", "source": "histdata",
+                "interval": "4h", "horizon_bars": 6, "as_of": as_of_now,
+                "options": ["buy", "neutral", "sell"], "probabilities": p,
+                "barriers": { "take_profit_atr": 1.5, "stop_atr": 1.0, "atr_period": 14 },
+                "inputs": { "last_bar": "x" }
+            })
+        };
+        for i in 0..100 {
+            let (st, d) = runner("POST", "/api/v1/markets/decisions", Some(decision(&format!("v{i}"), [0.7, 0.2, 0.1]))).await;
+            assert_eq!(st, 201, "{d}");
+            assert_eq!(d["best"], "buy");
+            assert!(d["confidence"].as_f64().unwrap() > 0.0);
+        }
+        let (st, _) = runner("POST", "/api/v1/markets/decisions", Some(decision("v0", [0.7, 0.2, 0.1]))).await;
+        assert_eq!(st, 200, "the same again");
+        let (st, e) = runner("POST", "/api/v1/markets/decisions", Some(decision("v0", [0.1, 0.2, 0.7]))).await;
+        assert_eq!((st, e["error"].as_str()), (409, Some("market-decision-conflict")));
+        let (st, e) = runner("POST", "/api/v1/markets/decisions", Some(decision("bad", [0.5, 0.5, 0.5]))).await;
+        assert_eq!((st, e["errors"]["fields"]["probabilities"].as_str()), (400, Some("sum:1")), "{e}");
+        let mut stale = decision("old", [0.7, 0.2, 0.1]);
+        stale["as_of"] = json!(chrono::DateTime::from_timestamp_micros(bar_now - 9 * 3_600 * 1_000_000).unwrap().to_rfc3339());
+        let (st, e) = runner("POST", "/api/v1/markets/decisions", Some(stale)).await;
+        assert_eq!((st, e["error"].as_str()), (400, Some("market-decision-stale")), "{e}");
+        let mut unknown = decision("x", [0.7, 0.2, 0.1]);
+        unknown["instrument"] = json!("NOPE");
+        let (st, e) = runner("POST", "/api/v1/markets/decisions", Some(unknown)).await;
+        assert_eq!((st, e["errors"]["fields"]["instrument"].as_str()), (400, Some("unknown")), "{e}");
+
+        // Never another write, whatever the role says (D891).
+        let (st, _) = runner("POST", "/api/v1/taxonomies", Some(json!({ "name": "nope" }))).await;
+        assert_eq!(st, 403);
+        let (st, list) = runner("GET", "/api/v1/markets/decisions?model=gold&limit=5", None).await;
+        assert_eq!((st, list["count"].as_i64()), (200, Some(100)), "{list}");
+
+        // Scores: past decisions with known outcomes, on the histdata bars
+        // (the close rises 2.4 a 4h bar, whose range is about 4.4: the ATR).
+        for (i, p) in [[0.8, 0.1, 0.1], [0.1, 0.1, 0.8]].iter().enumerate() {
+            let at = close_of(4 * (100 + i as i64)).to_rfc3339();
+            ctx.db
+                .execute_unprepared(&format!(
+                    "INSERT INTO market_decisions (id, org_id, model, model_version, instrument, source, interval, \
+                       horizon_bars, as_of, probabilities, best, confidence, barriers) VALUES \
+                     ('{}', {org}, 'past', '1', 'XAUUSD', 'histdata', '4h', 6, '{at}', ARRAY[{},{},{}]::float8[], \
+                       '{}', 0.5, '{{\"take_profit_atr\": 1.0, \"stop_atr\": 1.0, \"atr_period\": 14}}')",
+                    uuid::Uuid::new_v4(), p[0], p[1], p[2], if i == 0 { "buy" } else { "sell" }
+                ))
+                .await
+                .unwrap();
+        }
+        let (st, s) = api.call("GET", "/api/v1/markets/decisions/scores?model=past", None).await;
+        assert_eq!(st, 200, "{s}");
+        let s = &s["results"][0]["scores"];
+        assert_eq!((s["decisions"].as_i64(), s["measured"].as_i64()), (Some(2), Some(2)), "{s}");
+        assert_eq!(s["hit_rate"].as_f64(), Some(0.5), "a steady rise hits the upper barrier: buy");
+        let (_, s) = api.call("GET", "/api/v1/markets/decisions/scores?model=gold", None).await;
+        assert_eq!(s["count"], 100);
+        assert_eq!(s["results"][0]["scores"]["measured"], 0, "the horizon has not passed");
+
+        // The chart of the instrument: daily closes from the bars, decisions as markers.
+        let (st, inst) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({
+                "type_key": "instrument", "title": "Gold", "properties": { "ticker": "XAUUSD" }
+            })))
+            .await;
+        assert_eq!(st, 201, "{inst}");
+        let (st, chart) = api
+            .call("GET", &format!("/api/v1/markets/issuers/{}/chart?days=3650", inst["id"].as_str().unwrap()), None)
+            .await;
+        assert_eq!(st, 200, "{chart}");
+        assert!(chart["closes"].as_array().unwrap().len() >= 100, "{}", chart["closes"]);
+        let marks: Vec<&Value> = chart["events"].as_array().unwrap().iter().filter(|e| e["kind"] == "decision").collect();
+        assert!(marks.len() >= 3, "{chart}");
+        assert!(marks.iter().any(|m| m["model"] == "past 1" && m["probability"] == 0.8), "{marks:?}");
+    })
+    .await;
+}

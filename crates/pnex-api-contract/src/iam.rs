@@ -35,6 +35,10 @@ pub enum Access {
     Machine,
 }
 
+/// The only writes a service account may make (markets-research.md D891):
+/// adds, never a change, a deletion or a physical act.
+pub const SERVICE_WRITES: &[&str] = &["market-decisions:write"];
+
 /// Every permission, with the lowest managed role that holds it.
 pub const PERMISSIONS: &[(&str, Level)] = &[
     ("account:read", Level::Viewer),
@@ -83,6 +87,8 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("connectors:test", Level::Admin),
     ("connectors:use", Level::Admin),
     ("connectors:write", Level::Admin),
+    ("market-decisions:read", Level::Viewer),
+    ("market-decisions:write", Level::Member),
     ("metatrader:delete", Level::Admin),
     ("metatrader:read", Level::Member),
     ("metatrader:write", Level::Admin),
@@ -1021,6 +1027,19 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     (
         "ontology_objects_observations",
         Access::Org("ontology:read"),
+    ),
+    ("markets_bars", Access::Org("datasets:read")),
+    (
+        "markets_decisions_create",
+        Access::Org("market-decisions:write"),
+    ),
+    (
+        "markets_decisions_list",
+        Access::Org("market-decisions:read"),
+    ),
+    (
+        "markets_decisions_scores",
+        Access::Org("market-decisions:read"),
     ),
     ("markets_event_study", Access::Org("ontology:read")),
     ("markets_issuer_chart", Access::Org("ontology:read")),

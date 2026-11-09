@@ -516,6 +516,8 @@ pub async fn profile(
 /// A file of a view.
 pub struct ViewFile {
     pub transaction: Uuid,
+    /// When its transaction was committed: no row of a price table is newer.
+    pub committed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub key: String,
     pub bytes: u64,
     pub rows: u64,
@@ -554,7 +556,7 @@ pub async fn view_files(
     let rows = db
         .query_all_raw(stmt(
             &format!(
-                "SELECT t.id, f.key, f.bytes, f.rows, t.purged_at IS NOT NULL AS purged \
+                "SELECT t.id, t.committed_at, f.key, f.bytes, f.rows, t.purged_at IS NOT NULL AS purged \
                  FROM datasets d \
                  JOIN dataset_transactions t ON {view} \
                  JOIN dataset_files f ON f.transaction_id = t.id \
@@ -576,7 +578,7 @@ pub async fn files_of_transactions(
 ) -> Result<Option<Vec<ViewFile>>, DatasetError> {
     let rows = db
         .query_all_raw(stmt(
-            "SELECT t.id, f.key, f.bytes, f.rows, t.purged_at IS NOT NULL AS purged \
+            "SELECT t.id, t.committed_at, f.key, f.bytes, f.rows, t.purged_at IS NOT NULL AS purged \
              FROM dataset_transactions t JOIN dataset_files f ON f.transaction_id = t.id \
              WHERE t.org_id = $1 AND t.dataset_id = $2 AND t.state = 'committed' AND t.id = ANY($3) \
              ORDER BY t.seq, f.key",
@@ -608,6 +610,7 @@ fn view_file(row: &QueryResult) -> Result<ViewFile, DatasetError> {
     }
     Ok(ViewFile {
         transaction: row.try_get("", "id")?,
+        committed_at: row.try_get("", "committed_at")?,
         key: row.try_get("", "key")?,
         bytes: row.try_get::<i64>("", "bytes")?.max(0) as u64,
         rows: row.try_get::<i64>("", "rows")?.max(0) as u64,

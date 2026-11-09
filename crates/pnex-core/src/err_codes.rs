@@ -713,6 +713,15 @@ pub const BUILD_AUTHOR_FORBIDDEN: &str = "build-author-forbidden";
 /// A step did not finish in time, usually because no worker takes the queue.
 pub const BUILD_TIMEOUT: &str = "build-timeout";
 pub const CONNECTOR_NOT_FOUND: &str = "connector-not-found";
+/// Decisions of an external model (markets-research.md D894): `as_of` older
+/// than two intervals; args `interval`.
+pub const MARKET_DECISION_STALE: &str = "market-decision-stale";
+/// Another decision of the same model, version, instrument, interval and `as_of`.
+pub const MARKET_DECISION_CONFLICT: &str = "market-decision-conflict";
+/// The org posted [`crate::markets::decisions::DAILY_MAX`] decisions today; args `max`.
+pub const MARKET_DECISIONS_QUOTA: &str = "market-decisions-quota";
+/// A bar read would open more files than allowed; args `max`.
+pub const MARKET_BARS_TOO_MANY_FILES: &str = "market-bars-too-many-files";
 /// MT5 terminals (markets-research.md D847–D849).
 pub const MT5_TERMINAL_NOT_FOUND: &str = "mt5-terminal-not-found";
 pub const MT5_TERMINAL_NAME_TAKEN: &str = "mt5-terminal-name-taken";
@@ -1334,6 +1343,10 @@ pub const ALL: &[&str] = &[
     PIPELINE_CHECK_FAILED,
     BUILD_NOT_FOUND,
     CONNECTOR_NOT_FOUND,
+    MARKET_DECISION_STALE,
+    MARKET_DECISION_CONFLICT,
+    MARKET_DECISIONS_QUOTA,
+    MARKET_BARS_TOO_MANY_FILES,
     MT5_TERMINAL_NOT_FOUND,
     MT5_TERMINAL_NAME_TAKEN,
     MT5_TERMINAL_VERSION_CONFLICT,

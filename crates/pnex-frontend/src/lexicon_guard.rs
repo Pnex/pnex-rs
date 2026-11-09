@@ -44,6 +44,19 @@ const RULES: &[Rule] = &[
         use_instead: "invite",
         allowed_keys: &["iam-", "access-"],
     },
+    // markets-research.md D894: what an external model posts is a model decision.
+    Rule {
+        scope: Scope::Fr,
+        term: "signal de trading",
+        use_instead: "décision de modèle",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "trading signal",
+        use_instead: "model decision",
+        allowed_keys: &[],
+    },
     // validation-gate.md D836: the agent that accepts or refuses requests is a validator.
     Rule {
         scope: Scope::Fr,

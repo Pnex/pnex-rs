@@ -314,6 +314,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             | Route::OntologyObject { .. }
             | Route::OntologyType { .. }
             | Route::Proposals { .. }
+            | Route::MarketDecisions {}
             | Route::Sites {}
     );
     let media = matches!(route, Route::Media { .. })
@@ -442,6 +443,14 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     label: t!("nav-proposals"),
                     active: matches!(route, Route::Proposals { .. }),
                     on_navigate,
+                }
+                if crate::state::access::can("market-decisions:read") {
+                    NavItem {
+                        to: Route::MarketDecisions {},
+                        label: t!("nav-market-decisions"),
+                        active: at(Route::MarketDecisions {}),
+                        on_navigate,
+                    }
                 }
                 NavItem {
                     to: Route::Sites {},

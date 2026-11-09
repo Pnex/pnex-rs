@@ -281,6 +281,9 @@ pub const EXPOSED: &[&str] = &[
     "ontology_objects_links",
     "ontology_objects_series",
     "ontology_objects_observations",
+    "markets_bars",
+    "markets_decisions_list",
+    "markets_decisions_scores",
     "markets_event_study",
     "markets_issuer_chart",
     "markets_rule_test",
@@ -775,6 +778,8 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "mt5_config",
             "mt5_announce",
             "mt5_ingest",
+            // The runner of an external model posts; the assistant never decides (D536, D895).
+            "markets_decisions_create",
             "agent_install_ps1",
             "agent_install_sh",
             "download_firmware",
