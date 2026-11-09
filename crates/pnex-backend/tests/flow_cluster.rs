@@ -310,11 +310,18 @@ async fn crashed_worker_orgs_fail_over_and_its_writes_are_fenced() {
             }
         })
         .await;
-        let failover = t0.elapsed();
-        // Never before the TTL (1.5 s) counted from the last heartbeat,
-        // which may precede the crash by one period (200 ms): a slow worker
-        // is not a dead worker.
-        assert!(failover >= Duration::from_millis(1250), "failover too early: {failover:?}");
+        let seen_moved = chrono::Utc::now();
+        // Never before the TTL (1.5 s) counted from pod-b's last heartbeat:
+        // a slow worker is not a dead worker. Measured from the stored
+        // heartbeat, not the crash: on a loaded runner the last tick can
+        // precede the crash by far more than one period.
+        let last_hb = store::worker(&ctx.db, "pod-b").await.unwrap().unwrap().heartbeat_at;
+        let silence = seen_moved.signed_duration_since(last_hb);
+        assert!(
+            silence >= chrono::Duration::milliseconds(1500),
+            "failover too early: {silence:?} after the last heartbeat ({:?} after the crash)",
+            t0.elapsed()
+        );
         for (org, epoch) in b_orgs.iter().zip(epochs_before) {
             let p = store::placement(&ctx.db, *org).await.unwrap().unwrap();
             assert_eq!(p.epoch, epoch + 1, "epoch bumped on move (fencing token)");
