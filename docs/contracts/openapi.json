@@ -17842,6 +17842,13 @@
             },
             "type": "object"
           },
+          "properties_as_of": {
+            "description": "Read with `as_of` (markets-research.md D900): `exact` when title\nand properties are the ones known at that instant, `unknown` when\nthe history does not reach it (the current ones are returned).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "redacted": {
             "description": "Keys hidden from the caller by their classification (crm.md D443);\n`title` when the title itself is hidden.",
             "items": {
@@ -18013,7 +18020,7 @@
         "description": "Declarative ontology query (D185): select, then traverse, then page.",
         "properties": {
           "as_of": {
-            "description": "RFC 3339: objects and links valid at that instant (default now).",
+            "description": "RFC 3339: objects and links valid at that instant (default now),\nwith the title and properties known then (`properties_as_of` on\neach row) and without objects whose own `known_at` is later\n(markets-research.md D900). `label` and `within` still read the\ncurrent labels and containment: refused to a point-in-time key.",
             "type": [
               "string",
               "null"
@@ -18046,7 +18053,7 @@
             ]
           },
           "latest": {
-            "description": "`series` properties whose last value is joined (D185).",
+            "description": "`series` properties whose last value is joined (D185); never with\n`as_of` (the last value is the present's).",
             "items": {
               "type": "string"
             },
@@ -82624,7 +82631,7 @@
         ]
       },
       "get": {
-        "description": "One object of the organisation (system or org type) with its properties and version. Any org member.",
+        "description": "One object of the organisation (system or org type) with its properties and version. With `as_of`, the title and properties known at that instant (`properties_as_of`: `exact`, or `unknown` when the history does not reach it and the current ones are returned); 404 when the object's own `known_at` is later. Any org member.",
         "operationId": "ontology_objects_get",
         "parameters": [
           {
@@ -82646,6 +82653,15 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "description": "RFC 3339: the object as known at that instant (D900).",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -82658,6 +82674,16 @@
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `as_of` (field → token)"
           },
           "401": {
             "content": {
@@ -82699,7 +82725,7 @@
         "tags": [
           "ontology"
         ],
-        "x-pnex-as-of": "current_only"
+        "x-pnex-as-of": "point_in_time"
       },
       "put": {
         "description": "Replaces the title and properties of an object (for a system object, only the org's extra properties are writable). What the caller may not read stays as stored. `expected_version` must match the current version when set. Journaled. Needs a writer role and the type's write role.",
@@ -85046,11 +85072,7 @@
         "tags": [
           "ontology"
         ],
-        "x-pnex-as-of": "partial",
-        "x-pnex-as-of-current": [
-          "rows.object.title",
-          "rows.object.properties"
-        ]
+        "x-pnex-as-of": "point_in_time"
       }
     },
     "/api/v1/ontology/resolve/{kind}/{native_key}": {

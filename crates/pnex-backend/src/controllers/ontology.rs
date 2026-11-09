@@ -768,10 +768,11 @@ async fn invoke_action(
     tag = "ontology",
     operation_id = "ontology_objects_get",
     summary = "Get an object",
-    description = "One object of the organisation (system or org type) with its properties and version. Any org member.",
-    params(("id" = String, Path, format = "uuid", description = "Object id (UUID); a malformed id answers 404")),
+    description = "One object of the organisation (system or org type) with its properties and version. With `as_of`, the title and properties known at that instant (`properties_as_of`: `exact`, or `unknown` when the history does not reach it and the current ones are returned); 404 when the object's own `known_at` is later. Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID); a malformed id answers 404"), ObjectAsOf),
     responses(
         (status = 200, body = pnex_core::ontology::api::ObjectView),
+        (status = 400, description = "Invalid `as_of` (field → token)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -780,8 +781,14 @@ async fn get_object(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<String>,
+    Query(q): Query<ObjectAsOf>,
 ) -> Result<Response> {
-    let r = objects::get(&ctx.db, org.org.id, parse_uuid(&id)?).await;
+    let id = parse_uuid(&id)?;
+    let r = match onto::parse_instant("as_of", q.as_of.as_deref()) {
+        Ok(Some(at)) => objects::get_as_of(&ctx.db, org.org.id, id, at).await,
+        Ok(None) => objects::get(&ctx.db, org.org.id, id).await,
+        Err(e) => return onto_error(e),
+    };
     reply(masked(&ctx, &org, r, |Masking(m, s), v| m.object(s, v)).await)
 }
 
@@ -931,6 +938,13 @@ async fn erase_object(
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
     reply(onto::erase::erase(&ctx, org.org.id, &actor(&org), id).await)
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ObjectAsOf {
+    /// RFC 3339: the object as known at that instant (D900).
+    as_of: Option<String>,
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -1613,6 +1627,12 @@ async fn run_query(
 ) -> Result<Response> {
     if org.point_in_time() && q.as_of.as_deref().is_none_or(str::is_empty) {
         return Err(crate::auth::as_of_required("as_of"));
+    }
+    // Labels and containment are current state: not dated (D900).
+    let undated = q.label.as_deref().is_some_and(|l| !l.trim().is_empty())
+        || q.within.as_deref().is_some_and(|w| !w.is_empty());
+    if org.point_in_time() && undated {
+        return Err(crate::auth::as_of_unsupported());
     }
     let client = o2(&ctx);
     let hide = redaction(&ctx, &org)

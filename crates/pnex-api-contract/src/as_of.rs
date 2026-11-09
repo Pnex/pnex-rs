@@ -56,6 +56,7 @@ pub const SEMANTICS: &[(&str, AsOf)] = &[
     ("datasets_sample", PointInTime(Query("as_of"))),
     ("markets_bars", PointInTime(Query("as_of"))),
     ("ontology_link_types_list", Timeless),
+    ("ontology_objects_get", PointInTime(Query("as_of"))),
     (
         "ontology_objects_hierarchy",
         Partial(Query("at"), &["nodes.title", "nodes.properties"]),
@@ -66,10 +67,7 @@ pub const SEMANTICS: &[(&str, AsOf)] = &[
     ),
     ("ontology_objects_observations", PointInTime(Query("as_of"))),
     ("ontology_packs_list", Timeless),
-    (
-        "ontology_query",
-        Partial(Body, &["rows.object.title", "rows.object.properties"]),
-    ),
+    ("ontology_query", PointInTime(Body)),
     ("ontology_types_get", Timeless),
     ("ontology_types_list", Timeless),
     ("telemetry_catalog", Timeless),

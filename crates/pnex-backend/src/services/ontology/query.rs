@@ -43,6 +43,24 @@ fn object_validity(at: &str, archived: bool) -> String {
     }
 }
 
+/// Objects as known at `at` (markets-research.md D900): title and
+/// properties replayed from `object_versions`; an object whose own
+/// `known_at` is later is left out (reference objects, without `known_at`,
+/// stay whatever their creation date).
+fn objects_as_of(at: &str) -> String {
+    format!(
+        "(SELECT o.id, o.org_id, o.type_key, o.type_version, \
+           COALESCE(v.title, o.title) AS title, o.native_id, \
+           COALESCE(v.properties, o.properties) AS properties, o.source_ref, \
+           o.valid_from, o.valid_to, o.version, o.created_at, o.updated_at, o.erased_at \
+         FROM objects o LEFT JOIN LATERAL (\
+           SELECT title, properties FROM object_versions w \
+           WHERE w.object_id = o.id AND w.at <= {at} ORDER BY w.at DESC LIMIT 1) v ON TRUE \
+         WHERE (COALESCE(v.properties, o.properties) ->> 'known_at') IS NULL \
+            OR (COALESCE(v.properties, o.properties) ->> 'known_at')::timestamptz <= {at})"
+    )
+}
+
 fn validity(alias: &str, at: &str, archived: bool) -> String {
     if archived {
         format!("{alias}.valid_from <= {at}")
@@ -202,8 +220,17 @@ pub async fn run(
             latest: Default::default(),
         })
         .collect();
-    if !q.latest.is_empty() {
+    // The last telemetry value is the present's: never joined to a read
+    // as of a past instant (D900).
+    if !q.latest.is_empty() && q.as_of.is_none() {
         super::series::join_latest(db, client, org_id, &s, &q.latest, &mut out).await?;
+    }
+    if let Some(at) = parse_instant("as_of", q.as_of.as_deref())? {
+        let ids: Vec<uuid::Uuid> = rows.iter().map(|o| o.id).collect();
+        let flags = super::objects::properties_as_of(db, &ids, at).await?;
+        for (row, o) in out.iter_mut().zip(&rows) {
+            row.object.properties_as_of = flags.get(&o.id).map(|f| f.to_string());
+        }
     }
     Ok(QueryResult { count, rows: out })
 }
@@ -324,8 +351,14 @@ pub(super) async fn plan(
         ));
     }
 
+    // Without `as_of` the table itself: the replay costs a lateral join.
+    let source = if q.as_of.is_some() {
+        objects_as_of(&at)
+    } else {
+        "objects".to_string()
+    };
     let mut ctes = vec![format!(
-        "h0 AS (SELECT o.* FROM objects o WHERE {})",
+        "h0 AS (SELECT o.* FROM {source} o WHERE {})",
         start.join(" AND ")
     )];
     // Conditions on the objects the last hop reaches, same masking as `filters`.
@@ -349,7 +382,7 @@ pub(super) async fn plan(
             "h{n} AS (SELECT DISTINCT o.* FROM h{i} h \
                JOIN resource_edges e ON e.{from} = h.id AND e.org_id = {org} AND e.relation = {rel} \
                  AND {ev} \
-               JOIN objects o ON o.id = e.{to} AND {ov}{last})",
+               JOIN {source} o ON o.id = e.{to} AND {ov}{last})",
             n = i + 1,
             ev = validity("e", &at, false),
             ov = object_validity(&at, archived),

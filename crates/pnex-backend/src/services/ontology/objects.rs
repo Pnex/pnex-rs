@@ -41,6 +41,7 @@ pub fn view(o: &objects::Model, s: &OrgSchema) -> ObjectView {
         updated_at: o.updated_at.to_rfc3339(),
         redacted: Vec::new(),
         erased_at: o.erased_at.map(|t| t.to_rfc3339()),
+        properties_as_of: None,
     }
 }
 
@@ -72,6 +73,71 @@ pub async fn find_by_native<C: ConnectionTrait>(
 pub async fn get(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<ObjectView> {
     let s = schema(db, org_id).await?;
     Ok(view(&find(db, org_id, id).await?, &s))
+}
+
+/// Whether the title and properties read at `at` are exact (D900): a
+/// recorded state at or before `at`, or no change since `at` at all.
+pub async fn properties_as_of<C: ConnectionTrait>(
+    db: &C,
+    ids: &[Uuid],
+    at: sea_orm::prelude::DateTimeWithTimeZone,
+) -> Result<HashMap<Uuid, &'static str>> {
+    let rows = db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT o.id, (EXISTS (SELECT 1 FROM object_versions w WHERE w.object_id = o.id AND w.at <= $2) \
+               OR (NOT EXISTS (SELECT 1 FROM object_versions w WHERE w.object_id = o.id AND w.at > $2) \
+                   AND o.updated_at <= $2)) AS exact \
+             FROM objects o WHERE o.id = ANY($1)",
+            vec![ids.to_vec().into(), at.into()],
+        ))
+        .await?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| {
+            let id: Uuid = r.try_get("", "id").ok()?;
+            let exact: bool = r.try_get("", "exact").ok()?;
+            Some((id, if exact { "exact" } else { "unknown" }))
+        })
+        .collect())
+}
+
+/// An object as known at `at` (D900): its recorded state at that instant,
+/// `NotFound` when its own `known_at` is later.
+pub async fn get_as_of(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    at: sea_orm::prelude::DateTimeWithTimeZone,
+) -> Result<ObjectView> {
+    let s = schema(db, org_id).await?;
+    let mut o = find(db, org_id, id).await?;
+    let version = db
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT title, properties FROM object_versions \
+             WHERE object_id = $1 AND at <= $2 ORDER BY at DESC LIMIT 1",
+            vec![id.into(), at.into()],
+        ))
+        .await?;
+    if let Some(v) = version {
+        o.title = v.try_get("", "title").map_err(sea_orm::DbErr::from)?;
+        o.properties = v.try_get("", "properties").map_err(sea_orm::DbErr::from)?;
+    }
+    let known_at = o
+        .properties
+        .get("known_at")
+        .and_then(Value::as_str)
+        .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok());
+    if known_at.is_some_and(|k| k > at) || o.valid_to.is_some_and(|t| t <= at) {
+        return Err(OntologyError::NotFound);
+    }
+    let mut v = view(&o, &s);
+    v.properties_as_of = properties_as_of(db, &[id], at)
+        .await?
+        .get(&id)
+        .map(|f| f.to_string());
+    Ok(v)
 }
 
 fn check_title(title: &str) -> Result<String> {

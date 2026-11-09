@@ -273,6 +273,7 @@ mod tests {
                 updated_at: String::new(),
                 redacted: Vec::new(),
                 erased_at: None,
+                properties_as_of: None,
             },
             attachments: Vec::new(),
         }

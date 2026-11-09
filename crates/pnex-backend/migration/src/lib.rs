@@ -130,6 +130,7 @@ mod m20261108_000135_market_history_years;
 mod m20261109_000136_mt5_terminals;
 mod m20261109_000137_market_decisions;
 mod m20261109_000138_point_in_time_keys;
+mod m20261109_000139_object_versions;
 
 pub struct Migrator;
 
@@ -256,6 +257,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261109_000136_mt5_terminals::Migration),
             Box::new(m20261109_000137_market_decisions::Migration),
             Box::new(m20261109_000138_point_in_time_keys::Migration),
+            Box::new(m20261109_000139_object_versions::Migration),
         ]
     }
 }

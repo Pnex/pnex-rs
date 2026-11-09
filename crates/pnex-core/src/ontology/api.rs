@@ -108,6 +108,11 @@ pub struct ObjectView {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub erased_at: Option<String>,
+    /// Read with `as_of` (markets-research.md D900): `exact` when title
+    /// and properties are the ones known at that instant, `unknown` when
+    /// the history does not reach it (the current ones are returned).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub properties_as_of: Option<String>,
 }
 
 /// Create or update an object. For a system object only `properties`
@@ -247,10 +252,15 @@ pub struct OntologyQuery {
     /// starts. Ignored without a traversal.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reached: Vec<PropertyFilter>,
-    /// RFC 3339: objects and links valid at that instant (default now).
+    /// RFC 3339: objects and links valid at that instant (default now),
+    /// with the title and properties known then (`properties_as_of` on
+    /// each row) and without objects whose own `known_at` is later
+    /// (markets-research.md D900). `label` and `within` still read the
+    /// current labels and containment: refused to a point-in-time key.
     #[serde(default)]
     pub as_of: Option<String>,
-    /// `series` properties whose last value is joined (D185).
+    /// `series` properties whose last value is joined (D185); never with
+    /// `as_of` (the last value is the present's).
     #[serde(default)]
     pub latest: Vec<String>,
     #[serde(default)]

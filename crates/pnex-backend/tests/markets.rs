@@ -3901,3 +3901,176 @@ async fn an_external_model_reads_bars_and_posts_decisions() {
     })
     .await;
 }
+
+/// Appendix H (D900, D901): canaries written after T0 never show in a
+/// point-in-time read at T0, on every `point_in_time` route of the
+/// inventory; a status changed after T0 reads as it was. A route added to
+/// the inventory without its canary fails here.
+#[tokio::test]
+#[serial]
+async fn point_in_time_reads_never_show_a_canary() {
+    with_app(|server, ctx, token| async move {
+        use pnex_api_contract::as_of::{AsOf, SEMANTICS};
+        use pnex_backend::services::datasets;
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token: token.clone(), org };
+        for pack in ["markets", "world_events"] {
+            let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
+            assert_eq!(st, 200, "{r}");
+        }
+
+        // Before T0: a day of minutes, a reported event, a macro series and
+        // its first value.
+        let min = 60_000_000i64;
+        let now_us = chrono::Utc::now().timestamp_micros();
+        let day_start = now_us - now_us.rem_euclid(min) - 2 * 1440 * min;
+        let store = datasets::store_of(&ctx.config).unwrap();
+        let hist = datasets::create(&ctx.db, org, "histdata_ohlcv_1m").await.unwrap();
+        let hist_id: uuid::Uuid = hist.id.parse().unwrap();
+        datasets::append_batch(&ctx.db, &store, org, hist_id, &minute_rows("XAUUSD", "histdata", day_start, 1440))
+            .await
+            .unwrap();
+        ctx.db
+            .execute_unprepared(&format!(
+                "INSERT INTO market_history_partitions (org_id, source, instrument, period, period_start, state) \
+                 VALUES ({org}, 'histdata', 'XAUUSD', 'year', date_trunc('year', now())::date, 'done'), \
+                        ({org}, 'histdata', 'CANARY', 'year', date_trunc('year', now())::date, 'done')"
+            ))
+            .await
+            .unwrap();
+        let old = (chrono::Utc::now() - chrono::Duration::days(3)).to_rfc3339();
+        let (st, event) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({
+                "type_key": "geo_event", "title": "Border clash",
+                "properties": { "ref": "pit-1", "status": "unconfirmed", "known_at": old }
+            })))
+            .await;
+        assert_eq!(st, 201, "{event}");
+        let event_id = event["id"].as_str().unwrap().to_string();
+        let (st, series) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({
+                "type_key": "macro_series", "title": "CPI", "properties": { "code": "CPI" }
+            })))
+            .await;
+        assert_eq!(st, 201, "{series}");
+        let series_id = series["id"].as_str().unwrap().to_string();
+        let observe = |known: String, value: f64| {
+            let (db, sid) = (ctx.db.clone(), series_id.clone());
+            async move {
+                db.execute_unprepared(&format!(
+                    "INSERT INTO market_observations (org_id, object_id, metric, period_start, period_end, known_at, value, source_ref) \
+                     VALUES ({org}, '{sid}', 'value', '2026-01-01', '2026-01-31', '{known}', {value}, 'test')"
+                ))
+                .await
+                .unwrap();
+            }
+        };
+        observe(old.clone(), 1.0).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        let t0 = chrono::Utc::now();
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        let canary_at = (t0 + chrono::Duration::minutes(1)).to_rfc3339();
+
+        // After T0: one canary per source.
+        datasets::append_batch(&ctx.db, &store, org, hist_id, &minute_rows("CANARY", "histdata", day_start, 30))
+            .await
+            .unwrap();
+        datasets::append_batch(&ctx.db, &store, org, hist_id, &minute_rows("XAUUSD", "histdata", t0.timestamp_micros() - t0.timestamp_micros().rem_euclid(min), 1))
+            .await
+            .unwrap();
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({
+                "type_key": "geo_event", "title": "CANARY event",
+                "properties": { "ref": "pit-2", "status": "unconfirmed", "known_at": canary_at }
+            })))
+            .await;
+        assert_eq!(st, 201, "{r}");
+        let (st, r) = api
+            .call("PUT", &format!("/api/v1/ontology/objects/{event_id}"), Some(json!({
+                "type_key": "geo_event", "title": "Border clash",
+                "properties": { "ref": "pit-1", "status": "confirmed", "known_at": old },
+                "expected_version": event["version"]
+            })))
+            .await;
+        assert_eq!(st, 200, "{r}");
+        observe(canary_at.clone(), 31415.9).await;
+
+        let at = t0.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let enc = |s: &str| s.replace('+', "%2B");
+        let ds = hist.id.clone();
+        let (_, files_before) = api.call("GET", &format!("/api/v1/datasets/{ds}/files?as_of={}", enc(&at)), None).await;
+        let n_before = files_before["count"].as_i64().unwrap();
+        let (_, files_now) = api.call("GET", &format!("/api/v1/datasets/{ds}/files"), None).await;
+        assert_eq!(files_now["count"].as_i64().unwrap(), n_before + 2, "both canary files are there now");
+
+        // Every point-in-time route, read at T0.
+        let reads: Vec<(&str, String, Option<Value>)> = vec![
+            ("datasets_files_list", format!("/api/v1/datasets/{ds}/files?limit=500&as_of={}", enc(&at)), None),
+            ("datasets_files_get", format!("/api/v1/datasets/{ds}/files/{n_before}?as_of={}", enc(&at)), None),
+            ("datasets_sample", format!("/api/v1/datasets/{ds}/sample?limit=1000&as_of={}", enc(&at)), None),
+            (
+                "markets_bars",
+                format!("/api/v1/markets/bars?instrument=XAUUSD&source=histdata&interval=1m&limit=5000&as_of={}", enc(&at)),
+                None,
+            ),
+            ("ontology_objects_get", format!("/api/v1/ontology/objects/{event_id}?as_of={}", enc(&at)), None),
+            ("ontology_objects_observations", format!("/api/v1/ontology/objects/{series_id}/observations?as_of={}", enc(&at)), None),
+            (
+                "ontology_query",
+                "/api/v1/ontology/query".into(),
+                Some(json!({ "type_key": "geo_event", "as_of": at, "limit": 500 })),
+            ),
+        ];
+        let covered: std::collections::BTreeSet<&str> = reads.iter().map(|(id, ..)| *id).collect();
+        let inventory: std::collections::BTreeSet<&str> = SEMANTICS
+            .iter()
+            .filter(|(_, s)| matches!(s, AsOf::PointInTime(_)))
+            .map(|(id, _)| *id)
+            .collect();
+        assert_eq!(covered, inventory, "every point_in_time route has its canary read");
+
+        let t0_minute = t0.timestamp() - t0.timestamp().rem_euclid(60);
+        for (id, path, body) in &reads {
+            let (st, r) = api.call(if body.is_some() { "POST" } else { "GET" }, path, body.clone()).await;
+            let text = r.to_string();
+            match *id {
+                "datasets_files_get" => assert_eq!(st, 404, "{id}: the canary file is not in the view at T0: {text}"),
+                _ => assert_eq!(st, 200, "{id}: {text}"),
+            }
+            assert!(!text.contains("CANARY"), "{id} leaks a canary: {text}");
+            assert!(!text.contains("31415.9"), "{id} leaks the canary value: {text}");
+            assert!(!text.contains("\"confirmed\""), "{id} leaks the later status: {text}");
+            if *id == "markets_bars" {
+                let last = r["results"].as_array().unwrap().last().unwrap()["ts"].as_str().unwrap().to_string();
+                let last = chrono::DateTime::parse_from_rfc3339(&last).unwrap().timestamp();
+                assert!(last < t0_minute, "{id}: the bar of T0's minute shows");
+            }
+        }
+        let (_, obj) = api.call("GET", &format!("/api/v1/ontology/objects/{event_id}?as_of={}", enc(&at)), None).await;
+        assert_eq!(obj["properties"]["status"], "unconfirmed");
+        assert_eq!(obj["properties_as_of"], "exact");
+        let (_, q) = api
+            .call("POST", "/api/v1/ontology/query", Some(json!({ "type_key": "geo_event", "as_of": at })))
+            .await;
+        assert_eq!(q["count"], 1, "{q}");
+        assert_eq!(q["rows"][0]["object"]["properties"]["status"], "unconfirmed");
+
+        // Two minutes later, every canary is there.
+        let later = (t0 + chrono::Duration::minutes(2)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let (_, q) = api
+            .call("POST", "/api/v1/ontology/query", Some(json!({ "type_key": "geo_event", "as_of": later })))
+            .await;
+        assert_eq!(q["count"], 2, "{q}");
+        assert!(q.to_string().contains("\"confirmed\""), "{q}");
+        let (_, o) = api.call("GET", &format!("/api/v1/ontology/objects/{series_id}/observations?as_of={}", enc(&later)), None).await;
+        assert!(o.to_string().contains("31415.9"), "{o}");
+    })
+    .await;
+}

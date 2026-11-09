@@ -377,13 +377,18 @@ pub fn point_in_time_gate(
                 Err(as_of_required(param))
             }
         }
-        _ => Err(crate::controllers::coded_error(
-            axum::http::StatusCode::BAD_REQUEST,
-            pnex_core::err_codes::AS_OF_UNSUPPORTED,
-            "a point-in-time key only calls reads that honour `as_of`",
-            None,
-        )),
+        _ => Err(as_of_unsupported()),
     }
+}
+
+/// 400 `as-of-unsupported`: what a point-in-time key asked is not dated.
+pub fn as_of_unsupported() -> loco_rs::Error {
+    crate::controllers::coded_error(
+        axum::http::StatusCode::BAD_REQUEST,
+        pnex_core::err_codes::AS_OF_UNSUPPORTED,
+        "a point-in-time key only calls reads that honour `as_of`",
+        None,
+    )
 }
 
 /// 403 of a permission the caller's role does not grant (iam.md §8).
