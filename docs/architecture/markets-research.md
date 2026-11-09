@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
-| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), lots **MK0…MK14** |
+| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), lots **MK0…MK14**, **MK15…MK20** (appendice F) |
 | Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`data-pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
@@ -849,3 +849,64 @@ Route d'ingestion propre aux terminaux (accès `Machine` au registre IAM, jeton 
 - **Q-MT5** : le catalogue annoncé crée-t-il des objets `instrument` dans l'ontologie (en propositions), ou reste-t-il une table ?
 - **Q-MT6** : le pont actuel par webhook (8dc9ea35) reste-t-il comme mode simple, ou est-il remplacé ?
 
+## Appendice F — Contexte macro et flux physiques pour un trader particulier (D880–D889)
+
+| | |
+|---|---|
+| Statut | **Proposé le 2026-11-09 ; MK15 codé le même jour**, le reste à faire dans l'ordre des lots |
+| Cible | Shan d'abord, trader particulier, puis d'autres clients (§1) : ce qui lui sert passe en premier ; ce qu'un client exigerait seul (gros volumes, conformité) est reporté, pas refusé |
+
+### F.1 Le besoin
+
+Comprendre pourquoi le marché bouge et ne pas se faire surprendre : décisions des banques centrales, publications d'inflation, chocs d'approvisionnement, cycle immobilier. Face à un trader particulier, qui lit un graphique et des titres, ces données réunies et datées (`known_at`, D531) sont un avantage réel ; face à un fonds, elles n'en sont pas un, et ce n'est pas la cible de cet appendice.
+
+Ordre de valeur retenu : banques centrales, calendrier des publications, inflation détaillée, agrégats maritimes, immobilier ; les positions brutes de navires et d'avions en dernier.
+
+### F.2 Décisions
+
+#### D880 — Banques centrales : la BRI d'abord, une source pour toutes
+
+Le jeu `WS_CBPOL` de la BRI donne le taux directeur d'une quarantaine de banques centrales, quotidien, en SDMX CSV. Une import de pack « Central bank series (BIS) » lit les clés du réglage `bis_series` (`flux.clé`, par défaut le G10 : `WS_CBPOL.D.US`, `XM` pour la zone euro, `JP`, `GB`, `CA`, `CH`, `AU`, `NZ`, `SE`, `NO`), depuis 2000, dans `market_observations` comme les séries BCE (même forme `ecb_csv` ; la BRI ne répète pas la clé, la série est celle demandée). Le réglage accepte tout autre flux BRI : il sert aussi à l'immobilier (D884). Les API propres des banques centrales (BoC Valet, BoE IADB, BoJ) ne viennent qu'au-delà du taux (courbes, bilans), une forme chacune. Conditions BRI : usage non commercial libre, BRI citée ; les statistiques ont leurs conditions propres, à relire avant tout usage hors de l'org.
+
+#### D881 — Un mouvement de taux directeur est un `market_move`
+
+Une décision de taux est un changement de niveau, pas une séance anormale : le détecteur D735 en mode `diff` avec un plancher (`:k:floor`) devrait suffire, sans nouveau détecteur. À vérifier au lot : `move_series` lit aujourd'hui des codes FRED ; il doit aussi accepter une série déjà en `market_observations` (BRI). L'étude d'événement (D743) mesure ensuite la réaction des séries surveillées à chaque décision.
+
+#### D882 — Calendrier des publications : les dates à venir sont des faits sourcés
+
+Les dates des prochaines réunions (Fed, BCE, BoJ, BoE…) et publications (IPC, emploi) viennent des calendriers publiés par chaque institution, jamais d'un agrégateur de presse. Un événement à venir est un `market_event` de genre `scheduled`, daté par la source, `known_at` = jour de lecture. À préciser au lot : quelles sources donnent un calendrier lisible par machine (Q-F1).
+
+#### D883 — Inflation détaillée : sous-indices officiels, prix individuels plus tard
+
+Sous-indices HICP d'Eurostat (énergie, alimentation, services, biens), IPC de l'INSEE, sous-séries CPI de FRED, indice FAO des prix alimentaires : des séries comme les autres, une forme par source (Eurostat et l'INSEE parlent aussi SDMX). Les prix produit par produit (Open Prices) attendent Q-F2.
+
+#### D884 — Immobilier : indices d'abord
+
+Prix résidentiels de la BRI (`WS_SPP`, même import que D880), indice Eurostat des prix des logements, Case-Shiller sur FRED (forme existante). Les transactions une par une (DVF, Land Registry) sont de gros fichiers : pipeline vers une table (D807), plus tard (Q-F3).
+
+#### D885 — Flux maritimes : les agrégats pour les marchés, le brut pour l'enquête
+
+Pour les marchés : escales et passages quotidiens par port et par détroit (IMF PortWatch), en séries. L'AIS brut (flux temps réel par clé, historiques NOAA ou de l'autorité maritime danoise) est un volume de table (D807) et sert d'abord les dossiers d'enquête (lien `tracks`, K25) : lot à part.
+
+#### D886 — Flux aériens : en dernier
+
+Peu utiles au trading hors compagnies aériennes. Si on les prend : adsb.lol (ODbL) ; OpenSky seulement après lecture de ses conditions d'usage commercial.
+
+### F.3 Lots
+
+| Lot | Contenu | Vérification |
+|---|---|---|
+| **MK15** | D880 : import BRI, réglage `bis_series`, forme SDMX sans `KEY` (pack 1.7.0) | codé, test `prices_with_a_vault_key_and_the_reaction_to_a_filing` ; essai réel à faire |
+| **MK16** | D881 : décisions de taux en `market_move`, valeurs par défaut de `move_series` | une baisse de taux simulée donne un mouvement, une série plate aucun |
+| **MK17** | D882 : calendrier des publications | les prochaines réunions Fed et BCE lues, datées par la source |
+| **MK18** | D883 : sous-indices d'inflation (Eurostat, INSEE, FAO) | une forme par source, testée sur une réponse réelle enregistrée |
+| **MK19** | D884 : indices immobiliers (BRI `WS_SPP`, Eurostat, Case-Shiller) | trimestriels, `known_at` au jour de lecture |
+| **MK20** | D885 : agrégats maritimes PortWatch | passages quotidiens de Suez et d'Ormuz en séries |
+
+### F.4 Questions pour Shan
+
+- **Q-F1** : ce que tu trades surtout (indices, forex, actions, matières premières, crypto) et à quel horizon : décide de l'ordre MK17–MK20.
+- **Q-F2** : prix à la consommation : sous-indices officiels seulement, ou aussi des prix produit par produit ?
+- **Q-F3** : immobilier : indices seulement, ou aussi les transactions DVF ?
+- **Q-F4** : navires et avions : agrégats pour les marchés seulement, ou aussi les positions pour les dossiers d'enquête ?
+- **Q-F5** : les flux physiques dans le pack `markets`, ou dans un pack à part (`trade_flows`) ?
