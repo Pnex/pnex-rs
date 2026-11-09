@@ -47,7 +47,7 @@ impl S3Sink {
 
     /// Hex sha256 of what went through.
     pub fn sha256(self) -> String {
-        format!("{:x}", self.hash.finalize())
+        hex::encode(self.hash.finalize())
     }
 
     /// Drops the multipart upload of a failed write.

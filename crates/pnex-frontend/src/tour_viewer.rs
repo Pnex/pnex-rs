@@ -341,7 +341,7 @@ pub async fn take_annot_move(prev_seq: u64) -> Option<AnnotMove> {
 
 #[cfg(target_arch = "wasm32")]
 async fn try_scene_once(method: &str, host_id: &str, scene: &TourSceneView) -> bool {
-    let _ = log_device(method);
+    log_device(method);
     let json = serde_json::to_string(scene).unwrap_or_default();
     let Some(f) = global_method("pnexViewers", "tour")
         .and_then(|tour| js_sys::Reflect::get(&tour, &wasm_bindgen::JsValue::from_str(method)).ok())

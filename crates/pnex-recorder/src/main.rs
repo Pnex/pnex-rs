@@ -140,8 +140,10 @@ details.checks > div { display: flex; flex-direction: column; gap: 12px; }
 
 /// RGBA pixels of the PNeX mark.
 fn mark_rgba() -> (Vec<u8>, u32, u32) {
-    let mut reader = png::Decoder::new(MARK).read_info().expect("embedded png");
-    let mut buf = vec![0; reader.output_buffer_size()];
+    let mut reader = png::Decoder::new(std::io::Cursor::new(MARK))
+        .read_info()
+        .expect("embedded png");
+    let mut buf = vec![0; reader.output_buffer_size().expect("embedded png size")];
     let info = reader.next_frame(&mut buf).expect("embedded png");
     buf.truncate(info.buffer_size());
     (buf, info.width, info.height)

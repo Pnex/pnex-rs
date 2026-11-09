@@ -1576,7 +1576,7 @@ async fn a_run_gets_the_pinned_skills_of_its_agent_never_a_draft() {
         use sha2::Digest;
         assert_eq!(
             entry["sha256"],
-            format!("sha256:{:x}", sha2::Sha256::digest(&bytes)),
+            format!("sha256:{}", hex::encode(sha2::Sha256::digest(&bytes))),
             "the checksum of the claim holds"
         );
         let mut files = Vec::new();
@@ -1871,7 +1871,7 @@ async fn an_agent_run_node_starts_runs_within_its_deployer_rights() {
             "inputs": { "ticket": ticket }, "subject": "repo#9" })).await;
         assert_eq!(s, 200, "{r}");
         assert_eq!(r["port"], 0, "{r}");
-        let run = run_of(&server, &env.alice, org, r["run_id"].as_str().unwrap()).await;
+        let run = run_of(server, &env.alice, org, r["run_id"].as_str().unwrap()).await;
         assert_eq!(run["chain_id"], r["chain_id"]);
         assert_eq!(run["llm_calls_max"], 40, "the chain caps the agent's default");
         // The same subject again: joined, no second run.

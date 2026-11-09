@@ -292,7 +292,7 @@ pub async fn delete(
 /// SHA-256 of the source in one fixed form: the maps serialize in key order.
 fn fingerprint(source: &EnvironmentSource) -> Result<String, DbErr> {
     let bytes = serde_json::to_vec(source).map_err(|e| DbErr::Custom(e.to_string()))?;
-    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+    Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
 }
 
 fn summary_of(r: &QueryResult) -> Result<EnvironmentVersionSummary, DbErr> {

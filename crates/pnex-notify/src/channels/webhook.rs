@@ -27,7 +27,7 @@ pub const SIGNATURE_HEADER: &str = "x-pnex-signature";
 
 /// `sha256=<hex>` of `timestamp.body` under `secret`.
 pub fn signature(secret: &str, timestamp: i64, body: &[u8]) -> String {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes())
         .expect("HMAC takes a key of any length");
     mac.update(timestamp.to_string().as_bytes());

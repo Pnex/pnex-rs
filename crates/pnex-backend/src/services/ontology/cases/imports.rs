@@ -97,7 +97,7 @@ pub async fn import(
             Some(z) => Some(z.parse().map_err(|_| invalid("time_zone", FIELD_INVALID))?),
             None => None,
         };
-        let sha256 = format!("{:x}", Sha256::digest(input.content.as_bytes()));
+        let sha256 = hex::encode(Sha256::digest(input.content.as_bytes()));
         let parsed = track_import::parse(format, &input.content)
             .map_err(|_| OntologyError::TrackImport(TRACK_IMPORT_UNREADABLE))?;
         let needs_time_zone = parsed.needs_time_zone();

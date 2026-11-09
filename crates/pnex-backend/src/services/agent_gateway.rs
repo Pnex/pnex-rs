@@ -69,7 +69,7 @@ pub(crate) fn daily_cap(ctx: &AppContext) -> u64 {
 }
 
 fn sha256(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 /// What one call leaves behind: counted on the run, one event in O2.
@@ -155,7 +155,10 @@ impl Tap {
 impl Drop for Tap {
     fn drop(&mut self) {
         if let Some(record) = self.record.take() {
-            let sha = format!("sha256:{:x}", std::mem::take(&mut self.hasher).finalize());
+            let sha = format!(
+                "sha256:{}",
+                hex::encode(std::mem::take(&mut self.hasher).finalize())
+            );
             record.finish(self.usage, sha);
         }
     }

@@ -3,7 +3,7 @@
 //! Nothing of the request names the org, and nothing tells an unknown connector
 //! from a bad signature.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use pnex_core::connectors::{webhook_fresh, WebhookSettings};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sha2::Sha256;

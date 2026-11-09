@@ -85,7 +85,7 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
 }
 
 fn hash(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    hex::encode(Sha256::digest(token.as_bytes()))
 }
 
 pub fn new_token() -> String {
@@ -216,7 +216,7 @@ where
         .lock()
         .map(|h| h.clone().finalize())
         .map_err(|_| ArtifactError::Storage("hasher poisoned".into()))?;
-    Ok((size, format!("sha256:{digest:x}")))
+    Ok((size, format!("sha256:{}", hex::encode(digest))))
 }
 
 /// A file a person gives to later runs.

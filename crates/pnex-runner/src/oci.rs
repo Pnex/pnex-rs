@@ -29,7 +29,7 @@ pub fn parse_reference(image: &str) -> Option<(String, String, String)> {
 }
 
 fn sha256_of(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 pub struct Registry {

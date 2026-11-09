@@ -19,13 +19,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1.45", features = ["rt-multi-thread", "macros", "time", "signal", "process", "net"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-base64 = "0.22"
+base64 = "0.23"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Layers of an image unpacked for a micro-VM (D762).
 flate2 = "1"
 tar = "0.4"
-sha2 = "0.10"
+sha2 = "0.11"
+hex = "0.4"
 
 [dev-dependencies]
 tokio = { version = "1.45", features = ["test-util"] }

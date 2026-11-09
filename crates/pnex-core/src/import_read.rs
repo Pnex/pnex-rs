@@ -218,7 +218,7 @@ fn xml_rows(text: &str, path: &str) -> Result<Vec<Value>, ReadError> {
                 .normalized_value(quick_xml::XmlVersion::Implicit1_0)
                 .map_err(|_| ReadError::Malformed)?;
             m.insert(
-                format!("@{}", String::from_utf8_lossy(a.key.local_name().as_ref())),
+                format!("@{}", a.key.local_name().as_ref()),
                 Value::String(v.into_owned()),
             );
         }
@@ -261,11 +261,11 @@ fn xml_rows(text: &str, path: &str) -> Result<Vec<Value>, ReadError> {
                 if stack.len() >= XML_DEPTH_MAX {
                     return Err(Limit::of("depth", stack.len() + 1, XML_DEPTH_MAX));
                 }
-                let name = String::from_utf8_lossy(e.local_name().as_ref()).into_owned();
+                let name = e.local_name().as_ref().to_string();
                 stack.push((name, attrs(&e)?, String::new()));
             }
             Event::Empty(e) => {
-                let name = String::from_utf8_lossy(e.local_name().as_ref()).into_owned();
+                let name = e.local_name().as_ref().to_string();
                 let (n, v) = close(name, attrs(&e)?, String::new());
                 if stack.is_empty() {
                     root = Some((n, v));
@@ -274,7 +274,6 @@ fn xml_rows(text: &str, path: &str) -> Result<Vec<Value>, ReadError> {
                 }
             }
             Event::Text(t) => {
-                let t = t.decode().map_err(|_| ReadError::Malformed)?;
                 if let Some((_, _, txt)) = stack.last_mut() {
                     txt.push_str(&t);
                 }
@@ -283,12 +282,9 @@ fn xml_rows(text: &str, path: &str) -> Result<Vec<Value>, ReadError> {
             Event::GeneralRef(r) => {
                 let c = match r.resolve_char_ref().map_err(|_| ReadError::Malformed)? {
                     Some(c) => c.to_string(),
-                    None => {
-                        let name = r.decode().map_err(|_| ReadError::Malformed)?;
-                        quick_xml::escape::resolve_predefined_entity(&name)
-                            .ok_or(ReadError::Malformed)?
-                            .to_string()
-                    }
+                    None => quick_xml::escape::resolve_predefined_entity(&r)
+                        .ok_or(ReadError::Malformed)?
+                        .to_string(),
                 };
                 if let Some((_, _, txt)) = stack.last_mut() {
                     txt.push_str(&c);
@@ -296,7 +292,7 @@ fn xml_rows(text: &str, path: &str) -> Result<Vec<Value>, ReadError> {
             }
             Event::CData(t) => {
                 if let Some((_, _, txt)) = stack.last_mut() {
-                    txt.push_str(&String::from_utf8_lossy(&t));
+                    txt.push_str(&t);
                 }
             }
             Event::End(_) => {

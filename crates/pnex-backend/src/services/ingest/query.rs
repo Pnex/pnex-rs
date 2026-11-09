@@ -261,7 +261,7 @@ fn staged(
     cursor: String,
     read_rows: Option<u64>,
 ) -> Outcome {
-    let sha256 = format!("{:x}", hasher.finalize());
+    let sha256 = hex::encode(hasher.finalize());
     // No host or user in the journal (R4).
     let manifest = json!({
         "connector": cfg.connector,

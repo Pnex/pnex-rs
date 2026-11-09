@@ -911,7 +911,7 @@ async fn iteration_bound_forces_the_final_answer() {
 /// Adds bob to `org` with `role` (bob logs in once first: JIT user).
 async fn add_bob(server: &axum_test::TestServer, env: &Env, org: i64, role: &str) {
     let _ = personal_org(server, &env.bob).await;
-    common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", role).await;
+    common::join_org(server, &env.alice, &env.bob, org, "bob@example.com", role).await;
 }
 
 /// A conversation is private to its author within its org: another

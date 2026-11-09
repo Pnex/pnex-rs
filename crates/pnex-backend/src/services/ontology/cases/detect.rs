@@ -88,10 +88,11 @@ fn fingerprint(detector: &str, refs: &[Uuid], from_ms: i64) -> String {
     let mut ids: Vec<String> = refs.iter().map(Uuid::to_string).collect();
     ids.sort();
     let minute = from_ms.div_euclid(60_000);
-    format!(
-        "{:x}",
-        Sha256::digest(format!("{}|{}|{minute}", kind_of(detector), ids.join(",")))
-    )
+    hex::encode(Sha256::digest(format!(
+        "{}|{}|{minute}",
+        kind_of(detector),
+        ids.join(",")
+    )))
 }
 
 fn instant(ms: i64) -> DateTimeWithTimeZone {

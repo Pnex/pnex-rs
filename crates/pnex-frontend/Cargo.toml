@@ -23,15 +23,15 @@ bytes = "1"
 # server URL — see api/config.rs). gloo-net ruled out (wasm only).
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 # PKCE: S256 challenge (RFC 7636) — pure Rust, compiles on wasm32.
-sha2 = "0.10"
-base64 = "0.22"
+sha2 = "0.11"
+base64 = "0.23"
 # QR code of the root CA download link (Profile → About, D70) — SVG only.
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 futures = "0.3"
 # wasm+native timer (toast auto-dismiss; future WS pings).
 futures-timer = "3"
 # Fluent i18n (fr-FR + en-US), reactive through Dioxus's I18n signal.
-dioxus-i18n = "0.5"
+dioxus-i18n = "0.6"
 # Markdown rendering of the AI assistant's answers (assistant.rs component):
 # tables, code, lists — pulldown-cmark is pure Rust, compiles on wasm32.
 # Raw HTML filtered by hand (XSS sanitising, see components/markdown.rs).
@@ -79,7 +79,7 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 # wasm delay: futures-timer panics on wasm32 (`Instant::now()` not
 # implemented — `sys/time/unsupported.rs`).
-gloo-timers = { version = "0.3", features = ["futures"] }
+gloo-timers = { version = "0.4", features = ["futures"] }
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -112,13 +112,13 @@ ndk-sys = "0.6"
 # Logging (logcat) of the Take 360 steps.
 log = "0.4"
 # log → logcat bridge (init_once in main.rs, filter via PNEX_LOG).
-android_logger = "0.14"
+android_logger = "0.15"
 # Stitching on-device (decode → warp → blend → GPano) — Take 360.
 pnex-stitcher = { path = "../pnex-stitcher" }
 
 [dev-dependencies]
 # Parses the .ftl files for the fr-FR/en-US key parity test.
-fluent-syntax = "0.11"
+fluent-syntax = "0.12"
 
 # Web CSR only. ⚠️ NO fullstack/ssr/server-fn feature: the server
 # is Loco (Axum), not the Dioxus runtime — the two Axum servings collide

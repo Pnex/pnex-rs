@@ -195,29 +195,30 @@ fn stale_uploads(
     use quick_xml::events::Event;
     let mut reader = quick_xml::Reader::from_str(xml);
     let mut found = Vec::new();
-    let (mut current, mut tag, mut initiated) = (StaleUpload::default(), Vec::new(), String::new());
+    let (mut current, mut tag, mut initiated) =
+        (StaleUpload::default(), String::new(), String::new());
     let (mut truncated, mut next_key, mut next_id) = (false, String::new(), String::new());
     loop {
         match reader
             .read_event()
             .map_err(|e| format!("S3 uploads: {e}"))?
         {
-            Event::Start(e) => tag = e.local_name().as_ref().to_vec(),
+            Event::Start(e) => tag = e.local_name().as_ref().to_string(),
             Event::Text(t) => {
-                let text = t.decode().map_err(|e| format!("S3 uploads: {e}"))?;
-                match tag.as_slice() {
-                    b"Key" => current.key = text.into_owned(),
-                    b"UploadId" => current.id = text.into_owned(),
-                    b"Initiated" => initiated = text.into_owned(),
-                    b"IsTruncated" => truncated = text == "true",
-                    b"NextKeyMarker" => next_key = text.into_owned(),
-                    b"NextUploadIdMarker" => next_id = text.into_owned(),
+                let text: &str = &t;
+                match tag.as_str() {
+                    "Key" => current.key = text.to_string(),
+                    "UploadId" => current.id = text.to_string(),
+                    "Initiated" => initiated = text.to_string(),
+                    "IsTruncated" => truncated = text == "true",
+                    "NextKeyMarker" => next_key = text.to_string(),
+                    "NextUploadIdMarker" => next_id = text.to_string(),
                     _ => {}
                 }
             }
             Event::End(e) => {
                 tag.clear();
-                if e.local_name().as_ref() == b"Upload" {
+                if e.local_name().as_ref() == "Upload" {
                     let old =
                         chrono::DateTime::parse_from_rfc3339(&initiated).is_ok_and(|at| at < limit);
                     let upload = std::mem::take(&mut current);

@@ -34,7 +34,7 @@ rquickjs = { version = "0.11", default-features = false, features = ["futures"] 
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "signal", "time", "fs", "sync"] }
 log = "0.4"
 # Hash of the tabs (reload diff) and of the artifact (flow_rev process health).
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 
 # armv7: rquickjs-sys ships no pre-generated bindings (aarch64 does) —

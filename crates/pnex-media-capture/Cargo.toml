@@ -14,7 +14,7 @@ futures-util = { version = "0.3", default-features = false, features = ["std"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 # RTSP client of IP cameras (D160): session opened on the egress-validated
 # IP, TCP interleaved only, redirects refused. MIT OR Apache-2.0.
-retina = "=0.4.20"
+retina = "=0.4.21"
 tokio = { version = "1.45", default-features = false, features = [
   "rt",
   "macros",

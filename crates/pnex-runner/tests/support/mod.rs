@@ -118,5 +118,5 @@ pub async fn serve(server: Shared) -> String {
 }
 
 pub fn hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }

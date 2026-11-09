@@ -99,11 +99,9 @@ pub fn sitemap_locs(xml: &str) -> Vec<String> {
     let (mut out, mut in_loc) = (Vec::new(), false);
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e)) => in_loc = e.local_name().as_ref() == b"loc",
+            Ok(Event::Start(e)) => in_loc = e.local_name().as_ref() == "loc",
             Ok(Event::Text(t)) if in_loc => {
-                if let Ok(s) = t.decode() {
-                    out.push(s.trim().to_string());
-                }
+                out.push(t.trim().to_string());
             }
             Ok(Event::End(_)) => in_loc = false,
             Ok(Event::Eof) | Err(_) | Ok(Event::DocType(_)) => break,

@@ -51,7 +51,7 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
 }
 
 fn sha256(body: &str) -> String {
-    format!("sha256:{:x}", Sha256::digest(body.as_bytes()))
+    format!("sha256:{}", hex::encode(Sha256::digest(body.as_bytes())))
 }
 
 const ISO: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
@@ -462,7 +462,7 @@ pub async fn bundle_of<C: ConnectionTrait>(
 pub fn sandbox_entry(bundle: &[u8]) -> SandboxArtifact {
     SandboxArtifact {
         name: SKILLS_INPUT.into(),
-        sha256: Some(format!("sha256:{:x}", Sha256::digest(bundle))),
+        sha256: Some(format!("sha256:{}", hex::encode(Sha256::digest(bundle)))),
         form: Some(pnex_core::agent_runs::ArtifactForm::Tar),
     }
 }

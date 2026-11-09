@@ -105,7 +105,7 @@ pub async fn freeze(
         tracks_omitted,
     }
     .canonical();
-    let sha256 = format!("{:x}", Sha256::digest(content.as_bytes()));
+    let sha256 = hex::encode(Sha256::digest(content.as_bytes()));
     let size = content.len() as i32;
 
     let txn = db.begin().await?;

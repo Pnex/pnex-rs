@@ -375,12 +375,7 @@ pub async fn symbols<C: ConnectionTrait>(
                 "SELECT symbol, description, path, base, profit, digits, contract_size, first_m1 \
                  FROM mt5_symbols WHERE {filter} ORDER BY symbol LIMIT $3 OFFSET $4"
             ),
-            vec![
-                id.into(),
-                like.into(),
-                (limit as i64).into(),
-                (offset as i64).into(),
-            ],
+            vec![id.into(), like.into(), limit.into(), offset.into()],
         ))
         .await?;
     let mut out = Vec::with_capacity(rows.len());

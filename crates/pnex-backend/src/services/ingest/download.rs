@@ -131,7 +131,7 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg) -> Outc
     if w.close().await.is_err() {
         return unavailable();
     }
-    let sha256 = format!("{:x}", hasher.finalize());
+    let sha256 = hex::encode(hasher.finalize());
     let unchanged =
         cfg.skip_if_unchanged.unwrap_or(true) && previous_sha(cx).await.as_deref() == Some(&sha256);
     let manifest = json!({

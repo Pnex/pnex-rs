@@ -169,6 +169,7 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         {
             auth_errors(op, rate_limit);
             org_header(op);
+            default_descriptions(op);
         }
     }
     doc
@@ -234,6 +235,25 @@ fn auth_errors(op: &mut Operation, rate_limit: Option<&crate::services::rate_lim
     }
 }
 
+/// A response must have a description: one the annotation leaves empty
+/// (utoipa then omits the field) takes the status reason phrase.
+fn default_descriptions(op: &mut Operation) {
+    use utoipa::openapi::RefOr;
+    for (status, response) in op.responses.responses.iter_mut() {
+        if let RefOr::T(res) = response {
+            if res.description.is_empty() {
+                res.description = status
+                    .parse::<u16>()
+                    .ok()
+                    .and_then(|c| http::StatusCode::from_u16(c).ok())
+                    .and_then(|c| c.canonical_reason())
+                    .unwrap_or("Response")
+                    .to_string();
+            }
+        }
+    }
+}
+
 /// `Option<Dto>` renders as `oneOf: [{type: null}, {$ref}]`, which
 /// openapi-generator (3.1 support in beta) cannot process: keep the `$ref`
 /// alone, the field stays optional by not being `required`.
@@ -264,8 +284,9 @@ fn plain_optional_refs(value: &mut serde_json::Value) {
 fn binary_bodies(doc: &mut utoipa::openapi::OpenApi) {
     use utoipa::openapi::schema::{Schema, SchemaFormat, SchemaType};
     use utoipa::openapi::{Content, RefOr};
-    fn fix<'a>(content: impl Iterator<Item = (&'a String, &'a mut Content)>) {
+    fn fix<'a>(content: impl Iterator<Item = (&'a String, &'a mut RefOr<Content>)>) {
         for (media_type, body) in content {
+            let RefOr::T(body) = body else { continue };
             if media_type.contains("json") {
                 continue;
             }
@@ -290,7 +311,7 @@ fn binary_bodies(doc: &mut utoipa::openapi::OpenApi) {
         .into_iter()
         .flatten()
         {
-            if let Some(body) = op.request_body.as_mut() {
+            if let Some(RefOr::T(body)) = op.request_body.as_mut() {
                 fix(body.content.iter_mut());
             }
             for response in op.responses.responses.values_mut() {
@@ -355,7 +376,8 @@ fn org_header(op: &mut Operation) {
                         .schema_type(Type::Integer)
                         .format(Some(SchemaFormat::KnownFormat(KnownFormat::Int64))),
                 ))
-                .build(),
+                .build()
+                .into(),
         );
     }
 }

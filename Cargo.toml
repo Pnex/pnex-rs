@@ -90,7 +90,7 @@ wry = { path = "vendor/patches/wry" }
 pnex-core = { path = "crates/pnex-core" }
 pnex-api-contract = { path = "crates/pnex-api-contract" }
 # OpenAPI spec derived from the handlers (MIT/Apache-2.0), SDK generation.
-utoipa = { version = "5", default-features = false, features = ["macros"] }
+utoipa = { version = "6", default-features = false, features = ["macros"] }
 pnex-firmware-builder = { path = "crates/pnex-firmware-builder" }
 pnex-node-starlark = { path = "crates/pnex-node-starlark" }
 pnex-node-device = { path = "crates/pnex-node-device" }
@@ -118,7 +118,7 @@ pnex-node-predict = { path = "crates/pnex-node-predict" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-if-addrs = "0.13"
+if-addrs = "0.15"
 sea-orm = { version = "2.0", features = [
   "sqlx-postgres",
   "runtime-tokio-rustls",

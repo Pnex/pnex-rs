@@ -1025,7 +1025,7 @@ impl Worker {
         Ok(Written {
             bytes: sink.bytes,
             rows,
-            sha256: format!("{:x}", sink.hash.finalize()),
+            sha256: hex::encode(sink.hash.finalize()),
             schema,
         })
     }

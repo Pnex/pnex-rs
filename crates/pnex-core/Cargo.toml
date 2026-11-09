@@ -30,10 +30,10 @@ serde_json = { workspace = true }
 # UUIDs are generated on the backend only.
 uuid = { version = "1", default-features = false, features = ["serde"] }
 deunicode = { version = "1", optional = true }
-prost = { version = "0.13", optional = true }
+prost = { version = "0.14", optional = true }
 # Noise Protocol Framework (Apache-2.0 OR MIT), default crypto resolver.
 snow = { version = "0.10", optional = true }
-base64 = { version = "0.22", optional = true }
+base64 = { version = "0.23", optional = true }
 reqwest = { version = "0.12", default-features = false, optional = true }
 # Recurrence dates (ontology annex B), no clock: wasm-safe.
 chrono = { version = "0.4", default-features = false, features = ["serde", "alloc"] }
@@ -41,22 +41,23 @@ chrono = { version = "0.4", default-features = false, features = ["serde", "allo
 url = "2"
 utoipa = { workspace = true, optional = true }
 # Ontology graph algorithms (annex A3), MIT/Apache-2.0, wasm-safe.
-petgraph = { version = "0.6", default-features = false, features = ["graphmap", "stable_graph"] }
+petgraph = { version = "0.8", default-features = false, features = ["graphmap", "stable_graph"] }
 tokio = { version = "1", default-features = false, features = ["net"], optional = true }
 # Document extraction (all MIT): docx/xlsx containers, docx XML, PDF text (lopdf, no ttf-parser since 0.45), sheets.
 zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
-quick-xml = { version = "0.41", optional = true }
+quick-xml = { version = "0.42", optional = true }
 # Raw LZMA of Dukascopy tick files (markets-research.md D820), MIT, pure Rust.
 lzma-rs = { version = "0.3", optional = true }
-lopdf = { version = "0.45", default-features = false, optional = true }
+lopdf = { version = "0.47", default-features = false, optional = true }
 calamine = { version = "0.38", optional = true }
 # Fingerprints of erased values (`datasets::fingerprint`); also the digest of the
 # chunked frame in the Noise golden vectors. Pure Rust, dropped from the wasm bundle
 # when unused.
-sha2 = "0.10"
+sha2 = "0.11"
+hex = "0.4"
 
 [dev-dependencies]
 # serde roundtrip of the graph + flows.json projection.
 serde_json = { workspace = true }
 # Reference signer of the OTA golden vectors (SEC-18), same crate as the server.
-ed25519-dalek = "2"
+ed25519-dalek = "3"

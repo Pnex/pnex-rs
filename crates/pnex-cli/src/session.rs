@@ -125,7 +125,7 @@ fn exchange(http: &Client, url: &str, body: &Value) -> Result<Value> {
 
 fn random_b64(len: usize) -> String {
     let mut buf = vec![0u8; len];
-    getrandom::getrandom(&mut buf).expect("os random");
+    getrandom::fill(&mut buf).expect("os random");
     B64.encode(buf)
 }
 

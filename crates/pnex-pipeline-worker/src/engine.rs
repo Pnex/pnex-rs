@@ -148,8 +148,8 @@ fn luhn(args: &[ColumnarValue]) -> DfResult<ColumnarValue> {
 /// Key of `pseudonym()` for one org (governance.md D805): derived from the worker's
 /// master key and the org, never stored, the same for every run of that org.
 pub fn org_key(master: &[u8], org_id: i64) -> [u8; 32] {
-    use hmac::{Hmac, Mac};
-    let mut mac = <Hmac<sha2::Sha256> as Mac>::new_from_slice(master)
+    use hmac::{Hmac, KeyInit, Mac};
+    let mut mac = <Hmac<sha2::Sha256> as KeyInit>::new_from_slice(master)
         .unwrap_or_else(|_| unreachable!("HMAC takes a key of any length"));
     mac.update(format!("pseudonym:{org_id}").as_bytes());
     mac.finalize().into_bytes().into()
@@ -159,13 +159,13 @@ pub fn org_key(master: &[u8], org_id: i64) -> [u8; 32] {
 /// joins still match, telling nothing of the value without the key (D805).
 pub fn register_pseudonym(ctx: &SessionContext, key: [u8; 32]) {
     let f = move |args: &[ColumnarValue]| -> DfResult<ColumnarValue> {
-        use hmac::{Hmac, Mac};
+        use hmac::{Hmac, KeyInit, Mac};
         let input = text_arg(args)?;
         let out: StringArray = as_text(&input)?
             .iter()
             .map(|v| {
                 v.map(|v| {
-                    let mut mac = <Hmac<sha2::Sha256> as Mac>::new_from_slice(&key)
+                    let mut mac = <Hmac<sha2::Sha256> as KeyInit>::new_from_slice(&key)
                         .unwrap_or_else(|_| unreachable!("HMAC takes a key of any length"));
                     mac.update(v.as_bytes());
                     mac.finalize().into_bytes()[..16]

@@ -788,7 +788,7 @@ async fn a_rest_cursor_sends_the_last_value() {
 }
 
 fn signature(secret: &str, body: &[u8]) -> String {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(body);
     let hex: String = mac

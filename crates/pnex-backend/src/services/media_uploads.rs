@@ -483,7 +483,7 @@ async fn join(
         note: row.try_get("", "note")?,
         key,
         size: total,
-        sha256: format!("{:x}", hasher.finalize()),
+        sha256: hex::encode(hasher.finalize()),
         sniff,
     };
     if let Err(e) = record_version(ctx, org_id, &asset, stored, media_store).await {

@@ -18,7 +18,7 @@ pub const IDENTITY_TITLE: &str = "$title";
 pub fn fingerprint(value: &str) -> Option<String> {
     use sha2::{Digest, Sha256};
     let key = crate::fold::fold_words(value).join(" ");
-    (!key.is_empty()).then(|| format!("{:x}", Sha256::digest(key.as_bytes())))
+    (!key.is_empty()).then(|| hex::encode(Sha256::digest(key.as_bytes())))
 }
 
 /// What a transaction does to the view: replace it, or add to it.

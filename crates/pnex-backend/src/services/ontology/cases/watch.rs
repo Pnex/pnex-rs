@@ -202,7 +202,7 @@ pub async fn record(
         return Err(invalid(field, FIELD_INVALID));
     }
     let result = run.result();
-    let fingerprint = format!("{:x}", Sha256::digest(run.canonical().as_bytes()));
+    let fingerprint = hex::encode(Sha256::digest(run.canonical().as_bytes()));
     let scope_key = run.scope_key();
     let now = chrono::Utc::now();
     let mut new_parent: Option<(Uuid, Uuid)> = None;
@@ -469,7 +469,7 @@ pub async fn record_import(
             continue;
         };
         let values = serde_json::to_string(&u.changes).unwrap_or_default();
-        let digest = format!("{:x}", Sha256::digest(values.as_bytes()));
+        let digest = hex::encode(Sha256::digest(values.as_bytes()));
         let run = CheckRun {
             check: check.clone(),
             subject_id: id.to_string(),

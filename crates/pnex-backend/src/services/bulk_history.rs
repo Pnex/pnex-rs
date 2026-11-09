@@ -486,7 +486,6 @@ fn decode(
             if !points.is_empty() {
                 send(out, flights_batch(&points)?)?;
             }
-            drop(archive);
             drain(&mut reader)?;
         }
         Job::Dvf => {

@@ -16,9 +16,9 @@ serde_json = { workspace = true }
 # HTTP client to OpenObserve (PromQL read + remote-write), aligned with the backend.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 # Remote-write: prompb protobuf + snappy (same versions as the backend).
-prost = "0.13"
+prost = "0.14"
 snap = "1"
-base64 = "0.22"
+base64 = "0.23"
 # Live last-value cache reader (Valkey, injected VALKEY_URL by the supervisor)
 redis = { workspace = true }
 tokio = { version = "1", default-features = false, features = ["time", "sync"] }
@@ -33,6 +33,6 @@ chrono = { workspace = true }
 tokio = { version = "1", default-features = false, features = ["rt", "macros", "time"] }
 # Mock HTTP server for the O2 client tests (backend's spawn_mock_rauthy pattern).
 axum = "0.8"
-base64 = "0.22"
+base64 = "0.23"
 # Env vars are process-global: VALKEY_URL tests must not run in parallel.
-serial_test = "3.1"
+serial_test = "4"

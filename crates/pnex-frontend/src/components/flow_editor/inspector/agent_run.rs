@@ -125,7 +125,6 @@ pub(super) fn AgentRunForm(
             for (name, path) in declared {
                 label { key: "l-{name}", class: FIELD_LABEL, "{name}" }
                 input {
-                    key: "i-{name}",
                     class: INPUT,
                     disabled: !can_write,
                     value: "{path}",

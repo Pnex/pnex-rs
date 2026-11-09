@@ -2224,7 +2224,7 @@ async fn case_snapshots_and_export_round_trip() {
         assert_eq!(st, 200, "{full}");
         let content = full["content"].as_str().unwrap();
         use sha2::Digest;
-        assert_eq!(format!("{:x}", sha2::Sha256::digest(content.as_bytes())), full["snapshot"]["sha256"].as_str().unwrap());
+        assert_eq!(hex::encode(sha2::Sha256::digest(content.as_bytes())), full["snapshot"]["sha256"].as_str().unwrap());
         let frozen: Value = serde_json::from_str(content).unwrap();
         assert_eq!(frozen["export"]["workspace"]["events"].as_array().map(Vec::len), Some(2));
         // Never modified: no route writes a frozen state again.

@@ -107,7 +107,7 @@ pub async fn mount(host_id: &str, opts: &MapOpts) -> bool {
 /// consumed; native: the implementation returns `()`).
 #[cfg(target_arch = "wasm32")]
 pub fn unmount(host_id: &str) {
-    let _ = unmount_impl(host_id);
+    unmount_impl(host_id);
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -693,7 +693,7 @@ async fn browser_login(http: &reqwest::Client, url: &str) -> Result<TokenRespons
     use sha2::{Digest, Sha256};
 
     let mut bytes = [0u8; 32];
-    getrandom::getrandom(&mut bytes).map_err(|_| ApiError::Unreachable)?;
+    getrandom::fill(&mut bytes).map_err(|_| ApiError::Unreachable)?;
     let verifier = URL_SAFE_NO_PAD.encode(bytes);
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let redirect = format!("{url}/api/v1/oauth2/native");

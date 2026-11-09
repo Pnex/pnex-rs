@@ -11,4 +11,4 @@ description = "PNeX PDF rendering of pages (media-vision-studio.md D209): layout
 krilla = { version = "0.8", default-features = false }
 # Text shaping (MIT), the maintained successor of rustybuzz: the same
 # glyphs measure the lines and are drawn.
-harfrust = "0.14"
+harfrust = "0.15"

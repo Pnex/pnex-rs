@@ -165,12 +165,10 @@ fn lon_lat(
 ) -> (Option<f64>, Option<f64>, Option<f64>, Option<When>) {
     let mut p = (None, None, None, None);
     for a in e.attributes().flatten() {
-        let v = std::str::from_utf8(&a.value)
-            .ok()
-            .and_then(|v| number(v, false));
+        let v = number(&a.value, false);
         match a.key.local_name().as_ref() {
-            b"lon" => p.0 = v,
-            b"lat" => p.1 = v,
+            "lon" => p.0 = v,
+            "lat" => p.1 = v,
             _ => {}
         }
     }
@@ -199,37 +197,37 @@ fn gpx(text: &str) -> Result<Parsed, ImportError> {
     };
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e)) if e.local_name().as_ref() == b"trkpt" => {
+            Ok(Event::Start(e)) if e.local_name().as_ref() == "trkpt" => {
                 row += 1;
                 cur = Some(lon_lat(&e));
             }
             // A self-closing point has no time: unreadable.
-            Ok(Event::Empty(e)) if e.local_name().as_ref() == b"trkpt" => {
+            Ok(Event::Empty(e)) if e.local_name().as_ref() == "trkpt" => {
                 row += 1;
                 out.unreadable.push(row);
             }
             Ok(Event::Start(e)) => match e.local_name().as_ref() {
-                b"gpx" => seen_gpx = true,
-                b"ele" if cur.is_some() => field = Some("ele"),
-                b"time" if cur.is_some() => field = Some("time"),
+                "gpx" => seen_gpx = true,
+                "ele" if cur.is_some() => field = Some("ele"),
+                "time" if cur.is_some() => field = Some("time"),
                 _ => {}
             },
             Ok(Event::Text(t)) => {
                 if let (Some(f), Some(p)) = (field, cur.as_mut()) {
-                    let s = String::from_utf8_lossy(&t).to_string();
+                    let s: &str = &t;
                     match f {
-                        "ele" => p.2 = number(&s, false),
-                        _ => p.3 = when(&s),
+                        "ele" => p.2 = number(s, false),
+                        _ => p.3 = when(s),
                     }
                 }
             }
             Ok(Event::End(e)) => match e.local_name().as_ref() {
-                b"trkpt" => {
+                "trkpt" => {
                     if let Some(p) = cur.take() {
                         finish(row, p, &mut out);
                     }
                 }
-                b"ele" | b"time" => field = None,
+                "ele" | "time" => field = None,
                 _ => {}
             },
             Ok(Event::Eof) => break,

@@ -6,13 +6,13 @@ license.workspace = true
 description = "PNEX notifications — Channel trait, channel registry, minijinja rendering (D49-D54)"
 
 [dependencies]
-base64 = "0.22"
+base64 = "0.23"
 pnex-core = { workspace = true, features = ["egress"] }
 reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
   "json",
 ] }
-minijinja = "2"
+minijinja = "3"
 async-trait = { version = "0.1" }
 # smtp channel — rustls only (never openssl); verification against the system
 # CAs (rustls-native-certs) for self-hosted relays with a private CA.
@@ -33,8 +33,8 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 tokio = { version = "1", default-features = false, features = ["time"] }
 # Signed webhook bodies (D315).
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 
 [dev-dependencies]
 # Local HTTP receiver (webhook / websocket delivery) — zero external network.

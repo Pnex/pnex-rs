@@ -136,7 +136,10 @@ pub async fn title_keys<C: ConnectionTrait>(
 pub fn contact_key(org_id: i64, value: &str) -> String {
     use sha2::{Digest, Sha256};
     let v = value.trim().to_lowercase();
-    format!("contact:{:x}", Sha256::digest(format!("{org_id}:{v}")))
+    format!(
+        "contact:{}",
+        hex::encode(Sha256::digest(format!("{org_id}:{v}")))
+    )
 }
 
 /// The contact points `properties` hold for a type.

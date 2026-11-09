@@ -354,38 +354,38 @@ mod extract {
         loop {
             match reader.read_event().map_err(|_| ExtractError::Malformed)? {
                 Event::Start(e) | Event::Empty(e) => match e.name().as_ref() {
-                    b"w:pStyle" => {
+                    "w:pStyle" => {
                         heading_para = e
                             .attributes()
                             .flatten()
-                            .find(|a| a.key.as_ref() == b"w:val")
+                            .find(|a| a.key.as_ref() == "w:val")
                             .is_some_and(|a| is_heading_style(&a.value));
                     }
-                    b"w:t" => in_text = true,
-                    b"w:tab" => para.push('\t'),
-                    b"w:br" | b"w:cr" => para.push('\n'),
+                    "w:t" => in_text = true,
+                    "w:tab" => para.push('\t'),
+                    "w:br" | "w:cr" => para.push('\n'),
                     _ => {}
                 },
                 Event::Text(t) if in_text => {
-                    para.push_str(&t.decode().map_err(|_| ExtractError::Malformed)?);
+                    para.push_str(&t);
                 }
                 Event::GeneralRef(r) if in_text => {
                     if let Ok(Some(c)) = r.resolve_char_ref() {
                         para.push(c);
                     } else {
                         para.push_str(match &*r {
-                            b"amp" => "&",
-                            b"lt" => "<",
-                            b"gt" => ">",
-                            b"quot" => "\"",
-                            b"apos" => "'",
+                            "amp" => "&",
+                            "lt" => "<",
+                            "gt" => ">",
+                            "quot" => "\"",
+                            "apos" => "'",
                             _ => "",
                         });
                     }
                 }
                 Event::End(e) => match e.name().as_ref() {
-                    b"w:t" => in_text = false,
-                    b"w:p" => {
+                    "w:t" => in_text = false,
+                    "w:p" => {
                         let text = std::mem::take(&mut para);
                         if heading_para && !text.trim().is_empty() {
                             sections.push(Section {
@@ -414,8 +414,8 @@ mod extract {
 
     /// Built-in heading style ids: `Heading1`/`Title` (English Word),
     /// `Titre1`/`Titre` (French Word).
-    fn is_heading_style(v: &[u8]) -> bool {
-        let v = String::from_utf8_lossy(v).to_ascii_lowercase();
+    fn is_heading_style(v: &str) -> bool {
+        let v = v.to_ascii_lowercase();
         v.starts_with("heading") || v.starts_with("titre") || v == "title"
     }
 

@@ -24,7 +24,7 @@ pub fn record_wav(secs: u64) -> Result<Vec<u8>, CaptureError> {
     let format = supported.sample_format();
     let config: cpal::StreamConfig = supported.into();
     let channels = config.channels as usize;
-    let rate = config.sample_rate.0;
+    let rate = config.sample_rate;
     let samples = Arc::new(Mutex::new(Vec::<i16>::with_capacity(
         rate as usize * secs as usize,
     )));
@@ -62,7 +62,7 @@ where
 {
     device
         .build_input_stream(
-            config,
+            *config,
             move |data: &[T], _| {
                 let mut out = out.lock().expect("capture buffer");
                 // Keep the first channel: speech-to-text is mono.

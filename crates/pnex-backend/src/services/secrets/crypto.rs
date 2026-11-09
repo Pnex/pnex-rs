@@ -106,7 +106,9 @@ impl Keyring {
             if keys.iter().any(|(k, _)| k == id) {
                 return Err(KeyringError::Duplicate(id.to_string()));
             }
-            keys.push((id.to_string(), *Key::from_slice(&raw)));
+            let key =
+                Key::try_from(raw.as_slice()).map_err(|_| KeyringError::BadKey(id.to_string()))?;
+            keys.push((id.to_string(), key));
         }
         if keys.is_empty() {
             return Err(KeyringError::Missing);
@@ -145,7 +147,7 @@ impl Keyring {
         let aad = aad(org_id, secret_id);
         let ciphertext = XChaCha20Poly1305::new(key)
             .encrypt(
-                XNonce::from_slice(&nonce),
+                &XNonce::from(nonce),
                 Payload {
                     msg: plaintext.as_bytes(),
                     aad: &aad,
@@ -179,7 +181,8 @@ impl Keyring {
         let aad = aad(org_id, secret_id);
         let plain = XChaCha20Poly1305::new(key)
             .decrypt(
-                XNonce::from_slice(&sealed.nonce),
+                &XNonce::try_from(sealed.nonce.as_slice())
+                    .map_err(|_| SecretCryptoError::BadNonce)?,
                 Payload {
                     msg: &sealed.ciphertext,
                     aad: &aad,
@@ -230,8 +233,11 @@ mod tests {
         let nonce = hex("404142434445464748494a4b4c4d4e4f5051525354555657");
         let aad = hex("50515253c0c1c2c3c4c5c6c7");
         let msg = b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
-        let out = XChaCha20Poly1305::new(Key::from_slice(&key))
-            .encrypt(XNonce::from_slice(&nonce), Payload { msg, aad: &aad })
+        let out = XChaCha20Poly1305::new(&Key::try_from(key.as_slice()).unwrap())
+            .encrypt(
+                &XNonce::try_from(nonce.as_slice()).unwrap(),
+                Payload { msg, aad: &aad },
+            )
             .unwrap();
         let tag = &out[out.len() - 16..];
         assert_eq!(tag, hex("c0875924c1c7987947deafd8780acf49").as_slice());

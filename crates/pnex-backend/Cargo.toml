@@ -22,9 +22,11 @@ pnex-firmware-builder = { workspace = true }
 # the `stitch_panorama` worker (pure Rust, sequential; no native dep).
 pnex-stitcher = { path = "../pnex-stitcher", features = ["pose-model"] }
 pnex-migration = { path = "migration" }
-loco-rs = { version = "1.0", default-features = false, features = [
+loco-rs = { version = "1.3", default-features = false, features = [
   "cli",
   "with-db",
+  # Since 1.3 each database is a feature; PostgreSQL only (SQLite never linked).
+  "db-postgres",
   # Firmware build worker: PostgreSQL queue provider (Phase 6)
   "worker",
 ] }
@@ -47,9 +49,9 @@ tokio = { version = "1.45", default-features = false, features = [
 async-trait = { version = "0.1" }
 axum = { version = "0.8", features = ["ws"] }
 # Org secrets vault (secrets.md D112): XChaCha20-Poly1305 AEAD at rest.
-chacha20poly1305 = "0.10"
+chacha20poly1305 = "0.11"
 # OTA image signatures (SEC-18), BSD-3-Clause.
-ed25519-dalek = "2"
+ed25519-dalek = "3"
 # Device PKI (D153): org CAs + device certificates (MIT OR Apache-2.0),
 # chain verification of presented certificates (ISC), PEM/DER types.
 rcgen = "0.14"
@@ -60,7 +62,8 @@ rustls-pki-types = "1"
 async-imap = { version = "0.12", default-features = false, features = ["runtime-tokio"] }
 mail-parser = "0.11.9"
 # The sender verified by PneX (DKIM aligned on From, mail.md D458):
-# Apache-2.0 OR MIT, pure-Rust crypto, system DNS resolver.
+# Apache-2.0 OR MIT, pure-Rust crypto, system DNS resolver. 0.15 needs
+# mail-parser 1.0, a rewrite of the parser that reads untrusted mail: own lot.
 mail-auth = { version = "=0.13.3", default-features = false, features = ["rust-crypto", "dns-hickory"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
@@ -86,7 +89,7 @@ pnex-vision = { workspace = true }
 # Laya typed decisions (text-decide node, D197).
 pnex-decide = { workspace = true }
 # Ingestion metrics OpenObserve : Prometheus remote-write (protobuf+snappy)
-prost = "0.13"
+prost = "0.14"
 snap = "1"
 # Accent folding for measurement name normalization (D16)
 tracing = { version = "0.1" }
@@ -94,8 +97,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }
 # Site crawl (partner-watch.md D307): HTML → links and readable text, no
 # script run (MIT/ISC, same versions as already in the tree).
-scraper = "0.25"
-ego-tree = "0.10"
+scraper = "0.29"
+ego-tree = "0.11"
 # Device token and Noise pre-shared key generation.
 rand = "0.10"
 # Flow runtime supervisor (D18): SIGUSR1 + pid liveness check
@@ -111,16 +114,17 @@ pnex-asr = { workspace = true }
 # accepted), extracted to the model cache (D167).
 tar = "0.4"
 # Static: the Chainguard runtime image ships no libbz2.
-bzip2 = { version = "0.5", features = ["static"] }
+bzip2 = { version = "0.6", features = ["static"] }
 flate2 = "1"
 zip = { version = "9", default-features = false, features = ["deflate"] }
-base64 = "0.22"
+base64 = "0.23"
 # Pages (pages.md #21): Yjs CRDT server side, MIT.
 yrs = "0.28"
 # sha256 fingerprint of firmware artifacts (integrity, firmware_artifacts table)
-sha2 = "0.10"
+sha2 = "0.11"
+hex = "0.4"
 # HMAC-SHA256 of incoming webhook calls (connectors.md D795)
-hmac = "0.12"
+hmac = "0.13"
 # Browser agent signatures (WebCrypto ECDSA P-256, D266); already in the tree via rustls-webpki.
 ring = "0.17"
 # S3 backend for firmware artifacts (D5 v2, industrial tier) — direct
@@ -153,9 +157,9 @@ chrono = { workspace = true }
 # the tree through loco (tokio-cron-scheduler).
 chrono-tz = "0.10"
 # Next runs of the flows that play a site recipe (D326); already locked via edgelink.
-croner = "3.0.1"
+croner = "4"
 # GPX track import (cases-workspace.md K26); MIT, same version as pnex-core's.
-quick-xml = "0.41"
+quick-xml = "0.42"
 # Same versions as opendal: signs the S3 calls it has no API for (multipart listing).
 http = "1"
 reqsign-core = "3.3"
@@ -163,13 +167,13 @@ reqsign-aws-v4 = "3.3"
 if-addrs = { workspace = true }
 futures-util = "0.3"
 uuid = { workspace = true, features = ["v5"] }
-serde-saphyr = "1.3"
+serde-saphyr = "2"
 # CDP client of the server browser (site-recipes.md D325); MIT.
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 # v10: a crypto backend must be chosen. rust_crypto (loco default):
 # also enabling aws_lc_rs would create a union of 2 backends -> runtime panic
 # ("exactly one of the 'rust_crypto' and 'aws_lc_rs' features")
-jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 thiserror = "2"
 # Assistant knowledge cards embedded in the binary (D142, MIT/Apache-2.0).
 include_dir = "0.7"
@@ -183,12 +187,13 @@ name = "pnex-server"
 path = "src/bin/main.rs"
 
 [dev-dependencies]
-loco-rs = { version = "1.0", default-features = false, features = ["testing"] }
+loco-rs = { version = "1.3", default-features = false, features = ["testing"] }
+# Same major as loco-rs testing (its TestServer is handed to our helpers).
 axum-test = { version = "17", features = ["ws"] }
 # WebSocket client of the integration tests (firmware role)
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
-serial_test = { version = "3.1" }
+serial_test = { version = "4" }
 # Synthetic pictures of the Vision Lab training test (already a pnex-vision dep).
 image = { version = "0.25", default-features = false, features = ["png"] }
 # Temporary files and directories of the tests

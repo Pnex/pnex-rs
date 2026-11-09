@@ -205,7 +205,7 @@ pub async fn propose<C: ConnectionTrait>(
 }
 
 fn digest(text: &str) -> String {
-    format!("{:x}", sha2::Sha256::digest(text.as_bytes()))
+    hex::encode(sha2::Sha256::digest(text.as_bytes()))
 }
 
 /// Proposes, then accepts under the org's rule `rule` (D377): no user

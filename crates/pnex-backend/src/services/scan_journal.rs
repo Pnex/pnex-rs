@@ -29,7 +29,7 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
 }
 
 fn sha256(text: &str) -> String {
-    format!("sha256:{:x}", Sha256::digest(text.as_bytes()))
+    format!("sha256:{}", hex::encode(Sha256::digest(text.as_bytes())))
 }
 
 /// Who a scan is about, on every record, so that each one can be read alone.

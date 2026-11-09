@@ -210,7 +210,7 @@ pub fn user_content_headers(declared: &str, filename: &str) -> [(&'static str, S
 pub fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 #[cfg(test)]
