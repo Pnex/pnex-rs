@@ -931,10 +931,10 @@ Navires (AIS) et avions (ADS-B) : agrégats pour les marchés et positions brute
 |---|---|---|
 | **MK21** | Open Prices : prix produit par produit, pack `consumer_prices` | un produit suivi, ses prix datés par relevé, conditions ODbL notées |
 | **MK22** | DVF : transactions, pipeline vers une table, pack `real_estate` | un millésime chargé, médiane au m² par commune en SQL |
-| **MK23** | AIS : historiques ouverts (NOAA, autorité maritime danoise) en table, flux temps réel par clé d'org | une journée chargée, la trace d'un navire dans un dossier |
+| **MK23** | AIS : historiques ouverts (NOAA, autorité maritime danoise) en table, sans temps réel (Q-F7) | une journée chargée, la trace d'un navire dans un dossier |
 | **MK24** | ADS-B : adsb.lol (ODbL) en table | une journée chargée, la trace d'un avion dans un dossier |
 
-### F.6 Questions encore ouvertes
+### F.6 Questions tranchées ensuite (Shan, 2026-11-09)
 
-- **Q-F7** : AIS temps réel : quel fournisseur (aisstream.io par clé, autre) et quelle zone ?
-- **Q-F8** : volume accepté pour AIS et ADS-B (une journée mondiale d'AIS se compte en Go) : zones, échantillonnage, durée de rétention ?
+- **Q-F7** : AIS par fichiers historiques seulement (NOAA, autorité maritime danoise), pas de temps réel pour l'instant. MK23 sans clé ni flux continu.
+- **Q-F8** : tout garder, plafonné par le quota de jeux de données de l'org (D821, 20 Go par défaut) ; pas d'échantillonnage ni de zone imposés.
