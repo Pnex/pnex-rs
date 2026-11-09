@@ -250,7 +250,7 @@ fn run(file: Option<PathBuf>) -> Result<Running, String> {
     ) -> Result<cpal::Stream, String> {
         let channels = usize::from(config.channels()).max(1);
         let format = config.sample_format();
-        let mut resampler = Resampler::new(config.sample_rate().0);
+        let mut resampler = Resampler::new(config.sample_rate());
         let mut mono = Vec::new();
         let mut out = Vec::new();
         let config: cpal::StreamConfig = config.into();
@@ -271,13 +271,13 @@ fn run(file: Option<PathBuf>) -> Result<Running, String> {
         let err = |e| eprintln!("capture stream error: {e}");
         let stream = match format {
             cpal::SampleFormat::F32 => device.build_input_stream(
-                &config,
+                config,
                 move |d: &[f32], _: &_| feed(&mut d.iter().copied()),
                 err,
                 None,
             ),
             cpal::SampleFormat::I16 => device.build_input_stream(
-                &config,
+                config,
                 move |d: &[i16], _: &_| {
                     feed(&mut d.iter().map(|s| f32::from(*s) / f32::from(i16::MAX)))
                 },
