@@ -59,8 +59,8 @@
 # FRED series: with the dollar, the macro drivers of gold. `eia_series`
 # reads the EIA (US public domain) with the org's own key (vault secret
 # `markets_eia_key`): weekly oil stocks and production by default.
-# Since 1.10.0 (markets-research.md H.7) countries, the `exposed_to` link a
-# member declares (country, company or macro series → instrument, it
+# Since 1.10.0 (markets-research.md H.7) countries (type `nation`), the
+# `exposed_to` link a member declares (country, company or macro series → instrument, it
 # propagates a shock), a price move threshold per instrument and the cause
 # → effect pairs read by `GET /markets/chains`: candidate chains computed at
 # reading time, never stored as a cause (D742).
@@ -285,7 +285,7 @@ types:
     properties:
       - { key: ticker, name: Ticker, names: {fr: "Ticker"}, kind: text, max_len: 16, unique: true, required: true }
       - { key: move_threshold_pct, name: Price move threshold (% in 1 h), names: {fr: "Seuil de mouvement de cours (% en 1 h)"}, description: "A 1-hour return at least this large is a price move of the causal chains; empty = the pack setting.", descriptions: {fr: "Un rendement sur 1 h au moins aussi grand est un mouvement de cours des chaînes causales ; vide = le réglage du pack."}, kind: number, min: 0.01, max: 100 }
-  - key: country
+  - key: nation
     name: Country
     names: {fr: "Pays"}
     icon: globe
@@ -411,7 +411,7 @@ link_types:
     inverse_names: {fr: "est exposé à"}
     description: "A shock on the source may move the instrument (a producing country, an issuer, a macro series). Declared by a member; followed by the causal chains, never stored as a cause."
     descriptions: {fr: "Un choc sur la source peut faire bouger l'instrument (pays producteur, émetteur, série macro). Déclaré par un membre ; suivi par les chaînes causales, jamais stocké comme cause."}
-    from_types: [country, organization, macro_series]
+    from_types: [nation, organization, macro_series]
     to_types: [instrument]
     propagates_failure: true
   - key: event_about
@@ -877,6 +877,6 @@ imports:
 # Cause → effect pairs of the market causal chains (H.7, D906): each one is
 # two settings (prior, maximal gap) the org may set.
 causal_pairs:
-  - { cause: geo_event, effect: price.move, max_gap_min: 1440, prior: 0.5 }
+  - { cause: world.event, effect: price.move, max_gap_min: 1440, prior: 0.5 }
   - { cause: macro.release, effect: price.move, max_gap_min: 120, prior: 0.5 }
   - { cause: supply.disruption, effect: price.move, max_gap_min: 2880, prior: 0.5 }

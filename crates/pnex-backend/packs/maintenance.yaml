@@ -9,7 +9,7 @@
 # object, a bare device included.
 # Since 1.3.0 names carry their French translation (`names`, O43).
 # Since 1.5.0 controllers and compressors, links that propagate a failure
-# (drives, powers, cools, feeds) and the cause → effect pairs of the causal
+# (regulates, powers, cools, feeds) and the cause → effect pairs of the causal
 # chain detector (cases-workspace.md D905, D906).
 key: maintenance
 name: Augmented maintenance
@@ -137,11 +137,11 @@ link_types:
     from_types: [pump, machine, compressor]
     to_types: [pump, machine, line, compressor]
     propagates_failure: true
-  - key: drives
-    name: drives
-    names: {fr: "pilote"}
-    inverse_name: is driven by
-    inverse_names: {fr: "est piloté par"}
+  - key: regulates
+    name: regulates
+    names: {fr: "régule"}
+    inverse_name: is regulated by
+    inverse_names: {fr: "est régulé par"}
     from_types: [controller]
     to_types: [compressor, pump, machine, line]
     propagates_failure: true

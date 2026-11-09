@@ -29815,7 +29815,7 @@
           "device.offline",
           "device.online",
           "series.threshold",
-          "geo_event",
+          "world.event",
           "macro.release",
           "supply.disruption",
           "price.move"

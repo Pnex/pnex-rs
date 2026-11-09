@@ -27,8 +27,8 @@ pub enum SignalKind {
     DeviceOnline,
     #[serde(rename = "series.threshold")]
     SeriesThreshold,
-    #[serde(rename = "geo_event")]
-    GeoEvent,
+    #[serde(rename = "world.event")]
+    WorldEvent,
     #[serde(rename = "macro.release")]
     MacroRelease,
     #[serde(rename = "supply.disruption")]
@@ -47,7 +47,7 @@ impl SignalKind {
         SignalKind::DeviceOffline,
         SignalKind::DeviceOnline,
         SignalKind::SeriesThreshold,
-        SignalKind::GeoEvent,
+        SignalKind::WorldEvent,
         SignalKind::MacroRelease,
         SignalKind::SupplyDisruption,
         SignalKind::PriceMove,
@@ -64,7 +64,7 @@ impl SignalKind {
             SignalKind::DeviceOffline => "device.offline",
             SignalKind::DeviceOnline => "device.online",
             SignalKind::SeriesThreshold => "series.threshold",
-            SignalKind::GeoEvent => "geo_event",
+            SignalKind::WorldEvent => "world.event",
             SignalKind::MacroRelease => "macro.release",
             SignalKind::SupplyDisruption => "supply.disruption",
             SignalKind::PriceMove => "price.move",

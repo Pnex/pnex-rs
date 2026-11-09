@@ -3,7 +3,7 @@
 //! at reading time and never stored as a cause (D742).
 //!
 //! Effects: 1-hour returns beyond the instrument's threshold (`price.move`).
-//! Causes: world events (`geo_event`, or `supply.disruption` for a blockade
+//! Causes: world events (`world.event`, or `supply.disruption` for a blockade
 //! or sanctions) on their country, macro releases on their series. Paths:
 //! the `exposed_to` links (any link flagged `propagates_failure`).
 
@@ -129,9 +129,9 @@ async fn world_events(
                  WHERE w.object_id = o.id AND w.at <= $3 ORDER BY w.at DESC LIMIT 1) v ON TRUE \
                WHERE o.org_id = $1 AND o.type_key = 'geo_event' \
                  AND (o.valid_to IS NULL OR o.valid_to > $3)) \
-             SELECT e.id, c.id AS country, e.p ->> 'kind' AS kind, e.p ->> 'status' AS status, \
+             SELECT e.id, c.id AS area_id, e.p ->> 'kind' AS kind, e.p ->> 'status' AS status, \
                     (e.p ->> 'known_at')::timestamptz AS known_at \
-             FROM e JOIN objects c ON c.org_id = $1 AND c.type_key = 'country' \
+             FROM e JOIN objects c ON c.org_id = $1 AND c.type_key = 'nation' \
                AND c.properties ->> 'code' = e.p ->> 'country' AND c.valid_to IS NULL \
              WHERE (e.p ->> 'known_at')::timestamptz BETWEEN $2 AND $3",
             vec![org.into(), from.into(), as_of.into()],
@@ -144,17 +144,17 @@ async fn world_events(
             continue;
         }
         let id: Uuid = r.try_get("", "id")?;
-        let country: Uuid = r.try_get("", "country")?;
+        let nation: Uuid = r.try_get("", "area_id")?;
         let kind: Option<String> = r.try_get("", "kind")?;
         let at: DateTime<chrono::FixedOffset> = r.try_get("", "known_at")?;
         let kind = match kind.as_deref() {
             Some("blockade" | "sanctions") => SignalKind::SupplyDisruption,
-            _ => SignalKind::GeoEvent,
+            _ => SignalKind::WorldEvent,
         };
         out.push(Signal {
-            id: format!("geo_event:{id}"),
+            id: format!("world.event:{id}"),
             at: at.timestamp(),
-            on: country.to_string(),
+            on: nation.to_string(),
             kind,
             severity: if status.as_deref() == Some("confirmed") {
                 1.0

@@ -4109,7 +4109,7 @@ async fn point_in_time_reads_never_show_a_canary() {
             let o = execute(&deps, "get_object", &json!({ "object_id": event_id })).await.unwrap().value;
             assert_eq!(o["object"]["properties"]["status"], "unconfirmed", "{o}");
             for (tool, args) in [
-                ("create_object", json!({ "type_key": "country", "title": "X", "properties": { "code": "XX" } })),
+                ("create_object", json!({ "type_key": "nation", "title": "X", "properties": { "code": "XX" } })),
                 ("list_devices", json!({})),
             ] {
                 let e = execute(&deps, tool, &args).await.unwrap_err();
@@ -4186,7 +4186,7 @@ async fn price_moves_get_candidate_causal_chains() {
             }
         };
         let gold = create(json!({ "type_key": "instrument", "title": "Gold", "properties": { "ticker": "XAUUSD" } })).await;
-        let iran = create(json!({ "type_key": "country", "title": "Iran", "properties": { "code": "IR" } })).await;
+        let iran = create(json!({ "type_key": "nation", "title": "Iran", "properties": { "code": "IR" } })).await;
         let event = create(json!({
             "type_key": "geo_event", "title": "Strike",
             "properties": { "ref": "ch-1", "kind": "attack", "country": "IR", "status": "confirmed",
@@ -4217,8 +4217,8 @@ async fn price_moves_get_candidate_causal_chains() {
         assert_eq!(r["count"], 1, "{r}");
         let c = &r["results"][0];
         let hop = &c["hops"][0];
-        assert_eq!(hop["cause"]["id"], format!("geo_event:{event}"));
-        assert_eq!(hop["cause"]["kind"], "geo_event");
+        assert_eq!(hop["cause"]["id"], format!("world.event:{event}"));
+        assert_eq!(hop["cause"]["kind"], "world.event");
         assert_eq!(hop["cause"]["on"], iran);
         assert_eq!(hop["effect"]["kind"], "price.move");
         assert_eq!(hop["effect"]["on"], gold);

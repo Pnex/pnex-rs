@@ -34,6 +34,10 @@ const ENGINE_WORDS: &[(&str, &str)] = &[
         "skill",
         "lexicon term of agent skills (D711), not a pack type",
     ),
+    (
+        "maintenance",
+        "category of a time range read as a maintenance window by the causal chains (cases-workspace.md D904)",
+    ),
 ];
 
 /// Existing couplings to a shipped pack, frozen: each is debt to move to
@@ -52,8 +56,9 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
             "sourced_by",
             "piece",
             "identifier",
+            "statement",
         ],
-        "case workspace built on the investigation pack (cases.md)",
+        "case workspace built on the investigation pack (cases.md); a retained causal chain writes a hypothesis and its claims (D909)",
     ),
     (
         "pnex-frontend/src/pages/cases/",
