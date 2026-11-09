@@ -282,6 +282,7 @@ pub const EXPOSED: &[&str] = &[
     "ontology_objects_series",
     "ontology_objects_observations",
     "markets_bars",
+    "markets_chains",
     "markets_decisions_list",
     "markets_decisions_scores",
     "markets_event_study",

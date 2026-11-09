@@ -3953,6 +3953,12 @@ async fn point_in_time_reads_never_show_a_canary() {
             .await;
         assert_eq!(st, 201, "{event}");
         let event_id = event["id"].as_str().unwrap().to_string();
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({
+                "type_key": "instrument", "title": "Gold", "properties": { "ticker": "XAUUSD" }
+            })))
+            .await;
+        assert_eq!(st, 201, "{r}");
         let (st, series) = api
             .call("POST", "/api/v1/ontology/objects", Some(json!({
                 "type_key": "macro_series", "title": "CPI", "properties": { "code": "CPI" }
@@ -4027,6 +4033,11 @@ async fn point_in_time_reads_never_show_a_canary() {
                 "/api/v1/ontology/query".into(),
                 Some(json!({ "type_key": "geo_event", "as_of": at, "limit": 500 })),
             ),
+            (
+                "markets_chains",
+                format!("/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of={}", enc(&at)),
+                None,
+            ),
         ];
         let covered: std::collections::BTreeSet<&str> = reads.iter().map(|(id, ..)| *id).collect();
         let inventory: std::collections::BTreeSet<&str> = SEMANTICS
@@ -4071,6 +4082,144 @@ async fn point_in_time_reads_never_show_a_canary() {
         assert!(q.to_string().contains("\"confirmed\""), "{q}");
         let (_, o) = api.call("GET", &format!("/api/v1/ontology/objects/{series_id}/observations?as_of={}", enc(&later)), None).await;
         assert!(o.to_string().contains("31415.9"), "{o}");
+    })
+    .await;
+}
+
+/// Minute rows whose close is `price(i)` (in units of 10⁻⁸).
+fn minute_rows_at(
+    instrument: &str,
+    start_us: i64,
+    n: i64,
+    price: impl Fn(i64) -> i128,
+) -> arrow_array::RecordBatch {
+    use pnex_core::markets::history::Kline;
+    let rows: Vec<Kline> = (0..n)
+        .map(|i| {
+            let c = price(i);
+            Kline {
+                open_us: start_us + i * 60_000_000,
+                open: c,
+                high: c,
+                low: c,
+                close: c,
+                volume: 100_000_000,
+                quote_volume: None,
+                trades: None,
+            }
+        })
+        .collect();
+    let names = vec![instrument; rows.len()];
+    pnex_backend::services::markets::history::ohlcv_batch("1m", "histdata", &names, &rows).unwrap()
+}
+
+/// H.7: a world event in a country a member declared exposing gold explains
+/// the next 3.5 % hourly move, with its lift; nothing before the event is
+/// known, nothing through a link opened later, nothing without the link.
+#[tokio::test]
+#[serial]
+async fn price_moves_get_candidate_causal_chains() {
+    with_app(|server, ctx, token| async move {
+        use pnex_backend::services::datasets;
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token: token.clone(), org };
+        for pack in ["markets", "world_events"] {
+            let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
+            assert_eq!(st, 200, "{r}");
+        }
+        // Two days of gold minutes from 2026-01-05; +3.5 % at 2026-01-06 10:30.
+        let start = chrono::DateTime::parse_from_rfc3339("2026-01-05T00:00:00Z").unwrap();
+        let jump = 24 * 60 + 10 * 60 + 30;
+        let u: i128 = 100_000_000;
+        let store = datasets::store_of(&ctx.config).unwrap();
+        let hist = datasets::create(&ctx.db, org, "histdata_ohlcv_1m").await.unwrap();
+        let hist_id: uuid::Uuid = hist.id.parse().unwrap();
+        let rows = minute_rows_at("XAUUSD", start.timestamp_micros(), 2 * 1440, |i| if i < jump { 2000 * u } else { 2070 * u });
+        datasets::append_batch(&ctx.db, &store, org, hist_id, &rows).await.unwrap();
+
+        let create = |body: Value| {
+            let api = &api;
+            async move {
+                let (st, r) = api.call("POST", "/api/v1/ontology/objects", Some(body)).await;
+                assert_eq!(st, 201, "{r}");
+                r["id"].as_str().unwrap().to_string()
+            }
+        };
+        let gold = create(json!({ "type_key": "instrument", "title": "Gold", "properties": { "ticker": "XAUUSD" } })).await;
+        let iran = create(json!({ "type_key": "country", "title": "Iran", "properties": { "code": "IR" } })).await;
+        let event = create(json!({
+            "type_key": "geo_event", "title": "Strike",
+            "properties": { "ref": "ch-1", "kind": "attack", "country": "IR", "status": "confirmed",
+                            "known_at": "2026-01-06T08:00:00Z" }
+        }))
+        .await;
+        let chains = |as_of: &str| {
+            let api = &api;
+            let path = format!("/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of={as_of}&from=2026-01-05T00:00:00Z");
+            async move {
+                let (st, r) = api.call("GET", &path, None).await;
+                assert_eq!(st, 200, "{r}");
+                r
+            }
+        };
+        // Without the exposure link: no path, no chain.
+        assert_eq!(chains("2026-01-07T00:00:00Z").await["count"], 0);
+
+        // A member declares that Iran exposes gold since 2025.
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/links", Some(json!({
+                "link_type": "exposed_to", "source_id": iran, "target_id": gold,
+                "valid_from": "2025-01-01T00:00:00Z"
+            })))
+            .await;
+        assert_eq!(st, 201, "{r}");
+        let r = chains("2026-01-07T00:00:00Z").await;
+        assert_eq!(r["count"], 1, "{r}");
+        let c = &r["results"][0];
+        let hop = &c["hops"][0];
+        assert_eq!(hop["cause"]["id"], format!("geo_event:{event}"));
+        assert_eq!(hop["cause"]["kind"], "geo_event");
+        assert_eq!(hop["cause"]["on"], iran);
+        assert_eq!(hop["effect"]["kind"], "price.move");
+        assert_eq!(hop["effect"]["on"], gold);
+        assert_eq!(hop["distance"], 1);
+        // The move is known at the close of its hour (11:00): 3 h after the event.
+        assert_eq!(hop["gap"], 3 * 3_600);
+        assert!(c["confidence"].as_f64().unwrap() > 0.0);
+        assert!(c["lift"].as_f64().unwrap() >= 2.0, "{c}");
+
+        // Before the move closed: nothing to explain.
+        assert_eq!(chains("2026-01-06T10:59:00Z").await["count"], 0);
+        // A threshold above the move: no effect.
+        let (_, obj) = api.call("GET", &format!("/api/v1/ontology/objects/{gold}"), None).await;
+        let (st, r) = api
+            .call("PUT", &format!("/api/v1/ontology/objects/{gold}"), Some(json!({
+                "type_key": "instrument", "title": "Gold",
+                "properties": { "ticker": "XAUUSD", "move_threshold_pct": 5 },
+                "expected_version": obj["version"]
+            })))
+            .await;
+        assert_eq!(st, 200, "{r}");
+        assert_eq!(chains("2026-01-07T00:00:00Z").await["count"], 0, "a setting: the current threshold applies");
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let (_, r) = api
+            .call("GET", &format!("/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of={now}"), None)
+            .await;
+        assert_eq!(r["count"], 0, "no bars in the last 7 days");
+
+        // Unknown ticker, window too wide.
+        let (st, e) = api.call("GET", "/api/v1/markets/chains?instrument=NOPE&source=histdata&as_of=2026-01-07T00:00:00Z", None).await;
+        assert_eq!((st, e["errors"]["fields"]["instrument"].as_str()), (400, Some("unknown")), "{e}");
+        let (st, e) = api
+            .call("GET", "/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of=2026-03-01T00:00:00Z&from=2026-01-01T00:00:00Z", None)
+            .await;
+        assert_eq!((st, e["errors"]["fields"]["from"].as_str()), (400, Some("range:31d")), "{e}");
     })
     .await;
 }

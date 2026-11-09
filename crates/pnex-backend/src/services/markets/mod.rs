@@ -3,6 +3,7 @@
 //! known at t" takes, for each period, the last row known by then.
 
 pub mod calendar;
+pub mod chains;
 pub mod chart;
 pub mod decisions;
 pub mod documents;

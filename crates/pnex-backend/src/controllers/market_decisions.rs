@@ -12,6 +12,7 @@ use pnex_core::err_codes;
 use pnex_core::markets::decisions::{
     self as dec, BarOut, Barriers, Decision, ModelScores, NewDecision, ReliabilityBin, Scores,
 };
+use pnex_core::rca::{Chain, Hop, Signal, SignalKind};
 use pnex_core::Paginated;
 use serde::Deserialize;
 
@@ -24,6 +25,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/markets")
         .add("/bars", get(bars))
+        .add("/chains", get(chains))
         .add("/decisions", get(list).post(create))
         .add("/decisions/scores", get(scores))
 }
@@ -31,9 +33,13 @@ pub fn routes() -> Routes {
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(bars, create, list, scores),
+        paths(bars, chains, create, list, scores),
         components(schemas(
             BarOut,
+            Chain,
+            Hop,
+            Signal,
+            SignalKind,
             NewDecision,
             Decision,
             Barriers,
@@ -166,6 +172,107 @@ async fn bars(
             results: rows.iter().map(svc::bar_out).collect::<Vec<_>>(),
         }),
         Err(e) => bars_error(e),
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ChainsParams {
+    /// Ticker of the `instrument` object, as written in the price table.
+    instrument: String,
+    /// Price source (`source` column): `histdata`, `binance_public` or `mt5:<broker>`.
+    source: String,
+    /// Instant of the read (RFC 3339), now by default: everything as known then.
+    #[param(format = DateTime)]
+    as_of: Option<String>,
+    /// First instant of the price moves explained (RFC 3339); 7 days before
+    /// `as_of` by default, 31 days at most.
+    #[param(format = DateTime)]
+    from: Option<String>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/chains",
+    tag = "markets",
+    operation_id = "markets_chains",
+    summary = "Read the candidate causal chains of an instrument's price moves as known at a date",
+    description = "For each 1-hour price move of the instrument beyond its threshold in [`from`, `as_of`], the 3 best candidate chains from a world event, a supply disruption or a macro release, through the links a member declared as propagating (`exposed_to`), scored by the pairs of the installed packs, each with its placebo and lift (never filtered: an input of an external model). Computed at reading time, never stored, never a cause (D742). Everything as known at `as_of`. Requires `datasets:read` and `ontology:read`.",
+    params(ChainsParams, pagination::PageQuery),
+    responses(
+        (status = 200, body = Paginated<Chain>),
+        (status = 400, description = "Invalid parameter (field → token: `instrument` `unknown` when no instrument object has this ticker, `from` `range:31d`) or `market-bars-too-many-files`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied` or `marking-required`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn chains(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ChainsParams>,
+    Query(pq): Query<pagination::PageQuery>,
+) -> Result<Response> {
+    use crate::services::markets::chains::{self as ch, ChainsError, ChainsQuery};
+    if !org.can("ontology:read") {
+        return Err(crate::auth::access_denied("ontology:read"));
+    }
+    if dec::bar_table(&q.source).is_none() {
+        return Ok(field_error("source", err_codes::FIELD_INVALID));
+    }
+    if q.instrument.is_empty() || q.instrument.len() > 64 {
+        return Ok(field_error("instrument", err_codes::FIELD_INVALID));
+    }
+    let (as_of, from) = match (
+        instant("as_of", q.as_of.as_deref()),
+        instant("from", q.from.as_deref()),
+    ) {
+        (Ok(a), Ok(f)) => (a.unwrap_or_else(Utc::now), f),
+        (Err(r), _) | (_, Err(r)) => return Ok(r),
+    };
+    let from = from.unwrap_or(as_of - chrono::Duration::days(ch::WINDOW_DEFAULT_DAYS));
+    if from > as_of || as_of - from > chrono::Duration::days(ch::WINDOW_MAX_DAYS) {
+        return Ok(field_error("from", "range:31d"));
+    }
+    let page = PageParams::from(pq.limit.as_deref(), pq.offset.as_deref());
+    let mut filters = vec![
+        ("instrument".to_string(), q.instrument.clone()),
+        ("source".to_string(), q.source.clone()),
+        ("as_of".to_string(), as_of.to_rfc3339()),
+        ("from".to_string(), from.to_rfc3339()),
+    ];
+    filters.sort();
+    let Some(table) = svc::table_of(&ctx.db, org.org.id, &q.source).await? else {
+        return pagination::paged(
+            "/api/v1/markets/chains",
+            &filters,
+            page,
+            Vec::<Chain>::new(),
+        );
+    };
+    if let Some(refused) = super::datasets::governed(&ctx, &org, table, "bars").await {
+        return refused;
+    }
+    let store = match crate::services::datasets::store_of(&ctx.config) {
+        Ok(s) => s,
+        Err(e) => return super::datasets::dataset_error(e),
+    };
+    let query = ChainsQuery {
+        instrument: &q.instrument,
+        source: &q.source,
+        table,
+        from,
+        as_of,
+    };
+    match ch::chains(&ctx.db, &store, org.org.id, &query).await {
+        Ok(rows) => pagination::paged("/api/v1/markets/chains", &filters, page, rows),
+        Err(ChainsError::UnknownInstrument) => Ok(field_error("instrument", "unknown")),
+        Err(ChainsError::Bars(e)) => bars_error(e),
+        Err(ChainsError::Db(e)) => Err(e.into()),
+        Err(ChainsError::Onto(e)) => {
+            tracing::error!(error = %e, "causal pairs read failed");
+            Err(Error::InternalServerError)
+        }
     }
 }
 

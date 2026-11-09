@@ -5458,6 +5458,36 @@
         ],
         "type": "object"
       },
+      "Chain": {
+        "description": "A chain, root cause first (D907). `lift` = confidence ÷ placebo (D908).",
+        "properties": {
+          "confidence": {
+            "format": "double",
+            "type": "number"
+          },
+          "hops": {
+            "items": {
+              "$ref": "#/components/schemas/Hop"
+            },
+            "type": "array"
+          },
+          "lift": {
+            "format": "double",
+            "type": "number"
+          },
+          "placebo": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "hops",
+          "confidence",
+          "placebo",
+          "lift"
+        ],
+        "type": "object"
+      },
       "ChainLimits": {
         "description": "Bounds of a chain, set when it opens (D716). A round is one more run of an agent that\nalready ran in the chain, such as a fix after a review (D765).",
         "properties": {
@@ -20077,6 +20107,42 @@
         ],
         "type": "object"
       },
+      "Paginated_Chain": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Chain"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_ChangeView": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -29580,6 +29646,43 @@
         ],
         "type": "string"
       },
+      "Signal": {
+        "description": "A typed signal on an object (D904). `severity` in [0, 1] is computed by\nthe server, never by a model. `at` in Unix seconds.",
+        "properties": {
+          "at": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Stable id of the signal (its source row), for deduplication.",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SignalKind"
+          },
+          "on": {
+            "description": "Object id the signal is on.",
+            "type": "string"
+          },
+          "severity": {
+            "format": "double",
+            "type": "number"
+          },
+          "source_ref": {
+            "description": "Where the signal comes from (a change, a notification, a bar).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "on",
+          "kind",
+          "severity",
+          "source_ref"
+        ],
+        "type": "object"
+      },
       "SignalItem": {
         "description": "One raw signal around the case members, computed on read; retaining it\nmakes an event. `lane` is the member it concerns.",
         "properties": {
@@ -29623,6 +29726,24 @@
           "lane"
         ],
         "type": "object"
+      },
+      "SignalKind": {
+        "description": "Closed list of signal kinds (D904, H.7).",
+        "enum": [
+          "change.config",
+          "change.firmware",
+          "change.link",
+          "range.maintenance",
+          "alert",
+          "device.offline",
+          "device.online",
+          "series.threshold",
+          "geo_event",
+          "macro.release",
+          "supply.disruption",
+          "price.move"
+        ],
+        "type": "string"
       },
       "SitePage": {
         "description": "A page of the site registry (D309).",
@@ -71447,6 +71568,142 @@
           }
         ],
         "summary": "Read the price bars of an instrument as known at a date",
+        "tags": [
+          "markets"
+        ],
+        "x-pnex-as-of": "point_in_time"
+      }
+    },
+    "/api/v1/markets/chains": {
+      "get": {
+        "description": "For each 1-hour price move of the instrument beyond its threshold in [`from`, `as_of`], the 3 best candidate chains from a world event, a supply disruption or a macro release, through the links a member declared as propagating (`exposed_to`), scored by the pairs of the installed packs, each with its placebo and lift (never filtered: an input of an external model). Computed at reading time, never stored, never a cause (D742). Everything as known at `as_of`. Requires `datasets:read` and `ontology:read`.",
+        "operationId": "markets_chains",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Ticker of the `instrument` object, as written in the price table.",
+            "in": "query",
+            "name": "instrument",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Price source (`source` column): `histdata`, `binance_public` or `mt5:<broker>`.",
+            "in": "query",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Instant of the read (RFC 3339), now by default: everything as known then.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "First instant of the price moves explained (RFC 3339); 7 days before\n`as_of` by default, 31 days at most.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Chain"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid parameter (field → token: `instrument` `unknown` when no instrument object has this ticker, `from` `range:31d`) or `market-bars-too-many-files`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` or `marking-required` · `access-denied` (`args.permission` = `datasets:read`): the caller's role does not grant it"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`dataset-storage-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the candidate causal chains of an instrument's price moves as known at a date",
         "tags": [
           "markets"
         ],
