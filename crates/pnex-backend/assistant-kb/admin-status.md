@@ -6,11 +6,12 @@ pages: /admin/status
 nodes: 
 err_codes: platform-admin-required, retention-out-of-range, retention-locked-by-plan, tier-unknown
 tools: 
-tags: platform admin, subscription, tier, quota, abonnement, health, status, infrastructure, monitoring, retention, master key, rekey, hosted agents, agent limits, build memory, dependency cache, SBOM, limites des agents, uptime, disk, database, administrateur plateforme
+tags: platform admin, subscription, tier, quota, table quota, quota de tables, abonnement, health, status, infrastructure, monitoring, retention, master key, rekey, hosted agents, agent limits, build memory, dependency cache, SBOM, limites des agents, uptime, disk, database, administrateur plateforme
 ---
 Platform status is the platform administrator's page: the health of every infrastructure component of the PNeX installation, the platform-wide telemetry retention settings per organization, and the secrets master-key rotation. It appears in the menu only for platform administrators; anyone else gets "Reserved to platform administrators".
 
 ## What you can do
+- **Table quota per organization** (section Organizations, column **Tables (quota)**): the table storage used and its limit, in GB; a value set here overrides the default, **Reset** returns to it. The bulk loads of tables (vessel and aircraft positions, property sales) only run for an organization whose table quota is set here: anyone who signs up owns an organization, so these multi-GB daily loads are a platform administrator's decision.
 - **Component cards** (auto-refreshed every 30 s, or with the refresh button): Database, Rauthy (identity), OpenObserve (telemetry), Valkey (cache), Object storage, Host machine, Topology, AI service, Secrets vault. Each shows a status (Operational, Degraded, Down, Not configured), its latency and metrics such as database size, stored points, used memory, disk, CPU cores, load and uptime. The header shows the version and the mode (Self-hosted or SaaS).
 - **Topology card**: where the platform runs (Kubernetes, a container or the host machine), single node or cluster, the elected placement controller and one row per server node with its role: API (serves the UI and devices), Flows (runs the deployed flows) or API + flows. Degraded when no node runs flows (deployed flows are stopped) or when no controller holds the placement. AI service shows Not configured until an organization adds an LLM provider.
 - **Organizations**:

@@ -122,3 +122,34 @@ pub async fn set_agent_limits(
     )
     .await
 }
+
+/// Table storage of an org (D821): the value a platform admin set (`None`:
+/// the default), the default and the bytes used.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct TableQuota {
+    #[serde(default)]
+    pub bytes: Option<u64>,
+    pub default_bytes: u64,
+    pub used_bytes: u64,
+}
+
+/// `GET /api/v1/system/orgs/{id}/dataset-quota` — platform admin.
+pub async fn table_quota(org_id: i64) -> Result<TableQuota, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/system/orgs/{org_id}/dataset-quota"),
+        None,
+    )
+    .await
+}
+
+/// `PUT /api/v1/system/orgs/{id}/dataset-quota` — platform admin; `None`
+/// returns to the default.
+pub async fn set_table_quota(org_id: i64, bytes: Option<u64>) -> Result<TableQuota, ApiError> {
+    client::request(
+        reqwest::Method::PUT,
+        &format!("/api/v1/system/orgs/{org_id}/dataset-quota"),
+        Some(serde_json::json!({ "bytes": bytes })),
+    )
+    .await
+}

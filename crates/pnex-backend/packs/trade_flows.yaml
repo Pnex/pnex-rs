@@ -8,6 +8,8 @@
 # outside the org; served over plain HTTP only); NOAA MarineCadastre (US
 # public domain, cite the source; published months late); adsb.lol (Open
 # Database License: cite adsb.lol, share a derived database alike).
+# Loaded only for an org whose table quota a platform administrator set
+# explicitly (SEC-82): a day here is the platform's bandwidth and disk.
 key: trade_flows
 name: Trade flows
 names: {fr: "Flux physiques"}

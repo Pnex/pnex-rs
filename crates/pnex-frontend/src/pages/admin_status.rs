@@ -378,6 +378,7 @@ fn OrgsOverview() -> Element {
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-retention")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-override")} }
                                     th { class: "py-2 pr-4", {t!("admin-orgs-col-usage")} }
+                                    th { class: "py-2 pr-4", {t!("admin-orgs-col-tables")} }
                                 }
                             }
                             tbody {
@@ -570,6 +571,105 @@ fn OrgRow(row: OrgSystemRow, tiers: Vec<TierOption>, on_saved: Callback<()>) -> 
                 {usage}
                 if let Some(n) = row.stream_count {
                     span { class: "ml-2 text-xs text-gray-500", {t!("admin-orgs-streams", count : n)} }
+                }
+            }
+            td { class: "py-2 pr-4",
+                TableQuotaCell { org_id: row.org_id, org: row.name.clone() }
+            }
+        }
+    }
+}
+
+/// A table quota typed in GB (1024³ bytes, as `format_bytes` shows it);
+/// empty returns to the default.
+pub fn parse_gb(raw: &str) -> Result<Option<u64>, ()> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    let gb: f64 = raw.replace(',', ".").parse().map_err(|_| ())?;
+    if !gb.is_finite() || gb <= 0.0 || gb > 1_000_000.0 {
+        return Err(());
+    }
+    Ok(Some((gb * 1024f64.powi(3)).round() as u64))
+}
+
+/// The table storage of an org and its quota (D821): bulk loads (AIS,
+/// aircraft, DVF) only run once a platform admin has set it (SEC-82).
+#[component]
+fn TableQuotaCell(org_id: i64, org: String) -> Element {
+    let mut reload = use_signal(|| 0u32);
+    let quota = use_resource(move || async move {
+        let _ = reload();
+        api::system::table_quota(org_id).await
+    });
+    let mut input = use_signal(String::new);
+    let mut busy = use_signal(|| false);
+    let mut save = move |raw: String| {
+        let Ok(bytes) = parse_gb(&raw) else {
+            toasts::error("admin-orgs-tables-invalid");
+            return;
+        };
+        busy.set(true);
+        spawn(async move {
+            match api::system::set_table_quota(org_id, bytes).await {
+                Ok(_) => {
+                    toasts::success("toast-saved");
+                    input.set(String::new());
+                    reload.with_mut(|r| *r += 1);
+                }
+                Err(err) => toasts::error(err),
+            }
+            busy.set(false);
+        });
+    };
+    let label = t!("admin-orgs-tables-label", org : org.clone());
+    let (usage, explicit, over) = match &*quota.value().read() {
+        Some(Ok(q)) => {
+            let limit = q.bytes.unwrap_or(q.default_bytes);
+            (
+                format!(
+                    "{} / {}",
+                    format_bytes(q.used_bytes as f64),
+                    format_bytes(limit as f64)
+                ),
+                q.bytes.is_some(),
+                q.used_bytes > limit,
+            )
+        }
+        Some(Err(_)) => ("—".to_string(), false, false),
+        None => ("…".to_string(), false, false),
+    };
+    rsx! {
+        div { class: "flex flex-col gap-1",
+            span { class: if over { "text-red-700 font-medium whitespace-nowrap" } else { "text-gray-700 whitespace-nowrap" },
+                {usage}
+                if !explicit {
+                    span { class: "ml-2 text-xs text-gray-500", {t!("admin-orgs-tables-default")} }
+                }
+            }
+            div { class: "flex gap-2",
+                input {
+                    class: "w-24 px-2 py-1 border border-gray-300 rounded",
+                    aria_label: "{label}",
+                    r#type: "number",
+                    min: "1",
+                    step: "1",
+                    placeholder: t!("admin-orgs-tables-placeholder"),
+                    value: "{input}",
+                    oninput: move |e| input.set(e.value()),
+                }
+                button {
+                    class: BTN_PRIMARY_SM,
+                    disabled: busy(),
+                    onclick: move |_| save(input()),
+                    {t!("common-save")}
+                }
+                button {
+                    class: BTN_SECONDARY_SM,
+                    disabled: busy() || !explicit,
+                    onclick: move |_| save(String::new()),
+                    {t!("system-retention-reset")}
                 }
             }
         }
@@ -813,5 +913,18 @@ mod agent_limits_tests {
         let mut bad = texts.clone();
         bad[4] = "soon".into();
         assert_eq!(limits_of(&bad).unwrap_err(), "artifact_expires_days");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_gb;
+
+    #[test]
+    fn table_quota_is_typed_in_gb() {
+        assert_eq!(parse_gb(""), Ok(None));
+        assert_eq!(parse_gb("20"), Ok(Some(20 * 1024 * 1024 * 1024)));
+        assert_eq!(parse_gb("1,5"), Ok(Some(1_610_612_736)));
+        assert!(parse_gb("0").is_err() && parse_gb("-3").is_err() && parse_gb("x").is_err());
     }
 }

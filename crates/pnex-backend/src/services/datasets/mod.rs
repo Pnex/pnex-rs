@@ -1066,6 +1066,7 @@ pub async fn append_stream(
         let mut w =
             AsyncArrowWriter::try_new(sink, schema.clone(), Some(properties)).map_err(storage)?;
         let mut rows = 0u64;
+        let mut beat = Instant::now();
         let written = async {
             let mut next = Some(first);
             while let Some(batch) = next {
@@ -1081,8 +1082,21 @@ pub async fn append_stream(
                 };
                 rows += batch.num_rows() as u64;
                 w.write(&batch).await.map_err(storage)?;
+                // Same bounds as the CSV path: memory by row group, and a
+                // transaction of several minutes kept alive for the purge.
+                if w.in_progress_size().max(w.memory_size()) > ROW_GROUP_BYTES {
+                    w.flush().await.map_err(storage)?;
+                }
                 if w.bytes_written() as u64 > room {
                     return Err(DatasetError::QuotaExceeded);
+                }
+                if beat.elapsed() > HEARTBEAT_EVERY {
+                    beat = Instant::now();
+                    db.execute_raw(stmt(
+                        "UPDATE dataset_transactions SET heartbeat_at = now() WHERE id = $1",
+                        vec![transaction_id.into()],
+                    ))
+                    .await?;
                 }
                 next = match batches.recv().await {
                     Some(b) => b,

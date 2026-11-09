@@ -35,6 +35,25 @@ use crate::services::ontology::imports::source;
 const BATCH_ROWS: usize = 200_000;
 const LOCK_WAIT: Duration = Duration::from_secs(1);
 const DECODE_ERROR: &str = "unreadable";
+/// Longest line read (a DVF or AIS line is a few hundred bytes).
+const LINE_MAX: u64 = 64 * 1024;
+/// Largest trace of one aircraft for a day, packed or not (a few MB at most).
+const TRACE_MAX: u64 = 64 * 1024 * 1024;
+
+/// The next line into `buf`, `false` at the end; a line longer than
+/// [`LINE_MAX`] makes the file unreadable instead of filling the memory.
+fn next_line(r: &mut impl BufRead, buf: &mut String) -> Result<bool, &'static str> {
+    buf.clear();
+    let n = r
+        .by_ref()
+        .take(LINE_MAX)
+        .read_line(buf)
+        .map_err(|_| DECODE_ERROR)?;
+    if n as u64 == LINE_MAX && !buf.ends_with('\n') {
+        return Err(DECODE_ERROR);
+    }
+    Ok(n > 0)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Job {
@@ -157,6 +176,12 @@ pub async fn sweep_with(
     }
     let store = datasets::store_of(&ctx.config)?;
     for org in orgs {
+        // Every member owns an org of their own: several GB a day per org is
+        // the platform's bandwidth and disk, so only an org whose dataset
+        // quota a platform administrator set explicitly loads them (SEC-82).
+        if datasets::quota_override(&ctx.db, org).await?.is_none() {
+            continue;
+        }
         // Shared with the price history: one heavy load per org at a time.
         let Ok(lock) = TenantLock::acquire(&ctx.db, ns::MARKET_HISTORY, org, LOCK_WAIT).await
         else {
@@ -388,6 +413,7 @@ fn decode(
     mut reader: ChanReader,
     out: &mpsc::Sender<Option<RecordBatch>>,
 ) -> Result<(), &'static str> {
+    let mut l = String::new();
     match job {
         Job::AisDk | Job::AisNoaa => {
             let (header, line): (&str, fn(&str) -> Option<Position>) = if job == Job::AisDk {
@@ -399,17 +425,14 @@ fn decode(
                 let file = zip::read::read_zipfile_from_stream(&mut reader)
                     .map_err(|_| DECODE_ERROR)?
                     .ok_or(DECODE_ERROR)?;
-                let mut lines = BufReader::with_capacity(1 << 20, file).lines();
-                let first = lines
-                    .next()
-                    .ok_or(DECODE_ERROR)?
-                    .map_err(|_| DECODE_ERROR)?;
-                if !first.trim_start_matches('\u{feff}').starts_with(header) {
+                let mut r = BufReader::with_capacity(1 << 20, file);
+                if !next_line(&mut r, &mut l)?
+                    || !l.trim_start_matches('\u{feff}').starts_with(header)
+                {
                     return Err(DECODE_ERROR);
                 }
                 let mut rows = Vec::with_capacity(BATCH_ROWS);
-                for l in lines {
-                    let l = l.map_err(|_| DECODE_ERROR)?;
+                while next_line(&mut r, &mut l)? {
                     if let Some(p) = line(&l) {
                         rows.push(p);
                         if rows.len() == BATCH_ROWS {
@@ -434,14 +457,17 @@ fn decode(
                     .ok()
                     .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
                     .is_some_and(|n| n.starts_with("trace_full_"));
-                if !is_trace {
+                // Not a trace, or not one aircraft's day: skipped unread.
+                if !is_trace || e.size() > TRACE_MAX {
                     continue;
                 }
                 let mut raw = Vec::new();
                 e.read_to_end(&mut raw).map_err(|_| DECODE_ERROR)?;
                 let json = if raw.starts_with(&[0x1f, 0x8b]) {
                     let mut plain = Vec::new();
+                    // A packed trace never unpacks past TRACE_MAX.
                     flate2::read::GzDecoder::new(&raw[..])
+                        .take(TRACE_MAX)
                         .read_to_end(&mut plain)
                         .map_err(|_| DECODE_ERROR)?;
                     plain
@@ -464,30 +490,28 @@ fn decode(
             drain(&mut reader)?;
         }
         Job::Dvf => {
-            let mut lines =
-                BufReader::with_capacity(1 << 20, flate2::read::GzDecoder::new(&mut reader))
-                    .lines();
-            let first = lines
-                .next()
-                .ok_or(DECODE_ERROR)?
-                .map_err(|_| DECODE_ERROR)?;
-            let cols =
-                bulk::dvf_columns(first.trim_start_matches('\u{feff}')).ok_or(DECODE_ERROR)?;
-            let mut rows: Vec<Mutation> = Vec::with_capacity(BATCH_ROWS);
-            for l in lines.by_ref() {
-                let l = l.map_err(|_| DECODE_ERROR)?;
-                if let Some(m) = bulk::dvf_line(&cols, &l) {
-                    rows.push(m);
-                    if rows.len() == BATCH_ROWS {
-                        send(out, mutations_batch(&rows)?)?;
-                        rows.clear();
+            {
+                let mut r =
+                    BufReader::with_capacity(1 << 20, flate2::read::GzDecoder::new(&mut reader));
+                if !next_line(&mut r, &mut l)? {
+                    return Err(DECODE_ERROR);
+                }
+                let cols =
+                    bulk::dvf_columns(l.trim_start_matches('\u{feff}')).ok_or(DECODE_ERROR)?;
+                let mut rows: Vec<Mutation> = Vec::with_capacity(BATCH_ROWS);
+                while next_line(&mut r, &mut l)? {
+                    if let Some(m) = bulk::dvf_line(&cols, &l) {
+                        rows.push(m);
+                        if rows.len() == BATCH_ROWS {
+                            send(out, mutations_batch(&rows)?)?;
+                            rows.clear();
+                        }
                     }
                 }
+                if !rows.is_empty() {
+                    send(out, mutations_batch(&rows)?)?;
+                }
             }
-            if !rows.is_empty() {
-                send(out, mutations_batch(&rows)?)?;
-            }
-            drop(lines);
             drain(&mut reader)?;
         }
     }
