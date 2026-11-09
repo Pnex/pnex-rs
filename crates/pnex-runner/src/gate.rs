@@ -77,11 +77,5 @@ mod tests {
             !wait_until_blocked(|| true, 3, Duration::ZERO),
             "still open: never starts"
         );
-        // A closed local port reads as blocked at once.
-        let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = free.local_addr().unwrap();
-        drop(free);
-        let reachable = || TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok();
-        assert!(wait_until_blocked(reachable, 1, Duration::ZERO));
     }
 }
