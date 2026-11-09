@@ -408,12 +408,26 @@ impl PerObjectSetting {
     /// and upper-cased like the pack functions' `setting_list`. What follows
     /// a `:` is options read by the feature itself (`SP500:log_return:…`,
     /// D737), never part of the code.
+    /// An entry starting with a source prefix (`bis:…`, D888) belongs to that
+    /// source's import: it is left out here.
     pub fn codes(raw: &str) -> Vec<String> {
         raw.split([',', ';'])
+            .filter(|x| source_prefix(x).is_none())
             .map(|x| x.split(':').next().unwrap_or("").trim().to_uppercase())
             .filter(|x| !x.is_empty())
             .collect()
     }
+}
+
+/// Sources a setting entry may name before its code (D888): `bis:WS_CBPOL.D.US:…`.
+pub const SOURCE_PREFIXES: [&str; 1] = ["bis"];
+
+/// The source prefix of a setting entry, if it has one.
+pub fn source_prefix(entry: &str) -> Option<&'static str> {
+    let first = entry.split(':').next()?.trim();
+    SOURCE_PREFIXES
+        .into_iter()
+        .find(|p| p.eq_ignore_ascii_case(first))
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

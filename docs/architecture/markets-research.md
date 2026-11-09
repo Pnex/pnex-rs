@@ -853,7 +853,7 @@ Route d'ingestion propre aux terminaux (accès `Machine` au registre IAM, jeton 
 
 | | |
 |---|---|
-| Statut | **Proposé le 2026-11-09 ; MK15 codé le même jour ; questions F.4 tranchées par Shan**, le reste à faire dans l'ordre des lots |
+| Statut | **Proposé le 2026-11-09 ; MK15 et MK16 codés le même jour ; questions F.4 tranchées par Shan**, le reste à faire dans l'ordre des lots |
 | Cible | Shan d'abord, trader particulier, puis d'autres clients (§1) : ce qui lui sert passe en premier ; ce qu'un client exigerait seul (gros volumes, conformité) est reporté, pas refusé |
 
 ### F.1 Le besoin
@@ -870,7 +870,7 @@ Le jeu `WS_CBPOL` de la BRI donne le taux directeur d'une quarantaine de banques
 
 #### D881 — Un mouvement de taux directeur est un `market_move`
 
-Une décision de taux est un changement de niveau, pas une séance anormale : le détecteur D735 en mode `diff` avec un plancher (`:k:floor`) devrait suffire, sans nouveau détecteur. À vérifier au lot : `move_series` lit aujourd'hui des codes FRED ; il doit aussi accepter une série déjà en `market_observations` (BRI). L'étude d'événement (D743) mesure ensuite la réaction des séries surveillées à chaque décision.
+Une décision de taux est un changement de niveau, pas une séance anormale : le détecteur D735 en mode `diff` avec un plancher (`:k:floor`) suffit, sans nouveau détecteur, avec k = 1 et un plancher de 0,05 (D888). L'étude d'événement (D743) mesure ensuite la réaction des séries surveillées à chaque décision.
 
 #### D882 — Calendrier des publications : les dates à venir sont des faits sourcés
 
@@ -897,7 +897,7 @@ Peu utiles au trading hors compagnies aériennes. Si on les prend : adsb.lol (OD
 | Lot | Contenu | Vérification |
 |---|---|---|
 | **MK15** | D880 : import BRI, réglage `bis_series`, forme SDMX sans `KEY` (pack 1.7.0) | codé, test `prices_with_a_vault_key_and_the_reaction_to_a_filing` ; essai réel à faire |
-| **MK16** | D881 : décisions de taux en `market_move`, valeurs par défaut de `move_series` | une baisse de taux simulée donne un mouvement, une série plate aucun |
+| **MK16** | D881, D888 : décisions de taux en `market_move`, valeurs par défaut de `move_series` | codé : entrées `bis:` (k 1, plancher 0,05) pour le G10, ignorées par les imports FRED ; tests `a_policy_rate_decision_is_a_move_and_a_flat_rate_none` et `prices_with_a_vault_key_and_the_reaction_to_a_filing`. Rejoué hors ligne sur les vraies séries BRI depuis 2000 : JP 14/14 décisions, NO 74/74, XM 58/59, GB 54/56, CA 74/76 ; AU 72/109 (petits ajustements avant 2008 sous le plancher) |
 | **MK17** | D882 : calendrier des publications | les prochaines réunions Fed et BCE lues, datées par la source |
 | **MK18** | D883 : sous-indices d'inflation (Eurostat, INSEE, FAO) | une forme par source, testée sur une réponse réelle enregistrée |
 | **MK19** | D884 : indices immobiliers (BRI `WS_SPP`, Eurostat, Case-Shiller) | trimestriels, `known_at` au jour de lecture |

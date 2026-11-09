@@ -12,7 +12,7 @@ PNEX keeps two kinds of dated facts next to company filings: the **abnormal sess
 
 ## Abnormal sessions
 With the **Markets** pack, two settings list the series to watch:
-- **FRED series watched for abnormal sessions**: by default the VIX, the US 10-year rate, WTI and Brent oil and the trade-weighted dollar. FRED's S&P 500 and Nasdaq series are not in it: their owners require a permission before any use.
+- **Series watched for abnormal sessions (FRED, BIS)**: by default the VIX, the US 10-year rate, WTI and Brent oil and the trade-weighted dollar, and the policy rates of the G10 central banks (`bis:` entries): every rate decision of at least 5 bp becomes a market move. A `bis:` series must also be listed in **Central bank series (BIS)**. FRED's S&P 500 and Nasdaq series are not in it: their owners require a permission before any use.
 - **Tickers watched for abnormal sessions (Tiingo)**: by default SPY (S&P 500) and QQQ (Nasdaq-100), read with your own Tiingo key (secret `markets_tiingo_key`), by the import **Watched prices (Tiingo)**.
 - **First releases (ALFRED)**: with your own FRED key (secret `markets_fred_key`), the imports **Watched series first releases (ALFRED)** and **Macroeconomic series first releases (ALFRED)** give each value as first published, dated by its release. Without them, a history read at once is marked caught up from history and a past-dated rule test leaves it out; with them, the abnormal sessions of the past are dated too.
 

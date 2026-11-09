@@ -41,7 +41,9 @@
 # (SDMX CSV): by default the policy rates of the G10 central banks, daily
 # since 2000. BIS terms: free for a non-commercial use, the BIS cited as the
 # source; its statistics have their own terms ("About BIS statistics"), to
-# check before any use outside the org.
+# check before any use outside the org. A `bis:` entry of `move_series`
+# (D888) watches a BIS series: each policy rate decision of the G10 becomes a
+# `market_move` (D881). The series must also be in `bis_series`.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
@@ -105,12 +107,12 @@ settings:
   # left out: S&P Dow Jones Indices and Nasdaq require a prior permission
   # for any reproduction; equity indices come from ETFs read with Tiingo.
   - key: move_series
-    name: FRED series watched for abnormal sessions
-    names: {fr: "Séries FRED surveillées (séances anormales)"}
-    description: "Comma-separated CODE:mode:class entries, optionally :k:floor. Mode log_return (prices, indices) or diff (rates, VIX). Class equity_index, commodity, rates, volatility, fx or crypto. FRED's SP500 and NASDAQCOM need the permission of S&P Dow Jones Indices and Nasdaq before any use."
-    descriptions: {fr: "Entrées CODE:mode:classe séparées par des virgules, éventuellement :k:plancher. Mode log_return (cours, indices) ou diff (taux, VIX). Classe equity_index, commodity, rates, volatility, fx ou crypto. SP500 et NASDAQCOM de FRED exigent l'accord de S&P Dow Jones Indices et de Nasdaq avant tout usage."}
+    name: Series watched for abnormal sessions (FRED, BIS)
+    names: {fr: "Séries surveillées (séances anormales, FRED, BRI)"}
+    description: "Comma-separated CODE:mode:class entries, optionally :k:floor; a FRED code, or bis:KEY for a series of the BIS setting. Mode log_return (prices, indices) or diff (rates, VIX). Class equity_index, commodity, rates, volatility, fx or crypto. By default the G10 policy rates catch every decision of at least 5 bp (k 1, floor 0.05). FRED's SP500 and NASDAQCOM need the permission of S&P Dow Jones Indices and Nasdaq before any use."
+    descriptions: {fr: "Entrées CODE:mode:classe séparées par des virgules, éventuellement :k:plancher ; un code FRED, ou bis:CLÉ pour une série du réglage BRI. Mode log_return (cours, indices) ou diff (taux, VIX). Classe equity_index, commodity, rates, volatility, fx ou crypto. Par défaut, les taux directeurs du G10 relèvent chaque décision d'au moins 5 pb (k 1, plancher 0,05). SP500 et NASDAQCOM de FRED exigent l'accord de S&P Dow Jones Indices et de Nasdaq avant tout usage."}
     kind: text
-    default: "VIXCLS:diff:volatility, DGS10:diff:rates, DCOILWTICO:log_return:commodity, DCOILBRENTEU:log_return:commodity, DTWEXBGS:log_return:fx"
+    default: "VIXCLS:diff:volatility, DGS10:diff:rates, DCOILWTICO:log_return:commodity, DCOILBRENTEU:log_return:commodity, DTWEXBGS:log_return:fx, bis:WS_CBPOL.D.US:diff:rates:1:0.05, bis:WS_CBPOL.D.XM:diff:rates:1:0.05, bis:WS_CBPOL.D.JP:diff:rates:1:0.05, bis:WS_CBPOL.D.GB:diff:rates:1:0.05, bis:WS_CBPOL.D.CA:diff:rates:1:0.05, bis:WS_CBPOL.D.CH:diff:rates:1:0.05, bis:WS_CBPOL.D.AU:diff:rates:1:0.05, bis:WS_CBPOL.D.NZ:diff:rates:1:0.05, bis:WS_CBPOL.D.SE:diff:rates:1:0.05, bis:WS_CBPOL.D.NO:diff:rates:1:0.05"
   - key: move_tickers
     name: Tickers watched for abnormal sessions (Tiingo)
     names: {fr: "Tickers surveillés (séances anormales, Tiingo)"}

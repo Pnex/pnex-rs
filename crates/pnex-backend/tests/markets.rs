@@ -426,8 +426,15 @@ async fn mock_keyed_sources(seen: Arc<Mutex<Vec<(String, String)>>>) -> String {
         )
         .route(
             "/api/v1/data/WS_CBPOL/{key}/all",
+            // 100 days at 0.75, then a 25 bp cut from day 80 (2026-08-20).
             get(|| async {
-                "FREQ,REF_AREA,TITLE,TIME_PERIOD,OBS_VALUE\nD,JP, Policy rate - Japan,2026-10-30,0.5\nD,JP, Policy rate - Japan,2026-10-31,0.75\n"
+                let d0 = chrono::NaiveDate::from_ymd_opt(2026, 6, 1).unwrap();
+                let mut csv = String::from("FREQ,REF_AREA,TITLE,TIME_PERIOD,OBS_VALUE\n");
+                for i in 0..100 {
+                    let rate = if i < 80 { 0.75 } else { 0.5 };
+                    csv += &format!("D,JP, Policy rate - Japan,{},{rate}\n", d0 + chrono::Duration::days(i));
+                }
+                csv
             }),
         )
         .route(
@@ -463,6 +470,7 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         api.settings(json!({
             "source_contact": CONTACT, "covered_tickers": "ACME", "benchmark_ticker": "SPY",
             "ecb_series": "FM.D.U2.EUR", "bis_series": "WS_CBPOL.D.JP", "covered_leis": "LEITEST",
+            "move_series": "bis:WS_CBPOL.D.JP:diff:rates:1:0.05",
             "move_tickers": "ACME:volume:equity_index"
         }))
         .await;
@@ -640,8 +648,20 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         assert_eq!(r["run"]["state"], "applied", "{r}");
         let rate = object_id(&db, org, "macro_series", "code", "WS_CBPOL.D.JP").await.expect("BIS series");
         let rates = api.observations(&rate, "metric=WS_CBPOL.D.JP").await;
-        assert_eq!(rates.len(), 2, "{rates:?}");
-        assert_eq!(rates[0]["period_end"], "2026-10-31");
+        assert_eq!(rates.len(), 100, "{rates:?}");
+        assert_eq!(rates[0]["period_end"], "2026-09-08");
+        // D881, D888: the cut is a market move, the only one of the series.
+        let cut = object_id(&db, org, "market_event", "ref", "move:WS_CBPOL.D.JP:2026-08-20:diff").await;
+        assert!(cut.is_some(), "the policy rate cut is a move");
+        let moves = count(
+            &db,
+            format!(
+                "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event' \
+                 AND properties ->> 'ref' LIKE 'move:WS_CBPOL.D.JP:%'"
+            ),
+        )
+        .await;
+        assert_eq!(moves, 1);
         let r = api.run("European reports (ESEF)").await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
         let f = object_id(&db, org, "filing", "accession", "LEITEST-2025").await;

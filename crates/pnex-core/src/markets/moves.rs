@@ -211,12 +211,16 @@ pub struct WatchedSeries {
     pub params: MoveParams,
 }
 
-/// The `move_series` setting: `CODE:mode:asset_class[:k[:floor]]`, comma or
-/// semicolon separated. A malformed entry is left out, never guessed.
+/// The `move_series` setting: `[source:]CODE:mode:asset_class[:k[:floor]]`,
+/// comma or semicolon separated. The source prefix (`bis`, D888) only tells
+/// which import reads the series. A malformed entry is left out, never guessed.
 pub fn watched_series(raw: &str) -> Vec<WatchedSeries> {
     raw.split([',', ';'])
         .filter_map(|entry| {
-            let parts: Vec<&str> = entry.split(':').map(str::trim).collect();
+            let mut parts: Vec<&str> = entry.split(':').map(str::trim).collect();
+            if crate::ontology::import::source_prefix(entry).is_some() {
+                parts.remove(0);
+            }
             let code = parts.first()?.to_uppercase();
             let mode = match *parts.get(1)? {
                 "log_return" => MoveMode::LogReturn,
@@ -462,6 +466,32 @@ mod tests {
         let fx = watched_series("DTWEXBGS:log_return:fx, X:log_return:fx:3:0.01");
         assert_eq!(fx[0].params.floor, FX_FLOOR);
         assert_eq!(fx[1].params.floor, 0.01, "an explicit floor wins");
+        // D888: a BIS series is read by its own import, watched the same way.
+        let bis = watched_series("bis:WS_CBPOL.D.US:diff:rates:1:0.05, bis:X");
+        assert_eq!(bis.len(), 1);
+        assert_eq!(bis[0].code, "WS_CBPOL.D.US");
+        assert_eq!((bis[0].params.k, bis[0].params.floor), (1.0, 0.05));
+        assert_eq!(
+            crate::ontology::import::PerObjectSetting::codes(
+                "DGS10:diff:rates, BIS:WS_CBPOL.D.US:diff:rates"
+            ),
+            vec!["DGS10"],
+            "the FRED import never asks FRED for a BIS series"
+        );
+    }
+
+    #[test]
+    fn a_policy_rate_decision_is_a_move_and_a_flat_rate_none() {
+        // A step series: flat, then one 25 bp cut.
+        let mut s: Vec<_> = (0..200).map(|i| (day(i), 4.0)).collect();
+        s.extend((200..260).map(|i| (day(i), 3.75)));
+        let w = &watched_series("bis:WS_CBPOL.D.US:diff:rates:1:0.05")[0];
+        let got = detect(&s, w.mode, &w.params);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].date, day(200));
+        assert_eq!(got[0].direction, MoveDirection::Down);
+        let flat: Vec<_> = (0..260).map(|i| (day(i), 4.0)).collect();
+        assert!(detect(&flat, w.mode, &w.params).is_empty());
     }
 
     #[test]
