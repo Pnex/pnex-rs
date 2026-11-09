@@ -3007,3 +3007,147 @@ async fn histdata_real_eurusd() {
     })
     .await;
 }
+
+/// MK17, MK18–MK20 (D882–D885): the calendars become time ranges of the org,
+/// Eurostat and PortWatch become dated series.
+#[tokio::test]
+#[serial]
+async fn calendars_eurostat_and_chokepoints() {
+    use axum::extract::RawQuery;
+    use axum::http::HeaderMap;
+    use axum::routing::get;
+    with_app(|server, ctx, token| async move {
+        let db = ctx.db.clone();
+        pnex_backend::services::markets::init(&ctx);
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        assert_eq!(st, 200, "{r}");
+        api.settings(json!({
+            "source_contact": CONTACT, "calendars": "bls, fomc, ecb",
+            "eurostat_series": "prc_hicp_manr.M.RCH_A.NRG.EA", "chokepoints": "chokepoint6"
+        }))
+        .await;
+        let asked = Arc::new(Mutex::new(Vec::<String>::new()));
+        let log = asked.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new()
+            .route(
+                "/bls.ics",
+                get(|h: HeaderMap| async move {
+                    // The BLS refuses a client without a declared contact.
+                    let ua = h.get("user-agent").and_then(|v| v.to_str().ok()).unwrap_or("");
+                    if !ua.contains("test@example.com") {
+                        return (axum::http::StatusCode::FORBIDDEN, String::new());
+                    }
+                    (axum::http::StatusCode::OK, "BEGIN:VCALENDAR\r\nX-WR-CALNAME:BLS\r\n\
+BEGIN:VEVENT\r\nUID:cpi-dec\r\nDTSTART;TZID=US-Eastern:20261210T083000\r\nDURATION:PT0M\r\nSUMMARY:Consumer Price Index\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:jobs-dec\r\nDTSTART;TZID=US-Eastern:20261204T083000\r\nDURATION:PT0M\r\nSUMMARY:Employment Situation\r\nEND:VEVENT\r\n\
+END:VCALENDAR\r\n".to_string())
+                }),
+            )
+            .route(
+                "/fomc.htm",
+                get(|| async {
+                    "<h4>2026 FOMC Meetings</h4><div class=\"fomc-meeting__month\"><strong>December</strong></div>\
+                     <div class=\"fomc-meeting__date\">8-9*</div>"
+                }),
+            )
+            .route(
+                "/ecb.html",
+                get(|| async {
+                    "<p>Governing Council</p><dt>17/12/2026</dt><dd>Governing Council of the ECB: monetary policy meeting in Frankfurt (Day 2), followed by press conference</dd>"
+                }),
+            )
+            .route(
+                "/eurostat/api/dissemination/sdmx/2.1/data/PRC_HICP_MANR/M.RCH_A.NRG.EA",
+                get(|| async {
+                    "DATAFLOW,LAST UPDATE,freq,unit,coicop,geo,TIME_PERIOD,OBS_VALUE,OBS_FLAG\n\
+                     ESTAT:PRC_HICP_MANR(1.0),06/02/26 23:00:00,M,RCH_A,NRG,EA,2026-08,-1.9,\n\
+                     ESTAT:PRC_HICP_MANR(1.0),06/02/26 23:00:00,M,RCH_A,NRG,EA,2026-09,-0.4,\n"
+                }),
+            )
+            .route(
+                "/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query",
+                get(move |RawQuery(q): RawQuery| {
+                    let log = log.clone();
+                    async move {
+                        log.lock().unwrap().push(q.unwrap_or_default());
+                        axum::Json(json!({"features": [
+                            {"attributes": {"date": "2026-10-31", "portname": "Strait of Hormuz", "n_total": 80, "n_tanker": 40, "capacity": 9000000}},
+                            {"attributes": {"date": "2026-11-01", "portname": "Strait of Hormuz", "n_total": 20, "n_tanker": 5, "capacity": 2000000}}
+                        ]}))
+                    }
+                }),
+            );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::markets::allow_test_host(&base);
+
+        // Calendars: one range per release and decision, in the org's calendar.
+        let urls = pnex_backend::services::markets::calendar::Urls {
+            bls: format!("{base}/bls.ics"),
+            fomc: format!("{base}/fomc.htm"),
+            ecb: format!("{base}/ecb.html"),
+        };
+        pnex_backend::services::markets::calendar::sweep(&ctx, &urls).await.unwrap();
+        let ranges = |sql: &str| count(&db, format!("SELECT count(*) AS n FROM time_ranges WHERE org_id = {org} AND scope_kind = 'org' {sql}"));
+        assert_eq!(ranges("").await, 4);
+        assert_eq!(ranges("AND external_id = 'bls:cpi-dec' AND category = 'economic_release'").await, 1);
+        assert_eq!(ranges("AND external_id = 'fomc:2026-12-09' AND category = 'central_bank_meeting'").await, 1);
+        assert_eq!(ranges("AND external_id = 'ecb:2026-12-17'").await, 1);
+        assert_eq!(ranges("AND planned_start = '2026-12-10T13:30:00Z'").await, 1, "08:30 New York");
+        let (st, list) = api.call("GET", "/api/v1/time-ranges?scope_kind=org&limit=50", None).await;
+        assert_eq!(st, 200, "{list}");
+        assert_eq!(list["count"], 4, "on the calendar: {list}");
+        // Read again the same day: nothing asked, nothing doubled.
+        pnex_backend::services::markets::calendar::sweep(&ctx, &urls).await.unwrap();
+        assert_eq!(ranges("").await, 4);
+        // A meeting moved: the range follows, still one.
+        db.execute_raw(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!("UPDATE time_ranges SET updated_at = now() - interval '2 days' WHERE org_id = {org}"),
+        ))
+        .await
+        .unwrap();
+        pnex_backend::services::markets::calendar::sweep(&ctx, &urls).await.unwrap();
+        assert_eq!(ranges("").await, 4);
+
+        // Eurostat and PortWatch: dated series.
+        for host in ["https://ec.europa.eu", "https://services9.arcgis.com"] {
+            db.execute_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!("UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') WHERE org_id = {org}"),
+            ))
+            .await
+            .unwrap();
+        }
+        let r = api.run("European statistics (Eurostat)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let energy = object_id(&db, org, "macro_series", "code", "PRC_HICP_MANR.M.RCH_A.NRG.EA").await.expect("series");
+        let v = api.observations(&energy, "metric=PRC_HICP_MANR.M.RCH_A.NRG.EA").await;
+        assert_eq!(v.len(), 2, "{v:?}");
+        assert_eq!(v[0]["period_end"], "2026-09-01");
+
+        let r = api.run("Shipping chokepoints (IMF PortWatch)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let q = asked.lock().unwrap().clone();
+        assert!(q[0].contains("chokepoint6"), "PortWatch ids are lower-case: {q:?}");
+        assert!(q[0].contains("2000-01-01"), "the whole history the first time: {q:?}");
+        let hormuz = object_id(&db, org, "macro_series", "code", "CHOKEPOINT6").await.expect("chokepoint");
+        let tankers = api.observations(&hormuz, "metric=n_tanker").await;
+        assert_eq!(tankers.len(), 2);
+        let (_, obj) = api.call("GET", &format!("/api/v1/ontology/objects/{hormuz}"), None).await;
+        assert_eq!(obj["title"], "Strait of Hormuz", "{obj}");
+        api.run("Shipping chokepoints (IMF PortWatch)").await;
+        let q = asked.lock().unwrap().clone();
+        assert!(q[1].contains("2026-10-2"), "then a few days back from the last value: {q:?}");
+    })
+    .await;
+}

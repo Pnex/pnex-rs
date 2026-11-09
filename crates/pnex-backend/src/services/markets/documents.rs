@@ -74,6 +74,10 @@ pub fn spawn_scheduler(ctx: &AppContext) {
                 if let Err(e) = super::identity::sweep(&ctx, gleif).await {
                     tracing::warn!("market identity sweep failed: {e}");
                 }
+                let urls = super::calendar::Urls::default();
+                if let Err(e) = super::calendar::sweep(&ctx, &urls).await {
+                    tracing::warn!("market calendars sweep failed: {e}");
+                }
                 let today = chrono::Utc::now().date_naive();
                 let binance = pnex_core::markets::history::BINANCE_SPOT_1M.base;
                 if let Err(e) = super::history::sweep(&ctx, binance, today).await {

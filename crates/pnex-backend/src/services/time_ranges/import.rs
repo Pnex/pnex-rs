@@ -297,6 +297,8 @@ fn windows_tz(name: &str) -> Option<&'static str> {
         "AUS Eastern Standard Time" => "Australia/Sydney",
         "New Zealand Standard Time" => "Pacific/Auckland",
         "Eastern Standard Time" => "America/New_York",
+        // Not Windows: the BLS release schedule's own name.
+        "US-Eastern" => "America/New_York",
         "Central Standard Time" => "America/Chicago",
         "Mountain Standard Time" => "America/Denver",
         "US Mountain Standard Time" => "America/Phoenix",

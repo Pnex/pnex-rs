@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 
 use crate::ontology::import::{parse_csv, table_rows};
 
+pub mod calendar;
 pub mod chart;
 pub mod exhibit21;
 pub mod history;
@@ -84,6 +85,9 @@ pub enum ResponseShape {
     /// (`output_type=4`): each value dated by the day it was first published
     /// (D811). The series is the one queried.
     AlfredVintages,
+    /// IMF PortWatch daily transits of a chokepoint (ArcGIS JSON), per day:
+    /// vessels by kind and capacity (D885). The chokepoint is the one queried.
+    PortwatchDaily,
 }
 
 /// A source that takes a key: fixed host, fixed vault name. A mapping names
@@ -127,6 +131,8 @@ pub fn keyed_source(key: &str) -> Option<KeyedSource> {
 pub fn url_value(shape: Option<ResponseShape>, code: &str) -> String {
     match shape {
         Some(ResponseShape::EcbCsv) => code.replacen('.', "/", 1),
+        // Setting codes are upper-cased; PortWatch ids are not.
+        Some(ResponseShape::PortwatchDaily) => code.to_ascii_lowercase(),
         _ => code.to_string(),
     }
 }
@@ -146,6 +152,7 @@ pub fn records(shape: ResponseShape, body: &[u8]) -> Option<Vec<Value>> {
         ResponseShape::DailyPrices => daily_prices(&doc),
         ResponseShape::EsefFilings => esef_filings(&doc),
         ResponseShape::AlfredVintages => alfred_vintages(&doc),
+        ResponseShape::PortwatchDaily => portwatch_daily(&doc),
         ResponseShape::DatedCsv | ResponseShape::EcbCsv => None,
     }
 }
@@ -429,6 +436,41 @@ fn ecb_csv(text: &str) -> Option<Vec<Value>> {
     Some(rows)
 }
 
+/// Measures of a PortWatch day kept as series metrics.
+const PORTWATCH_METRICS: [&str; 6] = [
+    "n_total",
+    "n_tanker",
+    "n_container",
+    "n_dry_bulk",
+    "n_cargo",
+    "capacity",
+];
+
+fn portwatch_daily(doc: &Value) -> Option<Vec<Value>> {
+    let mut rows = Vec::new();
+    for f in doc.get("features")?.as_array()? {
+        let a = f.get("attributes")?;
+        // A date-only field is `YYYY-MM-DD`; an older layer gives epoch ms.
+        let date = match a.get("date")? {
+            Value::String(s) => s.get(..10)?.to_string(),
+            Value::Number(n) => chrono::DateTime::from_timestamp_millis(n.as_i64()?)?
+                .date_naive()
+                .to_string(),
+            _ => return None,
+        };
+        if !is_date(&date) {
+            return None;
+        }
+        let name = a.get("portname").and_then(Value::as_str).unwrap_or("");
+        for m in PORTWATCH_METRICS {
+            if let Some(v) = a.get(m).and_then(Value::as_f64).filter(|v| v.is_finite()) {
+                rows.push(json!({ "metric": m, "end": date, "value": v, "name": name }));
+            }
+        }
+    }
+    Some(rows)
+}
+
 fn esef_filings(doc: &Value) -> Option<Vec<Value>> {
     let entity = doc
         .get("included")
@@ -668,6 +710,21 @@ mod tests {
         assert_eq!(r[0]["known_on"], "2026-10-30");
         assert_eq!(r[0]["value"], 10.0, "never the adjusted close");
         assert!(records(ResponseShape::DailyPrices, b"{\"detail\":\"no\"}").is_none());
+    }
+
+    #[test]
+    fn portwatch_days_become_one_value_per_measure() {
+        let body = br#"{"features":[{"attributes":{"date":"2026-11-01","portname":"Suez Canal","n_total":46,"n_tanker":9,"capacity":2080955}},{"attributes":{"date":1761955200000,"portname":"Suez Canal","n_total":44}}]}"#;
+        let r = records(ResponseShape::PortwatchDaily, body).unwrap();
+        assert_eq!(r.len(), 4);
+        assert_eq!(r[0]["metric"], "n_total");
+        assert_eq!(r[0]["name"], "Suez Canal");
+        assert_eq!(r[3]["end"], "2025-11-01");
+        assert_eq!(
+            url_value(Some(ResponseShape::PortwatchDaily), "CHOKEPOINT6"),
+            "chokepoint6"
+        );
+        assert!(records(ResponseShape::PortwatchDaily, b"{}").is_none());
     }
 
     #[test]

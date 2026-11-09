@@ -853,7 +853,7 @@ Route d'ingestion propre aux terminaux (accès `Machine` au registre IAM, jeton 
 
 | | |
 |---|---|
-| Statut | **Proposé le 2026-11-09 ; MK15 et MK16 codés le même jour ; questions F.4 tranchées par Shan**, le reste à faire dans l'ordre des lots |
+| Statut | **Proposé le 2026-11-09 ; MK15 à MK20 codés le même jour ; questions F.4 tranchées par Shan**, le reste à faire dans l'ordre des lots |
 | Cible | Shan d'abord, trader particulier, puis d'autres clients (§1) : ce qui lui sert passe en premier ; ce qu'un client exigerait seul (gros volumes, conformité) est reporté, pas refusé |
 
 ### F.1 Le besoin
@@ -874,7 +874,7 @@ Une décision de taux est un changement de niveau, pas une séance anormale : le
 
 #### D882 — Calendrier des publications : les dates à venir sont des faits sourcés
 
-Les dates des prochaines réunions (Fed, BCE, BoJ, BoE…) et publications (IPC, emploi) viennent des calendriers publiés par chaque institution, jamais d'un agrégateur de presse. Un événement à venir est un `market_event` de genre `scheduled`, daté par la source, `known_at` = jour de lecture. À préciser au lot : quelles sources donnent un calendrier lisible par machine (Q-F1).
+Les dates des prochaines réunions et publications viennent des calendriers publiés par chaque institution, jamais d'un agrégateur de presse. Elles deviennent des **plages de temps de l'org** (D182), pas des objets : la page calendrier, l'assistant et le lecteur ICS existent déjà (remarque de Shan, 2026-11-09). Sources lisibles : BLS en iCalendar, pages FOMC et BCE. BoJ, BoE et les autres viendront par la même voie quand leur page sera relue.
 
 #### D883 — Inflation détaillée : sous-indices officiels, prix individuels plus tard
 
@@ -898,10 +898,10 @@ Peu utiles au trading hors compagnies aériennes. Si on les prend : adsb.lol (OD
 |---|---|---|
 | **MK15** | D880 : import BRI, réglage `bis_series`, forme SDMX sans `KEY` (pack 1.7.0) | codé, test `prices_with_a_vault_key_and_the_reaction_to_a_filing` ; essai réel à faire |
 | **MK16** | D881, D888 : décisions de taux en `market_move`, valeurs par défaut de `move_series` | codé : entrées `bis:` (k 1, plancher 0,05) pour le G10, ignorées par les imports FRED ; tests `a_policy_rate_decision_is_a_move_and_a_flat_rate_none` et `prices_with_a_vault_key_and_the_reaction_to_a_filing`. Rejoué hors ligne sur les vraies séries BRI depuis 2000 : JP 14/14 décisions, NO 74/74, XM 58/59, GB 54/56, CA 74/76 ; AU 72/109 (petits ajustements avant 2008 sous le plancher) |
-| **MK17** | D882 : calendrier des publications | les prochaines réunions Fed et BCE lues, datées par la source |
-| **MK18** | D883 : sous-indices d'inflation (Eurostat, INSEE, FAO) | une forme par source, testée sur une réponse réelle enregistrée |
-| **MK19** | D884 : indices immobiliers (BRI `WS_SPP`, Eurostat, Case-Shiller) | trimestriels, `known_at` au jour de lecture |
-| **MK20** | D885 : agrégats maritimes PortWatch | passages quotidiens de Suez et d'Ormuz en séries |
+| **MK17** | D882 : calendrier des publications | codé : réglage `calendars` (`bls, fomc, ecb`), lus chaque jour avec le contact déclaré (le BLS refuse sans) et écrits en **plages de temps de l'org** (D182, réutilisées : page calendrier, outils calendrier de l'assistant, lecteur ICS existant), `external_id` `bls:<UID>`, `fomc:<jour>`, `ecb:<jour>` ; une publication dure une minute (le BLS donne `PT0M`). Pages réelles relues : 16 décisions FOMC 2026–2027, réunions BCE jusqu'en 2028. Test `calendars_eurostat_and_chokepoints` |
+| **MK18** | D883 : sous-indices d'inflation | codé : import Eurostat (SDMX CSV, même forme que BCE et BRI), réglage `eurostat_series` (IPCH zone euro : ensemble, énergie, alimentation, services, sous-jacent), `CPILFESL` dans FRED. Écarts : INSEE laissé de côté (SDMX en XML seulement ; la France est couverte par l'IPCH Eurostat), FAO laissé de côté (le fichier à adresse fixe s'arrête en 2018, le courant change de nom chaque mois) |
+| **MK19** | D884 : indices immobiliers | codé, configuration seule : BRI `WS_SPP` (US, zone euro, Royaume-Uni), Eurostat `prc_hpi_q` (zone euro, France, Allemagne), FHFA `USSTHPI` sur FRED. Case-Shiller écarté : propriété de S&P Dow Jones Indices, même règle que SP500 |
+| **MK20** | D885 : agrégats maritimes PortWatch | codé : forme `portwatch_daily` (ArcGIS JSON), réglage `chokepoints` (8 passages par défaut), une série par passage (`n_total`, `n_tanker`, `n_container`, `n_dry_bulk`, `n_cargo`, `capacity`), lecture par `{since}` et 1 000 jours au plus par requête (l'historique se rattrape en quelques passages) |
 
 #### D887 — Les flux physiques vivent dans des packs à part
 
