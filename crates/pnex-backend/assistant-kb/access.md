@@ -4,9 +4,9 @@ title: Access (roles, teams, assignments, service accounts)
 kind: feature
 pages: /access
 nodes: 
-err_codes: app-not-found, app-version-conflict, access-denied, iam-escalation, iam-role-key-taken, iam-role-not-found, iam-team-name-taken, iam-team-not-found, iam-assignment-duplicate, iam-assignment-not-found, iam-version-conflict, iam-service-account-not-found, iam-service-account-name-taken, iam-access-key-not-found, iam-access-key-limit, access-key-not-allowed
+err_codes: app-not-found, app-version-conflict, access-denied, iam-escalation, iam-role-key-taken, iam-role-not-found, iam-team-name-taken, iam-team-not-found, iam-assignment-duplicate, iam-assignment-not-found, iam-version-conflict, iam-service-account-not-found, iam-service-account-name-taken, iam-access-key-not-found, iam-access-key-limit, access-key-not-allowed, as-of-required, as-of-unsupported
 tools: 
-tags: access, application, app, scope, change feed, role, custom role, permission, team, assignment, service account, access key, api key, external application, accès, rôle, équipe, attribution, compte de service, clé d'accès
+tags: access, application, app, scope, change feed, role, custom role, permission, team, assignment, service account, access key, api key, external application, accès, rôle, équipe, attribution, compte de service, clé d'accès, point-in-time, backtest, as_of
 ---
 The Access page (Settings › Access) decides who can do what in the selected organization. Only Owners and Admins see it and change it; the assistant never changes access.
 
@@ -24,6 +24,7 @@ The Access page (Settings › Access) decides who can do what in the selected or
 ## Service accounts and access keys
 - A **service account** lets an external application (a website server, a script on a server) read data of the organization. It holds nothing until it is given a role, and it only ever reads: it never writes, never manages access, never uses the assistant.
 - Open **Access keys** to create a key (expiry within a year, two active keys at most for a replacement without a cut). The key is shown **once**: copy it then, keep it on the application's server, never in a browser page.
+- Tick **Point-in-time key** for a key used to train or backtest a model: every read must give its date (`as_of`), otherwise it is refused with `as-of-required`; reads that cannot answer as of a date, and every write, are refused with `as-of-unsupported`. Catalogues (object types, packs, datasets) stay readable. Use a normal key for the live program.
 - **Revoke** stops a key at once; deleting the service account stops all its keys.
 
 ## Applications

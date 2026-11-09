@@ -183,6 +183,12 @@ impl OrgContext {
     pub fn can(&self, permission: &str) -> bool {
         self.grants.can(permission)
     }
+
+    /// Called with a point-in-time key (D898): a handler whose instant is in
+    /// the body refuses a call without it (the extractor sees no body).
+    pub fn point_in_time(&self) -> bool {
+        self.auth.service.as_ref().is_some_and(|s| s.point_in_time)
+    }
 }
 
 impl FromRequestParts<AppContext> for OrgContext {
@@ -326,6 +332,10 @@ impl FromRequestParts<AppContext> for OrgContext {
         if let Some(permission) = refused {
             return Err(access_denied(permission));
         }
+        if auth.service.as_ref().is_some_and(|s| s.point_in_time) {
+            let op = crate::services::iam::operation_of(&parts.method, matched).map(|(id, _)| id);
+            point_in_time_gate(op, parts.uri.query())?;
+        }
 
         Ok(OrgContext {
             role,
@@ -333,6 +343,46 @@ impl FromRequestParts<AppContext> for OrgContext {
             org,
             auth,
         })
+    }
+}
+
+/// 400 `as-of-required`: a point-in-time key read without its instant.
+pub fn as_of_required(param: &str) -> loco_rs::Error {
+    crate::controllers::coded_error(
+        axum::http::StatusCode::BAD_REQUEST,
+        pnex_core::err_codes::AS_OF_REQUIRED,
+        format!("a point-in-time key reads only with an instant: add `{param}`"),
+        Some(serde_json::json!({ "param": param })),
+    )
+}
+
+/// What a point-in-time key may call (markets-research.md D898, D899):
+/// `point_in_time` reads with their instant, `timeless` reads; nothing
+/// else, writes included. A body instant is checked by its handler.
+pub fn point_in_time_gate(
+    operation: Option<&str>,
+    query: Option<&str>,
+) -> Result<(), loco_rs::Error> {
+    use pnex_api_contract::as_of::{semantics, AsOf, Instant};
+    match operation.and_then(semantics) {
+        Some(AsOf::Timeless | AsOf::PointInTime(Instant::Body)) => Ok(()),
+        Some(AsOf::PointInTime(Instant::Query(param))) => {
+            let given = query.unwrap_or_default().split('&').any(|kv| {
+                kv.split_once('=')
+                    .is_some_and(|(k, v)| k == param && !v.is_empty())
+            });
+            if given {
+                Ok(())
+            } else {
+                Err(as_of_required(param))
+            }
+        }
+        _ => Err(crate::controllers::coded_error(
+            axum::http::StatusCode::BAD_REQUEST,
+            pnex_core::err_codes::AS_OF_UNSUPPORTED,
+            "a point-in-time key only calls reads that honour `as_of`",
+            None,
+        )),
     }
 }
 
@@ -368,5 +418,28 @@ impl FromRequestParts<AppContext> for PlatformAdmin {
             ));
         }
         Ok(PlatformAdmin(auth))
+    }
+}
+
+#[cfg(test)]
+mod point_in_time_tests {
+    use super::point_in_time_gate;
+
+    #[test]
+    fn instant_required_on_point_in_time_reads() {
+        assert!(
+            point_in_time_gate(Some("markets_bars"), Some("as_of=2026-01-01T00:00:00Z")).is_ok()
+        );
+        assert!(point_in_time_gate(Some("markets_bars"), Some("instrument=x&as_of=")).is_err());
+        assert!(point_in_time_gate(Some("markets_bars"), None).is_err());
+        assert!(point_in_time_gate(Some("markets_bars"), Some("not_as_of=1")).is_err());
+    }
+
+    #[test]
+    fn timeless_passes_everything_else_is_refused() {
+        assert!(point_in_time_gate(Some("ontology_types_list"), None).is_ok());
+        assert!(point_in_time_gate(Some("ontology_objects_links"), Some("as_of=x")).is_err());
+        assert!(point_in_time_gate(Some("markets_decisions_create"), None).is_err());
+        assert!(point_in_time_gate(None, None).is_err());
     }
 }

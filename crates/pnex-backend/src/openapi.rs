@@ -66,6 +66,7 @@ struct Root;
 pub fn spec_json() -> String {
     let mut json = serde_json::to_value(spec()).expect("spec serializes");
     plain_optional_refs(&mut json);
+    as_of_semantics(&mut json);
     serde_json::to_string_pretty(&json).expect("spec serializes") + "\n"
 }
 
@@ -250,6 +251,36 @@ fn default_descriptions(op: &mut Operation) {
                     .and_then(|c| c.canonical_reason())
                     .unwrap_or("Response")
                     .to_string();
+            }
+        }
+    }
+}
+
+/// `x-pnex-as-of` on every read operation (markets-research.md D899):
+/// `point_in_time`, `partial` (plus `x-pnex-as-of-current`, the fields that
+/// stay current), `timeless` or `current_only`.
+fn as_of_semantics(json: &mut serde_json::Value) {
+    use pnex_api_contract::as_of::{semantics, AsOf, CURRENT_ONLY};
+    let Some(paths) = json["paths"].as_object_mut() else {
+        return;
+    };
+    for (path, ops) in paths.iter_mut() {
+        let Some(ops) = ops.as_object_mut() else {
+            continue;
+        };
+        for (method, op) in ops.iter_mut() {
+            let Some(id) = op["operationId"].as_str().map(str::to_string) else {
+                continue;
+            };
+            let sem = semantics(&id);
+            let read = method == "get" || path.ends_with("/query");
+            if !read && sem.is_none() {
+                continue;
+            }
+            let label = sem.map_or(CURRENT_ONLY, AsOf::label);
+            op["x-pnex-as-of"] = label.into();
+            if let Some(AsOf::Partial(_, current)) = sem {
+                op["x-pnex-as-of-current"] = serde_json::json!(current);
             }
         }
     }

@@ -863,6 +863,11 @@ struct AccessKeyCreate {
     /// Mandatory expiry, in the future and one year away at most.
     #[schema(value_type = String, format = DateTime)]
     expires_at: DateTime<FixedOffset>,
+    /// Point-in-time key (D898): every read must carry `as_of`
+    /// (400 `as-of-required`), routes without that semantics and every
+    /// write answer 400 `as-of-unsupported`. For training and backtests.
+    #[serde(default)]
+    point_in_time: bool,
 }
 
 const ACCOUNT_400: &str =
@@ -1072,7 +1077,16 @@ async fn access_keys_create(
     Path(id): Path<Uuid>,
     Json(input): Json<AccessKeyCreate>,
 ) -> Result<Response> {
-    match service::create_key(&ctx.db, org.org.id, id, org.auth.user.id, input.expires_at).await {
+    match service::create_key(
+        &ctx.db,
+        org.org.id,
+        id,
+        org.auth.user.id,
+        input.expires_at,
+        input.point_in_time,
+    )
+    .await
+    {
         Ok(k) => Ok((StatusCode::CREATED, format::json(k)).into_response()),
         Err(e) => iam_error(e),
     }

@@ -1148,3 +1148,65 @@ Le modèle et son entraînement (projet à part) ; l'exécution du modèle dans 
 - **Pas de flux d'événements ni de flow d'alerte** (alertes côté Python, G.5).
 - **Pas fait** : l'e2e Playwright `e2e/tests/market-decisions.spec.ts` est écrit (liste, mesure, pire cas, filtre par modèle sur le graphique) mais pas lancé ici ; la mesure de l'écart HistData / MT5 (D893) attend un vrai flux MT5 (MT5-4).
 - Sécurité : SEC-85.
+
+---
+
+## Appendice H — Point-in-time strict : plafond `as_of` imposé et audit de fuite (D898–D903)
+
+Statut : décidé le 2026-11-09 (Shan). Origine : lecture de `FareedKhan-dev/ontology-driven-observability` (fait canari daté après T0, agents qui ne voient le dossier que tel qu'il était à `T0 + 15 min`). Va avec l'appendice I de `cases-workspace.md` (chaînes causales), dont les chaînes marchés (H.7) sont une lecture point-in-time.
+
+### H.1 Le besoin
+
+L'entraînement et le backtest du modèle de décision (G) ne valent que si chaque lecture rend **ce qui était connu à `as_of`, rien de plus**. Une seule fuite rend les scores faux sans que rien ne le signale. Il manque : une garantie qui ne dépende pas d'un oubli, et une **preuve** qu'elle tient, sur toutes les routes.
+
+### H.2 Ce qui existe, ce qui manque (relevé le 2026-11-09)
+
+| Point | État |
+|---|---|
+| Barres closes seulement à `as_of` | existe (D892) |
+| Observations « dernière valeur connue à `as_of` » | existe (`known_at`) |
+| Liens valides à `as_of` | existe (`links::valid_at`) |
+| Fichiers de dataset à `as_of` | existe (MK14) |
+| `as_of` absent = maintenant | **risque** : un paramètre oublié côté Python lit le présent sans erreur |
+| Propriétés d'objet à `as_of` | **manque** : `query.rs` lit l'état courant (Q-MD6) |
+| Assistant | **risque** : `as_of` est choisi par le modèle |
+| Preuve sur l'ensemble des routes | **manque** |
+
+### H.3 Décisions
+
+- **D898 — Clé « point-in-time »** : attribut `point_in_time` d'une **clé** (pas du compte : un même compte a une clé live et une clé backtest, Shan 2026-11-09). Avec elle, toute lecture `point_in_time` sans son instant → 400 `as-of-required` ; toute lecture `partial` ou `current_only` et **toute écriture** → 400 `as-of-unsupported` (Shan : une clé PIT n'écrit jamais dans la base vivante). Les clés existantes ne changent pas.
+- **D899 — Sémantique temporelle par route** : inventaire `pnex_api_contract::as_of` : `point_in_time`, `partial` (champs restés courants listés), **`timeless`** (catalogues et schémas, sans état daté : permis à la clé PIT, Shan 2026-11-09), et `current_only` par défaut. Exposée dans l'OpenAPI (`x-pnex-as-of`, `x-pnex-as-of-current`) et dans la description des outils MCP.
+- **D900 — Propriétés d'objet à `as_of`** : `POST /ontology/query` et `GET /ontology/objects/{id}` reconstituent les propriétés à l'instant en rejouant les changements d'objet. Les changements des types `geo_event` et des packs marchés sont gardés **dans PostgreSQL** (Q-PT1, Shan) ; les autres viennent de l'historique disponible, sinon `properties_as_of: "unknown"`. Ferme Q-MD6.
+- **D901 — Test canari** : une org de test reçoit un canari daté de `T0 + 1 min` par source ; le test parcourt l'inventaire D899, appelle chaque route `point_in_time` à `as_of = T0` et échoue si un canari apparaît. Une route `point_in_time` sans canari fait échouer le test.
+- **D902 — Assistant figé à un instant** : une conversation peut être figée (dossier ouvert depuis une alerte : `T0 + 15 min`, Q-PT2 ; « analyse à date » sur Marchés). Le harnais impose `as_of` à chaque outil ; un `as_of` plus tard est ramené et signalé ; les outils `current_only` sont retirés ; la **recherche documentaire masque les documents indexés après l'instant** (Q-PT3, Shan) ; bandeau « Vue au … ».
+- **D903 — Canari côté projet Python** : hors dépôt, même principe dans son test de parité.
+
+### H.4 Lots
+
+| Lot | Contenu |
+|---|---|
+| MK31 | D898, D899 |
+| MK32 | D900, D901 |
+| MK33 | D902, fiches assistant |
+
+### H.5 Questions tranchées (Shan, 2026-11-09)
+
+Q-PT1 : PostgreSQL pour `geo_event` et les types marchés. Q-PT2 : `T0 + 15 min`. Q-PT3 : oui, documents indexés après l'instant masqués. Plus : attribut sur la clé ; `timeless` permis ; écritures refusées.
+
+### H.6 Hors périmètre
+
+Couverture de collecte par source et fenêtre ; le backtest lui-même (projet Python, G.6).
+
+### H.7 Chaînes causales marchés : une lecture point-in-time pour la couche gold
+
+Le cœur `pnex_core::rca` de l'appendice I (`cases-workspace.md`) sert aussi aux marchés, **en variable d'entrée du modèle**, pas en proposition (Shan, 2026-11-09).
+
+- `GET /api/v1/markets/chains?as_of=…` : chaînes connues à `as_of`, confiance **et lift contre le placebo**, **sans filtre de lift** (le modèle apprend le poids ; top 3 par effet gardé). Sémantique `point_in_time`, couverte par le canari D901.
+- Topologie : nouveau lien `exposed_to` du pack markets (pays, région ou organisation → instrument), **déclaré par un membre**, drapeau `propagates_failure`. Un `geo_event` rejoint son pays par sa propriété.
+- Couples de départ : `geo_event → price.move` (24 h), `macro.release → price.move` (2 h), `supply.disruption → price.move` (48 h). `price.move` = franchissement d'un seuil déclaré : |rendement| ≥ 1,5 % sur 1 h par défaut, réglable par instrument dans les Settings du pack.
+- **D742 tient** : rien n'est stocké comme cause ; la chaîne est calculée à la lecture et dite « candidate ». Les chaînes retenues par un humain ne servent jamais d'étiquettes d'entraînement (jugement rétrospectif).
+
+### H.8 Ce qui est codé et écarts
+
+- **MK31** (2026-11-09) : colonne `iam_access_keys.point_in_time` (migration 000138), case « Clé point-in-time » et badge dans la boîte des clés ; `pnex_api_contract::as_of` (inventaire) ; contrôle dans l'extracteur `OrgContext` (`point_in_time_gate`) ; un instant dans le corps (`ontology_query`) est vérifié par son handler (`OrgContext::point_in_time`) ; `x-pnex-as-of` dans le spec et les descriptions MCP ; codes `as-of-required`, `as-of-unsupported`. Gardes : `tests/iam.rs::as_of_inventory_matches_the_spec` (toute lecture qui prend `as_of`/`at` est classée, chaque entrée existe, est une lecture, a son paramètre), `point_in_time_keys` (intégration).
+- Écart : `ontology_query` et les liens restent `partial` jusqu'à MK32 (titres et propriétés courants), donc refusés à la clé PIT pendant ce lot.

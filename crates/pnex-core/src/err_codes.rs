@@ -68,6 +68,10 @@ pub const ORG_NOT_MEMBER: &str = "org-not-member";
 pub const ACCESS_DENIED: &str = "access-denied";
 /// An access key called an operation outside the org ones (profile, org list, MCP, platform) or a socket (403, iam.md §7).
 pub const ACCESS_KEY_NOT_ALLOWED: &str = "access-key-not-allowed";
+/// A point-in-time access key read without its instant (400, markets-research.md D898).
+pub const AS_OF_REQUIRED: &str = "as-of-required";
+/// A point-in-time access key called an operation that does not honour `as_of`, or a write (400, D899).
+pub const AS_OF_UNSUPPORTED: &str = "as-of-unsupported";
 /// Service account not found in the org (404).
 pub const IAM_SERVICE_ACCOUNT_NOT_FOUND: &str = "iam-service-account-not-found";
 /// A service account of the org already has this name (409).
@@ -1584,6 +1588,8 @@ pub const ALL: &[&str] = &[
     ORG_NOT_MEMBER,
     ACCESS_DENIED,
     ACCESS_KEY_NOT_ALLOWED,
+    AS_OF_REQUIRED,
+    AS_OF_UNSUPPORTED,
     IAM_SERVICE_ACCOUNT_NOT_FOUND,
     IAM_SERVICE_ACCOUNT_NAME_TAKEN,
     IAM_ACCESS_KEY_NOT_FOUND,

@@ -277,6 +277,9 @@ pub struct AccessKey {
     pub created_at: String,
     pub last_used_at: Option<String>,
     pub revoked_at: Option<String>,
+    /// Point-in-time key (D898): reads need `as_of`, writes are refused.
+    #[serde(default)]
+    pub point_in_time: bool,
 }
 
 /// A key just created: the only time its secret is shown.
@@ -292,11 +295,15 @@ pub async fn access_keys(account: &str) -> Result<Vec<AccessKey>, ApiError> {
 }
 
 /// `POST /api/v1/iam/service-accounts/{id}/keys`, `expires_at` RFC 3339.
-pub async fn create_access_key(account: &str, expires_at: &str) -> Result<CreatedKey, ApiError> {
+pub async fn create_access_key(
+    account: &str,
+    expires_at: &str,
+    point_in_time: bool,
+) -> Result<CreatedKey, ApiError> {
     client::request(
         reqwest::Method::POST,
         &format!("/api/v1/iam/service-accounts/{account}/keys"),
-        Some(json!({ "expires_at": expires_at })),
+        Some(json!({ "expires_at": expires_at, "point_in_time": point_in_time })),
     )
     .await
 }

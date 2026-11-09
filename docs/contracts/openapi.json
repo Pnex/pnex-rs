@@ -30,6 +30,10 @@
               "null"
             ]
           },
+          "point_in_time": {
+            "description": "Point-in-time key (D898): reads need `as_of`, writes are refused.",
+            "type": "boolean"
+          },
           "prefix": {
             "description": "First characters of the secret, to recognise it.",
             "type": "string"
@@ -46,7 +50,8 @@
           "id",
           "prefix",
           "expires_at",
-          "created_at"
+          "created_at",
+          "point_in_time"
         ],
         "type": "object"
       },
@@ -57,6 +62,10 @@
             "description": "Mandatory expiry, in the future and one year away at most.",
             "format": "date-time",
             "type": "string"
+          },
+          "point_in_time": {
+            "description": "Point-in-time key (D898): every read must carry `as_of`\n(400 `as-of-required`), routes without that semantics and every\nwrite answer 400 `as-of-unsupported`. For training and backtests.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -34429,7 +34438,8 @@
         "summary": "OAuth metadata of the MCP endpoint (public)",
         "tags": [
           "mcp"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/.well-known/{rest}": {
@@ -34458,7 +34468,8 @@
         "summary": "Unknown well-known path (public)",
         "tags": [
           "mcp"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-artifacts": {
@@ -34654,7 +34665,8 @@
         "summary": "Read an artifact",
         "tags": [
           "agent-runs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-artifacts/{id}/content": {
@@ -34739,7 +34751,8 @@
         "summary": "Download an artifact",
         "tags": [
           "agent-runs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-chains/{id}": {
@@ -34818,7 +34831,8 @@
         "summary": "Read a chain of runs",
         "tags": [
           "agent-runs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-chains/{id}/close": {
@@ -35181,7 +35195,8 @@
         "summary": "List the runs of agents and rules",
         "tags": [
           "agent-runs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Queues a run of the active build of an environment, in a sandbox of a runner of the org. The run reaches the org's LLM through the gateway, never with a provider key. Declared inputs (artifacts of the org) land at `/artifacts/in/<name>` before the agent starts; declared outputs are collected from `/artifacts/out/<name>` when it ends, also on failure. Requires `agents:run`.",
@@ -35357,7 +35372,8 @@
         "summary": "Get a run",
         "tags": [
           "agent-runs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-runs/{id}/artifacts": {
@@ -35454,7 +35470,8 @@
         "summary": "List the outputs of a run",
         "tags": [
           "agent-runs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-runs/{id}/logs": {
@@ -35561,7 +35578,8 @@
         "summary": "Read the journal of a run",
         "tags": [
           "agent-runs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-runs/{id}/stop": {
@@ -35727,7 +35745,8 @@
         "summary": "List the skills of the org",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a skill whose text is its first draft; no agent can use it before a person activates a version. A text shaped like a credential is refused. Requires `agents:write` (Admin).",
@@ -35973,7 +35992,8 @@
         "summary": "Get a skill",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "On the version that was read (`expected_version`). A new `body` becomes the next draft; the active version stays until a person activates another. Requires `agents:write` (Admin).",
@@ -36298,7 +36318,8 @@
         "summary": "Compare two texts of a skill",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-skills/{id}/versions": {
@@ -36395,7 +36416,8 @@
         "summary": "List the texts of a skill",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-skills/{id}/versions/{number}": {
@@ -36484,7 +36506,8 @@
         "summary": "Get one text of a skill",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-transfer/caches/{name}": {
@@ -36567,7 +36590,8 @@
         "summary": "Fetch a dependency cache of the running run",
         "tags": [
           "agent-runs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Called by the collector of a sandbox with the artifact token of its run, for a cache it declared: the archive replaces the one of this key. Over the cache limit it is refused whole.",
@@ -36729,7 +36753,8 @@
         "summary": "Fetch an input of the running run",
         "tags": [
           "agent-runs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent-transfer/outputs/{name}": {
@@ -36884,7 +36909,8 @@
         "summary": "Download an edge agent binary (public)",
         "tags": [
           "agent"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent/enroll": {
@@ -36964,7 +36990,8 @@
         "summary": "Agent install script for Windows (public)",
         "tags": [
           "agent"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agent/install.sh": {
@@ -36989,7 +37016,8 @@
         "summary": "Agent install script for Linux/macOS (public)",
         "tags": [
           "agent"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agents": {
@@ -37066,7 +37094,8 @@
         "summary": "List the agents of the org",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a service account of the org for the agent, gives it its role (`viewer` by default, `member` at most, never above the caller's), and the first version of its record. Requires `agents:write` (Admin).",
@@ -37240,7 +37269,8 @@
         "summary": "List the tools an internal agent may be given",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/agents/{id}": {
@@ -37389,7 +37419,8 @@
         "summary": "Get an agent",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the record on the version that was read (`expected_version`); the previous one stays in its versions. Requires `agents:write` (Admin).",
@@ -37781,7 +37812,8 @@
         "summary": "List the versions of an agent",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ai/conversations": {
@@ -37915,7 +37947,8 @@
         "summary": "List my assistant conversations",
         "tags": [
           "ai"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates an empty private conversation of the caller (title optional). Any member.",
@@ -38041,7 +38074,8 @@
         "summary": "Export my assistant conversations",
         "tags": [
           "ai"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ai/conversations/{id}": {
@@ -38190,7 +38224,8 @@
         "summary": "Get an assistant conversation",
         "tags": [
           "ai"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Sets the title of one of the caller's conversations. Any member.",
@@ -38493,7 +38528,8 @@
         "summary": "List the LLM providers of the organisation",
         "tags": [
           "ai"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Registers an LLM provider (`anthropic` or `openai_compat`). A typed `api_key` value is stored in the org vault. `is_default` and `usages` are taken away from other providers. Owner or admin only.",
@@ -38897,7 +38933,8 @@
         "summary": "Get the conversation retention",
         "tags": [
           "ai"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Shortens the retention of the org (1 to the platform value, in days); `null` follows the platform value. Owner or admin only.",
@@ -39100,7 +39137,8 @@
         "summary": "Get the assistant status",
         "tags": [
           "ai"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/analysis/queries": {
@@ -39288,7 +39326,8 @@
         "summary": "Read a query and its rows",
         "tags": [
           "analysis"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/annotation-layers": {
@@ -39411,7 +39450,8 @@
         "summary": "List the annotation layers",
         "tags": [
           "annotation-layers"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates the layer and its version 1 with an empty document, attached to a media OR a tour (not both). Not published. Requires owner, admin or member role.",
@@ -39647,7 +39687,8 @@
         "summary": "Get an annotation layer",
         "tags": [
           "annotation-layers"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Appends a new version with the given document (append-only history), only if `expected_version_number` is the current latest version (optimistic concurrency). Controls declared by items are provisioned. Does not change what is published. Requires owner, admin or member role.",
@@ -40018,7 +40059,8 @@
         "summary": "List the versions of an annotation layer",
         "tags": [
           "annotation-layers"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/annotation-layers/{id}/versions/{version_number}": {
@@ -40107,7 +40149,8 @@
         "summary": "Get one version of an annotation layer",
         "tags": [
           "annotation-layers"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/apps": {
@@ -40184,7 +40227,8 @@
         "summary": "List the applications",
         "tags": [
           "apps"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Declares an external application of the org: a key, the service account it signs in with (one application per account) and its scope (object types, link types, media kinds and size it copies). The change feed keeps to that scope when the application calls. Owner or admin.",
@@ -40330,7 +40374,8 @@
         "summary": "Get the calling application",
         "tags": [
           "apps"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/apps/me/object-sets/{name}": {
@@ -40456,7 +40501,8 @@
         "summary": "Run an object set of the calling application",
         "tags": [
           "apps"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/apps/{id}": {
@@ -40605,7 +40651,8 @@
         "summary": "Get an application",
         "tags": [
           "apps"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces an application on the version it was read on (`expected_version`, 409 `app-version-conflict` otherwise). Owner or admin.",
@@ -40957,7 +41004,8 @@
         "summary": "Run an object set of an application",
         "tags": [
           "apps"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/apps/{id}/object-sets/{name}/aggregate/query": {
@@ -41075,7 +41123,8 @@
         "summary": "Aggregate an object set of an application",
         "tags": [
           "apps"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/apps/{id}/publish": {
@@ -41272,7 +41321,8 @@
         "summary": "Get a published screen of an application",
         "tags": [
           "apps"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/asr/models": {
@@ -41350,7 +41400,8 @@
         "summary": "List the audio models of the organisation",
         "tags": [
           "asr"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Registers a `model` media asset (archive or GGML file) as an audio model. The files are read and the model is loaded and checked on the server before the answer (family and task are read from the files, never typed); this can take a while. Writer role required.",
@@ -41615,7 +41666,8 @@
         "summary": "Get an audio model",
         "tags": [
           "asr"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Name, description and license only; the model file never changes. Writer role required.",
@@ -42048,7 +42100,8 @@
         "summary": "List the ASR profiles of the organisation",
         "tags": [
           "asr"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a transcription profile; diarization needs both its segmentation and embedding models. Writer role required.",
@@ -42284,7 +42337,8 @@
         "summary": "Get an ASR profile",
         "tags": [
           "asr"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Absent fields keep their value; an empty string clears an optional model. Applies to the next transcribed segments of the streams using it. Writer role required.",
@@ -42477,7 +42531,8 @@
         "summary": "List the board profiles",
         "tags": [
           "boards"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/browser-endpoints": {
@@ -42554,7 +42609,8 @@
         "summary": "List browser endpoints",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Registers a CDP browser (`wss://…`, `ws://…` or `http(s)://host:port`). The address must pass the egress policy (no internal host). A typed `token` value is stored in the org vault and sent as `Authorization: Bearer`. The first endpoint, or one with `is_default`, becomes the org default. Owner or admin only.",
@@ -43113,7 +43169,8 @@
         "summary": "List firmware build records",
         "tags": [
           "build-records"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cameras": {
@@ -43191,7 +43248,8 @@
         "summary": "List the cameras of the organisation",
         "tags": [
           "cameras"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cameras/segments": {
@@ -43319,7 +43377,8 @@
         "summary": "List recorded video segments",
         "tags": [
           "cameras"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cameras/segments/{id}": {
@@ -43468,7 +43527,8 @@
         "summary": "Get a recorded video segment",
         "tags": [
           "cameras"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cameras/segments/{id}/content": {
@@ -43557,7 +43617,8 @@
         "summary": "Download a recorded video segment",
         "tags": [
           "cameras"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cameras/{device}/recordings": {
@@ -43773,7 +43834,8 @@
         "summary": "Get a camera's recording timeline",
         "tags": [
           "cameras"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cameras/{device}/recordings/annotations": {
@@ -43891,7 +43953,8 @@
         "summary": "Get the detection boxes of a camera's recordings",
         "tags": [
           "cameras"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cameras/{device}/recordings/export": {
@@ -44011,7 +44074,8 @@
         "summary": "Export a camera's recordings as one video",
         "tags": [
           "cameras"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cameras/{device}/recordings/layers": {
@@ -44140,7 +44204,8 @@
         "summary": "List a camera's annotation layers",
         "tags": [
           "cameras"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cameras/{device}/settings": {
@@ -44494,7 +44559,8 @@
         "summary": "List the page templates",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/attach": {
@@ -44682,7 +44748,8 @@
         "summary": "Get the hypotheses board of a case",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/detach": {
@@ -45068,7 +45135,8 @@
         "summary": "Export a case",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/graph/query": {
@@ -45167,7 +45235,8 @@
         "summary": "Expand a node of the case graph",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/layout": {
@@ -45246,7 +45315,8 @@
         "summary": "Get the hand-made layout of the case graph",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the node positions of the case graph (empty map = back to the automatic layout). Needs a writer role.",
@@ -45539,7 +45609,8 @@
         "summary": "List the detection proposals of a case",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/proposals/{pid}/reject": {
@@ -45864,7 +45935,8 @@
         "summary": "List the purge candidates of a case",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "DESTRUCTIVE, irreversible: permanently deletes the given objects among the purge candidates of an archived case (case `status` must be `archived`), with their links, ranges, labels, containment and the snapshots that mention them. Ids that are not candidates (re-computed server side) are skipped. Returns how many were purged. Needs a writer role and the write role of each purged type.",
@@ -46068,7 +46140,8 @@
         "summary": "List the logged reads of persons' tracks",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/relations": {
@@ -46165,7 +46238,8 @@
         "summary": "List the links among the case members",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/signals": {
@@ -46270,7 +46344,8 @@
         "summary": "Read the raw signals around a case",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/snapshots": {
@@ -46367,7 +46442,8 @@
         "summary": "List the frozen states of a case",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Stores an immutable, SHA-256 fingerprinted snapshot of the case: its export, reviewed detections and generalised tracks (left out over a size cap). Logs the read of persons' tracks. Needs a writer role.",
@@ -46553,7 +46629,8 @@
         "summary": "Get a frozen state of a case",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/tracks": {
@@ -46676,7 +46753,8 @@
         "summary": "Read the position tracks of the case members",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/tracks/import": {
@@ -46895,7 +46973,8 @@
         "summary": "List the imported tracks of a case",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/cases/{id}/tracks/imports/{iid}": {
@@ -47056,7 +47135,8 @@
         "summary": "Get the workspace of a case",
         "tags": [
           "cases"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/connectors": {
@@ -47133,7 +47213,8 @@
         "summary": "List the connectors",
         "tags": [
           "connectors"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Saves the access to an outside PostgreSQL database. The password goes to the vault, either a typed value, which needs `secrets:write`, or a secret picked from it. Requires `connectors:write`.",
@@ -47369,7 +47450,8 @@
         "summary": "Get a connector",
         "tags": [
           "connectors"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the connector, on the version that was read (`expected_version`). An absent `password` keeps the current one, unless the host or port changes: the password must then be given again, so that it never goes to a host its author did not mean it for. Requires `connectors:write`.",
@@ -47748,7 +47830,8 @@
         "summary": "List the controls of the organisation",
         "tags": [
           "controls"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Defines an org control (switch, slider, button…) that dashboards and annotations can show and `control-source` flow nodes listen to. The key must be unique in the org. Requires a writer role.",
@@ -47913,7 +47996,8 @@
         "summary": "Read the last values of several controls",
         "tags": [
           "controls"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/controls/{id}": {
@@ -48072,7 +48156,8 @@
         "summary": "Get a control",
         "tags": [
           "controls"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Changes the key, label and/or spec (absent fields keep their value). Changing the kind is allowed: flows reference the id, the new domain applies to the next values only. Requires a writer role.",
@@ -48357,7 +48442,8 @@
         "summary": "Get the home dashboard summary",
         "tags": [
           "dashboard"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/dashboards": {
@@ -48462,7 +48548,8 @@
         "summary": "List the dashboards of the organisation",
         "tags": [
           "dashboards"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates the dashboard and its version 1 (empty layout when none is given). Controls declared by control widgets are provisioned. Requires a writer role.",
@@ -48688,7 +48775,8 @@
         "summary": "Get a dashboard with its current layout",
         "tags": [
           "dashboards"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Appends a new version with the given layout (and optional new name) and makes it current immediately: saving is publishing, viewers see it on their next poll. Optimistic concurrency: `expected_version_number` must be the current version, else 409. Requires a writer role.",
@@ -48892,7 +48980,8 @@
         "summary": "List the versions of a dashboard",
         "tags": [
           "dashboards"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/dashboards/{id}/versions/{version_number}": {
@@ -48981,7 +49070,8 @@
         "summary": "Get one version of a dashboard",
         "tags": [
           "dashboards"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/dashboards/{id}/versions/{version_number}/restore": {
@@ -49147,7 +49237,8 @@
         "summary": "List the chained runs",
         "tags": [
           "pipelines"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Runs the dependencies of a pipeline or an import in order, then the target. A failed step blocks what depends on it, which keeps its last valid version. During a run of the same target, asks for one more pass and returns the running one. Requires `pipelines:run`, plus `datasets:read` and `datasets:write` when a step is a pipeline and `ontology:write` when a step is an import.",
@@ -49341,7 +49432,8 @@
         "summary": "Show what a chained run would do",
         "tags": [
           "pipelines"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/data-builds/{id}": {
@@ -49420,7 +49512,8 @@
         "summary": "Get a chained run",
         "tags": [
           "pipelines"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/datasets": {
@@ -49497,7 +49590,8 @@
         "summary": "List the datasets",
         "tags": [
           "datasets"
-        ]
+        ],
+        "x-pnex-as-of": "timeless"
       },
       "post": {
         "description": "Creates an empty dataset; load rows with `POST /datasets/{id}/transactions/csv`. Requires `datasets:write`.",
@@ -49753,7 +49847,8 @@
         "summary": "Get a dataset",
         "tags": [
           "datasets"
-        ]
+        ],
+        "x-pnex-as-of": "timeless"
       }
     },
     "/api/v1/datasets/{id}/declassify": {
@@ -49969,7 +50064,8 @@
         "summary": "List the Parquet files of a dataset",
         "tags": [
           "datasets"
-        ]
+        ],
+        "x-pnex-as-of": "point_in_time"
       }
     },
     "/api/v1/datasets/{id}/files/{index}": {
@@ -50089,7 +50185,8 @@
         "summary": "Download a Parquet file of a dataset",
         "tags": [
           "datasets"
-        ]
+        ],
+        "x-pnex-as-of": "point_in_time"
       }
     },
     "/api/v1/datasets/{id}/freshness": {
@@ -50376,7 +50473,8 @@
         "summary": "Get the lineage of a dataset",
         "tags": [
           "datasets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/datasets/{id}/markings": {
@@ -50554,7 +50652,8 @@
         "summary": "Read how full the columns of a dataset are",
         "tags": [
           "datasets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/datasets/{id}/sample": {
@@ -50673,7 +50772,8 @@
         "summary": "Read the first rows of a dataset",
         "tags": [
           "datasets"
-        ]
+        ],
+        "x-pnex-as-of": "point_in_time"
       }
     },
     "/api/v1/datasets/{id}/transactions": {
@@ -50770,7 +50870,8 @@
         "summary": "List the transactions of a dataset",
         "tags": [
           "datasets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/datasets/{id}/transactions/csv": {
@@ -51125,7 +51226,8 @@
         "summary": "State of an upload",
         "tags": [
           "datasets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/datasets/{id}/uploads/{upload}/complete": {
@@ -51468,7 +51570,8 @@
         "summary": "Global catalogue of device capabilities",
         "tags": [
           "devices"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/device-positions": {
@@ -51545,7 +51648,8 @@
         "summary": "Last known GPS position of each device",
         "tags": [
           "device-positions"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/devices": {
@@ -51685,7 +51789,8 @@
         "summary": "List the devices of the organisation",
         "tags": [
           "devices"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "operationId": "devices_create",
@@ -51918,7 +52023,8 @@
         "summary": "Get a device",
         "tags": [
           "devices"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/devices/{id}/agent": {
@@ -52007,7 +52113,8 @@
         "summary": "Edge agent overview",
         "tags": [
           "devices"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Sets the distinct-keys quota (1..=100000) of the agent. Owner, admin or member.",
@@ -52300,7 +52407,8 @@
         "summary": "Keys discovered from an edge agent",
         "tags": [
           "devices"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/devices/{id}/agent-keys/{key_id}": {
@@ -52982,7 +53090,8 @@
         "summary": "OTA state of a device",
         "tags": [
           "devices"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates an OTA assignment (desired state) for the device: the given `version` (a successful OTA-stamped build of this device) or the latest deployable one. Pushed immediately to a connected device (signed order), otherwise delivered at its next announce. The device then reflashes itself. One active assignment per device. Body optional (empty = latest, no force). Owner, admin or member.",
@@ -53264,7 +53373,8 @@
         "summary": "Readable pinout of a device",
         "tags": [
           "devices"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/devices/{id}/pins": {
@@ -53343,7 +53453,8 @@
         "summary": "Configured pins of a generic device",
         "tags": [
           "devices"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/docs": {
@@ -53448,7 +53559,8 @@
         "summary": "List the pages of the organisation",
         "tags": [
           "docs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a page, blank, seeded from a page template of an installed pack (`template` key) or from Markdown (`markdown`, up to 256 KiB, as the editor's import; exclusive with `template`). Owner, admin or member.",
@@ -53674,7 +53786,8 @@
         "summary": "Get a page",
         "tags": [
           "docs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Sets the title of a page. Owner, admin or member.",
@@ -53868,7 +53981,8 @@
         "summary": "List the comments of a page",
         "tags": [
           "docs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Starts a thread anchored on a text range (`anchor`, `quote`) or replies to a thread root (`parent_id`). Open editors are told to reload the comments. Owner, admin or member.",
@@ -54244,7 +54358,8 @@
         "summary": "List the named versions of a page",
         "tags": [
           "docs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Snapshots the current content of the page as a new named version. Owner, admin or member.",
@@ -54430,7 +54545,8 @@
         "summary": "Get the frozen state of a version",
         "tags": [
           "docs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/docs/{id}/versions/{n}/approve": {
@@ -54618,7 +54734,8 @@
         "summary": "Download a version as PDF",
         "tags": [
           "docs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/download/firmware/{id}": {
@@ -54698,7 +54815,8 @@
         "summary": "Download the latest firmware binary of a device",
         "tags": [
           "download"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/edge/hosts": {
@@ -54775,7 +54893,8 @@
         "summary": "List the saved PNeX server hosts",
         "tags": [
           "edge"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Upsert on (org, host): existing host returned unchanged (200), new one created (201). Bare host, no scheme, no whitespace, max 255 chars. Owner, admin or member.",
@@ -54931,7 +55050,8 @@
         "summary": "Server host imposed by the deployment",
         "tags": [
           "edge"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/edge/hosts/{id}": {
@@ -55188,7 +55308,8 @@
         "summary": "Scan the LAN for PNeX servers",
         "tags": [
           "edge"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/edge/wifi-credentials": {
@@ -55265,7 +55386,8 @@
         "summary": "List the saved WiFi credentials",
         "tags": [
           "edge"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Upsert on (org, SSID), case-sensitive: an existing SSID is updated (200), a new one created (201, password required). A typed password is stored in the vault secret `wifi/<ssid>/password` (owner/admin only); a member may pick an existing secret. Owner, admin or member.",
@@ -55628,7 +55750,8 @@
         "summary": "List the environments",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates an environment and names the image registry of the org its images go to. Its source comes with its versions. Requires `environments:write`.",
@@ -55774,7 +55897,8 @@
         "summary": "Read the scan policy of the org",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Applies at once to every check that follows: activation of a build and start of a run. Requires `environments:build` (Admin).",
@@ -55990,7 +56114,8 @@
         "summary": "Get an environment",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces its name, description and registry, on the version that was read (`expected_version`). Requires `environments:write`.",
@@ -56194,7 +56319,8 @@
         "summary": "List the builds of an environment",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/environments/{id}/builds/{build}": {
@@ -56283,7 +56409,8 @@
         "summary": "Get a build of an environment",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/environments/{id}/builds/{build}/activate": {
@@ -56509,7 +56636,8 @@
         "summary": "Read the journal of a build",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/environments/{id}/builds/{build}/sbom": {
@@ -56608,7 +56736,8 @@
         "summary": "Download the SBOM of a build",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/environments/{id}/builds/{build}/scan": {
@@ -56697,7 +56826,8 @@
         "summary": "Get the scan of a build",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/environments/{id}/isolation": {
@@ -56913,7 +57043,8 @@
         "summary": "Follow the scans of an environment",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/environments/{id}/versions": {
@@ -57010,7 +57141,8 @@
         "summary": "List the versions of an environment",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Saves a Dockerfile, its text context files and its build arguments as a new immutable version, on the latest one that was read (`expected_latest`, absent for the first). At most 1 MB in all. A source holding what looks like a credential is refused. Requires `environments:write`.",
@@ -57206,7 +57338,8 @@
         "summary": "Get a version of an environment",
         "tags": [
           "environments"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/environments/{id}/versions/{number}/builds": {
@@ -57456,7 +57589,8 @@
         "summary": "Search the events of a stream",
         "tags": [
           "events"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/events/streams": {
@@ -57553,7 +57687,8 @@
         "summary": "List the event streams of the organisation",
         "tags": [
           "events"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/extension/agents": {
@@ -57630,7 +57765,8 @@
         "summary": "List the browser agents",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Called by the extension right after the user signs in: the install key signs the org and a timestamp (proof of possession). Creates the browser agent of this install, or rotates the credentials of its existing agent in this org (any former session is cut). A new agent is personal: it runs only the missions of the member who paired it. Signing in on someone else's personal browser makes it the caller's; a common one needs the `extension:share` permission. Returns the device token and Noise key once. Requires owner, admin or member role.",
@@ -57863,7 +57999,8 @@
         "summary": "Download the browser extension (public)",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/extension/missions": {
@@ -57940,7 +58077,8 @@
         "summary": "List the browser agent missions",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Declares a mission (`collect_value`: refresh a page every `interval_secs`, at least 60, and read one value into a series). Any online browser agent of the org runs it, or only the pinned `agent_id`; one agent at a time per target. Requires owner, admin or member role.",
@@ -58176,7 +58314,8 @@
         "summary": "Get a browser agent mission",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Changes a mission on the version the caller read (`expected_version`); absent fields unchanged, `agent_id: null` unpins it. The mission state starts over (`idle`). Requires owner, admin or member role.",
@@ -58389,7 +58528,8 @@
         "summary": "List the pages of a crawled site",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/extension/organizations/{id}/people-captures": {
@@ -58486,7 +58626,8 @@
         "summary": "List the employee list captures of an organization",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Asks one capture of this organization's employee list on LinkedIn (`linkedin.com/company/<name>/people/`, D779): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session and reads the first screens (a default navigation rule, D780). The page text becomes a document linked to the organization, kept 30 days; with the prospecting pack, a flow proposes the people it names as list contacts to validate, never someone who objected at that company. Any other page is refused. At most 10 captures per day. An open capture of the same list is returned as is. Requires owner, admin or member role.",
@@ -58690,7 +58831,8 @@
         "summary": "List the profile matches of a person",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Starts a search of this person's profile on LinkedIn (D788), from the name and the company they work for: the caller's browser agent plays the default navigation rule of the search, typing each query in the network's search bar, from the most precise (name and company) to the widest (name alone), and opening the first profiles found in its signed-in session; the server scores them against the company, its other names, its group and the cities of its sites. Above the pack's write threshold the profile is attached to the person; between its two thresholds the candidates wait in To validate; a job change is only proposed. Refused for someone who objected. A match still running is returned as is. At most 30 searches per day. Requires owner, admin or member role.",
@@ -58866,7 +59008,8 @@
         "summary": "Read a person's prospecting objection",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Records that this person objected to prospecting (D341): the person and its profile addresses enter the org's opposition list, which outlives the person; pending and future profile captures are refused. Requires owner, admin or member role.",
@@ -59040,7 +59183,8 @@
         "summary": "List the profile captures of a person",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): the caller's browser agent, or a common one if they have none, opens it once in its signed-in session (a default navigation rule of the network, D780); the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
@@ -59234,7 +59378,8 @@
         "summary": "List the web proofs",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/extension/proofs/verify": {
@@ -59293,7 +59438,8 @@
         "summary": "Verify the chain of web proofs",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/extension/proofs/{id}": {
@@ -59372,7 +59518,8 @@
         "summary": "Get a web proof",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/extension/uploads/captions": {
@@ -60040,7 +60187,8 @@
         "summary": "List the video registry",
         "tags": [
           "extension"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/extension/ws-ticket": {
@@ -60191,7 +60339,8 @@
         "summary": "List the custom firmware projects",
         "tags": [
           "firmware-projects"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates the project and its revision 1 (`main_cpp` absent = starter sketch). The sketch passes a lexical policy guard and the libraries must suit the chip family. Owner, admin or member.",
@@ -60345,7 +60494,8 @@
         "summary": "Pinned library catalog",
         "tags": [
           "firmware-projects"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/firmware-projects/{id}": {
@@ -60504,7 +60654,8 @@
         "summary": "Get a firmware project with its current sketch",
         "tags": [
           "firmware-projects"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Appends a revision (sketch/libraries) and/or updates name/description. Optimistic concurrency: `expected_revision_number` must equal the current revision. A save with identical content creates no revision. Owner, admin or member.",
@@ -60799,7 +60950,8 @@
         "summary": "State of a compile-only check",
         "tags": [
           "firmware-projects"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/firmware-projects/{id}/revisions": {
@@ -60896,7 +61048,8 @@
         "summary": "Revision history of a firmware project",
         "tags": [
           "firmware-projects"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/flows": {
@@ -61010,7 +61163,8 @@
         "summary": "List the flows of the organisation",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates the flow and its version 1 in one transaction. No runtime effect: the flow stays `draft` until deployed. Requires owner, admin or member role. Graph secret references are checked against the vault: 403/404 vault error codes as on `/secrets`.",
@@ -61236,7 +61390,8 @@
         "summary": "Get a flow",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Appends a new version (append-only history), optionally renaming the flow. Optimistic concurrency: `expected_version_number` must equal the current latest version, else 409 `flow-stale-version` with `args.expected`/`args.current`. Never touches the runtime: execution changes only on deploy. Requires owner, admin or member role. Graph secret references are checked against the vault: 403/404 vault error codes as on `/secrets`.",
@@ -61422,7 +61577,8 @@
         "summary": "Get the debug feed of a flow",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/flows/{id}/deploy": {
@@ -61609,7 +61765,8 @@
         "summary": "Get the latest node statuses of a flow",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/flows/{id}/restart": {
@@ -61905,7 +62062,8 @@
         "summary": "Get the runtime status of a flow",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/flows/{id}/start": {
@@ -62210,7 +62368,8 @@
         "summary": "List the versions of a flow",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/flows/{id}/versions/{version_number}": {
@@ -62299,7 +62458,8 @@
         "summary": "Get one flow version",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/fluid-mixtures": {
@@ -62385,7 +62545,8 @@
         "summary": "List the fluid mixtures of the organisation",
         "tags": [
           "fluid-mixtures"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Validates the composition, converts mass fractions to mole fractions, checks the resulting spec with CoolProp, then stores the mixture. Requires owner, admin or member role.",
@@ -62621,7 +62782,8 @@
         "summary": "Get a fluid mixture",
         "tags": [
           "fluid-mixtures"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Full replacement of name, description and composition (revalidated and reconverted like on create). Flows and widgets that froze the former spec are not changed. Requires owner, admin or member role.",
@@ -62824,7 +62986,8 @@
         "summary": "List the functions of the organisation",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a function and its version 1 from its code and declared interface (`inputs`, `outputs`; no output = message mode: one input, one output, the returned value is the message). Requires owner, admin or member role.",
@@ -63139,7 +63302,8 @@
         "summary": "Get a function",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "With `code`, `inputs` or `outputs`, appends a new version (parts not sent are carried from the current version) (history is append-only); `name`/`description` update metadata. Optimistic concurrency: `expected_version_number` must equal the current version, else 409 `function-version-conflict`. Deployed flows keep the version they pinned. Requires owner, admin or member role.",
@@ -63442,7 +63606,8 @@
         "summary": "List the versions of a function",
         "tags": [
           "functions"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/geo/basemaps": {
@@ -63519,7 +63684,8 @@
         "summary": "List the basemaps the map can open on",
         "tags": [
           "geo"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/geo/geocode": {
@@ -63638,7 +63804,8 @@
         "summary": "Geocode an address",
         "tags": [
           "geo"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/geo/providers": {
@@ -63715,7 +63882,8 @@
         "summary": "List the geo providers of the organisation",
         "tags": [
           "geo"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Registers a basemap, geocoding or routing provider. A typed `api_key` value is stored in the org vault (owner/admin); `default_for` makes it the org default for those capabilities. Owner or admin only.",
@@ -64207,7 +64375,8 @@
         "summary": "Reverse geocode a point",
         "tags": [
           "geo"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/geo/route": {
@@ -64323,7 +64492,8 @@
         "summary": "Compute a route",
         "tags": [
           "geo"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/governance/clearances": {
@@ -64400,7 +64570,8 @@
         "summary": "List the clearances",
         "tags": [
           "governance"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Lets a member of the org read data that carries a marking, for a declared purpose, for 1 to 365 days. Never a service account. Requires `governance:write`.",
@@ -64658,7 +64829,8 @@
         "summary": "Export the governance journal",
         "tags": [
           "governance"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/governance/markings": {
@@ -64735,7 +64907,8 @@
         "summary": "List the markings",
         "tags": [
           "governance"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Adds a compartment to the org: data that carries it is read only by people cleared for it. Requires `governance:write`.",
@@ -65089,7 +65262,8 @@
         "summary": "List the assignments",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Gives a role to a member, a team or a service account over the whole org: exactly one of `user_id` / `team_id` / `service_account_id`, and one of `managed_role` (viewer, member, admin) / `role_id` (custom role). It adds to the membership role; a deny statement takes away. Applies on the holder's next call. Anti-escalation: the caller must hold every permission the role allows. Owner or admin.",
@@ -65317,7 +65491,8 @@
         "summary": "My permissions in the org",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/iam/permissions": {
@@ -65403,7 +65578,8 @@
         "summary": "List the permissions",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/iam/roles": {
@@ -65489,7 +65665,8 @@
         "summary": "List the roles",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a custom role of the org: statements `{effect: allow|deny, permissions: [patterns]}`, a pattern being a permission (`flows:deploy`), a service (`flows:*`) or `*`. A custom role never grants nor takes away access management (`iam:*`). Anti-escalation: the caller must hold every permission the role allows. Owner or admin.",
@@ -65725,7 +65902,8 @@
         "summary": "Get a custom role",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Partial update of a custom role (name, description, statements replaced as a whole) on top of `expected_version`; every member holding it gets the change on their next call. Same pattern rules and anti-escalation as creation. Owner or admin.",
@@ -65918,7 +66096,8 @@
         "summary": "List the service accounts",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a non-human principal of the org for an external application on the server side (Next.js route handler, Dioxus server function). It holds nothing until it is given roles with assignments; it calls the org's read operations with an access key, never the access settings, the MCP or the platform. Owner or admin.",
@@ -66154,7 +66333,8 @@
         "summary": "Get a service account",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Renames a service account or changes its description. Owner or admin.",
@@ -66367,7 +66547,8 @@
         "summary": "List the access keys",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a key for the service account and answers its secret (`pnex_sk_…`) once: it is stored as a hash and never shown again. Use it server side only (`Authorization: Bearer pnex_sk_…`, `X-Org-Id` optional), never in a browser. Expiry mandatory, one year at most; two keys active at most, for rotation. Owner or admin.",
@@ -66642,7 +66823,8 @@
         "summary": "List the teams",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates an empty team of the org; give it roles with assignments, then add members. Owner or admin.",
@@ -66878,7 +67060,8 @@
         "summary": "Get a team",
         "tags": [
           "iam"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Renames a team or changes its description. Owner or admin.",
@@ -67250,7 +67433,8 @@
         "summary": "List the image registries",
         "tags": [
           "image-registries"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Saves the access to an OCI registry and repository. The read secret and the write secret are distinct and go to the vault, each a typed value, which needs `secrets:write`, or a secret picked from it. Requires `image-registries:write`.",
@@ -67496,7 +67680,8 @@
         "summary": "Get an image registry",
         "tags": [
           "image-registries"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the registry, on the version that was read (`expected_version`). An absent secret keeps the current one, unless the host or the TLS setting changes: it must then be given again, so that it never goes where its author did not mean it to. Requires `image-registries:write`.",
@@ -67739,7 +67924,8 @@
         "summary": "List my pending invitations",
         "tags": [
           "invitations"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/invitations/{id}/accept": {
@@ -68415,7 +68601,8 @@
         "summary": "List the Vision Lab projects",
         "tags": [
           "lab"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates an annotation project with its class list. Owner, admin or member.",
@@ -68641,7 +68828,8 @@
         "summary": "Get a Vision Lab project",
         "tags": [
           "lab"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces name, description and classes; a class still used by a box cannot be removed. Owner, admin or member.",
@@ -68845,7 +69033,8 @@
         "summary": "List the images of a project",
         "tags": [
           "lab"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Adds images of the media library to the project (already present ones are skipped) and returns the added images. Owner, admin or member.",
@@ -69247,7 +69436,8 @@
         "summary": "List the training runs of a project",
         "tags": [
           "lab"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/lab/projects/{id}/stats": {
@@ -69326,7 +69516,8 @@
         "summary": "Get the dataset statistics of a project",
         "tags": [
           "lab"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/lab/projects/{id}/versions": {
@@ -69423,7 +69614,8 @@
         "summary": "List the dataset versions of a project",
         "tags": [
           "lab"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Snapshots the current annotations of the project as a new immutable dataset version. Owner, admin or member.",
@@ -69689,7 +69881,8 @@
         "summary": "Download a dataset version",
         "tags": [
           "lab"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/lab/versions/{id}/train": {
@@ -69875,7 +70068,8 @@
         "summary": "List mailboxes",
         "tags": [
           "mail"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Connects an IMAP mailbox (IMAPS, TLS from the first byte, port 993 by default); the server must pass the egress policy. By default the caller's own mailbox; `shared` (read by `teams`) or `owner_user_id` naming a service account need the shared-mailbox permission. The password is typed into the mailbox's own vault secret; picking an existing vault secret is for owners and admins. Nothing is fetched before the next poll. Requires the mail write permission.",
@@ -70238,7 +70432,8 @@
         "summary": "List the messages of a mailbox",
         "tags": [
           "mail"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Writes a plain-text mail from the mailbox to at most 20 recipients: a draft in its outbox, or sent at once with `send_now` (the caller is the one sending). `in_reply_to` answers a stored mail of this mailbox (threaded with its references). The same `key` answers the mail already written. Caps: 30 sends per mailbox and hour (`mail-send-limit`, 429). Only a reader of the mailbox (404 for anyone else). Requires the send permission and the mail content read permission.",
@@ -70700,7 +70895,8 @@
         "summary": "List the outbox of a mailbox",
         "tags": [
           "mail"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/mailboxes/{id}/outbox/{mail}/discard": {
@@ -71242,7 +71438,8 @@
         "summary": "Read the price bars of an instrument as known at a date",
         "tags": [
           "markets"
-        ]
+        ],
+        "x-pnex-as-of": "point_in_time"
       }
     },
     "/api/v1/markets/decisions": {
@@ -71343,7 +71540,8 @@
         "summary": "List the decisions of external models",
         "tags": [
           "markets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Stores one decision (probabilities of `buy`, `neutral`, `sell`) of a model run outside PNeX, about data read at `as_of`. The server checks it and computes `best` and `confidence`. One decision per model, version, instrument, interval and `as_of`: the same one again answers 200, a different one 409. Advice only: nothing is ordered. Requires `market-decisions:write`, the only write a service account may make.",
@@ -71563,7 +71761,8 @@
         "summary": "Measure the decisions of external models",
         "tags": [
           "markets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/markets/instruments/{id}/event-study": {
@@ -71662,7 +71861,8 @@
         "summary": "Measure how an instrument moved around a date",
         "tags": [
           "markets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/markets/issuers/{id}/chart": {
@@ -71761,7 +71961,8 @@
         "summary": "Read the price chart of an issuer with its sessions and filings",
         "tags": [
           "markets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/markets/positions/{id}/result": {
@@ -71840,7 +72041,8 @@
         "summary": "Measure a fictitious position on closing prices",
         "tags": [
           "markets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/markets/rule-test": {
@@ -72020,7 +72222,8 @@
         "summary": "Test how prices moved after a kind of filing or event",
         "tags": [
           "markets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/markets/sessions/{date}": {
@@ -72099,7 +72302,8 @@
         "summary": "List the abnormal sessions and world events around a date",
         "tags": [
           "markets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/markets/world-events": {
@@ -72226,7 +72430,8 @@
         "summary": "List the world events placed inside a map view",
         "tags": [
           "markets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/mcp": {
@@ -72384,7 +72589,8 @@
         "summary": "List the media assets of the organisation",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates an asset and its version 1 from the raw request body (`application/octet-stream`, no multipart); metadata travel in the query. The kind is taken from `kind` when given, else sniffed from content and extension; the content must be an allowed format whose extension matches it. Stored in object storage; owner, admin or member. Concurrent large uploads are queued per server.",
@@ -72583,7 +72789,8 @@
         "summary": "List the capture boxes of the organisation",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/chunks/{chunk_id}": {
@@ -72672,7 +72879,8 @@
         "summary": "Read an indexed text chunk with its neighbours",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/metadata": {
@@ -72810,7 +73018,8 @@
         "summary": "List the in-band metadata events of a stream",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/search": {
@@ -72895,7 +73104,8 @@
         "summary": "Search the text of the organisation's documents",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/streams": {
@@ -73002,7 +73212,8 @@
         "summary": "List the media streams of the organisation",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Registers a stream to capture and transcribe. An enabled stream starts being captured (network fetch, storage, ASR compute). The URL must not carry credentials: use `auth_secret` (a vault secret sent only to the URL's origin); binding a secret needs owner/admin. Writer role required. Limited number of streams per organisation.",
@@ -73248,7 +73459,8 @@
         "summary": "Get a media stream",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Absent fields keep their value; enabling/disabling starts or stops the capture. Moving a secret-holding stream to another origin, or changing its secret, needs owner/admin. Writer role required.",
@@ -73464,7 +73676,8 @@
         "summary": "Review a window of a media stream",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/streams/{id}/segments": {
@@ -73582,7 +73795,8 @@
         "summary": "List the captured segments of a stream",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/streams/{id}/segments/retry": {
@@ -73761,7 +73975,8 @@
         "summary": "Play the kept audio of a stream segment",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/streams/{id}/test": {
@@ -73997,7 +74212,8 @@
         "summary": "Search the transcripts of the organisation's streams",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/uploads": {
@@ -74165,7 +74381,8 @@
         "summary": "State of a media upload",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/uploads/{upload}/complete": {
@@ -74542,7 +74759,8 @@
         "summary": "Get a media asset",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Absent fields are left unchanged. Owner, admin or member.",
@@ -74718,7 +74936,8 @@
         "summary": "Get the analyses of a media asset",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "(Re)launches the given steps on the current version, asynchronously: `index` (text search) or `summarize` (summary written to a page by the organisation's LLM, which consumes LLM quota). Steps over the large-call threshold need `confirm_large`. Owner, admin or member.",
@@ -74913,7 +75132,8 @@
         "summary": "Annotations shown on a media",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/{id}/attributions": {
@@ -75010,7 +75230,8 @@
         "summary": "List the speech attributions of a media asset",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Attributes one or several spans of the media (ms on the media clock, at most 500) to a person of the ontology, confirmed at once, without any voice recognition. Confirmed spans of the same person that overlap are merged. Returns every attribution of the asset. Owner, admin or member.",
@@ -75389,7 +75610,8 @@
         "summary": "Download the current version's file",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/{id}/detections": {
@@ -75468,7 +75690,8 @@
         "summary": "Get the objects detected on a media video",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/{id}/index": {
@@ -75547,7 +75770,8 @@
         "summary": "Get the search index state of a media asset",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Queues text extraction and indexing of the current version (documents and tables only). Asynchronous: poll `GET /api/v1/media/{id}/index`. Owner, admin or member.",
@@ -75716,7 +75940,8 @@
         "summary": "Get the transcript of a media asset",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/{id}/versions": {
@@ -75813,7 +76038,8 @@
         "summary": "List the versions of a media asset",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Appends version n+1 from the raw request body (`application/octet-stream`) and makes it current; older versions are kept. Owner, admin or member.",
@@ -76055,7 +76281,8 @@
         "summary": "Compare two versions of a document",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/{id}/versions/{n}": {
@@ -76234,7 +76461,8 @@
         "summary": "Get one version of a media asset",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/{id}/versions/{n}/content": {
@@ -76327,7 +76555,8 @@
         "summary": "Download one version's file",
         "tags": [
           "media"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/media/{id}/versions/{n}/restore": {
@@ -76493,7 +76722,8 @@
         "summary": "List the live shared-memory keys of the organisation",
         "tags": [
           "memory"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/memory/values/query": {
@@ -76582,7 +76812,8 @@
         "summary": "Read numeric shared-memory values",
         "tags": [
           "memory"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/meta/ca": {
@@ -76609,7 +76840,8 @@
         "summary": "Local root CA of the TLS edge (public)",
         "tags": [
           "meta"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/meta/version": {
@@ -76633,7 +76865,8 @@
         "summary": "Server identity and API contract version (public)",
         "tags": [
           "meta"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ml/models": {
@@ -76738,7 +76971,8 @@
         "summary": "List the vision models of the organisation",
         "tags": [
           "ml"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Registers an ONNX file of the media library (kind `model`) as a detection model. The file is loaded and test-run first: input size is taken from the file, a wrong label count is a field error, a model that does not load is refused. Owner, admin or member.",
@@ -76943,7 +77177,8 @@
         "summary": "Inspect an ONNX file",
         "tags": [
           "ml"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ml/models/{id}": {
@@ -77092,7 +77327,8 @@
         "summary": "Get a vision model",
         "tags": [
           "ml"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Partial update. A new `spec` or `asset_version` (`null` unpins, a number pins a file version) is re-checked against the file before saving; a failure leaves the stored model untouched. Owner, admin or member.",
@@ -77623,7 +77859,8 @@
         "summary": "Configuration of the calling MT5 terminal",
         "tags": [
           "mt5"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/mt5/ingest": {
@@ -77758,7 +77995,8 @@
         "summary": "List the MT5 terminals",
         "tags": [
           "mt5"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Registers a MetaTrader 5 terminal as a data source. Without `bars` it sends the 1-minute bars of its whole catalogue, without `ticks` no tick. It has no token until its Expert Advisor is generated. Requires `metatrader:write`.",
@@ -77994,7 +78232,8 @@
         "summary": "Get an MT5 terminal",
         "tags": [
           "mt5"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the terminal's name, broker details and selection (`bars`, `ticks`: `*`, names or prefixes such as `XAU*`), on the version that was read (`expected_version`). An absent selection keeps the current one; the EA reads it within five minutes. Requires `metatrader:write`.",
@@ -78395,7 +78634,8 @@
         "summary": "List the symbols of an MT5 terminal",
         "tags": [
           "mt5"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/notify/channels": {
@@ -78500,7 +78740,8 @@
         "summary": "List the notification channels of the organisation",
         "tags": [
           "notify"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a channel (destination of notifications). Secret fields are write-only: a typed value is stored in the vault as the channel's dedicated secret, `{\"secret_id\"}` references an existing org secret (choosing secrets requires the secret-manager role). Requires owner, admin or member role. Channel names are unique per organisation (409).",
@@ -78818,7 +79059,8 @@
         "summary": "Get a notification channel",
         "tags": [
           "notify"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Full update of name, kind, enabled flag and config. Secret fields sent absent or `null` keep their stored value when the kind is unchanged; a changed kind replaces the whole config. Requires owner, admin or member role.",
@@ -79182,7 +79424,8 @@
         "summary": "List notification delivery attempts",
         "tags": [
           "notify"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/notify/kinds": {
@@ -79227,7 +79470,8 @@
         "summary": "List the notification channel kinds",
         "tags": [
           "notify"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/notify/templates": {
@@ -79332,7 +79576,8 @@
         "summary": "List the notification templates of the organisation",
         "tags": [
           "notify"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a minijinja template (optional subject, body, declared variables). The template must render with its declared examples. Requires owner, admin or member role. Names are unique per organisation (409).",
@@ -79568,7 +79813,8 @@
         "summary": "Get a notification template",
         "tags": [
           "notify"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Edits the template in place. Deployed flows keep the snapshot taken at deploy: redeploy them to use the change. Requires owner, admin or member role.",
@@ -79830,7 +80076,8 @@
         "summary": "Log out at the identity provider",
         "tags": [
           "oauth2"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/oauth2/native": {
@@ -79893,7 +80140,8 @@
         "summary": "Native login callback (browser)",
         "tags": [
           "oauth2"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/oauth2/native/{state}": {
@@ -79939,7 +80187,8 @@
         "summary": "Poll the native login code",
         "tags": [
           "oauth2"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/oauth2/refresh": {
@@ -80104,7 +80353,8 @@
         "summary": "Start a browser sign-in (redirect)",
         "tags": [
           "oauth2"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/oauth2/token": {
@@ -80264,7 +80514,8 @@
         "summary": "Aggregate the objects of an ontology query",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/changes": {
@@ -80380,7 +80631,8 @@
         "summary": "List the ontology changes since a cursor",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/changes/head": {
@@ -80439,7 +80691,8 @@
         "summary": "Get the newest position of the change feed",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/export": {
@@ -80498,7 +80751,8 @@
         "summary": "Export the org schema as a pack",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/import": {
@@ -80668,7 +80922,8 @@
         "summary": "List the imports",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a declarative import: a YAML mapping checked against the org schema, a source (`file` sent with each preview, `url`, or `api`), a mode (`incremental` or `snapshot`) and, for URL and API sources, an optional recurrence (scheduled runs apply without preview). Org writers (owner, admin, member).",
@@ -80894,7 +81149,8 @@
         "summary": "Get an import",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the import on top of `expected_version` (409 otherwise); `source_url`, `recurrence` and `max_pages` left out keep their value, `null` clears them; a pending preview of the previous version can no longer be applied. Org writers.",
@@ -81337,7 +81593,8 @@
         "summary": "List the runs of an import",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Starts a run in the background and answers it `running` (202); poll `GET …/runs/{run_id}`. An import with steps runs them (resolve, download, extract, inspect, filter), then applies the file they staged; a `url` or `api` import fetches its source. Checked like a scheduled run and applied at once with the author's role (no preview). A `file` import without steps has nothing to fetch (`ingest-entry-missing`): preview it with a file. Org writers.",
@@ -81523,7 +81780,8 @@
         "summary": "Get a run and its difference",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/link-types": {
@@ -81600,7 +81858,8 @@
         "summary": "List the link types",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "timeless"
       },
       "post": {
         "description": "Creates an org link type (version 1). The body is the bare definition, not wrapped in `def`. Org owner or admin only.",
@@ -82439,7 +82698,8 @@
         "summary": "Get an object",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the title and properties of an object (for a system object, only the org's extra properties are writable). What the caller may not read stays as stored. `expected_version` must match the current version when set. Journaled. Needs a writer role and the type's write role.",
@@ -82791,7 +83051,8 @@
         "summary": "List the current sensors of an object",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/objects/{id}/changes": {
@@ -82898,7 +83159,8 @@
         "summary": "Get the change history of an object",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/objects/{id}/declassify": {
@@ -83173,7 +83435,8 @@
         "summary": "List the evidence of an object",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/objects/{id}/export": {
@@ -83252,7 +83515,8 @@
         "summary": "Export everything held about an object",
         "tags": [
           "governance"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/objects/{id}/graph": {
@@ -83351,7 +83615,8 @@
         "summary": "Get the neighbourhood graph of an object",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/objects/{id}/hierarchy": {
@@ -83458,6 +83723,11 @@
         "summary": "Get the hierarchy tree under an object",
         "tags": [
           "ontology"
+        ],
+        "x-pnex-as-of": "partial",
+        "x-pnex-as-of-current": [
+          "nodes.title",
+          "nodes.properties"
         ]
       }
     },
@@ -83557,7 +83827,8 @@
         "summary": "List the objects impacted by an object",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/objects/{id}/links": {
@@ -83682,6 +83953,11 @@
         "summary": "List the links of an object",
         "tags": [
           "ontology"
+        ],
+        "x-pnex-as-of": "partial",
+        "x-pnex-as-of-current": [
+          "source.title",
+          "target.title"
         ]
       }
     },
@@ -83761,7 +84037,8 @@
         "summary": "Read the markings of an object",
         "tags": [
           "governance"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Adds markings to an object: a caller not cleared for each sees it masked, and cannot change or archive it. Requires `governance:write`.",
@@ -83983,7 +84260,8 @@
         "summary": "Read the dated values of an object",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "point_in_time"
       }
     },
     "/api/v1/ontology/objects/{id}/pages": {
@@ -84189,7 +84467,8 @@
         "summary": "Read the time series of an object property",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/packs": {
@@ -84266,7 +84545,8 @@
         "summary": "List the ontology packs",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "timeless"
       }
     },
     "/api/v1/ontology/packs/{key}/install": {
@@ -84685,7 +84965,8 @@
         "summary": "Find a path between two objects",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/query": {
@@ -84764,6 +85045,11 @@
         "summary": "Run an ontology query",
         "tags": [
           "ontology"
+        ],
+        "x-pnex-as-of": "partial",
+        "x-pnex-as-of-current": [
+          "rows.object.title",
+          "rows.object.properties"
         ]
       }
     },
@@ -84851,7 +85137,8 @@
         "summary": "Resolve a native row to its object",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/transitions/query": {
@@ -84940,7 +85227,8 @@
         "summary": "Read how objects move through the values of a property",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ontology/types": {
@@ -85017,7 +85305,8 @@
         "summary": "List the object types",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "timeless"
       },
       "post": {
         "description": "Creates an org object type (version 1) from `def`; `expected_version` is ignored. Org owner or admin only. Field errors come back as `field-invalid` (`errors.fields`).",
@@ -85261,7 +85550,8 @@
         "summary": "Get an object type",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "timeless"
       },
       "put": {
         "description": "Replaces the definition of an org type with `def`, creating a new type version; existing objects keep their data. `expected_version` (optimistic concurrency) must match the current version when set. System types are read-only. Org owner or admin only.",
@@ -85463,7 +85753,8 @@
         "summary": "List the versions of an object type",
         "tags": [
           "ontology"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/orgs": {
@@ -85529,7 +85820,8 @@
         "summary": "List my organisations",
         "tags": [
           "orgs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates an org with the default subscription tier; the caller becomes its owner. Names are globally unique.",
@@ -85733,7 +86025,8 @@
         "summary": "Get an organisation with its members",
         "tags": [
           "orgs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Renames the org. Needs `orgs:write` (owner or admin); `X-Org-Id` must be the path org. Names are globally unique.",
@@ -85926,7 +86219,8 @@
         "summary": "List the pending invitations of an organisation",
         "tags": [
           "orgs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Invites an email with a role (default viewer). Needs `orgs.members:write` (owner or admin); inviting as owner also needs `orgs.owners:write`. Nobody is added: the invited person accepts from their own session, with that email verified, within 14 days. The answer is the same whether an account uses that email or not; inviting the same email again replaces the pending invitation. `X-Org-Id` must be the path org.",
@@ -86263,7 +86557,8 @@
         "summary": "List the members of an organisation",
         "tags": [
           "orgs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/orgs/{id}/members/{user_id}": {
@@ -86509,7 +86804,8 @@
         "summary": "Download an OTA image (device only)",
         "tags": [
           "ota"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/pipelines": {
@@ -86586,7 +86882,8 @@
         "summary": "List the pipelines",
         "tags": [
           "pipelines"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a pipeline from a YAML document of SQL transforms, each with its input datasets and its output dataset. Requires `pipelines:write`.",
@@ -86911,7 +87208,8 @@
         "summary": "Get a pipeline",
         "tags": [
           "pipelines"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the document and adds a version, on the version that was read (`expected_version`). A run keeps the version it started with. Requires `pipelines:write`.",
@@ -87115,7 +87413,8 @@
         "summary": "List the runs of a pipeline",
         "tags": [
           "pipelines"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Queues a run of the current version for the worker; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, and `datasets:read` and `datasets:write` since the run reads and writes datasets.",
@@ -87291,7 +87590,8 @@
         "summary": "Get a run of a pipeline",
         "tags": [
           "pipelines"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/pipelines/{id}/schedule": {
@@ -87497,7 +87797,8 @@
         "summary": "List the versions of a pipeline",
         "tags": [
           "pipelines"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/pois": {
@@ -87627,7 +87928,8 @@
         "summary": "List the POIs of the organisation",
         "tags": [
           "pois"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a geographic POI (label and coordinates required). Devices are attached afterwards with `POST /pois/{id}/devices`. Requires owner, admin or member role.",
@@ -87824,7 +88126,8 @@
         "summary": "Cluster the POIs of a map viewport",
         "tags": [
           "pois"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/pois/placements/{id}": {
@@ -88142,7 +88445,8 @@
         "summary": "Get a POI",
         "tags": [
           "pois"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Partial update (move, rename, emoji, metadata, pinned preview). For nullable fields: absent = unchanged, `null` = cleared. Requires owner, admin or member role.",
@@ -88468,7 +88772,8 @@
         "summary": "Global catalogue of device models",
         "tags": [
           "devices"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/profile": {
@@ -88639,7 +88944,8 @@
         "summary": "List proposals",
         "tags": [
           "proposals"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/proposals/{id}": {
@@ -88718,7 +89024,8 @@
         "summary": "Get a proposal",
         "tags": [
           "proposals"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/proposals/{id}/decision": {
@@ -88883,7 +89190,8 @@
         "summary": "Read a shared tour",
         "tags": [
           "public"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/public/tours/{token}/assets/{asset_id}": {
@@ -88960,7 +89268,8 @@
         "summary": "Download a media of a shared tour",
         "tags": [
           "public"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/resources/edges": {
@@ -89077,7 +89386,8 @@
         "summary": "List resource edges",
         "tags": [
           "resources"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a typed edge between two resources of the org; the relation and the target kind must be allowed by the source kind. Requires owner, admin or member role.",
@@ -89420,7 +89730,8 @@
         "summary": "List the folders",
         "tags": [
           "resources"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a folder (organisation layer) at the root; place it with `PUT /resources/folder/{id}/containment`. Requires owner, admin or member role.",
@@ -89743,7 +90054,8 @@
         "summary": "List the labels used in the organisation",
         "tags": [
           "resources"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/resources/labels/query": {
@@ -89822,7 +90134,8 @@
         "summary": "Get the labels of many resources",
         "tags": [
           "resources"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/resources/search": {
@@ -89927,7 +90240,8 @@
         "summary": "Find resources by label",
         "tags": [
           "resources"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/resources/{kind}/{id}/containment": {
@@ -90112,7 +90426,8 @@
         "summary": "Get the containment of a resource",
         "tags": [
           "resources"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Sets the parent (and optional `sort_key`) of the resource; `parent: null` detaches it. Its subtree follows, nothing is deleted. A cycle is refused. Requires owner, admin or member role.",
@@ -90314,7 +90629,8 @@
         "summary": "Get the labels of a resource",
         "tags": [
           "resources"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the whole label set of the resource with `{\"labels\": {name: value|null}}` (`null` = bare tag). Requires owner, admin or member role.",
@@ -90514,7 +90830,8 @@
         "summary": "Get the site location of a resource",
         "tags": [
           "resources"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/rules": {
@@ -90591,7 +90908,8 @@
         "summary": "List the rules",
         "tags": [
           "rules"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "A condition on the objects of a type (filters of the ontology query) or on a series (threshold held for some minutes), evaluated every five minutes with the rights of who saved it, notifying in-app or by a channel of the org when it turns true. Never writes anything else. Requires `rules:write`.",
@@ -90827,7 +91145,8 @@
         "summary": "Get a rule",
         "tags": [
           "rules"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the rule on the version read (`expected_version`); it then runs with the rights of who saved it. A changed condition starts again from what is true now. Requires `rules:write`.",
@@ -91110,7 +91429,8 @@
         "summary": "List jobs",
         "tags": [
           "runners"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Queues a job for a runner of the org whose capabilities cover the requirements. The image must be pinned by digest. If no runner takes it within an hour it expires, it is never moved elsewhere. Needs `runners:manage`.",
@@ -91266,7 +91586,8 @@
         "summary": "Get a job",
         "tags": [
           "runners"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/runner/jobs/claim": {
@@ -91716,7 +92037,8 @@
         "summary": "List runners",
         "tags": [
           "runners"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/runners/join-tokens": {
@@ -91945,7 +92267,8 @@
         "summary": "Global typeahead search",
         "tags": [
           "search"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/secrets": {
@@ -92031,7 +92354,8 @@
         "summary": "List the org secrets",
         "tags": [
           "secrets"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Stores a new encrypted secret in the org vault (`value` required). Owner or admin only. The answer never echoes the value.",
@@ -92393,7 +92717,8 @@
         "summary": "List site recipes",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Saves a navigation recipe (YAML) on the site it names; version 1. Requires a writer role.",
@@ -92576,7 +92901,8 @@
         "summary": "List site recipe runs",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server, or from a browser agent of the org in the user's own session (the caller's browser, else a common one) when the rule declares `session: required` or `engine: extension` is asked: the run waits queued up to 30 minutes for one, is played from its start (no `resume`), and its pages are checked against the rule's site on return (100 such runs per day). A run the site blocks on the server browser (429, 403) goes on to a browser agent of the org, unless `engine: server_browser` was asked. Requires a writer role.",
@@ -92752,7 +93078,8 @@
         "summary": "Get a site recipe run",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/site-recipes/runs/{id}/files/{file}": {
@@ -92841,7 +93168,8 @@
         "summary": "Download a file of a run",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/site-recipes/runs/{id}/live": {
@@ -92924,7 +93252,8 @@
         "summary": "Live view of a run",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/site-recipes/validate": {
@@ -93152,7 +93481,8 @@
         "summary": "Get a site recipe",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Replaces the YAML and bumps the version. With `expected_version`, a save made in between answers 409. Requires a writer role.",
@@ -93338,7 +93668,8 @@
         "summary": "When a site recipe plays next",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/site-recipes/{id}/versions": {
@@ -93435,7 +93766,8 @@
         "summary": "List the versions of a site recipe",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/site-recipes/{id}/versions/{version}/restore": {
@@ -93712,7 +94044,8 @@
         "summary": "Get the latest stitch job of a media asset",
         "tags": [
           "stitch-jobs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/stitch-jobs/{id}": {
@@ -93791,7 +94124,8 @@
         "summary": "Get a stitch job",
         "tags": [
           "stitch-jobs"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/stitch-jobs/{id}/frames/{k}": {
@@ -93970,7 +94304,8 @@
         "summary": "Get the global limits of hosted agents",
         "tags": [
           "system"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Platform admin only. Replaces every limit at once; they apply to the next build, upload, run or sweep without a restart. Putting the defaults back is putting their values.",
@@ -94203,7 +94538,8 @@
         "summary": "List the telemetry streams of the organisation",
         "tags": [
           "system"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/system/o2/streams/{name}": {
@@ -94486,7 +94822,8 @@
         "summary": "Overview of every organisation",
         "tags": [
           "system"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/system/orgs/{org_id}/connector-hosts": {
@@ -94545,7 +94882,8 @@
         "summary": "List the private hosts an org may reach",
         "tags": [
           "system"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Platform admin only, never an org admin: anyone who signs up owns an org, and this opens the network of the deployment. Replaces the list of hosts on private addresses the connectors of this org may reach. Loopback and cloud metadata addresses stay refused.",
@@ -94681,7 +95019,8 @@
         "summary": "Read an org's table storage quota",
         "tags": [
           "system"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "put": {
         "description": "Platform admin only, never an org admin: anyone who signs up owns an org and would raise its own. Sets the bytes of table files this org may hold; null returns to the default. Files already written are kept.",
@@ -94896,7 +95235,8 @@
         "summary": "Get the telemetry retention of the organisation",
         "tags": [
           "system"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/system/retention/default": {
@@ -95223,7 +95563,8 @@
         "summary": "Platform status",
         "tags": [
           "system"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/system/tiers": {
@@ -95290,7 +95631,8 @@
         "summary": "List the subscription tiers",
         "tags": [
           "system"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/taxonomies": {
@@ -95367,7 +95709,8 @@
         "summary": "List the topic taxonomies",
         "tags": [
           "taxonomies"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates an empty taxonomy (version 0, no topics); add topics with `POST /taxonomies/{id}/versions`. Requires owner, admin or member role.",
@@ -95603,7 +95946,8 @@
         "summary": "Get a topic taxonomy",
         "tags": [
           "taxonomies"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Updates name and/or description (absent fields unchanged); topics are changed by appending a version. Requires owner, admin or member role.",
@@ -95807,7 +96151,8 @@
         "summary": "List the versions of a taxonomy",
         "tags": [
           "taxonomies"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Writes a new topic list as version `current_version + 1`, only if `expected_version` equals the current version (optimistic concurrency). Series derived from earlier versions stay untouched. Requires owner, admin or member role.",
@@ -95993,7 +96338,8 @@
         "summary": "Aggregate a series per time range or time-of-day slice",
         "tags": [
           "telemetry"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/telemetry/catalog": {
@@ -96062,7 +96408,8 @@
         "summary": "Catalog of the telemetry series",
         "tags": [
           "telemetry"
-        ]
+        ],
+        "x-pnex-as-of": "timeless"
       }
     },
     "/api/v1/telemetry/series": {
@@ -96167,7 +96514,8 @@
         "summary": "Points of one telemetry series",
         "tags": [
           "telemetry"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/telemetry/series/query": {
@@ -96246,7 +96594,8 @@
         "summary": "Points of several telemetry series in one call",
         "tags": [
           "telemetry"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/thermo/cycle-points/query": {
@@ -96335,7 +96684,8 @@
         "summary": "Compute the states of a thermodynamic cycle",
         "tags": [
           "thermo"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/thermo/diagram/query": {
@@ -96422,7 +96772,8 @@
         "summary": "Compute a thermodynamic diagram",
         "tags": [
           "thermo"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/thermo/fluids": {
@@ -96491,7 +96842,8 @@
         "summary": "List the fluids usable in thermodynamic diagrams",
         "tags": [
           "thermo"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/time-ranges": {
@@ -96614,7 +96966,8 @@
         "summary": "List time ranges",
         "tags": [
           "time-ranges"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a manual range in a scope (`scope_kind` + `scope_id` required). Upsert: when `external_id` already exists in the scope, that range is updated and 200 is returned instead of 201. Requires a writer role, plus the object type's write role for an `object` scope.",
@@ -96968,7 +97321,8 @@
         "summary": "Get a time range",
         "tags": [
           "time-ranges"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Partial update: absent fields keep their value, an empty string clears it; scope, origin and provenance are kept. Completing an occurrence of a recurring series restarts the series. Requires a writer role (and the object type's write role for an `object` scope).",
@@ -97179,7 +97533,8 @@
         "summary": "List the tours of the organisation",
         "tags": [
           "tours"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates the tour and its version 1 with a minimal document (one floor). Not published. Requires owner, admin or member role.",
@@ -97415,7 +97770,8 @@
         "summary": "Get a tour",
         "tags": [
           "tours"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Appends a new version with the given document (append-only history), only if `expected_version_number` is the current latest version (optimistic concurrency). Referenced media must belong to the org. Does not change what is published. Requires owner, admin or member role.",
@@ -97945,7 +98301,8 @@
         "summary": "List the versions of a tour",
         "tags": [
           "tours"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/tours/{id}/versions/{version_number}": {
@@ -98034,7 +98391,8 @@
         "summary": "Get one version of a tour",
         "tags": [
           "tours"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/user-info": {
@@ -98071,7 +98429,8 @@
         "summary": "Current user, profile and org memberships",
         "tags": [
           "user-info"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/viz/widgets": {
@@ -98166,7 +98525,8 @@
         "summary": "List the widget templates of the organisation",
         "tags": [
           "viz"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "The name must be unique in the org; `kind` must match `config.widget_type` and the config must be valid. Dashboards copy a template when it is dropped, so templates never affect existing dashboards. Requires a writer role.",
@@ -98392,7 +98752,8 @@
         "summary": "Get a widget template",
         "tags": [
           "viz"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Absent fields keep their value; the kind cannot change. Not versioned: the template is overwritten, existing dashboards keep their copy. Requires a writer role.",
@@ -98558,7 +98919,8 @@
         "summary": "Get the voice profile of a person",
         "tags": [
           "voice-id"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/voice-id/profiles": {
@@ -98635,7 +98997,8 @@
         "summary": "List the voice profiles of the organisation",
         "tags": [
           "voice-id"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Creates a `draft` voice profile on a Person object with a speaker embedding model. The person's explicit consent (date, scope, proof) is mandatory and must be confirmed; the caller is recorded as having registered it. Owner/admin only.",
@@ -98871,7 +99234,8 @@
         "summary": "Get a voice profile",
         "tags": [
           "voice-id"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "patch": {
         "description": "Sets another speaker embedding model; the profile goes back to `draft` and must be generated again. Owner/admin only.",
@@ -99635,7 +99999,8 @@
         "summary": "List web search providers",
         "tags": [
           "web-search"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       },
       "post": {
         "description": "Registers a provider: `serper` (key required, default address) or `searxng` (address of the instance, JSON output enabled, key optional, sent as a bearer token). The address must pass the egress policy. A typed `api_key` value is stored in the org vault. The first provider, or one with `is_default`, becomes the org default. Owner or admin only.",
@@ -100057,7 +100422,8 @@
         "summary": "List web sites",
         "tags": [
           "site-recipes"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/ws-ticket": {
@@ -100150,7 +100516,8 @@
         "summary": "Liveness probe",
         "tags": [
           "health"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/health/ready": {
@@ -100174,7 +100541,8 @@
         "summary": "Readiness probe (database, telemetry)",
         "tags": [
           "health"
-        ]
+        ],
+        "x-pnex-as-of": "current_only"
       }
     }
   },

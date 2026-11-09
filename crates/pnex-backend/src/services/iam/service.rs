@@ -51,6 +51,8 @@ pub struct ServicePrincipal {
     pub org_id: i64,
     pub key_id: Uuid,
     pub expires_at: DateTime<FixedOffset>,
+    /// Every read must carry `as_of`, every write is refused (D898).
+    pub point_in_time: bool,
 }
 
 #[derive(FromQueryResult)]
@@ -60,6 +62,7 @@ struct KeyHit {
     org_id: i64,
     user_id: i64,
     expires_at: DateTime<FixedOffset>,
+    point_in_time: bool,
 }
 
 /// Resolves a `pnex_sk_…` secret: `None` when unknown, revoked or expired.
@@ -68,7 +71,7 @@ pub async fn authenticate(
     secret: &str,
 ) -> std::result::Result<Option<(users::Model, ServicePrincipal)>, DbErr> {
     let Some(hit) = KeyHit::find_by_statement(sql(
-        "SELECT k.id AS key_id, sa.id AS account_id, sa.org_id, sa.user_id, k.expires_at \
+        "SELECT k.id AS key_id, sa.id AS account_id, sa.org_id, sa.user_id, k.expires_at, k.point_in_time \
          FROM iam_access_keys k JOIN iam_service_accounts sa ON sa.id = k.service_account_id \
          WHERE k.secret_sha256 = $1 AND k.revoked_at IS NULL AND k.expires_at > now()",
         vec![sha256_hex(secret).into()],
@@ -95,6 +98,7 @@ pub async fn authenticate(
             org_id: hit.org_id,
             key_id: hit.key_id,
             expires_at: hit.expires_at,
+            point_in_time: hit.point_in_time,
         },
     )))
 }
@@ -312,6 +316,8 @@ pub struct AccessKey {
     pub last_used_at: Option<DateTime<FixedOffset>>,
     #[schema(value_type = Option<String>, format = DateTime)]
     pub revoked_at: Option<DateTime<FixedOffset>>,
+    /// Point-in-time key (D898): reads need `as_of`, writes are refused.
+    pub point_in_time: bool,
 }
 
 #[derive(FromQueryResult)]
@@ -323,6 +329,7 @@ struct KeyRow {
     created_at: DateTime<FixedOffset>,
     last_used_at: Option<DateTime<FixedOffset>>,
     revoked_at: Option<DateTime<FixedOffset>>,
+    point_in_time: bool,
 }
 
 impl From<KeyRow> for AccessKey {
@@ -335,6 +342,7 @@ impl From<KeyRow> for AccessKey {
             created_at: k.created_at,
             last_used_at: k.last_used_at,
             revoked_at: k.revoked_at,
+            point_in_time: k.point_in_time,
         }
     }
 }
@@ -349,7 +357,7 @@ pub struct CreatedKey {
 }
 
 const KEY_COLUMNS: &str =
-    "id, prefix, expires_at, created_by, created_at, last_used_at, revoked_at";
+    "id, prefix, expires_at, created_by, created_at, last_used_at, revoked_at, point_in_time";
 
 pub async fn list_keys(
     db: &DatabaseConnection,
@@ -383,6 +391,7 @@ pub async fn create_key(
     account: Uuid,
     caller_id: i64,
     expires_at: DateTime<FixedOffset>,
+    point_in_time: bool,
 ) -> Result<CreatedKey> {
     get_account(db, org_id, account).await?;
     let now = Utc::now();
@@ -422,8 +431,8 @@ pub async fn create_key(
     let id = Uuid::new_v4();
     let key = KeyRow::find_by_statement(sql(
         &format!(
-            "INSERT INTO iam_access_keys (id, service_account_id, prefix, secret_sha256, expires_at, created_by) \
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING {KEY_COLUMNS}"
+            "INSERT INTO iam_access_keys (id, service_account_id, prefix, secret_sha256, expires_at, created_by, point_in_time) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING {KEY_COLUMNS}"
         ),
         vec![
             id.into(),
@@ -432,6 +441,7 @@ pub async fn create_key(
             sha256_hex(&secret).into(),
             expires_at.into(),
             caller_id.into(),
+            point_in_time.into(),
         ],
     ))
     .one(&txn)

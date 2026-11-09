@@ -246,6 +246,7 @@ fn KeysDialog(account: ServiceAccount, on_close: EventHandler<()>) -> Element {
     let mut expiry = use_signal(|| day_in(DEFAULT_KEY_DAYS));
     let mut created = use_signal(|| None::<CreatedKey>);
     let mut busy = use_signal(|| false);
+    let mut point_in_time = use_signal(|| false);
     let account_id = account.id.clone();
     let list_id = account.id.clone();
     let keys = use_resource(move || {
@@ -260,11 +261,11 @@ fn KeysDialog(account: ServiceAccount, on_close: EventHandler<()>) -> Element {
     let created_now = created.read().clone();
     let create_id = account_id.clone();
     let create = move |_| {
-        let (id, day) = (create_id.clone(), expiry());
+        let (id, day, pit) = (create_id.clone(), expiry(), point_in_time());
         busy.set(true);
         spawn(async move {
             // End of the chosen day, UTC.
-            let res = api::iam::create_access_key(&id, &format!("{day}T23:59:59Z")).await;
+            let res = api::iam::create_access_key(&id, &format!("{day}T23:59:59Z"), pit).await;
             busy.set(false);
             match res {
                 Ok(k) => {
@@ -306,6 +307,20 @@ fn KeysDialog(account: ServiceAccount, on_close: EventHandler<()>) -> Element {
                         disabled: busy() || expiry().is_empty(),
                         onclick: create,
                         {t!("access-new-key")}
+                    }
+                }
+                label { class: "flex items-start gap-2 text-sm text-ink",
+                    input {
+                        class: "mt-0.5",
+                        r#type: "checkbox",
+                        checked: point_in_time(),
+                        onchange: move |e| point_in_time.set(e.checked()),
+                    }
+                    span {
+                        span { class: "font-medium", {t!("access-key-point-in-time")} }
+                        span { class: "block text-xs text-slate",
+                            {t!("access-key-point-in-time-help")}
+                        }
                     }
                 }
                 p { class: FIELD_HELP, {t!("access-keys-help")} }
@@ -378,6 +393,11 @@ fn KeyRow(account_id: String, k: AccessKey, reload: Signal<u32>) -> Element {
         div { class: "flex flex-wrap items-center gap-3 px-3 py-2 text-sm",
             code { class: "font-mono text-xs text-ink", "{k.prefix}…" }
             span { class: "text-slate", {state} }
+            if k.point_in_time {
+                span { class: "rounded border border-line px-1.5 text-xs text-slate",
+                    {t!("access-key-point-in-time-badge")}
+                }
+            }
             span { class: "text-slate",
                 {t!("access-key-expires-on", date : date_label(& k.expires_at))}
             }

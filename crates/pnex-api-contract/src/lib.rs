@@ -17,6 +17,9 @@ pub mod exposure;
 /// Who may call each operation and assistant tool (iam.md D289).
 pub mod iam;
 
+/// Temporal semantics of each read operation (markets-research.md D899).
+pub mod as_of;
+
 /// Contract version expected by THIS binary. A bump = API break.
 ///
 /// 2 (2026-09-12, D43): `Poi.device_id` (single column) replaced by

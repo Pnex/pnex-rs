@@ -119,10 +119,14 @@ fn tool(name: &str, method: Method, path: &str, op: &Value, schemas: &Value) -> 
     rewrite_refs(&mut input);
 
     let summary = op["summary"].as_str().unwrap_or(name);
-    let description = match op["description"].as_str() {
+    let mut description = match op["description"].as_str() {
         Some(d) => format!("{summary}\n\n{d}"),
         None => summary.to_string(),
     };
+    // Temporal semantics (D899): tells the model whether `as_of` holds.
+    if let Some(sem) = op["x-pnex-as-of"].as_str().filter(|s| *s != "current_only") {
+        description.push_str(&format!("\n\nTemporal semantics: {sem}."));
+    }
     let read_only = method == Method::GET || path.ends_with("/query");
     Tool {
         def: json!({

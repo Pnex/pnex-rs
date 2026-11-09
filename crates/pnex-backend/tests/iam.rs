@@ -844,3 +844,148 @@ async fn service_accounts_and_access_keys() {
     )
     .await;
 }
+
+/// D899: every operation of the as_of inventory exists, every operation
+/// taking an instant is classified, `timeless` ones are reads.
+#[test]
+fn as_of_inventory_matches_the_spec() {
+    use pnex_api_contract::as_of::{AsOf, SEMANTICS};
+    let spec: Value = serde_json::from_str(&pnex_backend::openapi::spec_json()).unwrap();
+    let mut by_id = BTreeMap::new();
+    for (path, item) in spec["paths"].as_object().unwrap() {
+        for (method, op) in item.as_object().unwrap() {
+            if let Some(id) = op["operationId"].as_str() {
+                by_id.insert(id.to_string(), (method.clone(), path.clone(), op.clone()));
+            }
+        }
+    }
+    let listed = once(SEMANTICS.iter().map(|(id, _)| *id));
+    for (id, sem) in SEMANTICS {
+        let (method, path, op) = by_id
+            .get(*id)
+            .unwrap_or_else(|| panic!("{id}: not in the spec"));
+        let read = method == "get" || path.ends_with("/query");
+        assert!(read, "{id}: only reads carry a temporal semantics");
+        if let AsOf::PointInTime(i) | AsOf::Partial(i, _) = sem {
+            if let pnex_api_contract::as_of::Instant::Query(p) = i {
+                let has = op["parameters"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|x| x["name"] == *p);
+                assert!(has, "{id}: no `{p}` query parameter");
+            }
+        }
+        assert_eq!(op["x-pnex-as-of"].as_str(), Some(sem.label()), "{id}");
+    }
+    // An instant parameter (or body field) without a classification.
+    let schemas = &spec["components"]["schemas"];
+    let mut unclassified = Vec::new();
+    for (id, (method, path, op)) in &by_id {
+        let read = method == "get" || path.ends_with("/query");
+        let query = op["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|x| matches!(x["name"].as_str(), Some("as_of" | "at")));
+        let body = op["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+            .as_str()
+            .and_then(|r| r.rsplit('/').next())
+            .is_some_and(|n| schemas[n]["properties"].get("as_of").is_some());
+        if read && (query || body) && !listed.contains(id.as_str()) {
+            unclassified.push(id.clone());
+        }
+    }
+    assert!(
+        unclassified.is_empty(),
+        "reads taking an instant, missing from pnex-api-contract/src/as_of.rs: {unclassified:?}"
+    );
+}
+
+/// D898: a point-in-time key reads only with an instant, only what honours
+/// it (plus catalogues), never writes; a normal key is unchanged.
+#[tokio::test]
+#[serial]
+async fn point_in_time_keys() {
+    let base = common::spawn_mock_rauthy().await;
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    let alice = common::valid_token(
+        &base,
+        "00000000-0000-0000-0000-00000000000a",
+        "alice",
+        "alice@example.com",
+    );
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        move |server, _ctx| async move {
+            let org = server
+                .post("/api/v1/orgs")
+                .add_header("Authorization", bearer(&alice))
+                .json(&serde_json::json!({ "name": "Atelier PIT" }))
+                .await
+                .json::<Value>()["id"]
+                .as_i64()
+                .unwrap();
+            let (_, sa) = call(&server, "POST", "/api/v1/iam/service-accounts", &alice, org, Some(serde_json::json!({ "name": "backtest" }))).await;
+            let sa_id = sa["id"].as_str().unwrap().to_string();
+            let (_, role) = call(&server, "POST", "/api/v1/iam/roles", &alice, org, Some(serde_json::json!({
+                "key": "research", "name": "Research",
+                "statements": [{ "effect": "allow", "permissions": ["ontology:read", "ontology.schema:read", "datasets:read", "dashboards:read", "market-decisions:write"] }]
+            }))).await;
+            let (s, _) = call(&server, "POST", "/api/v1/iam/assignments", &alice, org, Some(serde_json::json!({
+                "service_account_id": sa_id, "role_id": role["id"]
+            }))).await;
+            assert_eq!(s, 201);
+            let keys = format!("/api/v1/iam/service-accounts/{sa_id}/keys");
+            let exp = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
+            let (s, pit) = call(&server, "POST", &keys, &alice, org, Some(serde_json::json!({ "expires_at": exp, "point_in_time": true }))).await;
+            assert_eq!(s, 201, "{pit}");
+            assert_eq!(pit["key"]["point_in_time"], true);
+            let (_, live) = call(&server, "POST", &keys, &alice, org, Some(serde_json::json!({ "expires_at": exp }))).await;
+            assert_eq!(live["key"]["point_in_time"], false, "off by default");
+            let pit = pit["secret"].as_str().unwrap().to_string();
+            let live = live["secret"].as_str().unwrap().to_string();
+
+            let get = |secret: String, path: String| {
+                let server = &server;
+                async move {
+                    let res = server.get(&path).add_header("Authorization", format!("Bearer {secret}")).await;
+                    (res.status_code().as_u16(), serde_json::from_str::<Value>(&res.text()).unwrap_or(Value::Null))
+                }
+            };
+            let code = |v: &Value| v["error"].as_str().map(str::to_string);
+
+            // Catalogue: allowed.
+            let (s, b) = get(pit.clone(), "/api/v1/ontology/types".into()).await;
+            assert_eq!(s, 200, "{b}");
+            // Point-in-time read: the instant is mandatory.
+            let (s, e) = get(pit.clone(), "/api/v1/markets/bars?instrument=x&interval=1h".into()).await;
+            assert_eq!((s, code(&e).as_deref()), (400, Some("as-of-required")));
+            assert_eq!(e["errors"]["args"]["param"], "as_of");
+            let (_, e) = get(pit.clone(), "/api/v1/markets/bars?instrument=x&interval=1h&as_of=2026-01-01T00:00:00Z".into()).await;
+            assert_ne!(code(&e).as_deref(), Some("as-of-required"));
+            // Partial and current-only reads: refused even with an instant.
+            let oid = uuid::Uuid::new_v4();
+            let (s, e) = get(pit.clone(), format!("/api/v1/ontology/objects/{oid}/links?as_of=2026-01-01T00:00:00Z")).await;
+            assert_eq!((s, code(&e).as_deref()), (400, Some("as-of-unsupported")));
+            let (s, e) = get(pit.clone(), "/api/v1/dashboards".into()).await;
+            assert_eq!((s, code(&e).as_deref()), (400, Some("as-of-unsupported")));
+            // Writes: refused, even the ones a service account may make.
+            let res = server
+                .post("/api/v1/markets/decisions")
+                .add_header("Authorization", format!("Bearer {pit}"))
+                .json(&serde_json::json!({}))
+                .await;
+            assert_eq!(res.status_code().as_u16(), 400, "{}", res.text());
+            assert!(res.text().contains("as-of-unsupported"), "{}", res.text());
+
+            // A normal key is unchanged: the present by default.
+            let (_, e) = get(live.clone(), "/api/v1/markets/bars?instrument=x&interval=1h".into()).await;
+            assert_ne!(code(&e).as_deref(), Some("as-of-required"));
+            let (s, _) = get(live.clone(), "/api/v1/dashboards".into()).await;
+            assert_eq!(s, 200);
+        },
+    )
+    .await;
+}

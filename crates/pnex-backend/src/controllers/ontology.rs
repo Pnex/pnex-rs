@@ -1611,6 +1611,9 @@ async fn run_query(
     org: OrgContext,
     Json(q): Json<OntologyQuery>,
 ) -> Result<Response> {
+    if org.point_in_time() && q.as_of.as_deref().is_none_or(str::is_empty) {
+        return Err(crate::auth::as_of_required("as_of"));
+    }
     let client = o2(&ctx);
     let hide = redaction(&ctx, &org)
         .await
