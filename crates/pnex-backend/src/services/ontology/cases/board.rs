@@ -38,7 +38,7 @@ async fn claim_row(
     }
     let id = Uuid::parse_str(&claim.id).map_err(|_| OntologyError::NotFound)?;
     let o = objects::view(&objects::find(db, org_id, id).await?, s);
-    let sources = links::for_object(db, org_id, id, None, false)
+    let sources = links::for_object(db, org_id, id, None, None, false)
         .await?
         .iter()
         .filter(|l| l.link_type == L_SOURCED_BY && l.source.id == claim.id)
@@ -70,7 +70,7 @@ pub async fn board(db: &DatabaseConnection, org_id: i64, case_id: Uuid) -> Resul
                 supports: Vec::new(),
                 contradicts: Vec::new(),
             };
-            for l in links::for_object(db, org_id, id, None, false).await? {
+            for l in links::for_object(db, org_id, id, None, None, false).await? {
                 if l.target.id != r.id || l.source.type_key != T_CLAIM {
                     continue;
                 }
@@ -87,7 +87,7 @@ pub async fn board(db: &DatabaseConnection, org_id: i64, case_id: Uuid) -> Resul
             if row.sources == 0 {
                 board.unsourced.push(row.clone());
             }
-            let contradicted = links::for_object(db, org_id, id, None, false)
+            let contradicted = links::for_object(db, org_id, id, None, None, false)
                 .await?
                 .iter()
                 .any(|l| l.link_type == L_CONTRADICTS && l.target.id == r.id);

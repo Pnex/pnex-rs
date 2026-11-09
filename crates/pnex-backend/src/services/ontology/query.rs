@@ -43,11 +43,32 @@ fn object_validity(at: &str, archived: bool) -> String {
     }
 }
 
+/// SQL of the property holding an object's knowledge time (D915): the one
+/// its type declares, `known_at` otherwise. Keys are checked identifiers.
+fn known_at_key(s: &super::OrgSchema) -> String {
+    let declared: Vec<String> = s
+        .types
+        .iter()
+        .filter_map(|(t, _, _)| {
+            let k = t.times.known_property.as_deref()?;
+            (valid_key(&t.key) && valid_key(k)).then(|| format!("WHEN '{}' THEN '{k}'", t.key))
+        })
+        .collect();
+    match declared.is_empty() {
+        true => format!("'{}'", pnex_core::ontology::DEFAULT_KNOWN_AT),
+        false => format!(
+            "(CASE o.type_key {} ELSE '{}' END)",
+            declared.join(" "),
+            pnex_core::ontology::DEFAULT_KNOWN_AT
+        ),
+    }
+}
+
 /// Objects as known at `at` (markets-research.md D900): title and
 /// properties replayed from `object_versions`; an object whose own
-/// `known_at` is later is left out (reference objects, without `known_at`,
-/// stay whatever their creation date).
-fn objects_as_of(at: &str) -> String {
+/// knowledge time (D915) is later is left out (reference objects, without
+/// one, stay whatever their creation date).
+fn objects_as_of(at: &str, known: &str) -> String {
     format!(
         "(SELECT o.id, o.org_id, o.type_key, o.type_version, \
            COALESCE(v.title, o.title) AS title, o.native_id, \
@@ -56,8 +77,17 @@ fn objects_as_of(at: &str) -> String {
          FROM objects o LEFT JOIN LATERAL (\
            SELECT title, properties FROM object_versions w \
            WHERE w.object_id = o.id AND w.at <= {at} ORDER BY w.at DESC LIMIT 1) v ON TRUE \
-         WHERE (COALESCE(v.properties, o.properties) ->> 'known_at') IS NULL \
-            OR (COALESCE(v.properties, o.properties) ->> 'known_at')::timestamptz <= {at})"
+         WHERE (COALESCE(v.properties, o.properties) ->> {known}) IS NULL \
+            OR (COALESCE(v.properties, o.properties) ->> {known})::timestamptz <= {at})"
+    )
+}
+
+/// A link as known at `at` (D913): its last recorded state then decides.
+fn known_link(alias: &str, at: &str) -> String {
+    format!(
+        "(SELECT v.valid_from <= {at} AND (v.valid_to IS NULL OR v.valid_to > {at}) AND NOT v.erased \
+          FROM link_versions v WHERE v.edge_id = {alias}.id AND v.at <= {at} \
+          ORDER BY v.at DESC LIMIT 1) IS TRUE"
     )
 }
 
@@ -353,7 +383,7 @@ pub(super) async fn plan(
 
     // Without `as_of` the table itself: the replay costs a lateral join.
     let source = if q.as_of.is_some() {
-        objects_as_of(&at)
+        objects_as_of(&at, &known_at_key(&s))
     } else {
         "objects".to_string()
     };
@@ -384,7 +414,10 @@ pub(super) async fn plan(
                  AND {ev} \
                JOIN {source} o ON o.id = e.{to} AND {ov}{last})",
             n = i + 1,
-            ev = validity("e", &at, false),
+            ev = match q.as_of.is_some() {
+                true => known_link("e", &at),
+                false => validity("e", &at, false),
+            },
             ov = object_validity(&at, archived),
             last = if i + 1 == q.traverse.len() {
                 reached.as_str()

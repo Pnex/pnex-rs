@@ -359,11 +359,42 @@ async fn erase_in<C: ConnectionTrait>(
                 org_id.into(),
                 lt.key.clone().into(),
                 row.id.into(),
+                keys.clone().into(),
+            ],
+        ))
+        .await?;
+        // Their recorded past states too (D913): a read at an earlier
+        // instant must not bring the erased values back.
+        db.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE link_versions v SET attributes = v.attributes - $4::text[]
+             FROM resource_edges e
+             WHERE v.edge_id = e.id AND e.org_id = $1 AND e.relation = $2
+               AND (e.source_object_id = $3 OR e.target_object_id = $3)",
+            vec![
+                org_id.into(),
+                lt.key.clone().into(),
+                row.id.into(),
                 keys.into(),
             ],
         ))
         .await?;
     }
+    // Same for the object's own recorded states (D900).
+    let personal = personal_keys(s, &row.type_key);
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE object_versions SET properties = properties - $2::text[],
+           title = CASE WHEN $3 THEN $4 ELSE title END
+         WHERE object_id = $1",
+        vec![
+            row.id.into(),
+            personal.into(),
+            title_personal.into(),
+            erased_title(&row.id.to_string()).into(),
+        ],
+    ))
+    .await?;
     let after = view(&find(db, org_id, row.id).await?, s);
     // The journal never receives what was erased.
     let mut before = view(row, s);

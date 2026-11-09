@@ -798,6 +798,7 @@ async fn install_locked(
                 may_be_contained_in: None,
                 properties: Vec::new(),
                 actions: Vec::new(),
+                times: Default::default(),
                 ..t.clone()
             };
             types::create(db, org_id, user_id, &stub, Some(&pack.key)).await?;
@@ -855,6 +856,7 @@ async fn install_locked(
         Some(r) => {
             let mut am: packs::ActiveModel = r.into();
             am.version = Set(pack.version.clone());
+            am.history = Set(pack.history);
             am.installed_by = Set(user_id);
             am.updated_at = Set(chrono::Utc::now().into());
             am.update(db).await?;
@@ -865,6 +867,7 @@ async fn install_locked(
                 org_id: Set(org_id),
                 key: Set(pack.key.clone()),
                 version: Set(pack.version.clone()),
+                history: Set(pack.history),
                 installed_by: Set(user_id),
                 ..Default::default()
             }
@@ -1336,6 +1339,7 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
         version: chrono::Utc::now().format("%Y%m%d%H%M%S").to_string(),
         requires: Vec::new(),
         description: String::new(),
+        history: false,
         types: s.org_types(),
         link_types: s.org_links(),
         page_templates: Vec::new(),

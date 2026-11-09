@@ -729,7 +729,7 @@ pub async fn open(
                     ..Default::default()
                 });
                 // Devices it drives, objects it feeds, the POI it serves.
-                for l in links::for_object(db, org_id, flow.id, Some(t), false).await? {
+                for l in links::for_object(db, org_id, flow.id, None, Some(t), false).await? {
                     let other = if l.source.id == flow.id.to_string() {
                         &l.target
                     } else {

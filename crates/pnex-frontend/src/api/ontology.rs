@@ -172,16 +172,20 @@ pub async fn erase_object(id: &str) -> Result<ObjectView, ApiError> {
     client::request(Method::POST, &format!("{BASE}/objects/{id}/erase"), None).await
 }
 
-/// Links of an object: valid at `as_of` (RFC 3339, default now), or every
-/// link ever with `history`.
+/// Links of an object: valid at `valid_at` as known at `as_of` (RFC 3339,
+/// both default now; D912), or every link ever with `history`.
 pub async fn object_links(
     id: &str,
     as_of: Option<&str>,
+    valid_at: Option<&str>,
     history: bool,
 ) -> Result<Vec<LinkView>, ApiError> {
     let mut path = format!("{BASE}/objects/{id}/links?history={history}");
     if let Some(t) = as_of {
         path.push_str(&format!("&as_of={}", urlencode(t)));
+    }
+    if let Some(t) = valid_at {
+        path.push_str(&format!("&valid_at={}", urlencode(t)));
     }
     client::request_all(&path).await
 }

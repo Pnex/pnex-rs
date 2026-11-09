@@ -103,7 +103,7 @@ pub(super) async fn load(
             continue;
         }
         // Trackers of this object over its history, clipped to the window.
-        for l in links::for_object(db, org_id, *id, None, true).await? {
+        for l in links::for_object(db, org_id, *id, None, None, true).await? {
             if l.link_type != REL_TRACKS || l.target.id != o.id.to_string() {
                 continue;
             }

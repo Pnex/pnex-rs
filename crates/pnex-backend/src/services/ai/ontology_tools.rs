@@ -360,7 +360,7 @@ pub async fn get_object(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome
         None => objects::get(deps.db, deps.org_id, id).await,
     }
     .map_err(onto_error)?;
-    let mut l = links::for_object(deps.db, deps.org_id, id, as_of, false)
+    let mut l = links::for_object(deps.db, deps.org_id, id, as_of, None, false)
         .await
         .map_err(onto_error)?;
     if let Some((m, s)) = masking(deps).await? {

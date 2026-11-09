@@ -48,7 +48,7 @@ pub fn ActionDialog(
                 .any(|p| matches!(p.kind, PropertyKind::Ref { .. }))
             {
                 // Without its links the dialog still works, unfilled.
-                let links = api::ontology::object_links(&id, None, false)
+                let links = api::ontology::object_links(&id, None, None, false)
                     .await
                     .unwrap_or_default();
                 let found = prefill(&id, &params, &links);
@@ -249,6 +249,7 @@ mod tests {
             valid_from: String::new(),
             valid_to: closed.then(String::new),
             source_ref: None,
+            history: None,
         }
     }
 

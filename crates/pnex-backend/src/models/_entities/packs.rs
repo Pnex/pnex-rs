@@ -13,6 +13,8 @@ pub struct Model {
     pub org_id: i64,
     pub key: String,
     pub version: String,
+    /// The objects of its types keep every state (D914).
+    pub history: bool,
     pub installed_by: Option<i64>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

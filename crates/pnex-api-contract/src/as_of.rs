@@ -58,14 +58,8 @@ pub const SEMANTICS: &[(&str, AsOf)] = &[
     ("markets_chains", PointInTime(Query("as_of"))),
     ("ontology_link_types_list", Timeless),
     ("ontology_objects_get", PointInTime(Query("as_of"))),
-    (
-        "ontology_objects_hierarchy",
-        Partial(Query("at"), &["nodes.title", "nodes.properties"]),
-    ),
-    (
-        "ontology_objects_links",
-        Partial(Query("as_of"), &["source.title", "target.title"]),
-    ),
+    ("ontology_objects_hierarchy", PointInTime(Query("at"))),
+    ("ontology_objects_links", PointInTime(Query("as_of"))),
     ("ontology_objects_observations", PointInTime(Query("as_of"))),
     ("ontology_packs_list", Timeless),
     ("ontology_query", PointInTime(Body)),

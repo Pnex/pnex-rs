@@ -64,10 +64,13 @@
 # propagates a shock), a price move threshold per instrument and the cause
 # → effect pairs read by `GET /markets/chains`: candidate chains computed at
 # reading time, never stored as a cause (D742).
+# Since 1.11.0 (D914) the pack declares `history: true`: every state of its
+# objects is kept for point-in-time reads.
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.10.0"
+version: "1.11.0"
+history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
 descriptions: {fr: "Sociétés suivies par ticker avec leurs dépôts et chiffres publiés (SEC EDGAR), et séries macroéconomiques (FRED), chaque valeur datée par sa publication. Une aide à l'analyse, pas un conseil en investissement."}

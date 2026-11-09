@@ -1440,6 +1440,7 @@ mod tests {
             valid_from: "2025-01-01T09:00:00Z".into(),
             valid_to: None,
             source_ref: None,
+            history: None,
         };
         let full = build(&w, None, &[rel], &[], CAP);
         assert_eq!(full.0.len(), 4);
@@ -1474,6 +1475,7 @@ mod tests {
             valid_from: "2025-01-01T11:00:00Z".into(),
             valid_to: None,
             source_ref: None,
+            history: None,
         };
         let (nodes, edges, hidden) = build(&w, None, &[rel], &[], CAP);
         let ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
@@ -1550,6 +1552,7 @@ mod tests {
             valid_from: "2025-01-01T11:00:00Z".into(),
             valid_to: None,
             source_ref: None,
+            history: None,
         };
         let (nodes, edges, _) = build(&w, None, std::slice::from_ref(&rel), &[], CAP);
         assert_eq!(
@@ -1644,6 +1647,7 @@ mod tests {
             valid_from: "2025-01-01T00:00:00Z".into(),
             valid_to: None,
             source_ref: None,
+            history: None,
         };
         let (nodes, edges, capped) = cut(build(&w, None, &[link], &[], usize::MAX), 3);
         let ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();

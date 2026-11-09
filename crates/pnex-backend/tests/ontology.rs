@@ -286,12 +286,19 @@ async fn temporal_links_containment_and_graph() {
         assert!(c["valid_to"].is_string());
         let (_, now) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", id(&p1)), &env.alice, org, None).await;
         assert!(now["results"].as_array().unwrap().iter().all(|l| l["link_type"] != "feeds"), "{now}");
-        let (_, then) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links?as_of=2026-06-01T00:00:00Z", id(&p1)), &env.alice, org, None).await;
+        // What is known today about June: the closed link was valid then.
+        let (_, then) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links?valid_at=2026-06-01T00:00:00Z", id(&p1)), &env.alice, org, None).await;
         assert!(then["results"].as_array().unwrap().iter().any(|l| l["link_type"] == "feeds"), "{then}");
+        // As known in June: recorded later, so absent (D913).
+        let (_, known) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links?as_of=2026-06-01T00:00:00Z", id(&p1)), &env.alice, org, None).await;
+        assert_eq!(known["count"], 0, "{known}");
         let (_, hist) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links?history=true", id(&p1)), &env.alice, org, None).await;
         assert!(hist["results"].as_array().unwrap().iter().any(|l| l["id"] == lid));
         let (_, r) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({"ids": [id(&p1)], "traverse": [{"link_type": "feeds"}], "as_of": "2026-06-01T00:00:00Z"}))).await;
-        assert_eq!(r["count"], 1, "as_of traversal sees the closed link: {r}");
+        assert_eq!(r["count"], 0, "as_of traversal: a link recorded later is unknown then: {r}");
+        let lt = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let (_, r) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({"ids": [id(&p1)], "traverse": [{"link_type": "feeds"}], "as_of": lt}))).await;
+        assert_eq!(r["count"], 0, "closed now: {r}");
 
         // Graph: neighbourhood, impact, path.
         let (st, g) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/graph?depth=2", id(&p2)), &env.alice, org, None).await;
@@ -2666,6 +2673,112 @@ async fn recurrence_occurrences_are_materialized_and_kept_by_history() {
         let left: Vec<&Value> = all["results"].as_array().unwrap().iter().filter(|r| r["scope_id"] == fl_id.as_str()).collect();
         assert_eq!(left.len(), 1, "{left:?}");
         assert_eq!(left[0]["attrs"]["status"], "done");
+    })
+    .await;
+}
+
+/// markets-research.md D915: an org type outside the markets packs names
+/// its knowledge-time property; a read at an earlier instant leaves its
+/// objects out, a type declaring a property that is no date-time is refused.
+#[tokio::test]
+#[serial]
+async fn declared_knowledge_time_hides_later_facts() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let def = |known: &str, kind: &str| {
+            json!({"def": {
+                "key": "sighting", "name": "Sighting",
+                "properties": [{"key": "seen_at", "name": "Seen at", "kind": kind}],
+                "times": {"known_property": known}
+            }})
+        };
+        let (st, e) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/types",
+            &env.alice,
+            org,
+            Some(def("seen_at", "text")),
+        )
+        .await;
+        assert_eq!(
+            (st, e["errors"]["fields"]["times.known_property"].as_str()),
+            (400, Some("invalid")),
+            "{e}"
+        );
+        let (st, e) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/types",
+            &env.alice,
+            org,
+            Some(def("nope", "date_time")),
+        )
+        .await;
+        assert_eq!(st, 400, "an unknown property is refused: {e}");
+        let (st, t) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/types",
+            &env.alice,
+            org,
+            Some(def("seen_at", "date_time")),
+        )
+        .await;
+        assert_eq!(st, 201, "{t}");
+        assert_eq!(t["def"]["times"]["known_property"], "seen_at", "{t}");
+        let o = object(
+            &server,
+            &env.alice,
+            org,
+            "sighting",
+            "Late report",
+            json!({"seen_at": "2026-03-01T00:00:00Z"}),
+        )
+        .await;
+        let oid = o["id"].as_str().unwrap();
+        let query = |at: &'static str| {
+            let server = &server;
+            let token = env.alice.clone();
+            async move {
+                let (_, r) = call(
+                    server,
+                    "POST",
+                    "/api/v1/ontology/query",
+                    &token,
+                    org,
+                    Some(json!({"type_key": "sighting", "as_of": at})),
+                )
+                .await;
+                r["count"].as_i64().unwrap()
+            }
+        };
+        assert_eq!(
+            query("2026-02-01T00:00:00Z").await,
+            0,
+            "known on 2026-03-01"
+        );
+        let (st, _) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{oid}?as_of=2026-02-01T00:00:00Z"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 404);
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let (_, r) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/query",
+            &env.alice,
+            org,
+            Some(json!({"type_key": "sighting", "as_of": now})),
+        )
+        .await;
+        assert_eq!(r["count"], 1, "{r}");
     })
     .await;
 }

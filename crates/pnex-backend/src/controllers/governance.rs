@@ -574,7 +574,7 @@ async fn export_object(
         Ok(o) => o,
         Err(e) => return super::ontology::onto_error(e),
     };
-    let links = match links::for_object(&ctx.db, org.org.id, id, None, true).await {
+    let links = match links::for_object(&ctx.db, org.org.id, id, None, None, true).await {
         Ok(l) => l,
         Err(e) => return super::ontology::onto_error(e),
     };

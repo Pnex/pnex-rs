@@ -50,6 +50,7 @@ fn blank(key: &str) -> ObjectTypeDef {
         may_be_contained_in: Some(TypeSet::Only(vec!["folder".into()])),
         actions: Vec::new(),
         title_classification: Default::default(),
+        times: Default::default(),
     }
 }
 
@@ -322,6 +323,7 @@ fn Editor(
                             on_change: move |v| def.with_mut(|d| d.may_be_contained_in = v),
                         }
                     }
+                    FactTimesEditor { def }
                 }
                 div { class: SECTION,
                     div { class: "flex items-center",
@@ -391,6 +393,79 @@ fn Editor(
 }
 
 /// `None` (nothing), `*` (any type) or a closed list.
+fn non_empty(v: String) -> Option<String> {
+    (!v.is_empty()).then_some(v)
+}
+
+/// Which properties carry the two dates of a fact (markets-research.md
+/// D915): true on (date or date-time), known on (date-time).
+#[component]
+fn FactTimesEditor(def: Signal<ObjectTypeDef>) -> Element {
+    let mut def = def;
+    let dated = |date_ok: bool| -> Vec<(String, String)> {
+        def.read()
+            .properties
+            .iter()
+            .filter(|p| !p.key.is_empty())
+            .filter(|p| {
+                matches!(p.kind, PropertyKind::DateTime)
+                    || (date_ok && matches!(p.kind, PropertyKind::Date))
+            })
+            .map(|p| {
+                (
+                    p.key.clone(),
+                    crate::components::ontology::tr(&p.name, &p.names),
+                )
+            })
+            .collect()
+    };
+    let (events, knowns) = (dated(true), dated(false));
+    let event = def.read().times.event_property.clone().unwrap_or_default();
+    let known = def.read().times.known_property.clone().unwrap_or_default();
+    rsx! {
+        div { class: SECTION,
+            h3 { class: "text-sm font-medium text-gray-900", {t!("onto-fact-times")} }
+            p { class: "text-xs text-gray-500", {t!("onto-fact-times-hint")} }
+            div { class: "grid grid-cols-1 sm:grid-cols-2 gap-3",
+                div {
+                    label { class: LABEL, {t!("onto-valid-at")} }
+                    select {
+                        class: INPUT,
+                        "data-testid": "onto-event-at",
+                        onchange: move |e| def.with_mut(|d| d.times.event_property = non_empty(e.value())),
+                        option { value: "", selected: event.is_empty(), "—" }
+                        for (k, name) in events {
+                            option {
+                                key: "{k}",
+                                value: "{k}",
+                                selected: event == k,
+                                "{name}"
+                            }
+                        }
+                    }
+                }
+                div {
+                    label { class: LABEL, {t!("onto-known-at")} }
+                    select {
+                        class: INPUT,
+                        "data-testid": "onto-known-at",
+                        onchange: move |e| def.with_mut(|d| d.times.known_property = non_empty(e.value())),
+                        option { value: "", selected: known.is_empty(), "—" }
+                        for (k, name) in knowns {
+                            option {
+                                key: "{k}",
+                                value: "{k}",
+                                selected: known == k,
+                                "{name}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn SetEditor(
     label: String,

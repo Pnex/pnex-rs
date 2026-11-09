@@ -41,15 +41,19 @@ pub async fn tree(
             ..Default::default()
         });
     };
-    let at = at.unwrap_or_else(|| chrono::Utc::now().into());
-    let (children, truncated) = expand(db, org_id, root, &h, at).await?;
+    // A given instant reads the links as known then (D913), not today's rows.
+    let at_cond = match at {
+        Some(t) => links::known_at(t, t),
+        None => links::valid_at(chrono::Utc::now().into()),
+    };
+    let (children, truncated) = expand(db, org_id, root, &h, &at_cond).await?;
     let ids: HashSet<Uuid> = children
         .values()
         .flatten()
         .map(|(c, _)| *c)
         .chain([root])
         .collect();
-    let rows = links::refs(db, org_id, ids.clone()).await?;
+    let rows = links::refs_at(db, org_id, ids.clone(), at).await?;
     let s = super::schema(db, org_id).await?;
     let hidden = hide.title_hidden_types(&s);
     let title = |id: &Uuid| match rows.get(id) {
@@ -78,7 +82,7 @@ pub async fn tree(
             })
             .collect()
     };
-    let covered = covered(db, org_id, &h, &ids, at).await?;
+    let covered = covered(db, org_id, &h, &ids, &at_cond).await?;
     let white = |id: &Uuid| {
         h.coverage.as_ref().is_some_and(|c| {
             *id != root
@@ -102,7 +106,9 @@ pub async fn tree(
     let mut nodes = vec![HierarchyNode {
         id: root.to_string(),
         type_key: root_row.type_key.clone(),
-        title: root_row.title.clone(),
+        title: rows
+            .get(&root)
+            .map_or_else(|| root_row.title.clone(), |o| o.title.clone()),
         depth: 0,
         link: String::new(),
         also_under: Vec::new(),
@@ -185,7 +191,7 @@ pub async fn tree(
         })
         .collect();
     let white_space = distinct.iter().filter(|n| n.white_space).count() as u32;
-    let tallies = tallies(db, org_id, &h, &ids, at, &s, hide).await?;
+    let tallies = tallies(db, org_id, &h, &ids, (&at_cond, at), &s, hide).await?;
     Ok(HierarchyView {
         hierarchies,
         has_coverage: h.coverage.is_some(),
@@ -205,7 +211,7 @@ async fn covered(
     org_id: i64,
     h: &Hierarchy,
     ids: &HashSet<Uuid>,
-    at: DateTimeWithTimeZone,
+    at: &Condition,
 ) -> Result<HashSet<Uuid>> {
     let Some(c) = h.coverage.as_ref().filter(|c| !c.links.is_empty()) else {
         return Ok(HashSet::new());
@@ -214,7 +220,7 @@ async fn covered(
     let edges = resource_edges::Entity::find()
         .filter(resource_edges::Column::OrgId.eq(org_id))
         .filter(resource_edges::Column::Relation.is_in(c.links.clone()))
-        .filter(links::valid_at(at))
+        .filter(at.clone())
         .filter(
             Condition::any()
                 .add(resource_edges::Column::SourceObjectId.is_in(ids.clone()))
@@ -238,7 +244,7 @@ async fn tallies(
     org_id: i64,
     h: &Hierarchy,
     ids: &HashSet<Uuid>,
-    at: DateTimeWithTimeZone,
+    (at, at_t): (&Condition, Option<DateTimeWithTimeZone>),
     s: &super::OrgSchema,
     hide: super::redact::Redaction,
 ) -> Result<Vec<TallyCount>> {
@@ -251,7 +257,7 @@ async fn tallies(
         let edges = resource_edges::Entity::find()
             .filter(resource_edges::Column::OrgId.eq(org_id))
             .filter(resource_edges::Column::Relation.eq(t.link.clone()))
-            .filter(links::valid_at(at))
+            .filter(at.clone())
             .filter(
                 Condition::any()
                     .add(resource_edges::Column::SourceObjectId.is_in(nodes.clone()))
@@ -272,7 +278,7 @@ async fn tallies(
                 _ => {}
             }
         }
-        let rows = links::refs(db, org_id, others).await?;
+        let rows = links::refs_at(db, org_id, others, at_t).await?;
         let def_of = |r: &crate::models::_entities::objects::Model, key: &str| {
             s.object_type(&r.type_key)
                 .and_then(|d| d.properties.iter().find(|p| p.key == key).cloned())
@@ -340,7 +346,7 @@ async fn expand(
     org_id: i64,
     root: Uuid,
     h: &Hierarchy,
-    at: DateTimeWithTimeZone,
+    at: &Condition,
 ) -> Result<(Children, bool)> {
     let relations: Vec<String> = h.steps.iter().map(|s| s.link.clone()).collect();
     let mut children: Children = HashMap::new();
@@ -353,7 +359,7 @@ async fn expand(
         let edges = resource_edges::Entity::find()
             .filter(resource_edges::Column::OrgId.eq(org_id))
             .filter(resource_edges::Column::Relation.is_in(relations.clone()))
-            .filter(links::valid_at(at))
+            .filter(at.clone())
             .filter(
                 Condition::any()
                     .add(resource_edges::Column::SourceObjectId.is_in(frontier.clone()))

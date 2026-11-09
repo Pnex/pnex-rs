@@ -69,7 +69,7 @@ fn poses_of(items: &[Item], model: &str) -> Vec<SavedPose> {
 }
 
 async fn load(object_id: String) -> Result<Vec<Item>, api::error::ApiError> {
-    let links = api::ontology::object_links(&object_id, None, false).await?;
+    let links = api::ontology::object_links(&object_id, None, None, false).await?;
     let mut items = Vec::new();
     for link in links
         .into_iter()

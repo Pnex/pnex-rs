@@ -405,7 +405,7 @@ pub fn LinkedOccurrences(object_id: String, can_write: bool) -> Element {
     let linked = use_resource(move || {
         let oid = oid.clone();
         async move {
-            let links = api::ontology::object_links(&oid, None, false)
+            let links = api::ontology::object_links(&oid, None, None, false)
                 .await
                 .unwrap_or_default();
             let types = api::ontology::types().await.unwrap_or_default();

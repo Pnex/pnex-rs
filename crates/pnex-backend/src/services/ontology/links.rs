@@ -3,7 +3,7 @@
 //! the link type; `measures` additionally binds a device metric to a
 //! `series` property of the target (D181).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use pnex_core::err_codes::{FIELD_INVALID, FIELD_REQUIRED};
 use pnex_core::ontology::api::{LinkInput, LinkView, ObjectRef};
@@ -54,6 +54,38 @@ pub async fn refs<C: ConnectionTrait>(
         .collect())
 }
 
+/// `refs` with each title and property document as recorded at `at`
+/// (D900): an object of a pack without history keeps its current state
+/// (reference objects, markets-research.md H.8).
+pub async fn refs_at<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    ids: impl IntoIterator<Item = Uuid>,
+    at: Option<DateTimeWithTimeZone>,
+) -> std::result::Result<HashMap<Uuid, objects::Model>, sea_orm::DbErr> {
+    let mut rows = refs(db, org_id, ids).await?;
+    let Some(at) = at.filter(|_| !rows.is_empty()) else {
+        return Ok(rows);
+    };
+    let ids: Vec<Uuid> = rows.keys().copied().collect();
+    let versions = db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT DISTINCT ON (object_id) object_id, title, properties FROM object_versions \
+             WHERE object_id = ANY($1) AND at <= $2 ORDER BY object_id, at DESC",
+            vec![ids.into(), at.into()],
+        ))
+        .await?;
+    for v in versions {
+        let id: Uuid = v.try_get("", "object_id")?;
+        if let Some(o) = rows.get_mut(&id) {
+            o.title = v.try_get("", "title")?;
+            o.properties = v.try_get("", "properties")?;
+        }
+    }
+    Ok(rows)
+}
+
 fn end_ref(
     id: Option<Uuid>,
     kind: &str,
@@ -101,6 +133,7 @@ fn views_from(
             valid_from: e.valid_from.to_rfc3339(),
             valid_to: e.valid_to.map(|t| t.to_rfc3339()),
             source_ref: e.source_ref.clone(),
+            history: None,
         })
         .collect()
 }
@@ -116,13 +149,79 @@ pub fn valid_at(t: DateTimeWithTimeZone) -> Condition {
         )
 }
 
-/// Links of an object (either end). `as_of` = links valid then; `history`
-/// = every link ever, newest first (closed ones included).
+/// Links as known at `as_of` (markets-research.md D913), valid at
+/// `valid_at`: their last recorded state at `as_of` decides, not today's
+/// row. A link recorded after `as_of` does not exist then, whatever its
+/// `valid_from`; a closing recorded later is not seen.
+pub fn known_at(as_of: DateTimeWithTimeZone, valid_at: DateTimeWithTimeZone) -> Condition {
+    Condition::all().add(Expr::cust_with_values(
+        "(SELECT v.valid_from <= $2 AND (v.valid_to IS NULL OR v.valid_to > $2) AND NOT v.erased \
+          FROM link_versions v WHERE v.edge_id = resource_edges.id AND v.at <= $1 \
+          ORDER BY v.at DESC LIMIT 1) IS TRUE",
+        [as_of, valid_at],
+    ))
+}
+
+/// The links read at `as_of` with their recorded validity, attributes and
+/// provenance at that instant instead of today's, flagged `partial` when
+/// that state was taken over at the migration (Q-BT1).
+pub async fn as_known<C: ConnectionTrait>(
+    db: &C,
+    edges: Vec<resource_edges::Model>,
+    as_of: DateTimeWithTimeZone,
+) -> std::result::Result<(Vec<resource_edges::Model>, HashSet<i64>), sea_orm::DbErr> {
+    if edges.is_empty() {
+        return Ok((edges, HashSet::new()));
+    }
+    let ids: Vec<i64> = edges.iter().map(|e| e.id).collect();
+    let rows = db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT DISTINCT ON (edge_id) edge_id, valid_from, valid_to, attributes, source_ref, partial \
+             FROM link_versions WHERE edge_id = ANY($1) AND at <= $2 ORDER BY edge_id, at DESC",
+            vec![ids.into(), as_of.into()],
+        ))
+        .await?;
+    let mut known = HashMap::new();
+    for r in rows {
+        let id: i64 = r.try_get("", "edge_id")?;
+        known.insert(
+            id,
+            (
+                r.try_get::<DateTimeWithTimeZone>("", "valid_from")?,
+                r.try_get::<Option<DateTimeWithTimeZone>>("", "valid_to")?,
+                r.try_get::<Value>("", "attributes")?,
+                r.try_get::<Option<String>>("", "source_ref")?,
+                r.try_get::<bool>("", "partial")?,
+            ),
+        );
+    }
+    let mut partial = HashSet::new();
+    let edges = edges
+        .into_iter()
+        .filter_map(|mut e| {
+            let (from, to, attributes, source_ref, part) = known.remove(&e.id)?;
+            (e.valid_from, e.valid_to, e.attributes, e.source_ref) =
+                (from, to, attributes, source_ref);
+            if part {
+                partial.insert(e.id);
+            }
+            Some(e)
+        })
+        .collect();
+    Ok((edges, partial))
+}
+
+/// Links of an object (either end). `as_of` = links as known then (D913),
+/// valid at `valid_at` (default `as_of`, D912); `valid_at` alone = valid
+/// then as known today; `history` = every link ever, newest first (closed
+/// ones included).
 pub async fn for_object(
     db: &DatabaseConnection,
     org_id: i64,
     id: Uuid,
     as_of: Option<DateTimeWithTimeZone>,
+    valid_at_t: Option<DateTimeWithTimeZone>,
     history: bool,
 ) -> Result<Vec<LinkView>> {
     find(db, org_id, id).await?;
@@ -134,11 +233,39 @@ pub async fn for_object(
                 .add(resource_edges::Column::TargetObjectId.eq(id)),
         )
         .order_by_desc(resource_edges::Column::ValidFrom);
-    if !history {
-        q = q.filter(valid_at(as_of.unwrap_or_else(|| chrono::Utc::now().into())));
+    let Some(as_of) = as_of else {
+        if !history {
+            q = q.filter(valid_at(
+                valid_at_t.unwrap_or_else(|| chrono::Utc::now().into()),
+            ));
+        }
+        let rows = q.all(db).await?;
+        return Ok(views(db, org_id, &rows).await?);
+    };
+    // The history as known at `as_of`: links recorded by then, in their state then.
+    let cond = match history {
+        true => Condition::all().add(Expr::cust_with_values(
+            "EXISTS (SELECT 1 FROM link_versions v \
+               WHERE v.edge_id = resource_edges.id AND v.at <= $1 AND NOT v.erased)",
+            [as_of],
+        )),
+        false => known_at(as_of, valid_at_t.unwrap_or(as_of)),
+    };
+    let rows = q.filter(cond).all(db).await?;
+    let (rows, partial) = as_known(db, rows, as_of).await?;
+    let ids: Vec<Uuid> = rows
+        .iter()
+        .flat_map(|e| [e.source_object_id, e.target_object_id])
+        .flatten()
+        .collect();
+    let by_id = refs_at(db, org_id, ids, Some(as_of)).await?;
+    let mut out = views_from(&rows, &by_id);
+    for v in &mut out {
+        if partial.contains(&v.id) {
+            v.history = Some("partial".into());
+        }
     }
-    let rows = q.all(db).await?;
-    Ok(views(db, org_id, &rows).await?)
+    Ok(out)
 }
 
 async fn open_exists<C: ConnectionTrait>(

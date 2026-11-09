@@ -1217,3 +1217,151 @@ Le cœur `pnex_core::rca` de l'appendice I (`cases-workspace.md`) sert aussi aux
 - **MK33** (2026-11-09) : colonne `ai_conversations.frozen_at` (migration 000141), `frozen_at` à la création (`AiConversationWrite`, 400 `in_future`/`invalid`) et dans `AiConversation`. Politique `services/ai/frozen.rs` : outils datés (`query_ontology` → `query.as_of`, `get_object` → `as_of` désormais pris en charge, `market_figures` → `as_of`, `case_signals` → `to`) reçoivent l'instant, ramené à l'instant figé quand le modèle demande plus tard, et la réponse le dit (`as_of`, `as_of_note`) ; outils de schéma conservés (`describe_ontology`, `describe_node_types`, `search_knowledge`, `read_knowledge`, `case_proposals`) ; documents (`search_docs`) filtrés sur la date de création de la version ; tout autre outil, écritures comprises, est retiré de la liste et refusé (`ai-frozen-tool`, `tool`, `at`). Le prompt système le dit. UI : bandeau « Vue au … » dans le panneau assistant, bouton « Interroger l'assistant à l'alerte + 15 min » dans le Cadre d'un dossier ouvert depuis une alerte (D910), section « Analyse à date » sur la page Décisions de modèles. Test : fin de `point_in_time_reads_never_show_a_canary` (une conversation figée à T0 ne voit ni canari ni statut postérieur même si le modèle demande `as_of` plus tard ; `create_object` et `list_devices` refusés).
 - Écarts MK33 : `read_chunk` et `open_page` restent permis (leurs ids viennent d'une recherche déjà filtrée). Un document créé avant l'instant mais indexé après reste visible (on filtre sur la création de la version, la connaissance du document, pas sur l'indexation technique). `case_proposals` rend les propositions du dossier telles qu'elles sont : le détecteur lit une fenêtre qui peut dépasser l'instant figé.
 - Écart D441 (garde `engine_genericity`, CI du 2026-11-09) : le moteur ne nomme aucune clé de pack, d'où le type « Pays » de clé `nation` (`country` est déjà une propriété partout), le signal `world.event` (et non `geo_event`, la clé du type) et le lien `regulates` (« régule ») au lieu de `drives`.
+
+## Appendice I — Bitemporel complet : ce qu'on savait, pas seulement ce qui était vrai (D912–D917)
+
+Statut : proposé le 2026-11-10. Origine : litige Polymarket « Strategy vend du Bitcoin avant le 31 mai 2026 » — vente faite le 26–31 mai, connue le 1ᵉʳ juin ; l'oracle a tranché sur la date où le fait est devenu public. Complète l'appendice H : H garantit qu'aucune **valeur** postérieure à `as_of` ne fuit ; il reste des **faits rétroactifs** qui fuient.
+
+### I.1 Le besoin
+
+Un fait a deux dates : quand il est vrai dans le monde (**temps de validité**) et quand PNeX l'a su (**temps de connaissance**). Une lecture `as_of = t` doit rendre « ce qu'on savait à t », pas « ce qu'on sait aujourd'hui de t ». D531 le fait pour les événements et les observations ; le noyau ne le fait pas pour les liens.
+
+### I.2 Ce qui fuit aujourd'hui (relevé dans le code le 2026-11-10, `15a0a81`)
+
+| Point | État |
+|---|---|
+| Valeurs, barres, observations, `geo_event` | tenu (`known_at`, D531, D541, H) |
+| Propriétés d'objet des packs `markets` / `world_events` | tenu (`object_versions`, D900) — liste de packs codée en dur dans le trigger (`shortcut:`) |
+| **Lien créé aujourd'hui avec `valid_from` passé** | **fuite** : `links::valid_at` et `rca::topology` ne filtrent que `valid_from` / `valid_to`. Un `exposed_to` déclaré le 2026-11-10 « depuis 2025 » est vu par un backtest à `as_of = 2025-06` |
+| **Lien fermé après coup** (`valid_to` posé dans le passé) | **fuite inverse** : la ligne est modifiée en place ; à `as_of` antérieur à la correction, le lien était cru ouvert, il apparaît fermé |
+| Correction d'attributs d'un lien | écrasée en place, pas d'historique en base |
+| `markets_chains` | classé `point_in_time` (D899) alors qu'il lit la topologie ci-dessus : **le canari D901 ne couvre pas les liens** |
+
+Conséquence directe : les chaînes causales (H.7) sont une **variable d'entrée du modèle**. Un lien déclaré après coup donne au modèle, en backtest, une structure que personne ne connaissait à la date : scores gonflés, sans signal.
+
+### I.3 Décisions
+
+#### D912 — Deux axes, deux paramètres, un défaut sûr
+
+- Temps de validité : `valid_from` / `valid_to` (existant, D179). Temps de connaissance : instant d'écriture en base, jamais saisi.
+- Une lecture datée prend `as_of` (connaissance) et, optionnellement, `valid_at` (monde). **Défaut : `valid_at = as_of`** — « ce qu'on savait à t de l'état à t ». Une lecture `valid_at` sans `as_of` = connaissance courante (« ce qu'on sait aujourd'hui de t »), utile en enquête, **refusée à la clé PIT** (`as-of-required`).
+- Vocabulaire UI : « Vrai le… » / « Su le… ». Pas de jargon « bitemporel » à l'écran.
+
+#### D913 — `link_versions` : le même mécanisme que `object_versions`
+
+- Table `link_versions` (`edge_id`, `org_id`, `at`, `valid_from`, `valid_to`, `attributes`, `source_ref`, `erased`), remplie par un **trigger sur `resource_edges`** à l'insertion et à tout changement de validité ou d'attributs. Aucun chemin d'écriture ne peut l'oublier (même raison que D900).
+- Lecture à `as_of` : pour chaque lien, la dernière version avec `at <= as_of`, puis le filtre de validité à `valid_at`. Un lien sans version antérieure à `as_of` n'existe pas à cette date, quel que soit son `valid_from`.
+- `links::valid_at` et `rca::topology` passent par cette lecture dès qu'un `as_of` est donné. Sans `as_of`, rien ne change (lecture courante).
+- Reprise : chaque lien existant reçoit une version à son `created_at` (connaissance minimale prouvable). Les fermetures antérieures à la migration restent inconnues : marquées `history: partial` dans la réponse, comme `properties_as_of: unknown` (H.8).
+
+#### D914 — L'historique devient un drapeau de pack
+
+Le `shortcut:` de la migration 000139 est levé : `history: true` dans le manifeste d'un pack active la capture `object_versions` pour ses types (le pack `prediction_markets` de l'appendice J est le troisième). `markets` et `world_events` le déclarent ; le trigger lit le drapeau au lieu de la liste. Les liens sont versionnés **pour tous les packs** (volume faible, et la fuite est la même partout).
+
+#### D915 — Le temps de connaissance d'un objet : déclaré par son type
+
+D531 sort du pack `markets` : le schéma d'un type (D176) peut désigner sa propriété de temps du monde (`event_at`) et sa propriété de temps de connaissance (`known_at`). Le noyau applique la règle H.8 (« un objet dont le `known_at` est plus tard est écarté ») à tout type qui la déclare, pas seulement aux types marchés. Un type sans déclaration garde le comportement actuel (objet de référence, visible quelle que soit sa date : écart H.8 conservé, il est voulu).
+
+#### D916 — Le canari couvre les liens
+
+D901 gagne deux canaris : un **lien rétroactif** (écrit après T0, `valid_from` avant T0) qui doit être absent à `as_of = T0`, et une **fermeture rétroactive** (lien ouvert avant T0, fermé après T0 avec `valid_to` avant T0) qui doit être **présente et ouverte** à `as_of = T0`. `markets_chains`, `ontology_objects_links` et `ontology_objects_hierarchy` doivent passer ces canaris ; les deux derniers passent de `partial` à `point_in_time` quand les titres des extrémités sont relus à `as_of` (D900, D914).
+
+#### D917 — Ce qui reste volontairement hors du bitemporel
+
+Barres de cours (connues à leur clôture, écart H.8 maintenu), seuils de lecture (réglage, pas fait daté), étiquettes et containment (refusés à la clé PIT, inchangé). Chaque exception est listée dans la sémantique de route (D899), jamais implicite.
+
+### I.4 Lots
+
+| Lot | Contenu | Acceptation |
+|---|---|---|
+| MK34 | D913 migration + reprise, lecture `as_of` des liens, `rca::topology` | test : lien déclaré aujourd'hui « depuis 2025 » → aucune chaîne à `as_of = 2025-06`, une chaîne à `as_of = maintenant` |
+| MK35 | D916 canaris liens ; `ontology_objects_links` / `hierarchy` → `point_in_time` | `point_in_time_reads_never_show_a_canary` couvre l'inventaire complet |
+| MK36 | D912 paramètre `valid_at`, UI « Vrai le / Su le » ; D914 drapeau `history` ; D915 déclaration par type | un type d'org hors pack marchés déclare `known_at` et est écarté à `as_of` antérieur |
+
+### I.5 Questions ouvertes
+
+- Q-BT1 (tranchée, Shan 2026-11-10) : les fermetures de lien pré-migration sont rendues, marquées `history: partial` ; pas de refus à la clé PIT.
+- Q-BT2 (tranchée, Shan 2026-11-10) : un lien effacé garde ses lignes `link_versions` avec `erased = true`, sans attributs ni `source_ref` ; il disparaît à tout `as_of`.
+
+### I.6 Ce qui est codé et écarts (2026-11-10)
+
+- **MK34** : table `link_versions` (migration 000142) remplie par deux triggers sur `resource_edges` (insertion et tout changement de validité, d'attributs ou de provenance ; suppression → versions vidées, `erased = true`). Reprise : une version par lien à son `created_at`, `partial` quand le lien est fermé ou modifié avant la migration. Lecture : `links::known_at(as_of, valid_at)` (dernière version ≤ `as_of`, puis validité à `valid_at`) et `links::as_known` (validité, attributs et provenance de cette version, `history: partial` dans `LinkView`). Passent par elle : `GET /ontology/objects/{id}/links?as_of=` (y compris `history=true` : l'historique tel que connu à `as_of`), la hiérarchie (`at`), la traversée de `POST /ontology/query` avec `as_of` (fuite trouvée en route : elle lisait la ligne courante), `rca::topology` (chaînes marchés et détecteur de dossiers). Les appels internes des dossiers qui voulaient « valide à t » passent `valid_at` (connaissance courante). L'effacement RGPD retire aussi les valeurs des versions d'objet et de lien (SEC-87). Test : `price_moves_get_candidate_causal_chains` (lien déclaré aujourd'hui « depuis 2025 » → aucune chaîne en janvier ; même lien daté de 2025-12 → une chaîne ; fermé aujourd'hui au 2025-06 → toujours une chaîne en janvier).
+- **MK35** : `ontology_objects_links` et `ontology_objects_hierarchy` passent `point_in_time` ; titres et propriétés des extrémités et des nœuds relus dans `object_versions` à l'instant (`links::refs_at`). Canaris ajoutés à `point_in_time_reads_never_show_a_canary` : lien rétroactif (absent à T0, sur les liens, la hiérarchie et la traversée), fermeture rétroactive (présente et ouverte à T0), extrémité renommée après T0 (ancien titre à T0).
+- **MK36** : paramètre `valid_at` sur `GET /ontology/objects/{id}/links` (seul = connaissance courante, refusé à la clé PIT par `as-of-required`) ; UI « Vrai le » / « Su le » dans l'onglet Liens, marque « historique partiel ». D914 : `history: true` dans le manifeste (`markets` 1.11.0, `world_events` 1.1.0), colonne `packs.history`, trigger `object_versions_capture` relu sur ce drapeau (migration 000143). D915 : `times.event_property` / `times.known_property` sur un type (propriété date-heure, refus sinon), lus par `ontology_query` et `ontology_objects_get` à `as_of` ; sans déclaration, la propriété `known_at` garde son rôle ; éditeur de type « Dates du fait ». Test `declared_knowledge_time_hides_later_facts`.
+- Écarts : les champs s'appellent `event_property` / `known_property` (et non `event_at` / `known_at`) : la garde du contrat lit tout `*_at` comme un horodatage. Un objet d'un pack sans historique garde son titre courant sur une lecture datée (écart H.8 conservé). Pas encore de `valid_at` sur la hiérarchie ni sur `ontology_query` : seule la route des liens le prend.
+
+---
+
+## Appendice J — Marchés de prédiction : probabilités en entrée, wallets à la demande (D918–D925)
+
+Statut : proposé le 2026-11-10 (direction validée par Shan le même jour : brut en colonnes, ontologie seulement pour les entités d'intérêt, périmètre Polymarket d'abord). Repose sur l'appendice I : un marché de prédiction est un fait à **trois dates** (événement, publication, résolution), et sa résolution elle-même peut être contestée puis révisée.
+
+### J.1 Le besoin
+
+1. Une **variable d'entrée** de plus pour le modèle de décision (G) : la probabilité implicite qu'un événement macro ou géopolitique se produise (baisse de taux de la Fed, cessez-le-feu, sanctions), alignée sur la frise, GDELT et les chaînes H.7.
+2. Une **piste d'enquête** pour le dossier (`cases-workspace.md`) : repérer les mises « informées » (wallet neuf, financé juste avant, misé gros sur un seul marché, peu avant un événement).
+3. Un **point de référence** pour mesurer le modèle : s'il ne fait pas mieux que le marché, il n'apporte rien.
+
+Cadre : PNeX **lit** des données publiques ; il ne parie pas, ne signe aucune transaction, ne détient aucune clé de wallet. Parier sur Polymarket n'est pas autorisé en France ; la lecture de données publiques n'en dépend pas, mais les conditions d'usage de chaque source sont à vérifier (comme §6).
+
+### J.2 Décisions
+
+#### D918 — Pack `prediction_markets`, à part
+
+Pack séparé (comme `world_events`, D739), `history: true` (D914). Types : `prediction_market` (plateforme, identifiant externe D369, question, **règles de résolution en texte intégral**, source de résolution déclarée, échéance, issues, statut) et `prediction_resolution` (voir D920). Aucune dépendance du pack `markets` vers ce pack : le lien passe par D921.
+
+#### D919 — Les probabilités sont des séries en table, jamais des objets
+
+Même règle que D807 : historique fin en table (`prediction_prices` : marché, issue, `ts`, prix ∈ [0,1], volume, `known_at`, source), forme D809, lecture `point_in_time` au rééchantillonnage D823. Granularité de collecte : 1 h par défaut, 1 min pour les marchés suivis par le modèle (Q-PM2). Le moteur de pipelines collecte (D344), pas de CronJob.
+
+#### D920 — La résolution est un fait daté, contestable, révisable
+
+Une résolution n'est pas un booléen : c'est une suite d'états datés `proposed` → `disputed` (×n) → `final` (ou `indeterminate`), chacun avec son `known_at`. Le cas Strategy (vente le 26–31 mai, connue le 1ᵉʳ juin, « Non » final) et le cas Zelensky (sources crédibles en désaccord) sont les deux tests d'acceptation. Le modèle et la mesure de calibration (D924) ne lisent **que** l'état connu à `as_of` ; un marché en litige à `as_of` est `unresolved`, jamais résolu par anticipation.
+
+#### D921 — Lien `bears_on`, déclaré par un membre
+
+`prediction_market` → instrument, pays (`nation`) ou organisation, déclaré par un membre (comme `exposed_to`, H.7), jamais inféré. Il porte une direction attendue (`up`, `down`, `unknown`) **dite par le membre**. Versionné (D913) : un lien posé aujourd'hui n'existe pas dans un backtest d'hier.
+
+#### D922 — Variable d'entrée du modèle : niveau et variation, à `as_of`
+
+La route de lecture d'entraînement (MK14) expose, par instrument, les marchés `bears_on` ouverts à `as_of` : probabilité, variation 1 h / 24 h, volume, jours avant échéance. Rien n'est filtré par pertinence : le modèle apprend le poids (même règle que H.7). Couverte par le canari (D916).
+
+#### D923 — Wallets : brut en colonnes, objet seulement sur signalement
+
+- Brut : uniquement les contrats de la plateforme suivie (échanges et dépôts/retraits liés), en tables colonnes (D807), jamais un objet par wallet. Ordre de grandeur attendu : dizaines à centaines de Go pour Polymarket, contre plusieurs To pour tout Polygon (non visé).
+- Un wallet devient un objet `wallet` (identifiant externe = adresse) **seulement** quand un membre l'ajoute à un dossier ou qu'un détecteur le propose (D367). Les liens `funded_by` / `traded` sont alors matérialisés pour ce wallet et son voisinage à profondeur 2, à la demande.
+
+#### D924 — Détecteur « mise précoce », une proposition, jamais une accusation
+
+Fonction pure dans `pnex_core` : wallet de moins de N jours, part de son volume sur un seul marché ≥ X %, mise ≥ Y, dans la fenêtre W avant un changement brusque de probabilité ou une résolution. Sortie = proposition dans un dossier, avec les chiffres qui l'ont déclenchée. Aucune intention attribuée, aucun nom (D742 tient : rien n'est stocké comme cause). Seuils réglables par org.
+
+#### D925 — Calibration : le marché comme point de référence
+
+D896 (mesure après coup) ajoute, sur les marchés `bears_on` résolus `final` : score de Brier du modèle, du marché à la même date, et courbe de calibration par tranches de 10 %. Affiché sur la page Décisions de modèles. Conseil seulement (D895).
+
+### J.3 Lots
+
+| Lot | Contenu |
+|---|---|
+| MK37 | D918, D919 : pack, import des marchés et des probabilités (Polymarket), pipeline 1 h |
+| MK38 | D920 : états de résolution datés ; acceptation sur les cas Strategy et Zelensky |
+| MK39 | D921, D922 : `bears_on`, variable d'entrée dans la lecture d'entraînement |
+| MK40 | D925 : Brier et calibration |
+| MK41 | D923, D924 : wallets en colonnes, détecteur, proposition dans un dossier |
+
+Ordre : MK34 (appendice I) avant MK39 — sans lui, `bears_on` fuit comme `exposed_to`.
+
+### J.4 Questions ouvertes
+
+Tranchées par Shan le 2026-11-10 :
+
+- Q-PM1 : ingestion par les **API publiques de la plateforme** (hôtes fixés dans le code, R9, liste blanche egress R8) : marchés, questions et règles de résolution par l'API de métadonnées, probabilités par l'historique de prix du carnet, échanges par l'API de données publique. Conditions d'usage notées dans `license_note`.
+- Q-PM2 : réglage d'org du pack (`fine_markets`, liste d'identifiants de marché), vide par défaut, même école que `move_series` (D737).
+- Q-PM3 : Kalshi plus tard, pas dans ce tour.
+- Q-PM4 : votes de l'oracle plus tard, pas dans ce tour.
+- Seuils D924 par défaut : wallet de moins de 7 jours, ≥ 80 % de son volume sur un marché, mise ≥ 10 000 USDC, dans les 48 h avant un saut de probabilité ≥ 15 points ou une résolution. Réglables par org.
+- D923 : échanges collectés depuis l'API publique **pour les marchés suivis seulement** (`bears_on` ou `fine_markets`), pas tout l'historique de la plateforme ; financement (dépôts USDC) si une source publique l'expose, sinon écart noté.
+
+### J.5 Hors périmètre
+
+Toute mise, tout ordre, toute signature ; les autres chaînes que celle de la plateforme suivie ; l'attribution d'un wallet à une personne.

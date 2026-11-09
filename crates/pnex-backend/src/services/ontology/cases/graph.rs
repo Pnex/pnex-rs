@@ -63,7 +63,7 @@ pub async fn expand(
     let shown: HashSet<&str> = input.exclude.iter().map(String::as_str).collect();
     let mut found: Vec<(LinkView, pnex_core::ontology::api::ObjectRef)> = Vec::new();
     // Another org's object: not found (R1).
-    for l in links::for_object(db, org_id, id, None, true).await? {
+    for l in links::for_object(db, org_id, id, None, None, true).await? {
         if structural(&l.link_type) {
             continue;
         }

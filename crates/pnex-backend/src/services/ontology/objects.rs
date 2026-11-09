@@ -124,9 +124,12 @@ pub async fn get_as_of(
         o.title = v.try_get("", "title").map_err(sea_orm::DbErr::from)?;
         o.properties = v.try_get("", "properties").map_err(sea_orm::DbErr::from)?;
     }
+    let known_key = s
+        .object_type(&o.type_key)
+        .map_or(pnex_core::ontology::DEFAULT_KNOWN_AT, |t| t.known_at_key());
     let known_at = o
         .properties
-        .get("known_at")
+        .get(known_key)
         .and_then(Value::as_str)
         .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok());
     if known_at.is_some_and(|k| k > at) || o.valid_to.is_some_and(|t| t <= at) {

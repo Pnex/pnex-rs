@@ -557,8 +557,8 @@ fn legal_basis_of<'a>(
     }
 }
 
-/// Links valid as of a date (default now) or the whole history; closing a
-/// link keeps it as history (D179).
+/// Links true on a date as known on a date (both default now, D912) or
+/// the whole history; closing a link keeps it as history (D179).
 #[component]
 fn LinksPanel(
     object: ObjectView,
@@ -567,18 +567,20 @@ fn LinksPanel(
     can_write: bool,
 ) -> Element {
     let mut reload = use_signal(|| 0u32);
+    let mut valid_at = use_signal(String::new);
     let mut as_of = use_signal(String::new);
     let mut history = use_signal(|| false);
     let mut adding = use_signal(|| false);
     let oid = object.id.clone();
     let links = use_resource(move || {
         let id = oid.clone();
-        let at = as_of();
+        let (valid, known) = (valid_at(), as_of());
         let h = history();
         async move {
             let _ = reload();
-            let at = (!at.is_empty()).then(|| format!("{at}:00Z"));
-            api::ontology::object_links(&id, at.as_deref(), h).await
+            let instant = |v: &str| (!v.is_empty()).then(|| format!("{v}:00Z"));
+            let (valid, known) = (instant(&valid), instant(&known));
+            api::ontology::object_links(&id, known.as_deref(), valid.as_deref(), h).await
         }
     });
     let rows: Vec<LinkView> = match &*links.read() {
@@ -590,13 +592,27 @@ fn LinksPanel(
         div { class: SECTION,
             div { class: "flex flex-wrap items-end gap-3",
                 div {
-                    label { class: "block text-xs font-medium text-gray-500 mb-1", {t!("onto-as-of")} }
+                    label { class: "block text-xs font-medium text-gray-500 mb-1",
+                        {t!("onto-valid-at")}
+                    }
+                    input {
+                        r#type: "datetime-local",
+                        class: INPUT,
+                        "data-testid": "onto-valid-at",
+                        value: "{valid_at}",
+                        disabled: history(),
+                        oninput: move |e| valid_at.set(e.value()),
+                    }
+                }
+                div {
+                    label { class: "block text-xs font-medium text-gray-500 mb-1",
+                        {t!("onto-known-at")}
+                    }
                     input {
                         r#type: "datetime-local",
                         class: INPUT,
                         "data-testid": "onto-as-of",
                         value: "{as_of}",
-                        disabled: history(),
                         oninput: move |e| as_of.set(e.value()),
                     }
                 }
@@ -704,6 +720,13 @@ fn LinkRow(
                 span { class: "text-xs text-gray-500 font-mono", {attrs.join(" · ")} }
             }
             span { class: "ml-auto text-xs text-gray-500", "{span}" }
+            if link.history.is_some() {
+                span {
+                    class: "text-xs text-amber-700",
+                    title: t!("onto-link-history-partial-hint"),
+                    {t!("onto-link-history-partial")}
+                }
+            }
             if can_write && open {
                 button {
                     class: "text-xs text-red-700 hover:underline",
@@ -1246,7 +1269,7 @@ fn BindSensor(
     let current = use_resource(move || {
         let (id, prop) = (oid.clone(), prop.clone());
         async move {
-            api::ontology::object_links(&id, None, false)
+            api::ontology::object_links(&id, None, None, false)
                 .await
                 .unwrap_or_default()
                 .into_iter()

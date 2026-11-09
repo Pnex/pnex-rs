@@ -3953,12 +3953,40 @@ async fn point_in_time_reads_never_show_a_canary() {
             .await;
         assert_eq!(st, 201, "{event}");
         let event_id = event["id"].as_str().unwrap().to_string();
-        let (st, r) = api
+        let (st, gold) = api
             .call("POST", "/api/v1/ontology/objects", Some(json!({
                 "type_key": "instrument", "title": "Gold", "properties": { "ticker": "XAUUSD" }
             })))
             .await;
-        assert_eq!(st, 201, "{r}");
+        assert_eq!(st, 201, "{gold}");
+        let gold_id = gold["id"].as_str().unwrap().to_string();
+        let create = |body: Value| {
+            let api = &api;
+            async move {
+                let (st, r) = api.call("POST", "/api/v1/ontology/objects", Some(body)).await;
+                assert_eq!(st, 201, "{r}");
+                r["id"].as_str().unwrap().to_string()
+            }
+        };
+        let link = |kind: &'static str, from: String, to: String| {
+            let api = &api;
+            async move {
+                let (st, r) = api
+                    .call("POST", "/api/v1/ontology/links", Some(json!({
+                        "link_type": kind, "source_id": from, "target_id": to,
+                        "valid_from": "2025-01-01T00:00:00Z"
+                    })))
+                    .await;
+                assert_eq!(st, 201, "{r}");
+                r["id"].as_i64().unwrap()
+            }
+        };
+        // Links known before T0: an exposure and an ownership (D916).
+        let iran = create(json!({ "type_key": "nation", "title": "Iran", "properties": { "code": "IR" } })).await;
+        let exposure = link("exposed_to", iran.clone(), gold_id.clone()).await;
+        let holding = create(json!({ "type_key": "organization", "title": "Holding" })).await;
+        let sub = create(json!({ "type_key": "organization", "title": "Subsidiary" })).await;
+        let owns = link("owns", holding.clone(), sub.clone()).await;
         let (st, series) = api
             .call("POST", "/api/v1/ontology/objects", Some(json!({
                 "type_key": "macro_series", "title": "CPI", "properties": { "code": "CPI" }
@@ -4007,6 +4035,25 @@ async fn point_in_time_reads_never_show_a_canary() {
             .await;
         assert_eq!(st, 200, "{r}");
         observe(canary_at.clone(), 31415.9).await;
+        // Links: closed after T0 back to 2025 (still open as known at T0),
+        // written after T0 since 2025 (unknown at T0), an end renamed.
+        for id in [exposure, owns] {
+            let (st, r) = api
+                .call("POST", &format!("/api/v1/ontology/links/{id}/close"), Some(json!({ "valid_to": "2025-06-01T00:00:00Z" })))
+                .await;
+            assert_eq!(st, 200, "{r}");
+        }
+        let canary_land = create(json!({ "type_key": "nation", "title": "CANARY land", "properties": { "code": "ZZ" } })).await;
+        link("exposed_to", canary_land, gold_id.clone()).await;
+        let canary_co = create(json!({ "type_key": "organization", "title": "CANARY Co" })).await;
+        link("owns", holding.clone(), canary_co).await;
+        let (st, r) = api
+            .call("PUT", &format!("/api/v1/ontology/objects/{gold_id}"), Some(json!({
+                "type_key": "instrument", "title": "Gold CANARY", "properties": { "ticker": "XAUUSD" },
+                "expected_version": gold["version"]
+            })))
+            .await;
+        assert_eq!(st, 200, "{r}");
 
         let at = t0.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let enc = |s: &str| s.replace('+', "%2B");
@@ -4027,11 +4074,22 @@ async fn point_in_time_reads_never_show_a_canary() {
                 None,
             ),
             ("ontology_objects_get", format!("/api/v1/ontology/objects/{event_id}?as_of={}", enc(&at)), None),
+            ("ontology_objects_links", format!("/api/v1/ontology/objects/{gold_id}/links?as_of={}", enc(&at)), None),
+            (
+                "ontology_objects_hierarchy",
+                format!("/api/v1/ontology/objects/{holding}/hierarchy?key=group&at={}", enc(&at)),
+                None,
+            ),
             ("ontology_objects_observations", format!("/api/v1/ontology/objects/{series_id}/observations?as_of={}", enc(&at)), None),
             (
                 "ontology_query",
                 "/api/v1/ontology/query".into(),
                 Some(json!({ "type_key": "geo_event", "as_of": at, "limit": 500 })),
+            ),
+            (
+                "ontology_query",
+                "/api/v1/ontology/query".into(),
+                Some(json!({ "ids": [gold_id], "traverse": [{ "link_type": "exposed_to", "direction": "in" }], "as_of": at })),
             ),
             (
                 "markets_chains",
@@ -4072,6 +4130,19 @@ async fn point_in_time_reads_never_show_a_canary() {
             .await;
         assert_eq!(q["count"], 1, "{q}");
         assert_eq!(q["rows"][0]["object"]["properties"]["status"], "unconfirmed");
+        // The retro-closed links were still believed open at T0.
+        let (_, l) = api.call("GET", &format!("/api/v1/ontology/objects/{gold_id}/links?as_of={}", enc(&at)), None).await;
+        assert_eq!(l["count"], 1, "{l}");
+        let only = &l["results"][0];
+        assert_eq!(only["source"]["id"], iran.as_str(), "{l}");
+        assert!(only["valid_to"].is_null(), "{l}");
+        assert_eq!(only["target"]["title"], "Gold", "{l}");
+        let (_, h) = api.call("GET", &format!("/api/v1/ontology/objects/{holding}/hierarchy?key=group&at={}", enc(&at)), None).await;
+        assert!(h["nodes"].as_array().unwrap().iter().any(|n| n["id"] == sub.as_str()), "{h}");
+        // Today's knowledge of T0 (valid_at alone): the closing and the late link count.
+        let (_, l) = api.call("GET", &format!("/api/v1/ontology/objects/{gold_id}/links?valid_at={}", enc(&at)), None).await;
+        assert_eq!(l["count"], 1, "{l}");
+        assert!(l.to_string().contains("CANARY land"), "{l}");
 
         // Two minutes later, every canary is there.
         let later = (t0 + chrono::Duration::minutes(2)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -4213,6 +4284,14 @@ async fn price_moves_get_candidate_causal_chains() {
             })))
             .await;
         assert_eq!(st, 201, "{r}");
+        let link = r["id"].as_i64().unwrap();
+        // Declared today "since 2025": nobody knew it in January (D913).
+        assert_eq!(chains("2026-01-07T00:00:00Z").await["count"], 0, "a link declared today is unknown in January");
+        // As if it had been recorded on 2025-12-01.
+        ctx.db
+            .execute_unprepared(&format!("UPDATE link_versions SET at = '2025-12-01T00:00:00Z' WHERE edge_id = {link}"))
+            .await
+            .unwrap();
         let r = chains("2026-01-07T00:00:00Z").await;
         assert_eq!(r["count"], 1, "{r}");
         let c = &r["results"][0];
@@ -4230,6 +4309,12 @@ async fn price_moves_get_candidate_causal_chains() {
 
         // Before the move closed: nothing to explain.
         assert_eq!(chains("2026-01-06T10:59:00Z").await["count"], 0);
+        // Closed today back to 2025-06: in January it was still believed open.
+        let (st, r) = api
+            .call("POST", &format!("/api/v1/ontology/links/{link}/close"), Some(json!({ "valid_to": "2025-06-01T00:00:00Z" })))
+            .await;
+        assert_eq!(st, 200, "{r}");
+        assert_eq!(chains("2026-01-07T00:00:00Z").await["count"], 1, "a closing recorded later is not seen");
         // A threshold above the move: no effect.
         let (_, obj) = api.call("GET", &format!("/api/v1/ontology/objects/{gold}"), None).await;
         let (st, r) = api

@@ -231,6 +231,7 @@ mod tests {
             valid_from: String::new(),
             valid_to: None,
             source_ref: None,
+            history: None,
         }
     }
 

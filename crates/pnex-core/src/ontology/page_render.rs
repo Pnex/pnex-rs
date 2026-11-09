@@ -296,6 +296,7 @@ mod tests {
             valid_from: "2026-01-01T00:00:00Z".into(),
             valid_to: None,
             source_ref: None,
+            history: None,
         }
     }
 

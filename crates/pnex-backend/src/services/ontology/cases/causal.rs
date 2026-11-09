@@ -264,7 +264,7 @@ pub async fn signals(
     // The objects each member flow is linked to: what its alerts are about.
     let mut neighbours: HashMap<String, Vec<String>> = HashMap::new();
     for flow in members.values().filter(|o| o.type_key == KIND_FLOW) {
-        let around = links::for_object(db, org_id, flow.id, Some(to.into()), false).await?;
+        let around = links::for_object(db, org_id, flow.id, Some(to.into()), None, false).await?;
         let mut objs: Vec<String> = around
             .iter()
             .map(|l| {

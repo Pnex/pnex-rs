@@ -142,7 +142,34 @@ pub struct ObjectTypeDef {
     /// name, masked and erased like a personal property.
     #[serde(default, skip_serializing_if = "schema::Classification::is_internal")]
     pub title_classification: schema::Classification,
+    /// The two dates of a fact (markets-research.md D915): which property
+    /// says when it is true in the world, which one when it became known.
+    #[serde(default, skip_serializing_if = "FactTimes::is_empty")]
+    pub times: FactTimes,
 }
+
+/// Properties holding the dates of a fact (D915). A read at an instant
+/// before `known_at` leaves the object out; without a declaration a
+/// property named `known_at` plays that part (D531).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct FactTimes {
+    /// Property (date or date-time) of when the fact is true in the world.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_property: Option<String>,
+    /// Property (date-time) of when the fact became known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub known_property: Option<String>,
+}
+
+impl FactTimes {
+    pub fn is_empty(&self) -> bool {
+        self.event_property.is_none() && self.known_property.is_none()
+    }
+}
+
+/// The property read as the knowledge time when a type declares none.
+pub const DEFAULT_KNOWN_AT: &str = "known_at";
 
 /// An action declared on a type (D183): invoked from the object page,
 /// executed by the deployed flows holding a matching `action_trigger` node,
@@ -283,6 +310,24 @@ impl ObjectTypeDef {
         check_set("may_contain", &self.may_contain, known)?;
         check_set("may_be_contained_in", &self.may_be_contained_in, known)?;
         schema::check_defs(&self.properties, "properties", known)?;
+        let kind_of = |key: &Option<String>| {
+            key.as_ref().map(|k| {
+                self.properties
+                    .iter()
+                    .find(|p| &p.key == k)
+                    .map(|p| &p.kind)
+            })
+        };
+        if let Some(k) = kind_of(&self.times.known_property) {
+            if !matches!(k, Some(PropertyKind::DateTime)) {
+                return Err(("times.known_property".into(), FIELD_INVALID.into()));
+            }
+        }
+        if let Some(k) = kind_of(&self.times.event_property) {
+            if !matches!(k, Some(PropertyKind::DateTime | PropertyKind::Date)) {
+                return Err(("times.event_property".into(), FIELD_INVALID.into()));
+            }
+        }
         for (i, a) in self.actions.iter().enumerate() {
             let field = format!("actions.{i}");
             if !schema::valid_key(&a.key) {
@@ -302,6 +347,14 @@ impl ObjectTypeDef {
 
     pub fn action(&self, key: &str) -> Option<&ActionDef> {
         self.actions.iter().find(|a| a.key == key)
+    }
+
+    /// The property read as the knowledge time of its objects (D915).
+    pub fn known_at_key(&self) -> &str {
+        self.times
+            .known_property
+            .as_deref()
+            .unwrap_or(DEFAULT_KNOWN_AT)
     }
 }
 
@@ -344,6 +397,7 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
         may_be_contained_in: Some(TypeSet::only(&[KIND_FOLDER])),
         actions: Vec::new(),
         title_classification: Default::default(),
+        times: Default::default(),
     };
     vec![
         leaf(KIND_DEVICE),

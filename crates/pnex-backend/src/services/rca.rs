@@ -20,7 +20,9 @@ pub async fn propagating_relations(
 }
 
 /// The propagating links open at some point of `[from, as_of]`, as known at
-/// `as_of`: a link opened later is absent, a later closing is ignored.
+/// `as_of` (markets-research.md D913): their last recorded state at `as_of`
+/// decides, so a link recorded later is absent whatever its `valid_from`,
+/// and a closing recorded or dated later is ignored.
 pub async fn topology(
     db: &DatabaseConnection,
     org_id: i64,
@@ -34,10 +36,13 @@ pub async fn topology(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "SELECT source_object_id, target_object_id, valid_from, valid_to FROM resource_edges \
-             WHERE org_id = $1 AND relation = ANY($2) \
-               AND source_object_id IS NOT NULL AND target_object_id IS NOT NULL \
-               AND valid_from <= $4 AND (valid_to IS NULL OR valid_to > $3)",
+            "SELECT e.source_object_id, e.target_object_id, v.valid_from, v.valid_to \
+             FROM resource_edges e JOIN LATERAL (\
+               SELECT valid_from, valid_to, erased FROM link_versions w \
+               WHERE w.edge_id = e.id AND w.at <= $4 ORDER BY w.at DESC LIMIT 1) v ON TRUE \
+             WHERE e.org_id = $1 AND e.relation = ANY($2) AND NOT v.erased \
+               AND e.source_object_id IS NOT NULL AND e.target_object_id IS NOT NULL \
+               AND v.valid_from <= $4 AND (v.valid_to IS NULL OR v.valid_to > $3)",
             vec![org_id.into(), relations.into(), from.into(), as_of.into()],
         ))
         .await?;

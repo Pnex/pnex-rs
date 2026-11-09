@@ -965,10 +965,13 @@ async fn point_in_time_keys() {
             assert_eq!(e["errors"]["args"]["param"], "as_of");
             let (_, e) = get(pit.clone(), "/api/v1/markets/bars?instrument=x&interval=1h&as_of=2026-01-01T00:00:00Z".into()).await;
             assert_ne!(code(&e).as_deref(), Some("as-of-required"));
-            // Partial and current-only reads: refused even with an instant.
+            // Current-only reads: refused even with an instant.
             let oid = uuid::Uuid::new_v4();
-            let (s, e) = get(pit.clone(), format!("/api/v1/ontology/objects/{oid}/links?as_of=2026-01-01T00:00:00Z")).await;
+            let (s, e) = get(pit.clone(), format!("/api/v1/ontology/objects/{oid}/impact?as_of=2026-01-01T00:00:00Z")).await;
             assert_eq!((s, code(&e).as_deref()), (400, Some("as-of-unsupported")));
+            // A world instant alone is today's knowledge: the key needs `as_of` (D912).
+            let (s, e) = get(pit.clone(), format!("/api/v1/ontology/objects/{oid}/links?valid_at=2026-01-01T00:00:00Z")).await;
+            assert_eq!((s, code(&e).as_deref()), (400, Some("as-of-required")));
             let (s, e) = get(pit.clone(), "/api/v1/dashboards".into()).await;
             assert_eq!((s, code(&e).as_deref()), (400, Some("as-of-unsupported")));
             // Writes: refused, even the ones a service account may make.

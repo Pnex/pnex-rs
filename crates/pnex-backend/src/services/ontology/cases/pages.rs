@@ -147,7 +147,7 @@ pub async fn from_object(
             format!("{FIELD_MAX_LENGTH}:{MAX_TITLE_CHARS}"),
         ));
     }
-    let mut open = links::for_object(db, org_id, id, None, false).await?;
+    let mut open = links::for_object(db, org_id, id, None, None, false).await?;
     for l in &mut open {
         hide.link(&schema, l);
     }

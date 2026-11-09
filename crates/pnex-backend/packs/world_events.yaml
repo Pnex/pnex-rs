@@ -17,10 +17,13 @@
 # licence the organization holds with ACLED: PNEX provides no ACLED data.
 # Countries are ISO 3166 alpha-2 codes; GDELT's FIPS 10-4 codes are
 # converted when read (GM becomes DE, UK becomes GB, UP becomes UA).
+# Since 1.1.0 (markets-research.md D914) the pack declares `history: true`:
+# every state of its objects is kept for point-in-time reads.
 key: world_events
 name: World events
 names: {fr: "Événements du monde"}
-version: "1.0.0"
+version: "1.1.0"
+history: true
 requires: []
 description: Geopolitical events (conflicts, attacks, sanctions, blockades, ceasefires) with a place, a date and a source, from the GDELT feed for the countries watched. Unconfirmed until a member cites a source.
 descriptions: {fr: "Événements géopolitiques (conflits, attaques, sanctions, blocus, cessez-le-feu) avec un lieu, une date et une source, issus du flux GDELT pour les pays surveillés. Non confirmés tant qu'un membre ne cite pas de source."}

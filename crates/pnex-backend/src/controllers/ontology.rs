@@ -950,8 +950,12 @@ struct ObjectAsOf {
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 struct LinksQuery {
-    /// RFC 3339: links valid at that instant (default now).
+    /// RFC 3339: links as known at that instant (D913), valid at `valid_at`
+    /// (default `as_of`); a link recorded later is absent.
     as_of: Option<String>,
+    /// RFC 3339: links valid at that instant in the world (D912). Alone,
+    /// what is known today about that instant.
+    valid_at: Option<String>,
     /// true: closed links too (the whole history).
     history: Option<bool>,
 }
@@ -962,11 +966,11 @@ struct LinksQuery {
     tag = "ontology",
     operation_id = "ontology_objects_links",
     summary = "List the links of an object",
-    description = "Links where the object is source or target, open at `as_of` (default now), or every link ever with `history=true`. Paginated (`limit`/`offset`). Any org member.",
+    description = "Links where the object is source or target, valid at `valid_at` as known at `as_of` (both default now; `valid_at` defaults to `as_of`): a link recorded after `as_of` is absent, a closing recorded later is not seen, `history: partial` marks a state taken over at the versioning migration. `history=true` lists every link ever (as known at `as_of` when given). Paginated (`limit`/`offset`). Any org member.",
     params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), LinksQuery, PageQuery),
     responses(
         (status = 200, body = pnex_core::Paginated<pnex_core::ontology::api::LinkView>),
-        (status = 400, description = "Invalid `as_of` (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "Invalid `as_of` or `valid_at` (field → token)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -982,8 +986,20 @@ async fn object_links(
         Ok(t) => t,
         Err(e) => return onto_error(e),
     };
+    let valid_at = match onto::parse_instant("valid_at", q.valid_at.as_deref()) {
+        Ok(t) => t,
+        Err(e) => return onto_error(e),
+    };
     let history = q.history.unwrap_or(false);
-    let rows = links::for_object(&ctx.db, org.org.id, parse_uuid(&id)?, as_of, history).await;
+    let rows = links::for_object(
+        &ctx.db,
+        org.org.id,
+        parse_uuid(&id)?,
+        as_of,
+        valid_at,
+        history,
+    )
+    .await;
     let rows = masked(&ctx, &org, rows, |Masking(m, s), rows| {
         rows.iter_mut().for_each(|l| m.link(s, l))
     })
@@ -991,6 +1007,9 @@ async fn object_links(
     let mut filters = vec![("history".to_string(), history.to_string())];
     if let Some(t) = q.as_of {
         filters.push(("as_of".to_string(), t));
+    }
+    if let Some(t) = q.valid_at {
+        filters.push(("valid_at".to_string(), t));
     }
     paged(
         &format!("/api/v1/ontology/objects/{id}/links"),
@@ -1038,7 +1057,8 @@ async fn object_graph(
 struct HierarchyQuery {
     /// Hierarchy key (default: the first one of the installed packs).
     key: Option<String>,
-    /// Links valid at this instant (RFC 3339, default now).
+    /// RFC 3339: links as known and valid at this instant, node titles and
+    /// properties as recorded then (D913, D900). Default now.
     at: Option<String>,
 }
 
@@ -1048,7 +1068,7 @@ struct HierarchyQuery {
     tag = "ontology",
     operation_id = "ontology_objects_hierarchy",
     summary = "Get the hierarchy tree under an object",
-    description = "Tree computed on the links a hierarchy of an installed pack declares (depth ≤ 6, 500 nodes), links valid at `at`. A node with several parents appears under each, with the others in `also_under`. Lists the installed hierarchies too. Any org member.",
+    description = "Tree computed on the links a hierarchy of an installed pack declares (depth ≤ 6, 500 nodes), links as known and valid at `at` (a link recorded later is absent), node titles and properties as recorded then for packs with a history. A node with several parents appears under each, with the others in `also_under`. Lists the installed hierarchies too. Any org member.",
     params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), HierarchyQuery),
     responses(
         (status = 200, body = pnex_core::ontology::api::HierarchyView),

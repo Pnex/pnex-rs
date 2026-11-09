@@ -143,6 +143,11 @@ pub struct LinkView {
     pub valid_to: Option<String>,
     #[serde(default)]
     pub source_ref: Option<String>,
+    /// `partial` on a read at `as_of` when the state shown was taken over
+    /// at the versioning migration: an earlier closing or attribute change
+    /// has no known date (markets-research.md D913, Q-BT1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -491,6 +496,10 @@ pub struct Pack {
     pub description: String,
     #[serde(default, skip_serializing_if = "super::Names::is_empty")]
     pub descriptions: super::Names,
+    /// Every state of the objects of its types is kept, so a read at an
+    /// earlier instant replays it (markets-research.md D914, D900).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub history: bool,
     #[serde(default)]
     pub types: Vec<ObjectTypeDef>,
     #[serde(default)]
