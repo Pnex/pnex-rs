@@ -289,6 +289,7 @@ fn LinkTypeForm(
     let mut one_target = use_signal(|| false);
     let mut one_source = use_signal(|| false);
     let mut evidence = use_signal(|| false);
+    let mut propagates = use_signal(|| false);
     let mut busy = use_signal(|| false);
     let mut errors = use_signal(Map::<String, Value>::new);
     let err = move |f: &str| {
@@ -323,6 +324,7 @@ fn LinkTypeForm(
             erase_sources: false,
             propose_erase_targets: false,
             member_only: false,
+            propagates_failure: propagates(),
             attributes: Vec::new(),
         };
         busy.set(true);
@@ -421,6 +423,14 @@ fn LinkTypeForm(
                         onchange: move |e| evidence.set(e.checked()),
                     }
                     {t!("onto-evidence")}
+                }
+                label { class: "flex items-center gap-2 text-sm text-gray-700",
+                    input {
+                        r#type: "checkbox",
+                        checked: propagates(),
+                        onchange: move |e| propagates.set(e.checked()),
+                    }
+                    {t!("onto-propagates-failure")}
                 }
             }
         }

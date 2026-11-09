@@ -5226,6 +5226,7 @@ onto-to-type = To type
 onto-one-target = One open target per source
 onto-one-source = One open source per target
 onto-evidence = Points at what proves the source (evidence)
+onto-propagates-failure = Propagates failures (a failure of the source may reach the target)
 onto-system-extension = System type: you can add properties to it
 onto-type-editor-subtitle = Typed properties, containment rules, write role
 onto-type-name = Name

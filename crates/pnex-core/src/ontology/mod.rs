@@ -211,6 +211,11 @@ pub struct LinkTypeDef {
     /// (markets-research.md D742, a market move attributed to a cause).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub member_only: bool,
+    /// A failure of the source may reach the target (cases-workspace.md
+    /// D905): a causal chain only follows these links, in their direction,
+    /// open at the instant of the cause.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub propagates_failure: bool,
     /// Attributes carried by each link (scalar properties only).
     #[serde(default)]
     pub attributes: Vec<PropertyDef>,
@@ -605,6 +610,7 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         erase_sources: false,
         propose_erase_targets: false,
         member_only: false,
+        propagates_failure: false,
         attributes: Vec::new(),
     };
     vec![

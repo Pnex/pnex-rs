@@ -1075,3 +1075,45 @@ Maquette validée (artefact « Espace d'enquête plein écran »), puis :
 Reste : journal des changements par lots (K35) ; séries à bornes absolues
 et ligne de mesures ; cercle dessiné à la souris ; zone sur `map_pin` ;
 L7 enquête média.
+
+---
+
+## Appendice I — Détecteur de chaînes causales (D904–D911)
+
+Statut : décidé le 2026-11-09 (Shan). Origine : lecture de `FareedKhan-dev/ontology-driven-observability` (reprise d'une architecture d'observabilité ontologique publiée, testée sur des données publiques). Retenu : signaux typés + topologie + couples connus + placebo. Écarté : RDF/OWL/SHACL, apprentissage des règles, équipe d'agents spécialistes, plafond des nœuds très reliés. Va avec l'appendice H de `markets-research.md` (point-in-time strict), qui réutilise le cœur pour les marchés (H.7).
+
+### I.1 Le besoin
+
+Dans un dossier RCA (chambre froide en défaut, ligne arrêtée), la question est « qu'est-ce qui a précédé, en amont ? ». Le détecteur propose des **chaînes** : un signal A sur un objet X précède un signal B sur un objet Y, Y est en aval de X dans l'ontologie, et le couple (type de A, type de B) est une cause déclarée. Exemple : consigne de dégivrage changée sur le régulateur à 10:00, alarme haute pression sur le compresseur qu'il pilote à 10:12 → « consigne → alarme HP », avec sa confiance.
+
+Dans le repo étudié, « couples connus + timing » reste **non concluant** contre un placebo (Holm p = 0,11) : le détecteur produit des **pistes**, comme les détecteurs de traces (K30), jamais des faits, et se mesure contre un placebo (D908).
+
+### I.2 Décisions
+
+- **D904 — Signal typé commun** : `pnex_core::rca::Signal { id, at, on, kind, severity, source_ref }`, `kind` dans une liste fermée (`change.config`, `change.firmware`, `change.link`, `range.maintenance`, `alert`, `device.offline`, `device.online`, `series.threshold`, plus pour les marchés `geo_event`, `macro.release`, `supply.disruption`, `price.move`). `severity` ∈ [0, 1] calculée par le serveur. V1 : seuils déclarés seulement, pas d'anomalie statistique (Q-RC4 : V2).
+- **D905 — Drapeau `propagates_failure`** sur les types de liens (UI « Propage les pannes », Q-RC1). Une chaîne ne suit que ces liens, dans leur sens, ouverts à l'instant de la cause ; 3 liens au plus ; pas de plafond sur les nœuds très reliés.
+- **D906 — Couples déclarés par les packs** : section `causal_pairs` du YAML ; chaque couple devient deux réglages du pack (`prior`, écart maximal en minutes), donc réglables dans les Settings avec la règle existante (une valeur égale à celle du pack reste au pack). Sans couple, aucune chaîne. Couples frigoristes dans **Maintenance augmentée** (Q-RC2), qui gagne les liens `drives`, `powers`, `cools` (et `feeds` drapeauté) et les types `controller` et `compressor`.
+- **D907 — Score** : saut = `prior` × exp(−écart / τ) × 1 / (1 + distance), τ = écart max / 3 (Q-RC3) ; chaîne = produit des sauts ; 3 sauts au plus ; les 3 meilleures chaînes par effet ; tri stable (score, instant, id).
+- **D908 — Placebo** : le même effet replacé 24 h, 48 h et 7 j plus tôt, expliqué par une chaîne de même racine (type et objet) ; lift = confiance ÷ (moyenne placebo + 0,01). Proposée seulement si lift ≥ 2 (seuil du Cadre, Q-RC3).
+- **D909 — Une proposition, jamais un fait** : détecteur `causal_chain@1`, type `case_event`, boîte « À valider ». Clé : détecteur + signal racine + signal effet ; une chaîne rejetée ne revient pas. Retenir crée l'événement « Chaîne : X → Y », attache la cause (*Context*), l'effet (*Evidence*), la source d'alerte (*Source*), une note qui cite chaque saut, et avec le pack Enquête une hypothèse. Tourne à l'ouverture d'un dossier ouvert depuis une alerte et à *Recompute*.
+- **D910 — Assistant figé** : un paquet unique (chaînes + signaux + objets en amont) tel qu'il était à `T0 + 15 min` (Q-PT2), via D902. Pas d'équipe d'agents.
+- **D911 — Mesurer, ne pas apprendre** : retenues ÷ proposées et rang moyen par couple, affichés dans les Settings du pack ; un couple sous 20 % sur au moins 20 propositions est signalé, jamais désactivé.
+
+### I.3 Lots
+
+| Lot | Contenu |
+|---|---|
+| L8a — Cœur | `pnex_core::rca`, D905 (drapeau + UI), D906 (YAML, réglages), packs Maintenance augmentée et markets |
+| L8b — Sources | adaptateur `cases/signals.rs → Signal`, présence device, seuils de séries |
+| L8c — UI et assistant | détecteur branché sur les propositions, ligne Signaux, inspecteur, seuil de lift dans le Cadre, fiche `assistant-kb/cases.md`, D911 |
+
+Critère de succès, fixé avant de coder : sur un jeu d'incidents étiquetés, la vraie cause est dans le top 3 plus souvent que pour « un signal au hasard » et « le dernier changement avant l'alerte » (McNemar, jeu de test séparé par date). Sans ce résultat, le détecteur reste désactivé par défaut.
+
+### I.4 Hors périmètre
+
+Découverte automatique de couples, apprentissage des règles, agents spécialistes, toute action déclenchée par une chaîne.
+
+### I.5 Ce qui est codé et écarts
+
+- **L8a** (2026-11-09) : `pnex_core::rca` (signaux, topologie à l'instant de la cause, score, top 3, placebo, lift), tests sur la fixture frigoriste (rang 1, sans changement en amont rien, lien fermé rien, sens inverse rien, alarme quotidienne après une poussée quotidienne lift < 2, chaîne à deux sauts, 100 exécutions identiques). `LinkTypeDef.propagates_failure` + case « Propage les pannes » dans le formulaire de type de lien. `Pack.causal_pairs` ; au chargement des packs livrés chaque couple devient deux réglages (`causal_<cause>_<effet>_prior`, `…_max_gap_min`) ; `packs::causal_pairs` rend les couples en vigueur de l'org. Maintenance augmentée 1.5.0 : types `controller`, `compressor`, liens `drives`, `powers`, `cools`, `feeds` drapeauté, 5 couples. Markets 1.10.0 : type `country`, lien `exposed_to`, seuil `move_threshold_pct` par instrument et réglage `price_move_threshold_pct` (1,5), 3 couples (H.7).
+- Écarts L8a : le placebo replace l'**effet** 24 h, 48 h et 7 j plus tôt et cherche une chaîne de même racine (type et objet) : c'est ce qui fait tomber une alarme quotidienne précédée d'une poussée quotidienne ; une alarme quotidienne sans cause répétée garde un lift élevé. Les priors des couples marchés (0,5) sont des valeurs de départ, à régler.

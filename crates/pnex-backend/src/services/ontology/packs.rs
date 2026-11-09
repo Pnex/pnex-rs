@@ -57,9 +57,73 @@ const SHIPPED: &[&str] = &[
 static SHIPPED_PACKS: std::sync::LazyLock<Vec<Pack>> = std::sync::LazyLock::new(|| {
     SHIPPED
         .iter()
-        .map(|y| serde_saphyr::from_str(y).expect("shipped pack is valid YAML"))
+        .map(|y| {
+            with_causal_settings(serde_saphyr::from_str(y).expect("shipped pack is valid YAML"))
+        })
         .collect()
 });
+
+/// Each causal pair of a pack is two settings the org may set (D906):
+/// its prior and its maximal gap in minutes.
+fn with_causal_settings(mut pack: Pack) -> Pack {
+    use pnex_core::ontology::api::{PackSetting, PackSettingKind};
+    for pair in &pack.causal_pairs {
+        let stem = pair.setting_stem();
+        let label = format!("{} → {}", pair.cause.as_str(), pair.effect.as_str());
+        let setting =
+            |key: String, name: String, fr: String, default: f64, min: f64, max: f64| PackSetting {
+                key,
+                name,
+                names: [("fr".to_string(), fr)].into_iter().collect(),
+                description: String::new(),
+                descriptions: Default::default(),
+                kind: PackSettingKind::Number,
+                default: default.into(),
+                min: Some(min),
+                max: Some(max),
+            };
+        pack.settings.push(setting(
+            format!("{stem}_prior"),
+            format!("Causal chain {label}: prior"),
+            format!("Chaîne causale {label} : a priori"), // english-guard: allow (French name of a pack setting)
+            pair.prior,
+            0.0,
+            1.0,
+        ));
+        pack.settings.push(setting(
+            format!("{stem}_max_gap_min"),
+            format!("Causal chain {label}: maximal gap (minutes)"),
+            format!("Chaîne causale {label} : écart maximal (minutes)"), // english-guard: allow (French name of a pack setting)
+            f64::from(pair.max_gap_min),
+            1.0,
+            10_080.0,
+        ));
+    }
+    pack
+}
+
+/// The causal pairs in force for the org (D906): those of its installed
+/// packs, with the values it set.
+pub async fn causal_pairs(
+    db: &DatabaseConnection,
+    org_id: i64,
+) -> Result<Vec<pnex_core::rca::CausalPair>> {
+    let settings = org_settings(db, org_id).await?;
+    let installed = layers(db, org_id).await?;
+    let mut out = Vec::new();
+    for p in shipped()
+        .into_iter()
+        .filter(|p| installed.contains_key(&p.key))
+    {
+        let value = |k: &str| {
+            settings
+                .get(&format!("{}.{k}", p.key))
+                .and_then(Value::as_f64)
+        };
+        out.extend(p.causal_pairs.iter().map(|pair| pair.in_force(&value)));
+    }
+    Ok(out)
+}
 
 pub fn shipped() -> Vec<Pack> {
     SHIPPED_PACKS.clone()
@@ -1234,6 +1298,7 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
         functions: Vec::new(),
         flows: Vec::new(),
         settings: Vec::new(),
+        causal_pairs: Vec::new(),
     };
     serde_saphyr::to_string(&pack)
         .map_err(|e| OntologyError::Db(sea_orm::DbErr::Custom(e.to_string())))

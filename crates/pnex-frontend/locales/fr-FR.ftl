@@ -5225,6 +5225,7 @@ onto-to-type = Vers le type
 onto-one-target = Une seule cible ouverte par source
 onto-one-source = Une seule source ouverte par cible
 onto-evidence = Pointe vers ce qui prouve la source (preuve)
+onto-propagates-failure = Propage les pannes (une panne de la source peut atteindre la cible)
 onto-system-extension = Type système : vous pouvez lui ajouter des propriétés
 onto-type-editor-subtitle = Propriétés typées, règles de rangement, rôle d'écriture
 onto-type-name = Nom

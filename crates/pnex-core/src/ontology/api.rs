@@ -525,6 +525,10 @@ pub struct Pack {
     /// Pack functions read them with `pack_setting("<pack>.<key>", default)`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub settings: Vec<PackSetting>,
+    /// Cause → effect pairs of the causal chain detector
+    /// (cases-workspace.md D906); each one is also two settings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub causal_pairs: Vec<crate::rca::PackPair>,
 }
 
 /// A point of a pack the org may set (ontology.md D368).

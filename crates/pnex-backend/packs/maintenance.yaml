@@ -8,10 +8,13 @@
 # time ranges of the plan (ontology.md annex B); a plan maintains any
 # object, a bare device included.
 # Since 1.3.0 names carry their French translation (`names`, O43).
+# Since 1.5.0 controllers and compressors, links that propagate a failure
+# (drives, powers, cools, feeds) and the cause → effect pairs of the causal
+# chain detector (cases-workspace.md D905, D906).
 key: maintenance
 name: Augmented maintenance
 names: {fr: "Maintenance augmentée"}
-version: "1.4.0"
+version: "1.5.0"
 description: Sites, lines, machines and pumps; sensors bound to equipment series survive sensor replacements.
 descriptions: {fr: "Sites, lignes, machines et pompes ; les capteurs liés aux séries des équipements survivent à leur remplacement."}
 types:
@@ -19,7 +22,7 @@ types:
     name: Site
     names: {fr: "Site"}
     icon: map-pin
-    may_contain: [line]
+    may_contain: [line, controller, compressor]
     may_be_contained_in: [folder]
     properties:
       - { key: address, name: Address, names: {fr: "Adresse"}, kind: text, max_len: 500 }
@@ -28,7 +31,7 @@ types:
     name: Production line
     names: {fr: "Ligne de production"}
     icon: workflow
-    may_contain: [machine, pump]
+    may_contain: [machine, pump, controller, compressor]
     may_be_contained_in: [site, folder]
     properties:
       - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 64, indexed: true }
@@ -91,6 +94,25 @@ types:
         params:
           - { key: reason, name: Reason, names: {fr: "Motif"}, kind: text, max_len: 500, required: true }
           - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
+  - key: controller
+    name: Controller
+    names: {fr: "Régulateur"}
+    icon: cpu
+    may_be_contained_in: [line, site, folder]
+    properties:
+      - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, indexed: true }
+      - { key: manufacturer, name: Manufacturer, names: {fr: "Fabricant"}, kind: text, max_len: 255 }
+      - { key: model, name: Model, names: {fr: "Modèle"}, kind: text, max_len: 255 }
+  - key: compressor
+    name: Compressor
+    names: {fr: "Compresseur"}
+    icon: cog
+    may_be_contained_in: [line, site, folder]
+    properties:
+      - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, indexed: true }
+      - { key: refrigerant, name: Refrigerant, names: {fr: "Fluide frigorigène"}, kind: text, max_len: 32 }
+      - { key: suction_pressure, name: Suction pressure, names: {fr: "Pression d'aspiration"}, kind: series, unit: bar }
+      - { key: discharge_pressure, name: Discharge pressure, names: {fr: "Pression de refoulement"}, kind: series, unit: bar }
   - key: maintenance_plan
     name: Maintenance plan
     names: {fr: "Plan de maintenance"}
@@ -112,8 +134,33 @@ link_types:
     names: {fr: "alimente"}
     inverse_name: is fed by
     inverse_names: {fr: "est alimenté par"}
-    from_types: [pump, machine]
-    to_types: [pump, machine, line]
+    from_types: [pump, machine, compressor]
+    to_types: [pump, machine, line, compressor]
+    propagates_failure: true
+  - key: drives
+    name: drives
+    names: {fr: "pilote"}
+    inverse_name: is driven by
+    inverse_names: {fr: "est piloté par"}
+    from_types: [controller]
+    to_types: [compressor, pump, machine, line]
+    propagates_failure: true
+  - key: powers
+    name: powers
+    names: {fr: "alimente électriquement"}
+    inverse_name: is powered by
+    inverse_names: {fr: "est alimenté électriquement par"}
+    from_types: [machine, controller]
+    to_types: [controller, compressor, pump, machine, line]
+    propagates_failure: true
+  - key: cools
+    name: cools
+    names: {fr: "refroidit"}
+    inverse_name: is cooled by
+    inverse_names: {fr: "est refroidi par"}
+    from_types: [compressor, machine]
+    to_types: [machine, line, site]
+    propagates_failure: true
   - key: backup_of
     name: is the backup of
     names: {fr: "est le secours de"}
@@ -122,3 +169,11 @@ link_types:
     from_types: [pump, machine]
     to_types: [pump, machine]
     one_target: true
+# Cause → effect pairs of the causal chain detector (D906): each one is two
+# settings (prior, maximal gap) the org may set.
+causal_pairs:
+  - { cause: change.config, effect: alert, max_gap_min: 30, prior: 0.6 }
+  - { cause: change.firmware, effect: alert, max_gap_min: 120, prior: 0.5 }
+  - { cause: range.maintenance, effect: device.offline, max_gap_min: 480, prior: 0.5 }
+  - { cause: device.offline, effect: alert, max_gap_min: 15, prior: 0.5 }
+  - { cause: series.threshold, effect: alert, max_gap_min: 30, prior: 0.5 }

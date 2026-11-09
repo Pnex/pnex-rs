@@ -13621,6 +13621,10 @@
             "description": "A source has at most one open link of this type.",
             "type": "boolean"
           },
+          "propagates_failure": {
+            "description": "A failure of the source may reach the target (cases-workspace.md\nD905): a causal chain only follows these links, in their direction,\nopen at the instant of the cause.",
+            "type": "boolean"
+          },
           "propose_erase_targets": {
             "description": "Erasing a source whose title is personal proposes erasing the targets\nof these links, open or closed: they are shared with other people, so\na person decides (crm.md D610).",
             "type": "boolean"
