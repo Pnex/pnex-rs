@@ -20,6 +20,7 @@ pub mod dashboard_tools;
 pub mod diagnose;
 pub mod doc_tools;
 pub mod error;
+pub mod frozen;
 pub mod knowledge;
 pub mod mail_tools;
 pub mod market_tools;

@@ -33,7 +33,9 @@ pub async fn search_docs(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
         .unwrap_or_default();
     let kind = args.get("kind").and_then(Value::as_str);
     let k = args.get("k").and_then(Value::as_u64).unwrap_or(8);
-    let hits = doc_search::search(deps.db, deps.org_id, query, kind, k)
+    // Frozen conversation: documents created later are hidden (Q-PT3).
+    let before = deps.frozen_at.map(|t| t.with_timezone(&chrono::Utc));
+    let hits = doc_search::search(deps.db, deps.org_id, query, kind, k, before)
         .await
         .map_err(internal("searching documents"))?;
     outcome(json!({ "hits": hits }))

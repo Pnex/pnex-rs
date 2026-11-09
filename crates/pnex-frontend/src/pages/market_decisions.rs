@@ -12,6 +12,7 @@ use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::ui::{BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
 
 /// Fill of an option: buy and sell keep the colours of the rest of the app.
 pub(crate) fn option_tone(option: &str) -> &'static str {
@@ -215,6 +216,7 @@ pub fn MarketDecisions() -> Element {
                     "data-testid": "decisions-advice",
                     {t!("decisions-advice")}
                 }
+                AnalyseAsOf {}
                 if !measured.is_empty() {
                     section { class: "space-y-2", "data-testid": "decisions-scores",
                         h2 { class: "text-sm font-semibold text-ink", {t!("decisions-scores-title")} }
@@ -239,6 +241,46 @@ pub fn MarketDecisions() -> Element {
                     }
                 }
             }
+        }
+    }
+}
+
+/// "Analysis at a date" (D902): opens the assistant frozen at an instant,
+/// so every answer is what was known then, never later.
+#[component]
+fn AnalyseAsOf() -> Element {
+    let mut at = use_signal(String::new);
+    // `datetime-local` gives `2026-01-06T10:15`, read as UTC.
+    let instant = chrono::NaiveDateTime::parse_from_str(&at(), "%Y-%m-%dT%H:%M")
+        .ok()
+        .map(|t| t.and_utc())
+        .filter(|t| *t <= chrono::Utc::now());
+    rsx! {
+        section {
+            class: "flex flex-wrap items-end gap-2 rounded-lg border border-line bg-surface px-3 py-2",
+            "data-testid": "decisions-analyse-as-of",
+            div { class: "min-w-0",
+                label { class: FIELD_LABEL, r#for: "decisions-as-of", {t!("decisions-as-of-label")} }
+                input {
+                    id: "decisions-as-of",
+                    class: INPUT,
+                    r#type: "datetime-local",
+                    value: "{at}",
+                    oninput: move |e| at.set(e.value()),
+                }
+            }
+            button {
+                class: BTN_SECONDARY_SM,
+                r#type: "button",
+                disabled: instant.is_none(),
+                onclick: move |_| {
+                    if let Some(t) = instant {
+                        crate::components::assistant::open_frozen(t.to_rfc3339());
+                    }
+                },
+                {t!("decisions-as-of-ask")}
+            }
+            p { class: "basis-full text-xs text-slate", {t!("decisions-as-of-help")} }
         }
     }
 }

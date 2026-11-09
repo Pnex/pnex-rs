@@ -92,6 +92,7 @@ pub fn dto(m: &ai_conversations::Model) -> AiConversation {
         title: m.title.clone(),
         created_at: m.created_at.to_rfc3339(),
         last_message_at: m.last_message_at.to_rfc3339(),
+        frozen_at: m.frozen_at.map(|t| t.to_rfc3339()),
     }
 }
 
@@ -161,6 +162,7 @@ pub async fn create(
     user_id: i64,
     org_id: i64,
     title: Option<&str>,
+    frozen_at: Option<chrono::DateTime<chrono::FixedOffset>>,
 ) -> Result<ai_conversations::Model, DbErr> {
     let at = now();
     ai_conversations::ActiveModel {
@@ -172,6 +174,7 @@ pub async fn create(
         last_message_at: Set(at),
         created_at: Set(at),
         updated_at: Set(at),
+        frozen_at: Set(frozen_at),
     }
     .insert(db)
     .await

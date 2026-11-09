@@ -48,6 +48,17 @@ pub(super) fn Frame(workspace: CaseWorkspace) -> Element {
         (Some(a), Some(b)) => format!("{} → {}", model::stamp(a, local), model::stamp(b, local)),
         _ => t!("cw-frame-no-window").to_string(),
     };
+    // A case opened from an alert: the assistant can be asked as of the
+    // alert + 15 min (D910, Q-PT2), never later than now.
+    let frozen_at: Option<String> = workspace
+        .events
+        .iter()
+        .filter(|e| e.event.properties.get("origin").and_then(Value::as_str) == Some("signal"))
+        .filter_map(|e| model::span(&e.event).map(|s| s.0))
+        .min()
+        .and_then(|t0| chrono::DateTime::from_timestamp_millis(t0 + 15 * 60_000))
+        .filter(|t| *t <= chrono::Utc::now())
+        .map(|t| t.to_rfc3339());
     let pages: Vec<ObjectRef> = workspace
         .events
         .iter()
@@ -154,6 +165,15 @@ pub(super) fn Frame(workspace: CaseWorkspace) -> Element {
                 span { class: FIELD_LABEL, {t!("cw-frame-window")} }
                 p { class: "font-mono text-sm text-ink", "{window}" }
                 p { class: FIELD_HELP, {t!("cw-frame-window-help")} }
+                if let Some(at) = frozen_at {
+                    button {
+                        class: "{BTN_SECONDARY_SM} mt-2",
+                        r#type: "button",
+                        "data-testid": "case-ask-frozen",
+                        onclick: move |_| crate::components::assistant::open_frozen(at.clone()),
+                        {t!("cw-ask-frozen")}
+                    }
+                }
             }
             div {
                 label { class: FIELD_LABEL, r#for: "cw-basis", {t!("cw-legal-basis")} }

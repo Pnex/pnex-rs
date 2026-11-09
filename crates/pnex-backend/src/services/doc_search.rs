@@ -247,6 +247,7 @@ pub async fn search(
     query: &str,
     kind: Option<&str>,
     k: u64,
+    before: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Result<Vec<Hit>, DbErr> {
     let query = query.trim();
     if query.is_empty() {
@@ -268,6 +269,7 @@ pub async fn search(
          WHERE c.org_id = $1
            AND (c.tsv @@ q.tq OR $2 <% c.content)
            AND ($3::text IS NULL OR a.kind = $3)
+           AND ($5::timestamptz IS NULL OR v.created_at <= $5)
          ORDER BY score DESC, c.ord
          LIMIT $4",
         vec![
@@ -275,6 +277,7 @@ pub async fn search(
             query.into(),
             kind.map(str::to_string).into(),
             (k.clamp(1, MAX_HITS) as i64).into(),
+            before.into(),
         ],
     ))
     .all(db)

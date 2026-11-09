@@ -53,10 +53,34 @@ fn bubbles_of(messages: Vec<AiMessage>) -> Vec<ChatBubble> {
 
 /// Assistant drawer visibility, opened from the sidebar footer entry.
 static OPEN: GlobalSignal<bool> = GlobalSignal::new(|| false);
+/// Instant the next new conversation is frozen at (D902).
+static FROZEN_NEXT: GlobalSignal<Option<String>> = Signal::global(|| None);
+/// Instant of the conversation shown, when it is frozen.
+static FROZEN_SHOWN: GlobalSignal<Option<String>> = Signal::global(|| None);
 
 /// Opens the assistant drawer (sidebar footer entry).
 pub fn open() {
     *OPEN.write() = true;
+}
+
+/// Opens a new conversation frozen at `at` (RFC 3339, D902): every tool
+/// answers as of that instant, never later.
+pub fn open_frozen(at: String) {
+    *CURRENT.write() = None;
+    *FROZEN_NEXT.write() = Some(at.clone());
+    *FROZEN_SHOWN.write() = Some(at);
+    *OPEN.write() = true;
+}
+
+/// `2026-01-06 10:15 UTC` from an RFC 3339 instant.
+fn frozen_label(at: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(at)
+        .map(|t| {
+            t.with_timezone(&chrono::Utc)
+                .format("%Y-%m-%d %H:%M UTC")
+                .to_string()
+        })
+        .unwrap_or_else(|_| at.to_string())
 }
 
 #[component]
@@ -102,6 +126,10 @@ fn AssistantDrawer(on_close: Callback) -> Element {
     // Resume the current conversation when the drawer opens.
     use_effect(move || {
         let Some(id) = CURRENT() else {
+            // A conversation left (org change, frozen opening): its bubbles go.
+            if loaded.peek().is_some() {
+                messages.set(Vec::new());
+            }
             loaded.set(None);
             return;
         };
@@ -111,7 +139,10 @@ fn AssistantDrawer(on_close: Callback) -> Element {
         loaded.set(Some(id));
         spawn(async move {
             match api::ai::conversation(id).await {
-                Ok(detail) => messages.set(bubbles_of(detail.messages)),
+                Ok(detail) => {
+                    *FROZEN_SHOWN.write() = detail.conversation.frozen_at.clone();
+                    messages.set(bubbles_of(detail.messages));
+                }
                 Err(_) => *CURRENT.write() = None,
             }
         });
@@ -134,7 +165,10 @@ fn AssistantDrawer(on_close: Callback) -> Element {
         spawn(async move {
             let id = match CURRENT() {
                 Some(id) => Ok(id),
-                None => api::ai::create_conversation().await.map(|c| c.id),
+                None => {
+                    let frozen = FROZEN_NEXT.write().take();
+                    api::ai::create_conversation(frozen).await.map(|c| c.id)
+                }
             };
             let result = match id {
                 Ok(id) => {
@@ -165,6 +199,8 @@ fn AssistantDrawer(on_close: Callback) -> Element {
 
     let new_conversation = move |_| {
         *CURRENT.write() = None;
+        *FROZEN_NEXT.write() = None;
+        *FROZEN_SHOWN.write() = None;
         messages.set(Vec::new());
         show_list.set(false);
     };
@@ -207,6 +243,7 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                 if show_list() {
                     ConversationList {
                         on_open: move |id: Uuid| {
+                            *FROZEN_NEXT.write() = None;
                             *CURRENT.write() = Some(id);
                             show_list.set(false);
                         },
@@ -216,6 +253,13 @@ fn AssistantDrawer(on_close: Callback) -> Element {
                         },
                     }
                 } else {
+                    if let Some(at) = FROZEN_SHOWN() {
+                        p {
+                            class: "border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800",
+                            "data-testid": "ai-frozen-banner",
+                            {t!("ai-frozen-banner", at : frozen_label(& at))}
+                        }
+                    }
                     div {
                         id: "pnex-ai-chat",
                         class: "flex-1 overflow-y-auto px-4 py-3 space-y-3",

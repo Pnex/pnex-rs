@@ -348,10 +348,19 @@ pub async fn case_proposals(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
 /// One object with its links valid now.
 pub async fn get_object(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let id = uuid_arg(args, "object_id")?;
-    let mut o = objects::get(deps.db, deps.org_id, id)
-        .await
-        .map_err(onto_error)?;
-    let mut l = links::for_object(deps.db, deps.org_id, id, None, false)
+    let as_of = match args.get("as_of").and_then(Value::as_str) {
+        Some(t) => Some(
+            chrono::DateTime::parse_from_rfc3339(t)
+                .map_err(|_| ToolError::from("as_of must be an RFC 3339 instant"))?,
+        ),
+        None => None,
+    };
+    let mut o = match as_of {
+        Some(at) => objects::get_as_of(deps.db, deps.org_id, id, at).await,
+        None => objects::get(deps.db, deps.org_id, id).await,
+    }
+    .map_err(onto_error)?;
+    let mut l = links::for_object(deps.db, deps.org_id, id, as_of, false)
         .await
         .map_err(onto_error)?;
     if let Some((m, s)) = masking(deps).await? {
@@ -552,8 +561,8 @@ pub(super) fn tools() -> Vec<ToolDef> {
         ToolDef {
             spec: ToolSpec {
                 name: "get_object",
-                description: "One ontology object (properties, version) with its links valid now. Read it before update_object.",
-                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"}},"required":["object_id"]}"#).expect("static schema"),
+                description: "One ontology object (properties, version) with its links valid now, or as known at as_of (RFC 3339). Read it before update_object.",
+                input_schema: serde_json::from_str(r#"{"type":"object","properties":{"object_id":{"type":"string"},"as_of":{"type":"string"}},"required":["object_id"]}"#).expect("static schema"),
             },
             summary: |v| {
             let t = shown(&v["object"]["title"]);

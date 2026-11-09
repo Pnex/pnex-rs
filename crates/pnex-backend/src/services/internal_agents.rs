@@ -402,6 +402,7 @@ async fn play(ctx: &AppContext, c: Claimed, journal: &mut Journal) -> Result<End
             },
             source_ref: format!("agent:{}", plan.agent_id),
         }),
+        frozen_at: None,
     };
     let mut policy = AgentPolicy {
         ctx,
@@ -797,6 +798,7 @@ pub async fn accept_tool_call(
             role: decider.role,
             source_ref: format!("proposal:{id}"),
         }),
+        frozen_at: None,
     };
     let reply = crate::services::ai::agent::run_confirmed(&deps, tool, &arguments).await;
     let entry = reply.tool_trace.into_iter().next();

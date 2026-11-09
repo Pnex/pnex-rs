@@ -563,6 +563,7 @@ async fn the_assistant_reads_only_the_mails_of_its_member() {
             config: Some(&env.config),
             app: None,
             actor: Some(pnex_backend::services::ontology::Actor::manual(user, role)),
+            frozen_at: None,
         };
         let boxes = execute(&deps(alice_id, R::Owner), "list_mailboxes", &json!({}))
             .await

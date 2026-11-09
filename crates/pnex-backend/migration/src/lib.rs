@@ -132,6 +132,7 @@ mod m20261109_000137_market_decisions;
 mod m20261109_000138_point_in_time_keys;
 mod m20261109_000139_object_versions;
 mod m20261109_000140_device_events;
+mod m20261109_000141_frozen_conversations;
 
 pub struct Migrator;
 
@@ -260,6 +261,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261109_000138_point_in_time_keys::Migration),
             Box::new(m20261109_000139_object_versions::Migration),
             Box::new(m20261109_000140_device_events::Migration),
+            Box::new(m20261109_000141_frozen_conversations::Migration),
         ]
     }
 }

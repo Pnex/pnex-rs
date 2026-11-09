@@ -109,15 +109,21 @@ impl<S> From<AiError> for LoopEnd<S> {
 
 /// The chat assistant: every registry tool, [`MAX_ITERATIONS`] calls, writes held after
 /// untrusted content.
-pub(crate) struct Chat;
+pub(crate) struct Chat {
+    /// Frozen conversation (D902): only the tools of `frozen::TOOLS`.
+    pub frozen: bool,
+}
 
 impl LoopPolicy for Chat {
     type Stop = std::convert::Infallible;
     fn specs(&self) -> Vec<ToolSpec> {
         tools::tool_specs()
+            .into_iter()
+            .filter(|s| !self.frozen || super::frozen::policy(s.name).is_some())
+            .collect()
     }
-    fn allows(&self, _name: &str) -> bool {
-        true
+    fn allows(&self, name: &str) -> bool {
+        !self.frozen || super::frozen::policy(name).is_some()
     }
     fn max_calls(&self) -> usize {
         MAX_ITERATIONS
@@ -153,12 +159,21 @@ pub async fn run_turn(
     system: String,
     history: Vec<Msg>,
 ) -> Result<AgentReply, AiError> {
-    run_loop(deps, cfg, provider, system, history, &mut Chat)
-        .await
-        .map_err(|e| match e {
-            LoopEnd::Ai(e) => e,
-            LoopEnd::Stop(never) => match never {},
-        })
+    run_loop(
+        deps,
+        cfg,
+        provider,
+        system,
+        history,
+        &mut Chat {
+            frozen: deps.frozen_at.is_some(),
+        },
+    )
+    .await
+    .map_err(|e| match e {
+        LoopEnd::Ai(e) => e,
+        LoopEnd::Stop(never) => match never {},
+    })
 }
 
 fn add(total: Usage, turn: &Usage) -> Usage {

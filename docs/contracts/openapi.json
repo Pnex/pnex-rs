@@ -1614,6 +1614,14 @@
             "format": "date-time",
             "type": "string"
           },
+          "frozen_at": {
+            "description": "The instant the conversation is frozen at (markets-research.md\nD902): every tool answers as of it.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -1656,6 +1664,14 @@
       "AiConversationWrite": {
         "description": "`POST /api/v1/ai/conversations` (title optional) and `PATCH` (rename).",
         "properties": {
+          "frozen_at": {
+            "description": "At creation only (RFC 3339, not in the future): freezes the\nconversation at this instant (D902). Ignored by a rename.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "title": {
             "type": [
               "string",
@@ -38144,7 +38160,7 @@
         "x-pnex-as-of": "current_only"
       },
       "post": {
-        "description": "Creates an empty private conversation of the caller (title optional). Any member.",
+        "description": "Creates an empty private conversation of the caller (title optional). With `frozen_at` (RFC 3339, not in the future) the conversation is frozen at that instant: every tool answers as of it, a later `as_of` asked by the model is brought back to it and said so, tools without a date are withdrawn, documents indexed later are hidden (D902). Any member.",
         "operationId": "ai_conversations_create",
         "parameters": [
           {
@@ -38178,6 +38194,16 @@
               }
             },
             "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` on `frozen_at` (`invalid`, `in_future`)"
           },
           "401": {
             "content": {

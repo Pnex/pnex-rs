@@ -70,9 +70,14 @@ pub async fn conversations() -> Result<Paginated<AiConversation>, ApiError> {
     .await
 }
 
-/// `POST …/conversations` — new empty conversation.
-pub async fn create_conversation() -> Result<AiConversation, ApiError> {
-    let body = serde_json::to_value(AiConversationWrite::default()).unwrap_or_default();
+/// `POST …/conversations` — new empty conversation, frozen at `frozen_at`
+/// when given (D902).
+pub async fn create_conversation(frozen_at: Option<String>) -> Result<AiConversation, ApiError> {
+    let body = serde_json::to_value(AiConversationWrite {
+        title: None,
+        frozen_at,
+    })
+    .unwrap_or_default();
     client::request(reqwest::Method::POST, CONVERSATIONS, Some(body)).await
 }
 
@@ -83,7 +88,11 @@ pub async fn conversation(id: Uuid) -> Result<AiConversationDetail, ApiError> {
 
 /// `PATCH …/conversations/{id}` — rename.
 pub async fn rename_conversation(id: Uuid, title: String) -> Result<AiConversation, ApiError> {
-    let body = serde_json::to_value(AiConversationWrite { title: Some(title) }).unwrap_or_default();
+    let body = serde_json::to_value(AiConversationWrite {
+        title: Some(title),
+        frozen_at: None,
+    })
+    .unwrap_or_default();
     client::request(
         reqwest::Method::PATCH,
         &format!("{CONVERSATIONS}/{id}"),

@@ -526,7 +526,8 @@ async fn fetch_documents(
     term: &str,
     candidate_limit: u64,
 ) -> Fetched {
-    let hits = crate::services::doc_search::search(db, org_id, term, None, candidate_limit).await?;
+    let hits =
+        crate::services::doc_search::search(db, org_id, term, None, candidate_limit, None).await?;
     let mut seen = std::collections::HashSet::new();
     Ok(hits
         .into_iter()

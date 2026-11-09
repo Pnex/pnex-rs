@@ -4082,6 +4082,40 @@ async fn point_in_time_reads_never_show_a_canary() {
         assert!(q.to_string().contains("\"confirmed\""), "{q}");
         let (_, o) = api.call("GET", &format!("/api/v1/ontology/objects/{series_id}/observations?as_of={}", enc(&later)), None).await;
         assert!(o.to_string().contains("31415.9"), "{o}");
+
+        // D902: an assistant frozen at T0 reads as of T0 whatever the model
+        // asks, and has no tool that reads the present or writes.
+        {
+            use pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole;
+            use pnex_backend::services::ai::tools::{execute, ToolDeps};
+            let deps = ToolDeps {
+                db: &ctx.db,
+                org_id: org,
+                grants: pnex_backend::services::iam::Grants::managed(&OrgMemberRole::Owner),
+                author: None,
+                o2: None,
+                config: None,
+                app: None,
+                actor: Some(pnex_backend::services::ontology::Actor::manual(1, OrgMemberRole::Owner)),
+                frozen_at: Some(t0.fixed_offset()),
+            };
+            let q = execute(&deps, "query_ontology", &json!({ "query": { "type_key": "geo_event", "as_of": later } }))
+                .await
+                .unwrap()
+                .value;
+            let text = q.to_string();
+            assert!(!text.contains("CANARY") && !text.contains("\"confirmed\""), "{text}");
+            assert!(q["as_of_note"].as_str().is_some_and(|n| n.contains("frozen")), "{q}");
+            let o = execute(&deps, "get_object", &json!({ "object_id": event_id })).await.unwrap().value;
+            assert_eq!(o["object"]["properties"]["status"], "unconfirmed", "{o}");
+            for (tool, args) in [
+                ("create_object", json!({ "type_key": "country", "title": "X", "properties": { "code": "XX" } })),
+                ("list_devices", json!({})),
+            ] {
+                let e = execute(&deps, tool, &args).await.unwrap_err();
+                assert_eq!(e.code, Some("ai-frozen-tool"), "{tool}: {}", e.message);
+            }
+        }
     })
     .await;
 }

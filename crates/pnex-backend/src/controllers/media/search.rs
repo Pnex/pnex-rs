@@ -50,7 +50,7 @@ pub(super) async fn search(
     Query(q): Query<SearchQuery>,
 ) -> Result<Response> {
     let kind = q.kind.as_deref().filter(|k| doc_search::is_indexed_kind(k));
-    let hits = doc_search::search(&ctx.db, org.org.id, &q.q, kind, q.k.unwrap_or(20))
+    let hits = doc_search::search(&ctx.db, org.org.id, &q.q, kind, q.k.unwrap_or(20), None)
         .await
         .map_err(crate::controllers::db_error)?;
     format::json(MediaSearchHits { hits })

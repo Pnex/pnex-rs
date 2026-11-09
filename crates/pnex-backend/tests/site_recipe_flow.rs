@@ -265,6 +265,7 @@ async fn the_assistant_tries_and_proposes_rules_without_saving() {
             config: Some(&ctx.config),
             app: Some(&ctx),
             actor: Some(pnex_backend::services::ontology::Actor::manual(1, role)),
+            frozen_at: None,
         };
         use pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole as R;
         let yaml = "name: programme\nsite: https://www.example.org/x\nsteps:\n  - open: \"/\"\n  - extract: {all_text: true, as: page}\n";

@@ -42,6 +42,9 @@ pub struct ToolDeps<'a> {
     /// Who writes through the ontology tools (role for D188, provenance
     /// `assistant:<user>` for D184); `None` in unit tests.
     pub actor: Option<crate::services::ontology::Actor>,
+    /// The conversation is frozen at this instant (D902): the harness sets
+    /// every tool's instant, tools without one are withdrawn.
+    pub frozen_at: Option<chrono::DateTime<chrono::FixedOffset>>,
 }
 
 /// Execution result: the JSON value seen by the model + the id of the touched
@@ -561,6 +564,29 @@ pub async fn execute(
     args: &Value,
 ) -> Result<ToolOutcome, ToolError> {
     authorize_tool(deps, name)?;
+    let Some(at) = deps.frozen_at else {
+        return dispatch(deps, name, args).await;
+    };
+    let (args, brought_back) = match super::frozen::policy(name) {
+        None => {
+            return Err(ToolError {
+                message: format!(
+                    "{name} is not available: this conversation is frozen at {} and only reads that answer as of a date remain",
+                    at.to_rfc3339()
+                ),
+                code: Some(pnex_core::err_codes::AI_FROZEN_TOOL),
+                args: Some(json!({ "tool": name, "at": at.to_rfc3339() })),
+            })
+        }
+        Some(super::frozen::Policy::AsOf(path)) => super::frozen::set_instant(args, path, at),
+        Some(_) => (args.clone(), false),
+    };
+    let mut out = dispatch(deps, name, &args).await?;
+    super::frozen::annotate(&mut out.value, at, brought_back);
+    Ok(out)
+}
+
+async fn dispatch(deps: &ToolDeps<'_>, name: &str, args: &Value) -> Result<ToolOutcome, ToolError> {
     match name {
         "list_devices" => list_devices(deps).await,
         "get_device_pins" => get_device_pins(deps, args).await,
@@ -1292,6 +1318,7 @@ mod tests {
             config: None,
             app: None,
             actor: None,
+            frozen_at: None,
         };
         for name in [
             "deploy_flow",

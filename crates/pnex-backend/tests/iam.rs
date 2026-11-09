@@ -51,8 +51,8 @@ fn every_operation_is_registered_once() {
 fn every_assistant_tool_is_registered_once() {
     // The dispatch table of the assistant is the source of truth.
     let src = include_str!("../src/services/ai/tools.rs");
-    let start = src.find("pub async fn execute(").expect("execute()");
-    let end = start + src[start..].find("\n}\n").expect("end of execute()");
+    let start = src.find("async fn dispatch(").expect("dispatch()");
+    let end = start + src[start..].find("\n}\n").expect("end of dispatch()");
     let dispatched: BTreeSet<&str> = src[start..end]
         .lines()
         .filter_map(|l| l.trim().strip_prefix('"')?.split_once("\" =>"))

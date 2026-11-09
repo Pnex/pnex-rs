@@ -482,6 +482,8 @@ pub const AI_CONFIRM_REQUIRED: &str = "ai-confirm-required";
 /// The held action to confirm is no longer the latest one of the
 /// conversation (a later turn ran, or it was already confirmed).
 pub const AI_CONFIRM_STALE: &str = "ai-confirm-stale";
+/// A tool the model called is withdrawn from a conversation frozen at an instant (markets-research.md D902): it reads the present or writes. Args: `tool`, `at`.
+pub const AI_FROZEN_TOOL: &str = "ai-frozen-tool";
 /// The assistant only plays saved navigation rules: a draft goes through a
 /// proposal the user saves first (SEC-71).
 pub const AI_SITE_RECIPE_SAVED_ONLY: &str = "ai-site-recipe-saved-only";
@@ -1788,6 +1790,7 @@ pub const ALL: &[&str] = &[
     AI_TOOL_INTERNAL,
     AI_CONFIRM_REQUIRED,
     AI_CONFIRM_STALE,
+    AI_FROZEN_TOOL,
     AI_SITE_RECIPE_SAVED_ONLY,
     CONTROL_UNKNOWN,
     CONTROL_STORE_UNAVAILABLE,

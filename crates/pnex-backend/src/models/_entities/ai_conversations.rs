@@ -18,6 +18,8 @@ pub struct Model {
     pub last_message_at: DateTimeWithTimeZone,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    /// Frozen at this instant (D902): every tool answers as of it.
+    pub frozen_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

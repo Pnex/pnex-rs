@@ -4,7 +4,7 @@ title: Model decisions — an external model's buy, neutral or sell, and how wel
 kind: feature
 pages: /market-decisions, /ontology
 nodes:
-err_codes: market-decision-stale, market-decision-conflict, market-decisions-quota, market-bars-too-many-files, as-of-required, as-of-unsupported
+err_codes: market-decision-stale, market-decision-conflict, market-decisions-quota, market-bars-too-many-files, as-of-required, as-of-unsupported, ai-frozen-tool
 tools:
 tags: model decision, décision de modèle, model, modèle, runner, buy, sell, neutral, achat, vente, neutre, probability, probabilité, calibration, reliability, fiabilité, Brier, hit rate, réussite, triple barrier, triple barrière, ATR, bars, barres, H4, gold, or, XAUUSD, service account, compte de service, Python, causal chain, chaîne causale, exposed, expose, point-in-time, backtest
 ---
@@ -14,6 +14,8 @@ A model trained outside PNEX (for example in a Python project) can post its deci
 On the page **Access**, create a **service account** for the model and give it a role with `datasets:read` (to read the bars), `ontology:read` and `time-ranges:read` (series, calendar, events) and `market-decisions:read` and `market-decisions:write`. Writing decisions is the only write a service account can ever make. Then create an **access key** for it and paste it in the model's configuration; it is shown once.
 
 The model reads the bars of an instrument as they were known at a moment: a bar counts only once it is closed, so the model never sees in real time what it could not see in training. Prices are those of one source (`histdata`, `mt5:<broker>`…), never mixed; a minute written twice counts once.
+
+On the page **Model decisions**, **Analysis at a date** opens a conversation with the assistant frozen at a moment: a banner says *View as of …*, every answer uses only what was known then (closed bars, known events, published figures, documents already there), and tools that read the present or write are not available (`ai-frozen-tool`). Use it to check what a model could have known when it decided.
 
 For training and backtests, give the model a **point-in-time key** (a tick box when creating the key): every read must then name its moment (`as_of`), so a forgotten date is refused instead of silently reading today's data, and the key can never write. Keep a normal key for the live runner.
 

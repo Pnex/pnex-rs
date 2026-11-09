@@ -585,6 +585,11 @@ pub struct AiConversation {
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub last_message_at: String,
+    /// The instant the conversation is frozen at (markets-research.md
+    /// D902): every tool answers as of it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub frozen_at: Option<String>,
 }
 
 /// One stored message of a conversation.
@@ -623,6 +628,11 @@ pub struct AiConversationDetail {
 pub struct AiConversationWrite {
     #[serde(default)]
     pub title: Option<String>,
+    /// At creation only (RFC 3339, not in the future): freezes the
+    /// conversation at this instant (D902). Ignored by a rename.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub frozen_at: Option<String>,
 }
 
 /// `POST /api/v1/ai/conversations/{id}/messages` — only the new message:

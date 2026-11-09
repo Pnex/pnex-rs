@@ -422,10 +422,11 @@ async fn conversation_list(
     tag = "ai",
     operation_id = "ai_conversations_create",
     summary = "Start an assistant conversation",
-    description = "Creates an empty private conversation of the caller (title optional). Any member.",
+    description = "Creates an empty private conversation of the caller (title optional). With `frozen_at` (RFC 3339, not in the future) the conversation is frozen at that instant: every tool answers as of it, a later `as_of` asked by the model is brought back to it and said so, tools without a date are withdrawn, documents indexed later are hidden (D902). Any member.",
     request_body = pnex_core::AiConversationWrite,
     responses(
-        (status = 201, body = pnex_core::AiConversation)
+        (status = 201, body = pnex_core::AiConversation),
+        (status = 400, description = "`field-invalid` on `frozen_at` (`invalid`, `in_future`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -435,7 +436,17 @@ async fn conversation_create(
     Json(body): Json<pnex_core::AiConversationWrite>,
 ) -> Result<Response> {
     let title = body.title.as_deref().filter(|t| !t.trim().is_empty());
-    let conv = conversations::create(&ctx.db, org.auth.user.id, org.org.id, title)
+    let frozen_at = match body.frozen_at.as_deref().filter(|t| !t.is_empty()) {
+        None => None,
+        Some(raw) => match chrono::DateTime::parse_from_rfc3339(raw) {
+            Ok(t) if t > chrono::Utc::now() => {
+                return Ok(super::field_error("frozen_at", "in_future"))
+            }
+            Ok(t) => Some(t),
+            Err(_) => return Ok(super::field_error("frozen_at", err_codes::FIELD_INVALID)),
+        },
+    };
+    let conv = conversations::create(&ctx.db, org.auth.user.id, org.org.id, title, frozen_at)
         .await
         .map_err(crate::controllers::db_error)?;
     Ok((
@@ -739,6 +750,15 @@ async fn run_conversation_turn(
         page.as_ref(),
     )
     .await;
+    // A frozen conversation says so to the model (D902); the harness sets
+    // the instants anyway.
+    let system = match conv.frozen_at {
+        Some(t) => format!(
+            "{system}\n\nThis conversation is frozen at {}: every tool answers as of that instant and never later; tools without a date are not available. Say so when the user asks about what came after.",
+            t.to_rfc3339()
+        ),
+        None => system,
+    };
     // History rebuilt from storage: the client only sends the new message.
     let mut history: Vec<Msg> = conversations::history(&ctx.db, conv.id)
         .await
@@ -759,6 +779,7 @@ async fn run_conversation_turn(
             role: org.role,
             source_ref: format!("assistant:{}", org.auth.user.id),
         }),
+        frozen_at: conv.frozen_at,
     };
     let reply = match body.confirm {
         // A held write the user confirms runs as stored, no LLM (SEC-71).

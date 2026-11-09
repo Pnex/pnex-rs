@@ -2644,6 +2644,7 @@ async fn recurrence_occurrences_are_materialized_and_kept_by_history() {
                 config: None,
                 app: None,
                 actor: Some(Actor::manual(1, role)),
+                frozen_at: None,
             };
             let cal = execute(&deps(OrgMemberRole::Admin), "list_calendar", &json!({})).await.unwrap().value;
             let states: Vec<&str> = cal["occurrences"].as_array().unwrap().iter().filter_map(|o| o["state"].as_str()).collect();
