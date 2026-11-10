@@ -432,6 +432,68 @@ pub fn histdata_mt_m1(csv: &[u8]) -> Result<Vec<Kline>, DecodeError> {
     Ok(out)
 }
 
+/// HistData's tick files: a month of bid/ask quotes per pair. Its own key:
+/// the registry keys partitions by source, and the 1-minute job already
+/// holds months of `histdata`.
+pub const HISTDATA_TICKS: HistorySource = HistorySource {
+    key: "histdata_tick",
+    base: "https://www.histdata.com",
+    interval: "tick",
+    table: "histdata_ticks",
+    license_note: "HistData.com free tick files: bid and ask quotes, no license or terms \
+                   published, source unstated, no warranty: private to the org, never \
+                   redistributed",
+};
+
+/// The HistData page of a pair's month of ticks (generic ASCII).
+pub fn histdata_tick_page_path(pair: &str, month: NaiveDate) -> String {
+    format!(
+        "download-free-forex-historical-data/?/ascii/tick-data-quotes/{}/{}/{}",
+        pair.to_ascii_lowercase(),
+        month.year(),
+        month.month()
+    )
+}
+
+/// One line of a HistData tick file: `YYYYMMDD HHMMSSmmm,bid,ask,volume`,
+/// EST without daylight saving (UTC-5), turned to UTC. The volume is
+/// always 0 and not per side: left out.
+pub fn histdata_tick_line(line: &str) -> Option<Tick> {
+    let mut f = line.trim().split(',');
+    let (stamp, bid, ask) = (f.next()?, f.next()?, f.next()?);
+    let (day, time) = stamp.split_once(' ')?;
+    if time.len() != 9 || !time.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let at =
+        chrono::NaiveDateTime::parse_from_str(&format!("{day} {}", &time[..6]), "%Y%m%d %H%M%S")
+            .ok()?;
+    let ms: i64 = time[6..].parse().ok()?;
+    Some(Tick {
+        ts_us: (at.and_utc().timestamp() + 5 * 3600) * 1_000_000 + ms * 1_000,
+        bid: scaled(bid.trim(), SCALE)?,
+        ask: scaled(ask.trim(), SCALE)?,
+        bid_volume: None,
+        ask_volume: None,
+    })
+}
+
+/// Closed months from `from` up to the one before `today`'s, minus the
+/// settled ones: a month file is published once the month is over.
+pub fn plan_months(from: NaiveDate, today: NaiveDate, known: &HashSet<Period>) -> Vec<Period> {
+    let (Some(mut month), Some(current)) = (from.with_day(1), today.with_day(1)) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    while month < current {
+        if !known.contains(&Period::Month(month)) {
+            out.push(Period::Month(month));
+        }
+        month = month + Months::new(1);
+    }
+    out
+}
+
 pub const DUKASCOPY_TICKS: HistorySource = HistorySource {
     key: "dukascopy_public",
     base: "https://datafeed.dukascopy.com",
@@ -852,6 +914,44 @@ mod tests {
         ] {
             assert_eq!(mt5_payload(&bad), Err(token));
         }
+    }
+
+    #[test]
+    fn histdata_ticks_pages_lines_and_months() {
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        assert_eq!(
+            histdata_tick_page_path("XAUUSD", d("2024-06-01")),
+            "download-free-forex-historical-data/?/ascii/tick-data-quotes/xauusd/2024/6"
+        );
+        // First and last lines of the real June 2024 file: EST + 5 h, the
+        // last tick of June is in July in UTC.
+        let t = histdata_tick_line("20240602 180001677,2327.425000,2328.175000,0").unwrap();
+        assert_eq!(t.ts_us, 1_717_369_201_677_000, "2024-06-02T23:00:01.677Z");
+        assert_eq!((t.bid, t.ask), (232_742_500_000, 232_817_500_000));
+        assert_eq!((t.bid_volume, t.ask_volume), (None, None));
+        let last = histdata_tick_line("20240630 235959159,2324.608000,2324.995000,0").unwrap();
+        assert_eq!(
+            last.ts_us, 1_719_809_999_159_000,
+            "2024-07-01T04:59:59.159Z"
+        );
+        for bad in [
+            "",
+            "20240602 1800016,1,2",
+            "20240602180001677,1,2",
+            "20240602 180001677,x,2",
+            "20240602 180001677,1",
+        ] {
+            assert!(histdata_tick_line(bad).is_none(), "{bad}");
+        }
+        let known: HashSet<Period> = [Period::Month(d("2024-07-01"))].into();
+        assert_eq!(
+            plan_months(d("2024-06-15"), d("2024-09-10"), &known),
+            vec![
+                Period::Month(d("2024-06-01")),
+                Period::Month(d("2024-08-01"))
+            ],
+            "closed months only, the settled one skipped"
+        );
     }
 
     #[test]

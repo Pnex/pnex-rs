@@ -69,7 +69,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.11.0"
+version: "1.12.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -234,6 +234,20 @@ settings:
     names: {fr: "Première année de l'historique HistData"}
     description: "YYYY. Loaded from this year; 2000, HistData's first, when empty. A year before a pair's first stays empty."
     descriptions: {fr: "AAAA. Chargé à partir de cette année ; 2000, la première de HistData, si vide. Une année antérieure au début d'une paire reste vide."}
+    kind: text
+    default: ""
+  - key: histdata_tick_pairs
+    name: Pairs of the HistData ticks
+    names: {fr: "Paires des ticks HistData"}
+    description: "Comma-separated HistData codes (XAUUSD, EURUSD…) whose free bid/ask ticks are loaded into the table histdata_ticks, a closed month per file, one file every five minutes. A month of XAUUSD is about 4.7 million ticks. HistData publishes no license: keep the table inside the org. Empty: nothing is loaded."
+    descriptions: {fr: "Codes HistData (XAUUSD, EURUSD…), séparés par des virgules, dont les ticks bid/ask gratuits sont chargés dans la table histdata_ticks, un mois clos par fichier, un fichier toutes les cinq minutes. Un mois de XAUUSD compte environ 4,7 millions de ticks. HistData ne publie aucune licence : garder la table dans l'organisation. Vide : rien n'est chargé."}
+    kind: text
+    default: ""
+  - key: histdata_tick_from
+    name: First month of the HistData ticks
+    names: {fr: "Premier mois des ticks HistData"}
+    description: "YYYY-MM. Loaded from this month; last month when empty."
+    descriptions: {fr: "AAAA-MM. Chargé à partir de ce mois ; le mois dernier si vide."}
     kind: text
     default: ""
   - key: history_fx_pairs

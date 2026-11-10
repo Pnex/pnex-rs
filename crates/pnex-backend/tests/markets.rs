@@ -4840,3 +4840,118 @@ async fn trading_accounts_import_detect_and_never_name_a_person() {
     })
     .await;
 }
+
+/// HistData ticks: a closed month per file, its CSV streamed into the
+/// `quote_tick` table as one transaction, EST (no daylight saving) turned
+/// to UTC; a month without a file stays empty, a loaded one is not asked
+/// again.
+#[tokio::test]
+#[serial]
+async fn histdata_ticks_are_streamed_month_by_month() {
+    with_app(|server, ctx, token| async move {
+        use axum::{extract::RawQuery, response::IntoResponse, routing::{get, post}, Router};
+        use pnex_backend::services::markets::history::{sweep_from, Hosts};
+        use std::io::Write;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        assert_eq!(st, 200, "{r}");
+        api.settings(json!({ "histdata_tick_pairs": "xauusd", "histdata_tick_from": "2024-05" })).await;
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        w.start_file("DAT_ASCII_XAUUSD_T_202406.csv", zip::write::SimpleFileOptions::default()).unwrap();
+        w.write_all(
+            b"20240602 180001677,2327.425000,2328.175000,0\n\
+20240602 180002329,2327.325000,2328.075000,0\n\
+20240630 235959159,2324.608000,2324.995000,0\n",
+        )
+        .unwrap();
+        w.start_file("DAT_ASCII_XAUUSD_T_202406.txt", zip::write::SimpleFileOptions::default()).unwrap();
+        w.write_all(b"gaps report").unwrap();
+        let zip = w.finish().unwrap().into_inner();
+        let files = Arc::new(AtomicUsize::new(0));
+        let app = Router::new()
+            .route(
+                "/download-free-forex-historical-data/",
+                get(|RawQuery(q): RawQuery| async move {
+                    // June 2024 has a file; May (before the mock's first) has none.
+                    match q.as_deref() {
+                        Some("/ascii/tick-data-quotes/xauusd/2024/6") => r#"<html>
+<form id="file_down" name="file_down" target="nullDisplay" method="POST" action="/get.php">
+<input type="hidden" name="tk" id="tk" value="0123456789abcdef0123456789abcdef" />
+<input type="hidden" name="datemonth" id="datemonth" value="202406" />
+<input type="hidden" name="platform" id="platform" value="ASCII" />
+<input type="hidden" name="timeframe" id="timeframe" value="T" />
+<input type="hidden" name="fxpair" id="fxpair" value="XAUUSD" /></form></html>"#
+                            .into_response(),
+                        _ => "<html>no file here</html>".into_response(),
+                    }
+                }),
+            )
+            .route(
+                "/get.php",
+                post({
+                    let files = files.clone();
+                    move || async move {
+                        files.fetch_add(1, Ordering::SeqCst);
+                        zip.clone().into_response()
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::markets::allow_test_host(&base);
+        let hosts = Hosts { histdata: base.clone(), ..Default::default() };
+
+        // One month per pass: May (no file), then June; July is the current month.
+        let today = chrono::NaiveDate::from_ymd_opt(2024, 7, 10).unwrap();
+        for _ in 0..3 {
+            sweep_from(&ctx, &hosts, today).await.unwrap();
+        }
+        let states = || async {
+            ctx.db
+                .query_all_raw(Statement::from_string(
+                    sea_orm::DatabaseBackend::Postgres,
+                    "SELECT period || ':' || period_start::text || ':' || state || ':' || rows::text AS s \
+                     FROM market_history_partitions WHERE source = 'histdata_tick' ORDER BY period_start"
+                        .to_string(),
+                ))
+                .await
+                .unwrap()
+                .iter()
+                .map(|r| r.try_get::<String>("", "s").unwrap())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(states().await, vec!["month:2024-05-01:empty:0", "month:2024-06-01:done:3"]);
+        assert_eq!(files.load(Ordering::SeqCst), 1, "the month already loaded is not asked again");
+
+        let (_, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
+        let id = list["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == "histdata_ticks")
+            .unwrap_or_else(|| panic!("{list}"))["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (st, sample) = api.call("GET", &format!("/api/v1/datasets/{id}/sample?limit=10"), None).await;
+        assert_eq!(st, 200, "{sample}");
+        let text = sample.to_string();
+        // 18:00:01.677 EST is 23:00:01.677 UTC; the last tick of June is in July in UTC.
+        assert!(text.contains("2024-06-02T23:00:01.677"), "{text}");
+        assert!(text.contains("2024-07-01T04:59:59.159"), "{text}");
+        assert!(text.contains("histdata_tick"), "{text}");
+        let (st, files_list) = api.call("GET", &format!("/api/v1/datasets/{id}/files"), None).await;
+        assert_eq!(st, 200, "{files_list}");
+        assert_eq!(files_list["count"], 1, "one month, one transaction: {files_list}");
+    })
+    .await;
+}

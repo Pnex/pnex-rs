@@ -54,6 +54,8 @@ List forex pairs in the setting **Pairs of the tick history (Dukascopy)** (for e
 List HistData codes in **Pairs of the HistData history** (for example `EURUSD, XAUUSD, SPXUSD`): forex pairs, gold and silver, oil (`WTIUSD`, `BCOUSD`) and indices (`SPXUSD`, `NSXUSD`, `UKXGBP`…), most since 2000 to 2010. Their free 1-minute bars go to the table `histdata_ohlcv_1m`: a closed year per file, the current year month by month, one file every five minutes, so a pair since 2000 takes about three hours. Prices are bid prices, times in UTC (HistData publishes New York time without daylight saving, converted). HistData publishes no volume (0) and no license: keep the table inside the org.
 - **A year stays empty**: it is before the pair's first year, or HistData has not published it yet (asked again for a year).
 
+Ticks (every bid/ask quote, to the millisecond) come from HistData too: list codes in **Pairs of the HistData ticks** (for example `XAUUSD`) and the first month in **First month of the HistData ticks** (`YYYY-MM`; last month when empty). One closed month is loaded per file, one file every five minutes, into the table `histdata_ticks`, times in UTC. A month of gold is about 4.7 million ticks: start from the months you need. A month without a file stays empty.
+
 ## MetaTrader 5 terminals
 A broker's prices come in from MetaTrader 5 terminals registered on the page **MT5 terminals** (see that card); their bars and ticks go to the tables `mt5_ohlcv_1m` and `mt5_ticks`.
 

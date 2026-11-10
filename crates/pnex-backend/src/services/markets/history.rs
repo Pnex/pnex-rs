@@ -17,7 +17,7 @@ use chrono::NaiveDate;
 use loco_rs::app::AppContext;
 use pnex_core::markets::history::{
     self, HistorySource, Kline, Period, Tick, Trade, BINANCE_SPOT_1M, BINANCE_SPOT_TRADES,
-    DUKASCOPY_TICKS, HISTDATA_M1, MT5_OHLCV_1M, MT5_TICKS,
+    DUKASCOPY_TICKS, HISTDATA_M1, HISTDATA_TICKS, MT5_OHLCV_1M, MT5_TICKS,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sha2::{Digest, Sha256};
@@ -48,9 +48,17 @@ enum Job {
     Trades,
     /// HistData 1-minute bars: a year per file, one file at a time.
     HistData,
+    /// HistData ticks: a month per file, read as a stream.
+    HistDataTicks,
 }
 
-const JOBS: [Job; 4] = [Job::Klines, Job::Ticks, Job::Trades, Job::HistData];
+const JOBS: [Job; 5] = [
+    Job::Klines,
+    Job::Ticks,
+    Job::Trades,
+    Job::HistData,
+    Job::HistDataTicks,
+];
 
 impl Job {
     fn src(self) -> HistorySource {
@@ -59,6 +67,7 @@ impl Job {
             Self::Ticks => DUKASCOPY_TICKS,
             Self::Trades => BINANCE_SPOT_TRADES,
             Self::HistData => HISTDATA_M1,
+            Self::HistDataTicks => HISTDATA_TICKS,
         }
     }
 
@@ -69,6 +78,7 @@ impl Job {
             Self::Ticks => ("history_fx_pairs", "history_fx_from"),
             Self::Trades => ("history_trade_symbols", "history_trade_from"),
             Self::HistData => ("histdata_pairs", "histdata_from"),
+            Self::HistDataTicks => ("histdata_tick_pairs", "histdata_tick_from"),
         }
     }
 
@@ -81,14 +91,14 @@ impl Job {
             // Up to a few hundred MB unzipped each.
             Self::Trades => 4,
             // A free site: one file per pass, as a person would.
-            Self::HistData => 1,
+            Self::HistData | Self::HistDataTicks => 1,
         }
     }
 
     /// Pause after each partition.
     fn pause(self) -> std::time::Duration {
         match self {
-            Self::HistData => std::time::Duration::from_secs(5),
+            Self::HistData | Self::HistDataTicks => std::time::Duration::from_secs(5),
             _ => PAUSE,
         }
     }
@@ -96,7 +106,9 @@ impl Job {
     fn instruments(self, raw: &str) -> Vec<String> {
         let ok: fn(&str) -> bool = match self {
             Self::Ticks => |s| history::fx_scale(s).is_some(),
-            Self::Klines | Self::Trades | Self::HistData => history::symbol_ok,
+            Self::Klines | Self::Trades | Self::HistData | Self::HistDataTicks => {
+                history::symbol_ok
+            }
         };
         let mut seen = HashSet::new();
         raw.split(',')
@@ -128,6 +140,8 @@ impl Job {
             Self::Trades => back(1),
             // HistData's first year.
             Self::HistData => NaiveDate::from_ymd_opt(2000, 1, 1).unwrap_or(today),
+            // Ticks weigh tens of MB a month: one month back unless set.
+            Self::HistDataTicks => back(1),
         }
     }
 
@@ -136,6 +150,7 @@ impl Job {
             Self::Klines => history::plan(from, today, known),
             Self::Ticks | Self::Trades => history::plan_days(from, today, known),
             Self::HistData => history::plan_years(from, today, known),
+            Self::HistDataTicks => history::plan_months(from, today, known),
         }
     }
 
@@ -152,6 +167,8 @@ impl Job {
             }
             Self::Ticks => fetch_day(base, instrument, p).await,
             Self::HistData => fetch_histdata(base, instrument, p).await,
+            // Streamed into the table by `fetch_histdata_ticks`.
+            Self::HistDataTicks => Some(Fetched::Failed("unreadable")),
         }
     }
 }
@@ -183,7 +200,7 @@ impl Hosts {
         match job {
             Job::Klines | Job::Trades => &self.binance,
             Job::Ticks => &self.dukascopy,
-            Job::HistData => &self.histdata,
+            Job::HistData | Job::HistDataTicks => &self.histdata,
         }
     }
 }
@@ -207,6 +224,7 @@ pub async fn sweep_from(
                  OR coalesce(settings ->> 'history_fx_pairs', '') <> '' \
                  OR coalesce(settings ->> 'history_trade_symbols', '') <> '' \
                  OR coalesce(settings ->> 'histdata_pairs', '') <> '' \
+                 OR coalesce(settings ->> 'histdata_tick_pairs', '') <> '' \
                  OR EXISTS (SELECT 1 FROM mt5_inbox i WHERE i.org_id = packs.org_id)) \
              UNION SELECT DISTINCT org_id FROM mt5_inbox ORDER BY org_id",
             vec![],
@@ -362,7 +380,13 @@ async fn pass(
             }
             budget -= 1;
             // An unreachable source stops the pass, nothing is counted.
-            let Some(outcome) = job.fetch(base, &instrument, p).await else {
+            let fetched = match job {
+                Job::HistDataTicks => {
+                    fetch_histdata_ticks(db, store, org, base, &instrument, p).await
+                }
+                _ => job.fetch(base, &instrument, p).await,
+            };
+            let Some(outcome) = fetched else {
                 return Ok(());
             };
             let outcome = match outcome {
@@ -634,6 +658,120 @@ pub fn ohlcv_batch(
             Arc::new(StringArray::from(vec![source; n])),
         ],
     )
+}
+
+/// Ticks per batch of a streamed month: a month holds millions.
+const TICK_BATCH: usize = 500_000;
+/// A month of ticks unzips to a few hundred MB; past this it is no tick file.
+const TICK_FILE_MAX: u64 = 4 << 30;
+
+/// The `.csv` entry of a HistData tick zip, read line by line into batches
+/// sent as they fill; `None` is sent once it was read to its end, never on
+/// an error (the transaction is then aborted).
+fn decode_histdata_ticks(
+    zip: &[u8],
+    pair: &str,
+    out: &tokio::sync::mpsc::Sender<Option<RecordBatch>>,
+) -> Result<(), &'static str> {
+    use std::io::{BufRead, BufReader, Read};
+    const BAD: &str = "unreadable";
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip)).map_err(|_| BAD)?;
+    let index = (0..archive.len())
+        .find(|i| {
+            archive.by_index(*i).is_ok_and(|f| {
+                f.name()
+                    .is_ok_and(|n| n.to_ascii_lowercase().ends_with(".csv"))
+            })
+        })
+        .ok_or(BAD)?;
+    let file = archive.by_index(index).map_err(|_| BAD)?;
+    let reader = BufReader::with_capacity(1 << 20, file.take(TICK_FILE_MAX));
+    let send = |rows: &[Tick]| {
+        let batch =
+            quote_tick_batch(HISTDATA_TICKS.key, &vec![pair; rows.len()], rows).map_err(|_| BAD)?;
+        out.blocking_send(Some(batch)).map_err(|_| BAD)
+    };
+    let mut rows = Vec::with_capacity(TICK_BATCH);
+    for line in reader.lines() {
+        let line = line.map_err(|_| BAD)?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        rows.push(history::histdata_tick_line(&line).ok_or(BAD)?);
+        if rows.len() == TICK_BATCH {
+            send(&rows)?;
+            rows.clear();
+        }
+    }
+    if !rows.is_empty() {
+        send(&rows)?;
+    }
+    out.blocking_send(None).map_err(|_| BAD)
+}
+
+/// A HistData month of ticks: the page, its form sent back with the page as
+/// referer, then the zip streamed into the table as one transaction. A page
+/// without a file, or a file without a tick, is `Empty`.
+async fn fetch_histdata_ticks(
+    db: &DatabaseConnection,
+    store: &S3Store,
+    org: i64,
+    base: &str,
+    pair: &str,
+    p: Period,
+) -> Option<Fetched> {
+    let by = source::Declared::default();
+    let page = source::check_url(&format!(
+        "{base}/{}",
+        history::histdata_tick_page_path(pair, p.start())
+    ))
+    .ok()?;
+    let html = match source::get_found(&page, &by).await {
+        Ok(Some(b)) => String::from_utf8_lossy(&b).into_owned(),
+        Ok(None) => return Some(Fetched::Empty),
+        Err(code) => {
+            tracing::info!(%page, code, "HistData tick page not read");
+            return None;
+        }
+    };
+    let Some(fields) = history::histdata_form(&html) else {
+        return Some(Fetched::Empty);
+    };
+    let get = source::check_url(&format!("{base}/get.php")).ok()?;
+    let zip = match source::post_form_found(&get, &by, &page, &fields).await {
+        Ok(Some(z)) => z,
+        Ok(None) => return Some(Fetched::Empty),
+        Err(code) => {
+            tracing::info!(%page, code, "HistData tick file not read");
+            return None;
+        }
+    };
+    let sha256 = hex(&Sha256::digest(&zip));
+    let (tx, rx) = tokio::sync::mpsc::channel::<Option<RecordBatch>>(2);
+    let owned = pair.to_string();
+    let decode = tokio::task::spawn_blocking(move || decode_histdata_ticks(&zip, &owned, &tx));
+    let appended = async {
+        let table = table_of(db, org, &HISTDATA_TICKS).await?;
+        datasets::append_stream(db, store, org, table, rx).await
+    }
+    .await;
+    let decoded = decode.await.unwrap_or(Err("unreadable"));
+    Some(match (appended, decoded) {
+        (Ok(Some(t)), _) => Fetched::Done {
+            transaction: t.id.parse().unwrap_or_default(),
+            rows: t.rows,
+            bytes: t.bytes,
+            sha256,
+        },
+        (Ok(None), _) => Fetched::Empty,
+        (Err(DatasetError::QuotaExceeded), _) => Fetched::Failed("quota"),
+        (Err(DatasetError::SchemaMismatch { .. }), _) => Fetched::Failed("schema"),
+        (Err(_), Err(code)) => Fetched::Failed(code),
+        (Err(e), Ok(())) => {
+            tracing::warn!(org, code = e.code(), "HistData ticks not written");
+            Fetched::Failed("storage")
+        }
+    })
 }
 
 /// Columns of the `quote_tick` shape (D809); `instruments` holds one per row.
