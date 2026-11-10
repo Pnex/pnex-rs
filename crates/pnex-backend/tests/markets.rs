@@ -2914,14 +2914,23 @@ async fn histdata_years_are_loaded_from_the_page_form() {
             .route(
                 "/download-free-forex-historical-data/",
                 get(|RawQuery(q): RawQuery| async move {
-                    // 2024 has a file; 2023 (before this mock's first) and 2025 not yet.
-                    match q.as_deref() {
-                        Some("/metatrader/1-minute-bar-quotes/eurusd/2024") => r#"<html>
+                    // 2024 has a file. 2023, before the pair's first, has a form
+                    // but an empty file; 2025's page withholds the token.
+                    let form = |tk: &str, year: &str| format!(r#"<html>
 <form id="file_down" name="file_down" target="nullDisplay" method="POST" action="/get.php">
-<input type="hidden" name="tk" id="tk" value="0123456789abcdef0123456789abcdef" />
-<input type="hidden" name="date" id="date" value="2024" />
-<input type="hidden" name="fxpair" id="fxpair" value="EURUSD" /></form></html>"#
-                            .into_response(),
+<input type="hidden" name="tk" id="tk" value="{tk}" />
+<input type="hidden" name="date" id="date" value="{year}" />
+<input type="hidden" name="fxpair" id="fxpair" value="EURUSD" /></form></html>"#);
+                    match q.as_deref() {
+                        Some("/metatrader/1-minute-bar-quotes/eurusd/2023") => {
+                            form("0123456789abcdef0123456789abcdef", "2023").into_response()
+                        }
+                        Some("/metatrader/1-minute-bar-quotes/eurusd/2024") => {
+                            form("0123456789abcdef0123456789abcdef", "2024").into_response()
+                        }
+                        Some("/metatrader/1-minute-bar-quotes/eurusd/2025") => {
+                            form("", "2025").into_response()
+                        }
                         _ => "<html>no file here</html>".into_response(),
                     }
                 }),
@@ -2945,6 +2954,9 @@ async fn histdata_years_are_loaded_from_the_page_form() {
                         if f.get("tk").map(String::as_str) != Some("0123456789abcdef0123456789abcdef") {
                             return StatusCode::FORBIDDEN.into_response();
                         }
+                        if f.get("date").map(String::as_str) != Some("2024") {
+                            return Vec::<u8>::new().into_response();
+                        }
                         zip.clone().into_response()
                     }
                 }),
@@ -2954,7 +2966,7 @@ async fn histdata_years_are_loaded_from_the_page_form() {
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         pnex_backend::services::markets::allow_test_host(&base);
 
-        // One file per pass: 2023, 2024, 2025, then the months of 2026.
+        // One file per pass: 2023, 2024, then 2025 stops every pass unrecorded.
         let today = chrono::NaiveDate::from_ymd_opt(2026, 2, 10).unwrap();
         for _ in 0..5 {
             pnex_backend::services::markets::history::sweep_from(&ctx, &pnex_backend::services::markets::history::Hosts { histdata: base.clone(), ..Default::default() }, today)
@@ -2979,13 +2991,15 @@ async fn histdata_years_are_loaded_from_the_page_form() {
             vec![
                 "year:2023-01-01:empty:0",
                 "year:2024-01-01:done:2",
-                "year:2025-01-01:empty:0",
-                "month:2026-01-01:empty:0",
-            ]
+            ],
+            "a withheld token is never recorded as an empty year"
         );
         assert_eq!(
             posts.lock().unwrap().clone(),
-            vec!["0123456789abcdef0123456789abcdef:2024:true"],
+            vec![
+                "0123456789abcdef0123456789abcdef:2023:false",
+                "0123456789abcdef0123456789abcdef:2024:true"
+            ],
             "the page's own fields, with the page as referer"
         );
         let (_, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;

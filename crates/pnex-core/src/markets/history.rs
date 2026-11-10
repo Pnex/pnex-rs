@@ -363,6 +363,12 @@ pub fn histdata_form(html: &str) -> Option<Vec<(String, String)>> {
     (out.iter().any(|(n, _)| n == "tk")).then_some(out)
 }
 
+/// The page shows its form but withholds the download token: HistData then
+/// answers every file with an empty body, so nothing can be told apart.
+pub fn histdata_token_withheld(fields: &[(String, String)]) -> bool {
+    fields.iter().any(|(n, v)| n == "tk" && v.is_empty())
+}
+
 /// The partitions still to fetch from `from` up to today, the HistData way:
 /// closed years whole, the current year month by month (closed months).
 /// A closed year of which a month is already known goes on by months.
@@ -993,6 +999,9 @@ mod tests {
                 ("fxpair".to_string(), "EURUSD".to_string()),
             ]
         );
+        assert!(!histdata_token_withheld(&histdata_form(html).unwrap()));
+        let withheld = html.replace("13f41008164167f78d67ca5eeba86ad0", "");
+        assert!(histdata_token_withheld(&histdata_form(&withheld).unwrap()));
         assert_eq!(histdata_form("<html>no file</html>"), None);
         assert_eq!(
             histdata_form(&html.replace("2024", "a&b=c")),
