@@ -2076,9 +2076,16 @@ async fn minute_history_is_loaded_by_partitions_and_resumed() {
         pnex_backend::services::markets::allow_test_host(&base);
 
         let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
-        pnex_backend::services::markets::history::sweep(&ctx, &base, today)
-            .await
-            .unwrap();
+        pnex_backend::services::markets::history::sweep_from(
+            &ctx,
+            &pnex_backend::services::markets::history::Hosts {
+                binance: base.clone(),
+                ..Default::default()
+            },
+            today,
+        )
+        .await
+        .unwrap();
         let states = || async {
             ctx.db
                 .query_all_raw(Statement::from_string(
@@ -2130,9 +2137,16 @@ async fn minute_history_is_loaded_by_partitions_and_resumed() {
 
         // Second pass: only what is not settled is asked again.
         hits.lock().unwrap().clear();
-        pnex_backend::services::markets::history::sweep(&ctx, &base, today)
-            .await
-            .unwrap();
+        pnex_backend::services::markets::history::sweep_from(
+            &ctx,
+            &pnex_backend::services::markets::history::Hosts {
+                binance: base.clone(),
+                ..Default::default()
+            },
+            today,
+        )
+        .await
+        .unwrap();
         let asked: Vec<String> = hits
             .lock()
             .unwrap()
@@ -2160,7 +2174,6 @@ async fn minute_history_is_loaded_by_partitions_and_resumed() {
 async fn minute_history_real_binance() {
     with_app(|server, ctx, token| async move {
         use pnex_backend::services::markets::history::sweep;
-        use pnex_core::markets::history::BINANCE_SPOT_1M;
         let org = server
             .get("/api/v1/user-info")
             .add_header("Authorization", format!("Bearer {token}"))
@@ -2195,7 +2208,7 @@ async fn minute_history_real_binance() {
         let started = std::time::Instant::now();
         let mut known = -1_i64;
         for pass in 0..40 {
-            sweep(&ctx, BINANCE_SPOT_1M.base, today).await.unwrap();
+            sweep(&ctx, today).await.unwrap();
             let n: i64 = one("SELECT count(*) AS n FROM market_history_partitions")
                 .await
                 .try_get("", "n")
@@ -2259,7 +2272,7 @@ async fn minute_history_real_binance() {
 
         // A second run downloads nothing settled again.
         let before: chrono::DateTime<chrono::Utc> = row.try_get("", "last").unwrap();
-        sweep(&ctx, BINANCE_SPOT_1M.base, today).await.unwrap();
+        sweep(&ctx, today).await.unwrap();
         let refetched: i64 = ctx
             .db
             .query_one_raw(Statement::from_sql_and_values(
@@ -2359,14 +2372,11 @@ async fn tick_history_is_loaded_by_days() {
         pnex_backend::services::markets::allow_test_host(&base);
 
         let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
-        let sweep = || {
-            pnex_backend::services::markets::history::sweep_from(
-                &ctx,
-                "http://unused",
-                &base,
-                today,
-            )
+        let hosts = pnex_backend::services::markets::history::Hosts {
+            dukascopy: base.clone(),
+            ..Default::default()
         };
+        let sweep = || pnex_backend::services::markets::history::sweep_from(&ctx, &hosts, today);
         sweep().await.unwrap();
         let states: Vec<String> = ctx
             .db
@@ -2438,7 +2448,6 @@ async fn tick_history_is_loaded_by_days() {
 async fn tick_history_real_dukascopy() {
     with_app(|server, ctx, token| async move {
         use pnex_backend::services::markets::history::sweep_from;
-        use pnex_core::markets::history::DUKASCOPY_TICKS;
         let org = server
             .get("/api/v1/user-info")
             .add_header("Authorization", format!("Bearer {token}"))
@@ -2461,9 +2470,7 @@ async fn tick_history_real_dukascopy() {
         let started = std::time::Instant::now();
         let mut known = -1_i64;
         for pass in 0..80 {
-            sweep_from(&ctx, "http://unused", DUKASCOPY_TICKS.base, today)
-                .await
-                .unwrap();
+            sweep_from(&ctx, &Default::default(), today).await.unwrap();
             let n: i64 = ctx
                 .db
                 .query_one_raw(Statement::from_string(
@@ -2606,7 +2613,11 @@ async fn trade_history_is_loaded_by_days() {
         pnex_backend::services::markets::allow_test_host(&base);
         let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 4).unwrap();
         // Two sweeps at once (a pass outliving its turn): nothing loaded twice.
-        let sweep = || pnex_backend::services::markets::history::sweep(&ctx, &base, today);
+        let hosts = pnex_backend::services::markets::history::Hosts {
+            binance: base.clone(),
+            ..Default::default()
+        };
+        let sweep = || pnex_backend::services::markets::history::sweep_from(&ctx, &hosts, today);
         let (a, b) = tokio::join!(sweep(), sweep());
         a.unwrap();
         b.unwrap();
@@ -2807,7 +2818,7 @@ async fn mt5_terminals_push_into_tables() {
         assert_eq!(seen["terminal_build"], 4755);
 
         let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
-        pnex_backend::services::markets::history::sweep(&ctx, "http://unused", today).await.unwrap();
+        pnex_backend::services::markets::history::sweep_from(&ctx, &pnex_backend::services::markets::history::Hosts { binance: "http://unused".into(), ..Default::default() }, today).await.unwrap();
         let inbox = count(&ctx.db, format!("SELECT count(*) AS n FROM mt5_inbox WHERE org_id = {org}")).await;
         assert_eq!(inbox, 0, "read calls leave the inbox");
         let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
@@ -2946,7 +2957,7 @@ async fn histdata_years_are_loaded_from_the_page_form() {
         // One file per pass: 2023, 2024, 2025, then the months of 2026.
         let today = chrono::NaiveDate::from_ymd_opt(2026, 2, 10).unwrap();
         for _ in 0..5 {
-            pnex_backend::services::markets::history::sweep(&ctx, &base, today)
+            pnex_backend::services::markets::history::sweep_from(&ctx, &pnex_backend::services::markets::history::Hosts { histdata: base.clone(), ..Default::default() }, today)
                 .await
                 .unwrap();
         }
@@ -3005,7 +3016,6 @@ async fn histdata_years_are_loaded_from_the_page_form() {
 async fn histdata_real_eurusd() {
     with_app(|server, ctx, token| async move {
         use pnex_backend::services::markets::history::sweep;
-        use pnex_core::markets::history::HISTDATA_M1;
         let org = server
             .get("/api/v1/user-info")
             .add_header("Authorization", format!("Bearer {token}"))
@@ -3041,7 +3051,7 @@ async fn histdata_real_eurusd() {
         };
         let (mut known, mut still) = (-1_i64, 0);
         for pass in 0..80 {
-            sweep(&ctx, HISTDATA_M1.base, today).await.unwrap();
+            sweep(&ctx, today).await.unwrap();
             let n = count().await;
             eprintln!("pass {pass}: {n} partitions, {:?}", started.elapsed());
             still = if n == known { still + 1 } else { 0 };
@@ -3597,7 +3607,6 @@ async fn gold_real_sources() {
     let contact = std::env::var("MARKETS_CONTACT").expect("MARKETS_CONTACT");
     with_app(|server, ctx, token| async move {
         use pnex_backend::services::markets::history::sweep;
-        use pnex_core::markets::history::HISTDATA_M1;
         let db = ctx.db.clone();
         pnex_backend::services::markets::init(&ctx);
         let org = server
@@ -3654,7 +3663,7 @@ async fn gold_real_sources() {
         println!("calendar ranges: {ranges}");
         assert!(ranges > 0);
         let today = chrono::Utc::now().date_naive();
-        sweep(&ctx, HISTDATA_M1.base, today).await.unwrap();
+        sweep(&ctx, today).await.unwrap();
         let bars = db
             .query_all_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,

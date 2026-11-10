@@ -160,17 +160,43 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
 }
 
-/// One pass over the orgs that list instruments. `base` is Binance's host
-/// (a mock in tests).
-pub async fn sweep(ctx: &AppContext, base: &str, today: NaiveDate) -> Result<(), DatasetError> {
-    sweep_from(ctx, base, DUKASCOPY_TICKS.base, today).await
+/// The host of each source (mocks in tests).
+#[derive(Debug, Clone)]
+pub struct Hosts {
+    pub binance: String,
+    pub dukascopy: String,
+    pub histdata: String,
+}
+
+impl Default for Hosts {
+    fn default() -> Self {
+        Self {
+            binance: BINANCE_SPOT_1M.base.into(),
+            dukascopy: DUKASCOPY_TICKS.base.into(),
+            histdata: HISTDATA_M1.base.into(),
+        }
+    }
+}
+
+impl Hosts {
+    fn of(&self, job: Job) -> &str {
+        match job {
+            Job::Klines | Job::Trades => &self.binance,
+            Job::Ticks => &self.dukascopy,
+            Job::HistData => &self.histdata,
+        }
+    }
+}
+
+/// One pass over the orgs that list instruments, on the real hosts.
+pub async fn sweep(ctx: &AppContext, today: NaiveDate) -> Result<(), DatasetError> {
+    sweep_from(ctx, &Hosts::default(), today).await
 }
 
 /// [`sweep`] with each source's host (mocks in tests).
 pub async fn sweep_from(
     ctx: &AppContext,
-    binance: &str,
-    dukascopy: &str,
+    hosts: &Hosts,
     today: NaiveDate,
 ) -> Result<(), DatasetError> {
     let orgs: Vec<i64> = ctx
@@ -202,12 +228,7 @@ pub async fn sweep_from(
             continue;
         };
         for job in JOBS {
-            let base = if job == Job::Ticks {
-                dukascopy
-            } else {
-                binance
-            };
-            if let Err(e) = pass(&ctx.db, &store, base, org, today, job).await {
+            if let Err(e) = pass(&ctx.db, &store, hosts.of(job), org, today, job).await {
                 tracing::warn!(org, ?job, code = e.code(), "price history pass stopped");
             }
         }

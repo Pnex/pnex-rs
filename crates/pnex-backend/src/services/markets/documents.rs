@@ -79,8 +79,7 @@ pub fn spawn_scheduler(ctx: &AppContext) {
                     tracing::warn!("market calendars sweep failed: {e}");
                 }
                 let today = chrono::Utc::now().date_naive();
-                let binance = pnex_core::markets::history::BINANCE_SPOT_1M.base;
-                if let Err(e) = super::history::sweep(&ctx, binance, today).await {
+                if let Err(e) = super::history::sweep(&ctx, today).await {
                     tracing::warn!(code = e.code(), "price history sweep failed");
                 }
                 if let Err(e) = crate::services::bulk_history::sweep(&ctx, today).await {
