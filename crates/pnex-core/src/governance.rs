@@ -219,9 +219,10 @@ fn iban_ok(v: &str) -> bool {
         .filter(|c| !c.is_whitespace())
         .collect::<String>()
         .to_ascii_uppercase();
-    if !(15..=34).contains(&s.len())
+    // ASCII first: the slices below count bytes and would panic inside a multibyte char.
+    if !s.chars().all(|c| c.is_ascii_alphanumeric())
+        || !(15..=34).contains(&s.len())
         || !s[..2].chars().all(|c| c.is_ascii_uppercase())
-        || !s.chars().all(|c| c.is_ascii_alphanumeric())
     {
         return false;
     }
@@ -230,7 +231,7 @@ fn iban_ok(v: &str) -> bool {
 
 /// A French social security number: 13 digits (Corsica: 2A/2B) and a key of 2.
 fn nir_ok(s: &str) -> bool {
-    if s.len() != 15 || !matches!(s.as_bytes()[0], b'1' | b'2') {
+    if !s.is_ascii() || s.len() != 15 || !matches!(s.as_bytes()[0], b'1' | b'2') {
         return false;
     }
     let body = s[..13].replace("2A", "19").replace("2B", "18");
@@ -276,6 +277,26 @@ pub fn detect<'a>(values: impl IntoIterator<Item = &'a str>) -> Option<(Sensitiv
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn non_ascii_values_never_panic() {
+        for v in [
+            "Xé34567890123456",
+            "1é3456789012345",
+            "éé",
+            "2Aé456789012345",
+        ] {
+            for c in [
+                Sensitive::Iban,
+                Sensitive::Card,
+                Sensitive::Nir,
+                Sensitive::Email,
+                Sensitive::Phone,
+            ] {
+                assert!(!c.matches(v), "{c:?} matched {v}");
+            }
+        }
+    }
 
     #[test]
     fn inputs_are_checked() {
