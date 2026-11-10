@@ -360,13 +360,9 @@ pub fn histdata_form(html: &str) -> Option<Vec<(String, String)>> {
         }
         rest = &rest[i + tag.len()..];
     }
-    (out.iter().any(|(n, _)| n == "tk")).then_some(out)
-}
-
-/// The page shows its form but withholds the download token: HistData then
-/// answers every file with an empty body, so nothing can be told apart.
-pub fn histdata_token_withheld(fields: &[(String, String)]) -> bool {
-    fields.iter().any(|(n, v)| n == "tk" && v.is_empty())
+    // A period without a file (before the pair's first) shows the form with
+    // an empty token: no file either.
+    (out.iter().any(|(n, v)| n == "tk" && !v.is_empty())).then_some(out)
 }
 
 /// The partitions still to fetch from `from` up to today, the HistData way:
@@ -999,9 +995,8 @@ mod tests {
                 ("fxpair".to_string(), "EURUSD".to_string()),
             ]
         );
-        assert!(!histdata_token_withheld(&histdata_form(html).unwrap()));
-        let withheld = html.replace("13f41008164167f78d67ca5eeba86ad0", "");
-        assert!(histdata_token_withheld(&histdata_form(&withheld).unwrap()));
+        let no_file = html.replace("13f41008164167f78d67ca5eeba86ad0", "");
+        assert_eq!(histdata_form(&no_file), None, "an empty token: no file");
         assert_eq!(histdata_form("<html>no file</html>"), None);
         assert_eq!(
             histdata_form(&html.replace("2024", "a&b=c")),

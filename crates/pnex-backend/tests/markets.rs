@@ -2914,8 +2914,8 @@ async fn histdata_years_are_loaded_from_the_page_form() {
             .route(
                 "/download-free-forex-historical-data/",
                 get(|RawQuery(q): RawQuery| async move {
-                    // 2024 has a file. 2023, before the pair's first, has a form
-                    // but an empty file; 2025's page withholds the token.
+                    // 2024 has a file. 2023 has a form but an empty file; 2025,
+                    // before the pair's first, a form with an empty token.
                     let form = |tk: &str, year: &str| format!(r#"<html>
 <form id="file_down" name="file_down" target="nullDisplay" method="POST" action="/get.php">
 <input type="hidden" name="tk" id="tk" value="{tk}" />
@@ -2966,7 +2966,7 @@ async fn histdata_years_are_loaded_from_the_page_form() {
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         pnex_backend::services::markets::allow_test_host(&base);
 
-        // One file per pass: 2023, 2024, then 2025 stops every pass unrecorded.
+        // One file per pass: 2023, 2024, 2025, then the months of 2026.
         let today = chrono::NaiveDate::from_ymd_opt(2026, 2, 10).unwrap();
         for _ in 0..5 {
             pnex_backend::services::markets::history::sweep_from(&ctx, &pnex_backend::services::markets::history::Hosts { histdata: base.clone(), ..Default::default() }, today)
@@ -2991,8 +2991,10 @@ async fn histdata_years_are_loaded_from_the_page_form() {
             vec![
                 "year:2023-01-01:empty:0",
                 "year:2024-01-01:done:2",
+                "year:2025-01-01:empty:0",
+                "month:2026-01-01:empty:0",
             ],
-            "a withheld token is never recorded as an empty year"
+            "an empty file and an empty token are empty years, never retried failures"
         );
         assert_eq!(
             posts.lock().unwrap().clone(),

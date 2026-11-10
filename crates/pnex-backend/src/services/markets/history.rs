@@ -470,14 +470,9 @@ async fn fetch_histdata(base: &str, pair: &str, p: Period) -> Option<Fetched> {
     let Some(fields) = history::histdata_form(&html) else {
         return Some(Fetched::Empty);
     };
-    // Every file would come back empty: stop, record nothing, retry later.
-    if history::histdata_token_withheld(&fields) {
-        tracing::warn!(%page, "HistData withholds its download token");
-        return None;
-    }
     let get = source::check_url(&format!("{base}/get.php")).ok()?;
     let zip = match source::post_form_found(&get, &by, &page, &fields).await {
-        // With a token, an empty body is a period before the pair's first.
+        // An empty body is a period without a file, as a page without one.
         Ok(Some(z)) if !z.is_empty() => z,
         Ok(_) => return Some(Fetched::Empty),
         Err(code) => {
@@ -743,11 +738,6 @@ async fn fetch_histdata_ticks(
     let Some(fields) = history::histdata_form(&html) else {
         return Some(Fetched::Empty);
     };
-    // Every file would come back empty: stop, record nothing, retry later.
-    if history::histdata_token_withheld(&fields) {
-        tracing::warn!(%page, "HistData withholds its download token");
-        return None;
-    }
     let get = source::check_url(&format!("{base}/get.php")).ok()?;
     let zip = match source::post_form_found(&get, &by, &page, &fields).await {
         Ok(Some(z)) if !z.is_empty() => z,
