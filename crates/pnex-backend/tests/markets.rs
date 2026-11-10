@@ -4045,7 +4045,7 @@ async fn point_in_time_reads_never_show_a_canary() {
                     // No instrument object: no link to change the other reads.
                     symbol: "EURUSD".into(),
                     buy: false,
-                    lots: 0.1,
+                    lots: Some(0.1),
                     open_at: known.timestamp() - 3_600,
                     close_at: None,
                     open_price: 2_000.0,
@@ -4709,7 +4709,7 @@ async fn trading_accounts_import_detect_and_never_name_a_person() {
             trade_key: format!("ticket:{i}"),
             symbol: "XAUUSD#".into(),
             buy: false,
-            lots: 0.01,
+            lots: Some(0.01),
             open_at: release - 600 + i * 60,
             close_at: Some(release + 3_600),
             open_price: 2_000.0,
@@ -4776,6 +4776,10 @@ async fn trading_accounts_import_detect_and_never_name_a_person() {
         let (st, ok) = post_csv("ticket,symbol,side,lots,open_at,open_price\n9,XAUUSD,buy,1,2024-01-01T00:00:00Z,2000\n").await;
         assert_eq!(st, 200, "{ok}");
         assert_eq!(ok["inserted"], 1, "{ok}");
+        // An owner who hides position sizes: no lots column at all.
+        let (st, hidden) = post_csv("symbol,side,open_at,open_price,profit\nXAUUSD,sell,2024-01-02T00:00:00Z,2010,5\n").await;
+        assert_eq!(st, 200, "{hidden}");
+        assert_eq!(hidden["inserted"], 1, "{hidden}");
 
         // The import linked the account to the instrument it traded.
         let (_, l) = api.call("GET", &format!("/api/v1/ontology/objects/{account}/links"), None).await;

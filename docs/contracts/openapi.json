@@ -124,8 +124,12 @@
             "type": "string"
           },
           "lots": {
+            "description": "Absent when the owner hides position sizes.",
             "format": "double",
-            "type": "number"
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "magic": {
             "type": [
@@ -192,7 +196,6 @@
           "trade_key",
           "symbol",
           "side",
-          "lots",
           "open_at",
           "open_price",
           "known_at",
@@ -72128,7 +72131,7 @@
     },
     "/api/v1/markets/account-trades/import": {
       "post": {
-        "description": "Stores the trades of a public trading account sent as the canonical CSV (comma-separated, header among `ticket, symbol, side, lots, open_at, close_at, open_price, close_price, sl, tp, profit, pips, commission, swap, gain_pct, magic, comment`; `symbol`, `side` (buy or sell), `lots`, `open_at` and `open_price` required; instants in RFC 3339 with an offset). A trade already stored (same ticket, else same opening, close and rank among identical rows of the file) is kept as first known. Every trade is known from the import, flagged `backfilled`. Creates the `trading_account` object when missing and links it to the instruments it traded. The whole file is refused at its first faulty cell. Requires `ontology:write`.",
+        "description": "Stores the trades of a public trading account sent as the canonical CSV (comma-separated, header among `ticket, symbol, side, lots, open_at, close_at, open_price, close_price, sl, tp, profit, pips, commission, swap, gain_pct, magic, comment`; `symbol`, `side` (buy or sell), `open_at` and `open_price` required, `lots` absent when the owner hides sizes; instants in RFC 3339 with an offset). A trade already stored (same ticket, else same opening, close and rank among identical rows of the file) is kept as first known. Every trade is known from the import, flagged `backfilled`. Creates the `trading_account` object when missing and links it to the instruments it traded. The whole file is refused at its first faulty cell. Requires `ontology:write`.",
         "operationId": "markets_account_trades_import",
         "parameters": [
           {

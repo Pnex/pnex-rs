@@ -12,7 +12,8 @@ pub struct Trade {
     pub trade_key: String,
     pub symbol: String,
     pub buy: bool,
-    pub lots: f64,
+    /// Absent when the owner hides position sizes on the platform.
+    pub lots: Option<f64>,
     pub open_at: i64,
     pub close_at: Option<i64>,
     pub open_price: f64,
@@ -40,7 +41,7 @@ pub fn trade_key(ticket: Option<&str>, t: &Trade) -> String {
             t.open_at,
             t.symbol,
             if t.buy { "buy" } else { "sell" },
-            t.lots,
+            t.lots.map_or(String::new(), |l| l.to_string()),
             t.open_price,
             t.close_at.map_or(String::new(), |c| c.to_string()),
             t.close_price.map_or(String::new(), |c| c.to_string()),
@@ -70,7 +71,7 @@ pub const CSV_COLUMNS: [&str; 17] = [
     "comment",
 ];
 /// Columns a row cannot do without.
-const CSV_REQUIRED: [&str; 5] = ["symbol", "side", "lots", "open_at", "open_price"];
+const CSV_REQUIRED: [&str; 4] = ["symbol", "side", "open_at", "open_price"];
 
 /// Why a CSV is refused: the 1-based line (0 = header) and the column.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,7 +139,7 @@ pub fn parse_trades_csv(text: &str) -> Result<Vec<Trade>, CsvError> {
             Some("sell") => false,
             _ => return Err(err(i, "side")),
         };
-        let lots = need(num("lots")?, "lots")?;
+        let lots = num("lots")?;
         let open_at = instant("open_at")?.ok_or_else(|| err(i, "open_at"))?;
         let open_price = need(num("open_price")?, "open_price")?;
         let text = |name: &str| cell(name).map(|c| c.chars().take(500).collect::<String>());
@@ -371,6 +372,25 @@ mod tests {
         assert_eq!(keys.len(), 3);
         assert!(g[1].trade_key.ends_with("#2"));
         assert_eq!(g[0].gain_pct, Some(0.12));
+        // Sizes hidden by the owner: no lots column, or empty cells.
+        let hidden = "symbol,side,open_at,open_price,close_at,close_price\n\
+                      XAUUSD,buy,2024-03-12T12:25:00Z,2160,2024-03-12T14:00:00Z,2170\n";
+        let h = parse_trades_csv(hidden).unwrap();
+        assert_eq!(h[0].lots, None);
+        assert!(
+            h[0].trade_key
+                .starts_with("open:1710246300:XAUUSD:buy::2160:"),
+            "{}",
+            h[0].trade_key
+        );
+        assert_eq!(
+            parse_trades_csv(
+                "symbol,side,lots,open_at,open_price\nX,buy,,2024-01-01T00:00:00Z,1\n"
+            )
+            .unwrap()[0]
+                .lots,
+            None
+        );
         assert_eq!(t[1].close_at, None);
         let bad = |csv: &str| parse_trades_csv(csv).unwrap_err();
         assert_eq!(

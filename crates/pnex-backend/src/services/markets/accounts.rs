@@ -280,7 +280,8 @@ pub struct AccountTrade {
     pub symbol: String,
     /// `buy` or `sell`.
     pub side: String,
-    pub lots: f64,
+    /// Absent when the owner hides position sizes.
+    pub lots: Option<f64>,
     #[schema(format = "date-time")]
     pub open_at: String,
     #[schema(format = "date-time")]

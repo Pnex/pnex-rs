@@ -1476,6 +1476,7 @@ Copier une position, passer un ordre, se connecter au compte d'un tiers ; lire l
   - `gain_pct` ;
   - une clé sans ticket qui inclut la clôture ;
   - le rang des lignes identiques d'un même fichier (une grille ferme souvent un panier de positions identiques).
+  - `lots` facultatif (migration 000147) : un propriétaire peut masquer la taille de ses positions sur la plateforme ; absent, il compte comme une valeur à part dans la clé sans ticket.
 - **Lecture** : `GET /api/v1/markets/account-trades` (`ontology:read`, `point_in_time`, exposée au MCP, couverte par le canari). Un compte masqué par un marquage est exclu (D801). Effacer le compte purge ses lignes (D932).
 - **MK44** : détecteur `entry_timing@1` (fonction pure `pnex_core::markets::accounts`). Les cours sont lus en barres de 5 min depuis la source réglée. La rétention crée ou retrouve le compte, rafraîchit ses liens `trades` et pose une note chiffrée sans intention.
 - **Écarts** :
