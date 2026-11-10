@@ -3198,17 +3198,17 @@ END:VCALENDAR\r\n".to_string())
         };
         pnex_backend::services::markets::calendar::sweep(&ctx, &urls).await.unwrap();
         let ranges = |sql: &str| count(&db, format!("SELECT count(*) AS n FROM time_ranges WHERE org_id = {org} AND scope_kind = 'org' {sql}"));
-        assert_eq!(ranges("").await, 4);
+        assert_eq!(ranges("").await, 104);
         assert_eq!(ranges("AND external_id = 'bls:cpi-dec' AND category = 'economic_release'").await, 1);
         assert_eq!(ranges("AND external_id = 'fomc:2026-12-09' AND category = 'central_bank_meeting'").await, 1);
         assert_eq!(ranges("AND external_id = 'ecb:2026-12-17'").await, 1);
         assert_eq!(ranges("AND planned_start = '2026-12-10T13:30:00Z'").await, 1, "08:30 New York");
         let (st, list) = api.call("GET", "/api/v1/time-ranges?scope_kind=org&limit=50", None).await;
         assert_eq!(st, 200, "{list}");
-        assert_eq!(list["count"], 4, "on the calendar: {list}");
+        assert_eq!(list["count"], 104, "on the calendar: {list}");
         // Read again the same day: nothing asked, nothing doubled.
         pnex_backend::services::markets::calendar::sweep(&ctx, &urls).await.unwrap();
-        assert_eq!(ranges("").await, 4);
+        assert_eq!(ranges("").await, 104);
         // A meeting moved: the range follows, still one.
         db.execute_raw(Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
@@ -3217,7 +3217,7 @@ END:VCALENDAR\r\n".to_string())
         .await
         .unwrap();
         pnex_backend::services::markets::calendar::sweep(&ctx, &urls).await.unwrap();
-        assert_eq!(ranges("").await, 4);
+        assert_eq!(ranges("").await, 104);
 
         // Eurostat and PortWatch: dated series.
         for host in ["https://ec.europa.eu", "https://services9.arcgis.com", "https://publicreporting.cftc.gov", "https://api.eia.gov"] {

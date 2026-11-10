@@ -111,7 +111,11 @@ fn rows_of(c: Calendar, url: &str, body: &[u8]) -> Option<Vec<import::Row>> {
         Calendar::Fomc | Calendar::Ecb => {
             let html = String::from_utf8_lossy(body);
             let dates = match c {
-                Calendar::Fomc => cal::fomc_calendar(&html)?,
+                Calendar::Fomc => {
+                    let mut d = cal::fomc_history();
+                    d.extend(cal::fomc_calendar(&html)?);
+                    d
+                }
                 _ => cal::ecb_calendar(&html)?,
             };
             dates.into_iter().map(day_row).collect()
@@ -140,16 +144,31 @@ fn rows_of(c: Calendar, url: &str, body: &[u8]) -> Option<Vec<import::Row>> {
     Some(rows)
 }
 
-/// A meeting known by its day only: the range covers that day, in UTC.
+/// A meeting known by its day only covers that day, in UTC; one with its
+/// New York announcement time lasts one minute, like a BLS release.
 fn day_row(s: Scheduled) -> import::Row {
-    let at = |d: chrono::NaiveDate| d.and_hms_opt(0, 0, 0).map(|t| t.and_utc().to_rfc3339());
+    use chrono::TimeZone;
+    let (start, end) = match s.at {
+        Some(t) => {
+            let start = chrono_tz::America::New_York
+                .from_local_datetime(&s.day.and_time(t))
+                .earliest()
+                .map(|a| a.fixed_offset());
+            (start, start.map(|a| a + Duration::minutes(1)))
+        }
+        None => {
+            let at =
+                |d: chrono::NaiveDate| d.and_hms_opt(0, 0, 0).map(|t| t.and_utc().fixed_offset());
+            (at(s.day), s.day.succ_opt().and_then(at))
+        }
+    };
     import::Row {
         line: 0,
         input: TimeRangeInput {
             label: Some(s.label),
             external_id: Some(s.external_id),
-            planned_start: at(s.day),
-            planned_end: s.day.succ_opt().and_then(at),
+            planned_start: start.map(|a| a.to_rfc3339()),
+            planned_end: end.map(|a| a.to_rfc3339()),
             ..Default::default()
         },
     }
@@ -257,5 +276,26 @@ mod tests {
             Some("2026-12-17T00:00:00+00:00")
         );
         assert!(rows_of(Calendar::Fomc, FOMC_URL, b"<html>").is_none());
+        // The history comes with the page, at New York time (EST, then EDT).
+        let html = b"<h4>2026 FOMC Meetings</h4><div class=\"fomc-meeting__month\"><strong>December</strong></div><div class=\"fomc-meeting__date\">8-9*</div>";
+        let rows = rows_of(Calendar::Fomc, FOMC_URL, html).unwrap();
+        let start = |id: &str| {
+            rows.iter()
+                .find(|r| r.input.external_id.as_deref() == Some(id))
+                .and_then(|r| r.input.planned_start.clone())
+        };
+        assert_eq!(rows.len(), 101);
+        assert_eq!(
+            start("fomc:2009-01-28").as_deref(),
+            Some("2009-01-28T14:15:00-05:00")
+        );
+        assert_eq!(
+            start("fomc:2020-03-15").as_deref(),
+            Some("2020-03-15T17:00:00-04:00")
+        );
+        assert_eq!(
+            start("fomc:2026-12-09").as_deref(),
+            Some("2026-12-09T14:00:00-05:00")
+        );
     }
 }

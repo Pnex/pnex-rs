@@ -4,7 +4,7 @@
 //! `time_ranges::import`. Pure code: no I/O, no clock; a page that no
 //! longer has its known form gives `None`.
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 
 /// One date an institution announced: `external_id` stays the same when
 /// the page is read again, so a moved meeting updates its range.
@@ -13,6 +13,8 @@ pub struct Scheduled {
     pub external_id: String,
     pub label: String,
     pub day: NaiveDate,
+    /// New York time of the announcement, when the institution gives one.
+    pub at: Option<NaiveTime>,
 }
 
 fn month_of(name: &str) -> Option<u32> {
@@ -104,9 +106,38 @@ pub fn fomc_calendar(html: &str) -> Option<Vec<Scheduled>> {
             external_id: format!("fomc:{date}"),
             label: title.to_string(),
             day: date,
+            // Every scheduled statement since March 2013 is out at 2 p.m.
+            at: NaiveTime::from_hms_opt(14, 0, 0),
         });
     }
     Some(out)
+}
+
+/// FOMC decisions of 2009-2020, before the calendar page's years: one per
+/// public statement, at its New York release time, unscheduled ones marked
+/// (they were not known ahead). Sources in the file's header.
+pub fn fomc_history() -> Vec<Scheduled> {
+    include_str!("fomc_2009_2020.tsv")
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            let day = NaiveDate::parse_from_str(f[0], "%Y-%m-%d").expect("fomc history date");
+            let at = NaiveTime::parse_from_str(f[1], "%H:%M").expect("fomc history time");
+            let label = match f[2] {
+                "projections" => "FOMC decision, with economic projections",
+                "unscheduled" => "FOMC decision, unscheduled",
+                "scheduled" => "FOMC decision",
+                k => panic!("fomc history kind {k}"),
+            };
+            Scheduled {
+                external_id: format!("fomc:{day}"),
+                label: label.to_string(),
+                day,
+                at: Some(at),
+            }
+        })
+        .collect()
 }
 
 /// The ECB's calendar of the Governing Council: a `dd/mm/yyyy` date then
@@ -151,6 +182,7 @@ pub fn ecb_calendar(html: &str) -> Option<Vec<Scheduled>> {
             external_id: format!("ecb:{date}"),
             label: what,
             day: date,
+            at: None,
         });
     }
     Some(out)
@@ -182,7 +214,26 @@ mod tests {
         );
         assert_eq!(r[1].label, "FOMC decision, with economic projections");
         assert_eq!(r[0].external_id, "fomc:2026-01-28");
+        assert_eq!(r[0].at, NaiveTime::from_hms_opt(14, 0, 0));
         assert!(fomc_calendar("<html></html>").is_none());
+    }
+
+    #[test]
+    fn the_fomc_history_covers_2009_to_2020() {
+        let h = fomc_history();
+        assert_eq!(h.len(), 100);
+        assert_eq!(h[0].external_id, "fomc:2009-01-28");
+        assert_eq!(h[0].at, NaiveTime::from_hms_opt(14, 15, 0));
+        let covid = h
+            .iter()
+            .find(|e| e.external_id == "fomc:2020-03-15")
+            .unwrap();
+        assert_eq!(covid.label, "FOMC decision, unscheduled");
+        assert_eq!(covid.at, NaiveTime::from_hms_opt(17, 0, 0));
+        assert!(h.iter().all(|e| e.day.to_string().as_str() < "2021"));
+        let mut ids: Vec<_> = h.iter().map(|e| &e.external_id).collect();
+        ids.dedup();
+        assert_eq!(ids.len(), h.len());
     }
 
     #[test]
