@@ -215,8 +215,14 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
             "subsidiary_of",
             "filed_by",
             "same_company_as",
+            "prediction_markets",
+            "prediction_market",
+            "prediction_resolution",
+            "bears_on",
+            "wallet",
+            "traded",
         ],
-        "market services built on the markets and world_events packs: detector, session, map, confirmation (markets-research.md D734-D743); subsidiaries of a 10-K's Exhibit 21 written as companies-pack organizations (F6); SEC companies matched to their LEI by proposal (D812)",
+        "market services built on the markets and world_events packs: detector, session, map, confirmation (markets-research.md D734-D743); subsidiaries of a 10-K's Exhibit 21 written as companies-pack organizations (F6); SEC companies matched to their LEI by proposal (D812); prediction markets collector, dated resolutions, model inputs and early bet detector built on the prediction_markets pack (appendix J, D918-D924)",
     ),
 ];
 

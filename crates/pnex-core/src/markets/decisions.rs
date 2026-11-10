@@ -154,6 +154,10 @@ pub struct NewDecision {
     #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub inputs: Option<serde_json::Value>,
+    /// Probabilities on prediction markets, scored against the market once
+    /// resolved (markets-research.md D925); 50 at most.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forecasts: Vec<super::prediction::Forecast>,
 }
 
 /// A stored decision; `best` and `confidence` are the server's.
@@ -177,6 +181,8 @@ pub struct Decision {
     pub barriers: Option<Barriers>,
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub inputs: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forecasts: Vec<super::prediction::Forecast>,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }

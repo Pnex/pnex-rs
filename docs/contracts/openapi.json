@@ -4370,6 +4370,41 @@
         ],
         "type": "string"
       },
+      "CalibrationBin": {
+        "description": "A tenth of the probability axis (D925).",
+        "properties": {
+          "count": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "from": {
+            "format": "double",
+            "type": "number"
+          },
+          "mean_probability": {
+            "format": "double",
+            "type": "number"
+          },
+          "observed": {
+            "description": "Share of the pairs of this tenth whose outcome happened.",
+            "format": "double",
+            "type": "number"
+          },
+          "to": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "count",
+          "mean_probability",
+          "observed"
+        ],
+        "type": "object"
+      },
       "CameraRecordingsDeleted": {
         "description": "Number of recorded segments deleted.",
         "properties": {
@@ -8030,6 +8065,12 @@
             "format": "date-time",
             "type": "string"
           },
+          "forecasts": {
+            "items": {
+              "$ref": "#/components/schemas/Forecast"
+            },
+            "type": "array"
+          },
           "horizon_bars": {
             "format": "int32",
             "minimum": 0,
@@ -9766,6 +9807,48 @@
         },
         "type": "object"
       },
+      "Features": {
+        "description": "Inputs of the decision model for one market at an instant (D922).",
+        "properties": {
+          "change_1h": {
+            "description": "In probability points (−1 to 1); `None` without a point that far back.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "change_24h": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "days_to_end": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "price_ts": {
+            "description": "Instant of that price (RFC 3339).",
+            "format": "date-time",
+            "type": "string"
+          },
+          "probability": {
+            "description": "Last price known at the instant.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "probability",
+          "price_ts"
+        ],
+        "type": "object"
+      },
       "FeedAction": {
         "description": "What happened to it: `close` = archived object or closed link, `delete`\n= row removed (its state is gone).",
         "enum": [
@@ -10811,6 +10894,87 @@
           "from",
           "link",
           "steps"
+        ],
+        "type": "object"
+      },
+      "Forecast": {
+        "description": "A model's probability for an outcome of a market, posted with a\ndecision and scored against the market once resolved (D925).",
+        "properties": {
+          "market": {
+            "description": "Condition id of the market (`0x` and 64 hex digits).",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "Outcome as the market names it (`Yes`, `No`…).",
+            "type": "string"
+          },
+          "probability": {
+            "description": "In [0, 1].",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "market",
+          "outcome",
+          "probability"
+        ],
+        "type": "object"
+      },
+      "ForecastScores": {
+        "description": "The forecasts of a model against the market on the same markets (D925).",
+        "properties": {
+          "brier_market": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "brier_model": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "calibration_market": {
+            "items": {
+              "$ref": "#/components/schemas/CalibrationBin"
+            },
+            "type": "array"
+          },
+          "calibration_model": {
+            "items": {
+              "$ref": "#/components/schemas/CalibrationBin"
+            },
+            "type": "array"
+          },
+          "forecasts": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "model_version": {
+            "type": "string"
+          },
+          "scored": {
+            "description": "Forecasts on a market resolved final with a market price known at\nthe decision's instant: the pairs both scores read.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model",
+          "model_version",
+          "forecasts",
+          "scored",
+          "calibration_model",
+          "calibration_market"
         ],
         "type": "object"
       },
@@ -14786,6 +14950,41 @@
         ],
         "type": "object"
       },
+      "MarketFeature": {
+        "description": "A market a member says bears on the instrument, open at the instant,\nwith its inputs for the model (D922).",
+        "properties": {
+          "condition_id": {
+            "type": "string"
+          },
+          "direction": {
+            "description": "`up`, `down` or `unknown`, as the member said (D921).",
+            "type": "string"
+          },
+          "features": {
+            "$ref": "#/components/schemas/Features"
+          },
+          "market_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "outcome": {
+            "description": "The outcome whose probability is given (the market's first one).",
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "market_id",
+          "condition_id",
+          "question",
+          "outcome",
+          "direction",
+          "features"
+        ],
+        "type": "object"
+      },
       "MarketSession": {
         "description": "The moves and world events of the window around one session (D738,\nD742): computed at reading time, nothing is stored between them.",
         "properties": {
@@ -17035,6 +17234,13 @@
           },
           "barriers": {
             "$ref": "#/components/schemas/Barriers"
+          },
+          "forecasts": {
+            "description": "Probabilities on prediction markets, scored against the market once\nresolved (markets-research.md D925); 50 at most.",
+            "items": {
+              "$ref": "#/components/schemas/Forecast"
+            },
+            "type": "array"
           },
           "horizon_bars": {
             "format": "int32",
@@ -21097,6 +21303,42 @@
         ],
         "type": "object"
       },
+      "Paginated_ForecastScores": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/ForecastScores"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_FunctionSummary": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -21663,6 +21905,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/Mailbox"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_MarketFeature": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/MarketFeature"
             },
             "type": "array"
           }
@@ -72037,6 +72315,82 @@
         ]
       }
     },
+    "/api/v1/markets/decisions/forecast-scores": {
+      "get": {
+        "description": "For each model and version: Brier score and calibration by tenth of the probabilities its decisions gave on prediction markets, next to the market's own price at the decision's instant, on the markets resolved final as known now; a market in dispute is not scored. At most 100 groups. Advice only, not investment advice. Requires `market-decisions:read`.",
+        "operationId": "markets_decisions_forecast_scores",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model_version",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ForecastScores"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `market-decisions:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Measure the forecasts of external models against the prediction market",
+        "tags": [
+          "markets"
+        ],
+        "x-pnex-as-of": "current_only"
+      }
+    },
     "/api/v1/markets/decisions/scores": {
       "get": {
         "description": "For each model, version, instrument, source and interval: hit rate, Brier score and reliability by tenth of probability, measured by the triple barrier on the bars of the decision's own source once its horizon has passed. A group whose table needs a clearance the caller lacks is left out; at most 100 groups. Advice only, not investment advice. Requires `market-decisions:read`.",
@@ -72429,6 +72783,95 @@
           "markets"
         ],
         "x-pnex-as-of": "current_only"
+      }
+    },
+    "/api/v1/markets/prediction-features": {
+      "get": {
+        "description": "The prediction markets a member linked to the instrument (`bears_on`), as known at `as_of` and unresolved then (a proposal or a dispute is no resolution), each with its probability, its change over 1 h and 24 h and its days to the end, read only from prices known at `as_of`. Nothing is filtered by relevance: an input of an external model. A market the caller is not cleared for is left out. Requires `ontology:read`.",
+        "operationId": "markets_prediction_features",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Ticker of the `instrument` object.",
+            "in": "query",
+            "name": "instrument",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Instant of the read (RFC 3339), now by default: everything as known then.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_MarketFeature"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid parameter (field → token: `instrument` `unknown` when no instrument object has this ticker)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the prediction markets bearing on an instrument as known at a date",
+        "tags": [
+          "markets"
+        ],
+        "x-pnex-as-of": "point_in_time"
       }
     },
     "/api/v1/markets/rule-test": {

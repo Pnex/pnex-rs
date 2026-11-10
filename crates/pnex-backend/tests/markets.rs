@@ -3920,7 +3920,7 @@ async fn point_in_time_reads_never_show_a_canary() {
             .as_i64()
             .unwrap();
         let api = Api { server: &server, token: token.clone(), org };
-        for pack in ["markets", "world_events"] {
+        for pack in ["markets", "world_events", "prediction_markets"] {
             let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
             assert_eq!(st, 200, "{r}");
         }
@@ -3987,6 +3987,27 @@ async fn point_in_time_reads_never_show_a_canary() {
         let holding = create(json!({ "type_key": "organization", "title": "Holding" })).await;
         let sub = create(json!({ "type_key": "organization", "title": "Subsidiary" })).await;
         let owns = link("owns", holding.clone(), sub.clone()).await;
+        // A prediction market bearing on gold, its price 0.4 before T0 (J).
+        let pm_market = |cid: &str, title: &str, known: &str| {
+            json!({ "type_key": "prediction_market", "title": title, "properties": {
+                "condition_id": cid, "outcomes": "Yes,No", "tokens": format!("{}1,{}2", &cid[2..6], &cid[2..6]),
+                "known_at": known } })
+        };
+        let fed_cid = format!("0x{}", "b".repeat(64));
+        let fed = create(pm_market(&fed_cid, "Fed cut", &old)).await;
+        link("bears_on", fed.clone(), gold_id.clone()).await;
+        let price = |cid: &str, token: &str, at: String, p: f64| {
+            let (db, cid, token) = (ctx.db.clone(), cid.to_string(), token.to_string());
+            async move {
+                db.execute_unprepared(&format!(
+                    "INSERT INTO prediction_prices (org_id, condition_id, token, outcome, fidelity, ts, price, known_at) \
+                     VALUES ({org}, '{cid}', '{token}', 'Yes', 60, '{at}', {p}, '{at}')"
+                ))
+                .await
+                .unwrap();
+            }
+        };
+        price(&fed_cid, "bbbb1", (chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339(), 0.4).await;
         let (st, series) = api
             .call("POST", "/api/v1/ontology/objects", Some(json!({
                 "type_key": "macro_series", "title": "CPI", "properties": { "code": "CPI" }
@@ -4045,6 +4066,11 @@ async fn point_in_time_reads_never_show_a_canary() {
         }
         let canary_land = create(json!({ "type_key": "nation", "title": "CANARY land", "properties": { "code": "ZZ" } })).await;
         link("exposed_to", canary_land, gold_id.clone()).await;
+        // A later price, and a market read after T0 linked "since 2025".
+        price(&fed_cid, "bbbb1", canary_at.clone(), 0.31415).await;
+        let canary_cid = format!("0x{}", "c".repeat(64));
+        let canary_market = create(pm_market(&canary_cid, "CANARY market", &canary_at)).await;
+        link("bears_on", canary_market, gold_id.clone()).await;
         let canary_co = create(json!({ "type_key": "organization", "title": "CANARY Co" })).await;
         link("owns", holding.clone(), canary_co).await;
         let (st, r) = api
@@ -4096,6 +4122,11 @@ async fn point_in_time_reads_never_show_a_canary() {
                 format!("/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of={}", enc(&at)),
                 None,
             ),
+            (
+                "markets_prediction_features",
+                format!("/api/v1/markets/prediction-features?instrument=XAUUSD&as_of={}", enc(&at)),
+                None,
+            ),
         ];
         let covered: std::collections::BTreeSet<&str> = reads.iter().map(|(id, ..)| *id).collect();
         let inventory: std::collections::BTreeSet<&str> = SEMANTICS
@@ -4116,6 +4147,7 @@ async fn point_in_time_reads_never_show_a_canary() {
             assert!(!text.contains("CANARY"), "{id} leaks a canary: {text}");
             assert!(!text.contains("31415.9"), "{id} leaks the canary value: {text}");
             assert!(!text.contains("\"confirmed\""), "{id} leaks the later status: {text}");
+            assert!(!text.contains("0.31415"), "{id} leaks the later price: {text}");
             if *id == "markets_bars" {
                 let last = r["results"].as_array().unwrap().last().unwrap()["ts"].as_str().unwrap().to_string();
                 let last = chrono::DateTime::parse_from_rfc3339(&last).unwrap().timestamp();
@@ -4130,10 +4162,13 @@ async fn point_in_time_reads_never_show_a_canary() {
             .await;
         assert_eq!(q["count"], 1, "{q}");
         assert_eq!(q["rows"][0]["object"]["properties"]["status"], "unconfirmed");
+        let (_, f) = api.call("GET", &format!("/api/v1/markets/prediction-features?instrument=XAUUSD&as_of={}", enc(&at)), None).await;
+        assert_eq!(f["count"], 1, "{f}");
+        assert!((f["results"][0]["features"]["probability"].as_f64().unwrap() - 0.4).abs() < 1e-9, "{f}");
         // The retro-closed links were still believed open at T0.
         let (_, l) = api.call("GET", &format!("/api/v1/ontology/objects/{gold_id}/links?as_of={}", enc(&at)), None).await;
-        assert_eq!(l["count"], 1, "{l}");
-        let only = &l["results"][0];
+        assert_eq!(l["count"], 2, "the exposure and the market's link: {l}");
+        let only = l["results"].as_array().unwrap().iter().find(|x| x["link_type"] == "exposed_to").unwrap();
         assert_eq!(only["source"]["id"], iran.as_str(), "{l}");
         assert!(only["valid_to"].is_null(), "{l}");
         assert_eq!(only["target"]["title"], "Gold", "{l}");
@@ -4141,7 +4176,8 @@ async fn point_in_time_reads_never_show_a_canary() {
         assert!(h["nodes"].as_array().unwrap().iter().any(|n| n["id"] == sub.as_str()), "{h}");
         // Today's knowledge of T0 (valid_at alone): the closing and the late link count.
         let (_, l) = api.call("GET", &format!("/api/v1/ontology/objects/{gold_id}/links?valid_at={}", enc(&at)), None).await;
-        assert_eq!(l["count"], 1, "{l}");
+        let exposures: Vec<&Value> = l["results"].as_array().unwrap().iter().filter(|x| x["link_type"] == "exposed_to").collect();
+        assert_eq!(exposures.len(), 1, "{l}");
         assert!(l.to_string().contains("CANARY land"), "{l}");
 
         // Two minutes later, every canary is there.
@@ -4357,6 +4393,227 @@ async fn price_moves_get_candidate_causal_chains() {
             .call("GET", "/api/v1/markets/chains?instrument=XAUUSD&source=histdata&as_of=2026-03-01T00:00:00Z&from=2026-01-01T00:00:00Z", None)
             .await;
         assert_eq!((st, e["errors"]["fields"]["from"].as_str()), (400, Some("range:31d")), "{e}");
+    })
+    .await;
+}
+
+/// Appendix J (D918–D925): a followed market read from the platform's
+/// public APIs (mocked), its resolution kept as dated states (proposed,
+/// disputed, final), its probability an input of the model only while
+/// unresolved and only as known at the instant, a model's forecast scored
+/// against the market, and an early bet proposed in a case, then retained
+/// as a wallet object linked to the market.
+#[tokio::test]
+#[serial]
+async fn prediction_markets_collect_resolve_and_feed_the_model() {
+    with_app(|server, ctx, token| async move {
+        use axum::extract::Query;
+        use pnex_backend::services::markets::prediction::{self, Hosts};
+        use std::collections::HashMap;
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token: token.clone(), org };
+        for pack in ["markets", "prediction_markets"] {
+            let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
+            assert_eq!(st, 200, "{r}");
+        }
+        const C: &str = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const W: &str = "0x2222222222222222222222222222222222222222";
+        let now = chrono::Utc::now().timestamp();
+        let hour = now - now.rem_euclid(3_600);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let c = calls.clone();
+        let app = axum::Router::new()
+            .route(
+                "/markets",
+                axum::routing::get(move || {
+                    let n = c.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        let (status, closed, prices) = match n {
+                            0 => ("proposed", false, ["0.6", "0.4"]),
+                            1 => ("disputed", false, ["0.6", "0.4"]),
+                            _ => ("resolved", true, ["0", "1"]),
+                        };
+                        axum::Json(json!([{
+                            "conditionId": C, "slug": "fed-cut", "question": "Fed cut in December?",
+                            "description": "Resolves Yes if the Fed cuts.", "resolutionSource": "federalreserve.gov",
+                            "endDate": "2027-01-01T00:00:00Z", "outcomes": "[\"Yes\",\"No\"]",
+                            "outcomePrices": serde_json::to_string(&prices).unwrap(),
+                            "clobTokenIds": "[\"111\",\"222\"]", "volumeNum": 50000, "closed": closed,
+                            "umaResolutionStatus": status
+                        }]))
+                    }
+                }),
+            )
+            .route(
+                "/prices-history",
+                axum::routing::get(move |Query(q): Query<HashMap<String, String>>| async move {
+                    let n = |k: &str| q.get(k).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+                    let (start, end) = (n("startTs"), n("endTs"));
+                    // 0.30 for three days, 0.60 from ten hours ago.
+                    let history: Vec<Value> = (0..=72)
+                        .map(|i| hour - 72 * 3_600 + i * 3_600)
+                        .filter(|t| *t >= start && *t <= end)
+                        .map(|t| json!({ "t": t, "p": if t < hour - 10 * 3_600 { 0.3 } else { 0.6 } }))
+                        .collect();
+                    axum::Json(json!({ "history": history }))
+                }),
+            )
+            .route(
+                "/trades",
+                axum::routing::get(move |Query(q): Query<HashMap<String, String>>| async move {
+                    if q.get("offset").map(String::as_str) != Some("0") {
+                        return axum::Json(json!([]));
+                    }
+                    axum::Json(json!([
+                        { "proxyWallet": W, "side": "BUY", "asset": "111", "conditionId": C, "outcome": "Yes",
+                          "size": 24000, "price": 0.5, "timestamp": hour - 20 * 3_600, "transactionHash": "0x01" },
+                        { "proxyWallet": "0x3333333333333333333333333333333333333333", "side": "BUY", "asset": "111",
+                          "conditionId": C, "outcome": "Yes", "size": 10, "price": 0.3, "timestamp": hour - 30 * 3_600,
+                          "transactionHash": "0x02" }
+                    ]))
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let hosts = Hosts { gamma: base.clone(), clob: base.clone(), data: base };
+        let (st, r) = api
+            .call("PATCH", "/api/v1/ontology/packs/prediction_markets/settings",
+                  Some(json!({ "values": { "market_ids": format!("{C}, not a market"), "history_days": 3 } })))
+            .await;
+        assert_eq!(st, 200, "{r}");
+        let client = reqwest::Client::new();
+        let run = |at: i64| {
+            let (db, client, hosts) = (ctx.db.clone(), client.clone(), hosts.clone());
+            async move {
+                // Each pass reads the market again (the hourly refresh is reset).
+                db.execute_unprepared("UPDATE prediction_cursors SET last_ts = 0 WHERE key = 'm:refresh'").await.unwrap();
+                prediction::pass(&db, &client, &hosts, org, at).await.unwrap();
+            }
+        };
+        run(now).await;
+        let market = object_id(&ctx.db, org, "prediction_market", "condition_id", C).await.expect("market recorded");
+        let count = |sql: String| {
+            let db = ctx.db.clone();
+            async move {
+                db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql))
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .try_get::<i64>("", "n")
+                    .unwrap()
+            }
+        };
+        assert!(count(format!("SELECT count(*) AS n FROM prediction_prices WHERE org_id = {org} AND token = '111'")).await >= 70);
+        assert_eq!(count(format!("SELECT count(*) AS n FROM prediction_trades WHERE org_id = {org}")).await, 2);
+
+        // The model's input: linked by a member, unresolved, as known now.
+        let (st, gold) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({ "type_key": "instrument", "title": "Gold", "properties": { "ticker": "XAUUSD" } })))
+            .await;
+        assert_eq!(st, 201, "{gold}");
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/links", Some(json!({
+                "link_type": "bears_on", "source_id": market, "target_id": gold["id"],
+                "attributes": { "direction": "down" }
+            })))
+            .await;
+        assert_eq!(st, 201, "{r}");
+        let features = |as_of: String| {
+            let api = &api;
+            async move {
+                let (st, r) = api.call("GET", &format!("/api/v1/markets/prediction-features?instrument=XAUUSD&as_of={as_of}"), None).await;
+                assert_eq!(st, 200, "{r}");
+                r
+            }
+        };
+        let iso = |t: i64| chrono::DateTime::from_timestamp(t, 0).unwrap().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let later = iso(now + 60);
+        let f = features(later.clone()).await;
+        assert_eq!(f["count"], 1, "{f}");
+        let x = &f["results"][0];
+        assert_eq!((x["direction"].as_str(), x["outcome"].as_str()), (Some("down"), Some("Yes")), "{x}");
+        assert!((x["features"]["probability"].as_f64().unwrap() - 0.6).abs() < 1e-9, "{x}");
+        assert!((x["features"]["change_24h"].as_f64().unwrap() - 0.3).abs() < 1e-9, "{x}");
+        assert_eq!(features(iso(now - 2 * 86_400)).await["count"], 0, "neither the market nor the link were known then");
+        let (st, e) = api.call("GET", "/api/v1/markets/prediction-features?instrument=NOPE", None).await;
+        assert_eq!((st, e["errors"]["fields"]["instrument"].as_str()), (400, Some("unknown")), "{e}");
+
+        // Disputed, then final « No »: dated states, never resolved ahead of time.
+        run(now + 1).await;
+        assert_eq!(features(iso(now + 2)).await["count"], 1, "a dispute is no resolution");
+        run(now + 3).await;
+        let states = count(format!(
+            "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'prediction_resolution' AND properties ->> 'market' = '{market}'"
+        ))
+        .await;
+        assert_eq!(states, 3);
+        assert_eq!(features(iso(now + 4)).await["count"], 0, "resolved: no longer an input");
+        assert_eq!(features(iso(now + 2)).await["count"], 1, "as known before the final state");
+
+        // A model's forecast against the market at the decision's instant.
+        ctx.db
+            .execute_unprepared(&format!(
+                "INSERT INTO market_decisions (id, org_id, model, model_version, instrument, source, interval, horizon_bars, \
+                   as_of, probabilities, best, confidence, forecasts) VALUES ('{}', {org}, 'm', '1', 'XAUUSD', 'histdata', '1h', 4, \
+                   to_timestamp({}), ARRAY[0.2, 0.5, 0.3], 'neutral', 0.5, '[{{\"market\": \"{C}\", \"outcome\": \"No\", \"probability\": 0.8}}]')",
+                uuid::Uuid::new_v4(),
+                hour - 3_600
+            ))
+            .await
+            .unwrap();
+        let (st, s) = api.call("GET", "/api/v1/markets/decisions/forecast-scores", None).await;
+        assert_eq!(st, 200, "{s}");
+        let g = &s["results"][0];
+        assert_eq!((g["forecasts"].as_u64(), g["scored"].as_u64()), (Some(1), Some(1)), "{s}");
+        assert!((g["brier_model"].as_f64().unwrap() - 0.04).abs() < 1e-9, "{s}");
+        assert!((g["brier_market"].as_f64().unwrap() - 0.16).abs() < 1e-9, "{s}");
+
+        // Early bet: a fresh wallet put 12 000 USDC on the market ten hours
+        // before the jump. Proposed in a case, never an accusation.
+        let (st, case) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({ "type_key": "case", "title": "Fed leak", "properties": { "status": "open" } })))
+            .await;
+        assert_eq!(st, 201, "{case}");
+        let cid = case["id"].as_str().unwrap();
+        let (st, r) = api.call("POST", &format!("/api/v1/cases/{cid}/attach"), Some(json!({ "object_id": market }))).await;
+        assert_eq!(st, 200, "{r}");
+        let window = json!({ "from": iso(hour - 2 * 86_400), "to": iso(now + 10) });
+        let (st, d) = api.call("POST", &format!("/api/v1/cases/{cid}/detect"), Some(window)).await;
+        assert_eq!(st, 200, "{d}");
+        assert_eq!(d["inserted"], 1, "{d}");
+        let (_, list) = api.call("GET", &format!("/api/v1/cases/{cid}/proposals"), None).await;
+        let p = list["results"].as_array().unwrap().iter().find(|p| p["kind"] == "early_bet").cloned().expect("early bet proposed");
+        let (st, w) = api
+            .call("POST", &format!("/api/v1/cases/{cid}/proposals/{}/retain", p["id"].as_str().unwrap()), Some(json!({ "title": "Early bet" })))
+            .await;
+        assert_eq!(st, 200, "{w}");
+        let wallet = object_id(&ctx.db, org, "wallet", "address", W).await.expect("wallet object on retain");
+        let (_, l) = api.call("GET", &format!("/api/v1/ontology/objects/{wallet}/links"), None).await;
+        assert!(l["results"].as_array().unwrap().iter().any(|x| x["link_type"] == "traded"), "{l}");
+        assert!(object_id(&ctx.db, org, "wallet", "address", "0x3333333333333333333333333333333333333333").await.is_none(), "no object per wallet");
+
+        // Blocked hosts (France): the org's proxy, from its vault, carries
+        // every call; the hosts themselves are never resolved here.
+        let proxy = hosts.gamma.clone();
+        pnex_backend::services::markets::allow_test_host(&proxy);
+        let (st, r) = api.call("POST", "/api/v1/secrets", Some(json!({ "name": "polymarket_proxy", "value": proxy }))).await;
+        assert_eq!(st, 201, "{r}");
+        ctx.db.execute_unprepared("UPDATE prediction_cursors SET last_ts = 0 WHERE key = 'm:refresh'").await.unwrap();
+        let before = calls.load(Ordering::SeqCst);
+        let blocked = Hosts {
+            gamma: "http://gamma.blocked.invalid".into(),
+            clob: "http://clob.blocked.invalid".into(),
+            data: "http://data.blocked.invalid".into(),
+        };
+        prediction::sweep(&ctx, &blocked, chrono::Utc::now()).await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), before + 1, "the market was read through the proxy");
     })
     .await;
 }

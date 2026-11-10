@@ -10,6 +10,7 @@ pub mod documents;
 pub mod history;
 pub mod identity;
 pub mod moves;
+pub mod prediction;
 pub mod study;
 pub mod summary;
 pub mod world;

@@ -1,0 +1,173 @@
+# Pack "Prediction markets" (markets-research.md appendix J, D918-D925):
+# the implied probability that a macro or geopolitical event happens, as an
+# input of the decision model and as a benchmark of it, and the wallets that
+# bet early, as leads of a case. PNeX only reads public data: it never bets,
+# signs a transaction or holds a wallet key (J.1, J.5).
+# Source: the platform's public read-only APIs (hosts fixed in the code,
+# R9): markets and their resolution rules, hourly prices (every minute for
+# the markets listed in `fine_markets`), trades of the followed markets. The
+# hosts are blocked in France: an org reaches them through its own proxy,
+# vault secret `polymarket_proxy` (an http(s) proxy URL); without it the
+# server calls them directly. Terms of use to check before a SaaS use.
+# Probabilities and trades are rows of tables, never objects (D919, D923);
+# a wallet becomes an object only when a member adds it to a case or the
+# early bet detector proposes it.
+key: prediction_markets
+name: Prediction markets
+names: {fr: "Marchés de prédiction"}
+version: "1.0.0"
+history: true
+requires: [markets]
+description: Questions on real events priced by a public prediction market, their dated resolution, the instruments, countries and companies a member says they bear on, and the wallets that bet early. Read only; an aid to analysis, not investment advice.
+descriptions: {fr: "Questions sur des événements réels cotées par un marché de prédiction public, leur résolution datée, les instruments, pays et sociétés qu'un membre y rattache, et les wallets qui ont misé tôt. Lecture seule ; une aide à l'analyse, pas un conseil en investissement."}
+settings:
+  - key: market_ids
+    name: Markets followed
+    names: {fr: "Marchés suivis"}
+    description: "Comma-separated market slugs or condition ids (0x…). Their question, rules and resolution are imported, their probabilities read every hour. Empty: nothing is read."
+    descriptions: {fr: "Slugs de marché ou identifiants de condition (0x…) séparés par des virgules. Leur question, leurs règles et leur résolution sont importées, leurs probabilités lues chaque heure. Vide : rien n'est lu."}
+    kind: text
+    default: ""
+  - key: fine_markets
+    name: Markets read every minute
+    names: {fr: "Marchés lus à la minute"}
+    description: "Comma-separated slugs or condition ids among the markets followed: their probabilities are read every minute (Q-PM2)."
+    descriptions: {fr: "Slugs ou identifiants de condition, parmi les marchés suivis : leurs probabilités sont lues à la minute (Q-PM2)."}
+    kind: text
+    default: ""
+  - key: history_days
+    name: Days of history at the first reading
+    names: {fr: "Jours d'historique à la première lecture"}
+    kind: number
+    default: 90
+    min: 1
+    max: 730
+  - key: early_bet_wallet_days
+    name: "Early bet: wallet younger than (days)"
+    names: {fr: "Mise précoce : wallet de moins de (jours)"}
+    description: "First trade of the wallet in the collected trades."
+    descriptions: {fr: "Premier échange du wallet dans les échanges collectés."}
+    kind: number
+    default: 7
+    min: 0
+  - key: early_bet_share_pct
+    name: "Early bet: share of its volume on the market (%)"
+    names: {fr: "Mise précoce : part de son volume sur le marché (%)"}
+    kind: number
+    default: 80
+    min: 0
+    max: 100
+  - key: early_bet_min_usdc
+    name: "Early bet: stake at least (USDC)"
+    names: {fr: "Mise précoce : mise d'au moins (USDC)"}
+    kind: number
+    default: 10000
+    min: 0
+  - key: early_bet_window_hours
+    name: "Early bet: window before the trigger (hours)"
+    names: {fr: "Mise précoce : fenêtre avant le déclencheur (heures)"}
+    kind: number
+    default: 48
+    min: 1
+  - key: early_bet_jump_points
+    name: "Early bet: probability jump within an hour (points)"
+    names: {fr: "Mise précoce : saut de probabilité en une heure (points)"}
+    kind: number
+    default: 15
+    min: 1
+    max: 100
+types:
+  - key: prediction_market
+    name: Prediction market
+    names: {fr: "Marché de prédiction"}
+    icon: flag
+    times: {event_property: end_at, known_property: known_at}
+    properties:
+      - { key: condition_id, name: Condition id, names: {fr: "Identifiant de condition"}, kind: text, max_len: 66, unique: true, required: true, indexed: true }
+      - { key: slug, name: Slug, names: {fr: "Slug"}, kind: text, max_len: 200, indexed: true }
+      - key: platform
+        name: Platform
+        names: {fr: "Plateforme"}
+        kind: enum
+        values: [polymarket]
+        labels: {polymarket: {fr: "Polymarket", en: "Polymarket"}}
+      - { key: rules, name: Resolution rules, names: {fr: "Règles de résolution"}, description: "Full text, as the platform publishes it.", descriptions: {fr: "Texte intégral, tel que la plateforme le publie."}, kind: text, max_len: 8000 }
+      - { key: resolution_source, name: Resolution source, names: {fr: "Source de résolution"}, kind: text, max_len: 1000 }
+      - { key: end_at, name: Ends at, names: {fr: "Échéance"}, kind: date_time, indexed: true }
+      - { key: outcomes, name: Outcomes, names: {fr: "Issues"}, kind: text, max_len: 500 }
+      - { key: tokens, name: Order book tokens, names: {fr: "Jetons du carnet"}, description: "One per outcome, same order.", descriptions: {fr: "Un par issue, même ordre."}, kind: text, max_len: 2000 }
+      - { key: volume, name: Volume, names: {fr: "Volume"}, kind: number, unit: USDC, min: 0 }
+      - key: status
+        name: Status
+        names: {fr: "Statut"}
+        kind: enum
+        values: [open, closed, resolved]
+        labels: {open: {fr: "Ouvert", en: "Open"}, closed: {fr: "Clos", en: "Closed"}, resolved: {fr: "Résolu", en: "Resolved"}}
+        indexed: true
+      - { key: known_at, name: Known at, names: {fr: "Connu le"}, description: "When PNeX first read the market.", descriptions: {fr: "Moment où PNeX a lu le marché pour la première fois."}, kind: date_time, indexed: true }
+  - key: prediction_resolution
+    name: Market resolution
+    names: {fr: "Résolution de marché"}
+    icon: file-text
+    times: {known_property: known_at}
+    properties:
+      - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 200, unique: true, required: true }
+      - { key: market, name: Market, names: {fr: "Marché"}, kind: ref, to_type: prediction_market, required: true }
+      - key: state
+        name: State
+        names: {fr: "État"}
+        description: "A proposal or a dispute is no resolution: only a final state resolves the market (D920)."
+        descriptions: {fr: "Une proposition ou un litige n'est pas une résolution : seul un état final résout le marché (D920)."}
+        kind: enum
+        values: [proposed, disputed, final, indeterminate]
+        labels:
+          proposed: {fr: "Proposée", en: "Proposed"}
+          disputed: {fr: "En litige", en: "Disputed"}
+          final: {fr: "Finale", en: "Final"}
+          indeterminate: {fr: "Indéterminée", en: "Indeterminate"}
+        required: true
+        indexed: true
+      - { key: outcome, name: Outcome, names: {fr: "Issue"}, kind: text, max_len: 200 }
+      - { key: known_at, name: Known at, names: {fr: "Connu le"}, kind: date_time, required: true, indexed: true }
+  - key: wallet
+    name: Wallet
+    names: {fr: "Wallet"}
+    icon: tag
+    properties:
+      - { key: address, name: Address, names: {fr: "Adresse"}, kind: text, max_len: 42, unique: true, required: true, indexed: true }
+      - { key: first_seen_at, name: First seen, names: {fr: "Vu pour la première fois"}, description: "First trade in the trades collected by PNeX, not the wallet's creation.", descriptions: {fr: "Premier échange dans les échanges collectés par PNeX, pas la création du wallet."}, kind: date_time }
+link_types:
+  - key: bears_on
+    name: bears on
+    names: {fr: "porte sur"}
+    inverse_name: is the subject of
+    inverse_names: {fr: "est l'objet de"}
+    description: "Declared by a member, never inferred (D921): the market's probability becomes an input of the model for this instrument, country or company."
+    descriptions: {fr: "Déclaré par un membre, jamais déduit (D921) : la probabilité du marché devient une entrée du modèle pour cet instrument, ce pays ou cette société."}
+    from_types: [prediction_market]
+    to_types: [instrument, nation, organization]
+    attributes:
+      - key: direction
+        name: Expected direction
+        names: {fr: "Sens attendu"}
+        description: "If the event happens, the member expects the target to go…"
+        descriptions: {fr: "Si l'événement se produit, le membre s'attend à ce que la cible…"}
+        kind: enum
+        values: [up, down, unknown]
+        labels: {up: {fr: "monte", en: "up"}, down: {fr: "baisse", en: "down"}, unknown: {fr: "inconnu", en: "unknown"}}
+  - key: traded
+    name: traded on
+    names: {fr: "a échangé sur"}
+    inverse_name: was traded by
+    inverse_names: {fr: "a été échangé par"}
+    from_types: [wallet]
+    to_types: [prediction_market]
+    attributes:
+      - { key: stake_usdc, name: Stake, names: {fr: "Mise"}, kind: number, unit: USDC, min: 0 }
+  - key: funded_by
+    name: funded by
+    names: {fr: "financé par"}
+    inverse_name: funded
+    inverse_names: {fr: "a financé"}
+    from_types: [wallet]
+    to_types: [wallet]

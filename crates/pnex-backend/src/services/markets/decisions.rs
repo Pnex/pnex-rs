@@ -237,10 +237,10 @@ impl From<DbErr> for CreateError {
 }
 
 const COLS: &str = "id, model, model_version, instrument, source, interval, horizon_bars, \
-     as_of, probabilities, best, confidence, barriers, inputs, created_at";
+     as_of, probabilities, best, confidence, barriers, inputs, forecasts, created_at";
 const SELECT: &str =
     "SELECT id, model, model_version, instrument, source, interval, horizon_bars, \
-     as_of, probabilities, best, confidence, barriers, inputs, created_at FROM market_decisions";
+     as_of, probabilities, best, confidence, barriers, inputs, forecasts, created_at FROM market_decisions";
 
 fn decision(r: &QueryResult) -> Result<Decision, DbErr> {
     let at = |k: &str| -> Result<String, DbErr> {
@@ -264,6 +264,10 @@ fn decision(r: &QueryResult) -> Result<Decision, DbErr> {
         confidence: r.try_get("", "confidence")?,
         barriers: barriers.and_then(|b| serde_json::from_value(b).ok()),
         inputs: r.try_get("", "inputs")?,
+        forecasts: r
+            .try_get::<Option<serde_json::Value>>("", "forecasts")?
+            .and_then(|f| serde_json::from_value(f).ok())
+            .unwrap_or_default(),
         created_at: at("created_at")?,
     })
 }
@@ -318,6 +322,7 @@ pub async fn create(
             && e.probabilities == d.probabilities
             && e.barriers == d.barriers
             && e.inputs == d.inputs
+            && e.forecasts == d.forecasts
     };
     if today >= dec::DAILY_MAX {
         // A replay of a stored decision is still answered.
@@ -337,13 +342,17 @@ pub async fn create(
         barriers.into(),
         d.inputs.clone().into(),
         service_account.into(),
+        (!d.forecasts.is_empty())
+            .then(|| serde_json::to_value(&d.forecasts).unwrap_or_default())
+            .into(),
     ]);
     let inserted = db
         .query_one_raw(stmt(
             &format!(
                 "INSERT INTO market_decisions (org_id, model, model_version, instrument, interval, as_of, \
-                   id, source, horizon_bars, probabilities, best, confidence, barriers, inputs, service_account_id) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) \
+                   id, source, horizon_bars, probabilities, best, confidence, barriers, inputs, service_account_id, \
+                   forecasts) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) \
                  ON CONFLICT (org_id, model, model_version, instrument, interval, as_of) DO NOTHING \
                  RETURNING {COLS}"
             ),

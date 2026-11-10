@@ -28,12 +28,22 @@ pub fn routes() -> Routes {
         .add("/chains", get(chains))
         .add("/decisions", get(list).post(create))
         .add("/decisions/scores", get(scores))
+        .add("/decisions/forecast-scores", get(forecast_scores))
+        .add("/prediction-features", get(prediction_features))
 }
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(bars, chains, create, list, scores),
+        paths(
+            bars,
+            chains,
+            create,
+            list,
+            scores,
+            forecast_scores,
+            prediction_features
+        ),
         components(schemas(
             BarOut,
             Chain,
@@ -45,7 +55,12 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             Barriers,
             ModelScores,
             Scores,
-            ReliabilityBin
+            ReliabilityBin,
+            pnex_core::markets::prediction::Forecast,
+            pnex_core::markets::prediction::ForecastScores,
+            pnex_core::markets::prediction::CalibrationBin,
+            pnex_core::markets::prediction::MarketFeature,
+            pnex_core::markets::prediction::Features
         ))
     )]
     struct Doc;
@@ -344,6 +359,9 @@ fn defects(d: &NewDecision, now: DateTime<Utc>) -> Option<Response> {
     {
         bad("inputs", "max_bytes:4096");
     }
+    if let Some((field, token)) = pnex_core::markets::prediction::forecast_defect(&d.forecasts) {
+        bad(&field, &token);
+    }
     match DateTime::parse_from_rfc3339(&d.as_of) {
         Err(_) => bad("as_of", err_codes::FIELD_INVALID),
         Ok(t) if t.with_timezone(&Utc) > now => bad("as_of", "future"),
@@ -550,5 +568,106 @@ async fn scores(
         next: None,
         previous: None,
         results: out,
+    })
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ForecastParams {
+    model: Option<String>,
+    model_version: Option<String>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/decisions/forecast-scores",
+    tag = "markets",
+    operation_id = "markets_decisions_forecast_scores",
+    summary = "Measure the forecasts of external models against the prediction market",
+    description = "For each model and version: Brier score and calibration by tenth of the probabilities its decisions gave on prediction markets, next to the market's own price at the decision's instant, on the markets resolved final as known now; a market in dispute is not scored. At most 100 groups. Advice only, not investment advice. Requires `market-decisions:read`.",
+    params(ForecastParams),
+    responses(
+        (status = 200, body = Paginated<pnex_core::markets::prediction::ForecastScores>),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn forecast_scores(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ForecastParams>,
+) -> Result<Response> {
+    let rows = crate::services::markets::prediction::forecast_scores(
+        &ctx.db,
+        org.org.id,
+        q.model.as_deref().filter(|s| !s.is_empty()),
+        q.model_version.as_deref().filter(|s| !s.is_empty()),
+    )
+    .await?;
+    format::json(Paginated {
+        count: rows.len() as i64,
+        next: None,
+        previous: None,
+        results: rows,
+    })
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct PredictionParams {
+    /// Ticker of the `instrument` object.
+    instrument: String,
+    /// Instant of the read (RFC 3339), now by default: everything as known then.
+    #[param(format = DateTime)]
+    as_of: Option<String>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/prediction-features",
+    tag = "markets",
+    operation_id = "markets_prediction_features",
+    summary = "Read the prediction markets bearing on an instrument as known at a date",
+    description = "The prediction markets a member linked to the instrument (`bears_on`), as known at `as_of` and unresolved then (a proposal or a dispute is no resolution), each with its probability, its change over 1 h and 24 h and its days to the end, read only from prices known at `as_of`. Nothing is filtered by relevance: an input of an external model. A market the caller is not cleared for is left out. Requires `ontology:read`.",
+    params(PredictionParams),
+    responses(
+        (status = 200, body = Paginated<pnex_core::markets::prediction::MarketFeature>),
+        (status = 400, description = "Invalid parameter (field → token: `instrument` `unknown` when no instrument object has this ticker)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn prediction_features(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<PredictionParams>,
+) -> Result<Response> {
+    use crate::services::markets::prediction as pm;
+    if q.instrument.is_empty() || q.instrument.len() > 64 {
+        return Ok(field_error("instrument", err_codes::FIELD_INVALID));
+    }
+    let as_of = match instant("as_of", q.as_of.as_deref()) {
+        Ok(a) => a.unwrap_or_else(Utc::now),
+        Err(r) => return Ok(r),
+    };
+    let ids = pm::instruments(&ctx.db, org.org.id, &q.instrument).await?;
+    if ids.is_empty() {
+        return Ok(field_error("instrument", "unknown"));
+    }
+    let mut rows = pm::features(&ctx.db, org.org.id, &ids, as_of).await?;
+    // A market the caller is not cleared for is left out (governance.md D801).
+    let hidden = match super::ontology::redaction(&ctx, &org).await {
+        Ok(r) => r.objects,
+        Err(e) => {
+            tracing::error!(error = %e, "markings read failed");
+            return Err(Error::InternalServerError);
+        }
+    };
+    rows.retain(|f| hidden.as_ref().is_none_or(|h| !h.contains(&f.market_id)));
+    format::json(Paginated {
+        count: rows.len() as i64,
+        next: None,
+        previous: None,
+        results: rows,
     })
 }

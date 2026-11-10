@@ -124,3 +124,19 @@ pub async fn decision_scores(
     )
     .await
 }
+
+/// A model's forecasts against the prediction market (D925).
+pub async fn forecast_scores(
+    model: &str,
+) -> Result<pnex_core::Paginated<pnex_core::markets::prediction::ForecastScores>, ApiError> {
+    let f = match model.trim() {
+        "" => String::new(),
+        m => format!("?model={}", urlencode(m)),
+    };
+    client::request(
+        Method::GET,
+        &format!("{BASE}/decisions/forecast-scores{f}"),
+        None,
+    )
+    .await
+}

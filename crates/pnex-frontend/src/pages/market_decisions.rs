@@ -217,6 +217,7 @@ pub fn MarketDecisions() -> Element {
                     {t!("decisions-advice")}
                 }
                 AnalyseAsOf {}
+                AgainstTheMarket { model: model.peek().clone(), reload: reload() }
                 if !measured.is_empty() {
                     section { class: "space-y-2", "data-testid": "decisions-scores",
                         h2 { class: "text-sm font-semibold text-ink", {t!("decisions-scores-title")} }
@@ -312,6 +313,74 @@ fn ScoreRow(m: ModelScores) -> Element {
                 dd { class: "tabular-nums text-ink", "{brier}" }
                 dt { class: "text-slate", {t!("decisions-above", threshold : threshold.clone())} }
                 dd { class: "tabular-nums text-ink", "{s.above_threshold} ({above})" }
+            }
+        }
+    }
+}
+
+/// The model's forecasts on prediction markets against the market's own
+/// price at the same instant (D925): a model that does no better than the
+/// market adds nothing.
+#[component]
+fn AgainstTheMarket(model: String, reload: u32) -> Element {
+    let scores = use_resource(use_reactive!(|(model, reload)| async move {
+        let _ = reload;
+        api::markets::forecast_scores(&model).await
+    }));
+    let rows = match &*scores.value().read() {
+        Some(Ok(p)) => p.results.clone(),
+        _ => Vec::new(),
+    };
+    if rows.is_empty() {
+        return rsx! {};
+    }
+    let bins = |b: &[pnex_core::markets::prediction::CalibrationBin]| -> Vec<ReliabilityBin> {
+        b.iter()
+            .map(|x| ReliabilityBin {
+                from: x.from,
+                to: x.to,
+                count: x.count,
+                mean_probability: x.mean_probability,
+                observed: x.observed,
+            })
+            .collect()
+    };
+    let num = |v: Option<f64>| v.map(|b| format!("{b:.3}")).unwrap_or_else(|| "–".into());
+    rsx! {
+        section { class: "space-y-2", "data-testid": "decisions-against-market",
+            h2 { class: "text-sm font-semibold text-ink", {t!("decisions-market-title")} }
+            p { class: "text-xs text-slate", {t!("decisions-market-help")} }
+            ul { class: "divide-y divide-line rounded-lg border border-line bg-surface",
+                for (i, f) in rows.into_iter().enumerate() {
+                    li {
+                        key: "{i}",
+                        class: "flex flex-wrap items-center gap-4 px-3 py-3",
+                        Reliability { bins: bins(&f.calibration_model) }
+                        Reliability { bins: bins(&f.calibration_market) }
+                        div { class: "min-w-40 flex-1",
+                            p { class: "font-medium text-ink break-words",
+                                "{f.model} {f.model_version}"
+                            }
+                            if let (Some(m), Some(k)) = (f.brier_model, f.brier_market) {
+                                p { class: "text-xs text-slate",
+                                    if m < k {
+                                        {t!("decisions-market-better-model")}
+                                    } else {
+                                        {t!("decisions-market-better-market")}
+                                    }
+                                }
+                            }
+                        }
+                        dl { class: "grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3",
+                            dt { class: "text-slate", {t!("decisions-market-scored")} }
+                            dd { class: "tabular-nums text-ink", "{f.scored} / {f.forecasts}" }
+                            dt { class: "text-slate", {t!("decisions-market-brier-model")} }
+                            dd { class: "tabular-nums text-ink", {num(f.brier_model)} }
+                            dt { class: "text-slate", {t!("decisions-market-brier-market")} }
+                            dd { class: "tabular-nums text-ink", {num(f.brier_market)} }
+                        }
+                    }
+                }
             }
         }
     }

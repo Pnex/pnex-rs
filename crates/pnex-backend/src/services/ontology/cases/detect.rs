@@ -307,6 +307,33 @@ pub async fn detect(
         }
     }
 
+    // Early bets on the prediction markets of the case (markets-research.md
+    // D924): a proposal with the figures, never an accusation.
+    let early = crate::services::markets::prediction::case_detections(
+        db,
+        org_id,
+        &members,
+        from.timestamp(),
+        to.timestamp(),
+    )
+    .await?;
+    for (market, b) in early {
+        let detector = crate::services::markets::prediction::EARLY_BET;
+        found.push(Found {
+            detector,
+            params: json!({}),
+            key: Some(hex::encode(Sha256::digest(format!(
+                "{}|{}|{market}",
+                kind_of(detector),
+                b.wallet
+            )))),
+            refs: vec![market],
+            from_ms: b.first_bet * 1_000,
+            to_ms: Some(b.trigger_at * 1_000),
+            payload: serde_json::to_value(&b).unwrap_or_default(),
+        });
+    }
+
     let mut inserted = 0;
     for f in found {
         let mut refs = f.refs.clone();
@@ -468,6 +495,32 @@ pub(crate) async fn event_of<C: ConnectionTrait>(
         .unwrap_or_default();
     if detector == CAUSAL_CHAIN {
         return causal_event(db, org_id, actor, case_id, vals, from_ms, title).await;
+    }
+    if detector == crate::services::markets::prediction::EARLY_BET {
+        let market = *refs
+            .first()
+            .ok_or_else(|| invalid("values.members", FIELD_INVALID))?;
+        let payload = vals.get("payload").cloned().unwrap_or_default();
+        let (wallet, note) = crate::services::markets::prediction::retain_early_bet(
+            db, org_id, actor, market, &payload,
+        )
+        .await?;
+        let mut props = Map::new();
+        props.insert(EVENT_NOTE.into(), note.into());
+        let event = CaseEventInput {
+            title: title.to_string(),
+            occurred: occurred(from_ms, vals.get("to_ms").and_then(Value::as_i64)),
+            origin: Some("detection".into()),
+            attach: [(wallet, "context"), (market, "context")]
+                .iter()
+                .map(|(id, role)| CaseAttachInput {
+                    object_id: id.to_string(),
+                    role: Some((*role).into()),
+                    ..Default::default()
+                })
+                .collect(),
+        };
+        return create_event_in(db, org_id, actor, case_id, &event, props).await;
     }
     let params = vals.get("params").cloned().unwrap_or_default();
     let mut props = Map::new();

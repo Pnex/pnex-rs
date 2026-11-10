@@ -285,6 +285,8 @@ pub const EXPOSED: &[&str] = &[
     "markets_chains",
     "markets_decisions_list",
     "markets_decisions_scores",
+    "markets_decisions_forecast_scores",
+    "markets_prediction_features",
     "markets_event_study",
     "markets_issuer_chart",
     "markets_rule_test",

@@ -14,6 +14,7 @@ pub mod decisions;
 pub mod exhibit21;
 pub mod history;
 pub mod moves;
+pub mod prediction;
 pub mod same_company;
 
 /// Field of a per-object record holding the value it was queried with.
