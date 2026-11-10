@@ -137,6 +137,7 @@ mod m20261110_000142_link_versions;
 mod m20261110_000143_pack_history;
 mod m20261110_000144_prediction_markets;
 mod m20261110_000145_histdata_registry_reset;
+mod m20261110_000146_account_trades;
 
 pub struct Migrator;
 
@@ -270,6 +271,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261110_000143_pack_history::Migration),
             Box::new(m20261110_000144_prediction_markets::Migration),
             Box::new(m20261110_000145_histdata_registry_reset::Migration),
+            Box::new(m20261110_000146_account_trades::Migration),
         ]
     }
 }

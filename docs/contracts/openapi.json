@@ -73,6 +73,133 @@
         ],
         "type": "object"
       },
+      "AccountTrade": {
+        "description": "A stored trade as the read route gives it.",
+        "properties": {
+          "account_ref": {
+            "type": "string"
+          },
+          "backfilled": {
+            "description": "No proof the trade was public before its import.",
+            "type": "boolean"
+          },
+          "close_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "close_price": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commission": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "gain_pct": {
+            "description": "Gain in percent of the account, as published.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "known_at": {
+            "description": "When PNeX learnt the trade (D928).",
+            "format": "date-time",
+            "type": "string"
+          },
+          "lots": {
+            "format": "double",
+            "type": "number"
+          },
+          "magic": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "open_price": {
+            "format": "double",
+            "type": "number"
+          },
+          "pips": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "profit": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "side": {
+            "description": "`buy` or `sell`.",
+            "type": "string"
+          },
+          "sl": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "swap": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "tp": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "trade_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_ref",
+          "trade_key",
+          "symbol",
+          "side",
+          "lots",
+          "open_at",
+          "open_price",
+          "known_at",
+          "backfilled"
+        ],
+        "type": "object"
+      },
       "ActionDef": {
         "description": "An action declared on a type (D183): invoked from the object page,\nexecuted by the deployed flows holding a matching `action_trigger` node,\njournaled. Never executed by the server itself (D123).",
         "properties": {
@@ -12501,6 +12628,33 @@
         ],
         "type": "object"
       },
+      "ImportResult": {
+        "description": "What an import wrote.",
+        "properties": {
+          "account_id": {
+            "description": "The `trading_account` object.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kept": {
+            "description": "Rows already known: they keep their first `known_at`.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account_id",
+          "inserted",
+          "kept"
+        ],
+        "type": "object"
+      },
       "ImportRunView": {
         "description": "One run: a preview waiting for its application, or a finished run.",
         "properties": {
@@ -18007,6 +18161,13 @@
           "names": {
             "$ref": "#/components/schemas/BTreeMap"
           },
+          "never_linked_to": {
+            "description": "Types an object of this one is never linked to, whatever the link\ntype, the actor or the pack declaring it (markets-research.md D933:\na platform pseudonym is never tied to a person). The type need not\nbe installed.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "properties": {
             "items": {
               "$ref": "#/components/schemas/PropertyDef"
@@ -19385,6 +19546,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/AccessKey"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_AccountTrade": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/AccountTrade"
             },
             "type": "array"
           }
@@ -71820,6 +72017,237 @@
         "summary": "Test a mailbox",
         "tags": [
           "mail"
+        ]
+      }
+    },
+    "/api/v1/markets/account-trades": {
+      "get": {
+        "description": "Trades of public trading accounts imported by members, by opening time, only those known at `as_of` (a trade imported later is absent; `backfilled` marks a trade with no proof it was public before its import). An account the caller is not cleared for is left out. Requires `ontology:read`.",
+        "operationId": "markets_account_trades",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`<platform>:<account id>`, e.g. `myfxbook:12345`; every account when empty.",
+            "in": "query",
+            "name": "account",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Instant of the read (RFC 3339), now by default: only trades known then.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size, 1 to 50000 (default 1000).",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_AccountTrade"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid parameter (field → token: `account` `invalid`, `as_of` `invalid`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the imported trades of public trading accounts as known at a date",
+        "tags": [
+          "markets"
+        ],
+        "x-pnex-as-of": "point_in_time"
+      }
+    },
+    "/api/v1/markets/account-trades/import": {
+      "post": {
+        "description": "Stores the trades of a public trading account sent as the canonical CSV (comma-separated, header among `ticket, symbol, side, lots, open_at, close_at, open_price, close_price, sl, tp, profit, pips, commission, swap, gain_pct, magic, comment`; `symbol`, `side` (buy or sell), `lots`, `open_at` and `open_price` required; instants in RFC 3339 with an offset). A trade already stored (same ticket, else same opening, close and rank among identical rows of the file) is kept as first known. Every trade is known from the import, flagged `backfilled`. Creates the `trading_account` object when missing and links it to the instruments it traded. The whole file is refused at its first faulty cell. Requires `ontology:write`.",
+        "operationId": "markets_account_trades_import",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`<platform>:<account id>`, e.g. `myfxbook:12345`.",
+            "in": "query",
+            "name": "account",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Display name of the account on the platform (a pseudonym), kept when the account is created.",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Name of the source file, kept on each row.",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Currency of the account, ISO 4217 or `USC` (cent account): the unit of its profits, kept on the account.",
+            "in": "query",
+            "name": "currency",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "text/csv": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`account-trades-csv-invalid` (args `line`, `column`), or `field-invalid` on `account`, `name`, `source`, `currency`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`account-trades-too-large` (args `max_kib`, `max_rows`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Import the trades of a public trading account from a CSV",
+        "tags": [
+          "markets"
         ]
       }
     },

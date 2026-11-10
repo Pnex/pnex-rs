@@ -30,6 +30,12 @@ pub fn routes() -> Routes {
         .add("/decisions/scores", get(scores))
         .add("/decisions/forecast-scores", get(forecast_scores))
         .add("/prediction-features", get(prediction_features))
+        .add("/account-trades", get(account_trades))
+        .add(
+            "/account-trades/import",
+            post(import_account_trades)
+                .layer(axum::extract::DefaultBodyLimit::max(IMPORT_MAX_BYTES * 2)),
+        )
 }
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
@@ -42,7 +48,9 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             list,
             scores,
             forecast_scores,
-            prediction_features
+            prediction_features,
+            account_trades,
+            import_account_trades
         ),
         components(schemas(
             BarOut,
@@ -58,6 +66,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             ReliabilityBin,
             pnex_core::markets::prediction::Forecast,
             pnex_core::markets::prediction::ForecastScores,
+            crate::services::markets::accounts::AccountTrade,
+            crate::services::markets::accounts::ImportResult,
             pnex_core::markets::prediction::CalibrationBin,
             pnex_core::markets::prediction::MarketFeature,
             pnex_core::markets::prediction::Features
@@ -670,4 +680,192 @@ async fn prediction_features(
         previous: None,
         results: rows,
     })
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct AccountTradesParams {
+    /// `<platform>:<account id>`, e.g. `myfxbook:12345`; every account when empty.
+    account: Option<String>,
+    /// Instant of the read (RFC 3339), now by default: only trades known then.
+    #[param(format = DateTime)]
+    as_of: Option<String>,
+    /// Page size, 1 to 50000 (default 1000).
+    limit: Option<String>,
+    offset: Option<String>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/markets/account-trades",
+    tag = "markets",
+    operation_id = "markets_account_trades",
+    summary = "Read the imported trades of public trading accounts as known at a date",
+    description = "Trades of public trading accounts imported by members, by opening time, only those known at `as_of` (a trade imported later is absent; `backfilled` marks a trade with no proof it was public before its import). An account the caller is not cleared for is left out. Requires `ontology:read`.",
+    params(AccountTradesParams),
+    responses(
+        (status = 200, body = Paginated<crate::services::markets::accounts::AccountTrade>),
+        (status = 400, description = "Invalid parameter (field → token: `account` `invalid`, `as_of` `invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn account_trades(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<AccountTradesParams>,
+) -> Result<Response> {
+    use crate::services::markets::accounts as acc;
+    let account = q.account.as_deref().filter(|a| !a.is_empty());
+    if account.is_some_and(|a| !acc::account_ref_ok(a)) {
+        return Ok(field_error("account", err_codes::FIELD_INVALID));
+    }
+    let as_of = match instant("as_of", q.as_of.as_deref()) {
+        Ok(a) => a.unwrap_or_else(Utc::now),
+        Err(r) => return Ok(r),
+    };
+    let limit = match q.limit.as_deref().map(str::parse::<u64>) {
+        None => 1_000,
+        Some(Ok(n)) if (1..=acc::IMPORT_MAX as u64).contains(&n) => n,
+        Some(_) => return Ok(field_error("limit", err_codes::FIELD_INVALID)),
+    };
+    let offset = match q.offset.as_deref().map(str::parse::<u64>) {
+        None => 0,
+        Some(Ok(n)) => n,
+        Some(Err(_)) => return Ok(field_error("offset", err_codes::FIELD_INVALID)),
+    };
+    // An account the caller is not cleared for is left out (governance.md D801).
+    let hidden = match super::ontology::redaction(&ctx, &org).await {
+        Ok(r) => r.objects,
+        Err(e) => {
+            tracing::error!(error = %e, "markings read failed");
+            return Err(Error::InternalServerError);
+        }
+    };
+    let hidden_refs = acc::refs_of(&ctx.db, org.org.id, hidden.as_ref()).await?;
+    let (count, rows) = acc::list(
+        &ctx.db,
+        org.org.id,
+        account,
+        &hidden_refs,
+        as_of,
+        limit,
+        offset,
+    )
+    .await?;
+    format::json(Paginated {
+        count: count as i64,
+        next: None,
+        previous: None,
+        results: rows,
+    })
+}
+
+/// Size cap of one trades import.
+const IMPORT_MAX_BYTES: usize = 16 * 1024 * 1024;
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ImportTradesParams {
+    /// `<platform>:<account id>`, e.g. `myfxbook:12345`.
+    account: String,
+    /// Display name of the account on the platform (a pseudonym), kept when the account is created.
+    name: Option<String>,
+    /// Name of the source file, kept on each row.
+    source: Option<String>,
+    /// Currency of the account, ISO 4217 or `USC` (cent account): the unit of its profits, kept on the account.
+    currency: Option<String>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/markets/account-trades/import",
+    tag = "markets",
+    operation_id = "markets_account_trades_import",
+    summary = "Import the trades of a public trading account from a CSV",
+    description = "Stores the trades of a public trading account sent as the canonical CSV (comma-separated, header among `ticket, symbol, side, lots, open_at, close_at, open_price, close_price, sl, tp, profit, pips, commission, swap, gain_pct, magic, comment`; `symbol`, `side` (buy or sell), `lots`, `open_at` and `open_price` required; instants in RFC 3339 with an offset). A trade already stored (same ticket, else same opening, close and rank among identical rows of the file) is kept as first known. Every trade is known from the import, flagged `backfilled`. Creates the `trading_account` object when missing and links it to the instruments it traded. The whole file is refused at its first faulty cell. Requires `ontology:write`.",
+    params(ImportTradesParams),
+    request_body(content = String, content_type = "text/csv"),
+    responses(
+        (status = 200, body = crate::services::markets::accounts::ImportResult),
+        (status = 400, description = "`account-trades-csv-invalid` (args `line`, `column`), or `field-invalid` on `account`, `name`, `source`, `currency`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 413, description = "`account-trades-too-large` (args `max_kib`, `max_rows`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn import_account_trades(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ImportTradesParams>,
+    body: axum::body::Bytes,
+) -> Result<Response> {
+    use crate::services::markets::accounts as acc;
+    if !acc::account_ref_ok(&q.account) {
+        return Ok(field_error("account", err_codes::FIELD_INVALID));
+    }
+    if q.name.as_deref().is_some_and(|n| n.chars().count() > 200) {
+        return Ok(field_error("name", err_codes::FIELD_INVALID));
+    }
+    let source = q
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("import.csv");
+    if source.chars().count() > 200 {
+        return Ok(field_error("source", err_codes::FIELD_INVALID));
+    }
+    let currency = q.currency.as_deref().filter(|c| !c.is_empty());
+    if currency.is_some_and(|c| !acc::currency_ok(c)) {
+        return Ok(field_error("currency", err_codes::FIELD_INVALID));
+    }
+    let too_large = || {
+        Err(coded_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            err_codes::ACCOUNT_TRADES_TOO_LARGE,
+            "trades file too large",
+            Some(
+                serde_json::json!({ "max_kib": IMPORT_MAX_BYTES / 1024, "max_rows": acc::IMPORT_MAX }),
+            ),
+        ))
+    };
+    if body.len() > IMPORT_MAX_BYTES {
+        return too_large();
+    }
+    let refused = |line: usize, column: &str| {
+        Err(coded_error(
+            StatusCode::BAD_REQUEST,
+            err_codes::ACCOUNT_TRADES_CSV_INVALID,
+            "trades file is not the canonical CSV",
+            Some(serde_json::json!({ "line": line, "column": column })),
+        ))
+    };
+    let Ok(text) = std::str::from_utf8(&body) else {
+        return refused(0, "encoding");
+    };
+    let trades = match pnex_core::markets::accounts::parse_trades_csv(text) {
+        Ok(t) => t,
+        Err(e) => return refused(e.line, &e.column),
+    };
+    if trades.len() > acc::IMPORT_MAX {
+        return too_large();
+    }
+    let actor = super::ontology::actor(&org);
+    match acc::import(
+        &ctx.db,
+        org.org.id,
+        &actor,
+        &q.account,
+        q.name.as_deref(),
+        currency,
+        &trades,
+        source,
+        Utc::now(),
+    )
+    .await
+    {
+        Ok(r) => format::json(r),
+        Err(e) => super::ontology::onto_error(e),
+    }
 }

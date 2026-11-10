@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 
 use crate::ontology::import::{parse_csv, table_rows};
 
+pub mod accounts;
 pub mod calendar;
 pub mod chart;
 pub mod decisions;

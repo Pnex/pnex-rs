@@ -146,6 +146,12 @@ pub struct ObjectTypeDef {
     /// says when it is true in the world, which one when it became known.
     #[serde(default, skip_serializing_if = "FactTimes::is_empty")]
     pub times: FactTimes,
+    /// Types an object of this one is never linked to, whatever the link
+    /// type, the actor or the pack declaring it (markets-research.md D933:
+    /// a platform pseudonym is never tied to a person). The type need not
+    /// be installed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub never_linked_to: Vec<String>,
 }
 
 /// Properties holding the dates of a fact (D915). A read at an instant
@@ -309,6 +315,9 @@ impl ObjectTypeDef {
         }
         check_set("may_contain", &self.may_contain, known)?;
         check_set("may_be_contained_in", &self.may_be_contained_in, known)?;
+        if self.never_linked_to.iter().any(|k| !schema::valid_key(k)) {
+            return Err(("never_linked_to".into(), FIELD_INVALID.into()));
+        }
         schema::check_defs(&self.properties, "properties", known)?;
         let kind_of = |key: &Option<String>| {
             key.as_ref().map(|k| {
@@ -347,6 +356,11 @@ impl ObjectTypeDef {
 
     pub fn action(&self, key: &str) -> Option<&ActionDef> {
         self.actions.iter().find(|a| a.key == key)
+    }
+
+    /// Whether this type forbids any link with objects of `other` (D933).
+    pub fn refuses_link_with(&self, other: &str) -> bool {
+        self.never_linked_to.iter().any(|k| k == other)
     }
 
     /// The property read as the knowledge time of its objects (D915).
@@ -398,6 +412,7 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
         actions: Vec::new(),
         title_classification: Default::default(),
         times: Default::default(),
+        never_linked_to: Vec::new(),
     };
     vec![
         leaf(KIND_DEVICE),

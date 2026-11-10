@@ -1,0 +1,113 @@
+# Pack "Trading accounts" (markets-research.md appendix K, D926-D933): the
+# trades of public trading accounts, as their authors published them on a
+# tracking platform, read as analysis data next to the bars and the
+# calendar. PNeX only reads: it never copies a position, places an order or
+# logs into a third party's account (K.4).
+# Source: the CSV export of an account, uploaded by a member (D929 a). The
+# platform's API waits for its terms of use to be read (Q-TA1); its HTML
+# pages are never read.
+# Trades are rows of the `account_trades` dataset, never objects (D927); an
+# account becomes an object when a member imports it, adds it to a case or
+# retains a proposal of the detector. A display name is a platform
+# pseudonym, never tied to a person (D933): the type refuses any link with
+# a `person`, whatever the link type.
+key: trading_accounts
+name: Trading accounts
+names: {fr: "Comptes de trading"}
+version: "1.0.0"
+history: true
+requires: [markets]
+description: Public trading accounts of a tracking platform, their declared figures and the instruments they trade; their trades are a dataset read at a date. Read only; an aid to analysis, not investment advice.
+descriptions: {fr: "Comptes de trading publics d'une plateforme de suivi, leurs chiffres déclarés et les instruments qu'ils traitent ; leurs transactions sont un dataset lu à une date. Lecture seule ; une aide à l'analyse, pas un conseil en investissement."}
+settings:
+  - key: bars_source
+    name: Price source of the instruments
+    names: {fr: "Source des cours des instruments"}
+    description: "Bars the detector reads: histdata, binance, or mt5:<terminal>. The instrument's ticker is the symbol."
+    descriptions: {fr: "Barres lues par le détecteur : histdata, binance ou mt5:<terminal>. Le ticker de l'instrument est le symbole."}
+    kind: text
+    default: "histdata"
+  - key: entry_window_minutes
+    name: "Entries before a move: window (minutes)"
+    names: {fr: "Entrées avant un mouvement : fenêtre (minutes)"}
+    description: "An entry counts when the instrument moves at least the threshold within this many minutes after it."
+    descriptions: {fr: "Une entrée compte quand l'instrument bouge d'au moins le seuil dans ce nombre de minutes après elle."}
+    kind: number
+    default: 60
+    min: 1
+    max: 1440
+  - key: entry_move_pct
+    name: "Entries before a move: move within the window (%)"
+    names: {fr: "Entrées avant un mouvement : mouvement dans la fenêtre (%)"}
+    kind: number
+    default: 1
+    min: 0.01
+    max: 100
+  - key: release_window_minutes
+    name: "Entries around a release: window (± minutes)"
+    names: {fr: "Entrées autour d'une publication : fenêtre (± minutes)"}
+    description: "Releases and central bank decisions of the org's calendar."
+    descriptions: {fr: "Publications et décisions de banques centrales du calendrier de l'org."}
+    kind: number
+    default: 30
+    min: 1
+    max: 720
+  - key: entry_min_count
+    name: "Proposal: entries at least"
+    names: {fr: "Proposition : entrées concernées, au moins"}
+    kind: number
+    default: 10
+    min: 1
+  - key: entry_min_share_pct
+    name: "Proposal: share of the account's entries at least (%)"
+    names: {fr: "Proposition : part des entrées du compte, au moins (%)"}
+    kind: number
+    default: 30
+    min: 0
+    max: 100
+types:
+  - key: trading_account
+    name: Trading account
+    names: {fr: "Compte de trading"}
+    icon: chart
+    times: {known_property: known_at}
+    never_linked_to: [person]
+    properties:
+      - { key: account_ref, name: Account, names: {fr: "Compte"}, description: "<platform>:<account id on the platform>.", descriptions: {fr: "<plateforme>:<identifiant du compte sur la plateforme>."}, kind: text, max_len: 120, unique: true, required: true, indexed: true }
+      - key: platform
+        name: Platform
+        names: {fr: "Plateforme"}
+        kind: enum
+        values: [myfxbook]
+        labels: {myfxbook: {fr: "Myfxbook", en: "Myfxbook"}}
+        required: true
+      - { key: display_name, name: Display name, names: {fr: "Nom affiché"}, description: "A pseudonym on the platform, never a person's name (D933).", descriptions: {fr: "Un pseudonyme sur la plateforme, jamais le nom d'une personne (D933)."}, kind: text, max_len: 200 }
+      - { key: broker, name: Broker, names: {fr: "Courtier"}, description: "As the platform declares it.", descriptions: {fr: "Tel que la plateforme le déclare."}, kind: text, max_len: 200 }
+      - { key: leverage, name: Leverage, names: {fr: "Levier"}, kind: text, max_len: 20 }
+      - { key: currency, name: Account currency, names: {fr: "Devise du compte"}, description: "ISO code, or USC for a cent account: the unit of every profit of the account.", descriptions: {fr: "Code ISO, ou USC pour un compte en cents : l'unité de tous les profits du compte."}, kind: text, max_len: 8 }
+      - key: declared_kind
+        name: Declared account
+        names: {fr: "Compte déclaré"}
+        kind: enum
+        values: [real, demo, unknown]
+        labels: {real: {fr: "Réel", en: "Real"}, demo: {fr: "Démo", en: "Demo"}, unknown: {fr: "Inconnu", en: "Unknown"}}
+      - { key: declared_strategy, name: Declared strategy, names: {fr: "Stratégie déclarée"}, kind: text, max_len: 2000 }
+      - { key: live_updates, name: Live updates, names: {fr: "Mise à jour en direct"}, description: "Declared by the platform; without proof a trade is known at its import, not at its opening (D928).", descriptions: {fr: "Déclarée par la plateforme ; sans preuve, une transaction est connue à son import, pas à son ouverture (D928)."}, kind: bool }
+      - { key: gain_pct, name: Published gain, names: {fr: "Gain publié"}, kind: number, unit: "%" }
+      - { key: drawdown_pct, name: Published drawdown, names: {fr: "Drawdown publié"}, kind: number, unit: "%" }
+      - { key: stats_at, name: Figures published on, names: {fr: "Chiffres publiés le"}, kind: date_time }
+      - { key: known_at, name: Known at, names: {fr: "Connu le"}, description: "When PNeX first read the account.", descriptions: {fr: "Moment où PNeX a lu le compte pour la première fois."}, kind: date_time, indexed: true }
+link_types:
+  - key: trades
+    name: trades
+    names: {fr: "traite"}
+    inverse_name: is traded by
+    inverse_names: {fr: "est traité par"}
+    description: "The account's trades on this instrument, as imported (D926)."
+    descriptions: {fr: "Les transactions du compte sur cet instrument, telles qu'importées (D926)."}
+    from_types: [trading_account]
+    to_types: [instrument]
+    attributes:
+      - { key: trade_count, name: Trades, names: {fr: "Transactions"}, kind: number, min: 0 }
+      - { key: first_open_at, name: First opened, names: {fr: "Première ouverture"}, kind: text, max_len: 40 }
+      - { key: last_close_at, name: Last closed, names: {fr: "Dernière clôture"}, kind: text, max_len: 40 }

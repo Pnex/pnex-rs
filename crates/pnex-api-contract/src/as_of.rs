@@ -54,6 +54,7 @@ pub const SEMANTICS: &[(&str, AsOf)] = &[
     ("datasets_get", Timeless),
     ("datasets_list", Timeless),
     ("datasets_sample", PointInTime(Query("as_of"))),
+    ("markets_account_trades", PointInTime(Query("as_of"))),
     ("markets_bars", PointInTime(Query("as_of"))),
     ("markets_chains", PointInTime(Query("as_of"))),
     ("markets_prediction_features", PointInTime(Query("as_of"))),

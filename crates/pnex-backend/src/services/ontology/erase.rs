@@ -62,6 +62,8 @@ pub async fn erase(ctx: &AppContext, org_id: i64, actor: &Actor, id: Uuid) -> Re
     for other in related {
         Box::pin(erase(ctx, org_id, actor, other)).await?;
     }
+    // Rows a service keeps about the object, outside the ontology (D932).
+    crate::services::markets::accounts::before_erase(&ctx.db, org_id, &row).await?;
     // Before the object itself: a refusal here leaves it erasable again.
     if def.title_classification.is_personal() {
         for other in sources_to_erase(&ctx.db, &s, org_id, id).await? {

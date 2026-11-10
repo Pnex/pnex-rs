@@ -221,8 +221,11 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
             "bears_on",
             "wallet",
             "traded",
+            "trading_accounts",
+            "trading_account",
+            "trades",
         ],
-        "market services built on the markets and world_events packs: detector, session, map, confirmation (markets-research.md D734-D743); subsidiaries of a 10-K's Exhibit 21 written as companies-pack organizations (F6); SEC companies matched to their LEI by proposal (D812); prediction markets collector, dated resolutions, model inputs and early bet detector built on the prediction_markets pack (appendix J, D918-D924)",
+        "market services built on the markets and world_events packs: detector, session, map, confirmation (markets-research.md D734-D743); subsidiaries of a 10-K's Exhibit 21 written as companies-pack organizations (F6); SEC companies matched to their LEI by proposal (D812); prediction markets collector, dated resolutions, model inputs and early bet detector built on the prediction_markets pack (appendix J, D918-D924); public trading accounts: imported trades, their account objects and links, entry timing detector built on the trading_accounts pack (appendix K, D926-D933)",
     ),
 ];
 

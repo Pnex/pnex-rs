@@ -2,6 +2,7 @@
 //! value is never overwritten: a restatement adds a row, and a reading "as
 //! known at t" takes, for each period, the last row known by then.
 
+pub mod accounts;
 pub mod calendar;
 pub mod chains;
 pub mod chart;

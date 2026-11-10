@@ -291,9 +291,18 @@ impl Registry {
 
     /// Is `relation(source → target)` a declared link type?
     pub fn allows_relation(&self, relation: &str, source_kind: &str, target_kind: &str) -> bool {
-        self.links
-            .iter()
-            .any(|l| l.allows(relation, source_kind, target_kind))
+        // D933: a type that refuses the other end refuses every relation.
+        let refuses = |a: &str, b: &str| {
+            self.kinds
+                .get(a)
+                .is_some_and(|e| e.def.refuses_link_with(b))
+        };
+        !refuses(source_kind, target_kind)
+            && !refuses(target_kind, source_kind)
+            && self
+                .links
+                .iter()
+                .any(|l| l.allows(relation, source_kind, target_kind))
     }
 }
 

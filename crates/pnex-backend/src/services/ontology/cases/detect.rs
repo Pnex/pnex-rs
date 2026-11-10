@@ -125,6 +125,7 @@ async fn causal_enabled(db: &DatabaseConnection, org_id: i64) -> Result<bool> {
 pub async fn detect(
     db: &DatabaseConnection,
     client: Option<&Client>,
+    store: Option<&crate::services::artifact_store::S3Store>,
     org_id: i64,
     user_id: Option<i64>,
     case_id: Uuid,
@@ -334,6 +335,36 @@ pub async fn detect(
         });
     }
 
+    // Public trading accounts entering before moves or around releases of an
+    // instrument of the case (markets-research.md D930): figures only.
+    let timing = crate::services::markets::accounts::case_detections(
+        db,
+        store,
+        org_id,
+        &members,
+        from.timestamp(),
+        to.timestamp(),
+    )
+    .await?;
+    for (instrument, t) in timing {
+        let detector = crate::services::markets::accounts::ENTRY_TIMING;
+        found.push(Found {
+            detector,
+            params: json!({}),
+            key: Some(hex::encode(Sha256::digest(format!(
+                "{}|{}|{instrument}|{}|{}",
+                kind_of(detector),
+                t.account_ref,
+                t.from,
+                t.to
+            )))),
+            refs: vec![instrument],
+            from_ms: t.from * 1_000,
+            to_ms: Some(t.to * 1_000),
+            payload: serde_json::to_value(&t).unwrap_or_default(),
+        });
+    }
+
     let mut inserted = 0;
     for f in found {
         let mut refs = f.refs.clone();
@@ -512,6 +543,31 @@ pub(crate) async fn event_of<C: ConnectionTrait>(
             occurred: occurred(from_ms, vals.get("to_ms").and_then(Value::as_i64)),
             origin: Some("detection".into()),
             attach: [(wallet, "context"), (market, "context")]
+                .iter()
+                .map(|(id, role)| CaseAttachInput {
+                    object_id: id.to_string(),
+                    role: Some((*role).into()),
+                    ..Default::default()
+                })
+                .collect(),
+        };
+        return create_event_in(db, org_id, actor, case_id, &event, props).await;
+    }
+    if detector == crate::services::markets::accounts::ENTRY_TIMING {
+        let instrument = *refs
+            .first()
+            .ok_or_else(|| invalid("values.members", FIELD_INVALID))?;
+        let payload = vals.get("payload").cloned().unwrap_or_default();
+        let (account, note) =
+            crate::services::markets::accounts::retain_entry_timing(db, org_id, actor, &payload)
+                .await?;
+        let mut props = Map::new();
+        props.insert(EVENT_NOTE.into(), note.into());
+        let event = CaseEventInput {
+            title: title.to_string(),
+            occurred: occurred(from_ms, vals.get("to_ms").and_then(Value::as_i64)),
+            origin: Some("detection".into()),
+            attach: [(account, "context"), (instrument, "context")]
                 .iter()
                 .map(|(id, role)| CaseAttachInput {
                     object_id: id.to_string(),

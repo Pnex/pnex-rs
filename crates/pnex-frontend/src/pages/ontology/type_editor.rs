@@ -51,6 +51,7 @@ fn blank(key: &str) -> ObjectTypeDef {
         actions: Vec::new(),
         title_classification: Default::default(),
         times: Default::default(),
+        never_linked_to: Vec::new(),
     }
 }
 

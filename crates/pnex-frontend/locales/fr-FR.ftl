@@ -4749,6 +4749,8 @@ err-taxonomy-unknown = Le classifieur de sujets épingle la version { $version }
 err-time-range-not-found = Plage introuvable.
 err-time-range-import-too-large = Fichier trop gros : { $max_kib } Kio et { $max_rows } lignes au plus.
 err-time-range-import-invalid = Fichier illisible : un CSV avec une colonne label, ou un fichier iCalendar (.ics), est attendu.
+err-account-trades-too-large = Fichier de transactions trop gros : { $max_kib } Kio et { $max_rows } lignes au plus.
+err-account-trades-csv-invalid = Fichier de transactions refusé : ligne { $line }, colonne { $column }.
 err-time-range-scope-unknown = L'écriture de plages vise un flux absent de l'organisation : choisissez-le de nouveau dans le nœud.
 
 # Transcription models, profiles and search (media-ingest.md D164–D167)

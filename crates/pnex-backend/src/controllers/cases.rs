@@ -550,7 +550,18 @@ async fn detect(
     reply(
         &ctx,
         &org,
-        cases::detect(&ctx.db, o2(&ctx).as_ref(), org.org.id, user, id, &q).await,
+        cases::detect(
+            &ctx.db,
+            o2(&ctx).as_ref(),
+            crate::services::datasets::store_of(&ctx.config)
+                .ok()
+                .as_ref(),
+            org.org.id,
+            user,
+            id,
+            &q,
+        )
+        .await,
     )
     .await
 }

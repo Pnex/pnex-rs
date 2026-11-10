@@ -4750,6 +4750,8 @@ err-taxonomy-unknown = The topic classifier pins version { $version } of a taxon
 err-time-range-not-found = Time range not found.
 err-time-range-import-too-large = File too large: { $max_kib } KiB and { $max_rows } rows at most.
 err-time-range-import-invalid = Unreadable file: a CSV with a label column, or an iCalendar (.ics) file, is expected.
+err-account-trades-too-large = Trades file too large: { $max_kib } KiB and { $max_rows } rows at most.
+err-account-trades-csv-invalid = Trades file refused: line { $line }, column { $column }.
 err-time-range-scope-unknown = The time range writer targets a stream that does not exist (anymore) in the organization: pick it again in the node.
 
 # Transcription models, profiles and search (media-ingest.md D164–D167)

@@ -320,7 +320,10 @@ pub async fn create_with<C: ConnectionTrait>(
     if src.erased_at.is_some() || tgt.erased_at.is_some() {
         return Err(OntologyError::Erased);
     }
-    if src.id == tgt.id || !lt.allows(&lt.key, &src.type_key, &tgt.type_key) {
+    if src.id == tgt.id
+        || !lt.allows(&lt.key, &src.type_key, &tgt.type_key)
+        || never_linked(s, &src.type_key, &tgt.type_key)
+    {
         return Err(OntologyError::LinkNotAllowed);
     }
     for t in [&src.type_key, &tgt.type_key] {
@@ -728,7 +731,10 @@ pub async fn create_many_with<C: ConnectionTrait>(
             if src.erased_at.is_some() || tgt.erased_at.is_some() {
                 continue;
             }
-            if src.id == tgt.id || !lt.allows(&lt.key, &src.type_key, &tgt.type_key) {
+            if src.id == tgt.id
+                || !lt.allows(&lt.key, &src.type_key, &tgt.type_key)
+                || never_linked(s, &src.type_key, &tgt.type_key)
+            {
                 return Err(OntologyError::LinkNotAllowed);
             }
             for t in [&src.type_key, &tgt.type_key] {
@@ -855,6 +861,12 @@ pub async fn update_many_with<C: ConnectionTrait>(
         }
     }
     Ok(())
+}
+
+/// D933: either end's type refuses the other's, in both directions.
+fn never_linked(s: &OrgSchema, a: &str, b: &str) -> bool {
+    s.object_type(a).is_some_and(|d| d.refuses_link_with(b))
+        || s.object_type(b).is_some_and(|d| d.refuses_link_with(a))
 }
 
 /// D742: a `member_only` link is written by a member, from a case holding

@@ -287,6 +287,7 @@ pub const EXPOSED: &[&str] = &[
     "markets_decisions_scores",
     "markets_decisions_forecast_scores",
     "markets_prediction_features",
+    "markets_account_trades",
     "markets_event_study",
     "markets_issuer_chart",
     "markets_rule_test",
@@ -729,6 +730,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
         "binary: the request or the answer is not JSON",
         &[
             "governance_journal_export",
+            "markets_account_trades_import",
             "datasets_files_get",
             "ontology_imports_dry_run",
             "asr_models_test",

@@ -592,6 +592,10 @@ pub const TIME_RANGE_IMPORT_INVALID: &str = "time-range-import-invalid";
 /// Deploy refused: a `range_upsert` targets a stream that is not one of the
 /// org (also the internal endpoint's answer for a foreign scope).
 pub const TIME_RANGE_SCOPE_UNKNOWN: &str = "time-range-scope-unknown";
+/// Trades import body over its size or row cap; `args.max_kib`, `args.max_rows`.
+pub const ACCOUNT_TRADES_TOO_LARGE: &str = "account-trades-too-large";
+/// Trades import is not the canonical CSV; `args.line` (0 = header), `args.column`.
+pub const ACCOUNT_TRADES_CSV_INVALID: &str = "account-trades-csv-invalid";
 
 // ── Ontology (ontology.md D176–D191) ─────────────────────────────────────
 
@@ -1872,6 +1876,8 @@ pub const ALL: &[&str] = &[
     LAB_REVIEW_FULL,
     TIME_RANGE_IMPORT_TOO_LARGE,
     TIME_RANGE_IMPORT_INVALID,
+    ACCOUNT_TRADES_TOO_LARGE,
+    ACCOUNT_TRADES_CSV_INVALID,
     TIME_RANGE_SCOPE_UNKNOWN,
     // Pages
     DOC_COMMENT_NOT_AUTHOR,

@@ -1375,3 +1375,120 @@ Tranchées par Shan le 2026-11-10 :
 ### J.5 Hors périmètre
 
 Toute mise, tout ordre, toute signature ; les autres chaînes que celle de la plateforme suivie ; l'attribution d'un wallet à une personne.
+
+## Appendice K — Comptes de trading publics : transactions en table, compte à la demande (D926–D933)
+
+Statut : proposé le 2026-11-10, demandé par Shan (via la session market-advisor) ; questions K.5 tranchées par Shan le même jour. Calqué sur D923/D924 : brut en table, objet seulement sur ajout d'un membre, import ou proposition d'un détecteur.
+
+### K.1 Le besoin
+
+Le modèle de G (XAUUSD, H4) prédit l'**amplitude** des mouvements de l'or, pas leur sens. Question de Shan : **quand** et **pourquoi** des traders profitables sur l'or entrent, et si leur profit vient :
+
+- du **sens** (ils achètent avant les hausses) ;
+- du **moment** (entrées autour des publications du calendrier, D882 et l'historique FOMC 2009–2020) ;
+- ou de la **gestion de position** (grilles sans stop, moyenne à la baisse), qui gagne souvent et perd rarement mais beaucoup.
+
+Exemple étudié : un compte public Myfxbook d'une grille de ventes sans stop sur l'or, 1 849 transactions.
+
+Cadre : PNeX **lit** des historiques que leurs auteurs ont rendus publics sur une plateforme de suivi. Il ne copie aucune position, ne passe aucun ordre et ne relie jamais un compte à une personne.
+
+### K.2 Décisions proposées
+
+#### D926 — Pack `trading_accounts`, à part
+
+Pack séparé, `requires: [markets]`, `history: true` (D914).
+
+- **Type `trading_account`** : identifiant externe `<plateforme>:<id du compte>` (D369). Il ne porte que ce que la plateforme déclare : nom affiché (pseudonyme de plateforme), courtier, levier, type déclaré (`real`, `demo`, `unknown`), stratégie déclarée, mise à jour en direct déclarée (oui/non) et statistiques publiées. Ces statistiques sont datées par l'historique du pack : une valeur lue le 10 n'existe pas le 9.
+- **Lien `traded`** vers l'objet `instrument`, avec les attributs `trade_count`, `first_open_at` et `last_close_at`. Il est versionné (D913).
+
+#### D927 — Les transactions sont des lignes de table, jamais des objets
+
+Table PostgreSQL `account_trades` (comme `prediction_trades`, J.6), décidée par Shan le 2026-11-10 à la place d'un dataset Parquet : la suppression d'un compte (D932) et le dédoublonnage n'y sont qu'une requête, alors qu'un dataset, qui ne fait qu'ajouter, doit être relu ou réécrit. Colonnes :
+
+- `platform`, `account_ref`, `trade_key` (le ticket, ou à défaut une empreinte de l'ouverture : instant, symbole, sens, lots, prix) ;
+- `symbol`, `side` (`buy`/`sell`), `lots` ;
+- `open_at`, `close_at`, `open_price`, `close_price`, `sl`, `tp` ;
+- `profit`, `pips`, `commission`, `swap`, `magic`, `comment` (quand ils sont présents) ;
+- `source` (nom du fichier importé), `known_at`, `backfilled`.
+
+Clé (`org_id`, `platform`, `account_ref`, `trade_key`) : une transaction réimportée n'ajoute pas de ligne et garde son premier `known_at`. Lecture : `GET /api/v1/markets/account-trades?account=&as_of=` (paginée, `point_in_time`, exposée au MCP, couverte par le canari D901) ; elle remplace la liste de fichiers Parquet (MK14) pour le projet Python.
+
+#### D928 — Point-in-time : connu au plus tôt à la clôture, sinon à l'import
+
+Une transaction n'est publique à son **ouverture** que si le compte publie en direct, et seulement si on en a la preuve. Sinon elle l'est au mieux à sa **clôture**. Sans aucune preuve (cas de l'export CSV), `known_at` = date de l'import, avec `backfilled = true`, comme les observations (`services/markets/mod.rs`). Le détecteur et les lectures à `as_of` ne voient que `known_at <= as_of`.
+
+#### D929 — Sources : l'export CSV d'abord, l'API plus tard
+
+- **a) Export CSV** d'un compte, envoyé par un membre depuis la page du compte ou la page des marchés (`POST /api/v1/markets/account-trades/import`, écriture d'ontologie). La **forme d'export Myfxbook est reconnue** à son en-tête exact (relevé sur un vrai fichier), puis convertie en lignes D927 ; un fichier d'une autre forme est refusé avec un code machine, jamais deviné. L'import crée ou met à jour l'objet `trading_account` et ses liens `trades` (Q-TA5).
+- **b) API officielle Myfxbook** (`login.json`, historique) : **en attente** (Q-TA1). Ses conditions d'utilisation n'ont pas pu être lues le 2026-11-10 (refus des clients automatisés). Décision de Shan le même jour : CSV seulement tant qu'il ne les a pas lues.
+- Jamais de lecture des pages HTML de la plateforme.
+
+#### D930 — Détecteur « entrée avant mouvement », une proposition, jamais une accusation
+
+Fonction pure dans `pnex_core`, sur le modèle d'`early_bet` (D924). Dans un dossier qui contient un instrument, elle propose les comptes dont des entrées tombent :
+
+- dans les N minutes avant un mouvement ≥ seuil de l'instrument (barres D809) ;
+- ou dans une fenêtre autour d'une publication du calendrier (`economic_release`, `central_bank_meeting`).
+
+La proposition contient seulement les chiffres : nombre d'entrées, part des entrées concernées et profit associé. Aucune intention n'est attribuée, et D742 tient : rien n'est stocké comme cause. Les seuils sont réglables par org. Seuils par défaut (Q-TA2) : entrées dans les 60 min avant un mouvement ≥ 1 % sur l'heure suivante, ou à ±30 min d'une publication ; au moins 10 entrées concernées et ≥ 30 % des entrées du compte. La rétention crée l'objet `trading_account` et le lien `traded`.
+
+#### D931 — Décomposition du profit : côté Python, pas dans PNeX
+
+Sens, moment (publications) et gestion de position (transactions sans stop, ajouts dans le sens de la perte, profondeur de grille) se calculent dans le projet market-advisor (Q-TA3). PNeX fournit les transactions à `as_of`, les barres et le calendrier : rien de plus.
+
+#### D932 — Rétention des données d'un tiers
+
+Ce sont des données publiées par un tiers sous pseudonyme. Elles sont gardées tant que l'org les garde ; supprimer l'objet `trading_account` purge ses lignes du dataset (Q-TA4). Elles restent dans l'org qui les a importées (R1), sans export hors org au-delà des lectures existantes.
+
+#### D933 — Aucun rapprochement avec une personne
+
+Le nom affiché est un pseudonyme de plateforme. Aucun lien d'un `trading_account` vers une `person`, une organisation ou un compte de réseau social n'est permis. Ce n'est pas seulement une règle écrite : une garde l'impose (lien refusé, test).
+
+### K.3 Lots
+
+| Lot | Contenu |
+|---|---|
+| MK42 | D926, D933 : pack, garde « aucune personne » |
+| MK43 | D927, D928, D929 a) : forme `account_trades`, reconnaissance de l'export Myfxbook, dédoublonnage, `known_at`/`backfilled` |
+| MK44 | D930 : détecteur, proposition, rétention |
+| MK45 | D929 b) : client API (selon Q-TA1) |
+
+### K.4 Hors périmètre
+
+Copier une position, passer un ordre, se connecter au compte d'un tiers ; lire les pages HTML de la plateforme ; attribuer un compte à une personne (nom, visage, réseau, courtier client) ; dire pourquoi un trader est entré (intention) : PNeX donne des chiffres.
+
+### K.5 Questions tranchées (Shan, 2026-11-10)
+
+- **Q-TA1** — API Myfxbook : conditions d'utilisation illisibles par un client automatisé ; **CSV seulement** tant que Shan ne les a pas lues (MK45 en attente).
+- **Q-TA2** — Seuils du détecteur : 60 min avant un mouvement ≥ 1 % H1, ±30 min autour d'une publication, ≥ 10 entrées et ≥ 30 % des entrées.
+- **Q-TA3** — Décomposition du profit : côté Python seulement.
+- **Q-TA4** — Rétention : gardées, purgées à la suppression du compte.
+- **Q-TA5** — Création d'un compte : par l'import d'un membre, le dossier ou le détecteur ; pas de réglage `accounts` avant l'API.
+- Forme exacte de l'export Myfxbook : relevée sur un vrai fichier fourni par Shan, jamais devinée.
+- Stockage (D927) : table PostgreSQL et route de lecture, pas de dataset Parquet.
+
+### K.6 Ce qui est codé et écarts (2026-11-10)
+
+- **MK42** : pack `trading_accounts` 1.0.0 (`history: true`, `requires: [markets]`). Il porte le type `trading_account` (`account_ref` unique, plateforme, pseudonyme, courtier, levier, **devise** ISO ou `USC` pour un compte en cents, compte déclaré, stratégie, mise à jour en direct, gain et drawdown publiés, `known_at`), le lien **`trades`** vers `instrument` (la clé `traded` est déjà prise par `prediction_markets`) et les réglages du détecteur ainsi que de la source des cours (`histdata` par défaut).
+- **D933 en garde générique** : un type déclare `never_linked_to` (ici `[person]`). Tout lien entre ces deux types est refusé (`ontology-link-not-allowed`), quel que soit le type de lien (même déclaré par un membre), sur les trois chemins d'écriture : lien unitaire, liens en masse, arêtes de ressources. Le moteur ne nomme aucun type métier.
+- **MK43** : table `account_trades` (migration 000146). Import : `POST /api/v1/markets/account-trades/import?account=&name=&currency=&source=`, corps CSV canonique, `ontology:write`, exclu du MCP (corps non JSON), 16 Mio et 50 000 lignes au plus. Le fichier est refusé entier à la première cellule fautive (`account-trades-csv-invalid`, ligne et colonne). Format validé par la session market-advisor le 2026-11-10, avec quatre ajouts :
+  - la devise du compte ;
+  - `gain_pct` ;
+  - une clé sans ticket qui inclut la clôture ;
+  - le rang des lignes identiques d'un même fichier (une grille ferme souvent un panier de positions identiques).
+- **Lecture** : `GET /api/v1/markets/account-trades` (`ontology:read`, `point_in_time`, exposée au MCP, couverte par le canari). Un compte masqué par un marquage est exclu (D801). Effacer le compte purge ses lignes (D932).
+- **MK44** : détecteur `entry_timing@1` (fonction pure `pnex_core::markets::accounts`). Les cours sont lus en barres de 5 min depuis la source réglée. La rétention crée ou retrouve le compte, rafraîchit ses liens `trades` et pose une note chiffrée sans intention.
+- **Écarts** :
+  - La forme brute de l'export Myfxbook n'est pas reconnue : c'est le client (script Python) qui produit le CSV canonique.
+  - Le client API Myfxbook attend Q-TA1.
+  - Aucun écran d'import : l'import vient d'un client avec jeton.
+  - Le déplacement des prix est mesuré sur des barres de 5 min, pas à la minute.
+  - Deux lignes identiques en tout (ouverture, clôture, rang) d'**exports différents** restent une seule transaction.
+
+### K.7 Revue de sécurité (§6 de security.md, 2026-11-10)
+
+- **Routes** : `OrgContext`, permissions inscrites (lecture `ontology:read`, import `ontology:write`), org tirée du principal, toutes les requêtes filtrées par `org_id` ; un compte marqué reste caché aux non-habilités.
+- **Secret de session** : aucun dans ce lot (pas d'appel à l'API Myfxbook, Q-TA1). Le jour où il viendra : secret au coffre, jamais dans une réponse (R4, R16), hôte fixé dans le code et passé à la garde egress (R8, R9).
+- **Données d'un tiers** : des historiques publiés sous pseudonyme par leurs auteurs. Aucun rapprochement avec une personne (garde D933, testée). Ils restent dans l'org qui les importe, et l'effacement du compte les supprime (D932).
+- **Entrées** : paramètres SQL liés ; motif `LIKE` du ticker purgé de `%` et `_` ; CSV borné (taille, lignes, longueur des cellules texte) ; limite axum posée sur la route au double du plafond, pour qu'un dépassement donne le 413 codé.
+- Aucune requête sortante, aucune dépendance nouvelle, aucun rendu HTML de texte importé.

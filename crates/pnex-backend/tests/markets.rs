@@ -3929,7 +3929,7 @@ async fn point_in_time_reads_never_show_a_canary() {
             .as_i64()
             .unwrap();
         let api = Api { server: &server, token: token.clone(), org };
-        for pack in ["markets", "world_events", "prediction_markets"] {
+        for pack in ["markets", "world_events", "prediction_markets", "trading_accounts"] {
             let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
             assert_eq!(st, 200, "{r}");
         }
@@ -4036,6 +4036,37 @@ async fn point_in_time_reads_never_show_a_canary() {
             }
         };
         observe(old.clone(), 1.0).await;
+        // A public account's trade, imported before T0 (D928).
+        let import_trade = |comment: &'static str, known: chrono::DateTime<chrono::Utc>| {
+            let db = ctx.db.clone();
+            async move {
+                let trade = pnex_core::markets::accounts::Trade {
+                    trade_key: format!("ticket:{comment}"),
+                    // No instrument object: no link to change the other reads.
+                    symbol: "EURUSD".into(),
+                    buy: false,
+                    lots: 0.1,
+                    open_at: known.timestamp() - 3_600,
+                    close_at: None,
+                    open_price: 2_000.0,
+                    close_price: None,
+                    sl: None,
+                    tp: None,
+                    profit: None,
+                    pips: None,
+                    commission: None,
+                    swap: None,
+                    gain_pct: None,
+                    magic: None,
+                    comment: Some(comment.into()),
+                };
+                let actor = pnex_backend::services::ontology::Actor::manual(1, pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole::Owner);
+                pnex_backend::services::markets::accounts::import(&db, org, &actor, "myfxbook:777", Some("Pseudo"), None, &[trade], "test.csv", known)
+                    .await
+                    .unwrap();
+            }
+        };
+        import_trade("early", chrono::Utc::now() - chrono::Duration::days(3)).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
         let t0 = chrono::Utc::now();
@@ -4043,6 +4074,7 @@ async fn point_in_time_reads_never_show_a_canary() {
         let canary_at = (t0 + chrono::Duration::minutes(1)).to_rfc3339();
 
         // After T0: one canary per source.
+        import_trade("CANARY", t0 + chrono::Duration::minutes(1)).await;
         datasets::append_batch(&ctx.db, &store, org, hist_id, &minute_rows("CANARY", "histdata", day_start, 30))
             .await
             .unwrap();
@@ -4136,7 +4168,13 @@ async fn point_in_time_reads_never_show_a_canary() {
                 format!("/api/v1/markets/prediction-features?instrument=XAUUSD&as_of={}", enc(&at)),
                 None,
             ),
+            ("markets_account_trades", format!("/api/v1/markets/account-trades?as_of={}", enc(&at)), None),
         ];
+        let (_, t_then) = api.call("GET", &format!("/api/v1/markets/account-trades?as_of={}", enc(&at)), None).await;
+        assert_eq!(t_then["count"], 1, "the trade imported before T0 is there: {t_then}");
+        let later = (t0 + chrono::Duration::minutes(2)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let (_, t_now) = api.call("GET", &format!("/api/v1/markets/account-trades?account=myfxbook:777&as_of={}", enc(&later)), None).await;
+        assert_eq!(t_now["count"], 2, "both trades once the canary is known: {t_now}");
         let covered: std::collections::BTreeSet<&str> = reads.iter().map(|(id, ..)| *id).collect();
         let inventory: std::collections::BTreeSet<&str> = SEMANTICS
             .iter()
@@ -4623,6 +4661,178 @@ async fn prediction_markets_collect_resolve_and_feed_the_model() {
         };
         prediction::sweep(&ctx, &blocked, chrono::Utc::now()).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), before + 1, "the market was read through the proxy");
+    })
+    .await;
+}
+
+/// Public trading accounts (markets-research.md appendix K): trades stored
+/// once (D927), read as known at a date (D928), an entry-timing proposal
+/// around releases (D930) retained into the account object, never a link to
+/// a person whatever the link type (D933), purged with the account (D932).
+#[tokio::test]
+#[serial]
+async fn trading_accounts_import_detect_and_never_name_a_person() {
+    with_app(|server, ctx, token| async move {
+        use pnex_backend::services::markets::accounts;
+        use pnex_backend::services::ontology::Actor;
+        use pnex_core::markets::accounts::Trade;
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token: token.clone(), org };
+        for pack in ["markets", "trading_accounts", "investigation"] {
+            let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
+            assert_eq!(st, 200, "{r}");
+        }
+        let iso = |t: i64| chrono::DateTime::from_timestamp(t, 0).unwrap().to_rfc3339();
+        let (st, gold) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({ "type_key": "instrument", "title": "Gold", "properties": { "ticker": "XAUUSD" } })))
+            .await;
+        assert_eq!(st, 201, "{gold}");
+        let gold = gold["id"].as_str().unwrap().to_string();
+
+        // A release, and twelve sells opened within 20 minutes of it.
+        let now = chrono::Utc::now().timestamp();
+        let release = now - 2 * 86_400;
+        let (st, r) = api
+            .call("POST", "/api/v1/time-ranges", Some(json!({
+                "scope_kind": "org", "label": "Consumer Price Index", "category": "economic_release",
+                "planned_start": iso(release), "planned_end": iso(release + 60)
+            })))
+            .await;
+        assert_eq!(st, 201, "{r}");
+        let trade = |i: i64| Trade {
+            trade_key: format!("ticket:{i}"),
+            symbol: "XAUUSD#".into(),
+            buy: false,
+            lots: 0.01,
+            open_at: release - 600 + i * 60,
+            close_at: Some(release + 3_600),
+            open_price: 2_000.0,
+            close_price: Some(1_990.0),
+            sl: None,
+            tp: None,
+            profit: Some(10.0),
+            pips: Some(100.0),
+            commission: None,
+            swap: None,
+            gain_pct: None,
+            magic: None,
+            comment: None,
+        };
+        let trades: Vec<Trade> = (0..12).map(trade).collect();
+        let actor = Actor::manual(1, pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole::Owner);
+        let t_import = chrono::Utc::now();
+        let r = accounts::import(&ctx.db, org, &actor, "myfxbook:12305445", Some("Grid gold"), Some("USC"), &trades, "export.csv", t_import)
+            .await
+            .unwrap();
+        assert_eq!((r.inserted, r.kept), (12, 0));
+        // The same export again: nothing doubled, the first knowledge kept.
+        let r2 = accounts::import(&ctx.db, org, &actor, "myfxbook:12305445", None, None, &trades, "export.csv", t_import + chrono::Duration::days(1))
+            .await
+            .unwrap();
+        assert_eq!((r2.inserted, r2.kept), (0, 12));
+        assert_eq!(r2.account_id, r.account_id);
+        let account = r.account_id.clone();
+        let (_, acc_obj) = api.call("GET", &format!("/api/v1/ontology/objects/{account}"), None).await;
+        assert_eq!(acc_obj["properties"]["currency"], "USC", "profits of a cent account: {acc_obj}");
+
+        // Point in time: absent before the import, there after, backfilled.
+        let enc = |s: String| s.replace('+', "%2B");
+        let (st, before) = api
+            .call("GET", &format!("/api/v1/markets/account-trades?as_of={}", enc(iso(t_import.timestamp() - 60))), None)
+            .await;
+        assert_eq!(st, 200, "{before}");
+        assert_eq!(before["count"], 0, "{before}");
+        let (_, after) = api.call("GET", "/api/v1/markets/account-trades?account=myfxbook:12305445&limit=5", None).await;
+        assert_eq!(after["count"], 12, "{after}");
+        assert_eq!(after["results"].as_array().unwrap().len(), 5);
+        assert_eq!(after["results"][0]["backfilled"], true);
+        let (st, bad) = api.call("GET", "/api/v1/markets/account-trades?account=elsewhere:1", None).await;
+        assert_eq!(st, 400, "{bad}");
+
+        // The route a client sends its CSV to: refused at the faulty cell,
+        // stored once accepted.
+        let post_csv = |csv: &'static str| {
+            let req = server
+                .post("/api/v1/markets/account-trades/import?account=myfxbook:42&name=Second&source=s.csv")
+                .add_header("Authorization", format!("Bearer {token}"))
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("Content-Type", "text/csv")
+                .bytes(csv.as_bytes().to_vec().into());
+            async move {
+                let res = req.await;
+                (res.status_code().as_u16(), res.json::<Value>())
+            }
+        };
+        let (st, e) = post_csv("symbol,side,lots,open_at,open_price\nXAUUSD,long,1,2024-01-01T00:00:00Z,2000\n").await;
+        assert_eq!(st, 400, "{e}");
+        assert_eq!(e["error"], "account-trades-csv-invalid", "{e}");
+        assert_eq!((e["errors"]["args"]["line"].as_u64(), e["errors"]["args"]["column"].as_str()), (Some(1), Some("side")), "{e}");
+        let (st, ok) = post_csv("ticket,symbol,side,lots,open_at,open_price\n9,XAUUSD,buy,1,2024-01-01T00:00:00Z,2000\n").await;
+        assert_eq!(st, 200, "{ok}");
+        assert_eq!(ok["inserted"], 1, "{ok}");
+
+        // The import linked the account to the instrument it traded.
+        let (_, l) = api.call("GET", &format!("/api/v1/ontology/objects/{account}/links"), None).await;
+        let link = l["results"].as_array().unwrap().iter().find(|x| x["link_type"] == "trades").cloned().expect("trades link");
+        assert_eq!(link["attributes"]["trade_count"], 12, "{link}");
+
+        // Entry timing in a case holding the instrument: a proposal, figures only.
+        let (st, case) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({ "type_key": "case", "title": "Gold entries", "properties": { "status": "open" } })))
+            .await;
+        assert_eq!(st, 201, "{case}");
+        let cid = case["id"].as_str().unwrap();
+        let (st, r) = api.call("POST", &format!("/api/v1/cases/{cid}/attach"), Some(json!({ "object_id": gold }))).await;
+        assert_eq!(st, 200, "{r}");
+        let window = json!({ "from": iso(release - 86_400), "to": iso(now) });
+        let (st, d) = api.call("POST", &format!("/api/v1/cases/{cid}/detect"), Some(window)).await;
+        assert_eq!(st, 200, "{d}");
+        let (_, list) = api.call("GET", &format!("/api/v1/cases/{cid}/proposals"), None).await;
+        let p = list["results"].as_array().unwrap().iter().find(|p| p["kind"] == "entry_timing").cloned().expect("entry timing proposed");
+        assert_eq!(p["payload"]["figures"]["around_release"], 12, "{p}");
+        let (st, w) = api
+            .call("POST", &format!("/api/v1/cases/{cid}/proposals/{}/retain", p["id"].as_str().unwrap()), Some(json!({ "title": "Entries around CPI" })))
+            .await;
+        assert_eq!(st, 200, "{w}");
+        let text = w.to_string();
+        assert!(text.contains("no intention is attributed"), "{text}");
+
+        // Never tied to a person: not by a link type a member writes, not
+        // by a resource edge.
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/link-types", Some(json!({
+                "key": "operated_by", "name": "operated by", "from_types": ["trading_account"], "to_types": ["person"]
+            })))
+            .await;
+        assert_eq!(st, 201, "{r}");
+        let (st, person) = api
+            .call("POST", "/api/v1/ontology/objects", Some(json!({ "type_key": "person", "title": "Someone" })))
+            .await;
+        assert_eq!(st, 201, "{person}");
+        let person = person["id"].as_str().unwrap();
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/links", Some(json!({ "link_type": "operated_by", "source_id": account, "target_id": person })))
+            .await;
+        assert_eq!(st, 400, "a trading account is never linked to a person: {r}");
+        let (st, r) = api
+            .call("POST", "/api/v1/resources/edges", Some(json!({
+                "relation": "operated_by", "source_kind": "trading_account", "source_id": account,
+                "target_kind": "person", "target_id": person
+            })))
+            .await;
+        assert!(st == 400 || st == 422, "nor by a resource edge ({st}): {r}");
+
+        // Erasing the account purges its trades (D932).
+        let (st, r) = api.call("POST", &format!("/api/v1/ontology/objects/{account}/erase"), Some(json!({}))).await;
+        assert_eq!(st, 200, "{r}");
+        let (_, gone) = api.call("GET", "/api/v1/markets/account-trades?account=myfxbook:12305445", None).await;
+        assert_eq!(gone["count"], 0, "{gone}");
     })
     .await;
 }

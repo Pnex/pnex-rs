@@ -1047,6 +1047,11 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         Access::Org("market-decisions:read"),
     ),
     ("markets_prediction_features", Access::Org("ontology:read")),
+    ("markets_account_trades", Access::Org("ontology:read")),
+    (
+        "markets_account_trades_import",
+        Access::Org("ontology:write"),
+    ),
     ("markets_event_study", Access::Org("ontology:read")),
     ("markets_issuer_chart", Access::Org("ontology:read")),
     ("markets_rule_test", Access::Org("ontology:read")),

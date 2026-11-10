@@ -44,6 +44,7 @@ const SHIPPED: &[&str] = &[
     include_str!("../../../packs/investment_thesis.yaml"),
     include_str!("../../../packs/world_events.yaml"),
     include_str!("../../../packs/prediction_markets.yaml"),
+    include_str!("../../../packs/trading_accounts.yaml"),
     include_str!("../../../packs/consumer_prices.yaml"),
     include_str!("../../../packs/trade_flows.yaml"),
     include_str!("../../../packs/real_estate.yaml"),
