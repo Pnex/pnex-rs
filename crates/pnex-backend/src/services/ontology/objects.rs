@@ -121,8 +121,8 @@ pub async fn get_as_of(
         ))
         .await?;
     if let Some(v) = version {
-        o.title = v.try_get("", "title").map_err(sea_orm::DbErr::from)?;
-        o.properties = v.try_get("", "properties").map_err(sea_orm::DbErr::from)?;
+        o.title = v.try_get("", "title")?;
+        o.properties = v.try_get("", "properties")?;
     }
     let known_key = s
         .object_type(&o.type_key)

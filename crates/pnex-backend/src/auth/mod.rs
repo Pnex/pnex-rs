@@ -443,7 +443,7 @@ mod point_in_time_tests {
     #[test]
     fn timeless_passes_everything_else_is_refused() {
         assert!(point_in_time_gate(Some("ontology_types_list"), None).is_ok());
-        assert!(point_in_time_gate(Some("ontology_objects_links"), Some("as_of=x")).is_err());
+        assert!(point_in_time_gate(Some("ontology_objects_impact"), Some("as_of=x")).is_err());
         assert!(point_in_time_gate(Some("markets_decisions_create"), None).is_err());
         assert!(point_in_time_gate(None, None).is_err());
     }
