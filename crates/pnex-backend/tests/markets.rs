@@ -2895,7 +2895,7 @@ async fn histdata_years_are_loaded_from_the_page_form() {
             .call("POST", "/api/v1/ontology/packs/markets/install", None)
             .await;
         assert_eq!(st, 200, "{r}");
-        api.settings(json!({ "histdata_pairs": "eurusd", "histdata_from": "2023" }))
+        api.settings(json!({ "histdata_pairs": "eurusd, gbpusd", "histdata_from": "2023" }))
             .await;
         let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
         w.start_file("DAT_MT_EURUSD_M1_2024.csv", zip::write::SimpleFileOptions::default())
@@ -2966,7 +2966,8 @@ async fn histdata_years_are_loaded_from_the_page_form() {
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         pnex_backend::services::markets::allow_test_host(&base);
 
-        // One file per pass: 2023, 2024, 2025, then the months of 2026.
+        // One file per pass: 2023, 2024, 2025, the months of 2026, then
+        // GBPUSD's first year before EURUSD's empty 2025 is asked again.
         let today = chrono::NaiveDate::from_ymd_opt(2026, 2, 10).unwrap();
         for _ in 0..5 {
             pnex_backend::services::markets::history::sweep_from(&ctx, &pnex_backend::services::markets::history::Hosts { histdata: base.clone(), ..Default::default() }, today)
@@ -2978,7 +2979,8 @@ async fn histdata_years_are_loaded_from_the_page_form() {
             .query_all_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
                 "SELECT period || ':' || period_start::text || ':' || state || ':' || rows::text AS s \
-                 FROM market_history_partitions WHERE source = 'histdata' ORDER BY period_start"
+                 FROM market_history_partitions WHERE source = 'histdata' AND instrument = 'EURUSD' \
+                 ORDER BY period_start"
                     .to_string(),
             ))
             .await
@@ -2995,6 +2997,24 @@ async fn histdata_years_are_loaded_from_the_page_form() {
                 "month:2026-01-01:empty:0",
             ],
             "an empty file and an empty token are empty years, never retried failures"
+        );
+        let next = ctx
+            .db
+            .query_all_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT period_start::text AS s FROM market_history_partitions \
+                 WHERE source = 'histdata' AND instrument = 'GBPUSD'"
+                    .to_string(),
+            ))
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.try_get::<String>("", "s").unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            next,
+            vec!["2023-01-01"],
+            "another pair's first file comes before an empty year asked again"
         );
         assert_eq!(
             posts.lock().unwrap().clone(),

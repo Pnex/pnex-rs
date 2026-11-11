@@ -365,41 +365,40 @@ async fn pass(
     }
     let from = job.from(&text_setting(db, org, from).await?, today);
     let src = job.src();
-    let mut budget = job.budget();
+    // Never asked first, over every instrument: a partition asked again
+    // (empty or failed) of one pair must not hold back another pair's
+    // first files when the budget is one file.
+    let (mut fresh, mut again) = (Vec::new(), Vec::new());
     for instrument in items {
         let (known, seen) = settled(db, org, &src, &instrument, today).await?;
-        // Never asked first: a partition asked again (empty or failed) must
-        // not hold back the rest when the budget is one file.
-        let (fresh, again): (Vec<Period>, Vec<Period>) = job
-            .plan(from, today, &known)
-            .into_iter()
-            .partition(|p| !seen.contains(p));
-        for p in fresh.into_iter().chain(again) {
-            if budget == 0 {
-                return Ok(());
-            }
-            budget -= 1;
-            // An unreachable source stops the pass, nothing is counted.
-            let fetched = match job {
-                Job::HistDataTicks => {
-                    fetch_histdata_ticks(db, store, org, base, &instrument, p).await
-                }
-                _ => job.fetch(base, &instrument, p).await,
+        for p in job.plan(from, today, &known) {
+            let list = if seen.contains(&p) {
+                &mut again
+            } else {
+                &mut fresh
             };
-            let Some(outcome) = fetched else {
-                return Ok(());
-            };
-            let outcome = match outcome {
-                Fetched::Rows(batch, sha256) => write(db, store, org, &src, batch, sha256).await,
-                other => other,
-            };
-            let stop = matches!(&outcome, Fetched::Failed("quota"));
-            record(db, org, &src, &instrument, p, &outcome).await?;
-            if stop {
-                return Err(DatasetError::QuotaExceeded);
-            }
-            tokio::time::sleep(job.pause()).await;
+            list.push((instrument.clone(), p));
         }
+    }
+    for (instrument, p) in fresh.into_iter().chain(again).take(job.budget()) {
+        // An unreachable source stops the pass, nothing is counted.
+        let fetched = match job {
+            Job::HistDataTicks => fetch_histdata_ticks(db, store, org, base, &instrument, p).await,
+            _ => job.fetch(base, &instrument, p).await,
+        };
+        let Some(outcome) = fetched else {
+            return Ok(());
+        };
+        let outcome = match outcome {
+            Fetched::Rows(batch, sha256) => write(db, store, org, &src, batch, sha256).await,
+            other => other,
+        };
+        let stop = matches!(&outcome, Fetched::Failed("quota"));
+        record(db, org, &src, &instrument, p, &outcome).await?;
+        if stop {
+            return Err(DatasetError::QuotaExceeded);
+        }
+        tokio::time::sleep(job.pause()).await;
     }
     Ok(())
 }
