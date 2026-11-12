@@ -675,8 +675,18 @@ fn walk<'a>(
 fn read_json(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, Failure> {
     let unreadable = || fail("unreadable", json!({ "what": "json" }));
     let bytes = file.bytes(READ_MAX_BYTES as u64)?;
-    let doc: Value = serde_json::from_slice(&bytes).map_err(|_| unreadable())?;
-    let pointer = r.records.as_deref().unwrap_or("");
+    // XML: `records` is the element path (`FICHES/FICHE`), each element a
+    // JSON-like record (attributes `@name`, repeated children as arrays).
+    let (doc, pointer) = if r.format == Format::Xml {
+        let text = pnex_core::import_read::text_of(&bytes);
+        let path = r.records.as_deref().unwrap_or("");
+        let records = pnex_core::import_read::xml_rows(&text, path)
+            .map_err(|_| fail("unreadable", json!({ "what": "xml" })))?;
+        (Value::Array(records), "")
+    } else {
+        let doc = serde_json::from_slice(&bytes).map_err(|_| unreadable())?;
+        (doc, r.records.as_deref().unwrap_or(""))
+    };
     let segments: Vec<&str> = pointer.split('/').skip(1).collect();
     let mut found = Vec::new();
     walk(&doc, &segments, &mut Vec::new(), &mut found);
@@ -811,7 +821,7 @@ pub fn read(r: &Read, input: &[Row]) -> Result<Vec<Arc<Batches>>, Failure> {
         }
         let batches = match r.format {
             Format::Csv => read_csv(r, row, file)?,
-            Format::Json => read_json(r, row, file)?,
+            Format::Json | Format::Xml => read_json(r, row, file)?,
             Format::Binary => read_binary(r, row, file)?,
             _ => {
                 let format = format!("{:?}", r.format).to_lowercase();

@@ -204,7 +204,7 @@ fn sheet_rows(bytes: &[u8]) -> Result<Vec<Value>, ReadError> {
 /// (`@name`) and children (repeated ones as arrays), or its text when it
 /// has neither. `path` names the record elements from the root
 /// (`root/item`; the root alone when empty).
-fn xml_rows(text: &str, path: &str) -> Result<Vec<Value>, ReadError> {
+pub fn xml_rows(text: &str, path: &str) -> Result<Vec<Value>, ReadError> {
     use quick_xml::events::Event;
     let mut reader = quick_xml::Reader::from_str(text);
     // (name, attributes+children, text)

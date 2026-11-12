@@ -1,0 +1,42 @@
+# The RS sheets of the certifications the org holds, from the register's
+# XML export: each sheet kept whole as JSON for the import (objectives,
+# jury, yearly counts, attested skills, partners).
+key: fc_rs_xml
+name: France Compétences RS sheets
+hosts: [www.data.gouv.fr, static.data.gouv.fr]
+steps:
+  - fetch: { as: catalogue, url: "https://www.data.gouv.fr/api/1/datasets/5eebbc067a14b6fecc9c9976/" }
+  - extract:
+      as: export
+      from: catalogue
+      json: /resources
+      where: { title: "export-fiches-rs-v4-1-*.zip" }
+      latest_by: last_modified
+  - fetch: { as: zip, for_each: export, url: "{{url}}", skip_if_unchanged: true }
+  - unpack: { as: files, from: zip, entries: ["*.xml"] }
+  - read:
+      as: sheets
+      from: files
+      format: xml
+      records: FICHES/FICHE
+      columns:
+        - { name: NUMERO_FICHE, optional: true }
+        - { name: record, at: "/", type: json }
+  - enumerate: { as: certs, cross: [{ as: code, objects: { type: certification, property: code } }] }
+  - sql:
+      as: kept
+      sql: |
+        SELECT s.record FROM sheets AS s WHERE upper(trim(s.NUMERO_FICHE)) IN (SELECT code FROM certs)
+  - write: { from: kept, table: { name: fc_rs_xml, replace: true } }
+tests:
+  - name: the sheets of the org's certifications, whole
+    objects: { certification.code: [RS0101] }
+    given:
+      "https://www.data.gouv.fr/api/1/datasets/5eebbc067a14b6fecc9c9976/": fc_rs_dataset.json
+      "https://static.data.gouv.fr/resources/fc/rs.zip": fc_rs_export.zip
+    expect:
+      sheets:
+        rows: 2
+      kept:
+        rows: 1
+        columns: [record]

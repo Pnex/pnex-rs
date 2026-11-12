@@ -552,6 +552,11 @@ pub struct Mapping {
     /// the record elements (`root/item`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub rows: String,
+    /// Table source: the column holding each record as JSON (a pipeline's
+    /// `json` column); its object, or each object of its array, is read
+    /// as a record beside the row's other columns.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub json_column: String,
     /// CSV separator; `,` or `;` guessed from the header when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delimiter: Option<char>,
@@ -704,6 +709,9 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
     }
     if m.rows.len() > PATH_MAX {
         return Err(ferr("rows", FIELD_INVALID));
+    }
+    if !m.json_column.is_empty() && !valid_key(&m.json_column) {
+        return Err(ferr("json_column", FIELD_INVALID));
     }
     if m.steps.len() > STEPS_MAX {
         return Err(ferr("steps", format!("{FIELD_MAX_LENGTH}:{STEPS_MAX}")));

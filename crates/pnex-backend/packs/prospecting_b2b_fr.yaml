@@ -80,7 +80,7 @@ imports:
     mapping:
       key: gleif_direct_children
       pipeline: prospecting_b2b_fr/gleif_direct_children
-      rows: record
+      json_column: record
       name: Direct subsidiaries
       names: {fr: "Filiales directes (GLEIF)"}
       objects:
@@ -126,7 +126,7 @@ imports:
     mapping:
       key: gleif_ultimate_children
       pipeline: prospecting_b2b_fr/gleif_ultimate_children
-      rows: record
+      json_column: record
       name: Group subsidiaries
       names: {fr: "Filiales du groupe (GLEIF)"}
       objects:
@@ -172,7 +172,7 @@ imports:
     mapping:
       key: wikidata_group_world
       pipeline: prospecting_b2b_fr/wikidata_group_world
-      rows: record
+      json_column: record
       name: Foreign parents and subsidiaries
       names: {fr: "Mères et filiales étrangères (Wikidata)"}
       objects:
@@ -249,7 +249,7 @@ imports:
     mapping:
       key: targeting_list
       pipeline: prospecting_b2b_fr/targeting_list
-      rows: record
+      json_column: record
       name: Target list
       names: {fr: "Liste de ciblage"}
       objects:
@@ -294,7 +294,7 @@ imports:
     mapping:
       key: company_establishments
       pipeline: prospecting_b2b_fr/company_establishments
-      rows: record
+      json_column: record
       name: Establishments
       names: {fr: "Établissements"}
       description: The open sites of the accounts followed (customer, prospect, target), up to 100 per company, searched by the account's name in the company register.
@@ -331,7 +331,7 @@ imports:
     mapping:
       key: bodacc
       pipeline: prospecting_b2b_fr/bodacc
-      rows: record
+      json_column: record
       name: Legal announcements
       names: {fr: "Annonces légales (BODACC)"}
       objects:

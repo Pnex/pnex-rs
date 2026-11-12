@@ -188,18 +188,18 @@ pub(super) async fn declare_identity<C: ConnectionTrait>(
     Ok(())
 }
 
-/// A table row as the mapping reads it. `rows` names a column holding JSON
+/// A table row as the mapping reads it. `column` holds JSON
 /// (a pipeline's `json` column): its object, or each object of its array,
 /// is a record, beside the row's other columns. A value that is no JSON
 /// object gives no record.
-fn expanded(row: Value, rows: &str) -> Vec<Value> {
+fn expanded(row: Value, column: &str) -> Vec<Value> {
     let Value::Object(mut cols) = row else {
         return vec![row];
     };
-    if rows.is_empty() {
+    if column.is_empty() {
         return vec![Value::Object(cols)];
     }
-    let parsed = cols.remove(rows).and_then(|v| {
+    let parsed = cols.remove(column).and_then(|v| {
         v.as_str()
             .and_then(|t| serde_json::from_str::<Value>(t).ok())
     });
@@ -253,7 +253,7 @@ async fn plan(
         while let Some(batch) = batches.try_next().await.map_err(unreadable)? {
             for row in parquet::records(&batch).map_err(unreadable)? {
                 row_no += 1;
-                for row in expanded(row, &m.rows) {
+                for row in expanded(row, &m.json_column) {
                     planned.push(m, s, row_no, &row, PLANNED_MAX)?;
                     if m.observations.is_some() {
                         observed.extend(pnex_core::markets::observation(&row));
@@ -422,10 +422,10 @@ async fn attempt(
             .map(|d| d.columns.into_iter().map(|c| c.name).collect())
             .unwrap_or_default();
         // Records held as JSON: the column holding them is what the table must have.
-        let wanted = if m.rows.is_empty() {
+        let wanted = if m.json_column.is_empty() {
             m.columns()
         } else {
-            vec![m.rows.clone()]
+            vec![m.json_column.clone()]
         };
         let missing: Vec<String> = wanted.into_iter().filter(|c| !held.contains(c)).collect();
         if !missing.is_empty() {

@@ -472,7 +472,7 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
   Wikidata ×2, établissements, BODACC, liste de ciblage, DGEFP, CPF ×2 (packs `companies_fr`,
   `prospecting_b2b_fr`, `quali_watch`). Ajouts génériques : colonne **`json`** d'une lecture (la
   valeur gardée en texte JSON, `at: "/"` = l'enregistrement entier) ; un import la désigne par
-  `rows: <colonne>` et la synchro la relit en enregistrements (objet, ou chaque objet d'un
+  `json_column: <colonne>` et la synchro la relit en enregistrements (objet, ou chaque objet d'un
   tableau, à côté des autres colonnes) : `each:`, `a.b` et `^parent` des mappings inchangés.
   **`pages`** de `fetch` (numéro de page en paramètre jusqu'à une page sans enregistrement,
   `max` au plus). Axe d'objets : **`linked`** (lien ouvert d'un de ces types, dans un sens ou
@@ -488,3 +488,15 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
 | Une réponse en erreur (429, 5xx) fait échouer le run ; l'ancien import la comptait comme « aucun enregistrement » sauf si toutes échouaient | un `on_error: empty` de `fetch` si une source le justifie |
 | Le contrôle de forme d'un import à colonne `json` ne vérifie que la colonne ; un champ imbriqué disparu donne des objets incomplets, pas `import-schema-changed` | contrôle sur les premiers enregistrements relus |
 | Restent hors moteur : RS (XML), GDELT presse et événements, UCDP ×3, ACLED, ADS-B, MT5 | suite de PE4, PE8 |
+- **2026-11-12 (nuit, suite)** : **fiches RS (XML)** en pipeline (`quali_watch/fc_rs_xml`) :
+  `read` lit le XML (`records: FICHES/FICHE`, même lecteur durci que les imports : pas de DTD,
+  profondeur bornée), chaque fiche gardée entière en colonne `json`, seules celles des
+  certifications de l'org écrites. Le champ du mapping est **`json_column`** (pas `rows`, qui
+  reste le chemin d'un fichier envoyé à la main : la fiche RS déposée en XML se lit toujours).
+  Plus aucun pack n'utilise les étapes `ingest` (`source_resolve`, `file_download`,
+  `archive_extract`, `table_inspect`, `rows_filter`) : seuls les imports écrits par une org
+  peuvent encore les porter (repli dans le studio des pipelines, PE5, suppression PE9).
+
+| Écart | Où il se lève |
+|---|---|
+| Le XML est lu en mémoire (64 Mo au plus, comme un JSON) : un export RS plus gros échouerait (`unreadable`) | lecteur XML en flux, enregistrement par enregistrement |

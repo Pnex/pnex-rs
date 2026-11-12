@@ -54,7 +54,7 @@ imports:
     mapping:
       key: company_search
       pipeline: companies_fr/company_search
-      rows: record
+      json_column: record
       name: Company register
       names: {fr: "Recherche d'entreprises"}
       objects:
@@ -153,7 +153,7 @@ imports:
     mapping:
       key: gleif_lei
       pipeline: companies_fr/gleif_lei
-      rows: record
+      json_column: record
       name: Legal entity identifiers
       names: {fr: "Identifiants d'entité juridique (GLEIF)"}
       objects:
@@ -203,7 +203,7 @@ imports:
     mapping:
       key: gleif_parents
       pipeline: companies_fr/gleif_parents
-      rows: record
+      json_column: record
       name: Parent companies
       names: {fr: "Sociétés mères (GLEIF)"}
       objects:
@@ -229,7 +229,7 @@ imports:
     mapping:
       key: wikidata_group
       pipeline: companies_fr/wikidata_group
-      rows: record
+      json_column: record
       name: Parents and subsidiaries
       names: {fr: "Mères et filiales (Wikidata)"}
       objects:

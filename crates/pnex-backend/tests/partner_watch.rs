@@ -2552,7 +2552,7 @@ async fn france_competences_from_one_schedule() {
         let dataset = json!({"title": "Répertoires", "resources": [
             {"title": "export-fiches-csv-2026-10-20.zip", "url": "https://static.data.gouv.fr/files/csv.zip",
              "format": "zip", "last_modified": "2026-10-20T03:00:00+00:00"},
-            {"title": "export-fiches-rs-v4-1-2026-10-20.zip", "url": format!("{base}/files/rs.zip"),
+            {"title": "export-fiches-rs-v4-1-2026-10-20.zip", "url": "https://static.data.gouv.fr/files/rs.zip",
              "format": "zip", "last_modified": "2026-10-20T03:00:00+00:00"}
         ]});
         let app = axum::Router::new()

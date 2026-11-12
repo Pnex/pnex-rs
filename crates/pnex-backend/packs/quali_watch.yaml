@@ -48,7 +48,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "3.6.0"
+version: "3.7.0"
 requires: [companies_fr, web_presence]
 extends:
   - type: organization
@@ -660,19 +660,19 @@ imports:
     mode: snapshot
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
-      steps:
-        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-rs-v4-1-*.zip" }
-        - { step: file_download }
-        - { step: archive_extract, entries: ["*.xml"] }
       key: fc_rs_xml
+      pipeline: quali_watch/fc_rs_xml
+      # The table holds each sheet as JSON; a file sent by hand is read by
+      # its XML path.
+      json_column: record
+      format: xml
+      rows: FICHES/FICHE
       after: [fc_blocks]
       name: France Compétences RS sheets
       names: {fr: "Fiches RS France Compétences (XML)"}
-      format: xml
-      rows: FICHES/FICHE
       objects:
-        # The whole register is read: only the org's certifications are
-        # enriched, their competencies created (`needs`).
+        # Only the sheets of the org's certifications reach the table: they
+        # are enriched, their competencies created (`needs`).
         - as: cert
           type: certification
           key: code
@@ -728,7 +728,7 @@ imports:
     mapping:
       key: qw_company_search
       pipeline: quali_watch/qw_company_search
-      rows: record
+      json_column: record
       name: Company register (network)
       names: {fr: "Recherche d'entreprises (réseau)"}
       objects:
@@ -826,7 +826,7 @@ imports:
     mapping:
       key: qw_dgefp
       pipeline: quali_watch/qw_dgefp
-      rows: record
+      json_column: record
       name: Training organizations (DGEFP)
       names: {fr: "Organismes de formation (DGEFP)"}
       objects:
@@ -850,7 +850,7 @@ imports:
     mapping:
       key: qw_cpf_rs
       pipeline: quali_watch/qw_cpf_rs
-      rows: record
+      json_column: record
       name: CPF offers (RS)
       names: {fr: "Offres CPF (RS)"}
       objects:
@@ -886,7 +886,7 @@ imports:
     mapping:
       key: qw_cpf_rncp
       pipeline: quali_watch/qw_cpf_rncp
-      rows: record
+      json_column: record
       name: CPF offers (RNCP)
       names: {fr: "Offres CPF (RNCP)"}
       objects:
