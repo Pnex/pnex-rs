@@ -1,0 +1,39 @@
+# Series of the BIS Data Portal (SDMX CSV), one request per code of the
+# setting: by default the policy rates of the G10 central banks, daily since
+# 2000. The import "Central bank series (BIS)" syncs this table into dated
+# values of `macro_series` objects. BIS terms: free for a non-commercial
+# use, the BIS cited as the source.
+key: bis_series
+name: Central bank series (BIS)
+hosts: [stats.bis.org]
+steps:
+  - enumerate: { as: codes, cross: [{ as: code, setting: markets.bis_series, case: upper }] }
+  - fetch:
+      as: csv
+      for_each: codes
+      url: "https://stats.bis.org/api/v1/data/{{code|before:.}}/{{code|after:.}}/all"
+      params: { format: csv, startPeriod: "2000-01-01" }
+      every: 1s
+      missing_is_empty: true
+  - read:
+      as: values
+      from: csv
+      format: csv
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{code}}" }
+        - { name: metric, type: text, value: "{{code}}" }
+        - { name: end, at: TIME_PERIOD, type: date }
+        - { name: value, at: OBS_VALUE, type: float }
+  - write: { from: values, table: { name: bis_series, replace: true } }
+tests:
+  - name: two days of a policy rate, an empty value left out
+    settings: { markets.bis_series: "WS_CBPOL.D.US" }
+    given:
+      "https://stats.bis.org/api/v1/data/WS_CBPOL/D.US/all?format=csv&startPeriod=2000-01-01": bis_ws_cbpol_us.csv
+    expect:
+      values:
+        rows: 2
+        columns: [queried, metric, end, value]
+        contains:
+          - { queried: WS_CBPOL.D.US, end: "2024-09-18", value: "5" }

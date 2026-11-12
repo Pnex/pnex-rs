@@ -36,15 +36,17 @@ pub fn interval_us(interval: &str) -> Option<i64> {
 }
 
 /// The table of a `source` column value (D807): one per (source, shape).
+// shortcut: names the tables the market pipelines write; goes with the market
+// routes in PE7 (pipeline-engine.md D948).
 pub fn bar_table(source: &str) -> Option<&'static str> {
-    use super::history::{BINANCE_SPOT_1M, HISTDATA_M1, MT5_OHLCV_1M};
     if source.starts_with("mt5:") && source.len() > 4 {
-        return Some(MT5_OHLCV_1M.table);
+        return Some(super::history::MT5_OHLCV_1M.table);
     }
-    [BINANCE_SPOT_1M, HISTDATA_M1]
-        .iter()
-        .find(|s| s.key == source)
-        .map(|s| s.table)
+    match source {
+        "binance_public" => Some("binance_klines_1m"),
+        "histdata" => Some("histdata_m1"),
+        _ => None,
+    }
 }
 
 /// A bar, prices and volume at [`SCALE`] places, `ts_us` its open (UTC).

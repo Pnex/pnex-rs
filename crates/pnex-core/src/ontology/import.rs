@@ -615,18 +615,10 @@ pub struct Mapping {
     /// with the org's own credentials (markets-research.md D741).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conflict_feed: Option<ConflictFeed>,
-    /// How the response becomes records, for a source no dot path can read
-    /// (markets-research.md D540).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shape: Option<crate::markets::ResponseShape>,
     /// `<pack>.<setting>` of a contact sent in the `User-Agent`: some public
     /// sources refuse an undeclared client. The run is refused while empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub contact_setting: Option<String>,
-    /// A source that needs a key: its name in `markets::KEYED_SOURCES`. The
-    /// vault secret and the only host it goes to are fixed there.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub keyed_source: Option<String>,
     /// API: one request per code of this `<pack>.<setting>`, in place of
     /// `{value}` in the URL, when no object holds the code yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -638,6 +630,12 @@ pub struct Mapping {
     /// The records are dated values of this object (D541).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observations: Option<crate::markets::ObservationTarget>,
+    /// The pipeline that fills the import's table (`<pack>/<key>`,
+    /// pipeline-engine.md D941): its `write` names the table `key`, then
+    /// the table is synced into objects (D577). Replaces `steps` and the feeds
+    /// and the feeds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pipeline: Option<String>,
     /// Pipeline steps run by the server before the mapping (data-pipelines.md
     /// D344): resolve, download, extract, inspect, filter; the records are
     /// read from the file they leave staged.
@@ -748,12 +746,6 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
     };
     if m.contact_setting.as_deref().is_some_and(|k| !setting_ok(k)) {
         return Err(ferr("contact_setting", FIELD_INVALID));
-    }
-    if m.keyed_source
-        .as_deref()
-        .is_some_and(|k| crate::markets::keyed_source(k).is_none())
-    {
-        return Err(ferr("keyed_source", FIELD_INVALID));
     }
     if m.per_setting_code
         .as_deref()

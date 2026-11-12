@@ -213,12 +213,9 @@ pub async fn fetch_file(url: &str, m: &Mapping, by: &Declared) -> Result<Vec<Val
     let u = check_url(url).map_err(|_| UNREACHABLE)?;
     let bytes = get_as(&u, by).await?;
     let (name, m) = (u.path().to_string(), m.clone());
-    tokio::task::spawn_blocking(move || match m.shape {
-        Some(shape) => pnex_core::markets::records(shape, &bytes).ok_or(UNREADABLE),
-        None => read_records(&bytes, &name, &m).map_err(read_error),
-    })
-    .await
-    .unwrap_or(Err(UNREADABLE))
+    tokio::task::spawn_blocking(move || read_records(&bytes, &name, &m).map_err(read_error))
+        .await
+        .unwrap_or(Err(UNREADABLE))
 }
 
 /// Placeholder of the day to read from: a few days before the last value the
@@ -264,10 +261,8 @@ pub async fn fetch_per_object(
                 failures += 1;
                 continue;
             }
-            let path_value = pnex_core::markets::url_value(m.shape, v);
             let from = since.get(v).map_or(HISTORY_START, String::as_str);
-            check_url(&url.replace(VALUE, &path_value).replace(SINCE, from))
-                .map_err(|_| UNREACHABLE)?
+            check_url(&url.replace(VALUE, v).replace(SINCE, from)).map_err(|_| UNREACHABLE)?
         } else {
             let asked = if by_title.is_empty() {
                 v.as_str()
@@ -283,21 +278,8 @@ pub async fn fetch_per_object(
         };
         match get_as(&u, by).await {
             Ok(bytes) => {
-                let mut found = match m.shape {
-                    Some(shape) => {
-                        // Hostile input, and a large filer's facts weigh megabytes.
-                        tokio::task::spawn_blocking(move || {
-                            pnex_core::markets::records(shape, &bytes)
-                        })
-                        .await
-                        .map_err(|_| UNREADABLE)?
-                        .ok_or(UNREADABLE)?
-                    }
-                    None => {
-                        let doc: Value = serde_json::from_slice(&bytes).map_err(|_| UNREADABLE)?;
-                        json_rows(&doc, &m.rows).ok_or(UNREADABLE)?
-                    }
-                };
+                let doc: Value = serde_json::from_slice(&bytes).map_err(|_| UNREADABLE)?;
+                let mut found = json_rows(&doc, &m.rows).ok_or(UNREADABLE)?;
                 if !by_title.is_empty() {
                     found.retain(|r| r.get(by_title).and_then(Value::as_str) == Some(v.as_str()));
                 }
@@ -306,15 +288,6 @@ pub async fn fetch_per_object(
                 for r in &mut found {
                     if let Some(o) = r.as_object_mut() {
                         o.insert(QUERIED.to_string(), Value::String(v.clone()));
-                        // An ALFRED, BIS or EIA answer does not name its series: it is the code asked.
-                        use pnex_core::markets::ResponseShape::{
-                            AlfredVintages, EcbCsv, EiaSeries,
-                        };
-                        if matches!(m.shape, Some(AlfredVintages | EcbCsv | EiaSeries))
-                            && !o.contains_key("metric")
-                        {
-                            o.insert("metric".to_string(), Value::String(v.clone()));
-                        }
                     }
                 }
                 rows.extend(found);

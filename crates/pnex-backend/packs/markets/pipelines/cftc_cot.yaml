@@ -1,0 +1,66 @@
+# Weekly Commitments of Traders of the CFTC (legacy futures only, Socrata
+# JSON, US public domain), one request per market code of the setting.
+# Positions are of Tuesday, published the Friday after: each value is known
+# three days after its report day, never before. The import "Positions of
+# traders (CFTC COT)" syncs this table into dated values of `macro_series`.
+key: cftc_cot
+name: Positions of traders (CFTC COT)
+hosts: [publicreporting.cftc.gov]
+steps:
+  - enumerate: { as: markets, cross: [{ as: code, setting: markets.cot_markets, case: upper }] }
+  - fetch:
+      as: json
+      for_each: markets
+      url: "https://publicreporting.cftc.gov/resource/6dca-aqww.json"
+      params:
+        "$where": "cftc_contract_market_code='{{code}}'"
+        "$order": report_date_as_yyyy_mm_dd
+        "$limit": "50000"
+      every: 1s
+  - read:
+      as: reports
+      from: json
+      format: json
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{code}}" }
+        - { name: name, at: market_and_exchange_names, type: text, optional: true }
+        - { name: day, at: report_date_as_yyyy_mm_dd, type: date, format: "%Y-%m-%dT%H:%M:%S%.3f" }
+        - { name: oi, at: open_interest_all, type: float, optional: true }
+        - { name: ncl, at: noncomm_positions_long_all, type: float, optional: true }
+        - { name: ncs, at: noncomm_positions_short_all, type: float, optional: true }
+        - { name: cl, at: comm_positions_long_all, type: float, optional: true }
+        - { name: cs, at: comm_positions_short_all, type: float, optional: true }
+        - { name: nrl, at: nonrept_positions_long_all, type: float, optional: true }
+        - { name: nrs, at: nonrept_positions_short_all, type: float, optional: true }
+  - sql:
+      as: values
+      sql: |
+        SELECT queried, name, metric,
+               CAST(day AS VARCHAR) AS "end",
+               CAST(day + INTERVAL '3 days' AS VARCHAR) AS known_on,
+               value
+        FROM (
+          SELECT queried, name, day, 'open_interest' AS metric, oi AS value FROM reports
+          UNION ALL SELECT queried, name, day, 'noncommercial_long', ncl FROM reports
+          UNION ALL SELECT queried, name, day, 'noncommercial_short', ncs FROM reports
+          UNION ALL SELECT queried, name, day, 'noncommercial_net', ncl - ncs FROM reports
+          UNION ALL SELECT queried, name, day, 'commercial_long', cl FROM reports
+          UNION ALL SELECT queried, name, day, 'commercial_short', cs FROM reports
+          UNION ALL SELECT queried, name, day, 'commercial_net', cl - cs FROM reports
+          UNION ALL SELECT queried, name, day, 'nonreportable_long', nrl FROM reports
+          UNION ALL SELECT queried, name, day, 'nonreportable_short', nrs FROM reports
+        ) AS v
+        WHERE value IS NOT NULL
+  - write: { from: values, table: { name: cftc_cot, replace: true } }
+tests:
+  - name: a weekly report becomes nine values, known the Friday after
+    settings: { markets.cot_markets: "088691" }
+    given:
+      "https://publicreporting.cftc.gov/resource/6dca-aqww.json?%24limit=50000&%24order=report_date_as_yyyy_mm_dd&%24where=cftc_contract_market_code%3D%27088691%27": cftc_cot_088691.json
+    expect:
+      values:
+        rows: 9
+        contains:
+          - { queried: "088691", metric: noncommercial_net, value: "150000", end: "2024-03-05", known_on: "2024-03-08" }
+          - { metric: commercial_net, value: "-170000" }

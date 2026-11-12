@@ -464,36 +464,7 @@ pub struct IngestStepView {
     pub created_at: String,
 }
 
-/// Glob over a file name: `*` (any run), `?` (one character), the rest
-/// literal, case-insensitive. A pattern without `/` matches the base name.
-pub fn glob_match(pattern: &str, name: &str) -> bool {
-    let name = if pattern.contains('/') {
-        name
-    } else {
-        name.rsplit('/').next().unwrap_or(name)
-    };
-    let p: Vec<char> = pattern.to_lowercase().chars().collect();
-    let n: Vec<char> = name.to_lowercase().chars().collect();
-    // Iterative wildcard match with one backtrack point.
-    let (mut i, mut j, mut star, mut mark) = (0, 0, None, 0);
-    while j < n.len() {
-        if i < p.len() && (p[i] == '?' || p[i] == n[j]) {
-            i += 1;
-            j += 1;
-        } else if i < p.len() && p[i] == '*' {
-            star = Some(i);
-            mark = j;
-            i += 1;
-        } else if let Some(s) = star {
-            i = s + 1;
-            mark += 1;
-            j = mark;
-        } else {
-            return false;
-        }
-    }
-    p[i..].iter().all(|c| *c == '*')
-}
+pub use crate::pipeline::glob_match;
 
 /// A manifest cut to [`MANIFEST_MAX_BYTES`]: arrays of an oversized object
 /// are truncated (with `truncated: true`) until it fits.

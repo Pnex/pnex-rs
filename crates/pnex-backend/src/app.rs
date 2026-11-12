@@ -313,6 +313,7 @@ impl Hooks for App {
         // Server site crawls (partner-watch.md D307).
         crate::services::crawl::spawn_scheduler(ctx);
         crate::services::markets::documents::spawn_scheduler(ctx);
+        crate::services::pipeline_engine::store::spawn(ctx);
         crate::services::markets::summary::spawn_scheduler(ctx);
         crate::services::proofs::spawn_server_executor(ctx);
         // Site recipe runs cut by a restart never finish (D326).

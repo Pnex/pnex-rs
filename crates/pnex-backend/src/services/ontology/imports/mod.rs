@@ -199,7 +199,10 @@ async fn check_input<C: ConnectionTrait>(
     ) {
         (ImportSource::File, _) => {
             // Only steps give a file import something to fetch on schedule.
-            if input.recurrence.as_ref().is_some_and(Option::is_some) && m.steps.is_empty() {
+            if input.recurrence.as_ref().is_some_and(Option::is_some)
+                && m.steps.is_empty()
+                && m.pipeline.is_none()
+            {
                 return Err(invalid("recurrence", FIELD_INVALID));
             }
         }
@@ -214,10 +217,26 @@ async fn check_input<C: ConnectionTrait>(
     }
     // A table gives its `@queried` column; elsewhere the key is the object or
     // the code the run asked for.
+    // The pipeline of an import writes its table, whole, under the mapping's key.
+    if let Some(id) = &m.pipeline {
+        let writes_it = crate::services::pipeline_engine::store::shipped()
+            .iter()
+            .find(|p| &p.id() == id)
+            .is_some_and(|p| {
+                p.doc.steps.iter().any(|s| {
+                    matches!(s, pnex_core::pipeline::Step::Write(w)
+                        if w.table.as_ref().is_some_and(|t| t.name == m.key && t.replace))
+                })
+            });
+        if !writes_it || input.source != ImportSource::File {
+            return Err(invalid("mapping.pipeline", FIELD_INVALID));
+        }
+    }
     if m.observations.is_some()
         && input.source != ImportSource::Dataset
         && m.per_object.is_none()
         && m.per_setting_code.is_none()
+        && m.pipeline.is_none()
     {
         return Err(invalid("mapping.observations", FIELD_INVALID));
     }
@@ -610,17 +629,8 @@ async fn records<C: ConnectionTrait>(
         },
         None => None,
     };
-    let key = match keyed_credential(db, imp, m).await {
-        Ok(k) => k,
-        Err(code) => return Err(coded(code)),
-    };
     let by = source::Declared {
         contact,
-        authorization: key
-            .as_ref()
-            .filter(|(src, _)| src.query.is_none())
-            .map(|(src, value)| format!("{} {value}", src.scheme)),
-        query_key: key.and_then(|(src, value)| src.query.map(|q| (q, value))),
         ..Default::default()
     };
     let by = &by;
@@ -715,40 +725,6 @@ async fn records<C: ConnectionTrait>(
                 .collect()
         }
     })
-}
-
-/// The key of a source that takes one: from the vault, to that source's
-/// host only. The mapping cannot name another secret or host (R9).
-async fn keyed_credential<C: ConnectionTrait>(
-    db: &C,
-    imp: &ImportRow,
-    m: &Mapping,
-) -> std::result::Result<Option<(pnex_core::markets::KeyedSource, String)>, &'static str> {
-    let Some(key) = &m.keyed_source else {
-        return Ok(None);
-    };
-    let Some(src) = pnex_core::markets::keyed_source(key) else {
-        return Err(source::UNREACHABLE);
-    };
-    let url = imp.source_url.as_deref().unwrap_or_default();
-    let host_ok = reqwest::Url::parse(url)
-        .is_ok_and(|u| u.scheme() == "https" && u.host_str() == Some(src.host))
-        // The test's mock of the source.
-        || crate::services::markets::test_host_allowed(url);
-    if !host_ok {
-        return Err(err_codes::IMPORT_KEY_HOST);
-    }
-    use crate::services::secrets::store;
-    let required = err_codes::IMPORT_KEY_REQUIRED;
-    let row = store::find_by_name(db, Some(imp.org_id), src.secret)
-        .await
-        .map_err(|_| required)?
-        .ok_or(required)?;
-    let ring = crate::services::markets::keyring().ok_or(required)?;
-    let value = store::reveal(db, ring, Some(imp.org_id), row.id)
-        .await
-        .map_err(|_| required)?;
-    Ok(Some((src, value.trim().to_string())))
 }
 
 /// The org's credentials of a conflict source, from the vault, for the
@@ -1523,7 +1499,7 @@ pub async fn start(
 ) -> Result<ImportRunView> {
     let imp = find_row(db, org_id, id).await?;
     let m = imp.mapping()?;
-    if m.steps.is_empty() && imp.source() == ImportSource::File {
+    if m.steps.is_empty() && m.pipeline.is_none() && imp.source() == ImportSource::File {
         return Err(coded(err_codes::INGEST_ENTRY_MISSING));
     }
     if stop::stopping() {
@@ -1538,6 +1514,9 @@ pub async fn start(
             if imp.source() == ImportSource::Dataset {
                 run_sync(&db, store, &imp, sync::dataset_id(&imp), &m, &run, true).await;
                 return Ok(());
+            }
+            if let Some(id) = &m.pipeline {
+                return pipeline_then_sync(&db, store, &imp, id, &m, &run).await;
             }
             let sensitive = match schema(&db, imp.org_id).await {
                 Ok(s) => sync::maps_sensitive(&s, &m),
@@ -1615,6 +1594,68 @@ pub async fn start(
         }
     });
     Ok(view)
+}
+
+/// An import fed by a pipeline (pipeline-engine.md D941): the pipeline
+/// writes the import's own table, whole, then the table is synced (D577).
+async fn pipeline_then_sync(
+    db: &DatabaseConnection,
+    store: Option<crate::services::artifact_store::S3Store>,
+    imp: &ImportRow,
+    id: &str,
+    m: &Mapping,
+    run: &RunRow,
+) -> Result<()> {
+    use crate::services::pipeline_engine::store as engine;
+    let Some(s) = store else {
+        return fail_run(
+            db,
+            run.id,
+            err_codes::INGEST_STAGING_UNAVAILABLE,
+            Value::Null,
+        )
+        .await;
+    };
+    let Some(sp) = engine::shipped().iter().find(|p| p.id() == id) else {
+        return fail_run(db, run.id, err_codes::IMPORT_SOURCE_UNREADABLE, Value::Null).await;
+    };
+    let table = match sync::table_of(db, imp.org_id, imp.id, m).await {
+        Ok(t) => t,
+        Err(e) => return fail_run(db, run.id, error_code(&e), Value::Null).await,
+    };
+    let mut steps = Vec::new();
+    let out = engine::run_for_org(
+        db,
+        &s,
+        imp.org_id,
+        sp,
+        &engine::HttpTransport,
+        chrono::Utc::now(),
+        Some(&mut steps),
+    )
+    .await?;
+    engine::journal(db, imp.org_id, imp.id, run.id, &steps).await?;
+    let failed = out
+        .failure
+        .as_ref()
+        .or_else(|| out.items.iter().find_map(|(_, f, _)| f.as_ref()));
+    if let Some(f) = failed {
+        let code = match f.code {
+            "secret_required" => err_codes::IMPORT_KEY_REQUIRED,
+            "contact_required" => err_codes::IMPORT_CONTACT_REQUIRED,
+            "schema_changed" => err_codes::IMPORT_SCHEMA_CHANGED,
+            "entry_missing" => err_codes::INGEST_ENTRY_MISSING,
+            _ => err_codes::IMPORT_SOURCE_UNREADABLE,
+        };
+        // A changed shape keeps the arguments its message reads (the columns).
+        let args = match f.code {
+            "schema_changed" => f.args.clone(),
+            _ => serde_json::json!({ "pipeline": id, "code": f.code, "args": f.args }),
+        };
+        return fail_run(db, run.id, code, args).await;
+    }
+    run_sync(db, Some(s), imp, Some(table), m, run, true).await;
+    Ok(())
 }
 
 /// A sync run, whose failure is journaled on the run.
@@ -2045,16 +2086,16 @@ fn graph_node(imp: &ImportRow, table_of: impl Fn(&str) -> Option<String>) -> Gra
         kind: BuildTargetKind::Import,
         id: imp.id.to_string(),
         name: imp.name.clone(),
-        runnable: m
-            .as_ref()
-            .is_some_and(|m| !(m.steps.is_empty() && source == ImportSource::File)),
+        runnable: m.as_ref().is_some_and(|m| {
+            !(m.steps.is_empty() && m.pipeline.is_none() && source == ImportSource::File)
+        }),
         reads: match (source, imp.source_url.as_deref()) {
             (ImportSource::Dataset, Some(id)) => table_of(id).into_iter().collect(),
             _ => Vec::new(),
         },
         writes: m
             .as_ref()
-            .filter(|m| sync::steps_fill_a_table(m))
+            .filter(|m| sync::steps_fill_a_table(m) || m.pipeline.is_some())
             .map(|m| vec![m.key.clone()])
             .unwrap_or_default(),
         after: m.as_ref().map(|m| m.after.clone()).unwrap_or_default(),
@@ -2120,7 +2161,7 @@ async fn check_no_cycle(
             (ImportSource::Dataset, Some(t)) => tables.get(t).cloned().into_iter().collect(),
             _ => Vec::new(),
         },
-        writes: if sync::steps_fill_a_table(m) {
+        writes: if sync::steps_fill_a_table(m) || m.pipeline.is_some() {
             vec![m.key.clone()]
         } else {
             Vec::new()

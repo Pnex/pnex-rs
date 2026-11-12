@@ -1,0 +1,61 @@
+# The reported figures of each followed company (XBRL company facts of the
+# SEC): a few dozen US GAAP and IFRS concepts, each value known on the day it
+# was filed.
+key: edgar_figures
+name: Reported figures (SEC EDGAR)
+hosts: [data.sec.gov]
+steps:
+  - enumerate: { as: companies, cross: [{ as: cik, objects: { type: organization, property: cik } }] }
+  - fetch:
+      as: json
+      for_each: companies
+      url: "https://data.sec.gov/api/xbrl/companyfacts/CIK{{cik}}.json"
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+      every: 150ms
+      missing_is_empty: true
+  - read:
+      as: facts
+      from: json
+      format: json
+      records: /facts/*/*/units/*/*
+      keys: [ns, concept, unit]
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{cik}}" }
+        - { name: ns, at: ns, type: text }
+        - { name: metric, at: concept, type: text }
+        - { name: unit, at: unit, type: text }
+        - { name: start, at: start, type: text, optional: true }
+        - { name: end, at: end, type: text }
+        - { name: value, at: val, type: float }
+        - { name: known_on, at: filed, type: text }
+        - { name: source, at: accn, type: text, optional: true }
+  - sql:
+      as: figures
+      sql: |
+        SELECT queried, metric, unit, start, "end", value, known_on, source FROM facts
+        WHERE ns IN ('us-gaap', 'ifrs-full', 'dei') AND metric IN (
+          'Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet',
+          'CostOfRevenue', 'GrossProfit', 'OperatingIncomeLoss', 'NetIncomeLoss',
+          'EarningsPerShareBasic', 'EarningsPerShareDiluted', 'Assets', 'AssetsCurrent',
+          'Liabilities', 'LiabilitiesCurrent', 'StockholdersEquity',
+          'CashAndCashEquivalentsAtCarryingValue', 'LongTermDebtNoncurrent',
+          'NetCashProvidedByUsedInOperatingActivities', 'PaymentsToAcquirePropertyPlantAndEquipment',
+          'WeightedAverageNumberOfDilutedSharesOutstanding', 'EntityCommonStockSharesOutstanding',
+          'Revenue', 'GrossProfitLoss', 'ProfitLossFromOperatingActivities', 'ProfitLoss',
+          'BasicEarningsLossPerShare', 'DilutedEarningsLossPerShare', 'Equity',
+          'CashAndCashEquivalents', 'CashFlowsFromUsedInOperatingActivities',
+          'PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities')
+  - write: { from: figures, table: { name: edgar_figures, replace: true } }
+tests:
+  - name: known concepts with their filing day
+    objects: { organization.cik: ["0000320193"] }
+    settings: { markets.source_contact: "Test test@example.org" }
+    given:
+      "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json": edgar_companyfacts.json
+    expect:
+      figures:
+        rows: 2
+        contains:
+          - { queried: "0000320193", metric: Revenues, unit: USD, start: "2026-07-01", end: "2026-09-30", value: "1000000", known_on: "2026-11-01" }
+          - { metric: EarningsPerShareBasic, unit: USD/shares }

@@ -9832,6 +9832,7 @@ version = "0.2.0"
 dependencies = [
  "arrow-array 59.3.2",
  "arrow-cast 59.3.2",
+ "arrow-ipc",
  "arrow-schema 59.3.2",
  "arrow-select 59.3.2",
  "async-imap",
@@ -9845,6 +9846,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "croner 4.0.3",
+ "csv",
  "csv-core",
  "ed25519-dalek 3.0.0",
  "ego-tree 0.11.1",
@@ -9877,6 +9879,7 @@ dependencies = [
  "pnex-migration",
  "pnex-notify",
  "pnex-pdf",
+ "pnex-pipeline-worker",
  "pnex-stitcher",
  "pnex-vision",
  "prost",
@@ -9958,6 +9961,7 @@ dependencies = [
  "base64 0.23.1",
  "calamine",
  "chrono",
+ "chrono-tz",
  "deunicode",
  "ed25519-dalek 3.0.0",
  "hex",
@@ -10498,6 +10502,7 @@ name = "pnex-pipeline-worker"
 version = "0.2.0"
 dependencies = [
  "bytes",
+ "chrono",
  "datafusion",
  "futures",
  "hex",

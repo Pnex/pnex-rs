@@ -1,0 +1,41 @@
+# The companies of the SEC's ticker list (company_tickers.json) the org
+# follows (setting covered_tickers), read with the org's declared contact as
+# the SEC asks. The CIK is padded to ten digits.
+key: sec_companies
+name: Companies followed (SEC)
+hosts: [www.sec.gov]
+steps:
+  - enumerate: { as: followed, cross: [{ as: ticker, setting: markets.covered_tickers, case: upper }] }
+  - fetch:
+      as: json
+      url: "https://www.sec.gov/files/company_tickers.json"
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+  - read:
+      as: listed
+      from: json
+      format: json
+      records: /*
+      skip_invalid: true
+      columns:
+        - { name: cik_str, at: cik_str, type: text }
+        - { name: ticker, at: ticker, type: text }
+        - { name: title, at: title, type: text }
+  - sql:
+      as: companies
+      sql: |
+        SELECT right(concat('0000000000', l.cik_str), 10) AS cik, l.ticker, l.title,
+               regexp_replace(l.title,
+                 '([ ,.]+(CORP|CORPORATION|INC|INCORPORATED|LTD|LIMITED|PLC|CO|COMPANY|LLC|LP|NV|SA|AG)[.,]?)+$',
+                 '', 'i') AS press_name
+        FROM listed AS l JOIN followed AS f ON upper(l.ticker) = f.ticker
+  - write: { from: companies, table: { name: sec_companies, replace: true } }
+tests:
+  - name: the followed tickers only
+    settings: { markets.covered_tickers: "acme", markets.source_contact: "Test test@example.org" }
+    given:
+      "https://www.sec.gov/files/company_tickers.json": sec_company_tickers.json
+    expect:
+      companies:
+        rows: 1
+        contains:
+          - { cik: "0000320193", ticker: ACME, title: "ACME CORP", press_name: ACME }

@@ -28,15 +28,15 @@ settings:
   - key: ais_dk_from
     name: Danish AIS from (day)
     names: {fr: "AIS danois à partir du (jour)"}
-    description: "First day loaded, YYYY-MM-DD, into the table ais_dk_positions (vessels only, about 20 million positions a day). Empty: not read."
-    descriptions: {fr: "Premier jour chargé, AAAA-MM-JJ, dans la table ais_dk_positions (navires seulement, environ 20 millions de positions par jour). Vide : non lu."}
+    description: "First day loaded, YYYY-MM-DD, into the table ais_dk (vessels only, about 20 million positions a day). Empty: not read."
+    descriptions: {fr: "Premier jour chargé, AAAA-MM-JJ, dans la table ais_dk (navires seulement, environ 20 millions de positions par jour). Vide : non lu."}
     kind: text
     default: ""
   - key: ais_noaa_from
     name: US AIS (NOAA) from (day)
     names: {fr: "AIS américain (NOAA) à partir du (jour)"}
-    description: "First day loaded, YYYY-MM-DD, into the table ais_noaa_positions. NOAA publishes months late: the loading waits on the first day not yet published. Empty: not read."
-    descriptions: {fr: "Premier jour chargé, AAAA-MM-JJ, dans la table ais_noaa_positions. La NOAA publie avec des mois de retard : le chargement attend le premier jour pas encore publié. Vide : non lu."}
+    description: "First day loaded, YYYY-MM-DD, into the table ais_noaa. NOAA publishes months late: the loading waits on the first day not yet published. Empty: not read."
+    descriptions: {fr: "Premier jour chargé, AAAA-MM-JJ, dans la table ais_noaa. La NOAA publie avec des mois de retard : le chargement attend le premier jour pas encore publié. Vide : non lu."}
     kind: text
     default: ""
   - key: adsb_from

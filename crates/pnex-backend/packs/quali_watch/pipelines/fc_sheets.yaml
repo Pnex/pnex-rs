@@ -1,0 +1,45 @@
+# The sheets of the certifications the org holds (objects `certification`),
+# from the same export: title, level, dates and status.
+key: fc_sheets
+name: France Compétences sheets
+hosts: [www.data.gouv.fr, static.data.gouv.fr]
+steps:
+  - fetch: { as: catalogue, url: "https://www.data.gouv.fr/api/1/datasets/5eebbc067a14b6fecc9c9976/" }
+  - extract:
+      as: export
+      from: catalogue
+      json: /resources
+      where: { title: "export-fiches-csv-*.zip" }
+      latest_by: last_modified
+  - fetch: { as: zip, for_each: export, url: "{{url}}", skip_if_unchanged: true }
+  - unpack: { as: files, from: zip, entries: ["*Standard*.csv"] }
+  - read:
+      as: rows
+      from: files
+      format: csv
+      delimiter: ";"
+      columns:
+        - { name: Numero_Fiche, type: text, optional: true }
+        - { name: Intitule, type: text, optional: true }
+        - { name: Nomenclature_Europe_Niveau, type: text, optional: true }
+        - { name: Date_Decision, type: text, optional: true }
+        - { name: Date_Fin_Enregistrement, type: text, optional: true }
+        - { name: Date_Effet, type: text, optional: true }
+        - { name: Actif, type: text, optional: true }
+  - enumerate: { as: certs, cross: [{ as: code, objects: { type: certification, property: code } }] }
+  - sql:
+      as: kept
+      sql: |
+        SELECT r.* FROM rows AS r WHERE upper(trim(r.Numero_Fiche)) IN (SELECT code FROM certs)
+  - write: { from: kept, table: { name: fc_sheets, replace: true } }
+tests:
+  - name: the sheets of the org's certifications
+    objects: { certification.code: [RS5001] }
+    given:
+      "https://www.data.gouv.fr/api/1/datasets/5eebbc067a14b6fecc9c9976/": fc_dataset.json
+      "https://static.data.gouv.fr/resources/fc/export-fiches-csv-2026-10-20.zip": fc_export.zip
+    expect:
+      kept:
+        rows: 1
+        contains:
+          - { Numero_Fiche: RS5001, Actif: ACTIVE, Date_Decision: "15/01/2024" }

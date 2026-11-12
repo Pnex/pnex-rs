@@ -139,6 +139,8 @@ mod m20261110_000144_prediction_markets;
 mod m20261110_000145_histdata_registry_reset;
 mod m20261110_000146_account_trades;
 mod m20261110_000147_account_trades_lots_optional;
+mod m20261112_000148_pipeline_items;
+mod m20261112_000149_pipeline_step_jobs;
 
 pub struct Migrator;
 
@@ -274,6 +276,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261110_000145_histdata_registry_reset::Migration),
             Box::new(m20261110_000146_account_trades::Migration),
             Box::new(m20261110_000147_account_trades_lots_optional::Migration),
+            Box::new(m20261112_000148_pipeline_items::Migration),
+            Box::new(m20261112_000149_pipeline_step_jobs::Migration),
         ]
     }
 }

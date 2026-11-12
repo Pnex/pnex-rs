@@ -1,0 +1,57 @@
+# US vessel positions of NOAA and BOEM (MarineCadastre), a day per file,
+# published months late: a day not there yet is asked again a week later.
+# US public domain, cite the source.
+key: ais_noaa
+name: US AIS (NOAA)
+hosts: [coast.noaa.gov]
+large: true
+schedule: 10m
+steps:
+  - enumerate:
+      as: days
+      track: true
+      per_run: 1
+      empty: retry
+      retry_days: 7
+      cross:
+        - { as: day, periods: day, from_setting: trade_flows.ais_noaa_from, closed_only: true }
+  - fetch:
+      as: zip
+      for_each: days
+      url: "https://coast.noaa.gov/htdata/CMSP/AISDataHandler/{{day_y}}/AIS_{{day_y}}_{{day_m}}_{{day_d}}.zip"
+      missing_is_empty: true
+  - unpack: { as: csv, from: zip, entries: ["*.csv"] }
+  - read:
+      as: positions
+      from: csv
+      format: csv
+      skip_invalid: true
+      columns:
+        - { name: ts, at: 1, type: timestamp, format: "%Y-%m-%dT%H:%M:%S" }
+        - { name: mmsi, at: 0, type: integer }
+        - { name: lat, at: 2, type: float, range: [-90, 90] }
+        - { name: lon, at: 3, type: float, range: [-180, 180] }
+        - { name: sog, at: 4, type: float, optional: true }
+        - { name: cog, at: 5, type: float, optional: true }
+        - { name: heading, at: 6, type: float, optional: true, range: [0, 359.99] }
+        - { name: nav_status, at: 11, type: text, optional: true, null_if: [unknown, undefined] }
+        - { name: vessel_name, at: 7, type: text, optional: true, null_if: [unknown, undefined] }
+        - { name: imo, at: 8, type: text, optional: true, null_if: [unknown, undefined] }
+        - { name: callsign, at: 9, type: text, optional: true, null_if: [unknown, undefined] }
+        - { name: ship_type, at: 10, type: text, optional: true, null_if: [unknown, undefined] }
+        - { name: length, at: 12, type: float, optional: true }
+        - { name: width, at: 13, type: float, optional: true }
+        - { name: draught, at: 14, type: float, optional: true }
+  - write: { from: positions, table: { name: ais_noaa } }
+tests:
+  - name: a day, a heading not available
+    today: "2024-01-03"
+    settings: { trade_flows.ais_noaa_from: "2024-01-01" }
+    given:
+      "https://coast.noaa.gov/htdata/CMSP/AISDataHandler/2024/AIS_2024_01_01.zip": AIS_2024_01_01.zip
+    expect:
+      days: { rows: 2 }
+      positions:
+        rows: 2
+        contains:
+          - { mmsi: "367000001", ts: "2024-01-01T00:00:00", heading: null, vessel_name: "SEA WIND" }

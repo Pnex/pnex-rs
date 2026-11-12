@@ -1,0 +1,64 @@
+# Dukascopy forex ticks from its public hour files (LZMA of 20-byte records:
+# ms in the hour, ask, bid, ask volume, bid volume, big-endian). Prices are
+# integers of 3 places for a JPY quote, 5 for the other pairs; a pair no
+# rule matches is left out. A day is one row: its 24 hours, one transaction.
+# Broker quotes, not exchange data; terms not checked: kept inside the org.
+key: dukascopy_ticks
+name: Dukascopy ticks
+hosts: [datafeed.dukascopy.com]
+schedule: 5m
+steps:
+  - enumerate:
+      as: days
+      track: true
+      per_run: 14
+      empty: retry
+      retry_days: 7
+      cross:
+        - as: instrument
+          setting: markets.history_fx_pairs
+          case: upper
+          derive: { scale: [["???JPY", "3"], ["??????", "5"]] }
+        - { as: day, periods: day, from_setting: markets.history_fx_from, from: "-12m", closed_only: true }
+  - enumerate:
+      as: hours
+      for_each: days
+      cross:
+        - { as: hour, periods: hour, from: "{{day_start}}", to: "{{day_end}}", closed_only: true }
+  - fetch:
+      as: bi5
+      for_each: hours
+      url: "https://datafeed.dukascopy.com/datafeed/{{instrument}}/{{hour_y}}/{{hour_m0}}/{{hour_d}}/{{hour_h}}h_ticks.bi5"
+      every: 100ms
+      missing_is_empty: true
+  - unpack: { as: raw, from: bi5, format: lzma }
+  - read:
+      as: ticks
+      from: raw
+      format: binary
+      record_size: 20
+      endian: big
+      columns:
+        - { name: instrument, type: text, value: "{{instrument}}" }
+        - { name: ts, at: 0, binary: u32, type: timestamp, format: epoch_ms, base: "{{hour_start}}" }
+        - { name: bid, at: 8, binary: u32, type: decimal, scale: 8, divide: "{{scale}}" }
+        - { name: ask, at: 4, binary: u32, type: decimal, scale: 8, divide: "{{scale}}" }
+        - { name: bid_volume, at: 16, binary: f32, type: float }
+        - { name: ask_volume, at: 12, binary: f32, type: float }
+        - { name: source, type: text, value: dukascopy_public }
+  - write: { from: ticks, table: { name: dukascopy_quotes } }
+tests:
+  - name: one hour with ticks, the others empty, a pair with no scale left out
+    today: "2024-03-06"
+    settings: { markets.history_fx_pairs: "eurusd, usdjpy, xauusdx", markets.history_fx_from: "2024-03-05" }
+    given:
+      "https://datafeed.dukascopy.com/datafeed/EURUSD/2024/02/05/13h_ticks.bi5": dukascopy_eurusd_13h.bi5
+      "https://datafeed.dukascopy.com/datafeed/USDJPY/2024/02/05/00h_ticks.bi5": dukascopy_usdjpy_00h.bi5
+    expect:
+      days: { rows: 2 }
+      hours: { rows: 48 }
+      ticks:
+        rows: 3
+        contains:
+          - { instrument: EURUSD, ts: "2024-03-05T13:00:01.500", ask: "1.08012000", bid: "1.08010000", ask_volume: "1.5" }
+          - { instrument: USDJPY, ts: "2024-03-05T00:00:00.250", bid: "150.12300000" }

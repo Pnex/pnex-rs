@@ -126,8 +126,6 @@ pub(super) async fn check<C: ConnectionTrait>(
         (m.per_setting_code.is_some(), "per_setting_code"),
         (m.rows_in_setting.is_some(), "rows_in_setting"),
         (m.contact_setting.is_some(), "contact_setting"),
-        (m.keyed_source.is_some(), "keyed_source"),
-        (m.shape.is_some(), "shape"),
     ] {
         if set {
             return Err(invalid(

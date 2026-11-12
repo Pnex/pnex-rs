@@ -1,0 +1,46 @@
+# The watched series (setting move_series, BIS entries left out), as
+# alfred_series: each value as first published (ALFRED, output type 4),
+# dated by the day it was first known (D811), read with the org's FRED key
+# (vault secret markets_fred_key), sent to the FRED API only.
+key: alfred_move_series
+name: Watched series first releases (ALFRED)
+hosts: [api.stlouisfed.org]
+steps:
+  - enumerate: { as: codes, cross: [{ as: code, setting: markets.move_series, exclude: ["bis:*"], split: ":", case: upper }] }
+  - fetch:
+      as: json
+      for_each: codes
+      url: "https://api.stlouisfed.org/fred/series/observations"
+      params:
+        series_id: "{{code}}"
+        output_type: "4"
+        realtime_start: "1776-07-04"
+        realtime_end: "9999-12-31"
+        file_type: json
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+      secret: { name: markets_fred_key, param: api_key }
+      every: 1s
+      missing_is_empty: true
+  - read:
+      as: values
+      from: json
+      format: json
+      records: /observations
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{code}}" }
+        - { name: metric, type: text, value: "{{code}}" }
+        - { name: end, at: date, type: date }
+        - { name: known_on, at: realtime_start, type: date }
+        - { name: value, at: value, type: float }
+  - write: { from: values, table: { name: alfred_move_series, replace: true } }
+tests:
+  - name: first releases, a value not published left out
+    settings: { markets.move_series: "PAYEMS:diff:rates", markets.source_contact: "Test test@example.org" }
+    given:
+      "https://api.stlouisfed.org/fred/series/observations?file_type=json&output_type=4&realtime_end=9999-12-31&realtime_start=1776-07-04&series_id=PAYEMS": alfred_payems.json
+    expect:
+      values:
+        rows: 1
+        contains:
+          - { queried: PAYEMS, end: "2026-09-01", known_on: "2026-10-03", value: "159000" }

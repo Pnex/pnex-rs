@@ -488,3 +488,38 @@ pub async fn join_org(
         .await;
     assert_eq!(res.status_code(), 200, "accept {email}: {}", res.text());
 }
+
+/// The pipeline worker in this process (pipeline-engine.md D943): the `sql`
+/// steps of the shipped pipelines wait on it.
+pub fn spawn_pipeline_worker() -> tokio::task::JoinHandle<()> {
+    use pnex_pipeline_worker::{engine::Limits, Config, Worker};
+    let config = Config {
+        database_url: std::env::var("TEST_DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://pnex:pnex@localhost:5432/pnex_test".into()),
+        database_role: None,
+        s3_endpoint: "http://localhost:9000".into(),
+        s3_bucket: "pnex-test".into(),
+        s3_region: "us-east-1".into(),
+        s3_access_key: "rustfsadmin".into(),
+        s3_secret_key: "rustfsadmin".into(),
+        s3_path_style: true,
+        limits: Limits {
+            memory_bytes: 256 * 1024 * 1024,
+            partitions: 1,
+            spill_dir: std::env::temp_dir().join("pnex-test-spill"),
+            spill_max_bytes: 1024 * 1024 * 1024,
+        },
+        transform_timeout: std::time::Duration::from_secs(60),
+        run_timeout: std::time::Duration::from_secs(120),
+        pseudonym_key: None,
+    };
+    tokio::spawn(async move {
+        let worker = Worker::connect(config).await.expect("pipeline worker");
+        loop {
+            match worker.run_next().await {
+                Ok(true) => {}
+                _ => tokio::time::sleep(std::time::Duration::from_millis(200)).await,
+            }
+        }
+    })
+}

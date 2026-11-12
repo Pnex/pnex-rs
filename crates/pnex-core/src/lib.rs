@@ -185,6 +185,8 @@ pub mod governance;
 pub mod image_registries;
 /// Media files sent in parts (data-pipelines.md §9.9).
 pub mod media_upload;
+/// The pipeline engine's document and pure parts (pipeline-engine.md D934–D953).
+pub mod pipeline;
 /// Pipeline documents and DTOs (data-pipelines.md D571).
 pub mod pipelines;
 pub mod rules;

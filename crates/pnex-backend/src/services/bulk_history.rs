@@ -1,25 +1,24 @@
-//! Large public files into tables (markets-research.md MK22–MK24, D807,
-//! D889): a day of AIS vessel positions (Danish Maritime Authority, NOAA),
-//! a day of ADS-B aircraft positions (adsb.lol), a year of French property
-//! sales (DVF). A file of several GB is never held: it is read as it
+//! A day of ADS-B aircraft positions (adsb.lol, markets-research.md MK24)
+//! into a table. AIS and DVF are pipelines of their packs now
+//! (pipeline-engine.md); ADS-B waits for a step that streams a file split in
+//! parts of 2 GB without keeping it. A file of several GB is never held: it is read as it
 //! arrives, decoded on a blocking thread and written batch by batch into
 //! one `append` transaction of the source's table, committed only once the
 //! file was read to its end. Partitions are kept in the registry of the
 //! price history (`market_history_partitions`), so a cut run goes on where
 //! it stopped. Everything stays under the org's dataset quota (Q-F8).
 
-use std::io::{BufRead, BufReader, Read};
+use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
 
 use arrow_array::{
-    ArrayRef, BooleanArray, Date32Array, Float64Array, Int64Array, RecordBatch, StringArray,
-    TimestampMicrosecondArray,
+    ArrayRef, BooleanArray, Float64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
 };
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use chrono::NaiveDate;
 use loco_rs::app::AppContext;
-use pnex_core::bulk::{self, BulkSource, FlightPoint, Mutation, Position};
+use pnex_core::bulk::{self, BulkSource, FlightPoint};
 use pnex_core::markets::history::{self as hist, HistorySource, Period};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sha2::{Digest, Sha256};
@@ -35,60 +34,33 @@ use crate::services::ontology::imports::source;
 const BATCH_ROWS: usize = 200_000;
 const LOCK_WAIT: Duration = Duration::from_secs(1);
 const DECODE_ERROR: &str = "unreadable";
-/// Longest line read (a DVF or AIS line is a few hundred bytes).
-const LINE_MAX: u64 = 64 * 1024;
 /// Largest trace of one aircraft for a day, packed or not (a few MB at most).
 const TRACE_MAX: u64 = 64 * 1024 * 1024;
 
-/// The next line into `buf`, `false` at the end; a line longer than
-/// [`LINE_MAX`] makes the file unreadable instead of filling the memory.
-fn next_line(r: &mut impl BufRead, buf: &mut String) -> Result<bool, &'static str> {
-    buf.clear();
-    let n = r
-        .by_ref()
-        .take(LINE_MAX)
-        .read_line(buf)
-        .map_err(|_| DECODE_ERROR)?;
-    if n as u64 == LINE_MAX && !buf.ends_with('\n') {
-        return Err(DECODE_ERROR);
-    }
-    Ok(n > 0)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Job {
-    AisDk,
-    AisNoaa,
     Adsb,
-    Dvf,
 }
 
-const JOBS: [Job; 4] = [Job::AisDk, Job::AisNoaa, Job::Adsb, Job::Dvf];
+const JOBS: [Job; 1] = [Job::Adsb];
 
 impl Job {
     fn src(self) -> BulkSource {
         match self {
-            Self::AisDk => bulk::AIS_DK,
-            Self::AisNoaa => bulk::AIS_NOAA,
             Self::Adsb => bulk::ADSB_LOL,
-            Self::Dvf => bulk::DVF,
         }
     }
 
     /// The setting of the first partition; empty: the source is not read.
     fn setting(self) -> &'static str {
         match self {
-            Self::AisDk => "trade_flows.ais_dk_from",
-            Self::AisNoaa => "trade_flows.ais_noaa_from",
             Self::Adsb => "trade_flows.adsb_from",
-            Self::Dvf => "real_estate.dvf_from",
         }
     }
 
     fn contact_setting(self) -> &'static str {
         match self {
-            Self::Dvf => "real_estate.source_contact",
-            _ => "trade_flows.source_contact",
+            Self::Adsb => "trade_flows.source_contact",
         }
     }
 
@@ -96,8 +68,7 @@ impl Job {
     fn from(self, raw: &str) -> Option<NaiveDate> {
         let raw = raw.trim();
         match self {
-            Self::Dvf => NaiveDate::from_ymd_opt(raw.parse().ok()?, 1, 1),
-            _ => NaiveDate::parse_from_str(raw, "%Y-%m-%d").ok(),
+            Self::Adsb => NaiveDate::parse_from_str(raw, "%Y-%m-%d").ok(),
         }
     }
 
@@ -108,27 +79,17 @@ impl Job {
         known: &std::collections::HashSet<Period>,
     ) -> Vec<Period> {
         match self {
-            Self::Dvf => hist::plan_years(from, today, known),
-            _ => hist::plan_days(from, today, known),
+            Self::Adsb => hist::plan_days(from, today, known),
         }
-    }
-
-    /// NOAA publishes its days in order, months late: a missing day means
-    /// "not yet", and the next ones are not asked before it.
-    fn missing_is_wait(self) -> bool {
-        self == Self::AisNoaa
     }
 
     /// The file of a partition; several parts (adsb.lol) are one stream.
     fn urls(self, p: Period) -> Vec<String> {
         let day = p.start();
         match self {
-            Self::AisDk => vec![bulk::ais_dk_url(day)],
-            Self::AisNoaa => vec![bulk::ais_noaa_url(day)],
             Self::Adsb => (0..26)
                 .filter_map(|i| bulk::adsb_part_url(day, i))
                 .collect(),
-            Self::Dvf => vec![bulk::dvf_url(chrono::Datelike::year(&day))],
         }
     }
 }
@@ -163,7 +124,7 @@ pub async fn sweep_with(
     let orgs: Vec<i64> = ctx
         .db
         .query_all_raw(stmt(
-            "SELECT DISTINCT org_id FROM packs WHERE key IN ('trade_flows', 'real_estate') \
+            "SELECT DISTINCT org_id FROM packs WHERE key = 'trade_flows' \
              ORDER BY org_id",
             vec![],
         ))
@@ -236,12 +197,7 @@ async fn pass(
         .plan(from, today, &known)
         .into_iter()
         .partition(|p| !seen.contains(p));
-    // NOAA waits on its first missing day; the others go on.
-    let next = if job.missing_is_wait() {
-        job.plan(from, today, &known).into_iter().next()
-    } else {
-        fresh.into_iter().chain(again).next()
-    };
+    let next = fresh.into_iter().chain(again).next();
     let Some(p) = next else {
         return Ok(());
     };
@@ -301,7 +257,6 @@ async fn load(
     let first = source::check_url(urls.first()?).ok()?;
     let resp = match source::open_large(&first, &declared(&contact)).await {
         Ok(Some(r)) => r,
-        Ok(None) if job.missing_is_wait() => return None,
         Ok(None) => return Some(Fetched::Empty),
         Err(code) => {
             tracing::info!(%first, code, "bulk file not read");
@@ -413,40 +368,7 @@ fn decode(
     mut reader: ChanReader,
     out: &mpsc::Sender<Option<RecordBatch>>,
 ) -> Result<(), &'static str> {
-    let mut l = String::new();
     match job {
-        Job::AisDk | Job::AisNoaa => {
-            let (header, line): (&str, fn(&str) -> Option<Position>) = if job == Job::AisDk {
-                (bulk::AIS_DK_HEADER, bulk::ais_dk_line)
-            } else {
-                (bulk::AIS_NOAA_HEADER, bulk::ais_noaa_line)
-            };
-            {
-                let file = zip::read::read_zipfile_from_stream(&mut reader)
-                    .map_err(|_| DECODE_ERROR)?
-                    .ok_or(DECODE_ERROR)?;
-                let mut r = BufReader::with_capacity(1 << 20, file);
-                if !next_line(&mut r, &mut l)?
-                    || !l.trim_start_matches('\u{feff}').starts_with(header)
-                {
-                    return Err(DECODE_ERROR);
-                }
-                let mut rows = Vec::with_capacity(BATCH_ROWS);
-                while next_line(&mut r, &mut l)? {
-                    if let Some(p) = line(&l) {
-                        rows.push(p);
-                        if rows.len() == BATCH_ROWS {
-                            send(out, positions_batch(&rows)?)?;
-                            rows.clear();
-                        }
-                    }
-                }
-                if !rows.is_empty() {
-                    send(out, positions_batch(&rows)?)?;
-                }
-            }
-            drain(&mut reader)?;
-        }
         Job::Adsb => {
             let mut archive = tar::Archive::new(&mut reader);
             let mut points: Vec<FlightPoint> = Vec::with_capacity(BATCH_ROWS);
@@ -488,31 +410,6 @@ fn decode(
             }
             drain(&mut reader)?;
         }
-        Job::Dvf => {
-            {
-                let mut r =
-                    BufReader::with_capacity(1 << 20, flate2::read::GzDecoder::new(&mut reader));
-                if !next_line(&mut r, &mut l)? {
-                    return Err(DECODE_ERROR);
-                }
-                let cols =
-                    bulk::dvf_columns(l.trim_start_matches('\u{feff}')).ok_or(DECODE_ERROR)?;
-                let mut rows: Vec<Mutation> = Vec::with_capacity(BATCH_ROWS);
-                while next_line(&mut r, &mut l)? {
-                    if let Some(m) = bulk::dvf_line(&cols, &l) {
-                        rows.push(m);
-                        if rows.len() == BATCH_ROWS {
-                            send(out, mutations_batch(&rows)?)?;
-                            rows.clear();
-                        }
-                    }
-                }
-                if !rows.is_empty() {
-                    send(out, mutations_batch(&rows)?)?;
-                }
-            }
-            drain(&mut reader)?;
-        }
     }
     out.blocking_send(None).map_err(|_| "closed")
 }
@@ -535,53 +432,6 @@ fn str_col<'a, T: 'a>(rows: &'a [T], f: impl Fn(&T) -> Option<&str>) -> ArrayRef
 
 fn batch(fields: Vec<Field>, cols: Vec<ArrayRef>) -> Result<RecordBatch, &'static str> {
     RecordBatch::try_new(Arc::new(Schema::new(fields)), cols).map_err(|_| DECODE_ERROR)
-}
-
-fn positions_batch(rows: &[Position]) -> Result<RecordBatch, &'static str> {
-    let f = |n: &str, t: DataType| Field::new(n, t, true);
-    batch(
-        vec![
-            ts_field(),
-            Field::new("mmsi", DataType::Int64, false),
-            Field::new("lat", DataType::Float64, false),
-            Field::new("lon", DataType::Float64, false),
-            f("sog", DataType::Float64),
-            f("cog", DataType::Float64),
-            f("heading", DataType::Float64),
-            f("nav_status", DataType::Utf8),
-            f("vessel_name", DataType::Utf8),
-            f("imo", DataType::Utf8),
-            f("callsign", DataType::Utf8),
-            f("ship_type", DataType::Utf8),
-            f("length", DataType::Float64),
-            f("width", DataType::Float64),
-            f("draught", DataType::Float64),
-            f("destination", DataType::Utf8),
-        ],
-        vec![
-            Arc::new(
-                TimestampMicrosecondArray::from(rows.iter().map(|r| r.ts_us).collect::<Vec<_>>())
-                    .with_timezone(UTC),
-            ),
-            Arc::new(Int64Array::from(
-                rows.iter().map(|r| r.mmsi).collect::<Vec<_>>(),
-            )),
-            f64_col(rows, |r| Some(r.lat)),
-            f64_col(rows, |r| Some(r.lon)),
-            f64_col(rows, |r| r.sog),
-            f64_col(rows, |r| r.cog),
-            f64_col(rows, |r| r.heading),
-            str_col(rows, |r| r.nav_status.as_deref()),
-            str_col(rows, |r| r.name.as_deref()),
-            str_col(rows, |r| r.imo.as_deref()),
-            str_col(rows, |r| r.callsign.as_deref()),
-            str_col(rows, |r| r.ship_type.as_deref()),
-            f64_col(rows, |r| r.length),
-            f64_col(rows, |r| r.width),
-            f64_col(rows, |r| r.draught),
-            str_col(rows, |r| r.destination.as_deref()),
-        ],
-    )
 }
 
 fn flights_batch(rows: &[FlightPoint]) -> Result<RecordBatch, &'static str> {
@@ -623,51 +473,6 @@ fn flights_batch(rows: &[FlightPoint]) -> Result<RecordBatch, &'static str> {
     )
 }
 
-fn mutations_batch(rows: &[Mutation]) -> Result<RecordBatch, &'static str> {
-    let f = |n: &str, t: DataType| Field::new(n, t, true);
-    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).ok_or(DECODE_ERROR)?;
-    batch(
-        vec![
-            Field::new("mutation_id", DataType::Utf8, false),
-            Field::new("mutation_date", DataType::Date32, false),
-            f("nature", DataType::Utf8),
-            f("value_eur", DataType::Float64),
-            f("postal_code", DataType::Utf8),
-            f("commune_code", DataType::Utf8),
-            f("commune_name", DataType::Utf8),
-            f("department_code", DataType::Utf8),
-            f("parcel_id", DataType::Utf8),
-            f("premises_type", DataType::Utf8),
-            f("built_area_m2", DataType::Float64),
-            f("rooms", DataType::Float64),
-            f("land_area_m2", DataType::Float64),
-            f("lon", DataType::Float64),
-            f("lat", DataType::Float64),
-        ],
-        vec![
-            str_col(rows, |r| Some(r.mutation_id.as_str())),
-            Arc::new(Date32Array::from(
-                rows.iter()
-                    .map(|r| (r.date - epoch).num_days() as i32)
-                    .collect::<Vec<_>>(),
-            )),
-            str_col(rows, |r| r.nature.as_deref()),
-            f64_col(rows, |r| r.value_eur),
-            str_col(rows, |r| r.postal_code.as_deref()),
-            str_col(rows, |r| r.commune_code.as_deref()),
-            str_col(rows, |r| r.commune_name.as_deref()),
-            str_col(rows, |r| r.department_code.as_deref()),
-            str_col(rows, |r| r.parcel_id.as_deref()),
-            str_col(rows, |r| r.premises_type.as_deref()),
-            f64_col(rows, |r| r.built_area_m2),
-            f64_col(rows, |r| r.rooms),
-            f64_col(rows, |r| r.land_area_m2),
-            f64_col(rows, |r| r.lon),
-            f64_col(rows, |r| r.lat),
-        ],
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -675,20 +480,15 @@ mod tests {
     #[test]
     fn settings_and_files_of_each_job() {
         assert_eq!(
-            Job::AisDk.from("2026-11-01"),
+            Job::Adsb.from("2026-11-01"),
             NaiveDate::from_ymd_opt(2026, 11, 1)
         );
-        assert_eq!(Job::AisDk.from(""), None, "empty: not read");
-        assert_eq!(Job::Dvf.from("2021"), NaiveDate::from_ymd_opt(2021, 1, 1));
+        assert_eq!(Job::Adsb.from(""), None, "empty: not read");
         let day = Period::Day(NaiveDate::from_ymd_opt(2025, 12, 30).unwrap());
         assert_eq!(Job::Adsb.urls(day).len(), 26);
         assert_eq!(
-            rebase(
-                "http://aisdata.ais.dk/aisdk-2026-11-01.zip",
-                Some("http://127.0.0.1:9")
-            ),
-            "http://127.0.0.1:9/aisdk-2026-11-01.zip"
+            rebase("https://example.org/a/b.tar.aa", Some("http://127.0.0.1:9")),
+            "http://127.0.0.1:9/a/b.tar.aa"
         );
-        assert!(Job::AisNoaa.missing_is_wait() && !Job::AisDk.missing_is_wait());
     }
 }

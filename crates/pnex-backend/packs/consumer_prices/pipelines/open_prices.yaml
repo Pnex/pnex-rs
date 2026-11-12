@@ -1,0 +1,57 @@
+# Prices of the tracked products on Open Prices (prices.openfoodfacts.org),
+# with the org's declared contact: one price per shop and day, the shop as
+# the metric (its name, city and country, and its OpenStreetMap id), the
+# currency as the unit, a discounted price marked as such.
+key: open_prices
+name: Product prices (Open Prices)
+hosts: [prices.openfoodfacts.org]
+steps:
+  - enumerate: { as: products, cross: [{ as: ean, setting: consumer_prices.tracked_products }] }
+  - fetch:
+      as: json
+      for_each: products
+      url: "https://prices.openfoodfacts.org/api/v1/prices"
+      params: { product_code: "{{ean}}", order_by: "-date", size: "100" }
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.consumer_prices.source_contact}})" }
+      every: 1s
+  - read:
+      as: items
+      from: json
+      format: json
+      records: /items
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{ean}}" }
+        - { name: day, at: date, type: date }
+        - { name: price, at: price, type: float, range: [0.000001, 1000000000] }
+        - { name: currency, at: currency, type: text }
+        - { name: osm_id, at: location_osm_id, type: text, optional: true }
+        - { name: shop, at: /location/osm_name, type: text, optional: true }
+        - { name: city, at: /location/osm_address_city, type: text, optional: true }
+        - { name: country, at: /location/osm_address_country_code, type: text, optional: true }
+        - { name: discounted, at: price_is_discounted, type: bool, optional: true }
+        - { name: name, at: /product/product_name, type: text, optional: true }
+  - sql:
+      as: prices
+      sql: |
+        SELECT queried, name, currency AS unit, CAST(day AS VARCHAR) AS "end",
+               CAST(day AS VARCHAR) AS known_on, price AS value,
+               concat(
+                 CASE WHEN shop IS NULL THEN concat('shop ', coalesce(osm_id, 'online'))
+                      WHEN coalesce(city, country) IS NULL THEN concat(shop, ' (', coalesce(osm_id, 'online'), ')')
+                      ELSE concat(shop, ', ', concat_ws(' ', city, country), ' (', coalesce(osm_id, 'online'), ')')
+                 END,
+                 CASE WHEN discounted THEN ' [discount]' ELSE '' END) AS metric
+        FROM items
+  - write: { from: prices, table: { name: open_prices, replace: true } }
+tests:
+  - name: one series per shop
+    settings: { consumer_prices.tracked_products: "3017620422003", consumer_prices.source_contact: "Test test@example.org" }
+    given:
+      "https://prices.openfoodfacts.org/api/v1/prices?order_by=-date&product_code=3017620422003&size=100": open_prices_nutella.json
+    expect:
+      prices:
+        rows: 2
+        contains:
+          - { queried: "3017620422003", metric: "Carrefour City, Nancy FR (2111106074)", unit: EUR, end: "2026-11-05", value: "4.05", name: Nutella }
+          - { metric: "shop online [discount]" }

@@ -1,0 +1,40 @@
+# Series of Eurostat (SDMX CSV, reusable with a citation), one request per
+# code of the setting: HICP sub-indices and house prices by default. Since
+# 2026 the HICP is published in COICOP 2018 (`prc_hicp_minr`). A period is
+# dated by its first day.
+key: eurostat_series
+name: European statistics (Eurostat)
+hosts: [ec.europa.eu]
+steps:
+  - enumerate: { as: codes, cross: [{ as: code, setting: markets.eurostat_series, case: upper }] }
+  - fetch:
+      as: csv
+      for_each: codes
+      url: "https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/{{code|before:.}}/{{code|after:.}}"
+      params: { format: SDMX-CSV, startPeriod: "2000" }
+      every: 1s
+      missing_is_empty: true
+  - read:
+      as: raw
+      from: csv
+      format: csv
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{code}}" }
+        - { name: p, at: TIME_PERIOD, type: text }
+        - { name: value, at: OBS_VALUE, type: float }
+  - sql:
+      as: values
+      sql: |
+        SELECT queried, queried AS metric, CASE WHEN length(p) = 10 THEN p WHEN length(p) = 4 THEN p || '-01-01' WHEN substr(p, 6, 1) = 'Q' THEN substr(p, 1, 4) || CASE substr(p, 7, 1) WHEN '1' THEN '-01-01' WHEN '2' THEN '-04-01' WHEN '3' THEN '-07-01' ELSE '-10-01' END ELSE substr(p, 1, 7) || '-01' END AS "end", value FROM raw
+  - write: { from: values, table: { name: eurostat_series, replace: true } }
+tests:
+  - name: a monthly index
+    settings: { markets.eurostat_series: "prc_hicp_minr.M.RCH_A.AP.EA" }
+    given:
+      "https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/PRC_HICP_MINR/M.RCH_A.AP.EA?format=SDMX-CSV&startPeriod=2000": eurostat_hicp.csv
+    expect:
+      values:
+        rows: 2
+        contains:
+          - { queried: PRC_HICP_MINR.M.RCH_A.AP.EA, metric: PRC_HICP_MINR.M.RCH_A.AP.EA, end: "2026-02-01", value: "2.4" }

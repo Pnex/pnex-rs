@@ -13,7 +13,7 @@ The **Trade flows** pack loads raw positions into tables of the organization, a 
 ## Starting a source
 These loads are several GB a day: they only run for an organization whose table quota a platform administrator has set, on the platform status page, section **Organizations**, column **Tables (quota)**. Until then the settings are kept and nothing is loaded.
 
-Each source has its setting: **Danish AIS from (day)**, **US AIS (NOAA) from (day)**, **Aircraft (adsb.lol) from (day)**, a first day as `YYYY-MM-DD`. Empty, the source is not read. From that day on, one file a pass is loaded until yesterday, then each new day as it is published. The tables are `ais_dk_positions`, `ais_noaa_positions` and `adsb_lol_positions`, listed with the other tables.
+Each source has its setting: **Danish AIS from (day)**, **US AIS (NOAA) from (day)**, **Aircraft (adsb.lol) from (day)**, a first day as `YYYY-MM-DD`. Empty, the source is not read. From that day on, one file a pass is loaded until yesterday, then each new day as it is published. The tables are `ais_dk`, `ais_noaa` and `adsb_lol_positions`, listed with the other tables.
 
 ## What to expect
 - A Danish day is about 15 million vessel positions (base stations and aids to navigation are left out), about 300 MB stored; an adsb.lol day several GB. Everything counts in the organization's table quota: when it is full, the loading stops until a platform administrator raises it.

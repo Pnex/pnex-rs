@@ -46,6 +46,7 @@ where
         config,
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
+            let worker = common::spawn_pipeline_worker();
             f(
                 server,
                 Env {
@@ -55,6 +56,7 @@ where
                 },
             )
             .await;
+            worker.abort();
         },
     )
     .await;
@@ -1478,7 +1480,7 @@ async fn import_runs_its_own_steps() {
         // import, and the others run first in the order they need.
         let (import_id, _) = import_named(&server, &env.alice, org, "France Compétences · certifiers").await;
         let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org, None).await;
-        assert!(imp["next_run_at"].is_null() && imp["mapping"].as_str().unwrap().contains("source_resolve"), "{imp}");
+        assert!(imp["next_run_at"].is_null() && imp["mapping"].as_str().unwrap().contains("pipeline: quali_watch/fc_certifiers"), "{imp}");
         let (last, _) = import_named(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
         let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{last}"), &env.alice, org, None).await;
         assert!(imp["next_run_at"].is_string(), "{imp}");
@@ -1504,14 +1506,14 @@ async fn import_runs_its_own_steps() {
         assert_eq!(r["run"]["rows"], 2, "the client's certifications only: {r}");
         // History shows the run's steps, in order.
         let names: Vec<&str> = r["steps"].as_array().unwrap().iter().map(|s| s["step"].as_str().unwrap()).collect();
-        assert_eq!(names, ["source_resolve", "file_download", "archive_extract", "table_inspect", "rows_filter"], "{r}");
+        assert_eq!(names, ["fetch", "extract", "fetch", "unpack", "read", "enumerate", "sql", "write"], "{r}");
         let links = format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
             AND relation = 'holds' AND valid_to IS NULL");
         assert_eq!(count(q(links).await.unwrap()), 2);
         // Journaled under the run, the staging emptied at its end.
         let steps = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
             AND node_id = 'import:{import_id}' AND run_id = '{}'", run["id"].as_str().unwrap());
-        assert_eq!(count(q(steps).await.unwrap()), 5);
+        assert_eq!(count(q(steps).await.unwrap()), 8);
         // The steps left a CSV: it went through a table named after the mapping.
         let table = format!("SELECT count(*)::bigint AS n FROM dataset_transactions t \
             JOIN datasets d ON d.id = t.dataset_id \
@@ -1531,7 +1533,7 @@ async fn import_runs_its_own_steps() {
         assert_eq!((r["run"]["state"].as_str(), r["run"]["state_code"].as_str()), (Some("failed"), Some("import-schema-changed")), "{r}");
         assert!(r["run"]["state_args"]["columns"].as_str().unwrap().contains("Nom_Certificateur"), "{r}");
         let last = r["steps"].as_array().unwrap().last().unwrap();
-        assert_eq!((last["step"].as_str(), last["port"].as_u64()), (Some("table_inspect"), Some(1)), "{r}");
+        assert_eq!((last["step"].as_str(), last["port"].as_u64()), (Some("read"), Some(1)), "{r}");
 
         // The raw download stays its retention; expired here so the next
         // test reusing this org id finds an empty staging.
@@ -1953,11 +1955,11 @@ async fn mock_datagouv(zip: std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> String
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let dataset = json!({"title": "Répertoires", "resources": [
-        {"title": "export-fiches-csv-2026-10-19.zip", "url": format!("{base}/files/old.zip"),
+        {"title": "export-fiches-csv-2026-10-19.zip", "url": "https://static.data.gouv.fr/resources/fc/old.zip",
          "format": "zip", "last_modified": "2026-10-19T03:00:00+00:00"},
-        {"title": "export-fiches-csv-2026-10-20.zip", "url": format!("{base}/files/export-fiches-csv-2026-10-20.zip"),
+        {"title": "export-fiches-csv-2026-10-20.zip", "url": "https://static.data.gouv.fr/resources/fc/export-fiches-csv-2026-10-20.zip",
          "format": "zip", "last_modified": "2026-10-20T03:00:00.000000"},
-        {"title": "export-fiches-xml-2026-10-21.zip", "url": format!("{base}/files/x.zip"),
+        {"title": "export-fiches-xml-2026-10-21.zip", "url": "https://static.data.gouv.fr/resources/fc/x.zip",
          "format": "zip", "last_modified": "2026-10-21T03:00:00+00:00"}
     ]});
     let app = axum::Router::new()
@@ -1966,10 +1968,14 @@ async fn mock_datagouv(zip: std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> String
             get(move || async move { axum::Json(dataset) }),
         )
         .route(
-            "/files/export-fiches-csv-2026-10-20.zip",
+            "/resources/fc/export-fiches-csv-2026-10-20.zip",
             get(move || async move { zip.lock().unwrap().clone() }),
         );
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    // The shipped France Compétences pipelines read these hosts (D942).
+    for host in ["www.data.gouv.fr", "static.data.gouv.fr"] {
+        pnex_backend::services::pipeline_engine::store::route_for_tests(host, &base);
+    }
     base
 }
 
@@ -2028,20 +2034,21 @@ async fn open_data_ingestion_chain() {
 
         let rc = run(certifiers).await;
         assert_eq!(rc["run"]["state"], "applied", "{rc}");
-        assert!(step(&rc, "source_resolve")["url"].as_str().unwrap().ends_with("export-fiches-csv-2026-10-20.zip"));
-        assert_eq!(step(&rc, "file_download")["sha256"].as_str().unwrap().len(), 64);
-        let x = step(&rc, "archive_extract");
-        assert_eq!((x["format"].clone(), x["total"].clone(), x["selected"].clone()), (json!("zip"), json!(4), json!(1)), "{x}");
-        assert_eq!(step(&rc, "table_inspect")["rows"], 3);
-        let f = step(&rc, "rows_filter");
-        assert_eq!((f["rows_in"].clone(), f["rows_out"].clone()), (json!(3), json!(2)), "{f}");
+        // The newest export of the dataset, its one CSV of certifiers, read
+        // whole (3 rows), the client's certifier kept (2).
+        let fetched: Vec<Value> = rc["steps"].as_array().unwrap().iter()
+            .filter(|s| s["step"] == "fetch").map(|s| s["manifest"].clone()).collect();
+        assert!(fetched[1]["url"].as_str().unwrap().ends_with("export-fiches-csv-2026-10-20.zip"), "{rc}");
+        assert_eq!(step(&rc, "unpack")["rows"], 1, "{rc}");
+        assert_eq!(step(&rc, "read")["rows"], 3, "{rc}");
+        assert_eq!(step(&rc, "sql")["rows"], 2, "{rc}");
         let rs = run(sheets).await;
         assert_eq!(rs["run"]["state"], "applied", "{rs}");
-        assert_eq!(step(&rs, "rows_filter")["rows_out"], 2, "only the client's sheets");
+        assert_eq!(step(&rs, "sql")["rows"], 2, "only the client's sheets");
         let rp = run(partners).await;
         assert_eq!(rp["run"]["state"], "applied", "{rp}");
         // RNCP1 is not held, RS6766 is inactive: RS6765's six rows only.
-        assert_eq!(step(&rp, "rows_filter")["rows_out"], 6, "{rp}");
+        assert_eq!(step(&rp, "sql")["rows"], 6, "{rp}");
         let quatre = format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
             AND type_key = 'organization' AND properties ->> 'siren' = '444444442'");
         assert_eq!(count(q(quatre).await.unwrap()), 0, "partner of an inactive sheet");
@@ -2502,7 +2509,7 @@ async fn france_competences_from_one_schedule() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let dataset = json!({"title": "Répertoires", "resources": [
-            {"title": "export-fiches-csv-2026-10-20.zip", "url": format!("{base}/files/csv.zip"),
+            {"title": "export-fiches-csv-2026-10-20.zip", "url": "https://static.data.gouv.fr/files/csv.zip",
              "format": "zip", "last_modified": "2026-10-20T03:00:00+00:00"},
             {"title": "export-fiches-rs-v4-1-2026-10-20.zip", "url": format!("{base}/files/rs.zip"),
              "format": "zip", "last_modified": "2026-10-20T03:00:00+00:00"}
@@ -2512,6 +2519,10 @@ async fn france_competences_from_one_schedule() {
             .route("/files/csv.zip", axum::routing::get(move || async move { served.lock().unwrap().clone() }))
             .route("/files/rs.zip", axum::routing::get(move || async move { rs_zip }));
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        // The shipped France Compétences pipelines read these hosts (D942).
+        for host in ["www.data.gouv.fr", "static.data.gouv.fr"] {
+            pnex_backend::services::pipeline_engine::store::route_for_tests(host, &base);
+        }
         unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
         let store = pnex_backend::services::artifact_store::S3Config::from_config(
             &loco_rs::config::Config::new(&loco_rs::environment::Environment::Test).unwrap(),

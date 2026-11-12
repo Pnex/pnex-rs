@@ -23,6 +23,8 @@ A table's storage counts against the organization's room (20 GB unless the platf
 
 To turn 1-minute bars into hourly ones, write a transform that groups by instrument and hour: `date_trunc('hour', ts)`, or `date_bin(INTERVAL '5 minutes', ts, TIMESTAMP '1970-01-01T00:00:00Z')` for other steps; take `first_value(open ORDER BY ts)`, `max(high)`, `min(low)`, `last_value(close ORDER BY ts)` and `sum(volume)`, with a **unique** check on instrument and time. A missing minute stays missing: nothing is filled.
 
+Times written as a local wall clock are converted in the transform, never by hand with a fixed number of hours: `local_to_utc(ts, 'America/New_York')` reads a wall clock in its IANA zone, summer time included, and gives the UTC instant; `utc_to_local(ts, 'Europe/Paris')` does the reverse. A source shifted by a fixed offset all year is fixed with both: `local_to_utc(CAST(ts AS TIMESTAMP) - INTERVAL '5 hours', 'America/New_York')`. An hour that happens twice in autumn is read as the first one.
+
 ## Connectors
 Organization admins save access to an outside PostgreSQL or MySQL database; the password stays in the vault. A MySQL connector always uses TLS. **Test** tries to connect. An import reads it with a `connector_query` step, always read only. A private address is refused (*connector-host-refused*) until the platform admin allows that host.
 

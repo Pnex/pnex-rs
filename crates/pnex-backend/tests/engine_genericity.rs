@@ -258,28 +258,38 @@ fn non_test(text: &str) -> &str {
     text.find("#[cfg(test)]").map_or(text, |i| &text[..i])
 }
 
-#[test]
-fn engine_names_no_pack_type_or_link() {
-    let keys = pack_keys();
-    assert!(keys.len() > 20, "shipped packs not read: {keys:?}");
+/// Non-test code of every crate: (path under `crates/`, text).
+fn engine_sources() -> Vec<(String, String)> {
     let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut files = Vec::new();
     for c in std::fs::read_dir(&crates).unwrap().flatten() {
         rust_files(&c.path().join("src"), &mut files);
     }
     assert!(files.len() > 100, "sources not found under {crates:?}");
+    files
+        .iter()
+        .filter_map(|f| {
+            let rel = f
+                .strip_prefix(&crates)
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            if rel.ends_with("/tests.rs") || rel.contains("/tests/") {
+                return None;
+            }
+            let text = std::fs::read_to_string(f).unwrap();
+            Some((rel, non_test(&text).to_string()))
+        })
+        .collect()
+}
+
+#[test]
+fn engine_names_no_pack_type_or_link() {
+    let keys = pack_keys();
+    assert!(keys.len() > 20, "shipped packs not read: {keys:?}");
     let mut found = Vec::new();
-    for f in &files {
-        let rel = f
-            .strip_prefix(&crates)
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-        if rel.ends_with("/tests.rs") || rel.contains("/tests/") {
-            continue;
-        }
-        let text = std::fs::read_to_string(f).unwrap();
-        for (n, line) in non_test(&text).lines().enumerate() {
+    for (rel, text) in engine_sources() {
+        for (n, line) in text.lines().enumerate() {
             let code = line.split("//").next().unwrap_or_default();
             for k in &keys {
                 if code.contains(&format!("\"{k}\""))
@@ -298,4 +308,187 @@ fn engine_names_no_pack_type_or_link() {
         "pack names in the engine (D441): move this to the pack, or add an exception with its reason:\n{}",
         found.join("\n")
     );
+}
+
+/// Hosts the engine itself talks to or cites, whatever the org's data: a
+/// transport, a format namespace, a documentation link.
+const ENGINE_HOSTS: &[(&str, &str)] = &[
+    ("www.w3.org", "SVG and XML namespaces"),
+    ("schemas.openxmlformats.org", "Office document namespaces"),
+    ("ns.adobe.com", "XMP namespace of a panorama"),
+    ("ns.google.com", "photo sphere namespace of a panorama"),
+    (
+        "api.anthropic.com",
+        "default address of an AI provider kind",
+    ),
+    ("api.telegram.org", "notification channel kind"),
+    ("discord.com", "notification channel kind"),
+    ("discordapp.com", "notification channel kind"),
+    ("hooks.slack.com", "notification channel kind"),
+    ("ntfy.sh", "notification channel kind"),
+    ("google.serper.dev", "web search provider kind"),
+    ("api.met.no", "provider of the weather node"),
+    ("api.open-meteo.com", "provider of the weather node"),
+    (
+        "github.com",
+        "forge kind of an agent run, documentation links",
+    ),
+    (
+        "bellard.org",
+        "documentation link of the functions reference",
+    ),
+    (
+        "developer.mozilla.org",
+        "documentation link of the functions reference",
+    ),
+];
+
+/// Data sources and sites named by the engine, frozen: each line leaves with
+/// the lot that moves it to a pipeline of a pack (pipeline-engine.md D951,
+/// lots PE2-PE9). (file, hosts, reason). A new one fails the guard; one that
+/// is gone must be removed from here.
+const HOST_DEBT: &[(&str, &[&str], &str)] = &[
+    (
+        "pnex-core/src/markets.rs",
+        &["www.sec.gov", "filings.xbrl.org"],
+        "keyed sources and response shapes (PE4)",
+    ),
+    (
+        "pnex-backend/src/services/ingest/resolve.rs",
+        &["www.data.gouv.fr"],
+        "catalogue mode of source_resolve (PE4)",
+    ),
+    (
+        "pnex-backend/src/services/markets/calendar.rs",
+        &["www.bls.gov", "www.ecb.europa.eu", "www.federalreserve.gov"],
+        "release calendars (PE3)",
+    ),
+    (
+        "pnex-backend/src/services/markets/identity.rs",
+        &["api.gleif.org"],
+        "company identity match (PE4)",
+    ),
+    (
+        "pnex-core/src/markets/prediction.rs",
+        &[
+            "clob.polymarket.com",
+            "data-api.polymarket.com",
+            "gamma-api.polymarket.com",
+        ],
+        "prediction markets collector (PE4)",
+    ),
+    (
+        "pnex-backend/src/services/org_resolve.rs",
+        &["recherche-entreprises.api.gouv.fr"],
+        "company lookup of a flow node, to become a declared connector (external-apps.md D441)",
+    ),
+    (
+        "pnex-core/src/browser_agent.rs",
+        &[
+            "www.linkedin.com",
+            "x.com",
+            "www.facebook.com",
+            "www.instagram.com",
+            "www.tiktok.com",
+            "www.youtube.com",
+            "video.twimg.com",
+        ],
+        "profile networks of the browser agents, to become rules of a pack (PE5)",
+    ),
+    (
+        "pnex-frontend/src/pages/ontology/profile_capture.rs",
+        &["www.linkedin.com"],
+        "placeholder of the profile capture form (PE5)",
+    ),
+    (
+        "pnex-extension/src/",
+        &["www.tiktok.com", "www.youtube.com", "x.com"],
+        "site adapters of the extension, to become rules (agent-unification.md D780)",
+    ),
+];
+
+/// Hosts written as `"http(s)://host…` on a line.
+// shortcut: a host written without its scheme is not seen; scan bare host
+// literals too if one slips through.
+fn hosts_of(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for scheme in ["\"https://", "\"http://"] {
+        for (i, _) in line.match_indices(scheme) {
+            let host: String = line[i + scheme.len()..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '-')
+                .collect();
+            out.push(host.trim_end_matches('.').to_ascii_lowercase());
+        }
+    }
+    out
+}
+
+/// Not a public host: a placeholder, a local name, an address, PneX itself.
+fn reserved(host: &str) -> bool {
+    !host.contains('.')
+        || host.parse::<std::net::IpAddr>().is_ok()
+        || host == "pnex.io"
+        || [".example", ".invalid", ".test", ".local", ".home"]
+            .iter()
+            .any(|s| host.ends_with(s))
+        || ["example.com", "example.org", "example.net"]
+            .iter()
+            .any(|d| host == *d || host.ends_with(&format!(".{d}")))
+}
+
+#[test]
+fn engine_names_no_data_source_host() {
+    let (mut found, mut used) = (Vec::new(), BTreeSet::new());
+    for (rel, text) in engine_sources() {
+        for (n, line) in text.lines().enumerate() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            for host in hosts_of(line) {
+                if reserved(&host) || ENGINE_HOSTS.iter().any(|(h, _)| *h == host) {
+                    continue;
+                }
+                match HOST_DEBT
+                    .iter()
+                    .position(|(file, hs, _)| rel.starts_with(file) && hs.contains(&host.as_str()))
+                {
+                    Some(i) => {
+                        used.insert((i, host));
+                    }
+                    None => found.push(format!("{rel}:{}: {host}", n + 1)),
+                }
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "data source hosts in the engine (D951): declare the source in a pipeline of a pack:\n{}",
+        found.join("\n")
+    );
+    let gone: Vec<String> = HOST_DEBT
+        .iter()
+        .enumerate()
+        .flat_map(|(i, (file, hs, _))| {
+            let used = &used;
+            hs.iter()
+                .filter(move |h| !used.contains(&(i, h.to_string())))
+                .map(move |h| format!("{file}: {h}"))
+        })
+        .collect();
+    assert!(
+        gone.is_empty(),
+        "hosts no longer in the engine: remove them from HOST_DEBT:\n{}",
+        gone.join("\n")
+    );
+}
+
+#[test]
+fn hosts_are_read_and_sorted() {
+    assert_eq!(
+        hosts_of(r#"get("https://Data.Example.io/a", "http://10.0.0.1:8080")"#),
+        ["data.example.io", "10.0.0.1"]
+    );
+    assert!(reserved("10.0.0.1") && reserved("api.example.com") && reserved("localhost"));
+    assert!(reserved("pnex.local") && !reserved("data.example.io"));
 }

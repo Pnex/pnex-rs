@@ -1,0 +1,47 @@
+# Oil and gas statistics of the EIA (US public domain), one request per
+# series id of the setting, with the org's EIA key (vault secret
+# markets_eia_key), sent to the EIA API only. A weekly series (its id ends
+# with .W) is known five days after the Friday its week ends, on the
+# Wednesday it is published; the others are dated by their first day.
+key: eia_series
+name: Oil and gas statistics (EIA)
+hosts: [api.eia.gov]
+steps:
+  - enumerate: { as: codes, cross: [{ as: code, setting: markets.eia_series, case: upper }] }
+  - fetch:
+      as: json
+      for_each: codes
+      url: "https://api.eia.gov/v2/seriesid/{{code}}"
+      secret: { name: markets_eia_key, param: api_key }
+      every: 1s
+      missing_is_empty: true
+  - read:
+      as: raw
+      from: json
+      format: json
+      records: /response/data
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{code}}" }
+        - { name: p, at: period, type: text }
+        - { name: value, at: value, type: float }
+        - { name: unit, at: units, type: text, optional: true }
+  - sql:
+      as: values
+      sql: |
+        SELECT queried, queried AS metric, unit, "end",
+               CASE WHEN queried LIKE '%.W'
+                    THEN CAST(CAST("end" AS DATE) + INTERVAL '5 days' AS VARCHAR) END AS known_on,
+               value
+        FROM (SELECT queried, unit, value, CASE WHEN length(p) = 10 THEN p WHEN length(p) = 4 THEN p || '-01-01' WHEN substr(p, 6, 1) = 'Q' THEN substr(p, 1, 4) || CASE substr(p, 7, 1) WHEN '1' THEN '-01-01' WHEN '2' THEN '-04-01' WHEN '3' THEN '-07-01' ELSE '-10-01' END ELSE substr(p, 1, 7) || '-01' END AS "end" FROM raw) AS r
+  - write: { from: values, table: { name: eia_series, replace: true } }
+tests:
+  - name: a weekly stock, known the Wednesday after
+    settings: { markets.eia_series: "PET.WCESTUS1.W" }
+    given:
+      "https://api.eia.gov/v2/seriesid/PET.WCESTUS1.W": eia_wcestus1.json
+    expect:
+      values:
+        rows: 1
+        contains:
+          - { queried: PET.WCESTUS1.W, end: "2026-10-30", known_on: "2026-11-04", value: "421345", unit: MBBL }

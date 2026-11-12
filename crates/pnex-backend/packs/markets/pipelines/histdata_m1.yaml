@@ -1,0 +1,69 @@
+# Free 1-minute bid bars of HistData.com (forex, metals, oil, indices), a
+# closed year per file, one file every five minutes as a person would.
+# A year's page carries a download form; the file is the answer to that
+# form. A year before a pair's first shows the form with an empty token:
+# nothing to read, asked again a week later.
+# Times are New York wall clock, daylight saving included (pipeline-engine.md
+# D939): 08:30 in New York is 12:30 UTC in July, 13:30 in January.
+# HistData publishes no license: the table stays inside the org.
+key: histdata_m1
+name: HistData 1-minute bars
+hosts: [www.histdata.com]
+schedule: 5m
+steps:
+  - enumerate:
+      as: parts
+      track: true
+      per_run: 1
+      empty: retry
+      retry_days: 7
+      cross:
+        - { as: instrument, setting: markets.histdata_pairs, case: upper }
+        - { as: year, periods: year, from_setting: markets.histdata_from, from: "2000", closed_only: true }
+  - fetch:
+      as: page
+      for_each: parts
+      url: "https://www.histdata.com/download-free-forex-historical-data/?/metatrader/1-minute-bar-quotes/{{instrument|lower}}/{{year}}"
+      every: 5s
+      missing_is_empty: true
+  - extract: { as: form, from: page, form: "#file_down", where: { tk: "?*" } }
+  - fetch: { as: zip, for_each: form, method: post, url: "{{action}}", form_from: fields, every: 5s }
+  - unpack: { as: csv, from: zip, entries: ["*.csv"] }
+  - read:
+      as: bars
+      from: csv
+      format: csv
+      header: false
+      delimiter: ","
+      columns:
+        - { name: instrument, type: text, value: "{{instrument}}" }
+        - { name: ts, at: [0, 1], type: timestamp, format: "%Y.%m.%d %H:%M", timezone: America/New_York }
+        - { name: interval, type: text, value: "1m" }
+        - { name: open, at: 2, type: decimal, scale: 8 }
+        - { name: high, at: 3, type: decimal, scale: 8 }
+        - { name: low, at: 4, type: decimal, scale: 8 }
+        - { name: close, at: 5, type: decimal, scale: 8 }
+        - { name: volume, at: 6, type: decimal, scale: 8 }
+        - { name: quote_volume, type: decimal, scale: 8, value: null }
+        - { name: trades, type: integer, value: null }
+        - { name: source, type: text, value: histdata }
+  - write: { from: bars, table: { name: histdata_m1 } }
+tests:
+  - name: a year with a file, a year before the pair's first
+    today: "2026-02-10"
+    settings: { markets.histdata_pairs: "eurusd", markets.histdata_from: "2024" }
+    given:
+      "https://www.histdata.com/download-free-forex-historical-data/?/metatrader/1-minute-bar-quotes/eurusd/2024": histdata_page_2024.html
+      "https://www.histdata.com/download-free-forex-historical-data/?/metatrader/1-minute-bar-quotes/eurusd/2025": histdata_page_2025.html
+      "https://www.histdata.com/get.php": histdata_eurusd_2024.zip
+    expect:
+      parts: { rows: 2 }
+      form: { rows: 1 }
+      csv: { rows: 1 }
+      bars:
+        rows: 3
+        columns: [instrument, ts, interval, open, high, low, close, volume, quote_volume, trades, source]
+        contains:
+          - { instrument: EURUSD, ts: "2024-01-02T13:30:00", open: "1.09401000" }
+          - { ts: "2024-07-05T12:30:00" }
+          - { ts: "2024-07-05T20:59:00", quote_volume: null }

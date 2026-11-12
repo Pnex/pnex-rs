@@ -1,0 +1,51 @@
+# Daily prices of Tiingo, read with the org's Tiingo key (vault secret
+# markets_tiingo_key) sent to the Tiingo API only; the free plan allows 50
+# requests an hour. Each day gives its close and volume, a dividend or a
+# split when there is one, each known at the end of its own day.
+key: tiingo_daily_prices
+name: Daily prices (Tiingo)
+hosts: [api.tiingo.com]
+steps:
+  - enumerate: { as: tickers, cross: [{ as: ticker, objects: { type: instrument, property: ticker } }] }
+  - fetch:
+      as: json
+      for_each: tickers
+      url: "https://api.tiingo.com/tiingo/daily/{{ticker}}/prices"
+      params: { startDate: "1990-01-01" }
+      secret: { name: markets_tiingo_key, header: Authorization, scheme: Token }
+      every: 75s
+      missing_is_empty: true
+  - read:
+      as: days
+      from: json
+      format: json
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{ticker}}" }
+        - { name: day, at: date, type: text }
+        - { name: close, at: close, type: float }
+        - { name: volume, at: volume, type: float, optional: true }
+        - { name: dividend, at: divCash, type: float, optional: true }
+        - { name: split, at: splitFactor, type: float, optional: true }
+  - sql:
+      as: values
+      sql: |
+        SELECT queried, metric, substr(day, 1, 10) AS "end", substr(day, 1, 10) AS known_on, value FROM (
+          SELECT queried, day, 'close' AS metric, close AS value FROM days
+          UNION ALL SELECT queried, day, 'volume', volume FROM days
+          UNION ALL SELECT queried, day, 'dividend', dividend FROM days WHERE dividend <> 0
+          UNION ALL SELECT queried, day, 'split', split FROM days WHERE split <> 1
+        ) AS v
+        WHERE value IS NOT NULL
+  - write: { from: values, table: { name: daily_prices, replace: true } }
+tests:
+  - name: a day with a dividend
+    objects: { instrument.ticker: [SPY] }
+    given:
+      "https://api.tiingo.com/tiingo/daily/SPY/prices?startDate=1990-01-01": tiingo_spy.json
+    expect:
+      values:
+        rows: 5
+        contains:
+          - { queried: SPY, metric: close, end: "2026-11-05", known_on: "2026-11-05", value: "601.5" }
+          - { metric: dividend, value: "1.75" }

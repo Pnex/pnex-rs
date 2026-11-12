@@ -38,7 +38,9 @@ where
         config,
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
+            let worker = common::spawn_pipeline_worker();
             f(server, ctx.clone(), token).await;
+            worker.abort();
         },
     )
     .await;
@@ -276,6 +278,7 @@ async fn primary_sources_keep_what_was_known_when() {
         let agents = Arc::new(Mutex::new(Vec::new()));
         let base = mock_sources(agents.clone()).await;
         for host in ["https://www.sec.gov", "https://data.sec.gov", "https://fred.stlouisfed.org"] {
+            pnex_backend::services::pipeline_engine::store::route_for_tests(host.trim_start_matches("https://"), &base);
             db.execute_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
                 format!(
@@ -477,9 +480,6 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         }))
         .await;
 
-        // A keyed import pointed at another host never gets the key.
-        let r = api.run("Daily prices (Tiingo)").await;
-        assert_eq!(r["run"]["state"], "failed", "{r}");
         let seen = Arc::new(Mutex::new(Vec::new()));
         let base = mock_keyed_sources(seen.clone()).await;
         let sql = |q: String| {
@@ -487,14 +487,15 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         };
         for host in ["https://www.sec.gov", "https://data.sec.gov", "https://api.tiingo.com",
                      "https://data-api.ecb.europa.eu", "https://filings.xbrl.org", "https://stats.bis.org"] {
+            pnex_backend::services::pipeline_engine::store::route_for_tests(host.trim_start_matches("https://"), &base);
             sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') WHERE org_id = {org}"))
                 .await
                 .unwrap();
         }
-        let r = api.run("Daily prices (Tiingo)").await;
-        assert_eq!(r["run"]["state_code"], "import-key-host", "a mock host is not the key's: {r}");
-        assert!(seen.lock().unwrap().is_empty(), "nothing was sent");
+        // The key's host is the shipped pipeline's own (pipeline-engine.md D942):
+        // no address an org edits can carry it elsewhere.
         pnex_backend::services::markets::allow_test_host(&base);
+        pnex_backend::services::pipeline_engine::store::route_for_tests("stats.bis.org", &base);
 
         // No key in the vault: refused, with a code the UI can explain.
         let r = api.run("Benchmark prices (Tiingo)").await;
@@ -510,10 +511,10 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         }
         let calls = seen.lock().unwrap().clone();
         assert!(calls.iter().all(|(a, _)| a == "Token k-123"), "{calls:?}");
-        // The benchmark is an instrument too: read in turn with the others, only
-        // the new one from the start.
-        let whole = calls.iter().filter(|(_, q)| q == "startDate=2000-01-01").count();
-        assert_eq!(whole, 2, "first read of each instrument: {calls:?}");
+        // The benchmark is an instrument too: read in turn with the others. A
+        // pipeline reads each history whole; the sync keeps what changed (D577).
+        assert_eq!(calls.len(), 3, "{calls:?}");
+        assert!(calls.iter().all(|(_, q)| q == "startDate=1990-01-01"), "{calls:?}");
         let last = "ACME";
         let acme = object_id(&db, org, "instrument", "ticker", last).await.expect("instrument");
         // D810: the volume spike is a move of measure `volume`, the only one.
@@ -541,10 +542,11 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         let (st, _) = api.call("GET", &format!("/api/v1/markets/issuers/{acme}/chart?days=0"), None).await;
         assert_eq!(st, 400);
 
-        // A daily read asks only for the recent days.
+        // A daily read asks for the whole history again (the table is replaced,
+        // the sync keeps only what changed).
         api.run("Daily prices (Tiingo)").await;
         let (_, q) = seen.lock().unwrap().last().unwrap().clone();
-        assert_eq!(q, format!("startDate={}", price_day(339) - chrono::Duration::days(7)));
+        assert_eq!(q, "startDate=1990-01-01");
 
         // The raw close is stored, not the adjusted one.
         let (_, page) = api
@@ -865,6 +867,10 @@ async fn abnormal_sessions_and_their_window() {
         }))
         .await;
         let base = mock_move_series().await;
+        pnex_backend::services::pipeline_engine::store::route_for_tests(
+            "fred.stlouisfed.org",
+            &base,
+        );
         db.execute_raw(Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             format!(
@@ -1170,6 +1176,7 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
             "https://ucdp.uu.se",
             "https://acleddata.com",
         ] {
+            pnex_backend::services::pipeline_engine::store::route_for_tests(host.trim_start_matches("https://"), &base);
             db.execute_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
                 format!(
@@ -1758,6 +1765,7 @@ async fn fred_first_releases_date_the_moves() {
             }),
         );
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::pipeline_engine::store::route_for_tests("api.stlouisfed.org", &base);
         db.execute_raw(Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             format!(
@@ -1784,7 +1792,7 @@ async fn fred_first_releases_date_the_moves() {
         let stored: Value = db
             .query_one_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
-                format!("SELECT source_url AS u FROM object_imports WHERE org_id = {org} AND name = '{name}'"),
+                format!("SELECT coalesce(source_url, '') || mapping_yaml AS u FROM object_imports WHERE org_id = {org} AND name = '{name}'"),
             ))
             .await
             .unwrap()
@@ -1983,698 +1991,6 @@ async fn the_session_summary_is_written_once_by_the_orgs_ai() {
     .await;
 }
 
-/// MK11: the minute bars of the listed symbols go into a table, one
-/// partition per transaction, against a mock of Binance's public files. A
-/// done partition is never fetched again; a wrong checksum and an
-/// unpublished day are asked again on the next pass.
-#[tokio::test]
-#[serial]
-async fn minute_history_is_loaded_by_partitions_and_resumed() {
-    with_app(|server, ctx, token| async move {
-        use axum::{extract::Path, http::StatusCode, response::IntoResponse, routing::get, Router};
-        use sha2::{Digest, Sha256};
-        use std::io::Write;
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {token}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api {
-            server: &server,
-            token,
-            org,
-        };
-        let (st, r) = api
-            .call("POST", "/api/v1/ontology/packs/markets/install", None)
-            .await;
-        assert_eq!(st, 200, "{r}");
-        api.settings(json!({ "history_symbols": "btcusdt", "history_from": "2026-09" }))
-            .await;
-
-        fn zip_of(name: &str, csv: &str) -> Vec<u8> {
-            let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-            w.start_file(name, zip::write::SimpleFileOptions::default())
-                .unwrap();
-            w.write_all(csv.as_bytes()).unwrap();
-            w.finish().unwrap().into_inner()
-        }
-        let line = |ms: i64| format!("{ms},100.5,101,100,100.25000000,2,0,200.5,7,1,100,0\n");
-        let sep = zip_of(
-            "BTCUSDT-1m-2026-09.csv",
-            &format!(
-                "{}{}{}",
-                line(1_788_220_800_000),
-                line(1_788_220_860_000),
-                line(1_788_220_920_000)
-            ),
-        );
-        let oct = zip_of("BTCUSDT-1m-2026-10.csv", &line(1_790_812_800_000));
-        // November 2 in microseconds, as Binance publishes since 2025.
-        let nov2 = zip_of("BTCUSDT-1m-2026-11-02.csv", &line(1_793_577_600_000_000));
-        let hits: Arc<Mutex<Vec<String>>> = Arc::default();
-        let files: Arc<std::collections::HashMap<String, Vec<u8>>> = Arc::new(
-            [
-                ("monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2026-09.zip", sep),
-                ("monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2026-10.zip", oct),
-                ("daily/klines/BTCUSDT/1m/BTCUSDT-1m-2026-11-02.zip", nov2),
-            ]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
-        );
-        let app = Router::new().route(
-            "/data/spot/{*path}",
-            get({
-                let (hits, files) = (hits.clone(), files.clone());
-                move |Path(path): Path<String>| async move {
-                    hits.lock().unwrap().push(path.clone());
-                    if let Some(zip) = path.strip_suffix(".CHECKSUM") {
-                        let Some(body) = files.get(zip) else {
-                            return StatusCode::NOT_FOUND.into_response();
-                        };
-                        let mut hex: String = Sha256::digest(body)
-                            .iter()
-                            .map(|b| format!("{b:02x}"))
-                            .collect();
-                        if zip.contains("2026-10") {
-                            hex = "0".repeat(64);
-                        }
-                        return format!("{hex}  {zip}\n").into_response();
-                    }
-                    match files.get(&path) {
-                        Some(b) => b.clone().into_response(),
-                        None => StatusCode::NOT_FOUND.into_response(),
-                    }
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        pnex_backend::services::markets::allow_test_host(&base);
-
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
-        pnex_backend::services::markets::history::sweep_from(
-            &ctx,
-            &pnex_backend::services::markets::history::Hosts {
-                binance: base.clone(),
-                ..Default::default()
-            },
-            today,
-        )
-        .await
-        .unwrap();
-        let states = || async {
-            ctx.db
-                .query_all_raw(Statement::from_string(
-                    sea_orm::DatabaseBackend::Postgres,
-                    "SELECT period || ':' || period_start::text || ':' || state || ':' \
-                     || coalesce(code, '') || ':' || rows::text AS s \
-                     FROM market_history_partitions ORDER BY period_start"
-                        .to_string(),
-                ))
-                .await
-                .unwrap()
-                .iter()
-                .map(|r| r.try_get::<String>("", "s").unwrap())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(
-            states().await,
-            vec![
-                "month:2026-09-01:done::3",
-                "month:2026-10-01:failed:checksum:0",
-                "day:2026-11-01:empty::0",
-                "day:2026-11-02:done::1",
-            ]
-        );
-        let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
-        assert_eq!(st, 200, "{list}");
-        let table = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|d| d["name"] == "binance_spot_klines_1m")
-            .unwrap_or_else(|| panic!("{list}"))
-            .clone();
-        let types: Vec<String> = table["columns"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|c| {
-                format!(
-                    "{}:{}",
-                    c["name"].as_str().unwrap(),
-                    c["data_type"].as_str().unwrap()
-                )
-            })
-            .collect();
-        assert!(types.contains(&"ts:timestamp".to_string()), "{types:?}");
-        assert!(types.contains(&"close:decimal".to_string()), "{types:?}");
-        assert_eq!(table["rows"], 4, "3 September minutes and 1 of November 2");
-
-        // Second pass: only what is not settled is asked again.
-        hits.lock().unwrap().clear();
-        pnex_backend::services::markets::history::sweep_from(
-            &ctx,
-            &pnex_backend::services::markets::history::Hosts {
-                binance: base.clone(),
-                ..Default::default()
-            },
-            today,
-        )
-        .await
-        .unwrap();
-        let asked: Vec<String> = hits
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|p| p.ends_with(".zip"))
-            .cloned()
-            .collect();
-        assert_eq!(
-            asked,
-            vec![
-                "monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2026-10.zip",
-                "daily/klines/BTCUSDT/1m/BTCUSDT-1m-2026-11-01.zip",
-            ],
-            "a done partition is never fetched again"
-        );
-    })
-    .await;
-}
-
-/// MK11 acceptance: BTCUSDT and ETHUSDT spot 1m since 2017-08 from the real
-/// data.binance.vision (about 220 partitions, 1 to 2 GB).
-#[tokio::test]
-#[serial]
-#[ignore = "downloads the full Binance minute history of two symbols"]
-async fn minute_history_real_binance() {
-    with_app(|server, ctx, token| async move {
-        use pnex_backend::services::markets::history::sweep;
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {token}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api {
-            server: &server,
-            token,
-            org,
-        };
-        let (st, r) = api
-            .call("POST", "/api/v1/ontology/packs/markets/install", None)
-            .await;
-        assert_eq!(st, 200, "{r}");
-        api.settings(json!({ "history_symbols": "BTCUSDT,ETHUSDT", "history_from": "2017-08" }))
-            .await;
-        let one = |sql: &'static str| {
-            let db = ctx.db.clone();
-            async move {
-                db.query_one_raw(Statement::from_string(
-                    sea_orm::DatabaseBackend::Postgres,
-                    sql.to_string(),
-                ))
-                .await
-                .unwrap()
-                .unwrap()
-            }
-        };
-        let today = chrono::Utc::now().date_naive();
-        let started = std::time::Instant::now();
-        let mut known = -1_i64;
-        for pass in 0..40 {
-            sweep(&ctx, today).await.unwrap();
-            let n: i64 = one("SELECT count(*) AS n FROM market_history_partitions")
-                .await
-                .try_get("", "n")
-                .unwrap();
-            eprintln!("pass {pass}: {n} partitions, {:?}", started.elapsed());
-            if n == known {
-                break;
-            }
-            known = n;
-        }
-        let failed: Vec<String> = ctx
-            .db
-            .query_all_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT instrument || ':' || period_start::text || ':' || coalesce(code, '') AS s \
-                 FROM market_history_partitions WHERE state = 'failed'"
-                    .to_string(),
-            ))
-            .await
-            .unwrap()
-            .iter()
-            .map(|r| r.try_get::<String>("", "s").unwrap())
-            .collect();
-        assert!(failed.is_empty(), "failed partitions: {failed:?}");
-        // A month never holds more rows than minutes; Binance publishes few gaps.
-        let over: i64 = one(
-            "SELECT count(*) AS n FROM market_history_partitions WHERE period = 'month' \
-               AND rows > extract(epoch FROM (period_start + interval '1 month') \
-                 - period_start::timestamp) / 60",
-        )
-        .await
-        .try_get("", "n")
-        .unwrap();
-        assert_eq!(over, 0, "a month with more rows than minutes");
-        let row = one(
-            "SELECT sum(rows)::bigint AS rows, \
-               sum(extract(epoch FROM (CASE period WHEN 'month' THEN period_start + interval '1 month' \
-                 ELSE period_start + interval '1 day' END) - period_start::timestamp) / 60) \
-                 FILTER (WHERE state = 'done')::bigint AS minutes, \
-               max(fetched_at) AS last FROM market_history_partitions",
-        )
-        .await;
-        let rows: i64 = row.try_get("", "rows").unwrap();
-        let minutes: i64 = row.try_get("", "minutes").unwrap();
-        eprintln!(
-            "{rows} rows for {minutes} minutes of done partitions ({:.3} %), {:?}",
-            rows as f64 * 100.0 / minutes as f64,
-            started.elapsed()
-        );
-        assert!(rows as f64 >= minutes as f64 * 0.99, "{rows} rows, {minutes} minutes");
-        let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
-        assert_eq!(st, 200, "{list}");
-        let table = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|d| d["name"] == "binance_spot_klines_1m")
-            .unwrap_or_else(|| panic!("{list}"))
-            .clone();
-        assert_eq!(table["rows"].as_i64(), Some(rows), "{table}");
-
-        // A second run downloads nothing settled again.
-        let before: chrono::DateTime<chrono::Utc> = row.try_get("", "last").unwrap();
-        sweep(&ctx, today).await.unwrap();
-        let refetched: i64 = ctx
-            .db
-            .query_one_raw(Statement::from_sql_and_values(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT count(*) AS n FROM market_history_partitions \
-                 WHERE state = 'done' AND fetched_at > $1",
-                [before.into()],
-            ))
-            .await
-            .unwrap()
-            .unwrap()
-            .try_get("", "n")
-            .unwrap();
-        assert_eq!(refetched, 0, "a done partition was fetched again");
-    })
-    .await;
-}
-
-#[tokio::test]
-#[serial]
-async fn tick_history_is_loaded_by_days() {
-    with_app(|server, ctx, token| async move {
-        use axum::{extract::Path, http::StatusCode, response::IntoResponse, routing::get, Router};
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {token}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api {
-            server: &server,
-            token,
-            org,
-        };
-        let (st, r) = api
-            .call("POST", "/api/v1/ontology/packs/markets/install", None)
-            .await;
-        assert_eq!(st, 200, "{r}");
-        api.settings(
-            json!({ "history_fx_pairs": "eurusd,USDJPY,XAUUSD", "history_fx_from": "2026-11" }),
-        )
-        .await;
-
-        fn bi5(records: &[(u32, u32, u32)]) -> Vec<u8> {
-            let mut raw = Vec::new();
-            for (ms, ask, bid) in records {
-                raw.extend(ms.to_be_bytes());
-                raw.extend(ask.to_be_bytes());
-                raw.extend(bid.to_be_bytes());
-                raw.extend(1.5_f32.to_bits().to_be_bytes());
-                raw.extend(0.25_f32.to_bits().to_be_bytes());
-            }
-            let mut out = Vec::new();
-            lzma_rs::lzma_compress(&mut std::io::Cursor::new(raw), &mut out).unwrap();
-            out
-        }
-        // November is month 10 in Dukascopy's paths.
-        let files: Arc<std::collections::HashMap<String, Vec<u8>>> = Arc::new(
-            [
-                (
-                    "EURUSD/2026/10/02/00h_ticks.bi5",
-                    bi5(&[(0, 108_001, 107_999), (1500, 108_002, 108_000)]),
-                ),
-                ("EURUSD/2026/10/02/01h_ticks.bi5", Vec::new()),
-                (
-                    "EURUSD/2026/10/02/13h_ticks.bi5",
-                    bi5(&[(59_000, 108_101, 108_099)]),
-                ),
-                (
-                    "USDJPY/2026/10/02/00h_ticks.bi5",
-                    bi5(&[(10, 157_123, 157_120)]),
-                ),
-                ("USDJPY/2026/10/02/05h_ticks.bi5", b"not lzma".to_vec()),
-            ]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
-        );
-        let hits = Arc::new(AtomicUsize::new(0));
-        let app = Router::new().route(
-            "/datafeed/{*path}",
-            get({
-                let (hits, files) = (hits.clone(), files.clone());
-                move |Path(path): Path<String>| async move {
-                    hits.fetch_add(1, Ordering::SeqCst);
-                    match files.get(&path) {
-                        Some(b) => b.clone().into_response(),
-                        None => StatusCode::NOT_FOUND.into_response(),
-                    }
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        pnex_backend::services::markets::allow_test_host(&base);
-
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
-        let hosts = pnex_backend::services::markets::history::Hosts {
-            dukascopy: base.clone(),
-            ..Default::default()
-        };
-        let sweep = || pnex_backend::services::markets::history::sweep_from(&ctx, &hosts, today);
-        sweep().await.unwrap();
-        let states: Vec<String> = ctx
-            .db
-            .query_all_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT instrument || ':' || period_start::text || ':' || state || ':' \
-                 || coalesce(code, '') || ':' || rows::text AS s \
-                 FROM market_history_partitions ORDER BY instrument, period_start"
-                    .to_string(),
-            ))
-            .await
-            .unwrap()
-            .iter()
-            .map(|r| r.try_get::<String>("", "s").unwrap())
-            .collect();
-        assert_eq!(
-            states,
-            vec![
-                "EURUSD:2026-11-01:empty::0",
-                "EURUSD:2026-11-02:done::3",
-                "USDJPY:2026-11-01:empty::0",
-                "USDJPY:2026-11-02:failed:unreadable:0",
-            ],
-            "XAUUSD has no known scale and is never asked"
-        );
-        assert_eq!(
-            hits.load(Ordering::SeqCst),
-            4 * 24 - 18,
-            "USDJPY stops at its bad hour"
-        );
-        let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
-        assert_eq!(st, 200, "{list}");
-        let table = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|d| d["name"] == "dukascopy_ticks")
-            .unwrap_or_else(|| panic!("{list}"))
-            .clone();
-        assert_eq!(table["rows"], 3);
-        let types: Vec<String> = table["columns"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|c| {
-                format!(
-                    "{}:{}",
-                    c["name"].as_str().unwrap(),
-                    c["data_type"].as_str().unwrap()
-                )
-            })
-            .collect();
-        assert!(types.contains(&"bid:decimal".to_string()), "{types:?}");
-        assert!(types.contains(&"ts:timestamp".to_string()), "{types:?}");
-
-        // The done day is not asked again; the failed and recent empty ones are.
-        hits.store(0, Ordering::SeqCst);
-        sweep().await.unwrap();
-        assert_eq!(hits.load(Ordering::SeqCst), 24 + 24 + 6);
-    })
-    .await;
-}
-
-/// MK12 acceptance: EURUSD and USDJPY ticks of the last twelve months from
-/// the real datafeed.dukascopy.com (about 17 500 hour files).
-#[tokio::test]
-#[serial]
-#[ignore = "downloads a year of Dukascopy ticks for two pairs"]
-async fn tick_history_real_dukascopy() {
-    with_app(|server, ctx, token| async move {
-        use pnex_backend::services::markets::history::sweep_from;
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {token}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api {
-            server: &server,
-            token,
-            org,
-        };
-        let (st, r) = api
-            .call("POST", "/api/v1/ontology/packs/markets/install", None)
-            .await;
-        assert_eq!(st, 200, "{r}");
-        api.settings(json!({ "history_fx_pairs": "EURUSD,USDJPY", "history_fx_from": "" }))
-            .await;
-        let today = chrono::Utc::now().date_naive();
-        let started = std::time::Instant::now();
-        let mut known = -1_i64;
-        for pass in 0..80 {
-            sweep_from(&ctx, &Default::default(), today).await.unwrap();
-            let n: i64 = ctx
-                .db
-                .query_one_raw(Statement::from_string(
-                    sea_orm::DatabaseBackend::Postgres,
-                    "SELECT count(*) AS n FROM market_history_partitions".to_string(),
-                ))
-                .await
-                .unwrap()
-                .unwrap()
-                .try_get("", "n")
-                .unwrap();
-            eprintln!("pass {pass}: {n} days, {:?}", started.elapsed());
-            if n == known {
-                break;
-            }
-            known = n;
-        }
-        let summary: Vec<String> = ctx
-            .db
-            .query_all_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT instrument || ':' || state || ':' || coalesce(code, '') || ':' \
-                   || count(*)::text || ':' || sum(rows)::text || ':' || sum(bytes)::text AS s \
-                 FROM market_history_partitions GROUP BY instrument, state, code ORDER BY 1"
-                    .to_string(),
-            ))
-            .await
-            .unwrap()
-            .iter()
-            .map(|r| r.try_get::<String>("", "s").unwrap())
-            .collect();
-        eprintln!("{summary:#?} in {:?}", started.elapsed());
-        assert!(
-            !summary.iter().any(|s| s.contains(":failed:")),
-            "{summary:?}"
-        );
-        // Printed for a look at the scales: EURUSD near 1, USDJPY near 150.
-        let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
-        assert_eq!(st, 200, "{list}");
-        let id = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|d| d["name"] == "dukascopy_ticks")
-            .unwrap_or_else(|| panic!("{list}"))["id"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let (st, sample) = api
-            .call(
-                "GET",
-                &format!("/api/v1/datasets/{id}/sample?limit=5"),
-                None,
-            )
-            .await;
-        eprintln!("{st} {sample}");
-    })
-    .await;
-}
-
-#[tokio::test]
-#[serial]
-async fn trade_history_is_loaded_by_days() {
-    with_app(|server, ctx, token| async move {
-        use axum::{extract::Path, http::StatusCode, response::IntoResponse, routing::get, Router};
-        use sha2::{Digest, Sha256};
-        use std::io::Write;
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {token}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api {
-            server: &server,
-            token,
-            org,
-        };
-        let (st, r) = api
-            .call("POST", "/api/v1/ontology/packs/markets/install", None)
-            .await;
-        assert_eq!(st, 200, "{r}");
-        api.settings(
-            json!({ "history_trade_symbols": "BTCUSDT", "history_trade_from": "2026-11" }),
-        )
-        .await;
-        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        w.start_file(
-            "BTCUSDT-trades-2026-11-01.csv",
-            zip::write::SimpleFileOptions::default(),
-        )
-        .unwrap();
-        w.write_all(
-            b"1,100.50000000,0.20000000,20.10000000,1793491200000000,true,true\n\
-2,100.60000000,0.10000000,10.06000000,1793491200500000,false,true\n",
-        )
-        .unwrap();
-        let day1 = w.finish().unwrap().into_inner();
-        let files: Arc<std::collections::HashMap<String, Vec<u8>>> = Arc::new(
-            [
-                (
-                    "daily/trades/BTCUSDT/BTCUSDT-trades-2026-11-01.zip",
-                    day1.clone(),
-                ),
-                ("daily/trades/BTCUSDT/BTCUSDT-trades-2026-11-02.zip", day1),
-            ]
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect(),
-        );
-        let app = Router::new().route(
-            "/data/spot/{*path}",
-            get({
-                let files = files.clone();
-                move |Path(path): Path<String>| async move {
-                    if let Some(zip) = path.strip_suffix(".CHECKSUM") {
-                        let Some(body) = files.get(zip) else {
-                            return StatusCode::NOT_FOUND.into_response();
-                        };
-                        let mut hex: String = Sha256::digest(body)
-                            .iter()
-                            .map(|b| format!("{b:02x}"))
-                            .collect();
-                        if zip.contains("11-02") {
-                            hex = "0".repeat(64);
-                        }
-                        return format!("{hex}  {zip}\n").into_response();
-                    }
-                    match files.get(&path) {
-                        Some(b) => b.clone().into_response(),
-                        None => StatusCode::NOT_FOUND.into_response(),
-                    }
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        pnex_backend::services::markets::allow_test_host(&base);
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 4).unwrap();
-        // Two sweeps at once (a pass outliving its turn): nothing loaded twice.
-        let hosts = pnex_backend::services::markets::history::Hosts {
-            binance: base.clone(),
-            ..Default::default()
-        };
-        let sweep = || pnex_backend::services::markets::history::sweep_from(&ctx, &hosts, today);
-        let (a, b) = tokio::join!(sweep(), sweep());
-        a.unwrap();
-        b.unwrap();
-        let states: Vec<String> = ctx
-            .db
-            .query_all_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT source || ':' || period_start::text || ':' || state || ':' \
-                 || coalesce(code, '') || ':' || rows::text AS s \
-                 FROM market_history_partitions ORDER BY period_start"
-                    .to_string(),
-            ))
-            .await
-            .unwrap()
-            .iter()
-            .map(|r| r.try_get::<String>("", "s").unwrap())
-            .collect();
-        assert_eq!(
-            states,
-            vec![
-                "binance_public_trades:2026-11-01:done::2",
-                "binance_public_trades:2026-11-02:failed:checksum:0",
-                "binance_public_trades:2026-11-03:empty::0",
-            ]
-        );
-        let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
-        assert_eq!(st, 200, "{list}");
-        let table = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|d| d["name"] == "binance_spot_trades")
-            .unwrap_or_else(|| panic!("{list}"))
-            .clone();
-        assert_eq!(table["rows"], 2);
-        let names: Vec<&str> = table["columns"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|c| c["name"].as_str().unwrap())
-            .collect();
-        assert_eq!(
-            names,
-            [
-                "instrument",
-                "ts",
-                "price",
-                "qty",
-                "side",
-                "trade_id",
-                "source"
-            ]
-        );
-    })
-    .await;
-}
-
 /// D847–D849: an MT5 terminal registered in the UI, its generated EA with
 /// its own token, the catalogue it announces, the configuration it reads,
 /// the calls it pushes; the markets sweep turns them into the tables.
@@ -2818,7 +2134,7 @@ async fn mt5_terminals_push_into_tables() {
         assert_eq!(seen["terminal_build"], 4755);
 
         let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 8).unwrap();
-        pnex_backend::services::markets::history::sweep_from(&ctx, &pnex_backend::services::markets::history::Hosts { binance: "http://unused".into(), ..Default::default() }, today).await.unwrap();
+        pnex_backend::services::markets::history::sweep(&ctx, today).await.unwrap();
         let inbox = count(&ctx.db, format!("SELECT count(*) AS n FROM mt5_inbox WHERE org_id = {org}")).await;
         assert_eq!(inbox, 0, "read calls leave the inbox");
         let (st, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
@@ -2867,258 +2183,6 @@ async fn mt5_terminals_push_into_tables() {
         }
         let (st, over) = api.call("POST", "/api/v1/mt5/terminals", Some(json!({ "name": "one more" }))).await;
         assert_eq!((st, over["error"].as_str()), (409, Some("mt5-terminals-limit")), "{over}");
-    })
-    .await;
-}
-
-/// HistData: the page's own form is sent back for the file, a closed year
-/// per file, times turned from EST (no daylight saving) to UTC.
-#[tokio::test]
-#[serial]
-async fn histdata_years_are_loaded_from_the_page_form() {
-    with_app(|server, ctx, token| async move {
-        use axum::{extract::RawQuery, http::HeaderMap, http::StatusCode, response::IntoResponse, routing::{get, post}, Form, Router};
-        use std::io::Write;
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {token}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api {
-            server: &server,
-            token,
-            org,
-        };
-        let (st, r) = api
-            .call("POST", "/api/v1/ontology/packs/markets/install", None)
-            .await;
-        assert_eq!(st, 200, "{r}");
-        api.settings(json!({ "histdata_pairs": "eurusd, gbpusd", "histdata_from": "2023" }))
-            .await;
-        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        w.start_file("DAT_MT_EURUSD_M1_2024.csv", zip::write::SimpleFileOptions::default())
-            .unwrap();
-        w.write_all(
-            b"2024.01.01,17:00,1.104270,1.104290,1.104250,1.104290,0\n\
-2024.01.01,17:01,1.104290,1.104290,1.104290,1.104290,0\n",
-        )
-        .unwrap();
-        w.start_file("DAT_MT_EURUSD_M1_2024.txt", zip::write::SimpleFileOptions::default())
-            .unwrap();
-        w.write_all(b"gaps report").unwrap();
-        let zip = w.finish().unwrap().into_inner();
-        let posts: Arc<Mutex<Vec<String>>> = Arc::default();
-        let app = Router::new()
-            .route(
-                "/download-free-forex-historical-data/",
-                get(|RawQuery(q): RawQuery| async move {
-                    // 2024 has a file. 2023 has a form but an empty file; 2025,
-                    // before the pair's first, a form with an empty token.
-                    let form = |tk: &str, year: &str| format!(r#"<html>
-<form id="file_down" name="file_down" target="nullDisplay" method="POST" action="/get.php">
-<input type="hidden" name="tk" id="tk" value="{tk}" />
-<input type="hidden" name="date" id="date" value="{year}" />
-<input type="hidden" name="fxpair" id="fxpair" value="EURUSD" /></form></html>"#);
-                    match q.as_deref() {
-                        Some("/metatrader/1-minute-bar-quotes/eurusd/2023") => {
-                            form("0123456789abcdef0123456789abcdef", "2023").into_response()
-                        }
-                        Some("/metatrader/1-minute-bar-quotes/eurusd/2024") => {
-                            form("0123456789abcdef0123456789abcdef", "2024").into_response()
-                        }
-                        Some("/metatrader/1-minute-bar-quotes/eurusd/2025") => {
-                            form("", "2025").into_response()
-                        }
-                        _ => "<html>no file here</html>".into_response(),
-                    }
-                }),
-            )
-            .route(
-                "/get.php",
-                post({
-                    let posts = posts.clone();
-                    move |headers: HeaderMap, Form(f): Form<std::collections::HashMap<String, String>>| async move {
-                        let referer = headers
-                            .get("referer")
-                            .and_then(|v| v.to_str().ok())
-                            .unwrap_or("")
-                            .to_string();
-                        posts.lock().unwrap().push(format!(
-                            "{}:{}:{}",
-                            f.get("tk").cloned().unwrap_or_default(),
-                            f.get("date").cloned().unwrap_or_default(),
-                            referer.ends_with("eurusd/2024")
-                        ));
-                        if f.get("tk").map(String::as_str) != Some("0123456789abcdef0123456789abcdef") {
-                            return StatusCode::FORBIDDEN.into_response();
-                        }
-                        if f.get("date").map(String::as_str) != Some("2024") {
-                            return Vec::<u8>::new().into_response();
-                        }
-                        zip.clone().into_response()
-                    }
-                }),
-            );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        pnex_backend::services::markets::allow_test_host(&base);
-
-        // One file per pass: 2023, 2024, 2025, the months of 2026, then
-        // GBPUSD's first year before EURUSD's empty 2025 is asked again.
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 2, 10).unwrap();
-        for _ in 0..5 {
-            pnex_backend::services::markets::history::sweep_from(&ctx, &pnex_backend::services::markets::history::Hosts { histdata: base.clone(), ..Default::default() }, today)
-                .await
-                .unwrap();
-        }
-        let states: Vec<String> = ctx
-            .db
-            .query_all_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT period || ':' || period_start::text || ':' || state || ':' || rows::text AS s \
-                 FROM market_history_partitions WHERE source = 'histdata' AND instrument = 'EURUSD' \
-                 ORDER BY period_start"
-                    .to_string(),
-            ))
-            .await
-            .unwrap()
-            .iter()
-            .map(|r| r.try_get::<String>("", "s").unwrap())
-            .collect();
-        assert_eq!(
-            states,
-            vec![
-                "year:2023-01-01:empty:0",
-                "year:2024-01-01:done:2",
-                "year:2025-01-01:empty:0",
-                "month:2026-01-01:empty:0",
-            ],
-            "an empty file and an empty token are empty years, never retried failures"
-        );
-        let next = ctx
-            .db
-            .query_all_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT period_start::text AS s FROM market_history_partitions \
-                 WHERE source = 'histdata' AND instrument = 'GBPUSD'"
-                    .to_string(),
-            ))
-            .await
-            .unwrap()
-            .iter()
-            .map(|r| r.try_get::<String>("", "s").unwrap())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            next,
-            vec!["2023-01-01"],
-            "another pair's first file comes before an empty year asked again"
-        );
-        assert_eq!(
-            posts.lock().unwrap().clone(),
-            vec![
-                "0123456789abcdef0123456789abcdef:2023:false",
-                "0123456789abcdef0123456789abcdef:2024:true"
-            ],
-            "the page's own fields, with the page as referer"
-        );
-        let (_, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
-        let id = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|d| d["name"] == "histdata_ohlcv_1m")
-            .unwrap_or_else(|| panic!("{list}"))["id"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let (st, sample) = api
-            .call("GET", &format!("/api/v1/datasets/{id}/sample"), None)
-            .await;
-        assert_eq!(st, 200, "{sample}");
-        // 17:00 EST is 22:00 UTC.
-        assert!(sample.to_string().contains("2024-01-01T22:00:00"), "{sample}");
-    })
-    .await;
-}
-
-/// HistData acceptance: EURUSD from 2000 from the real histdata.com, one
-/// file at a time (about 36 files, 5 s apart).
-#[tokio::test]
-#[serial]
-#[ignore = "downloads the full HistData EURUSD history"]
-async fn histdata_real_eurusd() {
-    with_app(|server, ctx, token| async move {
-        use pnex_backend::services::markets::history::sweep;
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {token}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api {
-            server: &server,
-            token,
-            org,
-        };
-        let (st, r) = api
-            .call("POST", "/api/v1/ontology/packs/markets/install", None)
-            .await;
-        assert_eq!(st, 200, "{r}");
-        api.settings(json!({ "histdata_pairs": "EURUSD", "histdata_from": "2000" }))
-            .await;
-        let today = chrono::Utc::now().date_naive();
-        let started = std::time::Instant::now();
-        let count = || async {
-            ctx.db
-                .query_one_raw(Statement::from_string(
-                    sea_orm::DatabaseBackend::Postgres,
-                    "SELECT count(*) AS n FROM market_history_partitions WHERE source = 'histdata'"
-                        .to_string(),
-                ))
-                .await
-                .unwrap()
-                .unwrap()
-                .try_get::<i64>("", "n")
-                .unwrap()
-        };
-        let (mut known, mut still) = (-1_i64, 0);
-        for pass in 0..80 {
-            sweep(&ctx, today).await.unwrap();
-            let n = count().await;
-            eprintln!("pass {pass}: {n} partitions, {:?}", started.elapsed());
-            still = if n == known { still + 1 } else { 0 };
-            if still == 2 {
-                break;
-            }
-            known = n;
-        }
-        let summary: Vec<String> = ctx
-            .db
-            .query_all_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                "SELECT period || ':' || period_start::text || ':' || state || ':' \
-                   || coalesce(code, '') || ':' || rows::text AS s \
-                 FROM market_history_partitions WHERE source = 'histdata' ORDER BY period_start"
-                    .to_string(),
-            ))
-            .await
-            .unwrap()
-            .iter()
-            .map(|r| r.try_get::<String>("", "s").unwrap())
-            .collect();
-        eprintln!("{summary:#?} in {:?}", started.elapsed());
-        assert!(
-            !summary.iter().any(|s| s.contains(":failed:")),
-            "{summary:?}"
-        );
-        assert!(
-            summary.contains(&"year:2024-01-01:done::372379".to_string()),
-            "{summary:?}"
-        );
     })
     .await;
 }
@@ -3256,7 +2320,9 @@ END:VCALENDAR\r\n".to_string())
         assert_eq!(ranges("").await, 104);
 
         // Eurostat and PortWatch: dated series.
+        pnex_backend::services::pipeline_engine::store::route_for_tests("publicreporting.cftc.gov", &base);
         for host in ["https://ec.europa.eu", "https://services9.arcgis.com", "https://publicreporting.cftc.gov", "https://api.eia.gov"] {
+            pnex_backend::services::pipeline_engine::store::route_for_tests(host.trim_start_matches("https://"), &base);
             db.execute_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
                 format!("UPDATE object_imports SET source_url = replace(source_url, '{host}', '{base}') WHERE org_id = {org}"),
@@ -3294,6 +2360,9 @@ END:VCALENDAR\r\n".to_string())
         // CFTC COT: positions of Tuesday, known on Friday (no look-ahead).
         let r = api.run("Positions of traders (CFTC COT)").await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
+        // The run history shows the pipeline's steps (pipeline-engine.md D944).
+        let steps: Vec<&str> = r["steps"].as_array().unwrap().iter().filter_map(|s| s["step"].as_str()).collect();
+        assert_eq!(steps, ["enumerate", "fetch", "read", "sql", "write"], "{r}");
         let gold = object_id(&db, org, "macro_series", "code", "088691").await.expect("COT series");
         let net = api.observations(&gold, "metric=noncommercial_net").await;
         assert_eq!(net[0]["value"], 179548.0, "{net:?}");
@@ -3305,15 +2374,12 @@ END:VCALENDAR\r\n".to_string())
         assert_eq!(r["run"]["state"], "applied", "{r}");
         let q = asked.lock().unwrap().clone();
         assert!(q[0].contains("chokepoint6"), "PortWatch ids are lower-case: {q:?}");
-        assert!(q[0].contains("2000-01-01"), "the whole history the first time: {q:?}");
+        assert!(q[0].contains("orderByFields=date+DESC"), "the latest days first: {q:?}");
         let hormuz = object_id(&db, org, "macro_series", "code", "CHOKEPOINT6").await.expect("chokepoint");
         let tankers = api.observations(&hormuz, "metric=n_tanker").await;
         assert_eq!(tankers.len(), 2);
         let (_, obj) = api.call("GET", &format!("/api/v1/ontology/objects/{hormuz}"), None).await;
         assert_eq!(obj["title"], "Strait of Hormuz", "{obj}");
-        api.run("Shipping chokepoints (IMF PortWatch)").await;
-        let q = asked.lock().unwrap().clone();
-        assert!(q[1].contains("2026-10-2"), "then a few days back from the last value: {q:?}");
     })
     .await;
 }
@@ -3370,6 +2436,7 @@ async fn open_prices_give_one_series_per_shop() {
         );
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         pnex_backend::services::markets::allow_test_host(&base);
+        pnex_backend::services::pipeline_engine::store::route_for_tests("prices.openfoodfacts.org", &base);
         db.execute_raw(Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             format!("UPDATE object_imports SET source_url = replace(source_url, 'https://prices.openfoodfacts.org', '{base}') WHERE org_id = {org}"),
@@ -3379,7 +2446,7 @@ async fn open_prices_give_one_series_per_shop() {
         let r = api.run("Product prices (Open Prices)").await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
         let (q, ua) = asked.lock().unwrap()[0].clone();
-        assert!(q.contains("product_code=3017620422003") && q.contains("date__gte=2000-01-01"), "{q}");
+        assert!(q.contains("product_code=3017620422003") && q.contains("order_by=-date"), "{q}");
         assert!(ua.contains("test@example.com"), "the declared contact: {ua}");
         let product = object_id(&db, org, "consumer_product", "ean", "3017620422003").await.expect("product");
         let (_, obj) = api.call("GET", &format!("/api/v1/ontology/objects/{product}"), None).await;
@@ -3395,16 +2462,6 @@ async fn open_prices_give_one_series_per_shop() {
     .await;
 }
 
-fn zip_of(name: &str, text: &str) -> Vec<u8> {
-    use std::io::Write;
-    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    let opts = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-    w.start_file(name, opts).unwrap();
-    w.write_all(text.as_bytes()).unwrap();
-    w.finish().unwrap().into_inner()
-}
-
 fn gz_of(bytes: &[u8]) -> Vec<u8> {
     use std::io::Write;
     let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
@@ -3412,8 +2469,9 @@ fn gz_of(bytes: &[u8]) -> Vec<u8> {
     e.finish().unwrap()
 }
 
-/// MK22–MK24 (D889, Q-F7, Q-F8): AIS, ADS-B and DVF files read as they
-/// arrive into tables, one transaction per file, committed only whole.
+/// MK24 (D889, Q-F8): an ADS-B day split in parts read as one stream into a
+/// table, one transaction per day. AIS and DVF are pipelines now
+/// (`tests/pipeline_engine.rs`, the packs' own tests).
 #[tokio::test]
 #[serial]
 async fn bulk_files_become_tables() {
@@ -3430,8 +2488,7 @@ async fn bulk_files_become_tables() {
             .unwrap();
         let api = Api { server: &server, token, org };
         for (pack, values) in [
-            ("trade_flows", json!({"source_contact": CONTACT, "ais_dk_from": "2026-11-01", "ais_noaa_from": "2026-11-01", "adsb_from": "2026-11-01"})),
-            ("real_estate", json!({"dvf_from": "2025"})),
+            ("trade_flows", json!({"source_contact": CONTACT, "adsb_from": "2026-11-01"})),
         ] {
             let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
             assert_eq!(st, 200, "{r}");
@@ -3459,15 +2516,6 @@ async fn bulk_files_become_tables() {
             "no quota set: nothing asked"
         );
         db.execute_raw(quota(org)).await.unwrap();
-        let dk = zip_of(
-            "aisdk-2026-11-01.csv",
-            "# Timestamp,Type of mobile,MMSI,Latitude,Longitude,Navigational status,ROT,SOG,COG,Heading,IMO,Callsign,Name,Ship type,Cargo type,Width,Length,Type of position fixing device,Draught,Destination,ETA,Data source type,A,B,C,D\n\
-             01/11/2026 00:00:00,Base Station,2190064,56.716647,11.518977,Unknown value,,,,,Unknown,Unknown,,Undefined,,,,GPS,,Unknown,,AIS,,,,\n\
-             01/11/2026 00:00:01,Class A,305287000,57.402440,8.739752,Under way using engine,0.0,15.7,225.0,222,Unknown,Unknown,NORD STAR,Cargo,,32,190,GPS,9.5,ROTTERDAM,,AIS,,,,\n\
-             01/11/2026 00:00:02,Class B,219573000,56.161667,8.014000,Unknown value,,5.6,82.0,72,Unknown,Unknown,,Pleasure,,,,GPS,,Unknown,,AIS,,,,\n",
-        );
-        // The next day's file is cut: never committed.
-        let cut = dk[..dk.len() / 2].to_vec();
         let mut tar = tar::Builder::new(Vec::new());
         for (path, data) in [
             ("./heatmap/41.bin.ttf", b"binary".to_vec()),
@@ -3486,16 +2534,9 @@ async fn bulk_files_become_tables() {
         let whole = tar.into_inner().unwrap();
         let (aa, ab) = whole.split_at(whole.len() / 3);
         let (aa, ab) = (aa.to_vec(), ab.to_vec());
-        let dvf = gz_of(
-            b"id_mutation,date_mutation,numero_disposition,nature_mutation,valeur_fonciere,adresse_numero,adresse_suffixe,adresse_nom_voie,adresse_code_voie,code_postal,code_commune,nom_commune,code_departement,ancien_code_commune,ancien_nom_commune,id_parcelle,ancien_id_parcelle,numero_volume,lot1_numero,lot1_surface_carrez,lot2_numero,lot2_surface_carrez,lot3_numero,lot3_surface_carrez,lot4_numero,lot4_surface_carrez,lot5_numero,lot5_surface_carrez,nombre_lots,code_type_local,type_local,surface_reelle_bati,nombre_pieces_principales,code_nature_culture,nature_culture,code_nature_culture_speciale,nature_culture_speciale,surface_terrain,longitude,latitude\n\
-2025-1,2025-01-03,000001,Vente,430500,88,,RUE MARCADET,5995,75018,75118,Paris 18e Arrondissement,75,,,75118000BJ0092,,,226,49.48,,,,,,,,,1,2,Appartement,49,2,,,,,,2.346344,48.890689\n\
-2025-2,2025-02-10,000001,Vente,250000,1,,RUE X,1,54000,54395,Nancy,54,,,54395000AB0001,,,,,,,,,,,,,0,1,Maison,90,4,S,sols,,,300,6.18,48.69\n",
-        );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let app = axum::Router::new()
-            .route("/aisdk-2026-11-01.zip", get(move || { let b = dk.clone(); async move { b } }))
-            .route("/aisdk-2026-11-02.zip", get(move || { let b = cut.clone(); async move { b } }))
             .route(
                 "/adsblol/globe_history_2026/releases/download/{tag}/{file}",
                 get(move |Path((_, file)): Path<(String, String)>| {
@@ -3508,8 +2549,7 @@ async fn bulk_files_become_tables() {
                         }
                     }
                 }),
-            )
-            .route("/geo-dvf/latest/csv/2025/full.csv.gz", get(move || { let b = dvf.clone(); async move { b } }));
+            );
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         pnex_backend::services::markets::allow_test_host(&base);
 
@@ -3539,29 +2579,17 @@ async fn bulk_files_become_tables() {
                 .collect::<Vec<_>>()
             }
         };
-        assert_eq!(part("ais_dk").await, ["2026-11-01 done 2"], "vessels only, the base station left out");
         assert_eq!(part("adsb_lol").await, ["2026-11-01 done 3"], "two parts read as one tar");
-        assert_eq!(part("dvf").await, ["2025-01-01 done 2"]);
-        assert!(part("ais_noaa").await.is_empty(), "NOAA waits on a day not yet published");
         let tables = count(
             &db,
             format!(
                 "SELECT count(*) AS n FROM datasets WHERE org_id = {org} \
-                 AND name IN ('ais_dk_positions', 'adsb_lol_positions', 'dvf_mutations')"
+                 AND name = 'adsb_lol_positions'"
             ),
         )
         .await;
-        assert_eq!(tables, 3);
+        assert_eq!(tables, 1);
 
-        // The next day: the cut file is refused and its transaction aborted.
-        pnex_backend::services::bulk_history::sweep_with(&ctx, day(3), Some(&base)).await.unwrap();
-        assert_eq!(part("ais_dk").await, ["2026-11-01 done 2", "2026-11-02 failedunreadable 0"]);
-        let open = count(
-            &db,
-            format!("SELECT count(*) AS n FROM dataset_transactions WHERE state = 'committed' AND dataset_id IN (SELECT id FROM datasets WHERE org_id = {org} AND name = 'ais_dk_positions')"),
-        )
-        .await;
-        assert_eq!(open, 1, "only the whole file is committed");
         let (st, sample) = api
             .call("GET", "/api/v1/datasets?limit=50", None)
             .await;
@@ -3570,8 +2598,9 @@ async fn bulk_files_become_tables() {
     .await;
 }
 
-/// The real files, by hand: `BULK_REAL=dvf|ais_dk|adsb cargo test -p
-/// pnex-backend --test markets bulk_real -- --ignored --nocapture`.
+/// The real files, by hand: `BULK_REAL=dvf|ais_dk|ais_noaa|adsb cargo test
+/// -p pnex-backend --test markets bulk_real -- --ignored --nocapture`. AIS
+/// and DVF run their pipeline, ADS-B the bulk loader.
 #[tokio::test]
 #[serial]
 #[ignore = "downloads hundreds of MB to several GB"]
@@ -3592,6 +2621,7 @@ async fn bulk_real_files() {
         let (pack, values) = match which.as_str() {
             "dvf" => ("real_estate", json!({"dvf_from": (chrono::Datelike::year(&today) - 1).to_string()})),
             "ais_dk" => ("trade_flows", json!({"ais_dk_from": yesterday})),
+            "ais_noaa" => ("trade_flows", json!({"ais_noaa_from": "2024-01-01"})),
             _ => ("trade_flows", json!({"adsb_from": "2025-12-30"})),
         };
         api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
@@ -3609,6 +2639,17 @@ async fn bulk_real_files() {
         .await
         .unwrap();
         let started = std::time::Instant::now();
+        if which != "adsb" {
+            use pnex_backend::services::pipeline_engine::store;
+            let sp = store::shipped().iter().find(|p| p.doc.key == which).unwrap();
+            let net = store::HttpTransport;
+            let store_ = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+            let out = store::run_for_org(&db, &store_, org, sp, &net, chrono::Utc::now(), None).await.unwrap();
+            for (item, failure, rows) in &out.items {
+                println!("{which} {} {:?} rows={rows} {failure:?} in {:?}", item.key, item.state, started.elapsed());
+            }
+            return;
+        }
         pnex_backend::services::bulk_history::sweep(&ctx, today).await.unwrap();
         let rows = db
             .query_all_raw(Statement::from_string(
@@ -3642,7 +2683,6 @@ async fn bulk_real_files() {
 async fn gold_real_sources() {
     let contact = std::env::var("MARKETS_CONTACT").expect("MARKETS_CONTACT");
     with_app(|server, ctx, token| async move {
-        use pnex_backend::services::markets::history::sweep;
         let db = ctx.db.clone();
         pnex_backend::services::markets::init(&ctx);
         let org = server
@@ -3698,22 +2738,25 @@ async fn gold_real_sources() {
         let ranges = count(&db, format!("SELECT count(*) AS n FROM time_ranges WHERE org_id = {org} AND scope_kind = 'org'")).await;
         println!("calendar ranges: {ranges}");
         assert!(ranges > 0);
-        let today = chrono::Utc::now().date_naive();
-        sweep(&ctx, today).await.unwrap();
-        let bars = db
-            .query_all_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                format!("SELECT period_start::text AS d, state, rows FROM market_history_partitions WHERE org_id = {org} AND source = 'histdata'"),
-            ))
-            .await
+        // HistData minutes now come from the pipeline `markets/histdata_m1` (D939).
+        let engine = pnex_backend::services::pipeline_engine::store::shipped()
+            .iter()
+            .find(|p| p.id() == "markets/histdata_m1")
             .unwrap();
-        for r in bars {
-            println!(
-                "XAUUSD {} {} rows={}",
-                r.try_get::<String>("", "d").unwrap(),
-                r.try_get::<String>("", "state").unwrap(),
-                r.try_get::<i64>("", "rows").unwrap()
-            );
+        let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+        let out = pnex_backend::services::pipeline_engine::store::run_for_org(
+            &db,
+            &store,
+            org,
+            engine,
+            &pnex_backend::services::pipeline_engine::store::HttpTransport,
+            chrono::Utc::now(),
+            None,
+        )
+        .await
+        .unwrap();
+        for (item, failure, rows) in &out.items {
+            println!("XAUUSD {} {:?} rows={rows} {failure:?}", item.key, item.state);
         }
     })
     .await;
@@ -3765,7 +2808,7 @@ async fn an_external_model_reads_bars_and_posts_decisions() {
         // 100 days of XAUUSD minutes from 2026-01-05 (HistData), and 3 days
         // up to now; plus an MT5 hour written twice (a backfill).
         let store = datasets::store_of(&ctx.config).unwrap();
-        let hist = datasets::create(&ctx.db, org, "histdata_ohlcv_1m").await.unwrap();
+        let hist = datasets::create(&ctx.db, org, "histdata_m1").await.unwrap();
         let hist_id: uuid::Uuid = hist.id.parse().unwrap();
         let start = chrono::DateTime::parse_from_rfc3339("2026-01-05T00:00:00Z").unwrap().timestamp_micros();
         let min = 60_000_000i64;
@@ -3976,7 +3019,7 @@ async fn point_in_time_reads_never_show_a_canary() {
         let now_us = chrono::Utc::now().timestamp_micros();
         let day_start = now_us - now_us.rem_euclid(min) - 2 * 1440 * min;
         let store = datasets::store_of(&ctx.config).unwrap();
-        let hist = datasets::create(&ctx.db, org, "histdata_ohlcv_1m").await.unwrap();
+        let hist = datasets::create(&ctx.db, org, "histdata_m1").await.unwrap();
         let hist_id: uuid::Uuid = hist.id.parse().unwrap();
         datasets::append_batch(&ctx.db, &store, org, hist_id, &minute_rows("XAUUSD", "histdata", day_start, 1440))
             .await
@@ -4362,7 +3405,7 @@ async fn price_moves_get_candidate_causal_chains() {
         let jump = 24 * 60 + 10 * 60 + 30;
         let u: i128 = 100_000_000;
         let store = datasets::store_of(&ctx.config).unwrap();
-        let hist = datasets::create(&ctx.db, org, "histdata_ohlcv_1m").await.unwrap();
+        let hist = datasets::create(&ctx.db, org, "histdata_m1").await.unwrap();
         let hist_id: uuid::Uuid = hist.id.parse().unwrap();
         let rows = minute_rows_at("XAUUSD", start.timestamp_micros(), 2 * 1440, |i| if i < jump { 2000 * u } else { 2070 * u });
         datasets::append_batch(&ctx.db, &store, org, hist_id, &rows).await.unwrap();
@@ -4873,121 +3916,6 @@ async fn trading_accounts_import_detect_and_never_name_a_person() {
         assert_eq!(st, 200, "{r}");
         let (_, gone) = api.call("GET", "/api/v1/markets/account-trades?account=myfxbook:12305445", None).await;
         assert_eq!(gone["count"], 0, "{gone}");
-    })
-    .await;
-}
-
-/// HistData ticks: a closed month per file, its CSV streamed into the
-/// `quote_tick` table as one transaction, EST (no daylight saving) turned
-/// to UTC; a month without a file stays empty, a loaded one is not asked
-/// again.
-#[tokio::test]
-#[serial]
-async fn histdata_ticks_are_streamed_month_by_month() {
-    with_app(|server, ctx, token| async move {
-        use axum::{extract::RawQuery, response::IntoResponse, routing::{get, post}, Router};
-        use pnex_backend::services::markets::history::{sweep_from, Hosts};
-        use std::io::Write;
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        let org = server
-            .get("/api/v1/user-info")
-            .add_header("Authorization", format!("Bearer {token}"))
-            .await
-            .json::<Value>()["orgs"][0]["id"]
-            .as_i64()
-            .unwrap();
-        let api = Api { server: &server, token, org };
-        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
-        assert_eq!(st, 200, "{r}");
-        api.settings(json!({ "histdata_tick_pairs": "xauusd", "histdata_tick_from": "2024-05" })).await;
-        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-        w.start_file("DAT_ASCII_XAUUSD_T_202406.csv", zip::write::SimpleFileOptions::default()).unwrap();
-        w.write_all(
-            b"20240602 180001677,2327.425000,2328.175000,0\n\
-20240602 180002329,2327.325000,2328.075000,0\n\
-20240630 235959159,2324.608000,2324.995000,0\n",
-        )
-        .unwrap();
-        w.start_file("DAT_ASCII_XAUUSD_T_202406.txt", zip::write::SimpleFileOptions::default()).unwrap();
-        w.write_all(b"gaps report").unwrap();
-        let zip = w.finish().unwrap().into_inner();
-        let files = Arc::new(AtomicUsize::new(0));
-        let app = Router::new()
-            .route(
-                "/download-free-forex-historical-data/",
-                get(|RawQuery(q): RawQuery| async move {
-                    // June 2024 has a file; May (before the mock's first) has none.
-                    match q.as_deref() {
-                        Some("/ascii/tick-data-quotes/xauusd/2024/6") => r#"<html>
-<form id="file_down" name="file_down" target="nullDisplay" method="POST" action="/get.php">
-<input type="hidden" name="tk" id="tk" value="0123456789abcdef0123456789abcdef" />
-<input type="hidden" name="datemonth" id="datemonth" value="202406" />
-<input type="hidden" name="platform" id="platform" value="ASCII" />
-<input type="hidden" name="timeframe" id="timeframe" value="T" />
-<input type="hidden" name="fxpair" id="fxpair" value="XAUUSD" /></form></html>"#
-                            .into_response(),
-                        _ => "<html>no file here</html>".into_response(),
-                    }
-                }),
-            )
-            .route(
-                "/get.php",
-                post({
-                    let files = files.clone();
-                    move || async move {
-                        files.fetch_add(1, Ordering::SeqCst);
-                        zip.clone().into_response()
-                    }
-                }),
-            );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        pnex_backend::services::markets::allow_test_host(&base);
-        let hosts = Hosts { histdata: base.clone(), ..Default::default() };
-
-        // One month per pass: May (no file), then June; July is the current month.
-        let today = chrono::NaiveDate::from_ymd_opt(2024, 7, 10).unwrap();
-        for _ in 0..3 {
-            sweep_from(&ctx, &hosts, today).await.unwrap();
-        }
-        let states = || async {
-            ctx.db
-                .query_all_raw(Statement::from_string(
-                    sea_orm::DatabaseBackend::Postgres,
-                    "SELECT period || ':' || period_start::text || ':' || state || ':' || rows::text AS s \
-                     FROM market_history_partitions WHERE source = 'histdata_tick' ORDER BY period_start"
-                        .to_string(),
-                ))
-                .await
-                .unwrap()
-                .iter()
-                .map(|r| r.try_get::<String>("", "s").unwrap())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(states().await, vec!["month:2024-05-01:empty:0", "month:2024-06-01:done:3"]);
-        assert_eq!(files.load(Ordering::SeqCst), 1, "the month already loaded is not asked again");
-
-        let (_, list) = api.call("GET", "/api/v1/datasets?limit=50", None).await;
-        let id = list["results"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|d| d["name"] == "histdata_ticks")
-            .unwrap_or_else(|| panic!("{list}"))["id"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let (st, sample) = api.call("GET", &format!("/api/v1/datasets/{id}/sample?limit=10"), None).await;
-        assert_eq!(st, 200, "{sample}");
-        let text = sample.to_string();
-        // 18:00:01.677 EST is 23:00:01.677 UTC; the last tick of June is in July in UTC.
-        assert!(text.contains("2024-06-02T23:00:01.677"), "{text}");
-        assert!(text.contains("2024-07-01T04:59:59.159"), "{text}");
-        assert!(text.contains("histdata_tick"), "{text}");
-        let (st, files_list) = api.call("GET", &format!("/api/v1/datasets/{id}/files"), None).await;
-        assert_eq!(st, 200, "{files_list}");
-        assert_eq!(files_list["count"], 1, "one month, one transaction: {files_list}");
     })
     .await;
 }

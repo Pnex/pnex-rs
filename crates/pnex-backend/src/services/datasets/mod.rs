@@ -1037,6 +1037,27 @@ pub async fn append_stream(
     store: &S3Store,
     org_id: i64,
     id: Uuid,
+    batches: tokio::sync::mpsc::Receiver<Option<arrow_array::RecordBatch>>,
+) -> Result<Option<DatasetTransaction>, DatasetError> {
+    write_stream(
+        db,
+        store,
+        org_id,
+        id,
+        DatasetTransactionKind::Append,
+        batches,
+    )
+    .await
+}
+
+/// [`append_stream`] as a transaction of `kind`: a snapshot is the whole
+/// table from its commit on (a pipeline that fills an import's table).
+pub async fn write_stream(
+    db: &DatabaseConnection,
+    store: &S3Store,
+    org_id: i64,
+    id: Uuid,
+    kind: DatasetTransactionKind,
     mut batches: tokio::sync::mpsc::Receiver<Option<arrow_array::RecordBatch>>,
 ) -> Result<Option<DatasetTransaction>, DatasetError> {
     let cut = || DatasetError::Storage("the source stopped before its end".into());
@@ -1053,7 +1074,6 @@ pub async fn append_stream(
         });
     }
     let room = room(db, org_id).await?;
-    let kind = DatasetTransactionKind::Append;
     let transaction_id = begin(db, org_id, id, kind).await?;
     let key = format!(
         "{}part-0.parquet",

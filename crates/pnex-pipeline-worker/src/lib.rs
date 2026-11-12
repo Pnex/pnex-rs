@@ -6,6 +6,8 @@
 
 mod analysis;
 pub mod engine;
+pub mod step;
+pub mod tz;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
@@ -388,6 +390,11 @@ impl Worker {
         // A person waits on a query: it goes before any run (analysis.md D827).
         if let Some(q) = self.claim_query().await? {
             self.run_query(q).await?;
+            return Ok(true);
+        }
+        // A pipeline step holds a server run waiting on it.
+        if let Some(s) = self.claim_step().await? {
+            self.run_step(s).await?;
             return Ok(true);
         }
         let Some((job, org_id, pipeline_id, version, attempts)) = self.claim().await? else {

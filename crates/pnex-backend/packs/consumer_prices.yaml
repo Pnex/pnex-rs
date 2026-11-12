@@ -38,17 +38,13 @@ types:
       - { key: ean, name: Barcode, names: {fr: "Code-barres"}, kind: text, max_len: 14, unique: true, required: true }
 imports:
   - name: Product prices (Open Prices)
-    source: api
-    source_url: "https://prices.openfoodfacts.org/api/v1/prices?product_code={value}&date__gte={since}&order_by=date&size=100"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: open_prices
       name: Product prices
       names: {fr: "Prix des produits"}
-      shape: open_prices
-      contact_setting: consumer_prices.source_contact
-      per_setting_code: consumer_prices.tracked_products
+      pipeline: consumer_prices/open_prices
       observations: { type: consumer_product, property: ean }
       objects:
         - as: product
@@ -56,4 +52,4 @@ imports:
           key: ean
           title: name
           properties:
-            ean: "@queried"
+            ean: queried

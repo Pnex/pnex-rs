@@ -202,8 +202,11 @@ pub fn bar_out(b: &Bar) -> BarOut {
     }
 }
 
-/// Whether the org has prices of this instrument: a loaded partition or an
-/// MT5 symbol announced by one of its terminals.
+/// Whether the org has prices of this instrument: a loaded partition, a row
+/// of a pipeline keyed by it, or an MT5 symbol announced by one of its
+/// terminals.
+// shortcut: reads the first label of a pipeline row as the instrument; goes
+// with the market routes in PE7 (pipeline-engine.md D948).
 pub async fn known_instrument<C: ConnectionTrait>(
     db: &C,
     org: i64,
@@ -213,6 +216,8 @@ pub async fn known_instrument<C: ConnectionTrait>(
         .query_one_raw(stmt(
             "SELECT EXISTS (SELECT 1 FROM market_history_partitions \
                  WHERE org_id = $1 AND instrument = $2 AND state = 'done') \
+              OR EXISTS (SELECT 1 FROM pipeline_items \
+                 WHERE org_id = $1 AND state = 'done' AND split_part(item, '/', 1) = $2) \
               OR EXISTS (SELECT 1 FROM mt5_symbols s JOIN mt5_terminals t ON t.id = s.terminal_id \
                  WHERE t.org_id = $1 AND s.symbol = $2) AS known",
             vec![org.into(), instrument.into()],

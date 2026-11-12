@@ -1,0 +1,61 @@
+# Binance spot 1-minute bars from its public files (data.binance.vision), a
+# closed month per file, each checked against the SHA-256 published next to
+# it. Binance moved its timestamps from ms to µs in 2025: `epoch` reads the
+# unit from the number of digits. Some files carry a header line, others
+# not. Binance's terms for redistribution or a SaaS are not checked: the
+# table stays inside the org.
+key: binance_klines_1m
+name: Binance 1-minute bars
+hosts: [data.binance.vision]
+schedule: 5m
+steps:
+  - enumerate:
+      as: months
+      track: true
+      per_run: 24
+      empty: retry
+      retry_days: 7
+      cross:
+        - { as: instrument, setting: markets.history_symbols, case: upper }
+        - { as: month, periods: month, from_setting: markets.history_from, from: "2017-08", closed_only: true }
+  - fetch:
+      as: zip
+      for_each: months
+      url: "https://data.binance.vision/data/spot/monthly/klines/{{instrument}}/1m/{{instrument}}-1m-{{month}}.zip"
+      checksum_url: "https://data.binance.vision/data/spot/monthly/klines/{{instrument}}/1m/{{instrument}}-1m-{{month}}.zip.CHECKSUM"
+      every: 250ms
+      missing_is_empty: true
+  - unpack: { as: csv, from: zip, entries: ["*.csv"] }
+  - read:
+      as: bars
+      from: csv
+      format: csv
+      header: auto
+      columns:
+        - { name: instrument, type: text, value: "{{instrument}}" }
+        - { name: ts, at: 0, type: timestamp, format: epoch }
+        - { name: interval, type: text, value: "1m" }
+        - { name: open, at: 1, type: decimal, scale: 8 }
+        - { name: high, at: 2, type: decimal, scale: 8 }
+        - { name: low, at: 3, type: decimal, scale: 8 }
+        - { name: close, at: 4, type: decimal, scale: 8 }
+        - { name: volume, at: 5, type: decimal, scale: 8 }
+        - { name: quote_volume, at: 7, type: decimal, scale: 8 }
+        - { name: trades, at: 8, type: integer }
+        - { name: source, type: text, value: binance_public }
+  - write: { from: bars, table: { name: binance_klines_1m } }
+tests:
+  - name: a month with a header and its checksum, a month not published
+    today: "2024-03-10"
+    settings: { markets.history_symbols: "btcusdt", markets.history_from: "2024-01" }
+    given:
+      "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2024-01.zip": binance_btcusdt_2024-01.zip
+      "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1m/BTCUSDT-1m-2024-01.zip.CHECKSUM": binance_btcusdt_2024-01.zip.CHECKSUM
+    expect:
+      months: { rows: 2 }
+      bars:
+        rows: 2
+        columns: [instrument, ts, interval, open, high, low, close, volume, quote_volume, trades, source]
+        contains:
+          - { instrument: BTCUSDT, ts: "2024-01-01T00:00:00", open: "42283.58000000", trades: "1000" }
+          - { ts: "2024-01-01T00:01:00" }

@@ -1,0 +1,52 @@
+# The European annual and half-year reports (ESEF) of the LEIs of the setting,
+# from filings.xbrl.org (JSON:API, the entity included). An old report may
+# lack its publication day: the day it was added is later, never earlier.
+# The report address is built only from a plain path of the answer.
+key: esef_filings
+name: European reports (ESEF)
+hosts: [filings.xbrl.org]
+steps:
+  - enumerate: { as: leis, cross: [{ as: lei, setting: markets.covered_leis, case: upper }] }
+  - fetch:
+      as: json
+      for_each: leis
+      url: "https://filings.xbrl.org/api/filings"
+      params: { "filter[entity.identifier]": "{{lei}}", include: entity, "page[size]": "100" }
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+      every: 1s
+      missing_is_empty: true
+  - read:
+      as: reports
+      from: json
+      format: json
+      records: /data
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{lei}}" }
+        - { name: name, at: ^/included/0/attributes/name, type: text, optional: true }
+        - { name: accession, at: /attributes/fxo_id, type: text }
+        - { name: published, at: /attributes/published, type: text, optional: true }
+        - { name: added, at: /attributes/date_added, type: text, optional: true }
+        - { name: report_on, at: /attributes/period_end, type: text, optional: true }
+        - { name: path, at: /attributes/report_url, type: text, optional: true }
+  - sql:
+      as: filings
+      sql: |
+        SELECT queried, name, left(accession, 64) AS accession, 'ESEF' AS form,
+               substr(coalesce(published, added), 1, 10) AS filed_on, report_on,
+               CASE WHEN starts_with(path, '/') AND strpos(path, '..') = 0
+                    THEN concat('https://filings.xbrl.org', path) END AS url
+        FROM reports
+        WHERE coalesce(published, added) IS NOT NULL
+  - write: { from: filings, table: { name: esef_filings, replace: true } }
+tests:
+  - name: a report dated by its publication, an unsafe path dropped
+    settings: { markets.covered_leis: "leitest", markets.source_contact: "Test test@example.org" }
+    given:
+      "https://filings.xbrl.org/api/filings?filter%5Bentity.identifier%5D=LEITEST&include=entity&page%5Bsize%5D=100": esef_filings.json
+    expect:
+      filings:
+        rows: 2
+        contains:
+          - { queried: LEITEST, name: "ACME SE", accession: "fxo-1", form: ESEF, filed_on: "2026-04-01", url: "https://filings.xbrl.org/LEITEST/2025-12-31/report.xhtml" }
+          - { accession: "fxo-2", filed_on: "2025-05-02", url: null }

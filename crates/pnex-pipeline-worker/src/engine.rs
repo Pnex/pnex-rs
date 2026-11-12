@@ -285,6 +285,9 @@ pub fn session(limits: &Limits, joins: Joins) -> DfResult<SessionContext> {
         Volatility::Immutable,
         Arc::new(luhn),
     ));
+    for f in crate::tz::udfs() {
+        ctx.register_udf(f);
+    }
     Ok(ctx)
 }
 
@@ -363,6 +366,33 @@ mod tests {
         assert!(hash_join_too_big(e), "{e}");
         let batches = outcome[1].as_ref().expect("sorted join");
         assert_eq!(batches.iter().map(|b| b.num_rows()).sum::<usize>(), rows);
+    }
+
+    /// A time column fixed in a pipeline (D939): minutes stored 5 h ahead of
+    /// New York all year moved to their real UTC instant.
+    #[tokio::test]
+    async fn time_zones_convert_in_sql() {
+        let ctx = with_table().await;
+        let sql = "SELECT CAST(local_to_utc(CAST('2015-07-10T21:59:00' AS TIMESTAMP) - INTERVAL '5 hours', 'America/New_York') AS VARCHAR) AS a, \
+                   CAST(utc_to_local(CAST('2015-01-09T13:30:00' AS TIMESTAMP), 'America/New_York') AS VARCHAR) AS b";
+        let batches = run(&ctx, sql).await.unwrap();
+        let col = |i: usize| {
+            let c = cast(batches[0].column(i), &DataType::Utf8).unwrap();
+            c.as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0)
+                .to_string()
+        };
+        assert!(col(0).starts_with("2015-07-10T20:59:00"), "{}", col(0));
+        assert_eq!(col(1), "2015-01-09T08:30:00");
+        let e = run(
+            &ctx,
+            "SELECT local_to_utc(CAST('2015-07-10T21:59:00' AS TIMESTAMP), 'EST+5')",
+        )
+        .await
+        .unwrap_err();
+        assert!(e.to_string().contains("unknown time zone"), "{e}");
     }
 
     /// Every way out of the declared inputs must be refused (D572).

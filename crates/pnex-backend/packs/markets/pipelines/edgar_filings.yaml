@@ -1,0 +1,56 @@
+# The filings of each followed company (its CIK), from the SEC's submissions
+# file, recent ones only (the last 1000 or year): results and events forms,
+# never insider or ownership ones. The document address is built only from
+# plain names of the answer.
+key: edgar_filings
+name: Filings (SEC EDGAR)
+hosts: [data.sec.gov]
+steps:
+  - enumerate: { as: companies, cross: [{ as: cik, objects: { type: organization, property: cik } }] }
+  - fetch:
+      as: json
+      for_each: companies
+      url: "https://data.sec.gov/submissions/CIK{{cik}}.json"
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+      every: 150ms
+      missing_is_empty: true
+  - read:
+      as: recent
+      from: json
+      format: json
+      records: /filings/recent
+      columnar: true
+      skip_invalid: true
+      columns:
+        - { name: cik, at: ^/cik, type: text }
+        - { name: accession, at: accessionNumber, type: text }
+        - { name: form, at: form, type: text }
+        - { name: filed_on, at: filingDate, type: date }
+        - { name: accepted_at, at: acceptanceDateTime, type: text, optional: true }
+        - { name: report_on, at: reportDate, type: text, optional: true }
+        - { name: items, at: items, type: text, optional: true }
+        - { name: document, at: primaryDocument, type: text, optional: true }
+  - sql:
+      as: filings
+      sql: |
+        SELECT right(concat('0000000000', cik), 10) AS cik, accession, form,
+               CAST(filed_on AS VARCHAR) AS filed_on, accepted_at, report_on, items,
+               CASE WHEN regexp_like(document, '^[A-Za-z0-9._-]+$')
+                     AND regexp_like(replace(accession, '-', ''), '^[0-9]+$')
+                    THEN concat('https://www.sec.gov/Archives/edgar/data/', ltrim(cik, '0'), '/',
+                                replace(accession, '-', ''), '/', document)
+               END AS url
+        FROM recent
+        WHERE form IN ('10-K', '10-K/A', '10-Q', '10-Q/A', '8-K', '8-K/A', '20-F', '20-F/A', '40-F', '6-K')
+  - write: { from: filings, table: { name: edgar_filings, replace: true } }
+tests:
+  - name: result forms kept, a holding report left out
+    objects: { organization.cik: ["0000320193"] }
+    settings: { markets.source_contact: "Test test@example.org" }
+    given:
+      "https://data.sec.gov/submissions/CIK0000320193.json": edgar_submissions.json
+    expect:
+      filings:
+        rows: 1
+        contains:
+          - { cik: "0000320193", accession: 0000320193-26-000010, form: 10-Q, filed_on: "2026-11-01", url: "https://www.sec.gov/Archives/edgar/data/320193/000032019326000010/acme-20260930.htm" }

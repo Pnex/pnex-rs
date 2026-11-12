@@ -1,0 +1,52 @@
+# Every Binance spot trade from its public daily files, checked against the
+# published SHA-256. A busy symbol weighs hundreds of MB a day: the file goes
+# through disk, never memory. `buyer is maker` gives the taker's side.
+key: binance_trades
+name: Binance trades
+hosts: [data.binance.vision]
+schedule: 5m
+steps:
+  - enumerate:
+      as: days
+      track: true
+      per_run: 4
+      empty: retry
+      retry_days: 7
+      cross:
+        - { as: instrument, setting: markets.history_trade_symbols, case: upper }
+        - { as: day, periods: day, from_setting: markets.history_trade_from, from: "-1m", closed_only: true }
+  - fetch:
+      as: zip
+      for_each: days
+      url: "https://data.binance.vision/data/spot/daily/trades/{{instrument}}/{{instrument}}-trades-{{day}}.zip"
+      checksum_url: "https://data.binance.vision/data/spot/daily/trades/{{instrument}}/{{instrument}}-trades-{{day}}.zip.CHECKSUM"
+      every: 250ms
+      missing_is_empty: true
+  - unpack: { as: csv, from: zip, entries: ["*.csv"] }
+  - read:
+      as: trades
+      from: csv
+      format: csv
+      header: auto
+      columns:
+        - { name: instrument, type: text, value: "{{instrument}}" }
+        - { name: ts, at: 4, type: timestamp, format: epoch }
+        - { name: price, at: 1, type: decimal, scale: 8 }
+        - { name: qty, at: 2, type: decimal, scale: 8 }
+        - { name: side, at: 5, type: text, map: { "True": sell, "true": sell, "False": buy, "false": buy } }
+        - { name: trade_id, at: 0, type: integer }
+        - { name: source, type: text, value: binance_public_trades }
+  - write: { from: trades, table: { name: binance_trades } }
+tests:
+  - name: a day in microseconds
+    today: "2025-01-03"
+    settings: { markets.history_trade_symbols: "BTCUSDT", markets.history_trade_from: "2025-01-02" }
+    given:
+      "https://data.binance.vision/data/spot/daily/trades/BTCUSDT/BTCUSDT-trades-2025-01-02.zip": binance_trades_2025-01-02.zip
+    expect:
+      days: { rows: 1 }
+      trades:
+        rows: 2
+        contains:
+          - { trade_id: "4000000001", ts: "2025-01-02T00:00:00.123", side: sell, price: "94000.10000000" }
+          - { side: buy }

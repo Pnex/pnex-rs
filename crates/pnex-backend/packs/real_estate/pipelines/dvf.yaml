@@ -1,0 +1,53 @@
+# Every property sale recorded in France (DVF, DGFiP, geolocated by Etalab),
+# a closed year per file, columns read by their header names. One line per
+# property of a sale: a sale of several lots has several lines with the same
+# mutation_id. Licence Ouverte 2.0; never used to re-identify a person.
+key: dvf
+name: DVF property sales
+hosts: [files.data.gouv.fr]
+large: true
+schedule: 1h
+steps:
+  - enumerate:
+      as: years
+      track: true
+      per_run: 1
+      empty: retry
+      retry_days: 30
+      cross:
+        - { as: year, periods: year, from_setting: real_estate.dvf_from, closed_only: true }
+  - fetch: { as: gz, for_each: years, url: "https://files.data.gouv.fr/geo-dvf/latest/csv/{{year}}/full.csv.gz", missing_is_empty: true }
+  - unpack: { as: csv, from: gz, format: gzip }
+  - read:
+      as: sales
+      from: csv
+      format: csv
+      skip_invalid: true
+      columns:
+        - { name: mutation_id, at: id_mutation, type: text }
+        - { name: mutation_date, at: date_mutation, type: date }
+        - { name: nature, at: nature_mutation, type: text, optional: true }
+        - { name: value_eur, at: valeur_fonciere, type: float, optional: true }
+        - { name: postal_code, at: code_postal, type: text, optional: true }
+        - { name: commune_code, at: code_commune, type: text, optional: true }
+        - { name: commune_name, at: nom_commune, type: text, optional: true }
+        - { name: department_code, at: code_departement, type: text, optional: true }
+        - { name: parcel_id, at: id_parcelle, type: text, optional: true }
+        - { name: premises_type, at: type_local, type: text, optional: true }
+        - { name: built_area_m2, at: surface_reelle_bati, type: float, optional: true }
+        - { name: rooms, at: nombre_pieces_principales, type: float, optional: true }
+        - { name: land_area_m2, at: surface_terrain, type: float, optional: true }
+        - { name: lon, at: longitude, type: float, optional: true }
+        - { name: lat, at: latitude, type: float, optional: true }
+  - write: { from: sales, table: { name: dvf } }
+tests:
+  - name: a year read by header names
+    today: "2025-02-01"
+    settings: { real_estate.dvf_from: "2024" }
+    given:
+      "https://files.data.gouv.fr/geo-dvf/latest/csv/2024/full.csv.gz": dvf_2024.csv.gz
+    expect:
+      sales:
+        rows: 2
+        contains:
+          - { mutation_id: "2024-1", mutation_date: "2024-01-15", value_eur: "250000", premises_type: Maison, lat: "48.85" }

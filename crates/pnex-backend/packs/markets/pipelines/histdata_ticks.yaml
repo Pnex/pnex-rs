@@ -1,0 +1,54 @@
+# Free bid/ask ticks of HistData.com, a closed month per file, one file every
+# five minutes. Same download form as the minute bars. Times are New York
+# wall clock with milliseconds, daylight saving included (D939). HistData
+# publishes no volume per side and no license: the table stays inside the org.
+key: histdata_ticks
+name: HistData ticks
+hosts: [www.histdata.com]
+schedule: 5m
+steps:
+  - enumerate:
+      as: parts
+      track: true
+      per_run: 1
+      empty: retry
+      retry_days: 7
+      cross:
+        - { as: instrument, setting: markets.histdata_tick_pairs, case: upper }
+        - { as: month, periods: month, from_setting: markets.histdata_tick_from, from: "-1m", closed_only: true }
+  - fetch:
+      as: page
+      for_each: parts
+      url: "https://www.histdata.com/download-free-forex-historical-data/?/ascii/tick-data-quotes/{{instrument|lower}}/{{month_y}}/{{month_m|int}}"
+      every: 5s
+      missing_is_empty: true
+  - extract: { as: form, from: page, form: "#file_down", where: { tk: "?*" } }
+  - fetch: { as: zip, for_each: form, method: post, url: "{{action}}", form_from: fields, every: 5s }
+  - unpack: { as: csv, from: zip, entries: ["*.csv"] }
+  - read:
+      as: ticks
+      from: csv
+      format: csv
+      header: false
+      columns:
+        - { name: instrument, type: text, value: "{{instrument}}" }
+        - { name: ts, at: 0, type: timestamp, format: "%Y%m%d %H%M%S%3f", timezone: America/New_York }
+        - { name: bid, at: 1, type: decimal, scale: 8 }
+        - { name: ask, at: 2, type: decimal, scale: 8 }
+        - { name: bid_volume, type: float, value: null }
+        - { name: ask_volume, type: float, value: null }
+        - { name: source, type: text, value: histdata_tick }
+  - write: { from: ticks, table: { name: histdata_quotes } }
+tests:
+  - name: a summer month
+    today: "2024-08-10"
+    settings: { markets.histdata_tick_pairs: "xauusd", markets.histdata_tick_from: "2024-07" }
+    given:
+      "https://www.histdata.com/download-free-forex-historical-data/?/ascii/tick-data-quotes/xauusd/2024/7": histdata_page_2024.html
+      "https://www.histdata.com/get.php": histdata_ticks_2024-07.zip
+    expect:
+      ticks:
+        rows: 2
+        contains:
+          - { instrument: XAUUSD, ts: "2024-07-05T12:30:00.123", bid: "2377.12000000", ask: "2377.45000000" }
+          - { ts: "2024-07-05T20:59:59.999" }

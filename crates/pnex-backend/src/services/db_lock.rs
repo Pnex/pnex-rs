@@ -45,6 +45,9 @@ pub mod ns {
     /// Price history passes of one org (markets-research.md D808): two
     /// passes would load the same partition twice.
     pub const MARKET_HISTORY: i32 = 0x504e_000e;
+    /// Pipeline runs of one org (pipeline-engine.md D937): two runs would
+    /// read the same rows of the registry before either writes them.
+    pub const PIPELINE_RUN: i32 = 0x504e_000f;
 }
 
 /// Advisory lock key used by the boot migration (single int8 form).

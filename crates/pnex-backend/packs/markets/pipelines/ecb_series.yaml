@@ -1,0 +1,40 @@
+# Series of the ECB Data Portal (SDMX CSV), one request per code of the
+# setting; a period (month, quarter) is dated by its first day. The import
+# "European series (ECB)" syncs this table into dated values.
+key: ecb_series
+name: European series (ECB)
+hosts: [data-api.ecb.europa.eu]
+steps:
+  - enumerate: { as: codes, cross: [{ as: code, setting: markets.ecb_series, case: upper }] }
+  - fetch:
+      as: csv
+      for_each: codes
+      url: "https://data-api.ecb.europa.eu/service/data/{{code|before:.}}/{{code|after:.}}"
+      params: { format: csvdata }
+      every: 1s
+      missing_is_empty: true
+  - read:
+      as: raw
+      from: csv
+      format: csv
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{code}}" }
+        - { name: metric, at: KEY, type: text }
+        - { name: p, at: TIME_PERIOD, type: text }
+        - { name: value, at: OBS_VALUE, type: float }
+  - sql:
+      as: values
+      sql: |
+        SELECT queried, metric, CASE WHEN length(p) = 10 THEN p WHEN length(p) = 4 THEN p || '-01-01' WHEN substr(p, 6, 1) = 'Q' THEN substr(p, 1, 4) || CASE substr(p, 7, 1) WHEN '1' THEN '-01-01' WHEN '2' THEN '-04-01' WHEN '3' THEN '-07-01' ELSE '-10-01' END ELSE substr(p, 1, 7) || '-01' END AS "end", value FROM raw
+  - write: { from: values, table: { name: ecb_series, replace: true } }
+tests:
+  - name: a monthly series dated by its first day
+    settings: { markets.ecb_series: "FM.M.U2.EUR.4F.KR.MRR_FR.LEV" }
+    given:
+      "https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.4F.KR.MRR_FR.LEV?format=csvdata": ecb_fm.csv
+    expect:
+      values:
+        rows: 2
+        contains:
+          - { queried: FM.M.U2.EUR.4F.KR.MRR_FR.LEV, metric: FM.M.U2.EUR.4F.KR.MRR_FR.LEV, end: "2026-09-01", value: "2.15" }

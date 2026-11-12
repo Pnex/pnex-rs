@@ -1,0 +1,41 @@
+# The FRED series watched for abnormal sessions (setting move_series,
+# `CODE:mode:class` entries; the BIS ones are read by their own import), one
+# request per code, with the org's declared contact. As fred_series.
+#
+# Series of FRED (public CSV), one request per code of the setting, with the
+# org's declared contact; a missing value (a dot) is left out. The import
+# syncs this table into dated values of `macro_series`.
+key: fred_move_series
+name: Watched series (FRED)
+hosts: [fred.stlouisfed.org]
+steps:
+  - enumerate: { as: codes, cross: [{ as: code, setting: markets.move_series, exclude: ["bis:*"], split: ":", case: upper }] }
+  - fetch:
+      as: csv
+      for_each: codes
+      url: "https://fred.stlouisfed.org/graph/fredgraph.csv"
+      params: { id: "{{code}}" }
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+      every: 1s
+      missing_is_empty: true
+  - read:
+      as: values
+      from: csv
+      format: csv
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{code}}" }
+        - { name: metric, type: text, value: "{{code}}" }
+        - { name: end, at: 0, type: date }
+        - { name: value, at: 1, type: float }
+  - write: { from: values, table: { name: fred_move_series, replace: true } }
+tests:
+  - name: a daily series with a missing day
+    settings: { markets.move_series: "DGS10:diff:rates, bis:WS_CBPOL.D.US:diff:rates", markets.source_contact: "Test test@example.org" }
+    given:
+      "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10": fred_dgs10.csv
+    expect:
+      values:
+        rows: 2
+        contains:
+          - { queried: DGS10, metric: DGS10, end: "2026-11-03", value: "4.1" }

@@ -550,17 +550,10 @@ imports:
     source: file
     mode: incremental
     mapping:
-      steps:
-        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
-        - { step: file_download }
-        - { step: archive_extract, entries: ["*Certificateurs*.csv"] }
-        - { step: table_inspect, entry: "*Certificateurs*.csv", expected_columns: [Numero_Fiche, Siret_Certificateur, Nom_Certificateur] }
-        - { step: rows_filter, entry: "*Certificateurs*.csv", column: Siret_Certificateur, op: in, setting: quali_watch.certifiers, convert: [digits] }
       key: fc_certifiers
+      pipeline: quali_watch/fc_certifiers
       name: France Compétences certifiers
       names: {fr: "Certificateurs France Compétences"}
-      format: csv
-      delimiter: ";"
       objects:
         - as: org
           type: organization
@@ -581,18 +574,11 @@ imports:
     source: file
     mode: incremental
     mapping:
-      steps:
-        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
-        - { step: file_download }
-        - { step: archive_extract, entries: ["*Standard*.csv"] }
-        - { step: table_inspect, entry: "*Standard*.csv", expected_columns: [Numero_Fiche, Intitule, Nomenclature_Europe_Niveau, Date_Decision, Date_Fin_Enregistrement, Date_Effet, Actif] }
-        - { step: rows_filter, entry: "*Standard*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
       key: fc_sheets
+      pipeline: quali_watch/fc_sheets
       after: [fc_certifiers]
       name: France Compétences sheets
       names: {fr: "Fiches France Compétences"}
-      format: csv
-      delimiter: ";"
       objects:
         - as: cert
           type: certification
@@ -613,21 +599,11 @@ imports:
     source: file
     mode: snapshot
     mapping:
-      steps:
-        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
-        - { step: file_download }
-        - { step: archive_extract, entries: ["*Partenaires*.csv"] }
-        - { step: table_inspect, entry: "*Partenaires*.csv", expected_columns: [Numero_Fiche, Nom_Partenaire, Siret_Partenaire, Habilitation_Partenaire] }
-        # Active sheets only: every certification of the open data (empty
-        # `certifiers` setting) brings ~397k partner rows, over ROWS_MAX;
-        # the active ones ~141k (2026-10-29). Needs fc_sheets' `status`.
-        - { step: rows_filter, entry: "*Partenaires*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, only: { property: status, values: [active] }, convert: [trim, upper] }
       key: fc_partners
+      pipeline: quali_watch/fc_partners
       after: [fc_sheets]
       name: France Compétences partners
       names: {fr: "Partenaires France Compétences"}
-      format: csv
-      delimiter: ";"
       objects:
         - as: org
           type: organization
@@ -655,18 +631,11 @@ imports:
     source: file
     mode: snapshot
     mapping:
-      steps:
-        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
-        - { step: file_download }
-        - { step: archive_extract, entries: ["*Blocs_De_Comp*.csv"] }
-        - { step: table_inspect, entry: "*Blocs_De_Comp*.csv", expected_columns: [Numero_Fiche, Bloc_Competences_Code, Bloc_Competences_Libelle] }
-        - { step: rows_filter, entry: "*Blocs_De_Comp*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
       key: fc_blocks
+      pipeline: quali_watch/fc_blocks
       after: [fc_partners]
       name: France Compétences skill blocks
       names: {fr: "Blocs de compétences France Compétences"}
-      format: csv
-      delimiter: ";"
       objects:
         - as: cert
           type: certification

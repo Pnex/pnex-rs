@@ -1,0 +1,57 @@
+# Vessel positions of the Danish Maritime Authority, a day per file (about
+# 20 million lines). Base stations and aids to navigation are left out, as
+# is a line without a position (91/181 means "not available"). Served over
+# plain HTTP only. Terms of the authority: to check before any use outside
+# the org.
+key: ais_dk
+name: Danish AIS
+hosts: [aisdata.ais.dk]
+large: true
+schedule: 10m
+steps:
+  - enumerate:
+      as: days
+      track: true
+      per_run: 1
+      empty: retry
+      retry_days: 7
+      cross:
+        - { as: day, periods: day, from_setting: trade_flows.ais_dk_from, closed_only: true }
+  - fetch: { as: zip, for_each: days, url: "http://aisdata.ais.dk/aisdk-{{day}}.zip", missing_is_empty: true }
+  - unpack: { as: csv, from: zip, entries: ["*.csv"] }
+  - read:
+      as: positions
+      from: csv
+      format: csv
+      skip_invalid: true
+      where: { mobile_type: ["Class A", "Class B"] }
+      columns:
+        - { name: ts, at: 0, type: timestamp, format: "%d/%m/%Y %H:%M:%S" }
+        - { name: mobile_type, at: 1, type: text }
+        - { name: mmsi, at: 2, type: integer }
+        - { name: lat, at: 3, type: float, range: [-90, 90] }
+        - { name: lon, at: 4, type: float, range: [-180, 180] }
+        - { name: sog, at: 7, type: float, optional: true }
+        - { name: cog, at: 8, type: float, optional: true }
+        - { name: heading, at: 9, type: float, optional: true, range: [0, 359.99] }
+        - { name: nav_status, at: 5, type: text, optional: true, null_if: [unknown, undefined, "unknown value"] }
+        - { name: vessel_name, at: 12, type: text, optional: true, null_if: [unknown, undefined] }
+        - { name: imo, at: 10, type: text, optional: true, null_if: [unknown, undefined] }
+        - { name: callsign, at: 11, type: text, optional: true, null_if: [unknown, undefined] }
+        - { name: ship_type, at: 13, type: text, optional: true, null_if: [unknown, undefined] }
+        - { name: length, at: 16, type: float, optional: true }
+        - { name: width, at: 15, type: float, optional: true }
+        - { name: draught, at: 18, type: float, optional: true }
+        - { name: destination, at: 19, type: text, optional: true, null_if: [unknown, undefined] }
+  - write: { from: positions, table: { name: ais_dk } }
+tests:
+  - name: vessels kept, a base station and a line without position left out
+    today: "2025-03-02"
+    settings: { trade_flows.ais_dk_from: "2025-03-01" }
+    given:
+      "http://aisdata.ais.dk/aisdk-2025-03-01.zip": aisdk-2025-03-01.zip
+    expect:
+      positions:
+        rows: 1
+        contains:
+          - { ts: "2025-03-01T00:00:01", mmsi: "219000001", lat: "55.5", vessel_name: "NORDIC STAR", heading: null, imo: null }

@@ -8,7 +8,7 @@ err_codes:
 tools:
 tags: real estate, immobilier, DVF, valeurs foncières, property sale, vente immobilière, house prices, prix des logements, price per square metre, prix au mètre carré, commune, France
 ---
-The **Real estate** pack loads every property sale recorded in France (DVF, published by the tax administration and geolocated by Etalab) into the table `dvf_mutations` of the organization, a year per file.
+The **Real estate** pack loads every property sale recorded in France (DVF, published by the tax administration and geolocated by Etalab) into the table `dvf` of the organization, a year per file.
 
 ## Starting it
 Like the other bulk loads, it only runs for an organization whose table quota a platform administrator has set, on the platform status page, section **Organizations**, column **Tables (quota)**.

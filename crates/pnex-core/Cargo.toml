@@ -22,6 +22,8 @@ egress = ["dep:reqwest", "dep:tokio"]
 doc-extract = ["dep:zip", "dep:quick-xml", "dep:lopdf", "dep:calamine", "dep:lzma-rs"]
 # OpenAPI schemas of the API DTOs (docs/contracts/openapi.json) — backend only.
 openapi = ["dep:utoipa"]
+# Wall clocks in their IANA zone (pipeline-engine.md D939) — backend and pipeline worker.
+tz = ["dep:chrono-tz"]
 
 [dependencies]
 serde = { workspace = true }
@@ -37,6 +39,7 @@ base64 = { version = "0.23", optional = true }
 reqwest = { version = "0.12", default-features = false, optional = true }
 # Recurrence dates (ontology annex B), no clock: wasm-safe.
 chrono = { version = "0.4", default-features = false, features = ["serde", "alloc"] }
+chrono-tz = { version = "0.10", optional = true }
 # Secret destinations (R9): same parser as reqwest, wasm-safe.
 url = "2"
 utoipa = { workspace = true, optional = true }

@@ -1,0 +1,57 @@
+# Daily transits of the shipping chokepoints of IMF PortWatch (cite the IMF
+# and its partners), one request per chokepoint of the setting, its last
+# 2000 days; each count is a metric of the chokepoint's series. Its code is
+# kept upper-case, the id sent lower-case as PortWatch has it.
+key: portwatch_chokepoints
+name: Shipping chokepoints (IMF PortWatch)
+hosts: [services9.arcgis.com]
+steps:
+  - enumerate: { as: codes, cross: [{ as: code, setting: markets.chokepoints, case: upper }] }
+  - fetch:
+      as: json
+      for_each: codes
+      url: "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query"
+      params:
+        where: "portid='{{code|lower}}'"
+        outFields: "date,portid,portname,n_total,n_tanker,n_container,n_dry_bulk,n_cargo"
+        orderByFields: "date DESC"
+        resultRecordCount: "2000"
+        f: json
+      every: 1s
+  - read:
+      as: days
+      from: json
+      format: json
+      records: /features
+      skip_invalid: true
+      columns:
+        - { name: queried, type: text, value: "{{code}}" }
+        - { name: name, at: /attributes/portname, type: text, optional: true }
+        - { name: day, at: /attributes/date, type: text }
+        - { name: n_total, at: /attributes/n_total, type: float, optional: true }
+        - { name: n_tanker, at: /attributes/n_tanker, type: float, optional: true }
+        - { name: n_container, at: /attributes/n_container, type: float, optional: true }
+        - { name: n_dry_bulk, at: /attributes/n_dry_bulk, type: float, optional: true }
+        - { name: n_cargo, at: /attributes/n_cargo, type: float, optional: true }
+  - sql:
+      as: values
+      sql: |
+        SELECT queried, name, metric, substr(day, 1, 10) AS "end", value FROM (
+          SELECT queried, name, day, 'n_total' AS metric, n_total AS value FROM days
+          UNION ALL SELECT queried, name, day, 'n_tanker', n_tanker FROM days
+          UNION ALL SELECT queried, name, day, 'n_container', n_container FROM days
+          UNION ALL SELECT queried, name, day, 'n_dry_bulk', n_dry_bulk FROM days
+          UNION ALL SELECT queried, name, day, 'n_cargo', n_cargo FROM days
+        ) AS v
+        WHERE value IS NOT NULL
+  - write: { from: values, table: { name: portwatch_chokepoints, replace: true } }
+tests:
+  - name: two days of a strait
+    settings: { markets.chokepoints: "chokepoint6" }
+    given:
+      "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query?f=json&orderByFields=date+DESC&outFields=date%2Cportid%2Cportname%2Cn_total%2Cn_tanker%2Cn_container%2Cn_dry_bulk%2Cn_cargo&resultRecordCount=2000&where=portid%3D%27chokepoint6%27": portwatch_hormuz.json
+    expect:
+      values:
+        rows: 4
+        contains:
+          - { queried: CHOKEPOINT6, name: Strait of Hormuz, metric: n_tanker, end: "2026-10-31", value: "40" }

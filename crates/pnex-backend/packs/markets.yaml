@@ -25,18 +25,22 @@
 # already holds that LEI; nothing is merged.
 # Since 1.4.0 (MK11, D807-D809) the symbols of `history_symbols` get their
 # 1-minute bars from Binance's public files into the table
-# `binance_spot_klines_1m`, one month (or one day of the current month) per
-# transaction, never into objects. Binance's terms for redistribution or a
+# `binance_klines_1m`, a closed month per transaction, never into objects. Binance's terms for redistribution or a
 # SaaS use are not checked: the table stays private to the org.
+# Since 1.13.0 the public price files are pipelines of this pack
+# (`pipelines/*.yaml`, pipeline-engine.md), each in a new table loaded again
+# from the start: times are read in their source's zone (D939).
 # Since 1.5.0 (MK12) the pairs of `history_fx_pairs` get their bid/ask ticks
-# from Dukascopy's public hour files into the table `dukascopy_ticks`, one
+# from Dukascopy's public hour files into the table `dukascopy_quotes`, one
 # day per transaction. Broker quotes, not exchange data; same terms caveat.
 # Since 1.6.0 (MK13) the symbols of `history_trade_symbols` get every spot
-# trade from Binance's daily files into the table `binance_spot_trades`.
+# trade from Binance's daily files into the table `binance_trades`.
 # MetaTrader 5 terminals are registered data sources (D847-D849, page MT5
 # terminals): their bars and ticks go to `mt5_ohlcv_1m` and `mt5_ticks`.
 # `histdata_pairs` loads HistData.com's free 1-minute bid bars (forex, metals,
-# oil, indices) into `histdata_ohlcv_1m`, a closed year per file.
+# oil, indices) into `histdata_m1`, a closed year per file, by the pipeline
+# `pipelines/histdata_m1.yaml` (pipeline-engine.md D939: New York time with
+# daylight saving).
 # Since 1.7.0 (D880) the series of `bis_series` come from the BIS Data Portal
 # (SDMX CSV): by default the policy rates of the G10 central banks, daily
 # since 2000. BIS terms: free for a non-commercial use, the BIS cited as the
@@ -69,7 +73,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.12.0"
+version: "1.13.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -197,8 +201,8 @@ settings:
   - key: history_symbols
     name: Symbols of the minute history (Binance)
     names: {fr: "Symboles de l'historique à la minute (Binance)"}
-    description: "Comma-separated Binance spot symbols (BTCUSDT, ETHUSDT…) whose 1-minute bars are loaded into the table binance_spot_klines_1m, from Binance's public files. Empty: nothing is loaded."
-    descriptions: {fr: "Symboles spot Binance (BTCUSDT, ETHUSDT…), séparés par des virgules, dont les bougies d'une minute sont chargées dans la table binance_spot_klines_1m, depuis les fichiers publics de Binance. Vide : rien n'est chargé."}
+    description: "Comma-separated Binance spot symbols (BTCUSDT, ETHUSDT…) whose 1-minute bars are loaded into the table binance_klines_1m, from Binance's public files. Empty: nothing is loaded."
+    descriptions: {fr: "Symboles spot Binance (BTCUSDT, ETHUSDT…), séparés par des virgules, dont les bougies d'une minute sont chargées dans la table binance_klines_1m, depuis les fichiers publics de Binance. Vide : rien n'est chargé."}
     kind: text
     default: ""
   - key: history_from
@@ -211,8 +215,8 @@ settings:
   - key: history_trade_symbols
     name: Symbols of the trade history (Binance)
     names: {fr: "Symboles de l'historique des transactions (Binance)"}
-    description: "Comma-separated Binance spot symbols whose every trade is loaded into the table binance_spot_trades, one day per file. Much bigger than the minute bars: a busy symbol weighs hundreds of MB a day. Empty: nothing is loaded."
-    descriptions: {fr: "Symboles spot Binance, séparés par des virgules, dont chaque transaction est chargée dans la table binance_spot_trades, un fichier par jour. Bien plus lourd que les bougies minute : un symbole actif pèse des centaines de Mo par jour. Vide : rien n'est chargé."}
+    description: "Comma-separated Binance spot symbols whose every trade is loaded into the table binance_trades, one day per file. Much bigger than the minute bars: a busy symbol weighs hundreds of MB a day. Empty: nothing is loaded."
+    descriptions: {fr: "Symboles spot Binance, séparés par des virgules, dont chaque transaction est chargée dans la table binance_trades, un fichier par jour. Bien plus lourd que les bougies minute : un symbole actif pèse des centaines de Mo par jour. Vide : rien n'est chargé."}
     kind: text
     default: ""
   - key: history_trade_from
@@ -225,8 +229,8 @@ settings:
   - key: histdata_pairs
     name: Pairs of the HistData history
     names: {fr: "Paires de l'historique HistData"}
-    description: "Comma-separated HistData codes (EURUSD, XAUUSD, SPXUSD, BCOUSD…) whose free 1-minute bid bars are loaded into the table histdata_ohlcv_1m, a closed year per file, one file every five minutes. HistData publishes no license: keep the table inside the org. Empty: nothing is loaded."
-    descriptions: {fr: "Codes HistData (EURUSD, XAUUSD, SPXUSD, BCOUSD…), séparés par des virgules, dont les bougies bid d'une minute, gratuites, sont chargées dans la table histdata_ohlcv_1m, une année close par fichier, un fichier toutes les cinq minutes. HistData ne publie aucune licence : garder la table dans l'organisation. Vide : rien n'est chargé."}
+    description: "Comma-separated HistData codes (EURUSD, XAUUSD, SPXUSD, BCOUSD…) whose free 1-minute bid bars are loaded into the table histdata_m1, a closed year per file, one file every five minutes. HistData publishes no license: keep the table inside the org. Empty: nothing is loaded."
+    descriptions: {fr: "Codes HistData (EURUSD, XAUUSD, SPXUSD, BCOUSD…), séparés par des virgules, dont les bougies bid d'une minute, gratuites, sont chargées dans la table histdata_m1, une année close par fichier, un fichier toutes les cinq minutes. HistData ne publie aucune licence : garder la table dans l'organisation. Vide : rien n'est chargé."}
     kind: text
     default: ""
   - key: histdata_from
@@ -239,8 +243,8 @@ settings:
   - key: histdata_tick_pairs
     name: Pairs of the HistData ticks
     names: {fr: "Paires des ticks HistData"}
-    description: "Comma-separated HistData codes (XAUUSD, EURUSD…) whose free bid/ask ticks are loaded into the table histdata_ticks, a closed month per file, one file every five minutes. A month of XAUUSD is about 4.7 million ticks. HistData publishes no license: keep the table inside the org. Empty: nothing is loaded."
-    descriptions: {fr: "Codes HistData (XAUUSD, EURUSD…), séparés par des virgules, dont les ticks bid/ask gratuits sont chargés dans la table histdata_ticks, un mois clos par fichier, un fichier toutes les cinq minutes. Un mois de XAUUSD compte environ 4,7 millions de ticks. HistData ne publie aucune licence : garder la table dans l'organisation. Vide : rien n'est chargé."}
+    description: "Comma-separated HistData codes (XAUUSD, EURUSD…) whose free bid/ask ticks are loaded into the table histdata_quotes, a closed month per file, one file every five minutes. A month of XAUUSD is about 4.7 million ticks. HistData publishes no license: keep the table inside the org. Empty: nothing is loaded."
+    descriptions: {fr: "Codes HistData (XAUUSD, EURUSD…), séparés par des virgules, dont les ticks bid/ask gratuits sont chargés dans la table histdata_quotes, un mois clos par fichier, un fichier toutes les cinq minutes. Un mois de XAUUSD compte environ 4,7 millions de ticks. HistData ne publie aucune licence : garder la table dans l'organisation. Vide : rien n'est chargé."}
     kind: text
     default: ""
   - key: histdata_tick_from
@@ -253,8 +257,8 @@ settings:
   - key: history_fx_pairs
     name: Pairs of the tick history (Dukascopy)
     names: {fr: "Paires de l'historique des ticks (Dukascopy)"}
-    description: "Comma-separated forex pairs (EURUSD, USDJPY…) whose bid/ask ticks are loaded into the table dukascopy_ticks, from Dukascopy's public files. Only pairs of EUR, USD, GBP, JPY, CHF, AUD, CAD, NZD, SEK and NOK are read. Empty: nothing is loaded."
-    descriptions: {fr: "Paires forex (EURUSD, USDJPY…), séparées par des virgules, dont les ticks bid/ask sont chargés dans la table dukascopy_ticks, depuis les fichiers publics de Dukascopy. Seules les paires entre EUR, USD, GBP, JPY, CHF, AUD, CAD, NZD, SEK et NOK sont lues. Vide : rien n'est chargé."}
+    description: "Comma-separated forex pairs (EURUSD, USDJPY…) whose bid/ask ticks are loaded into the table dukascopy_quotes, from Dukascopy's public files. Only six-letter forex pairs are read. Empty: nothing is loaded."
+    descriptions: {fr: "Paires forex (EURUSD, USDJPY…), séparées par des virgules, dont les ticks bid/ask sont chargés dans la table dukascopy_quotes, depuis les fichiers publics de Dukascopy. Seules les paires forex de six lettres sont lues. Vide : rien n'est chargé."}
     kind: text
     default: ""
   - key: history_fx_from
@@ -484,17 +488,13 @@ link_types:
       - { key: lei, name: LEI, names: {fr: "LEI"}, kind: text, max_len: 20 }
 imports:
   - name: Companies followed (SEC)
-    source: url
-    source_url: "https://www.sec.gov/files/company_tickers.json"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: week }
     mapping:
       key: sec_companies
       name: Companies followed
       names: {fr: "Sociétés suivies"}
-      shape: sec_tickers
-      contact_setting: markets.source_contact
-      rows_in_setting: { key: markets.covered_tickers, property: ticker }
+      pipeline: markets/sec_companies
       objects:
         # Never updated: the names a member added to it stay.
         - as: company
@@ -516,18 +516,13 @@ imports:
       links:
         - { type: issues, from: company, to: instrument }
   - name: Filings (SEC EDGAR)
-    source: api
-    source_url: "https://data.sec.gov/submissions/CIK{value}.json"
-    max_pages: 50
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: edgar_filings
       name: Filings
       names: {fr: "Dépôts"}
-      shape: edgar_filings
-      contact_setting: markets.source_contact
-      per_object: { type: organization, property: cik }
+      pipeline: markets/edgar_filings
       objects:
         - as: company
           type: organization
@@ -552,31 +547,22 @@ imports:
       links:
         - { type: filed_by, from: filing, to: company }
   - name: Reported figures (SEC EDGAR)
-    source: api
-    source_url: "https://data.sec.gov/api/xbrl/companyfacts/CIK{value}.json"
-    max_pages: 50
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: edgar_figures
       name: Reported figures
       names: {fr: "Chiffres publiés"}
-      shape: xbrl_facts
-      contact_setting: markets.source_contact
-      per_object: { type: organization, property: cik }
+      pipeline: markets/edgar_figures
       observations: { type: organization, property: cik }
   - name: Macroeconomic series (FRED)
-    source: api
-    source_url: "https://fred.stlouisfed.org/graph/fredgraph.csv?id={value}"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: fred_series
       name: Macroeconomic series
       names: {fr: "Séries macroéconomiques"}
-      shape: dated_csv
-      contact_setting: markets.source_contact
-      per_setting_code: markets.macro_series
+      pipeline: markets/fred_series
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -586,8 +572,6 @@ imports:
           properties:
             code: metric
   - name: Watched series (FRED)
-    source: api
-    source_url: "https://fred.stlouisfed.org/graph/fredgraph.csv?id={value}"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
@@ -595,9 +579,7 @@ imports:
       name: Watched series
       names: {fr: "Séries surveillées"}
       description: The series of the move_series setting; each run is followed by the search for abnormal sessions (D735).
-      shape: dated_csv
-      contact_setting: markets.source_contact
-      per_setting_code: markets.move_series
+      pipeline: markets/fred_move_series
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -607,8 +589,6 @@ imports:
           properties:
             code: metric
   - name: Macroeconomic series first releases (ALFRED)
-    source: api
-    source_url: "https://api.stlouisfed.org/fred/series/observations?series_id={value}&output_type=4&realtime_start=1776-07-04&realtime_end=9999-12-31&file_type=json"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 7, unit: day }
     mapping:
@@ -616,10 +596,7 @@ imports:
       name: Macroeconomic series first releases
       names: {fr: "Premières publications des séries macroéconomiques"}
       description: "Each value of the macro_series setting as first published, dated by its publication (D811), read with the org's FRED key (vault secret markets_fred_key)."
-      shape: alfred_vintages
-      keyed_source: fred
-      contact_setting: markets.source_contact
-      per_setting_code: markets.macro_series
+      pipeline: markets/alfred_series
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -629,8 +606,6 @@ imports:
           properties:
             code: metric
   - name: Watched series first releases (ALFRED)
-    source: api
-    source_url: "https://api.stlouisfed.org/fred/series/observations?series_id={value}&output_type=4&realtime_start=1776-07-04&realtime_end=9999-12-31&file_type=json"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 7, unit: day }
     mapping:
@@ -638,10 +613,7 @@ imports:
       name: Watched series first releases
       names: {fr: "Premières publications des séries surveillées"}
       description: "Each value of the move_series setting as first published, dated by its publication (D811): the abnormal sessions found are dated too, not caught up from history."
-      shape: alfred_vintages
-      keyed_source: fred
-      contact_setting: markets.source_contact
-      per_setting_code: markets.move_series
+      pipeline: markets/alfred_move_series
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -651,8 +623,6 @@ imports:
           properties:
             code: metric
   - name: Watched prices (Tiingo)
-    source: api
-    source_url: "https://api.tiingo.com/tiingo/daily/{value}/prices?startDate={since}"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
@@ -660,63 +630,48 @@ imports:
       name: Watched prices
       names: {fr: "Cours surveillés"}
       description: The tickers of the move_tickers setting; each run is followed by the search for abnormal sessions (D735).
-      shape: daily_prices
-      keyed_source: tiingo
-      per_setting_code: markets.move_tickers
+      pipeline: markets/tiingo_move_tickers
       observations: { type: instrument, property: ticker }
       objects:
         - as: instrument
           type: instrument
           key: ticker
-          title: "@queried"
+          title: queried
           properties:
-            ticker: "@queried"
+            ticker: queried
   - name: Daily prices (Tiingo)
-    source: api
-    source_url: "https://api.tiingo.com/tiingo/daily/{value}/prices?startDate={since}"
-    # The free plan allows 50 requests an hour: turns, not all at once.
-    max_pages: 40
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: daily_prices
       name: Daily prices
       names: {fr: "Cours quotidiens"}
-      shape: daily_prices
-      keyed_source: tiingo
-      per_object: { type: instrument, property: ticker }
+      pipeline: markets/tiingo_daily_prices
       observations: { type: instrument, property: ticker }
   - name: Benchmark prices (Tiingo)
-    source: api
-    source_url: "https://api.tiingo.com/tiingo/daily/{value}/prices?startDate={since}"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: benchmark_prices
       name: Benchmark prices
       names: {fr: "Cours de référence"}
-      shape: daily_prices
-      keyed_source: tiingo
-      per_setting_code: markets.benchmark_ticker
+      pipeline: markets/tiingo_benchmark
       observations: { type: instrument, property: ticker }
       objects:
         - as: instrument
           type: instrument
           key: ticker
-          title: "@queried"
+          title: queried
           properties:
-            ticker: "@queried"
+            ticker: queried
   - name: European series (ECB)
-    source: api
-    source_url: "https://data-api.ecb.europa.eu/service/data/{value}?format=csvdata"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: ecb_series
       name: European series
       names: {fr: "Séries européennes"}
-      shape: ecb_csv
-      per_setting_code: markets.ecb_series
+      pipeline: markets/ecb_series
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -724,18 +679,15 @@ imports:
           key: code
           title: metric
           properties:
-            code: "@queried"
+            code: queried
   - name: Central bank series (BIS)
-    source: api
-    source_url: "https://stats.bis.org/api/v1/data/{value}/all?format=csv&startPeriod=2000-01-01"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: bis_series
       name: Central bank series
       names: {fr: "Séries des banques centrales"}
-      shape: ecb_csv
-      per_setting_code: markets.bis_series
+      pipeline: markets/bis_series
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -743,18 +695,15 @@ imports:
           key: code
           title: metric
           properties:
-            code: "@queried"
+            code: queried
   - name: European statistics (Eurostat)
-    source: api
-    source_url: "https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/{value}?format=SDMX-CSV&startPeriod=2000"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: eurostat_series
       name: European statistics
       names: {fr: "Statistiques européennes"}
-      shape: ecb_csv
-      per_setting_code: markets.eurostat_series
+      pipeline: markets/eurostat_series
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -762,10 +711,8 @@ imports:
           key: code
           title: metric
           properties:
-            code: "@queried"
+            code: queried
   - name: Oil and gas statistics (EIA)
-    source: api
-    source_url: "https://api.eia.gov/v2/seriesid/{value}"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
@@ -773,9 +720,7 @@ imports:
       name: Oil and gas statistics
       names: {fr: "Statistiques pétrole et gaz"}
       description: "The series of the eia_series setting, read with the org's EIA key (vault secret markets_eia_key)."
-      shape: eia_series
-      keyed_source: eia
-      per_setting_code: markets.eia_series
+      pipeline: markets/eia_series
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -783,18 +728,15 @@ imports:
           key: code
           title: metric
           properties:
-            code: "@queried"
+            code: queried
   - name: Positions of traders (CFTC COT)
-    source: api
-    source_url: "https://publicreporting.cftc.gov/resource/6dca-aqww.json?%24where=cftc_contract_market_code%3D%27{value}%27%20AND%20report_date_as_yyyy_mm_dd%3E%3D%27{since}T00%3A00%3A00%27&%24order=report_date_as_yyyy_mm_dd&%24limit=5000"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: cftc_cot
       name: Positions of traders
       names: {fr: "Positions des opérateurs"}
-      shape: cftc_cot
-      per_setting_code: markets.cot_markets
+      pipeline: markets/cftc_cot
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -802,18 +744,15 @@ imports:
           key: code
           title: name
           properties:
-            code: "@queried"
+            code: queried
   - name: Shipping chokepoints (IMF PortWatch)
-    source: api
-    source_url: "https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Chokepoints_Data/FeatureServer/0/query?where=portid%3D%27{value}%27%20AND%20date%3E%3DDATE%20%27{since}%27&outFields=date,portid,portname,n_total,n_tanker,n_container,n_dry_bulk,n_cargo,capacity&orderByFields=date%20ASC&resultRecordCount=1000&f=json"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: portwatch_chokepoints
       name: Shipping chokepoints
       names: {fr: "Points de passage maritimes"}
-      shape: portwatch_daily
-      per_setting_code: markets.chokepoints
+      pipeline: markets/portwatch_chokepoints
       observations: { type: macro_series, property: code }
       objects:
         - as: series
@@ -821,26 +760,22 @@ imports:
           key: code
           title: name
           properties:
-            code: "@queried"
+            code: queried
   - name: European reports (ESEF)
-    source: api
-    source_url: "https://filings.xbrl.org/api/filings?filter%5Bentity.identifier%5D={value}&include=entity&page%5Bsize%5D=100"
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: week }
     mapping:
       key: esef_filings
       name: European reports
       names: {fr: "Rapports européens"}
-      shape: esef_filings
-      contact_setting: markets.source_contact
-      per_setting_code: markets.covered_leis
+      pipeline: markets/esef_filings
       objects:
         - as: company
           type: organization
           key: lei
           title: name
           properties:
-            lei: "@queried"
+            lei: queried
             market_followed: { value: followed }
         - as: filing
           type: filing
