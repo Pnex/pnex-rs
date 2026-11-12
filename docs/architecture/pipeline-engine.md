@@ -468,3 +468,23 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
   `import-schema-changed` nommant la colonne de la source. Le garde-fou des fermetures massives
   (`ingest-suspicious-closures`) tient toujours. Le moteur d'étapes `ingest` reste pour le seul
   import RS (XML imbriqué).
+- **2026-11-12 (nuit)** : **imports par objet portés** (14) : registre SIRENE ×2, GLEIF ×4,
+  Wikidata ×2, établissements, BODACC, liste de ciblage, DGEFP, CPF ×2 (packs `companies_fr`,
+  `prospecting_b2b_fr`, `quali_watch`). Ajouts génériques : colonne **`json`** d'une lecture (la
+  valeur gardée en texte JSON, `at: "/"` = l'enregistrement entier) ; un import la désigne par
+  `rows: <colonne>` et la synchro la relit en enregistrements (objet, ou chaque objet d'un
+  tableau, à côté des autres colonnes) : `each:`, `a.b` et `^parent` des mappings inchangés.
+  **`pages`** de `fetch` (numéro de page en paramètre jusqu'à une page sans enregistrement,
+  `max` au plus). Axe d'objets : **`linked`** (lien ouvert d'un de ces types, dans un sens ou
+  l'autre), **`codes`** (codes d'un réglage comparés à une propriété, de l'objet ou de l'autre
+  bout du lien ; réglage vide = aucun filtre), **`title`** (colonne recevant le titre : recherche
+  par nom, le SIREN vérifié ensuite en `sql`). **Supprimés** : `per_object`, `per_setting_code`,
+  `rows_in_setting`, `contact_setting` du mapping, `fetch_per_object`, le curseur
+  `per_object_cursor` (la colonne reste en base jusqu'à PE9).
+
+| Écart | Où il se lève |
+|---|---|
+| Un run interroge tous les objets visés (l'ancien import en prenait `max_pages` par run, à tour de rôle) : 150 ms par objet, une org de 5 000 sociétés = 12 min par run | `track` + `per_run` sur l'axe d'objets si un débit le demande |
+| Une réponse en erreur (429, 5xx) fait échouer le run ; l'ancien import la comptait comme « aucun enregistrement » sauf si toutes échouaient | un `on_error: empty` de `fetch` si une source le justifie |
+| Le contrôle de forme d'un import à colonne `json` ne vérifie que la colonne ; un champ imbriqué disparu donne des objets incomplets, pas `import-schema-changed` | contrôle sur les premiers enregistrements relus |
+| Restent hors moteur : RS (XML), GDELT presse et événements, UCDP ×3, ACLED, ADS-B, MT5 | suite de PE4, PE8 |

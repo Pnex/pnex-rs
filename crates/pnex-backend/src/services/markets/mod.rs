@@ -16,8 +16,6 @@ pub mod study;
 pub mod summary;
 pub mod world;
 
-use std::collections::HashMap;
-
 use chrono::{DateTime, FixedOffset};
 use pnex_core::markets::{ObservationTarget, PlannedObservation};
 use pnex_core::ontology::api::ObservationView;
@@ -56,31 +54,6 @@ pub fn test_host_allowed(url: &str) -> bool {
     TEST_HOSTS
         .lock()
         .is_ok_and(|hosts| hosts.iter().any(|b| url.starts_with(b.as_str())))
-}
-
-/// Per object key, the day a price read starts from: a few days back, so a
-/// late correction of the source is seen. Objects without a value are absent.
-pub async fn since_days<C: ConnectionTrait>(
-    db: &C,
-    org_id: i64,
-    target: &ObservationTarget,
-) -> Result<HashMap<String, String>, DbErr> {
-    let rows = db
-        .query_all_raw(stmt(
-            "SELECT o.properties ->> $3 AS k, (max(m.period_end) - 7)::text AS d \
-             FROM market_observations m JOIN objects o ON o.id = m.object_id \
-             WHERE m.org_id = $1 AND o.type_key = $2 GROUP BY 1",
-            vec![
-                org_id.into(),
-                target.type_key.clone().into(),
-                target.property.clone().into(),
-            ],
-        ))
-        .await?;
-    Ok(rows
-        .iter()
-        .filter_map(|r| Some((r.try_get("", "k").ok()?, r.try_get("", "d").ok()?)))
-        .collect())
 }
 
 /// Rows written per statement.

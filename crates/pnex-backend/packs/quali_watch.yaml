@@ -48,7 +48,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "3.5.0"
+version: "3.6.0"
 requires: [companies_fr, web_presence]
 extends:
   - type: organization
@@ -724,16 +724,13 @@ imports:
           # Several SIRET of one SIREN: active when one of them is.
           on_conflict: { fc_state: active }
   - name: Company register · network (SIRENE)
-    source: api
-    source_url: "https://recherche-entreprises.api.gouv.fr/search?per_page=1"
-    max_pages: 200
+    source: file
     mapping:
       key: qw_company_search
+      pipeline: quali_watch/qw_company_search
+      rows: record
       name: Company register (network)
       names: {fr: "Recherche d'entreprises (réseau)"}
-      format: json
-      rows: results
-      per_object: { type: organization, property: siren, param: q, linked: [accredited_for, holds], setting: { key: quali_watch.certifications, property: code } }
       objects:
         - as: legal_unit
           type: organization
@@ -825,16 +822,13 @@ imports:
           to: legal_unit
           attributes: *qw_mandate
   - name: DGEFP · training organizations (network)
-    source: api
-    source_url: "https://dgefp.opendatasoft.com/api/explore/v2.1/catalog/datasets/liste-publique-des-of-v2/records?refine=siren:{value}&limit=20"
-    max_pages: 200
+    source: file
     mapping:
       key: qw_dgefp
+      pipeline: quali_watch/qw_dgefp
+      rows: record
       name: Training organizations (DGEFP)
       names: {fr: "Organismes de formation (DGEFP)"}
-      format: json
-      rows: results
-      per_object: { type: organization, property: siren, linked: [accredited_for, holds], setting: { key: quali_watch.certifications, property: code } }
       objects:
         - as: training_org
           type: organization
@@ -852,15 +846,13 @@ imports:
             qualiopi_apprenticeship: { from: certifications_actionsdeformationparapprentissage, convert: [{ enum: { "true": "true", "*": "false" } }] }
             qualiopi_updated: { from: informationsdeclarees_datedernieredeclaration, convert: ["date:%d/%m/%Y"] }
   - name: CPF catalogue · RS certifications
-    source: api
-    source_url: "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RS&refine=code_inventaire:{value}"
-    max_pages: 200
+    source: file
     mapping:
       key: qw_cpf_rs
+      pipeline: quali_watch/qw_cpf_rs
+      rows: record
       name: CPF offers (RS)
       names: {fr: "Offres CPF (RS)"}
-      format: json
-      per_object: { type: certification, property: number, only: { property: register, values: [rs] }, setting: { key: quali_watch.certifications, property: code } }
       objects:
         - as: cert
           type: certification
@@ -890,15 +882,13 @@ imports:
         - { type: offer_of, from: offer, to: org, attributes: { matched_by: { value: siret } } }
         - { type: offer_for, from: offer, to: cert }
   - name: CPF catalogue · RNCP certifications
-    source: api
-    source_url: "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RNCP&refine=code_rncp:{value}"
-    max_pages: 200
+    source: file
     mapping:
       key: qw_cpf_rncp
+      pipeline: quali_watch/qw_cpf_rncp
+      rows: record
       name: CPF offers (RNCP)
       names: {fr: "Offres CPF (RNCP)"}
-      format: json
-      per_object: { type: certification, property: number, only: { property: register, values: [rncp] }, setting: { key: quali_watch.certifications, property: code } }
       objects:
         - as: cert
           type: certification

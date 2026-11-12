@@ -1,0 +1,3 @@
+{"head": {"vars": ["dir", "self_siren", "other_siren", "otherLabel"]}, "results": {"bindings": [
+ {"dir": {"type": "literal", "value": "parent"}, "self_siren": {"type": "literal", "value": "552100554"}, "other_siren": {"type": "literal", "value": "123456782"}, "otherLabel": {"type": "literal", "value": "ACME HOLDING"}},
+ {"dir": {"type": "literal", "value": "child"}, "self_siren": {"type": "literal", "value": "552100554"}, "other_siren": {"type": "literal", "value": "987654321"}, "otherLabel": {"type": "literal", "value": "ACME SERVICES"}}]}}

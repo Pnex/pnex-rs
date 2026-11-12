@@ -483,8 +483,8 @@ async fn what_waited_for_an_object_is_written_when_it_appears() {
     .await;
 }
 
-/// A table of dated values becomes the series of the objects it names: no
-/// `per_object`, the `@queried` column says whose value it is.
+/// A table of dated values becomes the series of the objects it names:
+/// the `@queried` column says whose value it is.
 #[tokio::test]
 #[serial]
 async fn a_table_of_dated_values_becomes_series() {
@@ -549,7 +549,7 @@ async fn a_table_of_dated_values_becomes_series() {
         // The run counts what it stored, not the row naming no object.
         assert_eq!(r["run"]["counts"]["observations"], 2, "{r}");
 
-        // Elsewhere the key comes from the run: without per_object, refused.
+        // Elsewhere the key comes from the run: outside a table or a pipeline, refused.
         let (s, e) = api
             .call(
                 "POST",

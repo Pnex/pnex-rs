@@ -70,14 +70,13 @@ struct ImportRow {
     created_by: Option<i64>,
     created_at: DateTimeWithTimeZone,
     updated_at: DateTimeWithTimeZone,
-    per_object_cursor: Option<String>,
     /// What its pack last wrote (D424): `{written, replaced}`.
     pack_written: Option<Value>,
 }
 
 const IMPORT_COLUMNS: &str = "id, org_id, name, mapping_yaml, pack_key, source, source_url, mode, \
      recurrence, next_run_at, max_pages, version, created_by, created_at, updated_at, \
-     per_object_cursor, pack_written";
+     pack_written";
 
 impl ImportRow {
     fn source(&self) -> ImportSource {
@@ -212,11 +211,6 @@ async fn check_input<C: ConnectionTrait>(
             source::check_url(u).map_err(|t| invalid("source_url", t))?;
         }
     }
-    if m.per_object.is_some() && input.source != ImportSource::Api {
-        return Err(invalid("mapping.per_object", FIELD_INVALID));
-    }
-    // A table gives its `@queried` column; elsewhere the key is the object or
-    // the code the run asked for.
     // The pipeline of an import writes its table, whole, under the mapping's key.
     if let Some(id) = &m.pipeline {
         let writes_it = crate::services::pipeline_engine::store::shipped()
@@ -232,29 +226,8 @@ async fn check_input<C: ConnectionTrait>(
             return Err(invalid("mapping.pipeline", FIELD_INVALID));
         }
     }
-    if m.observations.is_some()
-        && input.source != ImportSource::Dataset
-        && m.per_object.is_none()
-        && m.per_setting_code.is_none()
-        && m.pipeline.is_none()
-    {
+    if m.observations.is_some() && input.source != ImportSource::Dataset && m.pipeline.is_none() {
         return Err(invalid("mapping.observations", FIELD_INVALID));
-    }
-    // Without a parameter the value goes in place of `{value}` in the URL.
-    if m.per_object.as_ref().is_some_and(|p| {
-        p.param.is_empty()
-            && !input
-                .source_url
-                .as_ref()
-                .and_then(|u| u.as_deref())
-                .is_some_and(|u| u.contains(source::VALUE))
-    }) {
-        return Err(invalid("source_url", FIELD_INVALID));
-    }
-    // A per-object run covers a share of the objects: a snapshot would
-    // close what the others hold.
-    if m.per_object.is_some() && input.mode == ImportMode::Snapshot {
-        return Err(invalid("mode", FIELD_INVALID));
     }
     if let Some(Some(r)) = &input.recurrence {
         Recurrence::parse(r).ok_or_else(|| invalid("recurrence", FIELD_INVALID))?;
@@ -622,18 +595,7 @@ async fn records<C: ConnectionTrait>(
     file: Option<(&[u8], &str)>,
 ) -> std::result::Result<Vec<Value>, (&'static str, Value)> {
     let coded = |code: &'static str| (code, Value::Null);
-    let contact = match &m.contact_setting {
-        Some(key) => match setting_text(db, imp.org_id, key).await {
-            Some(c) if !c.trim().is_empty() => Some(c.trim().to_string()),
-            _ => return Err(coded(err_codes::IMPORT_CONTACT_REQUIRED)),
-        },
-        None => None,
-    };
-    let by = source::Declared {
-        contact,
-        ..Default::default()
-    };
-    let by = &by;
+    let by = &source::Declared::default();
     let rows = match (imp.source(), file) {
         // Hostile input (R8 §5): parsed on a blocking thread, where a parser
         // panic only fails this run.
@@ -684,47 +646,10 @@ async fn records<C: ConnectionTrait>(
                 return source::fetch_press(url, feed, watched).await.map_err(coded);
             }
             let pages = imp.max_pages.map_or(DEFAULT_PAGES, |p| p as u32);
-            if let Some(key) = &m.per_setting_code {
-                let codes = setting_codes(db, imp.org_id, key).await;
-                let since = since_days(db, imp, m, url).await;
-                return source::fetch_per_object(url, m, &codes, by, &since, &Default::default())
-                    .await
-                    .map_err(coded);
-            }
-            match &m.per_object {
-                None => source::fetch_api(url, m, pages).await.map_err(coded),
-                Some(p) => {
-                    let values = per_object_values(db, imp, p, pages)
-                        .await
-                        .map_err(|_| coded(source::UNREACHABLE))?;
-                    let since = since_days(db, imp, m, url).await;
-                    let titles = if p.by_title.is_empty() {
-                        Default::default()
-                    } else {
-                        per_object_titles(db, imp, p, &values)
-                            .await
-                            .map_err(|_| coded(source::UNREACHABLE))?
-                    };
-                    source::fetch_per_object(url, m, &values, by, &since, &titles)
-                        .await
-                        .map_err(coded)
-                }
-            }
+            source::fetch_api(url, m, pages).await.map_err(coded)
         }
     }?;
-    Ok(match &m.rows_in_setting {
-        None => rows,
-        Some(f) => {
-            let codes = setting_codes(db, imp.org_id, &f.key).await;
-            rows.into_iter()
-                .filter(|r| {
-                    r.get(&f.property)
-                        .and_then(Value::as_str)
-                        .is_some_and(|v| codes.contains(&v.trim().to_uppercase()))
-                })
-                .collect()
-        }
-    })
+    Ok(rows)
 }
 
 /// The org's credentials of a conflict source, from the vault, for the
@@ -756,23 +681,6 @@ async fn conflict_secrets<C: ConnectionTrait>(
         out.push(value.trim().to_string());
     }
     Ok(out)
-}
-
-/// The day each object's reading starts from, when the URL asks for it.
-async fn since_days<C: ConnectionTrait>(
-    db: &C,
-    imp: &ImportRow,
-    m: &Mapping,
-    url: &str,
-) -> std::collections::HashMap<String, String> {
-    match &m.observations {
-        Some(t) if url.contains(source::SINCE) => {
-            crate::services::markets::since_days(db, imp.org_id, t)
-                .await
-                .unwrap_or_default()
-        }
-        _ => Default::default(),
-    }
 }
 
 async fn setting_text<C: ConnectionTrait>(db: &C, org_id: i64, key: &str) -> Option<String> {
@@ -830,99 +738,6 @@ async fn press_watched<C: ConnectionTrait>(
             }
             Some(pnex_core::gkg::Watched { names, key })
         })
-        .collect())
-}
-
-/// Titles of the objects holding `values` of the `per_object` property.
-async fn per_object_titles<C: ConnectionTrait>(
-    db: &C,
-    imp: &ImportRow,
-    p: &imp::PerObject,
-    values: &[String],
-) -> std::result::Result<std::collections::HashMap<String, String>, sea_orm::DbErr> {
-    let rows = db
-        .query_all_raw(stmt(
-            "SELECT properties ->> $3 AS v, title FROM objects \
-             WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ->> $3 = ANY($4)",
-            vec![
-                imp.org_id.into(),
-                p.type_key.clone().into(),
-                p.property.clone().into(),
-                values.to_vec().into(),
-            ],
-        ))
-        .await?;
-    Ok(rows
-        .iter()
-        .filter_map(|r| {
-            Some((
-                r.try_get::<String>("", "v").ok()?,
-                r.try_get::<String>("", "title").ok()?,
-            ))
-        })
-        .collect())
-}
-
-/// Values of `per_object` to query: in value order, starting after the
-/// last one a scheduled run queried and wrapping around, so every object
-/// gets its turn even when the source knows nothing about most of them.
-async fn per_object_values<C: ConnectionTrait>(
-    db: &C,
-    imp: &ImportRow,
-    p: &imp::PerObject,
-    max: u32,
-) -> std::result::Result<Vec<String>, sea_orm::DbErr> {
-    let (codes, code_prop) = match &p.setting {
-        Some(st) => (
-            super::packs::setting_value(db, imp.org_id, &st.key)
-                .await?
-                .as_ref()
-                .and_then(Value::as_str)
-                .map(imp::PerObjectSetting::codes)
-                .unwrap_or_default(),
-            Some(st.property.clone()),
-        ),
-        None => (Vec::new(), None),
-    };
-    let rows = db
-        .query_all_raw(stmt(
-            "SELECT properties ->> $3 AS v FROM objects \
-             WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3 \
-               AND ($6::text IS NULL OR properties ->> $6 = ANY($7)) \
-               AND (cardinality($9::text[]) = 0 OR cardinality($8::text[]) > 0 \
-                 OR upper(properties ->> $10) = ANY($9)) \
-               AND (cardinality($8::text[]) = 0 OR EXISTS (SELECT 1 FROM resource_edges e \
-                 WHERE e.org_id = $1 AND e.relation = ANY($8) \
-                   AND (e.source_object_id = objects.id OR e.target_object_id = objects.id) \
-                   AND e.valid_from <= now() AND (e.valid_to IS NULL OR e.valid_to > now()) \
-                   AND (cardinality($9::text[]) = 0 OR EXISTS (SELECT 1 FROM objects o \
-                     WHERE o.org_id = $1 AND o.valid_to IS NULL \
-                       AND o.id = CASE WHEN e.source_object_id = objects.id \
-                         THEN e.target_object_id ELSE e.source_object_id END \
-                       AND upper(o.properties ->> $10) = ANY($9))))) \
-             ORDER BY (properties ->> $3) <= coalesce($5, ''), properties ->> $3 LIMIT $4",
-            vec![
-                imp.org_id.into(),
-                p.type_key.clone().into(),
-                p.property.clone().into(),
-                (max as i64).into(),
-                imp.per_object_cursor.clone().into(),
-                p.only.as_ref().map(|o| o.property.clone()).into(),
-                p.only
-                    .as_ref()
-                    .map(|o| o.values.clone())
-                    .unwrap_or_default()
-                    .into(),
-                p.linked.clone().into(),
-                codes.into(),
-                code_prop.into(),
-            ],
-        ))
-        .await?;
-    Ok(rows
-        .iter()
-        .filter_map(|r| r.try_get::<String>("", "v").ok())
-        .filter(|v| !v.trim().is_empty())
         .collect())
 }
 
@@ -1750,8 +1565,8 @@ pub async fn run_staged(
         }
     };
     let name = file.as_ref().map(|(_, n)| n.clone()).unwrap_or_default();
-    let rows = match (&file, &m.per_object, imp.source()) {
-        (Some((bytes, name)), None, _) => {
+    let rows = match (&file, imp.source()) {
+        (Some((bytes, name)), _) => {
             let (bytes, name, m2) = (bytes.clone(), name.clone(), m.clone());
             tokio::task::spawn_blocking(move || {
                 pnex_core::import_read::read_records(&bytes, &name, &m2)
@@ -1760,7 +1575,7 @@ pub async fn run_staged(
             .await
             .unwrap_or(Err((source::UNREADABLE, Value::Null)))
         }
-        (None, None, ImportSource::File) => Err((err_codes::INGEST_ENTRY_MISSING, Value::Null)),
+        (None, ImportSource::File) => Err((err_codes::INGEST_ENTRY_MISSING, Value::Null)),
         _ => records(db, &imp, &m, None).await,
     };
     let end = |state: &'static str,
@@ -1791,15 +1606,12 @@ pub async fn run_staged(
     progress(db, run.id, rows.len(), None).await;
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(&m, &rows);
-    // A per-object batch may find nothing: not a lost source.
+    // A feed's window may hold nothing: not a lost source.
     let lost = rows.is_empty()
         && previous > 0
-        && m.per_object.is_none()
         && m.press_feed.is_none()
         && m.events_feed.is_none()
-        && m.conflict_feed.is_none()
-        && m.per_setting_code.is_none()
-        && m.rows_in_setting.is_none();
+        && m.conflict_feed.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()
@@ -1950,15 +1762,12 @@ async fn scheduled(
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(m, &rows);
     // D303: an unexpected shape writes nothing.
-    // A per-object batch may find nothing: not a lost source.
+    // A feed's window may hold nothing: not a lost source.
     let lost = rows.is_empty()
         && previous > 0
-        && m.per_object.is_none()
         && m.press_feed.is_none()
         && m.events_feed.is_none()
-        && m.conflict_feed.is_none()
-        && m.per_setting_code.is_none()
-        && m.rows_in_setting.is_none();
+        && m.conflict_feed.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()
@@ -2036,21 +1845,6 @@ async fn scheduled(
             }
         }
     };
-    if let Some(p) = &m.per_object {
-        let pages = imp.max_pages.map_or(DEFAULT_PAGES, |n| n as u32);
-        if let Some(last) = per_object_values(db, imp, p, pages)
-            .await
-            .ok()
-            .and_then(|v| v.last().cloned())
-        {
-            let _ = db
-                .execute_raw(stmt(
-                    "UPDATE object_imports SET per_object_cursor = $2 WHERE id = $1",
-                    vec![imp.id.into(), last.into()],
-                ))
-                .await;
-        }
-    }
     Ok(d)
 }
 

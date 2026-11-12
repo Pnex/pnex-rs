@@ -31,7 +31,7 @@
 key: prospecting_b2b_fr
 name: B2B prospecting, France layer
 names: {fr: "Prospection B2B, couche France"}
-version: "3.6.0"
+version: "3.7.0"
 requires: [companies_fr, prospecting_b2b]
 description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
 descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
@@ -76,16 +76,13 @@ imports:
         - { type: signal_about, from: signal, to: by_lei }
         - { type: signal_about, from: signal, to: by_item }
   - name: Direct subsidiaries (GLEIF)
-    source: api
-    source_url: "https://api.gleif.org/api/v1/lei-records/{value}/direct-children?page%5Bsize%5D=200"
-    max_pages: 200
+    source: file
     mapping:
       key: gleif_direct_children
+      pipeline: prospecting_b2b_fr/gleif_direct_children
+      rows: record
       name: Direct subsidiaries
       names: {fr: "Filiales directes (GLEIF)"}
-      format: json
-      rows: data
-      per_object: { type: organization, property: lei, only: { property: account_status, values: [customer, prospect, target] } }
       objects:
         - as: parent
           type: organization
@@ -93,7 +90,7 @@ imports:
           create: false
           missing: skip
           properties:
-            lei: "@queried"
+            lei: queried
         - as: child_fr
           type: organization
           key: siren
@@ -125,16 +122,13 @@ imports:
           attributes: *gleif_direct
           on_conflict: { nature: direct_consolidation }
   - name: Group subsidiaries (GLEIF)
-    source: api
-    source_url: "https://api.gleif.org/api/v1/lei-records/{value}/ultimate-children?page%5Bsize%5D=200"
-    max_pages: 200
+    source: file
     mapping:
       key: gleif_ultimate_children
+      pipeline: prospecting_b2b_fr/gleif_ultimate_children
+      rows: record
       name: Group subsidiaries
       names: {fr: "Filiales du groupe (GLEIF)"}
-      format: json
-      rows: data
-      per_object: { type: organization, property: lei, only: { property: account_status, values: [customer, prospect, target] } }
       objects:
         - as: parent
           type: organization
@@ -142,7 +136,7 @@ imports:
           create: false
           missing: skip
           properties:
-            lei: "@queried"
+            lei: queried
         - as: child_fr
           type: organization
           key: siren
@@ -174,16 +168,13 @@ imports:
           attributes: *gleif_ultimate
           on_conflict: { nature: direct_consolidation }
   - name: Foreign parents and subsidiaries (Wikidata)
-    source: api
-    source_url: "https://query.wikidata.org/sparql?format=json&query=SELECT%20DISTINCT%20%3Flane%20%3Fself_siren%20%3Fqid%20%3FotherLabel%20%3Fiso%20%3Flei%20WHERE%20{%20BIND%28%22{value}%22%20AS%20%3Fself_siren%29%20%3Fs%20wdt%3AP1616%20%3Fself_siren%20.%20{%20%3Fs%20wdt%3AP749%20%3Fother%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fother%20wdt%3AP355%20%3Fs%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fs%20wdt%3AP355%20%3Fother%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fother%20wdt%3AP749%20%3Fs%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20}%20FILTER%20NOT%20EXISTS%20{%20%3Fother%20wdt%3AP1616%20%3Fany%20}%20BIND%28STRAFTER%28STR%28%3Fother%29%2C%20%22entity%2F%22%29%20AS%20%3Fqid%29%20OPTIONAL%20{%20%3Fother%20wdt%3AP17%2Fwdt%3AP297%20%3Fiso%20}%20OPTIONAL%20{%20%3Fother%20wdt%3AP1278%20%3Flei%20}%20BIND%28CONCAT%28%3Fdir%2C%20IF%28BOUND%28%3Flei%29%2C%20%22_lei%22%2C%20%22_item%22%29%29%20AS%20%3Flane%29%20SERVICE%20wikibase%3Alabel%20{%20bd%3AserviceParam%20wikibase%3Alanguage%20%22fr%2Cen%22.%20}%20}"
-    max_pages: 200
+    source: file
     mapping:
       key: wikidata_group_world
+      pipeline: prospecting_b2b_fr/wikidata_group_world
+      rows: record
       name: Foreign parents and subsidiaries
       names: {fr: "Mères et filiales étrangères (Wikidata)"}
-      format: json
-      rows: results.bindings
-      per_object: { type: organization, property: siren, only: { property: account_status, values: [customer, prospect, target] } }
       objects:
         - as: legal_unit
           type: organization
@@ -254,16 +245,13 @@ imports:
           propose: true
           attributes: *wikidata_world
   - name: Target list (company register search)
-    source: api
-    source_url: "https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&tranche_effectif_salarie=22,31,32,41,42,51,52,53&etat_administratif=A&per_page=25"
-    max_pages: 400
+    source: file
     mapping:
       key: targeting_list
+      pipeline: prospecting_b2b_fr/targeting_list
+      rows: record
       name: Target list
       names: {fr: "Liste de ciblage"}
-      format: json
-      rows: results
-      page_param: page
       objects:
         - as: legal_unit
           type: organization
@@ -302,22 +290,14 @@ imports:
   # the same page), upgrade to the INSEE SIRENE API, which needs a key, when a
   # bigger group must be complete.
   - name: Establishments (company register)
-    source: api
-    source_url: "https://recherche-entreprises.api.gouv.fr/search?per_page=5&limite_matching_etablissements=100"
-    max_pages: 200
+    source: file
     mapping:
       key: company_establishments
+      pipeline: prospecting_b2b_fr/company_establishments
+      rows: record
       name: Establishments
       names: {fr: "Établissements"}
       description: The open sites of the accounts followed (customer, prospect, target), up to 100 per company, searched by the account's name in the company register.
-      format: json
-      rows: results
-      per_object:
-        type: organization
-        property: siren
-        param: q
-        by_title: siren
-        only: { property: account_status, values: [customer, prospect, target] }
       objects:
         - as: legal_unit
           type: organization
@@ -347,19 +327,13 @@ imports:
       links:
         - { type: establishment_of, from: establishment, to: legal_unit }
   - name: Legal announcements (BODACC)
-    source: api
-    source_url: "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=registre%3D%22{value}%22%20and%20familleavis!%3D%22dpc%22&order_by=dateparution%20desc&limit=20"
-    max_pages: 200
+    source: file
     mapping:
       key: bodacc
+      pipeline: prospecting_b2b_fr/bodacc
+      rows: record
       name: Legal announcements
       names: {fr: "Annonces légales (BODACC)"}
-      format: json
-      rows: results
-      per_object:
-        type: organization
-        property: siren
-        only: { property: account_status, values: [customer, prospect, target] }
       objects:
         - as: legal_unit
           type: organization

@@ -1,0 +1,33 @@
+# The LEI record of each company the org knows, found by its SIREN, with
+# its direct and ultimate parents.
+key: gleif_lei
+name: Legal entity identifiers (GLEIF)
+hosts: [api.gleif.org]
+steps:
+  - enumerate: { as: companies, cross: [{ as: siren, objects: { type: organization, property: siren } }] }
+  - fetch:
+      as: answer
+      for_each: companies
+      url: "https://api.gleif.org/api/v1/lei-records"
+      params: { "filter[entity.registeredAs]": "{{siren}}", include: "direct-parent,ultimate-parent" }
+      every: 150ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /data
+      columns:
+        - { name: queried, value: "{{siren}}" }
+        - { name: record, at: "/", type: json }
+  - write: { from: found, table: { name: gleif_lei, replace: true } }
+tests:
+  - name: the LEI record of a company
+    objects: { organization.siren: ["552100554"] }
+    given:
+      "https://api.gleif.org/api/v1/lei-records?filter%5Bentity.registeredAs%5D=552100554&include=direct-parent%2Cultimate-parent": gleif_lei_552100554.json
+    expect:
+      found:
+        rows: 1
+        contains:
+          - { queried: "552100554" }

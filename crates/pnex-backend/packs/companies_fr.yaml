@@ -27,7 +27,7 @@
 key: companies_fr
 name: French companies
 names: {fr: "Entreprises françaises"}
-version: "4.3.0"
+version: "4.4.0"
 requires: [companies]
 description: SIRENE legal units, establishments on the map and officers by mandate, synchronized from the public company registers.
 descriptions: {fr: "Unités légales SIRENE, établissements sur la carte et dirigeants par mandat, synchronisés depuis les registres publics des entreprises."}
@@ -50,16 +50,13 @@ extends:
       - { key: headcount_band, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
 imports:
   - name: Company register (SIRENE)
-    source: api
-    source_url: "https://recherche-entreprises.api.gouv.fr/search?per_page=1"
-    max_pages: 200
+    source: file
     mapping:
       key: company_search
+      pipeline: companies_fr/company_search
+      rows: record
       name: Company register
       names: {fr: "Recherche d'entreprises"}
-      format: json
-      rows: results
-      per_object: { type: organization, property: siren, param: q }
       objects:
         - as: legal_unit
           type: organization
@@ -152,16 +149,13 @@ imports:
           to: legal_unit
           attributes: *mandate
   - name: Legal entity identifiers (GLEIF)
-    source: api
-    source_url: "https://api.gleif.org/api/v1/lei-records?include=direct-parent,ultimate-parent"
-    max_pages: 200
+    source: file
     mapping:
       key: gleif_lei
+      pipeline: companies_fr/gleif_lei
+      rows: record
       name: Legal entity identifiers
       names: {fr: "Identifiants d'entité juridique (GLEIF)"}
-      format: json
-      rows: data
-      per_object: { type: organization, property: siren, param: "filter[entity.registeredAs]" }
       objects:
         - as: legal_unit
           type: organization
@@ -205,16 +199,13 @@ imports:
             source: { value: "gleif.org" }
           on_conflict: { nature: direct_consolidation }
   - name: Parent companies (GLEIF)
-    source: api
-    source_url: "https://api.gleif.org/api/v1/lei-records"
-    max_pages: 200
+    source: file
     mapping:
       key: gleif_parents
+      pipeline: companies_fr/gleif_parents
+      rows: record
       name: Parent companies
       names: {fr: "Sociétés mères (GLEIF)"}
-      format: json
-      rows: data
-      per_object: { type: organization, property: lei, param: "filter[owns]" }
       objects:
         - as: parent_fr
           type: organization
@@ -234,16 +225,13 @@ imports:
             lei: id
             country: attributes.entity.legalAddress.country
   - name: Parents and subsidiaries (Wikidata)
-    source: api
-    source_url: "https://query.wikidata.org/sparql?format=json&query=SELECT%20DISTINCT%20%3Fdir%20%3Fself_siren%20%3Fother_siren%20%3FotherLabel%20WHERE%20%7B%20BIND%28%22{value}%22%20AS%20%3Fself_siren%29%20%3Fs%20wdt%3AP1616%20%3Fself_siren%20.%20%7B%20%3Fs%20wdt%3AP749%20%3Fother%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP355%20%3Fs%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fs%20wdt%3AP355%20%3Fother%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP749%20%3Fs%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20%3Fother%20wdt%3AP1616%20%3Fother_siren%20.%20SERVICE%20wikibase%3Alabel%20%7B%20bd%3AserviceParam%20wikibase%3Alanguage%20%22fr%2Cen%22.%20%7D%20%7D"
-    max_pages: 200
+    source: file
     mapping:
       key: wikidata_group
+      pipeline: companies_fr/wikidata_group
+      rows: record
       name: Parents and subsidiaries
       names: {fr: "Mères et filiales (Wikidata)"}
-      format: json
-      rows: results.bindings
-      per_object: { type: organization, property: siren }
       objects:
         - as: legal_unit
           type: organization

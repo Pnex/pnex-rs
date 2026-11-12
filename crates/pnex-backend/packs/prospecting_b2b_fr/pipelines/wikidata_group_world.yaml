@@ -1,0 +1,30 @@
+# Foreign parents and subsidiaries of each followed account, by its SIREN.
+key: wikidata_group_world
+name: Foreign parents and subsidiaries (Wikidata)
+hosts: [query.wikidata.org]
+steps:
+  - enumerate: { as: rows, cross: [{ as: siren, objects: { type: organization, property: siren, only: { account_status: [customer, prospect, target] } } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://query.wikidata.org/sparql?format=json&query=SELECT%20DISTINCT%20%3Flane%20%3Fself_siren%20%3Fqid%20%3FotherLabel%20%3Fiso%20%3Flei%20WHERE%20{%20BIND%28%22{{siren}}%22%20AS%20%3Fself_siren%29%20%3Fs%20wdt%3AP1616%20%3Fself_siren%20.%20{%20%3Fs%20wdt%3AP749%20%3Fother%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fother%20wdt%3AP355%20%3Fs%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fs%20wdt%3AP355%20%3Fother%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fother%20wdt%3AP749%20%3Fs%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20}%20FILTER%20NOT%20EXISTS%20{%20%3Fother%20wdt%3AP1616%20%3Fany%20}%20BIND%28STRAFTER%28STR%28%3Fother%29%2C%20%22entity%2F%22%29%20AS%20%3Fqid%29%20OPTIONAL%20{%20%3Fother%20wdt%3AP17%2Fwdt%3AP297%20%3Fiso%20}%20OPTIONAL%20{%20%3Fother%20wdt%3AP1278%20%3Flei%20}%20BIND%28CONCAT%28%3Fdir%2C%20IF%28BOUND%28%3Flei%29%2C%20%22_lei%22%2C%20%22_item%22%29%29%20AS%20%3Flane%29%20SERVICE%20wikibase%3Alabel%20{%20bd%3AserviceParam%20wikibase%3Alanguage%20%22fr%2Cen%22.%20}%20}"
+      every: 1s
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /results/bindings
+      columns:
+        - { name: record, at: "/", type: json }
+  - write: { from: found, table: { name: wikidata_group_world, replace: true } }
+tests:
+  - name: the records of one object
+    objects: { "organization.siren?account_status=customer,prospect,target": ["552100554"] }
+    given:
+      # An explicit key: YAML caps plain keys at 1024 characters.
+      ? "https://query.wikidata.org/sparql?format=json&query=SELECT%20DISTINCT%20%3Flane%20%3Fself_siren%20%3Fqid%20%3FotherLabel%20%3Fiso%20%3Flei%20WHERE%20{%20BIND%28%22552100554%22%20AS%20%3Fself_siren%29%20%3Fs%20wdt%3AP1616%20%3Fself_siren%20.%20{%20%3Fs%20wdt%3AP749%20%3Fother%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fother%20wdt%3AP355%20%3Fs%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fs%20wdt%3AP355%20%3Fother%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20}%20UNION%20{%20%3Fother%20wdt%3AP749%20%3Fs%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20}%20FILTER%20NOT%20EXISTS%20{%20%3Fother%20wdt%3AP1616%20%3Fany%20}%20BIND%28STRAFTER%28STR%28%3Fother%29%2C%20%22entity%2F%22%29%20AS%20%3Fqid%29%20OPTIONAL%20{%20%3Fother%20wdt%3AP17%2Fwdt%3AP297%20%3Fiso%20}%20OPTIONAL%20{%20%3Fother%20wdt%3AP1278%20%3Flei%20}%20BIND%28CONCAT%28%3Fdir%2C%20IF%28BOUND%28%3Flei%29%2C%20%22_lei%22%2C%20%22_item%22%29%29%20AS%20%3Flane%29%20SERVICE%20wikibase%3Alabel%20{%20bd%3AserviceParam%20wikibase%3Alanguage%20%22fr%2Cen%22.%20}%20}"
+      : wikidata_world.json
+    expect:
+      found:
+        rows: 1

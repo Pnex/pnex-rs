@@ -1,0 +1,29 @@
+# Parents and subsidiaries of each company the org knows, by its SIREN,
+# from Wikidata (only companies Wikidata knows by SIREN too).
+key: wikidata_group
+name: Parents and subsidiaries (Wikidata)
+hosts: [query.wikidata.org]
+steps:
+  - enumerate: { as: companies, cross: [{ as: siren, objects: { type: organization, property: siren } }] }
+  - fetch:
+      as: answer
+      for_each: companies
+      url: "https://query.wikidata.org/sparql?format=json&query=SELECT%20DISTINCT%20%3Fdir%20%3Fself_siren%20%3Fother_siren%20%3FotherLabel%20WHERE%20%7B%20BIND%28%22{{siren}}%22%20AS%20%3Fself_siren%29%20%3Fs%20wdt%3AP1616%20%3Fself_siren%20.%20%7B%20%3Fs%20wdt%3AP749%20%3Fother%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP355%20%3Fs%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fs%20wdt%3AP355%20%3Fother%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP749%20%3Fs%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20%3Fother%20wdt%3AP1616%20%3Fother_siren%20.%20SERVICE%20wikibase%3Alabel%20%7B%20bd%3AserviceParam%20wikibase%3Alanguage%20%22fr%2Cen%22.%20%7D%20%7D"
+      every: 1s
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /results/bindings
+      columns:
+        - { name: record, at: "/", type: json }
+  - write: { from: found, table: { name: wikidata_group, replace: true } }
+tests:
+  - name: a parent and a subsidiary
+    objects: { organization.siren: ["552100554"] }
+    given:
+      "https://query.wikidata.org/sparql?format=json&query=SELECT%20DISTINCT%20%3Fdir%20%3Fself_siren%20%3Fother_siren%20%3FotherLabel%20WHERE%20%7B%20BIND%28%22552100554%22%20AS%20%3Fself_siren%29%20%3Fs%20wdt%3AP1616%20%3Fself_siren%20.%20%7B%20%3Fs%20wdt%3AP749%20%3Fother%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP355%20%3Fs%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fs%20wdt%3AP355%20%3Fother%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP749%20%3Fs%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20%3Fother%20wdt%3AP1616%20%3Fother_siren%20.%20SERVICE%20wikibase%3Alabel%20%7B%20bd%3AserviceParam%20wikibase%3Alanguage%20%22fr%2Cen%22.%20%7D%20%7D": wikidata_group_552100554.json
+    expect:
+      found:
+        rows: 2

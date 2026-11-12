@@ -120,6 +120,8 @@ pub struct Inputs {
     pub settings: HashMap<String, String>,
     /// Values of the org's live objects, by `ObjectsAxis::key`.
     pub objects: HashMap<String, Vec<String>>,
+    /// Same key → value → title, for an axis that asks for titles.
+    pub titles: HashMap<String, HashMap<String, String>>,
     pub now: NaiveDateTime,
     /// Vault name → value of the secrets a shipped document names.
     pub secrets: HashMap<String, String>,
@@ -136,6 +138,7 @@ pub fn wanted(doc: &Document) -> (Vec<String>, Vec<pnex_core::pipeline::doc::Obj
                 for a in &e.cross {
                     settings.extend(a.setting.iter().chain(&a.from_setting).cloned());
                     if let Some(o) = &a.objects {
+                        settings.extend(o.codes.iter().map(|c| c.setting.clone()));
                         objects.push(o.clone());
                     }
                 }
@@ -260,6 +263,17 @@ fn axis_values(
         }
         let mut cols = Map::new();
         cols.insert(a.as_.clone(), Value::String(v.clone()));
+        if let Some((o, col)) = a
+            .objects
+            .as_ref()
+            .and_then(|o| Some((o, o.title.as_ref()?)))
+        {
+            let title = inputs.titles.get(&o.key()).and_then(|t| t.get(&v));
+            cols.insert(
+                col.clone(),
+                title.map_or(Value::Null, |t| Value::String(t.clone())),
+            );
+        }
         // A value no glob of a derived column matches is left out.
         let derived: Option<Vec<(String, Value)>> = a
             .derive
@@ -379,133 +393,172 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
     }
 
     async fn fetch(&mut self, f: &Fetch, input: Vec<Row>) -> Result<Vec<Row>, Failure> {
+        let mut out = Vec::new();
+        for row in input {
+            let Some(pages) = &f.pages else {
+                out.extend(self.fetch_one(f, &row, None).await?);
+                continue;
+            };
+            // Pages from 1 until one holds no record or the last one allowed.
+            for page in 1..=pages.max {
+                let Some(next) = self.fetch_one(f, &row, Some(page)).await? else {
+                    break;
+                };
+                let (file, until) = (next.file.clone(), pages.until.clone());
+                let records = blocking(move || {
+                    let doc: Value = match &file {
+                        Some(b) => serde_json::from_slice(&b.bytes(read::READ_MAX_BYTES as u64)?)
+                            .unwrap_or(Value::Null),
+                        None => Value::Null,
+                    };
+                    Ok(doc
+                        .pointer(&until)
+                        .and_then(Value::as_array)
+                        .map_or(0, Vec::len))
+                });
+                if records.await? == 0 {
+                    break;
+                }
+                out.push(next);
+            }
+        }
+        Ok(out)
+    }
+
+    /// One answer for one row (one page of it): `None` when there is none.
+    async fn fetch_one(
+        &mut self,
+        f: &Fetch,
+        row: &Row,
+        page: Option<u32>,
+    ) -> Result<Option<Row>, Failure> {
         let every = f
             .every
             .as_deref()
             .and_then(pnex_core::pipeline::doc::duration_ms)
             .unwrap_or(0);
         let max = f.max_bytes.unwrap_or(FETCH_DEFAULT_BYTES);
-        let mut out = Vec::new();
-        for row in input {
-            let filled = |t: &str, address: bool| {
-                template::fill(t, address, |n| lookup(&row, self.inputs, n))
-                    .map_err(|n| fail("missing_value", json!({ "name": n })))
-            };
-            let raw = filled(&f.url, true)?;
-            let mut url = reqwest::Url::parse(&raw)
-                .map_err(|_| fail("invalid_value", json!({ "name": "url", "value": raw })))?;
-            self.hosts_allow(&url)?;
-            for (k, v) in &f.params {
-                let v = filled(v, false)?;
-                url.query_pairs_mut().append_pair(k, &v);
+        let filled = |t: &str, address: bool| {
+            template::fill(t, address, |n| lookup(row, self.inputs, n))
+                .map_err(|n| fail("missing_value", json!({ "name": n })))
+        };
+        let raw = filled(&f.url, true)?;
+        let mut url = reqwest::Url::parse(&raw)
+            .map_err(|_| fail("invalid_value", json!({ "name": "url", "value": raw })))?;
+        self.hosts_allow(&url)?;
+        for (k, v) in &f.params {
+            let v = filled(v, false)?;
+            url.query_pairs_mut().append_pair(k, &v);
+        }
+        if let (Some(p), Some(n)) = (&f.pages, page) {
+            url.query_pairs_mut().append_pair(&p.param, &n.to_string());
+        }
+        let mut req = Req {
+            every_ms: every,
+            max_bytes: max,
+            ..Default::default()
+        };
+        for (k, v) in &f.headers {
+            // A header carries what a source asks of the caller (its contact).
+            let value = filled(v, false).map_err(|f| fail("contact_required", f.args))?;
+            req.headers.push((k.clone(), value));
+        }
+        if let Some(sec) = &f.secret {
+            let value = self
+                .inputs
+                .secrets
+                .get(&sec.name)
+                .ok_or_else(|| fail("secret_required", json!({ "name": sec.name })))?;
+            match (&sec.param, &sec.header) {
+                (Some(p), _) => req.secret_query = Some((p.clone(), value.clone())),
+                (None, Some(h)) => {
+                    let v = match &sec.scheme {
+                        Some(s) => format!("{s} {value}"),
+                        None => value.clone(),
+                    };
+                    req.headers.push((h.clone(), v));
+                }
+                (None, None) => return Err(fail("secret_required", json!({ "name": sec.name }))),
             }
-            let mut req = Req {
+        }
+        let body = match f.method {
+            Method::Get => self.transport.get(&url, &req).await?,
+            Method::Post => {
+                let fields: Vec<(String, String)> = f
+                    .form_from
+                    .as_ref()
+                    .and_then(|c| row.cols.get(c))
+                    .and_then(Value::as_object)
+                    .map(|o| {
+                        o.iter()
+                            .map(|(k, v)| {
+                                let v = v.as_str().map_or_else(|| v.to_string(), str::to_string);
+                                (k.clone(), v)
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let referer = row.text("url").and_then(|u| reqwest::Url::parse(&u).ok());
+                self.transport
+                    .post_form(&url, referer.as_ref(), &fields, &req)
+                    .await?
+            }
+        };
+        let Some(body) = body else {
+            if f.missing_is_empty {
+                return Ok(None);
+            }
+            return Err(fail("not_found", json!({ "url": url.as_str() })));
+        };
+        if body.is_empty() {
+            return Ok(None);
+        }
+        let body = Arc::new(body);
+        let sha = match (&f.checksum_url, f.skip_if_unchanged) {
+            (None, false) => None,
+            _ => {
+                let b = body.clone();
+                Some(blocking(move || b.sha256()).await?)
+            }
+        };
+        if let (Some(t), Some(sha)) = (&f.checksum_url, &sha) {
+            let curl = reqwest::Url::parse(&filled(t, true)?)
+                .map_err(|_| fail("invalid_value", json!({ "name": "checksum_url" })))?;
+            self.hosts_allow(&curl)?;
+            // A file published without its checksum is read unchecked.
+            let small = Req {
                 every_ms: every,
-                max_bytes: max,
+                max_bytes: 4096,
                 ..Default::default()
             };
-            for (k, v) in &f.headers {
-                // A header carries what a source asks of the caller (its contact).
-                let value = filled(v, false).map_err(|f| fail("contact_required", f.args))?;
-                req.headers.push((k.clone(), value));
-            }
-            if let Some(sec) = &f.secret {
-                let value = self
-                    .inputs
-                    .secrets
-                    .get(&sec.name)
-                    .ok_or_else(|| fail("secret_required", json!({ "name": sec.name })))?;
-                match (&sec.param, &sec.header) {
-                    (Some(p), _) => req.secret_query = Some((p.clone(), value.clone())),
-                    (None, Some(h)) => {
-                        let v = match &sec.scheme {
-                            Some(s) => format!("{s} {value}"),
-                            None => value.clone(),
-                        };
-                        req.headers.push((h.clone(), v));
-                    }
-                    (None, None) => {
-                        return Err(fail("secret_required", json!({ "name": sec.name })))
-                    }
+            if let Some(text) = self.transport.get(&curl, &small).await? {
+                let text = String::from_utf8_lossy(&text.bytes(4096)?).into_owned();
+                let want = text
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                if &want != sha {
+                    return Err(fail("checksum", json!({ "url": url.as_str() })));
                 }
             }
-            let body = match f.method {
-                Method::Get => self.transport.get(&url, &req).await?,
-                Method::Post => {
-                    let fields: Vec<(String, String)> = f
-                        .form_from
-                        .as_ref()
-                        .and_then(|c| row.cols.get(c))
-                        .and_then(Value::as_object)
-                        .map(|o| {
-                            o.iter()
-                                .map(|(k, v)| {
-                                    let v =
-                                        v.as_str().map_or_else(|| v.to_string(), str::to_string);
-                                    (k.clone(), v)
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let referer = row.text("url").and_then(|u| reqwest::Url::parse(&u).ok());
-                    self.transport
-                        .post_form(&url, referer.as_ref(), &fields, &req)
-                        .await?
-                }
-            };
-            let Some(body) = body else {
-                if f.missing_is_empty {
-                    continue;
-                }
-                return Err(fail("not_found", json!({ "url": url.as_str() })));
-            };
-            if body.is_empty() {
-                continue;
-            }
-            let body = Arc::new(body);
-            let sha = match (&f.checksum_url, f.skip_if_unchanged) {
-                (None, false) => None,
-                _ => {
-                    let b = body.clone();
-                    Some(blocking(move || b.sha256()).await?)
-                }
-            };
-            if let (Some(t), Some(sha)) = (&f.checksum_url, &sha) {
-                let curl = reqwest::Url::parse(&filled(t, true)?)
-                    .map_err(|_| fail("invalid_value", json!({ "name": "checksum_url" })))?;
-                self.hosts_allow(&curl)?;
-                // A file published without its checksum is read unchecked.
-                let small = Req {
-                    every_ms: every,
-                    max_bytes: 4096,
-                    ..Default::default()
-                };
-                if let Some(text) = self.transport.get(&curl, &small).await? {
-                    let text = String::from_utf8_lossy(&text.bytes(4096)?).into_owned();
-                    let want = text
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or_default()
-                        .to_ascii_lowercase();
-                    if &want != sha {
-                        return Err(fail("checksum", json!({ "url": url.as_str() })));
-                    }
-                }
-            }
-            if let (true, Some(sha)) = (f.skip_if_unchanged, sha) {
-                let key = format!("{}:{url}", f.as_);
-                if self.inputs.shas.get(&key) == Some(&sha) {
-                    continue;
-                }
-                self.fresh_shas.insert(key, sha);
-            }
-            let mut next = row.clone();
-            next.cols
-                .insert("url".into(), Value::String(url.to_string()));
-            next.file = Some(body);
-            out.push(next);
         }
-        Ok(out)
+        if let (true, Some(sha)) = (f.skip_if_unchanged, sha) {
+            let key = format!("{}:{url}", f.as_);
+            if self.inputs.shas.get(&key) == Some(&sha) {
+                return Ok(None);
+            }
+            self.fresh_shas.insert(key, sha);
+        }
+        let mut next = row.clone();
+        next.cols
+            .insert("url".into(), Value::String(url.to_string()));
+        if let Some(n) = page {
+            next.cols
+                .insert("page".into(), Value::String(n.to_string()));
+        }
+        next.file = Some(body);
+        Ok(Some(next))
     }
 
     /// An empty table with the columns its step declares: the axes of an
@@ -516,7 +569,12 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
             Some(Step::Enumerate(e)) => e
                 .cross
                 .iter()
-                .flat_map(|a| std::iter::once(a.as_.clone()).chain(a.derive.keys().cloned()))
+                .flat_map(|a| {
+                    let title = a.objects.as_ref().and_then(|o| o.title.clone());
+                    std::iter::once(a.as_.clone())
+                        .chain(a.derive.keys().cloned())
+                        .chain(title)
+                })
                 .map(|n| Field::new(n, DataType::Utf8, true))
                 .collect(),
             Some(Step::Read(r)) if !r.columns.is_empty() => read::fields(r),

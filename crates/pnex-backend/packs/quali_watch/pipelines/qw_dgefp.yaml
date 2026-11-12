@@ -1,0 +1,29 @@
+# The training declaration of each company of the network.
+key: qw_dgefp
+name: Training organizations (DGEFP)
+hosts: [dgefp.opendatasoft.com]
+steps:
+  - enumerate: { as: rows, cross: [{ as: siren, objects: { type: organization, property: siren, linked: [accredited_for, holds], codes: { setting: quali_watch.certifications, property: code } } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://dgefp.opendatasoft.com/api/explore/v2.1/catalog/datasets/liste-publique-des-of-v2/records?refine=siren:{{siren}}&limit=20"
+      every: 150ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /results
+      columns:
+        - { name: queried, value: "{{siren}}" }
+        - { name: record, at: "/", type: json }
+  - write: { from: found, table: { name: qw_dgefp, replace: true } }
+tests:
+  - name: the records of one object
+    objects: { "organization.siren?linked=accredited_for,holds?code~quali_watch.certifications": ["552100554"] }
+    given:
+      "https://dgefp.opendatasoft.com/api/explore/v2.1/catalog/datasets/liste-publique-des-of-v2/records?refine=siren:552100554&limit=20": dgefp.json
+    expect:
+      found:
+        rows: 1

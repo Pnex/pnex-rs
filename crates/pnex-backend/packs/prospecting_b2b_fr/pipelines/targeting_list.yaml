@@ -1,0 +1,30 @@
+# Manufacturing companies of 100 people or more, active, from the company
+# register's search: 25 per page, until a page is empty (10,000 at most).
+key: targeting_list
+name: Target list (company register search)
+hosts: [recherche-entreprises.api.gouv.fr]
+steps:
+  - fetch:
+      as: answer
+      url: "https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&tranche_effectif_salarie=22,31,32,41,42,51,52,53&etat_administratif=A&per_page=25"
+      pages: { param: page, until: /results, max: 400 }
+      every: 150ms
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /results
+      columns:
+        - { name: record, at: "/", type: json }
+  - write: { from: found, table: { name: targeting_list, replace: true } }
+tests:
+  - name: pages until an empty one
+    given:
+      "https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&tranche_effectif_salarie=22,31,32,41,42,51,52,53&etat_administratif=A&per_page=25&page=1": targeting_page_1.json
+      "https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&tranche_effectif_salarie=22,31,32,41,42,51,52,53&etat_administratif=A&per_page=25&page=2": targeting_page_2.json
+      "https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&tranche_effectif_salarie=22,31,32,41,42,51,52,53&etat_administratif=A&per_page=25&page=3": targeting_page_3.json
+    expect:
+      answer:
+        rows: 2
+      found:
+        rows: 3

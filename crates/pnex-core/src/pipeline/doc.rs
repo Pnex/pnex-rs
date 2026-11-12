@@ -163,6 +163,26 @@ pub struct ObjectsAxis {
     /// (`{ status: [active] }`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub only: BTreeMap<String, Vec<String>>,
+    /// Only the objects holding an open link of one of these types, either
+    /// way (a certifier's network, not every company known).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linked: Vec<String>,
+    /// Only the objects (with `linked`: linked to one) whose property holds
+    /// a code of a setting; an empty setting filters nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codes: Option<CodesFilter>,
+    /// Column receiving the object's title besides its value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+}
+
+/// Codes of a comma-separated setting compared, upper-cased, to a property.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CodesFilter {
+    /// `<pack>.<key>`.
+    pub setting: String,
+    pub property: String,
 }
 
 impl ObjectsAxis {
@@ -172,6 +192,12 @@ impl ObjectsAxis {
         let mut k = format!("{}.{}", self.type_key, self.property);
         for (p, values) in &self.only {
             k.push_str(&format!("?{p}={}", values.join(",")));
+        }
+        if !self.linked.is_empty() {
+            k.push_str(&format!("?linked={}", self.linked.join(",")));
+        }
+        if let Some(c) = &self.codes {
+            k.push_str(&format!("?{}~{}", c.property, c.setting));
         }
         k
     }
@@ -216,6 +242,10 @@ pub struct Fetch {
     /// One call per this duration on the host (D938), `250ms`, `5m`…
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub every: Option<String>,
+    /// Asks page after page, each with its number in a parameter, until an
+    /// answer holds no record or the last page allowed. Rows get `page`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pages: Option<Pages>,
     /// A `404` is an empty answer, not a failure.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub missing_is_empty: bool,
@@ -239,6 +269,21 @@ pub struct Fetch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_bytes: Option<u64>,
 }
+
+/// Page numbers of a JSON answer (D936).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pages {
+    /// Query parameter holding the page number, from 1.
+    pub param: String,
+    /// JSON pointer of the records array; empty or absent = the last page.
+    pub until: String,
+    /// Pages asked at most per row.
+    pub max: u32,
+}
+
+/// Pages a fetch may ask per row.
+pub const PAGES_MAX: u32 = 1000;
 
 /// Where a vault key goes: exactly one of a query parameter or a header.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -346,6 +391,9 @@ pub enum ColumnType {
     Bool,
     Date,
     Timestamp,
+    /// The value as JSON text (`at: "/"` = the whole record): an import's
+    /// mapping reads it as nested fields (`rows: <column>`).
+    Json,
 }
 
 /// A column of a read: where it is and what it holds (D939).
@@ -556,6 +604,9 @@ pub struct TestCase {
     /// Values of the org's live objects, `<type>.<property>` → values.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub objects: BTreeMap<String, Vec<String>>,
+    /// Same key → value → title, for an axis that asks for titles.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub titles: BTreeMap<String, BTreeMap<String, String>>,
     /// Today's date of the run, `YYYY-MM-DD`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub today: Option<String>,
@@ -854,6 +905,12 @@ fn step_violations(
                         || !valid_name(&o.property)
                         || o.only.len() > 4
                         || o.only.iter().any(|(p, v)| !valid_name(p) || v.is_empty())
+                        || o.linked.len() > 8
+                        || o.linked.iter().any(|l| !valid_name(l))
+                        || o.codes
+                            .as_ref()
+                            .is_some_and(|c| !valid_name(&c.property) || !c.setting.contains('.'))
+                        || o.title.as_ref().is_some_and(|t| !valid_name(t))
                     {
                         bad(format!("{p}.objects"), "invalid");
                     }
@@ -888,6 +945,15 @@ fn step_violations(
             }
             if (f.method == Method::Post) != f.form_from.is_some() {
                 bad(format!("{at}.form_from"), "post_only");
+            }
+            if f.pages.as_ref().is_some_and(|p| {
+                p.param.is_empty()
+                    || !p.until.starts_with('/')
+                    || p.max == 0
+                    || p.max > PAGES_MAX
+                    || f.method != Method::Get
+            }) {
+                bad(format!("{at}.pages"), "invalid");
             }
             if f.every.as_deref().is_some_and(|e| duration_ms(e).is_none()) {
                 bad(format!("{at}.every"), "invalid");

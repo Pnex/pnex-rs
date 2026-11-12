@@ -1,0 +1,37 @@
+# The open sites of each followed account, up to 100, searched by its name
+# (the register finds a group's sites by name, not by SIREN); only the
+# records of the account's own SIREN are kept.
+key: company_establishments
+name: Establishments (company register)
+hosts: [recherche-entreprises.api.gouv.fr]
+steps:
+  - enumerate: { as: rows, cross: [{ as: siren, objects: { type: organization, property: siren, only: { account_status: [customer, prospect, target] }, title: name } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://recherche-entreprises.api.gouv.fr/search"
+      params: { limite_matching_etablissements: "100", per_page: "5", q: "{{name}}" }
+      every: 150ms
+      missing_is_empty: true
+  - read:
+      as: candidates
+      from: answer
+      format: json
+      records: /results
+      columns:
+        - { name: queried, value: "{{siren}}" }
+        - { name: siren, at: siren, optional: true }
+        - { name: record, at: "/", type: json }
+  - sql:
+      as: found
+      sql: SELECT queried, record FROM candidates WHERE siren = queried
+  - write: { from: found, table: { name: company_establishments, replace: true } }
+tests:
+  - name: the records of one object
+    objects: { "organization.siren?account_status=customer,prospect,target": ["552100554"] }
+    titles: { "organization.siren?account_status=customer,prospect,target": { "552100554": "ACME INDUSTRIE" } }
+    given:
+      "https://recherche-entreprises.api.gouv.fr/search?limite_matching_etablissements=100&per_page=5&q=ACME+INDUSTRIE": sirene_by_name.json
+    expect:
+      found:
+        rows: 1

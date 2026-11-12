@@ -286,41 +286,6 @@ impl utoipa::PartialSchema for Convert {
 #[cfg(feature = "openapi")]
 impl utoipa::ToSchema for Convert {}
 
-/// One API request per live object of `type` whose `property` is set, its
-/// value sent as the query parameter `param`, or put in place of `{value}`
-/// in the source URL when `param` is empty (a path segment, a SPARQL
-/// literal). The objects are taken in turn, `max_pages` requests per run.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(deny_unknown_fields)]
-pub struct PerObject {
-    #[serde(rename = "type")]
-    pub type_key: String,
-    pub property: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub param: String,
-    /// Only the objects whose property holds one of these values (the
-    /// accounts followed, not every company known).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub only: Option<PerObjectOnly>,
-    /// Only the objects holding an open link of one of these types, either
-    /// way: a certifier's network, not every company the org knows
-    /// (network-check.md D403).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub linked: Vec<String>,
-    /// Only the objects (with `linked`: the objects linked to one) whose
-    /// property holds a code of this pack setting; an empty setting filters
-    /// nothing (network-check.md D422).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub setting: Option<PerObjectSetting>,
-    /// Sends the object's title as `param` instead of its property, and keeps
-    /// only the records whose field of this name holds the property: a search
-    /// by name also answers namesakes (a register that lists an entity's
-    /// sites for a name, never for its identifier).
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub by_title: String,
-}
-
 /// Who a press feed watches and how much it brings. Records: `ref`, `title`,
 /// `summary`, `url`, `source`, `date`, `lang`, `tone`, and `via` + `account`,
 /// the unique property that finds the company again.
@@ -599,10 +564,6 @@ pub struct Mapping {
     pub cursor_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor_param: Option<String>,
-    /// API: one request per live object instead of pages (a register
-    /// queried by identifier).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub per_object: Option<PerObject>,
     /// API: the articles of the GDELT press feed naming these companies,
     /// instead of pages (account-mapping.md D539).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -615,18 +576,6 @@ pub struct Mapping {
     /// with the org's own credentials (markets-research.md D741).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conflict_feed: Option<ConflictFeed>,
-    /// `<pack>.<setting>` of a contact sent in the `User-Agent`: some public
-    /// sources refuse an undeclared client. The run is refused while empty.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub contact_setting: Option<String>,
-    /// API: one request per code of this `<pack>.<setting>`, in place of
-    /// `{value}` in the URL, when no object holds the code yet.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub per_setting_code: Option<String>,
-    /// Only the records whose field holds a code of this setting; an empty
-    /// setting keeps none (a whole register is never the wanted list).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rows_in_setting: Option<PerObjectSetting>,
     /// The records are dated values of this object (D541).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observations: Option<crate::markets::ObservationTarget>,
@@ -740,26 +689,6 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
     if m.objects.is_empty() && m.observations.is_none() {
         return Err(ferr("objects", FIELD_REQUIRED));
     }
-    let setting_ok = |k: &str| {
-        k.split_once('.')
-            .is_some_and(|(a, b)| valid_key(a) && valid_key(b))
-    };
-    if m.contact_setting.as_deref().is_some_and(|k| !setting_ok(k)) {
-        return Err(ferr("contact_setting", FIELD_INVALID));
-    }
-    if m.per_setting_code
-        .as_deref()
-        .is_some_and(|k| !setting_ok(k))
-        || (m.per_setting_code.is_some() && m.per_object.is_some())
-    {
-        return Err(ferr("per_setting_code", FIELD_INVALID));
-    }
-    if m.rows_in_setting
-        .as_ref()
-        .is_some_and(|r| !setting_ok(&r.key) || r.property.is_empty())
-    {
-        return Err(ferr("rows_in_setting", FIELD_INVALID));
-    }
     if let Some(o) = &m.observations {
         let unique = s
             .object_type(&o.type_key)
@@ -780,40 +709,8 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
         return Err(ferr("steps", format!("{FIELD_MAX_LENGTH}:{STEPS_MAX}")));
     }
     for (i, step) in m.steps.iter().enumerate() {
-        if step.check_deployable().is_some() || m.per_object.is_some() {
+        if step.check_deployable().is_some() {
             return Err(ferr(format!("steps.{i}"), FIELD_INVALID));
-        }
-    }
-    if let Some(p) = &m.per_object {
-        let known = s
-            .object_type(&p.type_key)
-            .is_some_and(|t| t.properties.iter().any(|d| d.key == p.property));
-        if !known || p.param.trim() != p.param || p.param.len() > 64 {
-            return Err(ferr("per_object", FIELD_INVALID));
-        }
-        if !p.by_title.is_empty() && p.param.is_empty() {
-            return Err(ferr("per_object.by_title", FIELD_INVALID));
-        }
-        if let Some(o) = &p.only {
-            let known = s
-                .object_type(&p.type_key)
-                .is_some_and(|t| t.properties.iter().any(|d| d.key == o.property));
-            if !known || o.values.is_empty() || o.values.len() > 50 {
-                return Err(ferr("per_object.only", FIELD_INVALID));
-            }
-        }
-        if p.linked.len() > 8
-            || p.linked
-                .iter()
-                .any(|l| !s.links.iter().any(|d| &d.key == l))
-        {
-            return Err(ferr("per_object.linked", FIELD_INVALID));
-        }
-        if let Some(st) = &p.setting {
-            let bad = |k: &str| !valid_key(k);
-            if st.key.split_once('.').is_none_or(|(a, b)| bad(a) || bad(b)) || bad(&st.property) {
-                return Err(ferr("per_object.setting", FIELD_INVALID));
-            }
         }
     }
     if let Some(p) = &m.press_feed {
@@ -821,8 +718,7 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             s.object_type(&p.type_key)
                 .is_some_and(|t| t.properties.iter().any(|d| d.key == k))
         };
-        if m.per_object.is_some()
-            || !has(&p.only.property)
+        if !has(&p.only.property)
             || p.only.values.is_empty()
             || p.keys.is_empty()
             || !p.keys.iter().all(|k| has(k))
@@ -837,8 +733,7 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             let bad = |k: &str| !valid_key(k);
             k.split_once('.').is_none_or(|(a, b)| bad(a) || bad(b))
         };
-        if m.per_object.is_some()
-            || m.press_feed.is_some()
+        if m.press_feed.is_some()
             || setting(&e.countries_setting)
             || setting(&e.codes_setting)
             || !(-10.0..=10.0).contains(&e.max_goldstein)
@@ -849,8 +744,7 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
     }
     if let Some(c) = &m.conflict_feed {
         let bad = |k: &str| !valid_key(k);
-        if m.per_object.is_some()
-            || m.press_feed.is_some()
+        if m.press_feed.is_some()
             || m.events_feed.is_some()
             || c.countries_setting
                 .split_once('.')

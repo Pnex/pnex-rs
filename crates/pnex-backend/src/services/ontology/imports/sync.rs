@@ -119,13 +119,9 @@ pub(super) async fn check<C: ConnectionTrait>(
     // A filter or a lookup is a transform of the pipeline before this sync.
     for (set, field) in [
         (!m.steps.is_empty(), "steps"),
-        (m.per_object.is_some(), "per_object"),
         (m.press_feed.is_some(), "press_feed"),
         (m.events_feed.is_some(), "events_feed"),
         (m.conflict_feed.is_some(), "conflict_feed"),
-        (m.per_setting_code.is_some(), "per_setting_code"),
-        (m.rows_in_setting.is_some(), "rows_in_setting"),
-        (m.contact_setting.is_some(), "contact_setting"),
     ] {
         if set {
             return Err(invalid(
@@ -192,6 +188,40 @@ pub(super) async fn declare_identity<C: ConnectionTrait>(
     Ok(())
 }
 
+/// A table row as the mapping reads it. `rows` names a column holding JSON
+/// (a pipeline's `json` column): its object, or each object of its array,
+/// is a record, beside the row's other columns. A value that is no JSON
+/// object gives no record.
+fn expanded(row: Value, rows: &str) -> Vec<Value> {
+    let Value::Object(mut cols) = row else {
+        return vec![row];
+    };
+    if rows.is_empty() {
+        return vec![Value::Object(cols)];
+    }
+    let parsed = cols.remove(rows).and_then(|v| {
+        v.as_str()
+            .and_then(|t| serde_json::from_str::<Value>(t).ok())
+    });
+    let records = match parsed {
+        Some(Value::Array(a)) => a,
+        Some(v) => vec![v],
+        None => Vec::new(),
+    };
+    records
+        .into_iter()
+        .filter_map(|r| match r {
+            Value::Object(mut o) => {
+                for (k, v) in &cols {
+                    o.insert(k.clone(), v.clone());
+                }
+                Some(Value::Object(o))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 async fn plan(
     store: &S3Store,
     files: &[ViewFile],
@@ -223,9 +253,11 @@ async fn plan(
         while let Some(batch) = batches.try_next().await.map_err(unreadable)? {
             for row in parquet::records(&batch).map_err(unreadable)? {
                 row_no += 1;
-                planned.push(m, s, row_no, &row, PLANNED_MAX)?;
-                if m.observations.is_some() {
-                    observed.extend(pnex_core::markets::observation(&row));
+                for row in expanded(row, &m.rows) {
+                    planned.push(m, s, row_no, &row, PLANNED_MAX)?;
+                    if m.observations.is_some() {
+                        observed.extend(pnex_core::markets::observation(&row));
+                    }
                 }
             }
             tokio::task::yield_now().await;
@@ -389,11 +421,13 @@ async fn attempt(
         let held: BTreeSet<String> = dataset
             .map(|d| d.columns.into_iter().map(|c| c.name).collect())
             .unwrap_or_default();
-        let missing: Vec<String> = m
-            .columns()
-            .into_iter()
-            .filter(|c| !held.contains(c))
-            .collect();
+        // Records held as JSON: the column holding them is what the table must have.
+        let wanted = if m.rows.is_empty() {
+            m.columns()
+        } else {
+            vec![m.rows.clone()]
+        };
+        let missing: Vec<String> = wanted.into_iter().filter(|c| !held.contains(c)).collect();
         if !missing.is_empty() {
             let args = serde_json::json!({ "columns": missing.join(", ") });
             return end(
@@ -518,5 +552,26 @@ async fn attempt(
             tracing::warn!(import = %imp.id, error = %e, "dataset sync failed");
             end("failed", Some(super::error_code(&e)), Value::Null, Some(d)).await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expanded;
+    use serde_json::json;
+
+    #[test]
+    fn a_json_column_becomes_the_records_beside_the_other_columns() {
+        let row = json!({"queried": "1", "record": "[{\"a\": {\"b\": 2}}, 3, {\"a\": 1}]"});
+        let got = expanded(row, "record");
+        assert_eq!(
+            got,
+            vec![
+                json!({"a": {"b": 2}, "queried": "1"}),
+                json!({"a": 1, "queried": "1"})
+            ]
+        );
+        assert!(expanded(json!({"record": "not json"}), "record").is_empty());
+        assert_eq!(expanded(json!({"x": "1"}), ""), vec![json!({"x": "1"})]);
     }
 }

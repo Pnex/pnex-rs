@@ -253,14 +253,36 @@ pub async fn inputs(
         }
     }
     for o in objects {
+        let codes: Vec<String> = o
+            .codes
+            .as_ref()
+            .and_then(|c| out.settings.get(&c.setting))
+            .map(|raw| pnex_core::ontology::import::PerObjectSetting::codes(raw))
+            .unwrap_or_default();
+        // Linked: an open link of one of the types, either way; with codes,
+        // the other end holds one. Without links, the object itself does.
         let mut sql = String::from(
-            "SELECT DISTINCT properties ->> $3 AS v FROM objects \
-             WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3",
+            "SELECT DISTINCT ON (properties ->> $3) properties ->> $3 AS v, title FROM objects \
+             WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3 \
+               AND (cardinality($5::text[]) = 0 OR cardinality($4::text[]) > 0 \
+                 OR upper(properties ->> $6) = ANY($5)) \
+               AND (cardinality($4::text[]) = 0 OR EXISTS (SELECT 1 FROM resource_edges e \
+                 WHERE e.org_id = $1 AND e.relation = ANY($4) \
+                   AND (e.source_object_id = objects.id OR e.target_object_id = objects.id) \
+                   AND e.valid_from <= now() AND (e.valid_to IS NULL OR e.valid_to > now()) \
+                   AND (cardinality($5::text[]) = 0 OR EXISTS (SELECT 1 FROM objects o \
+                     WHERE o.org_id = $1 AND o.valid_to IS NULL \
+                       AND o.id = CASE WHEN e.source_object_id = objects.id \
+                         THEN e.target_object_id ELSE e.source_object_id END \
+                       AND upper(o.properties ->> $6) = ANY($5)))))",
         );
         let mut values: Vec<sea_orm::Value> = vec![
             org.into(),
             o.type_key.clone().into(),
             o.property.clone().into(),
+            o.linked.clone().into(),
+            codes.into(),
+            o.codes.as_ref().map(|c| c.property.clone()).into(),
         ];
         for (p, allowed) in &o.only {
             let n = values.len();
@@ -268,11 +290,22 @@ pub async fn inputs(
             values.push(p.clone().into());
             values.push(allowed.clone().into());
         }
+        sql.push_str(" ORDER BY properties ->> $3");
         let rows = db.query_all_raw(stmt(&sql, values)).await?;
-        let found = rows
-            .iter()
-            .filter_map(|r| r.try_get::<String>("", "v").ok())
-            .collect();
+        let mut found = Vec::new();
+        let mut titles = HashMap::new();
+        for r in &rows {
+            let Ok(v) = r.try_get::<String>("", "v") else {
+                continue;
+            };
+            if let Ok(t) = r.try_get::<String>("", "title") {
+                titles.insert(v.clone(), t);
+            }
+            found.push(v);
+        }
+        if o.title.is_some() {
+            out.titles.insert(o.key(), titles);
+        }
         out.objects.insert(o.key(), found);
     }
     Ok(out)

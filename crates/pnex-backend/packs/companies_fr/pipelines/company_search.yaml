@@ -1,0 +1,35 @@
+# The register's record of each company the org knows (its SIREN): legal
+# unit, head office, matching establishments and managers, as one JSON
+# record the import maps.
+key: company_search
+name: Company register (SIRENE)
+hosts: [recherche-entreprises.api.gouv.fr]
+steps:
+  - enumerate: { as: companies, cross: [{ as: siren, objects: { type: organization, property: siren } }] }
+  - fetch:
+      as: answer
+      for_each: companies
+      url: "https://recherche-entreprises.api.gouv.fr/search"
+      params: { per_page: "1", q: "{{siren}}" }
+      every: 150ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /results
+      columns:
+        - { name: queried, value: "{{siren}}" }
+        - { name: record, at: "/", type: json }
+  - write: { from: found, table: { name: company_search, replace: true } }
+tests:
+  - name: one record per company, whole
+    objects: { organization.siren: ["552100554"] }
+    given:
+      "https://recherche-entreprises.api.gouv.fr/search?per_page=1&q=552100554": sirene_552100554.json
+    expect:
+      found:
+        rows: 1
+        columns: [queried, record]
+        contains:
+          - { queried: "552100554" }

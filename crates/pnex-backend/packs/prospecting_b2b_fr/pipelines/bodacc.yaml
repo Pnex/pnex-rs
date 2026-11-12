@@ -1,0 +1,29 @@
+# The last 20 legal announcements of each followed account, by its SIREN.
+key: bodacc
+name: Legal announcements (BODACC)
+hosts: [bodacc-datadila.opendatasoft.com]
+steps:
+  - enumerate: { as: rows, cross: [{ as: siren, objects: { type: organization, property: siren, only: { account_status: [customer, prospect, target] } } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=registre%3D%22{{siren}}%22%20and%20familleavis!%3D%22dpc%22&order_by=dateparution%20desc&limit=20"
+      every: 150ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /results
+      columns:
+        - { name: queried, value: "{{siren}}" }
+        - { name: record, at: "/", type: json }
+  - write: { from: found, table: { name: bodacc, replace: true } }
+tests:
+  - name: the records of one object
+    objects: { "organization.siren?account_status=customer,prospect,target": ["552100554"] }
+    given:
+      "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=registre%3D%22552100554%22%20and%20familleavis!%3D%22dpc%22&order_by=dateparution%20desc&limit=20": bodacc.json
+    expect:
+      found:
+        rows: 1

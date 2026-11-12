@@ -1,0 +1,5 @@
+{"results": [{"siren": "552100554", "nom_complet": "ACME INDUSTRIE", "nature_juridique": "5710", "activite_principale": "29.10Z", "etat_administratif": "A", "date_creation": "1955-01-01", "date_fermeture": null, "tranche_effectif_salarie": "53", "nombre_etablissements_ouverts": 2, "complements": {"est_qualiopi": false},
+  "siege": {"siret": "55210055400013", "adresse": "1 RUE DE LA PAIX 75002 PARIS", "etat_administratif": "A", "tranche_effectif_salarie": "41", "latitude": "48.8686", "longitude": "2.3314"},
+  "matching_etablissements": [{"siret": "55210055400021", "est_siege": false, "adresse": "2 AVENUE DU PORT 13002 MARSEILLE", "etat_administratif": "A", "tranche_effectif_salarie": "21", "latitude": "43.3", "longitude": "5.37"}],
+  "dirigeants": [{"type_dirigeant": "personne physique", "nom": "DUPONT", "prenoms": "JEANNE", "date_de_naissance": "1970-01", "qualite": "Directeur Général"}, {"type_dirigeant": "personne morale", "siren": "123456782", "denomination": "ACME HOLDING", "qualite": "Président"}]}],
+ "total_results": 1, "page": 1, "per_page": 1, "total_pages": 1}

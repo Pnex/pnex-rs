@@ -286,7 +286,7 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
 
 /// account-mapping.md D331: group links from GLEIF (LEI, declared parents,
 /// confirmed) and Wikidata (parents and subsidiaries with a SIREN, to be
-/// validated); per-object imports take the companies in turn.
+/// validated); their pipelines ask every company known each run.
 #[tokio::test]
 #[serial]
 async fn group_links_from_gleif_and_wikidata() {
@@ -298,8 +298,8 @@ async fn group_links_from_gleif_and_wikidata() {
         install(&server, &env.alice, org, "prospecting_b2b_fr").await;
         let base = mock_registers().await;
         let sql = |s: String| env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, s));
-        for (from, to) in [("https://api.gleif.org/api/v1", format!("{base}/gleif")), ("https://query.wikidata.org", format!("{base}/wd"))] {
-            sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{from}', '{to}') WHERE org_id = {org}")).await.unwrap();
+        for host in ["api.gleif.org", "query.wikidata.org"] {
+            pnex_backend::services::pipeline_engine::store::route_for_tests(host, &base);
         }
         let (_, meca) = object(&server, &env.alice, org, "organization", "MECAWORKS FRANCE", json!({"siren": "429853351"})).await;
         let (_, globex) = object(&server, &env.alice, org, "organization", "GLOBEX", json!({"siren": "732829320"})).await;
@@ -324,7 +324,7 @@ async fn group_links_from_gleif_and_wikidata() {
         };
 
         // The LEI first; the parent is not known yet, no link.
-        let lei = run("Legal entity identifiers (GLEIF)").await;
+        run("Legal entity identifiers (GLEIF)").await;
         assert_eq!(props_of(&env.db, org, "organization", "siren", "429853351").await["lei"], "969500YMMRBQ5N157D72");
         assert!(!subsidiaries(meca["id"].as_str().unwrap()).await.contains("subsidiary_of"));
         // The parents GLEIF names are created (French: by SIREN).
@@ -338,18 +338,6 @@ async fn group_links_from_gleif_and_wikidata() {
         let l = subsidiaries(meca["id"].as_str().unwrap()).await;
         assert!(l.contains("direct_consolidation"), "{l}");
 
-        // Turns: the cursor stops at the last company queried, then wraps.
-        let cursor = || async {
-            env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
-                format!("SELECT per_object_cursor AS c FROM object_imports WHERE id = '{lei}'")))
-                .await.unwrap().unwrap().try_get::<Option<String>>("", "c").unwrap()
-        };
-        assert_eq!(cursor().await.as_deref(), Some("732829320"));
-        sql(format!("UPDATE object_imports SET max_pages = 1 WHERE id = '{lei}'")).await.unwrap();
-        run("Legal entity identifiers (GLEIF)").await;
-        assert_eq!(cursor().await.as_deref(), Some("429853351"));
-        run("Legal entity identifiers (GLEIF)").await;
-        assert_eq!(cursor().await.as_deref(), Some("513149161"));
 
         // Wikidata: subsidiaries and parents with a SIREN, as proposals
         // (proposals.md D375): nothing enters the graph before a human.
@@ -411,19 +399,23 @@ async fn target_list_enters_new_accounts_as_targets() {
     with_app(|server, env| async move {
         use axum::extract::Query;
         use axum::routing::get;
-        use sea_orm::Statement;
         use std::collections::HashMap;
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "prospecting_b2b_fr").await;
-        let hit = |siren: &str, name: &str| json!({
+        let hit = |siren: &str, name: &str| {
+            json!({
             "siren": siren, "nom_complet": name, "nature_juridique": "5710",
             "activite_principale": "25.62B", "etat_administratif": "A",
             "date_creation": "2000-01-01", "tranche_effectif_salarie": "42",
             "finances": {"2024": {"ca": 300000000}, "2025": {"ca": 343838577}},
             "siege": {"siret": format!("{siren}00011"), "latitude": "47.41", "longitude": "0.98",
-                      "etat_administratif": "A", "tranche_effectif_salarie": "41"}});
+                      "etat_administratif": "A", "tranche_effectif_salarie": "41"}})
+        };
         let pages = vec![
-            vec![hit("429853351", "MECAWORKS FRANCE"), hit("329936793", "MECAWORKS TOULOUSE")],
+            vec![
+                hit("429853351", "MECAWORKS FRANCE"),
+                hit("329936793", "MECAWORKS TOULOUSE"),
+            ],
             vec![hit("931711311", "MECAWORKS SAINT ANDRE")],
         ];
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -431,29 +423,83 @@ async fn target_list_enters_new_accounts_as_targets() {
         let search = move |Query(q): Query<HashMap<String, String>>| {
             let pages = pages.clone();
             async move {
-                assert_eq!(q.get("section_activite_principale").map(String::as_str), Some("C"));
+                assert_eq!(
+                    q.get("section_activite_principale").map(String::as_str),
+                    Some("C")
+                );
                 let n: usize = q.get("page").and_then(|p| p.parse().ok()).unwrap_or(1);
                 axum::Json(json!({"results": pages.get(n - 1).cloned().unwrap_or_default()}))
             }
         };
         let app = axum::Router::new().route("/search", get(search));
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
-            "UPDATE object_imports SET source_url = replace(source_url, 'https://recherche-entreprises.api.gouv.fr', '{base}') WHERE org_id = {org}"))).await.unwrap();
-        let (st, c) = object(&server, &env.alice, org, "organization", "Mecaworks France", json!({"siren": "429853351", "account_status": "customer"})).await;
+        pnex_backend::services::pipeline_engine::store::route_for_tests(
+            "recherche-entreprises.api.gouv.fr",
+            &base,
+        );
+        let (st, c) = object(
+            &server,
+            &env.alice,
+            org,
+            "organization",
+            "Mecaworks France",
+            json!({"siren": "429853351", "account_status": "customer"}),
+        )
+        .await;
         assert_eq!(st, 201, "{c}");
 
-        let (id, _) = import_named(&server, &env.alice, org, "Target list (company register search)").await;
-        let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
+        let (id, _) = import_named(
+            &server,
+            &env.alice,
+            org,
+            "Target list (company register search)",
+        )
+        .await;
+        let (st, r) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/ontology/imports/{id}/runs"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
         assert_eq!(st, 202, "{r}");
-        let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 300).await;
-        assert_eq!((r["run"]["state"].as_str(), r["run"]["rows"].as_u64()), (Some("applied"), Some(3)), "{r}");
+        let r = settle_within(
+            &server,
+            &env.alice,
+            org,
+            &id,
+            r["id"].as_str().unwrap(),
+            300,
+        )
+        .await;
+        assert_eq!(
+            (r["run"]["state"].as_str(), r["run"]["rows"].as_u64()),
+            (Some("applied"), Some(3)),
+            "{r}"
+        );
         let client = props_of(&env.db, org, "organization", "siren", "429853351").await;
-        assert_eq!((client["account_status"].as_str(), client["headcount_min"].as_f64()), (Some("customer"), Some(1000.0)), "{client}");
-        assert_eq!(client["last_revenue"]["amount"].as_f64(), Some(343838577.0), "{client}");
+        assert_eq!(
+            (
+                client["account_status"].as_str(),
+                client["headcount_min"].as_f64()
+            ),
+            (Some("customer"), Some(1000.0)),
+            "{client}"
+        );
+        assert_eq!(
+            client["last_revenue"]["amount"].as_f64(),
+            Some(343838577.0),
+            "{client}"
+        );
         for siren in ["329936793", "931711311"] {
             let o = props_of(&env.db, org, "organization", "siren", siren).await;
-            assert_eq!((o["account_status"].as_str(), o["activity_code"].as_str()), (Some("target"), Some("25.62")), "{o}");
+            assert_eq!(
+                (o["account_status"].as_str(), o["activity_code"].as_str()),
+                (Some("target"), Some("25.62")),
+                "{o}"
+            );
         }
         let pin = props_of(&env.db, org, "map_pin", "siret", "93171131100011").await;
         assert_eq!(pin["headcount_min"].as_f64(), Some(500.0), "{pin}");
@@ -725,7 +771,6 @@ async fn legal_announcements_become_signals() {
     with_app(|server, env| async move {
         use axum::extract::Query;
         use axum::routing::get;
-        use sea_orm::Statement;
         use std::collections::HashMap;
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "prospecting_b2b_fr").await;
@@ -756,12 +801,10 @@ async fn legal_announcements_become_signals() {
                 axum::Json(json!({"total_count": results.len(), "results": results}))
             }
         };
-        let app = axum::Router::new().route("/records", get(records));
+        let app = axum::Router::new()
+            .route("/api/explore/v2.1/catalog/datasets/annonces-commerciales/records", get(records));
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
-            "UPDATE object_imports SET source_url = replace(source_url, \
-             'https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records', '{base}/records') \
-             WHERE org_id = {org}"))).await.unwrap();
+        pnex_backend::services::pipeline_engine::store::route_for_tests("bodacc-datadila.opendatasoft.com", &base);
         let (_, meca) = object(&server, &env.alice, org, "organization", "MECAWORKS FRANCE", json!({"siren": "429853351", "account_status": "customer"})).await;
         object(&server, &env.alice, org, "organization", "Inconnue", json!({"siren": "999999999"})).await;  // english-guard: allow (French source data)
 
@@ -828,9 +871,7 @@ async fn the_sites_of_a_followed_account_come_from_a_search_by_name() {
         };
         let app = axum::Router::new().route("/search", get(search));
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
-            "UPDATE object_imports SET source_url = replace(source_url, \
-             'https://recherche-entreprises.api.gouv.fr/search', '{base}/search') WHERE org_id = {org}"))).await.unwrap();
+        pnex_backend::services::pipeline_engine::store::route_for_tests("recherche-entreprises.api.gouv.fr", &base);
         let (_, account) = object(&server, &env.alice, org, "organization", "MECAWORKS FRANCE",
             json!({"siren": "429853351", "account_status": "customer"})).await;
         object(&server, &env.alice, org, "organization", "Unfollowed", json!({"siren": "999999999"})).await;
@@ -1008,16 +1049,16 @@ async fn mock_registers() -> String {
         axum::Json(json!({"results": {"bindings": rows}}))
     };
     let app = axum::Router::new()
-        .route("/gleif/lei-records", get(gleif))
+        .route("/api/v1/lei-records", get(gleif))
         .route(
-            "/gleif/lei-records/{lei}/direct-children",
+            "/api/v1/lei-records/{lei}/direct-children",
             get(direct_children),
         )
         .route(
-            "/gleif/lei-records/{lei}/ultimate-children",
+            "/api/v1/lei-records/{lei}/ultimate-children",
             get(|| async { axum::Json(json!({"data": []})) }),
         )
-        .route("/wd/sparql", get(wd));
+        .route("/sparql", get(wd));
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     base
 }
@@ -2694,8 +2735,14 @@ async fn mock_training_registers(
         }
     };
     let app = axum::Router::new()
-        .route("/dgefp/records", get(dgefp))
-        .route("/cpf/exports/json", get(cpf));
+        .route(
+            "/api/explore/v2.1/catalog/datasets/liste-publique-des-of-v2/records",
+            get(dgefp),
+        )
+        .route(
+            "/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json",
+            get(cpf),
+        );
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     base
 }
@@ -2715,11 +2762,8 @@ async fn network_registers_and_query() {
         let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let base = mock_training_registers(asked.clone(), &partner, &outsider_siret).await;
         let sql = |s: String| env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, s));
-        for (from, to) in [
-            ("https://dgefp.opendatasoft.com/api/explore/v2.1/catalog/datasets/liste-publique-des-of-v2", format!("{base}/dgefp")),
-            ("https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation", format!("{base}/cpf")),
-        ] {
-            sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{from}', '{to}') WHERE org_id = {org}")).await.unwrap();
+        for host in ["dgefp.opendatasoft.com", "opendata.caissedesdepots.fr"] {
+            pnex_backend::services::pipeline_engine::store::route_for_tests(host, &base);
         }
         let (_, cert) = object(&server, &env.alice, org, "certification", "RS0101",
             json!({"code": "RS0101", "number": "0101", "register": "rs", "official_title": "Piloter le référencement d'un site"})).await;  // english-guard: allow (French source data)

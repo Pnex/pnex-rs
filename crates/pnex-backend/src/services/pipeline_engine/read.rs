@@ -90,7 +90,7 @@ impl Cell {
     fn parse(c: &Column, format: Option<&str>, zone: &Zone, raw: &str) -> Option<Cell> {
         let v = raw.trim();
         Some(match c.kind {
-            ColumnType::Text => Cell::Text(raw.to_string()),
+            ColumnType::Text | ColumnType::Json => Cell::Text(raw.to_string()),
             ColumnType::Integer => Cell::Int(v.parse().ok()?),
             ColumnType::Decimal => Cell::Dec(decimal(v, c.scale.unwrap_or(0))?),
             ColumnType::Float => Cell::Float(v.parse::<f64>().ok().filter(|x| x.is_finite())?),
@@ -133,7 +133,7 @@ enum Builder {
 impl Builder {
     fn new(c: &Column) -> Self {
         match c.kind {
-            ColumnType::Text => Builder::Text(StringBuilder::new()),
+            ColumnType::Text | ColumnType::Json => Builder::Text(StringBuilder::new()),
             ColumnType::Integer => Builder::Int(Int64Builder::new()),
             ColumnType::Decimal => Builder::Dec(Decimal128Builder::new(), c.scale.unwrap_or(0)),
             ColumnType::Float => Builder::Float(Float64Builder::new()),
@@ -145,7 +145,7 @@ impl Builder {
 
     fn data_type(c: &Column) -> DataType {
         match c.kind {
-            ColumnType::Text => DataType::Utf8,
+            ColumnType::Text | ColumnType::Json => DataType::Utf8,
             ColumnType::Integer => DataType::Int64,
             ColumnType::Decimal => DataType::Decimal128(38, c.scale.unwrap_or(0) as i8),
             ColumnType::Float => DataType::Float64,
@@ -311,14 +311,16 @@ fn at_of(c: &Column, header: &[String]) -> Result<At, Failure> {
     }
 }
 
-fn cell_of_json(record: &Value, key: &str) -> Option<String> {
-    let v = if key.starts_with('/') {
-        record.pointer(key)
-    } else {
-        record.get(key)
+fn cell_of_json(record: &Value, key: &str, as_json: bool) -> Option<String> {
+    let v = match key {
+        // The whole record, for a `json` column the mapping reads.
+        "/" => Some(record),
+        k if k.starts_with('/') => record.pointer(k),
+        k => record.get(k),
     }?;
     match v {
         Value::Null => None,
+        v if as_json => Some(v.to_string()),
         Value::String(s) => Some(s.clone()),
         v => Some(v.to_string()),
     }
@@ -709,16 +711,17 @@ fn read_json(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, F
     }
     let mut typed = Typed::new(r, row, &[])?;
     for (i, (keys, item)) in records.iter().enumerate() {
-        typed.push(i + 1, |_, at| match at {
+        typed.push(i + 1, |c, at| match at {
             At::Key(names) => {
+                let as_json = c.kind == ColumnType::Json;
                 let parts: Option<Vec<String>> = names
                     .iter()
                     .map(|k| match k.strip_prefix('^') {
                         // `^/cik`: a field of the document, beside the records.
-                        Some(root) => cell_of_json(&doc, root),
+                        Some(root) => cell_of_json(&doc, root, as_json),
                         None => match r.keys.iter().position(|n| n == k) {
                             Some(p) => keys.get(p).cloned(),
-                            None => cell_of_json(item, k),
+                            None => cell_of_json(item, k, as_json),
                         },
                     })
                     .collect();

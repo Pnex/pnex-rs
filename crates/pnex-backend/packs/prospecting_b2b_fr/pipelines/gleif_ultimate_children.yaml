@@ -1,0 +1,29 @@
+# Every subsidiary of the group of each followed account, by its LEI.
+key: gleif_ultimate_children
+name: Group subsidiaries (GLEIF)
+hosts: [api.gleif.org]
+steps:
+  - enumerate: { as: rows, cross: [{ as: lei, objects: { type: organization, property: lei, only: { account_status: [customer, prospect, target] } } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://api.gleif.org/api/v1/lei-records/{{lei}}/ultimate-children?page%5Bsize%5D=200"
+      every: 150ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /data
+      columns:
+        - { name: queried, value: "{{lei}}" }
+        - { name: record, at: "/", type: json }
+  - write: { from: found, table: { name: gleif_ultimate_children, replace: true } }
+tests:
+  - name: the records of one object
+    objects: { "organization.lei?account_status=customer,prospect,target": ["969500UP76J52A9OXU27"] }
+    given:
+      "https://api.gleif.org/api/v1/lei-records/969500UP76J52A9OXU27/ultimate-children?page%5Bsize%5D=200": gleif_children.json
+    expect:
+      found:
+        rows: 1

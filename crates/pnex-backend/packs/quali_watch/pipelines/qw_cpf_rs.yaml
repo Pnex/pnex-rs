@@ -1,0 +1,28 @@
+# The CPF offers of each RS certification of the org's setting.
+key: qw_cpf_rs
+name: CPF offers (RS)
+hosts: [opendata.caissedesdepots.fr]
+steps:
+  - enumerate: { as: rows, cross: [{ as: number, objects: { type: certification, property: number, only: { register: [rs] }, codes: { setting: quali_watch.certifications, property: code } } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RS&refine=code_inventaire:{{number}}"
+      every: 150ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      columns:
+        - { name: queried, value: "{{number}}" }
+        - { name: record, at: "/", type: json }
+  - write: { from: found, table: { name: qw_cpf_rs, replace: true } }
+tests:
+  - name: the records of one object
+    objects: { "certification.number?register=rs?code~quali_watch.certifications": ["RS1234"] }
+    given:
+      "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RS&refine=code_inventaire:RS1234": cpf.json
+    expect:
+      found:
+        rows: 1

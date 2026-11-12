@@ -25,6 +25,8 @@ struct Replay {
 impl Replay {
     fn answer(&self, url: &reqwest::Url) -> Result<Option<Blob>, Failure> {
         let Some(file) = self.given.get(url.as_str()) else {
+            // Shown when a test fails: the address its `given` should list.
+            println!("{}: no fixture for {url}", self.pack);
             return Ok(None);
         };
         let bytes = fixture(&self.pack, file)
@@ -192,6 +194,11 @@ async fn every_shipped_pipeline_passes_its_tests() {
                 now: today.and_hms_opt(12, 0, 0).unwrap(),
                 secrets,
                 objects: case.objects.clone().into_iter().collect(),
+                titles: case
+                    .titles
+                    .iter()
+                    .map(|(k, t)| (k.clone(), t.clone().into_iter().collect()))
+                    .collect(),
                 ..Default::default()
             };
             let transport = Replay {
