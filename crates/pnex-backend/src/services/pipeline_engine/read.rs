@@ -579,6 +579,7 @@ fn read_csv(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, Fa
     let mut rd = csv::ReaderBuilder::new()
         .has_headers(false)
         .flexible(true)
+        .quoting(r.quoted)
         .delimiter(r.delimiter.map_or(b',', |d| d as u8))
         .from_reader(std::io::BufReader::new(file.open()?));
     let mut records = rd.byte_records();

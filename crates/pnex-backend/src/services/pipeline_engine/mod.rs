@@ -120,8 +120,10 @@ pub struct Inputs {
     pub settings: HashMap<String, String>,
     /// Values of the org's live objects, by `ObjectsAxis::key`.
     pub objects: HashMap<String, Vec<String>>,
-    /// Same key → value → title, for an axis that asks for titles.
-    pub titles: HashMap<String, HashMap<String, String>>,
+    /// Same key → value → the axis' title and other columns, by column.
+    pub extra: HashMap<String, HashMap<String, Map<String, Value>>>,
+    /// Starlark code of the functions of the document's pack, by name.
+    pub functions: HashMap<String, String>,
     pub now: NaiveDateTime,
     /// Vault name → value of the secrets a shipped document names.
     pub secrets: HashMap<String, String>,
@@ -269,16 +271,12 @@ fn axis_values(
         }
         let mut cols = Map::new();
         cols.insert(a.as_.clone(), Value::String(v.clone()));
-        if let Some((o, col)) = a
-            .objects
-            .as_ref()
-            .and_then(|o| Some((o, o.title.as_ref()?)))
-        {
-            let title = inputs.titles.get(&o.key()).and_then(|t| t.get(&v));
-            cols.insert(
-                col.clone(),
-                title.map_or(Value::Null, |t| Value::String(t.clone())),
-            );
+        if let Some(o) = &a.objects {
+            let extra = inputs.extra.get(&o.key()).and_then(|e| e.get(&v));
+            for col in o.title.iter().chain(&o.columns) {
+                let cell = extra.and_then(|e| e.get(col)).cloned();
+                cols.insert(col.clone(), cell.unwrap_or(Value::Null));
+            }
         }
         // A value no glob of a derived column matches is left out.
         let derived: Option<Vec<(String, Value)>> = a
@@ -631,10 +629,14 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 .cross
                 .iter()
                 .flat_map(|a| {
-                    let title = a.objects.as_ref().and_then(|o| o.title.clone());
+                    let extra: Vec<String> = a
+                        .objects
+                        .iter()
+                        .flat_map(|o| o.title.iter().chain(&o.columns).cloned())
+                        .collect();
                     std::iter::once(a.as_.clone())
                         .chain(a.derive.keys().cloned())
-                        .chain(title)
+                        .chain(extra)
                 })
                 .map(|n| Field::new(n, DataType::Utf8, true))
                 .collect(),
@@ -653,6 +655,34 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
         }
     }
 
+    /// The rows an enumeration or a fetch walks: a query's or a call's
+    /// result is read back as rows, its values as text.
+    fn walked(tables: &HashMap<String, Table>, name: &str) -> Result<Vec<Row>, Failure> {
+        let files = match tables.get(name) {
+            Some(Table::Rows(r)) => return Ok(r.clone()),
+            Some(Table::Batches(files)) => files,
+            None => return Err(fail("not_rows", json!({ "table": name }))),
+        };
+        let mut out = Vec::new();
+        for f in files {
+            for b in f.read()? {
+                let records = crate::services::datasets::parquet::records(&b?)
+                    .map_err(|_| fail("unreadable", json!({ "table": name })))?;
+                for r in records {
+                    if out.len() >= ENUMERATE_MAX {
+                        return Err(fail("too_many_rows", json!({ "max": ENUMERATE_MAX })));
+                    }
+                    let cols = match r {
+                        Value::Object(o) => o,
+                        _ => Map::new(),
+                    };
+                    out.push(Row { cols, file: None });
+                }
+            }
+        }
+        Ok(out)
+    }
+
     /// One step over the working tables: its table, `None` for a write.
     async fn step(
         &mut self,
@@ -666,7 +696,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     e,
                     self.inputs,
                     match &e.for_each {
-                        Some(t) => Self::rows(tables, t)?.to_vec(),
+                        Some(t) => Self::walked(tables, t)?,
                         None => vec![Row::default()],
                     },
                 )?
@@ -676,7 +706,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
             ),
             Step::Fetch(f) => {
                 let input = match &f.for_each {
-                    Some(t) => Self::rows(tables, t)?.to_vec(),
+                    Some(t) => Self::walked(tables, t)?,
                     None => vec![Row::default()],
                 };
                 Table::Rows(self.fetch(f, input).await?)
@@ -768,7 +798,35 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 };
                 Table::Batches(out.into_iter().collect())
             }
-            Step::Browse(_) | Step::Call(_) => {
+            Step::Call(c) => {
+                let code =
+                    self.inputs.functions.get(&c.function).ok_or_else(|| {
+                        fail("function_unknown", json!({ "function": c.function }))
+                    })?;
+                let input = match tables.get(&c.from) {
+                    None => return Err(fail("unknown_table", json!({ "table": c.from }))),
+                    Some(t) if t.len() == 0 => None,
+                    Some(Table::Batches(files)) if files.len() == 1 => Some(files[0].clone()),
+                    Some(Table::Batches(files)) => {
+                        let files = files.clone();
+                        Some(blocking(move || blob::merged(&files)).await?)
+                    }
+                    Some(Table::Rows(r)) => {
+                        let r = r.clone();
+                        blocking(move || read::rows_batch(&r)).await?
+                    }
+                };
+                // The pack settings the document reads, as `pack_setting` gives them.
+                let settings: serde_json::Map<String, Value> = self
+                    .inputs
+                    .settings
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                    .collect();
+                let out = self.sql.call(code, &settings, input).await?;
+                Table::Batches(out.into_iter().collect())
+            }
+            Step::Browse(_) => {
                 return Err(fail("step_unsupported", json!({ "step": step.name() })));
             }
         };

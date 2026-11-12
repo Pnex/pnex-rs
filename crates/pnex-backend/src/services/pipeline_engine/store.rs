@@ -207,6 +207,40 @@ pub async fn record(
     .await
 }
 
+/// The Starlark functions of a shipped pack, by name: what its pipelines'
+/// `call` steps run.
+pub fn pack_functions(pack: &str) -> HashMap<String, String> {
+    crate::services::ontology::packs::shipped()
+        .into_iter()
+        .find(|p| p.key == pack)
+        .map(|p| {
+            p.pipeline_functions
+                .into_iter()
+                .filter(|f| f.language == pnex_core::functions::FunctionLanguage::Starlark)
+                .map(|f| (f.name, f.code))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The code of the functions a document's calls name: `<name>` in its own
+/// pack, `<pack>/<name>` in another shipped pack (one its pack builds on).
+pub fn call_functions(own: &str, doc: &Document) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for s in &doc.steps {
+        if let pnex_core::pipeline::Step::Call(c) = s {
+            let (pack, name) = c
+                .function
+                .split_once('/')
+                .unwrap_or((own, c.function.as_str()));
+            if let Some(code) = pack_functions(pack).remove(name) {
+                out.insert(c.function.clone(), code);
+            }
+        }
+    }
+    out
+}
+
 /// The settings and objects a document reads, as the org has them.
 pub async fn inputs(
     db: &DatabaseConnection,
@@ -270,7 +304,8 @@ pub async fn inputs(
         // Linked: an open link of one of the types, either way; with codes,
         // the other end holds one. Without links, the object itself does.
         let mut sql = String::from(
-            "SELECT DISTINCT ON (properties ->> $3) properties ->> $3 AS v, title FROM objects \
+            "SELECT DISTINCT ON (properties ->> $3) properties ->> $3 AS v, title, properties AS p \
+             FROM objects \
              WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3 \
                AND (cardinality($5::text[]) = 0 OR cardinality($4::text[]) > 0 \
                  OR upper(properties ->> $6) = ANY($5)) \
@@ -301,18 +336,32 @@ pub async fn inputs(
         sql.push_str(" ORDER BY properties ->> $3");
         let rows = db.query_all_raw(stmt(&sql, values)).await?;
         let mut found = Vec::new();
-        let mut titles = HashMap::new();
+        let mut extra = HashMap::new();
         for r in &rows {
             let Ok(v) = r.try_get::<String>("", "v") else {
                 continue;
             };
-            if let Ok(t) = r.try_get::<String>("", "title") {
-                titles.insert(v.clone(), t);
+            let mut cols = serde_json::Map::new();
+            if let (Some(col), Ok(t)) = (&o.title, r.try_get::<String>("", "title")) {
+                cols.insert(col.clone(), Value::String(t));
             }
+            let props: Value = r.try_get("", "p").unwrap_or(Value::Null);
+            for c in &o.columns {
+                // Text, as the other axes give it.
+                let cell = match props.get(c) {
+                    Some(Value::String(s)) => Some(s.clone()),
+                    Some(Value::Null) | None => None,
+                    Some(other) => Some(other.to_string()),
+                };
+                if let Some(cell) = cell {
+                    cols.insert(c.clone(), Value::String(cell));
+                }
+            }
+            extra.insert(v.clone(), cols);
             found.push(v);
         }
-        if o.title.is_some() {
-            out.titles.insert(o.key(), titles);
+        if o.title.is_some() || !o.columns.is_empty() {
+            out.extra.insert(o.key(), extra);
         }
         out.objects.insert(o.key(), found);
     }
@@ -590,7 +639,8 @@ pub async fn run_for_org(
 ) -> Result<RunOutcome, sea_orm::DbErr> {
     let id = sp.id();
     let (items, shas) = known(db, org, &id).await?;
-    let inputs = inputs(db, org, &sp.doc, now.naive_utc(), shas).await?;
+    let mut inputs = inputs(db, org, &sp.doc, now.naive_utc(), shas).await?;
+    inputs.functions = call_functions(&sp.pack, &sp.doc);
     let mut sink = DatasetSink { db, store, org };
     let sql = super::sql::WorkerSql { db, store, org };
     let out = run(

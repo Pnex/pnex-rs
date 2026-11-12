@@ -1350,6 +1350,7 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
         hierarchies: Vec::new(),
         imports: Vec::new(),
         functions: Vec::new(),
+        pipeline_functions: Vec::new(),
         flows: Vec::new(),
         settings: Vec::new(),
         causal_pairs: Vec::new(),

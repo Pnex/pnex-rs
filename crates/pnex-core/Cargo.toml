@@ -24,6 +24,9 @@ doc-extract = ["dep:zip", "dep:quick-xml", "dep:lopdf", "dep:calamine", "dep:lzm
 openapi = ["dep:utoipa"]
 # Wall clocks in their IANA zone (pipeline-engine.md D939) — backend and pipeline worker.
 tz = ["dep:chrono-tz"]
+# Sandboxed Starlark (functions, a pipeline's `call` step) — flow runtime and
+# pipeline worker; never the wasm front nor the server.
+starlark = ["dep:starlark", "dep:anyhow"]
 
 [dependencies]
 serde = { workspace = true }
@@ -40,6 +43,8 @@ reqwest = { version = "0.12", default-features = false, optional = true }
 # Recurrence dates (ontology annex B), no clock: wasm-safe.
 chrono = { version = "0.4", default-features = false, features = ["serde", "alloc"] }
 chrono-tz = { version = "0.10", optional = true }
+starlark = { version = "0.14.2", optional = true }
+anyhow = { version = "1", optional = true }
 # Secret destinations (R9): same parser as reqwest, wasm-safe.
 url = "2"
 utoipa = { workspace = true, optional = true }

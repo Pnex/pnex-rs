@@ -525,6 +525,10 @@ pub struct Pack {
     /// that name (D316): the pack's rules.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub functions: Vec<PackFunction>,
+    /// Starlark run by the `call` steps of shipped pipelines (D936),
+    /// `handle(rows)` → rows: never installed in an org's registry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pipeline_functions: Vec<PackFunction>,
     /// Flow models created as drafts at install when the org has none of
     /// that name (D316); never deployed by the install (D123). A function
     /// node names its function by `function_name` (resolved at install).

@@ -22,7 +22,6 @@ pub mod apps;
 /// Large public files into tables: AIS, ADS-B, DVF (markets-research.md MK22–MK24).
 pub mod bulk;
 pub mod conflict_events;
-pub mod gkg;
 pub mod market_study;
 pub mod markets;
 /// MetaTrader 5 terminals as registered data sources (markets-research.md D847–D849).
@@ -31,6 +30,8 @@ pub mod mt5;
 pub mod rca;
 /// Runners of the worker fabric (agent-environments.md lot E0).
 pub mod runners;
+#[cfg(feature = "starlark")]
+pub mod starlark_sandbox;
 
 pub mod api;
 pub use api::*;

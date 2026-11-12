@@ -178,6 +178,10 @@ pub struct ObjectsAxis {
     /// Column receiving the object's title besides its value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Other properties of the object, each in a column of its name (empty
+    /// when the object has none). The axis property should be unique.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub columns: Vec<String>,
 }
 
 /// Codes of a comma-separated setting compared, upper-cased, to a property.
@@ -202,6 +206,9 @@ impl ObjectsAxis {
         }
         if let Some(c) = &self.codes {
             k.push_str(&format!("?{}~{}", c.property, c.setting));
+        }
+        if !self.columns.is_empty() {
+            k.push_str(&format!("?columns={}", self.columns.join(",")));
         }
         k
     }
@@ -544,6 +551,14 @@ pub struct Read {
     /// (a position "not available" in a feed of millions).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub skip_invalid: bool,
+    /// CSV: `false` when quotes are plain characters (raw tab-separated
+    /// exports), every line then splits on the delimiter alone.
+    #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
+    pub quoted: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// A field written `null` is `Some(Null)`, an absent one `None`.
@@ -640,9 +655,9 @@ pub struct TestCase {
     /// Values of the org's live objects, `<type>.<property>` → values.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub objects: BTreeMap<String, Vec<String>>,
-    /// Same key → value → title, for an axis that asks for titles.
+    /// Same key → value → the axis' title and other columns.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub titles: BTreeMap<String, BTreeMap<String, String>>,
+    pub extra: BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>,
     /// Today's date of the run, `YYYY-MM-DD`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub today: Option<String>,
@@ -955,6 +970,8 @@ fn step_violations(
                             .as_ref()
                             .is_some_and(|c| !valid_name(&c.property) || !c.setting.contains('.'))
                         || o.title.as_ref().is_some_and(|t| !valid_name(t))
+                        || o.columns.len() > 8
+                        || o.columns.iter().any(|c| !valid_name(c))
                     {
                         bad(format!("{p}.objects"), "invalid");
                     }

@@ -588,8 +588,7 @@ async fn finish_run<C: ConnectionTrait>(
 }
 
 /// Records of the import's source (`file` = the bytes sent).
-async fn records<C: ConnectionTrait>(
-    db: &C,
+async fn records(
     imp: &ImportRow,
     m: &Mapping,
     file: Option<(&[u8], &str)>,
@@ -618,60 +617,11 @@ async fn records<C: ConnectionTrait>(
         }
         (ImportSource::Api, _) => {
             let url = imp.source_url.as_deref().unwrap_or_default();
-            if let Some(feed) = &m.press_feed {
-                let watched = press_watched(db, imp, feed)
-                    .await
-                    .map_err(|_| coded(source::UNREACHABLE))?;
-                return source::fetch_press(url, feed, watched).await.map_err(coded);
-            }
             let pages = imp.max_pages.map_or(DEFAULT_PAGES, |p| p as u32);
             source::fetch_api(url, m, pages).await.map_err(coded)
         }
     }?;
     Ok(rows)
-}
-
-/// The companies a press feed watches: their title and other names, and
-/// the first unique property they hold.
-async fn press_watched<C: ConnectionTrait>(
-    db: &C,
-    imp: &ImportRow,
-    feed: &imp::PressFeed,
-) -> std::result::Result<Vec<pnex_core::gkg::Watched>, sea_orm::DbErr> {
-    let rows = db
-        .query_all_raw(stmt(
-            "SELECT title, properties FROM objects \
-             WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL \
-               AND properties ->> $3 = ANY($4)",
-            vec![
-                imp.org_id.into(),
-                feed.type_key.clone().into(),
-                feed.only.property.clone().into(),
-                feed.only.values.clone().into(),
-            ],
-        ))
-        .await?;
-    Ok(rows
-        .iter()
-        .filter_map(|r| {
-            let title: String = r.try_get("", "title").ok()?;
-            let props: Value = r.try_get("", "properties").ok()?;
-            let key = feed.keys.iter().find_map(|k| {
-                let v = props.get(k)?.as_str()?.trim();
-                (!v.is_empty()).then(|| (k.clone(), v.to_string()))
-            })?;
-            let mut names = vec![title];
-            if let Some(more) = props.get(&feed.aliases).and_then(Value::as_str) {
-                names.extend(
-                    more.split(',')
-                        .map(str::trim)
-                        .filter(|n| !n.is_empty())
-                        .map(str::to_string),
-                );
-            }
-            Some(pnex_core::gkg::Watched { names, key })
-        })
-        .collect())
 }
 
 /// Number of the first record as the user sees it: line 2 of a sheet or a
@@ -713,7 +663,6 @@ pub async fn dry_run(
         }
         let name = file.as_ref().map(|(_, n)| n.clone()).unwrap_or_default();
         let outcome = match records(
-            &db,
             &imp,
             &m,
             file.as_ref().map(|(b, n)| (b.as_slice(), n.as_str())),
@@ -1510,7 +1459,7 @@ pub async fn run_staged(
             .unwrap_or(Err((source::UNREADABLE, Value::Null)))
         }
         (None, ImportSource::File) => Err((err_codes::INGEST_ENTRY_MISSING, Value::Null)),
-        _ => records(db, &imp, &m, None).await,
+        _ => records(&imp, &m, None).await,
     };
     let end = |state: &'static str,
                code: Option<&'static str>,
@@ -1541,7 +1490,7 @@ pub async fn run_staged(
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(&m, &rows);
     // A feed's window may hold nothing: not a lost source.
-    let lost = rows.is_empty() && previous > 0 && m.press_feed.is_none();
+    let lost = rows.is_empty() && previous > 0;
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()
@@ -1685,7 +1634,7 @@ async fn scheduled(
     let Some(role) = author_role(db, imp).await else {
         return refused(err_codes::ONTOLOGY_WRITE_FORBIDDEN, Value::Null, None);
     };
-    let rows = match records(db, imp, m, None).await {
+    let rows = match records(imp, m, None).await {
         Ok(r) => r,
         Err((code, args)) => return Err(("failed", code, args, None)),
     };
@@ -1693,7 +1642,7 @@ async fn scheduled(
     let missing = imp::missing_columns(m, &rows);
     // D303: an unexpected shape writes nothing.
     // A feed's window may hold nothing: not a lost source.
-    let lost = rows.is_empty() && previous > 0 && m.press_feed.is_none();
+    let lost = rows.is_empty() && previous > 0;
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()

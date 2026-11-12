@@ -9958,6 +9958,7 @@ dependencies = [
 name = "pnex-core"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
  "base64 0.23.1",
  "calamine",
  "chrono",
@@ -9975,6 +9976,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "snow",
+ "starlark",
  "tokio",
  "url",
  "utoipa",

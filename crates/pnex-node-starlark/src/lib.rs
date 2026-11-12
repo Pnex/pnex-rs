@@ -12,7 +12,7 @@
 //!   Starlark has no I/O by design; isolating "weird" functions
 //!   remains an infra topic (1 tenant = 1 process).
 
-pub mod executor;
+pub use pnex_core::starlark_sandbox as executor;
 
 use std::sync::Arc;
 

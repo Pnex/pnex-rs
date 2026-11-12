@@ -117,16 +117,8 @@ pub(super) async fn check<C: ConnectionTrait>(
         return Err(invalid("mapping", err_codes::FIELD_INVALID));
     }
     // A filter or a lookup is a transform of the pipeline before this sync.
-    for (set, field) in [
-        (!m.steps.is_empty(), "steps"),
-        (m.press_feed.is_some(), "press_feed"),
-    ] {
-        if set {
-            return Err(invalid(
-                format!("mapping.{field}"),
-                err_codes::FIELD_INVALID,
-            ));
-        }
+    if !m.steps.is_empty() {
+        return Err(invalid("mapping.steps", err_codes::FIELD_INVALID));
     }
     Ok(())
 }

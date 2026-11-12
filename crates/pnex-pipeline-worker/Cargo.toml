@@ -33,7 +33,7 @@ sqlx = { version = "0.9", default-features = false, features = [
   "uuid",
   "json",
 ] }
-pnex-core = { workspace = true, features = ["tz"] }
+pnex-core = { workspace = true, features = ["tz", "starlark"] }
 chrono = { workspace = true }
 serde-saphyr = "2"
 serde_json = "1"

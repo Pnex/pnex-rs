@@ -34,6 +34,15 @@ pub trait SqlRunner {
         staged: Vec<(String, Arc<Batches>)>,
         tables: &BTreeMap<String, String>,
     ) -> Result<Option<Arc<Batches>>, Failure>;
+
+    /// A `call`: Starlark `code` over the rows of `input` (none: an empty
+    /// list), with the pack settings it may read.
+    async fn call(
+        &self,
+        code: &str,
+        settings: &serde_json::Map<String, Value>,
+        input: Option<Arc<Batches>>,
+    ) -> Result<Option<Arc<Batches>>, Failure>;
 }
 
 fn storage(e: impl std::fmt::Display) -> Failure {
@@ -92,12 +101,42 @@ impl WorkerSql<'_> {
 }
 
 impl SqlRunner for WorkerSql<'_> {
+    async fn call(
+        &self,
+        code: &str,
+        settings: &serde_json::Map<String, Value>,
+        input: Option<Arc<Batches>>,
+    ) -> Result<Option<Arc<Batches>>, Failure> {
+        let staged = input
+            .map(|f| ("input".to_string(), f))
+            .into_iter()
+            .collect();
+        self.queue("call", code, settings, staged, &BTreeMap::new())
+            .await
+    }
+
     async fn run(
         &self,
         sql: &str,
         staged: Vec<(String, Arc<Batches>)>,
         tables: &BTreeMap<String, String>,
     ) -> Result<Option<Arc<Batches>>, Failure> {
+        self.queue("sql", sql, &serde_json::Map::new(), staged, tables)
+            .await
+    }
+}
+
+impl WorkerSql<'_> {
+    /// Stages the working tables, queues the step and reads its result back.
+    async fn queue(
+        &self,
+        kind: &str,
+        text: &str,
+        settings: &serde_json::Map<String, Value>,
+        staged: Vec<(String, Arc<Batches>)>,
+        tables: &BTreeMap<String, String>,
+    ) -> Result<Option<Arc<Batches>>, Failure> {
+        let sql = text;
         let id = Uuid::new_v4();
         // The org's prefix first (R18), as its staging.
         let prefix = format!("org_{}/pipeline-steps/{id}/", self.org);
@@ -115,8 +154,8 @@ impl SqlRunner for WorkerSql<'_> {
             self.db
                 .execute_raw(Statement::from_sql_and_values(
                     sea_orm::DatabaseBackend::Postgres,
-                    "INSERT INTO pipeline_step_jobs (id, org_id, sql, staged, tables, output_key) \
-                     VALUES ($1, $2, $3, $4, $5, $6)",
+                    "INSERT INTO pipeline_step_jobs (id, org_id, sql, staged, tables, output_key, \
+                       kind, settings) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                     vec![
                         id.into(),
                         self.org.into(),
@@ -124,6 +163,8 @@ impl SqlRunner for WorkerSql<'_> {
                         Value::Object(staged_keys.clone()).into(),
                         json!(tables).into(),
                         output.clone().into(),
+                        kind.into(),
+                        Value::Object(settings.clone()).into(),
                     ],
                 ))
                 .await

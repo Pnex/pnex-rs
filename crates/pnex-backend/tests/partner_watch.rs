@@ -3144,7 +3144,6 @@ async fn the_press_feed_writes_signals_on_the_accounts_followed() {
     with_app(|server, env| async move {
         use axum::response::IntoResponse;
         use axum::routing::get;
-        use sea_orm::Statement;
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "companies_fr").await;
         install(&server, &env.alice, org, "prospecting_b2b").await;
@@ -3152,7 +3151,7 @@ async fn the_press_feed_writes_signals_on_the_accounts_followed() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         // The translated twin is absent, like the files the manifest announces too early.
-        let app = axum::Router::new().route("/gdelt/{file}", get(|axum::extract::Path(f): axum::extract::Path<String>| async move {
+        let app = axum::Router::new().route("/gdeltv2/{file}", get(|axum::extract::Path(f): axum::extract::Path<String>| async move {
             if f.contains("translation") {
                 axum::http::StatusCode::NOT_FOUND.into_response()
             } else {
@@ -3160,8 +3159,7 @@ async fn the_press_feed_writes_signals_on_the_accounts_followed() {
             }
         }));
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
-            format!("UPDATE object_imports SET source_url = '{base}/gdelt', mapping_yaml = replace(mapping_yaml, 'hours: 26', 'hours: 1') WHERE org_id = {org} AND name = 'Press (GDELT)'"))).await.unwrap();
+        pnex_backend::services::pipeline_engine::store::route_for_tests("data.gdeltproject.org", &base);
         let mk = |title: &'static str, props: Value| {
             let (server, token) = (&server, env.alice.clone());
             async move {

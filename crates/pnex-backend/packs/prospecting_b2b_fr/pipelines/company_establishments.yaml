@@ -29,7 +29,7 @@ steps:
 tests:
   - name: the records of one object
     objects: { "organization.siren?account_status=customer,prospect,target": ["552100554"] }
-    titles: { "organization.siren?account_status=customer,prospect,target": { "552100554": "ACME INDUSTRIE" } }
+    extra: { "organization.siren?account_status=customer,prospect,target": { "552100554": { name: "ACME INDUSTRIE" } } }
     given:
       "https://recherche-entreprises.api.gouv.fr/search?limite_matching_etablissements=100&per_page=5&q=ACME+INDUSTRIE": sirene_by_name.json
     expect:

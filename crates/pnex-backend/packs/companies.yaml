@@ -29,7 +29,7 @@
 key: companies
 name: Companies
 names: {fr: "Entreprises"}
-version: "2.2.0"
+version: "2.3.0"
 requires: [investigation]
 description: Legal units of any country, their establishments on the map and their officers by mandate; country packs add the local registers.
 descriptions: {fr: "Unités légales de tout pays, leurs établissements sur la carte et leurs dirigeants par mandat ; les packs par pays ajoutent les registres locaux."}
@@ -117,3 +117,178 @@ hierarchies:
       - { link: owns }
       - { link: establishment_of, inverse: true }
       - { link: manages, inverse: true }
+pipeline_functions:
+  # The names of the companies a press feed watches (D539), for the feeds'
+  # pipelines: one row per name (the title and each alias), its words
+  # without accents nor legal forms, and the longest word, which a quick
+  # text search over the articles uses before the exact match.
+  - name: press_names
+    language: starlark
+    description: The names of watched companies as press matching reads them (rows via, account, name, aliases → via, account, name_key, probe).
+    code: |
+      FOLD = {"à": "A", "â": "A", "ä": "A", "À": "A", "Â": "A", "Ä": "A", "ç": "C", "Ç": "C",
+              "é": "E", "è": "E", "ê": "E", "ë": "E", "É": "E", "È": "E", "Ê": "E", "Ë": "E",
+              "î": "I", "ï": "I", "Î": "I", "Ï": "I", "ô": "O", "ö": "O", "Ô": "O", "Ö": "O",
+              "ù": "U", "û": "U", "ü": "U", "Ù": "U", "Û": "U", "Ü": "U", "ÿ": "Y", "Ÿ": "Y"}
+      # Legal forms and filler words that say nothing about which company it is.
+      NOISE = {w: True for w in ["SA", "SAS", "SASU", "SARL", "EURL", "SNC", "SCI", "SCOP", "SE", "GIE",
+               "GROUPE", "GROUP", "STE", "SOCIETE", "ET", "DE", "DES", "DU", "LA", "LE", "LES",
+               "AND", "THE", "CIE", "COMPAGNIE"]}
+
+      def tokens(name):
+          chars = []
+          for c in name.elems():
+              if c in FOLD:
+                  chars.append(FOLD[c])
+              elif c.isalnum():
+                  chars.append(c.upper() if ord(c) < 128 else c)
+              else:
+                  chars.append(" ")
+          out = []
+          for w in "".join(chars).split():
+              if len(w) > 1 and w not in NOISE and (len(out) == 0 or out[-1] != w):
+                  out.append(w)
+          return out
+
+      def handle(rows):
+          out = []
+          for r in rows:
+              names = [r.get("name", "")] + r.get("aliases", "").split(",")
+              seen = {}
+              for n in names:
+                  t = tokens(n.strip())
+                  # One or two letters name nothing reliably.
+                  if len(t) == 0 or len("".join(t)) < 3:
+                      continue
+                  key = " ".join(t)
+                  if key in seen:
+                      continue
+                  seen[key] = True
+                  probe = sorted(t, key = len)[-1].lower()
+                  out.append({"via": r["via"], "account": r["account"], "name_key": key, "probe": probe})
+          return out
+  # Articles of the press feed (GDELT GKG) naming a watched company, then one
+  # signal per company: headlines naming the company only, the one closest
+  # to the others leads (a readable one first: French or English), the
+  # others in the summary (D539).
+  - name: press_digest
+    language: starlark
+    description: Press candidates (an article and a company name) to one signal per company.
+    code: |
+      FOLD = {"à": "A", "â": "A", "ä": "A", "À": "A", "Â": "A", "Ä": "A", "ç": "C", "Ç": "C",
+              "é": "E", "è": "E", "ê": "E", "ë": "E", "É": "E", "È": "E", "Ê": "E", "Ë": "E",
+              "î": "I", "ï": "I", "Î": "I", "Ï": "I", "ô": "O", "ö": "O", "Ô": "O", "Ö": "O",
+              "ù": "U", "û": "U", "ü": "U", "Ù": "U", "Û": "U", "Ü": "U", "ÿ": "Y", "Ÿ": "Y"}
+      NOISE = {w: True for w in ["SA", "SAS", "SASU", "SARL", "EURL", "SNC", "SCI", "SCOP", "SE", "GIE",
+               "GROUPE", "GROUP", "STE", "SOCIETE", "ET", "DE", "DES", "DU", "LA", "LE", "LES",
+               "AND", "THE", "CIE", "COMPAGNIE"]}
+      NAMED = {"amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " "}
+
+      def tokens(name):
+          chars = []
+          for c in name.elems():
+              if c in FOLD:
+                  chars.append(FOLD[c])
+              elif c.isalnum():
+                  chars.append(c.upper() if ord(c) < 128 else c)
+              else:
+                  chars.append(" ")
+          out = []
+          for w in "".join(chars).split():
+              if len(w) > 1 and w not in NOISE and (len(out) == 0 or out[-1] != w):
+                  out.append(w)
+          return out
+
+      def decoded(raw):
+          parts = raw.split("&")
+          out = parts[0]
+          for p in parts[1:]:
+              end = p.find(";")
+              c = None
+              if end > 0 and end <= 9:
+                  e = p[:end]
+                  if e in NAMED:
+                      c = NAMED[e]
+                  elif e.startswith("#x") or e.startswith("#X"):
+                      h = e[2:]
+                      if h and all([x in "0123456789abcdefABCDEF" for x in h.elems()]):
+                          c = chr(int(h, 16))
+                  elif e.startswith("#") and e[1:].isdigit():
+                      c = chr(int(e[1:]))
+              out += (c + p[end + 1:]) if c != None else ("&" + p)
+          return out
+
+      def starts_with(t, name):
+          return len(t) >= len(name) and t[:len(name)] == name
+
+      def in_title(words, name):
+          n = len(name)
+          for i in range(len(words) - n + 1):
+              if words[i:i + n] == name:
+                  return True
+          return False
+
+      def named(orgs, name):
+          for o in orgs.split(";"):
+              o = o.split(",")[0]
+              if o and starts_with(tokens(o), name):
+                  return True
+          return False
+
+      def handle(rows):
+          by_company = {}
+          seen = {}
+          for r in rows:
+              title = decoded(r.get("title", "")).strip()
+              if not title or not r.get("url") or not r.get("orgs"):
+                  continue
+              name = r["name_key"].split(" ")
+              if not named(r["orgs"], name):
+                  continue
+              words = tokens(title)
+              # Headlines naming the company only: a passing mention is noise.
+              if not in_title(words, name):
+                  continue
+              company = r["via"] + ":" + r["account"]
+              headline = company + "|" + " ".join(words)
+              if headline in seen:
+                  continue
+              seen[headline] = True
+              lang = "eng"
+              tr = r.get("translation", "")
+              if "srclc:" in tr:
+                  lang = tr.split("srclc:")[1].split(";")[0]
+              stamp = r.get("date", "")
+              by_company.setdefault(company, []).append({
+                  "title": title[:255], "url": r["url"], "source": r.get("source", ""),
+                  "date": stamp[0:4] + "-" + stamp[4:6] + "-" + stamp[6:8], "lang": lang,
+                  "tone": r.get("tone", "").split(",")[0] or "0",
+                  "via": r["via"], "account": r["account"],
+              })
+          out = []
+          for company in sorted(by_company.keys()):
+              # Oldest first: the earliest of equals leads, on every run.
+              group = sorted(by_company[company], key = lambda g: g["date"])
+              sets = []
+              for g in group:
+                  s = {}
+                  for w in tokens(g["title"]):
+                      if len(w) >= 4:
+                          s[w] = True
+                  sets.append(s)
+              best = -1
+              best_key = None
+              for i in range(len(group)):
+                  shared = 0
+                  for j in range(len(group)):
+                      if j != i:
+                          shared += len([w for w in sets[i] if w in sets[j]])
+                  key = (1 if group[i]["lang"] in ("fra", "eng") else 0, shared)
+                  if best_key == None or key > best_key:
+                      best, best_key = i, key
+              lead = dict(group[best])
+              titles = [lead["title"]] + [g["title"] for k, g in enumerate(group) if k != best]
+              lead["summary"] = " · ".join(titles)[:1000]
+              lead["ref"] = "press:" + company + ":" + lead["date"]
+              out.append(lead)
+          return out

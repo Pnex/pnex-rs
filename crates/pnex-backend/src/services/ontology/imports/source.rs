@@ -218,66 +218,6 @@ pub async fn fetch_file(url: &str, m: &Mapping, by: &Declared) -> Result<Vec<Val
         .unwrap_or(Err(UNREADABLE))
 }
 
-/// One slice of the press feed as text; `None` = absent (the manifest of
-/// the feed announces files that are not there yet, or never come).
-async fn press_file(base: &reqwest::Url, name: &str) -> Result<Option<String>, &'static str> {
-    let url = base.join(name).map_err(|_| UNREACHABLE)?;
-    let bytes = match get(&url).await {
-        Ok(b) => b,
-        Err(TOO_LARGE) => return Err(TOO_LARGE),
-        Err(_) => return Ok(None),
-    };
-    tokio::task::spawn_blocking(move || {
-        use std::io::Read;
-        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).ok()?;
-        let entry = archive.by_index(0).ok()?;
-        let mut raw = Vec::new();
-        entry.take(UNZIPPED_MAX).read_to_end(&mut raw).ok()?;
-        Some(String::from_utf8_lossy(&raw).into_owned())
-    })
-    .await
-    .map_err(|_| UNREADABLE)
-}
-
-/// The articles of the press feed naming `watched`, over its window: the
-/// server reads the world's press once, whatever the number of companies.
-pub async fn fetch_press(
-    url: &str,
-    feed: &pnex_core::ontology::import::PressFeed,
-    watched: Vec<pnex_core::gkg::Watched>,
-) -> Result<Vec<Value>, &'static str> {
-    if watched.is_empty() {
-        return Ok(Vec::new());
-    }
-    let raw = format!("{}/", url.trim_end_matches('/'));
-    let base = check_url(&raw).map_err(|_| UNREACHABLE)?;
-    let matcher = std::sync::Arc::new(pnex_core::gkg::Matcher::new(watched));
-    let names = pnex_core::gkg::file_names(chrono::Utc::now(), feed.hours);
-    let mut rows = Vec::new();
-    let mut read = 0usize;
-    for name in &names {
-        if let Some(text) = press_file(&base, name).await? {
-            read += 1;
-            let m = matcher.clone();
-            let found = tokio::task::spawn_blocking(move || m.records(&text))
-                .await
-                .map_err(|_| UNREADABLE)?;
-            rows.extend(found);
-        }
-    }
-    tracing::info!(
-        files = names.len(),
-        read,
-        articles = rows.len(),
-        "press feed read"
-    );
-    // Some files are always missing; all of them is the feed being down.
-    if read == 0 {
-        return Err(UNREACHABLE);
-    }
-    Ok(pnex_core::gkg::digest(rows))
-}
-
 /// Records of a paginated JSON API: `page_param` (1, 2…) until a page is
 /// empty, or `cursor_path` → `cursor_param` until the cursor is gone;
 /// a single page without either.

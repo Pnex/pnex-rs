@@ -37,6 +37,95 @@ pub(crate) struct Queued {
     pub tables: Map<String, Value>,
     pub output_key: String,
     pub attempts: i32,
+    /// `sql`, or `call` (the text is Starlark code reading the staged `input`).
+    pub kind: String,
+    pub settings: Map<String, Value>,
+}
+
+/// How long a `call` may run, and the most rows it reads or writes.
+const CALL_TIMEOUT_MS: u64 = 5 * 60 * 1000;
+const CALL_ROWS_MAX: usize = 200_000;
+
+/// The rows of batches as a call reads them: values as text, a null absent.
+fn records(batches: &[RecordBatch]) -> Result<Vec<Value>, String> {
+    use datafusion::arrow::util::display::{ArrayFormatter, FormatOptions};
+    let mut out = Vec::new();
+    for b in batches {
+        let options = FormatOptions::default();
+        let formatters = b
+            .columns()
+            .iter()
+            .map(|c| ArrayFormatter::try_new(c.as_ref(), &options))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        for r in 0..b.num_rows() {
+            let mut row = Map::new();
+            for ((f, c), fmt) in b.schema().fields().iter().zip(b.columns()).zip(&formatters) {
+                if !c.is_null(r) {
+                    row.insert(f.name().clone(), Value::String(fmt.value(r).to_string()));
+                }
+            }
+            out.push(Value::Object(row));
+            if out.len() > CALL_ROWS_MAX {
+                return Err(format!("more than {CALL_ROWS_MAX} rows"));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Rows a call returned as one batch of text columns, in the order first seen.
+fn batch_of(rows: &[Map<String, Value>]) -> Result<Option<RecordBatch>, String> {
+    use datafusion::arrow::array::{ArrayRef, StringBuilder};
+    use datafusion::arrow::datatypes::{DataType, Field, Schema};
+    let mut names: Vec<&String> = Vec::new();
+    for r in rows {
+        for k in r.keys() {
+            if !names.contains(&k) {
+                names.push(k);
+            }
+        }
+    }
+    if rows.is_empty() || names.is_empty() {
+        return Ok(None);
+    }
+    let columns: Vec<ArrayRef> = names
+        .iter()
+        .map(|n| {
+            let mut b = StringBuilder::new();
+            for r in rows {
+                match r.get(*n) {
+                    None | Some(Value::Null) => b.append_null(),
+                    Some(Value::String(t)) => b.append_value(t),
+                    Some(v) => b.append_value(v.to_string()),
+                }
+            }
+            std::sync::Arc::new(b.finish()) as ArrayRef
+        })
+        .collect();
+    let fields: Vec<Field> = names
+        .iter()
+        .map(|n| Field::new(n.as_str(), DataType::Utf8, true))
+        .collect();
+    RecordBatch::try_new(std::sync::Arc::new(Schema::new(fields)), columns)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
+/// Runs a call over batches: what the replay tests of the shipped pipelines
+/// run, and the worker below (D945).
+pub fn call_in_memory(
+    code: &str,
+    settings: &Map<String, Value>,
+    input: &[RecordBatch],
+) -> Result<Vec<RecordBatch>, String> {
+    let rows = records(input)?;
+    let out = pnex_core::starlark_sandbox::call_rows(code, &rows, settings, CALL_TIMEOUT_MS)
+        .map_err(|e| cut(&e.to_string()))?;
+    if out.len() > CALL_ROWS_MAX {
+        return Err(format!("more than {CALL_ROWS_MAX} rows"));
+    }
+    Ok(batch_of(&out)?.into_iter().collect())
 }
 
 fn invalid(e: &datafusion::error::DataFusionError) -> Failure {
@@ -83,7 +172,7 @@ impl Worker {
                started_at = now() \
              WHERE id = (SELECT id FROM pipeline_step_jobs WHERE state = 'queued' \
                ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED) \
-             RETURNING id, org_id, sql, staged, tables, output_key, attempts",
+             RETURNING id, org_id, sql, staged, tables, output_key, attempts, kind, settings",
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -97,6 +186,8 @@ impl Worker {
             tables: obj(r.try_get("tables")?),
             output_key: r.try_get("output_key")?,
             attempts: r.try_get("attempts")?,
+            kind: r.try_get("kind")?,
+            settings: obj(r.try_get("settings")?),
         }))
     }
 
@@ -128,7 +219,60 @@ impl Worker {
         Ok(())
     }
 
+    /// A call: the staged `input` read whole, run in the sandbox, its rows written.
+    async fn call_rows(&self, q: &Queued) -> Result<u64, Failure> {
+        let ctx = SessionContext::new();
+        let mut input = Vec::new();
+        if let Some(key) = q.staged.get("input").and_then(Value::as_str) {
+            let bucket = &self.config.s3_bucket;
+            let url = format!("s3://{bucket}")
+                .parse::<url::Url>()
+                .map_err(Failure::storage)?;
+            ctx.register_object_store(&url, self.store.clone());
+            input = ctx
+                .read_parquet(
+                    format!("s3://{bucket}/{key}"),
+                    ParquetReadOptions::default(),
+                )
+                .await
+                .map_err(Failure::storage)?
+                .collect()
+                .await
+                .map_err(Failure::storage)?;
+        }
+        let (code, settings) = (q.sql.clone(), q.settings.clone());
+        let out = tokio::task::spawn_blocking(move || call_in_memory(&code, &settings, &input))
+            .await
+            .map_err(Failure::storage)?
+            .map_err(|reason| {
+                Failure::new(err_codes::PIPELINE_SQL_INVALID, json!({ "reason": reason }))
+            })?;
+        let Some(first) = out.first() else {
+            return Ok(0);
+        };
+        let properties = WriterProperties::builder()
+            .set_compression(Compression::ZSTD(ZstdLevel::default()))
+            .build();
+        let sink = Sink {
+            writer: BufWriter::new(self.store.clone(), StorePath::from(q.output_key.as_str())),
+            hash: Sha256::new(),
+            bytes: 0,
+        };
+        let mut writer = AsyncArrowWriter::try_new(sink, first.schema(), Some(properties))
+            .map_err(Failure::storage)?;
+        let mut rows = 0u64;
+        for b in &out {
+            rows += b.num_rows() as u64;
+            writer.write(b).await.map_err(Failure::storage)?;
+        }
+        writer.finish().await.map_err(Failure::storage)?;
+        Ok(rows)
+    }
+
     async fn step_rows(&self, q: &Queued) -> Result<u64, Failure> {
+        if q.kind == "call" {
+            return self.call_rows(q).await;
+        }
         let mut inputs = Vec::new();
         for (alias, name) in &q.tables {
             let name = name.as_str().unwrap_or_default();

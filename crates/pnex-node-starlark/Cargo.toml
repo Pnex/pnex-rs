@@ -6,7 +6,7 @@ license.workspace = true
 description = "PNEX flow node — sandboxed Starlark executor (\"Functions\" registry)"
 
 [dependencies]
-pnex-core = { workspace = true }
+pnex-core = { workspace = true, features = ["starlark"] }
 edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
 edgelink-macro = { path = "../../vendor/edgelinkd/crates/macro" }
 config = { version = "0.15", default-features = false, features = ["convert-case", "toml"] }

@@ -26,6 +26,8 @@ steps:
       format: csv
       delimiter: "\t"
       header: false
+      # Raw tab-separated lines: a quote is a plain character.
+      quoted: false
       skip_invalid: true
       columns:
         - { name: id, at: 0 }

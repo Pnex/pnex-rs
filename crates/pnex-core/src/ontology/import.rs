@@ -286,35 +286,6 @@ impl utoipa::PartialSchema for Convert {
 #[cfg(feature = "openapi")]
 impl utoipa::ToSchema for Convert {}
 
-/// Who a press feed watches and how much it brings. Records: `ref`, `title`,
-/// `summary`, `url`, `source`, `date`, `lang`, `tone`, and `via` + `account`,
-/// the unique property that finds the company again.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct PressFeed {
-    #[serde(rename = "type")]
-    pub type_key: String,
-    /// Only the companies whose property holds one of these values.
-    pub only: PerObjectOnly,
-    /// Property holding other names of a company, comma-separated, besides
-    /// its title.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub aliases: String,
-    /// Unique properties that identify a company, tried in order. A company
-    /// with none of them cannot be linked and is not watched.
-    pub keys: Vec<String>,
-    /// Hours of the feed each run reads.
-    #[serde(default = "press_hours")]
-    pub hours: u32,
-}
-
-fn press_hours() -> u32 {
-    26
-}
-
-/// Longest window of a press feed, in hours.
-pub const PRESS_HOURS_MAX: u32 = 72;
-
 /// A pack setting read as a comma-separated list of codes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -528,10 +499,6 @@ pub struct Mapping {
     pub cursor_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor_param: Option<String>,
-    /// API: the articles of the GDELT press feed naming these companies,
-    /// instead of pages (account-mapping.md D539).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub press_feed: Option<PressFeed>,
     /// The records are dated values of this object (D541).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observations: Option<crate::markets::ObservationTarget>,
@@ -670,21 +637,6 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
     for (i, step) in m.steps.iter().enumerate() {
         if step.check_deployable().is_some() {
             return Err(ferr(format!("steps.{i}"), FIELD_INVALID));
-        }
-    }
-    if let Some(p) = &m.press_feed {
-        let has = |k: &str| {
-            s.object_type(&p.type_key)
-                .is_some_and(|t| t.properties.iter().any(|d| d.key == k))
-        };
-        if !has(&p.only.property)
-            || p.only.values.is_empty()
-            || p.keys.is_empty()
-            || !p.keys.iter().all(|k| has(k))
-            || (!p.aliases.is_empty() && !has(&p.aliases))
-            || !(1..=PRESS_HOURS_MAX).contains(&p.hours)
-        {
-            return Err(ferr("press_feed", FIELD_INVALID));
         }
     }
     for (i, o) in m.objects.iter().enumerate() {

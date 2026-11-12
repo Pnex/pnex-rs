@@ -1,6 +1,6 @@
-//! Sandboxed Starlark executor — **shared lib** used by the `pnex-starlark` node
-//! and by the `pnex-flow-runtime --test-function` CLI (test ≡ runtime parity
-//! guaranteed by construction).
+//! Sandboxed Starlark executor — **shared lib** used by the `pnex-starlark` node,
+//! the `pnex-flow-runtime --test-function` CLI (test ≡ runtime parity
+//! guaranteed by construction) and the pipelines' `call` step (D936).
 
 use std::time::{Duration, Instant};
 
@@ -115,7 +115,7 @@ pub struct ExecOutcome {
     pub return_json: Option<serde_json::Value>,
     /// Declared outputs — drive the key→port routing of the object return
     /// (same contract as the JS wrapper).
-    pub outputs: Vec<pnex_core::FunctionOutput>,
+    pub outputs: Vec<crate::FunctionOutput>,
     pub logs: Vec<String>,
     pub duration_ms: u64,
 }
@@ -124,8 +124,8 @@ pub struct ExecOutcome {
 /// (position extracted from the Display `file:line:col`) → `compile_check` (missing handle / module evaluation error).
 /// No execution of user code beyond the evaluation of the
 /// defs-only module (already the contract of `compile_check`).
-pub fn check(code: &str) -> Vec<pnex_core::FunctionDiagnostic> {
-    use pnex_core::FunctionDiagnostic;
+pub fn check(code: &str) -> Vec<crate::FunctionDiagnostic> {
+    use crate::FunctionDiagnostic;
     let mut diagnostics = Vec::new();
     match AstModule::parse("pnex_function.star", code.to_owned(), &Dialect::Standard) {
         Err(e) => {
@@ -188,7 +188,7 @@ pub fn compile_check(code: &str) -> Result<(), String> {
 /// wall-time deadline.
 pub fn execute(
     code: &str,
-    sig: &pnex_core::FunctionSignature,
+    sig: &crate::FunctionSignature,
     msg: &serde_json::Value,
     timeout_ms: u64,
 ) -> anyhow::Result<ExecOutcome> {
@@ -199,13 +199,13 @@ pub fn execute(
 /// `pack_setting("pack.key", default)` inside its functions.
 pub fn execute_with(
     code: &str,
-    sig: &pnex_core::FunctionSignature,
+    sig: &crate::FunctionSignature,
     msg: &serde_json::Value,
     timeout_ms: u64,
     settings: &serde_json::Map<String, serde_json::Value>,
 ) -> anyhow::Result<ExecOutcome> {
     let started = Instant::now();
-    let inputs_obj = pnex_core::build_inputs(&sig.inputs, msg);
+    let inputs_obj = crate::build_inputs(&sig.inputs, msg);
     let script = build_script(code, &inputs_obj, msg, settings);
 
     let timeout = Duration::from_millis(timeout_ms);
@@ -235,6 +235,53 @@ pub fn execute_with(
             duration_ms: started.elapsed().as_millis() as u64,
         })
     })
+}
+
+/// Ticks a `call` step may spend: a table is bigger than one message.
+pub const CALL_MAX_TICKS: u64 = 200_000_000;
+
+/// A pipeline's `call` step (D936): `handle(rows)` gets the working table
+/// as a list of dicts (values as text, an empty cell absent) and returns the
+/// rows of the next table, a list of dicts. Same sandbox as a function: no
+/// I/O, bounded heap, ticks and wall time; `pack_setting` reads `settings`.
+pub fn call_rows(
+    code: &str,
+    rows: &[serde_json::Value],
+    settings: &serde_json::Map<String, serde_json::Value>,
+    timeout_ms: u64,
+) -> anyhow::Result<Vec<serde_json::Map<String, serde_json::Value>>> {
+    let rows_lit = starlark_str_lit(&serde_json::to_string(rows)?);
+    let settings_lit = starlark_str_lit(&serde_json::to_string(settings)?);
+    let script = format!(
+        "{}\n# ── PNEX driver (generated) ──\n\
+         pnex_settings = json.decode({settings_lit})\n\
+         def pack_setting(key, default = None):\n    return pnex_settings.get(key, default)\n\
+         pnex_out = json.encode(handle(json.decode({rows_lit})))\n",
+        code.trim_end()
+    );
+    let ast = parse_sandboxed(script).map_err(|e| anyhow::anyhow!(e))?;
+    let globals = sandbox_globals();
+    let text = Module::with_temp_heap(|module| {
+        let mut eval = Evaluator::new(&module);
+        apply_limits(&mut eval, Duration::from_millis(timeout_ms));
+        let _ = eval.set_max_tick_count(CALL_MAX_TICKS);
+        eval.eval_module(ast, &globals)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        module
+            .get("pnex_out")
+            .and_then(|v| v.unpack_str().map(str::to_string))
+            .ok_or_else(|| anyhow::anyhow!("handle: a list of rows expected"))
+    })?;
+    match serde_json::from_str(&text)? {
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .map(|r| match r {
+                serde_json::Value::Object(o) => Ok(o),
+                _ => Err(anyhow::anyhow!("handle: each row must be a dict")),
+            })
+            .collect(),
+        _ => Err(anyhow::anyhow!("handle: a list of rows expected")),
+    }
 }
 
 /// Builds the full script: user code (defining `handle`) +
@@ -297,7 +344,7 @@ fn apply_limits(eval: &mut Evaluator, timeout: Duration) {
 /// `payload`); array → one element per port; bare value → port 0.
 pub fn map_return(
     return_json: &Option<serde_json::Value>,
-    outputs: &[pnex_core::FunctionOutput],
+    outputs: &[crate::FunctionOutput],
     incoming: &serde_json::Value,
 ) -> Vec<Option<serde_json::Value>> {
     match return_json {
@@ -389,16 +436,44 @@ fn extract_pos(text: &str) -> (Option<u32>, Option<u32>) {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_call_turns_a_table_into_another() {
+        let code = "def handle(rows):\n    return [{'k': r['a'] + '!', 'n': len(rows)} for r in rows if r.get('a')]\n";
+        let rows = vec![serde_json::json!({"a": "x"}), serde_json::json!({"b": "y"})];
+        let out = call_rows(code, &rows, &Default::default(), 1000).unwrap();
+        assert_eq!(
+            out,
+            vec![serde_json::json!({"k": "x!", "n": 2})
+                .as_object()
+                .unwrap()
+                .clone()]
+        );
+        let bad = call_rows(
+            "def handle(rows):\n    return 3\n",
+            &rows,
+            &Default::default(),
+            1000,
+        );
+        assert!(bad.is_err());
+        let endless = call_rows(
+            "def handle(rows):\n    for i in range(100000000):\n        pass\n    return []\n",
+            &rows,
+            &Default::default(),
+            200,
+        );
+        assert!(endless.is_err(), "a deadline stops it");
+    }
+
     fn exec(code: &str, msg: serde_json::Value, timeout_ms: u64) -> anyhow::Result<ExecOutcome> {
         execute(code, &Default::default(), &msg, timeout_ms)
     }
 
     /// One declared number input `t`, default 0.
-    fn sig_t() -> pnex_core::FunctionSignature {
-        pnex_core::FunctionSignature {
-            inputs: vec![pnex_core::FunctionInput {
+    fn sig_t() -> crate::FunctionSignature {
+        crate::FunctionSignature {
+            inputs: vec![crate::FunctionInput {
                 name: "t".into(),
-                ty: pnex_core::FunctionType::Number,
+                ty: crate::FunctionType::Number,
                 default: Some(serde_json::json!(0)),
                 desc: None,
             }],
@@ -595,9 +670,9 @@ mod tests {
 
     #[test]
     fn map_return_routes_by_key_to_declared_outputs() {
-        let out = |name: &str| pnex_core::FunctionOutput {
+        let out = |name: &str| crate::FunctionOutput {
             name: name.into(),
-            ty: pnex_core::FunctionType::Bool,
+            ty: crate::FunctionType::Bool,
             desc: None,
         };
         let outputs = vec![out("out_bool"), out("out_temp")];

@@ -73,7 +73,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.13.0"
+version: "1.14.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -790,22 +790,15 @@ imports:
       links:
         - { type: filed_by, from: filing, to: company }
   - name: Press leads (GDELT)
-    source: api
-    source_url: "https://data.gdeltproject.org/gdeltv2"
+    source: file
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: market_press
+      pipeline: markets/market_press
       name: Press leads
       names: {fr: "Pistes presse (GDELT)"}
       description: The world's press of the last day naming a company followed, to check against primary sources. Source GDELT Project, gdeltproject.org.
-      format: json
-      press_feed:
-        type: organization
-        only: { property: market_followed, values: [followed] }
-        aliases: market_names
-        keys: [cik, lei]
-        hours: 26
       objects:
         - as: news
           type: market_news

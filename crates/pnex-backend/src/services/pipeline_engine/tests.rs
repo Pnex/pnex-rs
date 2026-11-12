@@ -61,6 +61,28 @@ impl Transport for Replay {
 struct InProcess;
 
 impl SqlRunner for InProcess {
+    async fn call(
+        &self,
+        code: &str,
+        settings: &serde_json::Map<String, serde_json::Value>,
+        input: Option<Arc<Batches>>,
+    ) -> Result<Option<Arc<Batches>>, Failure> {
+        let batches: Vec<_> = match input {
+            Some(f) => f.read()?.collect::<Result<_, _>>()?,
+            None => Vec::new(),
+        };
+        let out = pnex_pipeline_worker::step::call_in_memory(code, settings, &batches)
+            .map_err(|e| fail("sql_failed", json!({ "reason": e })))?;
+        let Some(first) = out.first() else {
+            return Ok(None);
+        };
+        let mut w = super::blob::BatchWriter::new(first.schema())?;
+        for b in &out {
+            w.write(b)?;
+        }
+        w.finish().map(Some)
+    }
+
     async fn run(
         &self,
         sql: &str,
@@ -201,10 +223,23 @@ async fn every_shipped_pipeline_passes_its_tests() {
                 now: today.and_hms_opt(12, 0, 0).unwrap(),
                 secrets,
                 objects: case.objects.clone().into_iter().collect(),
-                titles: case
-                    .titles
+                functions: super::store::call_functions(&sp.pack, &sp.doc),
+                extra: case
+                    .extra
                     .iter()
-                    .map(|(k, t)| (k.clone(), t.clone().into_iter().collect()))
+                    .map(|(k, by_value)| {
+                        let by_value = by_value
+                            .iter()
+                            .map(|(v, cols)| {
+                                let cols = cols
+                                    .iter()
+                                    .map(|(c, x)| (c.clone(), serde_json::Value::String(x.clone())))
+                                    .collect();
+                                (v.clone(), cols)
+                            })
+                            .collect();
+                        (k.clone(), by_value)
+                    })
                     .collect(),
                 ..Default::default()
             };

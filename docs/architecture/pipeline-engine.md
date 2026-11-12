@@ -525,3 +525,24 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
 |---|---|
 | Date de premier signalement UCDP : le minimum des 8 premières dates de `source_date` (`least` sur `split_part`, le worker n'a pas les tableaux) | fonctions de tableaux dans la liste blanche du worker, si un cas le demande |
 | Un en-tête CSV absent est un changement de forme, même pour une colonne `optional` (qui tolère une cellule vide) : un export UCDP sans `adm_1` échouerait | à garder : c'est le signal voulu |
+- **2026-11-13** : **étape `call` (Starlark)**, choix de Shan pour la presse GDELT. Le bac à sable
+  des fonctions passe dans `pnex-core` (feature `starlark`, réexporté tel quel par le nœud de
+  flow : même code, mêmes limites) ; `call_rows` : `handle(rows)` reçoit la table de travail en
+  liste de dicts (valeurs texte) et rend les lignes de la suivante. Elle tourne **dans le worker**
+  comme une requête (file `pipeline_step_jobs`, colonnes `kind` et `settings`, migration
+  000150), 5 min et 200 000 lignes au plus ; les tests de rejeu jouent la même fonction en
+  processus. Le code vient d'une section `pipeline_functions:` du pack (jamais installée dans le
+  registre des fonctions d'une org, dont le contrat `handle(inputs, msg)` diffère), nommée
+  `<nom>` ou `<pack>/<nom>`. **Presse GDELT ×2** (`prospecting_b2b_fr/press_gdelt`,
+  `markets/market_press`) : sociétés suivies par trois axes d'objets (`columns` : autres
+  propriétés en colonnes), noms et mot le plus long par `companies/press_names`, recherche
+  rapide en SQL (`strpos` sur les organisations), correspondance exacte et digest par
+  `companies/press_digest` (titre central, lisible d'abord). Ajouts génériques : `quoted: false`
+  (lignes brutes à tabulations, aussi pour GDELT événements), `enumerate`/`fetch` `for_each` sur
+  une table issue d'un `sql` ou d'un `call`. Supprimés : `press_feed`, `fetch_press`,
+  `pnex-core/src/gkg.rs` (472 lignes). Plus aucun flux codé en Rust dans les imports.
+
+| Écart | Où il se lève |
+|---|---|
+| L'heure en cours n'est pas lue (fin des périodes exclue) : une tranche publiée dans l'heure attend le run suivant | à garder pour un run quotidien |
+| Les lignes passent au bac à sable en JSON dans le texte du script : une table de 200 000 lignes larges peut dépasser le tas de 64 Mo | passage des lignes par valeurs Starlark si un cas le demande |

@@ -1,0 +1,80 @@
+# The world's press of the last day naming a company followed, to check
+# against primary sources: one lead per company. Source GDELT Project.
+key: market_press
+name: Press leads (GDELT)
+hosts: [data.gdeltproject.org]
+steps:
+  # The companies watched, each by the first unique key it holds.
+  - enumerate: { as: by_cik, cross: [{ as: cik, objects: { type: organization, property: cik, only: { market_followed: [followed] }, title: name, columns: [market_names] } }] }
+  - enumerate: { as: by_lei, cross: [{ as: lei, objects: { type: organization, property: lei, only: { market_followed: [followed] }, title: name, columns: [cik, market_names] } }] }
+  - sql:
+      as: watched
+      sql: |
+        SELECT 'cik' AS via, cik AS account, name, market_names AS aliases FROM by_cik
+        UNION ALL SELECT 'lei', lei, name, market_names FROM by_lei WHERE cik IS NULL
+  - call: { as: names, from: watched, function: companies/press_names }
+  # Nothing watched: no file is read.
+  - sql: { as: gate, sql: "SELECT 1 AS go FROM names LIMIT 1" }
+  # One file every 15 minutes, and its translated twin.
+  - enumerate:
+      as: slices
+      for_each: gate
+      cross:
+        - { as: hour, periods: hour, from: "-26h" }
+        - { as: quarter, values: ["00", "15", "30", "45"] }
+        - { as: kind, values: [gkg, translation.gkg] }
+  - fetch:
+      as: zip
+      for_each: slices
+      url: "http://data.gdeltproject.org/gdeltv2/{{hour_y}}{{hour_m}}{{hour_d}}{{hour_h}}{{quarter}}00.{{kind}}.csv.zip"
+      missing_is_empty: true
+  - unpack: { as: files, from: zip, entries: ["*.csv"] }
+  - read:
+      as: articles
+      from: files
+      format: csv
+      delimiter: "\t"
+      header: false
+      quoted: false
+      skip_invalid: true
+      where: { orgs: ["?*"] }
+      columns:
+        - { name: date, at: 1 }
+        - { name: source, at: 3, optional: true }
+        - { name: url, at: 4 }
+        - { name: orgs, at: 13 }
+        - { name: tone, at: 15, optional: true }
+        - { name: translation, at: 25, optional: true }
+        - { name: extras, at: 26, optional: true }
+  # A quick text search first: the articles whose organizations hold a
+  # company's longest word; the call then matches whole words.
+  - sql:
+      as: candidates
+      sql: |
+        SELECT a.date, a.source, a.url, a.orgs, a.tone, a.translation,
+               substr(a.extras, strpos(a.extras, '<PAGE_TITLE>') + 12,
+                      strpos(a.extras, '</PAGE_TITLE>') - strpos(a.extras, '<PAGE_TITLE>') - 12) AS title,
+               n.via, n.account, n.name_key
+        FROM articles AS a
+        JOIN names AS n
+          ON strpos(translate(lower(a.orgs), 'àâäçéèêëîïôöùûüÿ', 'aaaceeeeiioouuuy'), n.probe) > 0
+        WHERE strpos(a.extras, '<PAGE_TITLE>') > 0
+          AND strpos(a.extras, '</PAGE_TITLE>') > strpos(a.extras, '<PAGE_TITLE>')
+  - call: { as: signals, from: candidates, function: companies/press_digest }
+  - write: { from: signals, table: { name: market_press, replace: true } }
+tests:
+  - name: one lead per company
+    today: "2026-11-02"
+    objects:
+      "organization.cik?market_followed=followed?columns=market_names": ["0000000001"]
+    extra:
+      "organization.cik?market_followed=followed?columns=market_names": { "0000000001": { name: INITECH } }
+    given:
+      "http://data.gdeltproject.org/gdeltv2/20261102114500.gkg.csv.zip": gdelt_gkg.zip
+    expect:
+      candidates:
+        rows: 6
+      signals:
+        rows: 1
+        contains:
+          - { ref: "press:cik:0000000001:2026-11-02", url: "https://b" }
