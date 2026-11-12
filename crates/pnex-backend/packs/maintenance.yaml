@@ -11,10 +11,15 @@
 # Since 1.5.0 controllers and compressors, links that propagate a failure
 # (regulates, powers, cools, feeds) and the cause → effect pairs of the causal
 # chain detector (cases-workspace.md D905, D906).
+# Since 1.6.0 work orders, spare parts, stock locations and a stock kept as a
+# ledger of movements (ontology.md annex C): closing a work order issues the
+# parts it used, and the stock levels flow sums the movements per part and
+# location and flags those under their minimum. Suppliers, prices and
+# technicians live in `maintenance_partners`.
 key: maintenance
 name: Augmented maintenance
 names: {fr: "Maintenance augmentée"}
-version: "1.5.0"
+version: "1.6.0"
 description: Sites, lines, machines and pumps; sensors bound to equipment series survive sensor replacements.
 descriptions: {fr: "Sites, lignes, machines et pompes ; les capteurs liés aux séries des équipements survivent à leur remplacement."}
 types:
@@ -22,7 +27,7 @@ types:
     name: Site
     names: {fr: "Site"}
     icon: map-pin
-    may_contain: [line, controller, compressor]
+    may_contain: [line, controller, compressor, stock_location]
     may_be_contained_in: [folder]
     properties:
       - { key: address, name: Address, names: {fr: "Adresse"}, kind: text, max_len: 500 }
@@ -121,6 +126,109 @@ types:
     properties:
       - { key: schedule, name: Schedule, names: {fr: "Récurrence"}, kind: recurrence, required: true }
       - { key: instructions, name: Instructions, names: {fr: "Consignes"}, kind: text, max_len: 2000 }
+  - key: work_order
+    name: Work order
+    names: {fr: "Ordre de travail"}
+    icon: file-text
+    may_be_contained_in: [folder]
+    properties:
+      - { key: reference, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 64, unique: true }
+      - key: kind
+        name: Kind
+        names: {fr: "Nature"}
+        kind: enum
+        values: [preventive, corrective, inspection, improvement]
+        labels: {preventive: {fr: "Préventif", en: "Preventive"}, corrective: {fr: "Correctif", en: "Corrective"}, inspection: {fr: "Inspection", en: "Inspection"}, improvement: {fr: "Amélioration", en: "Improvement"}}
+        required: true
+        indexed: true
+      - key: state
+        name: State
+        names: {fr: "État"}
+        kind: enum
+        values: [requested, planned, in_progress, on_hold, done, cancelled]
+        labels: {requested: {fr: "Demandé", en: "Requested"}, planned: {fr: "Planifié", en: "Planned"}, in_progress: {fr: "En cours", en: "In progress"}, on_hold: {fr: "En attente", en: "On hold"}, done: {fr: "Terminé", en: "Done"}, cancelled: {fr: "Annulé", en: "Cancelled"}}
+        colors: {on_hold: amber, cancelled: gray}
+        required: true
+        indexed: true
+      - key: priority
+        name: Priority
+        names: {fr: "Priorité"}
+        kind: enum
+        values: [low, normal, high, urgent]
+        labels: {low: {fr: "Basse", en: "Low"}, normal: {fr: "Normale", en: "Normal"}, high: {fr: "Haute", en: "High"}, urgent: {fr: "Urgente", en: "Urgent"}}
+        colors: {high: amber, urgent: red}
+        indexed: true
+      - { key: requested_on, name: Requested on, names: {fr: "Demandé le"}, kind: date, indexed: true }
+      - { key: due_on, name: Due on, names: {fr: "Échéance"}, kind: date, indexed: true }
+      - { key: done_on, name: Done on, names: {fr: "Terminé le"}, kind: date, indexed: true }
+      - { key: description, name: Description, names: {fr: "Description"}, kind: text, max_len: 4000 }
+      - { key: report, name: Report, names: {fr: "Compte rendu"}, kind: text, max_len: 4000 }
+      - { key: labor_hours, name: Labor (hours), names: {fr: "Main-d'œuvre (heures)"}, kind: number, min: 0 }
+      - { key: stock_location, name: Parts taken from, names: {fr: "Pièces prises dans"}, kind: ref, to_type: stock_location }
+      # Written by the flow "Maintenance · parts issued on closure".
+      - { key: stock_issued_on, name: Parts issued on, names: {fr: "Pièces sorties le"}, kind: date }
+  - key: spare_part
+    name: Spare part
+    names: {fr: "Pièce détachée"}
+    icon: package
+    may_be_contained_in: [folder]
+    properties:
+      - { key: part_number, name: Part number, names: {fr: "Référence interne"}, kind: text, max_len: 64, required: true, unique: true }
+      - { key: manufacturer, name: Manufacturer, names: {fr: "Fabricant"}, kind: text, max_len: 255 }
+      - { key: manufacturer_ref, name: Manufacturer reference, names: {fr: "Référence fabricant"}, kind: text, max_len: 64, indexed: true }
+      - { key: unit, name: Unit, names: {fr: "Unité"}, kind: text, max_len: 16 }
+      - { key: unit_cost, name: Unit cost, names: {fr: "Coût unitaire"}, kind: money }
+      - { key: datasheet, name: Datasheet, names: {fr: "Fiche technique"}, kind: url }
+  - key: stock_location
+    name: Stock location
+    names: {fr: "Emplacement de stock"}
+    icon: box
+    may_be_contained_in: [site, folder]
+    properties:
+      - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 64, required: true, unique: true }
+      - key: kind
+        name: Kind
+        names: {fr: "Nature"}
+        kind: enum
+        values: [warehouse, site, vehicle]
+        labels: {warehouse: {fr: "Magasin", en: "Warehouse"}, site: {fr: "Sur site", en: "On site"}, vehicle: {fr: "Véhicule", en: "Vehicle"}}
+        indexed: true
+  # The stock is the sum of its movements: a movement is never edited to
+  # change a count, a correction is a new adjustment.
+  - key: stock_movement
+    name: Stock movement
+    names: {fr: "Mouvement de stock"}
+    icon: activity
+    may_be_contained_in: [folder]
+    properties:
+      - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 128, required: true, unique: true }
+      - { key: part, name: Part, names: {fr: "Pièce"}, kind: ref, to_type: spare_part, required: true, indexed: true }
+      - { key: location, name: Location, names: {fr: "Emplacement"}, kind: ref, to_type: stock_location, required: true, indexed: true }
+      - { key: quantity, name: Quantity (+ in, − out), names: {fr: "Quantité (+ entrée, − sortie)"}, kind: number, required: true }
+      - key: reason
+        name: Reason
+        names: {fr: "Motif"}
+        kind: enum
+        values: [receipt, issue, adjustment, transfer]
+        labels: {receipt: {fr: "Réception", en: "Receipt"}, issue: {fr: "Sortie", en: "Issue"}, adjustment: {fr: "Inventaire", en: "Adjustment"}, transfer: {fr: "Transfert", en: "Transfer"}}
+        required: true
+        indexed: true
+      - { key: moved_on, name: Date, names: {fr: "Date"}, kind: date, required: true, indexed: true }
+      - { key: work_order, name: Work order, names: {fr: "Ordre de travail"}, kind: ref, to_type: work_order }
+  # One line per part and location; on_hand is written by the flow
+  # "Maintenance · stock levels", the minimum by the org.
+  - key: stock_level
+    name: Stock level
+    names: {fr: "Niveau de stock"}
+    icon: layers
+    may_be_contained_in: [folder]
+    properties:
+      - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 128, required: true, unique: true }
+      - { key: part, name: Part, names: {fr: "Pièce"}, kind: ref, to_type: spare_part, required: true, indexed: true }
+      - { key: location, name: Location, names: {fr: "Emplacement"}, kind: ref, to_type: stock_location, required: true, indexed: true }
+      - { key: on_hand, name: On hand, names: {fr: "En stock"}, kind: number }
+      - { key: min_quantity, name: Reorder point, names: {fr: "Seuil de réappro"}, kind: number, min: 0 }
+      - { key: below_min, name: Below reorder point, names: {fr: "Sous le seuil"}, kind: bool, indexed: true }
 link_types:
   - key: maintains
     name: maintains
@@ -169,6 +277,37 @@ link_types:
     from_types: [pump, machine]
     to_types: [pump, machine]
     one_target: true
+  - key: work_order_on
+    name: concerns
+    names: {fr: "porte sur"}
+    inverse_name: has work order
+    inverse_names: {fr: "a pour ordre de travail"}
+    from_types: [work_order]
+    to_types: "*"
+  - key: from_plan
+    name: comes from plan
+    names: {fr: "vient du plan"}
+    inverse_name: produced work order
+    inverse_names: {fr: "a produit l'ordre de travail"}
+    from_types: [work_order]
+    to_types: [maintenance_plan]
+    one_target: true
+  - key: uses_part
+    name: uses part
+    names: {fr: "utilise la pièce"}
+    inverse_name: is used by
+    inverse_names: {fr: "est utilisée par"}
+    from_types: [work_order]
+    to_types: [spare_part]
+    attributes:
+      - { key: quantity, name: Quantity, names: {fr: "Quantité"}, kind: number, min: 0, required: true }
+  - key: fits
+    name: fits
+    names: {fr: "se monte sur"}
+    inverse_name: takes part
+    inverse_names: {fr: "reçoit la pièce"}
+    from_types: [spare_part]
+    to_types: "*"
 settings:
   - key: causal_chains_enabled
     name: Causal chains in cases
@@ -185,3 +324,136 @@ causal_pairs:
   - { cause: range.maintenance, effect: device.offline, max_gap_min: 480, prior: 0.5 }
   - { cause: device.offline, effect: alert, max_gap_min: 15, prior: 0.5 }
   - { cause: series.threshold, effect: alert, max_gap_min: 30, prior: 0.5 }
+functions:
+  - name: maint_issue_parts
+    language: starlark
+    description: "A work order done gives one stock movement out per part it used (link uses part, its quantity), taken from its stock location; one with no part is only marked issued."
+    outputs:
+      - {name: moves, ty: any, desc: "The movements to write, as a list"}
+      - {name: done, ty: any, desc: "The work order, marked issued today"}
+    code: |
+      def handle(inputs, msg):
+          o = msg["object"]
+          p = msg["payload"]
+          day = p.get("done_on") or msg.get("today", "")
+          moves = []
+          for l in msg.get("links", {}).get("uses_part", []):
+              q = l.get("attributes", {}).get("quantity") or 0
+              if l.get("direction") != "out" or q <= 0:
+                  continue
+              part = l["other"]
+              moves.append({
+                  "title": o["title"] + " · " + part["title"],
+                  "props": {
+                      "ref": "wo:" + o["id"] + ":" + part["id"],
+                      "part": part["id"],
+                      "location": p.get("stock_location", ""),
+                      "quantity": -q,
+                      "reason": "issue",
+                      "moved_on": day,
+                      "work_order": o["id"],
+                  },
+                  "mark": {"work_order": o["id"], "today": msg.get("today", "")},
+              })
+          if not moves:
+              return [None, {"payload": {"stock_issued_on": msg.get("today", "")}, "object_id": o["id"]}]
+          # Without a location the work order waits, unmarked, until one is set.
+          if not p.get("stock_location"):
+              return [None, None]
+          return [{"payload": moves}, None]
+  - name: maint_unwrap
+    language: starlark
+    description: "One element of a split list becomes the message an object upsert writes: its properties, its title, and what follows the write."
+    code: |
+      def handle(inputs, msg):
+          e = msg["payload"]
+          return {"payload": e["props"], "title": e["title"], "mark": e.get("mark")}
+  - name: maint_issued_mark
+    language: starlark
+    description: "A movement written marks its work order issued: a work order is marked only once one of its movements is in the stock."
+    code: |
+      def handle(inputs, msg):
+          m = msg.get("mark")
+          if not m:
+              return None
+          return {"payload": {"stock_issued_on": m["today"]}, "object_id": m["work_order"]}
+  - name: maint_stash_levels
+    language: starlark
+    description: "Keeps the stock levels read aside while the movements are summed."
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {}, "levels": msg["payload"]}
+  - name: maint_levels
+    language: starlark
+    description: "Sums of the movements per part and location become stock levels; only the levels whose quantity or reorder flag changed are written."
+    code: |
+      def handle(inputs, msg):
+          known = {}
+          for l in msg.get("levels", []):
+              pr = l.get("properties", {})
+              known[pr.get("ref", "")] = pr
+          out = []
+          for g in msg["payload"].get("groups", []):
+              key = g.get("key", [])
+              if len(key) < 2 or not key[0] or not key[1]:
+                  continue
+              part, loc = key[0], key[1]
+              v = g.get("values", {}).get("on_hand", {}).get("value") or 0
+              ref = part + ":" + loc
+              old = known.get(ref)
+              mn = old.get("min_quantity") if old else None
+              below = mn != None and v < mn
+              if old and old.get("on_hand") == v and (old.get("below_min") or False) == below:
+                  continue
+              labels = [x for x in g.get("labels", []) if x]
+              title = " · ".join(labels) if len(labels) == 2 else ref
+              out.append({"title": title, "props": {"ref": ref, "part": part, "location": loc, "on_hand": v, "below_min": below}})
+          if not out:
+              return None
+          return {"payload": out}
+flows:
+  - name: "Maintenance · parts issued on closure"
+    note: "Every hour, up to 100 work orders done whose parts are not issued yet give one stock movement out per part they used (link uses part and its quantity), from their location 'Parts taken from'; the work order is then marked issued. A work order without location waits until one is set. Deploy it, then the flow 'Maintenance · stock levels' counts what is left."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "15 * * * *" }, outputs: [{ port: 0, targets: [done] }] }
+        - id: done
+          kind: ontology_query
+          config:
+            object_type: work_order
+            filters: [{ key: state, op: eq, value: done }, { key: stock_issued_on, op: missing }]
+            order_by: done_on
+            limit: 100
+            with_links: [uses_part]
+          outputs: [{ port: 0, targets: [issue] }]
+        - { id: issue, kind: pnex_function, config: { function_name: maint_issue_parts, language: starlark }, outputs: [{ port: 0, targets: [split] }, { port: 1, targets: [marked] }] }
+        - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [unwrap] }] }
+        - { id: unwrap, kind: pnex_function, config: { function_name: maint_unwrap, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: stock_movement, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [mark] }] }
+        - { id: mark, kind: pnex_function, config: { function_name: maint_issued_mark, language: starlark }, outputs: [{ port: 0, targets: [marked] }] }
+        - { id: marked, kind: object_upsert, config: { object_type: work_order, key: id } }
+  - name: "Maintenance · stock levels"
+    note: "Every hour, the stock movements are summed per part and location into stock levels (one line per part and location, created at its first movement). A level under its reorder point (set by you on the level) is flagged 'Below reorder point': filter the list on it, or add the org's notification node after the write. Only levels that changed are written."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "45 * * * *" }, outputs: [{ port: 0, targets: [levels] }] }
+        - id: levels
+          kind: ontology_query
+          config:
+            object_type: stock_level
+            limit: 500
+            output: array
+          outputs: [{ port: 0, targets: [stash] }]
+        - { id: stash, kind: pnex_function, config: { function_name: maint_stash_levels, language: starlark }, outputs: [{ port: 0, targets: [sums] }] }
+        - id: sums
+          kind: ontology_aggregate
+          config:
+            object_type: stock_movement
+            group_by: [{ property: part }, { property: location }]
+            metrics: [{ key: on_hand, op: sum, property: quantity }]
+            limit: 1000
+          outputs: [{ port: 0, targets: [compute] }]
+        - { id: compute, kind: pnex_function, config: { function_name: maint_levels, language: starlark }, outputs: [{ port: 0, targets: [split] }] }
+        - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [unwrap] }] }
+        - { id: unwrap, kind: pnex_function, config: { function_name: maint_unwrap, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: stock_level, key: ref } }

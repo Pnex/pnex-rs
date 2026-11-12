@@ -31,6 +31,7 @@ pub const YAML_MAX_BYTES: usize = 256 * 1024;
 
 const SHIPPED: &[&str] = &[
     include_str!("../../../packs/maintenance.yaml"),
+    include_str!("../../../packs/maintenance_partners.yaml"),
     include_str!("../../../packs/investigation.yaml"),
     include_str!("../../../packs/media_coverage.yaml"),
     include_str!("../../../packs/companies.yaml"),

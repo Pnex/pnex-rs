@@ -1303,3 +1303,81 @@ proposition :
     (Pages L6), équipes et vue de charge, Gantt d'arrêt, flux `.ics` ;
   - **côté occurrences** : proposer l'action D183 (`start_maintenance`) à
     l'ouverture d'une occurrence ; jours en UTC.
+
+## Annexe C — GMAO générique : ordres de travail, pièces, stock, fournisseurs, QR (2026-11-12)
+
+Suite de l'annexe B. Objectif : une GMAO **générique**, valable pour tout
+corps de métier de la maintenance (froid, CVC, électricité, ascenseurs,
+cuisines professionnelles, plomberie, machines de production,
+multi-technique), posée sur la collecte et la mesure déjà en place
+(devices, séries d'objets D181, alertes, calendrier de maintenance). Aucun
+type ni aucune règle propre à un métier n'entre dans le moteur : tout vit
+dans les packs (garde `tests/engine_genericity.rs`), un métier ajoute au
+besoin sa couche (`maintenance_<métier>`, même règle que les couches pays).
+
+### C1. Choix (Shan, 2026-11-12)
+
+| Sujet | Choix |
+|---|---|
+| Ordre de travail (OT) | **Objet d'ontologie** `work_order` du pack Maintenance. La procédure Pages L6 s'y rattachera plus tard ; l'OT ne l'attend pas |
+| Stock de pièces | **Par emplacement** (magasin, site, véhicule du technicien), seuil de réapprovisionnement, sortie de stock à la clôture d'un OT |
+| Fournisseurs et prix | **Les `organization` du graphe** (pack Investigation, déjà partagé avec le CRM) : une fiche par société, pas de type « fournisseur » à part |
+| QR code | Sur la fiche de chaque objet, planche d'étiquettes imprimable, scan dans l'app mobile |
+
+### C2. Modèle (lot 1, codé le 2026-11-12)
+
+Pack **Maintenance 1.6.0** :
+
+- `work_order` : référence, nature (préventif, correctif, inspection,
+  amélioration), état (demandé, planifié, en cours, en attente, terminé,
+  annulé), priorité, dates (demande, échéance, fin), description, compte
+  rendu, heures de main-d'œuvre, emplacement d'où sortent les pièces ;
+- `spare_part` : référence interne (unique), fabricant et sa référence,
+  unité, coût unitaire, fiche technique ;
+- `stock_location` : code, nature (magasin, sur site, véhicule) ; contenu
+  dans un site ou un dossier ;
+- `stock_movement` : **le stock est un journal** — pièce, emplacement,
+  quantité signée, motif (réception, sortie, inventaire, transfert), date,
+  OT. On ne corrige jamais un mouvement, on en ajoute un ; l'historique
+  et l'audit sont gratuits, et deux sorties simultanées ne s'écrasent pas ;
+- `stock_level` : une ligne par pièce × emplacement, `on_hand` calculé,
+  seuil `min_quantity` posé par l'org, drapeau `below_min` ;
+- liens : `work_order_on` (OT → **tout objet**, un device nu compris),
+  `from_plan` (OT → plan de maintenance), `uses_part` (OT → pièce,
+  attribut quantité), `fits` (pièce → tout objet : nomenclature).
+
+Deux modèles de flows livrés en brouillon (jamais déployés par
+l'installation, D123) :
+
+- **pièces sorties à la clôture** : chaque heure, un OT terminé donne un
+  mouvement de sortie par pièce utilisée, clé `wo:<OT>:<pièce>` (rejouer
+  ne double rien), puis l'OT est marqué « pièces sorties le » ; sans
+  emplacement, l'OT attend ;
+- **niveaux de stock** : chaque heure, somme des mouvements par pièce et
+  emplacement (agrégat en base), seuls les niveaux qui changent sont
+  écrits, drapeau sous le seuil.
+
+Pack **Maintenance partners 1.0.0** (`requires: [maintenance,
+investigation]`) :
+
+- `supplies` (organisation → pièce) : prix unitaire (`money`), référence
+  fournisseur, délai, minimum de commande, date du prix, préféré ;
+- `assigned_to` (OT → personne : le technicien), `performed_by`
+  (OT → organisation : le sous-traitant).
+
+Limites connues du lot 1 (raccourcis assumés) : 500 niveaux et
+1000 couples pièce × emplacement par passe ; un niveau sans aucun
+mouvement n'est jamais signalé sous le seuil ; un OT dont une partie
+seulement des mouvements s'écrit est marqué quand même.
+
+### C3. Lots suivants
+
+| Lot | Contenu |
+|---|---|
+| C-QR1 | QR sur la fiche objet (lien profond, crate `qrcode` déjà dans le front) ; planche d'étiquettes imprimable pour une sélection |
+| C-QR2 | Scan dans l'app mobile : caméra → objet ouvert |
+| C-PV | OT préventif créé depuis une occurrence de plan qui devient due (annexe B) |
+| C-AL | Une alerte d'un device lié à un équipement propose un OT correctif (courbes et pré-diagnostic joints) |
+| C-DOC | Document d'intervention par métier = modèle de page du pack métier, rempli depuis l'OT et les mesures |
+| C-ACH | Demande d'achat depuis un niveau sous le seuil, fournisseur préféré proposé |
+| C-UI | Écrans dédiés : file des OT d'un technicien, fiche pièce avec stock par emplacement et prix par fournisseur |

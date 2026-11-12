@@ -1,0 +1,41 @@
+# Pack "Maintenance partners" (ontology.md annex C): who supplies the spare
+# parts and at what price, who carries out a work order. Suppliers and
+# contractors are the organizations of the graph, technicians its people:
+# one record per company or person, shared with every other pack.
+key: maintenance_partners
+name: Maintenance partners
+names: {fr: "Partenaires de maintenance"}
+version: "1.0.0"
+requires: [maintenance, investigation]
+description: "Suppliers of spare parts with their prices, references and lead times; technicians and contractors of work orders. Questions: who sells this part cheapest? Which work orders are assigned to this technician?"
+descriptions: {fr: "Les fournisseurs des pièces détachées avec leurs prix, références et délais ; les techniciens et sous-traitants des ordres de travail. Questions : qui vend cette pièce le moins cher ? Quels ordres de travail sont confiés à ce technicien ?"}
+link_types:
+  - key: supplies
+    name: supplies
+    names: {fr: "fournit"}
+    inverse_name: is supplied by
+    inverse_names: {fr: "est fournie par"}
+    from_types: [organization]
+    to_types: [spare_part]
+    attributes:
+      - { key: unit_price, name: Unit price, names: {fr: "Prix unitaire"}, kind: money }
+      - { key: supplier_ref, name: Supplier reference, names: {fr: "Référence fournisseur"}, kind: text, max_len: 64 }
+      - { key: lead_time_days, name: Lead time (days), names: {fr: "Délai (jours)"}, kind: number, min: 0 }
+      - { key: min_order_quantity, name: Minimum order, names: {fr: "Minimum de commande"}, kind: number, min: 0 }
+      - { key: price_on, name: Price as of, names: {fr: "Prix au"}, kind: date }
+      - { key: preferred, name: Preferred, names: {fr: "Préféré"}, kind: bool }
+  - key: assigned_to
+    name: is assigned to
+    names: {fr: "est confié à"}
+    inverse_name: is in charge of
+    inverse_names: {fr: "a en charge"}
+    from_types: [work_order]
+    to_types: [person]
+  - key: performed_by
+    name: is performed by
+    names: {fr: "est réalisé par"}
+    inverse_name: performs
+    inverse_names: {fr: "réalise"}
+    from_types: [work_order]
+    to_types: [organization]
+    one_target: true

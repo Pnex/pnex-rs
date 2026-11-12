@@ -9,19 +9,26 @@ use serde_json::json;
 fn pack_function(
     found: impl Fn(&pnex_core::ontology::api::PackFunction) -> bool,
 ) -> pnex_core::FunctionSignature {
-    [PACK, PROSPECTING, PRESENCE, PROSPECTING_FR, CRM]
-        .iter()
-        .flat_map(|y| {
-            serde_saphyr::from_str::<pnex_core::ontology::api::Pack>(y)
-                .expect("shipped pack")
-                .functions
-        })
-        .find(|f| found(f))
-        .map(|f| pnex_core::FunctionSignature {
-            inputs: f.inputs,
-            outputs: f.outputs,
-        })
-        .expect("a shipped pack function")
+    [
+        PACK,
+        PROSPECTING,
+        PRESENCE,
+        PROSPECTING_FR,
+        CRM,
+        MAINTENANCE,
+    ]
+    .iter()
+    .flat_map(|y| {
+        serde_saphyr::from_str::<pnex_core::ontology::api::Pack>(y)
+            .expect("shipped pack")
+            .functions
+    })
+    .find(|f| found(f))
+    .map(|f| pnex_core::FunctionSignature {
+        inputs: f.inputs,
+        outputs: f.outputs,
+    })
+    .expect("a shipped pack function")
 }
 
 /// Interface the pack declares for function `name` (D497: not in the code).
@@ -41,6 +48,7 @@ const PROSPECTING: &str = include_str!("../../pnex-backend/packs/prospecting_b2b
 const PRESENCE: &str = include_str!("../../pnex-backend/packs/web_presence.yaml");
 const PROSPECTING_FR: &str = include_str!("../../pnex-backend/packs/prospecting_b2b_fr.yaml");
 const CRM: &str = include_str!("../../pnex-backend/packs/crm.yaml");
+const MAINTENANCE: &str = include_str!("../../pnex-backend/packs/maintenance.yaml");
 
 /// The `code: |` block of the `quali_watch` function `name`.
 fn code_of(name: &str) -> String {
@@ -2026,4 +2034,97 @@ fn a_captured_employee_list_gives_list_contacts_about_the_company() {
         ),
         (Some("c1"), Some("o1"))
     );
+}
+
+#[test]
+fn a_done_work_order_issues_the_parts_it_used() {
+    let msg = |loc: &str, parts: serde_json::Value| {
+        json!({
+            "payload": {"state": "done", "done_on": "2026-11-10", "stock_location": loc},
+            "object": {"id": "w1", "title": "WO-1"},
+            "today": "2026-11-12",
+            "links": {"uses_part": parts}
+        })
+    };
+    let code = code_in(MAINTENANCE, "maint_issue_parts");
+    let parts = json!([
+        {"direction": "out", "attributes": {"quantity": 2}, "other": {"id": "p1", "title": "Seal"}},
+        {"direction": "out", "attributes": {"quantity": 0}, "other": {"id": "p2", "title": "Bolt"}}
+    ]);
+    let r = execute(&code, &msg("l1", parts.clone()), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    let moves = r[0]["payload"].as_array().expect("moves");
+    assert_eq!(moves.len(), 1, "a zero quantity issues nothing: {r}");
+    let m = &moves[0]["props"];
+    assert_eq!(m["ref"], "wo:w1:p1");
+    assert_eq!(m["quantity"].as_f64(), Some(-2.0));
+    assert_eq!(
+        (&m["location"], &m["moved_on"]),
+        (&json!("l1"), &json!("2026-11-10"))
+    );
+    assert!(r[1].is_null(), "marked only once a movement is written");
+
+    // Parts but no location: the work order waits, unmarked.
+    let r = execute(&code, &msg("", parts), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert!(r[0].is_null() && r[1].is_null(), "{r}");
+
+    // No part: marked at once.
+    let r = execute(&code, &msg("", json!([])), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r[1]["object_id"], "w1");
+    assert_eq!(r[1]["payload"]["stock_issued_on"], "2026-11-12");
+
+    // The mark after a write targets the work order of the movement.
+    let r = execute(
+        &code_in(MAINTENANCE, "maint_issued_mark"),
+        &json!({"payload": {}, "mark": {"work_order": "w1", "today": "2026-11-12"}}),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert_eq!(r["object_id"], "w1");
+}
+
+#[test]
+fn stock_levels_sum_movements_and_flag_the_reorder_point() {
+    let level = |on_hand: f64, min: f64, below: bool| json!({"properties": {"ref": "p1:l1", "on_hand": on_hand, "min_quantity": min, "below_min": below}});
+    let msg = |levels: serde_json::Value| {
+        json!({
+            "levels": levels,
+            "payload": {"groups": [
+                {"key": ["p1", "l1"], "labels": ["Seal", "Van 3"], "values": {"on_hand": {"value": 1.0}}},
+                {"key": ["p2", "l1"], "labels": ["Bolt", "Van 3"], "values": {"on_hand": {"value": 5.0}}},
+                {"key": [null, "l1"], "labels": ["", "Van 3"], "values": {"on_hand": {"value": 9.0}}}
+            ]}
+        })
+    };
+    let code = code_in(MAINTENANCE, "maint_levels");
+    let r = execute(&code, &msg(json!([level(4.0, 2.0, false)])), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    let out = r["payload"].as_array().expect("levels");
+    assert_eq!(out.len(), 2, "a group without part is skipped: {r}");
+    assert_eq!(out[0]["title"], "Seal · Van 3");
+    assert_eq!(out[0]["props"]["below_min"], true);
+    assert_eq!(out[1]["props"]["ref"], "p2:l1");
+    assert_eq!(
+        out[1]["props"]["below_min"], false,
+        "no reorder point, no flag"
+    );
+
+    // Nothing changed for p1: only the new p2 line is written.
+    let r = execute(&code, &msg(json!([level(1.0, 2.0, true)])), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r["payload"].as_array().map(Vec::len), Some(1), "{r}");
 }
