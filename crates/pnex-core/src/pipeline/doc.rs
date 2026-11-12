@@ -278,8 +278,11 @@ pub struct Fetch {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Pages {
-    /// Query parameter holding the page number, from 1.
+    /// Query parameter holding the page number.
     pub param: String,
+    /// Number of the first page (some sources count from 0).
+    #[serde(default = "first_page")]
+    pub from: u32,
     /// JSON pointer of the records array; empty or absent = the last page.
     pub until: String,
     /// Pages asked at most per row.
@@ -289,12 +292,21 @@ pub struct Pages {
 /// Pages a fetch may ask per row.
 pub const PAGES_MAX: u32 = 1000;
 
+fn first_page() -> u32 {
+    1
+}
+
 /// Where a vault key goes: exactly one of a query parameter or a header.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FetchSecret {
-    /// Name of the org's vault secret.
+    /// Name of the org's vault secret, sent as it is.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
+    /// Or a token the org's user and password get first (OAuth2 password
+    /// grant), sent in `header`; it never reaches a working table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<TokenGrant>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub param: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -302,6 +314,25 @@ pub struct FetchSecret {
     /// Put before the key in the header (`Token`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheme: Option<String>,
+}
+
+/// How a fetch gets its token: a form posted to `url` with the org's
+/// vault secrets `user` and `password` (as `username` and `password`) and
+/// fixed `fields`; the token is the answer's JSON field `field`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TokenGrant {
+    pub url: String,
+    pub user: String,
+    pub password: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: BTreeMap<String, String>,
+    #[serde(default = "token_field")]
+    pub field: String,
+}
+
+fn token_field() -> String {
+    "access_token".into()
 }
 
 /// Navigation actions (site-recipes.md D323) played per row (D936).
@@ -931,7 +962,7 @@ fn step_violations(
                 if a.derive.keys().any(|k| !valid_name(k))
                     || a.derive
                         .values()
-                        .any(|rules| rules.is_empty() || rules.len() > 50)
+                        .any(|rules| rules.is_empty() || rules.len() > 500)
                 {
                     bad(format!("{p}.derive"), "invalid");
                 }
@@ -964,6 +995,7 @@ fn step_violations(
                     || !p.until.starts_with('/')
                     || p.max == 0
                     || p.max > PAGES_MAX
+                    || p.from > 1
                     || f.method != Method::Get
             }) {
                 bad(format!("{at}.pages"), "invalid");
@@ -986,8 +1018,25 @@ fn step_violations(
                 bad(format!("{at}.headers"), "invalid");
             }
             if let Some(s) = &f.secret {
-                if s.name.trim().is_empty() || s.param.is_some() == s.header.is_some() {
+                if s.param.is_some() == s.header.is_some() {
                     bad(format!("{at}.secret"), "one_of:param,header");
+                }
+                if s.name.trim().is_empty() == s.token.is_none() {
+                    bad(format!("{at}.secret"), "one_of:name,token");
+                }
+                if let Some(t) = &s.token {
+                    let reserved = |k: &String| k == "username" || k == "password";
+                    if s.header.is_none()
+                        || !t.url.starts_with("https://")
+                        || literal_host(&t.url).is_none_or(|h| !hosts.contains(&h))
+                        || t.user.trim().is_empty()
+                        || t.password.trim().is_empty()
+                        || t.fields.len() > 10
+                        || t.fields.keys().any(reserved)
+                        || t.field.is_empty()
+                    {
+                        bad(format!("{at}.secret.token"), "invalid");
+                    }
                 }
             }
             if f.max_bytes.is_some_and(|b| b == 0 || b > FETCH_MAX_BYTES) {

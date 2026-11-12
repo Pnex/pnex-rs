@@ -618,13 +618,6 @@ async fn records<C: ConnectionTrait>(
         }
         (ImportSource::Api, _) => {
             let url = imp.source_url.as_deref().unwrap_or_default();
-            if let Some(feed) = &m.conflict_feed {
-                let secrets = conflict_secrets(db, imp, feed).await.map_err(coded)?;
-                let countries = setting_codes(db, imp.org_id, &feed.countries_setting).await;
-                return source::fetch_conflicts(url, feed, secrets, countries)
-                    .await
-                    .map_err(coded);
-            }
             if let Some(feed) = &m.press_feed {
                 let watched = press_watched(db, imp, feed)
                     .await
@@ -636,52 +629,6 @@ async fn records<C: ConnectionTrait>(
         }
     }?;
     Ok(rows)
-}
-
-/// The org's credentials of a conflict source, from the vault, for the
-/// source's own host only (R9, D741).
-async fn conflict_secrets<C: ConnectionTrait>(
-    db: &C,
-    imp: &ImportRow,
-    feed: &imp::ConflictFeed,
-) -> std::result::Result<Vec<String>, &'static str> {
-    let url = imp.source_url.as_deref().unwrap_or_default();
-    let host_ok = reqwest::Url::parse(url)
-        .is_ok_and(|u| u.scheme() == "https" && u.host_str() == Some(feed.source.host()))
-        || crate::services::markets::test_host_allowed(url);
-    if !host_ok {
-        return Err(err_codes::IMPORT_KEY_HOST);
-    }
-    use crate::services::secrets::store;
-    let required = err_codes::IMPORT_KEY_REQUIRED;
-    let ring = crate::services::markets::keyring().ok_or(required)?;
-    let mut out = Vec::new();
-    for name in feed.source.secrets() {
-        let row = store::find_by_name(db, Some(imp.org_id), name)
-            .await
-            .map_err(|_| required)?
-            .ok_or(required)?;
-        let value = store::reveal(db, ring, Some(imp.org_id), row.id)
-            .await
-            .map_err(|_| required)?;
-        out.push(value.trim().to_string());
-    }
-    Ok(out)
-}
-
-async fn setting_text<C: ConnectionTrait>(db: &C, org_id: i64, key: &str) -> Option<String> {
-    super::packs::setting_value(db, org_id, key)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|v| v.as_str().map(str::to_string))
-}
-
-async fn setting_codes<C: ConnectionTrait>(db: &C, org_id: i64, key: &str) -> Vec<String> {
-    setting_text(db, org_id, key)
-        .await
-        .map(|v| imp::PerObjectSetting::codes(&v))
-        .unwrap_or_default()
 }
 
 /// The companies a press feed watches: their title and other names, and
@@ -970,10 +917,9 @@ async fn write_locked(
     if out.is_ok() {
         // D741: leads confirmed by a verified event, whichever came first.
         if imp.mapping().is_ok_and(|m| {
-            m.conflict_feed.is_some()
-                || m.objects
-                    .iter()
-                    .any(|o| o.type_key == crate::services::markets::moves::GEO_TYPE)
+            m.objects
+                .iter()
+                .any(|o| o.type_key == crate::services::markets::moves::GEO_TYPE)
         }) {
             match crate::services::markets::world::confirm_leads(db, imp.org_id, actor).await {
                 Ok(n) if n > 0 => tracing::info!(
@@ -1595,8 +1541,7 @@ pub async fn run_staged(
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(&m, &rows);
     // A feed's window may hold nothing: not a lost source.
-    let lost =
-        rows.is_empty() && previous > 0 && m.press_feed.is_none() && m.conflict_feed.is_none();
+    let lost = rows.is_empty() && previous > 0 && m.press_feed.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()
@@ -1748,8 +1693,7 @@ async fn scheduled(
     let missing = imp::missing_columns(m, &rows);
     // D303: an unexpected shape writes nothing.
     // A feed's window may hold nothing: not a lost source.
-    let lost =
-        rows.is_empty() && previous > 0 && m.press_feed.is_none() && m.conflict_feed.is_none();
+    let lost = rows.is_empty() && previous > 0 && m.press_feed.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()

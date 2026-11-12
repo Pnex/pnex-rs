@@ -1066,9 +1066,9 @@ async fn mock_conflicts(seen: Arc<Mutex<Vec<String>>>) -> String {
         )
         .unwrap();
         w.write_all(
-            b"id,country_id,date_start,type_of_violence,source_headline,latitude,longitude,best,number_of_sources,source_date\n\
-              9001,369,2015-02-01 00:00:00.000,3,\"Shelling,\nDonetsk\",48.0,37.8,5,2,2015-02-03;2015-02-02\n\
-              9002,365,2015-02-01 00:00:00.000,1,x,55.0,37.0,1,1,2015-02-01\n",
+            b"id,country_id,date_start,type_of_violence,where_coordinates,adm_1,side_a,side_b,source_headline,latitude,longitude,best,number_of_sources,source_date\n\
+              9001,369,2015-02-01 00:00:00.000,3,Donetsk city,Donetsk oblast,DPR,Civilians,\"Shelling,\nDonetsk\",48.0,37.8,5,2,2015-02-03;2015-02-02\n\
+              9002,365,2015-02-01 00:00:00.000,1,Moscow,,,,x,55.0,37.0,1,1,2015-02-01\n",
         )
         .unwrap();
         w.finish().unwrap().into_inner()

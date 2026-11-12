@@ -315,20 +315,6 @@ fn press_hours() -> u32 {
 /// Longest window of a press feed, in hours.
 pub const PRESS_HOURS_MAX: u32 = 72;
 
-/// Verified conflict events of an import (D741). The host and the vault
-/// secrets are fixed by the source, never by the mapping (R9).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(deny_unknown_fields)]
-pub struct ConflictFeed {
-    pub source: crate::conflict_events::ConflictSource,
-    /// `<pack>.<setting>` listing the watched countries (ISO alpha-2).
-    pub countries_setting: String,
-    /// Days of events each run reads back from today (APIs); a download
-    /// is read whole.
-    pub days: u32,
-}
-
 /// A pack setting read as a comma-separated list of codes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -546,10 +532,6 @@ pub struct Mapping {
     /// instead of pages (account-mapping.md D539).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub press_feed: Option<PressFeed>,
-    /// API: verified conflict events (UCDP, ACLED) of the watched countries,
-    /// with the org's own credentials (markets-research.md D741).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub conflict_feed: Option<ConflictFeed>,
     /// The records are dated values of this object (D541).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observations: Option<crate::markets::ObservationTarget>,
@@ -703,17 +685,6 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             || !(1..=PRESS_HOURS_MAX).contains(&p.hours)
         {
             return Err(ferr("press_feed", FIELD_INVALID));
-        }
-    }
-    if let Some(c) = &m.conflict_feed {
-        let bad = |k: &str| !valid_key(k);
-        if m.press_feed.is_some()
-            || c.countries_setting
-                .split_once('.')
-                .is_none_or(|(a, b)| bad(a) || bad(b))
-            || !(1..=366).contains(&c.days)
-        {
-            return Err(ferr("conflict_feed", FIELD_INVALID));
         }
     }
     for (i, o) in m.objects.iter().enumerate() {

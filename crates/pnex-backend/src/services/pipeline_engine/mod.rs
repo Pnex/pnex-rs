@@ -162,6 +162,12 @@ pub fn wanted(doc: &Document) -> (Vec<String>, Vec<pnex_core::pipeline::doc::Obj
 }
 
 fn lookup(row: &Row, inputs: &Inputs, name: &str) -> Option<String> {
+    // The run's day and instant, UTC: a window relative to the run.
+    match name {
+        "run_date" => return Some(inputs.now.date().to_string()),
+        "run_now" => return Some(inputs.now.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
+        _ => {}
+    }
     match name.strip_prefix("setting.") {
         // An empty setting is no value: a source that needs it is not asked.
         Some(key) => inputs
@@ -376,6 +382,8 @@ pub struct Exec<'a, T, S, Q> {
     pub journal: Option<&'a mut Vec<StepRecord>>,
     /// Sha256 of the bytes read by a `skip_if_unchanged` fetch.
     pub fresh_shas: HashMap<String, String>,
+    /// Tokens got by a fetch's grant during the pass, by grant address.
+    pub tokens: HashMap<String, String>,
 }
 
 impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
@@ -400,7 +408,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 continue;
             };
             // Pages from 1 until one holds no record or the last one allowed.
-            for page in 1..=pages.max {
+            for page in pages.from..pages.from + pages.max {
                 let Some(next) = self.fetch_one(f, &row, Some(page)).await? else {
                     break;
                 };
@@ -423,6 +431,54 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
             }
         }
         Ok(out)
+    }
+
+    /// The token of a grant, asked once per pass: the org's user and
+    /// password go only to the grant's address, on a host of the document.
+    async fn token(
+        &mut self,
+        t: &pnex_core::pipeline::doc::TokenGrant,
+        every: u64,
+    ) -> Result<String, Failure> {
+        if let Some(v) = self.tokens.get(&t.url) {
+            return Ok(v.clone());
+        }
+        let secret = |name: &str| {
+            self.inputs
+                .secrets
+                .get(name)
+                .cloned()
+                .ok_or_else(|| fail("secret_required", json!({ "name": name })))
+        };
+        let (user, password) = (secret(&t.user)?, secret(&t.password)?);
+        let url = reqwest::Url::parse(&t.url)
+            .map_err(|_| fail("invalid_value", json!({ "name": "token.url" })))?;
+        self.hosts_allow(&url)?;
+        let mut fields: Vec<(String, String)> =
+            vec![("username".into(), user), ("password".into(), password)];
+        fields.extend(t.fields.iter().map(|(k, v)| (k.clone(), v.clone())));
+        let req = Req {
+            every_ms: every,
+            max_bytes: 64 * 1024,
+            ..Default::default()
+        };
+        // A refusal says nothing of the secrets: only that the key is missing or wrong.
+        let refused = || fail("secret_required", json!({ "name": t.user }));
+        let body = self
+            .transport
+            .post_form(&url, None, &fields, &req)
+            .await
+            .map_err(|_| refused())?
+            .ok_or_else(refused)?;
+        let doc: Value = serde_json::from_slice(&body.bytes(64 * 1024)?).map_err(|_| refused())?;
+        let token = doc
+            .get(&t.field)
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .ok_or_else(refused)?
+            .to_string();
+        self.tokens.insert(t.url.clone(), token.clone());
+        Ok(token)
     }
 
     /// One answer for one row (one page of it): `None` when there is none.
@@ -464,11 +520,16 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
             req.headers.push((k.clone(), value));
         }
         if let Some(sec) = &f.secret {
-            let value = self
-                .inputs
-                .secrets
-                .get(&sec.name)
-                .ok_or_else(|| fail("secret_required", json!({ "name": sec.name })))?;
+            let value = match &sec.token {
+                Some(t) => self.token(t, every).await?,
+                None => self
+                    .inputs
+                    .secrets
+                    .get(&sec.name)
+                    .cloned()
+                    .ok_or_else(|| fail("secret_required", json!({ "name": sec.name })))?,
+            };
+            let value = &value;
             match (&sec.param, &sec.header) {
                 (Some(p), _) => req.secret_query = Some((p.clone(), value.clone())),
                 (None, Some(h)) => {
@@ -629,7 +690,15 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 Table::Rows(blocking(move || files::unpack(&u, &input)).await?)
             }
             Step::Read(r) => {
-                let (r, input) = (r.clone(), Self::rows(tables, &r.from)?.to_vec());
+                let (r, mut input) = (r.clone(), Self::rows(tables, &r.from)?.to_vec());
+                // A column's value may name the run's day or instant.
+                for row in &mut input {
+                    for name in ["run_date", "run_now"] {
+                        if let Some(v) = lookup(&Row::default(), self.inputs, name) {
+                            row.cols.entry(name).or_insert(Value::String(v));
+                        }
+                    }
+                }
                 Table::Batches(blocking(move || read::read(&r, &input)).await?)
             }
             Step::Write(w) => {
@@ -785,6 +854,7 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
             keep,
             journal,
             fresh_shas: HashMap::new(),
+            tokens: HashMap::new(),
         };
         match exec.pass(0, HashMap::new()).await {
             Ok(n) => outcome.written = n,
@@ -819,6 +889,7 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
             keep: keep.as_deref_mut(),
             journal: journal.as_deref_mut(),
             fresh_shas: HashMap::new(),
+            tokens: HashMap::new(),
         };
         if let Some(k) = exec.keep.as_deref_mut() {
             k.entry(e.as_.clone())

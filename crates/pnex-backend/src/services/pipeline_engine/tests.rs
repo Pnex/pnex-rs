@@ -187,7 +187,14 @@ async fn every_shipped_pipeline_passes_its_tests() {
                     pnex_core::pipeline::Step::Fetch(f) => f.secret.as_ref(),
                     _ => None,
                 })
-                .map(|s| (s.name.clone(), "test-key".to_string()))
+                .flat_map(|s| {
+                    let grant = s
+                        .token
+                        .iter()
+                        .flat_map(|t| [t.user.clone(), t.password.clone()]);
+                    std::iter::once(s.name.clone()).chain(grant)
+                })
+                .map(|n| (n, "test-key".to_string()))
                 .collect();
             let inputs = Inputs {
                 settings: case.settings.clone().into_iter().collect(),

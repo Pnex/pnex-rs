@@ -509,3 +509,19 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
   la liste blanche du worker (valeurs d'un groupe, bornées par les lignes lues). Supprimés :
   `events_feed` du mapping, `fetch_events`, `pnex-core/src/gdelt_events.rs` (591 lignes). La
   confirmation des pistes par un événement vérifié suit tout import qui écrit des `geo_event`.
+- **2026-11-12 (nuit, fin bis)** : **événements vérifiés** en pipelines : UCDP GED et Candidate
+  (téléchargements), UCDP API (jeton de l'org, pages comptées depuis 0), ACLED (compte de
+  l'org). Tables Gleditsch-Ward et ISO numérique → ISO alpha-2 en données (`map`, `derive`).
+  Ajouts génériques : `pages.from`, `run_date` / `run_now` dans les gabarits et les valeurs de
+  colonnes, filtre `days_before:N`, **jeton obtenu par le `secret` d'un `fetch`**
+  (`secret.token` : formulaire OAuth2 « password » vers une adresse d'un hôte du document, avec
+  deux secrets du coffre ; le jeton va dans l'en-tête, jamais dans une table de travail ni dans
+  le journal ; un refus = `import-key-required`), 500 règles `derive` au plus. Supprimés :
+  `conflict_feed` du mapping, `fetch_conflicts`, le jeton ACLED en Rust, les tables et
+  l'agrégateur de `conflict_events.rs` (891 → 50 lignes : reste la règle de confirmation d'une
+  piste, appliquée après tout import qui écrit des `geo_event`).
+
+| Écart | Où il se lève |
+|---|---|
+| Date de premier signalement UCDP : le minimum des 8 premières dates de `source_date` (`least` sur `split_part`, le worker n'a pas les tableaux) | fonctions de tableaux dans la liste blanche du worker, si un cas le demande |
+| Un en-tête CSV absent est un changement de forme, même pour une colonne `optional` (qui tolère une cellule vide) : un export UCDP sans `adm_1` échouerait | à garder : c'est le signal voulu |

@@ -235,9 +235,17 @@ pub async fn inputs(
         .steps
         .iter()
         .filter_map(|s| match s {
-            pnex_core::pipeline::Step::Fetch(f) => f.secret.as_ref().map(|s| s.name.as_str()),
+            pnex_core::pipeline::Step::Fetch(f) => f.secret.as_ref(),
             _ => None,
         })
+        .flat_map(|s| {
+            let grant = s
+                .token
+                .iter()
+                .flat_map(|t| [t.user.as_str(), t.password.as_str()]);
+            std::iter::once(s.name.as_str()).chain(grant)
+        })
+        .filter(|n| !n.is_empty())
         .collect();
     for name in names {
         use crate::services::secrets::store as vault;

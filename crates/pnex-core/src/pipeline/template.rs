@@ -1,7 +1,8 @@
 //! `{{name}}` templates of a step (pipeline-engine.md D936): filled from the
 //! columns of a row, or `{{setting.<pack>.<key>}}` from the org's settings.
 //! A name may end with filters: `{{pair|lower}}`, `{{code|upper}}`,
-//! `{{month_m|int}}`, `{{code|before:.}}`, `{{code|after:.}}`.
+//! `{{month_m|int}}`, `{{code|before:.}}`, `{{code|after:.}}`,
+//! `{{run_date|days_before:30}}`.
 
 /// The value of `name|filter|…`; `None` for an unknown name or filter.
 fn value(expr: &str, lookup: &impl Fn(&str) -> Option<String>) -> Option<String> {
@@ -17,6 +18,12 @@ fn value(expr: &str, lookup: &impl Fn(&str) -> Option<String>) -> Option<String>
             // `WS_CBPOL`, `after:.` → `D.US`).
             f if f.starts_with("before:") => v.split_once(&f[7..])?.0.to_string(),
             f if f.starts_with("after:") => v.split_once(&f[6..])?.1.to_string(),
+            // A day so many days earlier (`{{run_date|days_before:30}}`).
+            f if f.starts_with("days_before:") => {
+                let n: i64 = f[12..].parse().ok()?;
+                let d = chrono::NaiveDate::parse_from_str(v.get(..10)?, "%Y-%m-%d").ok()?;
+                (d - chrono::Duration::days(n)).to_string()
+            }
             _ => return None,
         };
     }

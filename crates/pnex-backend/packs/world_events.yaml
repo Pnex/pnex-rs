@@ -22,7 +22,7 @@
 key: world_events
 name: World events
 names: {fr: "Événements du monde"}
-version: "1.2.0"
+version: "1.3.0"
 history: true
 requires: []
 description: Geopolitical events (conflicts, attacks, sanctions, blockades, ceasefires) with a place, a date and a source, from the GDELT feed for the countries watched. Unconfirmed until a member cites a source.
@@ -167,17 +167,15 @@ imports:
   # (run it by hand or once a year), the Candidate file the current year.
   # Their address names UCDP's release: update it when UCDP publishes one.
   - name: Verified events history (UCDP GED download)
-    source: api
-    source_url: "https://ucdp.uu.se/downloads/ged/ged261-csv.zip"
+    source: file
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: year }
     mapping:
       key: ucdp_ged_file
+      pipeline: world_events/ucdp_ged_file
       name: Verified events history (UCDP GED)
       names: {fr: "Historique des événements vérifiés (UCDP GED)"}
       description: Organized violence since 1989 in the countries watched, from UCDP's GED download, dated by the first report of a source. Source UCDP, Uppsala University, CC BY 4.0.
-      format: json
-      conflict_feed: { source: ucdp_file, countries_setting: world_events.geo_watch, days: 366 }
       objects:
         - as: event
           type: geo_event
@@ -191,7 +189,7 @@ imports:
             event_at: event_at
             published_at: known_at
             known_at: known_at
-            location: location
+            location: { from: location, convert: [json] }
             country: country
             region: region
             actors: actors
@@ -201,17 +199,15 @@ imports:
             source_kind: { value: ucdp }
             credit: { value: "UCDP, Uppsala University (CC BY 4.0): Davies, Pettersson & Öberg 2026; Sundberg & Melander 2013; Hegre et al. 2020" }
   - name: Verified events this year (UCDP Candidate download)
-    source: api
-    source_url: "https://ucdp.uu.se/downloads/candidateged/GEDEvent_v26_01_26_09.csv"
+    source: file
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: month }
     mapping:
       key: ucdp_candidate_file
+      pipeline: world_events/ucdp_candidate_file
       name: Verified events this year (UCDP Candidate)
       names: {fr: "Événements vérifiés de l'année (UCDP Candidate)"}
       description: Organized violence of the current year in the countries watched, from UCDP's monthly Candidate download, dated by the first report of a source. Source UCDP, Uppsala University, CC BY 4.0.
-      format: json
-      conflict_feed: { source: ucdp_file, countries_setting: world_events.geo_watch, days: 366 }
       objects:
         - as: event
           type: geo_event
@@ -225,7 +221,7 @@ imports:
             event_at: event_at
             published_at: known_at
             known_at: known_at
-            location: location
+            location: { from: location, convert: [json] }
             country: country
             region: region
             actors: actors
@@ -236,17 +232,15 @@ imports:
             credit: { value: "UCDP, Uppsala University (CC BY 4.0): Davies, Pettersson & Öberg 2026; Sundberg & Melander 2013; Hegre et al. 2020" }
   # The API: a live reading, with a token asked to Uppsala University.
   - name: Verified events (UCDP)
-    source: api
-    source_url: "https://ucdpapi.pcr.uu.se/api/gedevents/26.0.9"
+    source: file
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: week }
     mapping:
       key: ucdp_events
+      pipeline: world_events/ucdp_events
       name: Verified events (UCDP)
       names: {fr: "Événements vérifiés (UCDP)"}
       description: The organized violence events coded by UCDP in the countries watched, over the last 60 days. Source UCDP, Uppsala University, CC BY 4.0.
-      format: json
-      conflict_feed: { source: ucdp, countries_setting: world_events.geo_watch, days: 60 }
       objects:
         - as: event
           type: geo_event
@@ -259,7 +253,7 @@ imports:
             kind: kind
             event_at: event_at
             known_at: known_at
-            location: location
+            location: { from: location, convert: [json] }
             country: country
             region: region
             actors: actors
@@ -269,17 +263,15 @@ imports:
             source_kind: { value: ucdp }
             credit: { value: "UCDP, Uppsala University (CC BY 4.0): Hegre et al. 2020; Davies, Pettersson & Öberg 2026" }
   - name: Verified events (ACLED, your account)
-    source: api
-    source_url: "https://acleddata.com/api/acled/read"
+    source: file
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: week }
     mapping:
       key: acled_events
+      pipeline: world_events/acled_events
       name: Verified events (ACLED)
       names: {fr: "Événements vérifiés (ACLED, votre compte)"}
       description: The events coded by ACLED in the countries watched, over the last 30 days, read with the organization's own ACLED account and licence.
-      format: json
-      conflict_feed: { source: acled, countries_setting: world_events.geo_watch, days: 30 }
       objects:
         - as: event
           type: geo_event
@@ -292,7 +284,7 @@ imports:
             kind: kind
             event_at: event_at
             known_at: known_at
-            location: location
+            location: { from: location, convert: [json] }
             country: country
             region: region
             actors: actors

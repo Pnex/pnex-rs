@@ -1,0 +1,102 @@
+# UCDP's Candidate download: this year's verified events, monthly.
+key: ucdp_candidate_file
+name: Verified events this year (UCDP Candidate)
+hosts: [ucdp.uu.se]
+requires: [world_events.geo_watch]
+steps:
+  - fetch: { as: download, url: "https://ucdp.uu.se/downloads/candidateged/GEDEvent_v26_01_26_09.csv", skip_if_unchanged: true }
+  - read:
+      as: events
+      from: download
+      format: csv
+      skip_invalid: true
+      columns:
+        - { name: id, at: id }
+        - name: country
+          at: country_id
+          map: { "2": "US", "20": "CA", "31": "BS", "40": "CU", "41": "HT", "42": "DO", "51": "JM", "52": "TT", "53": "BB", "70": "MX", "80": "BZ", "90": "GT", "91": "HN", "92": "SV", "93": "NI", "94": "CR", "95": "PA", "100": "CO", "101": "VE", "110": "GY", "115": "SR", "130": "EC", "135": "PE", "140": "BR", "145": "BO", "150": "PY", "155": "CL", "160": "AR", "165": "UY", "200": "GB", "205": "IE", "210": "NL", "211": "BE", "212": "LU", "220": "FR", "225": "CH", "230": "ES", "235": "PT", "260": "DE", "290": "PL", "305": "AT", "310": "HU", "316": "CZ", "317": "SK", "325": "IT", "338": "MT", "339": "AL", "340": "RS", "341": "ME", "343": "MK", "344": "HR", "345": "RS", "346": "BA", "347": "XK", "349": "SI", "350": "GR", "352": "CY", "355": "BG", "359": "MD", "360": "RO", "365": "RU", "366": "EE", "367": "LV", "368": "LT", "369": "UA", "370": "BY", "371": "AM", "372": "GE", "373": "AZ", "375": "FI", "380": "SE", "385": "NO", "390": "DK", "395": "IS", "402": "CV", "404": "GW", "411": "GQ", "420": "GM", "432": "ML", "433": "SN", "434": "BJ", "435": "MR", "436": "NE", "437": "CI", "438": "GN", "439": "BF", "450": "LR", "451": "SL", "452": "GH", "461": "TG", "471": "CM", "475": "NG", "481": "GA", "482": "CF", "483": "TD", "484": "CG", "490": "CD", "500": "UG", "501": "KE", "510": "TZ", "516": "BI", "517": "RW", "520": "SO", "522": "DJ", "530": "ET", "531": "ER", "540": "AO", "541": "MZ", "551": "ZM", "552": "ZW", "553": "MW", "560": "ZA", "565": "NA", "570": "LS", "571": "BW", "572": "SZ", "580": "MG", "581": "KM", "590": "MU", "600": "MA", "615": "DZ", "616": "TN", "620": "LY", "625": "SD", "626": "SS", "630": "IR", "640": "TR", "645": "IQ", "651": "EG", "652": "SY", "660": "LB", "663": "JO", "666": "IL", "670": "SA", "678": "YE", "690": "KW", "692": "BH", "694": "QA", "696": "AE", "698": "OM", "700": "AF", "701": "TM", "702": "TJ", "703": "KG", "704": "UZ", "705": "KZ", "710": "CN", "712": "MN", "713": "TW", "731": "KP", "732": "KR", "740": "JP", "750": "IN", "760": "BT", "770": "PK", "771": "BD", "775": "MM", "780": "LK", "781": "MV", "790": "NP", "800": "TH", "811": "KH", "812": "LA", "816": "VN", "820": "MY", "830": "SG", "835": "BN", "840": "PH", "850": "ID", "860": "TL", "900": "AU", "910": "PG", "920": "NZ", "940": "SB", "950": "FJ", "*": "" }
+        - { name: day, at: date_start, type: date, format: "%Y-%m-%d %H:%M:%S%.f" }
+        - { name: type_of_violence, at: type_of_violence, type: integer }
+        - { name: place, at: where_coordinates, optional: true }
+        - { name: region, at: adm_1, optional: true }
+        - { name: lat, at: latitude, type: float, optional: true }
+        - { name: lon, at: longitude, type: float, optional: true }
+        - { name: actor1, at: side_a, optional: true }
+        - { name: actor2, at: side_b, optional: true }
+        - { name: sources, at: number_of_sources, type: float, optional: true }
+        - { name: deaths, at: best, type: float, optional: true }
+        - { name: source_date, at: source_date, optional: true }
+  - enumerate: { as: countries, cross: [{ as: country, setting: world_events.geo_watch, case: upper }] }
+  - sql:
+      as: days
+      sql: |
+        WITH watch AS (SELECT DISTINCT country AS c FROM countries),
+        kept AS (
+          SELECT id, country, day, CASE WHEN type_of_violence IN (1, 2) THEN 'armed_conflict'
+                      WHEN type_of_violence = 3 THEN 'attack' END AS kind, place, region, lat, lon, actor1, actor2,
+                 coalesce(sources, 0) AS sources, coalesce(deaths, 0) AS deaths,
+                 least(CASE WHEN regexp_like(btrim(split_part(source_date, ';', 1)), '^[0-9]{4}-[0-9]{2}-[0-9]{2}') THEN substr(btrim(split_part(source_date, ';', 1)), 1, 10) END, CASE WHEN regexp_like(btrim(split_part(source_date, ';', 2)), '^[0-9]{4}-[0-9]{2}-[0-9]{2}') THEN substr(btrim(split_part(source_date, ';', 2)), 1, 10) END, CASE WHEN regexp_like(btrim(split_part(source_date, ';', 3)), '^[0-9]{4}-[0-9]{2}-[0-9]{2}') THEN substr(btrim(split_part(source_date, ';', 3)), 1, 10) END, CASE WHEN regexp_like(btrim(split_part(source_date, ';', 4)), '^[0-9]{4}-[0-9]{2}-[0-9]{2}') THEN substr(btrim(split_part(source_date, ';', 4)), 1, 10) END, CASE WHEN regexp_like(btrim(split_part(source_date, ';', 5)), '^[0-9]{4}-[0-9]{2}-[0-9]{2}') THEN substr(btrim(split_part(source_date, ';', 5)), 1, 10) END, CASE WHEN regexp_like(btrim(split_part(source_date, ';', 6)), '^[0-9]{4}-[0-9]{2}-[0-9]{2}') THEN substr(btrim(split_part(source_date, ';', 6)), 1, 10) END, CASE WHEN regexp_like(btrim(split_part(source_date, ';', 7)), '^[0-9]{4}-[0-9]{2}-[0-9]{2}') THEN substr(btrim(split_part(source_date, ';', 7)), 1, 10) END, CASE WHEN regexp_like(btrim(split_part(source_date, ';', 8)), '^[0-9]{4}-[0-9]{2}-[0-9]{2}') THEN substr(btrim(split_part(source_date, ';', 8)), 1, 10) END) AS reported
+          FROM events
+          WHERE country IS NOT NULL AND id IS NOT NULL AND day IS NOT NULL
+            AND (country IN (SELECT c FROM watch) OR EXISTS (SELECT 1 FROM watch WHERE c = '*'))),
+        days AS (
+          SELECT country, kind, day, sum(sources) AS source_count, sum(deaths) AS deaths,
+                 avg(CASE WHEN abs(lat) <= 90 AND abs(lon) <= 180 THEN lat END) AS lat,
+                 avg(CASE WHEN abs(lat) <= 90 AND abs(lon) <= 180 THEN lon END) AS lon,
+                 min(reported) AS reported, CAST(NULL AS VARCHAR) AS read_at
+          FROM kept WHERE kind IS NOT NULL GROUP BY country, kind, day),
+        ids AS (
+          SELECT country, kind, day, string_agg(id, ',' ORDER BY id) AS event_ids FROM (
+            SELECT *, row_number() OVER (PARTITION BY country, kind, day ORDER BY id) AS n
+            FROM (SELECT DISTINCT country, kind, day, id FROM kept WHERE kind IS NOT NULL) AS d) AS t
+          WHERE n <= 50 GROUP BY country, kind, day),
+        place_counts AS (
+          SELECT country, kind, day, place, count(*) AS c FROM kept
+          WHERE place IS NOT NULL AND kind IS NOT NULL GROUP BY country, kind, day, place),
+        places AS (
+          SELECT country, kind, day, place FROM (
+            SELECT *, row_number() OVER (PARTITION BY country, kind, day ORDER BY c DESC, place) AS n
+            FROM place_counts) AS t WHERE n = 1),
+        region_counts AS (
+          SELECT country, kind, day, region, count(*) AS c FROM kept
+          WHERE region IS NOT NULL AND kind IS NOT NULL GROUP BY country, kind, day, region),
+        regions AS (
+          SELECT country, kind, day, region FROM (
+            SELECT *, row_number() OVER (PARTITION BY country, kind, day ORDER BY c DESC, region) AS n
+            FROM region_counts) AS t WHERE n = 1),
+        actor_counts AS (
+          SELECT country, kind, day, actor, count(*) AS c FROM (
+            SELECT country, kind, day, actor1 AS actor FROM kept WHERE actor1 IS NOT NULL AND kind IS NOT NULL
+            UNION ALL
+            SELECT country, kind, day, actor2 FROM kept WHERE actor2 IS NOT NULL AND kind IS NOT NULL) AS a
+          GROUP BY country, kind, day, actor),
+        actors AS (
+          SELECT country, kind, day, string_agg(actor, ', ' ORDER BY c DESC, actor) AS actors FROM (
+            SELECT *, row_number() OVER (PARTITION BY country, kind, day ORDER BY c DESC, actor) AS n
+            FROM actor_counts) AS t WHERE n <= 5 GROUP BY country, kind, day)
+        SELECT concat('ucdp:', d.country, ':', d.kind, ':', CAST(d.day AS VARCHAR)) AS ref,
+               concat(coalesce(p.place, d.country), ' · ', d.kind, ' · ', CAST(d.day AS VARCHAR)) AS title,
+               d.kind, CAST(d.day AS VARCHAR) AS event_at,
+               CASE WHEN d.reported IS NOT NULL THEN concat(d.reported, 'T23:59:59Z') ELSE d.read_at END AS known_at,
+               d.country, r.region,
+               CASE WHEN d.lat IS NOT NULL
+                    THEN concat('{"lat": ', CAST(d.lat AS VARCHAR), ', "lon": ', CAST(d.lon AS VARCHAR), '}') END AS location,
+               a.actors, d.source_count, d.deaths, i.event_ids
+        FROM days AS d
+        LEFT JOIN places AS p ON p.country = d.country AND p.kind = d.kind AND p.day = d.day
+        LEFT JOIN regions AS r ON r.country = d.country AND r.kind = d.kind AND r.day = d.day
+        LEFT JOIN actors AS a ON a.country = d.country AND a.kind = d.kind AND a.day = d.day
+        LEFT JOIN ids AS i ON i.country = d.country AND i.kind = d.kind AND i.day = d.day
+  - write: { from: days, table: { name: ucdp_candidate_file, replace: true } }
+tests:
+  - name: one event per country, kind and day, dated by its first report
+    settings: { world_events.geo_watch: ua }
+    given:
+      "https://ucdp.uu.se/downloads/candidateged/GEDEvent_v26_01_26_09.csv": ucdp_candidate.csv
+    expect:
+      events:
+        rows: 2
+      days:
+        rows: 1
+        contains:
+          - { ref: "ucdp:UA:attack:2015-02-01", known_at: "2015-02-02T23:59:59Z", deaths: "5", event_ids: "9001" }
