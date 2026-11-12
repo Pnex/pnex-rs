@@ -80,6 +80,8 @@ const AGGREGATE_FUNCTIONS: &[&str] = &[
     "median",
     "min",
     "stddev",
+    // The values of a group in one text: no larger than the rows it reads.
+    "string_agg",
     "sum",
     "var",
 ];

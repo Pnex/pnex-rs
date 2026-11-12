@@ -120,7 +120,6 @@ pub(super) async fn check<C: ConnectionTrait>(
     for (set, field) in [
         (!m.steps.is_empty(), "steps"),
         (m.press_feed.is_some(), "press_feed"),
-        (m.events_feed.is_some(), "events_feed"),
         (m.conflict_feed.is_some(), "conflict_feed"),
     ] {
         if set {

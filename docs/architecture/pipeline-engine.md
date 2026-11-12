@@ -500,3 +500,12 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
 | Écart | Où il se lève |
 |---|---|
 | Le XML est lu en mémoire (64 Mo au plus, comme un JSON) : un export RS plus gros échouerait (`unreadable`) | lecteur XML en flux, enregistrement par enregistrement |
+- **2026-11-12 (nuit, fin)** : **flux d'événements GDELT** (`world_events/gdelt_events`, 48 h, et
+  `gdelt_events_history`, 92 jours, lancé à la main) en pipelines : tranches de 15 min par
+  `enumerate` heures × quarts, table FIPS → ISO en données (`map` de colonne, avec la nouvelle
+  valeur par défaut `"*"`), une piste par (pays, famille, jour) en `sql` (famille la plus longue,
+  lieu et région majoritaires, cinq acteurs, 50 identifiants). Ajouts génériques : `requires`
+  du document (réglages qui doivent être remplis, sinon le run ne lit rien) et `string_agg` dans
+  la liste blanche du worker (valeurs d'un groupe, bornées par les lignes lues). Supprimés :
+  `events_feed` du mapping, `fetch_events`, `pnex-core/src/gdelt_events.rs` (591 lignes). La
+  confirmation des pistes par un événement vérifié suit tout import qui écrit des `geo_event`.

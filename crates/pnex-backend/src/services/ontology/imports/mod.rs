@@ -625,20 +625,6 @@ async fn records<C: ConnectionTrait>(
                     .await
                     .map_err(coded);
             }
-            if let Some(feed) = &m.events_feed {
-                let filter = pnex_core::gdelt_events::EventsFilter {
-                    countries: setting_codes(db, imp.org_id, &feed.countries_setting)
-                        .await
-                        .into_iter()
-                        .collect(),
-                    codes: setting_codes(db, imp.org_id, &feed.codes_setting).await,
-                    min_sources: feed.min_sources,
-                    max_goldstein: feed.max_goldstein,
-                };
-                return source::fetch_events(url, feed.hours, filter)
-                    .await
-                    .map_err(coded);
-            }
             if let Some(feed) = &m.press_feed {
                 let watched = press_watched(db, imp, feed)
                     .await
@@ -983,10 +969,12 @@ async fn write_locked(
     // the database).
     if out.is_ok() {
         // D741: leads confirmed by a verified event, whichever came first.
-        if imp
-            .mapping()
-            .is_ok_and(|m| m.conflict_feed.is_some() || m.events_feed.is_some())
-        {
+        if imp.mapping().is_ok_and(|m| {
+            m.conflict_feed.is_some()
+                || m.objects
+                    .iter()
+                    .any(|o| o.type_key == crate::services::markets::moves::GEO_TYPE)
+        }) {
             match crate::services::markets::world::confirm_leads(db, imp.org_id, actor).await {
                 Ok(n) if n > 0 => tracing::info!(
                     org = imp.org_id,
@@ -1607,11 +1595,8 @@ pub async fn run_staged(
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(&m, &rows);
     // A feed's window may hold nothing: not a lost source.
-    let lost = rows.is_empty()
-        && previous > 0
-        && m.press_feed.is_none()
-        && m.events_feed.is_none()
-        && m.conflict_feed.is_none();
+    let lost =
+        rows.is_empty() && previous > 0 && m.press_feed.is_none() && m.conflict_feed.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()
@@ -1763,11 +1748,8 @@ async fn scheduled(
     let missing = imp::missing_columns(m, &rows);
     // D303: an unexpected shape writes nothing.
     // A feed's window may hold nothing: not a lost source.
-    let lost = rows.is_empty()
-        && previous > 0
-        && m.press_feed.is_none()
-        && m.events_feed.is_none()
-        && m.conflict_feed.is_none();
+    let lost =
+        rows.is_empty() && previous > 0 && m.press_feed.is_none() && m.conflict_feed.is_none();
     if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()

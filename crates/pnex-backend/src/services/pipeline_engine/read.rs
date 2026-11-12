@@ -469,7 +469,13 @@ impl Typed {
                 (None, Some(at)) => cell(c, at),
                 (None, None) => None,
             };
-            let raw = raw.map(|s| c.map.get(s.trim()).cloned().unwrap_or(s));
+            let raw = raw.map(|s| {
+                c.map
+                    .get(s.trim())
+                    .or_else(|| c.map.get("*"))
+                    .cloned()
+                    .unwrap_or(s)
+            });
             let raw = match self.divide[j] {
                 Some(d) => raw.map(|s| shifted(&s, d)),
                 None => raw,

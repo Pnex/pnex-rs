@@ -22,7 +22,6 @@ pub mod apps;
 /// Large public files into tables: AIS, ADS-B, DVF (markets-research.md MK22–MK24).
 pub mod bulk;
 pub mod conflict_events;
-pub mod gdelt_events;
 pub mod gkg;
 pub mod market_study;
 pub mod markets;

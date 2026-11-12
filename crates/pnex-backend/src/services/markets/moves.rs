@@ -26,7 +26,7 @@ pub const MOVE_SETTINGS: [&str; 2] = ["markets.move_series", "markets.move_ticke
 pub const EVENT_TYPE: &str = "market_event";
 pub const KIND_MOVE: &str = "market_move";
 const LINK_ABOUT: &str = "event_about";
-const GEO_TYPE: &str = "geo_event";
+pub const GEO_TYPE: &str = "geo_event";
 
 /// Sessions older than this are not announced (a first reading of a ticker).
 const NOTICE_DAYS: i64 = 5;

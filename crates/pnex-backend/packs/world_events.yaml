@@ -22,7 +22,7 @@
 key: world_events
 name: World events
 names: {fr: "Événements du monde"}
-version: "1.1.0"
+version: "1.2.0"
 history: true
 requires: []
 description: Geopolitical events (conflicts, attacks, sanctions, blockades, ceasefires) with a place, a date and a source, from the GDELT feed for the countries watched. Unconfirmed until a member cites a source.
@@ -95,24 +95,15 @@ types:
       - { key: credit, name: Collected through, names: {fr: "Collecté via"}, kind: text, max_len: 255 }
 imports:
   - name: World events (GDELT)
-    source: api
-    source_url: "https://data.gdeltproject.org/gdeltv2"
+    source: file
     mode: incremental
     recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: gdelt_events
+      pipeline: world_events/gdelt_events
       name: World events
       names: {fr: "Événements du monde (GDELT)"}
       description: The coded events of the last two days in the countries watched, one lead per country, kind and day, unconfirmed. Source GDELT Project, gdeltproject.org.
-      format: json
-      events_feed:
-        countries_setting: world_events.geo_watch
-        codes_setting: world_events.gdelt_codes
-        # A GDELT line is born with one source: later mentions land in other
-        # files. Measured 2026-11-06: 166 of 168 matching lines had one.
-        min_sources: 1
-        max_goldstein: -5
-        hours: 48
       objects:
         # Counts and places follow the last reading; the status is written
         # on creation only, so a member's confirmation stays.
@@ -128,7 +119,7 @@ imports:
             event_at: event_at
             published_at: published_at
             known_at: known_at
-            location: location
+            location: { from: location, convert: [json] }
             country: country
             region: region
             actors: actors
@@ -141,23 +132,14 @@ imports:
   # D740: the same leads over the last three months, run by hand (about
   # 8 800 files of the feed): a history to study, or a volume run with `*`.
   - name: World events history (GDELT, 3 months)
-    source: api
-    source_url: "https://data.gdeltproject.org/gdeltv2"
+    source: file
     mode: incremental
     mapping:
       key: gdelt_events_history
+      pipeline: world_events/gdelt_events_history
       name: World events history
       names: {fr: "Historique des événements du monde (GDELT, 3 mois)"}
       description: The coded events of the last three months in the countries watched, one lead per country, kind and day, unconfirmed. Run by hand. Source GDELT Project, gdeltproject.org.
-      format: json
-      events_feed:
-        countries_setting: world_events.geo_watch
-        codes_setting: world_events.gdelt_codes
-        # A GDELT line is born with one source: later mentions land in other
-        # files. Measured 2026-11-06: 166 of 168 matching lines had one.
-        min_sources: 1
-        max_goldstein: -5
-        hours: 2208
       objects:
         - as: event
           type: geo_event
@@ -171,7 +153,7 @@ imports:
             event_at: event_at
             published_at: published_at
             known_at: known_at
-            location: location
+            location: { from: location, convert: [json] }
             country: country
             region: region
             actors: actors

@@ -278,59 +278,6 @@ pub async fn fetch_press(
     Ok(pnex_core::gkg::digest(rows))
 }
 
-/// The leads of the GDELT Events feed over its window (D740): every slice
-/// is read once, only the lines of the watched countries and codes are kept,
-/// then aggregated per (country, code family, day).
-pub async fn fetch_events(
-    url: &str,
-    hours: u32,
-    filter: pnex_core::gdelt_events::EventsFilter,
-) -> Result<Vec<Value>, &'static str> {
-    if filter.countries.is_empty() || filter.codes.is_empty() {
-        return Ok(Vec::new());
-    }
-    let raw = format!("{}/", url.trim_end_matches('/'));
-    let base = check_url(&raw).map_err(|_| UNREACHABLE)?;
-    use futures_util::StreamExt;
-    let names = pnex_core::gdelt_events::file_names(chrono::Utc::now(), hours);
-    let filter = std::sync::Arc::new(filter);
-    let mut agg = pnex_core::gdelt_events::Aggregator::default();
-    let mut read = 0usize;
-    // A few files in flight: a history run reads thousands of them.
-    let mut files = futures_util::stream::iter(names.clone())
-        .map(|name| {
-            let base = base.clone();
-            async move { press_file(&base, &name).await }
-        })
-        .buffer_unordered(EVENTS_IN_FLIGHT);
-    while let Some(file) = files.next().await {
-        if let Some(text) = file? {
-            read += 1;
-            let f = filter.clone();
-            agg = tokio::task::spawn_blocking(move || {
-                agg.add(&f, &text);
-                agg
-            })
-            .await
-            .map_err(|_| UNREADABLE)?;
-        }
-    }
-    tracing::info!(
-        files = names.len(),
-        read,
-        lines = agg.lines,
-        "events feed read"
-    );
-    // Some files are always missing; all of them is the feed being down.
-    if read == 0 {
-        return Err(UNREACHABLE);
-    }
-    Ok(agg.records())
-}
-
-/// GDELT files downloaded at once by an events feed.
-const EVENTS_IN_FLIGHT: usize = 6;
-
 /// Pages of a conflict source read per run, at most.
 const CONFLICT_PAGES: u32 = 40;
 /// Rows per ACLED page.

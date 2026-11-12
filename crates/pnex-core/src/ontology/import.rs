@@ -315,33 +315,6 @@ fn press_hours() -> u32 {
 /// Longest window of a press feed, in hours.
 pub const PRESS_HOURS_MAX: u32 = 72;
 
-/// Longest window of a GDELT Events feed: a history run read by hand, about
-/// three months of 15-minute files (D740).
-pub const EVENTS_HOURS_MAX: u32 = 24 * 92;
-
-/// The GDELT Events feed of an import: which countries and codes come from
-/// settings, the per-line thresholds are the import's own.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(deny_unknown_fields)]
-pub struct EventsFeed {
-    /// `<pack>.<setting>` listing the watched countries (FIPS 10-4 codes).
-    pub countries_setting: String,
-    /// `<pack>.<setting>` listing the CAMEO code families kept.
-    pub codes_setting: String,
-    /// A line counts from this many sources.
-    pub min_sources: u32,
-    /// A line counts at or under this Goldstein score (-10…10).
-    pub max_goldstein: f64,
-    /// Hours of the feed each run reads.
-    #[serde(default = "events_hours")]
-    pub hours: u32,
-}
-
-fn events_hours() -> u32 {
-    48
-}
-
 /// Verified conflict events of an import (D741). The host and the vault
 /// secrets are fixed by the source, never by the mapping (R9).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -573,10 +546,6 @@ pub struct Mapping {
     /// instead of pages (account-mapping.md D539).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub press_feed: Option<PressFeed>,
-    /// API: the GDELT Events feed, aggregated into one lead per (country,
-    /// code family, day) (markets-research.md D740).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub events_feed: Option<EventsFeed>,
     /// API: verified conflict events (UCDP, ACLED) of the watched countries,
     /// with the org's own credentials (markets-research.md D741).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -736,24 +705,9 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             return Err(ferr("press_feed", FIELD_INVALID));
         }
     }
-    if let Some(e) = &m.events_feed {
-        let setting = |k: &str| {
-            let bad = |k: &str| !valid_key(k);
-            k.split_once('.').is_none_or(|(a, b)| bad(a) || bad(b))
-        };
-        if m.press_feed.is_some()
-            || setting(&e.countries_setting)
-            || setting(&e.codes_setting)
-            || !(-10.0..=10.0).contains(&e.max_goldstein)
-            || !(1..=EVENTS_HOURS_MAX).contains(&e.hours)
-        {
-            return Err(ferr("events_feed", FIELD_INVALID));
-        }
-    }
     if let Some(c) = &m.conflict_feed {
         let bad = |k: &str| !valid_key(k);
         if m.press_feed.is_some()
-            || m.events_feed.is_some()
             || c.countries_setting
                 .split_once('.')
                 .is_none_or(|(a, b)| bad(a) || bad(b))

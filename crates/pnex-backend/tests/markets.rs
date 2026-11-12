@@ -1136,6 +1136,132 @@ async fn mock_conflicts(seen: Arc<Mutex<Vec<String>>>) -> String {
     base
 }
 
+/// D740 through its pipeline: the 15-minute exports of the feed become one
+/// unconfirmed lead per country, family and day, located; nothing is read
+/// while the watch list is empty.
+#[tokio::test]
+#[serial]
+async fn gdelt_leads_come_from_the_events_pipeline() {
+    use axum::extract::Path;
+    with_app(|server, ctx, token| async move {
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api {
+            server: &server,
+            token,
+            org,
+        };
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/packs/world_events/install", None)
+            .await;
+        assert_eq!(st, 200, "{r}");
+        // The slice of a quarter of an hour ago, in the window read.
+        let now = chrono::Utc::now();
+        let slice = now - chrono::Duration::minutes(15);
+        let stamp = format!(
+            "{}{:02}00",
+            slice.format("%Y%m%d%H"),
+            chrono::Timelike::minute(&slice) / 15 * 15
+        );
+        let day = slice.format("%Y%m%d").to_string();
+        let line = |id: &str, code: &str, src: &str, lat: &str| {
+            let mut f = vec![""; 61];
+            (f[0], f[1], f[6], f[26], f[30], f[32], f[33]) =
+                (id, day.as_str(), "MILITARY", code, "-10", src, "2");
+            (f[52], f[53], f[56], f[57], f[59]) =
+                ("Kyiv, Ukraine", "UP", lat, "30.5", stamp.as_str());
+            f.join("\t")
+        };
+        let text = [
+            line("1", "190", "2", "50.4"),
+            line("2", "193", "1", "50.6"),
+            line("3", "042", "1", "50.6"),
+        ]
+        .join("\n");
+        let zip = {
+            use std::io::Write;
+            let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            w.start_file(
+                format!("{stamp}.export.CSV"),
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+            w.write_all(text.as_bytes()).unwrap();
+            w.finish().unwrap().into_inner()
+        };
+        let asked = Arc::new(AtomicUsize::new(0));
+        let counted = asked.clone();
+        let wanted = format!("{stamp}.export.CSV.zip");
+        let app = axum::Router::new().route(
+            "/gdeltv2/{file}",
+            axum::routing::get(move |Path(file): Path<String>| {
+                counted.fetch_add(1, Ordering::SeqCst);
+                let (zip, wanted) = (zip.clone(), wanted.clone());
+                async move {
+                    if file == wanted {
+                        Ok(zip)
+                    } else {
+                        Err(axum::http::StatusCode::NOT_FOUND)
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::pipeline_engine::store::route_for_tests(
+            "data.gdeltproject.org",
+            &base,
+        );
+
+        // Nothing watched: nothing read.
+        let r = api.run("World events (GDELT)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(
+            asked.load(Ordering::SeqCst),
+            0,
+            "an empty watch list reads no file"
+        );
+
+        let (st, r) = api
+            .call(
+                "PATCH",
+                "/api/v1/ontology/packs/world_events/settings",
+                Some(json!({ "values": { "geo_watch": "ua", "gdelt_codes": "18,19" } })),
+            )
+            .await;
+        assert_eq!(st, 200, "{r}");
+        let r = api.run("World events (GDELT)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let iso = slice.format("%Y-%m-%d");
+        let id = object_id(&db, org, "geo_event", "ref", &format!("gdelt:UA:19:{iso}"))
+            .await
+            .expect("one lead");
+        let (_, o) = api
+            .call("GET", &format!("/api/v1/ontology/objects/{id}"), None)
+            .await;
+        let p = &o["properties"];
+        assert_eq!(
+            (
+                p["status"].as_str(),
+                p["kind"].as_str(),
+                p["source_count"].as_f64()
+            ),
+            (Some("unconfirmed"), Some("armed_conflict"), Some(3.0)),
+            "{o}"
+        );
+        assert_eq!(p["location"], json!({"lat": 50.5, "lon": 30.5}), "{o}");
+        assert_eq!(p["gdelt_ids"], "1,2", "{o}");
+    })
+    .await;
+}
+
 /// D739, D741: a GDELT lead is confirmed by a UCDP event of its country and
 /// day; ACLED is read with the org's own account; both reach the map.
 /// Without credentials, nothing is read.

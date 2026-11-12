@@ -131,7 +131,7 @@ pub struct Inputs {
 
 /// The settings and objects a document reads.
 pub fn wanted(doc: &Document) -> (Vec<String>, Vec<pnex_core::pipeline::doc::ObjectsAxis>) {
-    let (mut settings, mut objects) = (Vec::new(), Vec::new());
+    let (mut settings, mut objects) = (doc.requires.clone(), Vec::new());
     for step in &doc.steps {
         match step {
             Step::Enumerate(e) => {
@@ -766,6 +766,10 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
     mut journal: Option<&mut Vec<StepRecord>>,
 ) -> RunOutcome {
     let mut outcome = RunOutcome::default();
+    let unset = |k: &String| inputs.settings.get(k).is_none_or(|v| v.trim().is_empty());
+    if doc.requires.iter().any(unset) {
+        return outcome;
+    }
     let tracked = match doc.steps.first() {
         Some(Step::Enumerate(e)) if e.track => Some(e),
         _ => None,

@@ -42,6 +42,10 @@ pub struct Document {
     /// Keys of pipelines it runs after, besides the tables it reads (D946).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub after: Vec<String>,
+    /// `<pack>.<key>` of settings that must hold a value: while one is
+    /// empty, a run reads and writes nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tests: Vec<TestCase>,
 }
@@ -443,6 +447,7 @@ pub struct Column {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<[f64; 2]>,
     /// Cell → value before it is typed (`True: sell`); a cell not listed
+    /// takes the value of `"*"` when there is one (empty = no value), else
     /// stays as it is.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub map: BTreeMap<String, String>,
@@ -768,6 +773,14 @@ impl Document {
         }
         if self.after.len() > AFTER_MAX || self.after.iter().any(|a| !valid_name(a)) {
             bad("after".into(), "invalid");
+        }
+        if self.requires.len() > 8
+            || self.requires.iter().any(|k| {
+                k.split_once('.')
+                    .is_none_or(|(p, n)| !valid_name(p) || !valid_name(n))
+            })
+        {
+            bad("requires".into(), "invalid");
         }
         if self.steps.is_empty() {
             bad("steps".into(), "required");
