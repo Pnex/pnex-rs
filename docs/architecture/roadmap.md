@@ -1292,6 +1292,17 @@ contre déclaré) pour répondre aux dix questions de traçabilité (quoi tourne
 avec quel risque, à qui). Absorbe le pack `software` de P2.24 ; s'appuie sur P2.23 pour la
 télémétrie et sur OP2 pour la collecte. Plusieurs mois de travail.
 
+### P2.39 — Pièces et documentation : la bonne pièce et sa doc en quelques secondes (ajout 2026-11-12) — **PRD proposé, rien d'implémenté**
+
+Doc : `parts-docs.md` (D960–D971 proposées, lots PD0–PD5, questions Q-PD1–Q-PD9).
+Module métier générique de la maintenance augmentée : fiche pièce riche (vue éclatée à
+repères, 3D, schémas, procédure de montage, notes terrain), recherche multimodale (QR,
+référence ancienne ou partielle, texte, photo de plaque ou de pièce), nomenclatures filtrées
+par plage de séries, boucle de corrections. Porté par l'ontologie (pack `parts_docs`), sans
+table métier hors jeton QR et index des références ; s'appuie sur la GMAO générique
+(`ontology.md` annexe C), la médiathèque, les annotations, Pages L6 et la vision. Le module
+prix (agent navigateur à la demande) est un PRD séparé.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe

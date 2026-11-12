@@ -1381,3 +1381,4 @@ seulement des mouvements s'écrit est marqué quand même.
 | C-DOC | Document d'intervention par métier = modèle de page du pack métier, rempli depuis l'OT et les mesures |
 | C-ACH | Demande d'achat depuis un niveau sous le seuil, fournisseur préféré proposé |
 | C-UI | Écrans dédiés : file des OT d'un technicien, fiche pièce avec stock par emplacement et prix par fournisseur |
+- Pièces et documentation (recherche, nomenclatures, QR d'appareils, procédures de montage) : `parts-docs.md` (P2.39) ; PD1 et C-QR1/C-QR2 se font une fois.
