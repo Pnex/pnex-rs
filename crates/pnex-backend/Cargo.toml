@@ -8,6 +8,10 @@ publish = false
 default-run = "pnex-server"
 
 [dependencies]
+# Global allocator of pnex-server (MIT/Apache-2.0, jemalloc BSD-2): glibc
+# kept each blocking thread's peak (1.7 GB idle, OOM on 2026-11-12); the
+# background threads give freed pages back to the system.
+tikv-jemallocator = { version = "0.7", features = ["background_threads"] }
 pnex-core = { workspace = true, features = ["naming", "prompb", "frame-crypto", "egress", "doc-extract", "openapi"] }
 pnex-notify = { workspace = true }
 # In-process CoolProp: mixture validation on save + (phase 3) diagram
