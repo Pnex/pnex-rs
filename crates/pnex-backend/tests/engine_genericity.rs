@@ -359,11 +359,6 @@ const HOST_DEBT: &[(&str, &[&str], &str)] = &[
         "catalogue mode of source_resolve (PE4)",
     ),
     (
-        "pnex-backend/src/services/markets/identity.rs",
-        &["api.gleif.org"],
-        "company identity match (PE4)",
-    ),
-    (
         "pnex-core/src/markets/prediction.rs",
         &[
             "clob.polymarket.com",

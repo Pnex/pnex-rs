@@ -488,6 +488,102 @@ impl Sink for DatasetSink<'_> {
         }
         Ok(u64::from(out.created + out.updated))
     }
+
+    async fn proposals(
+        &mut self,
+        target: &pnex_core::pipeline::doc::ProposalsTarget,
+        rows: Vec<serde_json::Map<String, Value>>,
+    ) -> Result<u64, Failure> {
+        use pnex_core::ontology::proposal::{ProposalInput, ProposalKind};
+        let failed = || fail("storage", json!({ "what": "proposals" }));
+        let mut made = 0;
+        for r in rows {
+            let text = |k: &str| {
+                r.get(k)
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_string)
+            };
+            // A JSON object written as text by a function or a query.
+            let json_of = |k: &str| match r.get(k) {
+                Some(Value::String(t)) => serde_json::from_str(t).unwrap_or(Value::Null),
+                Some(v) => v.clone(),
+                None => Value::Null,
+            };
+            let (Some(kind), Some(by), Some(key)) =
+                (text("type_key"), text("key_property"), text("key"))
+            else {
+                continue;
+            };
+            // The object is gone or was never known: nothing to propose.
+            let Some((id, version)) = object_by(self.db, self.org, &kind, &by, &key).await? else {
+                continue;
+            };
+            let values = json_of("values").as_object().cloned().unwrap_or_default();
+            let mut input = ProposalInput {
+                kind: Some(ProposalKind::ObjectUpdate),
+                type_key: kind,
+                target_id: Some(id.to_string()),
+                source_id: None,
+                link_target_id: None,
+                title: text("title"),
+                values,
+                base_version: Some(version),
+                evidence: json_of("evidence"),
+                origin: target.origin.clone(),
+                confidence: target.confidence,
+            };
+            if let Some(link) = text("link_type") {
+                let (Some(to_type), Some(to_by), Some(to_key)) =
+                    (text("to_type"), text("to_property"), text("to_key"))
+                else {
+                    continue;
+                };
+                let Some((to, _)) = object_by(self.db, self.org, &to_type, &to_by, &to_key).await?
+                else {
+                    continue;
+                };
+                input.kind = Some(ProposalKind::LinkCreate);
+                input.type_key = link;
+                input.target_id = None;
+                input.source_id = Some(id.to_string());
+                input.link_target_id = Some(to.to_string());
+                input.base_version = None;
+            }
+            match crate::services::ontology::proposals::propose(self.db, self.org, &input).await {
+                Ok(_) => made += 1,
+                Err(crate::services::ontology::OntologyError::Db(_)) => return Err(failed()),
+                Err(e) => tracing::info!(org = self.org, error = %e, "pipeline proposal refused"),
+            }
+        }
+        Ok(made)
+    }
+}
+
+/// The live object of a type whose property holds `value`: its id and version.
+async fn object_by(
+    db: &DatabaseConnection,
+    org: i64,
+    kind: &str,
+    by: &str,
+    value: &str,
+) -> Result<Option<(Uuid, i32)>, Failure> {
+    let failed = || fail("storage", json!({ "what": "proposals" }));
+    let Some(row) = db
+        .query_one_raw(stmt(
+            "SELECT id, version FROM objects WHERE org_id = $1 AND type_key = $2 \
+               AND valid_to IS NULL AND properties ->> $3 = $4 ORDER BY id LIMIT 1",
+            vec![org.into(), kind.into(), by.into(), value.into()],
+        ))
+        .await
+        .map_err(|_| failed())?
+    else {
+        return Ok(None);
+    };
+    let id = row.try_get::<Uuid>("", "id").map_err(|_| failed())?;
+    let version = row.try_get::<i32>("", "version").map_err(|_| failed())?;
+    Ok(Some((id, version)))
 }
 
 /// The network: egress guard (R8), redirects on the same host only (D942),

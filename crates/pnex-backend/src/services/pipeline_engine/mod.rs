@@ -133,6 +133,13 @@ pub trait Sink {
 
     /// Upserts the org's time ranges by `external_id`; the rows written.
     async fn ranges(&mut self, rows: Vec<Map<String, Value>>) -> Result<u64, Failure>;
+
+    /// Files proposals to validate; the proposals made.
+    async fn proposals(
+        &mut self,
+        target: &pnex_core::pipeline::doc::ProposalsTarget,
+        rows: Vec<Map<String, Value>>,
+    ) -> Result<u64, Failure>;
 }
 
 /// The rows of a table as JSON records, timestamps in RFC 3339 UTC.
@@ -911,18 +918,18 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     }
                     None => return Err(fail("not_rows", json!({ "table": w.from }))),
                 };
-                match (&w.table, &w.time_ranges) {
-                    (Some(t), _) if batches.iter().any(|b| b.rows > 0) => {
+                if let Some(t) = &w.table {
+                    if batches.iter().any(|b| b.rows > 0) {
                         *written += self.sink.append(&t.name, t.replace, batches).await?;
                     }
-                    (Some(_), _) => {}
-                    (None, Some(_)) => {
-                        let rows = blocking(move || records_of(&batches)).await?;
-                        *written += self.sink.ranges(rows).await?;
-                    }
-                    (None, None) => {
-                        return Err(fail("step_unsupported", json!({ "step": "write.objects" })))
-                    }
+                } else if w.time_ranges.is_some() {
+                    let rows = blocking(move || records_of(&batches)).await?;
+                    *written += self.sink.ranges(rows).await?;
+                } else if let Some(p) = &w.proposals {
+                    let rows = blocking(move || records_of(&batches)).await?;
+                    *written += self.sink.proposals(p, rows).await?;
+                } else {
+                    return Err(fail("step_unsupported", json!({ "step": "write.objects" })));
                 }
                 return Ok(None);
             }

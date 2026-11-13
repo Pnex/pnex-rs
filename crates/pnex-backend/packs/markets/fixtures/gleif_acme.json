@@ -1,0 +1,5 @@
+{"data": [
+  {"attributes": {"lei": "5493000000000000ACME", "entity": {"legalName": {"name": "Acme Corporation"}, "otherNames": []}}},
+  {"attributes": {"lei": "5493000000000000AHLD", "entity": {"legalName": {"name": "Acme Holdings Inc."}, "otherNames": [{"name": "Acme Group"}]}}},
+  {"attributes": {"lei": "bad", "entity": {"legalName": {"name": "Acme Corp"}}}}
+]}

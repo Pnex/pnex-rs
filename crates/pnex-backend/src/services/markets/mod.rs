@@ -8,7 +8,6 @@ pub mod chart;
 pub mod decisions;
 pub mod documents;
 pub mod history;
-pub mod identity;
 pub mod moves;
 pub mod prediction;
 pub mod study;

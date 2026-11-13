@@ -585,4 +585,11 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
 |---|---|
 | Les instants des plages sont écrits en UTC (l'ancien code gardait le décalage de New York) ; même instant | à garder |
 | Une page de calendrier qui change de forme fait échouer le run (l'ancien code passait en silence) | à garder : l'échec se voit dans l'historique |
+- **Identité par LEI** : cible **`write: proposals`** (jamais d'écriture directe ; l'objet est
+  retrouvé par la valeur d'une de ses propriétés, `key_property` + `key`, jamais par un id ; un lien
+  par `link_type`, `to_type`, `to_property`, `to_key` ; `origin` et `confidence` sur la cible).
+  `markets/gleif_identity` : chaque société à CIK sans LEI demandée une fois (registre D937, qui
+  remplace la propriété `lei_state`, supprimée du pack), rapprochement des noms légaux par la
+  fonction Starlark `gleif_match`. **Supprimés** : `services/markets/identity.rs`,
+  `pnex-core/src/markets/same_company.rs`, leur ligne de `HOST_DEBT`.
 

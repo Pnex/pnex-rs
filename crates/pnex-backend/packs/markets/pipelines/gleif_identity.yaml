@@ -1,0 +1,72 @@
+# A company created from its SEC number found again by its LEI (D812): the
+# SEC name is looked up in GLEIF among US entities, and a single record with
+# the same legal name becomes a proposal, never a write. If the org already
+# knows that LEI on another organization, the proposal is a
+# `same_company_as` link between the two; otherwise it is the LEI on the
+# SEC company. Each company is asked once.
+key: gleif_identity
+name: Company identity by LEI (GLEIF)
+hosts: [api.gleif.org]
+schedule: 10m
+steps:
+  - enumerate:
+      as: companies
+      track: true
+      per_run: 10
+      empty: settled
+      cross:
+        - { as: cik, objects: { type: organization, property: cik, title: title, columns: [lei] } }
+  - sql: { as: due, sql: "SELECT cik, title FROM companies WHERE coalesce(lei, '') = ''" }
+  - fetch:
+      as: answer
+      for_each: due
+      url: "https://api.gleif.org/api/v1/lei-records"
+      params: { "filter[fulltext]": "{{title}}", "filter[entity.legalAddress.country]": US, "page[size]": "10" }
+      every: 250ms
+  - read:
+      as: candidates
+      from: answer
+      format: json
+      records: /data
+      skip_invalid: true
+      columns:
+        - { name: cik, value: "{{cik}}" }
+        - { name: title, value: "{{title}}" }
+        - { name: url, value: "{{url}}" }
+        - { name: lei, at: /attributes/lei, type: text }
+        - { name: legal_name, at: /attributes/entity/legalName/name, type: text }
+        - { name: other_names, at: /attributes/entity/otherNames, type: json, optional: true }
+  - call: { as: matches, from: candidates, function: gleif_match }
+  # Organizations of the org already holding an LEI.
+  - enumerate: { as: holders, cross: [{ as: lei, objects: { type: organization, property: lei } }] }
+  - sql:
+      as: proposed
+      sql: >-
+        SELECT 'organization' AS type_key, 'cik' AS key_property, m.cik AS key,
+          CASE WHEN h.lei IS NULL THEN m.title ELSE m.title || ' = ' || m.legal_name END AS title,
+          m."values" AS "values", m.evidence AS evidence,
+          CASE WHEN h.lei IS NULL THEN NULL ELSE 'same_company_as' END AS link_type,
+          'organization' AS to_type, 'lei' AS to_property, m.lei AS to_key
+        FROM matches m LEFT JOIN holders h ON h.lei = m.lei
+  - write: { from: proposed, proposals: { origin: markets.gleif, confidence: 90 } }
+tests:
+  - name: one legal name matches, another org holds that LEI, two companies tie
+    objects:
+      "organization.cik?columns=lei": ["0000000001", "0000000002"]
+      organization.lei: ["5493000000000000ACME"]
+    extra:
+      "organization.cik?columns=lei":
+        "0000000001": { title: ACME CORP, lei: "" }
+        "0000000002": { title: INITECH CORP, lei: "" }
+    given:
+      "https://api.gleif.org/api/v1/lei-records?filter%5Bentity.legalAddress.country%5D=US&filter%5Bfulltext%5D=ACME+CORP&page%5Bsize%5D=10": gleif_acme.json
+      "https://api.gleif.org/api/v1/lei-records?filter%5Bentity.legalAddress.country%5D=US&filter%5Bfulltext%5D=INITECH+CORP&page%5Bsize%5D=10": gleif_initech.json
+    expect:
+      matches:
+        rows: 1
+        contains:
+          - { cik: "0000000001", lei: 5493000000000000ACME, legal_name: Acme Corporation }
+      proposed:
+        rows: 1
+        contains:
+          - { key: "0000000001", link_type: same_company_as, to_key: 5493000000000000ACME, title: "ACME CORP = Acme Corporation" }

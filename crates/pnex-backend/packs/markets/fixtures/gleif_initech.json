@@ -1,0 +1,4 @@
+{"data": [
+  {"attributes": {"lei": "5493000000000000AAAA", "entity": {"legalName": {"name": "Initech Corporation"}, "otherNames": []}}},
+  {"attributes": {"lei": "5493000000000000BBBB", "entity": {"legalName": {"name": "Old Name"}, "otherNames": [{"name": "INITECH CORP"}]}}}
+]}

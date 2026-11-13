@@ -1997,15 +1997,27 @@ async fn sec_companies_are_matched_to_their_lei_by_proposal() {
         let sec_gamma = create("GAMMA CORP", json!({"cik": "0000000044", "kind": "company"})).await;
         let sec_delta = create("DELTA INC", json!({"cik": "0000000045", "kind": "company"})).await;
 
-        pnex_backend::services::markets::identity::sweep(&ctx, &base).await.unwrap();
-        pnex_backend::services::markets::identity::sweep(&ctx, &base).await.unwrap();
+        use pnex_backend::services::pipeline_engine::store;
+        store::route_for_tests("api.gleif.org", &base);
+        let sp = store::shipped().iter().find(|p| p.id() == "markets/gleif_identity").unwrap();
+        let s3 = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+        for _ in 0..2 {
+            let out = store::run_for_org(&db, &s3, org, sp, &store::HttpTransport, chrono::Utc::now(), None)
+                .await
+                .unwrap();
+            assert!(out.failure.is_none(), "{:?}", out.failure);
+        }
+        let items = count(
+            &db,
+            format!("SELECT count(*) AS n FROM pipeline_items WHERE org_id = {org} AND pipeline = 'markets/gleif_identity' AND item <> ''"),
+        )
+        .await;
+        assert_eq!(items, 4, "each SEC company asked once");
+        let _ = (sec_gamma, sec_delta);
         let state = |id: String| async move {
             let (_, o) = api.call("GET", &format!("/api/v1/ontology/objects/{id}"), None).await;
             o["properties"].clone()
         };
-        assert_eq!(state(sec_acme.clone()).await["lei_state"], "proposed");
-        assert_eq!(state(sec_gamma).await["lei_state"], "ambiguous");
-        assert_eq!(state(sec_delta).await["lei_state"], "none");
         assert!(state(sec_beta.clone()).await.get("lei").is_none(), "nothing written before a decision");
 
         let (st, page) = api.call("GET", "/api/v1/proposals?limit=50", None).await;

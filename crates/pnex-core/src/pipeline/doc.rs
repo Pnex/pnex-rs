@@ -638,6 +638,22 @@ pub struct Write {
     /// `source_url`, `description`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_ranges: Option<RangesTarget>,
+    /// Proposals to validate (D371), never a direct write. Columns:
+    /// `type_key`, `key_property`, `key` (the object, found by that
+    /// property's value), `title`, `values` and `evidence` (JSON objects);
+    /// a link also `link_type`, `to_type`, `to_property`, `to_key`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposals: Option<ProposalsTarget>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProposalsTarget {
+    /// Who proposes (`markets.gleif`), shown with each proposal.
+    pub origin: String,
+    /// 0 to 100.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
 }
 
 /// The org's time ranges as a write target; nothing to set yet.
@@ -1251,13 +1267,23 @@ fn step_violations(
                 w.table.is_some(),
                 w.objects.is_some(),
                 w.time_ranges.is_some(),
+                w.proposals.is_some(),
             ]
             .iter()
             .filter(|t| **t)
             .count()
                 != 1
             {
-                bad(at.to_string(), "one_of:table,objects,time_ranges");
+                bad(at.to_string(), "one_of:table,objects,time_ranges,proposals");
+            }
+            if let Some(p) = &w.proposals {
+                let ok = |c: char| c.is_ascii_alphanumeric() || "._-".contains(c);
+                if p.origin.is_empty() || p.origin.len() > 100 || !p.origin.chars().all(ok) {
+                    bad(format!("{at}.proposals.origin"), "invalid");
+                }
+                if p.confidence.is_some_and(|c| !(0.0..=100.0).contains(&c)) {
+                    bad(format!("{at}.proposals.confidence"), "invalid");
+                }
             }
             if let Some(t) = &w.table {
                 if !valid_name(&t.name) {
@@ -1324,7 +1350,7 @@ mod tests {
         );
         assert!(t.contains(&"steps.0.fetch.url host_not_declared:other.example.io".into()));
         assert!(t.contains(&"steps.1.read.as duplicate".into()));
-        assert!(t.contains(&"steps.2.write one_of:table,objects,time_ranges".into()));
+        assert!(t.contains(&"steps.2.write one_of:table,objects,time_ranges,proposals".into()));
     }
 
     #[test]

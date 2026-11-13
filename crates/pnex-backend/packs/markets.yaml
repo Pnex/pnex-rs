@@ -73,7 +73,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.15.0"
+version: "1.16.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -290,14 +290,6 @@ extends:
       - { key: declared_key, name: Declared as, names: {fr: "Déclarée comme"}, description: "Country and name of a company known by a group's declaration only (Exhibit 21 of a 10-K): the key it is found again by.", descriptions: {fr: "Pays et nom d'une société connue seulement par la déclaration d'un groupe (Exhibit 21 d'un 10-K) : la clé qui la retrouve."}, kind: text, max_len: 400, unique: true }
       - { key: incorporated_in, name: Incorporated in, names: {fr: "Immatriculée en"}, description: "The jurisdiction as the declaration writes it (a US state, a country).", descriptions: {fr: "La juridiction telle que la déclaration l'écrit (un État américain, un pays)."}, kind: text, max_len: 120 }
       - { key: market_names, name: Names in the press, names: {fr: "Noms dans la presse"}, description: "Comma-separated names the press uses, such as Nvidia for NVIDIA CORP.", descriptions: {fr: "Noms utilisés par la presse, séparés par des virgules, par exemple Nvidia pour NVIDIA CORP."}, kind: text, max_len: 500 }
-      - key: lei_state
-        name: LEI lookup (GLEIF)
-        names: {fr: "Recherche du LEI (GLEIF)"}
-        description: "The SEC does not publish LEIs: the SEC name was looked up in GLEIF. Proposed = a single company with the same legal name, waiting in the proposals."
-        descriptions: {fr: "La SEC ne publie pas les LEI : le nom SEC a été cherché dans GLEIF. Proposé = une seule société au même nom légal, en attente dans les propositions."}
-        kind: enum
-        values: [proposed, ambiguous, none]
-        labels: {proposed: {fr: "Proposé", en: "Proposed"}, ambiguous: {fr: "Plusieurs candidats", en: "Several candidates"}, none: {fr: "Introuvable", en: "Not found"}}
 types:
   - key: instrument
     name: Instrument
@@ -924,4 +916,70 @@ pipeline_functions:
               if "monetary policy meeting" not in low or "non-monetary" in low or "day 1" in low:
                   continue
               out.append({"day": d[2] + "-" + d[1] + "-" + d[0], "label": what})
+          return out
+  # A company created from its SEC number found again in GLEIF (D812): only
+  # a single record whose legal name (or another of its names) has the
+  # same legal key as the SEC name is kept. "NVIDIA CORP" and "NVIDIA
+  # Corporation", "COCA COLA CO" and "The Coca-Cola Company" share a key.
+  - name: gleif_match
+    language: starlark
+    description: The single GLEIF record matching each SEC company's name (rows cik, title, lei, legal_name, other_names, url → cik, title, lei, legal_name, values, evidence).
+    code: |
+      FOLD = {"à": "a", "á": "a", "â": "a", "ä": "a", "ã": "a", "å": "a", "ç": "c", "é": "e", "è": "e",
+              "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i", "ï": "i", "ñ": "n", "ó": "o", "ò": "o",
+              "ô": "o", "ö": "o", "õ": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y"}
+      FORMS = {"CORPORATION": "CORP", "INCORPORATED": "INC", "COMPANY": "CO", "LIMITED": "LTD"}
+
+      def legal_key(name):
+          chars = []
+          for c in name.lower().elems():
+              c = FOLD.get(c, c)
+              chars.append(c.upper() if c.isalnum() else " ")
+          words = [FORMS.get(w, w) for w in "".join(chars).split()]
+          if len(words) > 1 and words[0] == "THE":
+              words = words[1:]
+          return " ".join(words)
+
+      def handle(rows):
+          by = {}
+          order = []
+          for r in rows:
+              k = r.get("cik")
+              if k not in by:
+                  by[k] = []
+                  order.append(k)
+              by[k].append(r)
+          out = []
+          for k in order:
+              found = by[k]
+              key = legal_key(found[0].get("title") or "")
+              if key == "":
+                  continue
+              hits = []
+              for c in found:
+                  lei = (c.get("lei") or "").upper()
+                  if len(lei) != 20 or not lei.isalnum():
+                      continue
+                  names = [c.get("legal_name") or ""]
+                  other = c.get("other_names")
+                  if other:
+                      for o in json.decode(other):
+                          if type(o) == "dict" and o.get("name"):
+                              names.append(o["name"])
+                  if [n for n in names if legal_key(n) == key]:
+                      hits.append({"lei": lei, "c": c})
+              # None, or several companies: nothing proposed.
+              if not hits or [h for h in hits if h["lei"] != hits[0]["lei"]]:
+                  continue
+              lei = hits[0]["lei"]
+              c = hits[0]["c"]
+              legal = c.get("legal_name") or ""
+              out.append({
+                  "cik": k,
+                  "title": c.get("title") or "",
+                  "lei": lei,
+                  "legal_name": legal,
+                  "values": json.encode({"lei": lei}),
+                  "evidence": json.encode({"lei": lei, "legal_name": legal, "source": c.get("url") or ""}),
+              })
           return out

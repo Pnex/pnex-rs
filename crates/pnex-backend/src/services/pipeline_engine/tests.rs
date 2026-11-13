@@ -133,6 +133,14 @@ impl Sink for Memory {
     async fn ranges(&mut self, rows: Vec<serde_json::Map<String, Value>>) -> Result<u64, Failure> {
         Ok(rows.len() as u64)
     }
+
+    async fn proposals(
+        &mut self,
+        _: &pnex_core::pipeline::doc::ProposalsTarget,
+        rows: Vec<serde_json::Map<String, Value>>,
+    ) -> Result<u64, Failure> {
+        Ok(rows.len() as u64)
+    }
 }
 
 /// Rows of a working table as text, the way a table sample shows them.
