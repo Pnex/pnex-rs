@@ -359,11 +359,6 @@ const HOST_DEBT: &[(&str, &[&str], &str)] = &[
         "catalogue mode of source_resolve (PE4)",
     ),
     (
-        "pnex-backend/src/services/markets/calendar.rs",
-        &["www.bls.gov", "www.ecb.europa.eu", "www.federalreserve.gov"],
-        "release calendars (PE3)",
-    ),
-    (
         "pnex-backend/src/services/markets/identity.rs",
         &["api.gleif.org"],
         "company identity match (PE4)",

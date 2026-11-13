@@ -74,10 +74,6 @@ pub fn spawn_scheduler(ctx: &AppContext) {
                 if let Err(e) = super::identity::sweep(&ctx, gleif).await {
                     tracing::warn!("market identity sweep failed: {e}");
                 }
-                let urls = super::calendar::Urls::default();
-                if let Err(e) = super::calendar::sweep(&ctx, &urls).await {
-                    tracing::warn!("market calendars sweep failed: {e}");
-                }
                 let today = chrono::Utc::now().date_naive();
                 if let Err(e) = super::history::sweep(&ctx, today).await {
                     tracing::warn!(code = e.code(), "price history sweep failed");

@@ -130,6 +130,41 @@ pub trait Sink {
         replace: bool,
         batches: Vec<Arc<blob::Batches>>,
     ) -> Result<u64, Failure>;
+
+    /// Upserts the org's time ranges by `external_id`; the rows written.
+    async fn ranges(&mut self, rows: Vec<Map<String, Value>>) -> Result<u64, Failure>;
+}
+
+/// The rows of a table as JSON records, timestamps in RFC 3339 UTC.
+fn records_of(files: &[Arc<blob::Batches>]) -> Result<Vec<Map<String, Value>>, Failure> {
+    let mut out = Vec::new();
+    for f in files {
+        let utc: Vec<bool> = f
+            .schema
+            .fields()
+            .iter()
+            .map(|x| matches!(x.data_type(), arrow_schema::DataType::Timestamp(..)))
+            .collect();
+        for b in f.read()? {
+            let rows = crate::services::datasets::parquet::records(&b?)
+                .map_err(|_| fail("storage", json!({ "what": "batches" })))?;
+            for row in rows {
+                let Value::Object(mut row) = row else {
+                    continue;
+                };
+                for (field, ts) in f.schema.fields().iter().zip(&utc) {
+                    // `2026-12-10T13:30:00` read back from a UTC column.
+                    if let (true, Some(Value::String(t))) = (ts, row.get_mut(field.name())) {
+                        if !t.ends_with('Z') && !t.contains('+') {
+                            t.push('Z');
+                        }
+                    }
+                }
+                out.push(row);
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// What a run reads besides the network, loaded before it starts.
@@ -876,12 +911,16 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     }
                     None => return Err(fail("not_rows", json!({ "table": w.from }))),
                 };
-                match &w.table {
-                    Some(t) if batches.iter().any(|b| b.rows > 0) => {
+                match (&w.table, &w.time_ranges) {
+                    (Some(t), _) if batches.iter().any(|b| b.rows > 0) => {
                         *written += self.sink.append(&t.name, t.replace, batches).await?;
                     }
-                    Some(_) => {}
-                    None => {
+                    (Some(_), _) => {}
+                    (None, Some(_)) => {
+                        let rows = blocking(move || records_of(&batches)).await?;
+                        *written += self.sink.ranges(rows).await?;
+                    }
+                    (None, None) => {
                         return Err(fail("step_unsupported", json!({ "step": "write.objects" })))
                     }
                 }

@@ -1,0 +1,38 @@
+# ECB monetary policy decisions (markets-research.md D882), read from the
+# Governing Council's calendar page: a decision day covers that day, UTC.
+key: ecb_calendar
+name: ECB decision calendar
+hosts: [www.ecb.europa.eu]
+schedule: 24h
+steps:
+  - enumerate:
+      as: calendar
+      cross:
+        # Only when the org lists this calendar in `markets.calendars`.
+        - { as: key, setting: markets.calendars, case: lower, derive: { listed: [["ecb", "yes"]] } }
+  - fetch:
+      as: page
+      for_each: calendar
+      url: "https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html"
+  - read: { as: lines, from: page, format: lines, columns: [{ name: line, type: text, optional: true }] }
+  - call: { as: meetings, from: lines, function: ecb_page }
+  - sql:
+      as: ranges
+      sql: >-
+        SELECT 'ecb:' || day AS external_id, label,
+          CAST(day AS TIMESTAMP) AS planned_start,
+          CAST(day AS TIMESTAMP) + INTERVAL '1 day' AS planned_end,
+          'central_bank_meeting' AS category,
+          'https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html' AS source_url
+        FROM meetings
+  - write: { from: ranges, time_ranges: {} }
+tests:
+  - name: only the decision day of a monetary policy meeting
+    settings: { markets.calendars: "ecb" }
+    given:
+      "https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html": ecb_calendar.html
+    expect:
+      ranges:
+        rows: 1
+        contains:
+          - { external_id: "ecb:2026-12-17", planned_start: "2026-12-17T00:00:00", planned_end: "2026-12-18T00:00:00" }

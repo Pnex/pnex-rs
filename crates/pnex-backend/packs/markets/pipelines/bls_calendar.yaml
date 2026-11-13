@@ -1,0 +1,48 @@
+# US releases of the Bureau of Labor Statistics (markets-research.md D882):
+# its iCalendar schedule, each release a range of the org's calendar keyed
+# by its UID. A release is an instant: its range lasts one minute. The BLS
+# refuses a client that does not say who it is.
+key: bls_calendar
+name: US release calendar (BLS)
+hosts: [www.bls.gov]
+schedule: 24h
+steps:
+  - enumerate:
+      as: calendar
+      cross:
+        # Only when the org lists this calendar in `markets.calendars`.
+        - { as: key, setting: markets.calendars, case: lower, derive: { listed: [["bls", "yes"]] } }
+  - fetch:
+      as: schedule
+      for_each: calendar
+      url: "https://www.bls.gov/schedule/news_release/bls.ics"
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+  - read:
+      as: releases
+      from: schedule
+      format: ical
+      columns:
+        - { name: uid, type: text }
+        - { name: summary, type: text }
+        - { name: start, type: timestamp }
+        - { name: end, type: timestamp, optional: true }
+  - sql:
+      as: ranges
+      sql: >-
+        SELECT 'bls:' || uid AS external_id, summary AS label, start AS planned_start,
+          CASE WHEN "end" IS NULL OR "end" <= start THEN start + INTERVAL '1 minute' ELSE "end" END AS planned_end,
+          'economic_release' AS category,
+          'https://www.bls.gov/schedule/news_release/bls.ics' AS source_url
+        FROM releases
+  - write: { from: ranges, time_ranges: {} }
+tests:
+  - name: a release lasts a minute, in New York time
+    settings: { markets.calendars: "BLS, ecb", markets.source_contact: "Test test@example.org" }
+    given:
+      "https://www.bls.gov/schedule/news_release/bls.ics": bls.ics
+    expect:
+      ranges:
+        rows: 2
+        contains:
+          - { external_id: "bls:cpi-dec", label: Consumer Price Index, planned_start: "2026-12-10T13:30:00", planned_end: "2026-12-10T13:31:00", category: economic_release }
+          - { external_id: "bls:empsit-dec", planned_end: "2026-12-04T14:00:00" }

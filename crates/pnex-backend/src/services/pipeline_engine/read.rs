@@ -778,7 +778,17 @@ fn read_json(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, F
     if records.is_empty() && !pointer.contains('*') && doc.pointer(pointer).is_none() {
         return Err(unreadable());
     }
-    let based = based(r, &doc)?;
+    typed_records(r, row, &doc, &records)
+}
+
+/// Typed rows of records read from a document (JSON, XML, iCalendar, lines).
+fn typed_records(
+    r: &Read,
+    row: &Row,
+    doc: &Value,
+    records: &[(Vec<String>, Value)],
+) -> Result<Option<Arc<Batches>>, Failure> {
+    let based = based(r, doc)?;
     let mut typed = Typed::new(based.as_ref().unwrap_or(r), row, &[])?;
     for (i, (keys, item)) in records.iter().enumerate() {
         typed.push(i + 1, |c, at| match at {
@@ -788,7 +798,7 @@ fn read_json(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, F
                     .iter()
                     .map(|k| match k.strip_prefix('^') {
                         // `^/cik`: a field of the document, beside the records.
-                        Some(root) => cell_of_json(&doc, root, as_json),
+                        Some(root) => cell_of_json(doc, root, as_json),
                         None => match r.keys.iter().position(|n| n == k) {
                             Some(p) => keys.get(p).cloned(),
                             None => cell_of_json(item, k, as_json),
@@ -801,6 +811,45 @@ fn read_json(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, F
         })?;
     }
     typed.finish()
+}
+
+/// iCalendar: a record per `VEVENT`, keys `uid`, `summary`, `start`, `end`
+/// (RFC 3339; a `DURATION` gives the end), `category`, `url`, `description`.
+fn read_ical(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, Failure> {
+    use crate::services::time_ranges::import;
+    let bytes = file.bytes(READ_MAX_BYTES as u64)?;
+    let events = import::parse(import::Format::Ics, &bytes)
+        .map_err(|_| fail("unreadable", json!({ "what": "ical" })))?;
+    let records: Vec<(Vec<String>, Value)> = events
+        .into_iter()
+        .map(|e| {
+            let i = e.input;
+            let description = i
+                .attrs
+                .as_ref()
+                .and_then(|a| a.get("description"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            let rec = json!({
+                "uid": i.external_id, "summary": i.label, "start": i.planned_start,
+                "end": i.planned_end, "category": i.category, "url": i.source_url,
+                "description": description,
+            });
+            (Vec::new(), rec)
+        })
+        .collect();
+    typed_records(r, row, &Value::Null, &records)
+}
+
+/// Lines: a record per line of text, key `line` (a page read by a function).
+fn read_lines(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, Failure> {
+    let bytes = file.bytes(READ_MAX_BYTES as u64)?;
+    let text = decode(&bytes, r.encoding.as_deref())?;
+    let records: Vec<(Vec<String>, Value)> = text
+        .lines()
+        .map(|l| (Vec::new(), json!({ "line": l })))
+        .collect();
+    typed_records(r, row, &Value::Null, &records)
 }
 
 /// The fields a read writes, its columns typed.
@@ -883,6 +932,8 @@ pub fn read(r: &Read, input: &[Row]) -> Result<Vec<Arc<Batches>>, Failure> {
             Format::Csv => read_csv(r, row, file)?,
             Format::Json | Format::Xml => read_json(r, row, file)?,
             Format::Binary => read_binary(r, row, file)?,
+            Format::Ical => read_ical(r, row, file)?,
+            Format::Lines => read_lines(r, row, file)?,
             _ => {
                 let format = format!("{:?}", r.format).to_lowercase();
                 return Err(fail("format_unsupported", json!({ "format": format })));

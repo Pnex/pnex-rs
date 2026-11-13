@@ -2346,7 +2346,7 @@ async fn calendars_eurostat_and_chokepoints() {
         let base = format!("http://{}", listener.local_addr().unwrap());
         let app = axum::Router::new()
             .route(
-                "/bls.ics",
+                "/schedule/news_release/bls.ics",
                 get(|h: HeaderMap| async move {
                     // The BLS refuses a client without a declared contact.
                     let ua = h.get("user-agent").and_then(|v| v.to_str().ok()).unwrap_or("");
@@ -2360,14 +2360,14 @@ END:VCALENDAR\r\n".to_string())
                 }),
             )
             .route(
-                "/fomc.htm",
+                "/monetarypolicy/fomccalendars.htm",
                 get(|| async {
                     "<h4>2026 FOMC Meetings</h4><div class=\"fomc-meeting__month\"><strong>December</strong></div>\
                      <div class=\"fomc-meeting__date\">8-9*</div>"
                 }),
             )
             .route(
-                "/ecb.html",
+                "/press/calendars/mgcgc/html/index.en.html",
                 get(|| async {
                     "<p>Governing Council</p><dt>17/12/2026</dt><dd>Governing Council of the ECB: monetary policy meeting in Frankfurt (Day 2), followed by press conference</dd>"
                 }),
@@ -2417,12 +2417,11 @@ END:VCALENDAR\r\n".to_string())
         pnex_backend::services::markets::allow_test_host(&base);
 
         // Calendars: one range per release and decision, in the org's calendar.
-        let urls = pnex_backend::services::markets::calendar::Urls {
-            bls: format!("{base}/bls.ics"),
-            fomc: format!("{base}/fomc.htm"),
-            ecb: format!("{base}/ecb.html"),
-        };
-        pnex_backend::services::markets::calendar::sweep(&ctx, &urls).await.unwrap();
+        for host in ["www.bls.gov", "www.federalreserve.gov", "www.ecb.europa.eu"] {
+            pnex_backend::services::pipeline_engine::store::route_for_tests(host, &base);
+        }
+        let calendars = || run_calendars(&ctx, org);
+        calendars().await;
         let ranges = |sql: &str| count(&db, format!("SELECT count(*) AS n FROM time_ranges WHERE org_id = {org} AND scope_kind = 'org' {sql}"));
         assert_eq!(ranges("").await, 104);
         assert_eq!(ranges("AND external_id = 'bls:cpi-dec' AND category = 'economic_release'").await, 1);
@@ -2433,7 +2432,7 @@ END:VCALENDAR\r\n".to_string())
         assert_eq!(st, 200, "{list}");
         assert_eq!(list["count"], 104, "on the calendar: {list}");
         // Read again the same day: nothing asked, nothing doubled.
-        pnex_backend::services::markets::calendar::sweep(&ctx, &urls).await.unwrap();
+        calendars().await;
         assert_eq!(ranges("").await, 104);
         // A meeting moved: the range follows, still one.
         db.execute_raw(Statement::from_string(
@@ -2442,7 +2441,7 @@ END:VCALENDAR\r\n".to_string())
         ))
         .await
         .unwrap();
-        pnex_backend::services::markets::calendar::sweep(&ctx, &urls).await.unwrap();
+        calendars().await;
         assert_eq!(ranges("").await, 104);
 
         // Eurostat and PortWatch: dated series.
@@ -2586,6 +2585,31 @@ async fn open_prices_give_one_series_per_shop() {
         assert_eq!(b.len(), 1);
     })
     .await;
+}
+
+/// The three calendar pipelines of the markets pack, run now for `org`.
+async fn run_calendars(ctx: &loco_rs::app::AppContext, org: i64) {
+    use pnex_backend::services::pipeline_engine::store;
+    let s3 = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+    for id in [
+        "markets/bls_calendar",
+        "markets/fomc_calendar",
+        "markets/ecb_calendar",
+    ] {
+        let sp = store::shipped().iter().find(|p| p.id() == id).unwrap();
+        let out = store::run_for_org(
+            &ctx.db,
+            &s3,
+            org,
+            sp,
+            &store::HttpTransport,
+            chrono::Utc::now(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(out.failure.is_none(), "{id}: {:?}", out.failure);
+    }
 }
 
 fn gz_of(bytes: &[u8]) -> Vec<u8> {
@@ -2819,7 +2843,7 @@ async fn gold_real_sources() {
         }
         let moves = count(&db, format!("SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event'")).await;
         println!("market moves (rate decisions): {moves}");
-        pnex_backend::services::markets::calendar::sweep(&ctx, &Default::default()).await.unwrap();
+        run_calendars(&ctx, org).await;
         let ranges = count(&db, format!("SELECT count(*) AS n FROM time_ranges WHERE org_id = {org} AND scope_kind = 'org'")).await;
         println!("calendar ranges: {ranges}");
         assert!(ranges > 0);

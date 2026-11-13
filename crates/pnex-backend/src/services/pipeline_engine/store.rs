@@ -448,6 +448,46 @@ impl Sink for DatasetSink<'_> {
             }
         }
     }
+
+    async fn ranges(&mut self, rows: Vec<serde_json::Map<String, Value>>) -> Result<u64, Failure> {
+        use crate::services::time_ranges::{self, import};
+        let failed = || fail("storage", json!({ "what": "time_ranges" }));
+        let scope = time_ranges::resolve_scope(self.db, self.org, "org", "")
+            .await
+            .map_err(|_| failed())?;
+        let rows = rows
+            .into_iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let text = |k: &str| {
+                    r.get(k)
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                        .filter(|v| !v.trim().is_empty())
+                };
+                import::Row {
+                    line: i as u32 + 1,
+                    input: pnex_core::time_range::TimeRangeInput {
+                        external_id: text("external_id"),
+                        label: text("label"),
+                        planned_start: text("planned_start"),
+                        planned_end: text("planned_end"),
+                        category: text("category"),
+                        source_url: text("source_url"),
+                        attrs: text("description").map(|d| json!({ "description": d })),
+                        ..Default::default()
+                    },
+                }
+            })
+            .collect();
+        let out = import::run(self.db, self.org, &scope, rows)
+            .await
+            .map_err(|_| failed())?;
+        if out.rejected > 0 {
+            tracing::info!(org = self.org, rejected = out.rejected, errors = ?out.errors, "pipeline time ranges refused");
+        }
+        Ok(u64::from(out.created + out.updated))
+    }
 }
 
 /// The network: egress guard (R8), redirects on the same host only (D942),

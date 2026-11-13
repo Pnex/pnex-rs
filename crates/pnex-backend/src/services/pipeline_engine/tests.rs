@@ -129,6 +129,10 @@ impl Sink for Memory {
         self.0.entry(table.to_string()).or_default().extend(files);
         Ok(n)
     }
+
+    async fn ranges(&mut self, rows: Vec<serde_json::Map<String, Value>>) -> Result<u64, Failure> {
+        Ok(rows.len() as u64)
+    }
 }
 
 /// Rows of a working table as text, the way a table sample shows them.

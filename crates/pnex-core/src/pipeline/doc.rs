@@ -633,7 +633,17 @@ pub struct Write {
     pub table: Option<TableTarget>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub objects: Option<ObjectsTarget>,
+    /// Time ranges of the org (D182), upserted by `external_id`: columns
+    /// `external_id`, `label`, `planned_start`, `planned_end`, `category`,
+    /// `source_url`, `description`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_ranges: Option<RangesTarget>,
 }
+
+/// The org's time ranges as a write target; nothing to set yet.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RangesTarget {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1237,13 +1247,17 @@ fn step_violations(
             }
         }
         Step::Write(w) => {
-            if [w.table.is_some(), w.objects.is_some()]
-                .iter()
-                .filter(|t| **t)
-                .count()
+            if [
+                w.table.is_some(),
+                w.objects.is_some(),
+                w.time_ranges.is_some(),
+            ]
+            .iter()
+            .filter(|t| **t)
+            .count()
                 != 1
             {
-                bad(at.to_string(), "one_of:table,objects");
+                bad(at.to_string(), "one_of:table,objects,time_ranges");
             }
             if let Some(t) = &w.table {
                 if !valid_name(&t.name) {
@@ -1310,7 +1324,7 @@ mod tests {
         );
         assert!(t.contains(&"steps.0.fetch.url host_not_declared:other.example.io".into()));
         assert!(t.contains(&"steps.1.read.as duplicate".into()));
-        assert!(t.contains(&"steps.2.write one_of:table,objects".into()));
+        assert!(t.contains(&"steps.2.write one_of:table,objects,time_ranges".into()));
     }
 
     #[test]

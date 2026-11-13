@@ -59,6 +59,9 @@ Les gestes que le moteur ne sait pas déclarer, relevés dans ce code :
 | Pages du front qui lisaient `/markets` et `/mt5` | **Blocs vivants livrés par le pack** ; les terminaux passent à la page des connecteurs |
 | Ordre des portages | **Un import simple et une source tordue en témoins**, puis le reste par pack |
 | Studio | **Celui des pipelines seul** ; celui des sites web y est replié |
+| Texte des dépôts SEC rendu en média indexé (2026-11-13) | **Sixième cible `write: media`** : une colonne de texte devient un média de l'org, indexé et lié à un objet |
+| Marchés de prédiction derrière le proxy de l'org (2026-11-13) | **`proxy` générique de `fetch`** : l'adresse du proxy est un réglage de l'org, l'egress s'y applique |
+| API des règles de navigation (`/site-recipes`) une fois le studio replié (2026-11-13) | **Supprimée, rupture** : une règle est un pipeline à étape `browse` ; routes, outils MCP, IAM et CLI retirés |
 
 ## 3. Le principe en une phrase
 
@@ -567,4 +570,19 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
 | `icao` n'est plus mis en minuscules ni coupé (les traces de readsb le sont déjà) | à garder |
 | Le verrou « un gros chargement par org » partagé avec l'historique des prix n'existe plus ; le verrou de run des pipelines (`PIPELINE_RUN`) le remplace | à garder |
 | Une trace de plus de 64 Mo fait échouer le jour (l'ancien chargeur la sautait) | à garder : aucune trace réelle n'approche |
+- **2026-11-13 (suite) — PE6 commencé : calendriers.** Cible **`write: time_ranges`** (plages de
+  l'org, par `external_id`, colonnes `label`, `planned_start`, `planned_end`, `category`,
+  `source_url`, `description`) ; lecteurs **`ical`** (un enregistrement par `VEVENT`) et **`lines`**
+  (une ligne par ligne de texte). BLS, FOMC et BCE sont trois pipelines du pack `markets`
+  (`bls_calendar`, `fomc_calendar`, `ecb_calendar`), chacun lu seulement si `markets.calendars` le
+  cite (axe `derive`). Les pages de la Fed et de la BCE, lues par la position de leurs cellules,
+  passent par deux fonctions Starlark du pack (`fomc_page`, `ecb_page`) ; l'heure de New York est
+  convertie dans le `sql` (`local_to_utc`). L'historique FOMC 2009-2020 est une liste de valeurs du
+  pipeline. **Supprimés** : `services/markets/calendar.rs`, `pnex-core/src/markets/calendar.rs`,
+  `fomc_2009_2020.tsv`, leur ligne de `HOST_DEBT`.
+
+| Écart | Où il se lève |
+|---|---|
+| Les instants des plages sont écrits en UTC (l'ancien code gardait le décalage de New York) ; même instant | à garder |
+| Une page de calendrier qui change de forme fait échouer le run (l'ancien code passait en silence) | à garder : l'échec se voit dans l'historique |
 

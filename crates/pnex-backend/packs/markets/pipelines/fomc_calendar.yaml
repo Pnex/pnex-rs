@@ -1,0 +1,159 @@
+# Federal Reserve decisions (markets-research.md D882): the calendar page's
+# years, every scheduled statement out at 2 p.m. New York since March 2013,
+# and the 2009-2020 statements before the page's years, each at its own
+# release time (unscheduled ones marked: they were not known ahead).
+# History: federalreserve.gov/monetarypolicy/fomchistoricalYYYY.htm and the
+# Board's press release index (release times).
+key: fomc_calendar
+name: FOMC decision calendar
+hosts: [www.federalreserve.gov]
+schedule: 24h
+steps:
+  - enumerate:
+      as: calendar
+      cross:
+        # Only when the org lists this calendar in `markets.calendars`.
+        - { as: key, setting: markets.calendars, case: lower, derive: { listed: [["fomc", "yes"]] } }
+  - fetch:
+      as: page
+      for_each: calendar
+      url: "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+  - read: { as: lines, from: page, format: lines, columns: [{ name: line, type: text, optional: true }] }
+  - call: { as: meetings, from: lines, function: fomc_page }
+  # Day, New York time, kind of each statement of 2009-2020.
+  - enumerate:
+      as: history
+      for_each: calendar
+      cross:
+        - as: entry
+          values:
+            - "2009-01-28 14:15 scheduled"
+            - "2009-03-18 14:15 scheduled"
+            - "2009-04-29 14:15 scheduled"
+            - "2009-06-24 14:15 scheduled"
+            - "2009-08-12 14:15 scheduled"
+            - "2009-09-23 14:15 scheduled"
+            - "2009-11-04 14:15 scheduled"
+            - "2009-12-16 14:15 scheduled"
+            - "2010-01-27 14:15 scheduled"
+            - "2010-03-16 14:15 scheduled"
+            - "2010-04-28 14:15 scheduled"
+            - "2010-05-09 21:15 unscheduled"
+            - "2010-06-23 14:15 scheduled"
+            - "2010-08-10 14:15 scheduled"
+            - "2010-09-21 14:15 scheduled"
+            - "2010-11-03 14:15 scheduled"
+            - "2010-12-14 14:15 scheduled"
+            - "2011-01-26 14:15 scheduled"
+            - "2011-03-15 14:15 scheduled"
+            - "2011-04-27 12:30 projections"
+            - "2011-06-22 12:30 projections"
+            - "2011-08-09 14:15 scheduled"
+            - "2011-09-21 14:15 scheduled"
+            - "2011-11-02 12:30 projections"
+            - "2011-12-13 14:15 scheduled"
+            - "2012-01-25 12:30 projections"
+            - "2012-03-13 14:15 scheduled"
+            - "2012-04-25 12:30 projections"
+            - "2012-06-20 12:30 projections"
+            - "2012-08-01 14:15 scheduled"
+            - "2012-09-13 12:30 projections"
+            - "2012-10-24 14:15 scheduled"
+            - "2012-12-12 12:30 projections"
+            - "2013-01-30 14:15 scheduled"
+            - "2013-03-20 14:00 projections"
+            - "2013-05-01 14:00 scheduled"
+            - "2013-06-19 14:00 projections"
+            - "2013-07-31 14:00 scheduled"
+            - "2013-09-18 14:00 projections"
+            - "2013-10-30 14:00 scheduled"
+            - "2013-12-18 14:00 projections"
+            - "2014-01-29 14:00 scheduled"
+            - "2014-03-19 14:00 projections"
+            - "2014-04-30 14:00 scheduled"
+            - "2014-06-18 14:00 projections"
+            - "2014-07-30 14:00 scheduled"
+            - "2014-09-17 14:00 projections"
+            - "2014-10-29 14:00 scheduled"
+            - "2014-12-17 14:00 projections"
+            - "2015-01-28 14:00 scheduled"
+            - "2015-03-18 14:00 projections"
+            - "2015-04-29 14:00 scheduled"
+            - "2015-06-17 14:00 projections"
+            - "2015-07-29 14:00 scheduled"
+            - "2015-09-17 14:00 projections"
+            - "2015-10-28 14:00 scheduled"
+            - "2015-12-16 14:00 projections"
+            - "2016-01-27 14:00 scheduled"
+            - "2016-03-16 14:00 projections"
+            - "2016-04-27 14:00 scheduled"
+            - "2016-06-15 14:00 projections"
+            - "2016-07-27 14:00 scheduled"
+            - "2016-09-21 14:00 projections"
+            - "2016-11-02 14:00 scheduled"
+            - "2016-12-14 14:00 projections"
+            - "2017-02-01 14:00 scheduled"
+            - "2017-03-15 14:00 projections"
+            - "2017-05-03 14:00 scheduled"
+            - "2017-06-14 14:00 projections"
+            - "2017-07-26 14:00 scheduled"
+            - "2017-09-20 14:00 projections"
+            - "2017-11-01 14:00 scheduled"
+            - "2017-12-13 14:00 projections"
+            - "2018-01-31 14:00 scheduled"
+            - "2018-03-21 14:00 projections"
+            - "2018-05-02 14:00 scheduled"
+            - "2018-06-13 14:00 projections"
+            - "2018-08-01 14:00 scheduled"
+            - "2018-09-26 14:00 projections"
+            - "2018-11-08 14:00 scheduled"
+            - "2018-12-19 14:00 projections"
+            - "2019-01-30 14:00 scheduled"
+            - "2019-03-20 14:00 projections"
+            - "2019-05-01 14:00 scheduled"
+            - "2019-06-19 14:00 projections"
+            - "2019-07-31 14:00 scheduled"
+            - "2019-09-18 14:00 projections"
+            - "2019-10-11 11:00 unscheduled"
+            - "2019-10-30 14:00 scheduled"
+            - "2019-12-11 14:00 projections"
+            - "2020-01-29 14:00 scheduled"
+            - "2020-03-03 10:00 unscheduled"
+            - "2020-03-15 17:00 unscheduled"
+            - "2020-03-23 08:00 unscheduled"
+            - "2020-04-29 14:00 scheduled"
+            - "2020-06-10 14:00 projections"
+            - "2020-07-29 14:00 scheduled"
+            - "2020-09-16 14:00 projections"
+            - "2020-11-05 14:00 scheduled"
+            - "2020-12-16 14:00 projections"
+  - sql:
+      as: ranges
+      sql: >-
+        SELECT 'fomc:' || day AS external_id,
+          CASE kind WHEN 'projections' THEN 'FOMC decision, with economic projections'
+            WHEN 'unscheduled' THEN 'FOMC decision, unscheduled' ELSE 'FOMC decision' END AS label,
+          local_to_utc(CAST(day || 'T' || at || ':00' AS TIMESTAMP), 'America/New_York') AS planned_start,
+          local_to_utc(CAST(day || 'T' || at || ':00' AS TIMESTAMP), 'America/New_York') + INTERVAL '1 minute' AS planned_end,
+          'central_bank_meeting' AS category,
+          'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm' AS source_url
+        FROM (SELECT day, kind, '14:00' AS at FROM meetings
+              UNION ALL SELECT split_part(entry, ' ', 1) AS day, split_part(entry, ' ', 3) AS kind,
+                split_part(entry, ' ', 2) AS at FROM history) AS d
+  - write: { from: ranges, time_ranges: {} }
+tests:
+  - name: the page's decision days and the history, at New York time
+    settings: { markets.calendars: "fomc" }
+    given:
+      "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm": fomccalendars.htm
+    expect:
+      ranges:
+        rows: 105
+        contains:
+          - { external_id: "fomc:2026-01-28", label: FOMC decision, planned_start: "2026-01-28T19:00:00" }
+          - { external_id: "fomc:2026-03-18", label: "FOMC decision, with economic projections", planned_start: "2026-03-18T18:00:00" }
+          - { external_id: "fomc:2026-05-01" }
+          - { external_id: "fomc:2026-12-09", planned_start: "2026-12-09T19:00:00" }
+          - { external_id: "fomc:2027-01-27" }
+          - { external_id: "fomc:2009-01-28", planned_start: "2009-01-28T19:15:00" }
+          - { external_id: "fomc:2020-03-15", label: "FOMC decision, unscheduled", planned_start: "2020-03-15T21:00:00" }

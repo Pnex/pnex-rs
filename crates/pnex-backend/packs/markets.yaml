@@ -73,7 +73,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.14.0"
+version: "1.15.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -825,3 +825,103 @@ causal_pairs:
   - { cause: world.event, effect: price.move, max_gap_min: 1440, prior: 0.5 }
   - { cause: macro.release, effect: price.move, max_gap_min: 120, prior: 0.5 }
   - { cause: supply.disruption, effect: price.move, max_gap_min: 2880, prior: 0.5 }
+# Functions of the pipelines only (D940), never installed in the org's
+# function registry: the meeting pages of two central banks, read by the
+# position of their cells.
+pipeline_functions:
+  # The Federal Reserve's FOMC calendar page: a panel per year ("2026 FOMC
+  # Meetings"), a month cell then a date cell per meeting ("27-28", "17-18*"
+  # with projections, "Apr/May" + "30-1" across months). The decision is the
+  # last day; a note in words ("14 (unscheduled)") is not a scheduled meeting.
+  - name: fomc_page
+    language: starlark
+    description: FOMC decision days of the calendar page (rows line → day, kind).
+    code: |
+      MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+      def month_of(name):
+          n = name.strip().lower()
+          for i in range(len(MONTHS)):
+              if n.startswith(MONTHS[i]):
+                  return i + 1
+          return None
+
+      def pad(n, width):
+          s = str(n)
+          return "0" * (width - len(s)) + s
+
+      def handle(rows):
+          html = "\n".join([r.get("line") or "" for r in rows])
+          if "fomc-meeting__month" not in html:
+              fail("not the FOMC calendar page")
+          pieces = html.split("<")
+          year = None
+          month = None
+          out = []
+          for i in range(len(pieces)):
+              parts = pieces[i].split(">", 1)
+              if len(parts) < 2:
+                  continue
+              tag, text = parts[0], parts[1].strip()
+              at = text.find(" FOMC Meetings")
+              if at >= 4 and text[at - 4:at].isdigit():
+                  year = int(text[at - 4:at])
+              is_month = "fomc-meeting__month" in tag
+              if not is_month and "fomc-meeting__date" not in tag:
+                  continue
+              # The month is wrapped in a <strong>.
+              if text == "" and i + 1 < len(pieces) and pieces[i + 1].startswith("strong>"):
+                  text = pieces[i + 1][len("strong>"):].strip()
+              if is_month:
+                  month = month_of(text.split("/")[-1])
+                  continue
+              m = month
+              month = None
+              if m == None or year == None:
+                  continue
+              lead = ""
+              for c in text.elems():
+                  if c.isdigit() or c == "-" or c == "*":
+                      lead += c
+                  else:
+                      break
+              if lead == "" or len(lead) != len(text):
+                  continue
+              day = lead.rstrip("*").split("-")[-1]
+              if not day.isdigit():
+                  continue
+              out.append({
+                  "day": pad(year, 4) + "-" + pad(m, 2) + "-" + pad(int(day), 2),
+                  "kind": "projections" if lead.endswith("*") else "scheduled",
+              })
+          return out
+  # The ECB's calendar of the Governing Council: a dd/mm/yyyy date then its
+  # description. Only the monetary policy meetings, on their decision day
+  # ("Day 2", or a one-day meeting).
+  - name: ecb_page
+    language: starlark
+    description: ECB monetary policy decision days of the calendar page (rows line → day, label).
+    code: |
+      def handle(rows):
+          html = "\n".join([r.get("line") or "" for r in rows])
+          if "Governing Council" not in html:
+              fail("not the ECB calendar page")
+          texts = []
+          for p in html.split("<"):
+              parts = p.split(">", 1)
+              t = (parts[1] if len(parts) == 2 else parts[0]).strip()
+              if t != "":
+                  texts.append(t)
+          out = []
+          for i in range(len(texts) - 1):
+              d = texts[i].split("/")
+              if len(d) != 3 or len(d[0]) != 2 or len(d[1]) != 2 or len(d[2]) != 4:
+                  continue
+              if not (d[0].isdigit() and d[1].isdigit() and d[2].isdigit()):
+                  continue
+              what = texts[i + 1].replace("&amp;", "&")
+              low = what.lower()
+              if "monetary policy meeting" not in low or "non-monetary" in low or "day 1" in low:
+                  continue
+              out.append({"day": d[2] + "-" + d[1] + "-" + d[0], "label": what})
+          return out
