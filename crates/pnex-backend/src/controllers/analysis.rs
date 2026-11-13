@@ -20,11 +20,13 @@ pub fn routes() -> Routes {
         .prefix("/api/v1")
         .add("/analysis/queries", post(submit))
         .add("/analysis/queries/{id}", get(one))
+        .add("/analysis/named", get(named))
+        .add("/analysis/named/{pack}/{key}", post(run_named))
 }
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
-    #[openapi(paths(submit, one))]
+    #[openapi(paths(submit, one, named, run_named))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
 }
@@ -132,4 +134,122 @@ async fn one(
         Ok(q) => format::json(q),
         Err(e) => analysis_error(e),
     }
+}
+
+/// The named queries of the packs the org installed.
+async fn installed(
+    db: &sea_orm::DatabaseConnection,
+    org: i64,
+) -> Result<Vec<pnex_core::named_query::NamedQueryView>> {
+    use sea_orm::ConnectionTrait;
+    let keys: Vec<String> = db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT key FROM packs WHERE org_id = $1",
+            vec![org.into()],
+        ))
+        .await?
+        .iter()
+        .filter_map(|r| r.try_get::<String>("", "key").ok())
+        .collect();
+    Ok(crate::services::ontology::packs::shipped()
+        .into_iter()
+        .filter(|p| keys.contains(&p.key))
+        .flat_map(|p| {
+            let pack = p.key.clone();
+            p.queries
+                .into_iter()
+                .map(move |query| pnex_core::named_query::NamedQueryView {
+                    pack: pack.clone(),
+                    query,
+                })
+        })
+        .collect())
+}
+
+/// `GET /api/v1/analysis/named`
+#[utoipa::path(
+    get,
+    path = "/api/v1/analysis/named",
+    tag = "analysis",
+    operation_id = "analysis_named_list",
+    summary = "List the named queries of the installed packs",
+    description = "Each read-only query a pack the org installed declares (pipeline-engine.md D948): its key, its typed parameters and its SQL. Run one with `POST /analysis/named/{pack}/{key}`. Requires `analysis:run`.",
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::named_query::NamedQueryView>),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn named(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
+    let results = installed(&ctx.db, org.org.id).await?;
+    format::json(pnex_core::Paginated {
+        count: results.len() as i64,
+        next: None,
+        previous: None,
+        results,
+    })
+}
+
+/// `POST /api/v1/analysis/named/{pack}/{key}`
+#[utoipa::path(
+    post,
+    path = "/api/v1/analysis/named/{pack}/{key}",
+    tag = "analysis",
+    operation_id = "analysis_named_run",
+    summary = "Run a named query of a pack",
+    description = "Checks each parameter against its type and queues the pack's query as an analysis query of the caller (same rights, limits and reading as `POST /analysis/queries`): read its rows with `GET /analysis/queries/{id}`. A value never becomes SQL: it is written as a literal of its type. Requires `analysis:run`.",
+    params(
+        ("pack" = String, Path, description = "Key of an installed pack"),
+        ("key" = String, Path, description = "Key of one of its queries")
+    ),
+    request_body = pnex_core::named_query::NamedQueryRun,
+    responses(
+        (status = 202, body = pnex_core::analysis::AnalysisQuery),
+        (status = 400, description = "`field-invalid` or `field-required` on `params.<name>`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`named-query-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`analysis-busy`", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`analysis-too-many-objects` (args `type`, `max`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`analysis-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn run_named(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((pack, key)): Path<(String, String)>,
+    Json(input): Json<pnex_core::named_query::NamedQueryRun>,
+) -> Result<Response> {
+    let Some(q) = installed(&ctx.db, org.org.id)
+        .await?
+        .into_iter()
+        .find(|v| v.pack == pack && v.query.key == key)
+    else {
+        return Err(super::coded_error(
+            StatusCode::NOT_FOUND,
+            err_codes::NAMED_QUERY_NOT_FOUND,
+            "named query not found",
+            None,
+        ));
+    };
+    let sql = match q.query.filled(&input.params) {
+        Ok(s) => s,
+        Err((name, token)) => {
+            let token = match token.as_str() {
+                "required" => err_codes::FIELD_REQUIRED,
+                _ => err_codes::FIELD_INVALID,
+            };
+            return Ok(super::field_error(&format!("params.{name}"), token));
+        }
+    };
+    submit(
+        State(ctx),
+        org,
+        Json(AnalysisQueryInput {
+            sql,
+            max_age_secs: input.max_age_secs,
+        }),
+    )
+    .await
 }

@@ -794,6 +794,8 @@ pub const ANALYSIS_TOO_MANY_OBJECTS: &str = "analysis-too-many-objects";
 pub const ANALYSIS_BUSY: &str = "analysis-busy";
 /// No such query of the caller.
 pub const ANALYSIS_NOT_FOUND: &str = "analysis-not-found";
+/// No named query of that key in a pack the org installed (D948).
+pub const NAMED_QUERY_NOT_FOUND: &str = "named-query-not-found";
 /// The query names a table or an object type that does not exist (`args.table`).
 pub const ANALYSIS_TABLE_UNKNOWN: &str = "analysis-table-unknown";
 /// The query is not one read-only statement the engine accepts (`args.reason`).
@@ -1391,6 +1393,7 @@ pub const ALL: &[&str] = &[
     ANALYSIS_TOO_MANY_OBJECTS,
     ANALYSIS_BUSY,
     ANALYSIS_NOT_FOUND,
+    NAMED_QUERY_NOT_FOUND,
     ANALYSIS_TABLE_UNKNOWN,
     ANALYSIS_SQL_INVALID,
     ANALYSIS_TIMEOUT,

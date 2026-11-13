@@ -529,6 +529,10 @@ pub struct Pack {
     /// `handle(rows)` → rows: never installed in an org's registry.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pipeline_functions: Vec<PackFunction>,
+    /// Named read-only queries (pipeline-engine.md D948), run under the
+    /// caller's rights by `POST /analysis/named/{pack}/{key}`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub queries: Vec<crate::named_query::NamedQuery>,
     /// Flow models created as drafts at install when the org has none of
     /// that name (D316); never deployed by the install (D123). A function
     /// node names its function by `function_name` (resolved at install).

@@ -608,4 +608,12 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
 | Chaque run des filiales relit toutes les annexes 10-K de l'org (l'ancien code lisait chaque rapport une fois) : un run par semaine | un état par rapport si le volume le demande |
 | Le lien d'une filiale retirée se ferme à la date du run, plus à la date du rapport qui l'a retirée | `valid_to` d'un lien tiré d'une colonne, si la date compte |
 | Un import (sans application) ne peut pas écrire de documents (`step_unsupported`) | passer le contexte à l'import si un pack le demande |
+- **PE7 commencé : requêtes nommées (D948).** Un pack déclare `queries:` (clé, paramètres typés
+  `text`, `integer`, `number`, `date`, `timestamp`, `uuid`, `choice`, facultatifs = `NULL`, SQL
+  `SELECT … {{param}}`). `GET /analysis/named` liste celles des packs installés ;
+  `POST /analysis/named/{pack}/{key}` vérifie chaque valeur, l'écrit en littéral de son type (un texte
+  entre apostrophes doublées : une valeur n'est jamais du SQL) et la passe à `analysis::submit`
+  (droits, marquages et plafonds de D825-D826). `analysis:run`, outils MCP exposés, code
+  `named-query-not-found`. Première requête : `markets/market_moves`. Les routes `/markets/*` ne sont
+  pas encore remplacées.
 

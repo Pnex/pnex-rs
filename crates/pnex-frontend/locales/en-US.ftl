@@ -4569,6 +4569,7 @@ err-analysis-unavailable = The query cannot be prepared right now: try again lat
 err-analysis-too-many-objects = This object type holds too many objects for a query: filter them in a table first.
 err-analysis-busy = One of your queries is still running: wait for it to finish.
 err-analysis-not-found = This query does not exist, or it is no longer kept.
+err-named-query-not-found = No query of that name in the packs of this organization.
 err-analysis-table-unknown = The query names a table or an object type that does not exist.
 err-analysis-sql-invalid = The engine refused the query: its reason follows. Only one read-only SELECT is accepted.
 err-analysis-timeout = The query took too long: narrow it.

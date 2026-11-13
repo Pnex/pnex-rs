@@ -93,6 +93,8 @@ pub const EXPOSED: &[&str] = &[
     "governance_markings_list",
     "analysis_queries_create",
     "analysis_queries_get",
+    "analysis_named_list",
+    "analysis_named_run",
     "rules_list",
     "rules_get",
     "rules_replay_preview",

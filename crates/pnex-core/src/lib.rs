@@ -25,6 +25,7 @@ pub mod market_study;
 pub mod markets;
 /// MetaTrader 5 terminals as registered data sources (markets-research.md D847–D849).
 pub mod mt5;
+pub mod named_query;
 /// Causal chain detector (cases-workspace.md appendix I, D904–D908).
 pub mod rca;
 /// Runners of the worker fabric (agent-environments.md lot E0).

@@ -598,6 +598,8 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("governance_markings_list", Access::Org("governance:read")),
     ("analysis_queries_create", Access::Org("analysis:run")),
     ("analysis_queries_get", Access::Org("analysis:run")),
+    ("analysis_named_list", Access::Org("analysis:run")),
+    ("analysis_named_run", Access::Org("analysis:run")),
     ("rules_list", Access::Org("rules:read")),
     ("rules_get", Access::Org("rules:read")),
     ("rules_replay_preview", Access::Org("rules:read")),

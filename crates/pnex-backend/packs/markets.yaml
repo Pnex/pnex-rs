@@ -73,7 +73,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.17.0"
+version: "1.18.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -834,6 +834,19 @@ imports:
           attributes:
             nature: { value: declared }
             source: source
+# Read-only queries of the pack (pipeline-engine.md D948), run under the
+# caller's rights by `POST /analysis/named/markets/<key>`.
+queries:
+  - key: market_moves
+    name: Abnormal sessions between two days
+    names: {fr: "Séances anormales entre deux jours"}
+    description: The abnormal sessions found on the watched series, oldest first.
+    params:
+      - { name: from, type: date, description: First session day. }
+      - { name: to, type: date, description: Last session day. }
+    sql: >-
+      SELECT id, title, kind, event_at FROM objects.market_event
+      WHERE CAST(event_at AS DATE) BETWEEN {{from}} AND {{to}} ORDER BY event_at, id
 # Cause → effect pairs of the market causal chains (H.7, D906): each one is
 # two settings (prior, maximal gap) the org may set.
 causal_pairs:

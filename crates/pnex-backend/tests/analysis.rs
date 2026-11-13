@@ -186,3 +186,110 @@ async fn a_query_fixes_what_its_author_may_read() {
     })
     .await;
 }
+
+/// D948: a named query of an installed pack runs as the caller's analysis
+/// query, each value a literal of its type.
+#[tokio::test]
+#[serial]
+async fn a_named_query_runs_with_typed_values() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        common::join_org(
+            &server,
+            &env.alice,
+            &env.bob,
+            org,
+            "bob@example.com",
+            "viewer",
+        )
+        .await;
+        let a = env.alice.as_str();
+        sql(&ctx.db, "DELETE FROM analysis_queries").await;
+        let (s, list) = call(&server, a, org, "GET", "/api/v1/analysis/named", None).await;
+        assert_eq!(
+            (s, list["count"].as_i64()),
+            (200, Some(0)),
+            "no pack, no query: {list}"
+        );
+        let (s, r) = call(
+            &server,
+            a,
+            org,
+            "POST",
+            "/api/v1/ontology/packs/markets/install",
+            None,
+        )
+        .await;
+        assert_eq!(s, 200, "{r}");
+        let (_, list) = call(&server, a, org, "GET", "/api/v1/analysis/named", None).await;
+        assert!(
+            list["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|q| q["pack"] == "markets" && q["key"] == "market_moves"),
+            "{list}"
+        );
+        let url = "/api/v1/analysis/named/markets/market_moves";
+        let good = json!({ "params": { "from": "2026-01-01", "to": "2026-01-31" } });
+        let (s, _) = call(&server, &env.bob, org, "POST", url, Some(good.clone())).await;
+        assert_eq!(s, 403, "a viewer has no analysis:run");
+        let (s, e) = call(
+            &server,
+            a,
+            org,
+            "POST",
+            url,
+            Some(json!({ "params": { "from": "2026-01-01", "to": "x' OR 1=1" } })),
+        )
+        .await;
+        assert_eq!(
+            (s, e["errors"]["fields"]["params.to"].as_str()),
+            (400, Some("invalid")),
+            "{e}"
+        );
+        let (s, e) = call(
+            &server,
+            a,
+            org,
+            "POST",
+            url,
+            Some(json!({ "params": { "from": "2026-01-01" } })),
+        )
+        .await;
+        assert_eq!(
+            (s, e["errors"]["fields"]["params.to"].as_str()),
+            (400, Some("required")),
+            "{e}"
+        );
+        let (s, e) = call(
+            &server,
+            a,
+            org,
+            "POST",
+            "/api/v1/analysis/named/markets/nope",
+            Some(good.clone()),
+        )
+        .await;
+        assert_eq!(
+            (s, e["error"].as_str()),
+            (404, Some("named-query-not-found")),
+            "{e}"
+        );
+        let (s, q) = call(&server, a, org, "POST", url, Some(good)).await;
+        assert_eq!((s, q["state"].as_str()), (202, Some("queued")), "{q}");
+        let id = q["id"].as_str().unwrap();
+        let row = &sql(
+            &ctx.db,
+            &format!("SELECT sql FROM analysis_queries WHERE id = '{id}'"),
+        )
+        .await[0];
+        let text: String = row.try_get("", "sql").unwrap();
+        assert!(
+            text.contains("BETWEEN DATE '2026-01-01' AND DATE '2026-01-31'"),
+            "{text}"
+        );
+        sql(&ctx.db, "DELETE FROM analysis_queries").await;
+    })
+    .await;
+}

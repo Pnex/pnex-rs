@@ -4568,6 +4568,7 @@ err-analysis-unavailable = La requête ne peut pas être préparée pour le mome
 err-analysis-too-many-objects = Ce type d'objet en compte trop pour une requête : filtrez-les d'abord dans une table.
 err-analysis-busy = Une de vos requêtes est encore en cours : attendez qu'elle se termine.
 err-analysis-not-found = Cette requête n'existe pas, ou elle n'est plus gardée.
+err-named-query-not-found = Aucune requête de ce nom dans les packs de cette organisation.
 err-analysis-table-unknown = La requête nomme une table ou un type d'objet qui n'existe pas.
 err-analysis-sql-invalid = Le moteur a refusé la requête : sa raison suit. Seul un SELECT en lecture est accepté.
 err-analysis-timeout = La requête a duré trop longtemps : resserrez-la.

@@ -1351,6 +1351,7 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
         imports: Vec::new(),
         functions: Vec::new(),
         pipeline_functions: Vec::new(),
+        queries: Vec::new(),
         flows: Vec::new(),
         settings: Vec::new(),
         causal_pairs: Vec::new(),
@@ -1385,6 +1386,12 @@ mod tests {
     #[test]
     fn shipped_packs_are_valid() {
         let all = shipped();
+        for p in &all {
+            for q in &p.queries {
+                let v = q.violations();
+                assert!(v.is_empty(), "{}/{}: {v:?}", p.key, q.key);
+            }
+        }
         // A key belongs to one pack: two packs defining it cannot both install.
         let mut owner = std::collections::HashMap::new();
         for p in &all {

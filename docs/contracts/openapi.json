@@ -17333,6 +17333,112 @@
         ],
         "type": "object"
       },
+      "NamedParam": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "optional": {
+            "description": "Absent: the query reads `NULL`.",
+            "type": "boolean"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ParamKind"
+          },
+          "values": {
+            "description": "`choice`: the values allowed.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "type": "object"
+      },
+      "NamedQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "params": {
+            "items": {
+              "$ref": "#/components/schemas/NamedParam"
+            },
+            "type": "array"
+          },
+          "sql": {
+            "description": "`SELECT … {{param}} …`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "sql"
+        ],
+        "type": "object"
+      },
+      "NamedQueryRun": {
+        "description": "A run of a named query: its parameter values.",
+        "properties": {
+          "max_age_secs": {
+            "description": "As in an analysis query: the caller's own recent run of the same\ntext answers instead (live blocks).",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "params": {
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "NamedQueryView": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NamedQuery"
+          },
+          {
+            "properties": {
+              "pack": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "pack"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "A named query of an installed pack."
+      },
       "NativePoll": {
         "properties": {
           "code": {
@@ -22655,6 +22761,42 @@
         ],
         "type": "object"
       },
+      "Paginated_NamedQueryView": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/NamedQueryView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_NotifyChannel": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -25010,6 +25152,18 @@
           "flagged"
         ],
         "type": "object"
+      },
+      "ParamKind": {
+        "enum": [
+          "text",
+          "integer",
+          "number",
+          "date",
+          "timestamp",
+          "uuid",
+          "choice"
+        ],
+        "type": "string"
       },
       "ParentRef": {
         "properties": {
@@ -39867,6 +40021,203 @@
           "ai"
         ],
         "x-pnex-as-of": "current_only"
+      }
+    },
+    "/api/v1/analysis/named": {
+      "get": {
+        "description": "Each read-only query a pack the org installed declares (pipeline-engine.md D948): its key, its typed parameters and its SQL. Run one with `POST /analysis/named/{pack}/{key}`. Requires `analysis:run`.",
+        "operationId": "analysis_named_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_NamedQueryView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `analysis:run`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the named queries of the installed packs",
+        "tags": [
+          "analysis"
+        ],
+        "x-pnex-as-of": "current_only"
+      }
+    },
+    "/api/v1/analysis/named/{pack}/{key}": {
+      "post": {
+        "description": "Checks each parameter against its type and queues the pack's query as an analysis query of the caller (same rights, limits and reading as `POST /analysis/queries`): read its rows with `GET /analysis/queries/{id}`. A value never becomes SQL: it is written as a literal of its type. Requires `analysis:run`.",
+        "operationId": "analysis_named_run",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Key of an installed pack",
+            "in": "path",
+            "name": "pack",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Key of one of its queries",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NamedQueryRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisQuery"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` or `field-required` on `params.<name>`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` · `access-denied` (`args.permission` = `analysis:run`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`named-query-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`analysis-busy`"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`analysis-too-many-objects` (args `type`, `max`)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`analysis-unavailable`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run a named query of a pack",
+        "tags": [
+          "analysis"
+        ]
       }
     },
     "/api/v1/analysis/queries": {
