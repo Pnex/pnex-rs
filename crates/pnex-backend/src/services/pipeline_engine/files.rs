@@ -5,15 +5,19 @@
 use std::io::Read;
 use std::sync::Arc;
 
-use pnex_core::pipeline::doc::{Archive, Extract, Unpack, FETCH_MAX_BYTES};
+use pnex_core::pipeline::doc::{Archive, Extract, Read as ReadStep, Unpack, FETCH_MAX_BYTES};
 use pnex_core::pipeline::glob_match;
 use serde_json::{json, Map, Value};
 
-use super::blob::Blob;
+use super::blob::{merged, Batches, Blob};
 use super::{fail, Failure, Row};
 
 /// Entries one archive may hold.
 const ENTRIES_MAX: usize = 10_000;
+/// Entries of one streamed tar at most (a day of traces, one per aircraft).
+const STREAM_ENTRIES_MAX: usize = 2_000_000;
+/// Entry bytes read together into one batch file of a streamed tar.
+const STREAM_GROUP_BYTES: u64 = 64 * 1024 * 1024;
 /// Rows one extraction gives from one file.
 const EXTRACT_MAX: usize = 100_000;
 /// Largest page or document an extraction parses.
@@ -233,6 +237,115 @@ pub fn unpack(u: &Unpack, input: &[Row]) -> Result<Vec<Row>, Failure> {
             r.file = Some(Arc::new(b));
             out.push(r);
         }
+    }
+    Ok(out)
+}
+
+/// The chunks of a streamed body as one reader, refused past `max` bytes.
+struct ChunkReader {
+    rx: tokio::sync::mpsc::Receiver<Result<Vec<u8>, ()>>,
+    buf: Vec<u8>,
+    pos: usize,
+    total: u64,
+    max: u64,
+    over: bool,
+}
+
+impl Read for ChunkReader {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        while self.pos == self.buf.len() {
+            match self.rx.blocking_recv() {
+                Some(Ok(b)) => {
+                    self.total += b.len() as u64;
+                    if self.total > self.max {
+                        self.over = true;
+                        return Err(std::io::Error::other("too large"));
+                    }
+                    (self.buf, self.pos) = (b, 0);
+                }
+                Some(Err(())) => return Err(std::io::Error::other("stream cut")),
+                None => return Ok(0),
+            }
+        }
+        let n = out.len().min(self.buf.len() - self.pos);
+        out[..n].copy_from_slice(&self.buf[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+/// A streamed tar's entries kept by `u`, read by `r` in groups as they
+/// pass: nothing of the archive stays but the typed rows (D943).
+pub fn unpack_stream(
+    u: &Unpack,
+    r: &ReadStep,
+    row: &Row,
+    rx: tokio::sync::mpsc::Receiver<Result<Vec<u8>, ()>>,
+    max: u64,
+) -> Result<Vec<Arc<Batches>>, Failure> {
+    let mut reader = ChunkReader {
+        rx,
+        buf: Vec::new(),
+        pos: 0,
+        total: 0,
+        max,
+        over: false,
+    };
+    let walked = walk_tar(u, r, row, &mut reader);
+    if reader.over {
+        return Err(fail("too_large", json!({ "max": max })));
+    }
+    let out = walked?;
+    // The tar's padding: read to the end so the sender finishes cleanly.
+    std::io::copy(&mut reader, &mut std::io::sink()).map_err(|_| unreadable("tar"))?;
+    Ok(out)
+}
+
+fn walk_tar(
+    u: &Unpack,
+    r: &ReadStep,
+    row: &Row,
+    reader: &mut ChunkReader,
+) -> Result<Vec<Arc<Batches>>, Failure> {
+    let keep = |name: &str| u.entries.is_empty() || u.entries.iter().any(|g| glob_match(g, name));
+    let (mut out, mut group, mut bytes, mut kept) = (Vec::new(), Vec::new(), 0u64, 0usize);
+    let flush = |group: &mut Vec<Row>, out: &mut Vec<Arc<Batches>>| -> Result<(), Failure> {
+        let files = super::read::read(r, group)?;
+        group.clear();
+        if !files.is_empty() {
+            out.push(merged(&files)?);
+        }
+        Ok(())
+    };
+    let mut t = tar::Archive::new(reader);
+    for (n, entry) in t.entries().map_err(|_| unreadable("tar"))?.enumerate() {
+        if n >= STREAM_ENTRIES_MAX {
+            return Err(fail("too_large", json!({ "entries": STREAM_ENTRIES_MAX })));
+        }
+        let entry = entry.map_err(|_| unreadable("tar"))?;
+        let name = entry
+            .path()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if !entry.header().entry_type().is_file() || !keep(&name) {
+            continue;
+        }
+        let b = Blob::from_reader(entry, super::read::READ_MAX_BYTES as u64)?;
+        bytes += b.len();
+        kept += 1;
+        let mut e = row.clone();
+        e.cols.insert("entry".into(), Value::String(name));
+        e.file = Some(Arc::new(b));
+        group.push(e);
+        if bytes >= STREAM_GROUP_BYTES {
+            flush(&mut group, &mut out)?;
+            bytes = 0;
+        }
+    }
+    flush(&mut group, &mut out)?;
+    // Entries asked by name that a non-empty archive lacks: a changed export.
+    if kept == 0 && !u.entries.is_empty() && t.into_inner().total > 0 {
+        return Err(fail("entry_missing", json!({ "entries": u.entries })));
     }
     Ok(out)
 }

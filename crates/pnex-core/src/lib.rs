@@ -20,7 +20,6 @@ pub mod agents;
 /// Applications declared in an org (external-apps.md D433).
 pub mod apps;
 /// Large public files into tables: AIS, ADS-B, DVF (markets-research.md MK22–MK24).
-pub mod bulk;
 pub mod conflict_events;
 pub mod market_study;
 pub mod markets;

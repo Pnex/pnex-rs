@@ -1,8 +1,6 @@
-//! Price rows pushed by MetaTrader 5 terminals (markets-research.md D849),
-//! and the registry helpers the large public files still use (D808). The
-//! public price files themselves are pipelines (pipeline-engine.md D939).
+//! Price rows pushed by MetaTrader 5 terminals (markets-research.md D849).
+//! The public price and bulk files are pipelines (pipeline-engine.md D939).
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use arrow_array::{
@@ -11,11 +9,8 @@ use arrow_array::{
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use chrono::NaiveDate;
 use loco_rs::app::AppContext;
-use pnex_core::markets::history::{
-    self, HistorySource, Kline, Period, Tick, MT5_OHLCV_1M, MT5_TICKS,
-};
+use pnex_core::markets::history::{self, HistorySource, Kline, Tick, MT5_OHLCV_1M, MT5_TICKS};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::services::artifact_store::S3Store;
@@ -87,32 +82,29 @@ async fn mt5_pass(db: &DatabaseConnection, store: &S3Store, org: i64) -> Result<
         };
         let mut bars: std::collections::BTreeMap<String, Vec<(String, Kline)>> = Default::default();
         let mut ticks: std::collections::BTreeMap<String, Vec<(String, Tick)>> = Default::default();
-        let mut digest = Sha256::new();
         for call in &calls {
             let body: serde_json::Value = call.try_get("", "body")?;
             match history::mt5_payload(&body) {
                 Ok(b) => {
-                    digest.update(body.to_string().as_bytes());
                     bars.entry(b.source.clone()).or_default().extend(b.bars);
                     ticks.entry(b.source).or_default().extend(b.ticks);
                 }
                 Err(token) => tracing::warn!(org, token, "MT5 terminal call dropped"),
             }
         }
-        let sha256 = hex(&digest.finalize());
         for (source, rows) in bars.into_iter().filter(|(_, r)| !r.is_empty()) {
             let names: Vec<&str> = rows.iter().map(|(s, _)| s.as_str()).collect();
             let klines: Vec<Kline> = rows.iter().map(|(_, k)| k.clone()).collect();
             let batch = ohlcv_batch(MT5_OHLCV_1M.interval, &source, &names, &klines)
                 .map_err(|e| DatasetError::Storage(e.to_string()))?;
-            mt5_write(db, store, org, &MT5_OHLCV_1M, batch, &sha256).await?;
+            write(db, store, org, &MT5_OHLCV_1M, batch).await?;
         }
         for (source, rows) in ticks.into_iter().filter(|(_, r)| !r.is_empty()) {
             let names: Vec<&str> = rows.iter().map(|(s, _)| s.as_str()).collect();
             let quotes: Vec<Tick> = rows.iter().map(|(_, t)| t.clone()).collect();
             let batch = quote_tick_batch(&source, &names, &quotes)
                 .map_err(|e| DatasetError::Storage(e.to_string()))?;
-            mt5_write(db, store, org, &MT5_TICKS, batch, &sha256).await?;
+            write(db, store, org, &MT5_TICKS, batch).await?;
         }
         db.execute_raw(stmt(
             "DELETE FROM mt5_inbox WHERE org_id = $1 AND id <= $2",
@@ -123,67 +115,6 @@ async fn mt5_pass(db: &DatabaseConnection, store: &S3Store, org: i64) -> Result<
             return Ok(());
         }
     }
-}
-
-/// [`write`] for the bridge: a refusal stops the pass and keeps the calls.
-async fn mt5_write(
-    db: &DatabaseConnection,
-    store: &S3Store,
-    org: i64,
-    src: &HistorySource,
-    batch: RecordBatch,
-    sha256: &str,
-) -> Result<(), DatasetError> {
-    match write(db, store, org, src, batch, sha256.to_string()).await {
-        Fetched::Done { .. } => Ok(()),
-        Fetched::Failed("quota") => Err(DatasetError::QuotaExceeded),
-        _ => Err(DatasetError::Storage("MT5 rows not written".into())),
-    }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// The rows of a klines CSV, `None` when unreadable.
-pub(crate) async fn settled(
-    db: &DatabaseConnection,
-    org: i64,
-    src: &HistorySource,
-    symbol: &str,
-    today: NaiveDate,
-) -> Result<(HashSet<Period>, HashSet<Period>), DatasetError> {
-    let rows = db
-        .query_all_raw(stmt(
-            "SELECT period, period_start, state FROM market_history_partitions \
-             WHERE org_id = $1 AND source = $2 AND instrument = $3",
-            vec![org.into(), src.key.into(), symbol.into()],
-        ))
-        .await?;
-    let (mut done, mut seen) = (HashSet::new(), HashSet::new());
-    for r in rows {
-        let kind: String = r.try_get("", "period")?;
-        let start: NaiveDate = r.try_get("", "period_start")?;
-        let state: String = r.try_get("", "state")?;
-        if let Some(p) = Period::of(&kind, start) {
-            seen.insert(p);
-            if p.settled(&state, today) {
-                done.insert(p);
-            }
-        }
-    }
-    Ok((done, seen))
-}
-
-pub(crate) enum Fetched {
-    Empty,
-    Failed(&'static str),
-    Done {
-        transaction: Uuid,
-        rows: i64,
-        bytes: i64,
-        sha256: String,
-    },
 }
 
 /// Columns of the `ohlcv` shape (D809); `instruments` holds one per row.
@@ -308,92 +239,29 @@ pub(crate) async fn table_of(
     }
 }
 
+/// Appends a batch; a refusal stops the pass and keeps the calls.
 async fn write(
     db: &DatabaseConnection,
     store: &S3Store,
     org: i64,
     src: &HistorySource,
     batch: RecordBatch,
-    sha256: String,
-) -> Fetched {
+) -> Result<(), DatasetError> {
     let out = async {
         let table = table_of(db, org, src).await?;
         datasets::append_batch(db, store, org, table, &batch).await
     }
     .await;
     match out {
-        Ok(t) => Fetched::Done {
-            transaction: t.id.parse().unwrap_or_default(),
-            rows: t.rows,
-            bytes: t.bytes,
-            sha256,
-        },
-        Err(DatasetError::QuotaExceeded) => Fetched::Failed("quota"),
-        Err(DatasetError::SchemaMismatch { .. }) => Fetched::Failed("schema"),
+        Ok(_) => Ok(()),
+        Err(e @ DatasetError::QuotaExceeded) => Err(e),
         Err(e) => {
             let detail = match &e {
                 DatasetError::Storage(m) => m.clone(),
                 other => format!("{other:?}"),
             };
             tracing::warn!(org, table = src.table, code = e.code(), %detail, "price history not written");
-            Fetched::Failed("storage")
+            Err(DatasetError::Storage("MT5 rows not written".into()))
         }
     }
-}
-
-pub(crate) async fn record(
-    db: &DatabaseConnection,
-    org: i64,
-    src: &HistorySource,
-    symbol: &str,
-    p: Period,
-    outcome: &Fetched,
-) -> Result<(), DatasetError> {
-    let (state, code, rows, bytes, sha, tx): (
-        &str,
-        Option<&str>,
-        i64,
-        i64,
-        Option<String>,
-        Option<Uuid>,
-    ) = match outcome {
-        Fetched::Done {
-            transaction,
-            rows,
-            bytes,
-            sha256,
-        } => (
-            "done",
-            None,
-            *rows,
-            *bytes,
-            Some(sha256.clone()),
-            Some(*transaction),
-        ),
-        Fetched::Empty => ("empty", None, 0, 0, None, None),
-        Fetched::Failed(c) => ("failed", Some(*c), 0, 0, None, None),
-    };
-    db.execute_raw(stmt(
-        "INSERT INTO market_history_partitions \
-           (org_id, source, instrument, period, period_start, state, code, rows, bytes, sha256, transaction_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
-         ON CONFLICT (org_id, source, instrument, period, period_start) DO UPDATE SET \
-           state = EXCLUDED.state, code = EXCLUDED.code, rows = EXCLUDED.rows, bytes = EXCLUDED.bytes, \
-           sha256 = EXCLUDED.sha256, transaction_id = EXCLUDED.transaction_id, fetched_at = now()",
-        vec![
-            org.into(),
-            src.key.into(),
-            symbol.into(),
-            p.kind().into(),
-            p.start().into(),
-            state.into(),
-            code.map(str::to_string).into(),
-            rows.into(),
-            bytes.into(),
-            sha.into(),
-            tx.into(),
-        ],
-    ))
-    .await?;
-    Ok(())
 }

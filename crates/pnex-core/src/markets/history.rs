@@ -1,15 +1,9 @@
 //! Fine price history (markets-research.md appendix C: D807–D809, D820,
-//! D822): which partitions of a source to fetch, and the decoding of a
-//! partition into typed rows. Pure code: no I/O.
-
-use std::collections::HashSet;
-
-use chrono::{Datelike, Days, Months, NaiveDate};
+//! D822): the rows MT5 terminals push and their decoding. The public files
+//! are pipelines (pipeline-engine.md). Pure code: no I/O.
 
 /// Decimal places of the prices and volumes kept (Binance publishes 8).
 pub const SCALE: u32 = 8;
-/// An `empty` partition this recent is asked again: a source can publish late.
-pub const EMPTY_RETRY_DAYS: u64 = 7;
 
 /// A source of history, fixed in the code (D822, R9): an import names it,
 /// never a host.
@@ -22,61 +16,6 @@ pub struct HistorySource {
     /// The table written, one per (source, shape) (D807).
     pub table: &'static str,
     pub license_note: &'static str,
-}
-
-/// A partition of a source: one file, one transaction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Period {
-    /// A closed year in one file (HistData), from January 1.
-    Year(NaiveDate),
-    Month(NaiveDate),
-    Day(NaiveDate),
-}
-
-impl Period {
-    /// `month` or `day`, the `period` column of the registry.
-    pub fn kind(self) -> &'static str {
-        match self {
-            Self::Year(_) => "year",
-            Self::Month(_) => "month",
-            Self::Day(_) => "day",
-        }
-    }
-
-    pub fn start(self) -> NaiveDate {
-        match self {
-            Self::Year(d) | Self::Month(d) | Self::Day(d) => d,
-        }
-    }
-
-    /// First day after the period.
-    pub fn end(self) -> NaiveDate {
-        match self {
-            Self::Year(d) => d + Months::new(12),
-            Self::Month(d) => d + Months::new(1),
-            Self::Day(d) => d + Days::new(1),
-        }
-    }
-
-    pub fn of(kind: &str, start: NaiveDate) -> Option<Self> {
-        match kind {
-            "year" => Some(Self::Year(start.with_day(1)?.with_month(1)?)),
-            "month" => Some(Self::Month(start.with_day(1)?)),
-            "day" => Some(Self::Day(start)),
-            _ => None,
-        }
-    }
-
-    /// Whether a partition in `state` is never asked again.
-    pub fn settled(self, state: &str, today: NaiveDate) -> bool {
-        match state {
-            "done" => true,
-            // A year file appears weeks after the year closes: asked for a year.
-            "empty" if matches!(self, Self::Year(_)) => self.end() + Months::new(12) <= today,
-            "empty" => self.end() + Days::new(EMPTY_RETRY_DAYS) <= today,
-            _ => false,
-        }
-    }
 }
 
 /// A symbol safe to splice into a path: `BTCUSDT`, 2 to 20 capitals or digits.
@@ -132,53 +71,6 @@ pub struct Kline {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DecodeError {
     pub line: usize,
-}
-
-/// The partitions still to fetch from `from` up to today, the HistData way:
-/// closed years whole, the current year month by month (closed months).
-/// A closed year of which a month is already known goes on by months.
-pub fn plan_years(from: NaiveDate, today: NaiveDate, known: &HashSet<Period>) -> Vec<Period> {
-    let (Some(mut year), Some(current)) = (
-        from.with_day(1).and_then(|d| d.with_month(1)),
-        today.with_day(1).and_then(|d| d.with_month(1)),
-    ) else {
-        return Vec::new();
-    };
-    let this_month = today.with_day(1).unwrap_or(today);
-    let mut out = Vec::new();
-    while year <= current {
-        let next = year + Months::new(12);
-        let by_months = year == current
-            || known
-                .iter()
-                .any(|p| matches!(p, Period::Month(d) if *d >= year && *d < next));
-        if by_months {
-            let mut m = year;
-            while m < next.min(this_month) {
-                if !known.contains(&Period::Month(m)) {
-                    out.push(Period::Month(m));
-                }
-                m = m + Months::new(1);
-            }
-        } else if !known.contains(&Period::Year(year)) {
-            out.push(Period::Year(year));
-        }
-        year = next;
-    }
-    out
-}
-
-/// The days still to fetch from `from` up to yesterday, `known` left out.
-pub fn plan_days(from: NaiveDate, today: NaiveDate, known: &HashSet<Period>) -> Vec<Period> {
-    let mut out = Vec::new();
-    let mut d = from;
-    while d < today {
-        if !known.contains(&Period::Day(d)) {
-            out.push(Period::Day(d));
-        }
-        d = d + Days::new(1);
-    }
-    out
 }
 
 /// One quote of a tick file, prices at [`SCALE`].
@@ -332,10 +224,6 @@ pub fn mt5_payload(body: &serde_json::Value) -> Result<Mt5Batch, &'static str> {
 mod tests {
     use super::*;
 
-    fn d(s: &str) -> NaiveDate {
-        NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
-    }
-
     #[test]
     fn decimals_are_never_rounded() {
         assert_eq!(scaled("4261.48000000", 8), Some(426_148_000_000));
@@ -347,19 +235,6 @@ mod tests {
         assert_eq!(scaled("", 2), None);
         assert_eq!(scaled("1e5", 2), None);
         assert_eq!(scaled("1.2.3", 2), None);
-    }
-
-    #[test]
-    fn an_empty_partition_is_asked_again_for_a_week() {
-        let p = Period::Day(d("2026-03-01"));
-        assert!(!p.settled("empty", d("2026-03-05")));
-        assert!(p.settled("empty", d("2026-03-09")));
-        assert!(p.settled("done", d("2026-03-02")));
-        assert!(!p.settled("failed", d("2030-01-01")));
-        assert_eq!(
-            Period::of("month", d("2026-03-17")),
-            Some(Period::Month(d("2026-03-01")))
-        );
     }
 
     #[test]
@@ -395,27 +270,5 @@ mod tests {
         ] {
             assert_eq!(mt5_payload(&bad), Err(token));
         }
-    }
-
-    #[test]
-    fn years_go_on_by_months_once_begun() {
-        let known: HashSet<Period> = [Period::Year(d("2024-01-01"))].into();
-        assert_eq!(
-            plan_years(d("2023-06-01"), d("2026-03-10"), &known),
-            vec![
-                Period::Year(d("2023-01-01")),
-                Period::Year(d("2025-01-01")),
-                Period::Month(d("2026-01-01")),
-                Period::Month(d("2026-02-01")),
-            ]
-        );
-        let by_month: HashSet<Period> = [Period::Month(d("2025-11-01"))].into();
-        assert_eq!(
-            plan_years(d("2025-01-01"), d("2026-01-05"), &by_month).len(),
-            11,
-            "a year begun by months goes on by months, never whole again"
-        );
-        assert!(!Period::Year(d("2025-01-01")).settled("empty", d("2026-02-01")));
-        assert!(Period::Year(d("2024-01-01")).settled("empty", d("2026-01-01")));
     }
 }

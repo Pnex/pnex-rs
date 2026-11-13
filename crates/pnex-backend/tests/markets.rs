@@ -2595,14 +2595,16 @@ fn gz_of(bytes: &[u8]) -> Vec<u8> {
     e.finish().unwrap()
 }
 
-/// MK24 (D889, Q-F8): an ADS-B day split in parts read as one stream into a
-/// table, one transaction per day. AIS and DVF are pipelines now
-/// (`tests/pipeline_engine.rs`, the packs' own tests).
+/// MK24 (D889, Q-F8): an ADS-B day split in parts, its first part
+/// redirected to a storage host, read by its pipeline as one stream into a
+/// table. AIS and DVF are covered by their packs' own tests.
 #[tokio::test]
 #[serial]
 async fn bulk_files_become_tables() {
     use axum::extract::Path;
+    use axum::response::IntoResponse;
     use axum::routing::get;
+    use pnex_backend::services::pipeline_engine::store;
     with_app(|server, ctx, token| async move {
         let db = ctx.db.clone();
         let org = server
@@ -2613,35 +2615,13 @@ async fn bulk_files_become_tables() {
             .as_i64()
             .unwrap();
         let api = Api { server: &server, token, org };
-        for (pack, values) in [
-            ("trade_flows", json!({"source_contact": CONTACT, "adsb_from": "2026-11-01"})),
-        ] {
-            let (st, r) = api.call("POST", &format!("/api/v1/ontology/packs/{pack}/install"), None).await;
-            assert_eq!(st, 200, "{r}");
-            let (st, r) = api
-                .call("PATCH", &format!("/api/v1/ontology/packs/{pack}/settings"), Some(json!({ "values": values })))
-                .await;
-            assert_eq!(st, 200, "{r}");
-        }
-        // Only an org whose quota a platform administrator set loads bulk files.
-        let quota = |org: i64| {
-            Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                format!(
-                    "INSERT INTO system_settings (key, value, created_at, updated_at) \
-                     VALUES ('dataset_quota_bytes:{org}', '30000000000', now(), now()) ON CONFLICT (key) DO NOTHING"
-                ),
-            )
-        };
-        pnex_backend::services::bulk_history::sweep_with(&ctx, chrono::NaiveDate::from_ymd_opt(2026, 11, 2).unwrap(), Some("http://127.0.0.1:9"))
-            .await
-            .unwrap();
-        assert_eq!(
-            count(&db, format!("SELECT count(*) AS n FROM market_history_partitions WHERE org_id = {org}")).await,
-            0,
-            "no quota set: nothing asked"
-        );
-        db.execute_raw(quota(org)).await.unwrap();
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/trade_flows/install", None).await;
+        assert_eq!(st, 200, "{r}");
+        let values = json!({"source_contact": CONTACT, "adsb_from": "2026-11-01"});
+        let (st, r) = api
+            .call("PATCH", "/api/v1/ontology/packs/trade_flows/settings", Some(json!({ "values": values })))
+            .await;
+        assert_eq!(st, 200, "{r}");
         let mut tar = tar::Builder::new(Vec::new());
         for (path, data) in [
             ("./heatmap/41.bin.ttf", b"binary".to_vec()),
@@ -2665,68 +2645,67 @@ async fn bulk_files_become_tables() {
         let app = axum::Router::new()
             .route(
                 "/adsblol/globe_history_2026/releases/download/{tag}/{file}",
-                get(move |Path((_, file)): Path<(String, String)>| {
-                    let (aa, ab) = (aa.clone(), ab.clone());
-                    async move {
-                        match file.rsplit('.').next() {
-                            Some("aa") => (axum::http::StatusCode::OK, aa),
-                            Some("ab") => (axum::http::StatusCode::OK, ab),
-                            _ => (axum::http::StatusCode::NOT_FOUND, Vec::new()),
-                        }
+                get(move |Path((_, file)): Path<(String, String)>| async move {
+                    match file.rsplit('.').next() {
+                        // GitHub sends a release file from its storage host.
+                        Some("aa") => (
+                            axum::http::StatusCode::FOUND,
+                            [(axum::http::header::LOCATION, "https://release-assets.githubusercontent.com/files/aa")],
+                        )
+                            .into_response(),
+                        Some("ab") => (axum::http::StatusCode::OK, ab.clone()).into_response(),
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
                     }
                 }),
-            );
+            )
+            .route("/files/aa", get(move || async move { aa.clone() }));
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        pnex_backend::services::markets::allow_test_host(&base);
-
-        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 11, d).unwrap();
-        pnex_backend::services::bulk_history::sweep_with(&ctx, day(2), Some(&base)).await.unwrap();
-        let part = |src: &str| {
+        store::route_for_tests("github.com", &base);
+        store::route_for_tests("release-assets.githubusercontent.com", &base);
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-02T12:00:00Z").unwrap().to_utc();
+        let item = || {
             let db = db.clone();
-            let src = src.to_string();
             async move {
                 db.query_all_raw(Statement::from_string(
                     sea_orm::DatabaseBackend::Postgres,
                     format!(
-                        "SELECT period_start::text AS d, state, coalesce(code, '') AS code, rows FROM market_history_partitions \
-                         WHERE org_id = {org} AND source = '{src}' ORDER BY period_start"
+                        "SELECT item || ':' || state || ':' || rows AS s FROM pipeline_items \
+                         WHERE org_id = {org} AND pipeline = 'trade_flows/adsb_lol' AND item <> ''"
                     ),
                 ))
                 .await
                 .unwrap()
                 .iter()
-                .map(|r| {
-                    let d: String = r.try_get("", "d").unwrap();
-                    let s: String = r.try_get("", "state").unwrap();
-                    let c: String = r.try_get("", "code").unwrap();
-                    let n: i64 = r.try_get("", "rows").unwrap();
-                    format!("{d} {s}{c} {n}")
-                })
+                .map(|r| r.try_get::<String>("", "s").unwrap())
                 .collect::<Vec<_>>()
             }
         };
-        assert_eq!(part("adsb_lol").await, ["2026-11-01 done 3"], "two parts read as one tar");
+        store::sweep(&ctx, &store::HttpTransport, now).await.unwrap();
+        assert!(item().await.is_empty(), "no quota set: nothing asked");
+        db.execute_raw(Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!(
+                "INSERT INTO system_settings (key, value, created_at, updated_at) \
+                 VALUES ('dataset_quota_bytes:{org}', '30000000000', now(), now()) ON CONFLICT (key) DO NOTHING"
+            ),
+        ))
+        .await
+        .unwrap();
+        store::sweep(&ctx, &store::HttpTransport, now).await.unwrap();
+        assert_eq!(item().await, ["2026-11-01:done:3"], "two parts read as one tar");
         let tables = count(
             &db,
-            format!(
-                "SELECT count(*) AS n FROM datasets WHERE org_id = {org} \
-                 AND name = 'adsb_lol_positions'"
-            ),
+            format!("SELECT count(*) AS n FROM datasets WHERE org_id = {org} AND name = 'adsb_lol_positions'"),
         )
         .await;
         assert_eq!(tables, 1);
-
-        let (st, sample) = api
-            .call("GET", "/api/v1/datasets?limit=50", None)
-            .await;
-        assert_eq!(st, 200, "{sample}");
     })
     .await;
 }
 
 /// The real files, by hand: `BULK_REAL=dvf|ais_dk|ais_noaa|adsb cargo test
-/// -p pnex-backend --test markets bulk_real -- --ignored --nocapture`. AIS
-/// and DVF run their pipeline, ADS-B the bulk loader.
+/// -p pnex-backend --test markets bulk_real -- --ignored --nocapture`: each
+/// runs its pipeline.
 #[tokio::test]
 #[serial]
 #[ignore = "downloads hundreds of MB to several GB"]
@@ -2765,36 +2744,16 @@ async fn bulk_real_files() {
         .await
         .unwrap();
         let started = std::time::Instant::now();
-        if which != "adsb" {
+        {
             use pnex_backend::services::pipeline_engine::store;
-            let sp = store::shipped().iter().find(|p| p.doc.key == which).unwrap();
+            let key = if which == "adsb" { "adsb_lol" } else { which.as_str() };
+            let sp = store::shipped().iter().find(|p| p.doc.key == key).unwrap();
             let net = store::HttpTransport;
             let store_ = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
             let out = store::run_for_org(&db, &store_, org, sp, &net, chrono::Utc::now(), None).await.unwrap();
             for (item, failure, rows) in &out.items {
                 println!("{which} {} {:?} rows={rows} {failure:?} in {:?}", item.key, item.state, started.elapsed());
             }
-            return;
-        }
-        pnex_backend::services::bulk_history::sweep(&ctx, today).await.unwrap();
-        let rows = db
-            .query_all_raw(Statement::from_string(
-                sea_orm::DatabaseBackend::Postgres,
-                format!("SELECT source, period_start::text AS d, state, coalesce(code, '') AS code, rows, bytes FROM market_history_partitions WHERE org_id = {org}"),
-            ))
-            .await
-            .unwrap();
-        for r in rows {
-            println!(
-                "{} {} {} {} rows={} bytes={} in {:?}",
-                r.try_get::<String>("", "source").unwrap(),
-                r.try_get::<String>("", "d").unwrap(),
-                r.try_get::<String>("", "state").unwrap(),
-                r.try_get::<String>("", "code").unwrap(),
-                r.try_get::<i64>("", "rows").unwrap(),
-                r.try_get::<i64>("", "bytes").unwrap(),
-                started.elapsed()
-            );
         }
     })
     .await;

@@ -565,10 +565,78 @@ fn dressed(mut b: reqwest::RequestBuilder, r: &Req) -> reqwest::RequestBuilder {
     b
 }
 
+/// The client of a streamed file: it follows redirects by hand, each to a
+/// host of the document (a release served from a storage host).
+fn plain_client() -> &'static reqwest::Client {
+    static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
+        pnex_core::egress::guarded(reqwest::Client::builder())
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(30))
+            .read_timeout(Duration::from_secs(120))
+            .user_agent(concat!("PNEX-Pipeline/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .expect("reqwest client")
+    });
+    &HTTP
+}
+
 impl Transport for HttpTransport {
     async fn get(&self, url: &reqwest::Url, r: &Req) -> Result<Option<Blob>, Failure> {
         wait_turn(url, r.every_ms).await;
         body(url, dressed(client().get(routed(url)), r), r.max_bytes).await
+    }
+
+    async fn stream(
+        &self,
+        url: &reqwest::Url,
+        r: &Req,
+        out: &super::ChunkTx,
+    ) -> Result<bool, Failure> {
+        wait_turn(url, r.every_ms).await;
+        let unreachable = || fail("unreachable", json!({ "url": url.as_str() }));
+        let mut at = url.clone();
+        let mut resp = None;
+        for _ in 0..5 {
+            let x = dressed(plain_client().get(routed(&at)), r)
+                .send()
+                .await
+                .map_err(|e| {
+                    tracing::info!(url = %url, error = %e.without_url(), "pipeline source unreachable");
+                    unreachable()
+                })?;
+            if !x.status().is_redirection() {
+                resp = Some(x);
+                break;
+            }
+            let next = x
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|l| l.to_str().ok())
+                .and_then(|l| at.join(l).ok())
+                .ok_or_else(unreachable)?;
+            // Only to a host the document declares (D942), never plain HTTP.
+            let host = next.host_str().unwrap_or_default().to_ascii_lowercase();
+            if next.scheme() != "https" || !r.hosts.iter().any(|h| h.eq_ignore_ascii_case(&host)) {
+                return Err(fail("host_not_declared", json!({ "host": host })));
+            }
+            at = next;
+        }
+        let mut resp = resp.ok_or_else(unreachable)?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(false);
+        }
+        if !resp.status().is_success() {
+            return Err(fail(
+                "http_status",
+                json!({ "url": url.as_str(), "status": resp.status().as_u16() }),
+            ));
+        }
+        while let Some(chunk) = resp.chunk().await.map_err(|_| unreachable())? {
+            if out.send(Ok(chunk.to_vec())).await.is_err() {
+                return Err(fail("closed", Value::Null));
+            }
+        }
+        Ok(true)
     }
 
     async fn post_form(

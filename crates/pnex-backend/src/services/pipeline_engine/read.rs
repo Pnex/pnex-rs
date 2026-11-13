@@ -487,8 +487,16 @@ impl Typed {
                         Some("epoch_us") => 1,
                         _ => 1_000,
                     };
-                    let n: i64 = s.trim().parse().ok()?;
-                    Some(base.checked_add(n.checked_mul(unit)?)?.to_string())
+                    let t = s.trim();
+                    // A count with a fraction (`72946.01` s) rounds to the µs.
+                    let n = match t.parse::<i64>() {
+                        Ok(n) => n.checked_mul(unit)?,
+                        Err(_) => {
+                            let x = t.parse::<f64>().ok()? * unit as f64;
+                            (x.is_finite() && x.abs() < 9e18).then_some(x.round() as i64)?
+                        }
+                    };
+                    Some(base.checked_add(n)?.to_string())
                 }),
                 None => raw,
             };
@@ -679,9 +687,53 @@ fn walk<'a>(
     }
 }
 
+/// A `base` written `^/pointer`: the document's number of the column's
+/// `format` unit (`epoch_s`…), as the RFC 3339 instant a count is added to.
+fn based(r: &Read, doc: &Value) -> Result<Option<Read>, Failure> {
+    if !r
+        .columns
+        .iter()
+        .any(|c| c.base.as_deref().is_some_and(|b| b.starts_with('^')))
+    {
+        return Ok(None);
+    }
+    let mut r = r.clone();
+    for c in &mut r.columns {
+        let Some(p) = c.base.as_deref().and_then(|b| b.strip_prefix('^')) else {
+            continue;
+        };
+        let unit = match c.format.as_deref() {
+            Some("epoch_s") => 1e6,
+            Some("epoch_us") => 1.0,
+            _ => 1e3,
+        };
+        let us = doc
+            .pointer(p)
+            .and_then(Value::as_f64)
+            .map(|x| x * unit)
+            .filter(|x| x.is_finite() && x.abs() < 9e18)
+            .and_then(|x| chrono::DateTime::from_timestamp_micros(x.round() as i64))
+            .ok_or_else(|| fail("invalid_value", json!({ "name": c.name, "value": p })))?;
+        c.base = Some(us.to_rfc3339());
+    }
+    Ok(Some(r))
+}
+
 fn read_json(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, Failure> {
     let unreadable = || fail("unreadable", json!({ "what": "json" }));
-    let bytes = file.bytes(READ_MAX_BYTES as u64)?;
+    // A file packed in gzip (each entry of a tar of traces) is read unpacked.
+    let mut head = [0u8; 2];
+    let n = std::io::Read::read(&mut file.open()?, &mut head).map_err(|_| unreadable())?;
+    let unpacked = if n == 2 && head == [0x1f, 0x8b] {
+        let gz = flate2::read::MultiGzDecoder::new(file.open()?);
+        Some(Blob::from_reader(gz, READ_MAX_BYTES as u64)?)
+    } else {
+        None
+    };
+    let bytes = unpacked
+        .as_ref()
+        .unwrap_or(file)
+        .bytes(READ_MAX_BYTES as u64)?;
     // XML: `records` is the element path (`FICHES/FICHE`), each element a
     // JSON-like record (attributes `@name`, repeated children as arrays).
     let (doc, pointer) = if r.format == Format::Xml {
@@ -726,7 +778,8 @@ fn read_json(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, F
     if records.is_empty() && !pointer.contains('*') && doc.pointer(pointer).is_none() {
         return Err(unreadable());
     }
-    let mut typed = Typed::new(r, row, &[])?;
+    let based = based(r, &doc)?;
+    let mut typed = Typed::new(based.as_ref().unwrap_or(r), row, &[])?;
     for (i, (keys, item)) in records.iter().enumerate() {
         typed.push(i + 1, |c, at| match at {
             At::Key(names) => {

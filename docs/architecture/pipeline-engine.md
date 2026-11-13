@@ -409,7 +409,8 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
   une org dont un administrateur a fixé le quota, SEC-82).
 - **Portés en YAML, Rust supprimé** : klines et transactions Binance, ticks HistData, ticks
   Dukascopy (pack `markets`), AIS danois et américain (`trade_flows`), DVF (`real_estate`).
-  `markets/history.rs` ne garde que la passe MT5 (PE8) ; `bulk_history.rs` que ADS-B.
+  `markets/history.rs` ne garde que la passe MT5 (PE8) ; `bulk_history.rs` que ADS-B (porté le
+  2026-11-13, voir plus bas).
 - **Nouvelles tables, rechargées de zéro** (D952) : `binance_klines_1m`, `binance_trades`,
   `histdata_quotes`, `dukascopy_quotes`, `ais_dk`, `ais_noaa`, `dvf`. Les anciennes restent dans
   les orgs qui les avaient, à supprimer depuis la page des tables.
@@ -546,3 +547,24 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
 |---|---|
 | L'heure en cours n'est pas lue (fin des périodes exclue) : une tranche publiée dans l'heure attend le run suivant | à garder pour un run quotidien |
 | Les lignes passent au bac à sable en JSON dans le texte du script : une table de 200 000 lignes larges peut dépasser le tas de 64 Mo | passage des lignes par valeurs Starlark si un cas le demande |
+- **2026-11-13** : **ADS-B** en pipeline (`trade_flows/adsb_lol`, table `adsb_lol_positions`).
+  Nouveau dans `fetch` : **`parts`** (le fichier = ces parties jointes dans l'ordre, chacune
+  nommée par `{{part}}` dans l'adresse ; une partie absente après la première clôt le fichier) et
+  **`stream: true`** (lu à mesure, jamais gardé : seulement dans un document `large`, suivi
+  d'exactement un `unpack` tar puis d'un `read` à colonnes déclarées, seuls lecteurs de la table
+  d'avant ; les entrées sont lues par lots de 64 Mo, le moteur exécute les trois étapes d'un
+  tenant, plafond 64 Go). Une redirection d'un fichier en flux suit vers un hôte déclaré du
+  document, en HTTPS seulement (les fichiers d'une release partent de l'hôte de stockage de la
+  forge). `read` JSON lit un fichier gzip (une trace par avion, compressée ou non), `base` accepte
+  `^/pointeur` (un instant du document, dans l'unité de `format`) et un compte fractionnaire
+  (`72946.01` s → µs). **Supprimés** : `services/bulk_history.rs`, `pnex-core/src/bulk.rs`, la
+  planification des partitions (`Period`, `plan_days`, `plan_years`, `settled`, `record`) ; la
+  table `market_history_partitions` n'a plus d'écrivain (suppression PE9).
+
+| Écart | Où il se lève |
+|---|---|
+| Les lignes typées d'un jour d'ADS-B passent par des fichiers Arrow temporaires avant l'écriture (plusieurs Go de disque du serveur le temps du run), l'ancien chargeur écrivait au fil de l'eau | `write` en flux si le disque manque |
+| `icao` n'est plus mis en minuscules ni coupé (les traces de readsb le sont déjà) | à garder |
+| Le verrou « un gros chargement par org » partagé avec l'historique des prix n'existe plus ; le verrou de run des pipelines (`PIPELINE_RUN`) le remplace | à garder |
+| Une trace de plus de 64 Mo fait échouer le jour (l'ancien chargeur la sautait) | à garder : aucune trace réelle n'approche |
+

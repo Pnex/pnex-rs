@@ -1,0 +1,64 @@
+# Aircraft positions of adsb.lol's globe history (markets-research.md MK24,
+# D889): a day is one tar published in parts of 2 GB, read as one stream as
+# it arrives and never kept, one trace per aircraft (gzip-packed or not).
+# Open Database License: cite adsb.lol, share a derived database alike.
+# GitHub serves the release files from its storage host, declared too.
+key: adsb_lol
+name: Aircraft positions (adsb.lol)
+hosts: [github.com, release-assets.githubusercontent.com, objects.githubusercontent.com]
+large: true
+schedule: 10m
+steps:
+  - enumerate:
+      as: days
+      track: true
+      per_run: 1
+      empty: retry
+      retry_days: 7
+      cross:
+        - { as: day, periods: day, from_setting: trade_flows.adsb_from, closed_only: true }
+  - fetch:
+      as: day_file
+      for_each: days
+      url: "https://github.com/adsblol/globe_history_{{day_y}}/releases/download/v{{day_y}}.{{day_m}}.{{day_d}}-planes-readsb-prod-0/v{{day_y}}.{{day_m}}.{{day_d}}-planes-readsb-prod-0.tar.a{{part}}"
+      parts: [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z]
+      stream: true
+      missing_is_empty: true
+      max_bytes: 60000000000
+  - unpack: { as: traces, from: day_file, format: tar, entries: ["*trace_full_*"] }
+  - read:
+      as: positions
+      from: traces
+      format: json
+      records: /trace
+      skip_invalid: true
+      columns:
+        # Seconds after the trace's own base instant.
+        - { name: ts, at: /0, type: timestamp, format: epoch_s, base: "^/timestamp" }
+        - { name: icao, at: ^/icao, type: text }
+        - { name: registration, at: ^/r, type: text, optional: true }
+        - { name: aircraft_type, at: ^/t, type: text, optional: true }
+        - { name: lat, at: /1, type: float, range: [-90, 90] }
+        - { name: lon, at: /2, type: float, range: [-180, 180] }
+        # Feet, barometric, or "ground".
+        - { name: alt_baro_ft, at: /3, type: float, optional: true, null_if: [ground] }
+        - { name: on_ground, at: /3, type: bool, optional: true, map: { ground: "true", "*": "false" } }
+        - { name: ground_speed, at: /4, type: float, optional: true }
+        - { name: track, at: /5, type: float, optional: true }
+        - { name: vertical_rate, at: /7, type: float, optional: true }
+        - { name: source, at: /9, type: text, optional: true }
+  - write: { from: positions, table: { name: adsb_lol_positions } }
+tests:
+  - name: two parts read as one tar, a packed trace and a plain one
+    today: "2026-11-02"
+    settings: { trade_flows.adsb_from: "2026-11-01" }
+    given:
+      "https://github.com/adsblol/globe_history_2026/releases/download/v2026.11.01-planes-readsb-prod-0/v2026.11.01-planes-readsb-prod-0.tar.aa": v2026.11.01-planes-readsb-prod-0.tar.aa
+      "https://github.com/adsblol/globe_history_2026/releases/download/v2026.11.01-planes-readsb-prod-0/v2026.11.01-planes-readsb-prod-0.tar.ab": v2026.11.01-planes-readsb-prod-0.tar.ab
+    expect:
+      positions:
+        rows: 3
+        contains:
+          - { ts: "2026-11-01T00:00:01.250", icao: ab32ab, registration: N820UP, alt_baro_ft: "3775", on_ground: "false", source: adsb_icao }
+          - { ts: "2026-11-01T00:00:02", icao: ab32ab, alt_baro_ft: null, on_ground: "true" }
+          - { ts: "2026-11-01T00:00:05", icao: 0d11cd, registration: null, lat: "19.4" }

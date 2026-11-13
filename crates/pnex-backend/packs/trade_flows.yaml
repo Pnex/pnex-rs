@@ -13,7 +13,7 @@
 key: trade_flows
 name: Trade flows
 names: {fr: "Flux physiques"}
-version: "1.0.0"
+version: "1.1.0"
 requires: []
 description: Raw vessel positions (AIS, Danish Maritime Authority and NOAA) and aircraft positions (ADS-B, adsb.lol), a day per file, into tables of the organization.
 descriptions: {fr: "Positions brutes des navires (AIS, autorité maritime danoise et NOAA) et des avions (ADS-B, adsb.lol), un jour par fichier, dans des tables de l'organisation."}

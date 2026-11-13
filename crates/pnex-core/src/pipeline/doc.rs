@@ -20,6 +20,10 @@ pub const TESTS_MAX: usize = 20;
 pub const AFTER_MAX: usize = 20;
 /// Largest body one fetch spools to disk, and largest archive entry.
 pub const FETCH_MAX_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+/// Largest streamed file (`stream: true`): read as it arrives, never kept.
+pub const STREAM_MAX_BYTES: u64 = 64 * 1024 * 1024 * 1024;
+/// Parts of one streamed file at most.
+pub const PARTS_MAX: usize = 100;
 
 /// A pipeline as written.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -279,6 +283,16 @@ pub struct Fetch {
     pub checksum_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_bytes: Option<u64>,
+    /// The file is these parts joined in order, each named by `{{part}}` in
+    /// the address (a tar split in pieces of 2 GB); a missing part after the
+    /// first ends it. Streamed only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<String>,
+    /// Read as it arrives and never kept: the steps after are one `unpack`
+    /// of a tar and one `read` of its entries, run on the stream. Only in a
+    /// `large` document.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub stream: bool,
 }
 
 /// Page numbers of a JSON answer (D936).
@@ -795,6 +809,23 @@ pub fn duration_ms(s: &str) -> Option<u64> {
 
 impl Document {
     /// Empty when the document can run.
+    /// The `unpack` (tar) and `read` a streamed fetch feeds, each the only
+    /// step reading the table before it, the read with its columns declared.
+    pub fn streamed(&self, fetch: &str) -> Option<(&Unpack, &Read)> {
+        let only = |table: &str| {
+            let mut readers = self.steps.iter().filter(|s| s.inputs().contains(&table));
+            let one = readers.next();
+            readers.next().is_none().then_some(one).flatten()
+        };
+        let Some(Step::Unpack(u)) = only(fetch) else {
+            return None;
+        };
+        let Some(Step::Read(r)) = only(&u.as_) else {
+            return None;
+        };
+        (u.format == Archive::Tar && !r.columns.is_empty()).then_some((u, r))
+    }
+
     pub fn violations(&self) -> Vec<Violation> {
         let mut out = Vec::new();
         let mut bad = |path: String, token: &str| {
@@ -863,6 +894,31 @@ impl Document {
                 bad(format!("{at}.track"), "first_step_only");
             }
             step_violations(step, &at, &hosts, &mut bad);
+            if let Step::Fetch(f) = step {
+                let part_ok =
+                    |p: &String| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric());
+                if !f.parts.is_empty()
+                    && (!f.stream
+                        || f.parts.len() > PARTS_MAX
+                        || !f.parts.iter().all(part_ok)
+                        || !crate::pipeline::template::names(&f.url)
+                            .iter()
+                            .any(|n| n == "part"))
+                {
+                    bad(format!("{at}.parts"), "invalid");
+                }
+                if f.stream
+                    && (!self.large
+                        || self.streamed(&f.as_).is_none()
+                        || f.method != Method::Get
+                        || f.pages.is_some()
+                        || f.checksum_url.is_some()
+                        || f.skip_if_unchanged
+                        || f.secret.is_some())
+                {
+                    bad(format!("{at}.stream"), "invalid");
+                }
+            }
         }
         if self.tests.len() > TESTS_MAX {
             bad("tests".into(), &format!("max_items:{TESTS_MAX}"));
@@ -1056,7 +1112,12 @@ fn step_violations(
                     }
                 }
             }
-            if f.max_bytes.is_some_and(|b| b == 0 || b > FETCH_MAX_BYTES) {
+            let cap = if f.stream {
+                STREAM_MAX_BYTES
+            } else {
+                FETCH_MAX_BYTES
+            };
+            if f.max_bytes.is_some_and(|b| b == 0 || b > cap) {
                 bad(format!("{at}.max_bytes"), "invalid");
             }
         }
@@ -1262,6 +1323,39 @@ mod tests {
         assert!(t.contains(
             &"steps.0.enumerate.cross.0 one_of:values,setting,periods,objects,range".into()
         ));
+    }
+
+    #[test]
+    fn a_stream_feeds_one_tar_and_one_read() {
+        let steps = |extra: serde_json::Value| {
+            let mut s = vec![
+                json!({"fetch": {"as": "f", "url": "https://data.example.io/x.a{{part}}",
+                    "parts": ["a", "b"], "stream": true}}),
+                json!({"unpack": {"as": "e", "from": "f", "format": "tar"}}),
+                json!({"read": {"as": "r", "from": "e", "format": "json", "columns": [{"name": "x"}]}}),
+                json!({"write": {"from": "r", "table": {"name": "t"}}}),
+            ];
+            if !extra.is_null() {
+                s.push(extra);
+            }
+            serde_json::Value::Array(s)
+        };
+        let mut d = doc(steps(serde_json::Value::Null));
+        assert_eq!(tokens(&d), ["steps.0.fetch.stream invalid"], "large only");
+        d.large = true;
+        assert_eq!(tokens(&d), Vec::<String>::new());
+        // A second reader of the entries: they are never kept.
+        let mut d = doc(steps(
+            json!({"read": {"as": "r2", "from": "e", "format": "json", "columns": [{"name": "x"}]}}),
+        ));
+        d.large = true;
+        assert_eq!(tokens(&d), ["steps.0.fetch.stream invalid"]);
+        let mut d = doc(json!([
+            {"fetch": {"as": "f", "url": "https://data.example.io/x", "parts": ["a"]}},
+            {"write": {"from": "f", "table": {"name": "t"}}}
+        ]));
+        d.large = true;
+        assert_eq!(tokens(&d), ["steps.0.fetch.parts invalid"]);
     }
 
     #[test]

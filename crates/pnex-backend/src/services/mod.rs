@@ -19,7 +19,6 @@ pub mod build_cache;
 /// Per-device build history retention (keeps the newest records).
 pub mod build_retention;
 /// Large public files into tables: AIS, ADS-B, DVF (markets-research.md MK22–MK24).
-pub mod bulk_history;
 pub mod camera;
 pub mod cmd_acks;
 /// Per-pod concurrency caps (CoolProp, vision, runtime checks, uploads).

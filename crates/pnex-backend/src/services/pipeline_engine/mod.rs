@@ -73,11 +73,28 @@ impl Table {
     }
 }
 
+/// Chunks of a streamed body; `Err` tells the reader the stream was cut.
+pub type ChunkTx = tokio::sync::mpsc::Sender<Result<Vec<u8>, ()>>;
+
 /// Where requests go: the network under the egress guard, or recorded
 /// answers. `None` is a 404.
 #[allow(async_fn_in_trait)]
 pub trait Transport {
     async fn get(&self, url: &reqwest::Url, req: &Req) -> Result<Option<blob::Blob>, Failure>;
+
+    /// Sends the body to `out` as it arrives, never kept; `false` is a 404.
+    /// By default the answer of `get` in chunks (recorded answers).
+    async fn stream(&self, url: &reqwest::Url, req: &Req, out: &ChunkTx) -> Result<bool, Failure> {
+        let Some(body) = self.get(url, req).await? else {
+            return Ok(false);
+        };
+        for c in body.bytes(u64::MAX)?.chunks(64 * 1024) {
+            if out.send(Ok(c.to_vec())).await.is_err() {
+                return Err(fail("closed", Value::Null));
+            }
+        }
+        Ok(true)
+    }
 
     async fn post_form(
         &self,
@@ -98,6 +115,8 @@ pub struct Req {
     /// A vault key as a query parameter: added when sent, never part of the
     /// address kept or logged.
     pub secret_query: Option<(String, String)>,
+    /// Hosts a streamed request may be redirected to: the document's (D942).
+    pub hosts: Vec<String>,
 }
 
 /// Where a `write` puts its rows: the org's tables, or memory.
@@ -382,6 +401,8 @@ pub struct Exec<'a, T, S, Q> {
     pub fresh_shas: HashMap<String, String>,
     /// Tokens got by a fetch's grant during the pass, by grant address.
     pub tokens: HashMap<String, String>,
+    /// Tables a streamed fetch already gave for the steps after it.
+    pub ahead: HashMap<String, Table>,
 }
 
 impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
@@ -480,6 +501,119 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
     }
 
     /// One answer for one row (one page of it): `None` when there is none.
+    /// The address of a row (its parameters added, its host declared) and
+    /// the headers sent.
+    fn address(
+        &self,
+        f: &Fetch,
+        row: &Row,
+    ) -> Result<(reqwest::Url, Vec<(String, String)>), Failure> {
+        let filled = |t: &str, address: bool| {
+            template::fill(t, address, |n| lookup(row, self.inputs, n))
+                .map_err(|n| fail("missing_value", json!({ "name": n })))
+        };
+        let raw = filled(&f.url, true)?;
+        let mut url = reqwest::Url::parse(&raw)
+            .map_err(|_| fail("invalid_value", json!({ "name": "url", "value": raw })))?;
+        self.hosts_allow(&url)?;
+        for (k, v) in &f.params {
+            let v = filled(v, false)?;
+            url.query_pairs_mut().append_pair(k, &v);
+        }
+        let mut headers = Vec::new();
+        for (k, v) in &f.headers {
+            // A header carries what a source asks of the caller (its contact).
+            let value = filled(v, false).map_err(|f| fail("contact_required", f.args))?;
+            headers.push((k.clone(), value));
+        }
+        Ok((url, headers))
+    }
+
+    /// A streamed fetch run with the `unpack` and `read` it feeds: each
+    /// row's parts are one stream, its tar entries read as they pass,
+    /// nothing kept but the typed rows. The rows fetched, without a file.
+    async fn streamed(&mut self, f: &Fetch, input: Vec<Row>) -> Result<Vec<Row>, Failure> {
+        let (u, r) = self
+            .doc
+            .streamed(&f.as_)
+            .ok_or_else(|| fail("step_unsupported", json!({ "step": "fetch.stream" })))?;
+        let every = f
+            .every
+            .as_deref()
+            .and_then(pnex_core::pipeline::doc::duration_ms)
+            .unwrap_or(0);
+        let max = f.max_bytes.unwrap_or(FETCH_DEFAULT_BYTES);
+        let parts = if f.parts.is_empty() {
+            vec![String::new()]
+        } else {
+            f.parts.clone()
+        };
+        let (mut fetched, mut typed) = (Vec::new(), Vec::new());
+        for row in input {
+            let mut addresses = Vec::new();
+            for p in &parts {
+                let mut with_part = row.clone();
+                with_part
+                    .cols
+                    .insert("part".into(), Value::String(p.clone()));
+                addresses.push(self.address(f, &with_part)?);
+            }
+            let (tx, rx) = tokio::sync::mpsc::channel(64);
+            let (u2, r2, row2) = (u.clone(), r.clone(), row.clone());
+            let decode =
+                tokio::task::spawn_blocking(move || files::unpack_stream(&u2, &r2, &row2, rx, max));
+            let mut pumped = Ok(false);
+            for (i, (url, headers)) in addresses.iter().enumerate() {
+                let req = Req {
+                    every_ms: every,
+                    max_bytes: max,
+                    headers: headers.clone(),
+                    hosts: self.doc.hosts.clone(),
+                    ..Default::default()
+                };
+                pumped = self.transport.stream(url, &req, &tx).await;
+                match &pumped {
+                    // A missing part after the first: the previous was the last.
+                    Ok(false) if i > 0 => pumped = Ok(true),
+                    Ok(true) => continue,
+                    _ => {}
+                }
+                break;
+            }
+            if pumped.is_err() {
+                let _ = tx.send(Err(())).await;
+            }
+            drop(tx);
+            let decoded = decode.await.map_err(|_| fail("internal", Value::Null))?;
+            let files = match (pumped, decoded) {
+                // The reader stopped first: its failure is the cause.
+                (Err(p), Err(d)) if p.code == "closed" => return Err(d),
+                (Err(p), _) => return Err(p),
+                (Ok(false), _) if f.missing_is_empty => continue,
+                (Ok(false), _) => {
+                    let url = addresses
+                        .first()
+                        .map(|a| a.0.to_string())
+                        .unwrap_or_default();
+                    return Err(fail("not_found", json!({ "url": url })));
+                }
+                (Ok(true), d) => d?,
+            };
+            typed.extend(files);
+            let mut next = row;
+            let first = addresses
+                .first()
+                .map(|a| a.0.to_string())
+                .unwrap_or_default();
+            next.cols.insert("url".into(), Value::String(first));
+            fetched.push(next);
+        }
+        // The entries are never kept: their table stays empty.
+        self.ahead.insert(u.as_.clone(), Table::Rows(Vec::new()));
+        self.ahead.insert(r.as_.clone(), Table::Batches(typed));
+        Ok(fetched)
+    }
+
     async fn fetch_one(
         &mut self,
         f: &Fetch,
@@ -496,27 +630,16 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
             template::fill(t, address, |n| lookup(row, self.inputs, n))
                 .map_err(|n| fail("missing_value", json!({ "name": n })))
         };
-        let raw = filled(&f.url, true)?;
-        let mut url = reqwest::Url::parse(&raw)
-            .map_err(|_| fail("invalid_value", json!({ "name": "url", "value": raw })))?;
-        self.hosts_allow(&url)?;
-        for (k, v) in &f.params {
-            let v = filled(v, false)?;
-            url.query_pairs_mut().append_pair(k, &v);
-        }
+        let (mut url, headers) = self.address(f, row)?;
         if let (Some(p), Some(n)) = (&f.pages, page) {
             url.query_pairs_mut().append_pair(&p.param, &n.to_string());
         }
         let mut req = Req {
             every_ms: every,
             max_bytes: max,
+            headers,
             ..Default::default()
         };
-        for (k, v) in &f.headers {
-            // A header carries what a source asks of the caller (its contact).
-            let value = filled(v, false).map_err(|f| fail("contact_required", f.args))?;
-            req.headers.push((k.clone(), value));
-        }
         if let Some(sec) = &f.secret {
             let value = match &sec.token {
                 Some(t) => self.token(t, every).await?,
@@ -690,6 +813,9 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
         tables: &HashMap<String, Table>,
         written: &mut u64,
     ) -> Result<Option<Table>, Failure> {
+        if let Some(t) = step.output().and_then(|o| self.ahead.remove(o)) {
+            return Ok(Some(t));
+        }
         let out = match step {
             Step::Enumerate(e) => Table::Rows(
                 enumerate(
@@ -704,6 +830,13 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 .map(|(_, r)| r)
                 .collect(),
             ),
+            Step::Fetch(f) if f.stream => {
+                let input = match &f.for_each {
+                    Some(t) => Self::walked(tables, t)?,
+                    None => vec![Row::default()],
+                };
+                Table::Rows(self.streamed(f, input).await?)
+            }
             Step::Fetch(f) => {
                 let input = match &f.for_each {
                     Some(t) => Self::walked(tables, t)?,
@@ -913,6 +1046,7 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
             journal,
             fresh_shas: HashMap::new(),
             tokens: HashMap::new(),
+            ahead: HashMap::new(),
         };
         match exec.pass(0, HashMap::new()).await {
             Ok(n) => outcome.written = n,
@@ -948,6 +1082,7 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
             journal: journal.as_deref_mut(),
             fresh_shas: HashMap::new(),
             tokens: HashMap::new(),
+            ahead: HashMap::new(),
         };
         if let Some(k) = exec.keep.as_deref_mut() {
             k.entry(e.as_.clone())
