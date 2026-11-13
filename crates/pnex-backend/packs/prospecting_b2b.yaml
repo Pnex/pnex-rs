@@ -60,10 +60,12 @@
 # Since 2.0.0 every identifier is English (breaking).
 # Since 3.0.0 the `personal` classification value and the flow names are English (breaking).
 # Since 3.6.0 the settings of the person match (D788).
+# Since 3.7.0 a person has a unique `profile_url`, the key of the network
+# export import (one person per profile, an objection keeps them out, D610).
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "3.6.0"
+version: "3.7.0"
 requires: [companies, web_presence]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -160,6 +162,11 @@ extends:
       - { key: profile_position, name: Position on the profile, names: {fr: "Poste sur le profil"}, kind: text, max_len: 255, classification: personal }
       - { key: profile_company, name: Company on the profile, names: {fr: "Société sur le profil"}, kind: text, max_len: 255, classification: personal }
       - { key: profile_read_on, name: Profile read on, names: {fr: "Profil lu le"}, kind: date }
+      # One person per network profile: the key of the export import.
+      - { key: profile_url, name: Profile URL, names: {fr: "URL du profil"}, kind: text, max_len: 2048, unique: true, classification: personal, contact_point: true }
+      - { key: profile_city, name: City on the profile, names: {fr: "Ville sur le profil"}, kind: text, max_len: 255, classification: personal }
+      # Set once a country layer looked up the employer named by the profile.
+      - { key: employer_looked_up, name: Employer looked up, names: {fr: "Employeur recherché"}, kind: bool, indexed: true }
       - key: persona
         name: Persona
         names: {fr: "Persona"}
@@ -437,6 +444,23 @@ imports:
             city: city
             postal_code: postal_code
             email: { from: email, convert: [email] }
+  - name: Network profiles export (file)
+    source: file
+    mapping:
+      key: network_profiles_export
+      name: Network profiles export
+      names: {fr: "Export de profils réseau"}
+      description: "A CSV export of network profiles (columns First Name, Last Name, Job Title, LinkedIn Profile URL, Company Name, Location): one person per profile URL, what the profile says of their position and company. A country layer looks up the employer and proposes the link."
+      objects:
+        - as: person
+          type: person
+          key: profile_url
+          title: { concat: [First Name, Last Name], sep: " " }
+          properties:
+            profile_url: { from: LinkedIn Profile URL, convert: [trim] }
+            profile_position: { from: Job Title, invalid: skip }
+            profile_company: { from: Company Name, invalid: skip }
+            profile_city: { from: Location, convert: ["before:,", trim], invalid: skip }
 functions:
   - name: pb_criteria
     language: starlark

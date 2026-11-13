@@ -618,3 +618,12 @@ Défaut trouvé en préparant le signal « nouvel établissement » : l'import *
 - **Flow *Prospecting · new establishments*** : chaque matin, un site créé depuis moins de 30 jours sur un compte suivi devient un signal à valider, une seule fois (clé `siret:<siret>`). Le critère est la date au registre, pas la première vue dans PneX : un premier import ne noie pas la boîte « à valider ».
 
 Limites : 100 sites par société (plafond de l'API, son paramètre de page renvoie la même page) ; un groupe plus grand reste incomplet, ce que montre seule la propriété *Établissements ouverts (registre)* du compte (`open_sites`, `companies_fr` 4.2.0, `prospecting_b2b_fr` 3.5.0, le total du registre) ; la sortie de ce plafond est l'API SIRENE de l'INSEE, qui demande une clé. Le titre du compte doit rester le nom du registre : renommé à la main, le compte ne trouve plus rien. Une annonce BODACC de la même ouverture reste un signal à part.
+
+### Export de profils réseau : chargement initial (2026-11-13)
+
+Décision de Shan : premier chargement depuis un export de profils réseau (fichier CSV produit hors PneX), pas de collecte ; les explorations ponctuelles passent ensuite par les captures (D333, D779) et la mise en correspondance (D788).
+
+- **`prospecting_b2b` 3.7.0** : une `person` porte `profile_url` (unique, `personal`, point de contact D610), `profile_city` et `employer_looked_up`. Import **Network profiles export (file)** : une personne par URL de profil (relancé, il ne crée rien de plus), poste, société et ville du profil. Une URL effacée ou opposée laisse sa ligne de côté (D610).
+- **`prospecting_b2b_fr` 3.9.0**, flow *Prospecting · network export to companies* : toutes les 15 minutes, 100 personnes de l'export ; la société du profil est cherchée au registre (`org_resolve`), trouvée ou retrouvée par SIREN, et proposée comme employeur (`employs`, source `network export`) à valider. Sans LLM, réutilise les fonctions des profils capturés.
+
+Limites : pas de rapprochement par domaine (choix de Shan : le registre suffit au premier chargement) ; sociétés françaises seulement ; l'e-mail de l'export n'est pas importé ; l'export ne dit rien des postes passés, le chemin d'introduction (D338) ne suit que les liens ouverts.

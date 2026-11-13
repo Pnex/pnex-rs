@@ -515,6 +515,53 @@ fn list_contacts_ask_their_company_and_keep_the_candidates() {
     assert_eq!(r["payload"]["matching"], "not_found");
 }
 
+/// A person of a network export asks the company of their profile, is
+/// marked looked up either way, and the proposed employer link says where
+/// the position came from.
+#[test]
+fn network_export_people_ask_their_employer() {
+    let run = |f: &str, msg: serde_json::Value| {
+        execute(&code_in(PROSPECTING_FR, f), &msg, 2000)
+            .unwrap()
+            .return_json
+            .unwrap()
+    };
+    let r = run(
+        "pip_prepare",
+        json!({"payload": {"profile_company": "Mecaworks", "profile_city": "Amboise",
+            "profile_position": "Plant manager"},
+        "object": {"id": "p1", "title": "Jeanne Martin", "version": 1}}),
+    );
+    assert_eq!(
+        r[0]["payload"],
+        json!({"name": "Mecaworks", "city": "Amboise"})
+    );
+    assert_eq!(r[1]["payload"]["employer_looked_up"], true);
+    assert_eq!(r[1]["object_id"], "p1");
+    let found = run(
+        "pcp_found",
+        json!({"payload": {"siren": "429853351",
+            "candidates": [{"siren": "429853351", "name": "MECAWORKS FRANCE", "score": 95}]},
+            "person": "p1", "position": "Plant manager", "source": "network export"}),
+    );
+    let link = run(
+        "pcp_link",
+        json!({"object": {"id": "o1"}, "person": found["person"], "position": found["position"],
+            "source": found["source"]}),
+    );
+    assert_eq!(link["payload"]["attributes"]["source"], "network export");
+    assert_eq!(link["payload"]["attributes"]["position"], "Plant manager");
+    // An objection or no company: only the mark.
+    for p in [
+        json!({"profile_company": "Mecaworks", "opposed_on": "2026-11-01"}),
+        json!({}),
+    ] {
+        let r = run("pip_prepare", json!({"payload": p, "object": {"id": "p2"}}));
+        assert!(r[0].is_null(), "{r}");
+        assert_eq!(r[1]["payload"]["employer_looked_up"], true);
+    }
+}
+
 #[test]
 fn a_changed_page_becomes_a_signal_only_on_a_listed_topic() {
     let run = |f: &str, msg: serde_json::Value| {

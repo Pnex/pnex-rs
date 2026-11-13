@@ -28,10 +28,12 @@
 # `prospection_fr` before 2.0.0.
 # Since 3.0.0 the import aliases and flow names are English (breaking).
 # Since 3.6.0 the register import fills the establishment address.
+# Since 3.9.0 people of a network export get their employer looked up like
+# a captured profile.
 key: prospecting_b2b_fr
 name: B2B prospecting, France layer
 names: {fr: "Prospection B2B, couche France"}
-version: "3.8.0"
+version: "3.9.0"
 requires: [companies_fr, prospecting_b2b]
 description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
 descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
@@ -462,6 +464,24 @@ functions:
           if p.get("opposed_on"):
               return None
           return {"payload": {"media_id": p.get("profile_to_read", "")}, "person": msg["object"]["id"]}
+  - name: pip_prepare
+    language: starlark
+    description: "A person of a network export: the company their profile names, to look up, and the person marked looked up."
+    outputs:
+      - {name: lookup, ty: any, desc: "The company named by the profile"}
+      - {name: done, ty: any, desc: "The person, marked looked up"}
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          o = msg["object"]
+          done = {"payload": {"employer_looked_up": True},
+                  "object_id": o["id"]}
+          # An objection stops everything about the person (D341).
+          if p.get("opposed_on") or not p.get("profile_company"):
+              return [None, done]
+          return [{"payload": {"name": p["profile_company"], "city": p.get("profile_city", "")},
+                   "person": o["id"], "position": p.get("profile_position", ""),
+                   "company": p["profile_company"], "source": "network export"}, done]
   - name: pcp_read
     language: starlark
     description: "The model's lines about a profile: the company to look up, and the person marked read with what the profile says."
@@ -497,7 +517,8 @@ functions:
           best = p.get("candidates", [{}])[0]
           return {"payload": {"siren": p["siren"], "country": "FR"}, "title": best.get("name", p["siren"]),
                   "person": msg["person"], "position": msg.get("position", ""),
-                  "company": msg.get("company", ""), "today": msg.get("today", "")}
+                  "company": msg.get("company", ""), "today": msg.get("today", ""),
+                  "source": msg.get("source", "profile capture")}
   - name: pcp_candidates
     language: starlark
     description: "An ambiguous company: the candidates tied at the top, to see whether one is already known."
@@ -509,13 +530,14 @@ functions:
           best = found[0]["score"]
           tied = [{"siren": c["siren"]} for c in found if c.get("score") == best][:3]
           return {"payload": tied, "person": msg["person"], "position": msg.get("position", ""),
-                  "company": msg.get("company", ""), "today": msg.get("today", "")}
+                  "company": msg.get("company", ""), "today": msg.get("today", ""),
+                  "source": msg.get("source", "profile capture")}
   - name: pcp_link
     language: starlark
     description: The link from the company to the person, as a proposal with what the profile said.
     code: |
       def handle(inputs, msg):
-          attrs = {"source": "profile capture", "retrieved_on": msg.get("today", "")}
+          attrs = {"source": msg.get("source", "profile capture"), "retrieved_on": msg.get("today", "")}
           if msg.get("position"):
               attrs["position"] = msg["position"]
           return {"payload": {"source_id": msg["object"]["id"], "target_id": msg["person"], "attributes": attrs,
@@ -538,6 +560,36 @@ flows:
         - { id: write, kind: object_upsert, config: { object_type: sales_signal, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [about] }] }
         - { id: about, kind: pnex_function, config: { function_name: pe_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
         - { id: linked, kind: link_upsert, config: { link_type: signal_about } }
+  - name: "Prospecting · network export to companies"
+    note: "Every 15 minutes, up to 100 people of a network profiles export not looked up yet: the company their profile names is looked up in the company register (org_resolve). A clear match creates the company and proposes it as their employer on the To validate page; an ambiguous name is proposed only when one of its homonyms is already known here. No LLM. Deploy after importing an export."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "*/15 * * * *" }, outputs: [{ port: 0, targets: [todo] }] }
+        - id: todo
+          kind: ontology_query
+          config:
+            object_type: person
+            filters:
+              - { key: profile_url, op: exists }
+              - { key: employer_looked_up, op: missing }
+            limit: 100
+          outputs: [{ port: 0, targets: [ask] }]
+        - { id: ask, kind: pnex_function, config: { function_name: pip_prepare, language: starlark }, outputs: [{ port: 0, targets: [lookup] }, { port: 1, targets: [mark] }] }
+        - { id: mark, kind: object_upsert, config: { object_type: person, key: id } }
+        - { id: lookup, kind: org_resolve, outputs: [{ port: 0, targets: [found] }, { port: 1, targets: [tied] }] }
+        - { id: tied, kind: pnex_function, config: { function_name: pcp_candidates, language: starlark }, outputs: [{ port: 0, targets: [each] }] }
+        - { id: each, kind: json_split, config: { auto: false }, outputs: [{ port: 0, targets: [known] }] }
+        - id: known
+          kind: ontology_query
+          config:
+            object_type: organization
+            filters: [{ key: siren, op: eq, value: "$msg.payload.siren" }]
+            limit: 1
+          outputs: [{ port: 0, targets: [link] }]
+        - { id: found, kind: pnex_function, config: { function_name: pcp_found, language: starlark }, outputs: [{ port: 0, targets: [company] }] }
+        - { id: company, kind: object_upsert, config: { object_type: organization, key: siren, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: pcp_link, language: starlark }, outputs: [{ port: 0, targets: [attach] }] }
+        - { id: attach, kind: link_upsert, config: { link_type: employs, skip_closed: true, propose: true } }
   - name: "Prospecting · captured profiles"
     note: "Every hour, up to 20 people whose profile was captured by a person (Capture a profile, on the person's page) are read by the organization's LLM: what the profile says of the position and the company goes on the person, and a company found clearly in the register is created and proposed as their employer on the To validate page. An ambiguous name is proposed only when one of its homonyms is already known here; otherwise it stays on the person, for a human. It creates no person and follows no link of the network. Needs an AI provider."
     graph:

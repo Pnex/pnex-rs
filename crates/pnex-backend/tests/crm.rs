@@ -1133,6 +1133,96 @@ async fn an_import_does_not_bring_back_an_erased_address() {
     .await;
 }
 
+/// A network profiles export makes one person per profile URL: run twice it
+/// creates nothing more, and an erased profile does not come back (D610).
+#[tokio::test]
+#[serial]
+async fn a_network_export_makes_one_person_per_profile() {
+    with_app(|server, env| async move {
+        let org = me(&server, &env.alice).await["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/packs/crm/install", &env.alice, org, None).await;
+        assert_eq!(st, 200, "{e}");
+        let (st, l) = call(&server, "GET", "/api/v1/ontology/imports", &env.alice, org, None).await;
+        assert_eq!(st, 200, "{l}");
+        let import = l["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["name"] == "Network profiles export (file)")
+            .unwrap_or_else(|| panic!("{l}"))
+            .clone();
+        let id = import["id"].as_str().unwrap().to_string();
+
+        let gone = "https://www.linkedin.com/in/lee-roe";
+        let lee = object(&server, &env.alice, org, "person", "Lee Roe", json!({"profile_url": gone})).await;
+        let (st, o) = call(&server, "POST", &format!("/api/v1/ontology/objects/{lee}/erase"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{o}");
+
+        let csv = "First Name,Last Name,Job Title,LinkedIn Profile URL,Company Name,Location\n\
+                   Lee,Roe,CEO,https://www.linkedin.com/in/lee-roe,Gamma,Paris\n\
+                   Ann,Vale,Plant manager, https://www.linkedin.com/in/ann-vale ,Mecaworks,\"Amboise, Centre-Val de Loire, France\"\n";
+        let version = import["version"].clone();
+        let mut counts = Vec::new();
+        for _ in 0..2 {
+            let res = server
+                .post(&format!("/api/v1/ontology/imports/{id}/dry-run?filename=export.csv"))
+                .add_header("Authorization", format!("Bearer {}", env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("Content-Type", "application/octet-stream")
+                .bytes(csv.as_bytes().to_vec().into())
+                .await;
+            assert_eq!(res.status_code().as_u16(), 202, "{}", res.text());
+            let run = res.json::<Value>()["id"].as_str().unwrap().to_string();
+            let mut p = Value::Null;
+            for _ in 0..100 {
+                let (st, r) = call(&server, "GET", &format!("/api/v1/ontology/imports/{id}/runs/{run}"), &env.alice, org, None).await;
+                assert_eq!(st, 200, "{r}");
+                if r["run"]["state"] != "running" {
+                    p = r;
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            assert_eq!(p["run"]["state"], "preview", "{p}");
+            let (st, r) = call(
+                &server,
+                "POST",
+                &format!("/api/v1/ontology/imports/{id}/apply"),
+                &env.alice,
+                org,
+                Some(json!({"run_id": run, "expected_version": version})),
+            )
+            .await;
+            assert_eq!(st, 202, "{r}");
+            for _ in 0..100 {
+                let (_, r) = call(&server, "GET", &format!("/api/v1/ontology/imports/{id}/runs/{run}"), &env.alice, org, None).await;
+                if r["run"]["state"] != "running" {
+                    assert_eq!(r["run"]["state"], "applied", "{r}");
+                    counts.push(r["run"]["counts"]["created"].as_u64().unwrap_or(0));
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+        assert_eq!(counts, vec![1, 0], "Ann once, Lee never");
+        assert!(objects_holding(&env.db, org, "lee-roe").await.is_empty(), "the erased profile stays out");
+        let ann = objects_holding(&env.db, org, "https://www.linkedin.com/in/ann-vale").await;
+        assert_eq!(ann.len(), 1, "{ann:?}");
+        let ann_id = ann[0].strip_prefix("person:").unwrap_or_else(|| panic!("{ann:?}"));
+        let (st, a) = call(&server, "GET", &format!("/api/v1/ontology/objects/{ann_id}"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{a}");
+        let props = &a["properties"];
+        assert_eq!(
+            (a["title"].clone(), props["profile_position"].clone(), props["profile_company"].clone(), props["profile_city"].clone()),
+            (json!("Ann Vale"), json!("Plant manager"), json!("Mecaworks"), json!("Amboise")),
+            "{a}"
+        );
+    })
+    .await;
+}
+
 /// « elodie » finds « Élodie » (query and global search), and an objection
 /// recorded on « Élodie » blocks « ELODIE » at the same account (crm.md D447).
 #[tokio::test]
