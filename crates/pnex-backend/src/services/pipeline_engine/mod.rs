@@ -134,6 +134,13 @@ pub trait Sink {
     /// Upserts the org's time ranges by `external_id`; the rows written.
     async fn ranges(&mut self, rows: Vec<Map<String, Value>>) -> Result<u64, Failure>;
 
+    /// Keeps documents of the org linked to objects; the documents kept.
+    async fn media(
+        &mut self,
+        target: &pnex_core::pipeline::doc::MediaTarget,
+        rows: Vec<Map<String, Value>>,
+    ) -> Result<u64, Failure>;
+
     /// Files proposals to validate; the proposals made.
     async fn proposals(
         &mut self,
@@ -925,6 +932,9 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 } else if w.time_ranges.is_some() {
                     let rows = blocking(move || records_of(&batches)).await?;
                     *written += self.sink.ranges(rows).await?;
+                } else if let Some(m) = &w.media {
+                    let rows = blocking(move || records_of(&batches)).await?;
+                    *written += self.sink.media(m, rows).await?;
                 } else if let Some(p) = &w.proposals {
                     let rows = blocking(move || records_of(&batches)).await?;
                     *written += self.sink.proposals(p, rows).await?;

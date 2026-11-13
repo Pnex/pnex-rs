@@ -6,7 +6,6 @@ pub mod accounts;
 pub mod chains;
 pub mod chart;
 pub mod decisions;
-pub mod documents;
 pub mod history;
 pub mod moves;
 pub mod prediction;
@@ -21,6 +20,34 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DbErr, Statement};
 use uuid::Uuid;
 
 use crate::services::secrets::Keyring;
+
+const SWEEP_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The passes of the markets still outside the pipelines: the MT5 inbox
+/// and the prediction markets (pipeline-engine.md PE6, PE8).
+pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
+    init(ctx);
+    let ctx = ctx.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(180)).await;
+        loop {
+            if !crate::services::ontology::imports::stop::stopping()
+                && crate::services::singleton::my_turn(&ctx.db, "market-documents", SWEEP_EVERY)
+                    .await
+            {
+                let today = chrono::Utc::now().date_naive();
+                if let Err(e) = history::sweep(&ctx, today).await {
+                    tracing::warn!(code = e.code(), "price history sweep failed");
+                }
+                let hosts = prediction::Hosts::default();
+                if let Err(e) = prediction::sweep(&ctx, &hosts, chrono::Utc::now()).await {
+                    tracing::warn!("prediction markets sweep failed: {e}");
+                }
+            }
+            tokio::time::sleep(SWEEP_EVERY).await;
+        }
+    });
+}
 
 static RING: std::sync::OnceLock<Keyring> = std::sync::OnceLock::new();
 /// Hosts of mocks of keyed sources: integration tests only, never set by the app.

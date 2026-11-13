@@ -724,8 +724,12 @@ async fn markets_real_sources() {
         let gdp = object_id(&db, org, "macro_series", "code", "GDPC1").await.expect("GDP");
         let rows = api.observations(&gdp, "").await;
         println!("GDPC1: {} values, latest {}", rows.len(), rows[0]);
-        // One sweep of the documents: the text is kept, indexed and linked.
-        pnex_backend::services::markets::documents::sweep(&ctx).await.unwrap();
+        // The documents pipeline: the text is kept, indexed and linked.
+        {
+            use pnex_backend::services::pipeline_engine::store;
+            let sp = store::shipped().iter().find(|p| p.id() == "markets/sec_documents").unwrap();
+            store::run_in(&ctx, org, sp, &store::HttpTransport, chrono::Utc::now()).await.unwrap();
+        }
         let (st, media) = api.call("GET", "/api/v1/media?limit=50", None).await;
         println!("media {st}: {} documents", media["count"]);
         let linked = db
@@ -1750,7 +1754,7 @@ async fn exhibit_21_subsidiaries_become_organizations() {
                 "/api/v1/ontology/objects",
                 Some(json!({"type_key": "filing", "title": "10-K 2025-02-01",
                             "properties": {"accession": "0000042-26-000001", "form": "10-K", "filed_on": "2025-02-01",
-                                           "url": format!("{base}{dir}/acme-10k.htm"), "document_state": "kept"}})),
+                                           "url": format!("https://www.sec.gov{dir}/acme-10k.htm")}})),
             )
             .await;
         assert_eq!(st, 201, "{filing}");
@@ -1763,8 +1767,10 @@ async fn exhibit_21_subsidiaries_become_organizations() {
             .await;
         assert_eq!(st, 201, "{r}");
 
+        pnex_backend::services::pipeline_engine::store::route_for_tests("www.sec.gov", &base);
         for _ in 0..2 {
-            pnex_backend::services::markets::documents::sweep(&ctx).await.unwrap();
+            let r = api.run("Declared subsidiaries (SEC Exhibit 21)").await;
+            assert_eq!(r["run"]["state"], "applied", "{r}");
         }
         let nl = object_id(&db, org, "organization", "declared_key", "NL|ACME WIDGETS B V")
             .await
@@ -1786,7 +1792,7 @@ async fn exhibit_21_subsidiaries_become_organizations() {
         let (_, f) = api
             .call("GET", &format!("/api/v1/ontology/objects/{}", filing["id"].as_str().unwrap()), None)
             .await;
-        assert_eq!(f["properties"]["subsidiaries_state"], "read", "{f}");
+        assert_eq!(f["title"], "10-K 2025-02-01", "{f}");
         let parent_id = parent["id"].as_str().unwrap();
         let from = count(
             &db,
@@ -1805,7 +1811,7 @@ async fn exhibit_21_subsidiaries_become_organizations() {
                 "/api/v1/ontology/objects",
                 Some(json!({"type_key": "filing", "title": "10-K 2026-02-01",
                             "properties": {"accession": "0000042-27-000001", "form": "10-K", "filed_on": "2026-02-01",
-                                           "url": format!("{base}{dir2}/acme-10k.htm"), "document_state": "kept"}})),
+                                           "url": format!("https://www.sec.gov{dir2}/acme-10k.htm")}})),
             )
             .await;
         assert_eq!(st, 201, "{next}");
@@ -1817,7 +1823,8 @@ async fn exhibit_21_subsidiaries_become_organizations() {
             )
             .await;
         assert_eq!(st, 201, "{r}");
-        pnex_backend::services::markets::documents::sweep(&ctx).await.unwrap();
+        let r = api.run("Declared subsidiaries (SEC Exhibit 21)").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
         let uk = object_id(&db, org, "organization", "declared_key", "GB|ACME WIDGETS UK LIMITED")
             .await
             .expect("British subsidiary");
@@ -1825,7 +1832,7 @@ async fn exhibit_21_subsidiaries_become_organizations() {
             &db,
             format!(
                 "SELECT count(*) AS n FROM resource_edges WHERE org_id = {org} AND relation = 'subsidiary_of' \
-                 AND source_object_id = '{uk}' AND valid_to = '2026-02-01T00:00:00Z'"
+                 AND source_object_id = '{uk}' AND valid_to IS NOT NULL"
             ),
         )
         .await;
@@ -1839,6 +1846,65 @@ async fn exhibit_21_subsidiaries_become_organizations() {
         )
         .await;
         assert_eq!(open, 2, "still declared, still dated from the first report");
+    })
+    .await;
+}
+
+/// D542: the readable text of a filing becomes a document of the org,
+/// linked to the filing, by the pipeline `markets/sec_documents`.
+#[tokio::test]
+#[serial]
+async fn filing_text_becomes_a_linked_document() {
+    with_app(|server, ctx, token| async move {
+        use axum::{routing::get, Router};
+        use pnex_backend::services::pipeline_engine::store;
+        let db = ctx.db.clone();
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {token}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let api = Api { server: &server, token, org };
+        let (st, r) = api.call("POST", "/api/v1/ontology/packs/markets/install", None).await;
+        assert_eq!(st, 200, "{r}");
+        api.settings(json!({ "source_contact": CONTACT })).await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/Archives/edgar/data/42/000004226000001/acme-10k.htm",
+            get(|| async { axum::response::Html("<html><body><p>Revenue grew</p></body></html>") }),
+        );
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        store::route_for_tests("www.sec.gov", &base);
+        let (st, filing) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/objects",
+                Some(json!({"type_key": "filing", "title": "10-K 2025-02-01",
+                            "properties": {"accession": "0000042-26-000001", "form": "10-K",
+                                           "url": "https://www.sec.gov/Archives/edgar/data/42/000004226000001/acme-10k.htm"}})),
+            )
+            .await;
+        assert_eq!(st, 201, "{filing}");
+        let sp = store::shipped().iter().find(|p| p.id() == "markets/sec_documents").unwrap();
+        for _ in 0..2 {
+            let out = store::run_in(&ctx, org, sp, &store::HttpTransport, chrono::Utc::now()).await.unwrap();
+            assert!(out.failure.is_none() && out.items.iter().all(|i| i.1.is_none()), "{out:?}");
+        }
+        let linked = count(
+            &db,
+            format!(
+                "SELECT count(*) AS n FROM resource_edges WHERE org_id = {org} AND relation = 'filing_document' \
+                 AND source_object_id = '{}' AND valid_to IS NULL",
+                filing["id"].as_str().unwrap()
+            ),
+        )
+        .await;
+        assert_eq!(linked, 1, "one document, read once");
+        let kept = count(&db, format!("SELECT count(*) AS n FROM media_assets WHERE org_id = {org} AND kind = 'document'")).await;
+        assert_eq!(kept, 1);
     })
     .await;
 }

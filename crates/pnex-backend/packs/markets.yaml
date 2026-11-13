@@ -73,7 +73,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.16.0"
+version: "1.17.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -316,18 +316,6 @@ types:
       - { key: report_on, name: Period reported, names: {fr: "Période couverte"}, kind: date }
       - { key: items, name: Items, names: {fr: "Rubriques"}, kind: text, max_len: 255 }
       - { key: url, name: Document, names: {fr: "Document"}, kind: url }
-      - key: document_state
-        name: Document
-        names: {fr: "Document"}
-        kind: enum
-        values: [kept, unreadable]
-        labels: {kept: {fr: "Conservé", en: "Kept"}, unreadable: {fr: "Illisible", en: "Unreadable"}}
-      - key: subsidiaries_state
-        name: Subsidiaries (Exhibit 21)
-        names: {fr: "Filiales (Exhibit 21)"}
-        kind: enum
-        values: [read, none, unreadable]
-        labels: {read: {fr: "Lues", en: "Read"}, none: {fr: "Pas d'Exhibit 21", en: "No Exhibit 21"}, unreadable: {fr: "Illisibles", en: "Unreadable"}}
   # What the press says (D540): a lead to check, never an input of a figure.
   - key: market_news
     name: Press article
@@ -811,6 +799,41 @@ imports:
       links:
         - { type: news_about, from: news, to: by_cik }
         - { type: news_about, from: news, to: by_lei }
+  - name: Declared subsidiaries (SEC Exhibit 21)
+    mode: snapshot
+    recurrence: { start: "2026-01-01", every: 7, unit: day }
+    mapping:
+      key: sec_subsidiaries
+      name: Declared subsidiaries
+      names: {fr: "Filiales déclarées"}
+      pipeline: markets/sec_subsidiaries
+      objects:
+        - as: subsidiary
+          type: organization
+          key: declared_key
+          title: name
+          properties:
+            declared_key: declared_key
+            incorporated_in: jurisdiction
+            country: country
+            kind: { value: company }
+        - as: filer
+          type: organization
+          key: cik
+          create: false
+          update: false
+          missing: skip
+          properties:
+            cik: cik
+      links:
+        - type: subsidiary_of
+          from: subsidiary
+          to: filer
+          valid_from: { from: valid_from, convert: ["date:%Y-%m-%d"] }
+          close_missing: true
+          attributes:
+            nature: { value: declared }
+            source: source
 # Cause → effect pairs of the market causal chains (H.7, D906): each one is
 # two settings (prior, maximal gap) the org may set.
 causal_pairs:
@@ -982,4 +1005,395 @@ pipeline_functions:
                   "values": json.encode({"lei": lei}),
                   "evidence": json.encode({"lei": lei, "legal_name": legal, "source": c.get("url") or ""}),
               })
+          return out
+  # The subsidiaries a US-listed group declares in the Exhibit 21 of its
+  # annual report (10-K), worldwide. The exhibit has no fixed form: a table
+  # (name, jurisdiction) or lines of text ("Name (Jurisdiction)", or apart by
+  # a tab, two spaces or dots). A row whose jurisdiction is unknown is left
+  # out, never guessed: a header, a note and a page number go that way.
+  - name: ex21_link
+    language: starlark
+    description: The Exhibit 21 of a filing index page (rows line, url, cik, filed_on → exhibit_url, cik, filed_on).
+    code: |
+      FOLD = {"à": "a", "á": "a", "â": "a", "ä": "a", "ã": "a", "å": "a", "ç": "c", "é": "e", "è": "e",
+              "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i", "ï": "i", "ñ": "n", "ó": "o", "ò": "o",
+              "ô": "o", "ö": "o", "õ": "o", "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y"}
+      ENTITIES = {"amp": "&", "nbsp": " ", "rsquo": "'", "lsquo": "'", "quot": "\"", "lt": "<", "gt": ">"}
+
+      def fold(s):
+          chars = []
+          for c in s.lower().elems():
+              c = FOLD.get(c, c)
+              chars.append(c.upper() if c.isalnum() else " ")
+          return " ".join("".join(chars).split())
+
+      def entities(raw):
+          out = ""
+          rest = raw
+          for _ in range(len(raw) + 1):
+              at = rest.find("&")
+              if at < 0:
+                  break
+              out += rest[:at]
+              rest = rest[at:]
+              end = rest.find(";")
+              c = None
+              if end > 0 and end <= 10:
+                  name = rest[1:end]
+                  if name in ENTITIES:
+                      c = ENTITIES[name]
+                  elif name.startswith("#x") or name.startswith("#X"):
+                      if name[2:] and [d for d in name[2:].lower().elems() if d not in "0123456789abcdef"] == []:
+                          c = chr(int(name[2:], 16))
+                  elif name.startswith("#") and name[1:].isdigit():
+                      c = chr(int(name[1:]))
+              if c == None:
+                  out += "&"
+                  rest = rest[1:]
+              else:
+                  out += c
+                  rest = rest[end + 1:]
+          return out + rest
+
+      def text_of(cell):
+          out = []
+          in_tag = False
+          for ch in cell.elems():
+              if ch == "<":
+                  in_tag = True
+              elif ch == ">":
+                  in_tag = False
+                  out.append(" ")
+              elif not in_tag:
+                  out.append(ch)
+          return " ".join(entities("".join(out)).replace("\u00a0", " ").split())
+
+      def table_rows(html):
+          lower = html.lower()
+          out = []
+          at = 0
+          for _ in range(len(html)):
+              start = lower.find("<tr", at)
+              if start < 0:
+                  break
+              end = lower.find("</tr", start)
+              if end < 0:
+                  end = len(lower)
+              row = html[start:end]
+              rl = lower[start:end]
+              cells = []
+              c = 0
+              for _ in range(len(row)):
+                  o = rl.find("<td", c)
+                  if o < 0:
+                      break
+                  b = rl.find(">", o)
+                  b = len(row) if b < 0 else b + 1
+                  e = rl.find("</td", b)
+                  e = len(row) if e < 0 else e
+                  cells.append(row[b:e])
+                  c = e
+                  if e >= len(row):
+                      break
+              out.append(cells)
+              at = max(end, start + 3)
+          return out
+
+      def href_of(cell):
+          at = cell.lower().find("href=")
+          if at < 0:
+              return None
+          rest = cell[at + 5:]
+          if rest == "":
+              return None
+          q = rest[0]
+          if q == "\"" or q == "'":
+              end = rest.find(q, 1)
+              return rest[1:end] if end > 0 else None
+          for i in range(len(rest)):
+              if rest[i] in " \t\n>":
+                  return rest[:i]
+          return None
+
+      def host_of(url):
+          parts = url.split("/")
+          return parts[2].lower() if len(parts) > 2 else ""
+
+      def absolute(page, href):
+          if href.startswith("https://") or href.startswith("http://"):
+              return href
+          parts = page.split("/")
+          if len(parts) < 3:
+              return None
+          if href.startswith("/"):
+              return parts[0] + "//" + parts[2] + href
+          return "/".join(parts[:-1]) + "/" + href
+      def one(rows):
+          if not rows:
+              return []
+          page = rows[0].get("url") or ""
+          html = "\n".join([r.get("line") or "" for r in rows])
+          for row in table_rows(html):
+              texts = [text_of(c).upper() for c in row]
+              if not [t for t in texts if t == "EX-21" or t.startswith("EX-21.")]:
+                  continue
+              for cell in row:
+                  h = href_of(cell)
+                  if h == None:
+                      continue
+                  url = absolute(page, h)
+                  # The exhibit lives in the same filing, on the same host.
+                  if url == None or host_of(url) != host_of(page):
+                      return []
+                  return [{"exhibit_url": url, "cik": rows[0].get("cik"), "filed_on": rows[0].get("filed_on")}]
+          return []
+      def handle(rows):
+          pages = {}
+          order = []
+          for r in rows:
+              u = r.get("url") or ""
+              if u not in pages:
+                  pages[u] = []
+                  order.append(u)
+              pages[u].append(r)
+          out = []
+          for u in order:
+              out.extend(one(pages[u]))
+          return out
+  - name: ex21_subsidiaries
+    language: starlark
+    description: The subsidiaries an Exhibit 21 declares (rows line, url, cik, filed_on → cik, filed_on, source, name, jurisdiction, country, declared_key).
+    code: |
+      FOLD = {"à": "a", "á": "a", "â": "a", "ä": "a", "ã": "a", "å": "a", "ç": "c", "é": "e", "è": "e",
+              "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i", "ï": "i", "ñ": "n", "ó": "o", "ò": "o",
+              "ô": "o", "ö": "o", "õ": "o", "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y"}
+      ENTITIES = {"amp": "&", "nbsp": " ", "rsquo": "'", "lsquo": "'", "quot": "\"", "lt": "<", "gt": ">"}
+
+      def fold(s):
+          chars = []
+          for c in s.lower().elems():
+              c = FOLD.get(c, c)
+              chars.append(c.upper() if c.isalnum() else " ")
+          return " ".join("".join(chars).split())
+
+      def entities(raw):
+          out = ""
+          rest = raw
+          for _ in range(len(raw) + 1):
+              at = rest.find("&")
+              if at < 0:
+                  break
+              out += rest[:at]
+              rest = rest[at:]
+              end = rest.find(";")
+              c = None
+              if end > 0 and end <= 10:
+                  name = rest[1:end]
+                  if name in ENTITIES:
+                      c = ENTITIES[name]
+                  elif name.startswith("#x") or name.startswith("#X"):
+                      if name[2:] and [d for d in name[2:].lower().elems() if d not in "0123456789abcdef"] == []:
+                          c = chr(int(name[2:], 16))
+                  elif name.startswith("#") and name[1:].isdigit():
+                      c = chr(int(name[1:]))
+              if c == None:
+                  out += "&"
+                  rest = rest[1:]
+              else:
+                  out += c
+                  rest = rest[end + 1:]
+          return out + rest
+
+      def text_of(cell):
+          out = []
+          in_tag = False
+          for ch in cell.elems():
+              if ch == "<":
+                  in_tag = True
+              elif ch == ">":
+                  in_tag = False
+                  out.append(" ")
+              elif not in_tag:
+                  out.append(ch)
+          return " ".join(entities("".join(out)).replace("\u00a0", " ").split())
+
+      def table_rows(html):
+          lower = html.lower()
+          out = []
+          at = 0
+          for _ in range(len(html)):
+              start = lower.find("<tr", at)
+              if start < 0:
+                  break
+              end = lower.find("</tr", start)
+              if end < 0:
+                  end = len(lower)
+              row = html[start:end]
+              rl = lower[start:end]
+              cells = []
+              c = 0
+              for _ in range(len(row)):
+                  o = rl.find("<td", c)
+                  if o < 0:
+                      break
+                  b = rl.find(">", o)
+                  b = len(row) if b < 0 else b + 1
+                  e = rl.find("</td", b)
+                  e = len(row) if e < 0 else e
+                  cells.append(row[b:e])
+                  c = e
+                  if e >= len(row):
+                      break
+              out.append(cells)
+              at = max(end, start + 3)
+          return out
+
+      def href_of(cell):
+          at = cell.lower().find("href=")
+          if at < 0:
+              return None
+          rest = cell[at + 5:]
+          if rest == "":
+              return None
+          q = rest[0]
+          if q == "\"" or q == "'":
+              end = rest.find(q, 1)
+              return rest[1:end] if end > 0 else None
+          for i in range(len(rest)):
+              if rest[i] in " \t\n>":
+                  return rest[:i]
+          return None
+
+      def host_of(url):
+          parts = url.split("/")
+          return parts[2].lower() if len(parts) > 2 else ""
+
+      def absolute(page, href):
+          if href.startswith("https://") or href.startswith("http://"):
+              return href
+          parts = page.split("/")
+          if len(parts) < 3:
+              return None
+          if href.startswith("/"):
+              return parts[0] + "//" + parts[2] + href
+          return "/".join(parts[:-1]) + "/" + href
+      US_STATES = {
+          "alabama": True, "alaska": True, "arizona": True, "arkansas": True, "california": True,
+          "colorado": True, "connecticut": True, "delaware": True, "florida": True, "georgia": True,
+          "hawaii": True, "idaho": True, "illinois": True, "indiana": True, "iowa": True,
+          "kansas": True, "kentucky": True, "louisiana": True, "maine": True, "maryland": True,
+          "massachusetts": True, "michigan": True, "minnesota": True, "mississippi": True, "missouri": True,
+          "montana": True, "nebraska": True, "nevada": True, "new hampshire": True, "new jersey": True,
+          "new mexico": True, "new york": True, "north carolina": True, "north dakota": True, "ohio": True,
+          "oklahoma": True, "oregon": True, "pennsylvania": True, "rhode island": True, "south carolina": True,
+          "south dakota": True, "tennessee": True, "texas": True, "utah": True, "vermont": True,
+          "virginia": True, "washington": True, "west virginia": True, "wisconsin": True, "wyoming": True,
+          "district of columbia": True, "puerto rico": True,
+      }
+      PLACES = {
+          "united states": "US", "usa": "US", "u.s.": "US", "united kingdom": "GB",
+          "england": "GB", "england and wales": "GB", "scotland": "GB", "wales": "GB",
+          "northern ireland": "GB", "uk": "GB", "ireland": "IE", "france": "FR",
+          "germany": "DE", "netherlands": "NL", "the netherlands": "NL", "belgium": "BE",
+          "luxembourg": "LU", "switzerland": "CH", "austria": "AT", "italy": "IT",
+          "spain": "ES", "portugal": "PT", "sweden": "SE", "norway": "NO",
+          "denmark": "DK", "finland": "FI", "iceland": "IS", "poland": "PL",
+          "czech republic": "CZ", "czechia": "CZ", "slovakia": "SK", "hungary": "HU",
+          "romania": "RO", "bulgaria": "BG", "greece": "GR", "cyprus": "CY",
+          "malta": "MT", "croatia": "HR", "slovenia": "SI", "serbia": "RS",
+          "estonia": "EE", "latvia": "LV", "lithuania": "LT", "ukraine": "UA",
+          "russia": "RU", "russian federation": "RU", "turkey": "TR", "türkiye": "TR",
+          "israel": "IL", "united arab emirates": "AE", "uae": "AE", "saudi arabia": "SA",
+          "qatar": "QA", "kuwait": "KW", "bahrain": "BH", "oman": "OM",
+          "egypt": "EG", "morocco": "MA", "south africa": "ZA", "nigeria": "NG",
+          "kenya": "KE", "ghana": "GH", "canada": "CA", "mexico": "MX",
+          "brazil": "BR", "argentina": "AR", "chile": "CL", "colombia": "CO",
+          "peru": "PE", "uruguay": "UY", "costa rica": "CR", "panama": "PA",
+          "bermuda": "BM", "cayman islands": "KY", "british virgin islands": "VG", "bahamas": "BS",
+          "barbados": "BB", "jersey": "JE", "guernsey": "GG", "isle of man": "IM",
+          "gibraltar": "GI", "china": "CN", "people's republic of china": "CN", "prc": "CN",
+          "hong kong": "HK", "macau": "MO", "taiwan": "TW", "japan": "JP",
+          "korea": "KR", "south korea": "KR", "republic of korea": "KR", "india": "IN",
+          "singapore": "SG", "malaysia": "MY", "thailand": "TH", "indonesia": "ID",
+          "philippines": "PH", "vietnam": "VN", "viet nam": "VN", "pakistan": "PK",
+          "bangladesh": "BD", "sri lanka": "LK", "australia": "AU", "new zealand": "NZ",
+          "mauritius": "MU", "liechtenstein": "LI", "monaco": "MC", "kazakhstan": "KZ",
+          "jordan": "JO", "lebanon": "LB", "tunisia": "TN", "algeria": "DZ",
+          "ecuador": "EC", "venezuela": "VE", "guatemala": "GT", "dominican republic": "DO",
+          "curacao": "CW", "curaçao": "CW", "aruba": "AW", "labuan": "MY",
+      }
+
+      def country_of(jurisdiction):
+          j = jurisdiction.strip().rstrip(".").lower().replace("\u00a0", " ").replace(",", " ")
+          j = " ".join(j.split())
+          if j in US_STATES:
+              return "US"
+          return PLACES.get(j)
+
+      def declared(name, place):
+          name = " ".join(name.split())
+          jurisdiction = " ".join(place.split())
+          country = country_of(jurisdiction)
+          if country == None or len(name) < 2 or len(name) > 255 or name.lower().startswith("name"):
+              return None
+          if not [c for c in name.elems() if c.isalpha()]:
+              return None
+          return {"name": name, "jurisdiction": jurisdiction, "country": country}
+
+      def from_line(line):
+          line = line.strip()
+          o = line.rfind("(")
+          if o >= 0 and line.endswith(")"):
+              return declared(line[:o], line[o + 1:len(line) - 1])
+          cut = -1
+          for sep in ["\t", "  ", ".."]:
+              cut = line.find(sep)
+              if cut >= 0:
+                  break
+          if cut < 0:
+              return None
+          return declared(line[:cut], line[cut:].strip(". \t"))
+
+      def one(rows):
+          if not rows:
+              return []
+          first = rows[0]
+          doc = "\n".join([r.get("line") or "" for r in rows])
+          found = []
+          if "<tr" in doc.lower():
+              for row in table_rows(doc):
+                  cells = [t for t in [text_of(c) for c in row] if t != ""]
+                  if len(cells) >= 2:
+                      found.append(declared(cells[0], cells[-1]))
+                  elif len(cells) == 1:
+                      found.append(from_line(cells[0]))
+          else:
+              for line in doc.split("\n"):
+                  found.append(from_line(line))
+          out = []
+          seen = {}
+          for d in found:
+              if d == None:
+                  continue
+              key = d["country"] + "|" + fold(d["name"])
+              if key in seen or len(out) >= 5000:
+                  continue
+              seen[key] = True
+              out.append({"cik": first.get("cik"), "filed_on": first.get("filed_on"), "source": first.get("url"),
+                          "name": d["name"], "jurisdiction": d["jurisdiction"], "country": d["country"],
+                          "declared_key": key})
+          return out
+
+      def handle(rows):
+          pages = {}
+          order = []
+          for r in rows:
+              u = r.get("url") or ""
+              if u not in pages:
+                  pages[u] = []
+                  order.append(u)
+              pages[u].append(r)
+          out = []
+          for u in order:
+              out.extend(one(pages[u]))
           return out

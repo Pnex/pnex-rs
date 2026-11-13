@@ -391,6 +391,10 @@ pub struct Extract {
     /// Pattern with named groups; one row per match.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regex: Option<String>,
+    /// The readable text of a page, hidden parts left out, in a column
+    /// `text`: one row per file.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub text: bool,
     /// Keeps the rows whose column matches a glob.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub r#where: BTreeMap<String, String>,
@@ -644,6 +648,21 @@ pub struct Write {
     /// a link also `link_type`, `to_type`, `to_property`, `to_key`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proposals: Option<ProposalsTarget>,
+    /// Documents of the org (media), indexed by the document search, each
+    /// found again by its `source_url` and linked to an object. Columns:
+    /// `text`, `name`, `source_url`, and the object: `type_key`,
+    /// `key_property`, `key`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media: Option<MediaTarget>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaTarget {
+    /// Link type from the object to the document.
+    pub link_type: String,
+    /// Where the documents come from (provenance, D281): `sec_edgar`.
+    pub source: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1164,8 +1183,8 @@ fn step_violations(
         }
         Step::Extract(e) => {
             let kinds = [&e.links, &e.form, &e.json, &e.regex];
-            if kinds.iter().filter(|k| k.is_some()).count() != 1 {
-                bad(at.to_string(), "one_of:links,form,json,regex");
+            if kinds.iter().filter(|k| k.is_some()).count() + usize::from(e.text) != 1 {
+                bad(at.to_string(), "one_of:links,form,json,regex,text");
             }
             if kinds.iter().flat_map(|k| k.as_deref()).any(long) {
                 bad(at.to_string(), &format!("max_length:{STRING_MAX}"));
@@ -1268,13 +1287,22 @@ fn step_violations(
                 w.objects.is_some(),
                 w.time_ranges.is_some(),
                 w.proposals.is_some(),
+                w.media.is_some(),
             ]
             .iter()
             .filter(|t| **t)
             .count()
                 != 1
             {
-                bad(at.to_string(), "one_of:table,objects,time_ranges,proposals");
+                bad(
+                    at.to_string(),
+                    "one_of:table,objects,time_ranges,proposals,media",
+                );
+            }
+            if let Some(m) = &w.media {
+                if !valid_name(&m.link_type) || !valid_name(&m.source) {
+                    bad(format!("{at}.media"), "invalid");
+                }
             }
             if let Some(p) = &w.proposals {
                 let ok = |c: char| c.is_ascii_alphanumeric() || "._-".contains(c);
@@ -1350,7 +1378,9 @@ mod tests {
         );
         assert!(t.contains(&"steps.0.fetch.url host_not_declared:other.example.io".into()));
         assert!(t.contains(&"steps.1.read.as duplicate".into()));
-        assert!(t.contains(&"steps.2.write one_of:table,objects,time_ranges,proposals".into()));
+        assert!(
+            t.contains(&"steps.2.write one_of:table,objects,time_ranges,proposals,media".into())
+        );
     }
 
     #[test]

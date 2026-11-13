@@ -55,6 +55,18 @@ pub fn extract(e: &Extract, input: &[Row]) -> Result<Vec<Row>, Failure> {
         };
         let bytes = file.bytes(PAGE_MAX)?;
         let text = String::from_utf8_lossy(&bytes);
+        if e.text {
+            let at = base
+                .clone()
+                .or_else(|| reqwest::Url::parse("https://page.invalid/").ok())
+                .ok_or_else(|| unreadable("page"))?;
+            let page = crate::services::crawl::html::read(&text, &at).text;
+            out.push(child(Map::from_iter([(
+                "text".into(),
+                Value::String(page),
+            )])));
+            continue;
+        }
         if let Some(sel) = &e.form {
             let sel = scraper::Selector::parse(sel).map_err(|_| unreadable("selector"))?;
             let html = scraper::Html::parse_document(&text);

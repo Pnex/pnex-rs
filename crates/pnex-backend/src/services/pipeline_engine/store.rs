@@ -373,6 +373,9 @@ pub struct DatasetSink<'a> {
     pub db: &'a DatabaseConnection,
     pub store: &'a S3Store,
     pub org: i64,
+    /// The application, for the targets that write media; an import's run
+    /// has none.
+    pub ctx: Option<&'a AppContext>,
 }
 
 async fn table_of(db: &DatabaseConnection, org: i64, name: &str) -> Result<Uuid, DatasetError> {
@@ -487,6 +490,65 @@ impl Sink for DatasetSink<'_> {
             tracing::info!(org = self.org, rejected = out.rejected, errors = ?out.errors, "pipeline time ranges refused");
         }
         Ok(u64::from(out.created + out.updated))
+    }
+
+    async fn media(
+        &mut self,
+        target: &pnex_core::pipeline::doc::MediaTarget,
+        rows: Vec<serde_json::Map<String, Value>>,
+    ) -> Result<u64, Failure> {
+        use crate::services::crawl::{self, documents};
+        let Some(ctx) = self.ctx else {
+            return Err(fail("step_unsupported", json!({ "step": "write.media" })));
+        };
+        let mut kept = 0;
+        for r in rows {
+            let text = |k: &str| {
+                r.get(k)
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .map(str::to_string)
+            };
+            let (Some(body), Some(url), Some(kind), Some(by), Some(key)) = (
+                text("text"),
+                text("source_url"),
+                text("type_key"),
+                text("key_property"),
+                text("key"),
+            ) else {
+                continue;
+            };
+            let Some((object, _)) = object_by(self.db, self.org, &kind, &by, &key).await? else {
+                continue;
+            };
+            let name = text("name").unwrap_or_else(|| "document.txt".into());
+            let body = body.into_bytes();
+            let sha = crawl::sha256_hex(&body);
+            let stored = async {
+                let asset = documents::store(
+                    ctx,
+                    self.org,
+                    &target.source,
+                    &url,
+                    &name,
+                    "text/plain",
+                    &sha,
+                    body,
+                )
+                .await?;
+                documents::link(ctx, self.org, &target.link_type, object, asset, &url, &sha).await
+            }
+            .await;
+            match stored {
+                Ok(()) => kept += 1,
+                Err(e) => {
+                    tracing::warn!(org = self.org, url = %url, error = %e, "pipeline document not kept");
+                    return Err(fail("storage", json!({ "what": "media" })));
+                }
+            }
+        }
+        Ok(kept)
     }
 
     async fn proposals(
@@ -841,11 +903,42 @@ pub async fn run_for_org(
     now: DateTime<Utc>,
     journal: Option<&mut Vec<super::StepRecord>>,
 ) -> Result<RunOutcome, sea_orm::DbErr> {
+    run_with(None, db, store, org, sp, transport, now, journal).await
+}
+
+/// [`run_for_org`] with the application: every write target works.
+pub async fn run_in(
+    ctx: &AppContext,
+    org: i64,
+    sp: &Shipped,
+    transport: &impl Transport,
+    now: DateTime<Utc>,
+) -> Result<RunOutcome, DatasetError> {
+    let store = datasets::store_of(&ctx.config)?;
+    Ok(run_with(Some(ctx), &ctx.db, &store, org, sp, transport, now, None).await?)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_with(
+    ctx: Option<&AppContext>,
+    db: &DatabaseConnection,
+    store: &S3Store,
+    org: i64,
+    sp: &Shipped,
+    transport: &impl Transport,
+    now: DateTime<Utc>,
+    journal: Option<&mut Vec<super::StepRecord>>,
+) -> Result<RunOutcome, sea_orm::DbErr> {
     let id = sp.id();
     let (items, shas) = known(db, org, &id).await?;
     let mut inputs = inputs(db, org, &sp.doc, now.naive_utc(), shas).await?;
     inputs.functions = call_functions(&sp.pack, &sp.doc);
-    let mut sink = DatasetSink { db, store, org };
+    let mut sink = DatasetSink {
+        db,
+        store,
+        org,
+        ctx,
+    };
     let sql = super::sql::WorkerSql { db, store, org };
     let out = run(
         &sp.doc, &inputs, transport, &mut sink, &sql, &items, None, None, journal,
@@ -912,7 +1005,7 @@ pub async fn sweep(
                 .await?
                 .is_none_or(|t| (now - t).num_milliseconds() >= every as i64);
             if due {
-                run_for_org(&ctx.db, &store, org, sp, transport, now, None).await?;
+                run_with(Some(ctx), &ctx.db, &store, org, sp, transport, now, None).await?;
             }
             lock.release().await;
         }

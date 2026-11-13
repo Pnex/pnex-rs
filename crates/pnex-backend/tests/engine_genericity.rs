@@ -349,11 +349,6 @@ const ENGINE_HOSTS: &[(&str, &str)] = &[
 /// is gone must be removed from here.
 const HOST_DEBT: &[(&str, &[&str], &str)] = &[
     (
-        "pnex-core/src/markets.rs",
-        &["www.sec.gov", "filings.xbrl.org"],
-        "keyed sources and response shapes (PE4)",
-    ),
-    (
         "pnex-backend/src/services/ingest/resolve.rs",
         &["www.data.gouv.fr"],
         "catalogue mode of source_resolve (PE4)",

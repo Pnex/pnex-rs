@@ -9,7 +9,6 @@ use serde_json::Value;
 pub mod accounts;
 pub mod chart;
 pub mod decisions;
-pub mod exhibit21;
 pub mod history;
 pub mod moves;
 pub mod prediction;
@@ -20,10 +19,6 @@ pub const QUERIED: &str = "@queried";
 fn is_date(s: &str) -> bool {
     chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
 }
-
-/// Where the documents of the filings may be read from.
-pub const ESEF_BASE: &str = "https://filings.xbrl.org";
-pub const SEC_ARCHIVE: &str = "https://www.sec.gov/Archives/edgar/data/";
 
 /// Where a mapping's observations belong: the live object of this type whose
 /// unique property holds the value the record was queried with.

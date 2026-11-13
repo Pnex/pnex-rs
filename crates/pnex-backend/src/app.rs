@@ -312,7 +312,7 @@ impl Hooks for App {
         crate::services::data_builds::spawn(ctx);
         // Server site crawls (partner-watch.md D307).
         crate::services::crawl::spawn_scheduler(ctx);
-        crate::services::markets::documents::spawn_scheduler(ctx);
+        crate::services::markets::spawn_scheduler(ctx);
         crate::services::pipeline_engine::store::spawn(ctx);
         crate::services::markets::summary::spawn_scheduler(ctx);
         crate::services::proofs::spawn_server_executor(ctx);

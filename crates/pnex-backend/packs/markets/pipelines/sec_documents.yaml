@@ -1,0 +1,57 @@
+# The document of each filing (markets-research.md D542): the readable text
+# of its primary page becomes a document of the org, indexed by the document
+# search and linked to the filing. Only the public archives are read, with
+# the org's declared contact, at the pace the SEC's fair-access rules allow;
+# a page that is not HTML is left aside. Each filing is read once.
+key: sec_documents
+name: Filing documents (SEC EDGAR, ESEF)
+hosts: [www.sec.gov, filings.xbrl.org]
+schedule: 5m
+steps:
+  - enumerate:
+      as: filings
+      track: true
+      per_run: 20
+      empty: settled
+      cross:
+        - { as: url, objects: { type: filing, property: url, columns: [accession] } }
+  # Anyone can type a filing by hand: only the public archives are fetched.
+  - sql:
+      as: due
+      sql: >-
+        SELECT url AS filing_url, url, accession FROM filings
+        WHERE (url LIKE 'https://www.sec.gov/Archives/edgar/data/%' OR url LIKE 'https://filings.xbrl.org/%')
+          AND regexp_like(lower(url), '\.(htm|html|xhtml)$')
+  - fetch:
+      as: page
+      for_each: due
+      url: "{{url}}"
+      every: 150ms
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+      max_bytes: 67108864
+  - extract: { as: texts, from: page, text: true }
+  - sql:
+      as: documents
+      sql: >-
+        SELECT text, coalesce(nullif(accession, ''), 'filing') || '.txt' AS name, filing_url AS source_url,
+          'filing' AS type_key, 'url' AS key_property, filing_url AS key
+        FROM texts WHERE text <> ''
+  - write: { from: documents, media: { link_type: filing_document, source: sec_edgar } }
+tests:
+  - name: the readable text of a filing page, hidden facts left out
+    objects:
+      "filing.url?columns=accession":
+        - "https://www.sec.gov/Archives/edgar/data/42/000004226000001/acme-10k.htm"
+        - "https://www.sec.gov/Archives/edgar/data/42/000004226000001/acme-10k.xml"
+        - "https://example.org/typed-by-hand.htm"
+    extra:
+      "filing.url?columns=accession":
+        "https://www.sec.gov/Archives/edgar/data/42/000004226000001/acme-10k.htm": { accession: "0000042-26-000001" }
+    settings: { markets.source_contact: "Test test@example.org" }
+    given:
+      "https://www.sec.gov/Archives/edgar/data/42/000004226000001/acme-10k.htm": acme-10k.htm
+    expect:
+      documents:
+        rows: 1
+        contains:
+          - { text: "Revenue grew", name: "0000042-26-000001.txt", key: "https://www.sec.gov/Archives/edgar/data/42/000004226000001/acme-10k.htm" }

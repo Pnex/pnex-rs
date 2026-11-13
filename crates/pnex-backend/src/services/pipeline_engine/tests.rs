@@ -134,6 +134,14 @@ impl Sink for Memory {
         Ok(rows.len() as u64)
     }
 
+    async fn media(
+        &mut self,
+        _: &pnex_core::pipeline::doc::MediaTarget,
+        rows: Vec<serde_json::Map<String, Value>>,
+    ) -> Result<u64, Failure> {
+        Ok(rows.len() as u64)
+    }
+
     async fn proposals(
         &mut self,
         _: &pnex_core::pipeline::doc::ProposalsTarget,

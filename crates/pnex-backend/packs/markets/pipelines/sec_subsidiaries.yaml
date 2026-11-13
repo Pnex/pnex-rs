@@ -1,0 +1,90 @@
+# Subsidiaries a US-listed group declares in the Exhibit 21 of its annual
+# reports (10-K): the filing index gives the exhibit, two pack functions
+# read it. Each run reads every annual report of the org and keeps each
+# filer's latest list, each subsidiary dated from the first report that
+# declares it; the import closes the links of a subsidiary the latest
+# report no longer lists.
+key: sec_subsidiaries
+name: Declared subsidiaries (SEC Exhibit 21)
+hosts: [www.sec.gov]
+steps:
+  - enumerate:
+      as: reports
+      cross:
+        - as: url
+          objects: { type: filing, property: url, only: { form: [10-K, 10-K405, 10-KT] }, columns: [accession, filed_on] }
+  - sql:
+      as: due
+      sql: >-
+        SELECT regexp_replace(url, '/[^/]*$', '') || '/' || accession || '-index.htm' AS index_url,
+          right('0000000000' || split_part(url, '/', 7), 10) AS cik, filed_on
+        FROM reports
+        WHERE url LIKE 'https://www.sec.gov/Archives/edgar/data/%' AND accession <> '' AND filed_on <> ''
+  - fetch:
+      as: index
+      for_each: due
+      url: "{{index_url}}"
+      every: 150ms
+      missing_is_empty: true
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+  - read:
+      as: index_lines
+      from: index
+      format: lines
+      columns:
+        - { name: line, type: text, optional: true }
+        - { name: url, value: "{{url}}" }
+        - { name: cik, value: "{{cik}}" }
+        - { name: filed_on, value: "{{filed_on}}" }
+  - call: { as: exhibits, from: index_lines, function: ex21_link }
+  - fetch:
+      as: exhibit
+      for_each: exhibits
+      url: "{{exhibit_url}}"
+      every: 150ms
+      missing_is_empty: true
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+  - read:
+      as: exhibit_lines
+      from: exhibit
+      format: lines
+      columns:
+        - { name: line, type: text, optional: true }
+        - { name: url, value: "{{url}}" }
+        - { name: cik, value: "{{cik}}" }
+        - { name: filed_on, value: "{{filed_on}}" }
+  - call: { as: declared, from: exhibit_lines, function: ex21_subsidiaries }
+  - sql:
+      as: sec_subsidiaries
+      sql: >-
+        SELECT cik, name, jurisdiction, country, declared_key, source, first_filed AS valid_from
+        FROM (SELECT d.*, max(filed_on) OVER (PARTITION BY cik) AS latest,
+                min(filed_on) OVER (PARTITION BY cik, declared_key) AS first_filed
+              FROM declared d) AS x
+        WHERE filed_on = latest
+  - write: { from: sec_subsidiaries, table: { name: sec_subsidiaries, replace: true } }
+tests:
+  - name: a later report drops a subsidiary, the others keep their first date
+    settings: { markets.source_contact: "Test test@example.org" }
+    objects:
+      "filing.url?form=10-K,10-K405,10-KT?columns=accession,filed_on":
+        - "https://www.sec.gov/Archives/edgar/data/42/000004226000001/acme-10k.htm"
+        - "https://www.sec.gov/Archives/edgar/data/42/000004227000001/acme-10k.htm"
+    extra:
+      "filing.url?form=10-K,10-K405,10-KT?columns=accession,filed_on":
+        "https://www.sec.gov/Archives/edgar/data/42/000004226000001/acme-10k.htm": { accession: "0000042-26-000001", filed_on: "2025-02-01" }
+        "https://www.sec.gov/Archives/edgar/data/42/000004227000001/acme-10k.htm": { accession: "0000042-27-000001", filed_on: "2026-02-01" }
+    given:
+      "https://www.sec.gov/Archives/edgar/data/42/000004226000001/0000042-26-000001-index.htm": ex21_index_2025.htm
+      "https://www.sec.gov/Archives/edgar/data/42/000004226000001/ex21.htm": ex21_2025.htm
+      "https://www.sec.gov/Archives/edgar/data/42/000004227000001/0000042-27-000001-index.htm": ex21_index_2026.htm
+      "https://www.sec.gov/Archives/edgar/data/42/000004227000001/ex21.txt": ex21_2026.txt
+    expect:
+      declared:
+        rows: 7
+      sec_subsidiaries:
+        rows: 3
+        contains:
+          - { cik: "0000000042", name: Acme Widgets LLC, country: US, declared_key: "US|ACME WIDGETS LLC", valid_from: "2025-02-01" }
+          - { name: Acme Widgets B.V., country: NL, declared_key: "NL|ACME WIDGETS B V", valid_from: "2025-02-01" }
+          - { name: Acme Widgets K.K., country: JP, valid_from: "2026-02-01" }

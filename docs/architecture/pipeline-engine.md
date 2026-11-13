@@ -592,4 +592,20 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
   remplace la propriété `lei_state`, supprimée du pack), rapprochement des noms légaux par la
   fonction Starlark `gleif_match`. **Supprimés** : `services/markets/identity.rs`,
   `pnex-core/src/markets/same_company.rs`, leur ligne de `HOST_DEBT`.
+- **Documents des dépôts et filiales déclarées** : cible **`write: media`** (texte en document de
+  l'org, retrouvé par `source_url`, indexé, lié à un objet retrouvé par une propriété ; seulement
+  quand le run a l'application : ordonnanceur et `store::run_in`, pas un import) et mode
+  **`extract: { text: true }`** (texte lisible d'une page, parties cachées ôtées).
+  `markets/sec_documents` (chaque dépôt lu une fois) et `markets/sec_subsidiaries` (Exhibit 21 par
+  deux fonctions Starlark du pack, `ex21_link` et `ex21_subsidiaries`, tables de lieux comprises),
+  suivi de l'import en mode `snapshot` « Declared subsidiaries (SEC Exhibit 21) ». **Supprimés** :
+  `services/markets/documents.rs` (son balayage MT5 + prédiction passe dans `markets::spawn_scheduler`
+  en attendant PE6/PE8), `pnex-core/src/markets/exhibit21.rs`, les propriétés `document_state` et
+  `subsidiaries_state`, les constantes d'hôtes SEC/ESEF et leur ligne de `HOST_DEBT`.
+
+| Écart | Où il se lève |
+|---|---|
+| Chaque run des filiales relit toutes les annexes 10-K de l'org (l'ancien code lisait chaque rapport une fois) : un run par semaine | un état par rapport si le volume le demande |
+| Le lien d'une filiale retirée se ferme à la date du run, plus à la date du rapport qui l'a retirée | `valid_to` d'un lien tiré d'une colonne, si la date compte |
+| Un import (sans application) ne peut pas écrire de documents (`step_unsupported`) | passer le contexte à l'import si un pack le demande |
 
