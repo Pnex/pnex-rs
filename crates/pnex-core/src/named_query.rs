@@ -223,7 +223,7 @@ fn literal(p: &NamedParam, v: &Value) -> Option<String> {
         ParamKind::Uuid => uuid::Uuid::parse_str(&text)
             .ok()
             .map(|u| quoted(&u.to_string())),
-        ParamKind::Choice => p.values.iter().any(|x| *x == text).then(|| quoted(&text)),
+        ParamKind::Choice => p.values.contains(&text).then(|| quoted(&text)),
     }
 }
 

@@ -170,7 +170,7 @@ types:
   - key: spare_part
     name: Spare part
     names: {fr: "Pièce détachée"}
-    icon: package
+    icon: cog
     may_be_contained_in: [folder]
     properties:
       - { key: part_number, name: Part number, names: {fr: "Référence interne"}, kind: text, max_len: 64, required: true, unique: true }
@@ -182,7 +182,7 @@ types:
   - key: stock_location
     name: Stock location
     names: {fr: "Emplacement de stock"}
-    icon: box
+    icon: map-pin
     may_be_contained_in: [site, folder]
     properties:
       - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 64, required: true, unique: true }
@@ -198,7 +198,7 @@ types:
   - key: stock_movement
     name: Stock movement
     names: {fr: "Mouvement de stock"}
-    icon: activity
+    icon: workflow
     may_be_contained_in: [folder]
     properties:
       - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 128, required: true, unique: true }

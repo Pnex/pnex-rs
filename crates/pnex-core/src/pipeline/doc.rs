@@ -55,6 +55,8 @@ pub struct Document {
 }
 
 /// One closed step (D936).
+// Parsed once per pipeline, a handful per document: boxing buys nothing.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Step {
@@ -1236,7 +1238,7 @@ fn step_violations(
                 }
             }
             for (j, c) in r.columns.iter().enumerate() {
-                if c.range.is_some_and(|[lo, hi]| !(lo <= hi))
+                if c.range.is_some_and(|[lo, hi]| lo.partial_cmp(&hi).is_none_or(|o| o.is_gt()))
                     || (c.range.is_some()
                         && !matches!(
                             c.kind,
