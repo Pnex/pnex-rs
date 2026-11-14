@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Trade blog</title>
+  <entry>
+    <title type="html">ACME wins a contract</title>
+    <link rel="alternate" href="https://blog.example.net/contract"/>
+    <updated>2026-11-12T10:00:00Z</updated>
+    <summary>Five years of maintenance.</summary>
+  </entry>
+  <entry>
+    <title>Another company moves</title>
+    <link rel="alternate" href="https://blog.example.net/move"/>
+    <link rel="enclosure" href="https://blog.example.net/move.mp3"/>
+    <published>2026-11-13T07:00:00Z</published>
+  </entry>
+</feed>

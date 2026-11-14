@@ -610,14 +610,14 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
     }
   });
 
-  test('press signals get a topic; only an explicit none dismisses them', async ({ api, prefix }) => {
+  test('press news get a topic; only an explicit none dismisses them', async ({ api, prefix }) => {
     test.setTimeout(180_000);
     const { crm, orgId } = await crmOrg(api, prefix);
     const llm = await fakeLlm((r) => (r.includes('Investor news') ? 'investment' : r.includes('Namesake') ? 'none' : 'I cannot tell'));
     try {
       await useLlm(crm, llm.base_url);
       const press = (ref: string, summary: string) =>
-        object(crm, 'sales_signal', summary, { ref, kind: 'press', state: 'to_validate', summary });
+        object(crm, 'news_item', summary, { ref, state: 'to_validate', summary });
       const real = await press('p1', 'Investor news');
       const namesake = await press('p2', 'Namesake story');
       const unclear = await press('p3', 'Unclear story');
@@ -715,30 +715,6 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
     }
   });
 
-  test('a trade show gets its figures from its opportunities, in the currency of its cost', async ({ api, prefix }) => {
-    test.setTimeout(180_000);
-    const { crm, orgId } = await crmOrg(api, prefix);
-    const eur = (amount: number) => ({ amount, currency: 'EUR' });
-    try {
-      const show = await object(crm, 'trade_show', 'Global Industrie', { cost: eur(1000) });
-      for (const [title, stage, amount] of [
-        ['Won', 'won', eur(2500)],
-        ['Won abroad', 'won', { amount: 900, currency: 'USD' }],
-        ['Open', 'proposal', eur(100)],
-        ['Lost', 'lost', eur(100)],
-      ] as const) {
-        await link(crm, 'met_at', await object(crm, 'opportunity', title, { stage, amount }), show);
-      }
-      await run(crm, 'CRM · trade show figures');
-      await expect.poll(async () => (await read(crm, show.id)).properties.opportunities, POLL).toBe(4);
-      expect((await read(crm, show.id)).properties).toMatchObject({
-        won: 2, conversion: 50, won_amount: eur(2500), other_currency_wins: 1, roi: 2.5,
-      });
-    } finally {
-      await api.forOrg(orgId).delete(`/orgs/${orgId}`).catch(() => {});
-    }
-  });
-
   test('a target gets the wins of its period, by closing date and in its currency', async ({ api, prefix }) => {
     test.setTimeout(180_000);
     const { crm, orgId } = await crmOrg(api, prefix);
@@ -797,11 +773,11 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
     }
   });
 
-  test('a trade show list becomes leads, without the people who objected, and counts once converted', async ({ api, prefix }) => {
+  test('a trade show list becomes leads, without the people who objected, and keeps the show once converted', async ({ api, prefix }) => {
     test.setTimeout(240_000);
     const { crm, orgId } = await crmOrg(api, prefix);
     try {
-      const show = await object(crm, 'trade_show', 'Global Industrie', { list: 'GI 2026', start_on: '2026-03-10' });
+      const show = await object(crm, 'show', 'Global Industrie', { list: 'GI 2026', start_on: '2026-03-10' });
       const entry = (name: string, list: string, email: string) =>
         object(crm, 'list_contact', name, { ref: `${list}|${name}`, list, company: 'Acme', email });
       const ann = await entry('Ann Lee', 'GI 2026', 'ann@acme.test');
@@ -823,7 +799,7 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
       });
       await expect.poll(() => linked(crm, leads[0].id, 'from_list'), POLL).toEqual([show.id]);
 
-      // Converted, the opportunity counts for the show: its figures read `met_at`.
+      // Converted, the opportunity keeps the show it was met at.
       const account = await object(crm, 'organization', 'Acme');
       await run(crm, 'CRM · convert a lead');
       const convert = () =>
@@ -876,7 +852,7 @@ test.describe('crm flows on the runtime', { tag: '@crm' }, () => {
       const [lead] = await query(crm, 'lead');
 
       // The same address on a trade show list: linked to the show, no second lead.
-      const show = await object(crm, 'trade_show', 'Global Industrie', { list: 'GI', start_on: '2026-03-10' });
+      const show = await object(crm, 'show', 'Global Industrie', { list: 'GI', start_on: '2026-03-10' });
       const contact = await object(crm, 'list_contact', 'Lee', { ref: 'GI|Lee', list: 'GI', email: 'lee@gamma.test' });
       await run(crm, 'CRM · leads from trade show lists');
       await expect.poll(async () => (await read(crm, contact.id)).properties.lead_state, POLL).toBe('created');
@@ -985,8 +961,8 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
     test.setTimeout(240_000);
     const { crm, orgId } = await crmOrg(api, prefix);
     try {
-      const big = await object(crm, 'trade_show', 'Big show');
-      const small = await object(crm, 'trade_show', 'Small show');
+      const big = await object(crm, 'show', 'Big show');
+      const small = await object(crm, 'show', 'Small show');
       for (const [title, show] of [['A', big], ['B', big], ['C', small]] as const) {
         await link(crm, 'met_at', await object(crm, 'opportunity', title, { stage: 'proposal' }), show);
       }
@@ -995,13 +971,13 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
         expected_version_number: dash.current_version_number,
         layout: {
           canvas: { width: 800, height: 600 },
-          object_type: 'trade_show',
+          object_type: 'show',
           widgets: [{
             id: 'w1', type: 'stat', title: 'Met there', x: 20, y: 20, w: 200, h: 120,
             source: [{
               metric: '', device_id: '', window: '1h',
               objects: {
-                query: { type_key: 'trade_show', ids: ['$object'], traverse: [{ link_type: 'met_at', direction: 'in' }] },
+                query: { type_key: 'show', ids: ['$object'], traverse: [{ link_type: 'met_at', direction: 'in' }] },
                 metrics: [{ key: 'n', op: 'count' }],
                 show: 'n',
               },
@@ -1027,7 +1003,7 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
     test.setTimeout(240_000);
     const { crm, orgId } = await crmOrg(api, prefix);
     try {
-      const show = await object(crm, 'trade_show', 'Edited show');
+      const show = await object(crm, 'show', 'Edited show');
       for (const [title, stage] of [['Won', 'won'], ['Open', 'proposal'], ['Other', 'proposal']]) {
         await link(crm, 'met_at', await object(crm, 'opportunity', title, { stage }), show);
       }
@@ -1035,7 +1011,7 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
       const dash = await crm.post('/dashboards', { name });
       await crm.patch(`/dashboards/${dash.id}`, {
         expected_version_number: dash.current_version_number,
-        layout: { canvas: { width: 800, height: 600 }, object_type: 'trade_show', widgets: [] },
+        layout: { canvas: { width: 800, height: 600 }, object_type: 'show', widgets: [] },
       });
       await page.goto('/');
       await page.evaluate((id) => localStorage.setItem('pnex.org', String(id)), orgId);
@@ -1063,14 +1039,14 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
     test.setTimeout(180_000);
     const { crm, orgId } = await crmOrg(api, prefix);
     try {
-      const show = await object(crm, 'trade_show', 'Counted');
+      const show = await object(crm, 'show', 'Counted');
       for (const stage of ['proposal', 'proposal', 'won']) {
         await object(crm, 'opportunity', `${stage} ${Math.random()}`, { stage });
       }
       const fn = await crm.post('/functions', {
         name: 'count_to_show',
         language: 'starlark',
-        code: `def handle(inputs, msg):\n    n = msg["payload"]["groups"][0]["values"]["n"]["value"]\n    return {"payload": {"opportunities": n}, "object_id": "${show.id}"}\n`,
+        code: `def handle(inputs, msg):\n    n = msg["payload"]["groups"][0]["values"]["n"]["value"]\n    return {"payload": {"list": str(n)}, "object_id": "${show.id}"}\n`,
         inputs: [],
         outputs: [],
       });
@@ -1089,12 +1065,12 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
               outputs: [{ port: 0, targets: ['fn'] }],
             },
             { id: 'fn', kind: 'pnex_function', config: { function_id: fn.id, function_name: 'count_to_show', version_number: 1, language: 'starlark' }, outputs: [{ port: 0, targets: ['write'] }] },
-            { id: 'write', kind: 'object_upsert', config: { object_type: 'trade_show', key: 'id' } },
+            { id: 'write', kind: 'object_upsert', config: { object_type: 'show', key: 'id' } },
           ],
         },
       });
       await crm.post(`/flows/${flow.id}/deploy`, {});
-      await expect.poll(async () => (await read(crm, show.id)).properties.opportunities, POLL).toBe(2);
+      await expect.poll(async () => (await read(crm, show.id)).properties.list, POLL).toBe('2');
     } finally {
       await api.forOrg(orgId).delete(`/orgs/${orgId}`).catch(() => {});
     }
@@ -1105,7 +1081,7 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
     const { crm, orgId } = await crmOrg(api, prefix);
     const eur = (amount: number) => ({ amount, currency: 'EUR' });
     try {
-      const show = await object(crm, 'trade_show', 'Global Industrie', { cost: eur(1000) });
+      const show = await object(crm, 'show', 'Global Industrie');
       const won = await object(crm, 'opportunity', 'Won', { stage: 'won', amount: eur(2500) });
       const open = await object(crm, 'opportunity', 'Open', { stage: 'proposal', amount: eur(400) });
       await link(crm, 'met_at', won, show);

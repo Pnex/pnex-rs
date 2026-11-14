@@ -38,6 +38,7 @@ const SHIPPED: &[&str] = &[
     include_str!("../../../packs/companies_fr.yaml"),
     include_str!("../../../packs/web_presence.yaml"),
     include_str!("../../../packs/quali_watch.yaml"),
+    include_str!("../../../packs/watch.yaml"),
     include_str!("../../../packs/prospecting_b2b.yaml"),
     include_str!("../../../packs/prospecting_b2b_fr.yaml"),
     include_str!("../../../packs/crm.yaml"),

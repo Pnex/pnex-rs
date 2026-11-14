@@ -30,10 +30,12 @@
 # Since 3.6.0 the register import fills the establishment address.
 # Since 3.9.0 people of a network export get their employer looked up like
 # a captured profile.
+# Since 4.0.0 the press import writes news items of the `watch` pack,
+# linked by `item_about` (breaking).
 key: prospecting_b2b_fr
 name: B2B prospecting, France layer
 names: {fr: "Prospection B2B, couche France"}
-version: "3.9.0"
+version: "4.0.0"
 requires: [companies_fr, prospecting_b2b]
 description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
 descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
@@ -47,14 +49,13 @@ imports:
       names: {fr: "Presse (GDELT)"}
       description: The world's press of the last day naming an account followed (customer, prospect, target). Source GDELT Project, gdeltproject.org.
       objects:
-        - as: signal
-          type: sales_signal
+        - as: item
+          type: news_item
           key: ref
           title: title
           update: false
           properties:
             ref: ref
-            kind: { value: press }
             summary: summary
             date: date
             source_url: url
@@ -67,9 +68,9 @@ imports:
         - { as: by_lei, type: organization, key: lei, create: false, missing: skip, when: { from: via, equals: lei }, properties: { lei: account } }
         - { as: by_item, type: organization, key: wikidata, create: false, missing: skip, when: { from: via, equals: wikidata }, properties: { wikidata: account } }
       links:
-        - { type: signal_about, from: signal, to: by_siren }
-        - { type: signal_about, from: signal, to: by_lei }
-        - { type: signal_about, from: signal, to: by_item }
+        - { type: item_about, from: item, to: by_siren }
+        - { type: item_about, from: item, to: by_lei }
+        - { type: item_about, from: item, to: by_item }
   - name: Direct subsidiaries (GLEIF)
     source: file
     mapping:

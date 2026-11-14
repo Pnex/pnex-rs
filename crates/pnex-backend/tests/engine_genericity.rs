@@ -13,6 +13,7 @@ const ENGINE_WORDS: &[(&str, &str)] = &[
     ("line", "chart widget kind, error line numbers"),
     ("controls", "surfaces controls (D123)"),
     ("about", "about: URLs in the browser guard"),
+    ("watch", "a site's reserved path (/watch) in the browser agent"),
     ("before", "the journal's before/after documents"),
     (
         "finding",

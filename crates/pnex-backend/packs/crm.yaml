@@ -37,17 +37,23 @@
 # the new leads too.
 # Since 3.4.0 (crm.md D590): a trade show naming a list turns the list's
 # contacts into leads, linked by `from_list`: being on a list is not having
-# been met, and it keeps `met_at`, which the show's figures read, for those met.
+# been met, and it keeps `met_at` for those met.
 # Since 3.2.0 (app-builder.md D513): the application "Sales follow-up", its
 # screens ready to use: stages, leads, activities to do, quotes and invoices.
+# Since 4.0.0 a trade show is the neutral `show` of the `watch` pack; the
+# pack only adds its `list`. The figures of a show (cost, won, conversion,
+# return) and their flow are gone (breaking).
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "3.8.0"
-requires: [prospecting_b2b]
+version: "4.0.0"
+requires: [prospecting_b2b, watch]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
 extends:
+  - type: show
+    properties:
+      - { key: list, name: List to turn into leads, names: {fr: "Liste à transformer en pistes"}, kind: text, max_len: 255, indexed: true }
   - type: list_contact
     properties:
       - key: lead_state
@@ -180,7 +186,7 @@ link_types:
     inverse_name: brought
     inverse_names: {fr: "a apporté"}
     from_types: [opportunity, lead]
-    to_types: [trade_show]
+    to_types: [show]
     one_target: true
   - key: from_list
     name: is on the list of
@@ -188,7 +194,7 @@ link_types:
     inverse_name: lists
     inverse_names: {fr: "liste"}
     from_types: [lead]
-    to_types: [trade_show]
+    to_types: [show]
     one_target: true
   - key: from_step
     name: comes from the step
@@ -204,7 +210,7 @@ apps:
     names: {fr: "Suivi commercial"}
     description: Opportunities, leads, activities to do, quotes and invoices.
     scope:
-      types: [opportunity, lead, activity, quote, invoice, trade_show, sales_target]
+      types: [opportunity, lead, activity, quote, invoice, show, sales_target]
     actions: [lead.convert]
     home: pipeline
     variables:
@@ -248,7 +254,7 @@ apps:
         query:
           type_key: activity
           filters: [{key: state, op: eq, value: done}, {key: direction, op: eq, value: outbound}]
-      trade_shows: {query: {type_key: trade_show, order_by: start_on, descending: true}}
+      trade_shows: {query: {type_key: show, order_by: start_on, descending: true}}
       all_leads: {query: {type_key: lead}}
       leads_with_status: {query: {type_key: lead, filters: [{key: status, op: eq, value: "$status"}], order_by: received_on, descending: true}}
       new_leads:
@@ -549,8 +555,8 @@ apps:
         layout:
           canvas: {width: 1600, height: 900}
           widgets:
-            - {id: t1, type: object_table, x: 16, y: 16, w: 1400, h: 560, options: {app: {object_set: trade_shows, columns: [title, start_on, list, cost, opportunities, won, conversion, won_amount, roi], titles: {fr: "Salons", en: "Trade shows"}}}}
-            - {id: n1, type: object_form, x: 1432, y: 16, w: 152, h: 100, options: {app: {object_type: trade_show}}}
+            - {id: t1, type: object_table, x: 16, y: 16, w: 1400, h: 560, options: {app: {object_set: trade_shows, columns: [title, start_on, end_on, city, list], titles: {fr: "Salons", en: "Trade shows"}}}}
+            - {id: n1, type: object_form, x: 1432, y: 16, w: 152, h: 100, options: {app: {object_type: show}}}
             - id: l1
               type: range_bars
               title: Leads from lists
@@ -706,21 +712,6 @@ types:
           - { key: organization, name: Account, names: {fr: "Compte"}, kind: ref, to_type: organization, required: true }
           - { key: person, name: Contact, names: {fr: "Contact"}, kind: ref, to_type: person }
           - { key: name, name: Opportunity name, names: {fr: "Nom de l'opportunité"}, kind: text, max_len: 255 }
-  - key: trade_show
-    name: Trade show
-    names: {fr: "Salon"}
-    icon: landmark
-    properties:
-      - { key: start_on, name: Starts on, names: {fr: "Début"}, kind: date, indexed: true }
-      - { key: place, name: Place, names: {fr: "Lieu"}, kind: text, max_len: 255 }
-      - { key: list, name: List to turn into leads, names: {fr: "Liste à transformer en pistes"}, kind: text, max_len: 255, indexed: true }
-      - { key: cost, name: Cost, names: {fr: "Coût"}, kind: money }
-      - { key: opportunities, name: Opportunities, names: {fr: "Opportunités"}, kind: number, min: 0 }
-      - { key: won, name: Won, names: {fr: "Gagnées"}, kind: number, min: 0 }
-      - { key: conversion, name: Conversion rate (%), names: {fr: "Taux de conversion (%)"}, kind: number, min: 0 }
-      - { key: won_amount, name: Won amount, names: {fr: "CA gagné"}, kind: money }
-      - { key: other_currency_wins, name: Wins in another currency, names: {fr: "Gains dans une autre devise"}, kind: number, min: 0 }
-      - { key: roi, name: Return (won amount / cost), names: {fr: "Retour (CA gagné / coût)"}, kind: number, min: 0 }
   - key: quote
     name: Quote
     names: {fr: "Devis"}
@@ -967,42 +958,6 @@ functions:
           }
           # Written only when it changes: no new version every hour.
           if all([t.get(k) == v for k, v in figures.items()]):
-              return None
-          return {"payload": figures, "object_id": msg["object"]["id"]}
-  - name: crm_show_figures
-    language: starlark
-    description: "The figures of a trade show from its opportunities: won amount in the currency of its cost, wins in another currency counted apart, never converted."
-    code: |
-      def rounded(x, digits):
-          return int(x * digits + 0.5) / float(digits)
-
-      def handle(inputs, msg):
-          p = msg["payload"]
-          opps = [l["other"].get("properties", {}) for l in msg.get("links", {}).get("met_at", [])
-                  if l.get("direction") == "in" and l.get("other", {}).get("type") == "opportunity"]
-          won = [o for o in opps if o.get("stage") == "won"]
-          cost = p.get("cost") or {}
-          currency = cost.get("currency") or ""
-          amounts = [o["amount"] for o in won if o.get("amount")]
-          if not currency and amounts:
-              currency = amounts[0].get("currency", "")
-          total = 0.0
-          for a in amounts:
-              if a.get("currency") == currency:
-                  total += float(a.get("amount", 0))
-          other = len([a for a in amounts if a.get("currency") != currency])
-          figures = {
-              "opportunities": len(opps),
-              "won": len(won),
-              "conversion": rounded(len(won) * 100.0 / len(opps), 10) if opps else 0,
-              "other_currency_wins": other,
-          }
-          if currency:
-              figures["won_amount"] = {"amount": total, "currency": currency}
-          if cost.get("amount"):
-              figures["roi"] = rounded(total / float(cost["amount"]), 100)
-          # Written only when it changes: no new version every hour.
-          if all([p.get(k) == v for k, v in figures.items()]):
               return None
           return {"payload": figures, "object_id": msg["object"]["id"]}
   - name: crm_report
@@ -1621,20 +1576,6 @@ flows:
           outputs: [{ port: 0, targets: [found] }]
         - { id: found, kind: pnex_function, config: { function_name: crm_reply_found, language: starlark }, outputs: [{ port: 0, targets: [mark] }] }
         - { id: mark, kind: object_upsert, config: { object_type: activity, key: id } }
-  - name: "CRM · trade show figures"
-    note: "Every hour, each trade show (type Trade show: its cost, and the link was met at from a lead or an opportunity) gets its opportunities, won ones, conversion rate, won amount in the currency of its cost, and return (won amount / cost). Wins in another currency are counted apart, never converted."
-    graph:
-      nodes:
-        - { id: tick, kind: inject, config: { cron: "35 * * * *" }, outputs: [{ port: 0, targets: [shows] }] }
-        - id: shows
-          kind: ontology_query
-          config:
-            object_type: trade_show
-            limit: 200
-            with_links: [met_at]
-          outputs: [{ port: 0, targets: [figures] }]
-        - { id: figures, kind: pnex_function, config: { function_name: crm_show_figures, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
-        - { id: write, kind: object_upsert, config: { object_type: trade_show, key: id } }
   - name: "CRM · target progress"
     note: "Every hour, each sales target gets the won amount of its period, by closing date and in the currency of the target, and the share reached. Wins in another currency are counted apart, never converted. An opportunity closed before this version has no closing date and does not count. Deploy it for the Forecast screen to show progress."
     graph:
@@ -1902,14 +1843,14 @@ flows:
         - { id: l_involved, kind: link_upsert, config: { link_type: involved_in } }
         - { id: converted, kind: object_upsert, config: { object_type: lead, key: id } }
   - name: "CRM · leads from trade show lists"
-    note: "Every 15 minutes, the contacts of the list a trade show names (its property List to turn into leads, the name in the column list of the file) become leads at status new, up to 100 per show and per run, linked to the show. An address already on a lead makes no second one: that lead is linked to the show. A contact whose address objected or was erased makes no lead. Nothing is sent; the account is picked at conversion, and the opportunity then counts in the show's figures."
+    note: "Every 15 minutes, the contacts of the list a trade show names (its property List to turn into leads, the name in the column list of the file) become leads at status new, up to 100 per show and per run, linked to the show. An address already on a lead makes no second one: that lead is linked to the show. A contact whose address objected or was erased makes no lead. Nothing is sent; the account is picked at conversion."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "*/15 * * * *" }, outputs: [{ port: 0, targets: [shows] }] }
         - id: shows
           kind: ontology_query
           config:
-            object_type: trade_show
+            object_type: show
             filters: [{ key: list, op: exists }]
             limit: 200
           outputs: [{ port: 0, targets: [show] }]

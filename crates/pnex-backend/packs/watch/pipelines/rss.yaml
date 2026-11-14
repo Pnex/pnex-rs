@@ -1,0 +1,80 @@
+# The items of the org's news feeds (sources of format `feed`), RSS 2.0 or
+# Atom. The hosts are those of the org's own sources (D975): no secret is
+# ever sent to them. Which company an item is about is the org's flow.
+# shortcut: one malformed feed fails the run; isolate feeds per row if a
+# real source does it.
+key: rss
+name: News feeds (RSS, Atom)
+object_hosts:
+  - { type: news_source, property: url, only: { format: [feed] } }
+steps:
+  - enumerate: { as: sources, cross: [{ as: url, objects: { type: news_source, property: url, only: { format: [feed] } } }] }
+  - fetch: { as: feeds, for_each: sources, url: "{{url}}", every: 1s, missing_is_empty: true }
+  - read:
+      as: rss
+      from: feeds
+      format: xml
+      records: rss/channel/item
+      columns:
+        - { name: feed, value: "{{url}}" }
+        - { name: title, optional: true }
+        - { name: link, optional: true }
+        - { name: description, optional: true }
+        - { name: published, at: pubDate, optional: true }
+  - read:
+      as: atom
+      from: feeds
+      format: xml
+      records: feed/entry
+      columns:
+        - { name: feed, value: "{{url}}" }
+        # A text element with attributes reads as an object: its text is `#text`.
+        - { name: title_text, at: "/title/#text", optional: true }
+        - { name: title, optional: true }
+        - { name: link_one, at: "/link/@href", optional: true }
+        - { name: link_first, at: "/link/0/@href", optional: true }
+        - { name: summary_text, at: "/summary/#text", optional: true }
+        - { name: summary, optional: true }
+        - { name: published, optional: true }
+        - { name: updated, optional: true }
+  - sql:
+      as: items
+      sql: |
+        SELECT feed, link AS url, title, description AS body,
+               -- RFC 822: "Mon, 10 Nov 2026 08:00:00 GMT"
+               split_part(published, ' ', 4) || '-' ||
+               CASE split_part(published, ' ', 3)
+                 WHEN 'Jan' THEN '01' WHEN 'Feb' THEN '02' WHEN 'Mar' THEN '03' WHEN 'Apr' THEN '04'
+                 WHEN 'May' THEN '05' WHEN 'Jun' THEN '06' WHEN 'Jul' THEN '07' WHEN 'Aug' THEN '08'
+                 WHEN 'Sep' THEN '09' WHEN 'Oct' THEN '10' WHEN 'Nov' THEN '11' WHEN 'Dec' THEN '12'
+               END || '-' || right('0' || split_part(published, ' ', 2), 2) AS date
+        FROM rss
+        UNION ALL
+        SELECT feed, coalesce(link_one, link_first), coalesce(title_text, title),
+               coalesce(summary_text, summary), substr(coalesce(published, updated), 1, 10)
+        FROM atom
+  - sql:
+      as: kept
+      sql: |
+        SELECT feed, url, coalesce(title, url) AS title, date,
+               substr(trim(regexp_replace(coalesce(body, ''), '<[^>]*>', '', 'g')), 1, 2000) AS summary
+        FROM items
+        WHERE url IS NOT NULL AND url <> ''
+  - write: { from: kept, table: { name: watch_rss, replace: true } }
+tests:
+  - name: RSS and Atom items, one row each, with their feed
+    objects: { "news_source.url?format=feed": ["https://news.example.org/rss.xml", "https://blog.example.net/atom.xml"] }
+    given:
+      "https://news.example.org/rss.xml": rss.xml
+      "https://blog.example.net/atom.xml": atom.xml
+    expect:
+      rss:
+        rows: 2
+      atom:
+        rows: 2
+      kept:
+        rows: 4
+        columns: [feed, url, title, date, summary]
+        contains:
+          - { url: "https://news.example.org/plant", title: "ACME opens a plant", date: "2026-11-10", summary: "A new site in Lyon.", feed: "https://news.example.org/rss.xml" }
+          - { url: "https://blog.example.net/contract", title: "ACME wins a contract", date: "2026-11-12" }

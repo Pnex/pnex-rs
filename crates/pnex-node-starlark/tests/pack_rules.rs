@@ -1602,55 +1602,6 @@ fn a_new_site_of_a_followed_account_is_a_signal() {
     );
 }
 
-/// `crm` « trade show figures » (object-aggregates.md Q-AG1): the won amount
-/// in the currency of the cost, the others counted apart, never converted.
-#[test]
-fn a_trade_show_gets_its_figures_without_converting_currencies() {
-    let opp = |stage: &str, amount: serde_json::Value| json!({"direction": "in", "other": {"type": "opportunity", "properties": {"stage": stage, "amount": amount}}});
-    let eur = |a: f64| json!({"amount": a, "currency": "EUR"});
-    let msg = json!({
-        "payload": {"cost": eur(1000.0)},
-        "object": {"id": "s1"},
-        "links": {"met_at": [
-            opp("won", eur(2500.0)),
-            opp("won", json!({"amount": 900.0, "currency": "USD"})),
-            opp("proposal", eur(100.0)),
-            opp("lost", eur(100.0)),
-        ]}
-    });
-    let code = code_in(CRM, "crm_show_figures");
-    let r = execute(&code, &msg, 2000).unwrap().return_json.unwrap();
-    assert_eq!(r["object_id"], "s1");
-    let p = &r["payload"];
-    assert_eq!(
-        (p["opportunities"].as_i64(), p["won"].as_i64()),
-        (Some(4), Some(2)),
-        "{r}"
-    );
-    assert_eq!(p["conversion"].as_f64(), Some(50.0), "{r}");
-    assert_eq!(p["won_amount"], eur(2500.0), "{r}");
-    assert_eq!(p["other_currency_wins"].as_i64(), Some(1), "{r}");
-    assert_eq!(p["roi"].as_f64(), Some(2.5), "{r}");
-
-    // No new version when nothing moved.
-    let mut same = msg.clone();
-    for (k, v) in p.as_object().unwrap() {
-        same["payload"][k] = v.clone();
-    }
-    assert!(execute(&code, &same, 2000)
-        .unwrap()
-        .return_json
-        .is_none_or(|v| v.is_null()));
-
-    // No opportunity, no cost: no division.
-    let empty = json!({"payload": {}, "object": {"id": "s2"}, "links": {}});
-    let r = execute(&code, &empty, 2000)
-        .unwrap()
-        .return_json
-        .unwrap_or_default();
-    assert!(r["payload"].get("roi").is_none(), "{r}");
-}
-
 /// `crm` « target progress » (sales-dashboards.md D725): in the currency of
 /// the target, the others counted apart, never converted.
 #[test]
@@ -1884,7 +1835,7 @@ fn a_mail_draft_goes_to_the_people_who_did_not_object() {
     assert_eq!(r[1]["object_id"], "a1");
 }
 
-/// Press signals (account-mapping.md D539): a model's answer gives a topic,
+/// Press news items (account-mapping.md D539): a model's answer gives a topic,
 /// an explicit none dismisses, anything else stays for a human.
 #[test]
 fn a_press_signal_is_triaged_without_losing_news() {
@@ -1897,7 +1848,7 @@ fn a_press_signal_is_triaged_without_losing_news() {
     let p = run(
         "pn_prepare",
         json!({"payload": {"summary": "ACME ouvre une usine", "excerpt": ""},
-        "object": {"id": "s1"}, "links": {"signal_about": [{"other": {"title": "ACME"}}]}}),
+        "object": {"id": "s1"}, "links": {"item_about": [{"other": {"title": "ACME"}}]}}),
     );
     assert!(
         p["payload"]["text"]

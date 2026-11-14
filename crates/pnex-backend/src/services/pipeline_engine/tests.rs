@@ -312,3 +312,59 @@ async fn every_shipped_pipeline_passes_its_tests() {
         }
     }
 }
+
+/// D975: a fetch reaches the host of an address the org's objects hold,
+/// but never with a secret.
+#[tokio::test]
+async fn object_hosts_open_their_hosts_but_never_to_a_secret() {
+    let doc = |secret: &str| -> pnex_core::pipeline::doc::Document {
+        serde_saphyr::from_str(&format!(
+            "key: t\nobject_hosts: [{{ type: news_source, property: url }}]\nsteps:\n\
+             - enumerate: {{ as: s, cross: [{{ as: url, objects: {{ type: news_source, property: url }} }}] }}\n\
+             - fetch: {{ as: f, for_each: s, url: \"{{{{url}}}}\"{secret} }}\n\
+             - read: {{ as: r, from: f, format: xml, records: rss/channel/item, columns: [{{ name: link }}] }}\n\
+             - write: {{ from: r, table: {{ name: t, replace: true }} }}\n"
+        ))
+        .unwrap()
+    };
+    let attempt = |doc: pnex_core::pipeline::doc::Document, url: &'static str| async move {
+        assert!(doc.violations().is_empty(), "{:?}", doc.violations());
+        let inputs = Inputs {
+            objects: [("news_source.url".to_string(), vec![url.to_string()])].into(),
+            secrets: [("key".to_string(), "k".to_string())].into(),
+            ..Default::default()
+        };
+        let transport = Replay {
+            pack: "watch".into(),
+            given: [(url.to_string(), "rss.xml".to_string())].into(),
+        };
+        let (mut sink, mut kept) = (Memory::default(), HashMap::new());
+        let out = run(
+            &doc,
+            &inputs,
+            &transport,
+            &mut sink,
+            &InProcess,
+            &HashMap::new(),
+            Some(usize::MAX),
+            Some(&mut kept),
+            None,
+        )
+        .await;
+        out.failure.map(|f| f.code.to_string())
+    };
+    let feed = "https://news.example.org/rss.xml";
+    assert_eq!(attempt(doc(""), feed).await, None);
+    let with_secret = ", secret: { name: key, header: Authorization }";
+    assert_eq!(
+        attempt(doc(with_secret), feed).await.as_deref(),
+        Some("host_not_declared")
+    );
+    // A literal address skips the guarded resolver: checked here (R8).
+    assert_eq!(
+        attempt(doc(""), "http://169.254.169.254/latest")
+            .await
+            .as_deref(),
+        Some("egress_address_refused")
+    );
+}

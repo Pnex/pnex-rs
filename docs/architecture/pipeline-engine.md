@@ -121,6 +121,10 @@ puis celles à redemander. Ce registre remplace `market_history_partitions`.
 hôte, pour toute la plateforme** : deux orgs qui lisent la même source ne doublent pas le débit.
 `429` et `5xx` sont relancés avec attente (`Retry-After` respecté), comme en D793.
 
+> **Amendée par D975 (2026-11-14, `watch.md`)** : un document peut aussi déclarer
+> `object_hosts`, des adresses tenues par les objets de l'org, dont les hôtes deviennent
+> joignables ; jamais avec un secret, et une IP littérale passe la garde egress.
+
 ### D939 — Des lecteurs de format, jamais de fournisseur
 
 `read` accepte : `csv` (séparateur, en-tête ou colonnes par position, encodage), `json` (pointeur

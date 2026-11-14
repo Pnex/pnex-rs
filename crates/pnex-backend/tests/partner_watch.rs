@@ -3137,7 +3137,7 @@ fn gkg_zip() -> Vec<u8> {
 }
 
 /// account-mapping.md D539: the world's press read once, kept for the
-/// accounts followed, one signal per article however many runs.
+/// accounts followed, one news item per article however many runs.
 #[tokio::test]
 #[serial]
 async fn the_press_feed_writes_signals_on_the_accounts_followed() {
@@ -3181,15 +3181,126 @@ async fn the_press_feed_writes_signals_on_the_accounts_followed() {
             let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 120).await;
             assert_eq!(r["run"]["state"], "applied", "{r}");
         }
-        let (_, q) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({"type_key": "sales_signal"}))).await;
+        let (_, q) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({"type_key": "news_item"}))).await;
         assert_eq!(q["count"], 2, "two articles, twice the run, nothing else: {q}");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{globex}/links"), &env.alice, org, None).await;
-        assert!(l.to_string().contains("signal_about") && l.to_string().contains("Globex étend son usine"), "{l}");
+        assert!(l.to_string().contains("item_about") && l.to_string().contains("Globex étend son usine"), "{l}");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{meca}/links"), &env.alice, org, None).await;
         assert!(l.to_string().contains("Meca Dev recrute"), "{l}");
-        let s = props_of(&env.db, org, "sales_signal", "ref", "press:siren:732829320:2026-11-02").await;
-        assert_eq!((s["kind"].as_str(), s["state"].as_str(), s["lang"].as_str()), (Some("press"), Some("to_validate"), Some("fra")), "{s}");
+        let s = props_of(&env.db, org, "news_item", "ref", "press:siren:732829320:2026-11-02").await;
+        assert_eq!((s["state"].as_str(), s["lang"].as_str()), (Some("to_validate"), Some("fra")), "{s}");
         assert_eq!(s["date"], "2026-11-02");
+    })
+    .await;
+}
+
+/// The `watch` pack: an organization's news are the items about it plus
+/// those of its own sources (two hops), its shows those it exhibits at,
+/// each read by one ontology query, newest first.
+#[tokio::test]
+#[serial]
+async fn the_news_and_shows_of_an_organization_are_one_query_each() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "watch").await;
+        let mk = |ty: &'static str, title: &'static str, props: Value| {
+            let (server, token) = (&server, env.alice.clone());
+            async move {
+                let (st, o) = object(server, &token, org, ty, title, props).await;
+                assert_eq!(st, 201, "{o}");
+                o["id"].as_str().unwrap().to_string()
+            }
+        };
+        let acme = mk("organization", "ACME", json!({})).await;
+        let other = mk("organization", "OTHER", json!({})).await;
+        let feed = mk("news_source", "ACME newsroom", json!({"url": "https://acme.test/feed.xml", "format": "feed"})).await;
+        let own = mk("news_item", "ACME opens a plant", json!({"ref": "https://acme.test/1", "date": "2026-11-10", "state": "to_validate"})).await;
+        let press = mk("news_item", "ACME wins a contract", json!({"ref": "https://press.test/2", "date": "2026-11-12", "state": "retained"})).await;
+        let noise = mk("news_item", "OTHER hires", json!({"ref": "https://press.test/3", "date": "2026-11-13", "state": "retained"})).await;
+        let fair = mk("show", "Industry fair", json!({"start_on": "2027-03-10", "end_on": "2027-03-13", "city": "Lyon", "country": "FR"})).await;
+        let link = |kind: &str, from: &str, to: &str| json!({"link_type": kind, "source_id": from, "target_id": to, "attributes": {}});
+        for body in [
+            link("source_of", &feed, &acme),
+            link("from_source", &own, &feed),
+            link("item_about", &press, &acme),
+            link("item_about", &noise, &other),
+            link("exhibits_at", &acme, &fair),
+            link("organized_by", &fair, &other),
+        ] {
+            let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
+            assert_eq!(st, 201, "{r}");
+        }
+        let query = |body: Value| {
+            let server = &server;
+            let token = env.alice.clone();
+            async move {
+                let (st, q) = call(server, "POST", "/api/v1/ontology/query", &token, org, Some(body)).await;
+                assert_eq!(st, 200, "{q}");
+                q["rows"].as_array().unwrap().iter().map(|r| r["object"]["id"].as_str().unwrap().to_string()).collect::<Vec<_>>()
+            }
+        };
+        let about = query(json!({"type_key": "organization", "ids": [acme],
+            "traverse": [{"link_type": "item_about", "direction": "in"}], "order_by": "date", "descending": true})).await;
+        assert_eq!(about, vec![press.clone()]);
+        let own_feed = query(json!({"type_key": "organization", "ids": [acme],
+            "traverse": [{"link_type": "source_of", "direction": "in"}, {"link_type": "from_source", "direction": "in"}]})).await;
+        assert_eq!(own_feed, vec![own.clone()]);
+        let shows = query(json!({"type_key": "organization", "ids": [acme],
+            "traverse": [{"link_type": "exhibits_at", "direction": "out"}], "order_by": "start_on"})).await;
+        assert_eq!(shows, vec![fair.clone()]);
+        // The feed of everything kept, and the shows a groupement organizes.
+        let kept = query(json!({"type_key": "news_item", "filters": [{"key": "state", "op": "eq", "value": "retained"}],
+            "order_by": "date", "descending": true})).await;
+        assert_eq!(kept, vec![noise, press]);
+        let organized = query(json!({"type_key": "organization", "ids": [other],
+            "traverse": [{"link_type": "organized_by", "direction": "in"}]})).await;
+        assert_eq!(organized, vec![fair]);
+    })
+    .await;
+}
+
+/// watch.md D975: the org's own feed is read from its host, each item kept
+/// once and linked to its source, so to the company the source belongs to.
+#[tokio::test]
+#[serial]
+async fn a_feed_of_the_org_becomes_news_items_of_its_company() {
+    with_app(|server, env| async move {
+        use axum::routing::get;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "watch").await;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let rss = include_str!("../packs/watch/fixtures/rss.xml");
+        let app = axum::Router::new().route("/rss.xml", get(move || async move { rss }));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        pnex_backend::services::pipeline_engine::store::route_for_tests("news.example.org", &base);
+
+        let (_, acme) = object(&server, &env.alice, org, "organization", "ACME", json!({})).await;
+        let acme = acme["id"].as_str().unwrap().to_string();
+        let (st, feed) = object(&server, &env.alice, org, "news_source", "ACME newsroom",
+            json!({"url": "https://news.example.org/rss.xml", "format": "feed"})).await;
+        assert_eq!(st, 201, "{feed}");
+        let link = json!({"link_type": "source_of", "source_id": feed["id"], "target_id": acme, "attributes": {}});
+        let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(link)).await;
+        assert_eq!(st, 201, "{r}");
+
+        let (id, _) = import_named(&server, &env.alice, org, "News feeds (RSS, Atom)").await;
+        for _ in 0..2 {
+            let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
+            assert_eq!(st, 202, "{r}");
+            let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 120).await;
+            assert_eq!(r["run"]["state"], "applied", "{r}");
+        }
+        let (_, q) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({
+            "type_key": "organization", "ids": [acme],
+            "traverse": [{"link_type": "source_of", "direction": "in"}, {"link_type": "from_source", "direction": "in"}],
+            "order_by": "date", "descending": true}))).await;
+        assert_eq!(q["count"], 2, "two items, twice the run: {q}");
+        let first = &q["rows"][0]["object"];
+        assert_eq!(first["title"], "ACME opens a plant", "{q}");
+        assert_eq!(first["properties"]["date"], "2026-11-10", "{q}");
+        assert_eq!(first["properties"]["summary"], "A new site in Lyon.", "{q}");
+        assert_eq!(first["properties"]["state"], "to_validate", "{q}");
     })
     .await;
 }
@@ -3233,7 +3344,7 @@ async fn upgrading_the_layer_on_an_older_base() {
         }
         let (_, packs) = call(&server, "GET", "/api/v1/ontology/packs", &env.alice, org, None).await;
         let stale: Vec<&Value> = packs["results"].as_array().unwrap().iter()
-            .filter(|p| p["installed_version"] == "1.0.0").collect();
+            .filter(|p| !p["installed_version"].is_null() && p["installed_version"] != p["version"]).collect();
         assert!(stale.is_empty(), "dependencies upgraded too: {stale:?}");
         // The item is now a key: a second company on it is refused.
         let (st, _) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org,

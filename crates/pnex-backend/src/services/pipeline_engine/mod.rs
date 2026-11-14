@@ -201,7 +201,7 @@ pub struct Inputs {
 
 /// The settings and objects a document reads.
 pub fn wanted(doc: &Document) -> (Vec<String>, Vec<pnex_core::pipeline::doc::ObjectsAxis>) {
-    let (mut settings, mut objects) = (doc.requires.clone(), Vec::new());
+    let (mut settings, mut objects) = (doc.requires.clone(), doc.object_hosts.clone());
     for step in &doc.steps {
         match step {
             Step::Enumerate(e) => {
@@ -455,17 +455,56 @@ pub struct Exec<'a, T, S, Q> {
 }
 
 impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
+    /// Hosts of the addresses the org's objects hold (`object_hosts`, D975).
+    fn object_hosts(&self) -> Vec<String> {
+        self.doc
+            .object_hosts
+            .iter()
+            .filter_map(|a| self.inputs.objects.get(&a.key()))
+            .flatten()
+            .filter_map(|u| {
+                Some(
+                    reqwest::Url::parse(u)
+                        .ok()?
+                        .host_str()?
+                        .to_ascii_lowercase(),
+                )
+            })
+            .collect()
+    }
+
     fn hosts_allow(&self, url: &reqwest::Url) -> Result<(), Failure> {
+        self.host_in(url, true)
+    }
+
+    /// `with_objects`: the org's object hosts count too; never for a request
+    /// carrying a secret.
+    fn host_in(&self, url: &reqwest::Url, with_objects: bool) -> Result<(), Failure> {
         let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
         let declared = self
             .doc
             .hosts
             .iter()
             .any(|h| h.trim().eq_ignore_ascii_case(&host));
-        if !matches!(url.scheme(), "http" | "https") || !declared {
+        let of_objects = !declared && with_objects && self.object_hosts().contains(&host);
+        if !matches!(url.scheme(), "http" | "https") || !(declared || of_objects) {
             return Err(fail("host_not_declared", json!({ "host": host })));
         }
+        // An org typed this host: an IP literal skips the guarded resolver (R8).
+        if let Some(code) = of_objects
+            .then(|| pnex_core::egress::check_url(url))
+            .flatten()
+        {
+            return Err(fail(code, json!({ "host": host })));
+        }
         Ok(())
+    }
+
+    /// The document's hosts and the org's object hosts (streamed redirects).
+    fn all_hosts(&self) -> Vec<String> {
+        let mut hosts = self.doc.hosts.clone();
+        hosts.extend(self.object_hosts());
+        hosts
     }
 
     async fn fetch(&mut self, f: &Fetch, input: Vec<Row>) -> Result<Vec<Row>, Failure> {
@@ -521,7 +560,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
         let (user, password) = (secret(&t.user)?, secret(&t.password)?);
         let url = reqwest::Url::parse(&t.url)
             .map_err(|_| fail("invalid_value", json!({ "name": "token.url" })))?;
-        self.hosts_allow(&url)?;
+        self.host_in(&url, false)?;
         let mut fields: Vec<(String, String)> =
             vec![("username".into(), user), ("password".into(), password)];
         fields.extend(t.fields.iter().map(|(k, v)| (k.clone(), v.clone())));
@@ -617,7 +656,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     every_ms: every,
                     max_bytes: max,
                     headers: headers.clone(),
-                    hosts: self.doc.hosts.clone(),
+                    hosts: self.all_hosts(),
                     ..Default::default()
                 };
                 pumped = self.transport.stream(url, &req, &tx).await;
@@ -690,6 +729,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
             ..Default::default()
         };
         if let Some(sec) = &f.secret {
+            self.host_in(&url, false)?;
             let value = match &sec.token {
                 Some(t) => self.token(t, every).await?,
                 None => self

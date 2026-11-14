@@ -1,0 +1,129 @@
+# Reference pack "Watch": news about the objects an org follows, the sources
+# it reads them from, and shows with their exhibitors. Neutral on purpose:
+# no topic, sector, source or show ships here. What counts as news, which
+# companies are watched and the summary language belong to the org's flows
+# (an LLM or regex node), the sources and shows are the org's objects.
+# A news item is found again by `ref` (its address, or the key a pipeline
+# gives it): a second run never makes a second item. `state` is the human
+# decision: a flow may dismiss an item about something else, only a person
+# retains one.
+# An item of a company's own source reaches the company through the source
+# (`from_source` then `source_of`); an item found elsewhere is linked by a
+# flow (`item_about`, proposed when the match is uncertain).
+key: watch
+name: Watch
+names: {fr: "Veille"}
+version: "1.0.0"
+requires: [investigation]
+description: "News items about the objects followed, the sources they come from, and shows with their organizers and exhibitors. Questions: what is new about this company? Which shows are coming, and who exhibits?"
+descriptions: {fr: "Les actualités des objets suivis, les sources d'où elles viennent, et les salons avec leurs organisateurs et leurs exposants. Questions : quoi de neuf sur cette société ? Quels salons arrivent, et qui expose ?"}
+types:
+  - key: news_item
+    name: News item
+    names: {fr: "Actualité"}
+    icon: newspaper
+    properties:
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 2048, required: true, unique: true }
+      - { key: summary, name: Summary, names: {fr: "Résumé"}, kind: text, max_len: 2000 }
+      - { key: excerpt, name: Quoted excerpt, names: {fr: "Extrait cité"}, kind: text, max_len: 4000 }
+      - { key: date, name: Date, names: {fr: "Date"}, kind: date, indexed: true }
+      - { key: source_url, name: Source, names: {fr: "Source"}, kind: url }
+      - { key: lang, name: Language of the source, names: {fr: "Langue de la source"}, kind: text, max_len: 8 }
+      - { key: credit, name: Collected through, names: {fr: "Collecté via"}, kind: text, max_len: 255 }
+      - { key: tone, name: Tone, names: {fr: "Tonalité"}, kind: number }
+      - { key: topic, name: Topic, names: {fr: "Thème"}, kind: text, max_len: 64, indexed: true }
+      - key: state
+        name: State
+        names: {fr: "État"}
+        kind: enum
+        values: [to_validate, retained, dismissed]
+        labels: {to_validate: {fr: "À valider", en: "To validate"}, retained: {fr: "Retenue", en: "Kept"}, dismissed: {fr: "Écartée", en: "Dismissed"}}
+        colors: { to_validate: amber, retained: green, dismissed: gray }
+        indexed: true
+  - key: news_source
+    name: News source
+    names: {fr: "Source d'actualités"}
+    icon: globe
+    properties:
+      - { key: url, name: Address, names: {fr: "Adresse"}, kind: text, max_len: 2048, required: true, unique: true }
+      - key: format
+        name: Format
+        names: {fr: "Format"}
+        kind: enum
+        values: [feed, page]
+        labels: {feed: {fr: "Flux RSS ou Atom", en: "RSS or Atom feed"}, page: {fr: "Page", en: "Page"}}
+        indexed: true
+  - key: show
+    name: Show
+    names: {fr: "Salon"}
+    icon: landmark
+    properties:
+      - { key: start_on, name: Starts on, names: {fr: "Début"}, kind: date, indexed: true }
+      - { key: end_on, name: Ends on, names: {fr: "Fin"}, kind: date }
+      - { key: place, name: Venue, names: {fr: "Lieu"}, kind: text, max_len: 255 }
+      - { key: city, name: City, names: {fr: "Ville"}, kind: text, max_len: 255, indexed: true }
+      - { key: country, name: Country, names: {fr: "Pays"}, kind: text, max_len: 2, indexed: true }
+      - { key: url, name: Website, names: {fr: "Site"}, kind: url }
+link_types:
+  - key: item_about
+    name: is about
+    names: {fr: "porte sur"}
+    inverse_name: has as news
+    inverse_names: {fr: "a pour actualité"}
+    from_types: [news_item]
+    to_types: "*"
+  - key: from_source
+    name: comes from
+    names: {fr: "provient de"}
+    inverse_name: brought
+    inverse_names: {fr: "a apporté"}
+    from_types: [news_item]
+    to_types: [news_source]
+    one_target: true
+  - key: source_of
+    name: is a source of
+    names: {fr: "est une source de"}
+    inverse_name: has as source
+    inverse_names: {fr: "a pour source"}
+    from_types: [news_source]
+    to_types: [organization]
+  - key: exhibits_at
+    name: exhibits at
+    names: {fr: "expose à"}
+    inverse_name: has as exhibitor
+    inverse_names: {fr: "a pour exposant"}
+    from_types: [organization]
+    to_types: [show]
+    attributes:
+      - { key: stand, name: Stand, names: {fr: "Stand"}, kind: text, max_len: 64 }
+  - key: organized_by
+    name: is organized by
+    names: {fr: "est organisé par"}
+    inverse_name: organizes
+    inverse_names: {fr: "organise"}
+    from_types: [show]
+    to_types: [organization]
+imports:
+  - name: News feeds (RSS, Atom)
+    source: file
+    mapping:
+      key: watch_rss
+      pipeline: watch/rss
+      name: News feeds
+      names: {fr: "Flux d'actualités (RSS, Atom)"}
+      description: The items of the org's news sources of format feed, each linked to its source. A second run never makes a second item, and never changes the state a person set.
+      objects:
+        - as: item
+          type: news_item
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: url
+            summary: summary
+            date: date
+            source_url: url
+            state: { value: to_validate }
+        - { as: source, type: news_source, key: url, create: false, missing: skip, properties: { url: feed } }
+      links:
+        - { type: from_source, from: item, to: source }

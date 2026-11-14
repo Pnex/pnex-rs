@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>ACME newsroom</title>
+    <link>https://news.example.org/</link>
+    <item>
+      <title>ACME opens a plant</title>
+      <link>https://news.example.org/plant</link>
+      <description><![CDATA[<p>A new site in <b>Lyon</b>.</p>]]></description>
+      <pubDate>Tue, 10 Nov 2026 08:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>ACME &amp; partners hire</title>
+      <link>https://news.example.org/hiring</link>
+      <pubDate>Wed, 4 Nov 2026 09:30:00 +0100</pubDate>
+    </item>
+  </channel>
+</rss>

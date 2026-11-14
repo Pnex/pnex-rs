@@ -162,7 +162,7 @@ async fn an_opportunity_lives_in_the_account_graph() {
         );
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND name LIKE 'CRM · %' AND status = 'draft'")).await,
-            15
+            14
         );
 
         let acme = object(&server, &env.alice, org, "organization", "Acme", json!({"account_status": "prospect"})).await;

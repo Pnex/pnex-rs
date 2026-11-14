@@ -35,6 +35,11 @@ pub struct Document {
     /// Hosts the pipeline may call (D942); every fetched address must carry one.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
+    /// Addresses held by the org's own objects (`news_source.url`) whose
+    /// hosts may be fetched too (D975). Never sent a secret: a vault key
+    /// goes to `hosts` only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_hosts: Vec<ObjectsAxis>,
     pub steps: Vec<Step>,
     /// When it runs on its own: one run per this duration (`5m`, `1h`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -905,6 +910,20 @@ impl Document {
             })
         {
             bad("requires".into(), "invalid");
+        }
+        if self.object_hosts.len() > 2
+            || self.object_hosts.iter().any(|o| {
+                !valid_name(&o.type_key)
+                    || !valid_name(&o.property)
+                    || o.only.len() > 4
+                    || o.only.iter().any(|(p, v)| !valid_name(p) || v.is_empty())
+                    || !o.linked.is_empty()
+                    || o.codes.is_some()
+                    || o.title.is_some()
+                    || !o.columns.is_empty()
+            })
+        {
+            bad("object_hosts".into(), "invalid");
         }
         if self.steps.is_empty() {
             bad("steps".into(), "required");
