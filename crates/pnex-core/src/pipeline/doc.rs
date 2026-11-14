@@ -1238,7 +1238,8 @@ fn step_violations(
                 }
             }
             for (j, c) in r.columns.iter().enumerate() {
-                if c.range.is_some_and(|[lo, hi]| lo.partial_cmp(&hi).is_none_or(|o| o.is_gt()))
+                if c.range
+                    .is_some_and(|[lo, hi]| lo.partial_cmp(&hi).is_none_or(|o| o.is_gt()))
                     || (c.range.is_some()
                         && !matches!(
                             c.kind,
