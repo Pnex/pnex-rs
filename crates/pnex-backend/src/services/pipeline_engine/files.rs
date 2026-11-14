@@ -426,15 +426,19 @@ mod tests {
                 .unwrap();
             w.write_all(body.as_bytes()).unwrap();
         }
-        let mut row = Row::default();
-        row.file = Some(Arc::new(Blob::Mem(w.finish().unwrap().into_inner())));
+        let row = Row {
+            file: Some(Arc::new(Blob::Mem(w.finish().unwrap().into_inner()))),
+            ..Default::default()
+        };
         let u: Unpack =
             serde_json::from_value(json!({"as": "f", "from": "z", "entries": ["*.csv"]})).unwrap();
         let rows = unpack(&u, &[row]).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].text("entry").as_deref(), Some("a.csv"));
-        let mut junk = Row::default();
-        junk.file = Some(Arc::new(Blob::Mem(b"not an archive".to_vec())));
+        let junk = Row {
+            file: Some(Arc::new(Blob::Mem(b"not an archive".to_vec()))),
+            ..Default::default()
+        };
         assert_eq!(unpack(&u, &[junk]).unwrap_err().code, "unreadable");
     }
 }

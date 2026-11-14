@@ -1035,8 +1035,10 @@ mod tests {
             "columns": [{"name": "v", "type": "decimal", "scale": 2}]
         }))
         .unwrap();
-        let mut row = Row::default();
-        row.file = Some(Arc::new(Blob::Mem(b"v\n1.5\nabc\n".to_vec())));
+        let row = Row {
+            file: Some(Arc::new(Blob::Mem(b"v\n1.5\nabc\n".to_vec()))),
+            ..Default::default()
+        };
         let e = read(&r, &[row]).unwrap_err();
         assert_eq!((e.code, e.args["line"].as_u64()), ("unreadable", Some(3)));
     }
@@ -1062,10 +1064,9 @@ mod tests {
             ]
         }))
         .unwrap();
-        let file = |text: &str| {
-            let mut row = Row::default();
-            row.file = Some(Arc::new(Blob::Mem(text.as_bytes().to_vec())));
-            row
+        let file = |text: &str| Row {
+            file: Some(Arc::new(Blob::Mem(text.as_bytes().to_vec()))),
+            ..Default::default()
         };
         let rec = rows_of(
             &read(

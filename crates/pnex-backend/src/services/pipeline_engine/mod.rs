@@ -71,6 +71,10 @@ impl Table {
             Table::Batches(b) => b.iter().map(|b| b.rows as usize).sum(),
         }
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Chunks of a streamed body; `Err` tells the reader the stream was cut.
@@ -998,7 +1002,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     let file = match t {
                         // An empty table keeps the columns its step declares:
                         // `WHERE NOT EXISTS (SELECT 1 FROM it)` still reads.
-                        _ if t.len() == 0 => match self.empty_of(name)? {
+                        _ if t.is_empty() => match self.empty_of(name)? {
                             Some(f) => f,
                             None => {
                                 unknown_empty = true;
@@ -1034,7 +1038,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     })?;
                 let input = match tables.get(&c.from) {
                     None => return Err(fail("unknown_table", json!({ "table": c.from }))),
-                    Some(t) if t.len() == 0 => None,
+                    Some(t) if t.is_empty() => None,
                     Some(Table::Batches(files)) if files.len() == 1 => Some(files[0].clone()),
                     Some(Table::Batches(files)) => {
                         let files = files.clone();
