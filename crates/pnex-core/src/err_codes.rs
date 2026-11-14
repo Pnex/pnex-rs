@@ -267,6 +267,9 @@ pub const GEO_NOT_CONFIGURED: &str = "geo-not-configured";
 pub const GEO_RATE_LIMITED: &str = "geo-rate-limited";
 /// The provider failed or answered unexpectedly (detail verbatim).
 pub const GEO_PROVIDER_FAILED: &str = "geo-provider-failed";
+// Geo layers (geo-layers.md, phase A).
+pub const GEO_LAYER_NOT_FOUND: &str = "geo-layer-not-found";
+pub const GEO_LAYER_NAME_TAKEN: &str = "geo-layer-name-taken";
 pub const NOTIFY_CHANNEL_NAME_CONFLICT: &str = "notify-channel-name-conflict";
 pub const NOTIFY_TEMPLATE_NAME_CONFLICT: &str = "notify-template-name-conflict";
 pub const NOTIFY_TEST_BODY_INVALID: &str = "notify-test-body-invalid";
@@ -1258,6 +1261,14 @@ pub const EXT_PEOPLE_DAILY_CAP: &str = "ext-people-daily-cap";
 pub const EXT_MATCH_DAILY_CAP: &str = "ext-match-daily-cap";
 /// The person works for no company: nothing to match them with (D788).
 pub const EXT_PERSON_WITHOUT_COMPANY: &str = "ext-person-without-company";
+/// Connections of a contact (D976, D977): the caller is not connected to them.
+pub const EXT_NOT_CONNECTED: &str = "ext-not-connected";
+/// The person has no LinkedIn profile address to explore.
+pub const EXT_PERSON_WITHOUT_PROFILE: &str = "ext-person-without-profile";
+/// Daily explorations of connections reached (args: `max`).
+pub const EXT_CONNECTIONS_DAILY_CAP: &str = "ext-connections-daily-cap";
+/// The contact's connections list is not offered (hidden by them).
+pub const EXT_CONNECTIONS_HIDDEN: &str = "ext-connections-hidden";
 /// The person objected to prospecting: no capture, no re-creation (D341).
 pub const PROSPECTING_OPPOSED: &str = "prospecting-opposed";
 /// The object was erased: a shell, never edited nor linked again (D446).
@@ -1313,6 +1324,10 @@ pub const ALL: &[&str] = &[
     EXT_PEOPLE_DAILY_CAP,
     EXT_MATCH_DAILY_CAP,
     EXT_PERSON_WITHOUT_COMPANY,
+    EXT_NOT_CONNECTED,
+    EXT_PERSON_WITHOUT_PROFILE,
+    EXT_CONNECTIONS_DAILY_CAP,
+    EXT_CONNECTIONS_HIDDEN,
     PROSPECTING_OPPOSED,
     ONTOLOGY_ERASED,
     ONTOLOGY_AGGREGATE_TIMEOUT,
@@ -1715,6 +1730,8 @@ pub const ALL: &[&str] = &[
     GEO_NOT_CONFIGURED,
     GEO_RATE_LIMITED,
     GEO_PROVIDER_FAILED,
+    GEO_LAYER_NOT_FOUND,
+    GEO_LAYER_NAME_TAKEN,
     NOTIFY_CHANNEL_NAME_CONFLICT,
     NOTIFY_TEMPLATE_NAME_CONFLICT,
     NOTIFY_TEST_BODY_INVALID,

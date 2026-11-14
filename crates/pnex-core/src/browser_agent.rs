@@ -546,6 +546,128 @@ pub fn people_target(canonical: &str) -> String {
     format!("linkedin:people:{canonical}")
 }
 
+/// Most connections explorations per org over 24 h (D977). Compiled: an
+/// org can only ask fewer.
+pub const CONNECTIONS_CAPTURES_PER_DAY: i64 = 10;
+
+/// Where the caller's own network account stands with a person (D977):
+/// declared by the user on the person's page, set to `connected`… by them
+/// only. A connections list is explored only for `connected`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionState {
+    #[default]
+    None,
+    InvitationSent,
+    Connected,
+}
+
+impl ConnectionState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::InvitationSent => "invitation_sent",
+            Self::Connected => "connected",
+        }
+    }
+
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "invitation_sent" => Self::InvitationSent,
+            "connected" => Self::Connected,
+            _ => Self::None,
+        }
+    }
+}
+
+/// The caller's relationship with a person on LinkedIn (D977).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PersonConnection {
+    pub state: ConnectionState,
+    /// When the state was last set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub since: Option<String>,
+    /// Last exploration of the person's connections by the caller.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub explored_at: Option<String>,
+}
+
+/// Body of `PUT …/people/{id}/connection`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PersonConnectionInput {
+    pub state: ConnectionState,
+}
+
+/// A result of a connections list kept for the org (D976): its card names
+/// a current employer in the org's chosen organizations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeptConnection {
+    /// Canonical profile address.
+    pub url: String,
+    pub name: String,
+    /// The card line naming the employer (headline), at most 255 chars.
+    pub headline: String,
+    /// Index of the organization matched in the titles given.
+    pub organization: usize,
+}
+
+/// Splits the cards of a connections list into the people whose card names
+/// one of `organizations` (folded whole words, the longest title wins) and
+/// the count of the others, which are never kept (D976). Cards without a
+/// profile link, or seen twice, are skipped.
+pub fn keep_connections(
+    cards: &[std::collections::BTreeMap<String, String>],
+    organizations: &[String],
+) -> (Vec<KeptConnection>, usize) {
+    let padded = |t: &str| format!(" {} ", crate::fold::fold_words(t).join(" "));
+    let orgs: Vec<(usize, String)> = organizations
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (i, padded(t)))
+        .filter(|(_, t)| t.trim().chars().count() >= 3)
+        .collect();
+    let mut kept: Vec<KeptConnection> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut dropped = 0;
+    for c in cards {
+        let link = c.get("link").map(String::as_str).unwrap_or_default();
+        let Ok(("linkedin", url)) = profile_of(link) else {
+            continue;
+        };
+        if !seen.insert(url.clone()) {
+            continue;
+        }
+        let text = c.get("card").map(String::as_str).unwrap_or_default();
+        let lines: Vec<&str> = text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        let found = lines.iter().skip(1).find_map(|l| {
+            let line = padded(l);
+            orgs.iter()
+                .filter(|(_, o)| line.contains(o.as_str()))
+                .max_by_key(|(_, o)| o.len())
+                .map(|(i, _)| (*i, l.chars().take(255).collect::<String>()))
+        });
+        match (lines.first(), found) {
+            (Some(name), Some((organization, headline))) => kept.push(KeptConnection {
+                url,
+                name: name.chars().take(255).collect(),
+                headline,
+                organization,
+            }),
+            _ => dropped += 1,
+        }
+    }
+    (kept, dropped)
+}
+
 /// A profile capture asked for a person, with where it stands (D333).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -1564,6 +1686,57 @@ pub struct SocialVideo {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn connections_are_kept_only_at_the_chosen_organizations() {
+        let card = |text: &str, link: &str| {
+            std::collections::BTreeMap::from([
+                ("card".to_string(), text.to_string()),
+                ("link".to_string(), link.to_string()),
+            ])
+        };
+        let cards = vec![
+            card(
+                "Jeanne Martin\n• 1er\nDirectrice d'usine chez Acme Industrie\nLyon",
+                "https://www.linkedin.com/in/jmartin/?mini=1",
+            ),
+            card(
+                "Paul Durand\nIngénieur chez Other Co",
+                "https://www.linkedin.com/in/pdurand",
+            ),
+            card(
+                "Jeanne Martin\nDirectrice chez Acme Industrie",
+                "https://www.linkedin.com/in/jmartin",
+            ),
+            card(
+                "Acme Industrie\nCompany page",
+                "https://www.linkedin.com/company/acme",
+            ),
+            card(
+                "Lea Roy\nAcheteuse — ACME INDUSTRIÉ Groupe",
+                "https://www.linkedin.com/in/lroy",
+            ),
+            card(
+                "Bob\nWorks at Acmeindustrie",
+                "https://www.linkedin.com/in/bob",
+            ),
+        ];
+        let orgs = vec![
+            "Acme".to_string(),
+            "Acme Industrie".to_string(),
+            "X".to_string(),
+        ];
+        let (kept, dropped) = keep_connections(&cards, &orgs);
+        assert_eq!(kept.len(), 2, "{kept:?}");
+        assert_eq!(kept[0].url, "https://www.linkedin.com/in/jmartin");
+        assert_eq!(kept[0].name, "Jeanne Martin");
+        assert_eq!(kept[0].organization, 1, "longest title wins");
+        assert_eq!(kept[0].headline, "Directrice d'usine chez Acme Industrie");
+        assert_eq!(kept[1].name, "Lea Roy");
+        // Whole words only: Bob's employer is another word, Paul another firm.
+        assert_eq!(dropped, 2, "counted, not kept");
+        assert!(keep_connections(&cards, &[]).0.is_empty());
+    }
     use super::*;
 
     #[test]

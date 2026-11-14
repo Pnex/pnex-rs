@@ -1,6 +1,6 @@
 # Couches géographiques — PostGIS natif, sans GeoServer (2026-10-10)
 
-> PRD — **Proposé**. Ajoute à la base map (`viz-bases.md`) des **couches
+> PRD — **Phase F livrée (2026-10-10), phase A livrée (2026-11-14)**, B–E proposées. Ajoute à la base map (`viz-bases.md`) des **couches
 > géographiques complexes** (vecteur importé depuis des fichiers, stylées,
 > tuilées, cachées, seedables), servies **en Rust dans Loco**, sans GeoServer.
 > **Martin reste en place pour le fond de carte** (PMTiles Protomaps) : ce
@@ -368,7 +368,7 @@ fonctionne normalement.
 
 | Phase | Contenu | Fini quand |
 |---|---|---|
-| **A — Socle** | Image PostGIS multi-arch, migration, `geo_layers`/`geo_features`, endpoint tuiles sans cache, layer GeoJSON importée en dur | Une layer GeoJSON s'affiche sur /map, web + Pi |
+| **A — Socle** ✅ 2026-11-14 | Image PostGIS multi-arch, migration, `geo_layers`/`geo_features`, endpoint tuiles sans cache, layer GeoJSON importée en dur | Une layer GeoJSON s'affiche sur /map, web + Pi |
 | **B — Import** | Kinds `vector`/`raster`, job `import_geo`, sniff, aperçu, mapping, staging, publication ; GeoJSON, Shapefile, GeoPackage | Un Shapefile uploadé devient une layer publiée depuis l'UI, sans coupure |
 | **C — Cache & seed** | Cache Valkey, anti-stampede, seed PMTiles, GC des dérivés | Republier ne laisse aucun dérivé orphelin (S3, Valkey, staging) |
 | **D — Upsert** | Case « Vider avant import », clé d'identité, diff, `_op = delete`, invalidation ciblée, set dirty | Un fichier partiel met à jour 3 features sans toucher le reste du cache |
@@ -414,3 +414,40 @@ Corrections apportées à la v0.1 à l'intégration :
 - **Image Postgres** (2026-10-10, `ontology.md` annexe A3) : la 0.2.0
   reste sur PostgreSQL 18 (SQL/PGQ absent de 19) ; l'image étendue de L1
   se construit sur 18. La phase F n'en dépend pas.
+
+## 15. Phase A livrée (2026-11-14)
+
+Avancée avant la 0.2.0 sur décision de Shan, pour le marché du travail
+territorial (`labor-market.md`, M6). Ce qui existe :
+
+- **Image** : `postgis/postgis:18-3.6-alpine` en dev (`compose.yaml`) et en
+  CI (même base que `postgres:18-alpine` : le volume local reste lisible ;
+  amd64 seulement). En cluster : image CNPG `ghcr.io/cloudnative-pg/postgis:18-3.6`
+  (multi-arch, arm64 compris) et `CREATE EXTENSION postgis` dans le
+  `postInitApplicationSQL` du chart `pnex-deploy` (l'utilisateur applicatif
+  n'est pas superuser ; la migration fait `IF NOT EXISTS`). Sur une base
+  existante, l'extension se crée une fois à la main en superuser.
+  **À poser dans `pnex-deploy` avant de déployer cette version.**
+- **Migration** `m20261114_000151_geo_layers` : sous-ensemble de §5 utile à
+  la phase A — `geo_layers` (sans `identity_key`, `cache_policy`,
+  `attributes_schema`, `seed`, `source_media_version_id` : phases B–D) et
+  `geo_features` (sans `content_hash`, `source_media_version_id` : phases
+  B et D). `extent` en `geometry(Geometry, 4326)` : l'emprise d'une couche
+  d'un seul point est un point.
+- **Routes** (`/api/v1/geo/layers`) : liste (`geo:read`), création depuis
+  un FeatureCollection GeoJSON (`geo:write`, 32 Mo max, une seule famille
+  de géométrie, `ST_MakeValid`, forme dégénérée refusée), suppression
+  (`geo:delete`, exclue du MCP), tuile `…/tiles/{generation}/{z}/{x}/{y}`
+  (`geo:read`, MVT, couche source `features`, attributs = `props`, plafond
+  20 000 features par tuile, `immutable` si la génération est la courante).
+- **Service** `services::geo::layers::replace_features` : remplacement
+  complet + génération + 1, prêt pour l'écriture par pipeline (M5).
+- **Carte** : `pnexMap.setLayers` dessine les couches sous les zones, les
+  traces et les marqueurs ; `transformRequest` ajoute Bearer + `X-Org-Id`
+  aux seules URLs de tuiles, jeton rafraîchi à chaque déplacement de la
+  carte. Style vide = style par défaut de la famille. Une case par couche
+  dans le panneau de /map (« Couches géographiques », lexique
+  `design-system.md` §7).
+- **Pas encore** : cache Valkey (C), import de fichier (B), éditeur de
+  style (E), mesure sur Pi, simplification par zoom au-delà de la grille
+  MVT.

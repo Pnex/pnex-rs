@@ -368,6 +368,13 @@ pub fn OntologyObject(id: String) -> Element {
                             reload: captures_reload,
                         }
                     }
+                    if o.type_key == pnex_core::voice_id::PERSON_TYPE {
+                        super::profile_capture::PersonConnection {
+                            key: "c{o.id}",
+                            person_id: o.id.clone(),
+                            can_capture: can_capture && !closed,
+                        }
+                    }
                     // D218: labels stay discreet, after type and properties
                     // (the labels API keys an object by its type and native id).
                     div { class: "mt-6",

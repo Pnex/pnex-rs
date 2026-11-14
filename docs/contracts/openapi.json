@@ -6419,6 +6419,15 @@
         ],
         "type": "object"
       },
+      "ConnectionState": {
+        "description": "Where the caller's own network account stands with a person (D977):\ndeclared by the user on the person's page, set to `connected`… by them\nonly. A connections list is explored only for `connected`.",
+        "enum": [
+          "none",
+          "invitation_sent",
+          "connected"
+        ],
+        "type": "string"
+      },
       "Connector": {
         "description": "A connector as read: never its password (R4, R16).",
         "properties": {
@@ -11592,6 +11601,122 @@
           "matrix"
         ],
         "type": "string"
+      },
+      "GeoLayer": {
+        "description": "A served geographic layer (`GET /api/v1/geo/layers`, geo-layers.md L4).",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extent": {
+            "description": "`[west, south, east, north]` of the published features.",
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "feature_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "generation": {
+            "description": "Bumped by every full replacement; part of the tile URL.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "geometry_type": {
+            "description": "`point`, `line` or `polygon`: one geometry family per layer.",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "style": {
+            "description": "MapLibre style layers without `id`/`source` (the map sets them); an\nempty list draws the default style of the geometry family.",
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "zoom_max": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "zoom_min": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "geometry_type",
+          "generation",
+          "zoom_min",
+          "zoom_max",
+          "style",
+          "feature_count",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "GeoLayerInput": {
+        "description": "Create body: the layer and its whole content as a GeoJSON\nFeatureCollection (phase A; file import comes with phase B).",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "features": {
+            "description": "GeoJSON FeatureCollection in WGS 84; a feature `id` becomes its key.",
+            "type": "object"
+          },
+          "name": {
+            "type": "string"
+          },
+          "style": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "zoom_max": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "zoom_min": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "features"
+        ],
+        "type": "object"
       },
       "GeoProvider": {
         "description": "Read model of a provider (`GET /api/v1/geo/providers`). The secret is a\nvault reference, never a value (R4, R16).",
@@ -21717,6 +21842,42 @@
         ],
         "type": "object"
       },
+      "Paginated_GeoLayer": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/GeoLayer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_GeoProvider": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -25272,6 +25433,46 @@
         "required": [
           "key",
           "level"
+        ],
+        "type": "object"
+      },
+      "PersonConnection": {
+        "description": "The caller's relationship with a person on LinkedIn (D977).",
+        "properties": {
+          "explored_at": {
+            "description": "Last exploration of the person's connections by the caller.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "since": {
+            "description": "When the state was last set.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ConnectionState"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "PersonConnectionInput": {
+        "description": "Body of `PUT …/people/{id}/connection`.",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ConnectionState"
+          }
+        },
+        "required": [
+          "state"
         ],
         "type": "object"
       },
@@ -59816,6 +60017,358 @@
         ]
       }
     },
+    "/api/v1/extension/people/{id}/connection": {
+      "get": {
+        "description": "Where the caller's own LinkedIn account stands with this person (D977): `none`, `invitation_sent` or `connected`, since when, and when the caller last explored their connections. Each user has their own. Any member.",
+        "operationId": "extension_person_connection_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonConnection"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no such person"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read the caller's LinkedIn relationship with a person",
+        "tags": [
+          "extension"
+        ],
+        "x-pnex-as-of": "current_only"
+      },
+      "put": {
+        "description": "Sets where the caller's own LinkedIn account stands with this person (D977): `none`, `invitation_sent` or `connected`. Only `connected` allows exploring their connections. Requires owner, admin or member role.",
+        "operationId": "extension_person_connection_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonConnectionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonConnection"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no such person"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Declare the caller's LinkedIn relationship with a person",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/people/{id}/connections-captures": {
+      "get": {
+        "description": "The caller's latest explorations of this person's LinkedIn connections (D976), newest first, with where each stands: waiting for a browser (`state_code` `ext-no-agent`), list hidden (`ext-connections-hidden`), captured or stopped. Paginated (`limit`/`offset`). Any member.",
+        "operationId": "extension_connections_captures_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ProfileCapture"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no such person"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the caller's explorations of a person's connections",
+        "tags": [
+          "extension"
+        ],
+        "x-pnex-as-of": "current_only"
+      },
+      "post": {
+        "description": "Asks one exploration of this person's LinkedIn connections (D976), only when the caller declared them connected: the caller's browser agent opens their profile in the caller's signed-in session, follows its connections link and reads the first result pages (a default navigation rule, D780). Only the people whose card names an organization carrying the label set in the prospecting pack (`connections_keep_label`) are kept: each becomes a person linked by `knows` from this contact (`source` linkedin_connections, `retrieved_on`, `explored_by`) and is proposed as working at that organization, to validate. Everyone else is counted, never written; the raw results are erased. Refused for someone who objected. At most 10 explorations per day. An open exploration of the same person is returned as is. Requires owner, admin or member role.",
+        "operationId": "extension_connections_captures_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileCapture"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no such person"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ext-not-connected`: the caller is not connected with the person; `ext-person-without-profile`: no LinkedIn profile address; `prospecting-opposed`: the person objected; `ext-connections-daily-cap` (`args.max`): daily explorations reached; `site-recipe-no-agent`: no browser agent paired; `site-recipe-daily-cap` (`args.max`): runs on browser agents reached"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Explore a contact's LinkedIn connections",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
     "/api/v1/extension/people/{id}/matches": {
       "get": {
         "description": "The latest searches of this person's network profile (D788), newest first: the queries typed in the network's search bar, the candidates found with their score and reasons, and where the match stands (searching, matched, proposed in To validate, not found, stopped). Paginated (`limit`/`offset`). Any member.",
@@ -64881,6 +65434,377 @@
           }
         ],
         "summary": "Geocode an address",
+        "tags": [
+          "geo"
+        ],
+        "x-pnex-as-of": "current_only"
+      }
+    },
+    "/api/v1/geo/layers": {
+      "get": {
+        "description": "Every vector layer of the org with its generation (part of the tile URL), zoom range, MapLibre style and extent. Paginated (`limit`/`offset`). Any member.",
+        "operationId": "geo_layers_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_GeoLayer"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `geo:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the geographic layers of the organisation",
+        "tags": [
+          "geo"
+        ],
+        "x-pnex-as-of": "current_only"
+      },
+      "post": {
+        "description": "Creates a vector layer and its whole content from a GeoJSON FeatureCollection in WGS 84, all features of one geometry family (points, lines or polygons). Geometries are made valid server-side. Owner or admin only.",
+        "operationId": "geo_layers_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeoLayerInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeoLayer"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields` maps the field to a token (`features`: `invalid`, `empty`, `mixed_geometry`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `geo:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`geo-layer-name-taken`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a geographic layer from GeoJSON",
+        "tags": [
+          "geo"
+        ]
+      }
+    },
+    "/api/v1/geo/layers/{id}": {
+      "delete": {
+        "description": "Deletes the layer and all its features. Owner or admin only.",
+        "operationId": "geo_layers_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Geo layer id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `geo:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`geo-layer-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a geographic layer",
+        "tags": [
+          "geo"
+        ]
+      }
+    },
+    "/api/v1/geo/layers/{id}/tiles/{generation}/{z}/{x}/{y}": {
+      "get": {
+        "description": "Mapbox Vector Tile (source layer `features`, feature attributes = properties) of the XYZ tile. Cached as immutable when `generation` is the current one. Any member.",
+        "operationId": "geo_layers_tile",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Geo layer id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Layer generation the map was given",
+            "in": "path",
+            "name": "generation",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Zoom",
+            "in": "path",
+            "name": "z",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Tile column",
+            "in": "path",
+            "name": "x",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Tile row",
+            "in": "path",
+            "name": "y",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.mapbox-vector-tile": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: the tile does not exist (`z`: `invalid`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `geo:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`geo-layer-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "One vector tile of a geographic layer",
         "tags": [
           "geo"
         ],

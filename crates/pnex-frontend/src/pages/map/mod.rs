@@ -132,6 +132,10 @@ pub fn Map() -> Element {
     // Basemaps of the org (geo-layers.md L24–L26) and the one shown.
     let mut basemaps = use_signal(Vec::<pnex_core::geo::Basemap>::new);
     let mut basemap = use_signal(|| None::<uuid::Uuid>);
+    // Geographic layers of the org (geo-layers.md phase A) and the ones
+    // the user switched off on this map.
+    let mut geo_layers = use_signal(Vec::<pnex_core::geo::GeoLayer>::new);
+    let hidden_layers = use_signal(std::collections::HashSet::<uuid::Uuid>::new);
     // Event counter (create/edit) → list refetch.
     let mut reload = use_signal(|| 0u32);
     // Filter change counter → cluster refetch.
@@ -178,6 +182,8 @@ pub fn Map() -> Element {
             };
             let ok = map_viewer::mount(MAP_HOST, &opts).await;
             map_failed.set(!ok);
+            geo_layers.set(crate::api::geo::layers().await.unwrap_or_default());
+            push_layers(geo_layers, hidden_layers).await;
 
             let mut view_seen = 0u64;
             let mut click_seen = 0u64;
@@ -189,6 +195,8 @@ pub fn Map() -> Element {
                 // Viewport (moveend debounced in map.js) → cluster refetch.
                 if let Some(v) = map_viewer::take_viewport(view_seen).await {
                     view_seen = v.seq;
+                    // Tile requests carry the token: hand map.js the current one.
+                    push_layers(geo_layers, hidden_layers).await;
                     current_zoom.set(v.zoom);
                     last_view.set(Some((v.west, v.south, v.east, v.north, v.zoom as i32)));
                     let filters =
@@ -350,6 +358,7 @@ pub fn Map() -> Element {
                                 }
                             }
                         }
+                        GeoLayerToggles { geo_layers, hidden_layers }
                         button {
                             class: "w-full px-3 py-1.5 text-sm text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
                             onclick: move |_| {
@@ -611,4 +620,62 @@ fn switch_basemap(
         };
         map_viewer::mount(MAP_HOST, &opts).await;
     });
+}
+
+/// Sends the layers, their visibility and the tile auth to map.js.
+async fn push_layers(
+    geo_layers: Signal<Vec<pnex_core::geo::GeoLayer>>,
+    hidden: Signal<std::collections::HashSet<uuid::Uuid>>,
+) {
+    use crate::storage::KeyValueStorage;
+    let layers: Vec<serde_json::Value> = geo_layers
+        .peek()
+        .iter()
+        .map(|l| {
+            let mut v = serde_json::to_value(l).unwrap_or_default();
+            v["visible"] = (!hidden.peek().contains(&l.id)).into();
+            v
+        })
+        .collect();
+    let data = serde_json::json!({
+        "base": crate::api::config::api_base(),
+        "org": crate::state::org::current(),
+        "token": crate::storage::local().get(crate::storage::KEY_ACCESS_TOKEN),
+        "layers": layers,
+    });
+    map_viewer::set_layers(MAP_HOST, &data).await;
+}
+
+/// One checkbox per geographic layer of the org (none: nothing shown).
+#[component]
+fn GeoLayerToggles(
+    geo_layers: Signal<Vec<pnex_core::geo::GeoLayer>>,
+    hidden_layers: Signal<std::collections::HashSet<uuid::Uuid>>,
+) -> Element {
+    let layers = geo_layers();
+    if layers.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        fieldset { class: "space-y-1",
+            legend { class: "text-xs font-medium text-gray-500", {t!("geo-layers-title")} }
+            for (id, name) in layers.into_iter().map(|l| (l.id, l.name)) {
+                label {
+                    key: "{id}",
+                    class: "flex items-center gap-2 text-sm text-gray-700",
+                    input {
+                        r#type: "checkbox",
+                        checked: !hidden_layers().contains(&id),
+                        onchange: move |_| {
+                            if !hidden_layers.write().remove(&id) {
+                                hidden_layers.write().insert(id);
+                            }
+                            spawn(push_layers(geo_layers, hidden_layers));
+                        },
+                    }
+                    span { class: "truncate", "{name}" }
+                }
+            }
+        }
+    }
 }

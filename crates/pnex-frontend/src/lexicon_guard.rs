@@ -301,18 +301,19 @@ const RULES: &[Rule] = &[
         allowed_keys: &[],
     },
     // D219: the versioned unit of annotations is a « calque ». Neural
-    // network layers (training help) are not annotations.
+    // network layers (training help) are not annotations; a map's vector
+    // layer is a « couche géographique », the cartography term (geo-layers.md).
     Rule {
         scope: Scope::Fr,
         term: "couche",
         use_instead: "calque (d'annotations)",
-        allowed_keys: &[],
+        allowed_keys: &["geo-layer", "err-geo-layer-"],
     },
     Rule {
         scope: Scope::Fr,
         term: "couches",
         use_instead: "calques (d'annotations)",
-        allowed_keys: &["lab-train-help"],
+        allowed_keys: &["lab-train-help", "geo-layer"],
     },
     Rule {
         scope: Scope::Fr,

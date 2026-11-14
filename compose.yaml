@@ -1,11 +1,13 @@
-# PNEX development infra — PostgreSQL 18 + Rauthy (full-Rust OIDC IdP)
+# PNEX development infra — PostgreSQL 18 + PostGIS + Rauthy (full-Rust OIDC IdP)
 # + OpenObserve + RustFS (S3-compatible, industrial tier D5 v2).
 # Usage: docker compose up -d
 # The backend reads DATABASE_URL (see .env.example).
 
 services:
   postgres:
-    image: postgres:18-alpine
+    # PostGIS on postgres:18-alpine (same data layout): geo layers (geo-layers.md L1).
+    # amd64 only; the cluster runs the multi-arch CNPG PostGIS image.
+    image: postgis/postgis:18-3.6-alpine
     container_name: pnex-postgres
     environment:
       POSTGRES_USER: pnex

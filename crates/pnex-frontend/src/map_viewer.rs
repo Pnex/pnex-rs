@@ -145,6 +145,12 @@ pub async fn set_zones(host_id: &str, data: &serde_json::Value) -> bool {
     call_json(host_id, "setZones", &data.to_string()).await
 }
 
+/// Geographic layers of the org (geo-layers.md phase A) with the tile auth:
+/// `{base, org, token, layers: [GeoLayer + visible]}`.
+pub async fn set_layers(host_id: &str, data: &serde_json::Value) -> bool {
+    call_json(host_id, "setLayers", &data.to_string()).await
+}
+
 /// Cursor instant (ms): map.js redraws the past of each track only.
 pub async fn set_time(host_id: &str, t_ms: i64) -> bool {
     set_time_impl(host_id, t_ms).await

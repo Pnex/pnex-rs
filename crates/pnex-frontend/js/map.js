@@ -106,6 +106,64 @@ maplibreGl.setWorkerUrl(
     fit(host);
   }
 
+  // Geographic layers (geo-layers.md phase A): vector tiles of the org,
+  // drawn under the tracks, zones and HTML markers. The tile requests carry
+  // the bearer and org of the last setLayers call (refreshed by the page).
+  var LAYER_PREFIX = 'pnex-gl-';
+  var layerAuth = null;
+
+  function layerTileRequest(url) {
+    if (!layerAuth || url.indexOf('/api/v1/geo/layers/') < 0) return undefined;
+    var headers = { 'X-Org-Id': String(layerAuth.org) };
+    if (layerAuth.token) headers.Authorization = 'Bearer ' + layerAuth.token;
+    return { url: url, headers: headers };
+  }
+
+  function defaultLayerStyle(kind) {
+    if (kind === 'point') return [{ type: 'circle', paint: { 'circle-radius': 4, 'circle-color': '#0b7285', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } }];
+    if (kind === 'line') return [{ type: 'line', paint: { 'line-color': '#0b7285', 'line-width': 2 } }];
+    return [
+      { type: 'fill', paint: { 'fill-color': '#0b7285', 'fill-opacity': 0.25 } },
+      { type: 'line', paint: { 'line-color': '#0b7285', 'line-width': 1 } },
+    ];
+  }
+
+  function drawLayers(host) {
+    var map = host._pnexMap;
+    var data = host._pnexLayers;
+    if (!map || !data || !map.isStyleLoaded()) return;
+    var base = data.base || window.location.origin;
+    var wanted = {};
+    (data.layers || []).forEach(function (l) {
+      var src = LAYER_PREFIX + l.id + '-' + l.generation;
+      wanted[src] = true;
+      if (!map.getSource(src)) {
+        map.addSource(src, {
+          type: 'vector',
+          tiles: [base + '/api/v1/geo/layers/' + l.id + '/tiles/' + l.generation + '/{z}/{x}/{y}'],
+          minzoom: l.zoom_min, maxzoom: l.zoom_max,
+        });
+        var before = map.getLayer('pnex-zones-fill') ? 'pnex-zones-fill'
+          : (map.getLayer('pnex-trk-full') ? 'pnex-trk-full' : undefined);
+        var style = (l.style && l.style.length) ? l.style : defaultLayerStyle(l.geometry_type);
+        style.forEach(function (st, i) {
+          var spec = Object.assign({}, st, { id: src + '-' + i, source: src, 'source-layer': 'features' });
+          try { map.addLayer(spec, before); } catch (e) { setErr(host, 'layer-style'); }
+        });
+      }
+      map.getStyle().layers.forEach(function (ly) {
+        if (ly.source === src) map.setLayoutProperty(ly.id, 'visibility', l.visible ? 'visible' : 'none');
+      });
+    });
+    // Layers deleted or replaced (new generation) leave the map.
+    map.getStyle().layers.slice().forEach(function (ly) {
+      if (ly.source && ly.source.indexOf(LAYER_PREFIX) === 0 && !wanted[ly.source]) map.removeLayer(ly.id);
+    });
+    Object.keys(map.getStyle().sources).forEach(function (src) {
+      if (src.indexOf(LAYER_PREFIX) === 0 && !wanted[src]) map.removeSource(src);
+    });
+  }
+
   function drawTracks(host) {
     var map = host._pnexMap;
     var data = host._pnexTracks;
@@ -276,6 +334,7 @@ maplibreGl.setWorkerUrl(
           center: opts.center || [2.35, 48.85],
           zoom: typeof opts.zoom === 'number' ? opts.zoom : 4,
           attributionControl: { compact: true },
+          transformRequest: layerTileRequest,
         });
         host._pnexMap = map;
         host._pnexMapMarkers = [];
@@ -322,6 +381,7 @@ maplibreGl.setWorkerUrl(
           // have pushed while the style loaded.
           if (opts.items && opts.items.length) api.setItems(hostId, opts.items);
           host._pnexTracksDrawn = false;
+          drawLayers(host);
           drawZones(host);
           drawTracks(host);
         });
@@ -412,6 +472,23 @@ maplibreGl.setWorkerUrl(
       if (!host) return false;
       host._pnexZones = data;
       drawZones(host);
+      return true;
+    },
+
+    /**
+     * Geographic layers: {base, org, token, layers: [{id, generation,
+     * geometry_type, zoom_min, zoom_max, style, visible}]}. Survives a
+     * remount; called again to refresh the token or the visibility.
+     */
+    setLayers: function (hostId, data) {
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (e) { return false; }
+      }
+      var host = hostOf(hostId);
+      if (!host) return false;
+      layerAuth = { org: data.org, token: data.token };
+      host._pnexLayers = data;
+      drawLayers(host);
       return true;
     },
 

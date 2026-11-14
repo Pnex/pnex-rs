@@ -253,6 +253,7 @@ les règles plus anciennes qui les contredisent.
 | Relation typée entre deux objets | Lien | Link | une étiquette |
 | Ce qui est posé sur un média visuel (D219) | Annotation | Annotation | une note de dossier, une détection |
 | Unité versionnée et publiable d'annotations | Calque d'annotations | Annotation layer | — (plus « ensemble ») |
+| Données vectorielles tuilées, dessinées sous les sites de la carte (geo-layers.md) | Couche géographique | Geographic layer | pas un calque d'annotations ; « couche » seul réservé à la carte |
 | Cadres produits par un modèle sur une vidéo | Détections | Detections | des annotations |
 | Boîtes de vérité terrain d'un jeu d'entraînement | Étiquetage | Labeling | des annotations |
 | Noms des sorties d'un modèle de vision | Classes | Classes | des étiquettes |

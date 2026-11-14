@@ -29,7 +29,7 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
 }
 
-fn person_key(person_id: Uuid) -> String {
+pub(crate) fn person_key(person_id: Uuid) -> String {
     format!("person:{person_id}")
 }
 
@@ -271,7 +271,7 @@ pub async fn before_erase(
 
 /// A capture as listed on the person's or the company's page, read from
 /// its rule run (D780).
-fn capture_view(
+pub(crate) fn capture_view(
     id: Uuid,
     url: &str,
     state: &str,
@@ -295,7 +295,7 @@ fn capture_view(
     }
 }
 
-fn start_error(e: StartError) -> ExtensionError {
+pub(crate) fn start_error(e: StartError) -> ExtensionError {
     match e {
         StartError::NoAgent => ExtensionError::NoAgent,
         StartError::DailyCap { max } => ExtensionError::RunDailyCap { max },
@@ -385,7 +385,9 @@ pub async fn captures(
         .into_iter()
         .map(|(id, p, state, reason, at)| {
             let url = match p {
-                Purpose::ProfileCapture { url, .. } | Purpose::PeopleCapture { url, .. } => url,
+                Purpose::ProfileCapture { url, .. }
+                | Purpose::PeopleCapture { url, .. }
+                | Purpose::ConnectionsCapture { url, .. } => url,
                 Purpose::PersonMatch { .. } => String::new(),
             };
             capture_view(id, &url, &state, reason, at)
@@ -566,7 +568,7 @@ pub(crate) async fn attach_profile(
     Ok(())
 }
 
-fn actor_of(source_ref: &str) -> ontology::Actor {
+pub(crate) fn actor_of(source_ref: &str) -> ontology::Actor {
     ontology::Actor {
         user_id: None,
         role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
@@ -707,7 +709,9 @@ pub async fn people_captures(
         .into_iter()
         .map(|(id, p, state, reason, at)| {
             let url = match p {
-                Purpose::PeopleCapture { url, .. } | Purpose::ProfileCapture { url, .. } => url,
+                Purpose::PeopleCapture { url, .. }
+                | Purpose::ProfileCapture { url, .. }
+                | Purpose::ConnectionsCapture { url, .. } => url,
                 Purpose::PersonMatch { .. } => String::new(),
             };
             capture_view(id, &url, &state, reason, at)

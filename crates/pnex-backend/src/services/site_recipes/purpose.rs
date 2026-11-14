@@ -29,6 +29,13 @@ pub enum Purpose {
     /// One query of a person match (D788): extracts `results` (cards) and
     /// `profile.<n>` (the profiles opened).
     PersonMatch { match_id: String, step: u32 },
+    /// A contact's connections list (D976): extracts `connections.<n>`
+    /// (cards), filtered and erased by the server once read.
+    ConnectionsCapture {
+        person_id: String,
+        user_id: i64,
+        url: String,
+    },
 }
 
 impl Purpose {
@@ -37,6 +44,8 @@ impl Purpose {
             Self::ProfileCapture { .. } => "profile_capture",
             Self::PeopleCapture { .. } => "people_capture",
             Self::PersonMatch { .. } => "person_match",
+            // The run's `trigger` holds 16 chars; runs are found by the tag.
+            Self::ConnectionsCapture { .. } => "connections",
         }
     }
 }
@@ -145,6 +154,14 @@ pub async fn on_finished(ctx: &AppContext, org_id: i64, run_id: Uuid) {
             }
             None => Ok(()),
         },
+        Purpose::ConnectionsCapture {
+            person_id, user_id, ..
+        } => {
+            crate::services::network_connections::captured(
+                ctx, org_id, run_id, person_id, *user_id, ok, &extracts,
+            )
+            .await
+        }
         Purpose::PersonMatch { match_id, step } => {
             crate::services::person_match::search_finished(
                 ctx, org_id, run_id, match_id, *step, ok, &extracts,

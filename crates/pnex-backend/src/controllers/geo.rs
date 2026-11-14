@@ -14,8 +14,13 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::auth::OrgContext;
+use crate::services::geo::layers::{self, LayerError};
 use crate::services::geo::providers::{self, Author, ProviderError};
 use crate::services::geo::proxy::{self, Deps, ProxyError};
+use pnex_core::geo::GeoLayerInput;
+
+/// GeoJSON body of a layer creation: national boundaries fit.
+const LAYER_BODY_MAX: usize = 32 * 1024 * 1024;
 
 pub fn routes() -> Routes {
     Routes::new()
@@ -27,13 +32,38 @@ pub fn routes() -> Routes {
         .add("/geocode", get(geocode))
         .add("/reverse", get(reverse))
         .add("/route", get(route))
+        .add(
+            "/layers",
+            get(layers_list)
+                .post(layers_create)
+                .layer(axum::extract::DefaultBodyLimit::max(LAYER_BODY_MAX)),
+        )
+        .add("/layers/{id}", axum::routing::delete(layers_delete))
+        .add(
+            "/layers/{id}/tiles/{generation}/{z}/{x}/{y}",
+            get(layers_tile),
+        )
 }
 
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(list, create, update, delete, test, basemaps, geocode, reverse, route),
+        paths(
+            list,
+            create,
+            update,
+            delete,
+            test,
+            basemaps,
+            geocode,
+            reverse,
+            route,
+            layers_list,
+            layers_create,
+            layers_delete,
+            layers_tile
+        ),
         components(schemas(pnex_core::geo::RouteProfile))
     )]
     struct Doc;
@@ -507,4 +537,157 @@ mod tests {
         assert_eq!(parse_points("45.75"), None);
         assert_eq!(parse_points("a,b;1,2"), None);
     }
+}
+
+fn layer_error(e: LayerError) -> Result<Response> {
+    match e {
+        LayerError::Invalid { field, token } => Ok(super::field_error(field, &token)),
+        LayerError::NotFound => Err(custom(
+            StatusCode::NOT_FOUND,
+            err_codes::GEO_LAYER_NOT_FOUND,
+            "Geo layer not found.",
+            None,
+        )),
+        LayerError::NameTaken => Err(custom(
+            StatusCode::CONFLICT,
+            err_codes::GEO_LAYER_NAME_TAKEN,
+            "A geo layer with this name already exists.",
+            None,
+        )),
+        LayerError::Db(e) => Err(crate::controllers::db_error(e)),
+    }
+}
+
+/// `GET /api/v1/geo/layers` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/geo/layers",
+    tag = "geo",
+    operation_id = "geo_layers_list",
+    summary = "List the geographic layers of the organisation",
+    description = "Every vector layer of the org with its generation (part of the tile URL), zoom range, MapLibre style and extent. Paginated (`limit`/`offset`). Any member.",
+    params(PageQuery),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::geo::GeoLayer>)),
+    security(("bearer" = [], "org" = []))
+)]
+async fn layers_list(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    match layers::list(&ctx.db, org.org.id).await {
+        Ok(rows) => pagination::paged("/api/v1/geo/layers", &[], q.page(), rows),
+        Err(e) => layer_error(e),
+    }
+}
+
+/// `POST /api/v1/geo/layers` — owner/admin.
+#[utoipa::path(
+    post,
+    path = "/api/v1/geo/layers",
+    tag = "geo",
+    operation_id = "geo_layers_create",
+    summary = "Create a geographic layer from GeoJSON",
+    description = "Creates a vector layer and its whole content from a GeoJSON FeatureCollection in WGS 84, all features of one geometry family (points, lines or polygons). Geometries are made valid server-side. Owner or admin only.",
+    request_body = pnex_core::geo::GeoLayerInput,
+    responses(
+        (status = 201, body = pnex_core::geo::GeoLayer),
+        (status = 400, description = "`field-invalid`: `errors.fields` maps the field to a token (`features`: `invalid`, `empty`, `mixed_geometry`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`geo-layer-name-taken`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn layers_create(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Json(input): Json<GeoLayerInput>,
+) -> Result<Response> {
+    match layers::create(&ctx.db, org.org.id, &input).await {
+        Ok(layer) => Ok((StatusCode::CREATED, format::json(layer)).into_response()),
+        Err(e) => layer_error(e),
+    }
+}
+
+/// `DELETE /api/v1/geo/layers/{id}` — owner/admin.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/geo/layers/{id}",
+    tag = "geo",
+    operation_id = "geo_layers_delete",
+    summary = "Delete a geographic layer",
+    description = "Deletes the layer and all its features. Owner or admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Geo layer id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 404, description = "`geo-layer-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn layers_delete(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match layers::delete(&ctx.db, org.org.id, id).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(e) => layer_error(e),
+    }
+}
+
+/// `GET /api/v1/geo/layers/{id}/tiles/{generation}/{z}/{x}/{y}` — every
+/// member (L6). The generation in the path makes the URL immutable.
+#[utoipa::path(
+    get,
+    path = "/api/v1/geo/layers/{id}/tiles/{generation}/{z}/{x}/{y}",
+    tag = "geo",
+    operation_id = "geo_layers_tile",
+    summary = "One vector tile of a geographic layer",
+    description = "Mapbox Vector Tile (source layer `features`, feature attributes = properties) of the XYZ tile. Cached as immutable when `generation` is the current one. Any member.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Geo layer id"),
+        ("generation" = i64, Path, description = "Layer generation the map was given"),
+        ("z" = u8, Path, description = "Zoom"),
+        ("x" = u32, Path, description = "Tile column"),
+        ("y" = u32, Path, description = "Tile row")
+    ),
+    responses(
+        (status = 200, content_type = "application/vnd.mapbox-vector-tile", body = Vec<u8>),
+        (status = 400, description = "`field-invalid`: the tile does not exist (`z`: `invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`geo-layer-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn layers_tile(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Path((id, generation, z, x, y)): Path<(Uuid, i64, u8, u32, u32)>,
+) -> Result<Response> {
+    if !pnex_core::geo::tile_in_range(z, x, y) {
+        return Ok(super::field_error("z", err_codes::FIELD_INVALID));
+    }
+    let layer = match layers::get(&ctx.db, org.org.id, id).await {
+        Ok(layer) => layer,
+        Err(e) => return layer_error(e),
+    };
+    let bytes = match layers::tile(&ctx.db, org.org.id, &layer, z, x, y).await {
+        Ok(bytes) => bytes,
+        Err(e) => return layer_error(e),
+    };
+    // An old generation is still answered (current content), never cached.
+    let cache = if generation == layer.generation {
+        "private, max-age=31536000, immutable"
+    } else {
+        "private, no-cache"
+    };
+    Ok((
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/vnd.mapbox-vector-tile",
+            ),
+            (axum::http::header::CACHE_CONTROL, cache),
+        ],
+        bytes,
+    )
+        .into_response())
 }

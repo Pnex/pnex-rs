@@ -634,9 +634,127 @@ pub fn parse_graphhopper_route(body: &Value) -> Result<Route, GeoError> {
     })
 }
 
+/// A served geographic layer (`GET /api/v1/geo/layers`, geo-layers.md L4).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct GeoLayer {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub id: uuid::Uuid,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// `point`, `line` or `polygon`: one geometry family per layer.
+    pub geometry_type: String,
+    /// Bumped by every full replacement; part of the tile URL.
+    pub generation: i64,
+    pub zoom_min: i16,
+    pub zoom_max: i16,
+    /// MapLibre style layers without `id`/`source` (the map sets them); an
+    /// empty list draws the default style of the geometry family.
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
+    pub style: Vec<Value>,
+    pub feature_count: i64,
+    /// `[west, south, east, north]` of the published features.
+    #[serde(default)]
+    pub extent: Option<[f64; 4]>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub updated_at: String,
+}
+
+/// Create body: the layer and its whole content as a GeoJSON
+/// FeatureCollection (phase A; file import comes with phase B).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct GeoLayerInput {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
+    pub style: Vec<Value>,
+    #[serde(default)]
+    pub zoom_min: Option<i16>,
+    #[serde(default)]
+    pub zoom_max: Option<i16>,
+    /// GeoJSON FeatureCollection in WGS 84; a feature `id` becomes its key.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub features: Value,
+}
+
+/// Geometry family of a GeoJSON geometry type (`point`, `line`,
+/// `polygon`); `None` for a collection or an unknown type.
+pub fn geometry_family(geojson_type: &str) -> Option<&'static str> {
+    match geojson_type {
+        "Point" | "MultiPoint" => Some("point"),
+        "LineString" | "MultiLineString" => Some("line"),
+        "Polygon" | "MultiPolygon" => Some("polygon"),
+        _ => None,
+    }
+}
+
+/// The single geometry family of a FeatureCollection, or the field token
+/// that refuses it (`invalid`, `empty`, `mixed_geometry`).
+pub fn collection_family(fc: &Value) -> Result<&'static str, &'static str> {
+    if fc["type"] != "FeatureCollection" {
+        return Err("invalid");
+    }
+    let features = fc["features"].as_array().ok_or("invalid")?;
+    let mut family = None;
+    for f in features {
+        let t =
+            geometry_family(f["geometry"]["type"].as_str().unwrap_or_default()).ok_or("invalid")?;
+        match family {
+            None => family = Some(t),
+            Some(prev) if prev != t => return Err("mixed_geometry"),
+            _ => {}
+        }
+    }
+    family.ok_or("empty")
+}
+
+/// `true` when `(z, x, y)` names an existing XYZ tile.
+pub fn tile_in_range(z: u8, x: u32, y: u32) -> bool {
+    z <= 24 && u64::from(x) < (1u64 << z) && u64::from(y) < (1u64 << z)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn collection_family_needs_one_geometry_family() {
+        let fc = |types: &[&str]| {
+            json!({ "type": "FeatureCollection", "features": types.iter()
+                .map(|t| json!({ "type": "Feature", "geometry": { "type": t } }))
+                .collect::<Vec<_>>() })
+        };
+        assert_eq!(
+            collection_family(&fc(&["Polygon", "MultiPolygon"])),
+            Ok("polygon")
+        );
+        assert_eq!(
+            collection_family(&fc(&["Point", "LineString"])),
+            Err("mixed_geometry")
+        );
+        assert_eq!(
+            collection_family(&fc(&["GeometryCollection"])),
+            Err("invalid")
+        );
+        assert_eq!(collection_family(&fc(&[])), Err("empty"));
+        assert_eq!(
+            collection_family(&json!({ "type": "Feature" })),
+            Err("invalid")
+        );
+    }
+
+    #[test]
+    fn tile_range() {
+        assert!(tile_in_range(0, 0, 0));
+        assert!(!tile_in_range(0, 1, 0));
+        assert!(tile_in_range(3, 7, 7));
+        assert!(!tile_in_range(3, 8, 0));
+        assert!(!tile_in_range(25, 0, 0));
+    }
 
     #[test]
     fn endpoint_keeps_base_path_and_rejects_other_schemes() {

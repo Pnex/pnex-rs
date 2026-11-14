@@ -1140,10 +1140,16 @@ mod tests {
             .collect();
         rules.push(d::people_capture());
         rules.push(d::person_search());
+        rules.push(d::connections_capture());
         for y in &rules {
             let r = super::parse(y).unwrap_or_else(|e| panic!("{e:?}\n{y}"));
             assert!(r.needs_session(), "{y}");
         }
+        // The step the server reads as "list hidden" is the connections check.
+        let c = super::parse(&d::connections_capture()).unwrap();
+        let hidden = &c.steps[d::CONNECTIONS_HIDDEN_STEP as usize];
+        assert_eq!(hidden.action(), "assert");
+        assert!(format!("{hidden:?}").contains("connectionOf"), "{hidden:?}");
     }
 
     use super::*;

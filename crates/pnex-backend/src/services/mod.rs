@@ -94,6 +94,7 @@ pub mod org_resolve;
 pub mod ota;
 pub mod ota_signing;
 pub mod pages;
+pub mod network_connections;
 pub mod person_match;
 pub mod pipeline_engine;
 pub mod pipelines;

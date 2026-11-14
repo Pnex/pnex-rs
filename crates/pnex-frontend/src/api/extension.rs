@@ -173,6 +173,53 @@ pub async fn capture_people(
     .await
 }
 
+/// `GET /api/v1/extension/people/{id}/connection` (D977): the caller's own.
+pub async fn connection(
+    person_id: &str,
+) -> Result<pnex_core::browser_agent::PersonConnection, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/extension/people/{person_id}/connection"),
+        None,
+    )
+    .await
+}
+
+/// `PUT /api/v1/extension/people/{id}/connection` (D977).
+pub async fn set_connection(
+    person_id: &str,
+    state: pnex_core::browser_agent::ConnectionState,
+) -> Result<pnex_core::browser_agent::PersonConnection, ApiError> {
+    client::request(
+        reqwest::Method::PUT,
+        &format!("/api/v1/extension/people/{person_id}/connection"),
+        body(&pnex_core::browser_agent::PersonConnectionInput { state }),
+    )
+    .await
+}
+
+/// `GET /api/v1/extension/people/{id}/connections-captures` (D976).
+pub async fn connections_captures(
+    person_id: &str,
+) -> Result<Vec<pnex_core::browser_agent::ProfileCapture>, ApiError> {
+    client::request_all(&format!(
+        "/api/v1/extension/people/{person_id}/connections-captures"
+    ))
+    .await
+}
+
+/// `POST /api/v1/extension/people/{id}/connections-captures` (D976).
+pub async fn capture_connections(
+    person_id: &str,
+) -> Result<pnex_core::browser_agent::ProfileCapture, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/extension/people/{person_id}/connections-captures"),
+        None,
+    )
+    .await
+}
+
 /// Whether a person objected to prospecting (D341).
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct Opposition {

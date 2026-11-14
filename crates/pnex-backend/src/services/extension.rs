@@ -91,6 +91,15 @@ pub enum ExtensionError {
     /// The person works for no company: nothing to match them with (D788).
     #[error("person without company")]
     PersonWithoutCompany,
+    /// The caller is not connected with the person (D976).
+    #[error("not connected")]
+    NotConnected,
+    /// The person has no LinkedIn profile to explore (D976).
+    #[error("person without profile")]
+    PersonWithoutProfile,
+    /// Daily explorations of connections reached (D977).
+    #[error("connections daily cap")]
+    ConnectionsDailyCap { max: i64 },
     #[error(transparent)]
     Db(#[from] DbErr),
 }

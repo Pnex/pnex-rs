@@ -92,6 +92,7 @@ async fn call(
         "GET" => server.get(path),
         "POST" => server.post(path),
         "PATCH" => server.patch(path),
+        "PUT" => server.put(path),
         "DELETE" => server.delete(path),
         _ => unreachable!(),
     }
@@ -2037,4 +2038,112 @@ async fn play_search(ws: &mut common::DevWs, run: String, cards: Value, profile:
     .await;
     assert!(matches!(recv(ws).await, ServerMsg::Runs { .. }));
     sync(ws).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn a_contacts_connections_keep_only_people_at_the_chosen_organizations() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        for pack in ["investigation", "companies", "prospecting_b2b"] {
+            let (s, e) = call(&server, "POST", &format!("/api/v1/ontology/packs/{pack}/install"), &env.alice, org, None).await;
+            assert_eq!(s, 200, "{pack} {e}");
+        }
+        let obj = |type_key: &str, title: &str, props: Value| json!({ "type_key": type_key, "title": title, "properties": props });
+        let id_of = |v: &Value| v["id"].as_str().unwrap().to_string();
+        let (_, acme) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(obj("organization", "Acme Industrie", json!({})))).await;
+        let acme = id_of(&acme);
+        let (_, other) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(obj("organization", "Initech", json!({})))).await;
+        let other = id_of(&other);
+        let (_, contact) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org,
+            Some(obj("person", "Carla Contact", json!({"profile_url": "https://www.linkedin.com/in/carla"})))).await;
+        let contact = id_of(&contact);
+        let explore = format!("/api/v1/extension/people/{contact}/connections-captures");
+        let connection = format!("/api/v1/extension/people/{contact}/connection");
+
+        // Not connected: refused; the state is the caller's own.
+        let (s, c) = call(&server, "GET", &connection, &env.alice, org, None).await;
+        assert_eq!((s, c["state"].as_str()), (200, Some("none")), "{c}");
+        let (s, e) = call(&server, "POST", &explore, &env.alice, org, None).await;
+        assert_eq!((s, e["error"].as_str()), (409, Some("ext-not-connected")), "{e}");
+        let (s, c) = call(&server, "PUT", &connection, &env.alice, org, Some(json!({"state": "connected"}))).await;
+        assert_eq!((s, c["state"].as_str()), (200, Some("connected")), "{c}");
+        let _ = personal_org(&server, &env.bob).await;
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
+        let (_, c) = call(&server, "GET", &connection, &env.bob, org, None).await;
+        assert_eq!(c["state"], "none", "bob has his own state");
+        let (s, _) = call(&server, "PUT", &connection, &env.bob, org, Some(json!({"state": "connected"}))).await;
+        assert_eq!(s, 403, "a viewer declares nothing");
+
+        // Only Acme carries the label the pack setting names.
+        let (s, l) = call(&server, "PUT", &format!("/api/v1/resources/organization/{acme}/labels"), &env.alice, org,
+            Some(json!({"labels": {"network": "keep"}}))).await;
+        assert_eq!(s, 200, "{l}");
+        let (s, r) = call(&server, "PATCH", "/api/v1/ontology/packs/prospecting_b2b/settings", &env.alice, org,
+            Some(json!({"values": {"connections_keep_label": "network:keep"}}))).await;
+        assert_eq!(s, 200, "{r}");
+
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+        let (s, m) = call(&server, "POST", &explore, &env.alice, org, None).await;
+        assert_eq!(s, 201, "{m}");
+        let mut ws = open(&server, &install, &a).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else { panic!("the exploration is a rule run") };
+        assert_eq!(runs[0].params["url"], "https://www.linkedin.com/in/carla");
+        assert!(runs[0].recipe.needs_session());
+        let run = runs[0].run_id.clone();
+        let cards = json!([
+            {"card": "Jeanne Martin\n• 1er\nDirectrice d'usine chez Acme Industrie", "link": "https://www.linkedin.com/in/jmartin"},
+            {"card": "Paul Durand\nIngénieur chez Initech", "link": "https://www.linkedin.com/in/pdurand"},
+            {"card": "Rita Random\nFreelance", "link": "https://www.linkedin.com/in/rita"},
+        ]);
+        send(&mut ws, &AgentMsg::RunExtract { run_id: run.clone(), extract: serde_json::from_value(json!({
+            "name": "connections.1", "kind": "cards", "text": cards.to_string(), "chars": 10, "sha256": "x",
+            "from": "https://www.linkedin.com/search/results/people/?connectionOf=x", "cards": cards })).unwrap() }).await;
+        send(&mut ws, &AgentMsg::RunDone { run_id: run.clone(), ok: true, failed_step: None, reason: None }).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Runs { .. }));
+        sync(&mut ws).await;
+
+        // Jeanne is kept, known by Carla and proposed at Acme; Paul (Initech,
+        // not chosen) and Rita are nowhere.
+        let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{contact}/links"), &env.alice, org, None).await;
+        let knows: Vec<&Value> = links["results"].as_array().unwrap().iter().filter(|l| l["link_type"] == "knows").collect();
+        assert_eq!(knows.len(), 1, "{links}");
+        assert_eq!(knows[0]["target"]["title"], "Jeanne Martin");
+        assert_eq!(knows[0]["attributes"]["source"], "linkedin_connections");
+        assert!(knows[0]["attributes"]["explored_by"].is_number(), "{}", knows[0]);
+        let (_, people) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({"type_key": "person", "limit": 50}))).await;
+        let people = people.to_string();
+        assert!(people.contains("Jeanne Martin") && !people.contains("Paul Durand") && !people.contains("Rita"), "{people}");
+        let (_, inbox) = call(&server, "GET", "/api/v1/proposals?limit=50", &env.alice, org, None).await;
+        let inbox = inbox.to_string();
+        assert!(inbox.contains("linkedin_connections") && inbox.contains(&acme) && !inbox.contains(&other), "{inbox}");
+        let (_, c) = call(&server, "GET", &connection, &env.alice, org, None).await;
+        assert!(c["explored_at"].is_string(), "{c}");
+
+        // The raw cards of everyone met are gone from the run.
+        let (_, r) = call(&server, "GET", &format!("/api/v1/site-recipes/runs/{run}"), &env.alice, org, None).await;
+        assert!(!r.to_string().contains("Paul Durand"), "{r}");
+
+        // A hidden list stops at the connections step with its own code.
+        let (s, _) = call(&server, "POST", &explore, &env.alice, org, None).await;
+        assert_eq!(s, 201);
+        drop(ws);
+        let mut ws = open(&server, &install, &a).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
+        let ServerMsg::Runs { runs } = recv(&mut ws).await else { panic!("second exploration") };
+        send(&mut ws, &AgentMsg::RunDone { run_id: runs[0].run_id.clone(), ok: false,
+            failed_step: Some(pnex_core::default_rules::CONNECTIONS_HIDDEN_STEP), reason: Some("assert-failed".into()) }).await;
+        assert!(matches!(recv(&mut ws).await, ServerMsg::Runs { .. }));
+        sync(&mut ws).await;
+        let (_, listed) = call(&server, "GET", &explore, &env.alice, org, None).await;
+        assert_eq!(listed["results"][0]["state_code"], "ext-connections-hidden", "{listed}");
+
+        // An objection closes the door.
+        call(&server, "POST", &format!("/api/v1/extension/people/{contact}/opposition"), &env.alice, org, None).await;
+        let (s, e) = call(&server, "POST", &explore, &env.alice, org, None).await;
+        assert_eq!((s, e["error"].as_str()), (409, Some("prospecting-opposed")), "{e}");
+    })
+    .await;
 }

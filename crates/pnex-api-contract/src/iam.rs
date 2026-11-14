@@ -738,6 +738,22 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ),
     ("extension_opposition_get", Access::Org("extension:read")),
     (
+        "extension_person_connection_get",
+        Access::Org("extension:read"),
+    ),
+    (
+        "extension_person_connection_update",
+        Access::Org("extension:write"),
+    ),
+    (
+        "extension_connections_captures_list",
+        Access::Org("extension:read"),
+    ),
+    (
+        "extension_connections_captures_create",
+        Access::Org("extension:write"),
+    ),
+    (
         "extension_people_captures_create",
         Access::Org("extension:write"),
     ),
@@ -843,6 +859,10 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("functions_versions", Access::Org("functions:read")),
     ("geo_basemaps_list", Access::Org("geo:read")),
     ("geo_geocode", Access::Org("geo:read")),
+    ("geo_layers_create", Access::Org("geo:write")),
+    ("geo_layers_delete", Access::Org("geo:delete")),
+    ("geo_layers_list", Access::Org("geo:read")),
+    ("geo_layers_tile", Access::Org("geo:read")),
     ("geo_providers_create", Access::Org("geo:write")),
     ("geo_providers_delete", Access::Org("geo:delete")),
     ("geo_providers_list", Access::Org("geo:read")),

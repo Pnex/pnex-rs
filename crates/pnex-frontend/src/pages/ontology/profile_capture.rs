@@ -371,3 +371,142 @@ fn candidate_label(c: &pnex_core::person_match::MatchCandidate) -> String {
     }
     parts.join(" · ")
 }
+
+/// The caller's LinkedIn relationship with the person and the exploration
+/// of their connections (D976, D977): each user declares their own state;
+/// only a connected person can be explored, and only the people at the
+/// organizations chosen in the prospecting pack are kept.
+#[component]
+pub fn PersonConnection(person_id: String, can_capture: bool) -> Element {
+    use pnex_core::browser_agent::ConnectionState as S;
+    let mut tick = use_signal(|| 0u32);
+    let mut busy = use_signal(|| false);
+    let id = person_id.clone();
+    let state = use_resource(move || {
+        let id = id.clone();
+        async move {
+            let _ = tick();
+            api::extension::connection(&id).await.ok()
+        }
+    });
+    let id = person_id.clone();
+    let runs = use_resource(move || {
+        let id = id.clone();
+        async move {
+            let _ = tick();
+            api::extension::connections_captures(&id).await.ok()
+        }
+    });
+    use_future(move || async move {
+        loop {
+            crate::util::sleep(std::time::Duration::from_secs(15)).await;
+            if runs
+                .peek()
+                .clone()
+                .flatten()
+                .is_some_and(|r| r.iter().any(|c| c.open))
+            {
+                tick.with_mut(|t| *t += 1);
+            }
+        }
+    });
+    let Some(current) = state.read().clone().flatten() else {
+        return rsx! {};
+    };
+    let rows = runs.read().clone().flatten().unwrap_or_default();
+    let connected = current.state == S::Connected;
+    let open = rows.iter().any(|c| c.open);
+    let set_id = person_id.clone();
+    let explore_id = person_id.clone();
+    rsx! {
+        div { class: "mt-6 space-y-2", "data-testid": "person-connection",
+            h3 { class: "text-sm font-medium text-ink", {t!("connection-title")} }
+            div { class: "flex flex-wrap items-center gap-3",
+                select {
+                    aria_label: t!("connection-state-label"),
+                    class: "px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white",
+                    disabled: !can_capture || busy(),
+                    "data-testid": "connection-state",
+                    onchange: move |e| {
+                        let id = set_id.clone();
+                        let new = S::parse(&e.value());
+                        busy.set(true);
+                        spawn(async move {
+                            if let Err(e) = api::extension::set_connection(&id, new).await {
+                                toasts::error(e);
+                            }
+                            busy.set(false);
+                            tick.with_mut(|t| *t += 1);
+                        });
+                    },
+                    for (value, label) in [
+                        (S::None, t!("connection-state-none")),
+                        (S::InvitationSent, t!("connection-state-invitation-sent")),
+                        (S::Connected, t!("connection-state-connected")),
+                    ]
+                    {
+                        option {
+                            value: value.as_str(),
+                            selected: current.state == value,
+                            "{label}"
+                        }
+                    }
+                }
+                if can_capture {
+                    button {
+                        r#type: "button",
+                        class: crate::components::ui::BTN_SECONDARY_SM,
+                        disabled: !connected || open || busy(),
+                        title: if !connected { t!("connection-explore-needs-connected") } else { t!("connection-explore-help") },
+                        "data-testid": "connection-explore",
+                        onclick: move |_| {
+                            let id = explore_id.clone();
+                            let done = t!("profile-capture-requested").to_string();
+                            busy.set(true);
+                            spawn(async move {
+                                match api::extension::capture_connections(&id).await {
+                                    Ok(_) => toasts::success(done),
+                                    Err(e) => toasts::error(e),
+                                }
+                                busy.set(false);
+                                tick.with_mut(|t| *t += 1);
+                            });
+                        },
+                        {t!("connection-explore")}
+                    }
+                }
+                if let Some(at) = current.explored_at.as_deref() {
+                    span { class: "text-xs text-gray-500",
+                        {t!("connection-explored-on", date : date_label(at))}
+                    }
+                }
+            }
+            if connected {
+                p { class: "text-xs text-gray-500", {t!("connection-explore-help")} }
+            }
+            if open {
+                BrowserNotice {}
+            }
+            if !rows.is_empty() {
+                ul { class: "space-y-1 text-sm",
+                    for c in rows {
+                        li {
+                            key: "{c.id}",
+                            class: "flex flex-wrap items-baseline gap-x-3",
+                            span { class: "text-gray-600", {exploration_label(&c)} }
+                            span { class: "text-xs text-gray-500", {date_label(&c.created_at)} }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// An exploration's state; a stopped one says why (hidden list…).
+fn exploration_label(c: &pnex_core::browser_agent::ProfileCapture) -> String {
+    match (c.captured, c.state_code.as_deref()) {
+        (false, Some(code)) if !c.open => crate::api::error_i18n::localize_code(code, None, code),
+        _ => capture_label(c),
+    }
+}

@@ -65,12 +65,12 @@
 # export import (one person per profile, an objection keeps them out, D610).
 # Since 4.0.0 press news are `news_item` objects of the `watch` pack, linked
 # by `item_about`; the signal kind `press` stays only for older signals.
-# Since 4.0.0 too, `connections_keep_label` chooses the organizations whose
-# people are kept from a contact's connections (D975).
+# Since 4.0.0 `connections_keep_label` chooses the organizations whose
+# people are kept from a contact's connections (D976, renumbered in 4.1.0).
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "4.0.0"
+version: "4.1.0"
 requires: [companies, web_presence, watch]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -112,8 +112,8 @@ settings:
   - key: connections_keep_label
     name: Organizations whose people are kept from a contact's connections
     names: {fr: "Organisations dont on garde les personnes du réseau d'un contact"}
-    description: "Label (name, or name:value) of the organizations whose employees are kept when a contact's LinkedIn connections are explored (D975); everyone else is counted, never written. Empty keeps nobody."
-    descriptions: {fr: "Étiquette (nom, ou nom:valeur) des organisations dont on garde les salariés quand on explore les relations LinkedIn d'un contact (D975) ; les autres sont comptés, jamais enregistrés. Vide : personne n'est gardé."}
+    description: "Label (name, or name:value) of the organizations whose employees are kept when a contact's LinkedIn connections are explored (D976); everyone else is counted, never written. Empty keeps nobody."
+    descriptions: {fr: "Étiquette (nom, ou nom:valeur) des organisations dont on garde les salariés quand on explore les relations LinkedIn d'un contact (D976) ; les autres sont comptés, jamais enregistrés. Vide : personne n'est gardé."}
     kind: text
     default: ""
   - key: match_searches_per_day

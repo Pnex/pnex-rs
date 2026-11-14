@@ -150,6 +150,8 @@ pub const EXPOSED: &[&str] = &[
     "extension_missions_get",
     "extension_missions_list",
     "extension_people_captures_list",
+    "extension_person_connection_get",
+    "extension_connections_captures_list",
     "extension_person_matches_list",
     "extension_profile_captures_list",
     "extension_videos_list",
@@ -183,6 +185,8 @@ pub const EXPOSED: &[&str] = &[
     "functions_versions",
     "geo_basemaps_list",
     "geo_geocode",
+    "geo_layers_create",
+    "geo_layers_list",
     "geo_providers_list",
     "geo_providers_test",
     "geo_reverse",
@@ -488,6 +492,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "fluid_mixtures_delete",
             "functions_delete",
             "geo_providers_delete",
+            "geo_layers_delete",
             "browser_endpoints_delete",
             "lab_images_delete",
             "lab_projects_delete",
@@ -673,6 +678,9 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "extension_missions_create",
             "extension_missions_update",
             "extension_people_captures_create",
+            "extension_connections_captures_create",
+            // Declaring a connection unlocks an exploration: a person's act.
+            "extension_person_connection_update",
             "extension_person_matches_create",
             "extension_profile_captures_create",
             "notify_channels_test",
@@ -731,6 +739,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     (
         "binary: the request or the answer is not JSON",
         &[
+            "geo_layers_tile",
             "governance_journal_export",
             "markets_account_trades_import",
             "datasets_files_get",

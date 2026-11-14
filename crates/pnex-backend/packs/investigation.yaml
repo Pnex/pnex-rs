@@ -29,10 +29,12 @@
 # No "suspect" or "guilty" field (K16): an actor has roles in events, legal
 # qualification is not an object attribute.
 # Since 2.0.0 the `personal` classification value is English (breaking).
+# Since 2.3.0 `knows` says where it was learnt: `source`, `retrieved_on`,
+# and `explored_by` (the user whose network showed it, D976).
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "2.2.0"
+version: "2.3.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -231,6 +233,10 @@ link_types:
     inverse_names: {fr: "est connu de"}
     from_types: [person]
     to_types: [person]
+    attributes:
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: explored_by, name: Explored by (user), names: {fr: "Exploré par (utilisateur)"}, kind: number }
   - key: uses_identifier
     name: uses
     names: {fr: "utilise"}

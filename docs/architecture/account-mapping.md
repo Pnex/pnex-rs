@@ -16,7 +16,7 @@ Voir un compte comme un **réseau daté** (groupe, filiales, établissements, di
 
 - ~~**Pas de CRM**~~ : revu le 2026-10-26 par `crm.md` D448 — le suivi commercial (opportunités, activités, plans de relance) est un pack `crm` à part, hors du noyau ; ni devis ni envoi automatique.
 - **Pas de connecteur CRM** dans ce PRD.
-- **Pas de découverte automatique de personnes** (D254 inchangé) : aucune recherche de profils, aucun parcours de graphe social, aucun rafraîchissement automatique d'un profil de réseau social. Amendé par D779 pour un seul cas : la liste des salariés d'une entreprise, demandée par un humain.
+- **Pas de découverte automatique de personnes** (D254 inchangé) : aucune recherche de profils, aucun parcours de graphe social, aucun rafraîchissement automatique d'un profil de réseau social. Amendé par D779 pour un seul cas : la liste des salariés d'une entreprise, demandée par un humain ; puis par D976 (2026-11-14) : les relations d'un contact avec qui l'utilisateur est en relation, seulement les personnes des organisations choisies par l'org.
 - **Pas de type « entreprise » ou « compte »** à côté de `organization` (même raison que D304 : un second type couperait le graphe en deux).
 - Rien de propre à un vendeur ou à un secteur au noyau (D190) : tout ce qui est métier vit dans un pack.
 - Rien de propre à une méthode de vente dans le pack non plus : profil de client idéal, personas visés, signaux déclencheurs, secteurs prioritaires et rôles de l'équipe commerciale sont des **réglages ou des données de l'org**. Le pack fournit la forme, jamais le contenu d'un playbook.
@@ -628,3 +628,51 @@ Décision de Shan : premier chargement depuis un export de profils réseau (fich
 - **`prospecting_b2b_fr` 3.9.0**, flow *Prospecting · network export to companies* : toutes les 15 minutes, 100 personnes de l'export ; la société du profil est cherchée au registre (`org_resolve`), trouvée ou retrouvée par SIREN, et proposée comme employeur (`employs`, source `network export`) à valider. Sans LLM, réutilise les fonctions des profils capturés.
 
 Limites : pas de rapprochement par domaine (choix de Shan : le registre suffit au premier chargement) ; sociétés françaises seulement ; l'e-mail de l'export n'est pas importé ; l'export ne dit rien des postes passés, le chemin d'introduction (D338) ne suit que les liens ouverts.
+
+### D976–D977 — Relations LinkedIn d'un contact (2026-11-14)
+
+Décision de Shan (2026-11-14) : « Oui, je lève D254 pour ce cas », la
+responsabilité des CGU de LinkedIn restant celle de l'utilisateur.
+
+- **D976 — Levée de D254, périmètre exact** : on n'explore que les relations
+  d'un contact dont l'utilisateur a déclaré être **en relation** avec son
+  propre compte ; on ne garde que les personnes dont la carte nomme une
+  organisation de la **sélection de l'org** (organisations portant
+  l'étiquette du réglage `prospecting_b2b.connections_keep_label`, vide par
+  défaut : personne n'est gardé). Les autres sont comptés dans le journal,
+  jamais écrits, et les extraits bruts de l'exécution sont effacés à la fin
+  (`agent_runs.extracts`). Opposition D341/D610 sur le contact exploré et
+  sur chaque personne gardée.
+- **D977 — État de relation et règle** : table `network_connections`
+  (org, utilisateur, personne, réseau → `none` / `invitation_sent` /
+  `connected`, depuis, dernière exploration), déclarée par l'utilisateur sur
+  la fiche (« Réseau LinkedIn »), jamais par l'assistant (PUT exclu du MCP).
+  Règle par défaut `connections_capture` (moteur extension, session
+  requise) : profil ouvert, lien de relations suivi, trois pages de cartes
+  au plus, 10 explorations par jour et par org. Lien absent = étape
+  `CONNECTIONS_HIDDEN_STEP` en échec = code `ext-connections-hidden`.
+- **Écriture** (serveur, sans LLM ni flow) : une personne par adresse de
+  profil (`profile_url`), lien `knows` contact exploré → personne avec
+  `source = linkedin_connections`, `retrieved_on`, `explored_by` (id
+  utilisateur ; attributs génériques de `knows`, `investigation` 2.3.0), et
+  `employs` organisation → personne **proposé** (à valider), le titre de la
+  carte en `position`. Pas de rattachement au site (établissement) ni de
+  postes passés en V1.
+- Routes : `GET`/`PUT /api/v1/extension/people/{id}/connection`,
+  `GET`/`POST /api/v1/extension/people/{id}/connections-captures`.
+  Lecture côté application : l'état par la première ; les liens par
+  `GET /api/v1/ontology/objects/{id}/links` (filtrer `link_type = knows`,
+  `attributes.source = linkedin_connections`) ou le graphe de l'objet.
+- Test : `extension::a_contacts_connections_keep_only_people_at_the_chosen_organizations` ;
+  unitaires `connections_are_kept_only_at_the_chosen_organizations`,
+  `every_default_rule_parses_and_needs_a_session`.
+- Limites : correspondance par mots entiers du titre de l'organisation dans
+  la carte (pas de nom d'usage ni de SIREN) ; plafond par org, pas par
+  utilisateur ; état déclaré à la main (ni import Connections.csv par
+  utilisateur, ni lecture du badge « 1er »).
+
+### Marché du travail territorial (2026-11-14)
+
+Tension par métier, besoins de recrutement, offres d'emploi et pyramide des
+âges rattachés aux établissements et aux territoires, en couches sur la
+carte : appendice `labor-market.md` (M1–M18, lots LM0–LM5, proposé).

@@ -16,6 +16,11 @@ pub async fn basemaps() -> Result<Vec<Basemap>, ApiError> {
     client::request_all("/api/v1/geo/basemaps").await
 }
 
+/// `GET …/layers` — geographic layers of the org (phase A).
+pub async fn layers() -> Result<Vec<pnex_core::geo::GeoLayer>, ApiError> {
+    client::request_all("/api/v1/geo/layers").await
+}
+
 /// `GET …/providers`.
 pub async fn providers() -> Result<Vec<GeoProvider>, ApiError> {
     client::request_all(PROVIDERS).await

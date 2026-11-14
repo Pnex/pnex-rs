@@ -4,15 +4,16 @@ title: Map and POIs
 kind: feature
 pages: /map
 nodes: 
-err_codes: access-denied, poi-device-already-placed, poi-link-duplicate
+err_codes: access-denied, poi-device-already-placed, poi-link-duplicate, geo-layer-not-found, geo-layer-name-taken
 tools: 
-tags: map, carte, poi, point of interest, location, gps, emplacement, site, attach, cluster, géolocalisation
+tags: map, carte, couche, geographic layer, zones, polygones, poi, point of interest, location, gps, emplacement, site, attach, cluster, géolocalisation
 ---
 The Map (Operate › Map) places the organization's points of interest (POIs) on a world map. A POI has a label, a pictogram, a free location text and coordinates; devices, media, 3D tours and dashboards are attached to it, so the map is the geographic entry point to everything installed somewhere. The basemap under the points comes from the organization's geo providers (see the geo-providers card); with several basemaps, a selector at the top right switches between them. **List view** (top of the panel) opens Sites, the same tree without the map.
 
 ## What you can do
 - **Search an address…** next to **＋ Add POI** finds a place with the organization's geocoder (see the geo-providers card); **+ POI** on a result creates a POI there, prefilled.
 - **＋ Add POI**, then click on the map to place it; fill **Label**, **Pictogram**, **Location (building, floor, room…)**, **Latitude** and **Longitude**. **Cancel adding** leaves the placing mode.
+- **Geographic layers**: zones, networks or boundaries the organization loaded (departments, employment areas…) are drawn under the POIs. The side panel lists them under **Geographic layers**, one checkbox each to show or hide them on this map. The section only appears once the organization has a layer.
 - Use the side panel: **Search a POI…**, filters **Attached to a device**, **With GPS position** and **Type** (pictogram), **Show all**. **Collapse panel** gives the map more room.
 - Click a POI to open its detail: **Edit**, **Recenter**, **Delete**, and the **Attached objects** list (**Open**, **Detach**).
 - The POI detail has a **Labels** section for the POI itself; the tag icon of a folder in **Attached objects** edits that folder's own labels.
@@ -26,5 +27,6 @@ The Map (Operate › Map) places the organization's points of interest (POIs) on
 - Deleting a POI deletes its links; the attached devices must then be placed again. The media, tours and dashboards themselves are not deleted.
 - The **GPS** badge marks a POI whose placed device reports a GPS position.
 - **Labels** are a plain search aid shared by the whole organization: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), on every object you can list (devices, media, dashboards, flows, 3D tours, sites and their folders, pages, cases and objects, functions, custom firmware, controls, streams, vision models, notification channels and templates, annotation layers). A label belongs to the object that carries it: it is never inherited from a folder. Filter any list with **Filter by label**: press Enter to add each label as a chip, several labels show only the objects carrying all of them (× or Backspace removes one). Or type `#value` (or `#name:value`) in the search box of the sidebar.
+- Geographic layers are created by Owners and Admins; loading them from a file in the media library comes later. Every member sees them.
 - Viewers can browse the map but cannot create, edit or attach (only Owners, Admins and Members can).
 - On a phone the side panel takes most of the screen: collapse it to see the map.

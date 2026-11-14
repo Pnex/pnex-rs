@@ -77,6 +77,14 @@ pub fn routes() -> Routes {
             get(person_matches).post(match_person),
         )
         .add("/people/{id}/opposition", get(opposition).post(oppose))
+        .add(
+            "/people/{id}/connection",
+            get(person_connection).put(set_person_connection),
+        )
+        .add(
+            "/people/{id}/connections-captures",
+            get(connections_captures).post(capture_connections),
+        )
         .add("/missions", get(missions).post(create_mission))
         .add(
             "/missions/{id}",
@@ -117,7 +125,11 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         person_matches,
         match_person,
         opposition,
-        oppose
+        oppose,
+        person_connection,
+        set_person_connection,
+        connections_captures,
+        capture_connections
     ))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
@@ -220,6 +232,22 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
             err_codes::EXT_PERSON_WITHOUT_COMPANY,
             "The person works for no company yet: link them to one first.",
         ),
+        ExtensionError::NotConnected => coded(
+            StatusCode::CONFLICT,
+            err_codes::EXT_NOT_CONNECTED,
+            "You are not connected with this person: mark them connected once the invitation is accepted.",
+        ),
+        ExtensionError::PersonWithoutProfile => coded(
+            StatusCode::CONFLICT,
+            err_codes::EXT_PERSON_WITHOUT_PROFILE,
+            "The person has no LinkedIn profile address.",
+        ),
+        ExtensionError::ConnectionsDailyCap { max } => Err(super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::EXT_CONNECTIONS_DAILY_CAP,
+            "The organization explored as many contacts' connections today as allowed.",
+            Some(serde_json::json!({ "max": max.to_string() })),
+        )),
         ExtensionError::NoAgent => coded(
             StatusCode::CONFLICT,
             err_codes::SITE_RECIPE_NO_AGENT,
@@ -1535,6 +1563,125 @@ async fn oppose(
 ) -> Result<Response> {
     match crate::services::profiles::oppose(&ctx.db, org.org.id, org.auth.user.id, id).await {
         Ok(()) => format::json(OppositionView { opposed: true }),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `GET /api/v1/extension/people/{id}/connection` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/people/{id}/connection",
+    tag = "extension",
+    operation_id = "extension_person_connection_get",
+    summary = "Read the caller's LinkedIn relationship with a person",
+    description = "Where the caller's own LinkedIn account stands with this person (D977): `none`, `invitation_sent` or `connected`, since when, and when the caller last explored their connections. Each user has their own. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::browser_agent::PersonConnection),
+        (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn person_connection(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    use crate::services::network_connections;
+    match network_connections::state(&ctx.db, org.org.id, org.auth.user.id, id).await {
+        Ok(c) => format::json(c),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `PUT /api/v1/extension/people/{id}/connection` — `can_write`.
+#[utoipa::path(
+    put,
+    path = "/api/v1/extension/people/{id}/connection",
+    tag = "extension",
+    operation_id = "extension_person_connection_update",
+    summary = "Declare the caller's LinkedIn relationship with a person",
+    description = "Sets where the caller's own LinkedIn account stands with this person (D977): `none`, `invitation_sent` or `connected`. Only `connected` allows exploring their connections. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)")),
+    request_body = pnex_core::browser_agent::PersonConnectionInput,
+    responses(
+        (status = 200, body = pnex_core::browser_agent::PersonConnection),
+        (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn set_person_connection(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<pnex_core::browser_agent::PersonConnectionInput>,
+) -> Result<Response> {
+    use crate::services::network_connections;
+    match network_connections::set_state(&ctx.db, org.org.id, org.auth.user.id, id, input.state)
+        .await
+    {
+        Ok(c) => format::json(c),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `GET /api/v1/extension/people/{id}/connections-captures` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/people/{id}/connections-captures",
+    tag = "extension",
+    operation_id = "extension_connections_captures_list",
+    summary = "List the caller's explorations of a person's connections",
+    description = "The caller's latest explorations of this person's LinkedIn connections (D976), newest first, with where each stands: waiting for a browser (`state_code` `ext-no-agent`), list hidden (`ext-connections-hidden`), captured or stopped. Paginated (`limit`/`offset`). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::browser_agent::ProfileCapture>),
+        (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn connections_captures(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    use crate::services::network_connections;
+    match network_connections::captures(&ctx.db, org.org.id, org.auth.user.id, id).await {
+        Ok(rows) => pagination::paged(
+            &format!("/api/v1/extension/people/{id}/connections-captures"),
+            &[],
+            q.page(),
+            rows,
+        ),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/people/{id}/connections-captures` — `can_write`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/people/{id}/connections-captures",
+    tag = "extension",
+    operation_id = "extension_connections_captures_create",
+    summary = "Explore a contact's LinkedIn connections",
+    description = "Asks one exploration of this person's LinkedIn connections (D976), only when the caller declared them connected: the caller's browser agent opens their profile in the caller's signed-in session, follows its connections link and reads the first result pages (a default navigation rule, D780). Only the people whose card names an organization carrying the label set in the prospecting pack (`connections_keep_label`) are kept: each becomes a person linked by `knows` from this contact (`source` linkedin_connections, `retrieved_on`, `explored_by`) and is proposed as working at that organization, to validate. Everyone else is counted, never written; the raw results are erased. Refused for someone who objected. At most 10 explorations per day. An open exploration of the same person is returned as is. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)")),
+    responses(
+        (status = 201, body = pnex_core::browser_agent::ProfileCapture),
+        (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ext-not-connected`: the caller is not connected with the person; `ext-person-without-profile`: no LinkedIn profile address; `prospecting-opposed`: the person objected; `ext-connections-daily-cap` (`args.max`): daily explorations reached; `site-recipe-no-agent`: no browser agent paired; `site-recipe-daily-cap` (`args.max`): runs on browser agents reached", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn capture_connections(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    use crate::services::network_connections;
+    match network_connections::request(&ctx, org.org.id, org.auth.user.id, id).await {
+        Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
         Err(e) => extension_error(e),
     }
 }

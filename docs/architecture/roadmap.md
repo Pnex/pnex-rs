@@ -227,7 +227,7 @@ tâche).
 | **Flux média entrants** (D159–D175) | **Code des lots 0 → 6 sur `main`** (2026-10-10, `media-ingest.md` §16–§18) : capture confinée + porteur `worker`, santé et alerte « flux muet », `media_source`, taxonomies + `topic_classify` (mots-clés), plages + import CSV/ICS, agrégats par plage + widget, VAD + diarisation locale, piste vidéo RTSP, boîtier de capture `pnex-media-capture` | Runs 24 h (sorties des lots 1 et 6), image ffmpeg avec décodeurs vidéo, RTSP sur vraie caméra, cross-builds agent, classifieur LLM + reclassement, vérification navigateur — P2.13 |
 | **Ontologie / 0.2.0** (D176–D191) | **L0–L5 sur `main`** 2026-10-10 (`ontology.md` §10) : identité universelle, types et liens temporels, séries d'objets, requête et graphe, explorateur, dashboards de type, assistant, pack Maintenance. **Mergé le 2026-10-13** : D183 actions (flow déployé, `propose_action`) et calendrier de maintenance (récurrences, `/calendar`, pack Maintenance 1.2.0, SEC-35) | Éditeur d'actions, préconditions ; côté terrain : compteurs, OT = procédure (Pages L6), équipes, `.ics` ; mesures 100 k objets — P2.14 |
 | **Media & Vision Studio** (D192–D210) | **M1 → M5 sur `main`** (2026-10-12/13, mergé le 13) : suivi et zones, légendes VLM + fusion sourcée, `text_decide` (Laya sur tract), Vision Lab (annotation, vidéos, interpolation, COCO), **entraînement sans Python** (tête YOLOX en Rust), file « à revoir », fichier comme source de flux, **rapports** = pages écrites par des nœuds (`llm_text`, `page_write`, `page_pdf`, pièce jointe e-mail) avec approbation humaine | INT8 après banc Pi 5 ; essais caméra et fournisseur réels — P2.15 |
-| **Couches géographiques** | **Phase F sur `main`** 2026-10-10 (`geo-layers.md`) : fournisseurs géo d'org (fond, géocodage, reverse, routage) en coffre + proxy serveur, aucun fond semé, recherche d'adresse sur /map | Itinéraire entre POI, nœuds `geo_geocode`/`geo_route`, outils assistant ; phases A–E (PostGIS, layers MVT) après la 0.2.0 — P2.16 |
+| **Couches géographiques** | **Phase F sur `main`** 2026-10-10 (`geo-layers.md`) : fournisseurs géo d'org (fond, géocodage, reverse, routage) en coffre + proxy serveur, aucun fond semé, recherche d'adresse sur /map. **Phase A** 2026-11-14, avancée pour le marché du travail (`labor-market.md`) : PostGIS, `geo_layers`/`geo_features`, tuiles MVT, couches sous les sites sur /map | Image CNPG PostGIS en prod ; itinéraire entre POI, nœuds `geo_geocode`/`geo_route`, outils assistant ; phases B–E (import, cache, upsert, style) après la 0.2.0 — P2.16 |
 | **Pages collaboratives** | **L1–L2 sur `main`** 2026-10-10/11 (`pages.md` §15) : yrs serveur + Yjs client, édition live multi-pods, versions nommées, commentaires ancrés, import/export Markdown, éditeur façon Notion. 2026-10-13 : versions écrites par un flow, approbation, **export PDF** (krilla, part de L7) | Indexation des pages, import .docx, test multi-pods réel ; L3+ (mentions, vues de collection, procédures) — P2.17 |
 | **Documents & recherche IA** | **P1 sur `main`** 2026-10-10 (`doc-search.md` §14) : extraction txt/md/docx/pdf/csv/xlsx/ods, `text_chunks` partagé, recherche lexicale, outils de l'assistant cités, **liste blanche stricte des téléversements** | Visionneuse PDF, outils testés avec un vrai LLM ; P2+ (pgvector, tableurs en SQL) après la 0.2.0 — P2.18 |
 | **Dossiers (enquête, RCA)** | **Sur `main`** 2026-10-11/12 (`cases.md`, `cases-workspace.md`) : dossiers à membres et liens datés, ouverture depuis un événement, pack `investigation`, hypothèses, gel et export, **espace de travail plein écran** frise × carte × graphe (sigma, repli SVG), traces O2 `positions`. **Empreinte vocale** K19 variante A (`voice-id.md`) : profils consentis par Personne | Détecteurs (co-présence, zones, arrêts), enquête média K42–K47, avis juridique K19, ACL par dossier (V2, D188) — P2.19 |
@@ -773,7 +773,7 @@ détecteurs). Dépend de P2.7 (GPU) et de P2.13 ; cible d'origine après la 0.2.
 dépassée : gel levé pour ce pilier, mergé dans `main` le 2026-10-13.
 Décision #18.
 
-### P2.16 — Couches géographiques et fournisseurs géo (ajout 2026-10-10) — **phase F sur `main` (2026-10-10)**, A–E après la 0.2.0
+### P2.16 — Couches géographiques et fournisseurs géo (ajout 2026-10-10) — **phase F sur `main` (2026-10-10)**, **phase A (2026-11-14)**, B–E après la 0.2.0
 
 PRD `geo-layers.md` (phase F sur `main`), décisions L1–L28
 provisoires (numéros D à la validation). Extension de la base map, pas un
@@ -787,7 +787,9 @@ Phase F : fournisseurs géo d'org (fond, geocoding, reverse, routage,
 école `llm_providers`), secrets en coffre, proxy serveur, rate limit —
 **retire l'URL de fond codée en dur** (D27). Phases A → F. Partage
 l'image Postgres étendue avec P2.18 (pgvector). **Phase F autorisée
-avant la 0.2.0 (consolidation), A–E après.** Décision #20.
+avant la 0.2.0 (consolidation), A–E après.** Décision #20. **2026-11-14 :
+phase A avancée** (décision de Shan) pour le marché du travail territorial
+(`labor-market.md`, M6) ; B–E gardent leur calendrier.
 
 ### P2.17 — Pages : documents collaboratifs reliés à l'ontologie (ajout 2026-10-10) — **L1–L2 sur `main` (2026-10-11)**, export PDF (2026-10-13)
 

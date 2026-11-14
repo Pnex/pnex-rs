@@ -359,3 +359,95 @@ async fn viewer_cannot_manage_providers() {
     })
     .await;
 }
+
+/// Square polygon feature around (lon, lat) with a `code` property.
+fn square(code: &str, lon: f64, lat: f64) -> serde_json::Value {
+    let d = 0.5;
+    serde_json::json!({
+        "type": "Feature", "id": code, "properties": { "code": code },
+        "geometry": { "type": "Polygon", "coordinates": [[
+            [lon - d, lat - d], [lon + d, lat - d], [lon + d, lat + d],
+            [lon - d, lat + d], [lon - d, lat - d]
+        ]] }
+    })
+}
+
+#[tokio::test]
+#[serial]
+async fn layers_from_geojson_served_as_tiles() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let body = serde_json::json!({
+            "name": "departments",
+            "style": [{ "type": "fill", "paint": { "fill-opacity": 0.4 } }],
+            "features": { "type": "FeatureCollection",
+                          "features": [square("75", 2.35, 48.85), square("69", 4.83, 45.76)] }
+        });
+        let created = send_json(&server, "POST", "/api/v1/geo/layers", &env.alice, org, Some(body.clone())).await;
+        assert_eq!(created.status_code(), 201, "{}", created.text());
+        let layer = created.json::<serde_json::Value>();
+        assert_eq!(layer["geometry_type"], "polygon");
+        assert_eq!(layer["feature_count"], 2);
+        assert_eq!(layer["generation"], 1);
+        let extent = layer["extent"].as_array().expect("extent");
+        assert!((extent[0].as_f64().unwrap() - 1.85).abs() < 1e-6, "{extent:?}");
+        let id = layer["id"].as_str().unwrap().to_string();
+
+        let again = send_json(&server, "POST", "/api/v1/geo/layers", &env.alice, org, Some(body)).await;
+        assert_eq!(again.status_code(), 409, "{}", again.text());
+        assert!(again.text().contains("geo-layer-name-taken"));
+
+        // Mixed families and broken geometries are refused, nothing written.
+        let mixed = serde_json::json!({ "name": "mixed", "features": { "type": "FeatureCollection",
+            "features": [square("1", 0.0, 0.0),
+                         { "type": "Feature", "geometry": { "type": "Point", "coordinates": [0, 0] } }] } });
+        let resp = send_json(&server, "POST", "/api/v1/geo/layers", &env.alice, org, Some(mixed)).await;
+        assert_eq!(resp.status_code(), 400, "{}", resp.text());
+        assert!(resp.text().contains("mixed_geometry"), "{}", resp.text());
+        let broken = serde_json::json!({ "name": "broken", "features": { "type": "FeatureCollection",
+            "features": [{ "type": "Feature", "geometry": { "type": "Polygon", "coordinates": [[[0, 0]]] } }] } });
+        let resp = send_json(&server, "POST", "/api/v1/geo/layers", &env.alice, org, Some(broken)).await;
+        assert_eq!(resp.status_code(), 400, "{}", resp.text());
+        let list = send_json(&server, "GET", "/api/v1/geo/layers", &env.alice, org, None).await;
+        assert_eq!(list.json::<serde_json::Value>()["count"], 1, "{}", list.text());
+
+        // z0 holds both squares; the Paris tile at z8 only one; a far tile none.
+        let tile = |z: u32, x: u32, y: u32| format!("/api/v1/geo/layers/{id}/tiles/1/{z}/{x}/{y}");
+        let world = send_json(&server, "GET", &tile(0, 0, 0), &env.alice, org, None).await;
+        assert_eq!(world.status_code(), 200);
+        assert_eq!(world.header("content-type"), "application/vnd.mapbox-vector-tile");
+        assert!(world.header("cache-control").to_str().unwrap().contains("immutable"));
+        let bytes = world.as_bytes();
+        let has = |b: &[u8], s: &str| b.windows(s.len()).any(|w| w == s.as_bytes());
+        assert!(has(bytes, "features") && has(bytes, "75") && has(bytes, "69"));
+        let paris = send_json(&server, "GET", &tile(8, 129, 88), &env.alice, org, None).await;
+        assert!(has(paris.as_bytes(), "75") && !has(paris.as_bytes(), "69"));
+        let far = send_json(&server, "GET", &tile(8, 0, 0), &env.alice, org, None).await;
+        assert_eq!(far.status_code(), 200);
+        assert!(far.as_bytes().is_empty());
+        let stale = send_json(&server, "GET", &format!("/api/v1/geo/layers/{id}/tiles/0/0/0/0"), &env.alice, org, None).await;
+        assert_eq!(stale.header("cache-control"), "private, no-cache");
+        let bad = send_json(&server, "GET", &tile(1, 2, 0), &env.alice, org, None).await;
+        assert_eq!(bad.status_code(), 400, "{}", bad.text());
+
+        // Another org sees neither the layer nor its tiles (R1).
+        let bob_org = personal_org(&server, &env.bob).await;
+        let other = send_json(&server, "GET", &tile(0, 0, 0), &env.bob, bob_org, None).await;
+        assert_eq!(other.status_code(), 404, "{}", other.text());
+
+        // A viewer reads tiles, never writes (R2).
+        common::join_org(&server, &env.alice, &env.bob, org, "bob@example.com", "viewer").await;
+        let read = send_json(&server, "GET", &tile(0, 0, 0), &env.bob, org, None).await;
+        assert_eq!(read.status_code(), 200);
+        for (method, path) in [("POST", "/api/v1/geo/layers".to_string()), ("DELETE", format!("/api/v1/geo/layers/{id}"))] {
+            let resp = send_json(&server, method, &path, &env.bob, org, Some(serde_json::json!({}))).await;
+            assert_eq!(resp.status_code(), 403, "{method} {path}: {}", resp.text());
+        }
+
+        let gone = send_json(&server, "DELETE", &format!("/api/v1/geo/layers/{id}"), &env.alice, org, None).await;
+        assert_eq!(gone.status_code(), 204);
+        let gone = send_json(&server, "GET", &tile(0, 0, 0), &env.alice, org, None).await;
+        assert_eq!(gone.status_code(), 404);
+    })
+    .await;
+}
