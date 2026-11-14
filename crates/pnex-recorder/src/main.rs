@@ -9,11 +9,9 @@
 mod api;
 mod audio;
 mod calls;
-mod capture;
-mod detect;
-mod encode;
-mod queue;
 mod voice;
+
+use pnex_recorder::{capture, detect, encode, queue};
 
 use dioxus::desktop::trayicon::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{init_tray_icon, Icon as TrayIcon};

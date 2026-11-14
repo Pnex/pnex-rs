@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "PNeX audio recorder (call-recording.md R1): tray utility, sign-in, capture on/off, 5 s speech-to-text check against the server"
 
+[lib]
+name = "pnex_recorder"
+path = "src/lib.rs"
+
 [[bin]]
 name = "pnex-recorder"
 path = "src/main.rs"

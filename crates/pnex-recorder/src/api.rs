@@ -347,27 +347,15 @@ impl Session {
         filename: &str,
         name: &str,
     ) -> Result<String, ApiError> {
+        use pnex_recorder::upload::{upload_part, UploadError};
         let bearer = self.bearer().await?;
-        let res = self
-            .http()
-            .post(format!("{}/api/v1/media", self.url))
-            .query(&[("name", name), ("filename", filename), ("kind", "audio")])
-            .bearer_auth(bearer)
-            .header("X-Org-Id", org.to_string())
-            .header("Content-Type", "audio/ogg")
-            .timeout(std::time::Duration::from_secs(600))
-            .body(bytes)
-            .send()
+        upload_part(&self.http(), &self.url, &bearer, org, bytes, filename, name)
             .await
-            .map_err(|_| ApiError::Unreachable)?;
-        if !res.status().is_success() {
-            return Err(error_of(res).await);
-        }
-        let asset: Value = res.json().await.map_err(|_| ApiError::NotPnex)?;
-        asset["id"]
-            .as_str()
-            .map(str::to_owned)
-            .ok_or(ApiError::NotPnex)
+            .map_err(|e| match e {
+                UploadError::Server(status, code) => ApiError::Server(status, code),
+                UploadError::Unreachable => ApiError::Unreachable,
+                UploadError::NotPnex | UploadError::Unreadable(_) => ApiError::NotPnex,
+            })
     }
 
     /// Labels a stored recording (`source: recorder`, `app: <call app>`): the
