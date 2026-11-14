@@ -62,6 +62,9 @@ Les gestes que le moteur ne sait pas déclarer, relevés dans ce code :
 | Texte des dépôts SEC rendu en média indexé (2026-11-13) | **Sixième cible `write: media`** : une colonne de texte devient un média de l'org, indexé et lié à un objet |
 | Marchés de prédiction derrière le proxy de l'org (2026-11-13) | **`proxy` générique de `fetch`** : l'adresse du proxy est un réglage de l'org, l'egress s'y applique |
 | API des règles de navigation (`/site-recipes`) une fois le studio replié (2026-11-13) | **Supprimée, rupture** : une règle est un pipeline à étape `browse` ; routes, outils MCP, IAM et CLI retirés |
+| Pages du front des marchés (2026-11-13) | **Modèles de page du pack** dont les blocs vivants (D831) jouent des requêtes nommées liées à l'objet ou à la date ; les pages Rust partent |
+| Clients synchrones de `/markets/*` (2026-11-13) | **Asynchrone partout** : file + `GET /analysis/queries/{id}`, rupture `feat(api)!` |
+| Règles de navigation existantes (2026-11-13) | **Migrées en pipelines** à étape `browse` ; la page « Sites web » et son menu partent |
 
 ## 3. Le principe en une phrase
 
