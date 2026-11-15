@@ -1,5 +1,0 @@
-{"codeTypeTerritoire": "DEP", "codeTerritoire": "69", "codeTypeActivite": "ROME", "codeActivite": "N4101", "listeValeursParPeriode": [
-  {"codePeriode": "2024", "codeNomenclature": "PERSPECTIVE", "libNomenclature": "Tension", "valeurPrincipaleNombre": 4},
-  {"codePeriode": "2024", "codeNomenclature": "COND_TRAV", "libNomenclature": "Conditions de travail contraignantes", "valeurPrincipaleNombre": 3},
-  {"codePeriode": "2024", "codeNomenclature": "DURABILITE", "libNomenclature": "Non-durabilité de l'emploi", "valeurPrincipaleNombre": 5}
-]}

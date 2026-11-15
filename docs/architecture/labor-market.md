@@ -362,10 +362,10 @@ l'application commerciale : BMO, tension, offres.
 | Pipeline | Table | Rythme | Écart au plan |
 |---|---|---|---|
 | `fr_bmo` | `lm_bmo` (forme longue, FAP × département) | 24 h, seulement si le fichier change | Bassin non gardé : son nom de colonne change chaque année (`BE26`) ; somme par département |
-| `fr_ft_tension` | `lm_tension` (forme longue, ROME × département, niveau 1–5 et facteurs) | 7 j | **S1 vient de l'API Marché du travail de France Travail**, pas du fichier Dares : le site de la Dares refuse les accès automatisés (choix de Shan, 2026-11-15). Pas de composantes Dares détaillées |
+| `fr_ft_tension` | `lm_tension` (forme longue, ROME × **région**, niveau 1–5, facteurs, libellés) | passes de 30 min, chaque couple suivi (D937) demandé une fois par année civile | **S1 vient de l'API Marché du travail de France Travail**, pas du fichier Dares : le site de la Dares refuse les accès automatisés (choix de Shan, 2026-11-15). Pas de composantes Dares détaillées |
 | `fr_ft_offers` | `lm_offers_seen` (une ligne par offre et par jour vu) | 24 h | M7 sans upsert : l'archive est un ajout quotidien, la requête nommée `job_postings` donne premier et dernier jour vus et la clôture. Un test de rejeu ne lit aucune table d'org, d'où ce choix |
 
-- **Réglages** : départements et **codes ROME** suivis (pas encore ISCO :
+- **Réglages** : régions (tension), départements (offres) et **codes ROME** suivis (pas encore ISCO :
   M18 et les tables de passage arrivent avec LM1) ; adresse du fichier BMO.
 - **Secrets** : `lm_ft_client_id`, `lm_ft_client_secret` au coffre de l'org
   (application francetravail.io abonnée aux API Offres d'emploi v2 et
@@ -376,6 +376,18 @@ l'application commerciale : BMO, tension, offres.
 - Deux tables d'indicateurs plutôt qu'une `lm_indicators` : deux pipelines
   qui écrivent la même table en remplacement s'effaceraient ; l'union (et
   les pivots ISCO/NUTS) viendra avec LM1.
+
+**Tension par région (1.1.0, 2026-11-15)**, demandée par l'application
+commerciale (carte des métiers en tension) : réglage `regions`, territoire
+`REG`, scope réduit à l'API Marché du travail (l'API Offres d'emploi v2 a
+quitté le catalogue de francetravail.io : la demander fait échouer tout le
+jeton en `invalid_scope`). Les ~24 800 couples (13 régions × 1 911 codes
+ROME collés dans `rome_codes`) passent en appels séquentiels : 600 par
+passe, un jeton par passe (valable 25 min), une quinzaine d'heures au total
+une fois par an. Pas de parallélisme au moteur pour une donnée annuelle.
+Limite : le jeton n'est jamais renouvelé en cours de passe, d'où `per_run`.
+`fr_ft_offers` demande encore le scope Offres v2 : à revoir avec la
+deuxième étape (La Bonne Boite).
 
 **Reste** : rapprochement offre → établissement (M9, M10), motif par LLM
 (M11), INSEE (S4), départs 2030 (S5), mouvements (S6), score et propriétés

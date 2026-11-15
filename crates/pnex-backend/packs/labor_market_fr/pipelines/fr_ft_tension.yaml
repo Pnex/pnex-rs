@@ -1,25 +1,33 @@
 # Labour market tension of France Travail (labor-market.md S1): for each
-# department and ROME job code of the settings, the latest yearly tension
-# level (1 low to 5 high) and the factors behind it, with the org's own
+# region and ROME job code of the settings, the latest yearly tension level
+# (1 low to 5 high) and the factors behind it, with the org's own
 # francetravail.io application (client credentials, vault keys
 # lm_ft_client_id and lm_ft_client_secret). Long form (M16): one row per
-# job, department, period and factor; `tension_index` is the overall level.
+# job, region, period and factor; `tension_index` is the overall level.
+# Every couple is tracked (D937) and asked once per calendar year: the whole
+# list (13 regions x ~1,900 jobs) takes several runs, each short enough for
+# one token (valid 25 min, asked once per run). A couple without figures
+# (204/404) is settled until the next year.
 key: fr_ft_tension
 name: Labour market tension (France Travail)
 hosts: [entreprise.francetravail.fr, api.francetravail.io]
-schedule: 168h
-requires: [labor_market_fr.departments, labor_market_fr.rome_codes]
+schedule: 30m
+requires: [labor_market_fr.regions, labor_market_fr.rome_codes]
 steps:
   - enumerate:
       as: asked
+      track: true
+      per_run: 600
+      empty: settled
       cross:
-        - { as: dept, setting: labor_market_fr.departments, case: upper }
+        - { as: year, periods: year, from: this_year }
+        - { as: region, setting: labor_market_fr.regions, case: upper }
         - { as: rome, setting: labor_market_fr.rome_codes, case: upper }
   - sql:
       as: bodies
       sql: |
-        SELECT dept, rome,
-          '{"codeTypeTerritoire":"DEP","codeTerritoire":"' || dept
+        SELECT region, rome,
+          '{"codeTypeTerritoire":"REG","codeTerritoire":"' || region
           || '","codeTypeActivite":"ROME","codeActivite":"' || rome
           || '","codeTypePeriode":"ANNEE","codeTypeNomenclature":"TYPE_TENSION","dernierePeriode":true}' AS body
         FROM asked
@@ -38,7 +46,7 @@ steps:
           url: "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire"
           user: lm_ft_client_id
           password: lm_ft_client_secret
-          fields: { grant_type: client_credentials, scope: "api_offresdemploiv2 o2dsoffre api_stats-offres-demandes-emploiv1 offresetdemandesemploi" }
+          fields: { grant_type: client_credentials, scope: "api_stats-offres-demandes-emploiv1 offresetdemandesemploi" }
         header: Authorization
         scheme: Bearer
   - read:
@@ -48,32 +56,36 @@ steps:
       records: /listeValeursParPeriode
       skip_invalid: true
       columns:
-        - { name: dept, type: text, value: "{{dept}}" }
+        - { name: region, type: text, value: "{{region}}" }
         - { name: rome, type: text, value: "{{rome}}" }
         - { name: period, at: codePeriode, type: text }
         - { name: code, at: codeNomenclature, type: text }
         - { name: label, at: libNomenclature, type: text, optional: true }
+        - { name: area_label, at: libTerritoire, type: text, optional: true }
+        - { name: occupation_label, at: libActivite, type: text, optional: true }
         - { name: value, at: valeurPrincipaleNombre, type: float }
   - sql:
       as: indicators
       sql: |
         SELECT 'FR' AS country, 'ft_tension' AS source, period AS edition,
                period || '-01-01' AS period_start, period || '-12-31' AS period_end,
-               'fr_rome' AS occupation_scheme, rome AS occupation_code,
-               'fr_dept' AS area_scheme, dept AS area_code,
+               'fr_rome' AS occupation_scheme, rome AS occupation_code, occupation_label,
+               'fr_region' AS area_scheme, region AS area_code, area_label,
                CASE WHEN code = 'PERSPECTIVE' THEN 'tension_index' ELSE 'tension_factor' END AS metric,
                code AS factor_code, label AS factor_label, value, 'level_1_5' AS unit
         FROM raw
-  - write: { from: indicators, table: { name: lm_tension, replace: true } }
+  - write: { from: indicators, table: { name: lm_tension } }
 tests:
-  - name: one job in one department
-    settings: { labor_market_fr.departments: "69", labor_market_fr.rome_codes: "n4101" }
+  - name: one job in one region
+    today: "2026-11-15"
+    settings: { labor_market_fr.regions: "84", labor_market_fr.rome_codes: "n4101" }
     given:
       "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire": ft_token.json
-      "https://api.francetravail.io/partenaire/stats-offres-demandes-emploi/v1/indicateur/stat-perspective-employeur": ft_tension_69_N4101.json
+      "https://api.francetravail.io/partenaire/stats-offres-demandes-emploi/v1/indicateur/stat-perspective-employeur": ft_tension_84_N4101.json
     expect:
+      asked: { rows: 1 }
       indicators:
         rows: 3
         contains:
-          - { source: ft_tension, edition: "2024", occupation_scheme: fr_rome, occupation_code: N4101, area_code: "69", metric: tension_index, value: "4", unit: level_1_5 }
-          - { metric: tension_factor, factor_code: DURABILITE, value: "5" }
+          - { source: ft_tension, edition: "2025", occupation_scheme: fr_rome, occupation_code: N4101, area_scheme: fr_region, area_code: "84", area_label: Auvergne-Rhône-Alpes, metric: tension_index, value: "4", unit: level_1_5 }
+          - { metric: tension_factor, factor_code: DUR_EMPL, value: "5" }

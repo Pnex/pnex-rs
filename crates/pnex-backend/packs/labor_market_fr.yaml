@@ -5,13 +5,13 @@
 #   projects, hard projects and seasonal ones per occupation (FAP 2021) and
 #   department;
 # - `lm_tension`: the yearly tension level (1 to 5) per ROME job and
-#   department, and its factors (France Travail labour market API);
+#   region, and its factors (France Travail labour market API);
 # - `lm_offers_seen`: the open job offers of France Travail seen each day
 #   per ROME job and department, from which the query `job_postings` keeps
 #   each offer's first and last day seen.
 # Both indicator tables share the long form of M16 (occupation scheme and
 # code, area scheme and code, metric, value, unit). The org chooses its
-# departments and ROME jobs; the generic pivots (ISCO, NUTS) and the score
+# regions, departments and ROME jobs; the generic pivots (ISCO, NUTS) and the score
 # come with the next lots. The France Travail API needs the org's own
 # francetravail.io application, subscribed to the job offers (v2) and
 # labour market APIs: its client id and secret in the org vault under
@@ -20,16 +20,23 @@
 key: labor_market_fr
 name: Labour market (France)
 names: {fr: "Marché du travail (France)"}
-version: "1.0.0"
+version: "1.1.0"
 requires: []
-description: Hiring needs, tension per job and open job offers per department, from France Travail (BMO survey, labour market and job offers APIs).
-descriptions: {fr: "Besoins de recrutement, tension par métier et offres d'emploi ouvertes par département, depuis France Travail (enquête BMO, API Marché du travail et Offres d'emploi)."}
+description: Hiring needs and open job offers per department, tension per job and region, from France Travail (BMO survey, labour market and job offers APIs).
+descriptions: {fr: "Besoins de recrutement et offres d'emploi ouvertes par département, tension par métier et région, depuis France Travail (enquête BMO, API Marché du travail et Offres d'emploi)."}
 settings:
+  - key: regions
+    name: Regions followed
+    names: {fr: "Régions suivies"}
+    description: "Comma-separated INSEE region codes, for example 84,11 (all of mainland France: 11,24,27,28,32,44,52,53,75,76,84,93,94). Empty: tension is not read."
+    descriptions: {fr: "Codes INSEE de région séparés par des virgules, par exemple 84,11 (toute la métropole : 11,24,27,28,32,44,52,53,75,76,84,93,94). Vide : la tension n'est pas lue."}
+    kind: text
+    default: ""
   - key: departments
     name: Departments followed
     names: {fr: "Départements suivis"}
-    description: "Comma-separated department codes, for example 69,38,01. Empty: tension and offers are not read."
-    descriptions: {fr: "Codes de département séparés par des virgules, par exemple 69,38,01. Vide : ni tension ni offres ne sont lues."}
+    description: "Comma-separated department codes, for example 69,38,01. Empty: offers are not read."
+    descriptions: {fr: "Codes de département séparés par des virgules, par exemple 69,38,01. Vide : les offres ne sont pas lues."}
     kind: text
     default: ""
   - key: rome_codes
@@ -61,14 +68,14 @@ queries:
       WHERE area_code = {{department}} AND edition = (SELECT max(edition) FROM lm_bmo)
       ORDER BY occupation_code, metric
   - key: tension
-    name: Tension of the jobs of a department
-    names: {fr: "Tension des métiers d'un département"}
-    description: The latest tension level (1 to 5) of each ROME job followed in a department, and its factors.
+    name: Tension of the jobs of a region
+    names: {fr: "Tension des métiers d'une région"}
+    description: The latest tension level (1 to 5) of each ROME job followed in a region, and its factors.
     params:
-      - { name: department, type: text, description: "Department code, for example 69." }
+      - { name: region, type: text, description: "INSEE region code, for example 84." }
     sql: >-
-      SELECT edition, occupation_code, area_code, metric, factor_code, factor_label, value FROM lm_tension t
-      WHERE area_code = {{department}}
+      SELECT edition, occupation_code, occupation_label, area_code, area_label, metric, factor_code, factor_label, value FROM lm_tension t
+      WHERE area_code = {{region}}
       AND edition = (SELECT max(edition) FROM lm_tension x WHERE x.occupation_code = t.occupation_code AND x.area_code = t.area_code)
       ORDER BY occupation_code, metric DESC, value DESC
   - key: job_postings

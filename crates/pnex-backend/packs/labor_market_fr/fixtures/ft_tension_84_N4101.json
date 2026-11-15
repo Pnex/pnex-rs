@@ -1,0 +1,5 @@
+{"codeTypeTerritoire": "REG", "codeTerritoire": "84", "codeTypeActivite": "ROME", "codeActivite": "N4101", "listeValeursParPeriode": [
+  {"codePeriode": "2025", "codeNomenclature": "PERSPECTIVE", "libNomenclature": "Tension", "valeurPrincipaleNombre": 4, "libTerritoire": "Auvergne-Rhône-Alpes", "libActivite": "Conduite de transport de marchandises sur longue distance"},
+  {"codePeriode": "2025", "codeNomenclature": "COND_TRAVAIL", "libNomenclature": "Conditions de travail contraignantes", "valeurPrincipaleNombre": 3, "libTerritoire": "Auvergne-Rhône-Alpes", "libActivite": "Conduite de transport de marchandises sur longue distance"},
+  {"codePeriode": "2025", "codeNomenclature": "DUR_EMPL", "libNomenclature": "Non-durabilité de l'emploi", "valeurPrincipaleNombre": 5, "libTerritoire": "Auvergne-Rhône-Alpes", "libActivite": "Conduite de transport de marchandises sur longue distance"}
+]}
