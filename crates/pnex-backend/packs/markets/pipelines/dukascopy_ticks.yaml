@@ -1,7 +1,7 @@
 # Dukascopy forex ticks from its public hour files (LZMA of 20-byte records:
 # ms in the hour, ask, bid, ask volume, bid volume, big-endian). Prices are
-# integers of 3 places for a JPY quote, 5 for the other pairs; a pair no
-# rule matches is left out. A day is one row: its 24 hours, one transaction.
+# integers of 3 places for a JPY quote, gold and silver, 5 for the other
+# pairs; a pair no rule matches is left out. A day is one row: its 24 hours, one transaction.
 # Broker quotes, not exchange data; terms not checked: kept inside the org.
 key: dukascopy_ticks
 name: Dukascopy ticks
@@ -18,7 +18,7 @@ steps:
         - as: instrument
           setting: markets.history_fx_pairs
           case: upper
-          derive: { scale: [["???JPY", "3"], ["??????", "5"]] }
+          derive: { scale: [["???JPY", "3"], ["XAU???", "3"], ["XAG???", "3"], ["??????", "5"]] }
         - { as: day, periods: day, from_setting: markets.history_fx_from, from: "-12m", closed_only: true }
   - enumerate:
       as: hours

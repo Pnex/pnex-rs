@@ -121,6 +121,13 @@ puis celles à redemander. Ce registre remplace `market_history_partitions`.
 hôte, pour toute la plateforme** : deux orgs qui lisent la même source ne doublent pas le débit.
 `429` et `5xx` sont relancés avec attente (`Retry-After` respecté), comme en D793.
 
+> **Précisée le 2026-11-15 (pipeline `markets/dukascopy_m1`)** : un `429`, un `503` ou une
+> connexion coupée sur une ligne suivie **arrête la passe** ; la ligne n'est pas marquée (son
+> compteur d'échecs ne monte pas), les suivantes attendent la passe d'après. Un hôte cadencé
+> (`every`) qui repousse est mis en pause : une minute, doublée à chaque refus d'affilée, une heure
+> au plus ; une réponse lève la pause. Pendant la pause, la requête est refusée sans partir
+> (`throttled`). Tenu par processus, sur `get` et les formulaires seulement (pas les flux).
+
 > **Amendée par D975 (2026-11-14, `watch.md`)** : un document peut aussi déclarer
 > `object_hosts`, des adresses tenues par les objets de l'org, dont les hôtes deviennent
 > joignables ; jamais avec un secret, et une IP littérale passe la garde egress.

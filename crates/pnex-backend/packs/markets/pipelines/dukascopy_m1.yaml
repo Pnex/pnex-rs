@@ -1,0 +1,68 @@
+# Dukascopy 1-minute bars from its public day files (LZMA of 24-byte
+# records: seconds in the UTC day, open, close, low, high as integers, tick
+# volume as f32, big-endian), bid then ask: every bid day of every symbol
+# comes before the first ask day. Prices are integers of 3 places for a JPY
+# quote, gold, silver and the longer codes (indices, CFDs), 5 for the other
+# six-letter pairs. A weekend day answers empty and is never asked again;
+# the two last days wait until Dukascopy has published them.
+# Slow on purpose: one file every 10 s; a 429, a 503 or a dropped
+# connection ends the run and pauses the host, longer each time (D938).
+# Broker quotes, not exchange data; terms not checked: kept inside the org.
+key: dukascopy_m1
+name: Dukascopy 1-minute bars
+hosts: [datafeed.dukascopy.com]
+schedule: 10m
+steps:
+  - enumerate:
+      as: days
+      track: true
+      per_run: 24
+      empty: settled
+      cross:
+        - { as: side, values: [BID, ASK] }
+        - as: instrument
+          setting: markets.dukascopy_m1_symbols
+          case: upper
+          derive: { scale: [["???JPY", "3"], ["XAU???", "3"], ["XAG???", "3"], ["??????", "5"], ["*", "3"]] }
+        - { as: day, periods: day, from_setting: markets.dukascopy_m1_from, from: "-12m", to: "-2d", closed_only: true }
+  - fetch:
+      as: bi5
+      for_each: days
+      url: "https://datafeed.dukascopy.com/datafeed/{{instrument}}/{{day_y}}/{{day_m0}}/{{day_d}}/{{side}}_candles_min_1.bi5"
+      every: 10s
+      missing_is_empty: true
+  - unpack: { as: raw, from: bi5, format: lzma }
+  - read:
+      as: bars
+      from: raw
+      format: binary
+      record_size: 24
+      endian: big
+      columns:
+        - { name: instrument, type: text, value: "{{instrument}}" }
+        - { name: side, type: text, value: "{{side|lower}}" }
+        - { name: ts, at: 0, binary: u32, type: timestamp, format: epoch_s, base: "{{day_start}}" }
+        - { name: open, at: 4, binary: u32, type: decimal, scale: 8, divide: "{{scale}}" }
+        - { name: high, at: 16, binary: u32, type: decimal, scale: 8, divide: "{{scale}}" }
+        - { name: low, at: 12, binary: u32, type: decimal, scale: 8, divide: "{{scale}}" }
+        - { name: close, at: 8, binary: u32, type: decimal, scale: 8, divide: "{{scale}}" }
+        - { name: volume, at: 20, binary: f32, type: float }
+        - { name: source, type: text, value: dukascopy_public }
+  - write: { from: bars, table: { name: dukascopy_ohlcv_1m } }
+tests:
+  - name: gold and an index at 3 places, a pair at 5, a weekend day empty
+    today: "2024-03-08"
+    settings: { markets.dukascopy_m1_symbols: "xauusd, eurusd, usa500idxusd", markets.dukascopy_m1_from: "2024-03-04" }
+    given:
+      "https://datafeed.dukascopy.com/datafeed/XAUUSD/2024/02/05/BID_candles_min_1.bi5": dukascopy_xauusd_bid_m1.bi5
+      "https://datafeed.dukascopy.com/datafeed/EURUSD/2024/02/05/ASK_candles_min_1.bi5": dukascopy_eurusd_ask_m1.bi5
+      "https://datafeed.dukascopy.com/datafeed/USA500IDXUSD/2024/02/04/BID_candles_min_1.bi5": dukascopy_empty_day.bi5
+    expect:
+      days: { rows: 12 }
+      bars:
+        rows: 4
+        columns: [instrument, side, ts, open, high, low, close, volume, source]
+        contains:
+          - { instrument: XAUUSD, side: bid, ts: "2024-03-05T00:00:00", open: "2115.12300000", high: "2115.60000000", low: "2114.90000000", close: "2115.45600000", volume: "12.5" }
+          - { instrument: XAUUSD, ts: "2024-03-05T23:59:00", close: "2128.10000000" }
+          - { instrument: EURUSD, side: ask, ts: "2024-03-05T13:30:00", open: "1.08012000", high: "1.08033000", source: dukascopy_public }

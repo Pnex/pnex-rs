@@ -711,8 +711,7 @@ fn paced_host(url: &reqwest::Url, every_ms: u64) -> Option<String> {
 
 // Paced hosts that pushed back: pushes in a row and when they may be asked again.
 // shortcut: per process, and only on get and form posts; share it like LAST_CALL.
-static COOLDOWN: LazyLock<Mutex<HashMap<String, (u32, Instant)>>> =
-    LazyLock::new(Default::default);
+static COOLDOWN: LazyLock<Mutex<HashMap<String, (u32, Instant)>>> = LazyLock::new(Default::default);
 
 /// The pause after the n-th push back in a row: a minute, doubled each
 /// time, an hour at most.

@@ -368,3 +368,66 @@ async fn object_hosts_open_their_hosts_but_never_to_a_secret() {
         Some("egress_address_refused")
     );
 }
+
+/// A source answering 503 is asked once per run: the other rows wait,
+/// none of them counted as failed; its pause doubles up to an hour.
+#[tokio::test]
+async fn a_source_pushing_back_ends_the_run() {
+    struct Busy(std::sync::atomic::AtomicUsize);
+    impl Transport for Busy {
+        async fn get(&self, url: &reqwest::Url, _: &Req) -> Result<Option<Blob>, Failure> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(fail(
+                "http_status",
+                json!({ "url": url.as_str(), "status": 503 }),
+            ))
+        }
+
+        async fn post_form(
+            &self,
+            url: &reqwest::Url,
+            _: Option<&reqwest::Url>,
+            _: &[(String, String)],
+            r: &Req,
+        ) -> Result<Option<Blob>, Failure> {
+            self.get(url, r).await
+        }
+    }
+    let sp = shipped()
+        .iter()
+        .find(|sp| sp.id() == "markets/dukascopy_m1")
+        .expect("dukascopy_m1 is shipped");
+    let inputs = Inputs {
+        settings: [
+            ("markets.dukascopy_m1_symbols", "eurusd"),
+            ("markets.dukascopy_m1_from", "2024-03-01"),
+        ]
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .into(),
+        now: NaiveDate::from_ymd_opt(2024, 3, 20)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap(),
+        ..Default::default()
+    };
+    let busy = Busy(Default::default());
+    let out = run(
+        &sp.doc,
+        &inputs,
+        &busy,
+        &mut Memory::default(),
+        &InProcess,
+        &HashMap::new(),
+        None,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(busy.0.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(out.items.is_empty(), "{:?}", out.items);
+    assert_eq!(out.failure.map(|f| f.code), Some("http_status"));
+    let pauses: Vec<u64> = (1..=8)
+        .map(|n| super::store::cooldown(n).as_secs())
+        .collect();
+    assert_eq!(pauses, [60, 120, 240, 480, 960, 1920, 3600, 3600]);
+}

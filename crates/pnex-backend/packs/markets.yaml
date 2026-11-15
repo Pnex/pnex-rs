@@ -41,6 +41,10 @@
 # oil, indices) into `histdata_m1`, a closed year per file, by the pipeline
 # `pipelines/histdata_m1.yaml` (pipeline-engine.md D939: New York time with
 # daylight saving).
+# Since 1.19.0 the symbols of `dukascopy_m1_symbols` get Dukascopy's
+# 1-minute bid and ask bars into the table `dukascopy_ohlcv_1m`, a UTC day
+# per file, one file every 10 s (`pipelines/dukascopy_m1.yaml`). Same terms
+# caveat as the ticks.
 # Since 1.7.0 (D880) the series of `bis_series` come from the BIS Data Portal
 # (SDMX CSV): by default the policy rates of the G10 central banks, daily
 # since 2000. BIS terms: free for a non-commercial use, the BIS cited as the
@@ -73,7 +77,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.18.0"
+version: "1.19.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -266,6 +270,20 @@ settings:
     names: {fr: "Premier mois de l'historique des ticks"}
     description: "YYYY-MM. The ticks are loaded from this month; twelve months back when empty."
     descriptions: {fr: "AAAA-MM. Les ticks sont chargés à partir de ce mois ; douze mois en arrière si vide."}
+    kind: text
+    default: ""
+  - key: dukascopy_m1_symbols
+    name: Symbols of the Dukascopy 1-minute bars
+    names: {fr: "Symboles des bougies d'une minute Dukascopy"}
+    description: "Comma-separated Dukascopy codes (XAUUSD, EURUSD, USDJPY, USA500IDXUSD…) whose 1-minute bid and ask bars are loaded into the table dukascopy_ohlcv_1m, a day per file, one file every 10 seconds, all bid days before the ask ones. Broker quotes: keep the table inside the org. Empty: nothing is loaded."
+    descriptions: {fr: "Codes Dukascopy (XAUUSD, EURUSD, USDJPY, USA500IDXUSD…), séparés par des virgules, dont les bougies bid et ask d'une minute sont chargées dans la table dukascopy_ohlcv_1m, un jour par fichier, un fichier toutes les 10 secondes, tous les jours bid avant les ask. Cotations d'un courtier : garder la table dans l'organisation. Vide : rien n'est chargé."}
+    kind: text
+    default: ""
+  - key: dukascopy_m1_from
+    name: First day of the Dukascopy 1-minute bars
+    names: {fr: "Premier jour des bougies d'une minute Dukascopy"}
+    description: "YYYY-MM-DD. Loaded from this day; twelve months back when empty."
+    descriptions: {fr: "AAAA-MM-JJ. Chargé à partir de ce jour ; douze mois en arrière si vide."}
     kind: text
     default: ""
   - key: move_notify_channels
