@@ -155,10 +155,9 @@ pub async fn request(
             max: ba::CONNECTIONS_CAPTURES_PER_DAY,
         });
     }
-    let path = url
-        .strip_prefix("https://www.linkedin.com")
-        .unwrap_or_default()
-        .to_string();
+    let path = reqwest::Url::parse(&url)
+        .map(|u| u.path().to_string())
+        .unwrap_or_default();
     let params = BTreeMap::from([("url".to_string(), url.clone()), ("path".to_string(), path)]);
     let purpose = Purpose::ConnectionsCapture {
         person_id: key,

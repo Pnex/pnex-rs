@@ -127,6 +127,11 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "the person match reads who works where (investigation employs, companies group and sites) and writes investigation identities (D788); to move into keys the prospecting pack declares",
     ),
     (
+        "pnex-backend/src/services/network_connections.rs",
+        &["person", "organization", "knows", "employs"],
+        "a contact's connections kept as investigation people, known by the contact and proposed at an organization (account-mapping.md D976); to move into keys the prospecting pack declares, with the person match",
+    ),
+    (
         "pnex-backend/src/services/mail/invitations.rs",
         &["identifier", "uses_identifier"],
         "meeting attendees matched by the investigation pack's e-mail identifiers (mail.md D466)",
