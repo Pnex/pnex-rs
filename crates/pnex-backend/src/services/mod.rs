@@ -81,6 +81,7 @@ pub mod media_uploads;
 pub mod memory;
 /// MT5 terminals as registered data sources (markets-research.md D847–D849).
 pub mod mt5;
+pub mod network_connections;
 /// Notifications (D49–D54) — WS broker, journal, pruner, delivery.
 pub mod notify;
 pub mod notify_journal;
@@ -94,7 +95,6 @@ pub mod org_resolve;
 pub mod ota;
 pub mod ota_signing;
 pub mod pages;
-pub mod network_connections;
 pub mod person_match;
 pub mod pipeline_engine;
 pub mod pipelines;
