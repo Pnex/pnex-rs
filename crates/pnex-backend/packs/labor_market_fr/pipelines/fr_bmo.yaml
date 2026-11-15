@@ -1,0 +1,76 @@
+# Recruitment needs survey of France Travail (BMO), one edition a year:
+# hiring projects, the hard ones and the seasonal ones per occupation (FAP
+# 2021) and employment basin, summed per department (labor-market.md S2).
+# "*" is statistical secrecy: read as empty, so a sum may be low. Written in
+# the long form of the labour market indicators (M16): one row per
+# occupation, department and metric. Open licence (Etalab).
+key: fr_bmo
+name: Recruitment needs (BMO, France Travail)
+hosts: [www.francetravail.org]
+schedule: 24h
+requires: [labor_market_fr.bmo_url]
+steps:
+  - fetch: { as: file, url: "{{setting.labor_market_fr.bmo_url}}", skip_if_unchanged: true }
+  - read:
+      as: raw
+      from: file
+      format: xlsx
+      sheet: "2"
+      skip_invalid: true
+      columns:
+        - { name: edition, at: annee, type: text }
+        - { name: fap, at: "Code métier BMO", type: text }
+        - { name: fap_label, at: "Nom métier BMO", type: text }
+        - { name: family, at: Famille_met, type: text, optional: true }
+        - { name: family_label, at: Lbl_fam_met, type: text, optional: true }
+        - { name: dept, at: Dept, type: text }
+        - { name: dept_label, at: NomDept, type: text, optional: true }
+        - { name: projects, at: met, type: float, null_if: ["*"], optional: true }
+        - { name: hard, at: xmet, type: float, null_if: ["*"], optional: true }
+        - { name: seasonal, at: smet, type: float, null_if: ["*"], optional: true }
+  - sql:
+      as: by_dept
+      sql: |
+        SELECT edition, fap, max(fap_label) AS fap_label, max(family) AS family,
+               max(family_label) AS family_label, dept, max(dept_label) AS dept_label,
+               sum(projects) AS projects, sum(hard) AS hard, sum(seasonal) AS seasonal
+        FROM raw WHERE fap IS NOT NULL AND dept IS NOT NULL
+        GROUP BY edition, fap, dept
+  - sql:
+      as: indicators
+      sql: |
+        WITH k AS (SELECT edition, fap, fap_label, family, family_label, dept, dept_label,
+                          projects, hard, seasonal FROM by_dept),
+        m AS (
+          SELECT edition, fap, fap_label, family, family_label, dept, dept_label,
+                 'hiring_projects' AS metric, projects AS value, 'count' AS unit FROM k
+          UNION ALL SELECT edition, fap, fap_label, family, family_label, dept, dept_label,
+                 'hard_hiring_projects', hard, 'count' FROM k
+          UNION ALL SELECT edition, fap, fap_label, family, family_label, dept, dept_label,
+                 'seasonal_projects', seasonal, 'count' FROM k
+          UNION ALL SELECT edition, fap, fap_label, family, family_label, dept, dept_label,
+                 'hiring_difficulty_pct',
+                 CASE WHEN projects > 0 THEN round(100.0 * hard / projects, 1) END, 'percent' FROM k)
+        SELECT 'FR' AS country, 'ft_bmo' AS source, edition,
+               edition || '-01-01' AS period_start, edition || '-12-31' AS period_end,
+               'fr_fap2021' AS occupation_scheme, fap AS occupation_code, fap_label AS occupation_label,
+               family AS occupation_family, family_label AS occupation_family_label,
+               'fr_dept' AS area_scheme, dept AS area_code, dept_label AS area_label,
+               metric, value, unit
+        FROM m WHERE value IS NOT NULL
+  - write: { from: indicators, table: { name: lm_bmo, replace: true } }
+tests:
+  - name: projects summed per department, secrecy left out
+    settings: { labor_market_fr.bmo_url: "https://www.francetravail.org/files/bmo.xlsx" }
+    given:
+      "https://www.francetravail.org/files/bmo.xlsx": bmo_sample.xlsx
+    expect:
+      by_dept:
+        rows: 2
+        contains:
+          - { fap: B2X38, dept: "69", projects: "150", hard: "105", seasonal: "4" }
+          - { fap: D1Z40, dept: "38", projects: "50" }
+      indicators:
+        contains:
+          - { source: ft_bmo, edition: "2026", occupation_scheme: fr_fap2021, occupation_code: B2X38, area_scheme: fr_dept, area_code: "69", metric: hiring_difficulty_pct, value: "70", unit: percent }
+          - { occupation_code: D1Z40, area_code: "38", metric: hiring_projects, value: "50" }

@@ -583,6 +583,30 @@ impl Typed {
     }
 }
 
+/// A spreadsheet's sheet, written as a CSV then read as one: the same
+/// headers, columns and types.
+fn read_sheet(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, Failure> {
+    let bytes = file.bytes(u64::MAX)?;
+    let table = pnex_core::import_read::sheet_table(&bytes, r.sheet.as_deref())
+        .map_err(|_| fail("unreadable", json!({ "what": "spreadsheet" })))?
+        .ok_or_else(|| fail("not_found", json!({ "sheet": r.sheet })))?;
+    let mut w = csv::WriterBuilder::new()
+        .flexible(true)
+        .from_writer(Vec::new());
+    for line in &table {
+        w.write_record(line)
+            .map_err(|_| fail("unreadable", json!({ "what": "spreadsheet" })))?;
+    }
+    let csv = w
+        .into_inner()
+        .map_err(|_| fail("unreadable", json!({ "what": "spreadsheet" })))?;
+    let mut as_csv = r.clone();
+    as_csv.quoted = true;
+    as_csv.delimiter = None;
+    as_csv.encoding = Some("utf-8".into());
+    read_csv(&as_csv, row, &Blob::Mem(csv))
+}
+
 fn read_csv(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, Failure> {
     let mut rd = csv::ReaderBuilder::new()
         .has_headers(false)
@@ -934,6 +958,7 @@ pub fn read(r: &Read, input: &[Row]) -> Result<Vec<Arc<Batches>>, Failure> {
             Format::Binary => read_binary(r, row, file)?,
             Format::Ical => read_ical(r, row, file)?,
             Format::Lines => read_lines(r, row, file)?,
+            Format::Xlsx => read_sheet(r, row, file)?,
             _ => {
                 let format = format!("{:?}", r.format).to_lowercase();
                 return Err(fail("format_unsupported", json!({ "format": format })));

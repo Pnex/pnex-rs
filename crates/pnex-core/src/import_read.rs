@@ -179,6 +179,36 @@ fn cell(c: &calamine::Data) -> String {
     }
 }
 
+/// Every row of one sheet as text cells (a pipeline's `read` of a
+/// spreadsheet): the sheet named `sheet`, or at that position from 1, or the
+/// first. `None` when the workbook has no such sheet.
+pub fn sheet_table(
+    bytes: &[u8],
+    sheet: Option<&str>,
+) -> Result<Option<Vec<Vec<String>>>, ReadError> {
+    use calamine::Reader;
+    zip_guard(bytes)?;
+    let mut book = calamine::open_workbook_auto_from_rs(Cursor::new(bytes))
+        .map_err(|_| ReadError::Malformed)?;
+    let names = book.sheet_names();
+    let name = match sheet {
+        None => names.first().cloned(),
+        Some(s) => match s.parse::<usize>() {
+            Ok(n) if n >= 1 => names.get(n - 1).cloned(),
+            _ => names.iter().find(|x| x.as_str() == s).cloned(),
+        },
+    };
+    let Some(name) = name else {
+        return Ok(None);
+    };
+    let range = book
+        .worksheet_range(&name)
+        .map_err(|_| ReadError::Malformed)?;
+    Ok(Some(
+        range.rows().map(|r| r.iter().map(cell).collect()).collect(),
+    ))
+}
+
 /// The first sheet, its first row as headers.
 fn sheet_rows(bytes: &[u8]) -> Result<Vec<Value>, ReadError> {
     use calamine::Reader;

@@ -259,6 +259,10 @@ pub struct Fetch {
     /// `post`: column of the row holding the form fields (an object).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub form_from: Option<String>,
+    /// `post`: column of the row holding a JSON body, sent as
+    /// `application/json` (instead of `form_from`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_from: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, String>,
     /// One call per this duration on the host (D938), `250ms`, `5m`…
@@ -315,6 +319,11 @@ pub struct Pages {
     pub until: String,
     /// Pages asked at most per row.
     pub max: u32,
+    /// Records per page when the parameter is a range of records
+    /// (`0-149`, `150-299`…) rather than a page number; a page with fewer
+    /// records is the last.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u32>,
 }
 
 /// Pages a fetch may ask per row.
@@ -345,11 +354,14 @@ pub struct FetchSecret {
 }
 
 /// How a fetch gets its token: a form posted to `url` with the org's
-/// vault secrets `user` and `password` (as `username` and `password`) and
-/// fixed `fields`; the token is the answer's JSON field `field`.
+/// vault secrets `user` and `password` (as `username` and `password`, or as
+/// `client_id` and `client_secret` for `client_credentials`) and fixed
+/// `fields`; the token is the answer's JSON field `field`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TokenGrant {
+    #[serde(default, skip_serializing_if = "GrantKind::is_password")]
+    pub kind: GrantKind,
     pub url: String,
     pub user: String,
     pub password: String,
@@ -357,6 +369,29 @@ pub struct TokenGrant {
     pub fields: BTreeMap<String, String>,
     #[serde(default = "token_field")]
     pub field: String,
+}
+
+/// OAuth2 grant of a [`TokenGrant`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GrantKind {
+    #[default]
+    Password,
+    ClientCredentials,
+}
+
+impl GrantKind {
+    fn is_password(&self) -> bool {
+        *self == GrantKind::Password
+    }
+
+    /// Form names of the user and the password secrets.
+    pub fn names(self) -> (&'static str, &'static str) {
+        match self {
+            GrantKind::Password => ("username", "password"),
+            GrantKind::ClientCredentials => ("client_id", "client_secret"),
+        }
+    }
 }
 
 fn token_field() -> String {
@@ -445,6 +480,8 @@ pub enum Format {
     Ical,
     Lines,
     Binary,
+    /// A sheet of a spreadsheet (`xlsx`, `xls`, `ods`), read as a CSV.
+    Xlsx,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -539,6 +576,10 @@ pub struct Read {
     /// CSV: whether the first line names the columns.
     #[serde(default)]
     pub header: Header,
+    /// Spreadsheet: the sheet's name, or its position from 1; the first
+    /// sheet when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delimiter: Option<char>,
     /// `utf-8` or `latin1`; guessed when absent.
@@ -1126,7 +1167,9 @@ fn step_violations(
                 None if !f.url.starts_with("{{") => bad(format!("{at}.url"), "invalid"),
                 _ => {}
             }
-            if (f.method == Method::Post) != f.form_from.is_some() {
+            if (f.method == Method::Post) != (f.form_from.is_some() || f.json_from.is_some())
+                || (f.form_from.is_some() && f.json_from.is_some())
+            {
                 bad(format!("{at}.form_from"), "post_only");
             }
             if f.pages.as_ref().is_some_and(|p| {
@@ -1135,6 +1178,7 @@ fn step_violations(
                     || p.max == 0
                     || p.max > PAGES_MAX
                     || p.from > 1
+                    || p.size.is_some_and(|n| n == 0 || n > 10_000)
                     || f.method != Method::Get
             }) {
                 bad(format!("{at}.pages"), "invalid");
@@ -1164,7 +1208,9 @@ fn step_violations(
                     bad(format!("{at}.secret"), "one_of:name,token");
                 }
                 if let Some(t) = &s.token {
-                    let reserved = |k: &String| k == "username" || k == "password";
+                    // The names the vault secrets fill are not fixed fields.
+                    let (u, p) = t.kind.names();
+                    let reserved = |k: &String| k == u || k == p;
                     if s.header.is_none()
                         || !t.url.starts_with("https://")
                         || literal_host(&t.url).is_none_or(|h| !hosts.contains(&h))
@@ -1366,6 +1412,51 @@ mod tests {
             .into_iter()
             .map(|v| format!("{} {}", v.path, v.token))
             .collect()
+    }
+
+    #[test]
+    fn json_posts_record_ranges_and_client_credentials() {
+        let fetch = |extra: serde_json::Value| {
+            let mut f = json!({"as": "a", "url": "https://data.example.io/x"});
+            f.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            doc(json!([{"fetch": f}]))
+        };
+        // Only the fetch is looked at: a document without a write is besides.
+        let tokens = |d: &Document| -> Vec<String> {
+            tokens(d)
+                .into_iter()
+                .filter(|t| t != "steps write_required")
+                .collect()
+        };
+        let grant = |kind: &str, fields: serde_json::Value| {
+            json!({"header": "Authorization", "token": {"kind": kind,
+                "url": "https://data.example.io/token", "user": "id", "password": "secret",
+                "fields": fields}})
+        };
+        let ok = fetch(json!({"method": "post", "json_from": "body",
+            "secret": grant("client_credentials", json!({"grant_type": "client_credentials"}))}));
+        assert_eq!(tokens(&ok), Vec::<String>::new());
+        let both = fetch(json!({"method": "post", "json_from": "b", "form_from": "f"}));
+        assert_eq!(tokens(&both), ["steps.0.fetch.form_from post_only"]);
+        let get_body = fetch(json!({"json_from": "b"}));
+        assert_eq!(tokens(&get_body), ["steps.0.fetch.form_from post_only"]);
+        let range =
+            fetch(json!({"pages": {"param": "range", "until": "/r", "max": 3, "size": 150}}));
+        assert_eq!(tokens(&range), Vec::<String>::new());
+        let zero = fetch(json!({"pages": {"param": "range", "until": "/r", "max": 3, "size": 0}}));
+        assert_eq!(tokens(&zero), ["steps.0.fetch.pages invalid"]);
+        // The vault fills client_id under client_credentials, a field may not.
+        let clash =
+            fetch(json!({"secret": grant("client_credentials", json!({"client_id": "x"}))}));
+        assert_eq!(tokens(&clash), ["steps.0.fetch.secret.token invalid"]);
+        let fixed = fetch(json!({"secret": grant("password", json!({"client_id": "x"}))}));
+        assert_eq!(tokens(&fixed), Vec::<String>::new());
+        assert_eq!(
+            GrantKind::ClientCredentials.names(),
+            ("client_id", "client_secret")
+        );
     }
 
     #[test]

@@ -624,3 +624,10 @@ Chaque lot laisse `main` vert et supprime le Rust qu'il remplace dans le même c
   `named-query-not-found`. Première requête : `markets/market_moves`. Les routes `/markets/*` ne sont
   pas encore remplacées.
 
+
+## Ajouts du 2026-11-15 (marché du travail, `labor-market.md` §11)
+
+Lecture `xlsx` (feuille par nom ou position), grant `client_credentials`,
+corps JSON d'un `post` (`json_from`), pagination par plage
+d'enregistrements (`pages.size`), 416 lu comme une réponse vide. Génériques :
+aucun hôte ni format de source en Rust.

@@ -1,0 +1,79 @@
+# Labour market tension of France Travail (labor-market.md S1): for each
+# department and ROME job code of the settings, the latest yearly tension
+# level (1 low to 5 high) and the factors behind it, with the org's own
+# francetravail.io application (client credentials, vault keys
+# lm_ft_client_id and lm_ft_client_secret). Long form (M16): one row per
+# job, department, period and factor; `tension_index` is the overall level.
+key: fr_ft_tension
+name: Labour market tension (France Travail)
+hosts: [entreprise.francetravail.fr, api.francetravail.io]
+schedule: 168h
+requires: [labor_market_fr.departments, labor_market_fr.rome_codes]
+steps:
+  - enumerate:
+      as: asked
+      cross:
+        - { as: dept, setting: labor_market_fr.departments, case: upper }
+        - { as: rome, setting: labor_market_fr.rome_codes, case: upper }
+  - sql:
+      as: bodies
+      sql: |
+        SELECT dept, rome,
+          '{"codeTypeTerritoire":"DEP","codeTerritoire":"' || dept
+          || '","codeTypeActivite":"ROME","codeActivite":"' || rome
+          || '","codeTypePeriode":"ANNEE","codeTypeNomenclature":"TYPE_TENSION","dernierePeriode":true}' AS body
+        FROM asked
+  - fetch:
+      as: answers
+      for_each: bodies
+      method: post
+      json_from: body
+      url: "https://api.francetravail.io/partenaire/stats-offres-demandes-emploi/v1/indicateur/stat-perspective-employeur"
+      headers: { Accept: application/json }
+      every: 200ms
+      missing_is_empty: true
+      secret:
+        token:
+          kind: client_credentials
+          url: "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire"
+          user: lm_ft_client_id
+          password: lm_ft_client_secret
+          fields: { grant_type: client_credentials, scope: "api_offresdemploiv2 o2dsoffre api_stats-offres-demandes-emploiv1 offresetdemandesemploi" }
+        header: Authorization
+        scheme: Bearer
+  - read:
+      as: raw
+      from: answers
+      format: json
+      records: /listeValeursParPeriode
+      skip_invalid: true
+      columns:
+        - { name: dept, type: text, value: "{{dept}}" }
+        - { name: rome, type: text, value: "{{rome}}" }
+        - { name: period, at: codePeriode, type: text }
+        - { name: code, at: codeNomenclature, type: text }
+        - { name: label, at: libNomenclature, type: text, optional: true }
+        - { name: value, at: valeurPrincipaleNombre, type: float }
+  - sql:
+      as: indicators
+      sql: |
+        SELECT 'FR' AS country, 'ft_tension' AS source, period AS edition,
+               period || '-01-01' AS period_start, period || '-12-31' AS period_end,
+               'fr_rome' AS occupation_scheme, rome AS occupation_code,
+               'fr_dept' AS area_scheme, dept AS area_code,
+               CASE WHEN code = 'PERSPECTIVE' THEN 'tension_index' ELSE 'tension_factor' END AS metric,
+               code AS factor_code, label AS factor_label, value, 'level_1_5' AS unit
+        FROM raw
+  - write: { from: indicators, table: { name: lm_tension, replace: true } }
+tests:
+  - name: one job in one department
+    settings: { labor_market_fr.departments: "69", labor_market_fr.rome_codes: "n4101" }
+    given:
+      "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire": ft_token.json
+      "https://api.francetravail.io/partenaire/stats-offres-demandes-emploi/v1/indicateur/stat-perspective-employeur": ft_tension_69_N4101.json
+    expect:
+      indicators:
+        rows: 3
+        contains:
+          - { source: ft_tension, edition: "2024", occupation_scheme: fr_rome, occupation_code: N4101, area_code: "69", metric: tension_index, value: "4", unit: level_1_5 }
+          - { metric: tension_factor, factor_code: DURABILITE, value: "5" }

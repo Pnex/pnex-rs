@@ -1,0 +1,92 @@
+# Open job offers of France Travail (labor-market.md S3), every day, for each
+# department and ROME job code of the settings, with the org's own
+# francetravail.io application. Each run appends the offers seen that day
+# (M7): the query `job_postings` of the pack gives each offer its first and
+# last day seen and whether it closed. The recruiter's contact fields are
+# never read (labor-market.md §8). An offer may name its company or not.
+key: fr_ft_offers
+name: Job offers (France Travail)
+hosts: [entreprise.francetravail.fr, api.francetravail.io]
+schedule: 24h
+requires: [labor_market_fr.departments, labor_market_fr.rome_codes]
+steps:
+  - enumerate:
+      as: asked
+      cross:
+        - { as: dept, setting: labor_market_fr.departments, case: upper }
+        - { as: rome, setting: labor_market_fr.rome_codes, case: upper }
+  - fetch:
+      as: pages
+      for_each: asked
+      url: "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
+      params: { departement: "{{dept}}", codeROME: "{{rome}}" }
+      headers: { Accept: application/json }
+      # The API answers at most 3150 offers per search, 150 at a time.
+      pages: { param: range, size: 150, until: /resultats, max: 21 }
+      every: 200ms
+      missing_is_empty: true
+      secret:
+        token:
+          kind: client_credentials
+          url: "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire"
+          user: lm_ft_client_id
+          password: lm_ft_client_secret
+          fields: { grant_type: client_credentials, scope: "api_offresdemploiv2 o2dsoffre api_stats-offres-demandes-emploiv1 offresetdemandesemploi" }
+        header: Authorization
+        scheme: Bearer
+  - read:
+      as: offers
+      from: pages
+      format: json
+      records: /resultats
+      skip_invalid: true
+      columns:
+        - { name: external_id, at: id, type: text }
+        - { name: dept, type: text, value: "{{dept}}" }
+        - { name: occupation_code, at: romeCode, type: text, optional: true }
+        - { name: occupation_label, at: romeLibelle, type: text, optional: true }
+        - { name: title, at: intitule, type: text, optional: true }
+        - { name: description, at: description, type: text, optional: true }
+        - { name: company_name, at: /entreprise/nom, type: text, optional: true }
+        - { name: company_registry_id, at: /entreprise/siret, type: text, optional: true }
+        - { name: place, at: /lieuTravail/libelle, type: text, optional: true }
+        - { name: commune, at: /lieuTravail/commune, type: text, optional: true }
+        - { name: postal_code, at: /lieuTravail/codePostal, type: text, optional: true }
+        - { name: lat, at: /lieuTravail/latitude, type: float, optional: true }
+        - { name: lon, at: /lieuTravail/longitude, type: float, optional: true }
+        - { name: contract, at: typeContrat, type: text, optional: true }
+        - { name: contract_label, at: typeContratLibelle, type: text, optional: true }
+        - { name: created_at, at: dateCreation, type: text, optional: true }
+        - { name: updated_at, at: dateActualisation, type: text, optional: true }
+        - { name: seen_on, type: text, value: "{{run_date}}" }
+  - sql:
+      as: seen
+      sql: |
+        SELECT DISTINCT 'FR' AS country, 'ft_offers' AS source, external_id,
+          'fr_rome' AS occupation_scheme, occupation_code, occupation_label,
+          'fr_dept' AS area_scheme, dept AS area_code, commune, postal_code, place, lat, lon,
+          title, description, company_name, company_registry_id, contract, contract_label,
+          substr(created_at, 1, 10) AS created_on, substr(updated_at, 1, 10) AS updated_on,
+          'fr' AS language,
+          CASE
+            WHEN lower(description) LIKE '%retraite%' THEN 'retirement'
+            WHEN lower(description) LIKE '%remplacement%' THEN 'replacement'
+            WHEN lower(description) LIKE '%création de poste%' OR lower(description) LIKE '%renfort%' THEN 'growth'
+            ELSE 'unknown' END AS motive,
+          seen_on
+        FROM offers WHERE external_id IS NOT NULL
+  - write: { from: seen, table: { name: lm_offers_seen } }
+tests:
+  - name: the offers of one job in one department, contacts never read
+    settings: { labor_market_fr.departments: "69", labor_market_fr.rome_codes: "N4101" }
+    today: "2026-11-14"
+    given:
+      "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire": ft_token.json
+      "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search?codeROME=N4101&departement=69&range=0-149": ft_offers_69_N4101.json
+    expect:
+      seen:
+        rows: 2
+        columns: [country, source, external_id, occupation_scheme, occupation_code, occupation_label, area_scheme, area_code, commune, postal_code, place, lat, lon, title, description, company_name, company_registry_id, contract, contract_label, created_on, updated_on, language, motive, seen_on]
+        contains:
+          - { external_id: 201ABCD, area_code: "69", company_name: ACME TRANSPORTS, commune: "69387", contract: CDI, created_on: "2026-11-10", motive: retirement, seen_on: "2026-11-14" }
+          - { external_id: 201EFGH, motive: growth }

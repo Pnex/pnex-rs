@@ -38,6 +38,16 @@ pub fn fail(code: &'static str, args: Value) -> Failure {
     Failure { code, args }
 }
 
+/// Whether a source pushed back (429, 503, a dropped connection, or a host
+/// still cooling down): the run stops instead of asking it for the next rows.
+pub fn throttled(f: &Failure) -> bool {
+    match f.code {
+        "unreachable" | "throttled" => true,
+        "http_status" => matches!(f.args["status"].as_u64(), Some(429 | 503)),
+        _ => false,
+    }
+}
+
 /// A row of a working table: its columns and, for a fetched or unpacked
 /// row, the bytes of its file.
 #[derive(Debug, Clone, Default)]
@@ -107,6 +117,16 @@ pub trait Transport {
         fields: &[(String, String)],
         req: &Req,
     ) -> Result<Option<blob::Blob>, Failure>;
+
+    /// Posts a JSON body. By default the answer recorded for the address.
+    async fn post_json(
+        &self,
+        url: &reqwest::Url,
+        _body: &Value,
+        req: &Req,
+    ) -> Result<Option<blob::Blob>, Failure> {
+        self.get(url, req).await
+    }
 }
 
 /// How one request is sent.
@@ -535,10 +555,15 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                         .and_then(Value::as_array)
                         .map_or(0, Vec::len))
                 });
-                if records.await? == 0 {
+                let records = records.await?;
+                if records == 0 {
                     break;
                 }
                 out.push(next);
+                // A page of records shorter than asked is the last.
+                if pages.size.is_some_and(|n| records < n as usize) {
+                    break;
+                }
             }
         }
         Ok(out)
@@ -562,11 +587,12 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 .ok_or_else(|| fail("secret_required", json!({ "name": name })))
         };
         let (user, password) = (secret(&t.user)?, secret(&t.password)?);
+        let (user_field, password_field) = t.kind.names();
         let url = reqwest::Url::parse(&t.url)
             .map_err(|_| fail("invalid_value", json!({ "name": "token.url" })))?;
         self.host_in(&url, false)?;
         let mut fields: Vec<(String, String)> =
-            vec![("username".into(), user), ("password".into(), password)];
+            vec![(user_field.into(), user), (password_field.into(), password)];
         fields.extend(t.fields.iter().map(|(k, v)| (k.clone(), v.clone())));
         let req = Req {
             every_ms: every,
@@ -724,7 +750,15 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
         };
         let (mut url, headers) = self.address(f, row)?;
         if let (Some(p), Some(n)) = (&f.pages, page) {
-            url.query_pairs_mut().append_pair(&p.param, &n.to_string());
+            let value = match p.size {
+                // A range of records: `0-149`, `150-299`…
+                Some(size) => {
+                    let start = (n - p.from) * size;
+                    format!("{start}-{}", start + size - 1)
+                }
+                None => n.to_string(),
+            };
+            url.query_pairs_mut().append_pair(&p.param, &value);
         }
         let mut req = Req {
             every_ms: every,
@@ -756,9 +790,18 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 (None, None) => return Err(fail("secret_required", json!({ "name": sec.name }))),
             }
         }
-        let body = match f.method {
-            Method::Get => self.transport.get(&url, &req).await?,
-            Method::Post => {
+        // A JSON object, or its text (a column a `sql` step built).
+        let json_body = match f.json_from.as_ref().and_then(|c| row.cols.get(c)) {
+            Some(Value::String(t)) => Some(
+                serde_json::from_str::<Value>(t)
+                    .map_err(|_| fail("invalid_value", json!({ "name": "json_from" })))?,
+            ),
+            other => other.cloned(),
+        };
+        let body = match (f.method, json_body) {
+            (Method::Get, _) => self.transport.get(&url, &req).await?,
+            (Method::Post, Some(b)) => self.transport.post_json(&url, &b, &req).await?,
+            (Method::Post, None) => {
                 let fields: Vec<(String, String)> = f
                     .form_from
                     .as_ref()
@@ -1112,7 +1155,8 @@ pub struct RunOutcome {
 
 /// Runs a document once. A tracked first step (D937) gives the rows: the
 /// run takes those due (`known` holds their states), each through the
-/// other steps on its own, so that a failing row never stops the others.
+/// other steps on its own, so that a failing row never stops the others;
+/// only a source pushing back ([`throttled`]) ends the run there.
 #[allow(clippy::too_many_arguments)]
 pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
     doc: &Document,
@@ -1195,6 +1239,12 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
         let (state, failure, rows) = match result {
             Ok(0) => (track::State::Empty, None, 0),
             Ok(n) => (track::State::Done, None, n),
+            // The rest waits for a later run; the row is left unmarked so a
+            // source's bad hour never adds to its failure count.
+            Err(f) if throttled(&f) => {
+                outcome.failure = Some(f);
+                break;
+            }
             Err(f) => (track::State::Failed, Some(f), 0),
         };
         outcome.written += rows;

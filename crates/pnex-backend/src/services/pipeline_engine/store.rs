@@ -698,16 +698,66 @@ fn routed(url: &reqwest::Url) -> reqwest::Url {
     reqwest::Url::parse(&format!("{base}{rest}")).unwrap_or_else(|_| url.clone())
 }
 
-async fn wait_turn(url: &reqwest::Url, every_ms: u64) {
-    let mocked = {
-        let routes = TEST_ROUTES.lock().unwrap_or_else(|e| e.into_inner());
-        url.host_str().is_some_and(|h| routes.contains_key(h))
+/// The host of a paced request: `None` without a cadence, or for a test's
+/// mock, which has no rate to keep.
+fn paced_host(url: &reqwest::Url, every_ms: u64) -> Option<String> {
+    let host = url.host_str()?;
+    let mocked = TEST_ROUTES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains_key(host);
+    (every_ms > 0 && !mocked).then(|| host.to_string())
+}
+
+// Paced hosts that pushed back: pushes in a row and when they may be asked again.
+// shortcut: per process, and only on get and form posts; share it like LAST_CALL.
+static COOLDOWN: LazyLock<Mutex<HashMap<String, (u32, Instant)>>> =
+    LazyLock::new(Default::default);
+
+/// The pause after the n-th push back in a row: a minute, doubled each
+/// time, an hour at most.
+pub(super) fn cooldown(pushes: u32) -> Duration {
+    Duration::from_secs((60u64 << pushes.saturating_sub(1).min(6)).min(3600))
+}
+
+/// Refuses a paced host still cooling down, without a request.
+fn cooled(url: &reqwest::Url, every_ms: u64) -> Result<(), Failure> {
+    let Some(host) = paced_host(url, every_ms) else {
+        return Ok(());
     };
-    // A test's mock has no rate to keep.
-    if every_ms == 0 || mocked {
-        return;
+    let now = Instant::now();
+    let cooling = COOLDOWN.lock().unwrap_or_else(|e| e.into_inner());
+    match cooling.get(&host).filter(|(_, until)| *until > now) {
+        Some((_, until)) => Err(fail(
+            "throttled",
+            json!({ "host": host, "seconds": (*until - now).as_secs() }),
+        )),
+        None => Ok(()),
     }
-    let host = url.host_str().unwrap_or_default().to_string();
+}
+
+/// A push back lengthens the host's pause; an answer ends it.
+fn settle<T>(url: &reqwest::Url, every_ms: u64, out: &Result<T, Failure>) {
+    let Some(host) = paced_host(url, every_ms) else {
+        return;
+    };
+    let mut cooling = COOLDOWN.lock().unwrap_or_else(|e| e.into_inner());
+    match out {
+        Ok(_) => {
+            cooling.remove(&host);
+        }
+        Err(f) if super::throttled(f) => {
+            let pushes = cooling.get(&host).map_or(0, |(n, _)| *n) + 1;
+            cooling.insert(host, (pushes, Instant::now() + cooldown(pushes)));
+        }
+        Err(_) => {}
+    }
+}
+
+async fn wait_turn(url: &reqwest::Url, every_ms: u64) {
+    let Some(host) = paced_host(url, every_ms) else {
+        return;
+    };
     let wait = {
         let mut last = LAST_CALL.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
@@ -732,7 +782,11 @@ async fn body(
         tracing::info!(url = %url, error = %e.without_url(), "pipeline source unreachable");
         unreachable()
     })?;
-    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+    // A range past the last record holds nothing, like a missing page.
+    if matches!(
+        resp.status(),
+        reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::RANGE_NOT_SATISFIABLE
+    ) {
         return Ok(None);
     }
     if !resp.status().is_success() {
@@ -780,8 +834,11 @@ fn plain_client() -> &'static reqwest::Client {
 
 impl Transport for HttpTransport {
     async fn get(&self, url: &reqwest::Url, r: &Req) -> Result<Option<Blob>, Failure> {
+        cooled(url, r.every_ms)?;
         wait_turn(url, r.every_ms).await;
-        body(url, dressed(client().get(routed(url)), r), r.max_bytes).await
+        let out = body(url, dressed(client().get(routed(url)), r), r.max_bytes).await;
+        settle(url, r.every_ms, &out);
+        out
     }
 
     async fn stream(
@@ -844,12 +901,26 @@ impl Transport for HttpTransport {
         fields: &[(String, String)],
         r: &Req,
     ) -> Result<Option<Blob>, Failure> {
+        cooled(url, r.every_ms)?;
         wait_turn(url, r.every_ms).await;
         let mut req = client().post(routed(url)).form(fields);
         // The page a form came from, as a browser sends it; never another host's.
         if let Some(p) = referer.filter(|p| p.host_str() == url.host_str()) {
             req = req.header(reqwest::header::REFERER, p.as_str());
         }
+        let out = body(url, dressed(req, r), r.max_bytes).await;
+        settle(url, r.every_ms, &out);
+        out
+    }
+
+    async fn post_json(
+        &self,
+        url: &reqwest::Url,
+        json_body: &Value,
+        r: &Req,
+    ) -> Result<Option<Blob>, Failure> {
+        wait_turn(url, r.every_ms).await;
+        let req = client().post(routed(url)).json(json_body);
         body(url, dressed(req, r), r.max_bytes).await
     }
 }

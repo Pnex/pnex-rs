@@ -1,0 +1,97 @@
+# Pack "Labour market, France" (labor-market.md, first lots of LM1 and LM2):
+# public data on the jobs a territory finds hard to fill, as tables of the
+# org written by pipelines only (M2), never objects:
+# - `lm_bmo`: the yearly recruitment needs survey of France Travail (BMO),
+#   projects, hard projects and seasonal ones per occupation (FAP 2021) and
+#   department;
+# - `lm_tension`: the yearly tension level (1 to 5) per ROME job and
+#   department, and its factors (France Travail labour market API);
+# - `lm_offers_seen`: the open job offers of France Travail seen each day
+#   per ROME job and department, from which the query `job_postings` keeps
+#   each offer's first and last day seen.
+# Both indicator tables share the long form of M16 (occupation scheme and
+# code, area scheme and code, metric, value, unit). The org chooses its
+# departments and ROME jobs; the generic pivots (ISCO, NUTS) and the score
+# come with the next lots. The France Travail API needs the org's own
+# francetravail.io application, subscribed to the job offers (v2) and
+# labour market APIs: its client id and secret in the org vault under
+# lm_ft_client_id and lm_ft_client_secret. Recruiter contacts are never
+# read. Open licence (Etalab) for BMO; France Travail API terms otherwise.
+key: labor_market_fr
+name: Labour market (France)
+names: {fr: "Marché du travail (France)"}
+version: "1.0.0"
+requires: []
+description: Hiring needs, tension per job and open job offers per department, from France Travail (BMO survey, labour market and job offers APIs).
+descriptions: {fr: "Besoins de recrutement, tension par métier et offres d'emploi ouvertes par département, depuis France Travail (enquête BMO, API Marché du travail et Offres d'emploi)."}
+settings:
+  - key: departments
+    name: Departments followed
+    names: {fr: "Départements suivis"}
+    description: "Comma-separated department codes, for example 69,38,01. Empty: tension and offers are not read."
+    descriptions: {fr: "Codes de département séparés par des virgules, par exemple 69,38,01. Vide : ni tension ni offres ne sont lues."}
+    kind: text
+    default: ""
+  - key: rome_codes
+    name: ROME jobs followed
+    names: {fr: "Métiers ROME suivis"}
+    description: "Comma-separated ROME codes, for example N4101,H2913. Empty: tension and offers are not read."
+    descriptions: {fr: "Codes ROME séparés par des virgules, par exemple N4101,H2913. Vide : ni tension ni offres ne sont lues."}
+    kind: text
+    default: ""
+  - key: bmo_url
+    name: Address of the BMO file
+    names: {fr: "Adresse du fichier BMO"}
+    description: The open data file of the edition read (France Travail renames it each year). Empty turns BMO off.
+    descriptions: {fr: "Le fichier open data de l'édition lue (France Travail le renomme chaque année). Vide : BMO n'est pas lu."}
+    kind: text
+    default: "https://www.francetravail.org/files/live/sites/peorg/files/documents/Statistiques-et-analyses/Open-data/BMO/Base-open-data-BMO-2026.xlsx"
+# Read-only queries (pipeline-engine.md D948), run under the caller's rights
+# by `POST /analysis/named/labor_market_fr/<key>`.
+queries:
+  - key: bmo
+    name: Hiring needs of a department (BMO)
+    names: {fr: "Besoins de recrutement d'un département (BMO)"}
+    description: Every BMO indicator of the latest edition in a department, by occupation (FAP 2021).
+    params:
+      - { name: department, type: text, description: "Department code, for example 69." }
+    sql: >-
+      SELECT edition, occupation_code, occupation_label, occupation_family, occupation_family_label,
+      area_code, area_label, metric, value, unit FROM lm_bmo
+      WHERE area_code = {{department}} AND edition = (SELECT max(edition) FROM lm_bmo)
+      ORDER BY occupation_code, metric
+  - key: tension
+    name: Tension of the jobs of a department
+    names: {fr: "Tension des métiers d'un département"}
+    description: The latest tension level (1 to 5) of each ROME job followed in a department, and its factors.
+    params:
+      - { name: department, type: text, description: "Department code, for example 69." }
+    sql: >-
+      SELECT edition, occupation_code, area_code, metric, factor_code, factor_label, value FROM lm_tension t
+      WHERE area_code = {{department}}
+      AND edition = (SELECT max(edition) FROM lm_tension x WHERE x.occupation_code = t.occupation_code AND x.area_code = t.area_code)
+      ORDER BY occupation_code, metric DESC, value DESC
+  - key: job_postings
+    name: Job offers with their first and last day seen
+    names: {fr: "Offres d'emploi avec leurs premier et dernier jours vus"}
+    description: Each offer once, with the day it was first and last seen; an offer not seen on the latest day is closed (closed_on).
+    sql: >-
+      WITH o AS (SELECT external_id, max(occupation_code) AS occupation_code, max(occupation_label) AS occupation_label,
+      max(area_code) AS area_code, max(commune) AS commune, max(place) AS place, max(title) AS title,
+      max(company_name) AS company_name, max(company_registry_id) AS company_registry_id, max(contract) AS contract,
+      max(created_on) AS created_on, max(motive) AS motive, min(seen_on) AS first_seen, max(seen_on) AS last_seen
+      FROM lm_offers_seen GROUP BY external_id)
+      SELECT o.*, CASE WHEN o.last_seen < (SELECT max(seen_on) FROM lm_offers_seen) THEN o.last_seen END AS closed_on
+      FROM o ORDER BY o.first_seen DESC, o.external_id
+  - key: company_offers
+    name: Open offers of a company
+    names: {fr: "Offres ouvertes d'une entreprise"}
+    description: The offers seen on the latest day whose company name contains the text given (case ignored); an offer without a company name never matches.
+    params:
+      - { name: company, type: text, description: "Part of the company name, for example acme." }
+    sql: >-
+      SELECT external_id, occupation_code, occupation_label, title, company_name, contract, contract_label,
+      area_code, commune, place, created_on, motive FROM lm_offers_seen
+      WHERE seen_on = (SELECT max(seen_on) FROM lm_offers_seen)
+      AND strpos(lower(company_name), lower({{company}})) > 0
+      ORDER BY created_on DESC, external_id

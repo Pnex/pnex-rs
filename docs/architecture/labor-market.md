@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Proposé** — appendice à valider par Shan |
+| Statut | **Premiers lots codés (2026-11-15)** : moteur LM0, BMO, tension, offres (§11) ; le reste proposé |
 | Déclencheur | Cibler des sites industriels selon les métiers en tension, la rotation et la pyramide des âges du territoire ; afficher le tout sur la carte, sous les établissements |
 | Repose sur | `data-pipelines.md` (D344–D358, §9 D569–D578 datasets), `partner-watch.md` (pack `companies_fr`), `account-mapping.md` (D329–D343, `map_pin.headcount_band`, critères de score D336), `geo-layers.md` (L1–L28, phase A livrée le 2026-11-14), `secrets.md` (D110), `security.md` (R1, R2, R8) |
 | Numérotation | décisions **M1–M18 provisoires**, renumérotées `Dxxx` au merge (D970–D975 pris au 2026-11-14 par `crm.md` et `watch.md`, D976–D977 par les relations LinkedIn (`account-mapping.md`) : prochain libre D978, à revérifier au merge) ; lots **LM0…LM5** |
@@ -338,3 +338,48 @@ Dernier pipeline, déclenché par l'ordonnanceur à dépendances (D575) après l
 6. **Historique acheté** (agrégateurs commerciaux d'offres) : hors périmètre tant que l'archive M7 n'a pas montré sa valeur.
 7. **Tables de passage vers ISCO** : FAP2021 → ISCO n'est pas publiée directement à notre connaissance ; chemin probable FAP → PCS 2020 → ISCO-08 (tables INSEE), avec `weight` < 1 sur les correspondances multiples. À relever à LM1.
 8. **Contours NUTS** (GISCO, Eurostat) : licence et format à vérifier pour `lm_areas_nuts*`.
+
+## 11. Avancement (2026-11-15)
+
+Lancé par Shan le 2026-11-15 (« tu peux »), priorité aux besoins de
+l'application commerciale : BMO, tension, offres.
+
+**Moteur (LM0), générique, aucun nom de source en Rust** :
+
+- `read.format: xlsx` + `sheet` (nom ou position depuis 1) : la feuille est
+  lue par le lecteur de tableur de `pnex-core` (garde zip-bomb), réécrite en
+  CSV puis lue comme un CSV (M3).
+- `secret.token.kind: client_credentials` : le coffre remplit `client_id` et
+  `client_secret` au lieu de `username` et `password` (M4).
+- `fetch.json_from` : corps JSON d'un `post` (objet, ou son texte produit par
+  une étape `sql`).
+- `pages.size` : la pagination par plage d'enregistrements (`range=0-149`,
+  `150-299`…), arrêtée par une page incomplète ; un 416 vaut une réponse
+  vide, comme un 404.
+
+**Pack `labor_market_fr` 1.0.0**, trois pipelines avec rejeu sur fixtures :
+
+| Pipeline | Table | Rythme | Écart au plan |
+|---|---|---|---|
+| `fr_bmo` | `lm_bmo` (forme longue, FAP × département) | 24 h, seulement si le fichier change | Bassin non gardé : son nom de colonne change chaque année (`BE26`) ; somme par département |
+| `fr_ft_tension` | `lm_tension` (forme longue, ROME × département, niveau 1–5 et facteurs) | 7 j | **S1 vient de l'API Marché du travail de France Travail**, pas du fichier Dares : le site de la Dares refuse les accès automatisés (choix de Shan, 2026-11-15). Pas de composantes Dares détaillées |
+| `fr_ft_offers` | `lm_offers_seen` (une ligne par offre et par jour vu) | 24 h | M7 sans upsert : l'archive est un ajout quotidien, la requête nommée `job_postings` donne premier et dernier jour vus et la clôture. Un test de rejeu ne lit aucune table d'org, d'où ce choix |
+
+- **Réglages** : départements et **codes ROME** suivis (pas encore ISCO :
+  M18 et les tables de passage arrivent avec LM1) ; adresse du fichier BMO.
+- **Secrets** : `lm_ft_client_id`, `lm_ft_client_secret` au coffre de l'org
+  (application francetravail.io abonnée aux API Offres d'emploi v2 et
+  Marché du travail).
+- **Lecture** : requêtes nommées `bmo`, `tension`, `job_postings`,
+  `company_offers` (`POST /api/v1/analysis/named/labor_market_fr/<clé>`,
+  lignes par `GET /api/v1/analysis/queries/{id}`).
+- Deux tables d'indicateurs plutôt qu'une `lm_indicators` : deux pipelines
+  qui écrivent la même table en remplacement s'effaceraient ; l'union (et
+  les pivots ISCO/NUTS) viendra avec LM1.
+
+**Reste** : rapprochement offre → établissement (M9, M10), motif par LLM
+(M11), INSEE (S4), départs 2030 (S5), mouvements (S6), score et propriétés
+`lm_*` (LM4), couches de zones (LM5, M5). Fixtures France Travail
+synthétiques (formes relevées dans le client de l'application commerciale,
+documentation de l'API illisible sans navigateur) : à confronter au premier
+passage réel.
