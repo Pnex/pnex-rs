@@ -223,6 +223,67 @@ pub fn parts_of(doc: &Doc) -> Vec<Part> {
     out
 }
 
+/// The page as markdown: blocks as written, a live block as its title in
+/// italics (never computed here). Links keep their text only.
+pub fn markdown_of(doc: &Doc) -> String {
+    fn spans(s: &[Span]) -> String {
+        s.iter()
+            .map(|s| match (s.code, s.bold, s.italic) {
+                (true, _, _) => format!("`{}`", s.text),
+                (_, true, true) => format!("***{}***", s.text),
+                (_, true, false) => format!("**{}**", s.text),
+                (_, false, true) => format!("*{}*", s.text),
+                _ => s.text.clone(),
+            })
+            .collect()
+    }
+    // (is a list item, markdown)
+    let mut out: Vec<(bool, String)> = Vec::new();
+    for part in parts_of(doc) {
+        let item = matches!(part, Part::Block(Block::Item { .. }));
+        out.push((
+            item,
+            match part {
+                Part::Live(l) => format!("*{}*", l.title),
+                Part::Block(Block::Heading(level, s)) => {
+                    format!("{} {}", "#".repeat(level as usize), spans(&s))
+                }
+                Part::Block(Block::Paragraph(s)) => spans(&s),
+                Part::Block(Block::Item {
+                    marker,
+                    depth,
+                    spans: s,
+                }) => {
+                    let marker = if marker == "•" {
+                        "-".to_string()
+                    } else {
+                        marker
+                    };
+                    format!("{}{marker} {}", "  ".repeat(depth as usize), spans(&s))
+                }
+                Part::Block(Block::Quote(s)) => format!("> {}", spans(&s)),
+                Part::Block(Block::Rule) => "---".into(),
+                Part::Block(Block::Code(c)) => format!("```\n{c}\n```"),
+                Part::Block(Block::Table { columns, rows }) => {
+                    let row = |cells: &[String]| format!("| {} |", cells.join(" | "));
+                    let mut t = vec![row(&columns), row(&vec!["---".to_string(); columns.len()])];
+                    t.extend(rows.iter().map(|r| row(r)));
+                    t.join("\n")
+                }
+            },
+        ));
+    }
+    // List items stay together; other blocks are separated by a blank line.
+    let mut md = String::new();
+    for (i, (item, b)) in out.iter().enumerate() {
+        if i > 0 {
+            md.push_str(if *item && out[i - 1].0 { "\n" } else { "\n\n" });
+        }
+        md.push_str(b);
+    }
+    md
+}
+
 /// Who the live blocks are computed for (D831–D832): the person exporting.
 /// An automatic export (a flow) has none: its live blocks stay empty.
 pub struct Reader {
@@ -595,6 +656,14 @@ mod tests {
         assert!(matches!(&b[7], Block::Code(c) if c == "code"));
         let pdf = pnex_pdf::render(&Meta::default(), &b).unwrap();
         assert!(pdf.starts_with(b"%PDF-"));
+    }
+
+    #[test]
+    fn a_page_reads_back_as_its_markdown() {
+        let doc = Doc::new();
+        let md = "# Report\n\nA **calm** week.\n\n1. first\n2. second\n\n2026 results\n\n> note\n\n---\n\n```\ncode\n```";
+        super::super::seed::append_markdown(&doc, md);
+        assert_eq!(markdown_of(&doc), md);
     }
 
     #[tokio::test]

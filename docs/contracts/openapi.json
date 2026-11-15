@@ -9157,6 +9157,30 @@
         ],
         "type": "object"
       },
+      "DocText": {
+        "description": "`GET /api/v1/docs/{id}/text`: the live page as markdown, for a reader\nthat cannot open the Yjs state (an app, the SDK, an MCP client).",
+        "properties": {
+          "markdown": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version_number": {
+            "description": "Latest named version; `None` before the first one.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "markdown"
+        ],
+        "type": "object"
+      },
       "DocVersionState": {
         "description": "`GET /api/v1/docs/{id}/versions/{n}`: frozen Yjs state (v1 encoding,\nbase64), opened read-only by the editor for viewing, diff and restore.",
         "properties": {
@@ -55542,6 +55566,86 @@
         "tags": [
           "docs"
         ]
+      }
+    },
+    "/api/v1/docs/{id}/text": {
+      "get": {
+        "description": "The live content of a page as markdown, with its title and its latest named version number: headings, paragraphs, lists, quotes, code and tables; a live block appears as its title, never computed. Any member.",
+        "operationId": "docs_text",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocText"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `docs:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read a page as markdown",
+        "tags": [
+          "docs"
+        ],
+        "x-pnex-as-of": "current_only"
       }
     },
     "/api/v1/docs/{id}/versions": {

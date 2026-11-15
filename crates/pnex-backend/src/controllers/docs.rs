@@ -20,7 +20,7 @@ use crate::models::_entities::{doc_versions, docs, users};
 use crate::services::pages;
 use pnex_core::err_codes;
 use pnex_core::pages::{
-    CreateDoc, CreateDocVersion, DocSummary, DocVersionState, DocVersionSummary, PatchDoc,
+    CreateDoc, CreateDocVersion, DocSummary, DocText, DocVersionState, DocVersionSummary, PatchDoc,
     MAX_TITLE_CHARS, MAX_VERSION_LABEL_CHARS,
 };
 
@@ -29,6 +29,7 @@ pub fn routes() -> Routes {
         .prefix("/api/v1/docs")
         .add("", get(list).post(create))
         .add("/{id}", get(detail).patch(rename).delete(remove))
+        .add("/{id}/text", get(text))
         .add("/{id}/versions", get(versions).post(create_version))
         .add("/{id}/versions/{n}", get(version_state))
         .add("/{id}/versions/{n}/approve", post(approve_version))
@@ -42,6 +43,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         list,
         create,
         detail,
+        text,
         rename,
         remove,
         versions,
@@ -293,6 +295,45 @@ async fn detail(
 ) -> Result<Response> {
     let d = find_doc(&ctx.db, org.org.id, id).await?;
     Ok(format::json(summary(&d)).into_response())
+}
+
+/// `GET /api/v1/docs/{id}/text`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/docs/{id}/text",
+    tag = "docs",
+    operation_id = "docs_text",
+    summary = "Read a page as markdown",
+    description = "The live content of a page as markdown, with its title and its latest named version number: headings, paragraphs, lists, quotes, code and tables; a live block appears as its title, never computed. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id")),
+    responses(
+        (status = 200, body = pnex_core::pages::DocText),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn text(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    let d = find_doc(&ctx.db, org.org.id, id).await?;
+    let doc = pages::load(&ctx.db, d.id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    let version_number = doc_versions::Entity::find()
+        .filter(doc_versions::Column::DocId.eq(d.id))
+        .order_by_desc(doc_versions::Column::VersionNumber)
+        .one(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .map(|v| v.version_number);
+    Ok(format::json(DocText {
+        title: d.title.clone(),
+        version_number,
+        markdown: pages::pdf::markdown_of(&doc),
+    })
+    .into_response())
 }
 
 /// `PATCH /api/v1/docs/{id}` — rename.

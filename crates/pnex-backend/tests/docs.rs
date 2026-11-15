@@ -102,6 +102,51 @@ async fn add_viewer(server: &axum_test::TestServer, owner: &str, bob: &str, org:
 
 /// A page may start from Markdown (2026-10-18), as the editor's import
 /// does: a profile sheet imported from files lands as rich text.
+/// A page reads back as markdown with its latest version; another org gets
+/// a 404, never the text.
+#[tokio::test]
+#[serial]
+async fn a_page_reads_as_markdown() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let md = "# Summary\n\n- a **firm** order\n- a visit";
+        let (st, d) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.alice,
+            org,
+            Some(json!({ "title": "Meeting", "markdown": md })),
+        )
+        .await;
+        assert_eq!(st, 201, "{d}");
+        let path = format!("/api/v1/docs/{}/text", d["id"].as_str().unwrap());
+        let (st, t) = call(&server, "GET", &path, &env.alice, org, None).await;
+        assert_eq!(st, 200, "{t}");
+        assert_eq!(
+            t,
+            json!({ "title": "Meeting", "version_number": null, "markdown": md })
+        );
+        let versions = path.replace("/text", "/versions");
+        let (st, _) = call(
+            &server,
+            "POST",
+            &versions,
+            &env.alice,
+            org,
+            Some(json!({ "label": "v" })),
+        )
+        .await;
+        assert_eq!(st, 201);
+        let (_, t) = call(&server, "GET", &path, &env.alice, org, None).await;
+        assert_eq!(t["version_number"], 1);
+        let org_b = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &path, &env.bob, org_b, None).await;
+        assert_eq!(st, 404);
+    })
+    .await;
+}
+
 #[tokio::test]
 #[serial]
 async fn create_from_markdown() {

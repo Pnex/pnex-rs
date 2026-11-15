@@ -220,6 +220,17 @@ pub struct DocVersionState {
     pub state_b64: String,
 }
 
+/// `GET /api/v1/docs/{id}/text`: the live page as markdown, for a reader
+/// that cannot open the Yjs state (an app, the SDK, an MCP client).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DocText {
+    pub title: String,
+    /// Latest named version; `None` before the first one.
+    pub version_number: Option<i64>,
+    pub markdown: String,
+}
+
 /// One comment (P12). A thread root has `parent_id = None` and carries the
 /// anchor; replies point to their root.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -133,6 +133,7 @@ pub const EXPOSED: &[&str] = &[
     "docs_create",
     "ontology_objects_pages_create",
     "docs_get",
+    "docs_text",
     "docs_list",
     "docs_rename",
     "docs_versions_create",
