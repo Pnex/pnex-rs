@@ -317,8 +317,12 @@ async fn baseline_down_drops_everything_and_up_replays() {
     };
     assert_eq!(
         count(
-            "select count(*)::int as n from information_schema.tables \
-             where table_schema = 'public' and table_name <> 'seaql_migrations'"
+            // Extension-owned relations (PostGIS spatial_ref_sys and views) stay with the extension.
+            "select count(*)::int as n from information_schema.tables t \
+             where table_schema = 'public' and table_name <> 'seaql_migrations' \
+             and not exists (select 1 from pg_depend d join pg_class c on c.oid = d.objid \
+             where d.deptype = 'e' and c.relname = t.table_name \
+             and c.relnamespace = 'public'::regnamespace)"
         )
         .await,
         0,
