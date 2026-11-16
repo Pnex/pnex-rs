@@ -5,25 +5,26 @@
 #   projects, hard projects and seasonal ones per occupation (FAP 2021) and
 #   department;
 # - `lm_tension`: the yearly tension level (1 to 5) per ROME job and
-#   region, and its factors (France Travail labour market API);
-# - `lm_offers_seen`: the open job offers of France Travail seen each day
-#   per ROME job and department, from which the query `job_postings` keeps
-#   each offer's first and last day seen.
+#   region, and its factors (France Travail labour market API).
 # Both indicator tables share the long form of M16 (occupation scheme and
 # code, area scheme and code, metric, value, unit). The org chooses its
-# regions, departments and ROME jobs; the generic pivots (ISCO, NUTS) and the score
+# regions and ROME jobs; the generic pivots (ISCO, NUTS) and the score
 # come with the next lots. The France Travail API needs the org's own
-# francetravail.io application, subscribed to the job offers (v2) and
-# labour market APIs: its client id and secret in the org vault under
-# lm_ft_client_id and lm_ft_client_secret. Recruiter contacts are never
-# read. Open licence (Etalab) for BMO; France Travail API terms otherwise.
+# francetravail.io application, subscribed to the labour market API: its
+# client id and secret in the org vault under lm_ft_client_id and
+# lm_ft_client_secret. Open licence (Etalab) for BMO; France Travail API
+# terms otherwise.
+# Since 1.2.0 the job offers are gone (`fr_ft_offers`, `lm_offers_seen`,
+# queries `job_postings` and `company_offers`, setting `departments`): the
+# job offers API left the francetravail.io catalogue (access on request
+# only since 2026), and no open source lists the offers one by one.
 key: labor_market_fr
 name: Labour market (France)
 names: {fr: "Marché du travail (France)"}
-version: "1.1.0"
+version: "1.2.0"
 requires: []
-description: Hiring needs and open job offers per department, tension per job and region, from France Travail (BMO survey, labour market and job offers APIs).
-descriptions: {fr: "Besoins de recrutement et offres d'emploi ouvertes par département, tension par métier et région, depuis France Travail (enquête BMO, API Marché du travail et Offres d'emploi)."}
+description: Hiring needs per department and tension per job and region, from France Travail (BMO survey and labour market API).
+descriptions: {fr: "Besoins de recrutement par département et tension par métier et région, depuis France Travail (enquête BMO et API Marché du travail)."}
 settings:
   - key: regions
     name: Regions followed
@@ -32,19 +33,14 @@ settings:
     descriptions: {fr: "Codes INSEE de région séparés par des virgules, par exemple 84,11 (toute la métropole : 11,24,27,28,32,44,52,53,75,76,84,93,94). Vide : la tension n'est pas lue."}
     kind: text
     default: ""
-  - key: departments
-    name: Departments followed
-    names: {fr: "Départements suivis"}
-    description: "Comma-separated department codes, for example 69,38,01. Empty: offers are not read."
-    descriptions: {fr: "Codes de département séparés par des virgules, par exemple 69,38,01. Vide : les offres ne sont pas lues."}
-    kind: text
-    default: ""
   - key: rome_codes
     name: ROME jobs followed
     names: {fr: "Métiers ROME suivis"}
-    description: "Comma-separated ROME codes, for example N4101,H2913. Empty: tension and offers are not read."
-    descriptions: {fr: "Codes ROME séparés par des virgules, par exemple N4101,H2913. Vide : ni tension ni offres ne sont lues."}
+    description: "Comma-separated ROME codes, for example N4101,H2913. Empty: tension is not read."
+    descriptions: {fr: "Codes ROME séparés par des virgules, par exemple N4101,H2913. Vide : la tension n'est pas lue."}
     kind: text
+    # Every ROME code (about 1 900 of 5 characters plus commas) fits.
+    max_len: 12000
     default: ""
   - key: bmo_url
     name: Address of the BMO file
@@ -78,27 +74,3 @@ queries:
       WHERE area_code = {{region}}
       AND edition = (SELECT max(edition) FROM lm_tension x WHERE x.occupation_code = t.occupation_code AND x.area_code = t.area_code)
       ORDER BY occupation_code, metric DESC, value DESC
-  - key: job_postings
-    name: Job offers with their first and last day seen
-    names: {fr: "Offres d'emploi avec leurs premier et dernier jours vus"}
-    description: Each offer once, with the day it was first and last seen; an offer not seen on the latest day is closed (closed_on).
-    sql: >-
-      WITH o AS (SELECT external_id, max(occupation_code) AS occupation_code, max(occupation_label) AS occupation_label,
-      max(area_code) AS area_code, max(commune) AS commune, max(place) AS place, max(title) AS title,
-      max(company_name) AS company_name, max(company_registry_id) AS company_registry_id, max(contract) AS contract,
-      max(created_on) AS created_on, max(motive) AS motive, min(seen_on) AS first_seen, max(seen_on) AS last_seen
-      FROM lm_offers_seen GROUP BY external_id)
-      SELECT o.*, CASE WHEN o.last_seen < (SELECT max(seen_on) FROM lm_offers_seen) THEN o.last_seen END AS closed_on
-      FROM o ORDER BY o.first_seen DESC, o.external_id
-  - key: company_offers
-    name: Open offers of a company
-    names: {fr: "Offres ouvertes d'une entreprise"}
-    description: The offers seen on the latest day whose company name contains the text given (case ignored); an offer without a company name never matches.
-    params:
-      - { name: company, type: text, description: "Part of the company name, for example acme." }
-    sql: >-
-      SELECT external_id, occupation_code, occupation_label, title, company_name, contract, contract_label,
-      area_code, commune, place, created_on, motive FROM lm_offers_seen
-      WHERE seen_on = (SELECT max(seen_on) FROM lm_offers_seen)
-      AND strpos(lower(company_name), lower({{company}})) > 0
-      ORDER BY created_on DESC, external_id

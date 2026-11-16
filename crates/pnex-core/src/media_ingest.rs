@@ -587,6 +587,16 @@ pub struct AsrProfile {
     /// (tray recorder). At most one per org.
     #[serde(default)]
     pub is_default: bool,
+    /// Speech-to-text model forced to `language`: it redoes a part the main
+    /// model answered in another language (a model that picks its own
+    /// language, like Parakeet, may answer French in English).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub fallback_asr_model_id: Option<String>,
+    /// Diarization clustering threshold, 0.05 to 1: lower tells more voices
+    /// apart. Absent = the default (0.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_threshold: Option<f32>,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
@@ -620,6 +630,12 @@ pub struct AsrProfileInput {
     /// a create without it is the default when the org has none yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub is_default: Option<bool>,
+    /// Language fallback model; empty string clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_asr_model_id: Option<String>,
+    /// Diarization clustering threshold (0.05 to 1); 0 clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_threshold: Option<f32>,
 }
 
 /// Registry task of an audio model (D167), read from its files.

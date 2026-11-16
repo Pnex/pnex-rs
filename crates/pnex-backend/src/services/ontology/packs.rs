@@ -86,6 +86,7 @@ fn with_causal_settings(mut pack: Pack) -> Pack {
                 default: default.into(),
                 min: Some(min),
                 max: Some(max),
+                max_len: None,
             };
         pack.settings.push(setting(
             format!("{stem}_prior"),

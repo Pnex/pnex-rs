@@ -124,3 +124,77 @@ pub(super) async fn start_analyses(
     let body = state_json(&ctx, org.org.id, &asset).await?;
     Ok((StatusCode::ACCEPTED, format::json(body)).into_response())
 }
+
+/// `POST /api/v1/media/analyses` — the same steps on many media at once
+/// (voice-id.md D983, D985): each media goes through the very start of
+/// `POST /media/{id}/analyses`, with its checks; one refusal never stops
+/// the others.
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/analyses",
+    tag = "media",
+    operation_id = "media_analyses_start_batch",
+    summary = "Start analyses on many media assets",
+    description = "(Re)launches the given steps on the current version of each media asset listed (at most 200), as `POST /media/{id}/analyses` does for one: for example `identify` on a selection to regenerate the voice recognition with the profiles of the moment. Returns one result per asset, in order: started, or the machine code of the refusal (`media-not-found`, `media-analysis-busy`, `media-analysis-no-voice-profile`…). Owner, admin or member.",
+    request_body = pnex_core::media_analysis::StartAnalysesBatch,
+    responses(
+        (status = 200, description = "One result per asset", body = pnex_core::media_analysis::BatchStartResult),
+        (status = 400, description = "Empty list, more than 200 assets or an id that is not a UUID (`field-invalid` on `asset_ids`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+pub(super) async fn start_analyses_batch(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Json(input): Json<pnex_core::media_analysis::StartAnalysesBatch>,
+) -> Result<Response> {
+    use pnex_core::media_analysis::{BatchStartItem, BatchStartResult, BATCH_MAX};
+    let ids: Option<Vec<Uuid>> = input
+        .asset_ids
+        .iter()
+        .map(|s| Uuid::parse_str(s.trim()).ok())
+        .collect();
+    let Some(ids) = ids.filter(|v| !v.is_empty() && v.len() <= BATCH_MAX) else {
+        return Ok(crate::controllers::field_error(
+            "asset_ids",
+            pnex_core::err_codes::FIELD_INVALID,
+        ));
+    };
+    let s = &input.start;
+    let mut results = Vec::with_capacity(ids.len());
+    for id in ids {
+        let asset = find_asset(&ctx.db, &org, id).await?;
+        let error = match asset
+            .as_ref()
+            .and_then(|a| a.current_version_id.map(|v| (a, v)))
+        {
+            None => Some(pnex_core::err_codes::MEDIA_NOT_FOUND.to_string()),
+            Some((asset, version_id)) => match media_analyses::start(
+                &ctx,
+                org.org.id,
+                org.auth.user.id,
+                &asset.kind,
+                version_id,
+                &s.steps,
+                &s.locale,
+                s.confirm_large,
+                s.voice_scope,
+                &s.focus,
+            )
+            .await
+            {
+                Ok(_) => None,
+                Err(media_analyses::AnalysisError::Db(e)) => {
+                    return Err(crate::controllers::db_error(e))
+                }
+                Err(e) => Some(e.code().to_string()),
+            },
+        };
+        results.push(BatchStartItem {
+            asset_id: id.to_string(),
+            started: error.is_none(),
+            error,
+        });
+    }
+    format::json(BatchStartResult { results })
+}

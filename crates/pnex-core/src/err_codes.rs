@@ -135,6 +135,8 @@ pub const MEDIA_INDEX_NOT_A_DOCUMENT: &str = "media-index-not-a-document";
 pub const MEDIA_ANALYSIS_NO_LLM: &str = "media-analysis-no-llm";
 /// File analysis step already queued or running.
 pub const MEDIA_ANALYSIS_BUSY: &str = "media-analysis-busy";
+/// A media asset of a batch is unknown to the organisation or has no version.
+pub const MEDIA_NOT_FOUND: &str = "media-not-found";
 /// File analysis step not offered for this kind of file.
 pub const MEDIA_ANALYSIS_STEP_INVALID: &str = "media-analysis-step-invalid";
 /// Summary impossible: the file yielded no text.
@@ -1651,6 +1653,7 @@ pub const ALL: &[&str] = &[
     MEDIA_INDEX_NOT_A_DOCUMENT,
     MEDIA_ANALYSIS_NO_LLM,
     MEDIA_ANALYSIS_BUSY,
+    MEDIA_NOT_FOUND,
     MEDIA_ANALYSIS_STEP_INVALID,
     MEDIA_ANALYSIS_NO_TEXT,
     MEDIA_ANALYSIS_LLM_FAILED,

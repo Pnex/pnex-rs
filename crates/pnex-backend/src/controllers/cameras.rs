@@ -448,11 +448,13 @@ pub struct ContentQuery {
     tag = "cameras",
     operation_id = "cameras_segments_content",
     summary = "Download a recorded video segment",
-    description = "MJPEG-AVI bytes of the segment; `download=1` sends it as an attachment.",
+    description = "MJPEG-AVI bytes of the segment; `download=1` sends it as an attachment. Byte ranges (`Range`) answer 206.",
     params(("id" = String, Path, format = "uuid", description = "Video segment UUID"), ContentQuery),
     responses(
         (status = 200, content_type = "video/x-msvideo", body = Vec<u8>),
-        (status = 404, description = "Unknown segment or stored file missing", body = crate::openapi::ErrorDetail)
+        (status = 206, content_type = "video/x-msvideo", body = Vec<u8>, description = "The requested byte range"),
+        (status = 404, description = "Unknown segment or stored file missing", body = crate::openapi::ErrorDetail),
+        (status = 416, description = "Range starts past the end of the file (`Content-Range: bytes */size`)")
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -461,17 +463,27 @@ async fn segment_content(
     org: OrgContext,
     Path(id): Path<Uuid>,
     Query(q): Query<ContentQuery>,
+    request_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let Some((seg, dev)) = find_segment(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
     let store = MediaSettings::from_config(&ctx.config)
+        .storage
         .store()
         .map_err(|_| Error::InternalServerError)?;
-    let bytes = store
-        .get(&seg.storage_key)
-        .await
-        .map_err(|_| Error::NotFound)?;
+    let served = crate::services::byte_range::serve(
+        store,
+        seg.storage_key.clone(),
+        None,
+        &request_headers,
+        None,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    let Some(res) = served else {
+        return Err(Error::NotFound);
+    };
     // A stream recording is named after its stream id (no device).
     let device_id = dev
         .map(|d| d.device_id)
@@ -487,7 +499,6 @@ async fn segment_content(
         "inline"
     };
     Ok((
-        StatusCode::OK,
         [
             ("content-type", "video/x-msvideo".to_string()),
             (
@@ -495,7 +506,7 @@ async fn segment_content(
                 format!("{disposition}; filename=\"{filename}\""),
             ),
         ],
-        bytes,
+        res,
     )
         .into_response())
 }

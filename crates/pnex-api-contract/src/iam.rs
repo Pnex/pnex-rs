@@ -923,6 +923,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("mcp_resource_metadata", Access::Public),
     ("media_analyses_get", Access::Org("media:read")),
     ("media_analyses_start", Access::Org("media:write")),
+    ("media_analyses_start_batch", Access::Org("media:write")),
     ("media_annotations", Access::Org("media:read")),
     ("media_attributions_create", Access::Org("media:write")),
     ("media_attributions_delete", Access::Org("media:delete")),

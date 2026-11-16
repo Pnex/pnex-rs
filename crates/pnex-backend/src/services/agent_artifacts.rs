@@ -521,28 +521,6 @@ pub async fn close_outputs<C: ConnectionTrait>(
     Ok(Some(required_missing))
 }
 
-/// The bytes of a stored artifact, read in parts.
-pub fn read_stream(
-    store: S3Store,
-    key: String,
-    size: u64,
-) -> impl Stream<Item = Result<Bytes, std::io::Error>> {
-    const PART: u64 = 8 * 1024 * 1024;
-    futures_util::stream::unfold(0u64, move |at| {
-        let (store, key) = (store.clone(), key.clone());
-        async move {
-            if at >= size {
-                return None;
-            }
-            let end = (at + PART).min(size);
-            Some(match store.get_range(&key, at..end).await {
-                Ok(bytes) => (Ok(bytes), end),
-                Err(e) => (Err(std::io::Error::other(e)), size),
-            })
-        }
-    })
-}
-
 /// Removes artifacts past their expiry, objects first. Returns how many went.
 pub async fn sweep<C: ConnectionTrait>(db: &C, store: &S3Store) -> Result<usize, String> {
     let rows = db

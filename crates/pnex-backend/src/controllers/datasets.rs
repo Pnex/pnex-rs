@@ -876,7 +876,7 @@ struct FileQuery {
     tag = "datasets",
     operation_id = "datasets_files_get",
     summary = "Download a Parquet file of a dataset",
-    description = "The Parquet file at `index` of the view listed by `GET /datasets/{id}/files` with the same `as_of`. Requires `datasets:read`.",
+    description = "The Parquet file at `index` of the view listed by `GET /datasets/{id}/files` with the same `as_of`. Byte ranges (`Range`) answer 206, for readers that fetch the footer first. Requires `datasets:read`.",
     params(
         ("id" = String, Path, format = "uuid", description = "Dataset id (UUID)"),
         ("index" = i64, Path, description = "Position of the file in the view, from 0"),
@@ -884,9 +884,11 @@ struct FileQuery {
     ),
     responses(
         (status = 200, content_type = "application/vnd.apache.parquet", body = Vec<u8>),
+        (status = 206, content_type = "application/vnd.apache.parquet", body = Vec<u8>, description = "The requested byte range"),
         (status = 403, description = "`access-denied`, or `marking-required` (args `markings`): a clearance is missing", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`dataset-not-found`: no such dataset or no file at this index", body = crate::openapi::ErrorDetail),
         (status = 410, description = "`dataset-version-purged`", body = crate::openapi::ErrorDetail),
+        (status = 416, description = "Range starts past the end of the file (`Content-Range: bytes */size`)"),
         (status = 503, description = "`dataset-storage-unavailable`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -896,6 +898,7 @@ async fn file(
     org: OrgContext,
     Path((id, index)): Path<(Uuid, usize)>,
     Query(q): Query<FileQuery>,
+    request: axum::http::HeaderMap,
 ) -> Result<Response> {
     if let Some(refused) = governed(&ctx, &org, id, "file").await {
         return refused;
@@ -911,16 +914,16 @@ async fn file(
         Ok(s) => s,
         Err(e) => return dataset_error(e),
     };
-    let stream = crate::services::agent_artifacts::read_stream(store, found.key, found.bytes);
-    let mut res = Body::from_stream(stream).into_response();
+    let served =
+        crate::services::byte_range::serve(store, found.key, Some(found.bytes), &request, None)
+            .await;
+    let Ok(Some(mut res)) = served else {
+        return Err(Error::InternalServerError);
+    };
     let h = res.headers_mut();
     h.insert(
         axum::http::header::CONTENT_TYPE,
         axum::http::HeaderValue::from_static("application/vnd.apache.parquet"),
-    );
-    h.insert(
-        axum::http::header::CONTENT_LENGTH,
-        axum::http::HeaderValue::from(found.bytes),
     );
     h.insert(
         axum::http::header::X_CONTENT_TYPE_OPTIONS,

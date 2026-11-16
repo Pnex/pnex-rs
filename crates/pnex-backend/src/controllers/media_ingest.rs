@@ -568,10 +568,12 @@ async fn stream_review(
         ("id" = String, Path, format = "uuid", description = "Media stream UUID"),
         ("segment" = String, Path, format = "uuid", description = "Media segment UUID")
     ),
-    description = "16 kHz mono WAV of a captured segment while the stream's retention keeps it (none = deleted once transcribed). Any member.",
+    description = "16 kHz mono WAV of a captured segment while the stream's retention keeps it (none = deleted once transcribed). Byte ranges (`Range`) answer 206. Any member.",
     responses(
         (status = 200, content_type = "audio/wav", body = Vec<u8>),
-        (status = 404, description = "Unknown stream or segment, or its audio is no longer kept", body = crate::openapi::ErrorDetail)
+        (status = 206, content_type = "audio/wav", body = Vec<u8>, description = "The requested byte range"),
+        (status = 404, description = "Unknown stream or segment, or its audio is no longer kept", body = crate::openapi::ErrorDetail),
+        (status = 416, description = "Range starts past the end of the file (`Content-Range: bytes */size`)")
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -579,6 +581,7 @@ async fn segment_audio(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path((id, segment)): Path<(Uuid, Uuid)>,
+    request_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     use crate::models::_entities::media_segments;
     let Some(seg) = media_segments::Entity::find_by_id(segment)
@@ -593,19 +596,22 @@ async fn segment_audio(
     let Some(key) = seg.storage_key else {
         return Err(Error::NotFound);
     };
-    let bytes = crate::services::media::MediaSettings::from_config(&ctx.config)
+    let store = crate::services::media::MediaSettings::from_config(&ctx.config)
+        .storage
         .store()
-        .map_err(|_| Error::InternalServerError)?
-        .get(&key)
+        .map_err(|_| Error::InternalServerError)?;
+    let served = crate::services::byte_range::serve(store, key, None, &request_headers, None)
         .await
-        .map_err(|_| Error::NotFound)?;
+        .map_err(|_| Error::InternalServerError)?;
+    let Some(res) = served else {
+        return Err(Error::NotFound);
+    };
     Ok((
-        StatusCode::OK,
         [
-            ("content-type", "audio/wav".to_string()),
-            ("content-disposition", "inline".to_string()),
+            ("content-type", "audio/wav"),
+            ("content-disposition", "inline"),
         ],
-        bytes,
+        res,
     )
         .into_response())
 }

@@ -165,6 +165,41 @@ pub struct StartAnalyses {
 
 pub const FOCUS_MAX: usize = 2000;
 
+/// Most media of one batch start.
+pub const BATCH_MAX: usize = 200;
+
+/// Body of a batch start: the same steps and options on many media, as one
+/// request each (voice-id.md D983, D985: regenerate the recognition of a
+/// selection with the profiles of the moment).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct StartAnalysesBatch {
+    /// Media assets (UUIDs), at most [`BATCH_MAX`].
+    pub asset_ids: Vec<String>,
+    #[serde(flatten)]
+    pub start: StartAnalyses,
+}
+
+/// Outcome of one media of a batch start.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct BatchStartItem {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub asset_id: String,
+    /// Steps queued for this media.
+    pub started: bool,
+    /// Machine code of the refusal (`media-not-found`, `media-analysis-busy`…).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Result of a batch start, one item per media in the order given.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct BatchStartResult {
+    pub results: Vec<BatchStartItem>,
+}
+
 /// Profiles a voice identification compares with (media-review.md D274).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -212,6 +212,7 @@ pub const EXPOSED: &[&str] = &[
     "lab_versions_train",
     "media_analyses_get",
     "media_analyses_start",
+    "media_analyses_start_batch",
     "media_annotations",
     "media_attributions_create",
     "media_attributions_list",

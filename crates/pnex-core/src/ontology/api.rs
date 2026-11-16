@@ -568,6 +568,10 @@ pub struct PackSetting {
     pub min: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max: Option<f64>,
+    /// Longest value of a text setting, characters, when the pack needs
+    /// more than [`PACK_SETTING_TEXT_MAX`] (a list of every ROME code).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_len: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -579,8 +583,10 @@ pub enum PackSettingKind {
     Bool,
 }
 
-/// Longest text setting.
+/// Longest text setting, unless the pack sets its own `max_len`.
 pub const PACK_SETTING_TEXT_MAX: usize = 2000;
+/// Ceiling of a pack's own `max_len`: a setting stays a setting, not a file.
+pub const PACK_SETTING_TEXT_CEILING: usize = 20_000;
 
 impl PackSetting {
     /// Machine code of what is wrong with `v` for this setting, if anything.
@@ -592,9 +598,13 @@ impl PackSetting {
                 (self.min.is_some_and(|m| n < m) || self.max.is_some_and(|m| n > m))
                     .then(|| FIELD_INVALID.to_string())
             }
-            (PackSettingKind::Text, Value::String(s)) => (s.chars().count()
-                > PACK_SETTING_TEXT_MAX)
-                .then(|| format!("{FIELD_MAX_LENGTH}:{PACK_SETTING_TEXT_MAX}")),
+            (PackSettingKind::Text, Value::String(s)) => {
+                let max = self
+                    .max_len
+                    .unwrap_or(PACK_SETTING_TEXT_MAX)
+                    .min(PACK_SETTING_TEXT_CEILING);
+                (s.chars().count() > max).then(|| format!("{FIELD_MAX_LENGTH}:{max}"))
+            }
             (PackSettingKind::Bool, Value::Bool(_)) => None,
             _ => Some(FIELD_INVALID.to_string()),
         }
@@ -1541,4 +1551,36 @@ pub struct ObservationView {
     pub source_ref: String,
     /// Publication date lost: read when the source was first imported.
     pub backfilled: bool,
+}
+
+#[cfg(test)]
+mod pack_setting_tests {
+    use super::*;
+
+    fn text(max_len: Option<usize>) -> PackSetting {
+        PackSetting {
+            key: "codes".into(),
+            name: "Codes".into(),
+            names: Default::default(),
+            description: String::new(),
+            descriptions: Default::default(),
+            kind: PackSettingKind::Text,
+            default: Value::String(String::new()),
+            min: None,
+            max: None,
+            max_len,
+        }
+    }
+
+    #[test]
+    fn a_pack_may_allow_longer_text_up_to_the_ceiling() {
+        let long = Value::String("N4101,".repeat(1_911));
+        assert_eq!(text(None).check(&long).as_deref(), Some("max_length:2000"));
+        assert_eq!(text(Some(12_000)).check(&long), None);
+        let huge = Value::String("x".repeat(30_000));
+        assert_eq!(
+            text(Some(50_000)).check(&huge).as_deref(),
+            Some("max_length:20000")
+        );
+    }
 }

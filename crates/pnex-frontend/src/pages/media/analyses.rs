@@ -357,7 +357,9 @@ fn StepLine(
                     r#type: "button",
                     disabled,
                     onclick: move |_| on_start.call(step),
-                    if ran {
+                    if ran && step == AnalysisStep::Identify {
+                        {t!("media-analysis-regenerate-recognition")}
+                    } else if ran {
                         {t!("media-analysis-rerun")}
                     } else {
                         {t!("media-analysis-run")}

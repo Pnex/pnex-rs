@@ -54,6 +54,11 @@ pub struct Launch {
     pub seg_dir: Option<PathBuf>,
     /// Speaker embedding model (diarization, or a segmentation check).
     pub emb_dir: Option<PathBuf>,
+    /// Language fallback model and its family (language guard).
+    pub fallback: Option<(PathBuf, String)>,
+    /// Diarization clustering threshold, as passed on the command line
+    /// (a string keeps `Launch` hashable).
+    pub cluster_threshold: Option<String>,
 }
 
 pub struct AsrProcess {
@@ -95,6 +100,17 @@ impl AsrProcess {
                 argv.push(flag.into());
                 argv.push(d.display().to_string());
             }
+        }
+        if let Some((dir, family)) = &launch.fallback {
+            argv.extend([
+                "--fallback-dir".into(),
+                dir.display().to_string(),
+                "--fallback-family".into(),
+                family.clone(),
+            ]);
+        }
+        if let Some(t) = &launch.cluster_threshold {
+            argv.extend(["--cluster-threshold".into(), t.clone()]);
         }
         let argv = sandbox::wrap_argv(mode, argv);
         let mut cmd = tokio::process::Command::new(&argv[0]);

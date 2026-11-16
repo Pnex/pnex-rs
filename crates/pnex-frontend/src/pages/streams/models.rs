@@ -382,6 +382,9 @@ fn profile_line(
     if p.diarization_model_id.is_some() {
         parts.push(t!("asr-profiles-tag-diarization").to_string());
     }
+    if let Some(f) = &p.fallback_asr_model_id {
+        parts.push(t!("asr-profiles-tag-fallback", model : model_name(f)).to_string());
+    }
     parts.join(" · ")
 }
 
@@ -420,6 +423,9 @@ fn NewProfile(models: Vec<AsrModel>, on_saved: Callback<()>) -> Element {
     let mut seg = use_signal(String::new);
     let mut emb = use_signal(String::new);
     let mut language = use_signal(|| "fr".to_string());
+    let mut fallback = use_signal(String::new);
+    let mut threshold = use_signal(String::new);
+    let fallbacks = asr_models.clone();
     let mut busy = use_signal(|| false);
     let save = move |_| {
         let input = AsrProfileInput {
@@ -429,6 +435,8 @@ fn NewProfile(models: Vec<AsrModel>, on_saved: Callback<()>) -> Element {
             diarization_model_id: Some(seg()),
             diarization_embedding_model_id: Some(emb()),
             language: Some(language()),
+            fallback_asr_model_id: Some(fallback()),
+            cluster_threshold: threshold().trim().replace(',', ".").parse().ok(),
             ..Default::default()
         };
         busy.set(true);
@@ -516,6 +524,42 @@ fn NewProfile(models: Vec<AsrModel>, on_saved: Callback<()>) -> Element {
                     value: "{language}",
                     maxlength: "4",
                     oninput: move |e| language.set(e.value()),
+                }
+            }
+            div {
+                label {
+                    r#for: "profile-fallback",
+                    class: LABEL,
+                    title: t!("asr-profiles-fallback-help"),
+                    {t!("asr-profiles-fallback")}
+                }
+                select {
+                    id: "profile-fallback",
+                    class: INPUT,
+                    onchange: move |e| fallback.set(e.value()),
+                    option { value: "", selected: fallback().is_empty(), {t!("asr-profiles-none")} }
+                    for m in fallbacks {
+                        option { value: "{m.id}", selected: fallback() == m.id, "{m.name}" }
+                    }
+                }
+            }
+            div {
+                label {
+                    r#for: "profile-threshold",
+                    class: LABEL,
+                    title: t!("asr-profiles-threshold-help"),
+                    {t!("asr-profiles-threshold")}
+                }
+                input {
+                    id: "profile-threshold",
+                    class: INPUT,
+                    r#type: "number",
+                    min: "0.05",
+                    max: "1",
+                    step: "0.05",
+                    placeholder: "0.5",
+                    value: "{threshold}",
+                    oninput: move |e| threshold.set(e.value()),
                 }
             }
             button {

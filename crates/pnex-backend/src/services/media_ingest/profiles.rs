@@ -15,6 +15,9 @@ use crate::models::_entities::{asr_profiles, ml_models};
 
 const NAME_MAX: usize = 200;
 const BEAM_MAX: i32 = 8;
+/// Bounds of the diarization clustering threshold (`pnex-asr` refuses others).
+const CLUSTER_MIN: f32 = 0.05;
+const CLUSTER_MAX: f32 = 1.0;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProfileError {
@@ -47,6 +50,8 @@ pub fn view(r: &asr_profiles::Model) -> AsrProfile {
         beam: r.beam,
         word_timestamps: r.word_timestamps,
         is_default: r.is_default,
+        fallback_asr_model_id: r.fallback_asr_model_id.map(|v| v.to_string()),
+        cluster_threshold: r.cluster_threshold,
         created_at: r.created_at.to_rfc3339(),
         updated_at: r.updated_at.to_rfc3339(),
     }
@@ -197,6 +202,22 @@ async fn apply<C: ConnectionTrait>(
     if let Some(d) = input.is_default {
         am.is_default = Set(d);
     }
+    if let Some(raw) = &input.fallback_asr_model_id {
+        let field = "fallback_asr_model_id";
+        let id = optional_model(db, org_id, field, raw, TASK_ASR).await?;
+        if id.is_some() && id == Some(am.asr_model_id.clone().unwrap()) {
+            // The main model again would answer in the same wrong language.
+            return Err(invalid(field, err_codes::FIELD_INVALID));
+        }
+        am.fallback_asr_model_id = Set(id);
+    }
+    if let Some(t) = input.cluster_threshold {
+        am.cluster_threshold = Set(match t {
+            0.0 => None,
+            t if (CLUSTER_MIN..=CLUSTER_MAX).contains(&t) => Some(t),
+            _ => return Err(invalid("cluster_threshold", err_codes::FIELD_INVALID)),
+        });
+    }
     Ok(())
 }
 
@@ -245,6 +266,8 @@ pub async fn create(
         language: Set("fr".into()),
         beam: Set(1),
         word_timestamps: Set(true),
+        fallback_asr_model_id: Set(None),
+        cluster_threshold: Set(None),
         // The org's first profile is its default.
         is_default: Set(!has_default(&txn, org_id).await?),
         created_at: Set(now),

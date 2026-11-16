@@ -5,7 +5,7 @@
 | Statut | **Premiers lots codés (2026-11-15)** : moteur LM0, BMO, tension, offres (§11) ; le reste proposé |
 | Déclencheur | Cibler des sites industriels selon les métiers en tension, la rotation et la pyramide des âges du territoire ; afficher le tout sur la carte, sous les établissements |
 | Repose sur | `data-pipelines.md` (D344–D358, §9 D569–D578 datasets), `partner-watch.md` (pack `companies_fr`), `account-mapping.md` (D329–D343, `map_pin.headcount_band`, critères de score D336), `geo-layers.md` (L1–L28, phase A livrée le 2026-11-14), `secrets.md` (D110), `security.md` (R1, R2, R8) |
-| Numérotation | décisions **M1–M18 provisoires**, renumérotées `Dxxx` au merge (D970–D975 pris au 2026-11-14 par `crm.md` et `watch.md`, D976–D977 par les relations LinkedIn (`account-mapping.md`) : prochain libre D978, à revérifier au merge) ; lots **LM0…LM5** |
+| Numérotation | décisions **M1–M18 provisoires**, renumérotées `Dxxx` au merge (D970–D975 pris au 2026-11-14 par `crm.md` et `watch.md`, D976–D977 par les relations LinkedIn (`account-mapping.md`) : D978–D985 par la reconnaissance par empreintes (`voice-id.md` §1 bis) : prochain libre D986, à revérifier au merge) ; lots **LM0…LM5** |
 | Exécution | **pipelines uniquement** : aucun flow, aucun nœud. Chaque source = un fichier YAML de pipeline dans un pack, planifié par `recurrence` |
 
 ## 1. Le besoin en une phrase
@@ -386,8 +386,15 @@ ROME collés dans `rome_codes`) passent en appels séquentiels : 600 par
 passe, un jeton par passe (valable 25 min), une quinzaine d'heures au total
 une fois par an. Pas de parallélisme au moteur pour une donnée annuelle.
 Limite : le jeton n'est jamais renouvelé en cours de passe, d'où `per_run`.
-`fr_ft_offers` demande encore le scope Offres v2 : à revoir avec la
-deuxième étape (La Bonne Boite).
+**1.2.0 (2026-11-16) : offres retirées.** L'API Offres d'emploi v2 n'est
+plus exposée sur francetravail.io (fiche data.gouv.fr du 2026-10-20 :
+accès restreint, sur demande via le formulaire de contact, après des
+usages automatisés massifs), et aucune source ouverte ne liste les offres
+une à une (jeux départementaux partiels, séries trimestrielles agrégées).
+`fr_ft_offers`, `lm_offers_seen`, les requêtes `job_postings` et
+`company_offers` et le réglage `departments` sont retirés ; S3 et M7–M11
+attendent un accès accordé par France Travail. `rome_codes` accepte
+désormais tous les codes (`max_len` de réglage, 12 000 caractères).
 
 **Reste** : rapprochement offre → établissement (M9, M10), motif par LLM
 (M11), INSEE (S4), départs 2030 (S5), mouvements (S6), score et propriétés

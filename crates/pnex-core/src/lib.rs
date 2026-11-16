@@ -156,6 +156,7 @@ pub mod media_review;
 /// Voice identification by consented enrolment (voice-id.md, cases.md
 /// K19): profile DTOs, windowing, centroid, calibrated threshold, verdict.
 pub mod voice_id;
+pub mod voice_recognition;
 
 /// Browser agents (extension-collector.md D254–D269): pairing, missions,
 /// `/ws/extension` protocol.

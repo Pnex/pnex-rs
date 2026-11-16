@@ -39,6 +39,11 @@ struct Args {
     vad_dir: Option<PathBuf>,
     seg_dir: Option<PathBuf>,
     emb_dir: Option<PathBuf>,
+    /// Model that redoes a part whose text is not in `language`.
+    fallback_dir: Option<PathBuf>,
+    fallback_family: Option<String>,
+    /// Diarization clustering distance (larger = fewer speakers).
+    cluster_threshold: Option<f32>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -58,6 +63,9 @@ fn parse_args() -> Result<Args, String> {
         vad_dir: None,
         seg_dir: None,
         emb_dir: None,
+        fallback_dir: None,
+        fallback_family: None,
+        cluster_threshold: None,
     };
     while let Some(flag) = it.next() {
         let mut value = || it.next().ok_or(format!("{flag} needs a value"));
@@ -72,6 +80,15 @@ fn parse_args() -> Result<Args, String> {
             "--vad-dir" => a.vad_dir = Some(PathBuf::from(value()?)),
             "--seg-dir" => a.seg_dir = Some(PathBuf::from(value()?)),
             "--emb-dir" => a.emb_dir = Some(PathBuf::from(value()?)),
+            "--fallback-dir" => a.fallback_dir = Some(PathBuf::from(value()?)),
+            "--fallback-family" => a.fallback_family = Some(value()?),
+            "--cluster-threshold" => {
+                let t: f32 = value()?.parse().map_err(|_| "bad --cluster-threshold")?;
+                if !(0.05..=1.0).contains(&t) {
+                    return Err("--cluster-threshold must be within 0.05..=1".into());
+                }
+                a.cluster_threshold = Some(t);
+            }
             other => return Err(format!("unknown flag {other}")),
         }
     }
@@ -139,7 +156,9 @@ fn sherpa_opts(a: &Args) -> pnex_asr::sherpa::SherpaOptions {
         provider: a.provider.clone(),
         num_threads: a.threads,
         language: a.language.clone(),
-        ..Default::default()
+        cluster_threshold: a
+            .cluster_threshold
+            .unwrap_or(pnex_asr::sherpa::DEFAULT_CLUSTER_THRESHOLD),
     }
 }
 
@@ -269,8 +288,24 @@ fn pipeline(a: &Args, dir: &std::path::Path) -> Result<Pipeline, String> {
         }
         Family::SpeakerEmbedding => p.embedder = Some(load_embedder(a, dir)?),
         _ => {
-            let asr = load(family, a, dir, &inspection.files)?;
+            let mut asr = load(family, a, dir, &inspection.files)?;
             p.name = asr.name().to_string();
+            // A fallback forced to the profile language redoes any part the
+            // main model answered in another one ("auto" = no guard).
+            let lang = pnex_asr::language::lang_of(&a.language);
+            if let (Some(fdir), Some(lang)) = (a.fallback_dir.as_deref(), lang) {
+                let fi = protocol::inspect(fdir)?;
+                let ffam = match a.fallback_family.as_deref() {
+                    Some(f) => Family::from_wire(f).ok_or_else(|| format!("unknown family {f}"))?,
+                    None => fi.family,
+                };
+                let fallback = load(ffam, a, fdir, &fi.files)?;
+                asr = Box::new(pnex_asr::language::LanguageGuard {
+                    primary: asr,
+                    fallback,
+                    lang,
+                });
+            }
             p.asr = Some(asr);
             if let Some(v) = a.vad_dir.as_deref() {
                 p.vad = Some(load_vad(a, v)?);

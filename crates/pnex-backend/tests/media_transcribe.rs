@@ -327,6 +327,22 @@ async fn model_import_check_and_transcription_chain() {
                     "diarization_model_id",
                     "invalid",
                 ),
+                // The language fallback is another speech-to-text model.
+                (
+                    json!({ "name": "X", "asr_model_id": model_id, "fallback_asr_model_id": model_id }),
+                    "fallback_asr_model_id",
+                    "invalid",
+                ),
+                (
+                    json!({ "name": "X", "asr_model_id": model_id, "fallback_asr_model_id": vad_id }),
+                    "fallback_asr_model_id",
+                    "invalid",
+                ),
+                (
+                    json!({ "name": "X", "asr_model_id": model_id, "cluster_threshold": 1.5 }),
+                    "cluster_threshold",
+                    "invalid",
+                ),
             ] {
                 let res = post("/api/v1/asr/profiles", body).await;
                 assert_eq!(res.status_code(), 400, "{}", res.text());
@@ -336,12 +352,14 @@ async fn model_import_check_and_transcription_chain() {
                 "/api/v1/asr/profiles",
                 json!({
                     "name": "FR diarized", "asr_model_id": model_id, "vad_model_id": vad_id,
-                    "diarization_model_id": seg_id, "diarization_embedding_model_id": emb_id
+                    "diarization_model_id": seg_id, "diarization_embedding_model_id": emb_id,
+                    "cluster_threshold": 0.15
                 }),
             )
             .await;
             assert_eq!(res.status_code(), 201, "{}", res.text());
             let full = res.json::<Value>();
+            assert!((full["cluster_threshold"].as_f64().unwrap() - 0.15).abs() < 1e-6, "{full}");
             assert_eq!(full["vad_model_id"], vad_id.as_str());
             assert_eq!(full["diarization_embedding_model_id"], emb_id.as_str());
             let full_id = full["id"].as_str().unwrap().to_string();

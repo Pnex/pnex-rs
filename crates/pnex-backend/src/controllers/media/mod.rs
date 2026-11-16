@@ -102,6 +102,7 @@ pub fn routes() -> Routes {
         .add("/uploads/{upload}/parts/{part}", put(upload_part))
         .add("/uploads/{upload}/complete", post(upload_complete))
         .add("/search", get(search))
+        .add("/analyses", post(start_analyses_batch))
         .add("/chunks/{chunk_id}", get(chunk))
         .add("/{id}/index", get(index_state).post(reindex))
         .add("/{id}/analyses", get(analyses).post(start_analyses))
@@ -142,6 +143,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         reindex,
         analyses,
         start_analyses,
+        start_analyses_batch,
         transcript,
         detections,
         attributions,

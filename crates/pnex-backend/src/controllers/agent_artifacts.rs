@@ -217,10 +217,12 @@ async fn one(
     tag = "agent-runs",
     operation_id = "agent_artifacts_content",
     summary = "Download an artifact",
-    description = "The bytes of a ready artifact, as an attachment: what an agent wrote is never shown by the app. It may hold a secret, hence its own permission `agent-artifacts:read`.",
+    description = "The bytes of a ready artifact, as an attachment: what an agent wrote is never shown by the app. It may hold a secret, hence its own permission `agent-artifacts:read`. Byte ranges (`Range`) answer 206, to resume a download.",
     params(("id" = String, Path, format = "uuid", description = "Artifact id (UUID)")),
     responses(
         (status = 200, description = "The bytes", content_type = "application/octet-stream"),
+        (status = 206, description = "The requested byte range", content_type = "application/octet-stream"),
+        (status = 416, description = "Range starts past the end of the file (`Content-Range: bytes */size`)"),
         (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`agent-artifact-not-found`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`agent-artifact-storage-unavailable`", body = crate::openapi::ErrorDetail)
@@ -231,6 +233,7 @@ async fn content(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<Uuid>,
+    request: HeaderMap,
 ) -> Result<Response> {
     let artifact = match agent_artifacts::get(&ctx.db, org.org.id, id).await {
         Ok(a) if a.state == pnex_core::agent_runs::ArtifactState::Ready => a,
@@ -254,22 +257,26 @@ async fn content(
         Some(ArtifactForm::Tar) => format!("{}.tar", artifact.name),
         _ => artifact.name.clone(),
     };
-    stream_response(store, key, size, Some(&file))
+    stream_response(store, key, size, &request, Some(&file)).await
 }
 
-fn stream_response(
+async fn stream_response(
     store: S3Store,
     key: String,
     size: u64,
+    request: &HeaderMap,
     attachment: Option<&str>,
 ) -> Result<Response> {
-    let mut res = Body::from_stream(agent_artifacts::read_stream(store, key, size)).into_response();
+    let mut res = crate::services::byte_range::serve(store, key, Some(size), request, None)
+        .await
+        .ok()
+        .flatten()
+        .ok_or(Error::InternalServerError)?;
     let h = res.headers_mut();
     h.insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/octet-stream"),
     );
-    h.insert(header::CONTENT_LENGTH, HeaderValue::from(size));
     h.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
@@ -404,7 +411,7 @@ async fn transfer_input(
         Ok(s) => s,
         Err(e) => return artifact_error(e),
     };
-    stream_response(store, key, size, None)
+    stream_response(store, key, size, &headers, None).await
 }
 
 /// `PUT /api/v1/agent-transfer/outputs/{name}`
@@ -512,7 +519,7 @@ async fn transfer_cache_get(
         Err(e) => return artifact_error(e),
     };
     let (key, size, exact) = found;
-    let mut res = stream_response(store, key, size, None)?;
+    let mut res = stream_response(store, key, size, &headers, None).await?;
     res.headers_mut().insert(
         "x-pnex-cache-exact",
         HeaderValue::from_static(if exact { "true" } else { "false" }),

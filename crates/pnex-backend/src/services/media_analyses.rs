@@ -638,7 +638,7 @@ async fn identify(ctx: &AppContext, row: &Row) -> Result<serde_json::Value, &'st
         VoiceScope::All => None,
     };
     let user = row.params.get("user_id").and_then(|v| v.as_i64());
-    let matches = voice_id::media::identify(
+    let spans = voice_id::media::identify(
         ctx,
         row.org_id,
         version.id,
@@ -656,15 +656,9 @@ async fn identify(ctx: &AppContext, row: &Row) -> Result<serde_json::Value, &'st
             failed
         }
     })?;
-    let n = media_attributions::propose_voices(
-        &ctx.db,
-        row.org_id,
-        version.asset_id,
-        &t.segments,
-        &matches,
-    )
-    .await
-    .map_err(|_| failed)?;
+    let n = media_attributions::propose_voices(&ctx.db, row.org_id, version.asset_id, &spans)
+        .await
+        .map_err(|_| failed)?;
     Ok(serde_json::json!({ "proposals": n, "run": run.id.to_string() }))
 }
 

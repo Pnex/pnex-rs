@@ -362,15 +362,14 @@ async fn sync_appearance<C: ConnectionTrait>(
 /// Link type of a person appearing in a media file (investigation pack).
 const APPEARS_IN: &str = "appears_in";
 
-/// Replaces the voice proposals of an asset (D275): one proposed span per
-/// merged turn of each matched speaker, except where a person already
+/// Replaces the voice proposals of an asset (D275, D983): one proposed span
+/// per stretch where a person was recognized, except where a person already
 /// confirmed someone, or rejected this very person. Returns how many.
 pub async fn propose_voices(
     db: &DatabaseConnection,
     org_id: i64,
     asset_id: Uuid,
-    segments: &[pnex_core::media_review::ReviewSegment],
-    matches: &[crate::services::voice_id::media::SpeakerMatch],
+    spans: &[crate::services::voice_id::media::VoiceSpan],
 ) -> Result<usize, AttributionError> {
     crate::services::ontology::changes::deferred(async {
         let txn = db.begin().await?;
@@ -382,20 +381,22 @@ pub async fn propose_voices(
         .await?;
         let existing = list(&txn, org_id, asset_id).await?;
         let mut count = 0;
-        for m in matches {
-            for span in pnex_core::media_review::label_spans(segments, &m.label) {
-                let overlaps =
-                    |a: &SpeechAttribution| a.start_ms < span.end_ms && span.start_ms < a.end_ms;
-                let decided = existing.iter().any(|a| {
-                    overlaps(a)
-                        && (a.status == AttributionStatus::Confirmed
-                            || (a.status == AttributionStatus::Rejected
-                                && a.object_id == m.object_id))
-                });
-                if decided || !span_ok(&span) {
-                    continue;
-                }
-                txn.execute_raw(stmt(
+        for m in spans {
+            let span = pnex_core::media_review::MediaSpan {
+                start_ms: m.start_ms,
+                end_ms: m.end_ms,
+            };
+            let overlaps =
+                |a: &SpeechAttribution| a.start_ms < span.end_ms && span.start_ms < a.end_ms;
+            let decided = existing.iter().any(|a| {
+                overlaps(a)
+                    && (a.status == AttributionStatus::Confirmed
+                        || (a.status == AttributionStatus::Rejected && a.object_id == m.object_id))
+            });
+            if decided || !span_ok(&span) {
+                continue;
+            }
+            txn.execute_raw(stmt(
                 "INSERT INTO speech_attributions (id, org_id, media_asset_id, object_id, start_ms,
                     end_ms, origin, confidence, status)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
@@ -412,8 +413,7 @@ pub async fn propose_voices(
                 ],
             ))
             .await?;
-                count += 1;
-            }
+            count += 1;
         }
         txn.commit().await?;
         crate::services::ontology::changes::flush();

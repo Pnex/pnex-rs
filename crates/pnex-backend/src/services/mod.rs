@@ -18,6 +18,8 @@ pub mod artifact_store;
 pub mod build_cache;
 /// Per-device build history retention (keeps the newest records).
 pub mod build_retention;
+/// Byte-range serving of stored files (seek and cast in players).
+pub mod byte_range;
 /// Large public files into tables: AIS, ADS-B, DVF (markets-research.md MK22–MK24).
 pub mod camera;
 pub mod cmd_acks;

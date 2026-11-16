@@ -12,7 +12,6 @@
 //! carries `?v=n` and a media version is append-only — immutable).
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
 use axum::routing::get;
 use loco_rs::controller::format;
 use loco_rs::prelude::*;
@@ -172,11 +171,13 @@ struct AssetQuery {
     tag = "public",
     operation_id = "public_tours_asset",
     summary = "Download a media of a shared tour",
-    description = "Public, no authentication: streams the bytes of a media referenced by the published document of the shared tour (`?v=n` for a given media version, default current). Served with the media content type, `nosniff`, a sandbox CSP; one-year immutable cache with `?v=n`, `no-cache` without. Uniform 404 for anything not referenced or unknown.",
+    description = "Public, no authentication: streams the bytes of a media referenced by the published document of the shared tour (`?v=n` for a given media version, default current). Served with the media content type, `nosniff`, a sandbox CSP; one-year immutable cache with `?v=n`, `no-cache` without. Byte ranges (`Range`) answer 206. Uniform 404 for anything not referenced or unknown.",
     params(("token" = String, Path, description = "Public share token (32 hex)"), ("asset_id" = String, Path, format = "uuid", description = "Media asset id (UUID)"), AssetQuery),
     responses(
         (status = 200, description = "Media bytes (actual type in `Content-Type`)", content_type = "application/octet-stream", body = Vec<u8>),
-        (status = 404, description = "Unknown token, asset not referenced or unknown version", body = crate::openapi::ErrorDetail)
+        (status = 206, description = "The requested byte range", content_type = "application/octet-stream", body = Vec<u8>),
+        (status = 404, description = "Unknown token, asset not referenced or unknown version", body = crate::openapi::ErrorDetail),
+        (status = 416, description = "Range starts past the end of the file (`Content-Range: bytes */size`)")
     ),
     security(())
 )]
@@ -184,6 +185,7 @@ async fn asset(
     State(ctx): State<AppContext>,
     Path((token, asset_id)): Path<(String, Uuid)>,
     Query(q): Query<AssetQuery>,
+    request_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let Some((tour, version)) = find_published_by_token(&ctx.db, &token).await? else {
         return Err(not_found());
@@ -236,11 +238,20 @@ async fn asset(
     };
 
     let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
-    let store = settings.store().map_err(|_| not_found())?;
-    let bytes = store
-        .get(&version_row.storage_key)
-        .await
-        .map_err(|_| not_found())?;
+    let store = settings.storage.store().map_err(|_| not_found())?;
+    // No ETag on this public route: it would carry an internal id (R4).
+    let served = crate::services::byte_range::serve(
+        store,
+        version_row.storage_key.clone(),
+        None,
+        &request_headers,
+        None,
+    )
+    .await
+    .map_err(|_| not_found())?;
+    let Some(res) = served else {
+        return Err(not_found());
+    };
     // Allowlisted type + nosniff + sandbox CSP (SEC-5): this route is public
     // and served on the app origin.
     let headers = crate::services::media::user_content_headers(
@@ -248,10 +259,9 @@ async fn asset(
         &version_row.filename,
     );
     Ok((
-        StatusCode::OK,
         headers,
         [("cache-control", asset_cache_control(q.v).to_string())],
-        bytes,
+        res,
     )
         .into_response())
 }

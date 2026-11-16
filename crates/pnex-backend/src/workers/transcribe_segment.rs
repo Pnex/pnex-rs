@@ -242,6 +242,10 @@ impl TranscribeSegmentWorker {
             launch.emb_dir = self
                 .side_model(&settings, seg.org_id, Some(e), TASK_EMBEDDING)
                 .await?;
+            launch.cluster_threshold = profile.cluster_threshold.map(|t| t.to_string());
+        }
+        if let Some(id) = profile.fallback_asr_model_id {
+            launch.fallback = self.fallback_model(&settings, seg.org_id, id).await?;
         }
         let mut resp = process::transcribe(&launch, &settings.sandbox, &wav)
             .await
@@ -362,6 +366,35 @@ impl TranscribeSegmentWorker {
                 Failure::ModelInvalid
             })?;
         Ok(Some(local.dir))
+    }
+
+    /// The language fallback model of the profile, extracted, with its
+    /// family; gone or failed its check = the segment fails like the ASR one.
+    async fn fallback_model(
+        &self,
+        settings: &AsrSettings,
+        org_id: i64,
+        id: Uuid,
+    ) -> std::result::Result<Option<(std::path::PathBuf, String)>, Failure> {
+        let m = ml_models::Entity::find_by_id(id)
+            .filter(ml_models::Column::OrgId.eq(org_id))
+            .filter(ml_models::Column::Task.eq(ASR_TASK))
+            .one(&self.ctx.db)
+            .await
+            .map_err(|_| Failure::Store)?
+            .filter(|m| m.check_status == ModelCheckStatus::Valid.wire())
+            .ok_or(Failure::ModelInvalid)?;
+        let local = asr::local_model(&self.ctx, settings, m.asset_id, m.asset_version)
+            .await
+            .map_err(|e| {
+                tracing::warn!(model = %m.id, error = %e, "audio model unavailable");
+                Failure::ModelInvalid
+            })?;
+        let family = pnex_asr::protocol::Family::from_wire(&m.family)
+            .unwrap_or(local.inspection.family)
+            .wire()
+            .to_string();
+        Ok(Some((local.dir, family)))
     }
 
     /// Segment event for `media_source` (D163), best effort: the text is

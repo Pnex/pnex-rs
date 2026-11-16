@@ -3236,6 +3236,14 @@
             "format": "int32",
             "type": "integer"
           },
+          "cluster_threshold": {
+            "description": "Diarization clustering threshold, 0.05 to 1: lower tells more voices\napart. Absent = the default (0.5).",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -3249,6 +3257,14 @@
           },
           "diarization_model_id": {
             "description": "Diarization = a segmentation model (`diarization_model_id`) and a\nspeaker embedding model, both set or both absent.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fallback_asr_model_id": {
+            "description": "Speech-to-text model forced to `language`: it redoes a part the main\nmodel answered in another language (a model that picks its own\nlanguage, like Parakeet, may answer French in English).",
             "format": "uuid",
             "type": [
               "string",
@@ -3313,6 +3329,14 @@
               "null"
             ]
           },
+          "cluster_threshold": {
+            "description": "Diarization clustering threshold (0.05 to 1); 0 clears it.",
+            "format": "float",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "diarization_embedding_model_id": {
             "description": "Speaker embedding model of the diarization; empty string clears it.",
             "type": [
@@ -3322,6 +3346,13 @@
           },
           "diarization_model_id": {
             "description": "Segmentation model of the diarization; empty string clears it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fallback_asr_model_id": {
+            "description": "Language fallback model; empty string clears it.",
             "type": [
               "string",
               "null"
@@ -3782,6 +3813,46 @@
           "name",
           "style_url",
           "is_default"
+        ],
+        "type": "object"
+      },
+      "BatchStartItem": {
+        "description": "Outcome of one media of a batch start.",
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "error": {
+            "description": "Machine code of the refusal (`media-not-found`, `media-analysis-busy`…).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started": {
+            "description": "Steps queued for this media.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "asset_id",
+          "started"
+        ],
+        "type": "object"
+      },
+      "BatchStartResult": {
+        "description": "Result of a batch start, one item per media in the order given.",
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BatchStartItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
         ],
         "type": "object"
       },
@@ -19481,6 +19552,14 @@
               "null"
             ]
           },
+          "max_len": {
+            "description": "Longest value of a text setting, characters, when the pack needs\nmore than [`PACK_SETTING_TEXT_MAX`] (a list of every ROME code).",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "min": {
             "format": "double",
             "type": [
@@ -31369,6 +31448,29 @@
         ],
         "type": "object"
       },
+      "StartAnalysesBatch": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StartAnalyses"
+          },
+          {
+            "properties": {
+              "asset_ids": {
+                "description": "Media assets (UUIDs), at most [`BATCH_MAX`].",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "asset_ids"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "Body of a batch start: the same steps and options on many media, as one\nrequest each (voice-id.md D983, D985: regenerate the recognition of a\nselection with the profiles of the moment)."
+      },
       "StateInput": {
         "description": "`POST /mailboxes/{id}/state`.",
         "properties": {
@@ -35768,7 +35870,7 @@
     },
     "/api/v1/agent-artifacts/{id}/content": {
       "get": {
-        "description": "The bytes of a ready artifact, as an attachment: what an agent wrote is never shown by the app. It may hold a secret, hence its own permission `agent-artifacts:read`.",
+        "description": "The bytes of a ready artifact, as an attachment: what an agent wrote is never shown by the app. It may hold a secret, hence its own permission `agent-artifacts:read`. Byte ranges (`Range`) answer 206, to resume a download.",
         "operationId": "agent_artifacts_content",
         "parameters": [
           {
@@ -35799,6 +35901,12 @@
             },
             "description": "The bytes"
           },
+          "206": {
+            "content": {
+              "application/octet-stream": {}
+            },
+            "description": "The requested byte range"
+          },
           "401": {
             "content": {
               "application/json": {
@@ -35828,6 +35936,9 @@
               }
             },
             "description": "`agent-artifact-not-found`"
+          },
+          "416": {
+            "description": "Range starts past the end of the file (`Content-Range: bytes */size`)"
           },
           "503": {
             "content": {
@@ -44837,7 +44948,7 @@
     },
     "/api/v1/cameras/segments/{id}/content": {
       "get": {
-        "description": "MJPEG-AVI bytes of the segment; `download=1` sends it as an attachment.",
+        "description": "MJPEG-AVI bytes of the segment; `download=1` sends it as an attachment. Byte ranges (`Range`) answer 206.",
         "operationId": "cameras_segments_content",
         "parameters": [
           {
@@ -44882,6 +44993,17 @@
             },
             "description": "OK"
           },
+          "206": {
+            "content": {
+              "video/x-msvideo": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The requested byte range"
+          },
           "401": {
             "content": {
               "application/json": {
@@ -44911,6 +45033,9 @@
               }
             },
             "description": "Unknown segment or stored file missing"
+          },
+          "416": {
+            "description": "Range starts past the end of the file (`Content-Range: bytes */size`)"
           }
         },
         "security": [
@@ -51374,7 +51499,7 @@
     },
     "/api/v1/datasets/{id}/files/{index}": {
       "get": {
-        "description": "The Parquet file at `index` of the view listed by `GET /datasets/{id}/files` with the same `as_of`. Requires `datasets:read`.",
+        "description": "The Parquet file at `index` of the view listed by `GET /datasets/{id}/files` with the same `as_of`. Byte ranges (`Range`) answer 206, for readers that fetch the footer first. Requires `datasets:read`.",
         "operationId": "datasets_files_get",
         "parameters": [
           {
@@ -51430,6 +51555,17 @@
             },
             "description": "OK"
           },
+          "206": {
+            "content": {
+              "application/vnd.apache.parquet": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The requested byte range"
+          },
           "401": {
             "content": {
               "application/json": {
@@ -51469,6 +51605,9 @@
               }
             },
             "description": "`dataset-version-purged`"
+          },
+          "416": {
+            "description": "Range starts past the end of the file (`Content-Range: bytes */size`)"
           },
           "503": {
             "content": {
@@ -75353,6 +75492,85 @@
         ]
       }
     },
+    "/api/v1/media/analyses": {
+      "post": {
+        "description": "(Re)launches the given steps on the current version of each media asset listed (at most 200), as `POST /media/{id}/analyses` does for one: for example `identify` on a selection to regenerate the voice recognition with the profiles of the moment. Returns one result per asset, in order: started, or the machine code of the refusal (`media-not-found`, `media-analysis-busy`, `media-analysis-no-voice-profile`…). Owner, admin or member.",
+        "operationId": "media_analyses_start_batch",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartAnalysesBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStartResult"
+                }
+              }
+            },
+            "description": "One result per asset"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Empty list, more than 200 assets or an id that is not a UUID (`field-invalid` on `asset_ids`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `media:write`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start analyses on many media assets",
+        "tags": [
+          "media"
+        ]
+      }
+    },
     "/api/v1/media/capture-devices": {
       "get": {
         "description": "Edge agents that announced the media capture capability, usable as `capture_on = device:<id>` for a stream. Names and ids only.",
@@ -76529,7 +76747,7 @@
     },
     "/api/v1/media/streams/{id}/segments/{segment}/audio": {
       "get": {
-        "description": "16 kHz mono WAV of a captured segment while the stream's retention keeps it (none = deleted once transcribed). Any member.",
+        "description": "16 kHz mono WAV of a captured segment while the stream's retention keeps it (none = deleted once transcribed). Byte ranges (`Range`) answer 206. Any member.",
         "operationId": "media_streams_segment_audio",
         "parameters": [
           {
@@ -76575,6 +76793,17 @@
             },
             "description": "OK"
           },
+          "206": {
+            "content": {
+              "audio/wav": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The requested byte range"
+          },
           "401": {
             "content": {
               "application/json": {
@@ -76604,6 +76833,9 @@
               }
             },
             "description": "Unknown stream or segment, or its audio is no longer kept"
+          },
+          "416": {
+            "description": "Range starts past the end of the file (`Content-Range: bytes */size`)"
           }
         },
         "security": [
@@ -78171,7 +78403,7 @@
     },
     "/api/v1/media/{id}/content": {
       "get": {
-        "description": "Raw bytes of the current version, served with an allowlisted content type and an `ETag` (the version id). Send `If-None-Match` to get a bodiless 304 when unchanged.",
+        "description": "Raw bytes of the current version, served with an allowlisted content type and an `ETag` (the version id). Send `If-None-Match` to get a bodiless 304 when unchanged. Byte ranges (`Range: bytes=…`, `If-Range` with the ETag) answer 206 for seeking and casting.",
         "operationId": "media_content",
         "parameters": [
           {
@@ -78207,6 +78439,17 @@
             },
             "description": "File bytes (actual Content-Type depends on the file)"
           },
+          "206": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The requested byte range (`Content-Range`)"
+          },
           "304": {
             "description": "Not modified (`If-None-Match` matched)"
           },
@@ -78239,6 +78482,9 @@
               }
             },
             "description": "Unknown asset, no version, or stored file missing"
+          },
+          "416": {
+            "description": "Range starts past the end of the file (`Content-Range: bytes */size`)"
           }
         },
         "security": [
@@ -79106,7 +79352,7 @@
     },
     "/api/v1/media/{id}/versions/{n}/content": {
       "get": {
-        "description": "Raw bytes of version n, with `ETag` revalidation (`If-None-Match` gives a bodiless 304).",
+        "description": "Raw bytes of version n, with `ETag` revalidation (`If-None-Match` gives a bodiless 304) and byte ranges (`Range` answers 206).",
         "operationId": "media_versions_content",
         "parameters": [
           {
@@ -79152,6 +79398,17 @@
             },
             "description": "File bytes (actual Content-Type depends on the file)"
           },
+          "206": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The requested byte range (`Content-Range`)"
+          },
           "304": {
             "description": "Not modified (`If-None-Match` matched)"
           },
@@ -79184,6 +79441,9 @@
               }
             },
             "description": "Unknown asset or version, or stored file missing"
+          },
+          "416": {
+            "description": "Range starts past the end of the file (`Content-Range: bytes */size`)"
           }
         },
         "security": [
@@ -91851,7 +92111,7 @@
     },
     "/api/v1/public/tours/{token}/assets/{asset_id}": {
       "get": {
-        "description": "Public, no authentication: streams the bytes of a media referenced by the published document of the shared tour (`?v=n` for a given media version, default current). Served with the media content type, `nosniff`, a sandbox CSP; one-year immutable cache with `?v=n`, `no-cache` without. Uniform 404 for anything not referenced or unknown.",
+        "description": "Public, no authentication: streams the bytes of a media referenced by the published document of the shared tour (`?v=n` for a given media version, default current). Served with the media content type, `nosniff`, a sandbox CSP; one-year immutable cache with `?v=n`, `no-cache` without. Byte ranges (`Range`) answer 206. Uniform 404 for anything not referenced or unknown.",
         "operationId": "public_tours_asset",
         "parameters": [
           {
@@ -91896,6 +92156,17 @@
             },
             "description": "Media bytes (actual type in `Content-Type`)"
           },
+          "206": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The requested byte range"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -91905,6 +92176,9 @@
               }
             },
             "description": "Unknown token, asset not referenced or unknown version"
+          },
+          "416": {
+            "description": "Range starts past the end of the file (`Content-Range: bytes */size`)"
           },
           "429": {
             "content": {

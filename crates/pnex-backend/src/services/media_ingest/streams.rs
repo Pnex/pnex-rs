@@ -476,6 +476,7 @@ async fn profile_valid<C: ConnectionTrait>(
         .chain(p.vad_model_id)
         .chain(p.diarization_model_id)
         .chain(p.diarization_embedding_model_id)
+        .chain(p.fallback_asr_model_id)
         .collect();
     let valid = ml_models::Entity::find()
         .filter(ml_models::Column::Id.is_in(ids.clone()))

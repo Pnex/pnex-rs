@@ -144,6 +144,7 @@ mod m20261112_000149_pipeline_step_jobs;
 mod m20261112_000150_pipeline_step_kinds;
 mod m20261114_000151_geo_layers;
 mod m20261114_000152_network_connections;
+mod m20261116_000153_asr_profile_guard;
 
 pub struct Migrator;
 
@@ -284,6 +285,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261112_000150_pipeline_step_kinds::Migration),
             Box::new(m20261114_000151_geo_layers::Migration),
             Box::new(m20261114_000152_network_connections::Migration),
+            Box::new(m20261116_000153_asr_profile_guard::Migration),
         ]
     }
 }

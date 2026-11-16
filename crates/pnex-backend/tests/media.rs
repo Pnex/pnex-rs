@@ -441,6 +441,92 @@ async fn content_etag_revalidation() {
     .await;
 }
 
+/// Byte ranges (seek and cast): 206 with Content-Range, suffix and open
+/// ranges, 416 past the end, If-Range on the ETag, HEAD with the length.
+#[tokio::test]
+#[serial]
+async fn content_byte_ranges() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let bytes = gpano_jpeg();
+        let size = bytes.len();
+        let res = upload(
+            &server,
+            &env.alice,
+            org,
+            "?filename=a.jpg&content_type=image%2Fjpeg",
+            bytes.clone(),
+        )
+        .await;
+        assert_eq!(res.status_code(), 201);
+        let asset_id = res.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let path = format!("/api/v1/media/{asset_id}/content");
+        let get = |range: &str| {
+            server
+                .get(&path)
+                .add_header("Authorization", bearer(&env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("Range", range.to_string())
+        };
+
+        let res = get("bytes=0-49").await;
+        assert_eq!(res.status_code(), 206);
+        assert_eq!(res.header("accept-ranges").to_str().unwrap(), "bytes");
+        assert_eq!(
+            res.header("content-range").to_str().unwrap(),
+            format!("bytes 0-49/{size}")
+        );
+        assert_eq!(res.header("content-type").to_str().unwrap(), "image/jpeg");
+        let etag = res.header("etag").to_str().unwrap().to_string();
+        assert_eq!(res.into_bytes(), bytes[..50]);
+        // An end past the file is clamped to it.
+        let res = get("bytes=0-999999").await;
+        assert_eq!(
+            res.header("content-range").to_str().unwrap(),
+            format!("bytes 0-{}/{size}", size - 1)
+        );
+
+        let res = get("bytes=-10").await;
+        assert_eq!(res.status_code(), 206);
+        assert_eq!(res.into_bytes(), bytes[size - 10..]);
+        let res = get(&format!("bytes={}-", size - 5)).await;
+        assert_eq!(res.into_bytes(), bytes[size - 5..]);
+
+        let res = get(&format!("bytes={size}-")).await;
+        assert_eq!(res.status_code(), 416);
+        assert_eq!(
+            res.header("content-range").to_str().unwrap(),
+            format!("bytes */{size}")
+        );
+
+        // If-Range: same version → the range; another → the whole file.
+        let res = get("bytes=0-9").add_header("If-Range", etag).await;
+        assert_eq!(res.status_code(), 206);
+        let res = get("bytes=0-9")
+            .add_header("If-Range", "\"other\"".to_string())
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert_eq!(res.into_bytes(), bytes);
+
+        let res = server
+            .method(axum::http::Method::HEAD, &path)
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert_eq!(
+            res.header("content-length").to_str().unwrap(),
+            size.to_string()
+        );
+        assert_eq!(res.header("accept-ranges").to_str().unwrap(), "bytes");
+        assert!(res.into_bytes().is_empty());
+    })
+    .await;
+}
+
 #[tokio::test]
 #[serial]
 async fn roles_and_pagination() {
@@ -845,6 +931,69 @@ async fn a_lost_join_starts_again_and_a_left_upload_is_swept() {
         assert_eq!(u["code"], "media-upload-expired", "{u}");
         let left = store.list_prefix(&staged(&path)).await.unwrap();
         assert!(left.is_empty(), "parts freed: {left:?} {}", staged(&path));
+    })
+    .await;
+}
+
+/// Batch start of analyses (voice-id.md D985): one result per asset, a
+/// refusal never stops the others, the list is bounded.
+#[tokio::test]
+#[serial]
+async fn analyses_start_on_many_media() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let res = upload(
+            &server,
+            &env.alice,
+            org,
+            "?filename=a.jpg&content_type=image%2Fjpeg",
+            plain_jpeg(),
+        )
+        .await;
+        assert_eq!(res.status_code(), 201);
+        let image = res.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let post = |body: serde_json::Value| {
+            server
+                .post("/api/v1/media/analyses")
+                .add_header("Authorization", bearer(&env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .json(&body)
+        };
+        let unknown = uuid::Uuid::new_v4().to_string();
+        let res =
+            post(serde_json::json!({ "asset_ids": [image, unknown], "steps": ["identify"] })).await;
+        assert_eq!(res.status_code(), 200, "{}", res.text());
+        let r = res.json::<serde_json::Value>();
+        assert_eq!(r["results"][0]["asset_id"], image.as_str());
+        assert_eq!(r["results"][0]["started"], false);
+        assert_eq!(
+            r["results"][0]["error"], "media-analysis-step-invalid",
+            "an image has no voices"
+        );
+        assert_eq!(r["results"][1]["error"], "media-not-found");
+        for bad in [
+            serde_json::json!({ "asset_ids": [], "steps": ["identify"] }),
+            serde_json::json!({ "asset_ids": ["nope"], "steps": ["identify"] }),
+            serde_json::json!({ "asset_ids": vec![unknown.clone(); 201], "steps": ["identify"] }),
+        ] {
+            let res = post(bad).await;
+            assert_eq!(res.status_code(), 400, "{}", res.text());
+        }
+        // Another organisation never learns the asset exists.
+        let other = personal_org(&server, &env.bob).await;
+        let res = server
+            .post("/api/v1/media/analyses")
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", other.to_string())
+            .json(&serde_json::json!({ "asset_ids": [image], "steps": ["identify"] }))
+            .await;
+        assert_eq!(
+            res.json::<serde_json::Value>()["results"][0]["error"],
+            "media-not-found"
+        );
     })
     .await;
 }

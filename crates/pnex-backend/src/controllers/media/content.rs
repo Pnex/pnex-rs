@@ -49,9 +49,10 @@ fn not_modified(headers: &HeaderMap, etag: &str) -> bool {
         })
 }
 
-/// Bytes of a version, served inline (builds.rs::download school).
-/// Revalidated by ETag: a client holding the version (browser media cache)
-/// gets a bodiless 304, checked AFTER the org scoping of the caller.
+/// Bytes of a version, served inline (builds.rs::download school), with byte
+/// ranges for seeking and casting. Revalidated by ETag: a client holding the
+/// version (browser media cache) gets a bodiless 304, checked AFTER the org
+/// scoping of the caller.
 async fn content_response(
     ctx: &AppContext,
     _asset: &media_assets::Model,
@@ -61,24 +62,32 @@ async fn content_response(
     let etag = version_etag(version);
     // `private`: per-user content, never in a shared cache; `no-cache`: always
     // revalidated, so a new version or a lost access shows up immediately.
-    let cache_headers = [
-        (header::ETAG, etag.clone()),
-        (header::CACHE_CONTROL, "private, no-cache".to_string()),
-    ];
+    let cache_control = [(header::CACHE_CONTROL, "private, no-cache")];
     if not_modified(request_headers, &etag) {
-        return Ok((StatusCode::NOT_MODIFIED, cache_headers).into_response());
+        let etag = [(header::ETAG, etag)];
+        return Ok((StatusCode::NOT_MODIFIED, cache_control, etag).into_response());
     }
-    let settings = MediaSettings::from_config(&ctx.config);
-    let store = settings.store().map_err(|_| Error::InternalServerError)?;
-    let bytes = store
-        .get(&version.storage_key)
-        .await
-        .map_err(|_| Error::NotFound)?;
+    let store = MediaSettings::from_config(&ctx.config)
+        .storage
+        .store()
+        .map_err(|_| Error::InternalServerError)?;
+    let served = crate::services::byte_range::serve(
+        store,
+        version.storage_key.clone(),
+        None,
+        request_headers,
+        Some(&etag),
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    let Some(res) = served else {
+        return Err(Error::NotFound);
+    };
     // Served type re-derived from the allowlist (rows written before SEC-5
     // may hold a client-declared type).
     let headers =
         crate::services::media::user_content_headers(&version.content_type, &version.filename);
-    Ok((StatusCode::OK, cache_headers, headers, bytes).into_response())
+    Ok((cache_control, headers, res).into_response())
 }
 
 /// `GET /api/v1/media/{id}/content`: bytes of the current version.
@@ -88,12 +97,14 @@ async fn content_response(
     tag = "media",
     operation_id = "media_content",
     summary = "Download the current version's file",
-    description = "Raw bytes of the current version, served with an allowlisted content type and an `ETag` (the version id). Send `If-None-Match` to get a bodiless 304 when unchanged.",
+    description = "Raw bytes of the current version, served with an allowlisted content type and an `ETag` (the version id). Send `If-None-Match` to get a bodiless 304 when unchanged. Byte ranges (`Range: bytes=…`, `If-Range` with the ETag) answer 206 for seeking and casting.",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
     responses(
         (status = 200, content_type = "application/octet-stream", body = Vec<u8>, description = "File bytes (actual Content-Type depends on the file)"),
+        (status = 206, content_type = "application/octet-stream", body = Vec<u8>, description = "The requested byte range (`Content-Range`)"),
         (status = 304, description = "Not modified (`If-None-Match` matched)"),
-        (status = 404, description = "Unknown asset, no version, or stored file missing", body = crate::openapi::ErrorDetail)
+        (status = 404, description = "Unknown asset, no version, or stored file missing", body = crate::openapi::ErrorDetail),
+        (status = 416, description = "Range starts past the end of the file (`Content-Range: bytes */size`)")
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -126,12 +137,14 @@ pub(super) async fn content(
     tag = "media",
     operation_id = "media_versions_content",
     summary = "Download one version's file",
-    description = "Raw bytes of version n, with `ETag` revalidation (`If-None-Match` gives a bodiless 304).",
+    description = "Raw bytes of version n, with `ETag` revalidation (`If-None-Match` gives a bodiless 304) and byte ranges (`Range` answers 206).",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), ("n" = i64, Path, description = "Version number (1-based)")),
     responses(
         (status = 200, content_type = "application/octet-stream", body = Vec<u8>, description = "File bytes (actual Content-Type depends on the file)"),
+        (status = 206, content_type = "application/octet-stream", body = Vec<u8>, description = "The requested byte range (`Content-Range`)"),
         (status = 304, description = "Not modified (`If-None-Match` matched)"),
-        (status = 404, description = "Unknown asset or version, or stored file missing", body = crate::openapi::ErrorDetail)
+        (status = 404, description = "Unknown asset or version, or stored file missing", body = crate::openapi::ErrorDetail),
+        (status = 416, description = "Range starts past the end of the file (`Content-Range: bytes */size`)")
     ),
     security(("bearer" = [], "org" = []))
 )]

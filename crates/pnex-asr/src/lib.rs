@@ -12,6 +12,7 @@
 use std::path::Path;
 
 pub mod diarize;
+pub mod language;
 pub mod protocol;
 pub mod wer;
 

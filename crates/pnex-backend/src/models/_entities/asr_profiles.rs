@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Transcription profile (media-ingest.md D164): which registry models
 /// a stream uses for VAD, ASR and diarization.
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "asr_profiles")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
@@ -23,6 +23,12 @@ pub struct Model {
     pub word_timestamps: bool,
     /// The org's default profile (at most one, partial unique index).
     pub is_default: bool,
+    /// Redoes, forced to `language`, a part the main model answered in
+    /// another language (language guard).
+    pub fallback_asr_model_id: Option<Uuid>,
+    /// Diarization clustering distance; `None` = the runtime default.
+    #[sea_orm(column_type = "Float", nullable)]
+    pub cluster_threshold: Option<f32>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

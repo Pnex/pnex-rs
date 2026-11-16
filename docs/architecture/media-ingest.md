@@ -372,6 +372,28 @@ Whisper non (texte seul, O56). Un flux référence un profil ; changer de profil
 n'affecte que les **nouveaux** segments (le rejeu de l'historique est
 impossible sans audio, D161 — c'est assumé et affiché).
 
+**Garde de langue et seuil de diarisation (2026-11-16).** Deux colonnes
+optionnelles : `fallback_asr_model_id`, un modèle de transcription **imposé
+à la langue du profil** (Whisper, Canary), et `cluster_threshold` (0,05 à 1,
+défaut du runtime 0,5). Parakeet TDT v3 choisit seul sa langue et n'a pas
+de paramètre pour l'imposer : sur 10 min de débat de France Inter (« Le
+Masque et la Plume »), 19 fenêtres de 30 s sur 20 sont sorties en anglais
+approximatif (1 077 mots), des fenêtres de 10 s n'y changent presque rien.
+`pnex-asr` (`language::LanguageGuard`) détecte la langue du texte de chaque
+morceau (`whatlang`, MIT ; au moins 5 mots, sinon gardé) et, si ce n'est pas
+celle du profil, le refait avec le modèle de secours, par morceaux de 29,5 s
+(Whisper sherpa ne lit que 30 s ; des moitiés de 15,5 s lui ont fait rendre
+« ... », un morceau sans texte garde donc le texte principal ; une queue de
+moins de 2 s est laissée au recouvrement du segment suivant). Les exports
+sherpa de Whisper et Canary ne donnent pas d'horodatage : les mots sont
+répartis sur le morceau au prorata des caractères (raccourci assumé, pour que
+la diarisation étiquette encore les mots). Mesure : Parakeet + VAD + Whisper
+large-v3-turbo int8 (MIT) → 20 fenêtres sur 20 en français, 1 963 mots,
+noms propres justes ; 322 s de calcul pour 600 s sur CPU portable (le
+secours ne tourne que sur les fenêtres dans une autre langue). Canary 180M
+flash imposé en français : ≈ 1 760 mots, plus rapide (RTF 0,15) mais
+boucles (« il, il, il… ») à 15 s.
+
 ### D165 — Transcriptions → O2 logs `tx_<slug>`, jamais Postgres
 
 - Un document par segment : `ts` (= `started_at`), `stream`, `segment_id`,
@@ -1102,7 +1124,7 @@ Non fait / écarts :
 - **Temps de parole par plage** : les séries `media_speaker_seconds` s'agrègent par plage avec la primitive D182 (widget « barres par plage », labels `speaker`), mais aucune mesure du DER **par plage** sur une émission réelle annotée : pas de radio annotée à la main (même manque qu'au lot 0) ; le DER ci-dessus porte sur un échantillon synthétique de 54 s.
 - **Nommage par sources externes** (grilles, annonces → `S1` = tel animateur) : non livré ; c'est le travail d'un flow ou d'une tranche ultérieure, jamais une empreinte vocale.
 - La diarisation ne voit qu'un segment (30 s par défaut) : un locuteur qui parle peu dans un segment peut n'avoir ni empreinte ni étiquette ; le chevauchement entre segments compte deux fois son temps de parole (comme le texte, pas de recollage au mot).
-- Seuils fixés dans le code (clustering 0,5 ; similarité 0,5 ; 16 centroïdes ; 30 min) ; aucun réglage par profil.
+- Seuil de clustering réglable par profil (`cluster_threshold`, D164), défaut **0,5** confirmé le 2026-11-16 sur de **vraies réunions annotées** (AMI, CC BY 4.0, 4 réunions × 10 min, références BUT `only_words`, sans collier ; tests `ami_compare` et `ami_threshold_sweep` de `crates/pnex-asr/tests/diarization_live.rs`). DER : fenêtres de 30 s + lien actuel **28,8 %** à 0,5 ; 46,0 % à 0,25 ; 33,3 % à 0,6 ; 31,7 % à 0,7. Écartés, mesures à l'appui : regroupement global de toutes les empreintes en fin de fichier à la pyannote (29,6 % à 0,5, aucun gain) ; diarisation du fichier entier + fusion des voix de moins de 10 s (48,3 %). Les conversations FLEURS synthétiques (lecteurs distincts d'une même phrase) donnaient 0,25 et se sont révélées trompeuses : seuls des enregistrements réels annotés tranchent. Constat d'origine : « Le Masque et la Plume » (≈ 6 voix) ne rend que 2 à 3 voix ; la confusion naît dans la fenêtre (segmentation pyannote + regroupement sherpa), pas dans le lien. Piste suivante : un modèle de segmentation plus récent, à mesurer sur AMI. Restent fixés dans le code : similarité du lien 0,5 ; 16 centroïdes ; 30 min.
 - Le check d'un modèle de segmentation dépend d'un modèle d'empreinte déjà valide dans l'org ; le check par porteur (job `check_asr_model`) suit la même règle.
 - Le faux runtime des tests (`tests/fixtures/asr/fake-pnex-asr.sh`) couvre silence (WAV tout à zéro) et deux locuteurs ; le document O2 n'est pas vérifié en test (O2 absent des tests : la chaîne s'arrête à l'écriture, `o2-failed`), les étiquettes et séries le sont en test unitaire du worker.
 

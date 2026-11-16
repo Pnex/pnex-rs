@@ -354,8 +354,7 @@ async fn spans_are_attributed_to_persons_without_voice() {
 #[tokio::test]
 #[serial]
 async fn voice_proposals_respect_what_people_decided() {
-    use pnex_backend::services::{media_attributions, voice_id::media::SpeakerMatch};
-    use pnex_core::media_review::{ReviewSegment, ReviewTurn};
+    use pnex_backend::services::{media_attributions, voice_id::media::VoiceSpan};
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (st, p) = call(
@@ -440,41 +439,30 @@ async fn voice_proposals_respect_what_people_decided() {
         .await;
         assert_eq!(st, 200);
 
-        let turn = |start_ms, end_ms| ReviewTurn {
-            label: "S1".into(),
+        // Alice recognized over three stretches.
+        let alice = |start_ms, end_ms| VoiceSpan {
+            object_id: alice_p.parse().unwrap(),
             start_ms,
             end_ms,
-        };
-        let segments = [ReviewSegment {
-            start_ms: 0,
-            end_ms: 60_000,
-            text: String::new(),
-            words: Vec::new(),
-            turns: vec![
-                turn(2_000, 8_000),
-                turn(20_000, 30_000),
-                turn(40_000, 50_000),
-            ],
-        }];
-        let s1_is_alice = [SpeakerMatch {
-            label: "S1".into(),
-            object_id: alice_p.parse().unwrap(),
             score: 0.71,
-        }];
+        };
+        let s1_is_alice = [
+            alice(2_000, 8_000),
+            alice(20_000, 30_000),
+            alice(40_000, 50_000),
+        ];
         let asset: uuid::Uuid = media.parse().unwrap();
-        let n =
-            media_attributions::propose_voices(&env.ctx.db, org, asset, &segments, &s1_is_alice)
-                .await
-                .unwrap();
+        let n = media_attributions::propose_voices(&env.ctx.db, org, asset, &s1_is_alice)
+            .await
+            .unwrap();
         assert_eq!(
             n, 1,
             "only 40–50 s: 2–8 s is Bob's, 20–30 s was rejected for Alice"
         );
         // A second run replaces its own proposals, never adds to them.
-        let n =
-            media_attributions::propose_voices(&env.ctx.db, org, asset, &segments, &s1_is_alice)
-                .await
-                .unwrap();
+        let n = media_attributions::propose_voices(&env.ctx.db, org, asset, &s1_is_alice)
+            .await
+            .unwrap();
         assert_eq!(n, 1);
         let (_, list) = call(
             &server,

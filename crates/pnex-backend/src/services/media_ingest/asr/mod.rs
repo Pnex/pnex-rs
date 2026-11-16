@@ -199,6 +199,8 @@ pub fn launch(
         vad_dir: None,
         seg_dir: None,
         emb_dir: None,
+        fallback: None,
+        cluster_threshold: None,
     })
 }
 
