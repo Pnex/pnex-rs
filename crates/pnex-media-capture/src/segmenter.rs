@@ -1,8 +1,11 @@
 //! PCM → segments (media-ingest.md D160): the decoder writes 16 kHz mono
-//! s16le on stdout; the segmenter cuts it into `segment_secs` pieces that
-//! carry `overlap_secs` more audio (the next segment starts at the nominal
-//! boundary, the ASR glues overlapping words, D166). Time comes from the
-//! sample count, so segments never drift from each other.
+//! s16le on stdout; the segmenter cuts it into pieces of at most
+//! `segment_secs` that carry `overlap_secs` more audio (the next segment
+//! starts at the cut, the ASR glues overlapping words, D166). The cut falls
+//! on the quietest 100 ms between half and all of `segment_secs`, as
+//! WhisperX does: a word or a sentence is not split by a fixed boundary.
+//! Time comes from the sample count, so segments never drift from each
+//! other.
 
 use chrono::{DateTime, Duration, Utc};
 use pnex_core::media_ingest::SAMPLE_RATE;
@@ -68,7 +71,8 @@ impl Segmenter {
         }
         let mut out = Vec::new();
         while self.buf.len() >= self.segment_samples + self.overlap_samples {
-            out.push(self.cut(self.segment_samples + self.overlap_samples));
+            let at = quiet_cut(&self.buf, self.segment_samples);
+            out.push(self.cut(at + self.overlap_samples, at));
         }
         out
     }
@@ -76,12 +80,13 @@ impl Segmenter {
     /// Emits what is left (end of a finite file, or of a capture run) when
     /// it is at least one second long.
     pub fn finish(&mut self) -> Option<Cut> {
-        (self.buf.len() >= SAMPLE_RATE as usize).then(|| self.cut(self.buf.len()))
+        let len = self.buf.len();
+        (len >= SAMPLE_RATE as usize).then(|| self.cut(len, len))
     }
 
-    /// Emits `len` samples from the buffer start, then drops the nominal
-    /// segment length (the overlap stays for the next segment).
-    fn cut(&mut self, len: usize) -> Cut {
+    /// Emits `len` samples from the buffer start, then drops the first
+    /// `advance` (the overlap stays for the next segment).
+    fn cut(&mut self, len: usize, advance: usize) -> Cut {
         let samples = &self.buf[..len];
         let cut = Cut {
             seq: self.next_seq,
@@ -89,15 +94,37 @@ impl Segmenter {
             ended_at: self.time_of(self.next_start + len as u64),
             wav: wav_bytes(samples),
         };
-        let advance = self.segment_samples.min(len);
-        self.buf.drain(..advance);
+        self.buf.drain(..advance.min(self.buf.len()));
         self.next_start += advance as u64;
         self.next_seq += 1;
-        if len < self.segment_samples {
-            self.buf.clear();
-        }
         cut
     }
+}
+
+/// Analysis frame of the cut search: 100 ms.
+const QUIET_FRAME: usize = SAMPLE_RATE as usize / 10;
+
+/// Where to cut within the first `segment` samples: the end of the
+/// quietest 100 ms frame from half of it on; the latest one on a tie
+/// (steady sound or digital silence keeps full-length segments).
+fn quiet_cut(buf: &[i16], segment: usize) -> usize {
+    let energy = |end: usize| -> u64 {
+        buf[end - QUIET_FRAME..end]
+            .iter()
+            .map(|s| i64::from(*s).pow(2) as u64)
+            .sum()
+    };
+    let lowest = segment / 2 + QUIET_FRAME;
+    let mut best = (u64::MAX, segment);
+    let mut end = segment;
+    while end >= lowest.max(QUIET_FRAME) {
+        let e = energy(end);
+        if e < best.0 {
+            best = (e, end);
+        }
+        end -= QUIET_FRAME;
+    }
+    best.1
 }
 
 /// 16 kHz mono 16-bit PCM WAV.
@@ -157,6 +184,29 @@ mod tests {
         assert_eq!(last.started_at, t0 + Duration::seconds(20));
         assert_eq!(last.ended_at, t0 + Duration::seconds(25));
         assert!(seg.finish().is_none());
+    }
+
+    #[test]
+    fn cuts_in_the_quietest_moment() {
+        let t0 = DateTime::parse_from_rfc3339("2026-10-10T08:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let mut seg = Segmenter::new(t0, 10, 1);
+        // Sound, a pause from 6.0 to 6.5 s, sound again, 22 s in all.
+        let mut bytes = pcm(6.0, 3000);
+        bytes.extend(pcm(0.5, 0));
+        bytes.extend(pcm(15.5, -3000));
+        let cuts = seg.push(&bytes);
+        assert_eq!(cuts[0].started_at, t0);
+        // Cut at the end of the first quiet frame scanned from 10 s down
+        // (6.4–6.5 s), plus the 1 s overlap.
+        assert_eq!(cuts[0].ended_at, t0 + Duration::milliseconds(7_500));
+        assert_eq!(cuts[1].started_at, t0 + Duration::milliseconds(6_500));
+        // A pause before half the segment is never used: 5 s minimum.
+        let mut early = Segmenter::new(t0, 10, 0);
+        let mut b = pcm(2.0, 0);
+        b.extend(pcm(10.0, 3000));
+        assert_eq!(early.push(&b)[0].ended_at, t0 + Duration::seconds(10));
     }
 
     #[test]
