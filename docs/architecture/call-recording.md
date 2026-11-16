@@ -171,9 +171,17 @@ séparé de l'application desktop complète.
   et publiés avec les autres paquets : release `nightly` à chaque `main` vert,
   release versionnée sur tag `v*` ; le `.exe` est lancé 20 s sur un vrai
   Windows (`windows-smoke`) avant publication.
+- **Périphériques de l'appli d'appel (2026-11-16)** : sous Linux, le
+  micro et la sortie enregistrés sont ceux que l'appli d'appel utilise
+  réellement (flux d'enregistrement → sa source ; flux de lecture → le
+  moniteur de son sink), avant les périphériques par défaut ;
+  `PNEX_RECORDER_MIC` / `PNEX_RECORDER_OUTPUT` gardent la priorité.
+  Constat : un appel Brave sur casque USB, avec un autre micro par défaut,
+  donnait un canal gauche à −40 dB sans parole et un canal droit en silence
+  numérique pendant 38 s.
 - Reste : essai Windows réel, macOS (process tap), transcription
-  séparée par canal (« moi / l'autre » sans diarisation), notification
-  système.
+  séparée par canal (« moi / l'autre » sans diarisation), choix des
+  périphériques de l'appli d'appel sous Windows, notification système.
 
 **R1.2 — « Ma voix » : empreinte vocale depuis l'enregistreur (codé 2026-10-30)**
 - But : un utilisateur sans connaissance des écrans Empreintes vocales

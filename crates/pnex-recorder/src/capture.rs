@@ -138,8 +138,17 @@ fn run(file: Option<PathBuf>) -> Result<Running, String> {
     use libpulse_binding::stream::Direction;
     use libpulse_simple_binding::Simple;
 
-    let mic = std::env::var("PNEX_RECORDER_MIC").unwrap_or_else(|_| "@DEFAULT_SOURCE@".into());
-    let out = std::env::var("PNEX_RECORDER_OUTPUT").unwrap_or_else(|_| "@DEFAULT_MONITOR@".into());
+    // The devices of the call app first: it may use a headset that is not
+    // the default one; an explicit choice wins over both.
+    let (call_mic, call_out) = crate::detect::call_devices().unwrap_or((None, None));
+    let mic = std::env::var("PNEX_RECORDER_MIC")
+        .ok()
+        .or(call_mic)
+        .unwrap_or_else(|| "@DEFAULT_SOURCE@".into());
+    let out = std::env::var("PNEX_RECORDER_OUTPUT")
+        .ok()
+        .or(call_out)
+        .unwrap_or_else(|| "@DEFAULT_MONITOR@".into());
     let spec = Spec {
         format: Format::S16le,
         channels: 1,
