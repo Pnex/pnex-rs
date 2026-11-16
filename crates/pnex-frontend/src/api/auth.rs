@@ -68,9 +68,48 @@ pub fn clear_tokens() {
 }
 
 /// Reads the stored id_token — `session::logout()` captures it BEFORE the
-/// local purge to feed the `id_token_hint` of the end-session flow.
+/// local purge to feed the `id_token_hint` of the end-session flow. An
+/// expired one is `None`: Rauthy refuses it as a hint with a raw JSON error
+/// and never redirects back, so the logout takes the no-hint path instead.
 pub fn stored_id_token() -> Option<String> {
-    storage::local().get(KEY_ID_TOKEN)
+    storage::local()
+        .get(KEY_ID_TOKEN)
+        .filter(|t| jwt_live(t, crate::util::now_secs()))
+}
+
+/// True while the JWT's `exp` is ahead of `now_secs`; unreadable = expired.
+fn jwt_live(token: &str, now_secs: f64) -> bool {
+    use base64::Engine;
+    token
+        .split('.')
+        .nth(1)
+        .and_then(|p| {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(p.trim_end_matches('='))
+                .ok()
+        })
+        .and_then(|json| serde_json::from_slice::<serde_json::Value>(&json).ok())
+        .and_then(|claims| claims.get("exp").and_then(|e| e.as_f64()))
+        .is_some_and(|exp| exp > now_secs)
+}
+
+#[cfg(test)]
+mod jwt_tests {
+    use super::jwt_live;
+    use base64::Engine;
+
+    fn token(payload: &str) -> String {
+        let b = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload);
+        format!("h.{b}.s")
+    }
+
+    #[test]
+    fn expiry_of_the_hint() {
+        assert!(jwt_live(&token(r#"{"exp":200}"#), 100.0));
+        assert!(!jwt_live(&token(r#"{"exp":100}"#), 200.0));
+        assert!(!jwt_live(&token(r#"{"sub":"x"}"#), 0.0));
+        assert!(!jwt_live("not-a-jwt", 0.0));
+    }
 }
 
 /// Rauthy logout: full-page navigation to the backend proxy, which serves
