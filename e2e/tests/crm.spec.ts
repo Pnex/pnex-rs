@@ -1046,7 +1046,7 @@ test.describe('numbers over objects on screen', { tag: ['@crm', '@dashboards'] }
       const fn = await crm.post('/functions', {
         name: 'count_to_show',
         language: 'starlark',
-        code: `def handle(inputs, msg):\n    n = msg["payload"]["groups"][0]["values"]["n"]["value"]\n    return {"payload": {"list": str(n)}, "object_id": "${show.id}"}\n`,
+        code: `def handle(inputs, msg):\n    n = msg["payload"]["groups"][0]["values"]["n"]["value"]\n    return {"payload": {"list": str(int(n))}, "object_id": "${show.id}"}\n`,
         inputs: [],
         outputs: [],
       });
