@@ -23,7 +23,7 @@ serde_json = { workspace = true }
 base64 = "0.23"
 # Text language of a transcription (language guard, MIT).
 whatlang = "0.18"
-sherpa-onnx = { version = "1.13.8", optional = true, default-features = false }
+sherpa-onnx = { version = "2.0.1", optional = true, default-features = false }
 whisper-rs = { version = "0.16", optional = true }
 
 [dev-dependencies]
