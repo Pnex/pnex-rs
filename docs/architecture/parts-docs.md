@@ -1,8 +1,8 @@
 # PRD — Pièces et documentation : la bonne pièce et sa doc en quelques secondes
 
-> **Statut** : proposition (2026-11-12), **rien d'implémenté**, ne rien coder
-> avant validation. Décisions D960–D971 **proposées**, questions Q-PD1–Q-PD9
-> ouvertes. Roadmap : P2.39.
+> **Statut** : **validé le 2026-11-17**, rien d'implémenté. Décisions
+> D960–D971 **acceptées** ; questions Q-PD1–Q-PD9 tranchées (§12). Roadmap :
+> P2.39.
 > **Dépend de** : ontologie 0.2.0 (livrée), GMAO générique (`ontology.md`
 > annexe C : `spare_part`, `work_order`, stock, fournisseurs), Pages
 > (procédures L6), médias et annotations (D147, D219), recherche documentaire
@@ -23,7 +23,7 @@ maintenance :
   milliers de fabricants ;
 - une documentation éparpillée : vues éclatées en PDF, nomenclatures,
   schémas électriques, frigorifiques ou hydrauliques, notices de montage,
-  parfois des modèles 3D, chacun chez un fabricant différent ;
+  chacun chez un fabricant différent ;
 - des références qui changent (remplacée, équivalente, différente selon la
   plage de numéros de série) : la première cause d'erreurs et de retours ;
 - un appareil mal identifié chez le client : plaque illisible, modèle
@@ -42,7 +42,7 @@ d'une minute.
 ## 2. Objectifs et non-objectifs
 
 ### Objectifs
-1. **Fiche pièce riche** : vue éclatée avec repère, modèle 3D, schémas,
+1. **Fiche pièce riche** : vue éclatée avec repère, schémas,
    notice, procédure de montage, photos terrain, compatibilités.
 2. **Recherche multimodale** : QR, référence (partielle, ancienne), texte
    libre, numéro de série, photo de plaque, photo de pièce, navigation dans
@@ -65,8 +65,9 @@ d'une minute.
 
 ## 3. Concepts, portés sur l'ontologie (D960)
 
-**D960 (proposée)** : tout est objet ou lien d'ontologie dans un pack
-`parts_docs` (`requires: [maintenance]`), sans table métier dédiée ; seuls
+**D960 (acceptée 2026-11-17)** : tout est objet ou lien d'ontologie dans le pack
+`maintenance` (nouvelle version mineure, pas de pack séparé : Q-PD9), sans
+table métier dédiée ; seuls
 le jeton QR (§5.4) et l'index de recherche des références (§5.1) sont du
 noyau, parce qu'ils servent tous les types.
 
@@ -78,11 +79,11 @@ noyau, parce qu'ils servent tous les types.
 | Pièce | `spare_part` (annexe C) | Étendu par le pack : famille, caractéristiques, photos |
 | Référence de pièce | type `part_reference` (référence brute, normalisée, nature : origine, distributeur, ancienne ; source), lien `refers_to` → `spare_part` | N références par pièce |
 | Relation entre pièces | liens `supersedes`, `equivalent_to`, `compatible_with` (attribut conditions) | Validés par une personne (proposals) |
-| Ligne de nomenclature | lien `bom_line` `equipment_model` → `spare_part`, attributs repère, quantité, série de/à, date de/à | Le filtre par numéro de série lit ces bornes |
-| Document technique | média de la médiathèque (PDF, image, glTF) lié au modèle (`documents`), nature : vue éclatée, nomenclature, schéma, notice, manuel, fiche, 3D | Stockage RustFS comme tout média |
-| Ancre dans un document | **calque d'annotations** sur le média (D147, D219) : page, zone, hotspot de repère, nœud 3D | Un seul mécanisme d'ancrage dans la plateforme |
-| Procédure de montage | **procédure Pages L6** (`pages.md` P9), modèle par `equipment_model` × pièce | Étapes, outils, couples, sécurité, temps standard |
-| Note terrain | page ou commentaire rattaché à la pièce, au modèle ou à l'appareil, **proposition** validée par un référent | Photos via la médiathèque |
+| Ligne de nomenclature | lien `bom_line` `equipment_model` → `spare_part`, attributs repère, quantité, série de/à, date de/à, variante (marché, tension, option ; facultative) | Le filtre de l'appareil combine série, date de fabrication et variante (Q-PD4) |
+| Document technique | média de la médiathèque (PDF, image) lié au modèle (`documents`), nature : vue éclatée, nomenclature, schéma, notice, manuel, fiche | Stockage RustFS comme tout média |
+| Ancre dans un document | **calque d'annotations** sur le média (D147, D219) : page, zone, hotspot de repère | Un seul mécanisme d'ancrage dans la plateforme |
+| Procédure de montage | page Pages liée au `equipment_model` × pièce (L1–L2, livrées) ; **procédure Pages L6** (`pages.md` P9) quand L6 existe | Étapes, outils, couples, sécurité, temps standard |
+| Note terrain | page ou commentaire rattaché à la pièce, au modèle ou à l'appareil, **proposition** validée par un détenteur de `maintenance:validate` | Photos via la médiathèque |
 | Correction de pièce | type `part_correction` (modèle, plage de séries, référence fausse, bonne, source, statut) | Alimente recherche et alertes |
 | Panier d'intervention | OT de l'annexe C (`uses_part`) | Remonte au chiffreur |
 
@@ -94,14 +95,18 @@ noyau, parce qu'ils servent tous les types.
    interventions, pièces déjà changées, mesures si un capteur est posé.
 3. Onglet **Pièces** : la vue éclatée, **filtrée sur sa plage de séries** ;
    il touche le repère et obtient la fiche pièce.
-4. Fiche pièce : référence valide aujourd'hui (remplacements résolus), 3D,
+4. Fiche pièce : référence valide aujourd'hui (remplacements résolus),
    procédure de montage, schéma surligné, notes terrain.
 5. Il ajoute la pièce au panier (l'OT), qui remonte au chiffreur.
 
 ### 4.2 Technicien, appareil inconnu
-1. Photo de la plaque : OCR assisté par l'assistant (marque, modèle, série,
-   date de fabrication).
-2. PNEX propose les modèles candidats avec un score ; il confirme.
+1. Photo de la plaque, prise même sans réseau : elle part dans la file de
+   synchronisation (D968). L'OCR tourne **côté serveur** au retour du réseau
+   (modèle local du serveur, affiné par le LLM de l'org s'il est configuré,
+   D119) ; aucun modèle embarqué sur le mobile (Q-PD8). Sans réseau, il
+   saisit marque et modèle à la main s'il doit avancer.
+2. PNEX propose les modèles candidats avec un score (en proposition sur
+   l'appareil quand l'OCR arrive après coup) ; il confirme.
 3. Il crée l'appareil et l'**associe à une étiquette QR vierge** scannée
    sur place ; la fois suivante, c'est le cas 4.1.
 4. En dernier recours, photo de la pièce : la similarité visuelle propose
@@ -113,7 +118,8 @@ noyau, parce qu'ils servent tous les types.
 2. Par ligne : référence d'origine, remplacements, équivalents validés,
    corrections passées (« 3 retours sur cette référence pour ce modèle »).
 3. Alerte si la référence sort de la plage de séries de l'appareil.
-4. Il valide la liste et l'exporte ; les prix viennent de §9 quand il existe.
+4. Il valide la liste et l'exporte en CSV (référence, désignation, quantité,
+   appareil, série ; Q-PD5) ; les prix viennent de §9 quand il existe.
 5. Un retour déclaré crée une `part_correction` et corrige la nomenclature.
 
 ## 5. Exigences
@@ -121,14 +127,15 @@ noyau, parce qu'ils servent tous les types.
 ### 5.1 Recherche (D961)
 - **Un seul champ** : référence exacte, partielle, sans séparateurs ou
   ancienne ; texte libre français ou anglais ; numéro de série.
-- **D961 (proposée)** : recherche hybride lexicale + vectorielle dans
+- **D961 (acceptée 2026-11-17)** : recherche hybride lexicale + vectorielle dans
   PostgreSQL (pgvector), sur l'index de `doc-search.md` ; les références
   normalisées (casse, séparateurs, préfixes fabricant) ont leur propre index
   exact et préfixe.
 - **Résolution des remplacements** : une référence remplacée renvoie
   l'actuelle avec son historique (chaîne `supersedes`).
 - Filtres : fabricant, modèle, famille, caractéristiques.
-- Entrées image : photo de plaque (OCR), photo de pièce (similarité).
+- Entrées image : photo de plaque (OCR serveur, différé si hors ligne),
+  photo de pièce (similarité).
 - Cibles : **< 300 ms** texte ou référence sur 100 000 pièces, < 3 s image.
 
 ### 5.2 Documentation technique
@@ -136,34 +143,37 @@ noyau, parce qu'ils servent tous les types.
   téléchargement.
 - **Vue éclatée interactive** : hotspots du calque d'annotations ; toucher
   un repère ouvre la pièce, la fiche pièce surligne son repère.
-- **Viewer 3D** glTF/GLB (STEP converti à l'ingestion) : nœud ↔ pièce, vue
-  isolée, éclatement si les données le permettent. Bibliothèque à licence
-  permissive obligatoire.
 - **Schémas** : surlignage du composant référencé (repère, borne).
 - Studio 360 : photo d'un local technique avec hotspots vers les appareils.
 
 ### 5.3 Aide au montage
-- Procédure L6 pas à pas : texte, photo, repère 3D par étape, outils,
-  couples, temps standard.
+- PD2 : la procédure est une **page Pages ordinaire** (L1–L2, livrées) liée
+  au modèle × pièce, avec la notice PDF ancrée ; P2.39 n'attend pas L6.
+- Avec Pages L6 : procédure pas à pas (texte, photo, repère sur la vue
+  éclatée par étape, outils, couples, temps standard, mesures, signature).
 - **Bloc sécurité** en tête, fourni par le pack métier (consignation
   électrique, récupération de fluide, habilitations…).
-- Notes terrain proposées depuis le terrain, validées par un référent.
+- Notes terrain proposées depuis le terrain, validées par un détenteur de
+  `maintenance:validate` (§5.8).
 - Mode « mains sales » : gros boutons, navigation par étapes, lecture à
   voix haute optionnelle.
 
 ### 5.4 QR code et parc (D962–D964)
-- **D962 (proposée)** : un QR porte une **URL courte vers un jeton stable**
+- **D962 (acceptée 2026-11-17)** : un QR porte une **URL courte vers un jeton stable**
   (table noyau `qr_tags` : jeton, org, objet nullable, statut vierge /
   associé / révoqué), jamais de donnée en clair. Le jeton sert à tout objet
   (équipement, pièce, emplacement de stock de l'annexe C), pas seulement
   aux appareils.
-- **D963 (proposée)** : planches d'étiquettes **vierges** pré-imprimées,
+- **D963 (acceptée 2026-11-17)** : planches d'étiquettes **vierges** pré-imprimées,
   associées sur place par scan ; planche d'étiquettes **associées** pour une
   sélection (lot C-QR1 de l'annexe C).
-- **D964 (proposée)** : un scan sans droit affiche une page minimale
+- **D964 (acceptée 2026-11-17)** : un scan sans droit affiche une page minimale
   configurable par org (marque, modèle, contact du mainteneur), **sans
   donnée client** ; servie hors de l'origine de l'app (R11–R13) ; jeton
   non énumérable, révocable.
+- Étiquettes : **QR seul**, imprimé sur planche au format standard ; la
+  matière (polyester, tenue à la graisse, au froid, à l'humidité) est un
+  choix d'achat du client, décrit dans la fiche d'aide. Pas de NFC (Q-PD3).
 - Fiche appareil : identité, site, interventions, pièces changées (date,
   technicien), documents, mesures.
 
@@ -171,7 +181,7 @@ noyau, parce qu'ils servent tous les types.
 Cœur du coût et de la valeur.
 - Import des PDF fabricants (vues éclatées, nomenclatures, manuels) dans
   la médiathèque.
-- **D965 (proposée)** : extraction par **flows et pipelines PNEX**
+- **D965 (acceptée 2026-11-17)** : extraction par **flows et pipelines PNEX**
   (`pipeline-engine.md`), jamais un traitement à côté :
   1. découpage et classification des pages (vue éclatée, nomenclature,
      schéma, texte) ;
@@ -182,28 +192,38 @@ Cœur du coût et de la valeur.
   4. liaison repère ↔ ligne de nomenclature ↔ `spare_part` ;
   5. **validation humaine** côte à côte (PDF à gauche, données à droite) :
      tout ce qui est extrait entre en **proposition**, jamais en fait.
-- **D966 (proposée)** : chaque donnée garde sa provenance (document, page,
+- **D966 (acceptée 2026-11-17)** : chaque donnée garde sa provenance (document, page,
   date d'import, validateur) — provenance standard de l'ontologie.
 - Import CSV/Excel de nomenclatures et de tarifs (imports D301).
-- Import 3D (STEP, glTF) avec mapping nœuds → pièces.
 
 ### 5.6 Boucle d'apprentissage (D967)
 - Un retour ou une erreur de référence crée une `part_correction`.
 - Les corrections validées remontent dans la recherche et les alertes.
-- **D967 (proposée)** : base **privée par org** par défaut. Une base
-  commune entre orgs franchit la frontière de l'org (modèle de menace de
-  `security.md`) : elle ne recevrait que des faits (référence,
-  correspondance, remplacement, correction validée), jamais un document,
-  une photo ou une donnée client, après modération. À trancher (Q-PD2).
+- **D967 (acceptée 2026-11-17)** : base **privée par org**, sans base commune entre
+  orgs (Q-PD2) : elle franchirait la frontière de l'org (modèle de menace de
+  `security.md`). Une base commune demanderait son propre PRD.
 - Indicateurs par pièce et par modèle : retours, corrections, confiance de
   la nomenclature.
 
 ### 5.7 Hors ligne (D968)
-- **D968 (proposée)** : synchronisation des appareils d'un site ou d'une
+- **D968 (acceptée 2026-11-17)** : synchronisation des appareils d'un site ou d'une
   tournée dans l'app mobile (fiches, nomenclatures, vues éclatées,
-  procédures, PDF compressés) ; 3D optionnelle (taille).
+  procédures, PDF compressés).
+- Photos de plaque prises hors ligne : OCR serveur à la synchronisation,
+  résultat renvoyé en proposition (§4.2).
 - Actions hors ligne (photos, notes, panier) en file, synchronisées au
   retour du réseau, en concurrence optimiste (version lue).
+- Phasage : la **file d'envoi** (photos de plaque ou de pièce, notes) arrive
+  dès PD1, c'est le minimum du scénario de plaque ; la **consultation** hors
+  ligne d'un site ou d'une tournée (fiches, nomenclatures, PDF) reste en PD5.
+
+### 5.8 Validation des propositions
+- Tout ce qui est extrait ou proposé (nomenclatures, repères, équivalences,
+  remplacements, corrections, notes terrain) entre en proposition.
+- Permission IAM `maintenance:validate`, détenue par défaut par le rôle
+  éditeur ; une org la restreint à ses référents par un rôle personnalisé.
+- L'auteur d'une proposition ne la valide pas lui-même (vérifié côté
+  serveur).
 
 ## 6. Modèle de données
 
@@ -211,9 +231,9 @@ Pas de tables métier (D960). Ce qui s'ajoute :
 
 | Où | Quoi |
 |---|---|
-| Pack `parts_docs` | types `equipment_model`, `part_reference`, `part_correction` ; liens `manufactures`, `instance_of`, `refers_to`, `supersedes`, `equivalent_to`, `compatible_with`, `bom_line`, `documents` ; extension de `spare_part` (famille, caractéristiques) et des types d'équipement (série, date de fabrication) |
+| Pack `maintenance` | types `equipment_model`, `part_reference`, `part_correction` ; liens `manufactures`, `instance_of`, `refers_to`, `supersedes`, `equivalent_to`, `compatible_with`, `bom_line`, `documents` ; extension de `spare_part` (famille, caractéristiques) et des types d'équipement (série, date de fabrication) |
 | Noyau | table `qr_tags` (D962) ; index des références normalisées (D961) ; embeddings dans l'index de `doc-search.md` |
-| Médiathèque | PDF, images, glTF (RustFS) ; ancres = calques d'annotations |
+| Médiathèque | PDF, images (RustFS) ; ancres = calques d'annotations |
 | Pages | modèles de procédure de montage par modèle × pièce |
 
 Contrat d'API, IAM, MCP et assistant suivent les règles permanentes
@@ -241,17 +261,17 @@ chaque lot.
 
 | Lot | Contenu | Critère de sortie |
 |---|---|---|
-| **PD0 — Socle** | Pack `parts_docs`, import CSV de nomenclatures, recherche par référence normalisée avec remplacements, fiche pièce simple | Une référence ancienne renvoie l'actuelle en < 300 ms sur 100 000 pièces |
-| **PD1 — QR et parc** | Jetons QR, planches vierges, association sur place, fiche appareil, nomenclature filtrée par série, panier = OT | Du scan à la fiche pièce en < 10 s sur mobile |
-| **PD2 — Doc riche** | Viewer PDF ancré, vue éclatée à hotspots (saisie manuelle), procédures de montage, notes terrain | Le technicien trouve la procédure sans quitter PNEX |
+| **PD0 — Socle** | Extension du pack `maintenance`, import CSV de nomenclatures, recherche par référence normalisée avec remplacements, fiche pièce simple | Une référence ancienne renvoie l'actuelle en < 300 ms sur 100 000 pièces |
+| **PD1 — QR et parc** | Jetons QR, planches vierges, association sur place, fiche appareil, file d'envoi hors ligne (photos, notes), nomenclature filtrée par série, date et variante, panier = OT, export CSV du panier | Du scan à la fiche pièce en < 10 s sur mobile |
+| **PD2 — Doc riche** | Viewer PDF ancré, vue éclatée à hotspots (saisie manuelle), procédures de montage en pages Pages (L6 plus tard), notes terrain | Le technicien trouve la procédure sans quitter PNEX |
 | **PD3 — Ingestion assistée** | Extraction nomenclatures et repères depuis les PDF, écran de relecture | Vue éclatée de 50 repères intégrée en < 10 min de relecture |
-| **PD4 — Multimodal** | OCR de plaque, recherche par photo de pièce, 3D glTF | Plaque reconnue dans > 80 % des cas sur un jeu de test |
-| **PD5 — Apprentissage et hors ligne** | Corrections, base commune modérée (si Q-PD2 dit oui), hors ligne mobile | Une correction validée apparaît chez toutes les orgs concernées |
+| **PD4 — Multimodal** | OCR de plaque côté serveur (différé si hors ligne), recherche par photo de pièce | Plaque reconnue dans > 80 % des cas sur un jeu de test |
+| **PD5 — Apprentissage et hors ligne** | Corrections, hors ligne mobile | Une correction validée apparaît dans la recherche et les alertes de l'org |
 
 PD1 recoupe les lots C-QR1 et C-QR2 de l'annexe C : ils se font une fois.
 
 ## 9. Extension liée (PRD séparé) : prix et fournisseurs (D969)
-**D969 (proposée)** : module à part, branché sur le panier :
+**D969 (acceptée 2026-11-17)** : module à part, branché sur le panier :
 - récupération **à la demande** par un agent navigateur, avec le compte du
   client dans le coffre de secrets ;
 - cache court par org (prix, disponibilité), cache long des
@@ -262,12 +282,11 @@ PD1 recoupe les lots C-QR1 et C-QR2 de l'annexe C : ils se font une fois.
   des conditions d'utilisation (garde de sortie R8).
 
 ## 10. Juridique et données (D970–D971)
-- **D970 (proposée)** : un document importé par une org reste **privé à
-  cette org** ; seuls des faits (référence, correspondance, remplacement)
-  et des corrections validées peuvent alimenter une base commune (D967).
-- Modèles 3D et PDF jamais republiés ; une vue éclatée protégée se cite
+- **D970 (acceptée 2026-11-17)** : un document importé par une org reste **privé à
+  cette org** ; rien ne la quitte (pas de base commune, D967).
+- PDF fabricants jamais republiés ; une vue éclatée protégée se cite
   par lien vers sa source.
-- **D971 (proposée)** : une page QR publique ne contient aucune donnée
+- **D971 (acceptée 2026-11-17)** : une page QR publique ne contient aucune donnée
   client ; une photo terrain (personnes, locaux) est floutée ou validée
   avant tout partage hors de l'org.
 
@@ -280,22 +299,34 @@ PD1 recoupe les lots C-QR1 et C-QR2 de l'annexe C : ils se font une fois.
 - Le technicien n'appelle plus le bureau pour identifier une pièce sur un
   appareil tagué.
 
-## 12. Questions ouvertes
-1. **Q-PD1** Sources de nomenclatures : quels fabricants fournissent des
-   fichiers exploitables (CSV, portail) plutôt que des PDF ?
-2. **Q-PD2** Base commune entre orgs : oui ou non ? Si oui, qui modère
-   (communauté, éditeur) et comment la frontière de l'org est-elle tenue ?
-3. **Q-PD3** Étiquettes : tenue à la chaleur et à la graisse, à
-   l'humidité et au froid ; NFC en option ?
-4. **Q-PD4** Variantes : un même modèle commercial cache plusieurs
-   nomenclatures selon le marché ou l'année ; la plage de séries
-   suffit-elle ?
-5. **Q-PD5** Export du panier vers un devis : format (CSV, PDF, API) et
-   phase ; rappel : pas de connecteur bidirectionnel vers une GMAO tierce.
-6. **Q-PD6** Pilote : quelle entreprise de maintenance valide ?
-7. **Q-PD7** Viewer 3D : bibliothèque (licence permissive), conversion
-   STEP → glTF côté serveur (outil, licence) ?
-8. **Q-PD8** OCR de plaque : modèle local (vision) ou LLM de l'org
-   (pas de LLM plateforme, D119) ?
-9. **Q-PD9** Le pack `parts_docs` est-il fusionné dans `maintenance` ou
-   reste-t-il un module qui s'active à part ?
+## 12. Questions tranchées (2026-11-17)
+1. **Q-PD1** Sources de nomenclatures : découvertes avec le pilote. PD0
+   couvre l'import CSV générique, PD3 l'extraction PDF ; la liste des
+   fabricants reste hors dépôt.
+2. **Q-PD2** Base commune entre orgs : **non**, base privée par org (D967).
+3. **Q-PD3** Étiquettes : QR seul, matière au choix du client, pas de NFC
+   (§5.4).
+4. **Q-PD4** Variantes : une ligne de nomenclature est bornée par série,
+   date et variante facultative ; pas de modèle enfant (§3).
+5. **Q-PD5** Export du panier : CSV en PD1 ; un PDF seulement si le pilote
+   le demande. Pas de connecteur vers une GMAO tierce.
+6. **Q-PD6** Pilote : choisi hors dépôt.
+7. **Q-PD7** 3D : **retirée** du PRD ; les vues éclatées à hotspots
+   suffisent.
+8. **Q-PD8** OCR de plaque : côté serveur seulement, différé au retour du
+   réseau ; modèle local du serveur, LLM de l'org en option (D119). Un
+   modèle embarqué sur le mobile ne viendra que si le pilote montre que
+   l'attente gêne.
+9. **Q-PD9** Pas de pack `parts_docs` : tout entre dans `maintenance`.
+
+### Éclaircissements (2026-11-17)
+- **Procédures** : PD2 sans Pages L6 ; procédure = page Pages liée au
+  modèle × pièce, le pas-à-pas vient avec L6 (§5.3).
+- **Hors ligne** : file d'envoi dès PD1, consultation hors ligne en PD5
+  (§5.7).
+- **Validation** : permission `maintenance:validate`, rôle éditeur par
+  défaut, pas d'auto-validation (§5.8).
+- **Propriétés existantes** (choix par défaut, bêta sans compatibilité) :
+  les champs texte `manufacturer` et `model` des types d'équipement de
+  `maintenance` sont remplacés par les liens `manufactures` (organisation)
+  et `instance_of` (`equipment_model`) ; `serial` existe déjà et reste.
