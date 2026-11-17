@@ -1374,11 +1374,11 @@ seulement des mouvements s'écrit est marqué quand même.
 
 | Lot | Contenu |
 |---|---|
-| C-QR1 | QR sur la fiche objet (lien profond, crate `qrcode` déjà dans le front) ; planche d'étiquettes imprimable pour une sélection |
+| C-QR1 | QR sur la fiche objet : URL courte vers un jeton `qr_tags` (D962, `parts-docs.md` §5.4), jamais un lien profond en clair ; crate `qrcode` déjà dans le front ; planche d'étiquettes imprimable pour une sélection, planches vierges (D963) |
 | C-QR2 | Scan dans l'app mobile : caméra → objet ouvert |
 | C-PV | OT préventif créé depuis une occurrence de plan qui devient due (annexe B) |
 | C-AL | Une alerte d'un device lié à un équipement propose un OT correctif (courbes et pré-diagnostic joints) |
 | C-DOC | Document d'intervention par métier = modèle de page du pack métier, rempli depuis l'OT et les mesures |
 | C-ACH | Demande d'achat depuis un niveau sous le seuil, fournisseur préféré proposé |
-| C-UI | Écrans dédiés : file des OT d'un technicien, fiche pièce avec stock par emplacement et prix par fournisseur |
+| C-UI | Écrans dédiés : file des OT d'un technicien, fiche pièce avec stock par emplacement et prix par fournisseur (même fiche que PD0 de `parts-docs.md`, enrichie) |
 - Pièces et documentation (recherche, nomenclatures, QR d'appareils, procédures de montage) : `parts-docs.md` (P2.39) ; PD1 et C-QR1/C-QR2 se font une fois.
