@@ -339,6 +339,15 @@ async fn every_shipped_pipeline_passes_its_tests() {
                 secrets,
                 objects: case.objects.clone().into_iter().collect(),
                 functions: super::store::call_functions(&sp.pack, &sp.doc),
+                asked: case
+                    .asked
+                    .iter()
+                    .map(|r| {
+                        r.iter()
+                            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                            .collect()
+                    })
+                    .collect(),
                 extra: case
                     .extra
                     .iter()
@@ -544,6 +553,63 @@ async fn browse_pauses_a_row_and_its_extracts_resume_it() {
     .await;
     assert_eq!(failed.state, pnex_core::pipeline::track::State::Failed);
     assert_eq!(failure.map(|f| f.code), Some("browse_failed"));
+}
+
+/// D996: an `asked` axis enumerates the rows its start gives, with their
+/// columns, and takes them again even once done.
+#[tokio::test]
+async fn asked_rows_are_taken_with_their_columns_every_time() {
+    let doc: pnex_core::pipeline::doc::Document = serde_saphyr::from_str(
+        "key: t\nhosts: [www.example.org]\nsteps:\n\
+         - enumerate: { as: p, track: true, cross: [{ as: person, asked: [url] }] }\n\
+         - browse: { as: page, for_each: p, site: www.example.org, steps: [{ open: \"{{url}}\" }, { extract: { all_text: true, as: profile } }] }\n\
+         - sql: { as: kept, sql: \"SELECT p.person, p.url, page.text FROM p, page\" }\n\
+         - write: { from: kept, table: { name: t, replace: false } }\n",
+    )
+    .unwrap();
+    assert!(doc.violations().is_empty(), "{:?}", doc.violations());
+    let inputs = Inputs {
+        asked: vec![serde_json::Map::from_iter([
+            ("person".to_string(), json!("p1")),
+            ("url".to_string(), json!("https://www.example.org/in/jane")),
+        ])],
+        ..Default::default()
+    };
+    let transport = Replay {
+        pack: "watch".into(),
+        given: HashMap::new(),
+    };
+    let mut sink = Memory::default();
+    sink.2
+        .insert("page".into(), json!({ "p1": { "profile": "Jane" } }));
+    let mut kept = HashMap::new();
+    let mut known = HashMap::new();
+    for _ in 0..2 {
+        let out = run(
+            &doc,
+            &inputs,
+            &transport,
+            &mut sink,
+            &InProcess,
+            &known,
+            None,
+            Some(&mut kept),
+            None,
+        )
+        .await;
+        assert_eq!(out.items.len(), 1, "taken again although done");
+        let (item, failure, rows) = &out.items[0];
+        assert!(failure.is_none(), "{failure:?}");
+        assert_eq!((item.key.as_str(), *rows), ("p1", 1));
+        known.insert(item.key.clone(), item.clone());
+    }
+    let (_, rows) = rendered(&kept["kept"]);
+    assert!(
+        rows[0]
+            .to_string()
+            .contains("https://www.example.org/in/jane"),
+        "{rows:?}"
+    );
 }
 
 /// D995: `browse` only right after a tracked enumeration, on its rows.

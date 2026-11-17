@@ -277,6 +277,8 @@ pub struct Inputs {
     pub secrets: HashMap<String, String>,
     /// `<fetch as>:<url>` → sha256 of the bytes last read (`skip_if_unchanged`).
     pub shas: HashMap<String, String>,
+    /// The rows the start of the run gives to its `asked` axis (D996).
+    pub asked: Vec<Map<String, Value>>,
 }
 
 /// The settings and objects a document reads.
@@ -393,6 +395,12 @@ fn axis_values(
             .unwrap_or_default()
     } else if let Some(o) = &a.objects {
         inputs.objects.get(&o.key()).cloned().unwrap_or_default()
+    } else if a.asked.is_some() {
+        inputs
+            .asked
+            .iter()
+            .filter_map(|r| r.get(&a.as_).and_then(Value::as_str).map(str::to_string))
+            .collect()
     } else {
         a.values.clone()
     };
@@ -419,6 +427,16 @@ fn axis_values(
         }
         let mut cols = Map::new();
         cols.insert(a.as_.clone(), Value::String(v.clone()));
+        if let Some(asked) = &a.asked {
+            let given = inputs
+                .asked
+                .iter()
+                .find(|r| r.get(&a.as_).and_then(Value::as_str).map(str::trim) == Some(v.as_str()));
+            for col in asked {
+                let cell = given.and_then(|r| r.get(col)).cloned();
+                cols.insert(col.clone(), cell.unwrap_or(Value::Null));
+            }
+        }
         if let Some(o) = &a.objects {
             let extra = inputs.extra.get(&o.key()).and_then(|e| e.get(&v));
             for col in o.title.iter().chain(&o.columns) {
@@ -1430,10 +1448,24 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
     };
     let keys: Vec<String> = rows.iter().map(|(k, _)| k.clone()).collect();
     let budget = max_items.unwrap_or(e.per_run.unwrap_or(PER_RUN_DEFAULT) as usize);
-    let due: Vec<String> = track::due(&keys, known, now_us, budget)
-        .into_iter()
-        .map(str::to_string)
-        .collect();
+    // Rows asked by a start are taken whatever they did before, unless a
+    // navigation still runs for them (D996).
+    let due: Vec<String> = if e.cross.iter().any(|a| a.asked.is_some()) {
+        keys.iter()
+            .filter(|k| {
+                known
+                    .get(*k)
+                    .is_none_or(|i| i.state != track::State::Waiting)
+            })
+            .take(budget)
+            .cloned()
+            .collect()
+    } else {
+        track::due(&keys, known, now_us, budget)
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    };
     let by_key: HashMap<&str, &Row> = rows.iter().map(|(k, r)| (k.as_str(), r)).collect();
     let settled = e.empty == pnex_core::pipeline::doc::Empty::Settled;
     for key in due {

@@ -149,6 +149,10 @@ pub struct Axis {
     /// Integers from the first to the last, both included.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range: Option<[i64; 2]>,
+    /// The values the start of the run gives (a route asking a navigation
+    /// for one object, D996), with these other columns of each.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asked: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -784,6 +788,9 @@ pub struct TestCase {
     /// Same key → value → the axis' title and other columns.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extra: BTreeMap<String, BTreeMap<String, BTreeMap<String, String>>>,
+    /// Rows the start of the run gives to its `asked` axis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asked: Vec<BTreeMap<String, String>>,
     /// Today's date of the run, `YYYY-MM-DD`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub today: Option<String>,
@@ -1132,9 +1139,18 @@ fn step_violations(
                     a.periods.is_some(),
                     a.objects.is_some(),
                     a.range.is_some(),
+                    a.asked.is_some(),
                 ];
                 if kinds.iter().filter(|k| **k).count() != 1 {
-                    bad(p.clone(), "one_of:values,setting,periods,objects,range");
+                    bad(
+                        p.clone(),
+                        "one_of:values,setting,periods,objects,range,asked",
+                    );
+                }
+                if a.asked.as_ref().is_some_and(|cols| {
+                    cols.len() > AXES_MAX || cols.iter().any(|c| !valid_name(c) || *c == a.as_)
+                }) {
+                    bad(format!("{p}.asked"), "invalid");
                 }
                 if a.values.len() > VALUES_MAX || a.values.iter().any(|v| long(v)) {
                     bad(format!("{p}.values"), &format!("max_items:{VALUES_MAX}"));
@@ -1559,7 +1575,7 @@ mod tests {
         let t = tokens(&d);
         assert!(t.contains(&"steps write_required".into()), "{t:?}");
         assert!(t.contains(
-            &"steps.0.enumerate.cross.0 one_of:values,setting,periods,objects,range".into()
+            &"steps.0.enumerate.cross.0 one_of:values,setting,periods,objects,range,asked".into()
         ));
     }
 

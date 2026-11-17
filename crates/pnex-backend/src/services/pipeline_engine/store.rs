@@ -1110,10 +1110,40 @@ async fn run_with(
     now: DateTime<Utc>,
     journal: Option<&mut Vec<super::StepRecord>>,
 ) -> Result<RunOutcome, sea_orm::DbErr> {
+    run_core(ctx, db, store, org, sp, transport, now, journal, Vec::new()).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_given(
+    ctx: Option<&AppContext>,
+    db: &DatabaseConnection,
+    store: &S3Store,
+    org: i64,
+    sp: &Shipped,
+    transport: &impl Transport,
+    now: DateTime<Utc>,
+    asked: Vec<serde_json::Map<String, Value>>,
+) -> Result<RunOutcome, sea_orm::DbErr> {
+    run_core(ctx, db, store, org, sp, transport, now, None, asked).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_core(
+    ctx: Option<&AppContext>,
+    db: &DatabaseConnection,
+    store: &S3Store,
+    org: i64,
+    sp: &Shipped,
+    transport: &impl Transport,
+    now: DateTime<Utc>,
+    journal: Option<&mut Vec<super::StepRecord>>,
+    asked: Vec<serde_json::Map<String, Value>>,
+) -> Result<RunOutcome, sea_orm::DbErr> {
     let id = sp.id();
     let (items, shas) = known(db, org, &id).await?;
     let mut inputs = inputs(db, org, &sp.doc, now.naive_utc(), shas).await?;
     inputs.functions = call_functions(&sp.pack, &sp.doc);
+    inputs.asked = asked;
     let mut sink = DatasetSink {
         db,
         store,
@@ -1136,6 +1166,38 @@ async fn run_with(
         tracing::warn!(org, pipeline = %id, code = f.code, args = %f.args, "pipeline run failed");
     }
     Ok(out)
+}
+
+/// Runs a pipeline of a pack for the rows a route asks (its `asked` axis,
+/// D996), now, under the org's pipeline lock; what it did is kept like any
+/// run's. A row whose navigation still runs is left as it is.
+pub async fn run_asked(
+    ctx: &AppContext,
+    org: i64,
+    pipeline: &str,
+    asked: Vec<serde_json::Map<String, Value>>,
+) -> Result<RunOutcome, DatasetError> {
+    let sp = shipped()
+        .iter()
+        .find(|s| s.id() == pipeline)
+        .ok_or(DatasetError::NotFound)?;
+    let lock = TenantLock::acquire(&ctx.db, ns::PIPELINE_RUN, org, Duration::from_secs(30))
+        .await
+        .map_err(|_| DatasetError::TransactionOpen)?;
+    let store = datasets::store_of(&ctx.config)?;
+    let out = run_given(
+        Some(ctx),
+        &ctx.db,
+        &store,
+        org,
+        sp,
+        &HttpTransport,
+        Utc::now(),
+        asked,
+    )
+    .await;
+    lock.release().await;
+    Ok(out?)
 }
 
 /// Resumes the row `item` of a pipeline once its navigation ended (D995):
