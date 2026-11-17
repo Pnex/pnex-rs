@@ -550,7 +550,13 @@ impl Sink for DatasetSink<'_> {
             let name: String = text("name")
                 .unwrap_or_else(|| "document.txt".into())
                 .chars()
-                .map(|c| if matches!(c, '/' | '\\' | ':' | '?' | '*' | '"' | '<' | '>' | '|') { '_' } else { c })
+                .map(|c| {
+                    if matches!(c, '/' | '\\' | ':' | '?' | '*' | '"' | '<' | '>' | '|') {
+                        '_'
+                    } else {
+                        c
+                    }
+                })
                 .collect();
             // The upload allowlist reads the extension: the body is plain text.
             let name = match name.ends_with(".txt") {
@@ -682,7 +688,9 @@ impl Sink for DatasetSink<'_> {
             .iter()
             .filter(|l| {
                 schema.link_type(&l.link_type).is_some()
-                    && [&l.from, &l.to].iter().all(|a| objects.iter().any(|o| &o.alias == *a))
+                    && [&l.from, &l.to]
+                        .iter()
+                        .all(|a| objects.iter().any(|o| &o.alias == *a))
             })
             .collect();
         if objects.is_empty() {
@@ -785,7 +793,12 @@ async fn kept_for(
         db.execute_raw(stmt(
             "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text) \
              WHERE org_id = $1 AND id = $2 AND valid_to IS NULL",
-            vec![org.into(), object.into(), property.clone().into(), asset.to_string().into()],
+            vec![
+                org.into(),
+                object.into(),
+                property.clone().into(),
+                asset.to_string().into(),
+            ],
         ))
         .await?;
     }
@@ -802,10 +815,14 @@ async fn object_by(
 ) -> Result<Option<(Uuid, i32)>, Failure> {
     let failed = || fail("storage", json!({ "what": "proposals" }));
     let sql = match by {
-        "id" => "SELECT id, version FROM objects WHERE org_id = $1 AND type_key = $2 \
-                   AND valid_to IS NULL AND $3 = 'id' AND id::text = $4 LIMIT 1",
-        _ => "SELECT id, version FROM objects WHERE org_id = $1 AND type_key = $2 \
-                AND valid_to IS NULL AND properties ->> $3 = $4 ORDER BY id LIMIT 1",
+        "id" => {
+            "SELECT id, version FROM objects WHERE org_id = $1 AND type_key = $2 \
+                   AND valid_to IS NULL AND $3 = 'id' AND id::text = $4 LIMIT 1"
+        }
+        _ => {
+            "SELECT id, version FROM objects WHERE org_id = $1 AND type_key = $2 \
+                AND valid_to IS NULL AND properties ->> $3 = $4 ORDER BY id LIMIT 1"
+        }
     };
     let Some(row) = db
         .query_one_raw(stmt(
@@ -1191,7 +1208,19 @@ async fn run_with(
     now: DateTime<Utc>,
     journal: Option<&mut Vec<super::StepRecord>>,
 ) -> Result<RunOutcome, sea_orm::DbErr> {
-    run_core(ctx, db, store, org, sp, transport, now, journal, Vec::new(), None).await
+    run_core(
+        ctx,
+        db,
+        store,
+        org,
+        sp,
+        transport,
+        now,
+        journal,
+        Vec::new(),
+        None,
+    )
+    .await
 }
 
 #[allow(clippy::too_many_arguments)]

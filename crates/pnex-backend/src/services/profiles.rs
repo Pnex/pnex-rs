@@ -353,12 +353,19 @@ pub async fn request(
         return Err(ExtensionError::Opposed);
     }
     let person_key = person_id.to_string();
-    let open = |runs: Vec<(Uuid, BTreeMap<String, String>, String, Option<String>, String)>| {
+    let open = |runs: Vec<(
+        Uuid,
+        BTreeMap<String, String>,
+        String,
+        Option<String>,
+        String,
+    )>| {
         runs.into_iter().find(|(_, p, state, _, _)| {
             p.get("url") == Some(&url) && matches!(state.as_str(), "queued" | "running")
         })
     };
-    let runs = purpose::pipeline_runs(db, org_id, PROFILE_PIPELINES, "person_id", &person_key).await?;
+    let runs =
+        purpose::pipeline_runs(db, org_id, PROFILE_PIPELINES, "person_id", &person_key).await?;
     if let Some((id, _, state, reason, at)) = open(runs) {
         return Ok(capture_view(id, &url, &state, reason, at));
     }
@@ -384,11 +391,23 @@ pub async fn request(
         ("person_id".to_string(), person_key.clone().into()),
         ("path".to_string(), path.into()),
     ]);
-    let out = crate::services::pipeline_engine::store::run_asked(ctx, org_id, Some(user_id), &pipeline, vec![row])
-        .await
-        .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(format!("profile pipeline: {}", e.code()))))?;
+    let out = crate::services::pipeline_engine::store::run_asked(
+        ctx,
+        org_id,
+        Some(user_id),
+        &pipeline,
+        vec![row],
+    )
+    .await
+    .map_err(|e| {
+        ExtensionError::Db(sea_orm::DbErr::Custom(format!(
+            "profile pipeline: {}",
+            e.code()
+        )))
+    })?;
     asked_view(&out, &url)?;
-    let runs = purpose::pipeline_runs(db, org_id, PROFILE_PIPELINES, "person_id", &person_key).await?;
+    let runs =
+        purpose::pipeline_runs(db, org_id, PROFILE_PIPELINES, "person_id", &person_key).await?;
     let (id, _, state, reason, at) = runs
         .into_iter()
         .find(|(_, p, _, _, _)| p.get("url") == Some(&url))

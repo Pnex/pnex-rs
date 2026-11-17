@@ -240,7 +240,16 @@ pub async fn pipeline_runs(
     prefix: &str,
     param: &str,
     value: &str,
-) -> Result<Vec<(Uuid, BTreeMap<String, String>, String, Option<String>, String)>, sea_orm::DbErr> {
+) -> Result<
+    Vec<(
+        Uuid,
+        BTreeMap<String, String>,
+        String,
+        Option<String>,
+        String,
+    )>,
+    sea_orm::DbErr,
+> {
     let rows = db
         .query_all_raw(stmt(
             "SELECT a.id, a.plan -> 'params' AS params, j.state, a.reason, a.created_at

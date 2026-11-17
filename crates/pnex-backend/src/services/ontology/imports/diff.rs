@@ -437,7 +437,10 @@ fn key_sql(key_prop: &str, by_property: &'static str) -> String {
     match key_prop {
         pnex_core::ontology::import::OBJECT_ID_KEY => by_property
             .replace("properties ->> $3 AS k", "id::text AS k")
-            .replace("properties ->> $3 = ANY($4)", "($3 = $3 AND id::text = ANY($4))"),
+            .replace(
+                "properties ->> $3 = ANY($4)",
+                "($3 = $3 AND id::text = ANY($4))",
+            ),
         _ => by_property.to_string(),
     }
 }
