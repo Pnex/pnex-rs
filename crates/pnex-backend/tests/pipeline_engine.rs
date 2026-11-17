@@ -176,3 +176,67 @@ async fn rows_done_are_kept_and_empty_ones_wait_their_days() {
     })
     .await;
 }
+
+/// D941: a pipeline's `write: objects` updates the org's objects at once,
+/// without preview, its provenance the pipeline.
+#[tokio::test]
+#[serial]
+async fn a_pipeline_writes_objects_without_preview() {
+    with_app(|server, ctx, token| async move {
+        let worker = common::spawn_pipeline_worker();
+        let auth = format!("Bearer {token}");
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", auth.clone())
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let post = |path: &'static str, body: Option<Value>| {
+            let req = server
+                .post(path)
+                .add_header("Authorization", auth.clone())
+                .add_header("X-Org-Id", org.to_string());
+            async move {
+                let r = match body {
+                    Some(b) => req.json(&b).await,
+                    None => req.await,
+                };
+                assert!(r.status_code().is_success(), "{path}: {}", r.text());
+                r.json::<Value>()
+            }
+        };
+        post("/api/v1/ontology/packs/companies/install", None).await;
+        let acme = post(
+            "/api/v1/ontology/objects",
+            Some(json!({ "type_key": "organization", "title": "ACME", "properties": { "lei": "529900T8BM49AURSDO55" } })),
+        )
+        .await;
+        let doc: pnex_core::pipeline::doc::Document = serde_saphyr::from_str(
+            "key: t\nsteps:\n\
+             - enumerate: { as: o, cross: [{ as: lei, objects: { type: organization, property: lei } }] }\n\
+             - sql: { as: rows, sql: \"SELECT lei, 'FR' AS country FROM o\" }\n\
+             - write: { from: rows, objects: { objects: [{ as: org, type: organization, key: lei, create: false, update: true, properties: { lei: lei, country: country } }] } }\n",
+        )
+        .unwrap();
+        assert!(doc.violations().is_empty(), "{:?}", doc.violations());
+        let sp = pnex_backend::services::pipeline_engine::store::Shipped {
+            pack: "companies".into(),
+            doc,
+        };
+        let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+        let net = Fixtures { calls: AtomicUsize::new(0) };
+        let out = run_for_org(&ctx.db, &store, org, &sp, &net, Utc::now(), None).await.unwrap();
+        assert!(out.failure.is_none(), "{:?}", out.failure);
+        assert_eq!(out.written, 1);
+        let read = server
+            .get(&format!("/api/v1/ontology/objects/{}", acme["id"].as_str().unwrap()))
+            .add_header("Authorization", auth.clone())
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json::<Value>();
+        assert_eq!(read["properties"]["country"], "FR", "{read}");
+        worker.abort();
+    })
+    .await;
+}

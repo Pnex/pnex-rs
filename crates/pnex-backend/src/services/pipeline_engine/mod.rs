@@ -183,6 +183,14 @@ pub trait Sink {
         rows: Vec<Map<String, Value>>,
     ) -> Result<u64, Failure>;
 
+    /// Creates and updates the org's objects and links the rows map to
+    /// (D941), without preview; the objects and links written.
+    async fn objects(
+        &mut self,
+        target: &pnex_core::pipeline::doc::ObjectsTarget,
+        rows: Vec<Map<String, Value>>,
+    ) -> Result<u64, Failure>;
+
     /// Plays a navigation for the row `item` (D995): its extracts as
     /// `{name, text}` rows when known now (a replay), `None` once started:
     /// the row waits and the end of the navigation resumes it.
@@ -1141,7 +1149,12 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 } else if let Some(p) = &w.proposals {
                     let rows = blocking(move || records_of(&batches)).await?;
                     *written += self.sink.proposals(p, rows).await?;
+                } else if let Some(o) = w.objects.as_ref().filter(|o| !o.snapshot) {
+                    let rows = blocking(move || records_of(&batches)).await?;
+                    *written += self.sink.objects(o, rows).await?;
                 } else {
+                    // shortcut: no snapshot outside an import; add closing when a
+                    // pipeline must close what its rows no longer hold.
                     return Err(fail("step_unsupported", json!({ "step": "write.objects" })));
                 }
                 return Ok(None);

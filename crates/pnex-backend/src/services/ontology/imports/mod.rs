@@ -823,6 +823,44 @@ pub(crate) fn error_code(e: &OntologyError) -> &'static str {
 
 /// One application per org at a time.
 /// Once applied, `diff.written` holds what was really written.
+/// Writes rows planned with `m` at once, without preview (a pipeline's
+/// `write: objects`, pipeline-engine.md D941): planned, diffed and written
+/// under the org's import lock, `source_ref` as provenance. Never closes
+/// what the rows no longer hold. The objects and links created or updated.
+pub async fn write_rows(
+    db: &DatabaseConnection,
+    org_id: i64,
+    provenance: Uuid,
+    source_ref: &str,
+    m: &Mapping,
+    rows: &[Value],
+) -> Result<usize> {
+    use crate::services::db_lock::{ns, TenantLock};
+    let s = schema(db, org_id).await?;
+    let diff = diff::compute(db, org_id, provenance, &s, m, false, rows, 1).await?;
+    if !diff.errors.is_empty() {
+        tracing::info!(
+            org_id,
+            source_ref,
+            errors = diff.errors.len(),
+            "pipeline rows refused"
+        );
+        return Err(coded(err_codes::IMPORT_HAS_ERRORS));
+    }
+    let actor = Actor {
+        user_id: None,
+        role: OrgMemberRole::Member,
+        source_ref: source_ref.to_string(),
+    };
+    let lock =
+        TenantLock::acquire(db, ns::ONTOLOGY_IMPORT, org_id, Duration::from_secs(600)).await?;
+    let out = write(db, org_id, &actor, &diff).await;
+    lock.release().await;
+    let left_out = out?;
+    let c = diff.counts();
+    Ok(c.created - left_out + c.updated + c.links_opened + c.links_updated)
+}
+
 async fn write_locked(
     db: &DatabaseConnection,
     imp: &ImportRow,

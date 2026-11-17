@@ -218,6 +218,14 @@ impl Sink for Memory {
         Ok(rows.len() as u64)
     }
 
+    async fn objects(
+        &mut self,
+        _: &pnex_core::pipeline::doc::ObjectsTarget,
+        rows: Vec<serde_json::Map<String, Value>>,
+    ) -> Result<u64, Failure> {
+        Ok(rows.len() as u64)
+    }
+
     async fn browse(
         &mut self,
         b: &pnex_core::pipeline::doc::Browse,

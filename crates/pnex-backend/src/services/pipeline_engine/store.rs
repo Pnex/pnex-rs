@@ -643,6 +643,36 @@ impl Sink for DatasetSink<'_> {
         Ok(made)
     }
 
+    async fn objects(
+        &mut self,
+        target: &pnex_core::pipeline::doc::ObjectsTarget,
+        rows: Vec<serde_json::Map<String, Value>>,
+    ) -> Result<u64, Failure> {
+        let mapping: pnex_core::ontology::import::Mapping = serde_json::from_value(json!({
+            "key": self.pipeline.replace('/', "_"),
+            "name": self.pipeline,
+            "objects": target.objects,
+            "links": target.links,
+        }))
+        .map_err(|_| fail("internal", Value::Null))?;
+        // One provenance per pipeline: its writes find their own objects again.
+        let provenance = Uuid::new_v5(
+            &Uuid::NAMESPACE_URL,
+            format!("pipeline:{}", self.pipeline).as_bytes(),
+        );
+        let rows: Vec<Value> = rows.into_iter().map(Value::Object).collect();
+        let source_ref = format!("pipeline:{}", self.pipeline);
+        crate::services::ontology::imports::write_rows(
+            self.db, self.org, provenance, &source_ref, &mapping, &rows,
+        )
+        .await
+        .map(|n| n as u64)
+        .map_err(|e| {
+            tracing::info!(org = self.org, pipeline = self.pipeline, error = %e, "pipeline objects not written");
+            fail("objects_refused", Value::Null)
+        })
+    }
+
     async fn browse(
         &mut self,
         b: &pnex_core::pipeline::doc::Browse,
