@@ -1,9 +1,9 @@
 //! What the server does when a run of a default rule ends (agent-unification
 //! D780, lot U4). A default rule is played like any rule; the purpose it was
 //! started for is kept in its plan, and acting on the outcome is the server's
-//! job: never a kind of mission, never the agent. A profile capture becomes
-//! a document of the person (D333), an employee list one of the company
-//! (D779); both are purged after 30 days with the other captured texts.
+//! job: never a kind of mission, never the agent. Profile and employee list
+//! captures are pipelines of the prospecting pack (pipeline-engine.md D996):
+//! their navigations resume their rows ([`Purpose::Pipeline`]).
 
 use std::collections::BTreeMap;
 
@@ -19,11 +19,6 @@ use super::{browser, insert_run, parse, NewRun, RecipeError, StartError};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Purpose {
-    /// One company's employee list (D779): extract `people`.
-    PeopleCapture {
-        organization_id: String,
-        url: String,
-    },
     /// One query of a person match (D788): extracts `results` (cards) and
     /// `profile.<n>` (the profiles opened).
     PersonMatch { match_id: String, step: u32 },
@@ -42,7 +37,6 @@ pub enum Purpose {
 impl Purpose {
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::PeopleCapture { .. } => "people_capture",
             Self::PersonMatch { .. } => "person_match",
             // The run's `trigger` holds 16 chars; runs are found by the tag.
             Self::ConnectionsCapture { .. } => "connections",
@@ -120,32 +114,7 @@ pub async fn on_finished(ctx: &AppContext, org_id: i64, run_id: Uuid) {
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
     let ok = row.try_get::<String>("", "state").unwrap_or_default() == "succeeded";
-    let text = |name: &str| {
-        extracts
-            .iter()
-            .find(|e| e.name == name)
-            .map(|e| e.text.clone())
-            .filter(|t| !t.trim().is_empty())
-    };
-    let source = format!("rule_run:{run_id}");
     let outcome = match &purpose {
-        Purpose::PeopleCapture {
-            organization_id,
-            url,
-        } => match text("people").filter(|_| ok) {
-            Some(t) => {
-                crate::services::profiles::people_captured(
-                    ctx,
-                    org_id,
-                    &source,
-                    organization_id,
-                    url,
-                    &t,
-                )
-                .await
-            }
-            None => Ok(()),
-        },
         Purpose::ConnectionsCapture {
             person_id, user_id, ..
         } => {

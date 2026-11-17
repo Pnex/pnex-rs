@@ -1482,7 +1482,7 @@ async fn an_employee_list_lands_on_its_company_and_skips_objections() {
         let (_, company) = call(&server, "GET", &format!("/api/v1/ontology/objects/{acme}"), &env.alice, org, None).await;
         assert_eq!(company["properties"]["people_to_read"].as_str().map(str::len), Some(36), "{company}");
         let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{acme}/links"), &env.alice, org, None).await;
-        assert!(links.to_string().contains("published_by"), "{links}");
+        assert!(links.to_string().contains("captured_text"), "{links}");
         let (_, listed) = call(&server, "GET", &captures, &env.alice, org, None).await;
         assert_eq!((&listed["results"][0]["open"], &listed["results"][0]["captured"]), (&json!(false), &json!(true)), "{listed}");
 

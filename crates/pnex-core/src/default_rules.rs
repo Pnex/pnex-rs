@@ -5,10 +5,6 @@
 //! parameters and acts on the run's outcome by the purpose it started it
 //! for, never by a kind of mission. Pure, wasm-safe.
 
-/// Screens scrolled on an employee list before reading it (D779): the cards
-/// a reader would see, never the whole list.
-pub const PEOPLE_SCROLLS: usize = 5;
-
 /// Site of a profile network (D333): the host its canonical profile
 /// addresses carry ([`crate::browser_agent::profile_of`]).
 pub fn network_site(network: &str) -> Option<&'static str> {
@@ -21,27 +17,6 @@ pub fn network_site(network: &str) -> Option<&'static str> {
         "youtube" => "www.youtube.com",
         _ => return None,
     })
-}
-
-/// Capture of a company's employee list on LinkedIn (D779): the first
-/// screens of cards at a reader's pace, the text kept as `people`.
-/// Param: `url` (canonical `/company/<name>/people/`).
-pub fn people_capture() -> String {
-    let mut out = String::from(
-        "name: \"Employee list · linkedin\"\n\
-         site: \"www.linkedin.com\"\n\
-         session: \"required\"\n\
-         params: [url]\n\
-         steps:\n\
-         \x20 - open: \"{{url}}\"\n\
-         \x20 - wait: {ms: 3000}\n\
-         \x20 - assert: {url_contains: \"/people\"}\n",
-    );
-    for _ in 0..PEOPLE_SCROLLS {
-        out += "  - scroll: \"bottom\"\n  - wait: {ms: 3000}\n";
-    }
-    out += "  - extract: {all_text: true, as: \"people\"}\n";
-    out
 }
 
 /// Search of a person through LinkedIn's search bar (D788): the query typed
@@ -116,7 +91,6 @@ mod tests {
 
     #[test]
     fn default_rules_keep_their_shape() {
-        assert_eq!(people_capture().matches("scroll").count(), PEOPLE_SCROLLS);
         assert!(person_search().contains("type: {text: \"{{query}}\"}"));
         let c = connections_capture();
         assert_eq!(c.matches("connections.").count(), CONNECTION_PAGES);

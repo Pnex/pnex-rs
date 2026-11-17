@@ -1,0 +1,46 @@
+# A company's employee list on LinkedIn, asked from the organization's page
+# (D779, D996): the first screens of cards at a reader's pace in the asking
+# member's browser agent, the text kept 30 days as a document of the
+# organization, stamped for the flow that turns it into list contacts.
+key: people_capture_linkedin
+name: Employee list capture (LinkedIn)
+hosts: [www.linkedin.com]
+steps:
+  - enumerate: { as: asked, track: true, cross: [{ as: url, asked: [organization_id, type_key] }] }
+  - browse:
+      as: page
+      for_each: asked
+      site: www.linkedin.com
+      session: required
+      steps:
+        - open: "{{url}}"
+        - wait: { ms: 3000 }
+        - assert: { url_contains: "/people" }
+        - scroll: bottom
+        - wait: { ms: 3000 }
+        - scroll: bottom
+        - wait: { ms: 3000 }
+        - scroll: bottom
+        - wait: { ms: 3000 }
+        - scroll: bottom
+        - wait: { ms: 3000 }
+        - scroll: bottom
+        - wait: { ms: 3000 }
+        - extract: { all_text: true, as: people }
+  - sql:
+      as: documents
+      sql: >-
+        SELECT a.type_key, 'id' AS key_property, a.organization_id AS key,
+          a.url AS source_url, 'Employees · ' || a.url AS name, page.text AS text
+        FROM asked a JOIN page ON page.name = 'people'
+        WHERE length(trim(page.text)) > 0
+  - write:
+      from: documents
+      media: { link_type: captured_text, source: browser_agent, stamp: people_to_read, keep_days: 30 }
+tests:
+  - name: the employee list becomes a document of the organization
+    asked: [{ url: "https://www.linkedin.com/company/example-industries/people/", organization_id: "8f1c2b9e-0000-4000-8000-000000000002", type_key: organization }]
+    given: { "browse:page": people_example.json }
+    expect:
+      documents:
+        rows: 1

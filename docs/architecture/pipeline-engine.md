@@ -758,6 +758,9 @@ elles décident si le run part, pas ce qu'il écrit.
   dans l'agent du membre ; la liste des captures lit les navigations des pipelines.
   **Supprimés** : `Purpose::ProfileCapture`, `profiles::profile_captured`,
   `default_rules::profile_capture`.
+- **Liste d'employés** (D779) : pipeline `prospecting_b2b/people_capture_linkedin` (document de
+  l'organisation, tampon `people_to_read`). **Supprimés** : `Purpose::PeopleCapture`,
+  `profiles::people_captured`, `default_rules::people_capture`, `PEOPLE_SCROLLS`.
 
 | Écart | Où il se lève |
 |---|---|

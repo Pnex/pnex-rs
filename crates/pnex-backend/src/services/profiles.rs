@@ -14,11 +14,9 @@ use uuid::Uuid;
 
 use std::collections::BTreeMap;
 
-use pnex_core::default_rules;
-
 use crate::services::extension::ExtensionError;
 use crate::services::ontology;
-use crate::services::site_recipes::purpose::{self, Purpose};
+use crate::services::site_recipes::purpose;
 use crate::services::site_recipes::{RecipeError, StartError};
 
 /// Days a captured profile text is kept (D333).
@@ -631,7 +629,8 @@ pub(crate) async fn identifier_of(
 }
 
 /// A live object of the org whose type declares [`PEOPLE_TO_READ`]: the
-/// pack that reads employee lists says which types have one (D441).
+/// pack that reads employee lists says which types have one (D441). Its
+/// type.
 async fn organization(
     db: &DatabaseConnection,
     org_id: i64,
@@ -655,14 +654,17 @@ async fn organization(
     if !declared {
         return Err(ExtensionError::OrganizationNotFound);
     }
-    Ok(o.title)
+    Ok(o.type_key)
 }
 
+/// Pipeline of the prospecting pack that captures an employee list (D996).
+const PEOPLE_PIPELINE: &str = "prospecting_b2b/people_capture_linkedin";
+
 /// Asks one capture of a company's employee list on LinkedIn for the
-/// organization (D779): the default rule, played in the caller's browser
-/// agent. An open capture of the same list is returned as is. The people it
-/// names become list contacts to validate, read by a flow of the
-/// prospecting pack; nobody objecting at that company comes back.
+/// organization (D779): the pipeline of the prospecting pack, played in the
+/// caller's browser agent. An open capture of the same list is returned as
+/// is. The people it names become list contacts to validate, read by a flow
+/// of the prospecting pack; nobody objecting at that company comes back.
 pub async fn request_people(
     ctx: &AppContext,
     org_id: i64,
@@ -671,7 +673,7 @@ pub async fn request_people(
     raw_url: &str,
 ) -> Result<ba::ProfileCapture, ExtensionError> {
     let db = &ctx.db;
-    organization(db, org_id, organization_id).await?;
+    let type_key = organization(db, org_id, organization_id).await?;
     let url = ba::people_page_of(raw_url).map_err(|r| match r {
         ba::ProfileRefusal::NotNetwork => ExtensionError::Invalid {
             field: "url".into(),
@@ -680,38 +682,48 @@ pub async fn request_people(
         ba::ProfileRefusal::NotProfile => ExtensionError::NotPeoplePage,
     })?;
     let org_key = organization_id.to_string();
-    let runs = purpose::runs_of(db, org_id, "people_capture", "organization_id", &org_key).await?;
+    let runs =
+        purpose::pipeline_runs(db, org_id, PEOPLE_PIPELINE, "organization_id", &org_key).await?;
     if let Some((id, _, state, reason, at)) = runs.into_iter().find(|(_, p, state, _, _)| {
-        matches!(p, Purpose::PeopleCapture { url: u, .. } if *u == url)
-            && matches!(state.as_str(), "queued" | "running")
+        p.get("url") == Some(&url) && matches!(state.as_str(), "queued" | "running")
     }) {
         return Ok(capture_view(id, &url, &state, reason, at));
     }
     // shortcut: count then insert is racy by a few rows, fine for an abuse cap.
-    if purpose::count_today(db, org_id, "people_capture", "https://").await?
+    if purpose::pipeline_runs_today(db, org_id, PEOPLE_PIPELINE, "https://").await?
         >= ba::PEOPLE_CAPTURES_PER_DAY
     {
         return Err(ExtensionError::PeopleDailyCap {
             max: ba::PEOPLE_CAPTURES_PER_DAY,
         });
     }
-    let params = BTreeMap::from([("url".to_string(), url.clone())]);
-    let purpose = Purpose::PeopleCapture {
-        organization_id: org_key,
-        url: url.clone(),
-    };
-    let run = purpose::start(
+    let row = serde_json::Map::from_iter([
+        ("url".to_string(), url.clone().into()),
+        ("organization_id".to_string(), org_key.clone().into()),
+        ("type_key".to_string(), type_key.into()),
+    ]);
+    let out = crate::services::pipeline_engine::store::run_asked(
         ctx,
         org_id,
         Some(user_id),
-        &default_rules::people_capture(),
-        params,
-        &purpose,
+        PEOPLE_PIPELINE,
+        vec![row],
     )
     .await
-    .map_err(start_error)?;
-    let id = Uuid::parse_str(&run.id).unwrap_or_default();
-    Ok(capture_view(id, &url, "queued", None, run.started_at))
+    .map_err(|e| {
+        ExtensionError::Db(sea_orm::DbErr::Custom(format!(
+            "people pipeline: {}",
+            e.code()
+        )))
+    })?;
+    asked_view(&out, &url)?;
+    let runs =
+        purpose::pipeline_runs(db, org_id, PEOPLE_PIPELINE, "organization_id", &org_key).await?;
+    let (id, _, state, reason, at) = runs
+        .into_iter()
+        .find(|(_, p, _, _, _)| p.get("url") == Some(&url))
+        .ok_or_else(|| ExtensionError::Db(sea_orm::DbErr::Custom("capture not recorded".into())))?;
+    Ok(capture_view(id, &url, &state, reason, at))
 }
 
 /// Latest employee list captures asked for the organization, newest first.
@@ -721,10 +733,10 @@ pub async fn people_captures(
     organization_id: Uuid,
 ) -> Result<Vec<ba::ProfileCapture>, ExtensionError> {
     organization(db, org_id, organization_id).await?;
-    let runs = purpose::runs_of(
+    let runs = purpose::pipeline_runs(
         db,
         org_id,
-        "people_capture",
+        PEOPLE_PIPELINE,
         "organization_id",
         &organization_id.to_string(),
     )
@@ -732,10 +744,7 @@ pub async fn people_captures(
     Ok(runs
         .into_iter()
         .map(|(id, p, state, reason, at)| {
-            let url = match p {
-                Purpose::PeopleCapture { url, .. } | Purpose::ConnectionsCapture { url, .. } => url,
-                Purpose::PersonMatch { .. } | Purpose::Pipeline { .. } => String::new(),
-            };
+            let url = p.get("url").cloned().unwrap_or_default();
             capture_view(id, &url, &state, reason, at)
         })
         .collect())
@@ -744,43 +753,6 @@ pub async fn people_captures(
 /// Property of `prospecting_b2b` naming the captured employee list a flow
 /// has yet to read (D779).
 const PEOPLE_TO_READ: &str = "people_to_read";
-
-/// An employee list captured by its rule run: a document of the
-/// organization, marked to read when the org has the prospecting pack.
-pub async fn people_captured(
-    ctx: &AppContext,
-    org_id: i64,
-    source_ref: &str,
-    organization_id: &str,
-    url: &str,
-    text: &str,
-) -> Result<(), ExtensionError> {
-    let Ok(id) = Uuid::parse_str(organization_id) else {
-        return Ok(());
-    };
-    // The type may have lost the property since the capture was asked.
-    if organization(&ctx.db, org_id, id).await.is_err() {
-        return Ok(());
-    }
-    let meta = serde_json::json!({ "people_org_id": organization_id });
-    let asset = store_text(ctx, org_id, &format!("Employees · {url}"), url, text, meta).await?;
-    crate::services::extension::link_publisher_as(ctx, org_id, source_ref, asset, organization_id)
-        .await;
-    // Written in place: a stamp, not an edit of the organization.
-    ctx.db
-        .execute_raw(stmt(
-            "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text)
-             WHERE org_id = $1 AND id = $2 AND valid_to IS NULL",
-            vec![
-                org_id.into(),
-                id.into(),
-                PEOPLE_TO_READ.into(),
-                asset.to_string().into(),
-            ],
-        ))
-        .await?;
-    Ok(())
-}
 
 /// Deletes captured profile texts and employee lists older than
 /// [`RAW_TEXT_DAYS`] (D333, D779).
