@@ -1150,6 +1150,13 @@ mod tests {
         let hidden = &c.steps[d::CONNECTIONS_HIDDEN_STEP as usize];
         assert_eq!(hidden.action(), "assert");
         assert!(format!("{hidden:?}").contains("connectionOf"), "{hidden:?}");
+        // The profile also links the mutual connections (network F only):
+        // the click must target the full list (F and S).
+        let click = format!("{:?}", c.steps[3]);
+        assert!(
+            click.contains(r#"connectionOf'][href*='\"S\"']"#),
+            "{click}"
+        );
     }
 
     use super::*;

@@ -104,6 +104,9 @@ pub const CONNECTIONS_HIDDEN_STEP: u32 = 5;
 /// shown for one's own connections, and only when they share it), then
 /// each result page is kept as cards (`connections.<n>`: whole card text
 /// and profile link). Params: `url` (canonical profile), `path`.
+/// Selectors checked on the live site on 2026-11-17: result cards are
+/// `[role=listitem]` divs (10 per page), and the profile carries a second
+/// `connectionOf` link for mutual connections (`network=["F"]` only).
 pub fn connections_capture() -> String {
     let mut out = String::from(
         "name: \"Connections of a contact · linkedin\"\n\
@@ -114,13 +117,13 @@ pub fn connections_capture() -> String {
          \x20 - open: \"{{url}}\"\n\
          \x20 - wait: {ms: 2500}\n\
          \x20 - assert: {url_contains: \"{{path}}\"}\n\
-         \x20 - click: {selector: \"a[href*='connectionOf']\", optional: true}\n\
+         \x20 - click: {selector: \"a[href*='connectionOf'][href*='\\\"S\\\"']\", optional: true}\n\
          \x20 - wait: {ms: 3000}\n\
          \x20 - assert: {url_contains: \"connectionOf\"}\n",
     );
     for n in 1..=CONNECTION_PAGES {
         out += &format!(
-            "  - scroll: \"bottom\"\n  - wait: {{ms: 2000}}\n  - extract: {{cards: {{selector: \"main li:has(a[href*='/in/'])\", max: 10, fields: {{card: {{}}, link: {{selector: \"a[href*='/in/']\", attr: \"href\"}}}}}}, as: \"connections.{n}\", optional: true}}\n"
+            "  - scroll: \"bottom\"\n  - wait: {{ms: 2000}}\n  - extract: {{cards: {{selector: \"main [role='listitem']:has(a[href*='/in/']), main li:has(a[href*='/in/'])\", max: 10, fields: {{card: {{}}, link: {{selector: \"a[href*='/in/']\", attr: \"href\"}}}}}}, as: \"connections.{n}\", optional: true}}\n"
         );
         if n < CONNECTION_PAGES {
             out += "  - click: {role: \"button\", name: \"Next\", optional: true}\n  - click: {role: \"button\", name: \"Suivant\", optional: true}\n  - wait: {ms: 4000}\n";
