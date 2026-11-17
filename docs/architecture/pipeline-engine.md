@@ -708,3 +708,38 @@ market-advisor (les lectures qu'il consomme restent, rebranchées).
 | Les pipelines des packs restent hors de l'ordonnanceur à dépendances (balayage par minute) ; `after` d'un document de pipeline n'est pas appliqué (aucun pipeline livré ne s'en sert) | nouveau type de cible de build, avec le contrat de `/data-builds` |
 | Il reste deux balayages de domaine : la boîte des terminaux MT5 (routes `/mt5` gardées, choix de Shan) et la synthèse de séance (D814) | PE8 |
 
+
+## 2026-11-17 — PE5 : conception de `browse` (D995–D996, choix de Shan)
+
+### D995 — Une étape `browse` met le run en pause, il reprend sans worker bloqué
+
+Le moteur lance la navigation (navigateur serveur, ou agent de l'extension si `session: required`,
+D782) et le run passe à l'état `waiting` ; la fin de la navigation reprend le run à l'étape
+suivante, avec la table `as` = une ligne par ligne d'entrée, une colonne par extrait. Pour que la
+reprise ne sauve qu'une ligne et un numéro d'étape, `browse` suit directement l'énumération
+(`for_each` = la table de l'`enumerate`, aucune autre étape avant) ; refus `browse_position`
+sinon. Un redémarrage du serveur ne perd rien : la navigation finie trouve son run en base. Une
+navigation sans réponse au-delà de son plafond (celui des runs d'agent) échoue la ligne, jamais
+le run. `keep: false` efface les extraits de la navigation dès la reprise (relations D976). Rejeu
+des tests : `given` porte `browse:<as>` → fichier d'extraits par ligne ; aucun navigateur.
+
+### D996 — Les finalités deviennent des étapes génériques
+
+Capture de profil (D333), liste d'employés (D779), recherche d'une personne (D788) et relations
+d'un contact (D976) quittent `site_recipes/purpose.rs` : chacune est un pipeline du pack
+`prospecting_b2b` (navigation, puis `sql` / `call` / `write`), lancé par sa route avec les
+identifiants des objets visés (`enumerate` sur l'axe d'objets restreint à ces ids). Les documents
+captés passent par `write: media`, le score de rapprochement par une fonction Starlark du pack,
+les rattachements par `proposals`, le filtrage par étiquette par `sql`. Les gardes des routes
+(opposition, plafond par jour, état par utilisateur D977, effacement D341) restent sur la route :
+elles décident si le run part, pas ce qu'il écrit.
+
+### Découpage
+
+| Lot | Contenu |
+|---|---|
+| PE5.1 | Moteur : `browse` (validation de position, pause, reprise, `keep`), rejeu par `given` ; envoi vers les moteurs de navigation existants |
+| PE5.2 | Capture de profil et liste d'employés en pipelines (`write: media`) ; `Purpose::ProfileCapture`/`PeopleCapture` supprimés |
+| PE5.3 | Recherche d'une personne en pipeline (score en Starlark, `proposals`) ; `person_match` Rust supprimé |
+| PE5.4 | Relations d'un contact en pipeline (filtre par étiquette en `sql`, `keep: false`) |
+| PE5.5 | Règles des orgs migrées en pipelines ; `/site-recipes`, page « Sites web » et `default_rules.rs` supprimés (`feat(api)!`) ; dette d'hôtes de `browser_agent.rs` levée |
