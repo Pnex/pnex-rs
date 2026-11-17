@@ -269,30 +269,36 @@ pub async fn inputs(
         .steps
         .iter()
         .filter_map(|s| match s {
-            pnex_core::pipeline::Step::Fetch(f) => f.secret.as_ref(),
+            pnex_core::pipeline::Step::Fetch(f) => Some(f),
             _ => None,
         })
-        .flat_map(|s| {
-            let grant = s
-                .token
+        .flat_map(|f| {
+            let grant = f
+                .secret
                 .iter()
+                .flat_map(|s| s.token.iter())
                 .flat_map(|t| [t.user.as_str(), t.password.as_str()]);
-            std::iter::once(s.name.as_str()).chain(grant)
+            let names = f.secret.iter().map(|s| s.name.as_str());
+            names.chain(grant).chain(f.proxy.as_deref())
         })
         .filter(|n| !n.is_empty())
         .collect();
     for name in names {
         use crate::services::secrets::store as vault;
-        let Some(ring) = crate::services::markets::keyring() else {
-            break;
-        };
         // A key the org has not set: the fetch that needs it says so.
         let Ok(Some(row)) = vault::find_by_name(db, Some(org), name).await else {
             continue;
         };
-        if let Ok(v) = vault::reveal(db, ring, Some(org), row.id).await {
-            out.secrets.insert(name.to_string(), v.trim().to_string());
-        }
+        // Set but unreadable: kept empty, so that the fetch refuses instead of
+        // calling without it (a proxy skipped would be a direct call).
+        let value = match crate::services::markets::keyring() {
+            Some(ring) => vault::reveal(db, ring, Some(org), row.id).await.ok(),
+            None => None,
+        };
+        out.secrets.insert(
+            name.to_string(),
+            value.map(|v| v.trim().to_string()).unwrap_or_default(),
+        );
     }
     for o in objects {
         let codes: Vec<String> = o
@@ -400,6 +406,17 @@ async fn table_of(db: &DatabaseConnection, org: i64, name: &str) -> Result<Uuid,
 }
 
 impl Sink for DatasetSink<'_> {
+    async fn has_table(&mut self, table: &str) -> Result<bool, Failure> {
+        self.db
+            .query_one_raw(stmt(
+                "SELECT 1 AS one FROM datasets WHERE org_id = $1 AND name = $2",
+                vec![self.org.into(), table.into()],
+            ))
+            .await
+            .map(|r| r.is_some())
+            .map_err(|_| fail("storage", json!({ "table": table })))
+    }
+
     async fn append(
         &mut self,
         table: &str,
@@ -656,24 +673,42 @@ pub struct HttpTransport;
 // the pipelines run on more than one.
 static LAST_CALL: LazyLock<Mutex<HashMap<String, Instant>>> = LazyLock::new(Default::default);
 
-fn client() -> &'static reqwest::Client {
-    static HTTP: LazyLock<reqwest::Client> = LazyLock::new(|| {
-        pnex_core::egress::guarded(reqwest::Client::builder())
-            .redirect(reqwest::redirect::Policy::custom(|a| {
-                let same = a.previous().first().map(|u| u.host_str()) == Some(a.url().host_str());
-                if same && a.previous().len() < 5 {
-                    a.follow()
-                } else {
-                    a.stop()
-                }
-            }))
-            .connect_timeout(Duration::from_secs(30))
-            .read_timeout(Duration::from_secs(120))
-            .user_agent(concat!("PNEX-Pipeline/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .expect("reqwest client")
-    });
-    &HTTP
+fn builder() -> reqwest::ClientBuilder {
+    pnex_core::egress::guarded(reqwest::Client::builder())
+        .redirect(reqwest::redirect::Policy::custom(|a| {
+            let same = a.previous().first().map(|u| u.host_str()) == Some(a.url().host_str());
+            if same && a.previous().len() < 5 {
+                a.follow()
+            } else {
+                a.stop()
+            }
+        }))
+        .connect_timeout(Duration::from_secs(30))
+        .read_timeout(Duration::from_secs(120))
+        .user_agent(concat!("PNEX-Pipeline/", env!("CARGO_PKG_VERSION")))
+}
+
+/// The client of a request: the shared one, or one per proxy of an org.
+fn client(r: &Req) -> Result<reqwest::Client, Failure> {
+    static HTTP: LazyLock<reqwest::Client> =
+        LazyLock::new(|| builder().build().expect("reqwest client"));
+    static PROXIED: LazyLock<Mutex<HashMap<String, reqwest::Client>>> =
+        LazyLock::new(Default::default);
+    let Some(proxy) = &r.proxy else {
+        return Ok(HTTP.clone());
+    };
+    let mut cache = PROXIED.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(c) = cache.get(proxy.as_str()) {
+        return Ok(c.clone());
+    }
+    // The proxy's address may carry its credentials: never in an error.
+    let invalid = || fail("proxy_invalid", Value::Null);
+    let c = reqwest::Proxy::all(proxy.clone())
+        .ok()
+        .and_then(|p| builder().proxy(p).build().ok())
+        .ok_or_else(invalid)?;
+    cache.insert(proxy.to_string(), c.clone());
+    Ok(c)
 }
 
 // Hosts the tests point at their mock server (never set outside tests).
@@ -835,7 +870,7 @@ impl Transport for HttpTransport {
     async fn get(&self, url: &reqwest::Url, r: &Req) -> Result<Option<Blob>, Failure> {
         cooled(url, r.every_ms)?;
         wait_turn(url, r.every_ms).await;
-        let out = body(url, dressed(client().get(routed(url)), r), r.max_bytes).await;
+        let out = body(url, dressed(client(r)?.get(routed(url)), r), r.max_bytes).await;
         settle(url, r.every_ms, &out);
         out
     }
@@ -902,7 +937,7 @@ impl Transport for HttpTransport {
     ) -> Result<Option<Blob>, Failure> {
         cooled(url, r.every_ms)?;
         wait_turn(url, r.every_ms).await;
-        let mut req = client().post(routed(url)).form(fields);
+        let mut req = client(r)?.post(routed(url)).form(fields);
         // The page a form came from, as a browser sends it; never another host's.
         if let Some(p) = referer.filter(|p| p.host_str() == url.host_str()) {
             req = req.header(reqwest::header::REFERER, p.as_str());
@@ -919,7 +954,7 @@ impl Transport for HttpTransport {
         r: &Req,
     ) -> Result<Option<Blob>, Failure> {
         wait_turn(url, r.every_ms).await;
-        let req = client().post(routed(url)).json(json_body);
+        let req = client(r)?.post(routed(url)).json(json_body);
         body(url, dressed(req, r), r.max_bytes).await
     }
 }

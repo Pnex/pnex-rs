@@ -22,7 +22,7 @@
 key: world_events
 name: World events
 names: {fr: "Événements du monde"}
-version: "1.3.0"
+version: "1.4.0"
 history: true
 requires: []
 description: Geopolitical events (conflicts, attacks, sanctions, blockades, ceasefires) with a place, a date and a source, from the GDELT feed for the countries watched. Unconfirmed until a member cites a source.
@@ -94,10 +94,11 @@ types:
       - { key: gdelt_ids, name: GDELT events aggregated, names: {fr: "Événements GDELT agrégés"}, kind: text, max_len: 1000 }
       - { key: credit, name: Collected through, names: {fr: "Collecté via"}, kind: text, max_len: 255 }
 imports:
+  # No schedule of its own: it runs each day just before "World event
+  # confirmations", which declares it in `after` (D946).
   - name: World events (GDELT)
     source: file
     mode: incremental
-    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: gdelt_events
       pipeline: world_events/gdelt_events
@@ -292,3 +293,30 @@ imports:
             event_ids: event_ids
             source_kind: { value: acled }
             credit: { value: "ACLED (Armed Conflict Location & Event Data), acleddata.com, under the organization's own licence" }
+  # D741: the leads a verified event confirms, every day after the GDELT
+  # leads (`after`, D946); the UCDP and ACLED events of the week are taken at
+  # the next day's run. Only an unconfirmed lead changes: a status a member
+  # set stays.
+  - name: World event confirmations
+    source: file
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: lead_confirmations
+      pipeline: world_events/lead_confirmations
+      after: [gdelt_events]
+      name: World event confirmations
+      names: {fr: "Confirmations des événements du monde"}
+      description: The GDELT leads confirmed by a UCDP or ACLED event of the same country, within a day and of a compatible kind.
+      objects:
+        - as: event
+          type: geo_event
+          key: ref
+          title: title
+          create: false
+          update: true
+          properties:
+            ref: ref
+            status: status
+            confirmed_with: confirmed_with
+

@@ -3,19 +3,20 @@
 # input of the decision model and as a benchmark of it, and the wallets that
 # bet early, as leads of a case. PNeX only reads public data: it never bets,
 # signs a transaction or holds a wallet key (J.1, J.5).
-# Source: the platform's public read-only APIs (hosts fixed in the code,
-# R9): markets and their resolution rules, hourly prices (every minute for
-# the markets listed in `fine_markets`), trades of the followed markets. The
-# hosts are blocked in France: an org reaches them through its own proxy,
-# vault secret `polymarket_proxy` (an http(s) proxy URL); without it the
-# server calls them directly. Terms of use to check before a SaaS use.
+# Source: the platform's public read-only APIs, read by the pack's pipelines
+# (pipeline-engine.md D946): markets and their resolution rules (daily
+# import), hourly prices by closed day (every minute for the markets listed
+# in `fine_markets`), trades of the followed markets. The hosts are blocked
+# in France: an org reaches them through its own proxy, vault secret
+# `polymarket_proxy` (an http(s) proxy URL, `proxy` of the fetches); without
+# it the server calls them directly. Terms of use to check before a SaaS use.
 # Probabilities and trades are rows of tables, never objects (D919, D923);
 # a wallet becomes an object only when a member adds it to a case or the
 # early bet detector proposes it.
 key: prediction_markets
 name: Prediction markets
 names: {fr: "Marchés de prédiction"}
-version: "1.0.0"
+version: "2.0.0"
 history: true
 requires: [markets]
 description: Questions on real events priced by a public prediction market, their dated resolution, the instruments, countries and companies a member says they bear on, and the wallets that bet early. Read only; an aid to analysis, not investment advice.
@@ -24,24 +25,24 @@ settings:
   - key: market_ids
     name: Markets followed
     names: {fr: "Marchés suivis"}
-    description: "Comma-separated market slugs or condition ids (0x…). Their question, rules and resolution are imported, their probabilities read every hour. Empty: nothing is read."
-    descriptions: {fr: "Slugs de marché ou identifiants de condition (0x…) séparés par des virgules. Leur question, leurs règles et leur résolution sont importées, leurs probabilités lues chaque heure. Vide : rien n'est lu."}
+    description: "Comma-separated market slugs or condition ids (0x…). Their question, rules and resolution are imported every day, their hourly probabilities read once each day is over. Empty: nothing is read."
+    descriptions: {fr: "Slugs de marché ou identifiants de condition (0x…) séparés par des virgules. Leur question, leurs règles et leur résolution sont importées chaque jour, leurs probabilités horaires lues une fois chaque journée close. Vide : rien n'est lu."}
     kind: text
     default: ""
   - key: fine_markets
     name: Markets read every minute
     names: {fr: "Marchés lus à la minute"}
-    description: "Comma-separated slugs or condition ids among the markets followed: their probabilities are read every minute (Q-PM2)."
-    descriptions: {fr: "Slugs ou identifiants de condition, parmi les marchés suivis : leurs probabilités sont lues à la minute (Q-PM2)."}
+    description: "Comma-separated slugs among the markets followed: their probabilities are also read minute by minute, over the last 7 days (Q-PM2)."
+    descriptions: {fr: "Slugs séparés par des virgules, parmi les marchés suivis : leurs probabilités sont aussi lues minute par minute, sur les 7 derniers jours (Q-PM2)."}
     kind: text
     default: ""
-  - key: history_days
-    name: Days of history at the first reading
-    names: {fr: "Jours d'historique à la première lecture"}
-    kind: number
-    default: 90
-    min: 1
-    max: 730
+  - key: history_from
+    name: Prices read from
+    names: {fr: "Probabilités lues depuis"}
+    description: "First day of the hourly probabilities: a date (2026-01-01) or relative to today (-90d, -6m)."
+    descriptions: {fr: "Premier jour des probabilités horaires : une date (2026-01-01) ou relatif à aujourd'hui (-90d, -6m)."}
+    kind: text
+    default: "-90d"
   - key: early_bet_wallet_days
     name: "Early bet: wallet younger than (days)"
     names: {fr: "Mise précoce : wallet de moins de (jours)"}
@@ -112,7 +113,7 @@ types:
     times: {known_property: known_at}
     properties:
       - { key: ref, name: Reference, names: {fr: "Référence"}, kind: text, max_len: 200, unique: true, required: true }
-      - { key: market, name: Market, names: {fr: "Marché"}, kind: ref, to_type: prediction_market, required: true }
+      - { key: condition_id, name: Market condition id, names: {fr: "Identifiant de condition du marché"}, kind: text, max_len: 66, required: true, indexed: true }
       - key: state
         name: State
         names: {fr: "État"}
@@ -155,6 +156,13 @@ link_types:
         kind: enum
         values: [up, down, unknown]
         labels: {up: {fr: "monte", en: "up"}, down: {fr: "baisse", en: "down"}, unknown: {fr: "inconnu", en: "unknown"}}
+  - key: resolution_of
+    name: resolves
+    names: {fr: "résout"}
+    inverse_name: is resolved by
+    inverse_names: {fr: "est résolu par"}
+    from_types: [prediction_resolution]
+    to_types: [prediction_market]
   - key: traded
     name: traded on
     names: {fr: "a échangé sur"}
@@ -171,3 +179,131 @@ link_types:
     inverse_names: {fr: "a financé"}
     from_types: [wallet]
     to_types: [wallet]
+pipeline_functions:
+  # The markets of a metadata answer as the platform lists them: outcomes,
+  # prices and order book tokens arrive as JSON text inside the JSON. A
+  # closed market priced exactly 1 on an outcome names its winner; the
+  # oracle's status comes first (D920: a proposal or a dispute is no
+  # resolution).
+  - name: polymarket_markets
+    language: starlark
+    description: Markets of the metadata answer, one row each, resolution state derived.
+    code: |
+      HEX = "0123456789abcdef"
+
+      def items(v):
+          x = v
+          for _ in range(2):
+              if type(x) == "string" and x != "":
+                  x = json.decode(x)
+          if type(x) != "list":
+              return []
+          out = []
+          for e in x:
+              if type(e) == "string":
+                  out.append(e.strip())
+              elif type(e) == "int" or type(e) == "float":
+                  out.append(str(e))
+          return out
+
+      def condition_ok(c):
+          if len(c) != 66 or not c.startswith("0x"):
+              return False
+          for ch in c[2:].elems():
+              if ch not in HEX:
+                  return False
+          return True
+
+      def state_of(uma, closed, winner):
+          u = (uma or "").lower()
+          if u == "proposed":
+              return "proposed"
+          if u == "disputed" or u == "challenged":
+              return "disputed"
+          if u == "resolved" or u == "settled":
+              return "final" if winner else "indeterminate"
+          if closed and winner:
+              return "final"
+          return ""
+
+      def handle(rows):
+          out = []
+          for r in rows:
+              cid = (r.get("condition_id") or "").lower()
+              if not condition_ok(cid):
+                  continue
+              outcomes = items(r.get("outcomes"))
+              closed = r.get("closed") in (True, "true")
+              winner = ""
+              if closed:
+                  prices = items(r.get("prices"))
+                  for i in range(min(len(prices), len(outcomes))):
+                      if abs(float(prices[i]) - 1.0) < 1e-9:
+                          winner = outcomes[i]
+                          break
+              state = state_of(r.get("uma_status"), closed, winner != "")
+              status = "open"
+              if state == "final" or state == "indeterminate":
+                  status = "resolved"
+              elif closed:
+                  status = "closed"
+              out.append({
+                  "condition_id": cid,
+                  "slug": r.get("slug") or "",
+                  "question": r.get("question") or "",
+                  "rules": r.get("rules") or "",
+                  "resolution_source": r.get("resolution_source") or "",
+                  "end_at": r.get("end_at") or "",
+                  "outcomes": ",".join(outcomes),
+                  "tokens": ",".join(items(r.get("tokens"))),
+                  # Text: a whole number in one row and not in another breaks the typing.
+                  "volume": "" if r.get("volume") == None else str(r.get("volume")),
+                  "status": status,
+                  "state": state,
+                  "winner": winner if state == "final" or state == "proposed" else "",
+                  "read_at": r.get("read_at") or "",
+              })
+          return out
+imports:
+  - name: Prediction markets
+    source: file
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: prediction_markets
+      pipeline: prediction_markets/markets
+      name: Prediction markets
+      names: {fr: "Marchés de prédiction"}
+      description: The markets listed in the pack settings, their rules and their resolution state. Source Polymarket public API.
+      objects:
+        - as: market
+          type: prediction_market
+          key: condition_id
+          title: title
+          properties:
+            condition_id: condition_id
+            slug: slug
+            platform: { value: polymarket }
+            rules: rules
+            resolution_source: resolution_source
+            end_at: { from: end_at, invalid: skip }
+            outcomes: outcomes
+            tokens: tokens
+            volume: { from: volume, invalid: skip }
+            status: status
+            known_at: known_at
+        # One object per state reached, never changed afterwards (D920).
+        - as: resolution
+          type: prediction_resolution
+          key: ref
+          title: resolution_title
+          update: false
+          when: { from: state, equals: none, not: true }
+          properties:
+            ref: resolution_ref
+            condition_id: condition_id
+            state: state
+            outcome: { from: winner, invalid: skip }
+            known_at: read_at
+      links:
+        - { type: resolution_of, from: resolution, to: market, close_missing: false }

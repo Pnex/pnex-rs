@@ -1,0 +1,52 @@
+# D741: a GDELT lead still unconfirmed is confirmed by a verified event
+# (UCDP, ACLED) of the same country, at most a day apart, of a compatible
+# kind (fighting and attacks confirm each other, the other kinds must be the
+# same). Reads only the org's objects; the import "World event
+# confirmations" writes the status, after the day's GDELT leads.
+key: lead_confirmations
+name: World event lead confirmations
+steps:
+  - enumerate:
+      as: events
+      cross:
+        - as: ref
+          objects:
+            type: geo_event
+            property: ref
+            title: title
+            columns: [country, event_at, kind, source_kind, status]
+  - sql:
+      as: confirmations
+      sql: |
+        WITH e AS (
+          SELECT ref, title, upper(country) AS country, kind, source_kind,
+                 coalesce(nullif(status, ''), 'unconfirmed') AS status,
+                 date_part('epoch', CAST(left(event_at, 10) AS TIMESTAMP)) AS at
+          FROM events WHERE coalesce(country, '') <> '' AND coalesce(event_at, '') <> ''),
+        leads AS (SELECT * FROM e WHERE source_kind = 'gdelt' AND status = 'unconfirmed'),
+        verified AS (SELECT * FROM e WHERE source_kind IN ('ucdp', 'acled')),
+        matched AS (
+          SELECT l.ref, l.title, v.ref AS confirmed_with,
+                 row_number() OVER (PARTITION BY l.ref ORDER BY v.ref) AS n
+          FROM leads AS l JOIN verified AS v
+            ON v.country = l.country AND abs(v.at - l.at) <= 86400
+           AND (v.kind = l.kind OR (v.kind IN ('armed_conflict', 'attack') AND l.kind IN ('armed_conflict', 'attack'))))
+        SELECT ref, title, 'confirmed' AS status, confirmed_with FROM matched WHERE n = 1
+  - write: { from: confirmations, table: { name: lead_confirmations, replace: true } }
+tests:
+  - name: a lead a day before a verified attack, another kind and another country left
+    objects:
+      "geo_event.ref?columns=country,event_at,kind,source_kind,status": ["gdelt:UA:19:a", "gdelt:UA:163:b", "gdelt:RU:19:c", "gdelt:UA:19:d", "ucdp:UA:armed_conflict:2026-11-05", "acled:RU:attack:2026-10-01"]
+    extra:
+      "geo_event.ref?columns=country,event_at,kind,source_kind,status":
+        "gdelt:UA:19:a": { title: Kharkiv lead, country: ua, event_at: "2026-11-04", kind: attack, source_kind: gdelt, status: unconfirmed }
+        "gdelt:UA:163:b": { title: Sanctions lead, country: UA, event_at: "2026-11-05", kind: sanctions, source_kind: gdelt, status: unconfirmed }
+        "gdelt:RU:19:c": { title: Far lead, country: RU, event_at: "2026-11-05", kind: attack, source_kind: gdelt, status: unconfirmed }
+        "gdelt:UA:19:d": { title: Dismissed lead, country: UA, event_at: "2026-11-05", kind: attack, source_kind: gdelt, status: dismissed }
+        "ucdp:UA:armed_conflict:2026-11-05": { title: Kharkiv, country: UA, event_at: "2026-11-05", kind: armed_conflict, source_kind: ucdp, status: confirmed }
+        "acled:RU:attack:2026-10-01": { title: Old, country: RU, event_at: "2026-10-01", kind: attack, source_kind: acled, status: confirmed }
+    expect:
+      confirmations:
+        rows: 1
+        contains:
+          - { ref: "gdelt:UA:19:a", title: Kharkiv lead, status: confirmed, confirmed_with: "ucdp:UA:armed_conflict:2026-11-05" }

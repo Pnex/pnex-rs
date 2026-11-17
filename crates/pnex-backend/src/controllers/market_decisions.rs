@@ -607,8 +607,13 @@ async fn forecast_scores(
     org: OrgContext,
     Query(q): Query<ForecastParams>,
 ) -> Result<Response> {
+    let store = match crate::services::datasets::store_of(&ctx.config) {
+        Ok(s) => s,
+        Err(e) => return super::datasets::dataset_error(e),
+    };
     let rows = crate::services::markets::prediction::forecast_scores(
         &ctx.db,
+        &store,
         org.org.id,
         q.model.as_deref().filter(|s| !s.is_empty()),
         q.model_version.as_deref().filter(|s| !s.is_empty()),
@@ -664,7 +669,11 @@ async fn prediction_features(
     if ids.is_empty() {
         return Ok(field_error("instrument", "unknown"));
     }
-    let mut rows = pm::features(&ctx.db, org.org.id, &ids, as_of).await?;
+    let store = match crate::services::datasets::store_of(&ctx.config) {
+        Ok(s) => s,
+        Err(e) => return super::datasets::dataset_error(e),
+    };
+    let mut rows = pm::features(&ctx.db, &store, org.org.id, &ids, as_of).await?;
     // A market the caller is not cleared for is left out (governance.md D801).
     let hidden = match super::ontology::redaction(&ctx, &org).await {
         Ok(r) => r.objects,

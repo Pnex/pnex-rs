@@ -11,7 +11,6 @@ pub mod moves;
 pub mod prediction;
 pub mod study;
 pub mod summary;
-pub mod world;
 
 use chrono::{DateTime, FixedOffset};
 use pnex_core::markets::{ObservationTarget, PlannedObservation};
@@ -23,8 +22,8 @@ use crate::services::secrets::Keyring;
 
 const SWEEP_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
 
-/// The passes of the markets still outside the pipelines: the MT5 inbox
-/// and the prediction markets (pipeline-engine.md PE6, PE8).
+/// The pass of the markets still outside the pipelines: the MT5 inbox
+/// (pipeline-engine.md PE8).
 pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
     init(ctx);
     let ctx = ctx.clone();
@@ -38,10 +37,6 @@ pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
                 let today = chrono::Utc::now().date_naive();
                 if let Err(e) = history::sweep(&ctx, today).await {
                     tracing::warn!(code = e.code(), "price history sweep failed");
-                }
-                let hosts = prediction::Hosts::default();
-                if let Err(e) = prediction::sweep(&ctx, &hosts, chrono::Utc::now()).await {
-                    tracing::warn!("prediction markets sweep failed: {e}");
                 }
             }
             tokio::time::sleep(SWEEP_EVERY).await;

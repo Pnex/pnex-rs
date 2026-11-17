@@ -1,0 +1,145 @@
+# Abnormal sessions of the watched series (markets-research.md D734-D738,
+# D949): a session whose change is both large against the series' own recent
+# volatility (k sample standard deviations of the 250 changes before it, 60
+# at least) and large in absolute terms (the floor). Read from the tables of
+# the watched series (FRED, BIS, ALFRED first releases, Tiingo tickers); the
+# import "Abnormal sessions" turns each one into a market_event, once.
+# Dated by ALFRED or Tiingo when they give the publication day; a FRED or BIS
+# value without one counts as known when read, and flagged `backfilled` when
+# more than 5 days old (its real publication date is lost).
+key: market_moves
+name: Abnormal sessions of the watched series
+steps:
+  - enumerate: { as: macro_entries, cross: [{ as: entry, setting: markets.move_series }] }
+  - enumerate: { as: ticker_entries, cross: [{ as: entry, setting: markets.move_tickers }] }
+  - enumerate: { as: run, cross: [{ as: today, periods: day, from: today }] }
+  # `[bis:]CODE:mode:asset_class[:k[:floor]]`; a malformed entry is left out.
+  - sql:
+      as: watched
+      sql: |
+        WITH raw AS (
+          SELECT 'macro' AS source, trim(entry) AS e FROM macro_entries
+          UNION ALL SELECT 'ticker' AS source, trim(entry) AS e FROM ticker_entries),
+        s AS (
+          SELECT source, CASE WHEN lower(split_part(e, ':', 1)) = 'bis' THEN substr(e, 5) ELSE e END AS e FROM raw),
+        p AS (
+          SELECT source, upper(trim(split_part(e, ':', 1))) AS code, trim(split_part(e, ':', 2)) AS mode,
+                 trim(split_part(e, ':', 3)) AS asset_class, trim(split_part(e, ':', 4)) AS k_raw,
+                 trim(split_part(e, ':', 5)) AS floor_raw, split_part(e, ':', 6) AS rest
+          FROM s)
+        SELECT DISTINCT source, code, mode, asset_class,
+               CASE WHEN k_raw = '' THEN 3.0 ELSE CAST(k_raw AS DOUBLE) END AS k,
+               CASE WHEN floor_raw <> '' THEN CAST(floor_raw AS DOUBLE)
+                    WHEN mode = 'diff' THEN 0.15
+                    WHEN mode = 'volume' THEN 0.6931471805599453
+                    WHEN asset_class = 'fx' THEN 0.0075
+                    ELSE 0.02 END AS floor
+        FROM p
+        WHERE code <> '' AND rest = ''
+          AND mode IN ('log_return', 'diff', 'volume')
+          AND asset_class IN ('equity_index', 'commodity', 'rates', 'volatility', 'fx', 'crypto')
+          AND (k_raw = '' OR regexp_like(k_raw, '^[0-9]*[.]?[0-9]+$'))
+          AND (floor_raw = '' OR regexp_like(floor_raw, '^[0-9]*[.]?[0-9]+$'))
+  - sql:
+      as: series
+      tables: { fred: fred_move_series, bis: bis_series, alfred: alfred_move_series, tickers: tiingo_move_tickers }
+      columns:
+        fred: [metric, end, value]
+        bis: [metric, end, value]
+        alfred: [metric, end, known_on, value]
+        tickers: [queried, metric, end, known_on, value]
+      sql: |
+        WITH latest AS (
+          SELECT upper(CAST(metric AS VARCHAR)) AS code, left(CAST("end" AS VARCHAR), 10) AS d, CAST(value AS DOUBLE) AS v FROM fred
+          UNION ALL
+          SELECT upper(CAST(metric AS VARCHAR)) AS code, left(CAST("end" AS VARCHAR), 10) AS d, CAST(value AS DOUBLE) AS v FROM bis),
+        first AS (
+          SELECT upper(CAST(metric AS VARCHAR)) AS code, left(CAST("end" AS VARCHAR), 10) AS d,
+                 left(CAST(known_on AS VARCHAR), 10) AS k, CAST(value AS DOUBLE) AS v FROM alfred),
+        macro AS (
+          SELECT coalesce(l.code, f.code) AS code, coalesce(l.d, f.d) AS d, coalesce(l.v, f.v) AS v,
+                 CASE WHEN f.v IS NOT NULL AND (l.v IS NULL OR abs(f.v - l.v) < 0.000000001) THEN f.k END AS known_on
+          FROM latest AS l FULL OUTER JOIN first AS f ON f.code = l.code AND f.d = l.d),
+        tick AS (
+          SELECT upper(CAST(queried AS VARCHAR)) AS code, CAST(metric AS VARCHAR) AS metric,
+                 left(CAST("end" AS VARCHAR), 10) AS d, left(CAST(known_on AS VARCHAR), 10) AS known_on,
+                 CAST(value AS DOUBLE) AS v FROM tickers)
+        SELECT w.code, w.mode, w.asset_class, w.k, w.floor, 'macro_series' AS target_type, w.code AS metric,
+               m.d, m.v, m.known_on
+        FROM watched AS w JOIN macro AS m ON m.code = w.code
+        WHERE w.source = 'macro' AND w.mode <> 'volume' AND m.v IS NOT NULL
+        UNION ALL
+        SELECT w.code, w.mode, w.asset_class, w.k, w.floor, 'instrument' AS target_type, t.metric,
+               t.d, t.v, t.known_on
+        FROM watched AS w JOIN tick AS t
+          ON t.code = w.code AND t.metric = CASE WHEN w.mode = 'volume' THEN 'volume' ELSE 'close' END
+        WHERE w.source = 'ticker' AND t.v IS NOT NULL
+  # Changes between consecutive quoted days; a change that cannot be
+  # measured (a non-positive price) is left out, nothing is interpolated.
+  - sql:
+      as: moves
+      sql: |
+        WITH pts AS (
+          SELECT *, row_number() OVER (PARTITION BY code, mode, d ORDER BY v) AS dup FROM series),
+        one AS (
+          SELECT *, lag(v) OVER (PARTITION BY code, mode ORDER BY d) AS prev FROM pts WHERE dup = 1),
+        ch AS (
+          SELECT *, CASE WHEN mode = 'log_return' AND prev > 0 AND v > 0 THEN ln(v / prev)
+                         WHEN mode = 'diff' THEN v - prev
+                         WHEN mode = 'volume' AND v > 0 THEN ln(v) END AS c
+          FROM one WHERE prev IS NOT NULL),
+        win AS (
+          SELECT *,
+                 count(c) OVER (PARTITION BY code, mode ORDER BY d ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS n,
+                 stddev(c) OVER (PARTITION BY code, mode ORDER BY d ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS sigma,
+                 avg(c) OVER (PARTITION BY code, mode ORDER BY d ROWS BETWEEN 250 PRECEDING AND 1 PRECEDING) AS mean
+          FROM ch WHERE c IS NOT NULL),
+        m AS (
+          SELECT *, CASE WHEN mode = 'volume' THEN c - mean ELSE c END AS measure,
+                 greatest(k * sigma, floor) AS threshold
+          FROM win WHERE n >= 60),
+        found AS (
+          SELECT m.*, r.today FROM m CROSS JOIN run AS r
+          WHERE abs(measure) >= threshold AND (mode <> 'volume' OR measure > 0)),
+        shown AS (
+          SELECT *, CASE WHEN mode = 'log_return' THEN round((exp(measure) - 1) * 100, 1)
+                         WHEN mode = 'diff' THEN round(measure, 2)
+                         ELSE round(exp(measure), 1) END AS x
+          FROM found)
+        SELECT concat('move:', code, ':', d, ':', mode) AS ref,
+               concat(code, ' ',
+                 CASE WHEN mode = 'volume' THEN concat('volume x', CAST(x AS VARCHAR))
+                      ELSE concat(CASE WHEN x >= 0 THEN '+' ELSE '' END, CAST(x AS VARCHAR),
+                                  CASE WHEN mode = 'log_return' THEN ' %' ELSE '' END) END,
+                 ' · ', d) AS title,
+               'market_move' AS kind, d AS event_at,
+               CASE WHEN known_on IS NOT NULL THEN concat(known_on, 'T23:59:59Z')
+                    ELSE greatest(concat(d, 'T23:59:59Z'), concat(today, 'T00:00:00Z')) END AS known_at,
+               known_on IS NULL
+                 AND date_part('epoch', CAST(today AS TIMESTAMP)) - date_part('epoch', CAST(d AS TIMESTAMP)) > 432000 AS backfilled,
+               code AS series_code, asset_class,
+               CASE WHEN measure > 0 THEN 'up' ELSE 'down' END AS move_direction,
+               mode, measure, sigma, threshold,
+               CASE WHEN sigma > 0 THEN round(abs(measure / sigma), 2) ELSE 0.0 END AS score,
+               metric, target_type, code AS target_key
+        FROM shown
+  - write: { from: moves, table: { name: market_moves, replace: true } }
+tests:
+  - name: a jump of the VIX and a ticker volume, flat series quiet
+    today: "2026-11-17"
+    settings:
+      markets.move_series: "VIXCLS:diff:volatility, bis:WS_CBPOL.D.US:diff:rates:1:0.05, DGS10:bogus:rates"
+      markets.move_tickers: "SPY:volume:equity_index"
+    tables:
+      fred_move_series: fred_move_series.csv
+      bis_series: bis_series_flat.csv
+      alfred_move_series: alfred_move_series.csv
+      tiingo_move_tickers: tiingo_move_tickers.csv
+    expect:
+      watched: { rows: 3 }
+      moves:
+        rows: 3
+        contains:
+          - { ref: "move:VIXCLS:2026-11-13:diff", kind: market_move, move_direction: up, series_code: VIXCLS, target_type: macro_series, target_key: VIXCLS, known_at: "2026-11-13T23:59:59Z", backfilled: "false", title: "VIXCLS +10.08 · 2026-11-13" }
+          - { ref: "move:VIXCLS:2026-11-14:diff", move_direction: down, known_at: "2026-11-17T00:00:00Z", backfilled: "false" }
+          - { ref: "move:SPY:2026-11-12:volume", target_type: instrument, metric: volume, move_direction: up, known_at: "2026-11-12T23:59:59Z" }

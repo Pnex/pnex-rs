@@ -1,0 +1,104 @@
+# The markets an org follows (setting `market_ids`: slugs or condition ids),
+# their rules and resolution state, as the daily import "Prediction markets"
+# syncs them into objects. A market keeps the instant PNeX first read it.
+key: markets
+name: Prediction markets (Polymarket)
+hosts: [gamma-api.polymarket.com]
+requires: [prediction_markets.market_ids]
+steps:
+  - enumerate: { as: ids, cross: [{ as: id, setting: prediction_markets.market_ids }] }
+  - sql: { as: by_condition, sql: "SELECT DISTINCT lower(id) AS id FROM ids WHERE regexp_like(id, '^0[xX][0-9a-fA-F]{64}$')" }
+  - sql: { as: by_slug, sql: "SELECT DISTINCT id FROM ids WHERE regexp_like(id, '^[a-z0-9][a-z0-9-]{0,199}$') AND NOT regexp_like(id, '^0x[0-9a-f]{64}$')" }
+  - fetch:
+      as: condition_answers
+      for_each: by_condition
+      url: "https://gamma-api.polymarket.com/markets"
+      params: { condition_ids: "{{id}}" }
+      every: 200ms
+      proxy: polymarket_proxy
+  - fetch:
+      as: slug_answers
+      for_each: by_slug
+      url: "https://gamma-api.polymarket.com/markets"
+      params: { slug: "{{id}}" }
+      every: 200ms
+      proxy: polymarket_proxy
+  - read:
+      as: by_condition_raw
+      from: condition_answers
+      format: json
+      skip_invalid: true
+      columns:
+        - { name: condition_id, at: /conditionId }
+        - { name: slug, at: /slug, optional: true }
+        - { name: question, at: /question, optional: true }
+        - { name: rules, at: /description, optional: true }
+        - { name: resolution_source, at: /resolutionSource, optional: true }
+        - { name: end_at, at: /endDate, optional: true }
+        - { name: outcomes, at: /outcomes, type: json, optional: true }
+        - { name: prices, at: /outcomePrices, type: json, optional: true }
+        - { name: tokens, at: /clobTokenIds, type: json, optional: true }
+        - { name: volume, at: /volumeNum, type: float, optional: true }
+        - { name: closed, at: /closed, type: bool, optional: true }
+        - { name: uma_status, at: /umaResolutionStatus, optional: true }
+        - { name: read_at, value: "{{run_now}}" }
+  - read:
+      as: by_slug_raw
+      from: slug_answers
+      format: json
+      skip_invalid: true
+      columns:
+        - { name: condition_id, at: /conditionId }
+        - { name: slug, at: /slug, optional: true }
+        - { name: question, at: /question, optional: true }
+        - { name: rules, at: /description, optional: true }
+        - { name: resolution_source, at: /resolutionSource, optional: true }
+        - { name: end_at, at: /endDate, optional: true }
+        - { name: outcomes, at: /outcomes, type: json, optional: true }
+        - { name: prices, at: /outcomePrices, type: json, optional: true }
+        - { name: tokens, at: /clobTokenIds, type: json, optional: true }
+        - { name: volume, at: /volumeNum, type: float, optional: true }
+        - { name: closed, at: /closed, type: bool, optional: true }
+        - { name: uma_status, at: /umaResolutionStatus, optional: true }
+        - { name: read_at, value: "{{run_now}}" }
+  - sql: { as: raw, sql: "SELECT * FROM by_condition_raw UNION ALL SELECT * FROM by_slug_raw" }
+  - call: { as: decoded, from: raw, function: polymarket_markets }
+  # The instant a market was first read stays the one it was given.
+  - enumerate: { as: known, cross: [{ as: condition_id, objects: { type: prediction_market, property: condition_id, columns: [known_at] } }] }
+  - sql:
+      as: markets
+      sql: |
+        WITH m AS (
+          SELECT d.*, row_number() OVER (PARTITION BY d.condition_id ORDER BY d.slug) AS n FROM decoded AS d)
+        SELECT m.condition_id, left(m.slug, 200) AS slug,
+               left(coalesce(nullif(m.question, ''), m.condition_id), 200) AS title,
+               left(m.rules, 8000) AS rules, left(m.resolution_source, 1000) AS resolution_source,
+               nullif(m.end_at, '') AS end_at, left(m.outcomes, 500) AS outcomes, left(m.tokens, 2000) AS tokens,
+               CASE WHEN CAST(nullif(m.volume, '') AS DOUBLE) >= 0 THEN CAST(m.volume AS DOUBLE) END AS volume, m.status,
+               coalesce(nullif(k.known_at, ''), m.read_at) AS known_at,
+               coalesce(nullif(m.state, ''), 'none') AS state, nullif(left(m.winner, 200), '') AS winner,
+               m.read_at,
+               concat(m.condition_id, ':', m.state, ':', m.winner) AS resolution_ref,
+               left(concat(m.state, ': ', coalesce(nullif(m.question, ''), m.condition_id)), 200) AS resolution_title
+        FROM m LEFT JOIN known AS k ON k.condition_id = m.condition_id
+        WHERE m.n = 1
+  - write: { from: markets, table: { name: prediction_markets, replace: true } }
+tests:
+  - name: a resolved market by condition id, an open disputed one by slug
+    today: "2026-11-17"
+    settings: { prediction_markets.market_ids: "0x1111111111111111111111111111111111111111111111111111111111111111, fed-cut-january, not a slug!" }
+    objects:
+      "prediction_market.condition_id?columns=known_at": ["0x1111111111111111111111111111111111111111111111111111111111111111"]
+    extra:
+      "prediction_market.condition_id?columns=known_at":
+        "0x1111111111111111111111111111111111111111111111111111111111111111": { title: Fed cut in December?, known_at: "2026-11-01T08:00:00Z" }
+    given:
+      "https://gamma-api.polymarket.com/markets?condition_ids=0x1111111111111111111111111111111111111111111111111111111111111111": polymarket_market_resolved.json
+      "https://gamma-api.polymarket.com/markets?slug=fed-cut-january": polymarket_market_disputed.json
+    expect:
+      by_slug: { rows: 1 }
+      markets:
+        rows: 2
+        contains:
+          - { condition_id: "0x1111111111111111111111111111111111111111111111111111111111111111", status: resolved, state: final, winner: "Yes", outcomes: "Yes,No", tokens: "123,456", known_at: "2026-11-01T08:00:00Z", resolution_title: "final: Fed cut in December?" }
+          - { condition_id: "0x2222222222222222222222222222222222222222222222222222222222222222", slug: fed-cut-january, status: open, state: disputed, tokens: "789,790" }

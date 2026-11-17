@@ -1,8 +1,8 @@
 //! The daily session summary (markets-research.md D814): once a session
 //! has moves, the org's own AI provider (D119, usage `extraction`) writes a
-//! short note from the session view, sent like the session notice (app and
-//! `move_notify_channels`). Read only: no tool, no object written. Off
-//! unless the org turns on `session_summary`.
+//! short note from the session view, sent in the app and to the channels of
+//! `move_notify_channels`. Read only: no tool, no object written. Off unless
+//! the org turns on `session_summary`.
 
 use std::time::Duration;
 

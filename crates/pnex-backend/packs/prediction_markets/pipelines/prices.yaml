@@ -1,0 +1,71 @@
+# Hourly probabilities of each outcome of the followed markets, one closed
+# day at a time from the setting `history_from`. A price is public at its
+# instant (H.8): `ts` is when it was known.
+key: prices
+name: Prediction market prices (hourly)
+hosts: [clob.polymarket.com]
+schedule: 5m
+steps:
+  - enumerate:
+      as: days
+      track: true
+      per_run: 60
+      empty: settled
+      cross:
+        - { as: condition_id, objects: { type: prediction_market, property: condition_id, columns: [tokens, outcomes] } }
+        - { as: day, periods: day, from_setting: prediction_markets.history_from, from: "-90d", closed_only: true }
+  # One row per outcome token (a market lists them in the same order).
+  - sql:
+      as: tokens
+      sql: |
+        WITH d AS (
+          SELECT condition_id, tokens, outcomes,
+                 CAST(date_part('epoch', CAST(day AS TIMESTAMP)) AS BIGINT) AS start_ts FROM days),
+        t AS (
+          SELECT condition_id, split_part(tokens, ',', 1) AS token, split_part(outcomes, ',', 1) AS outcome, start_ts FROM d
+          UNION ALL SELECT condition_id, split_part(tokens, ',', 2), split_part(outcomes, ',', 2), start_ts FROM d
+          UNION ALL SELECT condition_id, split_part(tokens, ',', 3), split_part(outcomes, ',', 3), start_ts FROM d
+          UNION ALL SELECT condition_id, split_part(tokens, ',', 4), split_part(outcomes, ',', 4), start_ts FROM d)
+        SELECT condition_id, token, outcome, CAST(start_ts AS VARCHAR) AS start_ts,
+               CAST(start_ts + 86399 AS VARCHAR) AS end_ts
+        FROM t WHERE regexp_like(token, '^[0-9]{1,100}$')
+  - fetch:
+      as: answers
+      for_each: tokens
+      url: "https://clob.polymarket.com/prices-history"
+      params: { market: "{{token}}", startTs: "{{start_ts}}", endTs: "{{end_ts}}", fidelity: "60" }
+      every: 200ms
+      proxy: polymarket_proxy
+  - read:
+      as: prices
+      from: answers
+      format: json
+      records: /history
+      skip_invalid: true
+      columns:
+        - { name: condition_id, value: "{{condition_id}}" }
+        - { name: token, value: "{{token}}" }
+        - { name: outcome, value: "{{outcome}}" }
+        - { name: fidelity, type: integer, value: "60" }
+        - { name: ts, at: /t, type: timestamp, format: epoch }
+        - { name: price, at: /p, type: float, range: [0, 1] }
+  - write: { from: prices, table: { name: prediction_prices } }
+tests:
+  - name: a closed day of both outcomes
+    today: "2026-11-17"
+    settings: { prediction_markets.history_from: "2026-11-16" }
+    objects:
+      "prediction_market.condition_id?columns=tokens,outcomes": ["0x1111111111111111111111111111111111111111111111111111111111111111"]
+    extra:
+      "prediction_market.condition_id?columns=tokens,outcomes":
+        "0x1111111111111111111111111111111111111111111111111111111111111111": { title: Fed cut in December?, tokens: "123,456", outcomes: "Yes,No" }
+    given:
+      "https://clob.polymarket.com/prices-history?endTs=1794873599&fidelity=60&market=123&startTs=1794787200": polymarket_prices_123.json
+      "https://clob.polymarket.com/prices-history?endTs=1794873599&fidelity=60&market=456&startTs=1794787200": polymarket_prices_456.json
+    expect:
+      tokens: { rows: 2 }
+      prices:
+        rows: 3
+        contains:
+          - { token: "123", outcome: "Yes", ts: "2026-11-16T00:00:00", price: "0.3", fidelity: "60" }
+          - { token: "456", outcome: "No", price: "0.7" }

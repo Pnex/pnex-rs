@@ -284,6 +284,11 @@ pub struct Fetch {
     /// reaches a secret through a connector.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret: Option<FetchSecret>,
+    /// A key of the org's vault holding an http(s) proxy URL the requests go
+    /// through (a source blocked in the org's country). Unset in the vault:
+    /// direct. Only a shipped pipeline may name one, as `secret`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy: Option<String>,
     /// Same bytes as the last run: the rest of the pipeline is skipped.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub skip_if_unchanged: bool,
@@ -663,6 +668,11 @@ pub struct Sql {
     /// SQL name → table of the org, besides the working tables.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tables: BTreeMap<String, String>,
+    /// SQL name of `tables` → its columns: a table the org does not hold
+    /// yet reads as empty with them (text). Without it, a missing table
+    /// makes the query give no row.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub columns: BTreeMap<String, Vec<String>>,
     pub sql: String,
 }
 
@@ -736,6 +746,11 @@ pub struct TableTarget {
     /// `append` by default.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub replace: bool,
+    /// Columns naming a row: a row whose key the table already holds, or
+    /// repeated in the run, is left out (a feed read again from its newest
+    /// rows). Append only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub key: Vec<String>,
 }
 
 /// The ontology sync (D577) of the D301 mapping.
@@ -768,7 +783,13 @@ pub struct TestCase {
     /// Today's date of the run, `YYYY-MM-DD`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub today: Option<String>,
+    /// Table of the org → CSV fixture of the pack, read by `sql` steps (text
+    /// columns); a table not listed is one the org does not hold.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tables: BTreeMap<String, String>,
     /// Address → fixture file of the pack; an address not listed answers 404.
+    /// Required when the document reads the network.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub given: BTreeMap<String, String>,
     /// Working table → what it holds.
     pub expect: BTreeMap<String, Expect>,
@@ -1030,8 +1051,12 @@ impl Document {
         if self.tests.len() > TESTS_MAX {
             bad("tests".into(), &format!("max_items:{TESTS_MAX}"));
         }
+        let networked = self
+            .steps
+            .iter()
+            .any(|s| matches!(s, Step::Fetch(_) | Step::Browse(_)));
         for (i, t) in self.tests.iter().enumerate() {
-            if t.given.is_empty() {
+            if networked && t.given.is_empty() {
                 bad(format!("tests.{i}.given"), "required");
             }
             for name in t.expect.keys() {
@@ -1224,6 +1249,9 @@ fn step_violations(
                     }
                 }
             }
+            if f.proxy.as_ref().is_some_and(|p| !valid_name(p) || f.stream) {
+                bad(format!("{at}.proxy"), "invalid");
+            }
             let cap = if f.stream {
                 STREAM_MAX_BYTES
             } else {
@@ -1340,8 +1368,14 @@ fn step_violations(
             if s.sql.len() > SQL_MAX_BYTES {
                 bad(format!("{at}.sql"), &format!("max_bytes:{SQL_MAX_BYTES}"));
             }
-            if s.tables.keys().any(|k| !valid_name(k)) {
+            if s.tables.keys().any(|k| !valid_name(k)) || s.tables.values().any(|t| !valid_name(t))
+            {
                 bad(format!("{at}.tables"), "invalid");
+            }
+            if s.columns.iter().any(|(k, cols)| {
+                !s.tables.contains_key(k) || cols.is_empty() || cols.iter().any(|c| !valid_name(c))
+            }) {
+                bad(format!("{at}.columns"), "invalid");
             }
         }
         Step::Call(c) => {
@@ -1384,6 +1418,12 @@ fn step_violations(
             if let Some(t) = &w.table {
                 if !valid_name(&t.name) {
                     bad(format!("{at}.table.name"), "invalid");
+                }
+                if (t.replace && !t.key.is_empty())
+                    || t.key.len() > 8
+                    || t.key.iter().any(|k| !valid_name(k))
+                {
+                    bad(format!("{at}.table.key"), "invalid");
                 }
             }
             if w.objects.as_ref().is_some_and(|o| o.objects.is_empty()) {

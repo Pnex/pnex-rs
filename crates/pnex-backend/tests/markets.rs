@@ -517,6 +517,11 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         assert!(calls.iter().all(|(_, q)| q == "startDate=1990-01-01"), "{calls:?}");
         let last = "ACME";
         let acme = object_id(&db, org, "instrument", "ticker", last).await.expect("instrument");
+        // The watched tickers, then the search for abnormal sessions (D946).
+        for name in ["Watched prices (Tiingo)", "Abnormal sessions"] {
+            let r = api.run(name).await;
+            assert_eq!(r["run"]["state"], "applied", "{name}: {r}");
+        }
         // D810: the volume spike is a move of measure `volume`, the only one.
         let spike = format!("move:ACME:{}:volume", price_day(300));
         let volume_moves = count(
@@ -655,6 +660,8 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
         assert_eq!(rates.len(), 100, "{rates:?}");
         assert_eq!(rates[0]["period_end"], "2026-09-08");
         // D881, D888: the cut is a market move, the only one of the series.
+        let r = api.run("Abnormal sessions").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
         let cut = object_id(&db, org, "market_event", "ref", "move:WS_CBPOL.D.JP:2026-08-20:diff").await;
         assert!(cut.is_some(), "the policy rate cut is a move");
         let moves = count(
@@ -819,8 +826,9 @@ async fn mock_move_series() -> String {
     base
 }
 
+/// Day `i` of the mock series: day 150 is yesterday, so its crash is news.
 fn move_day(i: usize) -> chrono::NaiveDate {
-    chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap() + chrono::Duration::days(i as i64)
+    chrono::Utc::now().date_naive() - chrono::Duration::days(151 - i as i64)
 }
 
 async fn count(db: &DatabaseConnection, sql: String) -> i64 {
@@ -888,9 +896,16 @@ async fn abnormal_sessions_and_their_window() {
             "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'market_event'"
         );
 
+        // The series, then the search for abnormal sessions (each day, the
+        // second after the first: D946).
+        let read = || async {
+            for name in ["Watched series (FRED)", "Abnormal sessions"] {
+                let r = api.run(name).await;
+                assert_eq!(r["run"]["state"], "applied", "{name}: {r}");
+            }
+        };
         // First reading: the old crash is found, caught up from history.
-        let r = api.run("Watched series (FRED)").await;
-        assert_eq!(r["run"]["state"], "applied", "{r}");
+        read().await;
         assert_eq!(count(&db, events.clone()).await, 1);
         let old = object_id(
             &db,
@@ -920,8 +935,8 @@ async fn abnormal_sessions_and_their_window() {
         assert!(links.to_string().contains("event_about"), "{links}");
 
         // Next reading: the new crash is news; a third adds nothing.
-        api.run("Watched series (FRED)").await;
-        api.run("Watched series (FRED)").await;
+        read().await;
+        read().await;
         assert_eq!(count(&db, events).await, 2);
         let day = move_day(150).to_string();
         let new = object_id(&db, org, "market_event", "event_at", &day)
@@ -1386,11 +1401,21 @@ async fn verified_events_confirm_leads_and_reach_the_map() {
             .await;
         assert_eq!(o["properties"]["status"], "confirmed", "{o}");
         assert_eq!(o["properties"]["country"], "UA");
+        // The lead waits for the confirmation import (D946: it runs after
+        // the GDELT leads, never inside another import).
+        let (_, o) = api
+            .call("GET", &format!("/api/v1/ontology/objects/{lead}"), None)
+            .await;
+        assert_eq!(o["properties"]["status"], "unconfirmed", "{o}");
+        let r = api.run("World event confirmations").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
         let (_, o) = api
             .call("GET", &format!("/api/v1/ontology/objects/{lead}"), None)
             .await;
         assert_eq!(o["properties"]["status"], "confirmed", "{o}");
         assert_eq!(o["properties"]["confirmed_with"], ucdp_ref.as_str());
+        assert_eq!(o["title"], "Kharkiv lead", "the title stays");
+        assert_eq!(o["properties"]["kind"], "attack", "the other properties stay");
 
         let r = api.run("Verified events (ACLED, your account)").await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
@@ -1620,18 +1645,9 @@ async fn world_events_volume() {
             println!("{label}: {}", size(what).await);
         }
         let started = std::time::Instant::now();
-        let n = pnex_backend::services::markets::world::confirm_leads(
-            &db,
-            org,
-            &pnex_backend::services::ontology::Actor {
-                user_id: None,
-                role: pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole::Owner,
-                source_ref: "test:volume".into(),
-            },
-        )
-        .await
-        .unwrap();
-        println!("a second confirmation pass: {n} more in {:?}", started.elapsed());
+        let (r, _) = api.run_long("World event confirmations").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        println!("the confirmation import: {} in {:?}", r["run"]["counts"], started.elapsed());
         let sizes = db
             .query_one_raw(Statement::from_string(
                 sea_orm::DatabaseBackend::Postgres,
@@ -1994,6 +2010,9 @@ async fn fred_first_releases_date_the_moves() {
             .unwrap();
         assert!(!stored.to_string().contains("k-fred"), "the key is never stored with the URL");
 
+        // The search reads the first releases' table: no FRED table yet.
+        let r = api.run("Abnormal sessions").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
         let day = move_day(120).to_string();
         let ev = object_id(&db, org, "market_event", "ref", &format!("move:TESTIDX:{day}:log_return"))
             .await
@@ -3272,14 +3291,10 @@ async fn point_in_time_reads_never_show_a_canary() {
         let fed = create(pm_market(&fed_cid, "Fed cut", &old)).await;
         link("bears_on", fed.clone(), gold_id.clone()).await;
         let price = |cid: &str, token: &str, at: String, p: f64| {
-            let (db, cid, token) = (ctx.db.clone(), cid.to_string(), token.to_string());
+            let (ctx, cid, token) = (ctx.clone(), cid.to_string(), token.to_string());
             async move {
-                db.execute_unprepared(&format!(
-                    "INSERT INTO prediction_prices (org_id, condition_id, token, outcome, fidelity, ts, price, known_at) \
-                     VALUES ({org}, '{cid}', '{token}', 'Yes', 60, '{at}', {p}, '{at}')"
-                ))
-                .await
-                .unwrap();
+                let ts = chrono::DateTime::parse_from_rfc3339(&at).unwrap().timestamp();
+                seed_prediction_prices(&ctx, org, &[(&cid, &token, ts, p)]).await;
             }
         };
         price(&fed_cid, "bbbb1", (chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339(), 0.4).await;
@@ -3721,7 +3736,7 @@ async fn price_moves_get_candidate_causal_chains() {
 async fn prediction_markets_collect_resolve_and_feed_the_model() {
     with_app(|server, ctx, token| async move {
         use axum::extract::Query;
-        use pnex_backend::services::markets::prediction::{self, Hosts};
+        use pnex_backend::services::pipeline_engine::store::{run_for_org, shipped, route_for_tests, HttpTransport};
         use std::collections::HashMap;
         let org = server
             .get("/api/v1/user-info")
@@ -3795,36 +3810,37 @@ async fn prediction_markets_collect_resolve_and_feed_the_model() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let hosts = Hosts { gamma: base.clone(), clob: base.clone(), data: base };
+        for host in ["gamma-api.polymarket.com", "clob.polymarket.com", "data-api.polymarket.com"] {
+            route_for_tests(host, &base);
+        }
+        let first_day = (chrono::Utc::now() - chrono::Duration::days(4)).date_naive().to_string();
         let (st, r) = api
             .call("PATCH", "/api/v1/ontology/packs/prediction_markets/settings",
-                  Some(json!({ "values": { "market_ids": format!("{C}, not a market"), "history_days": 3 } })))
+                  Some(json!({ "values": { "market_ids": format!("{C}, not a market"), "history_from": first_day } })))
             .await;
         assert_eq!(st, 200, "{r}");
-        let client = reqwest::Client::new();
-        let run = |at: i64| {
-            let (db, client, hosts) = (ctx.db.clone(), client.clone(), hosts.clone());
-            async move {
-                // Each pass reads the market again (the hourly refresh is reset).
-                db.execute_unprepared("UPDATE prediction_cursors SET last_ts = 0 WHERE key = 'm:refresh'").await.unwrap();
-                prediction::pass(&db, &client, &hosts, org, at).await.unwrap();
-            }
+        // The daily import, run by hand; a second apart, so that each state
+        // reached has its own instant.
+        let import = || async {
+            tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+            let r = api.run("Prediction markets").await;
+            assert_eq!(r["run"]["state"], "applied", "{r}");
         };
-        run(now).await;
+        import().await;
         let market = object_id(&ctx.db, org, "prediction_market", "condition_id", C).await.expect("market recorded");
-        let count = |sql: String| {
-            let db = ctx.db.clone();
-            async move {
-                db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql))
-                    .await
-                    .unwrap()
-                    .unwrap()
-                    .try_get::<i64>("", "n")
-                    .unwrap()
-            }
-        };
-        assert!(count(format!("SELECT count(*) AS n FROM prediction_prices WHERE org_id = {org} AND token = '111'")).await >= 70);
-        assert_eq!(count(format!("SELECT count(*) AS n FROM prediction_trades WHERE org_id = {org}")).await, 2);
+        let store = pnex_backend::services::datasets::store_of(&ctx.config).unwrap();
+        let pipeline = |key: &str| shipped().iter().find(|p| p.id() == format!("prediction_markets/{key}")).unwrap();
+        // Prices are read by closed day: run as if two days later, every
+        // point of the mock is in a closed day.
+        let later = chrono::Utc::now() + chrono::Duration::days(2);
+        let out = run_for_org(&ctx.db, &store, org, pipeline("prices"), &HttpTransport, later, None).await.unwrap();
+        assert!(out.failure.is_none(), "{:?}", out.failure);
+        assert!(out.written >= 70, "hourly points of both outcomes: {}", out.written);
+        // Trades: the same page twice, kept once (the write's key).
+        let out = run_for_org(&ctx.db, &store, org, pipeline("trades"), &HttpTransport, chrono::Utc::now(), None).await.unwrap();
+        assert_eq!((out.failure.is_none(), out.written), (true, 2), "{:?}", out.failure);
+        let out = run_for_org(&ctx.db, &store, org, pipeline("trades"), &HttpTransport, chrono::Utc::now(), None).await.unwrap();
+        assert_eq!((out.failure.is_none(), out.written), (true, 0), "{:?}", out.failure);
 
         // The model's input: linked by a member, unresolved, as known now.
         let (st, gold) = api
@@ -3847,8 +3863,9 @@ async fn prediction_markets_collect_resolve_and_feed_the_model() {
             }
         };
         let iso = |t: i64| chrono::DateTime::from_timestamp(t, 0).unwrap().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-        let later = iso(now + 60);
-        let f = features(later.clone()).await;
+        // A second ahead: an instant in whole seconds may fall before the link.
+        let t = || chrono::Utc::now().timestamp() + 1;
+        let f = features(iso(t())).await;
         assert_eq!(f["count"], 1, "{f}");
         let x = &f["results"][0];
         assert_eq!((x["direction"].as_str(), x["outcome"].as_str()), (Some("down"), Some("Yes")), "{x}");
@@ -3859,16 +3876,18 @@ async fn prediction_markets_collect_resolve_and_feed_the_model() {
         assert_eq!((st, e["errors"]["fields"]["instrument"].as_str()), (400, Some("unknown")), "{e}");
 
         // Disputed, then final « No »: dated states, never resolved ahead of time.
-        run(now + 1).await;
-        assert_eq!(features(iso(now + 2)).await["count"], 1, "a dispute is no resolution");
-        run(now + 3).await;
-        let states = count(format!(
-            "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'prediction_resolution' AND properties ->> 'market' = '{market}'"
+        import().await;
+        let disputed = t() - 1;
+        assert_eq!(features(iso(disputed)).await["count"], 1, "a dispute is no resolution");
+        import().await;
+        let states = count(&ctx.db, format!(
+            "SELECT count(*) AS n FROM objects WHERE org_id = {org} AND type_key = 'prediction_resolution' \
+               AND valid_to IS NULL AND properties ->> 'condition_id' = '{C}'"
         ))
         .await;
         assert_eq!(states, 3);
-        assert_eq!(features(iso(now + 4)).await["count"], 0, "resolved: no longer an input");
-        assert_eq!(features(iso(now + 2)).await["count"], 1, "as known before the final state");
+        assert_eq!(features(iso(t())).await["count"], 0, "resolved: no longer an input");
+        assert_eq!(features(iso(disputed)).await["count"], 1, "as known before the final state");
 
         // A model's forecast against the market at the decision's instant.
         ctx.db
@@ -3897,7 +3916,7 @@ async fn prediction_markets_collect_resolve_and_feed_the_model() {
         let cid = case["id"].as_str().unwrap();
         let (st, r) = api.call("POST", &format!("/api/v1/cases/{cid}/attach"), Some(json!({ "object_id": market }))).await;
         assert_eq!(st, 200, "{r}");
-        let window = json!({ "from": iso(hour - 2 * 86_400), "to": iso(now + 10) });
+        let window = json!({ "from": iso(hour - 2 * 86_400), "to": iso(t() + 10) });
         let (st, d) = api.call("POST", &format!("/api/v1/cases/{cid}/detect"), Some(window)).await;
         assert_eq!(st, 200, "{d}");
         assert_eq!(d["inserted"], 1, "{d}");
@@ -3913,22 +3932,84 @@ async fn prediction_markets_collect_resolve_and_feed_the_model() {
         assert!(object_id(&ctx.db, org, "wallet", "address", "0x3333333333333333333333333333333333333333").await.is_none(), "no object per wallet");
 
         // Blocked hosts (France): the org's proxy, from its vault, carries
-        // every call; the hosts themselves are never resolved here.
-        let proxy = hosts.gamma.clone();
-        pnex_backend::services::markets::allow_test_host(&proxy);
-        let (st, r) = api.call("POST", "/api/v1/secrets", Some(json!({ "name": "polymarket_proxy", "value": proxy }))).await;
+        // the calls; the host's own address is closed here.
+        let (st, r) = api.call("POST", "/api/v1/secrets", Some(json!({ "name": "polymarket_proxy", "value": base }))).await;
         assert_eq!(st, 201, "{r}");
-        ctx.db.execute_unprepared("UPDATE prediction_cursors SET last_ts = 0 WHERE key = 'm:refresh'").await.unwrap();
+        route_for_tests("gamma-api.polymarket.com", "http://127.0.0.1:1");
         let before = calls.load(Ordering::SeqCst);
-        let blocked = Hosts {
-            gamma: "http://gamma.blocked.invalid".into(),
-            clob: "http://clob.blocked.invalid".into(),
-            data: "http://data.blocked.invalid".into(),
-        };
-        prediction::sweep(&ctx, &blocked, chrono::Utc::now()).await.unwrap();
+        let r = api.run("Prediction markets").await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
         assert_eq!(calls.load(Ordering::SeqCst), before + 1, "the market was read through the proxy");
     })
     .await;
+}
+
+/// Rows of the org table the prices pipeline writes (`prediction_prices`):
+/// (condition id, token, instant in seconds, price), hourly.
+async fn seed_prediction_prices(
+    ctx: &loco_rs::app::AppContext,
+    org: i64,
+    rows: &[(&str, &str, i64, f64)],
+) {
+    use arrow_array::{
+        Float64Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
+    };
+    use arrow_schema::{DataType, Field, Schema, TimeUnit};
+    use pnex_backend::services::datasets;
+    let text = |f: fn(&(&str, &str, i64, f64)) -> String| {
+        Arc::new(StringArray::from(rows.iter().map(f).collect::<Vec<_>>())) as arrow_array::ArrayRef
+    };
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("condition_id", DataType::Utf8, true),
+        Field::new("token", DataType::Utf8, true),
+        Field::new("outcome", DataType::Utf8, true),
+        Field::new("fidelity", DataType::Int64, true),
+        Field::new(
+            "ts",
+            DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
+            true,
+        ),
+        Field::new("price", DataType::Float64, true),
+    ]));
+    let batch = RecordBatch::try_new(
+        schema,
+        vec![
+            text(|r| r.0.to_string()),
+            text(|r| r.1.to_string()),
+            text(|_| "Yes".to_string()),
+            Arc::new(Int64Array::from(vec![60; rows.len()])),
+            Arc::new(
+                TimestampMicrosecondArray::from(
+                    rows.iter().map(|r| r.2 * 1_000_000).collect::<Vec<_>>(),
+                )
+                .with_timezone("UTC"),
+            ),
+            Arc::new(Float64Array::from(
+                rows.iter().map(|r| r.3).collect::<Vec<_>>(),
+            )),
+        ],
+    )
+    .unwrap();
+    let store = datasets::store_of(&ctx.config).unwrap();
+    let id: uuid::Uuid = match datasets::create(&ctx.db, org, "prediction_prices").await {
+        Ok(d) => d.id.parse().unwrap(),
+        Err(_) => ctx
+            .db
+            .query_one_raw(Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                format!(
+                    "SELECT id FROM datasets WHERE org_id = {org} AND name = 'prediction_prices'"
+                ),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "id")
+            .unwrap(),
+    };
+    datasets::append_batch(&ctx.db, &store, org, id, &batch)
+        .await
+        .unwrap();
 }
 
 /// Public trading accounts (markets-research.md appendix K): trades stored

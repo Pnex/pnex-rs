@@ -860,40 +860,6 @@ async fn write_locked(
     if out.is_ok() {
         diff.written = Some(written);
     }
-    // Derived objects under the same lock: two runs at once would both find
-    // a move or a lead missing and write it twice (refs are not unique in
-    // the database).
-    if out.is_ok() {
-        // D741: leads confirmed by a verified event, whichever came first.
-        if imp.mapping().is_ok_and(|m| {
-            m.objects
-                .iter()
-                .any(|o| o.type_key == crate::services::markets::moves::GEO_TYPE)
-        }) {
-            match crate::services::markets::world::confirm_leads(db, imp.org_id, actor).await {
-                Ok(n) if n > 0 => tracing::info!(
-                    org = imp.org_id,
-                    confirmed = n,
-                    "world event leads confirmed"
-                ),
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::warn!(org = imp.org_id, error = %e, "world event confirmation failed")
-                }
-            }
-        }
-        // D735: abnormal sessions of the watched series this run stored.
-        if let Some(target) = imp.mapping().ok().and_then(|m| m.observations) {
-            crate::services::markets::moves::after_store(
-                db,
-                imp.org_id,
-                actor,
-                &target,
-                &diff.observations,
-            )
-            .await;
-        }
-    }
     lock.release().await;
     // D431: the watched objects it updated count a check run.
     if out.is_ok() {

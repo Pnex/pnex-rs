@@ -1,0 +1,60 @@
+# Public trades of the followed markets, newest first: the 1 500 newest of
+# each market every 20 minutes, a trade already kept left out by its key.
+# A market busier than that between two runs loses the trades in between.
+key: trades
+name: Prediction market trades
+hosts: [data-api.polymarket.com]
+schedule: 20m
+steps:
+  - enumerate:
+      as: pages
+      cross:
+        - { as: condition_id, objects: { type: prediction_market, property: condition_id } }
+        - { as: offset, values: ["0", "500", "1000"] }
+  - fetch:
+      as: answers
+      for_each: pages
+      url: "https://data-api.polymarket.com/trades"
+      params: { market: "{{condition_id}}", limit: "500", offset: "{{offset}}" }
+      every: 200ms
+      proxy: polymarket_proxy
+  - read:
+      as: raw
+      from: answers
+      format: json
+      skip_invalid: true
+      columns:
+        - { name: wallet, at: /proxyWallet }
+        - { name: side, at: /side, map: { BUY: buy, SELL: sell, buy: buy, sell: sell } }
+        - { name: token, at: /asset, optional: true }
+        - { name: condition_id, at: /conditionId }
+        - { name: outcome, at: /outcome, optional: true }
+        - { name: size, at: /size, type: float, range: [0, 1000000000000] }
+        - { name: price, at: /price, type: float, range: [0, 1] }
+        - { name: ts, at: /timestamp, type: timestamp, format: epoch }
+        - { name: tx, at: /transactionHash, optional: true }
+  - sql:
+      as: trades
+      sql: |
+        SELECT lower(condition_id) AS condition_id, coalesce(token, '') AS token, coalesce(outcome, '') AS outcome,
+               lower(wallet) AS wallet, side, size, price, ts, coalesce(tx, '') AS tx
+        FROM raw
+        WHERE regexp_like(lower(wallet), '^0x[0-9a-f]{40}$')
+          AND regexp_like(lower(condition_id), '^0x[0-9a-f]{64}$')
+  - write: { from: trades, table: { name: prediction_trades, key: [tx, wallet, token, side, ts] } }
+tests:
+  - name: a page of trades, a bad wallet left out
+    today: "2026-11-17"
+    objects:
+      prediction_market.condition_id: ["0x1111111111111111111111111111111111111111111111111111111111111111"]
+    given:
+      "https://data-api.polymarket.com/trades?limit=500&market=0x1111111111111111111111111111111111111111111111111111111111111111&offset=0": polymarket_trades.json
+      "https://data-api.polymarket.com/trades?limit=500&market=0x1111111111111111111111111111111111111111111111111111111111111111&offset=500": polymarket_trades_empty.json
+      "https://data-api.polymarket.com/trades?limit=500&market=0x1111111111111111111111111111111111111111111111111111111111111111&offset=1000": polymarket_trades_empty.json
+    expect:
+      raw: { rows: 3 }
+      trades:
+        rows: 2
+        contains:
+          - { wallet: "0x2222222222222222222222222222222222222222", side: buy, token: "123", outcome: "Yes", price: "0.2", ts: "2023-11-14T22:13:20" }
+          - { wallet: "0x3333333333333333333333333333333333333333", side: sell }

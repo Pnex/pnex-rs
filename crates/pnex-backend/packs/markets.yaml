@@ -77,7 +77,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.19.0"
+version: "1.20.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -289,8 +289,8 @@ settings:
   - key: move_notify_channels
     name: Channels of the abnormal session notice
     names: {fr: "Canaux de l'avis de séance anormale"}
-    description: "Comma-separated names of the org's notification channels (e-mail, Slack, ntfy…) that also get the notice of each abnormal session. The in-app notice is always sent."
-    descriptions: {fr: "Noms des canaux de notification de l'org (e-mail, Slack, ntfy…), séparés par des virgules, qui reçoivent aussi l'avis de chaque séance anormale. L'avis dans l'application part toujours."}
+    description: "Comma-separated names of the org's notification channels (e-mail, Slack, ntfy…) that also get the daily session summary. The in-app summary is always sent. An abnormal session is announced by a rule on market events (Automation › Rules)."
+    descriptions: {fr: "Noms des canaux de notification de l'org (e-mail, Slack, ntfy…), séparés par des virgules, qui reçoivent aussi la synthèse quotidienne de séance. La synthèse dans l'application part toujours. Une séance anormale s'annonce par une règle sur les événements de marché (Automatisation › Règles)."}
     kind: text
     default: ""
 extends:
@@ -569,14 +569,15 @@ imports:
           title: metric
           properties:
             code: metric
+  # No schedule of its own: it runs each day just before "Abnormal
+  # sessions", which declares it in `after` (D946).
   - name: Watched series (FRED)
     mode: incremental
-    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
       key: fred_move_series
       name: Watched series
       names: {fr: "Séries surveillées"}
-      description: The series of the move_series setting; each run is followed by the search for abnormal sessions (D735).
+      description: The series of the move_series setting, read each day before the search for abnormal sessions (D735).
       pipeline: markets/fred_move_series
       observations: { type: macro_series, property: code }
       objects:
@@ -852,6 +853,58 @@ imports:
           attributes:
             nature: { value: declared }
             source: source
+  # D735, D949: the abnormal sessions of the watched series, found in SQL
+  # by the pipeline, each one a market_event created once and linked to its
+  # series. Each day after the watched FRED series; Tiingo, ALFRED and BIS
+  # tables are read as their own imports last left them.
+  - name: Abnormal sessions
+    mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
+    mapping:
+      key: market_moves
+      name: Abnormal sessions
+      names: {fr: "Séances anormales"}
+      description: The sessions of the watched series whose change is large against their own recent volatility and in absolute terms; measured on the series, not a cause.
+      pipeline: markets/market_moves
+      after: [fred_move_series]
+      objects:
+        - as: event
+          type: market_event
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: ref
+            kind: kind
+            event_at: event_at
+            known_at: known_at
+            backfilled: backfilled
+            series_code: series_code
+            asset_class: asset_class
+            move_direction: move_direction
+            mode: mode
+            measure: measure
+            sigma: sigma
+            threshold: threshold
+            score: score
+            metric: metric
+        - as: series
+          type: macro_series
+          key: code
+          create: false
+          when: { from: target_type, equals: macro_series }
+          properties:
+            code: target_key
+        - as: instrument
+          type: instrument
+          key: ticker
+          create: false
+          when: { from: target_type, equals: instrument }
+          properties:
+            ticker: target_key
+      links:
+        - { type: event_about, from: event, to: series, close_missing: false, when: { from: target_type, equals: macro_series } }
+        - { type: event_about, from: event, to: instrument, close_missing: false, when: { from: target_type, equals: instrument } }
 # Read-only queries of the pack (pipeline-engine.md D948), run under the
 # caller's rights by `POST /analysis/named/markets/<key>`.
 queries:

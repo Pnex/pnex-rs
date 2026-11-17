@@ -115,10 +115,66 @@ impl SqlRunner for InProcess {
     }
 }
 
+/// Writes kept in memory; the org's tables a case gives, from its fixtures.
 #[derive(Default)]
-struct Memory(HashMap<String, Vec<Arc<Batches>>>);
+struct Memory(
+    HashMap<String, Vec<Arc<Batches>>>,
+    HashMap<String, Arc<Batches>>,
+);
+
+impl Memory {
+    fn with_tables(pack: &str, tables: &std::collections::BTreeMap<String, String>) -> Self {
+        let given = tables
+            .iter()
+            .map(|(name, file)| {
+                let bytes =
+                    fixture(pack, file).unwrap_or_else(|| panic!("{pack}/{file}: no fixture"));
+                (name.clone(), csv_text(bytes))
+            })
+            .collect();
+        Self(HashMap::new(), given)
+    }
+}
+
+/// A CSV fixture as text columns.
+fn csv_text(bytes: &[u8]) -> Arc<Batches> {
+    use arrow_array::{ArrayRef, RecordBatch, StringArray};
+    use arrow_schema::{DataType, Field, Schema};
+    let mut rd = csv::Reader::from_reader(bytes);
+    let names: Vec<String> = rd.headers().unwrap().iter().map(str::to_string).collect();
+    let rows: Vec<csv::StringRecord> = rd.records().map(Result::unwrap).collect();
+    let schema = Arc::new(Schema::new(
+        names
+            .iter()
+            .map(|n| Field::new(n, DataType::Utf8, true))
+            .collect::<Vec<_>>(),
+    ));
+    let cols: Vec<ArrayRef> = (0..names.len())
+        .map(|i| {
+            let v: Vec<Option<&str>> = rows
+                .iter()
+                .map(|r| r.get(i).filter(|x| !x.is_empty()))
+                .collect();
+            Arc::new(StringArray::from(v)) as ArrayRef
+        })
+        .collect();
+    let mut w = super::blob::BatchWriter::new(schema.clone()).unwrap();
+    w.write(&RecordBatch::try_new(schema, cols).unwrap())
+        .unwrap();
+    w.finish().unwrap()
+}
 
 impl Sink for Memory {
+    // A replay reads no table of the worker: a key only dedupes within the
+    // run, and a table is the case's fixture or missing.
+    async fn has_table(&mut self, _: &str) -> Result<bool, Failure> {
+        Ok(false)
+    }
+
+    async fn org_table(&mut self, table: &str) -> Result<Option<Arc<Batches>>, Failure> {
+        Ok(self.1.get(table).cloned())
+    }
+
     async fn append(
         &mut self,
         table: &str,
@@ -267,7 +323,7 @@ async fn every_shipped_pipeline_passes_its_tests() {
                 pack: sp.pack.clone(),
                 given: case.given.clone().into_iter().collect(),
             };
-            let mut sink = Memory::default();
+            let mut sink = Memory::with_tables(&sp.pack, &case.tables);
             let mut kept = HashMap::new();
             let out = run(
                 &sp.doc,

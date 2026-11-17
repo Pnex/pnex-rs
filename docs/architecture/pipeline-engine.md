@@ -638,3 +638,73 @@ Lecture `xlsx` (feuille par nom ou position), grant `client_credentials`,
 corps JSON d'un `post` (`json_from`), pagination par plage
 d'enregistrements (`pages.size`), 416 lu comme une réponse vide. Génériques :
 aucun hôte ni format de source en Rust.
+
+## 2026-11-17 — PE6 : marchés de prédiction en pipelines
+
+Demande de Shan : finir PE6 par l'ingestion ; PneX collecte et sert, le modèle vit chez
+market-advisor (les lectures qu'il consomme restent, rebranchées).
+
+- **Moteur, générique** : `fetch.proxy` = nom d'une clé du coffre qui porte l'URL d'un proxy
+  http(s) (source bloquée dans le pays de l'org) ; sans clé, appel direct ; clé posée mais
+  illisible ou adresse refusée par la garde egress (R8) = échec, jamais d'appel direct de repli ;
+  l'adresse du proxy n'apparaît dans aucune erreur. Interdit avec `stream`. `write.table.key` =
+  colonnes qui nomment une ligne : une ligne dont la clé est déjà dans la table, ou répétée dans le
+  run, est écartée (anti-jointure jouée par le worker sur la table de l'org ; ajout seulement).
+  Une clé de coffre posée mais illisible est désormais gardée vide pour toutes les étapes : le
+  `fetch` refuse (`secret_required`) au lieu d'appeler sans elle.
+- **Pack `prediction_markets` 2.0.0** : quatre pipelines — `markets` (import quotidien
+  « Prediction markets » : objets marché et un objet par état de résolution atteint, jamais
+  modifié ensuite, lien `resolution_of`), `prices` (probabilités horaires par jour clos depuis
+  `history_from`), `prices_fine` (minute par minute, 7 derniers jours, slugs de `fine_markets`),
+  `trades` (1 500 plus récents par marché toutes les 20 min, clé `tx, wallet, token, side, ts`).
+  Fonction Starlark `polymarket_markets` (listes en JSON texte dans le JSON, état dérivé).
+- **Supprimés** : la passe Rust (client, proxy, curseurs, écritures), les décodeurs et les hôtes de
+  `pnex_core::markets::prediction`, leur ligne de `HOST_DEBT`, les tables PostgreSQL
+  `prediction_prices`, `prediction_trades`, `prediction_cursors` (migration 000154, rechargement de
+  zéro, D952). Les entrées du modèle, les scores face au marché et le détecteur de mises précoces
+  lisent les tables de l'org.
+
+| Écart | Où il se lève |
+|---|---|
+| Objets marché et résolutions mis à jour une fois par jour (récurrence d'import), l'ancienne passe relisait chaque heure | un ordonnanceur d'imports à l'heure, si un cas le demande |
+| Probabilités horaires lues une fois le jour clos (retard ≤ 24 h), l'ancienne passe lisait jusqu'à l'heure en cours | un `write` à clé sur le jour en cours, si le retard gêne |
+| Un état repassé (litige → proposé → litige) n'est gardé qu'une fois par couple état/issue | à garder |
+| Échanges : 3 pages de 500 par marché et par run ; un marché plus actif perd les échanges entre deux runs | `pages` par décalage, après vérification des paramètres réels de l'API |
+| `fine_markets` ne reconnaît que les slugs (filtre `codes` sur une seule propriété) | à garder |
+| Les anciens objets `prediction_resolution` (propriété `market` en référence) restent dans les orgs qui les avaient | à supprimer à la main ; les nouveaux portent `condition_id` |
+| Formes des réponses et paramètres de l'API non vérifiés en réel (hôtes et documentation bloqués depuis la France) | premier passage réel par le proxy ou un VPN |
+
+### 2026-11-17 (suite) — PE6 : fin des appels en dur après import (D946, D949)
+
+- **Confirmation des pistes (D741)** : pipeline `world_events/lead_confirmations` (objets
+  `geo_event` lus par l'axe d'objets, rapprochement pays / jour ± 1 / nature compatible en SQL)
+  et import « World event confirmations » qui ne fait que mettre à jour les pistes
+  (`create: false`, `update: true`) ; quotidien, avec `after: [gdelt_events]` : l'import GDELT
+  n'a plus de récurrence propre et tourne juste avant (ordonnanceur à dépendances D575). UCDP et
+  ACLED gardent leur rythme hebdomadaire, leurs événements sont pris au passage suivant.
+  **Supprimés** : `services/markets/world.rs`, `pnex_core::conflict_events`, l'appel dans
+  `imports::write_locked`.
+- **Séances anormales (D735–D738)** : pipeline `markets/market_moves` en SQL seul (variations
+  entre jours cotés, écart type et moyenne des 250 variations précédentes par fenêtre glissante,
+  60 au moins, seuil `max(k·σ, plancher)`), lisant les tables `fred_move_series`, `bis_series`,
+  `alfred_move_series`, `tiingo_move_tickers` ; import « Abnormal sessions » (création seule de
+  `market_event`, lien `event_about` vers la série ou l'instrument), quotidien, `after:
+  [fred_move_series]` (l'import FRED surveillé n'a plus de récurrence propre). L'avis par séance
+  devient une règle de l'org sur `market_event` (D949, choix de Shan) ; `move_notify_channels`
+  ne sert plus qu'à la synthèse quotidienne (D814). **Supprimés** : détection, avis et appel en
+  dur de `services/markets/moves.rs`.
+- **Moteur, générique** : `sql.columns` (une table de l'org déclarée dans `tables` et absente se
+  lit vide avec ces colonnes, en texte ; sans elles la requête ne donne aucune ligne) ; cas de test
+  `tables:` (table de l'org → fixture CSV du pack, lue par le rejeu) ; `given` n'est requis que si
+  le document lit le réseau ; `ln`, `exp`, `sqrt` dans la liste blanche du worker.
+
+| Écart | Où il se lève |
+|---|---|
+| Une séance d'une série sans date de publication (FRED ou BIS sans ALFRED) est datée de sa lecture et marquée `backfilled` au-delà de 5 jours ; l'ancien code la marquait seulement à la toute première lecture | à garder |
+| Un avis par événement (règle) au lieu d'un avis par séance listant ses mouvements | une règle groupée, si un cas le demande |
+| Un événement archivé par un membre peut être recréé au passage suivant (l'import ne voit que les objets vivants) ; vrai pour tout import | clé d'unicité sur les archivés, générique |
+| Si l'import FRED surveillé échoue, la recherche du jour attend (une étape en échec bloque ce qui en dépend) ; idem GDELT pour les confirmations | à garder : l'échec se voit dans les builds |
+| Tiingo, ALFRED et BIS sont lus par leurs propres imports : leurs séances sont trouvées au plus un jour plus tard | `after` sur eux quand leurs clés sont posées |
+| Les pipelines des packs restent hors de l'ordonnanceur à dépendances (balayage par minute) ; `after` d'un document de pipeline n'est pas appliqué (aucun pipeline livré ne s'en sert) | nouveau type de cible de build, avec le contrat de `/data-builds` |
+| Il reste deux balayages de domaine : la boîte des terminaux MT5 (routes `/mt5` gardées, choix de Shan) et la synthèse de séance (D814) | PE8 |
+

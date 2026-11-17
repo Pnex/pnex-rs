@@ -141,6 +141,8 @@ pub struct Req {
     pub secret_query: Option<(String, String)>,
     /// Hosts a streamed request may be redirected to: the document's (D942).
     pub hosts: Vec<String>,
+    /// The org's proxy (`proxy` of the fetch), checked by the egress guard.
+    pub proxy: Option<reqwest::Url>,
 }
 
 /// Where a `write` puts its rows: the org's tables, or memory.
@@ -154,6 +156,15 @@ pub trait Sink {
         replace: bool,
         batches: Vec<Arc<blob::Batches>>,
     ) -> Result<u64, Failure>;
+
+    /// Whether the org holds this table already.
+    async fn has_table(&mut self, table: &str) -> Result<bool, Failure>;
+
+    /// The rows of an org table when they come from elsewhere than the
+    /// worker (a replay's fixture); `None`: the worker reads it.
+    async fn org_table(&mut self, _table: &str) -> Result<Option<Arc<blob::Batches>>, Failure> {
+        Ok(None)
+    }
 
     /// Upserts the org's time ranges by `external_id`; the rows written.
     async fn ranges(&mut self, rows: Vec<Map<String, Value>>) -> Result<u64, Failure>;
@@ -171,6 +182,16 @@ pub trait Sink {
         target: &pnex_core::pipeline::doc::ProposalsTarget,
         rows: Vec<Map<String, Value>>,
     ) -> Result<u64, Failure>;
+}
+
+/// An empty table of text columns.
+fn empty_text(cols: &[String]) -> Result<Arc<blob::Batches>, Failure> {
+    use arrow_schema::{DataType, Field, Schema};
+    let fields: Vec<Field> = cols
+        .iter()
+        .map(|c| Field::new(c, DataType::Utf8, true))
+        .collect();
+    blob::BatchWriter::new(Arc::new(Schema::new(fields)))?.finish()
 }
 
 /// The rows of a table as JSON records, timestamps in RFC 3339 UTC.
@@ -531,6 +552,54 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
         hosts
     }
 
+    /// The rows of a keyed write the table does not hold yet, each key once.
+    async fn unseen(
+        &mut self,
+        t: &pnex_core::pipeline::doc::TableTarget,
+        files: Vec<Arc<blob::Batches>>,
+    ) -> Result<Vec<Arc<blob::Batches>>, Failure> {
+        let file = match files.len() {
+            0 => return Ok(files),
+            1 => files[0].clone(),
+            _ => blocking(move || blob::merged(&files)).await?,
+        };
+        if file.rows == 0 {
+            return Ok(Vec::new());
+        }
+        let columns: Vec<String> = file
+            .schema
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect();
+        if let Some(k) = t.key.iter().find(|k| !columns.contains(k)) {
+            return Err(fail("unknown_column", json!({ "column": k })));
+        }
+        let q = |c: &str| format!("\"{c}\"");
+        let cols: Vec<String> = columns.iter().map(|c| format!("f.{}", q(c))).collect();
+        let keys: Vec<String> = t.key.iter().map(|k| q(k)).collect();
+        let mut sql = format!(
+            "SELECT {} FROM (SELECT *, row_number() OVER (PARTITION BY {}) AS pnex_rank \
+             FROM pnex_fresh) AS f WHERE f.pnex_rank = 1",
+            cols.join(", "),
+            keys.join(", ")
+        );
+        let mut tables = std::collections::BTreeMap::new();
+        if self.sink.has_table(&t.name).await? {
+            let same: Vec<String> = keys.iter().map(|k| format!("k.{k} = f.{k}")).collect();
+            sql.push_str(&format!(
+                " AND NOT EXISTS (SELECT 1 FROM pnex_kept AS k WHERE {})",
+                same.join(" AND ")
+            ));
+            tables.insert("pnex_kept".to_string(), t.name.clone());
+        }
+        let out = self
+            .sql
+            .run(&sql, vec![("pnex_fresh".to_string(), file)], &tables)
+            .await?;
+        Ok(out.into_iter().collect())
+    }
+
     async fn fetch(&mut self, f: &Fetch, input: Vec<Row>) -> Result<Vec<Row>, Failure> {
         let mut out = Vec::new();
         for row in input {
@@ -583,6 +652,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
             self.inputs
                 .secrets
                 .get(name)
+                .filter(|v| !v.is_empty())
                 .cloned()
                 .ok_or_else(|| fail("secret_required", json!({ "name": name })))
         };
@@ -766,6 +836,18 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
             headers,
             ..Default::default()
         };
+        if let Some(raw) = f.proxy.as_ref().and_then(|n| self.inputs.secrets.get(n)) {
+            // Never the address in the failure: it may carry credentials.
+            let invalid = || fail("proxy_invalid", json!({ "name": f.proxy }));
+            let p = reqwest::Url::parse(raw).map_err(|_| invalid())?;
+            if !matches!(p.scheme(), "http" | "https") {
+                return Err(invalid());
+            }
+            if let Some(code) = pnex_core::egress::check_url(&p) {
+                return Err(fail(code, json!({ "name": f.proxy })));
+            }
+            req.proxy = Some(p);
+        }
         if let Some(sec) = &f.secret {
             self.host_in(&url, false)?;
             let value = match &sec.token {
@@ -774,6 +856,7 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     .inputs
                     .secrets
                     .get(&sec.name)
+                    .filter(|v| !v.is_empty())
                     .cloned()
                     .ok_or_else(|| fail("secret_required", json!({ "name": sec.name })))?,
             };
@@ -1013,6 +1096,10 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     None => return Err(fail("not_rows", json!({ "table": w.from }))),
                 };
                 if let Some(t) = &w.table {
+                    let batches = match t.key.is_empty() {
+                        true => batches,
+                        false => self.unseen(t, batches).await?,
+                    };
                     if batches.iter().any(|b| b.rows > 0) {
                         *written += self.sink.append(&t.name, t.replace, batches).await?;
                     }
@@ -1067,10 +1154,24 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     };
                     staged.push((name.clone(), file));
                 }
+                // Tables of the org: given by the sink, read by the worker, or
+                // missing (empty with the declared columns, else no row).
+                let mut org_tables = std::collections::BTreeMap::new();
+                for (alias, name) in &q.tables {
+                    if let Some(file) = self.sink.org_table(name).await? {
+                        staged.push((alias.clone(), file));
+                    } else if self.sink.has_table(name).await? {
+                        org_tables.insert(alias.clone(), name.clone());
+                    } else if let Some(cols) = q.columns.get(alias) {
+                        staged.push((alias.clone(), empty_text(cols)?));
+                    } else {
+                        unknown_empty = true;
+                    }
+                }
                 // A table with no row and no declared column: the query gives no row.
                 let out = match unknown_empty {
                     true => None,
-                    false => self.sql.run(&q.sql, staged, &q.tables).await?,
+                    false => self.sql.run(&q.sql, staged, &org_tables).await?,
                 };
                 Table::Batches(out.into_iter().collect())
             }

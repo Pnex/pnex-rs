@@ -310,14 +310,21 @@ pub async fn detect(
 
     // Early bets on the prediction markets of the case (markets-research.md
     // D924): a proposal with the figures, never an accusation.
-    let early = crate::services::markets::prediction::case_detections(
-        db,
-        org_id,
-        &members,
-        from.timestamp(),
-        to.timestamp(),
-    )
-    .await?;
+    // Without the tables' storage there is no trade to read.
+    let early = match store {
+        Some(store) => {
+            crate::services::markets::prediction::case_detections(
+                db,
+                store,
+                org_id,
+                &members,
+                from.timestamp(),
+                to.timestamp(),
+            )
+            .await?
+        }
+        None => Vec::new(),
+    };
     for (market, b) in early {
         let detector = crate::services::markets::prediction::EARLY_BET;
         found.push(Found {

@@ -21,13 +21,13 @@ Each entry reads `CODE:mode:class`:
 - class `equity_index`, `commodity`, `rates`, `volatility`, `fx` or `crypto`;
 - optionally `:k:floor` to change the thresholds of one series.
 
-**Daily session summary (AI)**: set it to `on` and, the day after a session with abnormal moves, your org's own AI provider (the one used for file analyses) writes a short note from the session's moves, filings and world events. It comes with the session notice, once per session. It never claims a cause, never advises, and writes nothing. Without a provider, nothing is sent.
+**Daily session summary (AI)**: set it to `on` and, the day after a session with abnormal moves, your org's own AI provider (the one used for file analyses) writes a short note from the session's moves, filings and world events, once per session, in the app and on the channels named in **Channels of the abnormal session notice** (comma-separated names of the organization's channels). It never claims a cause, never advises, and writes nothing. Without a provider, nothing is sent.
 
-The imports **Watched series (FRED)** and **Watched prices (Tiingo)** read them every day. A session counts as abnormal when its change is at least 3 times the series' usual volatility over the year before (sigma) **and** at least a floor: 2 % for a price, 0.75 % for a currency, 0.15 for a rate or the VIX. Each one becomes a **Market event** of kind *Series move*, linked to its series. The org gets one notice per session listing its moves.
+The imports **Watched series (FRED)** and **Watched prices (Tiingo)** read the series, then the import **Abnormal sessions** (Ontology › Imports) looks for the moves every day, just after the FRED series. A session counts as abnormal when its change is at least 3 times the series' usual volatility over the year before (sigma) **and** at least a floor: 2 % for a price, 0.75 % for a currency, 0.15 for a rate or the VIX. Each one becomes a **Market event** of kind *Series move*, linked to its series, once.
 
-To also get it by e-mail, Slack, ntfy or any other channel of the organization, write the channel names in the setting **Channels of the abnormal session notice**, separated by commas.
+To be told of each one, in the app or by e-mail, Slack, ntfy or any other channel, create a rule on the **Market event** objects of kind *Series move* (Automation › Rules).
 
-The first reading of a series finds its whole history at once: those events are marked **Caught up from history**. They are not announced, and tests that read the past leave them out, because their real publication date is lost.
+A move without a release date (FRED or BIS without ALFRED) more than 5 days old when found is marked **Caught up from history**: tests that read the past leave it out, because its real publication date is lost. Tiingo prices and ALFRED first releases are dated by their day.
 
 Sources to cite when you show these figures: the VIX belongs to the Chicago Board Options Exchange; oil prices come from the U.S. Energy Information Administration; the dollar index comes from the Federal Reserve Board.
 
@@ -40,7 +40,7 @@ The **World events** pack reads the GDELT feed for the countries in the setting 
 The feed is noisy, so PNEX makes one event per country, kind and day, with the number of sources and articles. It always starts as **Unconfirmed**: it feeds no test by default.
 
 A lead gets confirmed in two ways:
-- **By a verified event**: the UCDP and ACLED imports bring events coded by hand by these programs, already confirmed, one per country, kind and day (with the total deaths and sources). A GDELT lead of the same country, at most one day apart and of a compatible kind, then turns *Confirmed*, and **Confirmed by the verified event** gives the reference.
+- **By a verified event**: the UCDP and ACLED imports bring events coded by hand by these programs, already confirmed, one per country, kind and day (with the total deaths and sources). Every day, just after the GDELT leads, the import **World event confirmations** turns *Confirmed* each unconfirmed lead with a verified event of the same country, at most one day apart and of a compatible kind, and **Confirmed by the verified event** gives the reference. A status a member set is never changed.
   - UCDP is free (CC BY 4.0). Its downloads need nothing: run **Verified events history (UCDP GED download)** once to get the history since 1989, and **Verified events this year (UCDP Candidate download)** follows the current year every month. Each day is dated by the first article that reported it, so the history can be studied without reading the future; a day without a report date stays out of those tests. The address of these imports names UCDP's release: update it when UCDP publishes a new one.
   - For a live reading, **Verified events (UCDP)** uses UCDP's API, which needs a token: ask Uppsala University for it by e-mail, then store it in **Secrets** under the name `world_events_ucdp_token`.
   - ACLED is read only with your organization's own ACLED account and licence: store the e-mail and the password in **Secrets** under `world_events_acled_email` and `world_events_acled_password`. PNEX provides no ACLED data, and a commercial use needs ACLED's commercial licence.

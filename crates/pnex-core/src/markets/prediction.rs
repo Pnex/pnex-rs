@@ -1,38 +1,13 @@
-//! Prediction markets (markets-research.md appendix J, D918–D925): the
-//! platform's public answers decoded, a resolution as dated states, the
-//! model features at an instant, the calibration against the market and the
-//! early bet detector. Pure code: no I/O.
-//!
-//! The answer shapes follow the platform's public APIs as known on
-//! 2026-11-10; they could not be checked from France (the hosts are blocked
-//! there, an org reaches them through its own proxy). Every decoder is
-//! tolerant: an unknown or malformed field is skipped, never a panic.
+//! Prediction markets (markets-research.md appendix J, D918–D925): a
+//! resolution as dated states, the model features at an instant, the
+//! calibration against the market and the early bet detector. Pure code: no
+//! I/O. The pack's pipelines read the platform (pipeline-engine.md D946).
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-/// Hosts fixed in the code (D822, R9): an org names no host.
-pub const GAMMA_BASE: &str = "https://gamma-api.polymarket.com";
-pub const CLOB_BASE: &str = "https://clob.polymarket.com";
-pub const DATA_BASE: &str = "https://data-api.polymarket.com";
-pub const LICENSE_NOTE: &str = "Public read-only APIs of the platform; PNeX never bets, \
-    signs or holds a wallet key (J.1). Terms of use to check before a SaaS use; private to the org";
-
-/// Minutes between two points of the default series and of a followed one.
-pub const FIDELITY_HOURLY: u32 = 60;
-pub const FIDELITY_FINE: u32 = 1;
 
 /// A condition id: `0x` and 64 hex digits.
 pub fn condition_ok(s: &str) -> bool {
     s.len() == 66 && s.starts_with("0x") && s[2..].bytes().all(|b| b.is_ascii_hexdigit())
-}
-
-/// A market slug: lowercase words joined by `-`, 200 characters at most.
-pub fn slug_ok(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 200
-        && s.bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// A wallet address: `0x` and 40 hex digits, kept lowercase.
@@ -71,7 +46,7 @@ impl ResolutionState {
     }
 }
 
-/// A market as the metadata API describes it.
+/// A market as its object records it.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Market {
     pub condition_id: String,
@@ -92,39 +67,6 @@ pub struct Market {
     pub winner: Option<String>,
 }
 
-/// A list field the API sends either as an array or as JSON text.
-fn list(v: Option<&Value>) -> Vec<String> {
-    let items = match v {
-        Some(Value::Array(a)) => a.clone(),
-        Some(Value::String(s)) => serde_json::from_str::<Vec<Value>>(s).unwrap_or_default(),
-        _ => Vec::new(),
-    };
-    items
-        .iter()
-        .filter_map(|x| match x {
-            Value::String(s) => Some(s.clone()),
-            Value::Number(n) => Some(n.to_string()),
-            _ => None,
-        })
-        .collect()
-}
-
-fn text(m: &Value, k: &str) -> String {
-    m.get(k)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
-
-fn number(v: Option<&Value>) -> Option<f64> {
-    match v? {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.parse().ok(),
-        _ => None,
-    }
-    .filter(|x: &f64| x.is_finite())
-}
-
 /// An RFC 3339 or `YYYY-MM-DD` instant as Unix seconds.
 pub fn instant(s: &str) -> Option<i64> {
     chrono::DateTime::parse_from_rfc3339(s)
@@ -136,82 +78,6 @@ pub fn instant(s: &str) -> Option<i64> {
                 .and_then(|d| d.and_hms_opt(0, 0, 0))
                 .map(|t| t.and_utc().timestamp())
         })
-}
-
-/// The state shown by the platform: the oracle's status first, else
-/// closed with a winner = final.
-pub fn state_of(uma_status: &str, closed: bool, winner: bool) -> Option<ResolutionState> {
-    match uma_status.to_ascii_lowercase().as_str() {
-        "proposed" => Some(ResolutionState::Proposed),
-        "disputed" | "challenged" => Some(ResolutionState::Disputed),
-        "resolved" | "settled" if winner => Some(ResolutionState::Final),
-        "resolved" | "settled" => Some(ResolutionState::Indeterminate),
-        _ if closed && winner => Some(ResolutionState::Final),
-        _ => None,
-    }
-}
-
-/// Markets of a metadata answer (an array, or `{ "data": [...] }`).
-pub fn markets(answer: &Value) -> Vec<Market> {
-    let rows = answer
-        .as_array()
-        .or_else(|| answer.get("data").and_then(Value::as_array));
-    rows.into_iter()
-        .flatten()
-        .filter_map(|m| {
-            let condition_id = text(m, "conditionId").to_ascii_lowercase();
-            if !condition_ok(&condition_id) {
-                return None;
-            }
-            let outcomes = list(m.get("outcomes"));
-            let prices: Vec<f64> = list(m.get("outcomePrices"))
-                .iter()
-                .filter_map(|p| p.parse().ok())
-                .collect();
-            let closed = m.get("closed").and_then(Value::as_bool).unwrap_or(false);
-            // A price of exactly 1 on a closed market names the winner.
-            let winner = match closed {
-                true => prices
-                    .iter()
-                    .position(|p| (*p - 1.0).abs() < 1e-9)
-                    .and_then(|i| outcomes.get(i).cloned()),
-                false => None,
-            };
-            Some(Market {
-                slug: text(m, "slug"),
-                question: text(m, "question"),
-                rules: text(m, "description"),
-                resolution_source: text(m, "resolutionSource"),
-                end_at: instant(&text(m, "endDate")),
-                tokens: list(m.get("clobTokenIds")),
-                volume: number(m.get("volumeNum")).or_else(|| number(m.get("volume"))),
-                state: state_of(&text(m, "umaResolutionStatus"), closed, winner.is_some()),
-                outcomes,
-                closed,
-                winner,
-                condition_id,
-            })
-        })
-        .collect()
-}
-
-/// Points `(unix seconds, price)` of a price history answer, sorted, the
-/// price kept in [0, 1].
-pub fn price_history(answer: &Value) -> Vec<(i64, f64)> {
-    let mut out: Vec<(i64, f64)> = answer
-        .get("history")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|p| {
-            let t = p.get("t")?.as_i64()?;
-            let v = number(p.get("p"))?;
-            (0.0..=1.0).contains(&v).then_some((t, v))
-        })
-        .collect();
-    out.sort_by_key(|(t, _)| *t);
-    out.dedup_by_key(|(t, _)| *t);
-    out
 }
 
 /// A trade of the public trade feed.
@@ -236,40 +102,6 @@ impl Trade {
     pub fn usdc(&self) -> f64 {
         self.size * self.price
     }
-}
-
-/// Trades of a trade feed answer; a row missing a field is skipped.
-pub fn trades(answer: &Value) -> Vec<Trade> {
-    answer
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|t| {
-            let wallet = text(t, "proxyWallet").to_ascii_lowercase();
-            let side = text(t, "side").to_ascii_lowercase();
-            let size = number(t.get("size"))?;
-            let price = number(t.get("price"))?;
-            let ts = t.get("timestamp").and_then(Value::as_i64)?;
-            let condition_id = text(t, "conditionId").to_ascii_lowercase();
-            (wallet_ok(&wallet)
-                && (side == "buy" || side == "sell")
-                && size >= 0.0
-                && (0.0..=1.0).contains(&price)
-                && condition_ok(&condition_id))
-            .then(|| Trade {
-                wallet,
-                side,
-                token: text(t, "asset"),
-                condition_id,
-                outcome: text(t, "outcome"),
-                size,
-                price,
-                // Milliseconds sent by mistake are brought back to seconds.
-                ts: if ts > 10_000_000_000 { ts / 1000 } else { ts },
-                tx: text(t, "transactionHash"),
-            })
-        })
-        .collect()
 }
 
 /// A resolution state as recorded (D920).
@@ -606,56 +438,10 @@ pub fn early_bets(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     const C: &str = "0x1111111111111111111111111111111111111111111111111111111111111111";
     const W: &str = "0x2222222222222222222222222222222222222222";
     const V: &str = "0x3333333333333333333333333333333333333333";
-
-    #[test]
-    fn markets_are_decoded_whatever_the_list_form() {
-        let a = json!([{
-            "conditionId": C.to_uppercase().replace("0X", "0x"), "slug": "fed-cut-december",
-            "question": "Fed cut in December?", "description": "Resolves Yes if…",
-            "resolutionSource": "https://www.federalreserve.gov", "endDate": "2026-12-10T00:00:00Z",
-            "outcomes": "[\"Yes\", \"No\"]", "outcomePrices": "[\"1\", \"0\"]",
-            "clobTokenIds": "[\"123\", \"456\"]", "volumeNum": 1250000.5, "closed": true,
-            "umaResolutionStatus": "resolved"
-        }, { "conditionId": "nope" }]);
-        let m = markets(&a);
-        assert_eq!(m.len(), 1);
-        let m = &m[0];
-        assert_eq!(m.condition_id, C);
-        assert_eq!(m.outcomes, vec!["Yes", "No"]);
-        assert_eq!(m.tokens, vec!["123", "456"]);
-        assert_eq!(m.winner.as_deref(), Some("Yes"));
-        assert_eq!(m.state, Some(ResolutionState::Final));
-        assert_eq!(m.end_at, instant("2026-12-10T00:00:00Z"));
-        let open = markets(
-            &json!({ "data": [{ "conditionId": C, "outcomes": ["Yes", "No"],
-            "outcomePrices": ["0.4", "0.6"], "closed": false, "umaResolutionStatus": "disputed" }] }),
-        );
-        assert_eq!(open[0].winner, None);
-        assert_eq!(open[0].state, Some(ResolutionState::Disputed));
-    }
-
-    #[test]
-    fn prices_and_trades_skip_bad_rows() {
-        let h = price_history(&json!({ "history": [
-            { "t": 20, "p": 0.6 }, { "t": 10, "p": "0.5" }, { "t": 30, "p": 1.7 }, { "t": 20, "p": 0.9 }
-        ] }));
-        assert_eq!(h, vec![(10, 0.5), (20, 0.6)]);
-        let t = trades(&json!([
-            { "proxyWallet": W.to_uppercase().replace("0X", "0x"), "side": "BUY", "asset": "123",
-              "conditionId": C, "outcome": "Yes", "size": 1000, "price": 0.2, "timestamp": 1_700_000_000_000i64,
-              "transactionHash": "0xabc" },
-            { "proxyWallet": "bad", "side": "BUY", "conditionId": C, "size": 1, "price": 0.2, "timestamp": 1 }
-        ]));
-        assert_eq!(t.len(), 1);
-        assert_eq!(t[0].wallet, W);
-        assert_eq!(t[0].ts, 1_700_000_000);
-        assert!((t[0].usdc() - 200.0).abs() < 1e-9);
-    }
 
     /// The Strategy case: sale on May 26–31, known on June 1, final « No ».
     /// Before the oracle settles, a read never resolves it ahead of time.
