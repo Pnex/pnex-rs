@@ -1134,11 +1134,7 @@ mod tests {
     #[test]
     fn every_default_rule_parses_and_needs_a_session() {
         use pnex_core::default_rules as d;
-        let mut rules: Vec<String> = pnex_core::browser_agent::PROFILE_NETWORKS
-            .iter()
-            .map(|n| d::profile_capture(n).unwrap())
-            .collect();
-        rules.push(d::people_capture());
+        let mut rules = vec![d::people_capture()];
         rules.push(d::person_search());
         rules.push(d::connections_capture());
         for y in &rules {

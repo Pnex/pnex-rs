@@ -1,0 +1,56 @@
+# One profile page of a person, asked from the person's page (D333, D996):
+# opened in the asking member's browser agent, two screens scrolled, its text
+# kept 30 days as a document of the person, stamped for the flow that reads
+# it, and its address an account identifier of the person. A redirect to a sign-in or a check leaves the profile address: the
+# assertion fails the row instead of keeping that page.
+key: profile_capture_instagram
+name: Profile capture (Instagram)
+hosts: [www.instagram.com]
+steps:
+  - enumerate: { as: asked, track: true, cross: [{ as: url, asked: [person_id, path] }] }
+  - browse:
+      as: page
+      for_each: asked
+      site: www.instagram.com
+      session: required
+      steps:
+        - open: "{{url}}"
+        - wait: { ms: 2500 }
+        - assert: { url_contains: "{{path}}" }
+        - scroll: bottom
+        - wait: { ms: 2000 }
+        - extract: { all_text: true, as: profile }
+  - sql:
+      as: documents
+      sql: >-
+        SELECT 'person' AS type_key, 'id' AS key_property, a.person_id AS key,
+          a.url AS source_url, 'Profile · ' || a.url AS name, page.text AS text
+        FROM asked a JOIN page ON page.name = 'profile'
+        WHERE length(trim(page.text)) > 0
+  - write:
+      from: documents
+      media: { link_type: captured_text, source: browser_agent, stamp: profile_to_read, keep_days: 30 }
+  # The address becomes an account identifier of the person: an objection
+  # of the person then covers it too (D341).
+  - sql:
+      as: accounts
+      sql: >-
+        SELECT a.person_id, a.url FROM asked a JOIN page ON page.name = 'profile'
+        WHERE length(trim(page.text)) > 0
+  - write:
+      from: accounts
+      objects:
+        objects:
+          - { as: account, type: identifier, key: value, create: true, title: url, properties: { value: url, kind: { value: account } } }
+          - { as: person, type: person, key: "@id", create: false, properties: { "@id": person_id } }
+        links:
+          - { type: uses_identifier, from: person, to: account }
+tests:
+  - name: the text of the profile becomes a document of the person
+    asked: [{ url: "https://www.instagram.com/jane.doe/", person_id: "8f1c2b9e-0000-4000-8000-000000000001", path: "/jane.doe/" }]
+    given: { "browse:page": profile_instagram.json }
+    expect:
+      documents:
+        rows: 1
+      accounts:
+        rows: 1

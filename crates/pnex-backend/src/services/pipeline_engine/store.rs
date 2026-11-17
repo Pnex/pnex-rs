@@ -386,6 +386,9 @@ pub struct DatasetSink<'a> {
     pub ctx: Option<&'a AppContext>,
     /// `<pack>/<key>` of the pipeline run.
     pub pipeline: &'a str,
+    /// The member who asked the run: a navigation plays in their browser
+    /// agent (D782).
+    pub user: Option<i64>,
 }
 
 async fn table_of(db: &DatabaseConnection, org: i64, name: &str) -> Result<Uuid, DatasetError> {
@@ -543,7 +546,17 @@ impl Sink for DatasetSink<'_> {
             let Some((object, _)) = object_by(self.db, self.org, &kind, &by, &key).await? else {
                 continue;
             };
-            let name = text("name").unwrap_or_else(|| "document.txt".into());
+            // A file name: an address in it keeps its words, not its slashes.
+            let name: String = text("name")
+                .unwrap_or_else(|| "document.txt".into())
+                .chars()
+                .map(|c| if matches!(c, '/' | '\\' | ':' | '?' | '*' | '"' | '<' | '>' | '|') { '_' } else { c })
+                .collect();
+            // The upload allowlist reads the extension: the body is plain text.
+            let name = match name.ends_with(".txt") {
+                true => name,
+                false => format!("{name}.txt"),
+            };
             let body = body.into_bytes();
             let sha = crawl::sha256_hex(&body);
             let stored = async {
@@ -557,8 +570,14 @@ impl Sink for DatasetSink<'_> {
                     &sha,
                     body,
                 )
-                .await?;
-                documents::link(ctx, self.org, &target.link_type, object, asset, &url, &sha).await
+                .await
+                .map_err(|e| format!("store: {e}"))?;
+                documents::link(ctx, self.org, &target.link_type, object, asset, &url, &sha)
+                    .await
+                    .map_err(|e| format!("link: {e}"))?;
+                kept_for(self.db, self.org, asset, object, target)
+                    .await
+                    .map_err(|e| format!("kept: {e}"))
             }
             .await;
             match stored {
@@ -648,11 +667,32 @@ impl Sink for DatasetSink<'_> {
         target: &pnex_core::pipeline::doc::ObjectsTarget,
         rows: Vec<serde_json::Map<String, Value>>,
     ) -> Result<u64, Failure> {
+        // An entry of a type the org does not have is left out with its
+        // links: a pack enriches what another pack brought, when it is there.
+        let schema = crate::services::ontology::schema(self.db, self.org)
+            .await
+            .map_err(|_| fail("storage", json!({ "what": "objects" })))?;
+        let objects: Vec<_> = target
+            .objects
+            .iter()
+            .filter(|o| schema.object_type(&o.type_key).is_some())
+            .collect();
+        let links: Vec<_> = target
+            .links
+            .iter()
+            .filter(|l| {
+                schema.link_type(&l.link_type).is_some()
+                    && [&l.from, &l.to].iter().all(|a| objects.iter().any(|o| &o.alias == *a))
+            })
+            .collect();
+        if objects.is_empty() {
+            return Ok(0);
+        }
         let mapping: pnex_core::ontology::import::Mapping = serde_json::from_value(json!({
             "key": self.pipeline.replace('/', "_"),
             "name": self.pipeline,
-            "objects": target.objects,
-            "links": target.links,
+            "objects": objects,
+            "links": links,
         }))
         .map_err(|_| fail("internal", Value::Null))?;
         // One provenance per pipeline: its writes find their own objects again.
@@ -706,8 +746,14 @@ impl Sink for DatasetSink<'_> {
             pipeline: self.pipeline.to_string(),
             item: item.to_string(),
         };
-        match purpose::start(ctx, self.org, None, &yaml, params, &why).await {
+        match purpose::start(ctx, self.org, self.user, &yaml, params, &why).await {
             Ok(_) => Ok(None),
+            Err(crate::services::site_recipes::StartError::NoAgent) => {
+                Err(fail("no_agent", Value::Null))
+            }
+            Err(crate::services::site_recipes::StartError::DailyCap { max }) => {
+                Err(fail("daily_cap", json!({ "max": max })))
+            }
             Err(e) => {
                 tracing::info!(org = self.org, pipeline = self.pipeline, error = ?e, "navigation not started");
                 Err(fail("browse_refused", Value::Null))
@@ -717,6 +763,36 @@ impl Sink for DatasetSink<'_> {
 }
 
 /// The live object of a type whose property holds `value`: its id and version.
+/// What a media target asks once a document is kept: its purge date, and
+/// its id stamped in place on the object (a stamp, not an edit).
+async fn kept_for(
+    db: &DatabaseConnection,
+    org: i64,
+    asset: Uuid,
+    object: Uuid,
+    target: &pnex_core::pipeline::doc::MediaTarget,
+) -> Result<(), sea_orm::DbErr> {
+    if let Some(days) = target.keep_days {
+        db.execute_raw(stmt(
+            "UPDATE media_assets SET metadata = coalesce(metadata, '{}'::jsonb) \
+               || jsonb_build_object('purge_after', (now() + make_interval(days => $3::int))::date::text) \
+             WHERE id = $1 AND org_id = $2",
+            vec![asset.into(), org.into(), (days as i32).into()],
+        ))
+        .await?;
+    }
+    if let Some(property) = &target.stamp {
+        db.execute_raw(stmt(
+            "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text) \
+             WHERE org_id = $1 AND id = $2 AND valid_to IS NULL",
+            vec![org.into(), object.into(), property.clone().into(), asset.to_string().into()],
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
+/// A live object of `kind` whose property `by` (or its `id`) is `value`.
 async fn object_by(
     db: &DatabaseConnection,
     org: i64,
@@ -725,10 +801,15 @@ async fn object_by(
     value: &str,
 ) -> Result<Option<(Uuid, i32)>, Failure> {
     let failed = || fail("storage", json!({ "what": "proposals" }));
+    let sql = match by {
+        "id" => "SELECT id, version FROM objects WHERE org_id = $1 AND type_key = $2 \
+                   AND valid_to IS NULL AND $3 = 'id' AND id::text = $4 LIMIT 1",
+        _ => "SELECT id, version FROM objects WHERE org_id = $1 AND type_key = $2 \
+                AND valid_to IS NULL AND properties ->> $3 = $4 ORDER BY id LIMIT 1",
+    };
     let Some(row) = db
         .query_one_raw(stmt(
-            "SELECT id, version FROM objects WHERE org_id = $1 AND type_key = $2 \
-               AND valid_to IS NULL AND properties ->> $3 = $4 ORDER BY id LIMIT 1",
+            sql,
             vec![org.into(), kind.into(), by.into(), value.into()],
         ))
         .await
@@ -1110,7 +1191,7 @@ async fn run_with(
     now: DateTime<Utc>,
     journal: Option<&mut Vec<super::StepRecord>>,
 ) -> Result<RunOutcome, sea_orm::DbErr> {
-    run_core(ctx, db, store, org, sp, transport, now, journal, Vec::new()).await
+    run_core(ctx, db, store, org, sp, transport, now, journal, Vec::new(), None).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1123,8 +1204,9 @@ async fn run_given(
     transport: &impl Transport,
     now: DateTime<Utc>,
     asked: Vec<serde_json::Map<String, Value>>,
+    user: Option<i64>,
 ) -> Result<RunOutcome, sea_orm::DbErr> {
-    run_core(ctx, db, store, org, sp, transport, now, None, asked).await
+    run_core(ctx, db, store, org, sp, transport, now, None, asked, user).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1138,6 +1220,7 @@ async fn run_core(
     now: DateTime<Utc>,
     journal: Option<&mut Vec<super::StepRecord>>,
     asked: Vec<serde_json::Map<String, Value>>,
+    user: Option<i64>,
 ) -> Result<RunOutcome, sea_orm::DbErr> {
     let id = sp.id();
     let (items, shas) = known(db, org, &id).await?;
@@ -1150,6 +1233,7 @@ async fn run_core(
         org,
         ctx,
         pipeline: &id,
+        user,
     };
     let sql = super::sql::WorkerSql { db, store, org };
     let out = run(
@@ -1174,6 +1258,7 @@ async fn run_core(
 pub async fn run_asked(
     ctx: &AppContext,
     org: i64,
+    user: Option<i64>,
     pipeline: &str,
     asked: Vec<serde_json::Map<String, Value>>,
 ) -> Result<RunOutcome, DatasetError> {
@@ -1194,6 +1279,7 @@ pub async fn run_asked(
         &HttpTransport,
         Utc::now(),
         asked,
+        user,
     )
     .await;
     lock.release().await;
@@ -1259,6 +1345,7 @@ async fn resume_locked(
         org,
         ctx: Some(ctx),
         pipeline: &id,
+        user: None,
     };
     let sql = super::sql::WorkerSql {
         db: &ctx.db,

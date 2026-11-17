@@ -67,10 +67,12 @@
 # by `item_about`; the signal kind `press` stays only for older signals.
 # Since 4.0.0 `connections_keep_label` chooses the organizations whose
 # people are kept from a contact's connections (D976, renumbered in 4.1.0).
+# Since 4.2.0 a captured profile or employee list is a document linked by
+# `captured_text`, kept by the pack's navigation pipelines (D996).
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "4.1.0"
+version: "4.2.0"
 requires: [companies, web_presence, watch]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -190,6 +192,13 @@ extends:
       - { key: review_on, name: Review on, names: {fr: "À revoir le"}, kind: date }
       - { key: opposed_on, name: Objected on, names: {fr: "Opposition le"}, kind: date, indexed: true }
 link_types:
+  - key: captured_text
+    name: has as captured text
+    names: {fr: "a pour texte capturé"}
+    inverse_name: is the captured text of
+    inverse_names: {fr: "est le texte capturé de"}
+    from_types: [person, organization]
+    to_types: [media_asset]
   - key: recommended
     name: recommends
     names: {fr: "recommande"}

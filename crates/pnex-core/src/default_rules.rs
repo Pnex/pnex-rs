@@ -23,28 +23,6 @@ pub fn network_site(network: &str) -> Option<&'static str> {
     })
 }
 
-/// Capture of one profile page in the user's session (D333): the page is
-/// opened, two screens scrolled, its text kept as `profile`. A redirect to
-/// a sign-in or a check leaves the profile address: the assertion fails
-/// the run instead of keeping that page. Params: `url` (canonical), `path`
-/// (its path, checked after the load).
-pub fn profile_capture(network: &str) -> Option<String> {
-    let site = network_site(network)?;
-    Some(format!(
-        "name: \"Profile capture · {network}\"\n\
-         site: \"{site}\"\n\
-         session: \"required\"\n\
-         params: [url, path]\n\
-         steps:\n\
-         \x20 - open: \"{{{{url}}}}\"\n\
-         \x20 - wait: {{ms: 2500}}\n\
-         \x20 - assert: {{url_contains: \"{{{{path}}}}\"}}\n\
-         \x20 - scroll: \"bottom\"\n\
-         \x20 - wait: {{ms: 2000}}\n\
-         \x20 - extract: {{all_text: true, as: \"profile\"}}\n"
-    ))
-}
-
 /// Capture of a company's employee list on LinkedIn (D779): the first
 /// screens of cards at a reader's pace, the text kept as `people`.
 /// Param: `url` (canonical `/company/<name>/people/`).
@@ -137,13 +115,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_profile_network_has_a_capture_rule() {
-        for n in crate::browser_agent::PROFILE_NETWORKS {
-            let y = profile_capture(n).expect("rule");
-            assert!(y.contains("session: \"required\""), "{y}");
-            assert!(y.contains("{{url}}") && y.contains("{{path}}"), "{y}");
-        }
-        assert!(profile_capture("myspace").is_none());
+    fn default_rules_keep_their_shape() {
         assert_eq!(people_capture().matches("scroll").count(), PEOPLE_SCROLLS);
         assert!(person_search().contains("type: {text: \"{{query}}\"}"));
         let c = connections_capture();

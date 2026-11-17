@@ -612,6 +612,21 @@ async fn asked_rows_are_taken_with_their_columns_every_time() {
     );
 }
 
+/// D996: every profile network has its capture pipeline, on its own site
+/// and in the member's session.
+#[test]
+fn every_profile_network_has_a_capture_pipeline() {
+    for n in pnex_core::browser_agent::PROFILE_NETWORKS {
+        let id = format!("prospecting_b2b/profile_capture_{n}");
+        let sp = shipped().iter().find(|p| p.id() == id).unwrap_or_else(|| panic!("{id}"));
+        let Some(pnex_core::pipeline::doc::Step::Browse(b)) = sp.doc.steps.get(1) else {
+            panic!("{id}: browse second")
+        };
+        assert_eq!(Some(b.site.as_str()), pnex_core::default_rules::network_site(n), "{id}");
+        assert_eq!(b.session.as_deref(), Some("required"), "{id}");
+    }
+}
+
 /// D995: `browse` only right after a tracked enumeration, on its rows.
 #[test]
 fn browse_only_follows_a_tracked_enumeration() {

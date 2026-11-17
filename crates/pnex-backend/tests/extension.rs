@@ -64,7 +64,10 @@ where
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
             let db = ctx.db.clone();
+            // The navigation pipelines run their sql steps there (D996).
+            let worker = common::spawn_pipeline_worker();
             f(server, Env { alice, bob, db }).await;
+            worker.abort();
         },
     )
     .await;
@@ -1256,8 +1259,8 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         .await;
         assert_eq!(s, 404);
 
-        // The agent plays the default rule of the network (D780): a document
-        // linked to Ada, the address an account of Ada.
+        // The agent plays the pipeline of the network (D996): a document
+        // linked to Ada, stamped to be read, the address an account of Ada.
         let mut ws = open(&server, &install, &a).await;
         assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
         let ServerMsg::Runs { runs } = recv(&mut ws).await else {
@@ -1286,7 +1289,7 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         .await;
         let links = links.to_string();
         assert!(
-            links.contains("uses_identifier") && links.contains("published_by"),
+            links.contains("uses_identifier") && links.contains("captured_text"),
             "{links}"
         );
         let (_, person) = call(

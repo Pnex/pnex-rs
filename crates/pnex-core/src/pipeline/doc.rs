@@ -729,6 +729,13 @@ pub struct MediaTarget {
     pub link_type: String,
     /// Where the documents come from (provenance, D281): `sec_edgar`.
     pub source: String,
+    /// Property of the object that gets the document's id once kept (a
+    /// text a flow has yet to read, D538).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stamp: Option<String>,
+    /// Days the document is kept, then purged (captured texts, D333).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep_days: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

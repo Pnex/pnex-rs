@@ -146,6 +146,7 @@ mod m20261114_000151_geo_layers;
 mod m20261114_000152_network_connections;
 mod m20261116_000153_asr_profile_guard;
 mod m20261117_000154_prediction_tables_to_pipelines;
+mod m20261117_000155_pipeline_items_waiting;
 
 pub struct Migrator;
 
@@ -288,6 +289,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261114_000152_network_connections::Migration),
             Box::new(m20261116_000153_asr_profile_guard::Migration),
             Box::new(m20261117_000154_prediction_tables_to_pipelines::Migration),
+            Box::new(m20261117_000155_pipeline_items_waiting::Migration),
         ]
     }
 }

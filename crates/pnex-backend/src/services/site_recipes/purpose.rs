@@ -19,8 +19,6 @@ use super::{browser, insert_run, parse, NewRun, RecipeError, StartError};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Purpose {
-    /// One profile page of a person (D333): extract `profile`.
-    ProfileCapture { person_id: String, url: String },
     /// One company's employee list (D779): extract `people`.
     PeopleCapture {
         organization_id: String,
@@ -44,7 +42,6 @@ pub enum Purpose {
 impl Purpose {
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::ProfileCapture { .. } => "profile_capture",
             Self::PeopleCapture { .. } => "people_capture",
             Self::PersonMatch { .. } => "person_match",
             // The run's `trigger` holds 16 chars; runs are found by the tag.
@@ -132,15 +129,6 @@ pub async fn on_finished(ctx: &AppContext, org_id: i64, run_id: Uuid) {
     };
     let source = format!("rule_run:{run_id}");
     let outcome = match &purpose {
-        Purpose::ProfileCapture { person_id, url } => match text("profile").filter(|_| ok) {
-            Some(t) => {
-                crate::services::profiles::profile_captured(
-                    ctx, org_id, &source, person_id, url, &t,
-                )
-                .await
-            }
-            None => Ok(()),
-        },
         Purpose::PeopleCapture {
             organization_id,
             url,
@@ -241,6 +229,75 @@ pub async fn runs_of(
             ))
         })
         .collect())
+}
+
+/// Navigations of the org's pipelines whose key starts with `prefix`, for
+/// rows whose column `param` is `value`, newest first: (run id, the row's
+/// params, job state, reason, created at).
+pub async fn pipeline_runs(
+    db: &impl ConnectionTrait,
+    org_id: i64,
+    prefix: &str,
+    param: &str,
+    value: &str,
+) -> Result<Vec<(Uuid, BTreeMap<String, String>, String, Option<String>, String)>, sea_orm::DbErr> {
+    let rows = db
+        .query_all_raw(stmt(
+            "SELECT a.id, a.plan -> 'params' AS params, j.state, a.reason, a.created_at
+             FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id
+             WHERE a.org_id = $1 AND a.plan -> 'purpose' ->> 'kind' = 'pipeline'
+               AND a.plan -> 'purpose' ->> 'pipeline' LIKE $2
+               AND a.plan -> 'params' ->> $3 = $4
+             ORDER BY a.created_at DESC LIMIT 20",
+            vec![
+                org_id.into(),
+                format!("{prefix}%").into(),
+                param.into(),
+                value.into(),
+            ],
+        ))
+        .await?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| {
+            let params = serde_json::from_value(r.try_get("", "params").ok()?).ok()?;
+            Some((
+                r.try_get("", "id").ok()?,
+                params,
+                r.try_get("", "state").ok()?,
+                r.try_get("", "reason").ok().flatten(),
+                r.try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
+                    .ok()?
+                    .to_rfc3339(),
+            ))
+        })
+        .collect())
+}
+
+/// Navigations of the org's pipelines whose key starts with `prefix`, over
+/// the last 24 h, for rows whose `url` starts with `url_prefix`.
+pub async fn pipeline_runs_today(
+    db: &impl ConnectionTrait,
+    org_id: i64,
+    prefix: &str,
+    url_prefix: &str,
+) -> Result<i64, sea_orm::DbErr> {
+    Ok(db
+        .query_one_raw(stmt(
+            "SELECT count(*) AS n FROM agent_runs
+             WHERE org_id = $1 AND plan -> 'purpose' ->> 'kind' = 'pipeline'
+               AND plan -> 'purpose' ->> 'pipeline' LIKE $2
+               AND plan -> 'params' ->> 'url' LIKE $3
+               AND created_at > now() - interval '24 hours'",
+            vec![
+                org_id.into(),
+                format!("{prefix}%").into(),
+                format!("{url_prefix}%").into(),
+            ],
+        ))
+        .await?
+        .and_then(|r| r.try_get::<i64>("", "n").ok())
+        .unwrap_or(0))
 }
 
 /// Runs started for `kind` by the org over the last 24 h whose purpose

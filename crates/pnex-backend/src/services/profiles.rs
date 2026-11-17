@@ -304,9 +304,35 @@ pub(crate) fn start_error(e: StartError) -> ExtensionError {
     }
 }
 
-/// Asks one capture of `raw_url` for the person (D333): the default rule
-/// of its network, played in the caller's browser agent (else a common
-/// one). An open capture of the same profile is returned as is.
+/// Pipelines of the prospecting pack that capture a profile, one per network
+/// (`profile_capture_<network>`, D996).
+const PROFILE_PIPELINES: &str = "prospecting_b2b/profile_capture_";
+
+/// The view of the navigation a pipeline row started, else of the refusal.
+fn asked_view(
+    out: &crate::services::pipeline_engine::RunOutcome,
+    url: &str,
+) -> Result<(), ExtensionError> {
+    let failure = out
+        .failure
+        .as_ref()
+        .or_else(|| out.items.first().and_then(|(_, f, _)| f.as_ref()))
+        .filter(|f| f.code != crate::services::pipeline_engine::WAITING);
+    match failure.map(|f| (f.code, f.args.clone())) {
+        None => Ok(()),
+        Some(("no_agent", _)) => Err(ExtensionError::NoAgent),
+        Some(("daily_cap", args)) => Err(ExtensionError::RunDailyCap {
+            max: args["max"].as_i64().unwrap_or_default(),
+        }),
+        Some((code, _)) => Err(ExtensionError::Db(sea_orm::DbErr::Custom(format!(
+            "capture of {url} not started: {code}"
+        )))),
+    }
+}
+
+/// Asks one capture of `raw_url` for the person (D333): the pipeline of its
+/// network, played in the caller's browser agent (else a common one). An
+/// open capture of the same profile is returned as is.
 pub async fn request(
     ctx: &AppContext,
     org_id: i64,
@@ -326,44 +352,48 @@ pub async fn request(
     if opposed_any(db, org_id, &[person_key(person_id), url.clone()]).await? {
         return Err(ExtensionError::Opposed);
     }
-    let runs = purpose::runs_of(
-        db,
-        org_id,
-        "profile_capture",
-        "person_id",
-        &person_id.to_string(),
-    )
-    .await?;
-    if let Some((id, _, state, reason, at)) = runs.into_iter().find(|(_, p, state, _, _)| {
-        matches!(p, Purpose::ProfileCapture { url: u, .. } if *u == url)
-            && matches!(state.as_str(), "queued" | "running")
-    }) {
+    let person_key = person_id.to_string();
+    let open = |runs: Vec<(Uuid, BTreeMap<String, String>, String, Option<String>, String)>| {
+        runs.into_iter().find(|(_, p, state, _, _)| {
+            p.get("url") == Some(&url) && matches!(state.as_str(), "queued" | "running")
+        })
+    };
+    let runs = purpose::pipeline_runs(db, org_id, PROFILE_PIPELINES, "person_id", &person_key).await?;
+    if let Some((id, _, state, reason, at)) = open(runs) {
         return Ok(capture_view(id, &url, &state, reason, at));
     }
+    let pipeline = format!("{PROFILE_PIPELINES}{network}");
+    let site = url
+        .split_once("://")
+        .map(|(scheme, rest)| format!("{scheme}://{}/", rest.split('/').next().unwrap_or_default()))
+        .unwrap_or_default();
     // shortcut: count then insert is racy by a few rows, fine for an abuse cap.
-    let site = default_rules::network_site(network).unwrap_or_default();
-    if purpose::count_today(db, org_id, "profile_capture", &format!("https://{site}/")).await?
+    if purpose::pipeline_runs_today(db, org_id, PROFILE_PIPELINES, &site).await?
         >= ba::PROFILE_CAPTURES_PER_DAY
     {
         return Err(ExtensionError::ProfileDailyCap {
             max: ba::PROFILE_CAPTURES_PER_DAY,
         });
     }
-    let yaml = default_rules::profile_capture(network).ok_or(ExtensionError::NotProfile)?;
     let path = url
         .split_once("://")
         .and_then(|(_, rest)| rest.find('/').map(|i| rest[i..].to_string()))
         .unwrap_or_else(|| "/".into());
-    let params = BTreeMap::from([("url".to_string(), url.clone()), ("path".to_string(), path)]);
-    let purpose = Purpose::ProfileCapture {
-        person_id: person_id.to_string(),
-        url: url.clone(),
-    };
-    let run = purpose::start(ctx, org_id, Some(user_id), &yaml, params, &purpose)
+    let row = serde_json::Map::from_iter([
+        ("url".to_string(), url.clone().into()),
+        ("person_id".to_string(), person_key.clone().into()),
+        ("path".to_string(), path.into()),
+    ]);
+    let out = crate::services::pipeline_engine::store::run_asked(ctx, org_id, Some(user_id), &pipeline, vec![row])
         .await
-        .map_err(start_error)?;
-    let id = Uuid::parse_str(&run.id).unwrap_or_default();
-    Ok(capture_view(id, &url, "queued", None, run.started_at))
+        .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(format!("profile pipeline: {}", e.code()))))?;
+    asked_view(&out, &url)?;
+    let runs = purpose::pipeline_runs(db, org_id, PROFILE_PIPELINES, "person_id", &person_key).await?;
+    let (id, _, state, reason, at) = runs
+        .into_iter()
+        .find(|(_, p, _, _, _)| p.get("url") == Some(&url))
+        .ok_or_else(|| ExtensionError::Db(sea_orm::DbErr::Custom("capture not recorded".into())))?;
+    Ok(capture_view(id, &url, &state, reason, at))
 }
 
 /// Latest captures asked for the person, newest first.
@@ -373,10 +403,10 @@ pub async fn captures(
     person_id: Uuid,
 ) -> Result<Vec<ba::ProfileCapture>, ExtensionError> {
     person(db, org_id, person_id).await?;
-    let runs = purpose::runs_of(
+    let runs = purpose::pipeline_runs(
         db,
         org_id,
-        "profile_capture",
+        PROFILE_PIPELINES,
         "person_id",
         &person_id.to_string(),
     )
@@ -384,12 +414,7 @@ pub async fn captures(
     Ok(runs
         .into_iter()
         .map(|(id, p, state, reason, at)| {
-            let url = match p {
-                Purpose::ProfileCapture { url, .. }
-                | Purpose::PeopleCapture { url, .. }
-                | Purpose::ConnectionsCapture { url, .. } => url,
-                Purpose::PersonMatch { .. } | Purpose::Pipeline { .. } => String::new(),
-            };
+            let url = p.get("url").cloned().unwrap_or_default();
             capture_view(id, &url, &state, reason, at)
         })
         .collect())
@@ -516,26 +541,6 @@ pub(crate) async fn attach_identifier(
         };
         let _ = ontology::links::create(&ctx.db, org_id, &actor_of(source_ref), &input).await;
     }
-}
-
-/// A profile captured by its rule run: unless the person or the address
-/// objected since, its text becomes a document of the person, stamped to be
-/// read, and the address an account identifier of theirs.
-pub async fn profile_captured(
-    ctx: &AppContext,
-    org_id: i64,
-    source_ref: &str,
-    person_id: &str,
-    url: &str,
-    text: &str,
-) -> Result<(), ExtensionError> {
-    let keys = [format!("person:{person_id}"), url.to_string()];
-    if opposed_any(&ctx.db, org_id, &keys).await? {
-        return Ok(());
-    }
-    let meta = serde_json::json!({ "profile_person_id": person_id });
-    let asset = store_text(ctx, org_id, &format!("Profile · {url}"), url, text, meta).await?;
-    attach_profile(ctx, org_id, source_ref, person_id, url, asset).await
 }
 
 /// The captured profile `url` becomes the person's: its document linked to
@@ -709,9 +714,7 @@ pub async fn people_captures(
         .into_iter()
         .map(|(id, p, state, reason, at)| {
             let url = match p {
-                Purpose::PeopleCapture { url, .. }
-                | Purpose::ProfileCapture { url, .. }
-                | Purpose::ConnectionsCapture { url, .. } => url,
+                Purpose::PeopleCapture { url, .. } | Purpose::ConnectionsCapture { url, .. } => url,
                 Purpose::PersonMatch { .. } | Purpose::Pipeline { .. } => String::new(),
             };
             capture_view(id, &url, &state, reason, at)
@@ -767,9 +770,11 @@ pub async fn prune_expired(ctx: &AppContext) -> Result<u64, ExtensionError> {
         .db
         .query_all_raw(stmt(
             "SELECT id, org_id FROM media_assets
-             WHERE (metadata ->> 'profile_person_id' IS NOT NULL
-                    OR metadata ->> 'people_org_id' IS NOT NULL)
-               AND created_at < now() - make_interval(days => $1::int)
+             WHERE ((metadata ->> 'profile_person_id' IS NOT NULL
+                     OR metadata ->> 'people_org_id' IS NOT NULL)
+                    AND created_at < now() - make_interval(days => $1::int))
+                -- Kept by a pipeline for a while (`write: media`, `keep_days`).
+                OR (metadata ->> 'purge_after')::date < current_date
              LIMIT 500",
             vec![(RAW_TEXT_DAYS as i32).into()],
         ))

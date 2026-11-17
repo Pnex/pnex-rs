@@ -465,6 +465,10 @@ fn yes() -> bool {
     true
 }
 
+/// Key of an object map naming an object of the org by its id (a lookup:
+/// never created), not by a unique property.
+pub const OBJECT_ID_KEY: &str = "@id";
+
 /// A mapping (D301): where the records are, what each one produces.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -647,13 +651,22 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
         let Some(t) = s.object_type(&o.type_key) else {
             return Err(ferr(at("type"), FIELD_INVALID));
         };
-        if !t.properties.iter().any(|p| p.key == o.key && p.unique) {
+        // `@id`: an object of the org named by its id, never created.
+        let by_id = o.key == OBJECT_ID_KEY;
+        if by_id && o.create {
+            return Err(ferr(at("create"), FIELD_INVALID));
+        }
+        if !by_id && !t.properties.iter().any(|p| p.key == o.key && p.unique) {
             return Err(ferr(at("key"), FIELD_INVALID));
         }
         if !o.properties.contains_key(&o.key) {
             return Err(ferr(at("properties"), FIELD_REQUIRED));
         }
         for (k, f) in &o.properties {
+            if by_id && *k == o.key {
+                check_field(&at(&format!("properties.{k}")), f)?;
+                continue;
+            }
             let Some(d) = t.properties.iter().find(|p| &p.key == k) else {
                 return Err(ferr(at(&format!("properties.{k}")), FIELD_INVALID));
             };
@@ -1535,7 +1548,12 @@ fn plan_object(
             return Ok(None);
         }
     };
-    let Some(key) = props.get(&o.key).and_then(text_of) else {
+    let key = match (o.key == OBJECT_ID_KEY, o.properties.get(&o.key)) {
+        (true, Some(f)) => read(row, elem, f)?.and_then(|v| text_of(&v)),
+        (true, None) => None,
+        (false, _) => props.get(&o.key).and_then(text_of),
+    };
+    let Some(key) = key else {
         return Ok(None);
     };
     let title = match &o.title {

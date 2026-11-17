@@ -743,3 +743,24 @@ elles décident si le run part, pas ce qu'il écrit.
 | PE5.3 | Recherche d'une personne en pipeline (score en Starlark, `proposals`) ; `person_match` Rust supprimé |
 | PE5.4 | Relations d'un contact en pipeline (filtre par étiquette en `sql`, `keep: false`) |
 | PE5.5 | Règles des orgs migrées en pipelines ; `/site-recipes`, page « Sites web » et `default_rules.rs` supprimés (`feat(api)!`) ; dette d'hôtes de `browser_agent.rs` levée |
+
+### 2026-11-17 (suite) — PE5.1 livré, PE5.2 : capture de profil
+
+- **Moteur** : `browse` (état `waiting` de `pipeline_items`, migration 000155 ; reprise par la
+  finalité `Pipeline`), `write: objects` hors import (planification D301, provenance
+  `pipeline:<clé>`, pas de `snapshot`, une entrée d'un type absent de l'org est laissée avec ses
+  liens), clé `@id` d'un objet existant (jamais créé), axe `asked: [colonnes]` et
+  `store::run_asked` (une ligne demandée est reprise même faite, sauf en attente). `write: media`
+  gagne `stamp` (l'id du document posé sur l'objet), `keep_days` (purge par `purge_after`) et la
+  recherche par `id`.
+- **Capture de profil** : six pipelines `prospecting_b2b/profile_capture_<réseau>` (pack 4.2.0,
+  lien `captured_text` personne/organisation → document). La route lance le pipeline du réseau
+  dans l'agent du membre ; la liste des captures lit les navigations des pipelines.
+  **Supprimés** : `Purpose::ProfileCapture`, `profiles::profile_captured`,
+  `default_rules::profile_capture`.
+
+| Écart | Où il se lève |
+|---|---|
+| Le document capté est lié par `captured_text` (objet → document), plus par `published_by` (document → personne) | à garder |
+| L'étape `sql` d'une capture passe par le worker de pipelines : sans worker, la ligne attend | à garder (le worker tourne partout) |
+| Un import ne peut pas naviguer (pas de contexte d'application) | passer le contexte aux imports si un pack le demande |

@@ -432,6 +432,16 @@ impl Planned {
     }
 }
 
+/// The lookup of objects by key: by a property, or by their id (`@id`).
+fn key_sql(key_prop: &str, by_property: &'static str) -> String {
+    match key_prop {
+        pnex_core::ontology::import::OBJECT_ID_KEY => by_property
+            .replace("properties ->> $3 AS k", "id::text AS k")
+            .replace("properties ->> $3 = ANY($4)", "($3 = $3 AND id::text = ANY($4))"),
+        _ => by_property.to_string(),
+    }
+}
+
 /// Plans `rows` with `m` and diffs them against the org's ontology.
 /// `first_row` is the number of the first record as the user sees it (2 in
 /// a sheet with a header line).
@@ -524,9 +534,12 @@ pub async fn against<C: ConnectionTrait>(
         for chunk in keys.chunks(BATCH) {
             let found = Live::find_by_statement(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                "SELECT id, title, version, properties, properties ->> $3 AS k FROM objects \
-                 WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL \
-                   AND properties ->> $3 = ANY($4)",
+                key_sql(
+                    key_prop,
+                    "SELECT id, title, version, properties, properties ->> $3 AS k FROM objects \
+                     WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL \
+                       AND properties ->> $3 = ANY($4)",
+                ),
                 [
                     org_id.into(),
                     type_key.clone().into(),
@@ -804,9 +817,12 @@ async fn ids_of<C: ConnectionTrait>(
             let rows = db
                 .query_all_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    "SELECT id, properties ->> $3 AS k FROM objects \
-                     WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL \
-                       AND properties ->> $3 = ANY($4)",
+                    key_sql(
+                        &key_prop,
+                        "SELECT id, properties ->> $3 AS k FROM objects \
+                         WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL \
+                           AND properties ->> $3 = ANY($4)",
+                    ),
                     [
                         org_id.into(),
                         type_key.into(),

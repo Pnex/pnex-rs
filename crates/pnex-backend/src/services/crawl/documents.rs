@@ -190,7 +190,7 @@ pub(crate) async fn store(
         &settings,
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format!("{e:?}"))?;
     Ok(asset.id)
 }
 
