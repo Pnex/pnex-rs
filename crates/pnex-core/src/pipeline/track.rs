@@ -15,6 +15,9 @@ pub enum State {
     /// Answered empty; `settled` when nothing will ever be there.
     Empty,
     Failed,
+    /// A navigation runs for it (D995); taken again only once its wait
+    /// is over, the navigation then counted lost.
+    Waiting,
 }
 
 /// What is kept of one row.
@@ -57,6 +60,9 @@ pub fn due<'a>(
 
 const DAY_US: i64 = 86_400_000_000;
 
+/// How long a row waits for its navigation before it is taken again.
+pub const WAIT_MAX_US: i64 = DAY_US;
+
 /// The state a row keeps after an answer.
 pub fn after(
     key: &str,
@@ -68,6 +74,7 @@ pub fn after(
 ) -> Item {
     let failures = match outcome {
         State::Failed => previous.map_or(0, |p| p.failures) + 1,
+        State::Waiting => previous.map_or(0, |p| p.failures),
         _ => 0,
     };
     let retry_after_us = match outcome {
@@ -77,6 +84,7 @@ pub fn after(
         // A failure is retried at the next run, then daily once it keeps failing.
         State::Failed if failures < FAILURES_BEFORE_BACKOFF => Some(now_us),
         State::Failed => Some(now_us + DAY_US),
+        State::Waiting => Some(now_us + WAIT_MAX_US),
     };
     Item {
         key: key.to_string(),

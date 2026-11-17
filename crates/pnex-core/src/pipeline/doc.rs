@@ -417,6 +417,10 @@ pub struct Browse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
     pub steps: Vec<crate::site_recipe::Step>,
+    /// `false`: the extracts of the navigation are erased once the run
+    /// resumed with them (D995).
+    #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
+    pub keep: bool,
 }
 
 /// Rows drawn from the files of a table: exactly one of the kinds.
@@ -1022,6 +1026,17 @@ impl Document {
                 bad(format!("{at}.track"), "first_step_only");
             }
             step_violations(step, &at, &hosts, &mut bad);
+            // Right after a tracked enumeration, on its rows: a paused run
+            // keeps one row and a step number (D995).
+            if let Step::Browse(b) = step {
+                let after_rows = matches!(
+                    self.steps.first(),
+                    Some(Step::Enumerate(e)) if e.track && b.for_each.as_deref() == Some(e.as_.as_str())
+                );
+                if i != 1 || !after_rows {
+                    bad(at.clone(), "browse_position");
+                }
+            }
             if let Step::Fetch(f) = step {
                 let part_ok =
                     |p: &String| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric());

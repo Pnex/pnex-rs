@@ -36,6 +36,9 @@ pub enum Purpose {
         user_id: i64,
         url: String,
     },
+    /// The `browse` step of a pipeline's row (pipeline-engine.md D995): the
+    /// extracts resume the row.
+    Pipeline { pipeline: String, item: String },
 }
 
 impl Purpose {
@@ -46,6 +49,7 @@ impl Purpose {
             Self::PersonMatch { .. } => "person_match",
             // The run's `trigger` holds 16 chars; runs are found by the tag.
             Self::ConnectionsCapture { .. } => "connections",
+            Self::Pipeline { .. } => "pipeline",
         }
     }
 }
@@ -167,6 +171,35 @@ pub async fn on_finished(ctx: &AppContext, org_id: i64, run_id: Uuid) {
                 ctx, org_id, run_id, match_id, *step, ok, &extracts,
             )
             .await
+        }
+        Purpose::Pipeline { pipeline, item } => {
+            let texts = ok.then(|| {
+                extracts
+                    .iter()
+                    .map(|e| (e.name.clone(), e.text.clone()))
+                    .collect()
+            });
+            match crate::services::pipeline_engine::store::resume_row(
+                ctx, org_id, pipeline, item, texts,
+            )
+            .await
+            {
+                Ok(true) => Ok(()),
+                // The row read them: nothing of the navigation stays (D995).
+                Ok(false) => ctx
+                    .db
+                    .execute_raw(stmt(
+                        "UPDATE agent_runs SET extracts = '[]' WHERE id = $1 AND org_id = $2",
+                        vec![run_id.into(), org_id.into()],
+                    ))
+                    .await
+                    .map(|_| ())
+                    .map_err(Into::into),
+                Err(e) => {
+                    tracing::warn!(run = %run_id, code = e.code(), "pipeline row not resumed");
+                    Ok(())
+                }
+            }
         }
     };
     if let Err(e) = outcome {

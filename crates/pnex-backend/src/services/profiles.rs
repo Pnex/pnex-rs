@@ -388,7 +388,7 @@ pub async fn captures(
                 Purpose::ProfileCapture { url, .. }
                 | Purpose::PeopleCapture { url, .. }
                 | Purpose::ConnectionsCapture { url, .. } => url,
-                Purpose::PersonMatch { .. } => String::new(),
+                Purpose::PersonMatch { .. } | Purpose::Pipeline { .. } => String::new(),
             };
             capture_view(id, &url, &state, reason, at)
         })
@@ -712,7 +712,7 @@ pub async fn people_captures(
                 Purpose::PeopleCapture { url, .. }
                 | Purpose::ProfileCapture { url, .. }
                 | Purpose::ConnectionsCapture { url, .. } => url,
-                Purpose::PersonMatch { .. } => String::new(),
+                Purpose::PersonMatch { .. } | Purpose::Pipeline { .. } => String::new(),
             };
             capture_view(id, &url, &state, reason, at)
         })

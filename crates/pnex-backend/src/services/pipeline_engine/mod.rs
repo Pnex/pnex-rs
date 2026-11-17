@@ -182,6 +182,33 @@ pub trait Sink {
         target: &pnex_core::pipeline::doc::ProposalsTarget,
         rows: Vec<Map<String, Value>>,
     ) -> Result<u64, Failure>;
+
+    /// Plays a navigation for the row `item` (D995): its extracts as
+    /// `{name, text}` rows when known now (a replay), `None` once started:
+    /// the row waits and the end of the navigation resumes it.
+    async fn browse(
+        &mut self,
+        b: &pnex_core::pipeline::doc::Browse,
+        row: &Row,
+        item: &str,
+    ) -> Result<Option<Vec<Row>>, Failure>;
+}
+
+/// The code of the failure that pauses a row on its navigation (D995).
+pub const WAITING: &str = "waiting";
+
+/// The `{name, text}` rows of a navigation's extracts.
+pub fn extract_rows(extracts: impl IntoIterator<Item = (String, String)>) -> Vec<Row> {
+    extracts
+        .into_iter()
+        .map(|(name, text)| Row {
+            cols: Map::from_iter([
+                ("name".to_string(), Value::String(name)),
+                ("text".to_string(), Value::String(text)),
+            ]),
+            file: None,
+        })
+        .collect()
 }
 
 /// An empty table of text columns.
@@ -497,6 +524,8 @@ pub struct Exec<'a, T, S, Q> {
     pub tokens: HashMap<String, String>,
     /// Tables a streamed fetch already gave for the steps after it.
     pub ahead: HashMap<String, Table>,
+    /// Key of the tracked row the pass runs for (a navigation's resume).
+    pub item: Option<String>,
 }
 
 impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
@@ -1203,8 +1232,20 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 let out = self.sql.call(code, &settings, input).await?;
                 Table::Batches(out.into_iter().collect())
             }
-            Step::Browse(_) => {
-                return Err(fail("step_unsupported", json!({ "step": step.name() })));
+            Step::Browse(b) => {
+                let (Some(item), Some(Table::Rows(rows))) = (
+                    self.item.clone(),
+                    b.for_each.as_ref().and_then(|t| tables.get(t)),
+                ) else {
+                    return Err(fail("browse_position", Value::Null));
+                };
+                let Some(row) = rows.first() else {
+                    return Ok(Some(Table::Rows(Vec::new())));
+                };
+                match self.sink.browse(b, row, &item).await? {
+                    Some(extracts) => Table::Rows(extracts),
+                    None => return Err(fail(WAITING, Value::Null)),
+                }
             }
         };
         Ok(Some(out))
@@ -1233,6 +1274,72 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
         }
         Ok(written)
     }
+}
+
+/// Resumes a row its navigation paused (D995): the steps after `browse`,
+/// with the row and the navigation's extracts (`None`: it failed). The new
+/// state of the row, its failure, the rows written.
+#[allow(clippy::too_many_arguments)]
+pub async fn resume<T: Transport, S: Sink, Q: sql::SqlRunner>(
+    doc: &Document,
+    inputs: &Inputs,
+    transport: &T,
+    sink: &mut S,
+    sql: &Q,
+    previous: Option<&track::Item>,
+    key: &str,
+    row: Map<String, Value>,
+    extracts: Option<Vec<Row>>,
+) -> (track::Item, Option<Failure>, u64) {
+    let now_us = inputs.now.and_utc().timestamp_micros();
+    let (Some(Step::Enumerate(e)), Some(Step::Browse(b))) = (doc.steps.first(), doc.steps.get(1))
+    else {
+        let f = fail("browse_position", Value::Null);
+        let item = track::after(key, previous, track::State::Failed, false, None, now_us);
+        return (item, Some(f), 0);
+    };
+    let settled = e.empty == pnex_core::pipeline::doc::Empty::Settled;
+    let Some(extracts) = extracts else {
+        let item = track::after(
+            key,
+            previous,
+            track::State::Failed,
+            settled,
+            e.retry_days,
+            now_us,
+        );
+        return (item, Some(fail("browse_failed", Value::Null)), 0);
+    };
+    let mut exec = Exec {
+        doc,
+        transport,
+        sink,
+        sql,
+        inputs,
+        keep: None,
+        journal: None,
+        fresh_shas: HashMap::new(),
+        tokens: HashMap::new(),
+        ahead: HashMap::new(),
+        item: Some(key.to_string()),
+    };
+    let tables = HashMap::from([
+        (
+            e.as_.clone(),
+            Table::Rows(vec![Row {
+                cols: row,
+                file: None,
+            }]),
+        ),
+        (b.as_.clone(), Table::Rows(extracts)),
+    ]);
+    let (state, failure, rows) = match exec.pass(2, tables).await {
+        Ok(0) => (track::State::Empty, None, 0),
+        Ok(n) => (track::State::Done, None, n),
+        Err(f) => (track::State::Failed, Some(f), 0),
+    };
+    let item = track::after(key, previous, state, settled, e.retry_days, now_us);
+    (item, failure, rows)
 }
 
 async fn blocking<R: Send + 'static>(
@@ -1292,6 +1399,7 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
             fresh_shas: HashMap::new(),
             tokens: HashMap::new(),
             ahead: HashMap::new(),
+            item: None,
         };
         match exec.pass(0, HashMap::new()).await {
             Ok(n) => outcome.written = n,
@@ -1328,18 +1436,26 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
             fresh_shas: HashMap::new(),
             tokens: HashMap::new(),
             ahead: HashMap::new(),
+            item: Some(key.clone()),
         };
         if let Some(k) = exec.keep.as_deref_mut() {
             k.entry(e.as_.clone())
                 .or_default()
                 .push(Table::Rows(vec![row.clone()]));
         }
+        let cols = row.cols.clone();
         let tables = HashMap::from([(e.as_.clone(), Table::Rows(vec![row]))]);
         let result = exec.pass(1, tables).await;
         outcome.fresh_shas.extend(exec.fresh_shas);
         let (state, failure, rows) = match result {
             Ok(0) => (track::State::Empty, None, 0),
             Ok(n) => (track::State::Done, None, n),
+            // The row is kept for the resume: its navigation runs (D995).
+            Err(f) if f.code == WAITING => (
+                track::State::Waiting,
+                Some(fail(WAITING, json!({ "row": cols }))),
+                0,
+            ),
             // The rest waits for a later run; the row is left unmarked so a
             // source's bad hour never adds to its failure count.
             Err(f) if throttled(&f) => {

@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use super::blob::{Batches, Blob};
 use super::sql::SqlRunner;
 use super::store::{fixture, shipped};
-use super::{fail, run, Failure, Inputs, Req, Sink, Table, Transport};
+use super::{fail, run, Failure, Inputs, Req, Row, Sink, Table, Transport};
 
 /// Fixtures stay small: a test shows the shape of a source, not its data.
 const FIXTURE_MAX: usize = 64 * 1024;
@@ -120,19 +120,31 @@ impl SqlRunner for InProcess {
 struct Memory(
     HashMap<String, Vec<Arc<Batches>>>,
     HashMap<String, Arc<Batches>>,
+    /// Extracts of each navigation (`given: browse:<as>`): row → name → text.
+    HashMap<String, Value>,
 );
 
 impl Memory {
-    fn with_tables(pack: &str, tables: &std::collections::BTreeMap<String, String>) -> Self {
-        let given = tables
+    fn with_case(
+        pack: &str,
+        tables: &std::collections::BTreeMap<String, String>,
+        given: &std::collections::BTreeMap<String, String>,
+    ) -> Self {
+        let file =
+            |name: &str| fixture(pack, name).unwrap_or_else(|| panic!("{pack}/{name}: no fixture"));
+        let tables = tables
             .iter()
-            .map(|(name, file)| {
-                let bytes =
-                    fixture(pack, file).unwrap_or_else(|| panic!("{pack}/{file}: no fixture"));
-                (name.clone(), csv_text(bytes))
+            .map(|(name, f)| (name.clone(), csv_text(file(f))))
+            .collect();
+        let browsed = given
+            .iter()
+            .filter_map(|(k, f)| {
+                let step = k.strip_prefix("browse:")?;
+                let v = serde_json::from_slice(file(f)).expect("browse fixture is JSON");
+                Some((step.to_string(), v))
             })
             .collect();
-        Self(HashMap::new(), given)
+        Self(HashMap::new(), tables, browsed)
     }
 }
 
@@ -204,6 +216,25 @@ impl Sink for Memory {
         rows: Vec<serde_json::Map<String, Value>>,
     ) -> Result<u64, Failure> {
         Ok(rows.len() as u64)
+    }
+
+    async fn browse(
+        &mut self,
+        b: &pnex_core::pipeline::doc::Browse,
+        _: &Row,
+        item: &str,
+    ) -> Result<Option<Vec<Row>>, Failure> {
+        // No extracts given: the navigation is started, the row waits.
+        let Some(found) = self.2.get(&b.as_) else {
+            return Ok(None);
+        };
+        let texts = found
+            .get(item)
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()));
+        Ok(Some(super::extract_rows(texts)))
     }
 }
 
@@ -323,7 +354,7 @@ async fn every_shipped_pipeline_passes_its_tests() {
                 pack: sp.pack.clone(),
                 given: case.given.clone().into_iter().collect(),
             };
-            let mut sink = Memory::with_tables(&sp.pack, &case.tables);
+            let mut sink = Memory::with_case(&sp.pack, &case.tables, &case.given);
             let mut kept = HashMap::new();
             let out = run(
                 &sp.doc,
@@ -423,6 +454,107 @@ async fn object_hosts_open_their_hosts_but_never_to_a_secret() {
             .as_deref(),
         Some("egress_address_refused")
     );
+}
+
+/// D995: a navigation pauses its row with the row kept; its extracts
+/// resume the steps after it, as `{name, text}` rows.
+#[tokio::test]
+async fn browse_pauses_a_row_and_its_extracts_resume_it() {
+    let doc: pnex_core::pipeline::doc::Document = serde_saphyr::from_str(
+        "key: t\nhosts: [www.example.org]\nsteps:\n\
+         - enumerate: { as: p, track: true, cross: [{ as: url, objects: { type: person, property: url } }] }\n\
+         - browse: { as: page, for_each: p, site: www.example.org, keep: false, steps: [{ open: \"{{url}}\" }, { extract: { all_text: true, as: profile } }] }\n\
+         - sql: { as: kept, sql: \"SELECT p.url, page.text FROM p, page WHERE page.name = 'profile'\" }\n\
+         - write: { from: kept, table: { name: t, replace: false } }\n",
+    )
+    .unwrap();
+    assert!(doc.violations().is_empty(), "{:?}", doc.violations());
+    let url = "https://www.example.org/in/jane";
+    let inputs = Inputs {
+        objects: [("person.url".to_string(), vec![url.to_string()])].into(),
+        ..Default::default()
+    };
+    let transport = Replay {
+        pack: "watch".into(),
+        given: HashMap::new(),
+    };
+    let mut sink = Memory::default();
+    let out = run(
+        &doc,
+        &inputs,
+        &transport,
+        &mut sink,
+        &InProcess,
+        &HashMap::new(),
+        Some(usize::MAX),
+        None,
+        None,
+    )
+    .await;
+    let (item, failure, rows) = &out.items[0];
+    assert_eq!(item.state, pnex_core::pipeline::track::State::Waiting);
+    assert_eq!(*rows, 0);
+    let failure = failure.as_ref().expect("waiting carries the row");
+    assert_eq!(failure.code, super::WAITING);
+    let row = failure.args["row"].as_object().unwrap().clone();
+    assert_eq!(row["url"], url);
+    // Waiting rows are not taken again before their wait is over.
+    let known = HashMap::from([(item.key.clone(), item.clone())]);
+    let now_us = inputs.now.and_utc().timestamp_micros();
+    assert!(pnex_core::pipeline::track::due(&[item.key.clone()], &known, now_us, 10).is_empty());
+
+    let extracts = super::extract_rows([("profile".to_string(), "Jane, engineer".to_string())]);
+    let (done, failure, rows) = super::resume(
+        &doc,
+        &inputs,
+        &transport,
+        &mut sink,
+        &InProcess,
+        Some(item),
+        &item.key,
+        row.clone(),
+        Some(extracts),
+    )
+    .await;
+    assert!(failure.is_none(), "{failure:?}");
+    assert_eq!(
+        (done.state, rows),
+        (pnex_core::pipeline::track::State::Done, 1)
+    );
+    // A failed navigation fails the row, never the run.
+    let (failed, failure, _) = super::resume(
+        &doc,
+        &inputs,
+        &transport,
+        &mut sink,
+        &InProcess,
+        Some(item),
+        &item.key,
+        row,
+        None,
+    )
+    .await;
+    assert_eq!(failed.state, pnex_core::pipeline::track::State::Failed);
+    assert_eq!(failure.map(|f| f.code), Some("browse_failed"));
+}
+
+/// D995: `browse` only right after a tracked enumeration, on its rows.
+#[test]
+fn browse_only_follows_a_tracked_enumeration() {
+    let doc = |track: &str, from: &str| -> pnex_core::pipeline::doc::Document {
+        serde_saphyr::from_str(&format!(
+            "key: t\nhosts: [www.example.org]\nsteps:\n\
+             - enumerate: {{ as: p, {track} cross: [{{ as: url, objects: {{ type: person, property: url }} }}] }}\n\
+             - browse: {{ as: page, for_each: {from}, site: www.example.org, steps: [{{ open: \"{{{{url}}}}\" }}] }}\n\
+             - write: {{ from: page, table: {{ name: t, replace: false }} }}\n"
+        ))
+        .unwrap()
+    };
+    let position = |d: pnex_core::pipeline::doc::Document| {
+        d.violations().iter().any(|v| v.token == "browse_position")
+    };
+    assert!(!position(doc("track: true,", "p")));
+    assert!(position(doc("", "p")));
 }
 
 /// A source answering 503 is asked once per run: the other rows wait,

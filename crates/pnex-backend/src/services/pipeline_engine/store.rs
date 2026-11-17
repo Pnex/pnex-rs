@@ -99,6 +99,7 @@ pub async fn known(
         let state = match r.try_get::<String>("", "state")?.as_str() {
             "done" => track::State::Done,
             "empty" => track::State::Empty,
+            "waiting" => track::State::Waiting,
             _ => track::State::Failed,
         };
         let retry: Option<DateTime<Utc>> = r.try_get("", "retry_after")?;
@@ -163,6 +164,7 @@ pub async fn record(
         track::State::Done => "done",
         track::State::Empty => "empty",
         track::State::Failed => "failed",
+        track::State::Waiting => "waiting",
     };
     for (item, failure, rows) in &out.items {
         let key = item.key.as_str();
@@ -382,6 +384,8 @@ pub struct DatasetSink<'a> {
     /// The application, for the targets that write media; an import's run
     /// has none.
     pub ctx: Option<&'a AppContext>,
+    /// `<pack>/<key>` of the pipeline run.
+    pub pipeline: &'a str,
 }
 
 async fn table_of(db: &DatabaseConnection, org: i64, name: &str) -> Result<Uuid, DatasetError> {
@@ -637,6 +641,48 @@ impl Sink for DatasetSink<'_> {
             }
         }
         Ok(made)
+    }
+
+    async fn browse(
+        &mut self,
+        b: &pnex_core::pipeline::doc::Browse,
+        row: &super::Row,
+        item: &str,
+    ) -> Result<Option<Vec<super::Row>>, Failure> {
+        use crate::services::site_recipes::purpose;
+        // shortcut: an import's run has no application, so it cannot browse;
+        // pass the context to imports when a pack's import needs a navigation.
+        let Some(ctx) = self.ctx else {
+            return Err(fail("step_unsupported", json!({ "step": "browse" })));
+        };
+        let params: std::collections::BTreeMap<String, String> = row
+            .cols
+            .keys()
+            .map(|k| (k.clone(), row.text(k).unwrap_or_default()))
+            .collect();
+        let recipe = pnex_core::site_recipe::Recipe {
+            name: format!("{} · {}", self.pipeline, b.as_),
+            site: b.site.clone(),
+            allow_hosts: Vec::new(),
+            params: params.keys().cloned().collect(),
+            browser: None,
+            captures: None,
+            session: b.session.clone(),
+            steps: b.steps.clone(),
+        };
+        // JSON is YAML: the run keeps the text of what it played.
+        let yaml = serde_json::to_string(&recipe).map_err(|_| fail("internal", Value::Null))?;
+        let why = purpose::Purpose::Pipeline {
+            pipeline: self.pipeline.to_string(),
+            item: item.to_string(),
+        };
+        match purpose::start(ctx, self.org, None, &yaml, params, &why).await {
+            Ok(_) => Ok(None),
+            Err(e) => {
+                tracing::info!(org = self.org, pipeline = self.pipeline, error = ?e, "navigation not started");
+                Err(fail("browse_refused", Value::Null))
+            }
+        }
     }
 }
 
@@ -1043,6 +1089,7 @@ async fn run_with(
         store,
         org,
         ctx,
+        pipeline: &id,
     };
     let sql = super::sql::WorkerSql { db, store, org };
     let out = run(
@@ -1051,7 +1098,7 @@ async fn run_with(
     .await;
     record(db, org, &id, &out).await?;
     for (item, failure, _) in &out.items {
-        if let Some(f) = failure {
+        if let Some(f) = failure.as_ref().filter(|f| f.code != super::WAITING) {
             tracing::info!(org, pipeline = %id, item = %item.key, code = f.code, args = %f.args, "pipeline row failed");
         }
     }
@@ -1059,6 +1106,109 @@ async fn run_with(
         tracing::warn!(org, pipeline = %id, code = f.code, args = %f.args, "pipeline run failed");
     }
     Ok(out)
+}
+
+/// Resumes the row `item` of a pipeline once its navigation ended (D995):
+/// `extracts` = (name, text) of the navigation, `None` when it failed. A row
+/// no longer waiting (resumed already, taken again) is left as it is.
+/// Whether the extracts may stay with the navigation (`keep`).
+pub async fn resume_row(
+    ctx: &AppContext,
+    org: i64,
+    pipeline: &str,
+    item: &str,
+    extracts: Option<Vec<(String, String)>>,
+) -> Result<bool, DatasetError> {
+    let Some(sp) = shipped().iter().find(|s| s.id() == pipeline) else {
+        return Ok(true);
+    };
+    let keep = match sp.doc.steps.get(1) {
+        Some(pnex_core::pipeline::doc::Step::Browse(b)) => b.keep,
+        _ => true,
+    };
+    let lock = TenantLock::acquire(&ctx.db, ns::PIPELINE_RUN, org, Duration::from_secs(120))
+        .await
+        .map_err(|_| DatasetError::TransactionOpen)?;
+    let out = resume_locked(ctx, org, sp, item, extracts).await;
+    lock.release().await;
+    out.map(|_| keep)
+}
+
+async fn resume_locked(
+    ctx: &AppContext,
+    org: i64,
+    sp: &Shipped,
+    item: &str,
+    extracts: Option<Vec<(String, String)>>,
+) -> Result<(), DatasetError> {
+    let id = sp.id();
+    let waiting = ctx
+        .db
+        .query_one_raw(stmt(
+            "SELECT args FROM pipeline_items \
+             WHERE org_id = $1 AND pipeline = $2 AND item = $3 AND state = 'waiting'",
+            vec![org.into(), id.clone().into(), item.into()],
+        ))
+        .await?;
+    let Some(args) = waiting.and_then(|r| r.try_get::<Value>("", "args").ok()) else {
+        return Ok(());
+    };
+    let row = match args.get("row") {
+        Some(Value::Object(m)) => m.clone(),
+        _ => serde_json::Map::new(),
+    };
+    let (items, shas) = known(&ctx.db, org, &id).await?;
+    let mut inputs = inputs(&ctx.db, org, &sp.doc, Utc::now().naive_utc(), shas).await?;
+    inputs.functions = call_functions(&sp.pack, &sp.doc);
+    let store = datasets::store_of(&ctx.config)?;
+    let mut sink = DatasetSink {
+        db: &ctx.db,
+        store: &store,
+        org,
+        ctx: Some(ctx),
+        pipeline: &id,
+    };
+    let sql = super::sql::WorkerSql {
+        db: &ctx.db,
+        store: &store,
+        org,
+    };
+    let extracts = extracts.map(super::extract_rows);
+    let (it, failure, rows) = super::resume(
+        &sp.doc,
+        &inputs,
+        &HttpTransport,
+        &mut sink,
+        &sql,
+        items.get(item),
+        item,
+        row,
+        extracts,
+    )
+    .await;
+    if let Some(f) = &failure {
+        tracing::info!(org, pipeline = %id, item, code = f.code, args = %f.args, "pipeline row failed");
+    }
+    let state = match it.state {
+        track::State::Done => "done",
+        track::State::Empty => "empty",
+        track::State::Failed => "failed",
+        track::State::Waiting => "waiting",
+    };
+    save(
+        &ctx.db,
+        org,
+        &id,
+        item,
+        state,
+        failure.as_ref(),
+        it.retry_after_us,
+        it.failures,
+        rows,
+        None,
+    )
+    .await?;
+    Ok(())
 }
 
 async fn last_run(
