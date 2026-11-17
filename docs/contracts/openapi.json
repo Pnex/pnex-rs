@@ -14786,7 +14786,7 @@
         "type": "object"
       },
       "MailForward": {
-        "description": "The original of a forwarded message (D463): its sender, date and\nsubject, read from the attached message or from the forward block of the\ntext. Filed under the original sender only when `trusted`: the mailbox\nthat forwarded it is a member's address and passed authentication.",
+        "description": "The original of a forwarded message (D463): its sender, date and\nsubject, read from the attached message or from the forward block of the\ntext. Filed under the original sender only when `trusted`: the mailbox\nthat forwarded it is a member's address and passed authentication.\n`member` alone says a member's address forwarded it, unverified when\n`trusted` is false (D994): a flow may read it, noting it unverified.",
         "properties": {
           "date": {
             "type": [
@@ -14796,6 +14796,9 @@
           },
           "from": {
             "$ref": "#/components/schemas/MailAddress"
+          },
+          "member": {
+            "type": "boolean"
           },
           "subject": {
             "type": "string"

@@ -242,7 +242,9 @@ async fn mailboxes_are_managed_and_read_by_their_owners_and_teams() {
         assert!(m.forwarded.unwrap().trusted);
         let spoof = parsed("Bob <bob@example.com>", "f2@x", false, fwd);
         let m = mail::poller::store(&env.db, &box_row, "INBOX", 2, spoof, &members).await.unwrap().unwrap();
-        assert!(!m.forwarded.unwrap().trusted, "a failed authentication is never believed");
+        let f = m.forwarded.unwrap();
+        assert!(!f.trusted, "a failed authentication is never believed");
+        assert!(f.member, "still a member's address, unverified (D994)");
 
         let (st, msgs) = call(&server, "GET", &format!("/api/v1/mailboxes/{sales}/messages"), &env.bob, org, None).await;
         assert_eq!((st, msgs["count"].clone()), (200, json!(3)), "{msgs}");

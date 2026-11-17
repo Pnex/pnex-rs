@@ -264,6 +264,8 @@ async fn poll_folder(
             if !f.truncated {
                 p.auth = super::verify::auth(&f.raw).await;
             }
+            let attached = std::mem::take(&mut p.attached);
+            let auth = p.auth;
             if let Some(m) = store(db, row, folder, f.uid, p, members)
                 .await
                 .map_err(db_error)?
@@ -271,6 +273,17 @@ async fn poll_folder(
                 stored += 1;
                 *budget = budget.saturating_sub(1);
                 publish(valkey, row.org_id, m).await;
+                // Stored with their carrier, once (D994).
+                for mut a in attached {
+                    a.auth = auth;
+                    if let Some(m) = store(db, row, folder, f.uid, a, members)
+                        .await
+                        .map_err(db_error)?
+                    {
+                        stored += 1;
+                        publish(valkey, row.org_id, m).await;
+                    }
+                }
             }
         }
         last = last.max(f.uid);
@@ -307,7 +320,8 @@ pub async fn store<C: ConnectionTrait>(
     // The first hop from outside the org; believed only when a member
     // forwarded it, authenticated (D463).
     let forwarded = pnex_core::mail::forward_origin(p.forwards, members).map(|mut f| {
-        f.trusted = members.iter().any(|m| m == &p.from.address) && p.auth.trusted();
+        f.member = members.iter().any(|m| m == &p.from.address);
+        f.trusted = f.member && p.auth.trusted();
         f
     });
     let sent_at = p

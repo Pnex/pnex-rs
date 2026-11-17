@@ -35,6 +35,8 @@ The sales follow-up pack ships **CRM · mails received**: pick your mailboxes in
 ## Forwarding from a mailbox PneX does not read
 A salesperson whose company mailbox cannot be connected forwards the mail to a mailbox PneX reads. PneX finds the original sender (a forward as attachment, or the forward block of Gmail, Outlook or Apple Mail; in a forward of a forward, the first sender outside the organization) and files the mail under them — only when the forward comes from a member's address and passed authentication; otherwise the mail stays with whoever sent it.
 
+Several mails forwarded at once as attachments (.eml files) each become a mail of their own in the mailbox, under the same sender, so a flow handles each one. A member whose company domain does not sign its mails (a missing DKIM setup, common with Microsoft 365) is still recognized as a member: a flow may read the forward and records it as an unverified sender; the mail is not filed under the original sender. To have it verified, the company's mail admin turns on DKIM for its domain.
+
 ## A mail is never an order
 The text is untrusted: HTML is turned into text, images and links are never loaded, attachments are listed and never opened by PneX, until a reader saves one to the media library. PneX checks the sender itself: a valid DKIM signature of the sender's domain. When it is missing or broken (some small senders do not sign their mails), nothing is linked on its own: the link waits on the **To validate** page, where a person accepts it.
 

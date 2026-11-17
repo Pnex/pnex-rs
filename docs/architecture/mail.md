@@ -5,7 +5,7 @@
 | Statut | **M1, M2, M6 codés — 2026-10-26**, écran `/mailboxes` le 2026-10-27 (menu Appareils, à côté des sites web) : serveur mail classique (IMAP, mot de passe) ; Microsoft reporté (§10). PneX **collecte et range** ; envoi (M3) codé le 2026-10-29, essayé sur un vrai serveur le 2026-11-03 (o2switch : SMTP 465, relève IMAP du mail envoyé, marque `from_pnex` reconnue) ; l'essai a mené à corriger `In-Reply-To`/`References` sans chevrons (§9) |
 | Déclencheur | Lot CRM3 de `crm.md` (mail entrant rattaché à la fiche), élargi : le mail est une source comme les flux et les sites web, utile bien au-delà du commercial |
 | Repose sur | `iam.md` (principaux, comptes de service, équipes, D286–D299), `autonomous-agents.md` (agent = compte de service, D379, D381, D398), `secrets` (coffre D110–D118), `ontology.md` (types système D176–D177), `crm.md` (D442–D447 données personnelles), `security.md` (R8, R11–R13) |
-| Numérotation | **D453…D463**, lots **M1…M6** ; envoi (M3) : **D518…D521** (2026-10-29) |
+| Numérotation | **D453…D463**, lots **M1…M6** ; envoi (M3) : **D518…D521** (2026-10-29) ; joints et membre non signé : **D994** (2026-11-17) |
 
 ## 1. Le besoin en une phrase
 
@@ -166,6 +166,13 @@ Le calendrier (D466) reste à la demande d'un lecteur ; l'ontologie, elle, est r
 
 Limites : une annulation envoyée à un seul participant retiré de la réunion (même `UID`) passe aussi le rendez-vous `cancelled` ; une invitation renvoyée après la réunion la remet `planned`. Le transfert d'une invitation Outlook a un autre `UID` : c'est un second rendez-vous. Une « puce » d'événement Gmail n'est pas une invitation (texte localisé, sans participants ni identifiant) : seule son invitation jumelle, envoyée par Google Agenda aux invités, est lue.
 
+### D994 — Un message joint (`.eml`) est un transfert à part entière ; un membre non signé est lu, marqué non vérifié
+
+Constaté le 2026-11-17 à l'essai grandeur nature : un directeur commercial a transféré 16 newsletters « en pièce jointe » (Outlook, deux mails) ; le corps ne portait que sa signature, et seul l'expéditeur du premier joint était retenu.
+
+- **Chaque message joint** (`message/rfc822`, 30 au plus par mail) devient un message stocké à part : identifiant `<Message-ID du porteur>#<n>` (une seconde relève ne le stocke pas deux fois), expéditeur, destinataires, date, drapeaux et authentification **du porteur** (la signature DKIM du porteur couvre ses pièces jointes), sujet et texte **du joint**, `forwarded` = ses en-têtes. Il est publié aux flows comme tout mail : un flow traite chaque newsletter séparément, quelle que soit la façon dont elle est arrivée. Le porteur reste stocké (sa note), sans `forwarded`. Un joint ne liste pas ses propres pièces jointes (leur index pointe dans le porteur) ; un joint dans un joint n'est pas déplié.
+- **`forwarded.member`** dit qu'une adresse de membre a fait le transfert, que la signature ait pu être vérifiée ou non ; `trusted` reste « membre **et** authentifié » (D463) et reste seul à décider du rangement sous l'expéditeur d'origine (`correspondent`). Un domaine d'entreprise qui ne signe pas ses mails (Microsoft 365 sans DKIM propre au domaine : la signature est celle de `onmicrosoft.com`, non alignée) ne bloque donc plus un flow qui l'accepte : le flow lit `member` et **inscrit dans l'ontologie** que l'expéditeur n'est pas vérifié (newsletters : crédit « expéditeur non vérifié » et `evidence.sender_verified = false` sur le lien proposé, appendice L de `markets-research.md`). Risque accepté (Shan, 2026-11-17) : quelqu'un qui usurpe l'adresse d'un membre fait créer des éléments **à valider**, jamais rangés ni liés d'office.
+
 ## 4. Ce que le système ne fait pas
 
 - Pas de client mail complet (dossiers, règles, signatures) : PneX relève, relie et répond sous contrôle ; on lit ses mails dans sa messagerie.
@@ -223,6 +230,7 @@ Limites : une annulation envoyée à un seul participant retiré de la réunion 
 | D464 | Un nœud `mail_received` qui redémarre rejoue les mails stockés après son curseur (200 au plus, 7 jours), jamais deux fois ; le premier déploiement part de maintenant |
 | D465 | Une pièce jointe devient un média seulement à la demande d'un lecteur de la boîte qui peut ajouter des médias ; relue sur le serveur, vérifiée, passée par la liste blanche des dépôts |
 | D466 | Une invitation de réunion lue à la relève va au calendrier de l'org à la demande d'un lecteur ; clé = `UID` (mise à jour, annulation), participants rattachés aux personnes par identifiant e-mail |
+| D994 | Un message joint (`.eml`) est stocké et publié comme un transfert à part ; `forwarded.member` = transfert d'un membre même non signé, `trusted` inchangé |
 | D467 | Un expéditeur inconnu d'un domaine propre est proposé (jamais lié) sous le compte dont le site web confirmé a ce domaine ; webmails exclus |
 | D484 | Une invitation reçue devient un `meeting` clé = `UID` (flow du pack `crm`), ses participants connus y participent (proposé si l'expéditeur n'est pas authentifié) ; annulation = statut `cancelled` ; personne n'est créé |
 | D518 | Serveur SMTP sur la boîte (mêmes identifiants qu'IMAP, TLS implicite sur 465, STARTTLS exigé ailleurs, garde de sortie) ; mode `draft` par défaut, `send` sur boîte partagée ou de service seulement |

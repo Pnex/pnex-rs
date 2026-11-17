@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
-| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), **D890…D897** (appendice G), lots **MK0…MK14**, **MK15…MK26** (appendice F), **MK27…MK30** (appendice G) |
+| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), **D890…D897** (appendice G), **D986…D993** (appendice L), lots **MK0…MK14**, **MK15…MK26** (appendice F), **MK27…MK30** (appendice G) |
 | Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`data-pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
@@ -1494,3 +1494,188 @@ Copier une position, passer un ordre, se connecter au compte d'un tiers ; lire l
 - **Données d'un tiers** : des historiques publiés sous pseudonyme par leurs auteurs. Aucun rapprochement avec une personne (garde D933, testée). Ils restent dans l'org qui les importe, et l'effacement du compte les supprime (D932).
 - **Entrées** : paramètres SQL liés ; motif `LIKE` du ticker purgé de `%` et `_` ; CSV borné (taille, lignes, longueur des cellules texte) ; limite axum posée sur la route au double du plafond, pour qu'un dépassement donne le 413 codé.
 - Aucune requête sortante, aucune dépendance nouvelle, aucun rendu HTML de texte importé.
+
+## Appendice L — Ingestion de contenus générique : sources → items → synthèse (D986–D993)
+
+Statut : brouillon reçu le 2026-11-17, avec un premier usage. Dans l'org « Test industrie grandeur nature » (dev.pnex.io), le directeur commercial transfère les newsletters qu'il reçoit. PneX doit y reconnaître la **nature de l'approche commerciale** (nouvelle usine, difficulté de recrutement, création d'un centre de formation…), l'entreprise et le site, puis retrouver l'entreprise, ses sites et ses contacts. Le commercial crée ensuite la piste dans Odoo depuis pnex-sales. Les choix de L.0 sont ceux de Shan (2026-11-17). Périmètre : ingestion et ETL seulement, aucune action device.
+
+### L.0 Décisions et correspondance avec l'existant
+
+| # | Décision |
+|---|---|
+| D986 | **Le résultat est un `news_item` (pack `watch`), et l'entreprise devient une cible.** Thème = vecteur d'accroche, avec résumé, extrait cité, lien et newsletter d'origine. Lien `item_about` vers l'entreprise, proposé (à valider). Une entreprise sans statut de compte passe en `target`, et un compte connu garde le sien. **La piste n'est créée que dans Odoo, par un commercial, depuis pnex-sales** (pnex-sales PRD V2, V5). PneX ne crée ni `lead` du pack `crm` ni piste Odoo (Shan, 2026-11-17). |
+| D987 | **Source = une boîte partagée dédiée** (par exemple `veille@`), relevée en IMAP (mail.md D453–D463). Seuls les **transferts d'un membre** sont lus ; un autre expéditeur ne produit rien (Shan, 2026-11-17). Un membre dont le domaine ne signe pas ses mails est lu quand même (`forwarded.member`, mail.md D994) et ses éléments portent « expéditeur non vérifié » ; une newsletter jointe en `.eml` est traitée comme un transfert à part. |
+| D988 | **Premier lot : le texte du mail seul** (accroche et lien de chaque article). L'article complet vient au lot L2, d'abord la page publique (`web_visit`), puis l'agent navigateur pour les sites où l'utilisateur est connecté (L5) (Shan, 2026-11-17). |
+| D989 | **L'appendice est rattaché à l'existant**, sans tables neuves au premier lot (Shan, 2026-11-17). Source = boîte mail (`mailboxes`) ou `news_source`. Item = `news_item`. Nœuds = `mail_received`, `llm_text`, `pnex_function`, `org_resolve`, `object_upsert`, `link_upsert`. Les analyses versionnées (`ItemAnalysis`), le retraitement et le mode éphémère restent des lots ultérieurs (§9), ouverts quand un retraitement réel sera demandé. |
+| D990 | **Extrait vérifié** : chaque approche que le LLM rend doit citer une phrase **présente mot pour mot** dans le mail (espaces et casse ignorés). Sinon elle est jetée. Un lien n'est gardé que s'il figure dans le mail. Le texte du mail est une donnée, jamais une consigne (D458). |
+| D991 | **Aucun vecteur d'accroche dans PneX** (Shan, 2026-11-17 : « il ne faut pas hardcoder un vecteur d'accroche pour du lead dans PneX »). Le prompt, la liste des vecteurs et le flow sont le métier de l'équipe commerciale. Ils vivent dans **pnex-sales** (`flows/newsletters.yaml`, avec ses fonctions Starlark et son test), qui les installe dans l'org comme n'importe quel flow d'org. PneX ne livre que les nœuds et types génériques. Vecteurs de l'équipe (2026-11-17) : nouvelle usine, centre de formation, augmentation de la production, ramp-up, problème de qualité, embauche, acquisition d'usine, problème de production, vieillissement des collaborateurs, turnover, captation des talents, transfert de technologie. Un vecteur n'est qu'une étiquette (`topic`) sur le `news_item`, et une entreprise peut en porter plusieurs. |
+| D992 | **Retrouver dans PneX** : l'entreprise est cherchée par son SIREN au registre (`org_resolve`, avec nom, ville et code postal). Une correspondance nette crée ou retrouve l'`organization` par SIREN et propose le lien. Un cas ambigu laisse l'item sans lien, à traiter dans la Veille. Les sites (`establishment`), contacts (`employs`, `list_contact`) et relations déjà connus suivent l'entreprise : pnex-sales les montre sur la fiche. La recherche de profils des cibles (D788) part de là. La capture LinkedIn des salariés reste **déclenchée par un humain**, sur la page de l'entreprise, avec l'agent navigateur (D254/D333). |
+| D993 | **Carte des relations (demandée par Shan le 2026-11-17)** : une entreprise par cercle, ses personnes dedans, les liens entre personnes (`knows`, D976) et entre entreprises, avec des filtres (statut de compte, groupement, persona, vecteur). Elle se construit dans **pnex-sales** (`src/ui/graph.rs`, commencé le 2026-11-17 : chaque entreprise est une boîte, ses personnes autour, colorées par rôle). PneX fournit les liens via `/ontology/query` et `/objects/{id}/graph`. |
+
+Flow du lot L1 : **« Prospecting · forwarded newsletters »**, dans pnex-sales (`flows/newsletters.yaml`, D991), installé dans l'org comme brouillon. Une personne choisit la boîte et déploie dans PneX.
+
+```
+mail_received ─▶ nl_prep (transferts d'un membre authentifié seulement)
+  ─▶ llm_text (une ligne par approche : thème | société | ville | CP | résumé | phrase citée | lien)
+  ─▶ nl_read (thème connu, citation présente dans le mail, lien présent) ─▶ json_split
+  ─▶ nl_item ─▶ object_upsert news_item (clé = lien ou Message-ID + société + thème, skip_existing)
+  ─▶ nl_ask ─▶ org_resolve ─┬─ 0 ─▶ nl_found ─▶ object_upsert organization (siren)
+                            │        ─▶ nl_about ─┬─▶ link_upsert item_about (propose)
+                            │                     └─▶ object_upsert organization (account_status = target si absent)
+                            └─ 1 (ambigu) : l'item reste sans lien, à valider dans la Veille
+```
+
+Mise en route sur l'org : installer `watch`, monter `crm` et `prospecting_b2b*`, installer le flow de pnex-sales, créer la boîte partagée et la donner à lire, inscrire le directeur commercial comme membre avec l'adresse depuis laquelle il transfère, choisir la boîte dans le nœud *Mail received*, puis déployer.
+
+**PRD reçu (brouillon du 2026-11-17)**, conservé tel quel ci-dessous. Les numéros de section sont ceux du brouillon.
+
+### L.1 Problème
+
+PNEX doit ingérer des contenus textuels venant de sources hétérogènes : newsletters e-mail, RSS, pages web, API, dépôts de fichiers. Souvent, la source ne donne qu'un **pointeur** (lien, accroche) et le contenu complet est ailleurs : derrière une session, un paywall ou une API authentifiée.
+
+Ce qu'on veut en sortir, c'est **une synthèse, des entités et des tags d'impact** rattachés à la frise et à l'ontologie. Le texte brut est conservé pour pouvoir **retraiter** le stock quand on change de modèle, de prompt ou de schéma d'extraction.
+
+Aucune source ne doit être codée en dur. Une source est **une instance de configuration**, et PNEX reste neutre.
+
+### L.2 Principes
+
+1. **Découverte ≠ acquisition ≠ traitement** : trois étapes séparées et interchangeables.
+2. **La politique de rétention est déclarée par source et appliquée par le moteur**, jamais par un script utilisateur.
+3. **Toute l'I/O passe par des nœuds natifs** (Rust), comme pour le reste du flow engine.
+4. **L'utilisateur déclare ses droits** sur chaque source (`content_license`). PNEX applique la déclaration, il ne juge pas.
+5. **Brut immuable, analyses versionnées** : le texte stocké ne change jamais ; chaque passage LLM produit une nouvelle version d'analyse, comparable aux précédentes.
+
+### L.3 Modèle
+
+#### L.3.1 Source
+
+```yaml
+source:
+  id: <uuid>
+  name: "Newsletter presse X"
+  kind: imap | rss | http_poll | webhook | file_drop | web_agent
+  connection: { ... }            # dépend du kind ; secrets via le store PNEX, jamais en clair
+  discovery:                     # comment produire des items candidats
+    link_rules:
+      include: ["https://www.example.com/article/*"]
+      exclude: ["*/unsubscribe*", "*/preferences*"]
+    resolve_redirects: true      # liens de tracking des newsletters → URL canonique
+  acquisition:
+    enabled: false               # désactivé par défaut
+    fetcher: http | http_auth | web_agent
+    web_agent_id: <optionnel>    # extension navigateur avec session utilisateur
+    max_rate: "1/30s"            # cadence de lecteur, pas de parallélisme agressif
+  content_policy:
+    retention: store_full | metadata_only | ephemeral   # défaut : store_full
+    content_license: "déclaration libre de l'utilisateur"
+    ttl: null                    # optionnel, ex. "730d" ; purge auto du brut, analyses conservées
+    encrypt_at_rest: true        # chiffrement S3 avec clé par org
+    raw_access: [role:analyst]   # qui peut lire le texte brut dans l'UI/API
+    allow_export: false          # export/partage du brut hors PNEX
+    llm_scope: local_only | any
+  processing:
+    pipeline_id: <uuid>          # pipeline de traitement à appliquer
+```
+
+#### L.3.2 Item (crate `core`, source de vérité partagée)
+
+| Champ | Type | Note |
+|---|---|---|
+| `id` | uuid | |
+| `source_id` | uuid | |
+| `canonical_url` | text | après résolution des redirections, sans paramètres de tracking |
+| `title`, `teaser` | text | issus de la découverte |
+| `published_at` | timestamptz | temps de validité |
+| `ingested_at` | timestamptz | temps de transaction (bitemporel) |
+| `content_hash` | bytea | dédup + détection de mise à jour, calculé même en `ephemeral` |
+| `retention` | enum | copie de la politique au moment de l'ingestion |
+| `raw_ref` | text NULL | clé S3 du brut (HTML + texte extrait), **NULL si `ephemeral` ou `metadata_only`** |
+| `current_analysis_id` | uuid NULL | analyse active (celle affichée et utilisée par la frise) |
+
+#### L.3.3 ItemAnalysis (append-only)
+
+| Champ | Type | Note |
+|---|---|---|
+| `id` | uuid | |
+| `item_id` | uuid | |
+| `run_id` | uuid | lot de retraitement auquel elle appartient |
+| `model` | text | ex. `qwen3-8b-q4@local`, `glm-5.3-flash@cloud` |
+| `prompt_version` | text | hash ou tag du gabarit |
+| `schema_version` | text | version du schéma d'extraction (entités/tags) |
+| `summary` | text | reformulée, bornée |
+| `entities` | jsonb | sociétés, sites, secteurs, matières, lieux → liens ontologie |
+| `tags` | jsonb | dont `impact` |
+| `metrics` | jsonb | latence, tokens, coût, score qualité éventuel |
+| `created_at` | timestamptz | |
+
+Déduplication : `canonical_url`, puis `content_hash`.
+
+### L.4 Nœuds (flow engine / pipelines)
+
+| Nœud | Rôle | Sortie |
+|---|---|---|
+| `imap_trigger` | nouveau message dans une boîte/dossier | `message` |
+| `rss_poll` / `http_poll` | interrogation périodique | `feed_entries` |
+| `extract_links` | extraction de liens + règles include/exclude + résolution des redirections | `item_candidates[]` |
+| `dedup` | filtrage sur `canonical_url` | `item_candidates[]` |
+| `fetch_content` | acquisition via le fetcher configuré | `Ephemeral<Content>` ou `Content` |
+| `readability` | extraction du texte principal | même enveloppe que l'entrée |
+| `llm_summarize` | synthèse avec gabarit (longueur bornée, reformulation imposée) | `summary` |
+| `llm_extract` | entités + tags d'impact (sortie JSON typée) | `entities`, `tags` |
+| `persist_item` | écriture de l'item ; refuse `raw_ref` si la politique l'interdit | `item` |
+
+`llm_*` : le modèle est choisi par org/source. Si `llm_scope = local_only`, le moteur **refuse** l'exécution sur un modèle cloud, au lieu de basculer dessus en silence.
+
+Correspondance actuelle (D989) : `imap_trigger` = `mail_received` ; `rss_poll` = pipeline `watch/rss` ; `dedup` + `persist_item` = `object_upsert` sur la clé unique `ref` avec `skip_existing` ; `llm_summarize` / `llm_extract` = `llm_text` + une fonction qui valide la sortie ; `fetch_content` = `web_visit` (public) ou l'agent navigateur ; `extract_links` / `readability` : pas encore de nœud dédié.
+
+### L.5 Retraitement (changement de modèle / prompt / schéma)
+
+- **Run de retraitement** : sélection d'items (source, période, filtre) + pipeline cible (modèle, `prompt_version`, `schema_version`). Exécuté par la queue de workers, reprenable, avec cadence et budget max.
+- Lit le brut depuis S3, produit de nouvelles `ItemAnalysis` ; **n'écrase rien**.
+- **Comparaison** : vue côte à côte ancienne/nouvelle analyse sur un échantillon, métriques agrégées (latence, coût, divergence des entités/tags d'impact).
+- **Bascule** : promotion d'un run ⇒ `current_analysis_id` mis à jour en masse ; rollback = repromouvoir le run précédent (même logique que enregistrer/déployer des flows).
+- **Évaluation** : possibilité de marquer un jeu d'items « référence » annoté à la main pour noter les modèles.
+- Les liens ontologie/frise suivent l'analyse active.
+
+### L.6 Mode optionnel « éphémère »
+
+Pour les sources où l'utilisateur ne veut ou ne peut pas garder le brut. `ephemeral` = le texte complet est traité en mémoire puis jeté (pas de retraitement possible). Le moteur doit le garantir, pas le laisser à la discipline de chacun :
+
+- **Type `Ephemeral<T>`** dans `core` : pas de `Serialize`, `Debug` masqué (`<redacted n bytes>`), `Drop` qui met la mémoire à zéro (`zeroize`).
+- **Exécution in-process** : un `Ephemeral<T>` ne peut pas traverser une file (Valkey, queue PG) ni être persisté entre deux nœuds. Toute la séquence `fetch_content → … → llm_*` tourne dans une seule tâche.
+- **Observabilité** : traces et logs OpenObserve ne reçoivent que des métadonnées (taille, hash, durée, statut).
+- **Retries** : on relance le `fetch`, on ne met jamais le contenu en cache.
+- **Erreurs** : les messages d'erreur ne contiennent pas d'extrait du contenu.
+- **Test de conformité** : test d'intégration qui injecte un texte marqueur et vérifie qu'il est absent des logs, traces, tables, S3 et Valkey après exécution.
+
+### L.7 UI
+
+- Écran **Sources** : création depuis un type, test de connexion, aperçu des items découverts, avant toute activation de l'acquisition.
+- Activer l'acquisition affiche la politique (rétention, LLM, cadence) et le champ `content_license` à remplir.
+- Vue **Items** : liste, filtre par source/entité/impact, clic → synthèse active + historique des analyses + lien vers l'original ; texte brut visible seulement pour les rôles `raw_access`.
+- Vue **Runs** : lancer un retraitement, suivre l'avancement, comparer, promouvoir/rollback.
+- Les items alimentent la frise et la carte comme les autres objets temporels.
+
+### L.8 Hors périmètre
+
+- Crawl de site (suivre les liens au-delà de ceux fournis par la source).
+- Contournement d'authentification ou de protection anti-bot.
+- Republication du contenu.
+
+### L.9 Livraison par étapes
+
+1. **L1** : `Source`, `Item`, `ItemAnalysis` dans `core`, migrations, `imap_trigger`, `extract_links`, `dedup`, `persist_item`. **Codé le 2026-11-17 sur l'existant (D989)** : le flow « Prospecting · forwarded newsletters », livré par pnex-sales (D991).
+2. **L2** : `fetch_content` (`http`, `http_auth`) + stockage brut S3 chiffré (`store_full`).
+3. **L3** : `llm_summarize` / `llm_extract` produisant des `ItemAnalysis` versionnées.
+4. **L4** : runs de retraitement + comparaison + promotion/rollback.
+5. **L5** : fetcher `web_agent` (extension navigateur PNEX).
+6. **L6** : rattachement ontologie / frise, vues UI.
+7. **L7** : mode `ephemeral` + test de conformité (si besoin).
+8. **L8** : carte des relations (D993).
+
+### L.10 Questions ouvertes
+
+- **Q-IN1** : mise à jour d'un article (même URL, hash différent) : nouveau brut versionné sous le même item, ou nouvel item ?
+- **Q-IN2** : modèle local de référence pour `llm_scope = local_only` (dépend du choix GPU). L'org de test tourne aujourd'hui sur `lfm3` local.
+- **Q-IN3** : format du brut : HTML d'origine + texte extrait, ou texte extrait seul (plus léger, mais retraitement de l'extraction impossible) ?
+- **Q-IN4** : le site cité (« nouvelle usine à Y ») n'est souvent pas encore au registre. Faut-il une propriété `place` sur `news_item`, ou un établissement proposé ? Au lot L1, la ville n'apparaît que dans le résumé.

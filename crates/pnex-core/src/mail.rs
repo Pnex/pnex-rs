@@ -262,6 +262,8 @@ pub struct MailAttachment {
 /// subject, read from the attached message or from the forward block of the
 /// text. Filed under the original sender only when `trusted`: the mailbox
 /// that forwarded it is a member's address and passed authentication.
+/// `member` alone says a member's address forwarded it, unverified when
+/// `trusted` is false (D994): a flow may read it, noting it unverified.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MailForward {
@@ -271,6 +273,8 @@ pub struct MailForward {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub subject: String,
     pub trusted: bool,
+    #[serde(default)]
+    pub member: bool,
 }
 
 /// One stored message (D455). Text only: never HTML (D458).
@@ -901,6 +905,7 @@ fn block_at(lines: &[&str], start: usize) -> Option<(MailForward, usize)> {
         date: None,
         subject: String::new(),
         trusted: false,
+        member: false,
     };
     for l in lines.iter().skip(from_at + 1).take(8) {
         match forward_field(l) {
@@ -1295,6 +1300,7 @@ mod tests {
             date: None,
             subject: String::new(),
             trusted: false,
+            member: false,
         });
         assert_eq!(
             m.correspondent().address,
