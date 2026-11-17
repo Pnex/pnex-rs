@@ -129,13 +129,15 @@ noyau, parce qu'ils servent tous les types.
   ancienne ; texte libre français ou anglais ; numéro de série.
 - **D961 (acceptée 2026-11-17)** : recherche hybride lexicale + vectorielle dans
   PostgreSQL (pgvector), sur l'index de `doc-search.md` ; les références
-  normalisées (casse, séparateurs, préfixes fabricant) ont leur propre index
+  normalisées (casse, séparateurs, préfixes fabricant ; les règles de
+  préfixe vivent en YAML dans le pack, jamais en dur dans le moteur) ont leur propre index
   exact et préfixe.
 - **Résolution des remplacements** : une référence remplacée renvoie
   l'actuelle avec son historique (chaîne `supersedes`).
 - Filtres : fabricant, modèle, famille, caractéristiques.
 - Entrées image : photo de plaque (OCR serveur, différé si hors ligne),
-  photo de pièce (similarité).
+  photo de pièce (similarité ; modèle d'embeddings d'image choisi en PD4
+  sur les photos du pilote : ONNX, exécuté côté serveur, licence permissive).
 - Cibles : **< 300 ms** texte ou référence sur 100 000 pièces, < 3 s image.
 
 ### 5.2 Documentation technique
@@ -155,8 +157,8 @@ noyau, parce qu'ils servent tous les types.
   électrique, récupération de fluide, habilitations…).
 - Notes terrain proposées depuis le terrain, validées par un détenteur de
   `maintenance:validate` (§5.8).
-- Mode « mains sales » : gros boutons, navigation par étapes, lecture à
-  voix haute optionnelle.
+- Mode « mains sales » : gros boutons, navigation par étapes. Pas de
+  lecture à voix haute tant que le pilote ne la demande pas.
 
 ### 5.4 QR code et parc (D962–D964)
 - **D962 (acceptée 2026-11-17)** : un QR porte une **URL courte vers un jeton stable**
@@ -170,7 +172,9 @@ noyau, parce qu'ils servent tous les types.
 - **D964 (acceptée 2026-11-17)** : un scan sans droit affiche une page minimale
   configurable par org (marque, modèle, contact du mainteneur), **sans
   donnée client** ; servie hors de l'origine de l'app (R11–R13) ; jeton
-  non énumérable, révocable.
+  non énumérable, révocable. **Phasage** : en PD1, un scan sans session
+  ouvre le login et un scan sans droit renvoie un 403 propre ; la page
+  publique (et son hôte séparé) vient dans un lot ultérieur.
 - Étiquettes : **QR seul**, imprimé sur planche au format standard ; la
   matière (polyester, tenue à la graisse, au froid, à l'humidité) est un
   choix d'achat du client, décrit dans la fiche d'aide. Pas de NFC (Q-PD3).
@@ -203,7 +207,8 @@ Cœur du coût et de la valeur.
   orgs (Q-PD2) : elle franchirait la frontière de l'org (modèle de menace de
   `security.md`). Une base commune demanderait son propre PRD.
 - Indicateurs par pièce et par modèle : retours, corrections, confiance de
-  la nomenclature.
+  la nomenclature (part des lignes validées par une personne parmi les
+  lignes de la nomenclature, et nombre de retours sur 12 mois).
 
 ### 5.7 Hors ligne (D968)
 - **D968 (acceptée 2026-11-17)** : synchronisation des appareils d'un site ou d'une
@@ -250,7 +255,7 @@ chaque lot.
 | Annotations (D147, D219) | Ancres, hotspots de vue éclatée |
 | Pages L6 | Procédures de montage |
 | Vision (`ml-vision.md`) | Repères sur vues éclatées, similarité de pièce |
-| Assistant | OCR assisté de plaque, extraction de nomenclatures, questions en langage naturel |
+| Assistant | Lecture (recherche de pièce, nomenclature filtrée d'un appareil, remplacements, fiche pièce) ; écritures en proposition seulement : ajout au panier d'un OT, correction de pièce, via le service partagé avec l'UI |
 | Moteur de pipelines, flows | Ingestion et validation |
 | Propositions | Validation humaine de tout ce qui est extrait ou proposé |
 | Agents navigateur | Module prix §9 |
@@ -330,3 +335,13 @@ PD1 recoupe les lots C-QR1 et C-QR2 de l'annexe C : ils se font une fois.
   les champs texte `manufacturer` et `model` des types d'équipement de
   `maintenance` sont remplacés par les liens `manufactures` (organisation)
   et `instance_of` (`equipment_model`) ; `serial` existe déjà et reste.
+- **Page QR publique** : reportée après PD1 ; en PD1, login ou 403 (§5.4).
+- **Assistant** : lecture des pièces, nomenclatures et remplacements ;
+  écritures (panier d'OT, correction) en proposition via le service partagé
+  avec l'UI (§7, règle `ai-assistant.md` §9.3).
+- **Voix** : retirée du mode « mains sales ».
+- **Photo de pièce** : modèle d'embeddings choisi en PD4 (§5.1).
+- **Référence fabricant de `spare_part`** (choix par défaut) : les champs
+  texte `manufacturer` et `manufacturer_ref` sont remplacés par le lien
+  `manufactures` et par les objets `part_reference` de nature « origine » ;
+  `part_number` (référence interne de l'org) reste.
