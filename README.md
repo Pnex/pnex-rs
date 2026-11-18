@@ -53,7 +53,7 @@ applications, AI agents and their execution environments, voice, vision and devi
 brick among others. Everything an organization collects and runs lives in one place and one
 model:
 
-- **Sources**: PostgreSQL databases, open-data files and external HTTP APIs, files of the
+- **Sources**: PostgreSQL and MySQL databases, REST APIs and signed webhooks, open-data files, files of the
   media library (video, audio, photos, documents), mailboxes (IMAP), websites (crawls,
   navigation rules, browser agents), recorded calls, live audio and video streams, IP and
   ESP32 cameras, ESP boards and edge agents.
@@ -64,15 +64,21 @@ model:
   speaker), live streams are segmented, and everything is transcribed on the server
   (Whisper / sherpa-onnx, no Python), diarized, searchable and annotated with notes; people
   who consented to enrollment are recognized by their voice.
-- **Data pipelines**: versioned datasets (Parquet on S3) and SQL transforms run by a
-  DataFusion worker, chained runs, connectors, lineage and profiling; the ontology import is
-  just the last step of a pipeline.
+- **Data pipelines**: sources and imports described in YAML in packs and run by one engine,
+  versioned datasets (Parquet on S3) and SQL transforms run by a DataFusion worker, chained
+  runs, connectors, lineage and profiling; the ontology import is just the last step of a
+  pipeline.
+- **Governance and analysis**: markings and clearances on tables and objects, pseudonymized
+  columns, export of everything held about an object; read-only SQL, rules with replay, and
+  page blocks computed with the reader's rights. Objects and links can be read as known at a
+  past date.
 - **Processing**: a flow runtime (Node-RED style, in Rust) for events and light ETL; queue
   workers for the heavy work (firmware builds, speech-to-text, vision inference and training).
 - **Agents**: LLM agents are IAM service accounts with a budget, running in a dedicated
   environment (a Dockerfile versioned in PNeX, built by BuildKit, scanned, SBOM in the
   ontology). Each run gets its own sandbox — a hardened Kubernetes pod or a Firecracker
-  micro-VM — reaches the model only through a gateway, and leaves files, logs and proposals.
+  micro-VM — reaches the model only through a gateway, and leaves files, logs and proposals;
+  each write goes through a validation gate (automatic, validator agent or human).
 - **Reading**: dashboards (business, SCADA, home), map, timelines, investigation workspaces, pages
   rendered to PDF, full-text and semantic search, and an AI assistant on the org's own LLM.
 - **Opening up**: the API is a public OpenAPI contract, from which an MCP server for AI
@@ -174,8 +180,9 @@ flowchart LR
 | Files | Media library with versions and an upload allowlist; video frames to the Vision Lab, documents chunked and indexed (`tsvector` + `pgvector`) for search and the assistant. |
 | Mailboxes | IMAP accounts read on a schedule; a `mail_received` flow trigger that replays what it missed; attachments to the media library, invitations to the calendar, unknown senders proposed to the CRM. |
 | Websites | Crawls and site navigation rules (studio, live view of the server browser), `web_visit` / `site_crawl` / `web_search` nodes, and Chrome/Firefox browser agents paired over a Noise link. |
-| Open data | Imports declared in ontology packs (files or network registries), with their own steps, run on a schedule and written in bulk, each run journaled. |
-| APIs | Flow nodes (`http-fetch`, `weather`) and geo providers, all through the egress guard. |
+| Databases | PostgreSQL and MySQL (TLS only) connectors, incremental reads past a cursor, into versioned tables. |
+| Open data | Pipelines declared in YAML in ontology packs (files, registries, feeds), resumable, run on a schedule and written in bulk, each run journaled. |
+| APIs | REST connector (paged GET), signed incoming webhooks, flow nodes (`http-fetch`, `weather`) and geo providers, all through the egress guard. |
 
 ### Ontology
 
@@ -183,12 +190,13 @@ The data model of an organization is itself data
 ([`ontology.md`](docs/architecture/ontology.md), D176–D189):
 
 - **Object types are versioned data**, installed from YAML packs (maintenance, investigation,
-  companies, CRM, B2B prospecting, web presence, media coverage, quality watch…): typed
+  companies, CRM, B2B prospecting, web presence, media coverage, news watch, maintenance with
+  work orders and spare parts, markets…): typed
   properties, temporal properties included, labels in French and English. A pack also ships
   imports, flows, functions and page templates; an org's own edits survive pack upgrades.
   User objects live in one generic table; system objects (devices, media, POIs…) stay in
   their own tables and are exposed as types.
-- **Links are typed, temporal and carry attributes**; containment (site → building → room) is
+- **Links are typed, temporal and carry attributes**, and can be read as known at a past date; containment (site → building → room) is
   a separate tree. Time belongs to objects: named time ranges apply to any object.
 - **Actions are declared on types and executed by flows**, traced like any write. Every fact
   records its provenance (user, flow, import, model).
@@ -252,10 +260,14 @@ Pipelines turn sources into versioned datasets
 
 - **Datasets** are versioned tables stored as Parquet on S3, with transactions, retention of
   replaced versions, sampling, profiling, lineage and erasure of personal data.
+- **Pipelines** are YAML in packs, run by one engine ([`pipeline-engine.md`](docs/architecture/pipeline-engine.md)):
+  fetch, parse, Starlark and browse steps; a browse step pauses its row and resumes on the
+  extracts.
 - **Transforms** are SQL, planned and run by `pnex-pipeline-worker` (Apache DataFusion, a
   separate image) under an allowlist of functions and memory limits — never in the server.
-- **Runs** are chained, retried and journaled; connectors (PostgreSQL, files uploaded in
-  parts) materialize their input before the worker reads it. Importing into the ontology is a
+- **Runs** are chained, retried and journaled; connectors
+  ([`connectors.md`](docs/architecture/connectors.md): PostgreSQL, MySQL, REST, webhooks, files
+  uploaded in parts) materialize their input before the worker reads it. Importing into the ontology is a
   pipeline step, written in bulk.
 
 ### Agents, environments and runners
@@ -275,8 +287,21 @@ Agents run on the org's own infrastructure, governed in one place
   only the destinations of their claim.
 - **Run**: the project is cloned in an init container, secrets arrive as per-run variables,
   the provider key stays outside the sandbox (the gateway calls the model), and the run
-  returns its files, masked logs, a branch or proposals. Everything is visible on the
+  returns its files, masked logs, a branch (opened as a merge request) or proposals.
+- **Validation gate** ([`validation-gate.md`](docs/architecture/validation-gate.md)): each tool
+  of an agent writes automatically, after a validator agent, or after a human; a circuit
+  breaker stops an agent that misbehaves. Everything is visible on the
   **Agents** page, in the API, the MCP server and the CLI.
+
+### Governance and analysis
+
+- **Governance** ([`governance.md`](docs/architecture/governance.md)): markings on tables and
+  objects, clearances per member; marked data is masked, unwritable and absent from queries.
+  Personal data is proposed for marking, `pseudonym()` keeps a stand-in in pipelines, and the
+  journal and everything held about an object can be exported.
+- **Analysis** ([`analysis.md`](docs/architecture/analysis.md)): read-only SQL on tables and
+  objects run by the pipeline worker, named queries shipped by packs, rules on objects and
+  measures with replay, and page blocks computed live with the reader's rights.
 
 ### Processing and scaling
 
