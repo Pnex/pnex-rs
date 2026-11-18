@@ -72,7 +72,7 @@
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "4.4.0"
+version: "4.5.1"
 requires: [companies, web_presence, watch]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -146,6 +146,9 @@ extends:
       - { key: score_detail, name: Score detail, names: {fr: "Détail du score"}, kind: text, max_len: 4000 }
       - { key: scored_on, name: Scored on, names: {fr: "Score calculé le"}, kind: date }
       - { key: press_names, name: Other names in the press, names: {fr: "Autres noms dans la presse"}, kind: text, max_len: 500 }
+      # Folded name of a company created from what a profile states, not from a
+      # register (D999): finds it again for the next person who works there.
+      - { key: name_key, name: Name key, names: {fr: "Clé de nom"}, kind: text, max_len: 255, unique: true, indexed: true }
       # Captured employee list not read yet (D779): a document id, set by the server.
       - { key: people_to_read, name: Employee list to read, names: {fr: "Liste des salariés à lire"}, kind: text, max_len: 64 }
   - type: map_pin
@@ -765,6 +768,9 @@ functions:
           p = msg["payload"]
           if p.get("opposed_on") or p.get("match_state") in ["searching", "proposed"]:
               return None
+          # Read from the member's own connections: the address is known already.
+          if "linkedin.com/in/" in (p.get("profile_url") or ""):
+              return None
           due = p.get("match_next_on") or ""
           if due and due > msg.get("today", ""):
               return None
@@ -785,6 +791,10 @@ functions:
           if p.get("opposed_on"):
               return None
           links = msg.get("links") or {}
+          # A profile address already known (a connection read, an export) needs
+          # no automatic search; a member may still ask for one.
+          if not msg.get("manual") and "linkedin.com/in/" in (p.get("profile_url") or ""):
+              return None
           if not msg.get("manual"):
               for l in links.get("uses_identifier") or []:
                   value = ((l.get("other") or {}).get("properties") or {}).get("value") or ""
@@ -1018,6 +1028,40 @@ functions:
           out["total"] = min(out["total"], 100)
           return out
 
+      # A headline segment that reads as a company name: three words at most, each
+      # capitalized, none a word of a role ("Business Partnering", "Biomethane investor").
+      ROLE_WORDS = ["investor", "talent", "partnering", "consultant", "consulting", "advisor",
+                    "freelance", "coach", "mentor", "recruiter", "recruitment", "expert", "founder",
+                    "engineer", "manager", "student", "speaker", "author", "entrepreneur", "passionate"]
+
+      def looks_like_company(segment):
+          ws = segment.strip().split(" ")
+          if not ws or len(ws) > 3:
+              return False
+          for w in ws:
+              if not w or not (w[0].isupper() or w[0].isdigit()) or w.lower() in ROLE_WORDS:
+                  return False
+          return True
+
+      # The position and the company a headline states (see linkedin_connections).
+      def employer(headline):
+          h = (headline or "").strip()
+          for sep in [" chez ", " at ", " @ ", " @"]:
+              at = h.rfind(sep)
+              if at > 0:
+                  company = h[at + len(sep):].split("|")[0].split(" - ")[0].split(",")[0].split(" and ")[0].split(" et ")[0].strip(" .")
+                  return h[:at].strip(), company[:120]
+          if "|" in h:
+              parts = [x.strip() for x in h.split("|")]
+              if len(parts) >= 2 and looks_like_company(parts[1]):
+                  return parts[0], parts[1][:120]
+          at = h.rfind(" de ")
+          if at > 0:
+              tail = h[at + 4:].strip(" .")
+              if tail and " " not in tail and tail[0].isupper():
+                  return h[:at].strip(), tail[:120]
+          return h, ""
+
       def handle(inputs, msg):
           person = msg["person"]
           props = msg.get("person_props") or {}
@@ -1030,11 +1074,14 @@ functions:
           for l in (msg.get("person_links") or {}).get("uses_identifier") or []:
               known.append(((l.get("other") or {}).get("properties") or {}).get("value") or "")
           scored = []
+          already = False
           for c in bundle.get("candidates") or []:
               if c.get("url") in known:
+                  already = True
                   continue
               sc = score(s, (c.get("card") or "") + "\n" + (c.get("profile") or ""))
-              scored.append({"url": c["url"], "score": sc["total"], "detail": sc["detail"], "left": sc["left"]})
+              scored.append({"url": c["url"], "score": sc["total"], "detail": sc["detail"], "left": sc["left"],
+                             "headline": c.get("headline") or "", "place": c.get("place") or ""})
           scored = sorted(scored, key = lambda c: -c["score"])
           state = {"match_to_score": ""}
           done = {"payload": state, "object_id": person["id"]}
@@ -1043,14 +1090,28 @@ functions:
               url = best[0]["url"]
               state["match_state"] = "found"
               state["match_pending"] = ""
+              # What the attached profile states: the flow "employers from
+              # profiles" assigns the company.
+              position, company = employer(best[0]["headline"])
+              state["profile_position"] = position[:255]
+              if company:
+                  state["profile_company"] = company[:255]
+              if best[0]["place"]:
+                  state["profile_city"] = best[0]["place"][:255]
               capture = {"payload": {"url": url, "person_id": person["id"], "path": url[url.find("/in/"):]}}
               return [capture, None, None, done]
           plausible = [c for c in scored if c["score"] >= propose_at]
+          # The search found again a profile the person already has: still found.
+          if already and not plausible:
+              state["match_state"] = "found"
+              return [None, None, None, done]
           if plausible:
               state["match_state"] = "proposed"
               state["match_pending"] = " ".join([c["url"] for c in plausible])
               rows = [{"url": c["url"], "person_id": person["id"], "score": c["score"],
-                       "detail": c["detail"], "left": c["left"], "step": step} for c in plausible]
+                       "evidence": json.encode({"url": c["url"], "score": c["score"], "detail": c["detail"],
+                                                "left_company": c["left"], "query": step})}
+                      for c in plausible]
               return [None, {"payload": rows}, None, done]
           queries = s.get("queries") or []
           if step + 1 < len(queries):
@@ -1061,27 +1122,6 @@ functions:
               return [None, None, {"payload": row}, done]
           state["match_state"] = "not_found"
           return [None, None, None, done]
-  - name: pm_identifier
-    language: starlark
-    description: A plausible profile as an account identifier, before it is proposed for the person.
-    code: |
-      def handle(inputs, msg):
-          c = msg["payload"]
-          return {"payload": {"value": c["url"], "kind": "account"}, "title": c["url"], "candidate": c}
-  - name: pm_propose
-    language: starlark
-    description: The plausible profile proposed as an account of the person, with its score and why.
-    code: |
-      def handle(inputs, msg):
-          o = msg.get("object")
-          c = msg.get("candidate") or {}
-          if not o:
-              return None
-          return {"payload": {"source_id": c["person_id"], "target_id": o["id"], "attributes": {},
-                              "confidence": c.get("score", 0),
-                              "evidence": {"url": c.get("url"), "score": c.get("score"),
-                                           "detail": c.get("detail"), "left_company": c.get("left"),
-                                           "query": c.get("step")}}}
   - name: pm_event
     language: starlark
     description: A decided proposal of a profile for a person, kept on the message before the reads.
@@ -1126,6 +1166,67 @@ functions:
               state = {"match_state": "searching", "match_step": step + 1, "match_pending": ""}
               return [None, {"payload": row}, {"payload": state, "object_id": person}]
           return [None, None, {"payload": {"match_state": "not_found", "match_pending": ""}, "object_id": person}]
+  - name: emp_pick
+    language: starlark
+    description: "A person whose profile states a company: the company to find or create by its folded name, unless they already work there."
+    code: |
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "ã": "a", "å": "a", "ç": "c",
+              "é": "e", "è": "e", "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i",
+              "ï": "i", "ñ": "n", "ó": "o", "ò": "o", "ô": "o", "ö": "o", "õ": "o",
+              "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y",
+              "œ": "oe", "æ": "ae", "ß": "ss"}
+      LEGAL_FORMS = ["sa", "sas", "sasu", "sarl", "eurl", "sca", "scs", "snc", "sci", "inc", "llc",
+                     "ltd", "limited", "gmbh", "ag", "bv", "nv", "spa", "srl", "plc", "corp",
+                     "corporation", "co"]
+
+      def key_of(name):
+          out = []
+          cur = ""
+          for c in (name or "").split("(")[0].lower().elems():
+              c = FOLD.get(c, c)
+              if c.isalnum():
+                  cur += c
+              elif cur:
+                  out.append(cur)
+                  cur = ""
+          if cur:
+              out.append(cur)
+          return " ".join([w for w in out if w not in LEGAL_FORMS])
+
+      def handle(inputs, msg):
+          p = msg["payload"]
+          company = (p.get("profile_company") or "").strip()
+          key = key_of(company)
+          # An objection stops everything about the person (D341).
+          if p.get("opposed_on") or not key:
+              return None
+          for l in (msg.get("links") or {}).get("employs") or []:
+              other = l.get("other") or {}
+              if l.get("direction") == "in" and (key_of(other.get("title")) == key or
+                                                 (other.get("properties") or {}).get("name_key") == key):
+                  return None
+          return {"payload": {"name_key": key}, "title": company, "person": msg["object"]["id"],
+                  "position": p.get("profile_position") or ""}
+  - name: emp_link
+    language: starlark
+    description: The person attached to the company their profile states, with their position.
+    code: |
+      def handle(inputs, msg):
+          o = msg.get("object")
+          if not o:
+              return None
+          attributes = {"position": msg["position"]} if msg.get("position") else {}
+          return {"payload": {"source_id": o["id"], "target_id": msg["person"], "attributes": attributes}}
+  - name: mc_pages
+    language: starlark
+    description: "The pages of the member's first-degree connections to read, 50 by message (LinkedIn shows 100 at most)."
+    code: |
+      PAGES = 100
+      BATCH = 50
+
+      def handle(inputs, msg):
+          rows = [{"page": str(n), "network": "F"} for n in range(1, PAGES + 1)]
+          return {"payload": [rows[i:i + BATCH] for i in range(0, len(rows), BATCH)]}
 flows:
   - name: "Prospecting · captured employee lists"
     note: "Every hour, up to 5 organizations whose employee list was captured by a person (Capture employees, on the organization's page) are read by the organization's LLM: each person the page names becomes a list contact (name, position) and is proposed as a contact at that company on the To validate page. Someone who objected at that company is never brought back. It follows no link of the network and opens no profile. Needs an AI provider."
@@ -1307,14 +1408,10 @@ flows:
           outputs: [{ port: 0, targets: [ask] }]
         - { id: ask, kind: pnex_function, config: { function_name: pm_doc, language: starlark }, outputs: [{ port: 0, targets: [doc] }] }
         - { id: doc, kind: document_text, outputs: [{ port: 0, targets: [decide] }] }
-        - { id: decide, kind: pnex_function, config: { function_name: pm_decide, language: starlark }, outputs: [{ port: 0, targets: [capture] }, { port: 1, targets: [each] }, { port: 2, targets: [next] }, { port: 3, targets: [state] }] }
+        - { id: decide, kind: pnex_function, config: { function_name: pm_decide, language: starlark }, outputs: [{ port: 0, targets: [capture] }, { port: 1, targets: [propose] }, { port: 2, targets: [next] }, { port: 3, targets: [state] }] }
         - { id: capture, kind: pipeline_ask, config: { pipeline: prospecting_b2b/profile_capture_linkedin, per_day: 20 } }
         - { id: next, kind: pipeline_ask, config: { pipeline: prospecting_b2b/person_match_linkedin, per_day: 20 } }
-        - { id: each, kind: json_split, config: { auto: false }, outputs: [{ port: 0, targets: [ident] }] }
-        - { id: ident, kind: pnex_function, config: { function_name: pm_identifier, language: starlark }, outputs: [{ port: 0, targets: [account] }] }
-        - { id: account, kind: object_upsert, config: { object_type: identifier, key: value }, outputs: [{ port: 0, targets: [link] }] }
-        - { id: link, kind: pnex_function, config: { function_name: pm_propose, language: starlark }, outputs: [{ port: 0, targets: [propose] }] }
-        - { id: propose, kind: link_upsert, config: { link_type: uses_identifier, skip_closed: true, propose: true } }
+        - { id: propose, kind: pipeline_ask, config: { pipeline: prospecting_b2b/person_match_propose, per_day: 100 } }
         - { id: state, kind: object_upsert, config: { object_type: person, key: id } }
   - name: "Prospecting · follow decisions"
     note: "Follows what a human decides on a proposed LinkedIn profile (D999): accepted, the profile is captured onto the person; once every profile proposed by a search is rejected, the next query of the ladder is asked. Deploy it from the same account as Prospecting · identify people."
@@ -1341,6 +1438,32 @@ flows:
         - { id: capture, kind: pipeline_ask, config: { pipeline: prospecting_b2b/profile_capture_linkedin, per_day: 20 } }
         - { id: next, kind: pipeline_ask, config: { pipeline: prospecting_b2b/person_match_linkedin, per_day: 20 } }
         - { id: state, kind: object_upsert, config: { object_type: person, key: id } }
+  - name: "Prospecting · employers from profiles"
+    note: "Assigns each person to the company their LinkedIn profile states (D999): as soon as a person's Company on the profile changes (a connection read, a profile found), the company is found again by its folded name or created, even when it is in no register, and the person attached to it with their position. Someone who objected is left alone. No LLM."
+    graph:
+      nodes:
+        - { id: changed, kind: ontology_trigger, config: { object_type: person, properties: [profile_company] }, outputs: [{ port: 0, targets: [person] }] }
+        - id: person
+          kind: ontology_query
+          config:
+            object_type: person
+            filters: [{ key: id, op: eq, value: "$msg.payload.object_id" }]
+            with_links: [employs]
+            limit: 1
+          outputs: [{ port: 0, targets: [pick] }]
+        - { id: pick, kind: pnex_function, config: { function_name: emp_pick, language: starlark }, outputs: [{ port: 0, targets: [company] }] }
+        - { id: company, kind: object_upsert, config: { object_type: organization, key: name_key, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: emp_link, language: starlark }, outputs: [{ port: 0, targets: [attach] }] }
+        - { id: attach, kind: link_upsert, config: { link_type: employs, skip_closed: true } }
+  - name: "Prospecting · my LinkedIn connections"
+    note: "Reads the deployer's own LinkedIn connections (first-degree people results, 10 a page) in their browser agent: each one becomes a person keyed by their profile address, with the position and company their headline states; the flow Prospecting · employers from profiles assigns the company. Runs once at deploy, then every morning; LinkedIn shows 100 pages at most (1,000 people), 50 pages a day here. Deploy it from the account whose LinkedIn network should be read."
+    graph:
+      nodes:
+        - { id: now, kind: inject, config: { once_delay_secs: 20 }, outputs: [{ port: 0, targets: [pages] }] }
+        - { id: daily, kind: inject, config: { cron: "0 8 * * *" }, outputs: [{ port: 0, targets: [pages] }] }
+        - { id: pages, kind: pnex_function, config: { function_name: mc_pages, language: starlark }, outputs: [{ port: 0, targets: [each] }] }
+        - { id: each, kind: json_split, config: { auto: false }, outputs: [{ port: 0, targets: [ask] }] }
+        - { id: ask, kind: pipeline_ask, config: { pipeline: prospecting_b2b/my_connections_linkedin, per_day: 50 } }
 page_templates:
   - key: account_plan
     name: Account plan
@@ -1657,24 +1780,22 @@ page_templates:
 
         {{links:covered}}
 pipeline_functions:
-  # What a person search brought back (D788, D999), collection only: the
-  # result cards pointing to a LinkedIn profile, the first five, each with
-  # the profile opened for it (`profile.<n>`, in card order). A profile is
-  # kept only when its card or page holds every word of the person's name
-  # (minimisation, operational-platform.md D998): nobody else is stored. One
-  # row per person, kept profiles or none, so the flow always hears back.
+  # A LinkedIn people results page read without a model (D785, D998): each
+  # person's block ("<name> • <degree>", headline, place) paired with the
+  # profile link bearing their name. Checked on the live page 2026-11-18.
   - name: person_match_collect
     language: starlark
-    description: Profiles a person search brought back that name the person (rows person_id, step, query, words, name, text of each extract → one bundle per person).
+    description: Results of a person search that bear the person's name (rows person_id, step, query, words, name, text of each extract → one bundle per person).
     code: |
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "ã": "a", "å": "a", "ç": "c",
               "é": "e", "è": "e", "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i",
               "ï": "i", "ñ": "n", "ó": "o", "ò": "o", "ô": "o", "ö": "o", "õ": "o",
               "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y",
               "œ": "oe", "æ": "ae", "ß": "ss"}
-      CANDIDATES = 5
-      CARD_MAX = 1000
-      PROFILE_MAX = 20000
+      # Degree marks after a name in LinkedIn's people results (fr, en).
+      DEGREES = ["1er", "2e", "3e et +", "3e", "1st", "2nd", "3rd", "3rd+"]
+      # Buttons of a result card, never a headline or a place.
+      ACTIONS = ["Message", "Se connecter", "Suivre", "En attente", "Connect", "Follow", "Pending"]
 
       def words(text):
           out = []
@@ -1703,6 +1824,90 @@ pipeline_functions:
                   return None
           return "https://www.linkedin.com/in/" + slug
 
+      # The people of a results page, in page order: name, headline, place. A
+      # person starts at "<name> • <degree>" (or the name on the line before the mark).
+      def people_of(text):
+          lines = [l.strip() for l in (text or "").split("\n")]
+          lines = [l for l in lines if l]
+          out = []
+          for i in range(len(lines)):
+              l = lines[i]
+              if "•" not in l:
+                  continue
+              head = l.split("•")[0].strip()
+              mark = l.split("•")[-1].strip()
+              if mark not in DEGREES:
+                  continue
+              name = head if head else (lines[i - 1] if i > 0 else "")
+              rest = lines[i + 1:i + 3]
+              headline = rest[0] if len(rest) > 0 else ""
+              place = rest[1] if len(rest) > 1 else ""
+              if headline in ACTIONS:
+                  headline, place = "", ""
+              if place in ACTIONS:
+                  place = ""
+              if headline == "--":
+                  headline = ""
+              if name:
+                  out.append({"name": name, "headline": headline, "place": place})
+          return out
+
+      # Each person paired with the profile link whose text is their name, in order.
+      def with_links(people, cards):
+          by_name = {}
+          used = []
+          for c in cards:
+              url = profile_url(c.get("link"))
+              t = (c.get("card") or "").strip()
+              if url == None or t == "" or "•" in t or url in used:
+                  continue
+              used.append(url)
+              by_name.setdefault(t, []).append(url)
+          out = []
+          for p in people:
+              urls = by_name.get(p["name"]) or []
+              if urls:
+                  out.append(dict(p, url = urls.pop(0)))
+          return out
+
+      # A headline segment that reads as a company name: three words at most, each
+      # capitalized, none a word of a role ("Business Partnering", "Biomethane investor").
+      ROLE_WORDS = ["investor", "talent", "partnering", "consultant", "consulting", "advisor",
+                    "freelance", "coach", "mentor", "recruiter", "recruitment", "expert", "founder",
+                    "engineer", "manager", "student", "speaker", "author", "entrepreneur", "passionate"]
+
+      def looks_like_company(segment):
+          ws = segment.strip().split(" ")
+          if not ws or len(ws) > 3:
+              return False
+          for w in ws:
+              if not w or not (w[0].isupper() or w[0].isdigit()) or w.lower() in ROLE_WORDS:
+                  return False
+          return True
+
+      # The position and the company a headline states, "" when it names none
+      # ("Plant manager at Example", "Chef chez X", "Engineer | Acme", "CEO de Acme").
+      def employer(headline):
+          h = (headline or "").strip()
+          for sep in [" chez ", " at ", " @ ", " @"]:
+              at = h.rfind(sep)
+              if at > 0:
+                  company = h[at + len(sep):].split("|")[0].split(" - ")[0].split(",")[0].split(" and ")[0].split(" et ")[0].strip(" .")
+                  return h[:at].strip(), company[:120]
+          if "|" in h:
+              parts = [x.strip() for x in h.split("|")]
+              if len(parts) >= 2 and looks_like_company(parts[1]):
+                  return parts[0], parts[1][:120]
+          at = h.rfind(" de ")
+          if at > 0:
+              tail = h[at + 4:].strip(" .")
+              if tail and " " not in tail and tail[0].isupper():
+                  return h[:at].strip(), tail[:120]
+          return h, ""
+
+      CANDIDATES = 5
+      CARD_MAX = 1000
+
       def handle(rows):
           by_person = {}
           for r in rows:
@@ -1714,21 +1919,153 @@ pipeline_functions:
               r = p["row"]
               name = words(r.get("words"))
               cards = json.decode(p["extracts"].get("results") or "[]")
-              seen = []
+              found = with_links(people_of(p["extracts"].get("text")), cards)
               kept = []
-              for c in cards:
-                  url = profile_url(c.get("link"))
-                  if url == None or url in seen or len(seen) >= CANDIDATES:
-                      continue
-                  seen.append(url)
-                  # The navigation opens the first profiles in card order.
-                  profile = (p["extracts"].get("profile." + str(len(seen))) or "").strip()
-                  card = (c.get("card") or "").strip()
-                  hay = " " + " ".join(words(card + "\n" + profile)) + " "
-                  if name and all([(" " + w + " ") in hay for w in name]):
-                      kept.append({"url": url, "card": card[:CARD_MAX], "profile": profile[:PROFILE_MAX]})
+              for c in found[:CANDIDATES]:
+                  theirs = words(c["name"])
+                  # Minimisation (D998): only someone bearing the person's name is kept.
+                  if name and all([w in theirs for w in name]):
+                      card = "\n".join([c["name"], c["headline"], c["place"]])[:CARD_MAX]
+                      kept.append({"url": c["url"], "name": c["name"], "headline": c["headline"],
+                                   "place": c["place"], "card": card, "profile": ""})
               bundle = json.encode({"query": r.get("query"), "step": int(r.get("step") or 0), "candidates": kept})
               out.append({"person_id": r.get("person_id"), "step": str(r.get("step")),
                           "query": r.get("query") or "", "bundle": bundle,
                           "kept_urls": " ".join([k["url"] for k in kept])})
+          return out
+  - name: linkedin_connections
+    language: starlark
+    description: "The people of a page of the member's own connections: profile address, name, position and company their headline states, place."
+    code: |
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "ã": "a", "å": "a", "ç": "c",
+              "é": "e", "è": "e", "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i",
+              "ï": "i", "ñ": "n", "ó": "o", "ò": "o", "ô": "o", "ö": "o", "õ": "o",
+              "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y",
+              "œ": "oe", "æ": "ae", "ß": "ss"}
+      # Degree marks after a name in LinkedIn's people results (fr, en).
+      DEGREES = ["1er", "2e", "3e et +", "3e", "1st", "2nd", "3rd", "3rd+"]
+      # Buttons of a result card, never a headline or a place.
+      ACTIONS = ["Message", "Se connecter", "Suivre", "En attente", "Connect", "Follow", "Pending"]
+
+      def words(text):
+          out = []
+          cur = ""
+          for c in (text or "").lower().elems():
+              c = FOLD.get(c, c)
+              if c.isalnum():
+                  cur += c
+              elif cur:
+                  out.append(cur)
+                  cur = ""
+          if cur:
+              out.append(cur)
+          return out
+
+      # The canonical address of a profile link, None for anything else.
+      def profile_url(link):
+          at = (link or "").find("linkedin.com/in/")
+          if at < 0:
+              return None
+          slug = link[at + len("linkedin.com/in/"):].split("?")[0].split("#")[0].split("/")[0].lower()
+          if slug == "" or len(slug) > 100:
+              return None
+          for c in slug.elems():
+              if not (c.isalnum() or c in "-_%"):
+                  return None
+          return "https://www.linkedin.com/in/" + slug
+
+      # The people of a results page, in page order: name, headline, place. A
+      # person starts at "<name> • <degree>" (or the name on the line before the mark).
+      def people_of(text):
+          lines = [l.strip() for l in (text or "").split("\n")]
+          lines = [l for l in lines if l]
+          out = []
+          for i in range(len(lines)):
+              l = lines[i]
+              if "•" not in l:
+                  continue
+              head = l.split("•")[0].strip()
+              mark = l.split("•")[-1].strip()
+              if mark not in DEGREES:
+                  continue
+              name = head if head else (lines[i - 1] if i > 0 else "")
+              rest = lines[i + 1:i + 3]
+              headline = rest[0] if len(rest) > 0 else ""
+              place = rest[1] if len(rest) > 1 else ""
+              if headline in ACTIONS:
+                  headline, place = "", ""
+              if place in ACTIONS:
+                  place = ""
+              if headline == "--":
+                  headline = ""
+              if name:
+                  out.append({"name": name, "headline": headline, "place": place})
+          return out
+
+      # Each person paired with the profile link whose text is their name, in order.
+      def with_links(people, cards):
+          by_name = {}
+          used = []
+          for c in cards:
+              url = profile_url(c.get("link"))
+              t = (c.get("card") or "").strip()
+              if url == None or t == "" or "•" in t or url in used:
+                  continue
+              used.append(url)
+              by_name.setdefault(t, []).append(url)
+          out = []
+          for p in people:
+              urls = by_name.get(p["name"]) or []
+              if urls:
+                  out.append(dict(p, url = urls.pop(0)))
+          return out
+
+      # A headline segment that reads as a company name: three words at most, each
+      # capitalized, none a word of a role ("Business Partnering", "Biomethane investor").
+      ROLE_WORDS = ["investor", "talent", "partnering", "consultant", "consulting", "advisor",
+                    "freelance", "coach", "mentor", "recruiter", "recruitment", "expert", "founder",
+                    "engineer", "manager", "student", "speaker", "author", "entrepreneur", "passionate"]
+
+      def looks_like_company(segment):
+          ws = segment.strip().split(" ")
+          if not ws or len(ws) > 3:
+              return False
+          for w in ws:
+              if not w or not (w[0].isupper() or w[0].isdigit()) or w.lower() in ROLE_WORDS:
+                  return False
+          return True
+
+      # The position and the company a headline states, "" when it names none
+      # ("Plant manager at Example", "Chef chez X", "Engineer | Acme", "CEO de Acme").
+      def employer(headline):
+          h = (headline or "").strip()
+          for sep in [" chez ", " at ", " @ ", " @"]:
+              at = h.rfind(sep)
+              if at > 0:
+                  company = h[at + len(sep):].split("|")[0].split(" - ")[0].split(",")[0].split(" and ")[0].split(" et ")[0].strip(" .")
+                  return h[:at].strip(), company[:120]
+          if "|" in h:
+              parts = [x.strip() for x in h.split("|")]
+              if len(parts) >= 2 and looks_like_company(parts[1]):
+                  return parts[0], parts[1][:120]
+          at = h.rfind(" de ")
+          if at > 0:
+              tail = h[at + 4:].strip(" .")
+              if tail and " " not in tail and tail[0].isupper():
+                  return h[:at].strip(), tail[:120]
+          return h, ""
+
+      def handle(rows):
+          by_page = {}
+          for r in rows:
+              p = by_page.setdefault(r.get("page"), {})
+              if r.get("name"):
+                  p[r.get("name")] = r.get("text") or ""
+          out = []
+          for page, extracts in by_page.items():
+              cards = json.decode(extracts.get("results") or "[]")
+              for c in with_links(people_of(extracts.get("text")), cards):
+                  position, company = employer(c["headline"])
+                  out.append({"url": c["url"], "name": c["name"][:255], "position": position[:255],
+                              "company": company[:255], "place": c["place"][:255], "page": str(page)})
           return out

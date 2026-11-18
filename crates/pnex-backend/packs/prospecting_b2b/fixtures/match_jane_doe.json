@@ -1,7 +1,6 @@
 {
  "8f1c2b9e-0000-4000-8000-000000000001": {
-  "results": "[{\"card\": \"Jane Doe · 2nd\\nPlant manager at Example Industries\\nLyon\", \"link\": \"https://www.linkedin.com/in/jane-doe/?miniProfileUrn=x\"}, {\"card\": \"Example Industries\\nCompany\", \"link\": \"https://www.linkedin.com/company/example/\"}, {\"card\": \"Jane Doerr\\nSales at Initech\", \"link\": \"https://www.linkedin.com/in/jane-doerr\"}]",
-  "profile.1": "Jane Doe\nPlant manager at Example Industries\nLyon, Auvergne-Rhône-Alpes\nExperience\nPlant manager\nExample Industries",
-  "profile.2": "Jane Doerr\nSales at Initech\nParis"
+  "results": "[{\"card\": \"Jane Doe • 2e Plant manager at Example Industries Lyon Se connecter\", \"link\": \"https://www.linkedin.com/in/jane-doe/?miniProfileUrn=x\"}, {\"card\": \"Jane Doe\", \"link\": \"https://www.linkedin.com/in/jane-doe/?miniProfileUrn=x\"}, {\"card\": \"Jane Doerr • 3e et + Sales at Initech Paris Se connecter\", \"link\": \"https://www.linkedin.com/in/jane-doerr\"}, {\"card\": \"Jane Doerr\", \"link\": \"https://www.linkedin.com/in/jane-doerr\"}]",
+  "text": "Personnes\n1er\n2e\n3e et +\n\nJane Doe • 2e\n\nPlant manager at Example Industries\n\nLyon\n\nSe connecter\n\nJane Doerr\n • 3e et +\n\nSales at Initech\n\nParis\n\nSe connecter\n\nÀ propos"
  }
 }

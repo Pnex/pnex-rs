@@ -1,0 +1,51 @@
+# The member's own LinkedIn connections (D999, D998 layer 1): one page of
+# LinkedIn's first-degree people results per asked row, read in the browser
+# agent of the flow's deployer. Each person found is a person of the org, keyed
+# by their profile address, with the position and company their headline
+# states; which organization employs them is the flow's business. LinkedIn
+# shows 100 pages at most (1,000 people).
+key: my_connections_linkedin
+name: My connections (LinkedIn)
+hosts: [www.linkedin.com]
+steps:
+  - enumerate: { as: asked, track: true, cross: [{ as: page, asked: [network] }] }
+  - browse:
+      as: pages
+      for_each: asked
+      site: www.linkedin.com
+      session: required
+      steps:
+        - open: "/search/results/people/?network=%5B%22{{network}}%22%5D&page={{page}}"
+        - wait: { ms: 6000 }
+        - scroll: bottom
+        - wait: { ms: 3000 }
+        - extract: { cards: { selector: "main a[href*='/in/']", max: 50, fields: { card: {}, link: { attr: href } } }, as: results, optional: true }
+        - extract: { all_text: true, as: text }
+  - sql:
+      as: found
+      sql: SELECT a.page, p.name, p.text FROM asked a LEFT JOIN pages p ON true
+  - call: { as: people, from: found, function: linkedin_connections }
+  - write:
+      from: people
+      objects:
+        objects:
+          - as: person
+            type: person
+            key: profile_url
+            create: true
+            update: true
+            title: name
+            properties: { profile_url: url, profile_position: position, profile_company: company, profile_city: place }
+tests:
+  - name: each connection of the page becomes a person with what the headline states
+    asked: [{ page: "1", network: F }]
+    given: { "browse:pages": connections_page.json }
+    expect:
+      people:
+        rows: 5
+        contains:
+          - { url: "https://www.linkedin.com/in/ada-example", name: Ada Example, company: Example Industries, position: Plant manager }
+          - { url: "https://www.linkedin.com/in/bob-sample", name: Bob Sample, company: "" }
+          - { name: Cleo Test, company: "" }
+          - { name: Dan Demo, company: Arrive, position: Head of Architecture }
+          - { name: Eve Sample, company: Initech }

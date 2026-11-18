@@ -1,8 +1,8 @@
 # A person entered by a sales rep, searched on LinkedIn (D788, D999): one
-# query per row, typed in the search bar of the browser agent of the flow's
-# deployer, the first profiles of the results opened. Collection only
-# (operational-platform.md D998): the profiles whose card or page names the
-# person are kept, everyone else is dropped on receipt (minimisation), and
+# query per row, opened as LinkedIn's people results in the browser agent of
+# the flow's deployer, the results read (no profile opened). Collection only
+# (operational-platform.md D998): the results whose name is the person are
+# kept, everyone else is dropped on receipt (minimisation), and
 # what is kept becomes one document of the person, stamped `match_to_score`
 # and kept 2 days. The flow "Prospecting · score profiles" scores it, attaches
 # or proposes, or asks the next query; nothing is decided here.
@@ -17,16 +17,12 @@ steps:
       site: www.linkedin.com
       session: required
       steps:
-        - open: /feed/
-        - wait: { ms: 2500 }
-        - type: { text: "{{query}}" }
-        - press: Enter
-        - wait: { ms: 3000 }
-        - click: { role: button, name: People, optional: true }
-        - click: { role: button, name: Personnes, optional: true } # english-guard: allow (button label of the French UI)
-        - wait: { ms: 3000 }
-        - extract: { cards: { selector: "main li:has(a[href*='/in/'])", max: 5, fields: { card: {}, link: { selector: "a[href*='/in/']", attr: href } } }, as: results, optional: true }
-        - for_each: { from: results, link: link, max: 3, steps: [{ wait: { ms: 2500 } }, { scroll: bottom }, { wait: { ms: 1500 } }, { extract: { all_text: true, as: profile } }] }
+        # The people results page itself: its filter button and list markup
+        # changed (probe of 2026-11-18); the cards are its profile links.
+        - open: "/search/results/people/?keywords={{query}}"
+        - wait: { ms: 5000 }
+        - extract: { cards: { selector: "main a[href*='/in/']", max: 20, fields: { card: {}, link: { attr: href } } }, as: results, optional: true }
+        - extract: { all_text: true, as: text }
   # One row per extract, the asked row on each (or alone without any).
   - sql:
       as: found

@@ -99,11 +99,15 @@ fn decide(candidates: Value, step: i64) -> Value {
 
 #[test]
 fn a_profile_at_the_company_is_captured_a_past_one_proposed_none_asks_the_next_query() {
-    let at = json!([{"url": "https://www.linkedin.com/in/elodie-martin-1", "card": "Élodie Martin · Head of purchasing at ACME Industries", "profile": "Elodie Martin\nToulouse"}]);
+    let at = json!([{"url": "https://www.linkedin.com/in/elodie-martin-1", "card": "Élodie Martin\nHead of purchasing at ACME Industries\nToulouse",
+                     "headline": "Head of purchasing at ACME Industries", "place": "Toulouse", "profile": ""}]);
     let out = decide(at, 0);
     assert_eq!(out[0]["payload"]["path"], "/in/elodie-martin-1", "{out}");
     assert_eq!(out[3]["payload"]["match_state"], "found");
     assert_eq!(out[3]["payload"]["match_to_score"], "");
+    // What the profile states goes on the person, for the employer flow.
+    assert_eq!(out[3]["payload"]["profile_company"], "ACME Industries");
+    assert_eq!(out[3]["payload"]["profile_position"], "Head of purchasing");
 
     let filler = "lorem ipsum ".repeat(80);
     let past = json!([{"url": "https://www.linkedin.com/in/elodie-m", "card": "Elodie Martin · Engineer at Initech",
@@ -158,4 +162,64 @@ fn a_search_asked_sets_its_next_date() {
         json!({"person_id": "p1", "today": "2024-02-28", "step": 1}),
     );
     assert_eq!(out["payload"]["match_next_on"], "2024-05-28", "{out}");
+}
+
+#[test]
+fn a_stated_company_is_found_by_its_folded_name_unless_already_the_employer() {
+    let msg = |links: Value| {
+        json!({"payload": {"profile_company": "Example Industries SAS", "profile_position": "Buyer"},
+               "object": {"id": "p1"}, "links": links})
+    };
+    let out = run("emp_pick", msg(json!({})));
+    assert_eq!(out["payload"]["name_key"], "example industries", "{out}");
+    assert_eq!(
+        (out["title"].as_str(), out["position"].as_str()),
+        (Some("Example Industries SAS"), Some("Buyer"))
+    );
+    let already = json!({"employs": [{"direction": "in", "other": {"title": "EXAMPLE INDUSTRIES", "properties": {}}}]});
+    assert!(run("emp_pick", msg(already)).is_null());
+    let link = run(
+        "emp_link",
+        json!({"object": {"id": "o1"}, "person": "p1", "position": "Buyer"}),
+    );
+    assert_eq!(link["payload"]["attributes"]["position"], "Buyer");
+}
+
+#[test]
+fn the_connection_pages_go_fifty_by_message() {
+    let out = run("mc_pages", json!({}));
+    let batches = out["payload"].as_array().unwrap();
+    assert_eq!(batches.len(), 2);
+    assert_eq!(batches[1][49]["page"], "100");
+}
+
+#[test]
+fn a_profile_already_attached_found_again_keeps_the_person_found() {
+    let subject =
+        json!({"name": ["elodie", "martin"], "orgs": [["acme"]], "queries": ["q1", "q2"]});
+    let url = "https://www.linkedin.com/in/elodie-martin-1";
+    let out = run(
+        "pm_decide",
+        json!({
+            "person": {"id": "p1"},
+            "person_props": {"match_subject": subject.to_string()},
+            "person_links": {"uses_identifier": [{"other": {"properties": {"value": url}}}]},
+            "payload": {"text": json!({"step": 0, "candidates": [{"url": url, "card": "Elodie Martin"}]}).to_string()},
+        }),
+    );
+    assert_eq!(out[3]["payload"]["match_state"], "found", "{out}");
+    assert!(out[2].is_null(), "no next query: {out}");
+}
+
+#[test]
+fn a_person_with_a_known_profile_address_is_never_searched_automatically() {
+    let person = |manual: bool| {
+        json!({"payload": {"profile_url": "https://www.linkedin.com/in/ada"}, "object": {"id": "p1", "title": "Ada"},
+               "links": {"employs": [{"direction": "in", "valid_from": "2026-01-01", "other": {"id": "o1"}}]},
+               "manual": manual})
+    };
+    assert!(run("pm_employer", person(false)).is_null());
+    assert_eq!(run("pm_employer", person(true))[0]["org_id"], "o1");
+    let due = json!({"payload": {"profile_url": "https://www.linkedin.com/in/ada"}, "object": {"id": "p1"}, "today": "2026-11-18"});
+    assert!(run("pm_pick", due).is_null());
 }

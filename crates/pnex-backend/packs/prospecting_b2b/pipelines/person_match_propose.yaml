@@ -1,0 +1,31 @@
+# The profiles the flow "Prospecting · score profiles" decided to propose for
+# a person (D999): each address an account identifier, and its link to the
+# person a proposal in "To validate" with the score and why. The decision is
+# the flow's; this only writes it, since an identifier is keyed by a value
+# that is not unique across kinds (a flow node cannot upsert it).
+key: person_match_propose
+name: Person search proposals (LinkedIn)
+steps:
+  - enumerate: { as: asked, track: true, cross: [{ as: url, asked: [person_id, score, evidence] }] }
+  - write:
+      from: asked
+      objects:
+        objects:
+          - { as: account, type: identifier, key: value, create: true, title: url, properties: { value: url, kind: { value: account } } }
+  - sql:
+      as: proposed
+      sql: >-
+        SELECT 'person' AS type_key, 'id' AS key_property, person_id AS key, url AS title,
+          'uses_identifier' AS link_type, 'identifier' AS to_type, 'value' AS to_property,
+          url AS to_key, score AS confidence, evidence
+        FROM asked
+  - write:
+      from: proposed
+      proposals: { origin: prospecting_b2b.person_match }
+tests:
+  - name: a plausible profile is proposed for the person
+    asked: [{ url: "https://www.linkedin.com/in/jane-doe", person_id: "8f1c2b9e-0000-4000-8000-000000000001", score: "55", evidence: '{"score": 55}' }]
+    expect:
+      proposed:
+        rows: 1
+        contains: [{ to_key: "https://www.linkedin.com/in/jane-doe", link_type: uses_identifier }]

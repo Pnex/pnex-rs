@@ -901,3 +901,46 @@ propriétés `match_*` de la personne et les passages du pipeline.
   (`kept_urls`), `pnex-core/tests/pack_person_search.rs` (sujet, score, suivi, dates dans le bac à sable).
 - Non vérifié : les trois flows déployés sur un vrai runtime (seuls leurs morceaux sont testés), et
   la recherche sur une vraie session LinkedIn.
+
+### 2026-11-18 (soir) — Essais réels en local : recherche, relations du membre, affectation des entreprises (D999, suite)
+
+Essais sur la pile locale avec l'agent navigateur de Shan (session LinkedIn réelle). Ce qui a été
+trouvé et corrigé :
+
+- **La page de résultats de LinkedIn a changé** (sondage du 2026-11-18) : plus de listes (`li`),
+  plus de bouton de filtre « Personnes ». La recherche ouvre directement
+  `/search/results/people/?keywords=…` et lit deux extraits : les liens de profil
+  (`main a[href*='/in/']`) et le texte de la page. Une personne y est un bloc
+  « nom • degré », titre, lieu ; le lien dont le texte est le nom donne son adresse. Aucun profil
+  n'est plus ouvert : le titre de la carte suffit au score (nom 30, société 50, ville 10).
+- **Le profil rattaché remplit la personne** : poste, société, ville lus du titre (« … chez X »,
+  « … at X », « … | X » si X ressemble à un nom d'entreprise, « … de X » d'un seul mot).
+- **Les relations du membre** (demande de Shan) : pipeline `prospecting_b2b/my_connections_linkedin`,
+  une page de la recherche des relations de premier niveau par ligne demandée (10 personnes par
+  page, 100 pages au plus chez LinkedIn, soit 1 000 personnes), chaque personne écrite par son
+  adresse de profil (`profile_url`, clé unique) avec poste, société et lieu. Flow
+  *Prospecting · my LinkedIn connections* : une fois au déploiement, puis chaque matin, 50 pages
+  par jour (plafond des navigations d'agent : 100 par jour et par org).
+- **Affectation des entreprises** (couche 3) : flow *Prospecting · employers from profiles*,
+  déclenché par la propriété `profile_company` d'une personne : l'entreprise est retrouvée par sa
+  clé de nom repliée (`name_key`, nouvelle propriété unique de l'organisation dans
+  `prospecting_b2b`) ou créée, **même absente du registre SIREN** (choix de Shan), puis la
+  personne y est rattachée par `employs` avec son poste. Une entreprise déjà employeuse (même nom
+  replié) n'est pas dupliquée.
+- **Moteur** : des lignes demandées explicitement (route, `pipeline_ask`) sont toutes prises ;
+  le plafond par passage par défaut (10) les tronquait sans le dire. Un document peut toujours
+  déclarer son `per_run`.
+- **Pack** : la proposition d'un profil passe par le pipeline `person_match_propose` (un
+  `object_upsert` ne peut pas viser `identifier.value`, qui n'est pas unique) ; une personne dont
+  l'adresse LinkedIn est connue (`profile_url`) n'est jamais recherchée automatiquement (une
+  cascade de recherches inutiles a été arrêtée par le plafond du nœud) ; un profil déjà rattaché
+  retrouvé laisse la personne « Trouvé ».
+- **Front** : le formulaire « Ajouter un lien » paniquait sur un type de lien listé deux fois.
+
+| Écart | Où il se lève |
+|---|---|
+| Le code d'une fonction de flow est figé au déploiement : une mise à jour du pack demande de redéployer ses flows (le bandeau « à redéployer » le dit) | à garder, ou redéploiement proposé à la mise à jour du pack |
+| L'injection unique (`once_delay_secs`) se redéclenche à chaque démarrage du moteur : la collecte des relations repart à chaque redémarrage du serveur | remplacer par une action « Lire mes relations » ou un déclencheur manuel |
+| La recherche des relations plafonne à 1 000 personnes (100 pages de LinkedIn) | lire la page « Relations » en défilement, si la limite de 50 cartes par extrait est relevée |
+| Lecture du titre : heuristique (des titres sans « chez/at/| » ne donnent pas d'entreprise ; quelques faux noms passent) | lexique à enrichir sur les cas réels ; un humain corrige le lien |
+| L'état « je suis en relation » (D977) n'est pas posé par la collecte (table Rust, pas un objet) | écrire l'état depuis le pipeline, ou faire de la relation un lien `knows` membre → personne |
