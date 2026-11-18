@@ -1,16 +1,16 @@
-# A person entered by a sales rep, matched with their LinkedIn profile
-# (D788, D996): one query of the ladder per row, typed in the search bar of
-# the asking member's browser agent, the first profiles of the results
-# opened and scored by `person_match_score`. The best profile above the
-# attaching score becomes an account identifier of the person; plausible ones
-# wait in "To validate"; when nothing scores, the next query of the ladder is
-# asked. The route builds the subject (folded names, the ladder, the
-# thresholds) and keeps the guards: objection, daily searches.
+# A person entered by a sales rep, searched on LinkedIn (D788, D999): one
+# query per row, typed in the search bar of the browser agent of the flow's
+# deployer, the first profiles of the results opened. Collection only
+# (operational-platform.md D998): the profiles whose card or page names the
+# person are kept, everyone else is dropped on receipt (minimisation), and
+# what is kept becomes one document of the person, stamped `match_to_score`
+# and kept 2 days. The flow "Prospecting · score profiles" scores it, attaches
+# or proposes, or asks the next query; nothing is decided here.
 key: person_match_linkedin
-name: Person match (LinkedIn)
+name: Person search (LinkedIn)
 hosts: [www.linkedin.com]
 steps:
-  - enumerate: { as: asked, track: true, cross: [{ as: person_id, asked: [query, step, subject] }] }
+  - enumerate: { as: asked, track: true, cross: [{ as: person_id, asked: [query, step, words] }] }
   - browse:
       as: page
       for_each: asked
@@ -31,97 +31,35 @@ steps:
   - sql:
       as: found
       sql: >-
-        SELECT a.person_id, a.step, a.subject, p.name, p.text
+        SELECT a.person_id, a.step, a.query, a.words, p.name, p.text
         FROM asked a LEFT JOIN page p ON true
-  - call: { as: scored, from: found, function: person_match_score }
-  # The best profile above the attaching score, never a job change.
+  - call: { as: kept, from: found, function: person_match_collect }
   - sql:
-      as: best
-      sql: SELECT * FROM scored WHERE verdict = 'write'
-  - sql:
-      as: best_documents
+      as: documents
       sql: >-
         SELECT 'person' AS type_key, 'id' AS key_property, person_id AS key,
-          url AS source_url, 'Profile · ' || url AS name, profile AS text
-        FROM best WHERE length(trim(profile)) > 0
+          'https://www.linkedin.com/search/results/people/' AS source_url,
+          'Profile search · ' || query AS name, bundle AS text
+        FROM kept
   - write:
-      from: best_documents
-      media: { link_type: captured_text, source: browser_agent, stamp: profile_to_read, keep_days: 30 }
-  - write:
-      from: best
-      objects:
-        objects:
-          - { as: account, type: identifier, key: value, create: true, title: url, properties: { value: url, kind: { value: account } } }
-          - { as: person, type: person, key: "@id", create: false, properties: { "@id": person_id } }
-        links:
-          - { type: uses_identifier, from: person, to: account }
-  # Without an attached profile, the plausible ones wait for a human.
-  - sql:
-      as: plausible
-      sql: SELECT * FROM scored WHERE verdict = 'propose'
-  - sql:
-      as: plausible_documents
-      sql: >-
-        SELECT 'person' AS type_key, 'id' AS key_property, person_id AS key,
-          url AS source_url, 'Profile · ' || url AS name, profile AS text
-        FROM plausible WHERE length(trim(profile)) > 0
-  - write:
-      from: plausible_documents
-      media: { link_type: captured_text, source: browser_agent, keep_days: 30 }
-  - write:
-      from: plausible
-      objects:
-        objects:
-          - { as: account, type: identifier, key: value, create: true, title: url, properties: { value: url, kind: { value: account } } }
-  - sql:
-      as: proposed
-      sql: >-
-        SELECT 'person' AS type_key, 'id' AS key_property, person_id AS key, url AS title,
-          'uses_identifier' AS link_type, 'identifier' AS to_type, 'value' AS to_property,
-          url AS to_key, score AS confidence, evidence
-        FROM plausible
-  - write:
-      from: proposed
-      proposals: { origin: prospecting_b2b.person_match }
-  # Nothing plausible: the next query of the ladder, as the function gives it.
-  - sql:
-      as: next
-      sql: SELECT person_id, query, step, subject FROM scored WHERE verdict = 'next'
-  - write:
-      from: next
-      ask: {}
+      from: documents
+      media: { link_type: captured_text, source: browser_agent, stamp: match_to_score, keep_days: 2 }
 tests:
-  - name: the profile naming the person at their company is attached
-    asked: [{ person_id: "8f1c2b9e-0000-4000-8000-000000000001", query: "jane doe example", step: "0", subject: '{"name":["jane","doe"],"orgs":[["example","industries"],["example"]],"groups":[],"cities":[["lyon"]],"queries":["jane doe example industries","jane doe"],"write_at":80,"propose_at":40}' }]
+  - name: the profile naming the person is kept, the other dropped
+    asked: [{ person_id: "8f1c2b9e-0000-4000-8000-000000000001", query: "jane doe example", step: "0", words: "jane doe" }]
     given: { "browse:page": match_jane_doe.json }
     expect:
-      best:
+      kept:
         rows: 1
-      best_documents:
+        contains: [{ kept_urls: "https://www.linkedin.com/in/jane-doe" }]
+      documents:
         rows: 1
-      plausible:
-        rows: 0
-      next:
-        rows: 0
-  - name: a profile at another company only is proposed
-    asked: [{ person_id: "8f1c2b9e-0000-4000-8000-000000000001", query: "jane doe example", step: "0", subject: '{"name":["jane","doe"],"orgs":[["globex"]],"groups":[],"cities":[["lyon"]],"queries":["jane doe globex","jane doe"],"write_at":80,"propose_at":40}' }]
+  - name: a search that kept nobody still tells the flow
+    asked: [{ person_id: "8f1c2b9e-0000-4000-8000-000000000001", query: "john smith", step: "0", words: "john smith" }]
     given: { "browse:page": match_jane_doe.json }
     expect:
-      best:
-        rows: 0
-      plausible:
+      kept:
         rows: 1
-      proposed:
-        rows: 1
-      next:
-        rows: 0
-  - name: nobody found asks the next query
-    asked: [{ person_id: "8f1c2b9e-0000-4000-8000-000000000001", query: "john smith", step: "0", subject: '{"name":["john","smith"],"orgs":[["example"]],"groups":[],"cities":[],"queries":["john smith example","john smith"],"write_at":80,"propose_at":40}' }]
-    given: { "browse:page": match_jane_doe.json }
-    expect:
-      best:
-        rows: 0
-      plausible:
-        rows: 0
-      next:
+        contains: [{ kept_urls: "" }]
+      documents:
         rows: 1

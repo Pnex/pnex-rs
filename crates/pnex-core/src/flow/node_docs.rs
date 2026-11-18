@@ -50,6 +50,10 @@ pub const FLOW_AUTHORING_RULES: &[(&str, &str)] = &[
         "Saving a flow never deploys it. Deploying, stopping and deleting are human actions in the flow editor; a running flow keeps executing its deployed version until the user redeploys.",
     ),
     (
+        "ingest_vs_organize",
+        "Three layers (D998): pipelines ingest volume on a schedule (public data, heavy files, long web collection) and store the raw result; a flow handles small data and one-off pages, and organizes the ontology: matching, attaching, proposing links no source states, asking a collection again. Organizing reacts to data changes (ontology_trigger, dataset_trigger) and reads the current state back (ontology_query), so it can run again when new hints arrive. A flow asks a pack pipeline for rows with pipeline_ask and follows its results with ontology_trigger; it never puts a decision into the collection. An inferred link goes through link_upsert with propose unless a safe score allows it.",
+    ),
+    (
         "physical_boundary",
         "Only a deployed flow acts on devices (device_write, regulation cards). Dashboards and annotations write controls; a control_source node turns them into messages. Ontology actions invoked from an object page reach the flow through an action_trigger node.",
     ),
@@ -465,7 +469,29 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("dataset", "name of the table — must exist at deploy"),
             ("on", "\"committed\" (default): each new version; \"synced\": each sync applied from this table"),
         ],
-        notes: "Message: payload = {dataset_id, dataset, reference, counts, changed, ts_ms}, topic = dataset.committed or dataset.synced. reference is the version (committed) or the import and run (synced). counts holds rows and bytes (committed) or created, updated and closed (synced). changed holds up to 10,000 ids of objects a sync wrote; empty on committed. A message never carries rows, and a flow neither starts a pipeline nor writes a table. Events missed while the flow is stopped are not replayed; they can arrive up to a few tens of seconds after the commit.",
+        notes: "Message: payload = {dataset_id, dataset, reference, counts, changed, ts_ms}, topic = dataset.committed or dataset.synced. reference is the version (committed) or the import and run (synced). counts holds rows and bytes (committed) or created, updated and closed (synced). changed holds up to 10,000 ids of objects a sync wrote; empty on committed. A message never carries rows, and a flow never writes a table; it may ask a pack pipeline for rows with pipeline_ask. Events missed while the flow is stopped are not replayed; they can arrive up to a few tens of seconds after the commit.",
+    },
+    NodeDoc {
+        kind: "ontology_trigger",
+        summary: "Event source fed by the changes of one object type: an object created or updated, a link opened or closed on it, a proposal about it decided. One output port, one message per event.",
+        config: &[
+            ("object_type", "key of the object type"),
+            ("on", "list of \"object\", \"link\", \"proposal\"; empty = [\"object\"]"),
+            ("properties", "object events only when one of these properties changed; empty = any change"),
+            ("link_types", "link events and link proposals only for these link types; empty = any"),
+            ("origin", "proposal events only for this origin (a flow's proposals carry flow:<id>@<version>); empty = any"),
+            ("skip_own", "bool: skip the events the flow's own writes caused (avoids loops)"),
+        ],
+        notes: "Message: payload = {event, action, object_id, object_type, changed, link_type, other_id, origin, proposal_id, source_ref, ts_ms}, topic = event. action is object.create / object.update / link.open / link.close…, or accepted / rejected for a proposal. The message never carries the object's values: read them with ontology_query (filter id = $msg.payload.object_id) so the flow always acts on the current state. Organizing the ontology (matching, attaching, proposing again when the data changes) belongs in flows started this way, not in pipelines (D998). Best effort: events missed while the flow is stopped are not replayed, and a very large import may drop some.",
+    },
+    NodeDoc {
+        kind: "pipeline_ask",
+        summary: "Asks a pipeline of an installed pack for the rows of msg.payload (one object, or an array of objects), as a page of the application would: the pipeline collects them (a page to read, a search to run) in the browser agent of the person who deployed the flow. Answers at once, never waits for the collection. Two output ports: 0 asked, 1 refused.",
+        config: &[
+            ("pipeline", "<pack>/<key> of a pipeline of an installed pack that declares an `asked` axis, e.g. prospecting_b2b/profile_capture_linkedin"),
+            ("per_day", "rows this node may ask per day (default 20, at most 200)"),
+        ],
+        notes: "Each row holds the columns of the pipeline's asked axis (see its document in Pipelines). Port 0: msg.asked = number of rows asked. Port 1: msg.error = {code, args}: pipeline-ask-daily-cap (args.max), access-denied (the deployer lost the permission pipelines:run or has no browser agent), pipeline-ask-opposed (a row names a person who objected), pipeline-ask-not-found (pipeline absent, its pack not installed, or no asked axis), pipeline-ask-row-invalid (args.columns: a row without the asked columns). The results arrive later, written by the pipeline (documents, objects, stamps): follow them with ontology_trigger. Collecting belongs to pipelines; deciding what the results mean belongs to the flow (D998).",
     },
     NodeDoc {
         kind: "agent_run",

@@ -1,11 +1,12 @@
 use super::*;
 
 /// Canonical list of the kinds offered for adding (mockup order).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 56] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 58] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
     PaletteKind::DatasetTrigger,
+    PaletteKind::OntologyTrigger,
     PaletteKind::AgentRunFinished,
     PaletteKind::MailReceived,
     PaletteKind::Weather,
@@ -22,6 +23,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 56] = [
     PaletteKind::PnexNotify,
     PaletteKind::MailSend,
     PaletteKind::AgentRun,
+    PaletteKind::PipelineAsk,
     PaletteKind::HttpFetch,
     PaletteKind::Function,
     PaletteKind::JsonSplit,
@@ -103,7 +105,9 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::ControlSource => "control-source",
         PaletteKind::ActionTrigger => "action-trigger",
         PaletteKind::DatasetTrigger => "dataset-trigger",
+        PaletteKind::OntologyTrigger => "ontology-trigger",
         PaletteKind::AgentRun => "agent-run",
+        PaletteKind::PipelineAsk => "pipeline-ask",
         PaletteKind::AgentRunFinished => "agent-run-finished",
         PaletteKind::MailReceived => "mail-received",
         PaletteKind::OntologyQuery => "ontology-query",
@@ -175,7 +179,9 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::ControlSource => (PaletteIcon::Gauge, "bg-signal-50 text-signal-600"),
         PaletteKind::ActionTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
         PaletteKind::DatasetTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
+        PaletteKind::OntologyTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
         PaletteKind::AgentRun => (PaletteIcon::Gauge, "bg-violet-50 text-violet-800"),
+        PaletteKind::PipelineAsk => (PaletteIcon::Gauge, "bg-violet-50 text-violet-800"),
         PaletteKind::AgentRunFinished => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
         PaletteKind::MailReceived => (PaletteIcon::Gauge, "bg-sky-50 text-sky-700"),
         PaletteKind::OntologyQuery => (PaletteIcon::Database, "bg-teal-50 text-teal-700"),
@@ -240,7 +246,9 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::ControlSource { .. } => PaletteKind::ControlSource,
         FlowNodeKind::ActionTrigger { .. } => PaletteKind::ActionTrigger,
         FlowNodeKind::DatasetTrigger { .. } => PaletteKind::DatasetTrigger,
+        FlowNodeKind::OntologyTrigger { .. } => PaletteKind::OntologyTrigger,
         FlowNodeKind::AgentRun { .. } => PaletteKind::AgentRun,
+        FlowNodeKind::PipelineAsk { .. } => PaletteKind::PipelineAsk,
         FlowNodeKind::AgentRunFinished { .. } => PaletteKind::AgentRunFinished,
         FlowNodeKind::MailReceived { .. } => PaletteKind::MailReceived,
         FlowNodeKind::OntologyQuery { .. } => PaletteKind::OntologyQuery,
@@ -300,6 +308,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::ControlSource
         | PaletteKind::ActionTrigger
         | PaletteKind::DatasetTrigger
+        | PaletteKind::OntologyTrigger
         | PaletteKind::AgentRunFinished
         | PaletteKind::MailReceived
         | PaletteKind::CameraSource
@@ -348,6 +357,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         PaletteKind::PnexNotify
         | PaletteKind::MailSend
         | PaletteKind::AgentRun
+        | PaletteKind::PipelineAsk
         | PaletteKind::HttpFetch => PaletteCategory::Integrations,
         // Display is an inline probe, not a device node (O49).
         PaletteKind::Debug | PaletteKind::Display => PaletteCategory::Debug,
@@ -535,6 +545,14 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::DatasetTrigger => (
             t!("flows-palette-dataset-trigger").to_string(),
             t!("flows-palette-dataset-trigger-help").to_string(),
+        ),
+        PaletteKind::OntologyTrigger => (
+            t!("flows-palette-ontology-trigger").to_string(),
+            t!("flows-palette-ontology-trigger-help").to_string(),
+        ),
+        PaletteKind::PipelineAsk => (
+            t!("flows-palette-pipeline-ask").to_string(),
+            t!("flows-palette-pipeline-ask-help").to_string(),
         ),
         PaletteKind::AgentRun => (
             t!("flows-palette-agent-run").to_string(),

@@ -153,7 +153,6 @@ pub const EXPOSED: &[&str] = &[
     "extension_people_captures_list",
     "extension_person_connection_get",
     "extension_connections_captures_list",
-    "extension_person_matches_list",
     "extension_profile_captures_list",
     "extension_videos_list",
     "firmware_projects_check",
@@ -683,7 +682,6 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "extension_connections_captures_create",
             // Declaring a connection unlocks an exploration: a person's act.
             "extension_person_connection_update",
-            "extension_person_matches_create",
             "extension_profile_captures_create",
             "notify_channels_test",
             "notify_channels_test_draft",

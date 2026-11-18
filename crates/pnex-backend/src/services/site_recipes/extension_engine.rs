@@ -265,7 +265,9 @@ pub async fn extract(
     // A card pointing to a profile that objected is not kept either.
     let mut cards = Vec::with_capacity(e.cards.len());
     for c in std::mem::take(&mut e.cards) {
-        let link = c.values().find(|v| v.starts_with("http") || v.starts_with('/'));
+        let link = c
+            .values()
+            .find(|v| v.starts_with("http") || v.starts_with('/'));
         let link = link.map(|l| absolute(&plan.site, l));
         match link {
             Some(l) if opposed(db, agent.org_id, &l).await? => {}

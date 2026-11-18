@@ -16,6 +16,8 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, m: &SchemaManager) -> Result<(), DbErr> {
-        crate::m20261107_000122_person_matches::Migration.up(m).await
+        crate::m20261107_000122_person_matches::Migration
+            .up(m)
+            .await
     }
 }

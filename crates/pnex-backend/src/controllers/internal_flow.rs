@@ -83,6 +83,8 @@ pub fn routes() -> Routes {
         .add("/internal/flow/site-crawl", post(flow_site_crawl))
         // Agent runs started by agent_run nodes (agent-environments.md D713).
         .add("/internal/flow/agent-run", post(flow_agent_run))
+        // Rows asked of a pack pipeline by pipeline_ask nodes (pipeline-engine.md D999).
+        .add("/internal/flow/pipeline-ask", post(flow_pipeline_ask))
         // Pages written by page-write nodes (D209).
         .add("/internal/flow/page-write", post(flow_page_write))
         .add("/internal/flow/page-pdf", post(flow_page_pdf))
@@ -1031,6 +1033,40 @@ async fn flow_agent_run(
             .into_response()),
         Err(e) => {
             tracing::warn!(org_id = req.node.org_id, error = ?e, "flow agent run failed");
+            Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
+}
+
+/// `POST /internal/flow/pipeline-ask` — one message of a deployed `pipeline_ask` node: the
+/// rows are asked of the pipeline, answered at once. A refusal answers 200 on port 1; only
+/// a forged or stale node is refused.
+async fn flow_pipeline_ask(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::pipeline::ask::PipelineAskRequest>,
+) -> Result<Response> {
+    use crate::services::ontology::flow_nodes::NodeError;
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    match crate::services::pipeline_engine::flow_ask::ask_node(&ctx, &req).await {
+        Ok(reply) => Ok(axum::Json(reply).into_response()),
+        Err(NodeError::NotDeployed) => Ok((
+            StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({ "code": "flow-node-not-deployed" })),
+        )
+            .into_response()),
+        Err(NodeError::Budget) => Ok((
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({ "code": "flow-ontology-budget" })),
+        )
+            .into_response()),
+        Err(e) => {
+            tracing::warn!(org_id = req.node.org_id, error = ?e, "flow pipeline ask failed");
             Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
     }

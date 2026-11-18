@@ -291,7 +291,6 @@ impl Hooks for App {
         // Captured profile texts past 30 days (D333).
         crate::services::profiles::spawn_pruner(ctx);
         crate::services::rules::spawn(ctx);
-        crate::services::person_match::spawn_sweeper(ctx);
         // Mailboxes polled every two minutes (mail.md D460).
         crate::services::mail::poller::spawn(ctx);
         crate::services::media_ingest::health::spawn(ctx);

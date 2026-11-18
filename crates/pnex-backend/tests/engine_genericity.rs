@@ -122,11 +122,6 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "browser-agent profiles write investigation identities",
     ),
     (
-        "pnex-backend/src/services/person_match.rs",
-        &["person", "uses_identifier", "employs", "subsidiary_of", "establishment_of"],
-        "the person match route reads who works where (investigation employs, companies group and sites) to build the subject its pack pipeline searches (D788, D996); to move into keys the prospecting pack declares",
-    ),
-    (
         "pnex-backend/src/services/network_connections.rs",
         &["person", "organization", "knows", "employs"],
         "a contact's connections kept as investigation people, known by the contact and proposed at an organization (account-mapping.md D976); to move into keys the prospecting pack declares, with the person match",

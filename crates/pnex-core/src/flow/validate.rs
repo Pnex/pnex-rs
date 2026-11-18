@@ -139,6 +139,16 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                     v.push(FlowViolation::new(Some(&n.id), code, message));
                 }
             }
+            FlowNodeKind::PipelineAsk { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
+            FlowNodeKind::OntologyTrigger { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
             FlowNodeKind::DatasetTrigger { config } => {
                 if let Some((code, message)) = config.check() {
                     v.push(FlowViolation::new(Some(&n.id), code, message));

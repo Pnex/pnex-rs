@@ -1259,10 +1259,14 @@ pub const EXT_PROFILE_DAILY_CAP: &str = "ext-profile-daily-cap";
 pub const EXT_TARGET_NOT_PEOPLE_PAGE: &str = "ext-target-not-people-page";
 /// Daily employee list captures of the org reached (D779). Args: `max`.
 pub const EXT_PEOPLE_DAILY_CAP: &str = "ext-people-daily-cap";
-/// Daily person searches of the org reached (D788). Args: `max`.
-pub const EXT_MATCH_DAILY_CAP: &str = "ext-match-daily-cap";
-/// The person works for no company: nothing to match them with (D788).
-pub const EXT_PERSON_WITHOUT_COMPANY: &str = "ext-person-without-company";
+/// A `pipeline_ask` node asked as many rows today as its config allows (D999). Args: `max`.
+pub const PIPELINE_ASK_DAILY_CAP: &str = "pipeline-ask-daily-cap";
+/// A row asked by a flow names an object whose subject objected (D341, D999).
+pub const PIPELINE_ASK_OPPOSED: &str = "pipeline-ask-opposed";
+/// The asked pipeline is not shipped, its pack is not installed, or it has no asked axis (D999).
+pub const PIPELINE_ASK_NOT_FOUND: &str = "pipeline-ask-not-found";
+/// A row asked by a flow lacks the columns of the pipeline's asked axis (D999). Args: `columns`.
+pub const PIPELINE_ASK_ROW_INVALID: &str = "pipeline-ask-row-invalid";
 /// Connections of a contact (D976, D977): the caller is not connected to them.
 pub const EXT_NOT_CONNECTED: &str = "ext-not-connected";
 /// The person has no LinkedIn profile address to explore.
@@ -1324,8 +1328,10 @@ pub const ALL: &[&str] = &[
     EXT_PROFILE_DAILY_CAP,
     EXT_TARGET_NOT_PEOPLE_PAGE,
     EXT_PEOPLE_DAILY_CAP,
-    EXT_MATCH_DAILY_CAP,
-    EXT_PERSON_WITHOUT_COMPANY,
+    PIPELINE_ASK_DAILY_CAP,
+    PIPELINE_ASK_OPPOSED,
+    PIPELINE_ASK_NOT_FOUND,
+    PIPELINE_ASK_ROW_INVALID,
     EXT_NOT_CONNECTED,
     EXT_PERSON_WITHOUT_PROFILE,
     EXT_CONNECTIONS_DAILY_CAP,

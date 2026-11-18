@@ -47,7 +47,9 @@ pub enum PaletteKind {
     ControlSource,
     ActionTrigger,
     DatasetTrigger,
+    OntologyTrigger,
     AgentRun,
+    PipelineAsk,
     AgentRunFinished,
     MailReceived,
     OntologyQuery,
@@ -265,6 +267,12 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                 config: Default::default(),
             },
             PaletteKind::DatasetTrigger => FlowNodeKind::DatasetTrigger {
+                config: Default::default(),
+            },
+            PaletteKind::OntologyTrigger => FlowNodeKind::OntologyTrigger {
+                config: Default::default(),
+            },
+            PaletteKind::PipelineAsk => FlowNodeKind::PipelineAsk {
                 config: Default::default(),
             },
             // No agent picked yet: the violation banner guides the user.

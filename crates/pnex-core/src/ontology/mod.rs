@@ -20,6 +20,7 @@ pub mod page_render;
 pub mod proposal;
 pub mod recurrence;
 pub mod schema;
+pub mod trigger;
 
 use serde::{Deserialize, Serialize};
 

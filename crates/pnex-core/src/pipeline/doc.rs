@@ -1590,9 +1590,9 @@ mod tests {
         );
         assert!(t.contains(&"steps.0.fetch.url host_not_declared:other.example.io".into()));
         assert!(t.contains(&"steps.1.read.as duplicate".into()));
-        assert!(
-            t.contains(&"steps.2.write one_of:table,objects,time_ranges,proposals,media,ask".into())
-        );
+        assert!(t.contains(
+            &"steps.2.write one_of:table,objects,time_ranges,proposals,media,ask".into()
+        ));
     }
 
     #[test]

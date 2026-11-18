@@ -604,8 +604,43 @@ pub async fn decide(
         }
         let view = get(&txn, org_id, id).await?;
         txn.commit().await?;
+        decided_changes(org_id, actor, &view, wanted);
         changes::flush();
         Ok(view)
     })
     .await
+}
+
+/// Journals a decision on each object it concerns, which also tells the flows
+/// following them (operational-platform.md D998, `ontology_trigger`).
+fn decided_changes(org_id: i64, actor: &Actor, p: &ProposalView, decision: ProposalStatus) {
+    let decision = match decision {
+        ProposalStatus::Accepted => "accepted",
+        ProposalStatus::Rejected => "rejected",
+        _ => return,
+    };
+    for (i, r) in p.refs.iter().enumerate() {
+        let other = p
+            .refs
+            .iter()
+            .enumerate()
+            .find(|(j, _)| *j != i)
+            .map(|(_, o)| o.id.clone());
+        changes::submit(changes::Change {
+            org_id,
+            action: format!("proposal.{decision}"),
+            object_id: r.id.clone(),
+            type_key: r.type_key.clone(),
+            source_ref: actor.source_ref.clone(),
+            before: Value::Null.into(),
+            after: serde_json::json!({
+                "proposal_id": p.id,
+                "origin": p.origin,
+                "type_key": p.type_key,
+                "other_id": other,
+                "decision": decision,
+            })
+            .into(),
+        });
+    }
 }

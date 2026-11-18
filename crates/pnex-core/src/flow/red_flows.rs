@@ -283,6 +283,19 @@ pub fn to_red_flows_json_with(
                     "pnex_org_id": meta.org_id,
                 })
             }
+            FlowNodeKind::OntologyTrigger { config } => serde_json::json!({
+                "type": "pnex-ontology-trigger",
+                "object_type": config.object_type,
+                "on": config.on,
+                "properties": config.properties,
+                "link_types": config.link_types,
+                "origin": config.origin,
+                "skip_own": config.skip_own,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::ActionTrigger { config } => serde_json::json!({
                 "type": "pnex-action-trigger",
                 "object_type": config.object_type,
@@ -293,6 +306,17 @@ pub fn to_red_flows_json_with(
                 "pnex_org_id": meta.org_id,
             }),
             // The backend reads the agent and the paths from the deployed graph (D713).
+            // The backend reads the pipeline and the ceiling from the deployed graph (D999).
+            FlowNodeKind::PipelineAsk { .. } => {
+                padded_ports = Some(crate::pipeline::ask::NODE_PORT_COUNT);
+                serde_json::json!({
+                    "type": "pnex-pipeline-ask",
+                    "pnex_node_id": n.id,
+                    "pnex_flow_id": meta.flow_id,
+                    "pnex_version": meta.version_number,
+                    "pnex_org_id": meta.org_id,
+                })
+            }
             FlowNodeKind::AgentRun { config } => {
                 padded_ports = Some(crate::agent_chains::NODE_PORT_COUNT);
                 serde_json::json!({

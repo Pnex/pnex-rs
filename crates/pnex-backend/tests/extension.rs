@@ -1914,93 +1914,156 @@ async fn a_rule_needing_a_session_goes_to_an_agent_and_a_blocked_run_moves_over(
     .await;
 }
 
-/// D788, D996: a person entered with their company is searched by the pack
-/// pipeline in the author's browser agent; a profile at the company is attached,
-/// a past position only proposed, and nobody who objected is searched.
+/// D999: a deployed `pipeline_ask` node asks the person search in its
+/// deployer's browser agent; only the profiles naming the person are kept, as
+/// one document stamped on the person, and the stamp reaches the flows. A row
+/// without the asked columns, a person who objected and the day's ceiling are
+/// refused on port 1.
 #[tokio::test]
 #[serial]
-async fn a_person_is_matched_through_the_search_pipeline_and_a_job_change_is_proposed() {
+async fn a_flow_asks_the_person_search_and_only_profiles_naming_the_person_are_kept() {
     with_app(|server, env| async move {
+        use sea_orm::ConnectionTrait as _;
         let org = personal_org(&server, &env.alice).await;
         for pack in ["investigation", "companies", "prospecting_b2b"] {
             let (s, e) = call(&server, "POST", &format!("/api/v1/ontology/packs/{pack}/install"), &env.alice, org, None).await;
             assert_eq!(s, 200, "{pack} {e}");
         }
-        let new = |type_key: &str, title: &str| json!({ "type_key": type_key, "title": title, "properties": {} });
-        let id_of = |v: &Value| v["id"].as_str().unwrap().to_string();
-        let (_, acme) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(new("organization", "ACME INDUSTRIES SAS"))).await;
-        let acme = id_of(&acme);
         let person = |name: &'static str| {
-            let (server, alice, acme) = (&server, env.alice.clone(), acme.clone());
+            let (server, alice) = (&server, env.alice.clone());
             async move {
                 let (_, p) = call(server, "POST", "/api/v1/ontology/objects", &alice, org, Some(json!({ "type_key": "person", "title": name, "properties": {} }))).await;
-                let p = p["id"].as_str().unwrap().to_string();
-                let (s, l) = call(server, "POST", "/api/v1/ontology/links", &alice, org, Some(json!({"link_type": "employs", "source_id": acme, "target_id": p}))).await;
-                assert_eq!(s, 201, "{l}");
-                p
+                p["id"].as_str().unwrap().to_string()
             }
         };
+        let elodie = person("Élodie Martin").await;
+        let objecting = person("Olga Object").await;
+        let (s, _) = call(&server, "POST", &format!("/api/v1/extension/people/{objecting}/opposition"), &env.alice, org, None).await;
+        assert_eq!(s, 200);
         let install = Install::new();
         let a = pair(&server, &env.alice, org, &install).await;
 
-        // Nobody without a company, nobody who objected.
-        let (_, lone) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(new("person", "Lone Wolf"))).await;
-        let (s, e) = call(&server, "POST", &format!("/api/v1/extension/people/{}/matches", id_of(&lone)), &env.alice, org, None).await;
-        assert_eq!((s, e["error"].as_str()), (409, Some("ext-person-without-company")), "{e}");
-        let objecting = person("Olga Object").await;
-        call(&server, "POST", &format!("/api/v1/extension/people/{objecting}/opposition"), &env.alice, org, None).await;
-        let (s, e) = call(&server, "POST", &format!("/api/v1/extension/people/{objecting}/matches"), &env.alice, org, None).await;
-        assert_eq!((s, e["error"].as_str()), (409, Some("prospecting-opposed")), "{e}");
+        // The ontology events of the org, as a flow's trigger hears them.
+        let url = std::env::var("PNEX_TEST_APP_VALKEY_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379/14".into());
+        let client = redis::Client::open(url).unwrap();
+        let mut events = client.get_async_pubsub().await.unwrap();
+        events.subscribe(pnex_core::ontology::trigger::ontology_channel(org)).await.unwrap();
 
-        let elodie = person("Élodie Martin").await;
-        let (s, m) = call(&server, "POST", &format!("/api/v1/extension/people/{elodie}/matches"), &env.alice, org, None).await;
-        assert_eq!(s, 201, "{m}");
-        assert_eq!(m["state"], "searching");
-        assert_eq!(m["queries"][0], "elodie martin acme industries");
-        assert_eq!(m["queries"].as_array().unwrap().last().unwrap(), "elodie martin");
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-ext-1") };
+        let alice_id: i64 = env
+            .db
+            .query_one_raw(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT id FROM users WHERE email = 'alice@example.com'",
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "id")
+            .unwrap();
+        let flow = deploy_nodes(&env.db, org, alice_id, json!([
+            {"id": "s", "kind": "pipeline_ask", "config": {"pipeline": "prospecting_b2b/person_match_linkedin", "per_day": 2}}
+        ])).await;
+        // A ceiling left by an earlier run of this test the same day.
+        let mut conn = client.get_multiplexed_async_connection().await.unwrap();
+        let day = chrono::Utc::now().format("%Y%m%d");
+        let _: () = redis::AsyncCommands::del(&mut conn, format!("pnex:pask:v1:{org}:{flow}:s:{day}")).await.unwrap();
+        let node = json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": "s"});
+        let ask = |rows: Value| {
+            let (server, node) = (&server, node.clone());
+            async move {
+                let res = server
+                    .post("/internal/flow/pipeline-ask")
+                    .add_header("x-pnex-flow-token", "tok-ext-1")
+                    .json(&json!({"node": node, "rows": rows}))
+                    .await;
+                (res.status_code().as_u16(), serde_json::from_str::<Value>(&res.text()).unwrap_or(Value::Null))
+            }
+        };
+        let row = |id: &str| json!({"person_id": id, "query": "elodie martin acme industries", "step": "0", "words": "elodie martin"});
 
-        // The agent plays the search: the cards, the first profile opened.
+        let (s, r) = ask(json!([{"person_id": elodie}])).await;
+        assert_eq!((s, r["port"].as_i64(), r["code"].as_str()), (200, Some(1), Some("pipeline-ask-row-invalid")), "{r}");
+        let (s, r) = ask(json!([row(&objecting)])).await;
+        assert_eq!((s, r["port"].as_i64(), r["code"].as_str()), (200, Some(1), Some("pipeline-ask-opposed")), "{r}");
+        let (s, r) = ask(json!([row(&elodie)])).await;
+        assert_eq!((s, r["port"].as_i64(), r["asked"].as_i64()), (200, Some(0), Some(1)), "{r}");
+
+        // The agent plays the search: two cards, the first profile opened.
         let mut ws = open(&server, &install, &a).await;
         assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
         let ServerMsg::Runs { runs } = recv(&mut ws).await else { panic!("the search is a rule run") };
         assert_eq!(runs[0].params["query"], "elodie martin acme industries");
         assert!(runs[0].recipe.needs_session());
-        assert!(runs[0].recipe.steps.iter().any(|s| s.action() == "type"), "typed in the search bar");
         let cards = json!([
             {"card": "Élodie Martin · Head of purchasing at ACME Industries", "link": "https://www.linkedin.com/in/elodie-martin-1?trk=x"},
             {"card": "Elodie Martinez · Nurse", "link": "https://www.linkedin.com/in/elodie-martinez"},
         ]);
         play_search(&mut ws, runs[0].run_id.clone(), cards, "Elodie Martin\nHead of purchasing at ACME Industries\nToulouse").await;
-        let (_, listed) = call(&server, "GET", &format!("/api/v1/extension/people/{elodie}/matches"), &env.alice, org, None).await;
-        let found = &listed["results"][0];
-        assert_eq!(found["state"], "matched", "{found}");
-        assert_eq!(found["candidates"][0]["verdict"], "write");
-        let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{elodie}/links"), &env.alice, org, None).await;
-        let links = links.to_string();
-        assert!(links.contains("uses_identifier") && links.contains("captured_text"), "{links}");
-        let (_, p) = call(&server, "GET", &format!("/api/v1/ontology/objects/{elodie}"), &env.alice, org, None).await;
-        assert_eq!(p["properties"]["profile_to_read"].as_str().map(str::len), Some(36), "{p}");
 
-        // A job change: the company far down the history, proposed only.
-        let john = person("John Roe").await;
-        let (s, _) = call(&server, "POST", &format!("/api/v1/extension/people/{john}/matches"), &env.alice, org, None).await;
-        assert_eq!(s, 201);
-        drop(ws);
-        let mut ws = open(&server, &install, &a).await;
-        assert!(matches!(recv(&mut ws).await, ServerMsg::Missions { .. }));
-        let ServerMsg::Runs { runs } = recv(&mut ws).await else { panic!("second search") };
-        let filler = "lorem ipsum ".repeat(80);
-        let profile = format!("John Roe\nEngineer at Initech\nParis\n{filler}\nExperience\nBuyer · ACME Industries · 2018 - 2022");
-        let cards = json!([{"card": "John Roe · Engineer at Initech", "link": "https://www.linkedin.com/in/john-roe"}]);
-        play_search(&mut ws, runs[0].run_id.clone(), cards, &profile).await;
-        let (_, listed) = call(&server, "GET", &format!("/api/v1/extension/people/{john}/matches"), &env.alice, org, None).await;
-        let proposed = &listed["results"][0];
-        assert_eq!(proposed["state"], "proposed", "{proposed}");
-        assert_eq!(proposed["candidates"][0]["left_company"], true);
-        let (_, inbox) = call(&server, "GET", "/api/v1/proposals?limit=50", &env.alice, org, None).await;
-        assert!(inbox.to_string().contains("person_match"), "{inbox}");
+        // One document of the person, stamped for the flow that scores it.
+        let (_, p) = call(&server, "GET", &format!("/api/v1/ontology/objects/{elodie}"), &env.alice, org, None).await;
+        let doc = p["properties"]["match_to_score"].as_str().unwrap_or_default().to_string();
+        assert_eq!(doc.len(), 36, "{p}");
+        let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{elodie}/links"), &env.alice, org, None).await;
+        assert!(links.to_string().contains("captured_text"), "{links}");
+        // Nothing is decided by the collection: no identifier, no proposal.
+        assert!(!links.to_string().contains("uses_identifier"), "{links}");
+
+        // The stamp reaches the flows following the property.
+        let mut stream = events.on_message();
+        let heard = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+            while let Some(m) = futures_util::StreamExt::next(&mut stream).await {
+                let ev: Value = serde_json::from_str(&m.get_payload::<String>().unwrap()).unwrap();
+                if ev["object_id"] == elodie && ev["changed"].to_string().contains("match_to_score") {
+                    return ev;
+                }
+            }
+            Value::Null
+        })
+        .await
+        .expect("the stamp event");
+        assert_eq!(heard["event"], "object", "{heard}");
+
+        // The ceiling of the day (2): the second row is refused.
+        let (_, r) = ask(json!([row(&elodie), row(&elodie)])).await;
+        assert_eq!((r["port"].as_i64(), r["code"].as_str()), (Some(1), Some("pipeline-ask-daily-cap")), "{r}");
     })
     .await;
+}
+
+/// A deployed flow of `org` holding `nodes`, deployed by `user`.
+async fn deploy_nodes(db: &sea_orm::DatabaseConnection, org: i64, user: i64, nodes: Value) -> i64 {
+    use pnex_backend::models::_entities::{flow_versions, flows};
+    use sea_orm::{ActiveModelTrait, ConnectionTrait, Set};
+    let flow = flows::ActiveModel {
+        name: Set("asks".into()),
+        status: Set(pnex_core::FLOW_STATUS_DEPLOYED.into()),
+        org_id: Set(org),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let version = flow_versions::ActiveModel {
+        flow_id: Set(flow.id),
+        version_number: Set(1),
+        graph: Set(json!({ "nodes": nodes })),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let id = flow.id;
+    let mut am: flows::ActiveModel = flow.into();
+    am.deployed_version_id = Set(Some(version.id));
+    am.update(db).await.unwrap();
+    db.execute_unprepared(&format!(
+        "UPDATE flows SET deployed_by = {user} WHERE id = {id}"
+    ))
+    .await
+    .unwrap();
+    id
 }
 
 /// The agent side of a search run (D788): the result cards, the first

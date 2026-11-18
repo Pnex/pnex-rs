@@ -967,6 +967,7 @@ async fn install_extensions(
             &ObjectTypeInput {
                 def: ObjectTypeDef {
                     properties: props,
+                    actions: extended_actions(&target.actions, &e.actions),
                     ..target.clone()
                 },
                 expected_version: Some(*version),
@@ -975,6 +976,20 @@ async fn install_extensions(
         .await?;
     }
     Ok(())
+}
+
+/// The type's actions with the extension's: one of the same key is replaced.
+/// shortcut: an action a later pack version drops stays on the type (actions
+/// carry no owner); give `ActionDef` a `pack` field if one is ever removed.
+fn extended_actions(
+    own: &[pnex_core::ontology::ActionDef],
+    added: &[pnex_core::ontology::ActionDef],
+) -> Vec<pnex_core::ontology::ActionDef> {
+    own.iter()
+        .filter(|a| !added.iter().any(|b| b.key == a.key))
+        .chain(added)
+        .cloned()
+        .collect()
 }
 
 /// Keys of the shipped packs `pack` builds on, directly or not.

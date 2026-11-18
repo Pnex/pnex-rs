@@ -131,25 +131,6 @@ pub async fn capture_profile(
     .await
 }
 
-/// `GET /api/v1/extension/people/{id}/matches` (D788).
-pub async fn person_matches(
-    person_id: &str,
-) -> Result<Vec<pnex_core::person_match::PersonMatch>, ApiError> {
-    client::request_all(&format!("/api/v1/extension/people/{person_id}/matches")).await
-}
-
-/// `POST /api/v1/extension/people/{id}/matches` (D788).
-pub async fn match_person(
-    person_id: &str,
-) -> Result<pnex_core::person_match::PersonMatch, ApiError> {
-    client::request(
-        reqwest::Method::POST,
-        &format!("/api/v1/extension/people/{person_id}/matches"),
-        None,
-    )
-    .await
-}
-
 /// `GET /api/v1/extension/organizations/{id}/people-captures` (D779).
 pub async fn people_captures(
     organization_id: &str,

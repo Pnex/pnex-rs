@@ -127,6 +127,11 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_AGENT_RUN_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/agent-run"),
             )
+            // Rows asked of pack pipelines by pipeline_ask nodes (D999).
+            .env(
+                "PNEX_FLOW_PIPELINE_ASK_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/pipeline-ask"),
+            )
             // Company name → SIREN (account-mapping.md D332).
             .env(
                 "PNEX_FLOW_ORG_RESOLVE_URL",

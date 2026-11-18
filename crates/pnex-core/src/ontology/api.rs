@@ -817,13 +817,16 @@ pub struct HierarchyView {
     pub white_space: u32,
 }
 
-/// Properties a pack adds to a type it does not own (D306).
+/// Properties and actions a pack adds to a type it does not own (D306;
+/// actions: pipeline-engine.md D999, a flow of the pack handles them).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TypeExtension {
     #[serde(rename = "type")]
     pub type_key: String,
     pub properties: Vec<super::PropertyDef>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<super::ActionDef>,
 }
 
 /// A page model shipped by a pack. `body` is a Markdown subset: `#`–`###`

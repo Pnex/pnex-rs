@@ -437,46 +437,6 @@ pub async fn captures(
         .collect())
 }
 
-/// Property of `prospecting_b2b` naming the captured text a flow has yet to
-/// read (account-mapping.md D538).
-const PROFILE_TO_READ: &str = "profile_to_read";
-
-/// Written in place when the org has the property: a stamp, not an edit of
-/// the person.
-pub(crate) async fn stamp_to_read(
-    ctx: &AppContext,
-    org_id: i64,
-    person_id: &str,
-    asset_id: Uuid,
-) -> Result<(), ExtensionError> {
-    let Ok(person) = Uuid::parse_str(person_id) else {
-        return Ok(());
-    };
-    let known = ontology::schema(&ctx.db, org_id)
-        .await
-        .ok()
-        .and_then(|s| {
-            s.object_type("person")
-                .map(|t| t.properties.iter().any(|p| p.key == PROFILE_TO_READ))
-        })
-        .unwrap_or(false);
-    if known {
-        ctx.db
-            .execute_raw(stmt(
-                "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text)
-                 WHERE org_id = $1 AND id = $2",
-                vec![
-                    org_id.into(),
-                    person.into(),
-                    PROFILE_TO_READ.into(),
-                    asset_id.to_string().into(),
-                ],
-            ))
-            .await?;
-    }
-    Ok(())
-}
-
 pub(crate) fn actor_of(source_ref: &str) -> ontology::Actor {
     ontology::Actor {
         user_id: None,

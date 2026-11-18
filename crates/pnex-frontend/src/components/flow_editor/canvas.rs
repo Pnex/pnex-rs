@@ -399,7 +399,11 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::ControlSource { .. } => kind_labels(PaletteKind::ControlSource),
         pnex_core::FlowNodeKind::ActionTrigger { .. } => kind_labels(PaletteKind::ActionTrigger),
         pnex_core::FlowNodeKind::DatasetTrigger { .. } => kind_labels(PaletteKind::DatasetTrigger),
+        pnex_core::FlowNodeKind::OntologyTrigger { .. } => {
+            kind_labels(PaletteKind::OntologyTrigger)
+        }
         pnex_core::FlowNodeKind::AgentRun { .. } => kind_labels(PaletteKind::AgentRun),
+        pnex_core::FlowNodeKind::PipelineAsk { .. } => kind_labels(PaletteKind::PipelineAsk),
         pnex_core::FlowNodeKind::AgentRunFinished { .. } => {
             kind_labels(PaletteKind::AgentRunFinished)
         }
@@ -513,12 +517,14 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::OrgResolve { .. }
         | pnex_core::FlowNodeKind::WebVisit { .. }
         | pnex_core::FlowNodeKind::AgentRun { .. }
+        | pnex_core::FlowNodeKind::PipelineAsk { .. }
         | pnex_core::FlowNodeKind::SiteCrawl { .. } => {
             (geometry::MEMORY_READ_FILL, geometry::MEMORY_READ_STROKE)
         }
         pnex_core::FlowNodeKind::ControlSource { .. }
         | pnex_core::FlowNodeKind::ActionTrigger { .. }
         | pnex_core::FlowNodeKind::DatasetTrigger { .. }
+        | pnex_core::FlowNodeKind::OntologyTrigger { .. }
         | pnex_core::FlowNodeKind::AgentRunFinished { .. }
         | pnex_core::FlowNodeKind::MailReceived { .. }
         | pnex_core::FlowNodeKind::Weather { .. }
@@ -727,6 +733,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::SiteRecipe { .. }
         | pnex_core::FlowNodeKind::WebSearch { .. }
         | pnex_core::FlowNodeKind::AgentRun { .. }
+        | pnex_core::FlowNodeKind::PipelineAsk { .. }
         | pnex_core::FlowNodeKind::MailSend { .. }
         | pnex_core::FlowNodeKind::OrgResolve { .. }
         | pnex_core::FlowNodeKind::WebVisit { .. }
@@ -1358,7 +1365,15 @@ fn node_subtitle(node: &FlowNode) -> String {
             "" => "—".into(),
             d => d.to_string(),
         },
+        pnex_core::FlowNodeKind::OntologyTrigger { config } => match config.object_type.as_str() {
+            "" => "—".into(),
+            t => t.to_string(),
+        },
         // The agent's name lives in the org: the subtitle shows the mapped inputs.
+        pnex_core::FlowNodeKind::PipelineAsk { config } => match config.pipeline.as_str() {
+            "" => "—".into(),
+            p => p.to_string(),
+        },
         pnex_core::FlowNodeKind::AgentRun { config } if config.agent_id.is_empty() => "—".into(),
         pnex_core::FlowNodeKind::AgentRun { config } => format!("⇢ {}", config.inputs.len()),
         pnex_core::FlowNodeKind::AgentRunFinished { config } if config.agent_id.is_empty() => {

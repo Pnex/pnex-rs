@@ -2,6 +2,7 @@
 //! source and every transform, closed steps over named working tables. Pure,
 //! wasm-safe: the backend parses the YAML and runs the steps.
 
+pub mod ask;
 pub mod doc;
 pub mod periods;
 pub mod template;

@@ -823,17 +823,30 @@ async fn kept_for(
         .await?;
     }
     if let Some(property) = &target.stamp {
-        db.execute_raw(stmt(
-            "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text) \
-             WHERE org_id = $1 AND id = $2 AND valid_to IS NULL",
-            vec![
-                org.into(),
-                object.into(),
-                property.clone().into(),
-                asset.to_string().into(),
-            ],
-        ))
-        .await?;
+        let stamped = db
+            .query_one_raw(stmt(
+                "UPDATE objects SET properties = properties || jsonb_build_object($3::text, $4::text) \
+                 WHERE org_id = $1 AND id = $2 AND valid_to IS NULL RETURNING type_key",
+                vec![
+                    org.into(),
+                    object.into(),
+                    property.clone().into(),
+                    asset.to_string().into(),
+                ],
+            ))
+            .await?;
+        // Journaled like any change, so the flows following the property hear it (D999).
+        if let Some(type_key) = stamped.and_then(|r| r.try_get::<String>("", "type_key").ok()) {
+            crate::services::ontology::changes::submit(crate::services::ontology::changes::Change {
+                org_id: org,
+                action: "object.stamp".into(),
+                object_id: object.to_string(),
+                type_key,
+                source_ref: "pipeline".into(),
+                before: json!({ "properties": {} }).into(),
+                after: json!({ "properties": serde_json::Map::from_iter([(property.clone(), json!(asset.to_string()))]) }).into(),
+            });
+        }
     }
     Ok(())
 }

@@ -72,7 +72,7 @@
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "4.3.0"
+version: "4.4.0"
 requires: [companies, web_presence, watch]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -96,8 +96,8 @@ settings:
   - key: match_write_threshold
     name: Score that attaches a profile
     names: {fr: "Score qui rattache un profil"}
-    description: From this score a network profile found for a person is attached to them without a human (D788); a job change is always proposed instead.
-    descriptions: {fr: "À partir de ce score, un profil trouvé pour une personne lui est rattaché sans validation humaine (D788) ; un changement d'emploi est toujours proposé."}
+    description: From this score a network profile found for a person is attached to them without a human (D788), by the flow "Prospecting · score profiles"; a job change is always proposed instead.
+    descriptions: {fr: "À partir de ce score, un profil trouvé pour une personne lui est rattaché sans validation humaine (D788), par le flow « Prospecting · score profiles » ; un changement d'emploi est toujours proposé."}
     kind: number
     default: 80
     min: 1
@@ -118,15 +118,6 @@ settings:
     descriptions: {fr: "Étiquette (nom, ou nom:valeur) des organisations dont on garde les salariés quand on explore les relations LinkedIn d'un contact (D976) ; les autres sont comptés, jamais enregistrés. Vide : personne n'est gardé."}
     kind: text
     default: ""
-  - key: match_searches_per_day
-    name: Automatic profile searches per day
-    names: {fr: "Recherches de profil automatiques par jour"}
-    description: Searches the hourly pass may start for the people of targets and prospects (at most 30); 0 turns the automatic search off, the button on a person stays.
-    descriptions: {fr: "Recherches que le passage horaire peut lancer pour les personnes des cibles et des prospects (30 au plus) ; 0 coupe la recherche automatique, le bouton d'une personne reste."}
-    kind: number
-    default: 20
-    min: 0
-    max: 30
   - key: match_retry_days
     name: Days before searching someone again
     names: {fr: "Jours avant de rechercher à nouveau une personne"}
@@ -191,6 +182,25 @@ extends:
         classification: personal
       - { key: review_on, name: Review on, names: {fr: "À revoir le"}, kind: date }
       - { key: opposed_on, name: Objected on, names: {fr: "Opposition le"}, kind: date, indexed: true }
+      # Profile search (D788, D999): written by the pack's flows only.
+      - key: match_state
+        name: Profile search
+        names: {fr: "Recherche de profil"}
+        kind: enum
+        values: [searching, proposed, found, not_found, no_company]
+        labels: {searching: {fr: "En cours", en: "Searching"}, proposed: {fr: "À valider", en: "To validate"}, found: {fr: "Trouvé", en: "Found"}, not_found: {fr: "Introuvable", en: "Not found"}, no_company: {fr: "Sans société", en: "No company"}}
+        colors: { searching: blue, proposed: amber, found: green, not_found: gray, no_company: gray }
+        indexed: true
+      - { key: match_step, name: Search query, names: {fr: "Requête de recherche"}, kind: number, min: 0 }
+      - { key: match_subject, name: Search subject, names: {fr: "Sujet de la recherche"}, kind: text, max_len: 4000 }
+      - { key: match_pending, name: Profiles to validate, names: {fr: "Profils à valider"}, kind: text, max_len: 4000, classification: personal }
+      - { key: match_next_on, name: Search again on, names: {fr: "Rechercher à nouveau le"}, kind: date, indexed: true }
+      # Document of the last search not scored yet: an id, set by the pipeline.
+      - { key: match_to_score, name: Search to score, names: {fr: "Recherche à évaluer"}, kind: text, max_len: 64 }
+    actions:
+      - key: find_profile
+        name: Find the LinkedIn profile
+        names: {fr: "Chercher le profil LinkedIn"}
 link_types:
   - key: captured_text
     name: has as captured text
@@ -731,6 +741,391 @@ functions:
               return None
           return {"payload": {"source_id": o["id"], "target_id": msg["org"], "attributes": {},
                               "evidence": {"employee list": msg.get("org_title", "")}}}
+  # Profile search of a person (D788, D999), organization side: the
+  # pipeline person_match_linkedin only collects; these functions pick who to
+  # search, build the queries from the graph as it is now, score what came
+  # back, and follow the human decisions. Deterministic, no model (D785).
+  - name: pm_from_action
+    language: starlark
+    description: A person whose LinkedIn profile a member asked for (action on the person's page).
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {}, "person_id": msg["object"]["id"], "manual": True}
+  - name: pm_from_change
+    language: starlark
+    description: A person whose employer changed, searched again from the first query.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {}, "person_id": msg["payload"]["object_id"], "manual": False}
+  - name: pm_pick
+    language: starlark
+    description: "A person of a target or prospect account due for a search: no LinkedIn profile yet, no objection, no search running, its retry date passed."
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          if p.get("opposed_on") or p.get("match_state") in ["searching", "proposed"]:
+              return None
+          due = p.get("match_next_on") or ""
+          if due and due > msg.get("today", ""):
+              return None
+          for l in (msg.get("links") or {}).get("uses_identifier") or []:
+              value = ((l.get("other") or {}).get("properties") or {}).get("value") or ""
+              if "linkedin.com/in/" in value:
+                  return None
+          return {"payload": {}, "person_id": msg["object"]["id"], "manual": False}
+  - name: pm_employer
+    language: starlark
+    description: The current employer of the person to search (latest open employs link); a person with no company is marked so.
+    outputs:
+      - {name: employer, ty: any, desc: "The person and the id of their employer"}
+      - {name: state, ty: any, desc: "The person marked without a company"}
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          if p.get("opposed_on"):
+              return None
+          links = msg.get("links") or {}
+          if not msg.get("manual"):
+              for l in links.get("uses_identifier") or []:
+                  value = ((l.get("other") or {}).get("properties") or {}).get("value") or ""
+                  if "linkedin.com/in/" in value:
+                      return None
+          jobs = [l for l in links.get("employs") or [] if l.get("direction") == "in"]
+          if not jobs:
+              return [None, {"payload": {"match_state": "no_company"}, "object_id": msg["object"]["id"]}]
+          job = sorted(jobs, key = lambda l: l.get("valid_from") or "")[-1]
+          return [{"payload": {}, "person_id": msg["object"]["id"], "person_name": msg["object"]["title"],
+                   "org_id": job["other"]["id"]}, None]
+  - name: pm_subject
+    language: starlark
+    description: "What a profile must say to be the person (folded name, company and group names, site cities) and the ladder of queries, from the graph as it is now; the first query asked."
+    code: |
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "ã": "a", "å": "a", "ç": "c",
+              "é": "e", "è": "e", "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i",
+              "ï": "i", "ñ": "n", "ó": "o", "ò": "o", "ô": "o", "ö": "o", "õ": "o",
+              "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y",
+              "œ": "oe", "æ": "ae", "ß": "ss"}
+      LEGAL_FORMS = ["sa", "sas", "sasu", "sarl", "eurl", "sca", "scs", "snc", "sci", "inc", "llc",
+                     "ltd", "limited", "gmbh", "ag", "bv", "nv", "spa", "srl", "plc", "corp",
+                     "corporation", "co"]
+      QUERIES_MAX = 5
+      QUERY_MAX = 120
+
+      def words(text):
+          out = []
+          cur = ""
+          for c in (text or "").lower().elems():
+              c = FOLD.get(c, c)
+              if c.isalnum():
+                  cur += c
+              elif cur:
+                  out.append(cur)
+                  cur = ""
+          if cur:
+              out.append(cur)
+          return out
+
+      # A company name as typed in a search bar: legal forms and brackets dropped.
+      def company_words(name):
+          cut = (name or "").split("(")[0].split("[")[0]
+          return [w for w in words(cut) if w not in LEGAL_FORMS]
+
+      def is_arrondissement(w):
+          for end in ["eme", "er", "e"]:
+              if w.endswith(end) and len(w) > len(end) and w[:len(w) - len(end)].isdigit():
+                  return True
+          return False
+
+      # City of a French register address: the words after the postal code.
+      def city_of(address):
+          ws = words(address)
+          at = -1
+          for i in range(len(ws)):
+              if len(ws[i]) == 5 and ws[i].isdigit():
+                  at = i
+          if at < 0:
+              return ""
+          city = [w for w in ws[at + 1:] if not is_arrondissement(w) and w != "cedex" and not w.isdigit()]
+          return " ".join(city)
+
+      def handle(inputs, msg):
+          name = words(msg.get("person_name"))
+          if not name:
+              return None
+          org = msg["payload"]
+          names = [msg["object"]["title"]]
+          for key in ["press_names", "aliases"]:
+              more = org.get(key) or ""
+              for sep in [";", "|", "\n"]:
+                  more = more.replace(sep, ",")
+              names += [n.strip() for n in more.split(",") if n.strip()]
+          links = msg.get("links") or {}
+          # Parent first, then subsidiaries: the names a profile may carry.
+          group = sorted(links.get("subsidiary_of") or [], key = lambda l: 0 if l.get("direction") == "out" else 1)
+          groups = [(l.get("other") or {}).get("title") or "" for l in group][:5]
+          sites = [l for l in links.get("establishment_of") or [] if l.get("direction") == "in"]
+          sites = sorted(sites, key = lambda l: 0 if ((l.get("other") or {}).get("properties") or {}).get("head_office") else 1)
+          cities = []
+          for l in sites:
+              c = city_of(((l.get("other") or {}).get("properties") or {}).get("address"))
+              if c and c not in cities:
+                  cities.append(c)
+          cities = cities[:3]
+          orgs = [w for w in [company_words(n) for n in names] if w]
+          grps = [w for w in [company_words(n) for n in groups] if w]
+          full = " ".join(name)
+          queries = []
+          for ws in orgs + grps:
+              q = (full + " " + " ".join(ws))[:QUERY_MAX]
+              if q not in queries and len(queries) < QUERIES_MAX:
+                  queries.append(q)
+          if cities:
+              q = (full + " " + cities[0])[:QUERY_MAX]
+              if q not in queries and len(queries) < QUERIES_MAX:
+                  queries.append(q)
+          # The name alone always ends the ladder.
+          if full not in queries:
+              if len(queries) == QUERIES_MAX:
+                  queries.pop()
+              queries.append(full)
+          subject = {"name": name, "orgs": orgs, "groups": grps, "cities": [words(c) for c in cities],
+                     "queries": queries}
+          return {"payload": {"person_id": msg["person_id"], "query": queries[0], "step": "0", "words": full},
+                  "person_id": msg["person_id"], "subject": json.encode(subject), "step": 0}
+  - name: pm_asked
+    language: starlark
+    description: A search asked of the pipeline, written on the person (state, query, subject, next search date).
+    code: |
+      def days(y, m, d):
+          y = y - 1 if m <= 2 else y
+          era = y // 400
+          yoe = y - era * 400
+          mp = m + 9 if m <= 2 else m - 3
+          doy = (153 * mp + 2) // 5 + d - 1
+          return era * 146097 + yoe * 365 + yoe // 4 - yoe // 100 + doy - 719468
+
+      def date_of(z):
+          z += 719468
+          era = z // 146097
+          doe = z - era * 146097
+          yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+          doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+          mp = (5 * doy + 2) // 153
+          d = doy - (153 * mp + 2) // 5 + 1
+          m = mp + 3 if mp < 10 else mp - 9
+          y = yoe + era * 400 + (1 if m <= 2 else 0)
+          return "-".join([str(y), ("0" + str(m))[-2:], ("0" + str(d))[-2:]])
+
+      def handle(inputs, msg):
+          today = msg.get("today") or ""
+          props = {"match_state": "searching", "match_step": msg.get("step", 0)}
+          if msg.get("subject"):
+              props["match_subject"] = msg["subject"]
+              props["match_pending"] = ""
+          if len(today) == 10:
+              t = today.split("-")
+              retry = int(pack_setting("prospecting_b2b.match_retry_days", 90))
+              props["match_next_on"] = date_of(days(int(t[0]), int(t[1]), int(t[2])) + retry)
+          return {"payload": props, "object_id": msg["person_id"]}
+  - name: pm_doc
+    language: starlark
+    description: A person whose last search came back, its document asked for.
+    code: |
+      def handle(inputs, msg):
+          doc = msg["payload"].get("match_to_score") or ""
+          if not doc:
+              return None
+          return {"payload": {"media_id": doc}, "person": msg["object"], "person_props": msg["payload"],
+                  "person_links": msg.get("links") or {}}
+  - name: pm_decide
+    language: starlark
+    description: "Scores the profiles a search kept (name 30, current company 50, past 25, group 15, city 10): the best above the attaching score is captured, the plausible ones proposed, else the next query is asked."
+    outputs:
+      - {name: attach, ty: any, desc: "The profile to capture onto the person"}
+      - {name: propose, ty: any, desc: "The plausible profiles, to validate"}
+      - {name: next, ty: any, desc: "The next query of the ladder"}
+      - {name: state, ty: any, desc: "The search state on the person"}
+    code: |
+      HEADER = 600
+
+      def padded(ws):
+          return " " + " ".join(ws) + " "
+
+      def has(hay, phrase):
+          return len(phrase) > 0 and padded(phrase) in hay
+
+      def words(text):
+          out = []
+          cur = ""
+          for c in (text or "").lower().elems():
+              if c.isalnum():
+                  cur += c
+              elif cur:
+                  out.append(cur)
+                  cur = ""
+          if cur:
+              out.append(cur)
+          return out
+
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "ã": "a", "å": "a", "ç": "c",
+              "é": "e", "è": "e", "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i",
+              "ï": "i", "ñ": "n", "ó": "o", "ò": "o", "ô": "o", "ö": "o", "õ": "o",
+              "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y",
+              "œ": "oe", "æ": "ae", "ß": "ss"}
+
+      def folded(text):
+          return "".join([FOLD.get(c, c) for c in (text or "").lower().elems()])
+
+      # shortcut: the current position is told from the text after the name
+      # (the header), not from the dated history; upgrade once the navigation
+      # extracts the positions by selectors.
+      def score(s, text):
+          t = words(folded(text))
+          name = s.get("name") or []
+          out = {"total": 0, "detail": [], "left": False}
+          if not name or not t:
+              return out
+          full = padded(t)
+          at = full.find(padded(name))
+          if at >= 0:
+              header = full[at:at + HEADER] + " "
+              out["total"] += 30
+              out["detail"].append("name")
+          elif all([(" " + w + " ") in full for w in name]):
+              header = full[:HEADER] + " "
+              out["total"] += 10
+              out["detail"].append("name_partial")
+          else:
+              return out
+          orgs = s.get("orgs") or []
+          current = [o for o in orgs if has(header, o)]
+          past = [o for o in orgs if has(full, o)]
+          groups = [g for g in (s.get("groups") or []) if has(header, g)]
+          if current:
+              out["total"] += 50
+              out["detail"].append("current_company:" + " ".join(current[0]))
+          elif past:
+              out["total"] += 25
+              out["left"] = True
+              out["detail"].append("past_company:" + " ".join(past[0]))
+          elif groups:
+              out["total"] += 15
+              out["detail"].append("group:" + " ".join(groups[0]))
+          cities = [c for c in (s.get("cities") or []) if has(header, c)]
+          if cities:
+              out["total"] += 10
+              out["detail"].append("city:" + " ".join(cities[0]))
+          out["total"] = min(out["total"], 100)
+          return out
+
+      def handle(inputs, msg):
+          person = msg["person"]
+          props = msg.get("person_props") or {}
+          s = json.decode(props.get("match_subject") or "{}")
+          bundle = json.decode(msg["payload"].get("text") or "{}")
+          step = int(bundle.get("step") or 0)
+          write_at = int(pack_setting("prospecting_b2b.match_write_threshold", 80))
+          propose_at = min(int(pack_setting("prospecting_b2b.match_propose_threshold", 40)), write_at)
+          known = []
+          for l in (msg.get("person_links") or {}).get("uses_identifier") or []:
+              known.append(((l.get("other") or {}).get("properties") or {}).get("value") or "")
+          scored = []
+          for c in bundle.get("candidates") or []:
+              if c.get("url") in known:
+                  continue
+              sc = score(s, (c.get("card") or "") + "\n" + (c.get("profile") or ""))
+              scored.append({"url": c["url"], "score": sc["total"], "detail": sc["detail"], "left": sc["left"]})
+          scored = sorted(scored, key = lambda c: -c["score"])
+          state = {"match_to_score": ""}
+          done = {"payload": state, "object_id": person["id"]}
+          best = [c for c in scored if c["score"] >= write_at and not c["left"]]
+          if best:
+              url = best[0]["url"]
+              state["match_state"] = "found"
+              state["match_pending"] = ""
+              capture = {"payload": {"url": url, "person_id": person["id"], "path": url[url.find("/in/"):]}}
+              return [capture, None, None, done]
+          plausible = [c for c in scored if c["score"] >= propose_at]
+          if plausible:
+              state["match_state"] = "proposed"
+              state["match_pending"] = " ".join([c["url"] for c in plausible])
+              rows = [{"url": c["url"], "person_id": person["id"], "score": c["score"],
+                       "detail": c["detail"], "left": c["left"], "step": step} for c in plausible]
+              return [None, {"payload": rows}, None, done]
+          queries = s.get("queries") or []
+          if step + 1 < len(queries):
+              state["match_state"] = "searching"
+              state["match_step"] = step + 1
+              row = {"person_id": person["id"], "query": queries[step + 1], "step": str(step + 1),
+                     "words": " ".join(s.get("name") or [])}
+              return [None, None, {"payload": row}, done]
+          state["match_state"] = "not_found"
+          return [None, None, None, done]
+  - name: pm_identifier
+    language: starlark
+    description: A plausible profile as an account identifier, before it is proposed for the person.
+    code: |
+      def handle(inputs, msg):
+          c = msg["payload"]
+          return {"payload": {"value": c["url"], "kind": "account"}, "title": c["url"], "candidate": c}
+  - name: pm_propose
+    language: starlark
+    description: The plausible profile proposed as an account of the person, with its score and why.
+    code: |
+      def handle(inputs, msg):
+          o = msg.get("object")
+          c = msg.get("candidate") or {}
+          if not o:
+              return None
+          return {"payload": {"source_id": c["person_id"], "target_id": o["id"], "attributes": {},
+                              "confidence": c.get("score", 0),
+                              "evidence": {"url": c.get("url"), "score": c.get("score"),
+                                           "detail": c.get("detail"), "left_company": c.get("left"),
+                                           "query": c.get("step")}}}
+  - name: pm_event
+    language: starlark
+    description: A decided proposal of a profile for a person, kept on the message before the reads.
+    code: |
+      def handle(inputs, msg):
+          e = msg["payload"]
+          return {"payload": {}, "person_id": e["object_id"], "decision": e.get("action"),
+                  "identifier_id": e.get("other_id") or ""}
+  - name: pm_event_url
+    language: starlark
+    description: The address of the decided profile.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {}, "url": msg["payload"].get("value") or ""}
+  - name: pm_follow
+    language: starlark
+    description: "Follows a human decision on a proposed profile: accepted, it is captured onto the person; once every proposal of the search is rejected, the next query is asked."
+    outputs:
+      - {name: capture, ty: any, desc: "The accepted profile to capture"}
+      - {name: next, ty: any, desc: "The next query of the ladder"}
+      - {name: state, ty: any, desc: "The search state on the person"}
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          person = msg["object"]["id"]
+          url = msg.get("url") or ""
+          pending = [u for u in (p.get("match_pending") or "").split(" ") if u]
+          if p.get("match_state") != "proposed" or url not in pending:
+              return None
+          if msg.get("decision") == "accepted":
+              capture = {"payload": {"url": url, "person_id": person, "path": url[url.find("/in/"):]}}
+              return [capture, None, {"payload": {"match_state": "found", "match_pending": ""}, "object_id": person}]
+          rest = [u for u in pending if u != url]
+          if rest:
+              return [None, None, {"payload": {"match_pending": " ".join(rest)}, "object_id": person}]
+          s = json.decode(p.get("match_subject") or "{}")
+          queries = s.get("queries") or []
+          step = int(p.get("match_step") or 0)
+          if step + 1 < len(queries):
+              row = {"person_id": person, "query": queries[step + 1], "step": str(step + 1),
+                     "words": " ".join(s.get("name") or [])}
+              state = {"match_state": "searching", "match_step": step + 1, "match_pending": ""}
+              return [None, {"payload": row}, {"payload": state, "object_id": person}]
+          return [None, None, {"payload": {"match_state": "not_found", "match_pending": ""}, "object_id": person}]
 flows:
   - name: "Prospecting · captured employee lists"
     note: "Every hour, up to 5 organizations whose employee list was captured by a person (Capture employees, on the organization's page) are read by the organization's LLM: each person the page names becomes a list contact (name, position) and is proposed as a contact at that company on the To validate page. Someone who objected at that company is never brought back. It follows no link of the network and opens no profile. Needs an AI provider."
@@ -857,6 +1252,95 @@ flows:
           outputs: [{ port: 0, targets: [score] }]
         - { id: score, kind: pnex_function, config: { function_name: pb_score, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - { id: write, kind: object_upsert, config: { object_type: organization, key: id } }
+  - name: "Prospecting · identify people"
+    note: "Finds the LinkedIn profile of a person (D788, D999): when a member clicks Find the LinkedIn profile on the person's page, when the person's employer changes, and every hour for the people of target and prospect accounts with no profile yet. The search is built from the graph as it is now (name, company and group names, site cities) and asked of the pipeline Person search (LinkedIn), which runs in the browser agent of whoever deploys this flow: deploy it from the account whose LinkedIn session should search. 20 searches a day by default (node Search). The flow Prospecting · score profiles reads what comes back."
+    graph:
+      nodes:
+        - { id: act, kind: action_trigger, config: { object_type: person, action: find_profile }, outputs: [{ port: 0, targets: [from_act] }] }
+        - { id: from_act, kind: pnex_function, config: { function_name: pm_from_action, language: starlark }, outputs: [{ port: 0, targets: [person] }] }
+        - { id: moved, kind: ontology_trigger, config: { object_type: person, on: [link], link_types: [employs], skip_own: true }, outputs: [{ port: 0, targets: [from_move] }] }
+        - { id: from_move, kind: pnex_function, config: { function_name: pm_from_change, language: starlark }, outputs: [{ port: 0, targets: [person] }] }
+        - { id: tick, kind: inject, config: { cron: "25 * * * *" }, outputs: [{ port: 0, targets: [due] }] }
+        - id: due
+          kind: ontology_query
+          config:
+            object_type: organization
+            filters: [{ key: account_status, op: in, value: [target, prospect] }]
+            traverse: [{ link_type: employs, direction: out }]
+            with_links: [uses_identifier]
+            limit: 50
+          outputs: [{ port: 0, targets: [pick] }]
+        - { id: pick, kind: pnex_function, config: { function_name: pm_pick, language: starlark }, outputs: [{ port: 0, targets: [person] }] }
+        - id: person
+          kind: ontology_query
+          config:
+            object_type: person
+            filters: [{ key: id, op: eq, value: "$msg.person_id" }]
+            with_links: [employs, uses_identifier]
+            limit: 1
+          outputs: [{ port: 0, targets: [employer] }]
+        - { id: employer, kind: pnex_function, config: { function_name: pm_employer, language: starlark }, outputs: [{ port: 0, targets: [company] }, { port: 1, targets: [state] }] }
+        - id: company
+          kind: ontology_query
+          config:
+            object_type: organization
+            filters: [{ key: id, op: eq, value: "$msg.org_id" }]
+            with_links: [subsidiary_of, establishment_of]
+            limit: 1
+          outputs: [{ port: 0, targets: [subject] }]
+        - { id: subject, kind: pnex_function, config: { function_name: pm_subject, language: starlark }, outputs: [{ port: 0, targets: [search] }] }
+        - { id: search, kind: pipeline_ask, config: { pipeline: prospecting_b2b/person_match_linkedin, per_day: 20 }, outputs: [{ port: 0, targets: [asked] }] }
+        - { id: asked, kind: pnex_function, config: { function_name: pm_asked, language: starlark }, outputs: [{ port: 0, targets: [state] }] }
+        - { id: state, kind: object_upsert, config: { object_type: person, key: id } }
+  - name: "Prospecting · score profiles"
+    note: "Scores the profiles a person search brought back, as soon as they arrive (D999): name 30, current company 50, past company 25, group 15, city 10. The best above the attaching score (setting) is captured onto the person by the pipeline Profile capture (LinkedIn); the plausible ones wait in To validate; otherwise the next query of the ladder is asked. Thresholds: settings of the pack. Deploy it from the same account as Prospecting · identify people."
+    graph:
+      nodes:
+        - { id: back, kind: ontology_trigger, config: { object_type: person, properties: [match_to_score], skip_own: true }, outputs: [{ port: 0, targets: [person] }] }
+        - id: person
+          kind: ontology_query
+          config:
+            object_type: person
+            filters: [{ key: id, op: eq, value: "$msg.payload.object_id" }]
+            with_links: [uses_identifier]
+            limit: 1
+          outputs: [{ port: 0, targets: [ask] }]
+        - { id: ask, kind: pnex_function, config: { function_name: pm_doc, language: starlark }, outputs: [{ port: 0, targets: [doc] }] }
+        - { id: doc, kind: document_text, outputs: [{ port: 0, targets: [decide] }] }
+        - { id: decide, kind: pnex_function, config: { function_name: pm_decide, language: starlark }, outputs: [{ port: 0, targets: [capture] }, { port: 1, targets: [each] }, { port: 2, targets: [next] }, { port: 3, targets: [state] }] }
+        - { id: capture, kind: pipeline_ask, config: { pipeline: prospecting_b2b/profile_capture_linkedin, per_day: 20 } }
+        - { id: next, kind: pipeline_ask, config: { pipeline: prospecting_b2b/person_match_linkedin, per_day: 20 } }
+        - { id: each, kind: json_split, config: { auto: false }, outputs: [{ port: 0, targets: [ident] }] }
+        - { id: ident, kind: pnex_function, config: { function_name: pm_identifier, language: starlark }, outputs: [{ port: 0, targets: [account] }] }
+        - { id: account, kind: object_upsert, config: { object_type: identifier, key: value }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: pm_propose, language: starlark }, outputs: [{ port: 0, targets: [propose] }] }
+        - { id: propose, kind: link_upsert, config: { link_type: uses_identifier, skip_closed: true, propose: true } }
+        - { id: state, kind: object_upsert, config: { object_type: person, key: id } }
+  - name: "Prospecting · follow decisions"
+    note: "Follows what a human decides on a proposed LinkedIn profile (D999): accepted, the profile is captured onto the person; once every profile proposed by a search is rejected, the next query of the ladder is asked. Deploy it from the same account as Prospecting · identify people."
+    graph:
+      nodes:
+        - { id: decided, kind: ontology_trigger, config: { object_type: person, on: [proposal], link_types: [uses_identifier] }, outputs: [{ port: 0, targets: [event] }] }
+        - { id: event, kind: pnex_function, config: { function_name: pm_event, language: starlark }, outputs: [{ port: 0, targets: [account] }] }
+        - id: account
+          kind: ontology_query
+          config:
+            object_type: identifier
+            filters: [{ key: id, op: eq, value: "$msg.identifier_id" }]
+            limit: 1
+          outputs: [{ port: 0, targets: [url] }]
+        - { id: url, kind: pnex_function, config: { function_name: pm_event_url, language: starlark }, outputs: [{ port: 0, targets: [person] }] }
+        - id: person
+          kind: ontology_query
+          config:
+            object_type: person
+            filters: [{ key: id, op: eq, value: "$msg.person_id" }]
+            limit: 1
+          outputs: [{ port: 0, targets: [follow] }]
+        - { id: follow, kind: pnex_function, config: { function_name: pm_follow, language: starlark }, outputs: [{ port: 0, targets: [capture] }, { port: 1, targets: [next] }, { port: 2, targets: [state] }] }
+        - { id: capture, kind: pipeline_ask, config: { pipeline: prospecting_b2b/profile_capture_linkedin, per_day: 20 } }
+        - { id: next, kind: pipeline_ask, config: { pipeline: prospecting_b2b/person_match_linkedin, per_day: 20 } }
+        - { id: state, kind: object_upsert, config: { object_type: person, key: id } }
 page_templates:
   - key: account_plan
     name: Account plan
@@ -1173,26 +1657,24 @@ page_templates:
 
         {{links:covered}}
 pipeline_functions:
-  # Scores the profiles a person search brought back (D788): the result
-  # cards pointing to a LinkedIn profile, the first five, each read with the
-  # profile opened for it (`profile.<n>`, in card order). Deterministic and
-  # explained, no model reads the page (D785). The subject comes folded from
-  # the route: name words, company names without their legal form, group
-  # names, cities, and the two thresholds.
-  # shortcut: the current position is told from the text after the name (the
-  # header), not from the dated history; upgrade once the navigation extracts
-  # the positions by selectors.
-  - name: person_match_score
+  # What a person search brought back (D788, D999), collection only: the
+  # result cards pointing to a LinkedIn profile, the first five, each with
+  # the profile opened for it (`profile.<n>`, in card order). A profile is
+  # kept only when its card or page holds every word of the person's name
+  # (minimisation, operational-platform.md D998): nobody else is stored. One
+  # row per person, kept profiles or none, so the flow always hears back.
+  - name: person_match_collect
     language: starlark
-    description: Candidates of a person search (rows person_id, step, subject, name, text of each extract → url, score, verdict write/propose/drop, or the next query).
+    description: Profiles a person search brought back that name the person (rows person_id, step, query, words, name, text of each extract → one bundle per person).
     code: |
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "ã": "a", "å": "a", "ç": "c",
               "é": "e", "è": "e", "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i",
               "ï": "i", "ñ": "n", "ó": "o", "ò": "o", "ô": "o", "ö": "o", "õ": "o",
               "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y",
               "œ": "oe", "æ": "ae", "ß": "ss"}
-      HEADER = 600
       CANDIDATES = 5
+      CARD_MAX = 1000
+      PROFILE_MAX = 20000
 
       def words(text):
           out = []
@@ -1208,12 +1690,6 @@ pipeline_functions:
               out.append(cur)
           return out
 
-      def padded(ws):
-          return " " + " ".join(ws) + " "
-
-      def has(hay, phrase):
-          return len(phrase) > 0 and padded(phrase) in hay
-
       # The canonical address of a profile link, None for anything else.
       def profile_url(link):
           at = (link or "").find("linkedin.com/in/")
@@ -1227,52 +1703,6 @@ pipeline_functions:
                   return None
           return "https://www.linkedin.com/in/" + slug
 
-      def score(s, text):
-          t = words(text)
-          name = s.get("name") or []
-          out = {"total": 0, "detail": [], "left": False}
-          if not name or not t:
-              return out
-          full = padded(t)
-          at = full.find(padded(name))
-          if at >= 0:
-              header = full[at:at + HEADER] + " "
-              out["total"] += 30
-              out["detail"].append("name")
-          elif all([(" " + w + " ") in full for w in name]):
-              header = full[:HEADER] + " "
-              out["total"] += 10
-              out["detail"].append("name_partial")
-          else:
-              return out
-          orgs = s.get("orgs") or []
-          current = [o for o in orgs if has(header, o)]
-          past = [o for o in orgs if has(full, o)]
-          groups = [g for g in (s.get("groups") or []) if has(header, g)]
-          if current:
-              out["total"] += 50
-              out["detail"].append("current_company:" + " ".join(current[0]))
-          elif past:
-              out["total"] += 25
-              out["left"] = True
-              out["detail"].append("past_company:" + " ".join(past[0]))
-          elif groups:
-              out["total"] += 15
-              out["detail"].append("group:" + " ".join(groups[0]))
-          cities = [c for c in (s.get("cities") or []) if has(header, c)]
-          if cities:
-              out["total"] += 10
-              out["detail"].append("city:" + " ".join(cities[0]))
-          out["total"] = min(out["total"], 100)
-          return out
-
-      def row(r, **cols):
-          out = {"person_id": r.get("person_id"), "step": str(r.get("step")), "url": "",
-                 "score": "0", "detail": "", "left_company": "false", "verdict": "none",
-                 "profile": "", "evidence": "", "query": "", "subject": ""}
-          out.update(cols)
-          return out
-
       def handle(rows):
           by_person = {}
           for r in rows:
@@ -1282,13 +1712,10 @@ pipeline_functions:
           out = []
           for p in by_person.values():
               r = p["row"]
-              s = json.decode(r.get("subject") or "{}")
+              name = words(r.get("words"))
               cards = json.decode(p["extracts"].get("results") or "[]")
-              write_at = int(s.get("write_at") or 80)
-              propose_at = min(int(s.get("propose_at") or 40), write_at)
-              step = int(r.get("step") or 0)
               seen = []
-              kept = False
+              kept = []
               for c in cards:
                   url = profile_url(c.get("link"))
                   if url == None or url in seen or len(seen) >= CANDIDATES:
@@ -1296,33 +1723,12 @@ pipeline_functions:
                   seen.append(url)
                   # The navigation opens the first profiles in card order.
                   profile = (p["extracts"].get("profile." + str(len(seen))) or "").strip()
-                  sc = score(s, (c.get("card") or "") + "\n" + profile)
-                  if sc["total"] >= write_at and not sc["left"]:
-                      verdict = "write"
-                  elif sc["total"] >= propose_at:
-                      verdict = "propose"
-                  else:
-                      verdict = "drop"
-                  kept = kept or verdict != "drop"
-                  evidence = json.encode({"url": url, "score": sc["total"], "detail": sc["detail"],
-                                          "left_company": sc["left"], "person_id": r.get("person_id"),
-                                          "step": step})
-                  out.append(row(r, url = url, score = str(sc["total"]), detail = ",".join(sc["detail"]),
-                                 left_company = "true" if sc["left"] else "false", verdict = verdict,
-                                 profile = profile, evidence = evidence))
-              # One profile is attached at most, the best; none is proposed then.
-              mine = [o for o in out if o["person_id"] == r.get("person_id")]
-              written = [o for o in mine if o["verdict"] == "write"]
-              if written:
-                  top = sorted(written, key = lambda o: -int(o["score"]))[0]
-                  for o in mine:
-                      if o != top and o["verdict"] != "drop":
-                          o["verdict"] = "drop"
-              queries = s.get("queries") or []
-              if not kept and step + 1 < len(queries):
-                  out.append(row(r, verdict = "next", step = str(step + 1), query = queries[step + 1],
-                                 subject = r.get("subject")))
-              elif not out:
-                  # A row even when nothing was found: the next steps read it.
-                  out.append(row(r))
+                  card = (c.get("card") or "").strip()
+                  hay = " " + " ".join(words(card + "\n" + profile)) + " "
+                  if name and all([(" " + w + " ") in hay for w in name]):
+                      kept.append({"url": url, "card": card[:CARD_MAX], "profile": profile[:PROFILE_MAX]})
+              bundle = json.encode({"query": r.get("query"), "step": int(r.get("step") or 0), "candidates": kept})
+              out.append({"person_id": r.get("person_id"), "step": str(r.get("step")),
+                          "query": r.get("query") or "", "bundle": bundle,
+                          "kept_urls": " ".join([k["url"] for k in kept])})
           return out

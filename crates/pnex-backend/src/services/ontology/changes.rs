@@ -16,6 +16,9 @@ use std::time::Duration;
 
 use loco_rs::prelude::*;
 use pnex_core::ontology::api::{ChangeView, LinkView, ObjectView};
+use pnex_core::ontology::trigger::{
+    ontology_channel, OntologyEvent, ON_LINK, ON_OBJECT, ON_PROPOSAL,
+};
 use serde_json::Value;
 use tokio::sync::mpsc;
 
@@ -273,8 +276,103 @@ fn client(ctx: &AppContext) -> Option<Client> {
     OpenobserveSettings::from_config(&ctx.config).map(|s| Client::new(&s))
 }
 
+/// The bus event of a change (operational-platform.md D998): `None` for what
+/// a flow does not follow (an action invocation).
+pub fn event_of(c: &Change, at_us: i64) -> Option<OntologyEvent> {
+    let parse = |d: &Doc| serde_json::from_str::<Value>(&d.0).unwrap_or(Value::Null);
+    let (kind, rest) = c.action.split_once('.')?;
+    let mut ev = OntologyEvent {
+        event: String::new(),
+        action: c.action.clone(),
+        object_id: c.object_id.clone(),
+        object_type: c.type_key.clone(),
+        changed: Vec::new(),
+        link_type: String::new(),
+        other_id: String::new(),
+        origin: String::new(),
+        proposal_id: String::new(),
+        source_ref: c.source_ref.clone(),
+        ts_ms: at_us / 1000,
+    };
+    let after = parse(&c.after);
+    match kind {
+        "object" => {
+            ev.event = ON_OBJECT.into();
+            let before = parse(&c.before);
+            let props = |v: &Value| v.get("properties").and_then(Value::as_object).cloned();
+            let (b, a) = (
+                props(&before).unwrap_or_default(),
+                props(&after).unwrap_or_default(),
+            );
+            let mut changed: Vec<String> = a
+                .iter()
+                .filter(|(k, v)| b.get(*k) != Some(*v))
+                .map(|(k, _)| k.clone())
+                .chain(b.keys().filter(|k| !a.contains_key(*k)).cloned())
+                .collect();
+            changed.sort();
+            ev.changed = changed;
+        }
+        "link" => {
+            ev.event = ON_LINK.into();
+            ev.link_type = after["link_type"].as_str().unwrap_or_default().into();
+            let (src, dst) = (
+                after["source"]["id"].as_str(),
+                after["target"]["id"].as_str(),
+            );
+            let other = if src == Some(c.object_id.as_str()) {
+                dst
+            } else {
+                src
+            };
+            ev.other_id = other.unwrap_or_default().into();
+        }
+        "proposal" => {
+            ev.event = ON_PROPOSAL.into();
+            ev.action = rest.into();
+            ev.link_type = after["type_key"].as_str().unwrap_or_default().into();
+            ev.other_id = after["other_id"].as_str().unwrap_or_default().into();
+            ev.origin = after["origin"].as_str().unwrap_or_default().into();
+            ev.proposal_id = after["proposal_id"].as_str().unwrap_or_default().into();
+        }
+        _ => return None,
+    }
+    Some(ev)
+}
+
+/// Publishes the batch's events on each org's ontology channel, best
+/// effort: a flow is told, never relied on (no replay).
+async fn publish_events(ctx: &AppContext, batch: &[Queued]) {
+    let mut by_org: HashMap<i64, Vec<String>> = HashMap::new();
+    for (c, at) in batch {
+        if let Some(frame) = event_of(c, *at).and_then(|e| serde_json::to_string(&e).ok()) {
+            by_org.entry(c.org_id).or_default().push(frame);
+        }
+    }
+    if by_org.is_empty() {
+        return;
+    }
+    let Some(mut conn) = crate::services::shared_valkey::conn(&ctx.config).await else {
+        return;
+    };
+    for (org_id, frames) in by_org {
+        let channel = ontology_channel(org_id);
+        let mut pipe = redis::pipe();
+        for f in &frames {
+            pipe.publish(&channel, f).ignore();
+        }
+        let op = pipe.query_async::<()>(&mut conn);
+        match tokio::time::timeout(Duration::from_secs(5), op).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::warn!(org_id, error = %e, "ontology events publish failed"),
+            Err(_) => tracing::warn!(org_id, "ontology events publish timed out"),
+        }
+    }
+}
+
 /// Sends a batch, one request per org.
 async fn record(ctx: &AppContext, batch: Vec<Queued>) {
+    publish_events(ctx, &batch).await;
     let Some(client) = client(ctx) else {
         tracing::debug!(
             "openobserve is not configured, {} change(s) dropped",
@@ -573,5 +671,48 @@ mod tests {
         assert_eq!(v.source_ref, "manual:7");
         assert_eq!(v.after["title"], "P12");
         assert!(v.at.starts_with("2023-11-14"));
+    }
+
+    #[test]
+    fn events_name_changed_properties_link_ends_and_decisions() {
+        let change = |action: &str, before: Value, after: Value| Change {
+            org_id: 1,
+            action: action.into(),
+            object_id: "a".into(),
+            type_key: "person".into(),
+            source_ref: "manual:1".into(),
+            before: before.into(),
+            after: after.into(),
+        };
+        let upd = change(
+            "object.update",
+            serde_json::json!({"properties": {"city": "Lyon", "name": "Jo", "x": 1}}),
+            serde_json::json!({"properties": {"city": "Paris", "name": "Jo", "y": 2}}),
+        );
+        let ev = event_of(&upd, 5_000).unwrap();
+        assert_eq!((ev.event.as_str(), ev.ts_ms), ("object", 5));
+        assert_eq!(ev.changed, vec!["city", "x", "y"]);
+        let link = change(
+            "link.open",
+            Value::Null,
+            serde_json::json!({"link_type": "employs", "source": {"id": "o"}, "target": {"id": "a"}}),
+        );
+        let ev = event_of(&link, 0).unwrap();
+        assert_eq!(
+            (ev.link_type.as_str(), ev.other_id.as_str()),
+            ("employs", "o")
+        );
+        let decided = change(
+            "proposal.rejected",
+            Value::Null,
+            serde_json::json!({"proposal_id": "p", "origin": "pk.m", "type_key": "uses_identifier", "other_id": "i"}),
+        );
+        let ev = event_of(&decided, 0).unwrap();
+        assert_eq!(
+            (ev.event.as_str(), ev.action.as_str()),
+            ("proposal", "rejected")
+        );
+        assert_eq!((ev.origin.as_str(), ev.other_id.as_str()), ("pk.m", "i"));
+        assert!(event_of(&change("action.invoke", Value::Null, Value::Null), 0).is_none());
     }
 }

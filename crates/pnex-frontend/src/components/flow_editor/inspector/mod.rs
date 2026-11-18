@@ -193,6 +193,12 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::MailReceived { config } => rsx! {
             MailReceivedForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::PipelineAsk { config } => rsx! {
+            PipelineAskForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::OntologyTrigger { config } => rsx! {
+            OntologyTriggerForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::DatasetTrigger { config } => rsx! {
             DatasetTriggerForm { cx, initial: config.clone(), can_write }
         },
@@ -315,8 +321,10 @@ mod media_source;
 mod memory;
 mod notify;
 mod ontology;
+mod ontology_trigger;
 mod org_resolve;
 mod page;
+mod pipeline_ask;
 mod predict;
 mod range_upsert;
 mod reg;
@@ -355,8 +363,10 @@ use media_source::MediaSourceForm;
 use memory::{MemoryReadForm, MemoryWriteForm};
 use notify::NotifyForm;
 use ontology::{LinkUpsertForm, ObjectUpsertForm, OntologyAggregateForm, OntologyQueryForm};
+use ontology_trigger::OntologyTriggerForm;
 use org_resolve::OrgResolveForm;
 use page::{PagePdfForm, PageWriteForm};
+use pipeline_ask::PipelineAskForm;
 use predict::{AnomalyForm, ForecastForm};
 use range_upsert::RangeUpsertForm;
 use reg::{RegPidForm, RegTtForm};
