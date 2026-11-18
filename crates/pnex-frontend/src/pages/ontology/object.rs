@@ -753,7 +753,7 @@ fn LinkForm(
     on_saved: Callback<()>,
 ) -> Element {
     // Link types usable from or to this object's type.
-    let usable: Vec<(LinkTypeView, bool)> = link_types
+    let mut usable: Vec<(LinkTypeView, bool)> = link_types
         .iter()
         .flat_map(|l| {
             let from = l.def.from_types.contains(&object.type_key);
@@ -764,6 +764,10 @@ fn LinkForm(
                 .map(move |(_, out)| (l.clone(), out))
         })
         .collect();
+    // A link type listed twice would give two options of the same key, which
+    // panics the keyed list.
+    let mut seen = std::collections::HashSet::new();
+    usable.retain(|(l, out)| seen.insert((l.def.key.clone(), *out)));
     let first = preset
         .as_ref()
         .map(|_| format!("{REL_MEASURES}:in"))
