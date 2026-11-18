@@ -3,7 +3,10 @@
 # the same legal name becomes a proposal, never a write. If the org already
 # knows that LEI on another organization, the proposal is a
 # `same_company_as` link between the two; otherwise it is the LEI on the
-# SEC company. Each company is asked once.
+# SEC company. A company found is asked once (a human decides the proposal);
+# one found nowhere is asked again 30 days later, as GLEIF and the org's
+# names change (operational-platform.md D998: a lookup in a register is
+# collection, the link it suggests is only proposed).
 key: gleif_identity
 name: Company identity by LEI (GLEIF)
 hosts: [api.gleif.org]
@@ -13,7 +16,8 @@ steps:
       as: companies
       track: true
       per_run: 10
-      empty: settled
+      empty: retry
+      retry_days: 30
       cross:
         - { as: cik, objects: { type: organization, property: cik, title: title, columns: [lei] } }
   - sql: { as: due, sql: "SELECT cik, title FROM companies WHERE coalesce(lei, '') = ''" }
