@@ -50,6 +50,14 @@ Toute route HTTP ajoutée ou modifiée suit `docs/architecture/api-contract.md` 
 - **IAM (D285–D299, `docs/architecture/iam.md`)** : toute opération du spec et tout outil de l'assistant est inscrit dans `crates/pnex-api-contract/src/iam.rs` **dans le même commit** : `Org("service:verb")` (permission appliquée par l'extracteur `OrgContext`, 403 `access-denied`), ou `User`/`Platform`/`Public`/`Machine`. Nouvelle permission = une ligne `PERMISSIONS` avec le plus bas rôle géré qui la détient. Garde bloquante `tests/iam.rs`. Côté front, un droit = `state::access::can("service:verb")`, jamais un test de rôle.
 - **CLI admin `pnex` (D251–D253, `docs/architecture/cli.md`)** : générée du même spec, aucune liste à tenir ; un nouveau motif d'`EXCLUDED` se classe dans `DANGEROUS` de `crates/pnex-cli/src/main.rs` (exige `--yes`) dans le même commit.
 
+## Ingérer, manipuler, organiser (D998, règle permanente, 2026-11-18)
+
+Référence : `docs/architecture/operational-platform.md` D998.
+
+- **Pipeline = ingestion** : gros volumes, planifiée, ajout et réconciliation, collecte web longue ; stocke le brut. **Flow = petites données et organisation** : rapprocher, rattacher, proposer, relancer une collecte, sur un déclencheur de données (`ontology_trigger`, `dataset_trigger`), en relisant l'état courant. Une page ponctuelle : l'un ou l'autre.
+- Un lien **affirmé par la source** reste dans le mapping de l'import ; un lien **déduit** est de l'organisation (flow ou humain), par proposition sauf seuil sûr. Le LLM n'est jamais la seule voie (D119).
+- **Jamais de décision d'organisation dans un pipeline sans une ligne au tableau des écarts de D998** (quoi, pourquoi, quand elle se lève). Justifications admises : volume (jointure ensembliste), minimisation (ne jamais stocker un inconnu), calcul dérivé recalculé en entier. Une revue qui trouve l'écart sans ligne le refuse.
+
 ## Assistant IA : toute fonctionnalité lui est livrée (D142–D145, règle permanente)
 
 Ajouter un nœud de flow ou une fonctionnalité utilisateur **sans mettre l'assistant à jour dans le même commit = travail non fini**, au même titre qu'une clé fluent manquante. Référence : `docs/architecture/ai-assistant.md` §9.

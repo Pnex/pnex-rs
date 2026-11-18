@@ -658,6 +658,11 @@ responsabilité des CGU de LinkedIn restant celle de l'utilisateur.
   `employs` organisation → personne **proposé** (à valider), le titre de la
   carte en `position`. Pas de rattachement au site (établissement) ni de
   postes passés en V1.
+
+> **D998 (2026-11-18)** : le filtre par sélection reste à la collecte, écart justifié par la
+> minimisation (`operational-platform.md`, tableau des écarts) ; `knows` est affirmé par le
+> réseau, `employs` reste proposé. Une organisation ajoutée plus tard à la sélection ne voit
+> pas les relations déjà explorées.
 - Routes : `GET`/`PUT /api/v1/extension/people/{id}/connection`,
   `GET`/`POST /api/v1/extension/people/{id}/connections-captures`.
   Lecture côté application : l'état par la première ; les liens par

@@ -58,6 +58,10 @@ Les gestes que le moteur ne sait pas déclarer, relevés dans ce code :
 | Compatibilité | Aucune : l'application n'est pas en production (beta) |
 | Pages du front qui lisaient `/markets` et `/mt5` | **Blocs vivants livrés par le pack** ; les terminaux passent à la page des connecteurs |
 | Ordre des portages | **Un import simple et une source tordue en témoins**, puis le reste par pack |
+
+> **Borné par D998** (2026-11-18) : « tout » = toute l'**ingestion** et les calculs dérivés
+> recalculés depuis leurs sources ; faire et défaire les liens déduits de l'ontologie reste
+> à un flow ou à un humain. Écarts et rattrapage : `operational-platform.md`, D998.
 | Studio | **Celui des pipelines seul** ; celui des sites web y est replié |
 | Texte des dépôts SEC rendu en média indexé (2026-11-13) | **Sixième cible `write: media`** : une colonne de texte devient un média de l'org, indexé et lié à un objet |
 | Marchés de prédiction derrière le proxy de l'org (2026-11-13) | **`proxy` générique de `fetch`** : l'adresse du proxy est un réglage de l'org, l'egress s'y applique |
@@ -82,6 +86,12 @@ import est un pipeline dont la dernière étape écrit dans l'ontologie ; une r�
 une étape `browse`. Les documents d'import, de transformations et de recette disparaissent comme
 formats séparés. Un pack livre ses pipelines ; une org écrit les siens dans le même format et le
 même studio.
+
+> **Bornée par D998** (`operational-platform.md`, 2026-11-18) : « un seul document » vaut
+> pour l'**ingestion** (gros volumes, planifiée, ajout et réconciliation). Faire et défaire
+> les liens déduits de l'ontologie n'est pas un pipeline : c'est un flow ou un geste humain,
+> rejouable sur les données du moment. Une décision de ce genre dans un pipeline demande
+> une ligne au tableau des écarts de D998.
 
 ### D935 — Tout intermédiaire est une table de travail
 
@@ -683,7 +693,8 @@ market-advisor (les lectures qu'il consomme restent, rebranchées).
   n'a plus de récurrence propre et tourne juste avant (ordonnanceur à dépendances D575). UCDP et
   ACLED gardent leur rythme hebdomadaire, leurs événements sont pris au passage suivant.
   **Supprimés** : `services/markets/world.rs`, `pnex_core::conflict_events`, l'appel dans
-  `imports::write_locked`.
+  `imports::write_locked`. *Écart D998 (2026-11-18)* : ce rapprochement est de
+  l'organisation, à refaire en flow (D998-T5).
 - **Séances anormales (D735–D738)** : pipeline `markets/market_moves` en SQL seul (variations
   entre jours cotés, écart type et moyenne des 250 variations précédentes par fenêtre glissante,
   60 au moins, seuil `max(k·σ, plancher)`), lisant les tables `fred_move_series`, `bis_series`,
@@ -734,14 +745,22 @@ les rattachements par `proposals`, le filtrage par étiquette par `sql`. Les gar
 (opposition, plafond par jour, état par utilisateur D977, effacement D341) restent sur la route :
 elles décident si le run part, pas ce qu'il écrit.
 
+> **Amendée par D998** (2026-11-18) : le pipeline **collecte** (navigation, documents captés,
+> tous les candidats stockés) ; le score, le rattachement, les propositions et la relance
+> d'une recherche ou d'une page sont de l'**organisation**, faite par un flow du pack
+> déclenché par les données (retour au partage de D788). Le passage « le score de
+> rapprochement par une fonction Starlark du pack, les rattachements par `proposals` » est
+> levé. Le filtrage par étiquette des relations (D976) reste à la collecte : écart justifié
+> par la minimisation (une personne hors sélection n'est jamais écrite).
+
 ### Découpage
 
 | Lot | Contenu |
 |---|---|
 | PE5.1 | Moteur : `browse` (validation de position, pause, reprise, `keep`), rejeu par `given` ; envoi vers les moteurs de navigation existants |
 | PE5.2 | Capture de profil et liste d'employés en pipelines (`write: media`) ; `Purpose::ProfileCapture`/`PeopleCapture` supprimés |
-| PE5.3 | Recherche d'une personne en pipeline (score en Starlark, `proposals`, `write: ask` D997) ; état et score Rust supprimés — **livré 2026-11-18** |
-| PE5.4 | Relations d'un contact en pipeline (filtre par étiquette en `sql`, `keep: false`) |
+| PE5.3 | Recherche d'une personne — **refait le 2026-11-18 selon D998/D999** : le pipeline collecte (minimisation), trois flows du pack scorent, rattachent ou proposent, relancent ; service et routes Rust retirés |
+| PE5.4 | Relations d'un contact en pipeline (filtre par étiquette en `sql` = écart justifié par la minimisation, D998 ; `keep: false` ; pages par `ask`) |
 | PE5.5 | Règles des orgs migrées en pipelines ; `/site-recipes`, page « Sites web » et `default_rules.rs` supprimés (`feat(api)!`) ; dette d'hôtes de `browser_agent.rs` levée |
 
 ### 2026-11-17 (suite) — PE5.1 livré, PE5.2 : capture de profil
@@ -779,6 +798,11 @@ porte `user`). Refus `ask_without_asked` si le document n'énumère pas un axe `
 C'est l'échelle des requêtes d'une recherche de personne (une requête par ligne, la suivante
 demandée tant que rien ne score) ; les pages des relations d'un contact (PE5.4) s'en serviront.
 
+> **Selon D998** (2026-11-18) : le mécanisme reste (une ligne demandée au pipeline), mais
+> qui décide de demander la suite est la couche d'organisation (un flow, D998-T2), pas le
+> score calculé dans le pipeline de collecte. La pagination pure (page suivante tant
+> qu'il y en a) reste un usage de collecte admis.
+
 - **Moteur** : `write: ask` ; une ligne de `write: proposals` peut porter sa `confidence` ; une
   table de navigation vide garde ses colonnes `name`, `text` ; les cartes d'un extrait arrivent au
   pipeline en tableau JSON dans `text` ; une carte qui pointe vers un profil opposé (D341) est
@@ -802,3 +826,78 @@ demandée tant que rien ne score) ; les pages des relations d'un contact (PE5.4)
 | Le repli des accents de la fonction Starlark couvre le latin courant, pas toute la table de `fold.rs` | passer le texte replié par le moteur si un réseau non latin est visé |
 | La vue d'une recherche ne liste plus les candidats écartés ni le score du profil rattaché | écrire les candidats dans une table du pipeline si l'UI en a besoin |
 | Une recherche dont la reprise échoue (étape `sql`) reste « en recherche » dans la vue | lire l'état de la ligne du pipeline dans la vue |
+
+### 2026-11-18 — PE5.3 refait selon D998 : la recherche d'une personne en flows (D999)
+
+### D999 — Collecte en pipeline, tout le reste en flows (choix de Shan, 2026-11-18)
+
+Choix de Shan (assistant de questions) : **tout** passe en flows, y compris le choix des
+personnes à chercher, le sujet lu dans le graphe et le suivi des propositions décidées ; un
+profil LinkedIn est seulement un identifiant lié à la personne (une personne peut en avoir
+plusieurs), aucune carte de candidat n'est gardée.
+
+**Deux nœuds de flow génériques** :
+
+- `ontology_trigger` — source d'événements d'un type d'objet : objet créé ou modifié (avec,
+  en option, les propriétés surveillées), lien ouvert ou fermé qui le touche (types de lien),
+  proposition décidée (origine). Le backend publie ces événements sur `pnex:onto:v1:{org}`
+  depuis le journal des changements (D184), au mieux, sans rejeu : un événement manqué
+  pendant un arrêt est perdu, comme `dataset_trigger`. Le message nomme l'objet, jamais ses
+  propriétés : le flow relit avec `ontology_query`.
+- `pipeline_ask` — demande à un pipeline les lignes de `msg.payload` (colonnes de son axe
+  `asked`, D997), comme une route. Le serveur relit la configuration déployée (jamais la
+  requête), plafonne par jour (`per_day`, plafond compilé), refuse une ligne dont un objet
+  est sous opposition (D341). Le navigateur est l'agent de **celui qui a déployé** le flow,
+  ou un agent commun (D550) : un flow ne pilote jamais l'agent personnel d'un autre membre.
+
+**Le pipeline** `prospecting_b2b/person_match_linkedin` ne fait que collecter : une requête,
+les cartes, trois profils ouverts. Il ne garde que les profils dont la carte nomme la
+personne (filtre de minimisation, pas de score) et écrit pour la personne un document de
+lot (JSON : requête, profils retenus, textes) tamponné `match_to_score`, gardé 2 jours.
+S'il n'en garde aucun, le flow demande la requête suivante.
+
+**Les flows du pack** (`prospecting_b2b`) :
+
+- *Prospecting · identify people* : action `find_profile` de la personne (bouton de sa
+  fiche) ou passage horaire (personnes des comptes `target`/`prospect`, sans compte
+  LinkedIn, non cherchées depuis N jours) → `ontology_query` (la personne, ses liens
+  `employs`, ses sites, son groupe) → fonction Starlark *sujet* (mots repliés, échelle) →
+  `pipeline_ask`.
+- *Prospecting · score profiles* : `ontology_trigger` sur `match_to_score` →
+  `document_text` → fonction *score* (mêmes poids) → rattacher (le profil retenu est capté
+  par `profile_capture_linkedin`, qui pose `uses_identifier`), proposer (`link_upsert`
+  `propose`), ou requête suivante ; état de la recherche sur la personne (`match_state`,
+  `match_step`, `match_pending`, `match_searched_at`).
+- *Prospecting · follow decisions* : `ontology_trigger` sur les propositions décidées
+  (origine `prospecting_b2b.person_match`) → acceptée : capture du profil ; toutes
+  refusées : requête suivante. Un changement de la personne (société, ville) relance la
+  recherche depuis la première requête.
+
+**Supprimés** : `services/person_match.rs` (sujet, garde, balayage, suivi), routes
+`/extension/people/{id}/person-matches` (rupture `feat(api)!`), types
+`pnex_core::person_match`, panneau « Recherches » de la fiche ; l'état se lit dans les
+propriétés `match_*` de la personne et les passages du pipeline.
+
+| Lot | Contenu |
+|---|---|
+| D999.1 | `ontology_trigger` : publication backend, nœud runtime, configuration, éditeur, `NodeDoc`, i18n, tests |
+| D999.2 | `pipeline_ask` : route interne, plafond, opposition, agent du déployeur, nœud, éditeur, `NodeDoc`, i18n, tests |
+| D999.3 | Pipeline réduit à la collecte ; fonctions Starlark sujet, score, suivi ; trois flows du pack ; action `find_profile` ; propriétés `match_*` |
+| D999.4 | Retrait du service Rust, des routes et du panneau ; contrat (OpenAPI, MCP, IAM, CLI), fiches de l'assistant |
+
+**Livré le 2026-11-18** (D999.1 à D999.4, non commité à l'écriture). Écarts et compléments :
+
+- Les extensions de type d'un pack portent aussi des **actions** (`TypeExtension.actions`) : c'est
+  ainsi que `prospecting_b2b` ajoute `find_profile` à la personne. *Raccourci* : une action qu'une
+  version suivante du pack retire reste sur le type (les actions n'ont pas de propriétaire).
+- Le tampon d'un `write: media` (`stamp`) est journalisé (`object.stamp`) : sans cela aucun flow
+  n'entendait la fin d'une collecte.
+- Les réglages `match_write_threshold`, `match_propose_threshold`, `match_retry_days` sont lus par
+  les fonctions du pack (`pack_setting`) ; `match_searches_per_day` disparaît : chaque nœud
+  `pipeline_ask` porte son plafond (20 par jour par défaut, 3 nœuds pour la recherche).
+- Les propositions d'un flow ont pour origine `flow:<id>@<version>` : le suivi filtre donc les
+  propositions par type de lien (`uses_identifier`), pas par origine.
+- Tests : `tests/extension.rs` (demande, refus, navigation, tampon, événement), rejeu du pipeline
+  (`kept_urls`), `pnex-core/tests/pack_person_search.rs` (sujet, score, suivi, dates dans le bac à sable).
+- Non vérifié : les trois flows déployés sur un vrai runtime (seuls leurs morceaux sont testés), et
+  la recherche sur une vraie session LinkedIn.

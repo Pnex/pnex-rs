@@ -95,6 +95,114 @@ marquages et lignes compris. D353 est levée : le moteur SQL est retenu
 (Q-O1). Une règle crée une alerte ou une proposition ; elle n'agit qu'à
 travers D563.
 
+### D998 — Trois couches : ingérer, manipuler, organiser (choix de Shan, 2026-11-18)
+
+Constat : D934 (« un seul document : le pipeline ») a été lue comme couvrant aussi les
+décisions. D996 a mis le score et le rattachement d'une personne dans le pipeline qui la
+cherche, sans le dire : la décision était figée à la capture (sujet copié par la route,
+candidats écartés perdus), un indice nouveau ne rescorait rien. D788 prévoyait déjà la
+séparation (la recette cherche, un flow du pack score et écrit), mais l'avait livrée en
+balayage Rust (`services/person_match.rs`), pas en flow.
+
+| Couche | Ce qu'elle fait | Outil |
+|---|---|---|
+| **1. Ingestion** | Gros volumes : données publiques, fichiers lourds, collecte web longue (pause et reprise, D995). Planifiée, ajout puis réconciliation (clé naturelle, différence, reprise par élément D937). Stocke le brut, rejouable sans effet de bord | Pipeline |
+| **2. Petites données et manipulations** | Une page ponctuelle, un enrichissement, une réaction à un événement, un petit calcul | Flow (ou pipeline si c'est plus simple : une page ponctuelle va dans l'un ou l'autre) |
+| **3. Organisation de l'ontologie** | Faire et défaire les liens **déduits** (rapprochement, rattachement, propositions, « chercher encore »), à tout moment, sur les données telles qu'elles sont **maintenant** | À la main, ou flow (score déterministe, LLM en option) |
+
+Règles :
+
+- **Un lien affirmé par la source reste de l'ingestion** : « X est la mère de Y » d'un
+  registre ou de GLEIF est une donnée, posée par le mapping de l'import. La couche 3 ne
+  porte que les liens qu'aucune source n'affirme.
+- **La couche 3 est rejouable** : déclenchée par un changement de données (nouvel objet,
+  propriété modifiée, nouveau candidat) ou à la main, elle relit l'ontologie au lieu d'un
+  sujet copié. Ce que la collecte a trouvé (tous les candidats, pas seulement le retenu)
+  est donc stocké.
+- **Le LLM n'est ni la seule voie ni un écrivain direct** : une org sans fournisseur
+  (D119, D565) organise quand même par le score déterministe ; le LLM tranche les cas
+  ambigus. Un lien déduit passe par une proposition (D367, `link_upsert` en `propose`),
+  sauf au-dessus d'un seuil sûr déclaré, et passe par la porte D563 quand elle s'applique.
+- **Le critère entre couche 1 et 2 est le volume et la planification**, pas « web ou non » :
+  le runtime de flows exécute du code utilisateur et ne voit pas les octets
+  (`data-pipelines.md` §2.1).
+- **Calcul dérivé admis en couche 1** : une table recalculée entièrement depuis ses
+  sources (agrégat, indicateur) n'est pas une décision figée et peut rester dans un pipeline.
+- **Toute dérive est justifiée** : une ligne au tableau ci-dessous (quoi, pourquoi, quand
+  elle se lève). Une revue qui trouve une décision de couche 3 dans un pipeline sans ligne
+  la refuse.
+
+| Écart au principe | Justification | Où il se lève |
+|---|---|---|
+| `prospecting_b2b/person_match_linkedin` score, rattache et relance dans le pipeline (PE5.3) | aucune : livré avant D998 | **levé le 2026-11-18** (D999) : le pipeline collecte, trois flows du pack organisent |
+| `world_events/lead_confirmations` confirme des pistes depuis les événements | **volume** : jointure ensembliste de toutes les pistes et de tous les événements vérifiés, hors de portée d'un flow ; rejouée chaque jour sur l'état courant (rien de figé, une piste non confirmée est reprise au passage suivant) | justifié le 2026-11-18 |
+| `markets/market_moves` calcule les séances anormales | calcul dérivé recalculé depuis les séries : admis | à garder |
+| `markets/gleif_identity` rapproche une société SEC d'un LEI par son nom légal et propose (`same_company_as` ou LEI) | recherche dans un registre = collecte ; le lien n'est que **proposé** (un humain décide). Ce qui était figé est levé : une société sans résultat est redemandée 30 jours plus tard (`empty: retry`) | justifié le 2026-11-18 (markets 1.20.1) |
+| `markets/market_press`, `prospecting_b2b_fr/press_gdelt` rattachent un article à un compte suivi par son nom (`strpos` sur les organisations GKG) | **volume** (choix de Shan, Q-D998-2) : le filtre par noms des comptes suivis est ce qui réduit les fichiers GKG à quelques lignes ; un signal reste à valider par un humain | justifié le 2026-11-18 |
+| `markets/sec_subsidiaries` pose `subsidiary_of` depuis l'Exhibit 21 | lien affirmé par la source (le groupe déclare ses filiales) : admis | à garder |
+| `prospecting_b2b/profile_capture_*` posent `uses_identifier` vers le profil capté | adresse donnée par un humain sur la fiche de la personne : décision humaine, admis | à garder |
+| Relations d'un contact (D976, PE5.4) : seules les personnes nommant une organisation de la sélection sont gardées, à la collecte | **minimisation** (D254, D341) : une personne hors sélection n'est jamais écrite ; `knows` est affirmé par le réseau. Prix accepté : une organisation ajoutée plus tard à la sélection ne voit pas les relations déjà explorées | à garder ; `employs` reste proposé |
+
+Ce qui manque côté flows pour la couche 3 (relevé le 2026-11-18, `flow/node_docs.rs`) :
+`link_upsert` (avec `propose`), `object_upsert`, `ontology_query`, `llm_text`,
+`text_decide`, `pnex_function` et `dataset_trigger` existent ; **manquent** un
+déclencheur « objet de l'ontologie créé ou modifié » et un nœud qui demande des lignes
+à un pipeline (le nœud `site_recipe` part avec PE5.5).
+
+#### Revue de cohérence (2026-11-18)
+
+Relu : `pipeline-engine.md`, `agent-unification.md`, `account-mapping.md`,
+`markets-research.md`, `flow-engine.md`, `proposals.md`, `watch.md`, et les pipelines des
+packs qui écrivent des liens, des propositions, des `ask` ou appellent une fonction.
+
+| Document | Incohérence | Traitée |
+|---|---|---|
+| `pipeline-engine.md` §2 (choix du 2026-11-12) | « tout est un pipeline », « périmètre : tout, analyse comprise » | note D998 sous le tableau |
+| `pipeline-engine.md` D934, D996, PE5.3, PE5.4 | décisions d'organisation dans le pipeline | amendées (D998) |
+| `pipeline-engine.md` D997 | `write: ask` : le pipeline de collecte se relance seul selon son score | note : le mécanisme reste, c'est la couche 3 qui demande |
+| `pipeline-engine.md` PE6, confirmation des pistes | rapprochement pays / jour / nature dans un pipeline | note : écart D998 |
+| `markets-research.md` D741 | même rapprochement | note : écart D998 |
+| `account-mapping.md` D976–D977 | filtre par organisations choisies à la collecte | cohérent : écart justifié par la minimisation (ligne ci-dessus) ; note sous D976 |
+| `agent-unification.md` D788 (livraison) | décrit le balayage Rust et la table `person_matches`, supprimés par PE5.3 | note historique |
+| `agent-unification.md` D788 : « un profil d'un inconnu (sous le seuil) n'est jamais stocké » | **contredit** « tous les candidats sont stockés » de D998 | **question Q-D998-1**, non tranchée |
+| `watch.md`, `proposals.md`, `flow-engine.md` | aucune (le rattachement d'un article RSS à sa source est affirmé par le flux) | — |
+
+#### Questions ouvertes
+
+- **Q-D998-1 — tranchée le 2026-11-18 (Shan)** : un profil LinkedIn est seulement un identifiant lié
+  à la personne (une personne peut en avoir plusieurs) ; aucune carte de candidat n'est gardée. La
+  collecte ne garde que les profils qui nomment la personne (minimisation), le temps d'un document
+  de 2 jours que le flow évalue ; rescorer = relancer la collecte (D999).
+- *(Énoncé initial)* **Stocker les candidats écartés d'une recherche de personne.** D998 veut tout
+  garder pour rescorer ; D788 et la minimisation (D254, D341) interdisent de garder le
+  profil d'un inconnu. Pistes : ne garder que la carte (nom, titre, lien) avec une courte
+  durée de vie, jamais le texte du profil ; ou ne rien garder et relancer la collecte quand
+  la personne change. La minimisation est une justification admise (voir la ligne D976) :
+  ne rien garder des écartés est un écart possible, à écrire comme tel.
+- **Q-D998-2 — tranchée le 2026-11-18 (Shan)** : le rattachement reste dans le pipeline, écart
+  justifié par le volume.
+- *(Énoncé initial)* **Presse GDELT.** Garder le rattachement article → compte dans le pipeline
+  (écart justifié par le volume) ou stocker les articles qui nomment un compte suivi et
+  rattacher en flow (un compte suivi plus tard ne voit pas les articles passés dans les deux
+  cas).
+
+#### Rattrapage (tâches, D998-T1…T12)
+
+| Tâche | Contenu | État au 2026-11-18 |
+|---|---|---|
+| **T1** | Nœud de flow `ontology_trigger` (objet créé ou modifié, lien, proposition décidée) ; publication backend depuis le journal (`pnex:onto:v1:{org}`), tampons des pipelines journalisés (`object.stamp`) ; `NodeDoc`, éditeur, i18n | **fait** (D999.1) |
+| **T2** | Nœud de flow `pipeline_ask` (route interne, droits du déployeur, opposition, plafond quotidien en Valkey) | **fait** (D999.2) |
+| **T3** | PE5.3 refait : pipeline de collecte, trois flows du pack, action `find_profile`, service et routes Rust retirés (CONTRACT 10) | **fait** (D999.3, D999.4) |
+| **T4** | PE5.4 : relations d'un contact en pipeline (filtre de minimisation à la collecte, écart justifié) | à faire : c'est le lot PE5.4 du moteur, pas un écart (le code actuel n'écrit que des liens affirmés par le réseau et propose `employs`) |
+| **T5** | `lead_confirmations` | **justifié** (volume, rejoué chaque jour) |
+| **T6** | `gleif_identity` | **justifié** et dégelé (`retry_days: 30`) |
+| **T7** | Presse GDELT | **justifié** (Q-D998-2) |
+| **T8** | PE5.5 : chaque règle d'org migrée est classée par couche avant migration | règle posée (CLAUDE.md, D998) ; s'applique au lot PE5.5 |
+| **T9** | Audit des clés de mapping des imports | **fait** : toutes les clés d'objet sont des identifiants de la source (SIREN, SIRET, LEI, CIK, `profile_url`, `ref`…) ; aucun import ne rapproche par nom. Les `list_contact` portent une `ref` qui contient le nom, mais ne sont rattachés à un compte que par proposition |
+| **T10** | Règle `ingest_vs_organize` dans `FLOW_AUTHORING_RULES` (l'assistant la reçoit) ; fiche `browser-agents.md` réécrite | **fait** |
+| **T11** | Garde de revue | **fait** : section « Ingérer, manipuler, organiser » du `CLAUDE.md` du projet (lue par chaque session) ; la grille §6 de `security.md` reste celle de la sécurité |
+| **T12** | Fermer ce tableau | tous les écarts levés ou justifiés ; reste T4 (lot PE5.4) |
+
 ## 4. Bureautique (D558)
 
 **GridCraft** et **WordCraft** (ArtCraft, `MIT OR Apache-2.0`, Rust pur,
@@ -323,6 +431,8 @@ secteur n'entre dans le noyau.
 | D374 | Seul un humain décide | Agent désigné, hors liste réservée (D563) |
 | D119 | Pas de LLM plateforme | Option d'un déploiement géré (D565) |
 | D123, D144, D391 | Aucune action physique par agent | Action gouvernée, à la livraison d'OP10 (D564) |
+| D934 (`pipeline-engine.md`) | « Tout est un pipeline », décisions comprises | Un seul format pour l'**ingestion** ; l'organisation de l'ontologie est en flow ou à la main (D998) |
+| D996 (`pipeline-engine.md`) | Score et rattachement dans le pipeline de collecte | Collecte en pipeline, score et rattachement en flow (D998) |
 | D438, D512 | Client générique ; pas de code en application | SDK typés, code sur origine isolée (D560) |
 | `hub.md` §3 | Gel, pas de kits payants | Dégel et kits payants à OP12 (D562) |
 | `worker-fabric.md` §13 | Pas de fleet manager | Vrai pour la fabric ; centre de livraison à part (D562) |

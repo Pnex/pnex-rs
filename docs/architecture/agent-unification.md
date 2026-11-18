@@ -156,6 +156,11 @@ le commercial la saisit après un rendez-vous, une carte de visite, un salon, un
 rattachée à une entreprise. PneX fait la suite : recherche, ouverture, score, validation.
 D784 devient ce pipeline. D779 reste comme outil de test manuel.
 
+> **Réaffirmée par D998** (2026-11-18, `operational-platform.md`) : la collecte cherche,
+> ouvre et extrait ; le score et l'écriture vont dans un flow, rejouables quand la
+> personne change. La livraison du 2026-11-07 les avait mis dans un balayage Rust, D996
+> dans le pipeline ; D998-T3 les met dans le flow prévu ici.
+
 **Entrée.** Une `person` liée à une `organization` (`employs` ou `contact_of`), avec
 prénom et nom. Une entreprise saisie en texte libre est d'abord résolue en organisation,
 ou proposée.
@@ -297,6 +302,11 @@ supprimées (migration 000121, bêta). Sans agent appairé, une capture est refu
 intervalle, la lecture des réponses JSON d'une plateforme (`hook.js`), l'enregistrement
 vidéo, la preuve signée et le parcours de site. Chacun deviendra une étape ou une sortie
 déclarée d'une règle, jamais un type de mission.
+
+> **Historique** : ce balayage Rust et la table `person_matches` ont été remplacés par le
+> pipeline de PE5.3 (2026-11-18, migration 000156), lui-même à refaire selon D998 (T3).
+> « Un profil d'un inconnu n'est jamais stocké » reste la règle tant que Q-D998-1 n'est pas
+> tranchée.
 
 **D788 livré (2026-11-07).** Règle par défaut `person_search` (LinkedIn) : ouverture du
 fil, saisie de la requête dans la barre de recherche (`type`, champ de recherche seul),

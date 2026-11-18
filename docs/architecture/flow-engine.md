@@ -1,5 +1,9 @@
 # Moteur de flow ETL « Node-RED full-Rust » — EdgeLinkd vendored, mode B
 
+> **Rôle (D998, `operational-platform.md`, 2026-11-18)** : les flows portent les petites
+> données et manipulations, et l'organisation de l'ontologie (faire et défaire les liens
+> déduits, rejouable sur les données du moment) ; l'ingestion en volume reste aux pipelines.
+
 > **Statut : IMPLÉMENTÉ (Phase 0 + Phase 1, 2026-09-03 — branché
 > `worktree-etl-flow-engine` ; Phase 5 — éditeur Dioxus — IMPLÉMENTÉ
 > 2026-09-04, branche `flow-engine-phase5-editeur` ; Phase 6 — nœuds
