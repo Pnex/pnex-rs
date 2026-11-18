@@ -1337,7 +1337,15 @@ pub async fn resume<T: Transport, S: Sink, Q: sql::SqlRunner>(
     let (Some(Step::Enumerate(e)), Some(Step::Browse(b))) = (doc.steps.first(), doc.steps.get(1))
     else {
         let f = fail("browse_position", Value::Null);
-        let item = track::after(key, previous, track::State::Failed, false, None, now_us);
+        let item = track::after(
+            key,
+            previous,
+            track::State::Failed,
+            false,
+            None,
+            None,
+            now_us,
+        );
         return (item, Some(f), 0);
     };
     let settled = e.empty == pnex_core::pipeline::doc::Empty::Settled;
@@ -1348,6 +1356,7 @@ pub async fn resume<T: Transport, S: Sink, Q: sql::SqlRunner>(
             track::State::Failed,
             settled,
             e.retry_days,
+            e.again_days,
             now_us,
         );
         return (item, Some(fail("browse_failed", Value::Null)), 0);
@@ -1380,7 +1389,15 @@ pub async fn resume<T: Transport, S: Sink, Q: sql::SqlRunner>(
         Ok(n) => (track::State::Done, None, n),
         Err(f) => (track::State::Failed, Some(f), 0),
     };
-    let item = track::after(key, previous, state, settled, e.retry_days, now_us);
+    let item = track::after(
+        key,
+        previous,
+        state,
+        settled,
+        e.retry_days,
+        e.again_days,
+        now_us,
+    );
     (item, failure, rows)
 }
 
@@ -1529,7 +1546,15 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
             Err(f) => (track::State::Failed, Some(f), 0),
         };
         outcome.written += rows;
-        let item = track::after(&key, known.get(&key), state, settled, e.retry_days, now_us);
+        let item = track::after(
+            &key,
+            known.get(&key),
+            state,
+            settled,
+            e.retry_days,
+            e.again_days,
+            now_us,
+        );
         outcome.items.push((item, failure, rows));
     }
     outcome

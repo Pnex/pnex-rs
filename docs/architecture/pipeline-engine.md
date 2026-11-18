@@ -125,6 +125,14 @@ aval déclare ce que vaut une réponse vide (`empty: settled`, ou `empty: retry`
 `closed_only` écarte une période non terminée. Un run prend d'abord les lignes jamais demandées,
 puis celles à redemander. Ce registre remplace `market_history_partitions`.
 
+### D1000 — Lire une fois, ou relire tous les N jours (2026-11-18)
+
+Une ligne `done` n'est jamais reprise : c'est la **collecte unique** (une adresse déjà lue ne se
+relit pas). L'étape suivie peut déclarer `again_days: N` : une ligne `done` redevient à prendre N
+jours après sa lecture, c'est la **collecte périodique** (même adresse ; l'écriture `objects`
+retrouve l'objet par la clé de son mapping et le met à jour, jamais de doublon). Les lignes jamais lues passent toujours avant. `again_days` exige `track: true`,
+vaut au moins 1. Choix de Shan : le plus générique et le plus simple à lire, un seul mot.
+
 ### D938 — Cadence par hôte
 
 `fetch` et `browse` portent `every` (un appel par durée) et `pause`. La cadence se compte **par

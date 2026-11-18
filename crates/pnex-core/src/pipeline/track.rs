@@ -70,6 +70,7 @@ pub fn after(
     outcome: State,
     settled: bool,
     retry_days: Option<u32>,
+    again_days: Option<u32>,
     now_us: i64,
 ) -> Item {
     let failures = match outcome {
@@ -78,7 +79,8 @@ pub fn after(
         _ => 0,
     };
     let retry_after_us = match outcome {
-        State::Done => None,
+        // A row read once stays done, unless the step reads it again every N days.
+        State::Done => again_days.map(|d| now_us + i64::from(d) * DAY_US),
         State::Empty if settled => None,
         State::Empty => Some(now_us + i64::from(retry_days.unwrap_or(RETRY_DAYS_DEFAULT)) * DAY_US),
         // A failure is retried at the next run, then daily once it keeps failing.
@@ -107,11 +109,11 @@ mod tests {
         let mut known = HashMap::new();
         known.insert(
             "a/2025".into(),
-            after("a/2025", None, State::Empty, false, Some(1), 0),
+            after("a/2025", None, State::Empty, false, Some(1), None, 0),
         );
         known.insert(
             "a/2024".into(),
-            after("a/2024", None, State::Done, false, None, 0),
+            after("a/2024", None, State::Done, false, None, None, 0),
         );
         let now = 2 * DAY_US;
         assert_eq!(due(&keys, &known, now, 10), ["b/2024", "c/2024", "a/2025"]);
@@ -121,17 +123,33 @@ mod tests {
     #[test]
     fn settled_and_done_rows_are_never_taken_again() {
         assert_eq!(
-            after("k", None, State::Empty, true, None, 5).retry_after_us,
+            after("k", None, State::Empty, true, None, None, 5).retry_after_us,
             None
         );
-        let mut failed = after("k", None, State::Failed, false, None, 5);
+        let mut failed = after("k", None, State::Failed, false, None, None, 5);
         assert_eq!(failed.retry_after_us, Some(5));
         for _ in 0..2 {
-            failed = after("k", Some(&failed), State::Failed, false, None, 5);
+            failed = after("k", Some(&failed), State::Failed, false, None, None, 5);
         }
         assert_eq!(
             (failed.failures, failed.retry_after_us),
             (3, Some(5 + DAY_US))
         );
+    }
+
+    #[test]
+    fn done_rows_are_read_again_after_again_days() {
+        let keys: Vec<String> = ["a", "b"].map(String::from).into();
+        let mut known = HashMap::new();
+        known.insert(
+            "a".into(),
+            after("a", None, State::Done, false, None, Some(2), 0),
+        );
+        known.insert(
+            "b".into(),
+            after("b", None, State::Done, false, None, None, 0),
+        );
+        assert!(due(&keys, &known, DAY_US, 10).is_empty());
+        assert_eq!(due(&keys, &known, 2 * DAY_US, 10), ["a"]);
     }
 }

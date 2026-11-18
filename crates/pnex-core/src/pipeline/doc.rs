@@ -99,6 +99,9 @@ pub struct Enumerate {
     /// `retry`: days before such a row is asked again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retry_days: Option<u32>,
+    /// Days before a row already read is read again; absent = read once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub again_days: Option<u32>,
 }
 
 /// One axis: exactly one of `values`, `setting`, `periods`, `objects`, `range`.
@@ -1148,8 +1151,12 @@ fn step_violations(
             if e.per_run == Some(0) {
                 bad(format!("{at}.per_run"), "invalid");
             }
-            if (e.per_run.is_some() || e.retry_days.is_some()) && !e.track {
+            if (e.per_run.is_some() || e.retry_days.is_some() || e.again_days.is_some()) && !e.track
+            {
                 bad(format!("{at}.track"), "required");
+            }
+            if e.again_days == Some(0) {
+                bad(format!("{at}.again_days"), "invalid");
             }
             if e.retry_days.is_some() && e.empty == Empty::Settled {
                 bad(format!("{at}.retry_days"), "retry_only");
