@@ -1458,10 +1458,18 @@ pub async fn run<T: Transport, S: Sink, Q: sql::SqlRunner>(
         }
     };
     let keys: Vec<String> = rows.iter().map(|(k, _)| k.clone()).collect();
-    let budget = max_items.unwrap_or(e.per_run.unwrap_or(PER_RUN_DEFAULT) as usize);
+    let asked = e.cross.iter().any(|a| a.asked.is_some());
+    // Rows asked explicitly (a route, a pipeline_ask node) are all taken unless
+    // the document caps them: a silent default cap dropped the rest (D999).
+    let default_cap = if asked {
+        usize::MAX
+    } else {
+        PER_RUN_DEFAULT as usize
+    };
+    let budget = max_items.unwrap_or(e.per_run.map_or(default_cap, |n| n as usize));
     // Rows asked by a start are taken whatever they did before, unless a
     // navigation still runs for them (D996).
-    let due: Vec<String> = if e.cross.iter().any(|a| a.asked.is_some()) {
+    let due: Vec<String> = if asked {
         keys.iter()
             .filter(|k| {
                 known
