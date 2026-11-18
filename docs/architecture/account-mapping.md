@@ -16,7 +16,7 @@ Voir un compte comme un **réseau daté** (groupe, filiales, établissements, di
 
 - ~~**Pas de CRM**~~ : revu le 2026-10-26 par `crm.md` D448 — le suivi commercial (opportunités, activités, plans de relance) est un pack `crm` à part, hors du noyau ; ni devis ni envoi automatique.
 - **Pas de connecteur CRM** dans ce PRD.
-- **Pas de découverte automatique de personnes** (D254 inchangé) : aucune recherche de profils, aucun parcours de graphe social, aucun rafraîchissement automatique d'un profil de réseau social. Amendé par D779 pour un seul cas : la liste des salariés d'une entreprise, demandée par un humain ; puis par D976 (2026-11-14) : les relations d'un contact avec qui l'utilisateur est en relation, seulement les personnes des organisations choisies par l'org.
+- **Pas de découverte automatique de personnes** (D254 inchangé) : aucune recherche de profils, aucun parcours de graphe social, aucun rafraîchissement automatique d'un profil de réseau social. Amendé par D779 pour un seul cas : la liste des salariés d'une entreprise, demandée par un humain ; puis par D976 (2026-11-14), restreint le 2026-11-18 : seulement les relations du membre connecté, jamais celles d'un contact.
 - **Pas de type « entreprise » ou « compte »** à côté de `organization` (même raison que D304 : un second type couperait le graphe en deux).
 - Rien de propre à un vendeur ou à un secteur au noyau (D190) : tout ce qui est métier vit dans un pack.
 - Rien de propre à une méthode de vente dans le pack non plus : profil de client idéal, personas visés, signaux déclencheurs, secteurs prioritaires et rôles de l'équipe commerciale sont des **réglages ou des données de l'org**. Le pack fournit la forme, jamais le contenu d'un playbook.
@@ -630,6 +630,15 @@ Décision de Shan : premier chargement depuis un export de profils réseau (fich
 Limites : pas de rapprochement par domaine (choix de Shan : le registre suffit au premier chargement) ; sociétés françaises seulement ; l'e-mail de l'export n'est pas importé ; l'export ne dit rien des postes passés, le chemin d'introduction (D338) ne suit que les liens ouverts.
 
 ### D976–D977 — Relations LinkedIn d'un contact (2026-11-14)
+
+> **Restreint le 2026-11-18 (choix de Shan)** : sur LinkedIn on ne lit que
+> les relations **du membre connecté** (flow « my LinkedIn connections »,
+> pipeline `my_connections_linkedin`, D999). On n'explore plus les relations
+> d'un contact : D976 et la règle `connections_capture` sont retirés, à
+> supprimer du code (table `network_connections`, route, panneau de la fiche).
+> Les liens profonds (qui connaît qui, qui travaille où, par quel chemin)
+> se construisent **dans PneX**, en flows d'organisation sur les données déjà
+> dans l'ontologie (D998), pas en parcourant le réseau social.
 
 Décision de Shan (2026-11-14) : « Oui, je lève D254 pour ce cas », la
 responsabilité des CGU de LinkedIn restant celle de l'utilisateur.
