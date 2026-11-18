@@ -720,7 +720,17 @@ pub struct Write {
     /// `key_property`, `key`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media: Option<MediaTarget>,
+    /// Rows asked again of this same pipeline once the run ends, as a route
+    /// asks them (the next query of a search, the next page of a list):
+    /// the columns of its `asked` axis.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask: Option<AskTarget>,
 }
+
+/// Rows asked again of the pipeline; nothing to set yet.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AskTarget {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -743,7 +753,7 @@ pub struct MediaTarget {
 pub struct ProposalsTarget {
     /// Who proposes (`markets.gleif`), shown with each proposal.
     pub origin: String,
-    /// 0 to 100.
+    /// 0 to 100; a row's `confidence` column wins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
 }
@@ -1049,6 +1059,16 @@ impl Document {
                 );
                 if i != 1 || !after_rows {
                     bad(at.clone(), "browse_position");
+                }
+            }
+            // Rows asked again must be rows a start can ask.
+            if matches!(step, Step::Write(w) if w.ask.is_some()) {
+                let asked = matches!(
+                    self.steps.first(),
+                    Some(Step::Enumerate(e)) if e.track && e.cross.iter().any(|a| a.asked.is_some())
+                );
+                if !asked {
+                    bad(format!("{at}.ask"), "ask_without_asked");
                 }
             }
             if let Step::Fetch(f) = step {
@@ -1428,6 +1448,7 @@ fn step_violations(
                 w.time_ranges.is_some(),
                 w.proposals.is_some(),
                 w.media.is_some(),
+                w.ask.is_some(),
             ]
             .iter()
             .filter(|t| **t)
@@ -1436,7 +1457,7 @@ fn step_violations(
             {
                 bad(
                     at.to_string(),
-                    "one_of:table,objects,time_ranges,proposals,media",
+                    "one_of:table,objects,time_ranges,proposals,media,ask",
                 );
             }
             if let Some(m) = &w.media {
@@ -1570,7 +1591,7 @@ mod tests {
         assert!(t.contains(&"steps.0.fetch.url host_not_declared:other.example.io".into()));
         assert!(t.contains(&"steps.1.read.as duplicate".into()));
         assert!(
-            t.contains(&"steps.2.write one_of:table,objects,time_ranges,proposals,media".into())
+            t.contains(&"steps.2.write one_of:table,objects,time_ranges,proposals,media,ask".into())
         );
     }
 

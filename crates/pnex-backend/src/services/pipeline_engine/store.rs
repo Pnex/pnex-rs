@@ -389,6 +389,29 @@ pub struct DatasetSink<'a> {
     /// The member who asked the run: a navigation plays in their browser
     /// agent (D782).
     pub user: Option<i64>,
+    /// Rows the run asks again of the pipeline (`write: ask`), started once
+    /// the run let go of the org's pipeline lock.
+    pub asked: Vec<serde_json::Map<String, Value>>,
+}
+
+/// Starts the rows a run asked again, apart: the run that asked them holds
+/// the org's pipeline lock until it ends.
+fn ask_later(
+    ctx: Option<&AppContext>,
+    org: i64,
+    user: Option<i64>,
+    pipeline: &str,
+    asked: Vec<serde_json::Map<String, Value>>,
+) {
+    let Some(ctx) = ctx.filter(|_| !asked.is_empty()).cloned() else {
+        return;
+    };
+    let pipeline = pipeline.to_string();
+    tokio::spawn(async move {
+        if let Err(e) = run_asked(&ctx, org, user, &pipeline, asked).await {
+            tracing::warn!(org, pipeline = %pipeline, code = e.code(), "rows asked again not run");
+        }
+    });
 }
 
 async fn table_of(db: &DatabaseConnection, org: i64, name: &str) -> Result<Uuid, DatasetError> {
@@ -640,7 +663,10 @@ impl Sink for DatasetSink<'_> {
                 base_version: Some(version),
                 evidence: json_of("evidence"),
                 origin: target.origin.clone(),
-                confidence: target.confidence,
+                // A row's own `confidence` (a score) wins over the target's.
+                confidence: text("confidence")
+                    .and_then(|c| c.parse().ok())
+                    .or(target.confidence),
             };
             if let Some(link) = text("link_type") {
                 let (Some(to_type), Some(to_by), Some(to_key)) =
@@ -721,6 +747,12 @@ impl Sink for DatasetSink<'_> {
         })
     }
 
+    async fn ask(&mut self, rows: Vec<serde_json::Map<String, Value>>) -> Result<u64, Failure> {
+        let n = rows.len() as u64;
+        self.asked.extend(rows);
+        Ok(n)
+    }
+
     async fn browse(
         &mut self,
         b: &pnex_core::pipeline::doc::Browse,
@@ -753,6 +785,7 @@ impl Sink for DatasetSink<'_> {
         let why = purpose::Purpose::Pipeline {
             pipeline: self.pipeline.to_string(),
             item: item.to_string(),
+            user: self.user,
         };
         match purpose::start(ctx, self.org, self.user, &yaml, params, &why).await {
             Ok(_) => Ok(None),
@@ -1263,13 +1296,16 @@ async fn run_core(
         ctx,
         pipeline: &id,
         user,
+        asked: Vec::new(),
     };
     let sql = super::sql::WorkerSql { db, store, org };
     let out = run(
         &sp.doc, &inputs, transport, &mut sink, &sql, &items, None, None, journal,
     )
     .await;
+    let again = std::mem::take(&mut sink.asked);
     record(db, org, &id, &out).await?;
+    ask_later(ctx, org, user, &id, again);
     for (item, failure, _) in &out.items {
         if let Some(f) = failure.as_ref().filter(|f| f.code != super::WAITING) {
             tracing::info!(org, pipeline = %id, item = %item.key, code = f.code, args = %f.args, "pipeline row failed");
@@ -1324,6 +1360,7 @@ pub async fn resume_row(
     org: i64,
     pipeline: &str,
     item: &str,
+    user: Option<i64>,
     extracts: Option<Vec<(String, String)>>,
 ) -> Result<bool, DatasetError> {
     let Some(sp) = shipped().iter().find(|s| s.id() == pipeline) else {
@@ -1336,9 +1373,10 @@ pub async fn resume_row(
     let lock = TenantLock::acquire(&ctx.db, ns::PIPELINE_RUN, org, Duration::from_secs(120))
         .await
         .map_err(|_| DatasetError::TransactionOpen)?;
-    let out = resume_locked(ctx, org, sp, item, extracts).await;
+    let out = resume_locked(ctx, org, sp, item, user, extracts).await;
     lock.release().await;
-    out.map(|_| keep)
+    ask_later(Some(ctx), org, user, &sp.id(), out?);
+    Ok(keep)
 }
 
 async fn resume_locked(
@@ -1346,8 +1384,9 @@ async fn resume_locked(
     org: i64,
     sp: &Shipped,
     item: &str,
+    user: Option<i64>,
     extracts: Option<Vec<(String, String)>>,
-) -> Result<(), DatasetError> {
+) -> Result<Vec<serde_json::Map<String, Value>>, DatasetError> {
     let id = sp.id();
     let waiting = ctx
         .db
@@ -1358,7 +1397,7 @@ async fn resume_locked(
         ))
         .await?;
     let Some(args) = waiting.and_then(|r| r.try_get::<Value>("", "args").ok()) else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     let row = match args.get("row") {
         Some(Value::Object(m)) => m.clone(),
@@ -1374,7 +1413,8 @@ async fn resume_locked(
         org,
         ctx: Some(ctx),
         pipeline: &id,
-        user: None,
+        user,
+        asked: Vec::new(),
     };
     let sql = super::sql::WorkerSql {
         db: &ctx.db,
@@ -1416,7 +1456,7 @@ async fn resume_locked(
         None,
     )
     .await?;
-    Ok(())
+    Ok(sink.asked)
 }
 
 async fn last_run(

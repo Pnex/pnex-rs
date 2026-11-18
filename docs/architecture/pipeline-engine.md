@@ -740,7 +740,7 @@ elles décident si le run part, pas ce qu'il écrit.
 |---|---|
 | PE5.1 | Moteur : `browse` (validation de position, pause, reprise, `keep`), rejeu par `given` ; envoi vers les moteurs de navigation existants |
 | PE5.2 | Capture de profil et liste d'employés en pipelines (`write: media`) ; `Purpose::ProfileCapture`/`PeopleCapture` supprimés |
-| PE5.3 | Recherche d'une personne en pipeline (score en Starlark, `proposals`) ; `person_match` Rust supprimé |
+| PE5.3 | Recherche d'une personne en pipeline (score en Starlark, `proposals`, `write: ask` D997) ; état et score Rust supprimés — **livré 2026-11-18** |
 | PE5.4 | Relations d'un contact en pipeline (filtre par étiquette en `sql`, `keep: false`) |
 | PE5.5 | Règles des orgs migrées en pipelines ; `/site-recipes`, page « Sites web » et `default_rules.rs` supprimés (`feat(api)!`) ; dette d'hôtes de `browser_agent.rs` levée |
 
@@ -767,3 +767,38 @@ elles décident si le run part, pas ce qu'il écrit.
 | Le document capté est lié par `captured_text` (objet → document), plus par `published_by` (document → personne) | à garder |
 | L'étape `sql` d'une capture passe par le worker de pipelines : sans worker, la ligne attend | à garder (le worker tourne partout) |
 | Un import ne peut pas naviguer (pas de contexte d'application) | passer le contexte aux imports si un pack le demande |
+
+### 2026-11-18 — PE5.3 : recherche d'une personne en pipeline (D997, choix de Shan)
+
+### D997 — Une ligne peut redemander le pipeline (`write: ask`)
+
+Une étape `write: { from: <table>, ask: {} }` redemande au même pipeline les lignes de la table
+(colonnes de son axe `asked`), comme une route les demande. Elles partent une fois le run fini et
+le verrou des pipelines de l'org rendu, dans l'agent du même membre (la finalité `Pipeline`
+porte `user`). Refus `ask_without_asked` si le document n'énumère pas un axe `asked` suivi.
+C'est l'échelle des requêtes d'une recherche de personne (une requête par ligne, la suivante
+demandée tant que rien ne score) ; les pages des relations d'un contact (PE5.4) s'en serviront.
+
+- **Moteur** : `write: ask` ; une ligne de `write: proposals` peut porter sa `confidence` ; une
+  table de navigation vide garde ses colonnes `name`, `text` ; les cartes d'un extrait arrivent au
+  pipeline en tableau JSON dans `text` ; une carte qui pointe vers un profil opposé (D341) est
+  retirée dès la réception, comme un extrait.
+- **Recherche d'une personne** : pipeline `prospecting_b2b/person_match_linkedin` (pack 4.3.0) :
+  navigation (barre de recherche, cinq cartes, trois profils ouverts), score par la fonction
+  Starlark `person_match_score` (mêmes poids qu'avant : nom 30, société actuelle 50, passée 25,
+  groupe 15, ville 10), meilleur profil au-dessus du seuil rattaché (`uses_identifier`, texte en
+  `captured_text` tamponné `profile_to_read`), plausibles en propositions
+  (`prospecting_b2b.person_match`), sinon requête suivante par `ask`. La route garde l'opposition,
+  le plafond par jour et construit le sujet (mots repliés, échelle, seuils) ; le passage horaire
+  lance les cibles et prospects et suit les décisions (profil accepté → texte à lire, tout
+  refusé → requête suivante). La vue d'une personne se lit des navigations du pipeline, des
+  propositions et des liens. **Supprimés** : table `person_matches` (migration 000156),
+  `Purpose::PersonMatch`, `search_finished`, le score et les candidats de
+  `pnex_core::person_match`, `default_rules::person_search`.
+
+| Écart | Où il se lève |
+|---|---|
+| SQL des pipelines = DataFusion sans fonctions JSON : le regroupement des extraits et la requête suivante sont dans la fonction Starlark | ajouter des fonctions JSON au worker si d'autres pipelines en ont besoin |
+| Le repli des accents de la fonction Starlark couvre le latin courant, pas toute la table de `fold.rs` | passer le texte replié par le moteur si un réseau non latin est visé |
+| La vue d'une recherche ne liste plus les candidats écartés ni le score du profil rattaché | écrire les candidats dans une table du pipeline si l'UI en a besoin |
+| Une recherche dont la reprise échoue (étape `sql`) reste « en recherche » dans la vue | lire l'état de la ligne du pipeline dans la vue |

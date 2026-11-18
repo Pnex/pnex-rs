@@ -307,7 +307,7 @@ pub(crate) fn start_error(e: StartError) -> ExtensionError {
 const PROFILE_PIPELINES: &str = "prospecting_b2b/profile_capture_";
 
 /// The view of the navigation a pipeline row started, else of the refusal.
-fn asked_view(
+pub(crate) fn asked_view(
     out: &crate::services::pipeline_engine::RunOutcome,
     url: &str,
 ) -> Result<(), ExtensionError> {
@@ -437,60 +437,13 @@ pub async fn captures(
         .collect())
 }
 
-/// Stores a captured text as a document of the org, purged with the other
-/// captured texts by `metadata` (D333, D779).
-async fn store_text(
-    ctx: &AppContext,
-    org_id: i64,
-    name: &str,
-    url: &str,
-    text: &str,
-    metadata: serde_json::Value,
-) -> Result<Uuid, ExtensionError> {
-    use crate::models::_entities::media_assets;
-    use sea_orm::{ActiveModelTrait, Set};
-    let mut meta = serde_json::json!({ "source": "browser_agent", "source_url": url });
-    if let (Some(m), Some(extra)) = (meta.as_object_mut(), metadata.as_object()) {
-        m.extend(extra.clone());
-    }
-    let name: String = name.chars().take(ba::NAME_MAX).collect();
-    let asset = media_assets::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        org_id: Set(org_id),
-        kind: Set("document".into()),
-        name: Set(name.clone()),
-        description: Set(None),
-        metadata: Set(Some(meta)),
-        ..Default::default()
-    }
-    .insert(&ctx.db)
-    .await?;
-    let markdown = format!("# {name}\n\n<{url}>\n\n{}\n", text.trim());
-    let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
-    crate::controllers::media::write_version(
-        ctx,
-        org_id,
-        &asset,
-        crate::controllers::media::IncomingVersion {
-            filename: "page.md".into(),
-            content_type: "text/markdown".into(),
-            note: None,
-            bytes: markdown.into_bytes().into(),
-        },
-        &settings,
-    )
-    .await
-    .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(format!("captured text: {e}"))))?;
-    Ok(asset.id)
-}
-
 /// Property of `prospecting_b2b` naming the captured text a flow has yet to
 /// read (account-mapping.md D538).
 const PROFILE_TO_READ: &str = "profile_to_read";
 
 /// Written in place when the org has the property: a stamp, not an edit of
 /// the person.
-async fn stamp_to_read(
+pub(crate) async fn stamp_to_read(
     ctx: &AppContext,
     org_id: i64,
     person_id: &str,
@@ -524,107 +477,11 @@ async fn stamp_to_read(
     Ok(())
 }
 
-/// A candidate profile of a person match (D788): its text stored as a
-/// document of the person, purged after 30 days like any captured profile,
-/// attached only once the match retains it.
-pub(crate) async fn store_profile_text(
-    ctx: &AppContext,
-    org_id: i64,
-    person_id: &str,
-    url: &str,
-    text: &str,
-) -> Result<Uuid, ExtensionError> {
-    let meta = serde_json::json!({ "profile_person_id": person_id });
-    store_text(ctx, org_id, &format!("Profile · {url}"), url, text, meta).await
-}
-
-/// The address an account identifier of the person, nothing else (a match
-/// retained on its card alone, D788).
-pub(crate) async fn attach_identifier(
-    ctx: &AppContext,
-    org_id: i64,
-    source_ref: &str,
-    person_id: &str,
-    url: &str,
-) {
-    if let Some(identifier) = identifier_of(&ctx.db, org_id, source_ref, url).await {
-        let input = pnex_core::ontology::api::LinkInput {
-            link_type: "uses_identifier".into(),
-            source_id: person_id.to_string(),
-            target_id: identifier,
-            attributes: serde_json::Map::new(),
-            valid_from: None,
-            valid_to: None,
-        };
-        let _ = ontology::links::create(&ctx.db, org_id, &actor_of(source_ref), &input).await;
-    }
-}
-
-/// The captured profile `url` becomes the person's: its document linked to
-/// them, stamped to be read, the address an account identifier of theirs.
-/// A second attach of the same profile changes nothing.
-pub(crate) async fn attach_profile(
-    ctx: &AppContext,
-    org_id: i64,
-    source_ref: &str,
-    person_id: &str,
-    url: &str,
-    asset_id: Uuid,
-) -> Result<(), ExtensionError> {
-    crate::services::extension::link_publisher_as(ctx, org_id, source_ref, asset_id, person_id)
-        .await;
-    stamp_to_read(ctx, org_id, person_id, asset_id).await?;
-    let actor = actor_of(source_ref);
-    if let Some(identifier) = identifier_of(&ctx.db, org_id, source_ref, url).await {
-        let input = pnex_core::ontology::api::LinkInput {
-            link_type: "uses_identifier".into(),
-            source_id: person_id.to_string(),
-            target_id: identifier,
-            attributes: serde_json::Map::new(),
-            valid_from: None,
-            valid_to: None,
-        };
-        // An existing link (second capture of the profile) is refused: fine.
-        let _ = ontology::links::create(&ctx.db, org_id, &actor, &input).await;
-    }
-    Ok(())
-}
-
 pub(crate) fn actor_of(source_ref: &str) -> ontology::Actor {
     ontology::Actor {
         user_id: None,
         role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
         source_ref: source_ref.to_string(),
-    }
-}
-
-/// The `identifier` object of a profile address, created when missing;
-/// `None` in an org without the investigation pack.
-pub(crate) async fn identifier_of(
-    db: &DatabaseConnection,
-    org_id: i64,
-    source_ref: &str,
-    url: &str,
-) -> Option<String> {
-    let value = serde_json::Value::String(url.to_string());
-    match ontology::objects::find_by_key(db, org_id, "identifier", "value", &value).await {
-        Ok(Some(o)) => Some(o.id.to_string()),
-        Ok(None) => {
-            let mut properties = serde_json::Map::new();
-            properties.insert("kind".into(), "account".into());
-            properties.insert("value".into(), value);
-            let input = pnex_core::ontology::api::ObjectInput {
-                type_key: "identifier".into(),
-                title: url.to_string(),
-                properties,
-                expected_version: None,
-            };
-            ontology::objects::create(db, org_id, &actor_of(source_ref), &input)
-                .await
-                .map(|o| o.id.to_string())
-                .ok()
-        }
-        Err(_) => None,
     }
 }
 

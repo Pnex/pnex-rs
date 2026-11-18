@@ -19,31 +19,6 @@ pub fn network_site(network: &str) -> Option<&'static str> {
     })
 }
 
-/// Search of a person through LinkedIn's search bar (D788): the query typed
-/// where a person types it, the People results kept as cards (the whole
-/// card text and its profile link), and the first profiles opened, each
-/// text kept as `profile.<n>`. Param: `query`. The selectors aim at what a
-/// reader sees (a list item holding a profile link), not at the network's
-/// class names; a rule copied into the org can be adjusted in the studio.
-pub fn person_search() -> String {
-    "name: \"Person search · linkedin\"\n\
-     site: \"www.linkedin.com\"\n\
-     session: \"required\"\n\
-     params: [query]\n\
-     steps:\n\
-     \x20 - open: \"/feed/\"\n\
-     \x20 - wait: {ms: 2500}\n\
-     \x20 - type: {text: \"{{query}}\"}\n\
-     \x20 - press: \"Enter\"\n\
-     \x20 - wait: {ms: 3000}\n\
-     \x20 - click: {role: \"button\", name: \"People\", optional: true}\n\
-     \x20 - click: {role: \"button\", name: \"Personnes\", optional: true}\n\
-     \x20 - wait: {ms: 3000}\n\
-     \x20 - extract: {cards: {selector: \"main li:has(a[href*='/in/'])\", max: 5, fields: {card: {}, link: {selector: \"a[href*='/in/']\", attr: \"href\"}}}, as: \"results\", optional: true}\n\
-     \x20 - for_each: {from: \"results\", link: \"link\", max: 3, steps: [{wait: {ms: 2500}}, {scroll: \"bottom\"}, {wait: {ms: 1500}}, {extract: {all_text: true, as: \"profile\"}}]}\n"
-        .to_string()
-}
-
 /// Result pages read from a contact's connections list (D977): the first
 /// pages at a reader's pace, never the whole network.
 pub const CONNECTION_PAGES: usize = 3;
@@ -91,7 +66,6 @@ mod tests {
 
     #[test]
     fn default_rules_keep_their_shape() {
-        assert!(person_search().contains("type: {text: \"{{query}}\"}"));
         let c = connections_capture();
         assert_eq!(c.matches("connections.").count(), CONNECTION_PAGES);
         assert!(c.contains("session: \"required\""));

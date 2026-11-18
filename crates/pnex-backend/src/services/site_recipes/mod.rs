@@ -1134,8 +1134,7 @@ mod tests {
     #[test]
     fn every_default_rule_parses_and_needs_a_session() {
         use pnex_core::default_rules as d;
-        let mut rules = vec![d::person_search()];
-        rules.push(d::connections_capture());
+        let rules = vec![d::connections_capture()];
         for y in &rules {
             let r = super::parse(y).unwrap_or_else(|e| panic!("{e:?}\n{y}"));
             assert!(r.needs_session(), "{y}");

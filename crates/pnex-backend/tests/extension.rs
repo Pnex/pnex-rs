@@ -1914,12 +1914,12 @@ async fn a_rule_needing_a_session_goes_to_an_agent_and_a_blocked_run_moves_over(
     .await;
 }
 
-/// D788: a person entered with their company is searched by the default
-/// rule in the author's browser agent; a profile at the company is attached,
+/// D788, D996: a person entered with their company is searched by the pack
+/// pipeline in the author's browser agent; a profile at the company is attached,
 /// a past position only proposed, and nobody who objected is searched.
 #[tokio::test]
 #[serial]
-async fn a_person_is_matched_through_the_search_rule_and_a_job_change_is_proposed() {
+async fn a_person_is_matched_through_the_search_pipeline_and_a_job_change_is_proposed() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         for pack in ["investigation", "companies", "prospecting_b2b"] {
@@ -1977,7 +1977,7 @@ async fn a_person_is_matched_through_the_search_rule_and_a_job_change_is_propose
         assert_eq!(found["candidates"][0]["verdict"], "write");
         let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{elodie}/links"), &env.alice, org, None).await;
         let links = links.to_string();
-        assert!(links.contains("uses_identifier") && links.contains("published_by"), "{links}");
+        assert!(links.contains("uses_identifier") && links.contains("captured_text"), "{links}");
         let (_, p) = call(&server, "GET", &format!("/api/v1/ontology/objects/{elodie}"), &env.alice, org, None).await;
         assert_eq!(p["properties"]["profile_to_read"].as_str().map(str::len), Some(36), "{p}");
 

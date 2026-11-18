@@ -124,7 +124,7 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
     (
         "pnex-backend/src/services/person_match.rs",
         &["person", "uses_identifier", "employs", "subsidiary_of", "establishment_of"],
-        "the person match reads who works where (investigation employs, companies group and sites) and writes investigation identities (D788); to move into keys the prospecting pack declares",
+        "the person match route reads who works where (investigation employs, companies group and sites) to build the subject its pack pipeline searches (D788, D996); to move into keys the prospecting pack declares",
     ),
     (
         "pnex-backend/src/services/network_connections.rs",

@@ -1,0 +1,7 @@
+{
+ "8f1c2b9e-0000-4000-8000-000000000001": {
+  "results": "[{\"card\": \"Jane Doe · 2nd\\nPlant manager at Example Industries\\nLyon\", \"link\": \"https://www.linkedin.com/in/jane-doe/?miniProfileUrn=x\"}, {\"card\": \"Example Industries\\nCompany\", \"link\": \"https://www.linkedin.com/company/example/\"}, {\"card\": \"Jane Doerr\\nSales at Initech\", \"link\": \"https://www.linkedin.com/in/jane-doerr\"}]",
+  "profile.1": "Jane Doe\nPlant manager at Example Industries\nLyon, Auvergne-Rhône-Alpes\nExperience\nPlant manager\nExample Industries",
+  "profile.2": "Jane Doerr\nSales at Initech\nParis"
+ }
+}

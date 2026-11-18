@@ -226,6 +226,10 @@ impl Sink for Memory {
         Ok(rows.len() as u64)
     }
 
+    async fn ask(&mut self, rows: Vec<serde_json::Map<String, Value>>) -> Result<u64, Failure> {
+        Ok(rows.len() as u64)
+    }
+
     async fn browse(
         &mut self,
         b: &pnex_core::pipeline::doc::Browse,

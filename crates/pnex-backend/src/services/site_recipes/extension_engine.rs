@@ -176,6 +176,14 @@ async fn opposed(db: &impl ConnectionTrait, org_id: i64, url: &str) -> Result<bo
         .is_some())
 }
 
+/// A card's link as an address: a path is on the run's site.
+fn absolute(site: &str, link: &str) -> String {
+    match link.starts_with('/') {
+        true => format!("https://{site}{link}"),
+        false => link.to_string(),
+    }
+}
+
 /// Ends the run as failed at `step` for `why`.
 async fn fail(
     ctx: &loco_rs::app::AppContext,
@@ -254,6 +262,17 @@ pub async fn extract(
         tracing::info!(run = %id, "agent extract of an objecting profile, dropped");
         return Ok(());
     }
+    // A card pointing to a profile that objected is not kept either.
+    let mut cards = Vec::with_capacity(e.cards.len());
+    for c in std::mem::take(&mut e.cards) {
+        let link = c.values().find(|v| v.starts_with("http") || v.starts_with('/'));
+        let link = link.map(|l| absolute(&plan.site, l));
+        match link {
+            Some(l) if opposed(db, agent.org_id, &l).await? => {}
+            _ => cards.push(c),
+        }
+    }
+    e.cards = cards;
     // An agent stores no file in the run: its PDFs come as text only.
     e.file = None;
     if e.text.chars().count() > EXTRACT_MAX {

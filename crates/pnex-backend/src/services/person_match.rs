@@ -1,31 +1,34 @@
-//! A person entered by a sales rep, matched with a network profile through
-//! a search bar (agent-unification.md D788). The server holds the state
-//! (`person_matches`): the ladder of queries, each played as a run of the
-//! default rule `person_search` in the author's browser agent (D550), the
-//! result cards and opened profiles it brings back, their scores, and what
-//! the pack's thresholds allow: attached to the person, proposed in "To
-//! validate" (a job change always), or the next query. No site is named
-//! here: searching and reading a network is the rule's job. An hourly sweep
-//! starts the matches of the targets and prospects under caps, skips anyone
-//! who objected, and follows the proposals a human decided.
-
-use std::collections::BTreeMap;
+//! A person entered by a sales rep, matched with their LinkedIn profile
+//! (agent-unification.md D788). The search itself is the pack pipeline
+//! `prospecting_b2b/person_match_linkedin` (pipeline-engine.md D996): one
+//! query of the ladder per navigation, scored by the pack's function, the
+//! best profile attached, the plausible ones proposed, else the next query
+//! asked. What stays here are the route's guards and inputs: the person's
+//! objection, the daily searches, the subject (folded names, the ladder, the
+//! thresholds); the view of a person's searches; and an hourly sweep that
+//! starts the matches of targets and prospects and follows the proposals a
+//! human decided (an accepted profile's text is read onto the person, a
+//! ladder whose proposals were all rejected goes on).
 
 use loco_rs::app::AppContext;
 use pnex_core::err_codes;
-use pnex_core::ontology::proposal::{ProposalInput, ProposalKind};
+use pnex_core::fold::fold_words;
 use pnex_core::person_match::{
     self as pm, MatchCandidate, MatchState, PersonMatch, Subject, Verdict,
 };
-use pnex_core::site_recipe::RunExtract;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
-use serde_json::Value;
+use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::services::extension::ExtensionError;
+use crate::services::pipeline_engine::store;
 use crate::services::profiles;
-use crate::services::site_recipes::purpose::{self, Purpose};
-use crate::services::site_recipes::StartError;
+use crate::services::site_recipes::purpose;
+
+/// The pack pipeline that searches a person (D996).
+pub const PIPELINE: &str = "prospecting_b2b/person_match_linkedin";
+/// `origin` of the proposals it files.
+const ORIGIN: &str = "prospecting_b2b.person_match";
 
 const SWEEP_INTERVAL_SECS: u64 = 3600;
 /// Matches started per org and sweep, whatever is left of the day.
@@ -51,119 +54,157 @@ async fn setting(db: &DatabaseConnection, org_id: i64, (key, default): (&str, u3
         .unwrap_or(default)
 }
 
-/// A match row, as stored.
-struct Row {
-    id: Uuid,
-    org_id: i64,
-    person_id: Uuid,
-    organization_id: Option<Uuid>,
-    state: MatchState,
-    step: u32,
-    queries: Vec<String>,
-    subject: Subject,
-    candidates: Vec<MatchCandidate>,
-    state_code: Option<String>,
-    created_by: Option<i64>,
-    created_at: String,
-    updated_at: String,
+/// The row asked of the pipeline for the query `step` of the ladder: the
+/// subject folded as the scoring function compares it.
+fn asked_row(
+    person_id: &str,
+    subject: &Value,
+    step: usize,
+) -> Option<serde_json::Map<String, Value>> {
+    let query = subject["queries"].get(step)?.as_str()?.to_string();
+    Some(serde_json::Map::from_iter([
+        ("person_id".to_string(), Value::String(person_id.to_string())),
+        ("query".to_string(), Value::String(query)),
+        ("step".to_string(), Value::String(step.to_string())),
+        ("subject".to_string(), Value::String(subject.to_string())),
+    ]))
 }
 
-const COLS: &str = "id, org_id, person_id, organization_id, state, step, queries, subject, \
-                    candidates, state_code, created_by, created_at, updated_at";
-
-fn row_of(r: &sea_orm::QueryResult) -> Option<Row> {
-    let json = |k: &str| r.try_get::<Value>("", k).ok().unwrap_or(Value::Null);
-    let at = |k: &str| {
-        r.try_get::<chrono::DateTime<chrono::FixedOffset>>("", k)
-            .map(|t| t.to_rfc3339())
-            .unwrap_or_default()
+/// The subject as the pipeline reads it: folded words, the ladder and the
+/// two thresholds.
+fn folded(s: &Subject, queries: &[String], (write_at, propose_at): (u32, u32)) -> Value {
+    let names = |list: &[String]| -> Vec<Vec<String>> {
+        list.iter()
+            .map(|n| pm::company_words(n))
+            .filter(|w| !w.is_empty())
+            .collect()
     };
-    Some(Row {
-        id: r.try_get("", "id").ok()?,
-        org_id: r.try_get("", "org_id").ok()?,
-        person_id: r.try_get("", "person_id").ok()?,
-        organization_id: r.try_get("", "organization_id").ok().flatten(),
-        state: MatchState::parse(&r.try_get::<String>("", "state").ok()?)?,
-        step: r.try_get::<i32>("", "step").ok()?.max(0) as u32,
-        queries: serde_json::from_value(json("queries")).unwrap_or_default(),
-        subject: serde_json::from_value(json("subject")).unwrap_or_default(),
-        candidates: serde_json::from_value(json("candidates")).unwrap_or_default(),
-        state_code: r.try_get("", "state_code").ok().flatten(),
-        created_by: r.try_get("", "created_by").ok().flatten(),
-        created_at: at("created_at"),
-        updated_at: at("updated_at"),
+    json!({
+        "name": fold_words(&s.name),
+        "orgs": names(&s.org_names),
+        "groups": names(&s.group_names),
+        "cities": s.cities.iter().map(|c| fold_words(c)).collect::<Vec<_>>(),
+        "queries": queries,
+        "write_at": write_at,
+        "propose_at": propose_at,
     })
 }
 
-impl Row {
-    fn view(&self) -> PersonMatch {
-        PersonMatch {
-            id: self.id.to_string(),
-            person_id: self.person_id.to_string(),
-            organization_id: self.organization_id.map(|o| o.to_string()),
-            state: self.state,
-            step: self.step,
-            queries: self.queries.clone(),
-            candidates: self.candidates.clone(),
-            state_code: self.state_code.clone(),
-            created_at: self.created_at.clone(),
-            updated_at: self.updated_at.clone(),
-        }
-    }
-}
-
-async fn load(
-    db: &impl ConnectionTrait,
-    org_id: i64,
-    id: Uuid,
-) -> Result<Option<Row>, ExtensionError> {
-    Ok(db
-        .query_one_raw(stmt(
-            &format!("SELECT {COLS} FROM person_matches WHERE org_id = $1 AND id = $2"),
-            vec![org_id.into(), id.into()],
-        ))
-        .await?
-        .as_ref()
-        .and_then(row_of))
-}
-
-async fn save(db: &impl ConnectionTrait, m: &Row) -> Result<(), ExtensionError> {
-    db.execute_raw(stmt(
-        "UPDATE person_matches SET state = $3, step = $4, candidates = $5, state_code = $6,
-            updated_at = now()
-         WHERE org_id = $1 AND id = $2",
-        vec![
-            m.org_id.into(),
-            m.id.into(),
-            m.state.as_str().into(),
-            (m.step as i32).into(),
-            serde_json::to_value(&m.candidates)
-                .unwrap_or_default()
-                .into(),
-            m.state_code.clone().into(),
-        ],
-    ))
-    .await?;
-    Ok(())
-}
-
-/// The latest matches of the person, newest first.
+/// The searches of the person, newest first: each ladder from its first
+/// query, with what its runs and proposals tell.
 pub async fn list(
     db: &DatabaseConnection,
     org_id: i64,
     person_id: Uuid,
 ) -> Result<Vec<PersonMatch>, ExtensionError> {
     profiles::person(db, org_id, person_id).await?;
-    let rows = db
+    let person = person_id.to_string();
+    let mut runs = purpose::pipeline_runs(db, org_id, PIPELINE, "person_id", &person).await?;
+    runs.reverse();
+    // A ladder starts at its first query; the runs after it are its next ones.
+    let mut ladders: Vec<Vec<_>> = Vec::new();
+    for r in runs {
+        match ladders.last_mut() {
+            Some(l) if r.1.get("step").is_some_and(|s| s != "0") => l.push(r),
+            _ => ladders.push(vec![r]),
+        }
+    }
+    let proposals = db
         .query_all_raw(stmt(
-            &format!(
-                "SELECT {COLS} FROM person_matches WHERE org_id = $1 AND person_id = $2
-                 ORDER BY created_at DESC LIMIT 20"
-            ),
+            "SELECT id, status, evidence, created_at FROM proposals
+             WHERE org_id = $1 AND origin = $2 AND evidence ->> 'person_id' = $3
+             ORDER BY created_at",
+            vec![org_id.into(), ORIGIN.into(), person.clone().into()],
+        ))
+        .await?;
+    let linked = db
+        .query_all_raw(stmt(
+            "SELECT i.properties ->> 'value' AS url, l.valid_from FROM resource_edges l
+               JOIN objects i ON i.id = l.target_object_id AND i.valid_to IS NULL
+             WHERE l.org_id = $1 AND l.relation = 'uses_identifier' AND l.source_object_id = $2
+               AND l.valid_to IS NULL AND i.properties ->> 'value' LIKE '%linkedin.com/in/%'",
             vec![org_id.into(), person_id.into()],
         ))
         .await?;
-    Ok(rows.iter().filter_map(row_of).map(|r| r.view()).collect())
+    let at = |r: &sea_orm::QueryResult, col: &str| {
+        r.try_get::<chrono::DateTime<chrono::FixedOffset>>("", col)
+            .ok()
+    };
+    let instant = |t: &str| chrono::DateTime::parse_from_rfc3339(t).ok();
+    let mut out = Vec::new();
+    for (i, runs) in ladders.iter().enumerate() {
+        let (first, last) = (&runs[0], &runs[runs.len() - 1]);
+        let from = instant(&first.4);
+        let until = ladders.get(i + 1).and_then(|l| instant(&l[0].4));
+        let within = |t: Option<chrono::DateTime<chrono::FixedOffset>>| {
+            t.is_some_and(|t| from.is_none_or(|f| t >= f) && until.is_none_or(|u| t < u))
+        };
+        let subject: Value = first
+            .1
+            .get("subject")
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or(Value::Null);
+        let queries: Vec<String> =
+            serde_json::from_value(subject["queries"].clone()).unwrap_or_default();
+        let step: u32 = last.1.get("step").and_then(|s| s.parse().ok()).unwrap_or(0);
+        let mut candidates = Vec::new();
+        let mut statuses = Vec::new();
+        for p in proposals.iter().filter(|p| within(at(p, "created_at"))) {
+            let ev: Value = p.try_get("", "evidence").unwrap_or(Value::Null);
+            candidates.push(MatchCandidate {
+                url: ev["url"].as_str().unwrap_or_default().to_string(),
+                query: ev["step"].as_u64().unwrap_or(0) as u32,
+                score: ev["score"].as_u64().map(|s| s as u32),
+                detail: serde_json::from_value(ev["detail"].clone()).unwrap_or_default(),
+                left_company: ev["left_company"].as_bool().unwrap_or(false),
+                verdict: Some(Verdict::Propose),
+                asset_id: None,
+                proposal_id: p.try_get::<Uuid>("", "id").ok().map(|u| u.to_string()),
+            });
+            statuses.push(p.try_get::<String>("", "status").unwrap_or_default());
+        }
+        let attached = linked.iter().find(|l| within(at(l, "valid_from")));
+        if let Some(l) = attached {
+            let url: String = l.try_get("", "url").unwrap_or_default();
+            if !candidates.iter().any(|c| c.url == url) {
+                candidates.push(MatchCandidate {
+                    url,
+                    query: step,
+                    score: None,
+                    detail: Vec::new(),
+                    left_company: false,
+                    verdict: Some(Verdict::Write),
+                    asset_id: None,
+                    proposal_id: None,
+                });
+            }
+        }
+        let (state, state_code) = match last.2.as_str() {
+            "queued" | "running" => (MatchState::Searching, None),
+            "succeeded" if attached.is_some() || statuses.iter().any(|s| s == "accepted") => {
+                (MatchState::Matched, None)
+            }
+            "succeeded" if statuses.iter().any(|s| s == "proposed") => (MatchState::Proposed, None),
+            // The pipeline, or the sweep after a rejection, asks the next query.
+            "succeeded" if (step as usize) + 1 < queries.len() => (MatchState::Searching, None),
+            "succeeded" => (MatchState::NotFound, None),
+            _ => (MatchState::Stopped, last.3.clone()),
+        };
+        out.push(PersonMatch {
+            id: first.0.to_string(),
+            person_id: person.clone(),
+            organization_id: None,
+            state,
+            step,
+            queries,
+            candidates,
+            state_code,
+            created_at: first.4.clone(),
+            updated_at: last.4.clone(),
+        });
+    }
+    out.reverse();
+    Ok(out)
 }
 
 /// What is known of the person and the company they work for: its names,
@@ -259,13 +300,14 @@ async fn subject(
     )))
 }
 
+/// Searches started by the org's person matches over the last 24 h.
 async fn searches_today(db: &DatabaseConnection, org_id: i64) -> Result<i64, ExtensionError> {
     Ok(db
         .query_one_raw(stmt(
             "SELECT count(*) AS n FROM agent_runs WHERE org_id = $1
-               AND plan -> 'purpose' ->> 'kind' = 'person_match'
+               AND plan -> 'purpose' ->> 'pipeline' = $2
                AND created_at > now() - interval '24 hours'",
-            vec![org_id.into()],
+            vec![org_id.into(), PIPELINE.into()],
         ))
         .await?
         .and_then(|r| r.try_get::<i64>("", "n").ok())
@@ -287,22 +329,15 @@ pub async fn request(
     if profiles::opposed_any(db, org_id, &[format!("person:{person_id}")]).await? {
         return Err(ExtensionError::Opposed);
     }
-    if let Some(open) = db
-        .query_one_raw(stmt(
-            &format!(
-                "SELECT {COLS} FROM person_matches WHERE org_id = $1 AND person_id = $2
-                   AND state IN ('searching', 'proposed')
-                 ORDER BY created_at DESC LIMIT 1"
-            ),
-            vec![org_id.into(), person_id.into()],
-        ))
+    if let Some(open) = list(db, org_id, person_id)
         .await?
-        .as_ref()
-        .and_then(row_of)
+        .into_iter()
+        .next()
+        .filter(|m| m.state.open())
     {
-        return Ok(open.view());
+        return Ok(open);
     }
-    let Some((subject, company)) = subject(db, org_id, person_id).await? else {
+    let Some((subject, _)) = subject(db, org_id, person_id).await? else {
         return Err(ExtensionError::PersonWithoutCompany);
     };
     let queries = pm::queries(&subject);
@@ -320,315 +355,109 @@ pub async fn request(
     if searches_today(db, org_id).await? >= max {
         return Err(ExtensionError::MatchDailyCap { max });
     }
-    let id = Uuid::new_v4();
-    db.execute_raw(stmt(
-        "INSERT INTO person_matches (id, org_id, person_id, organization_id, state, queries,
-            subject, created_by)
-         VALUES ($1, $2, $3, $4, 'searching', $5, $6, $7)",
-        vec![
-            id.into(),
-            org_id.into(),
-            person_id.into(),
-            company.into(),
-            serde_json::to_value(&queries).unwrap_or_default().into(),
-            serde_json::to_value(&subject).unwrap_or_default().into(),
-            created_by.into(),
-        ],
-    ))
-    .await?;
-    let mut m = load(db, org_id, id)
-        .await?
-        .ok_or(ExtensionError::MissionNotFound)?;
-    if let Err(e) = spawn_search(ctx, &mut m).await {
-        // Nothing was queued: the match does not stay open behind the refusal.
-        db.execute_raw(stmt(
-            "DELETE FROM person_matches WHERE id = $1",
-            vec![id.into()],
-        ))
-        .await?;
-        return Err(e);
-    }
-    save(db, &m).await?;
-    Ok(m.view())
-}
-
-/// Plays the match's current query: a run of the default search rule in
-/// the author's browser agent; past the last query, the match is not found.
-async fn spawn_search(ctx: &AppContext, m: &mut Row) -> Result<(), ExtensionError> {
-    let Some(query) = m.queries.get(m.step as usize).cloned() else {
-        m.state = MatchState::NotFound;
-        return Ok(());
-    };
-    let purpose = Purpose::PersonMatch {
-        match_id: m.id.to_string(),
-        step: m.step,
-    };
-    let params = BTreeMap::from([("query".to_string(), query)]);
-    let rule = pnex_core::default_rules::person_search();
-    match purpose::start(ctx, m.org_id, m.created_by, &rule, params, &purpose).await {
-        Ok(_) => {
-            m.state = MatchState::Searching;
-            m.state_code = None;
-            Ok(())
-        }
-        Err(StartError::NoAgent) => Err(ExtensionError::NoAgent),
-        Err(StartError::DailyCap { max }) => Err(ExtensionError::RunDailyCap { max }),
-        Err(e) => Err(ExtensionError::Db(sea_orm::DbErr::Custom(format!(
-            "person search: {e:?}"
-        )))),
-    }
-}
-
-/// Stops a match whose person objected or is gone; `true` when stopped.
-async fn stopped(db: &DatabaseConnection, m: &mut Row) -> Result<bool, ExtensionError> {
-    let gone = profiles::person(db, m.org_id, m.person_id).await.is_err();
-    if gone || profiles::opposed_any(db, m.org_id, &[format!("person:{}", m.person_id)]).await? {
-        m.state = MatchState::Stopped;
-        save(db, m).await?;
-        return Ok(true);
-    }
-    Ok(false)
-}
-
-/// A search run of the match ended (D788): its result cards are scored on
-/// the profiles it opened (on their card alone for the others), then the
-/// best is attached, the plausible ones proposed, or the next query played.
-#[allow(clippy::too_many_arguments)]
-pub async fn search_finished(
-    ctx: &AppContext,
-    org_id: i64,
-    run_id: Uuid,
-    match_id: &str,
-    step: u32,
-    ok: bool,
-    extracts: &[RunExtract],
-) -> Result<(), ExtensionError> {
-    let db = &ctx.db;
-    let Ok(id) = Uuid::parse_str(match_id) else {
-        return Ok(());
-    };
-    let Some(mut m) = load(db, org_id, id).await? else {
-        return Ok(());
-    };
-    if m.state != MatchState::Searching || m.step != step || stopped(db, &mut m).await? {
-        return Ok(());
-    }
-    if !ok {
-        // The browser could not search (no session, a check, no permission):
-        // the match waits for a human, with the reason, instead of retrying.
-        let reason = db
-            .query_one_raw(stmt(
-                "SELECT reason FROM agent_runs WHERE id = $1",
-                vec![run_id.into()],
-            ))
-            .await?
-            .and_then(|r| r.try_get::<Option<String>>("", "reason").ok().flatten());
-        m.state = MatchState::Stopped;
-        m.state_code = reason;
-        return save(db, &m).await;
-    }
-    let cards = extracts
-        .iter()
-        .find(|e| e.name == "results")
-        .map(|e| e.cards.clone())
-        .unwrap_or_default();
-    let (write_at, propose_at) = (
+    let thresholds = (
         setting(db, org_id, SET_WRITE).await,
         setting(db, org_id, SET_PROPOSE).await,
     );
-    let person = m.person_id.to_string();
-    let source = format!("person_match:{}", m.id);
-    for (i, card) in pm::candidates(&cards, pm::CANDIDATES_PER_SEARCH)
+    let subject = folded(&subject, &queries, thresholds);
+    let row = asked_row(&person_id.to_string(), &subject, 0).ok_or(ExtensionError::MissionNotFound)?;
+    let out = store::run_asked(ctx, org_id, created_by, PIPELINE, vec![row])
+        .await
+        .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(format!("person match: {e:?}"))))?;
+    profiles::asked_view(&out, PIPELINE)?;
+    list(db, org_id, person_id)
+        .await?
         .into_iter()
-        .enumerate()
-    {
-        if m.candidates.iter().any(|c| c.url == card.url)
-            || profiles::opposed_any(db, org_id, std::slice::from_ref(&card.url)).await?
-        {
-            continue;
-        }
-        // The rule opens the first profiles in card order: `profile.<n>`.
-        let profile = extracts
-            .iter()
-            .find(|e| e.name == format!("profile.{}", i + 1))
-            .map(|e| e.text.clone())
-            .filter(|t| !t.trim().is_empty());
-        let text = match &profile {
-            Some(p) => format!("{}\n{p}", card.text),
-            None => card.text.clone(),
-        };
-        let score = pm::score(&m.subject, &text);
-        let verdict = pm::verdict(&score, write_at, propose_at);
-        // Kept 30 days with the person's captured texts, only when it may
-        // be theirs: a stranger's profile is not stored.
-        let asset_id = match (verdict, &profile) {
-            (Verdict::Write | Verdict::Propose, Some(p)) => Some(
-                profiles::store_profile_text(ctx, org_id, &person, &card.url, p)
-                    .await?
-                    .to_string(),
-            ),
-            _ => None,
-        };
-        m.candidates.push(MatchCandidate {
-            url: card.url,
-            query: step,
-            score: Some(score.total),
-            detail: score.detail,
-            left_company: score.left_company,
-            verdict: Some(verdict),
-            asset_id,
-            proposal_id: None,
-        });
-    }
-    let best = m
-        .candidates
-        .iter()
-        .filter(|c| c.verdict == Some(Verdict::Write))
-        .max_by_key(|c| c.score.unwrap_or(0))
-        .cloned();
-    if let Some(best) = best {
-        let asset = best
-            .asset_id
-            .as_deref()
-            .and_then(|a| Uuid::parse_str(a).ok());
-        match asset {
-            Some(a) => {
-                profiles::attach_profile(ctx, org_id, &source, &person, &best.url, a).await?
-            }
-            None => profiles::attach_identifier(ctx, org_id, &source, &person, &best.url).await,
-        }
-        m.state = MatchState::Matched;
-        return save(db, &m).await;
-    }
-    let mut proposed = false;
-    for c in m
-        .candidates
-        .iter_mut()
-        .filter(|c| c.verdict == Some(Verdict::Propose) && c.proposal_id.is_none())
-    {
-        let Some(identifier) = profiles::identifier_of(db, org_id, &source, &c.url).await else {
-            continue;
-        };
-        let input = ProposalInput {
-            kind: Some(ProposalKind::LinkCreate),
-            type_key: "uses_identifier".into(),
-            target_id: None,
-            source_id: Some(person.clone()),
-            link_target_id: Some(identifier),
-            title: Some(c.url.clone()),
-            values: serde_json::Map::new(),
-            base_version: None,
-            evidence: serde_json::json!({
-                "url": c.url,
-                "score": c.score,
-                "detail": c.detail,
-                "left_company": c.left_company,
-                "asset_id": c.asset_id,
-                "match_id": m.id.to_string(),
-            }),
-            origin: "person_match".into(),
-            confidence: c.score.map(f64::from),
-        };
-        match crate::services::ontology::proposals::propose(db, org_id, &input).await {
-            Ok(Some(pid)) => {
-                c.proposal_id = Some(pid.to_string());
-                proposed = true;
-            }
-            // Proposed before (same candidate, same person): that decision stands.
-            Ok(None) => {}
-            Err(e) => tracing::warn!(error = %e, "person match proposal not written"),
-        }
-    }
-    if proposed {
-        m.state = MatchState::Proposed;
-        return save(db, &m).await;
-    }
-    m.step += 1;
-    if let Err(e) = spawn_search(ctx, &mut m).await {
-        m.state = MatchState::Stopped;
-        m.state_code = Some(match e {
-            ExtensionError::NoAgent => err_codes::SITE_RECIPE_NO_AGENT.into(),
-            ExtensionError::RunDailyCap { .. } => err_codes::SITE_RECIPE_DAILY_CAP.into(),
-            _ => pnex_core::site_recipe::reason::BROWSER.into(),
-        });
-    }
-    save(db, &m).await
+        .next()
+        .ok_or(ExtensionError::MissionNotFound)
 }
 
-/// Follows the proposals a human decided: an accepted candidate is attached
-/// (its text read onto the person); when every one is rejected, the next
-/// query runs.
+/// Follows the proposals a human decided (D788), each once: an accepted
+/// profile's text is read onto the person; a ladder whose proposals were
+/// all rejected goes on with its next query.
 async fn follow_proposals(ctx: &AppContext) -> Result<u64, ExtensionError> {
     let db = &ctx.db;
-    let rows = db
+    let decided = db
         .query_all_raw(stmt(
-            &format!("SELECT {COLS} FROM person_matches WHERE state = 'proposed' LIMIT 200"),
-            vec![],
+            "SELECT p.org_id, p.evidence ->> 'person_id' AS person, array_agg(p.id) AS ids,
+               bool_or(p.status = 'proposed') AS open,
+               (array_agg(p.evidence ->> 'url') FILTER (WHERE p.status = 'accepted'))[1] AS accepted,
+               max((p.evidence ->> 'step')::int) AS step
+             FROM proposals p
+             WHERE p.origin = $1 AND NOT coalesce((p.evidence ->> 'followed')::bool, false)
+             GROUP BY p.org_id, p.evidence ->> 'person_id' LIMIT 200",
+            vec![ORIGIN.into()],
         ))
         .await?;
     let mut n = 0;
-    for mut m in rows.iter().filter_map(row_of) {
-        if stopped(db, &mut m).await? {
+    for r in &decided {
+        let (Ok(org_id), Ok(Some(person)), Ok(ids)) = (
+            r.try_get::<i64>("", "org_id"),
+            r.try_get::<Option<String>>("", "person"),
+            r.try_get::<Vec<Uuid>>("", "ids"),
+        ) else {
             continue;
-        }
-        let ids: Vec<String> = m
-            .candidates
-            .iter()
-            .filter_map(|c| c.proposal_id.clone())
-            .collect();
-        let statuses = db
-            .query_all_raw(stmt(
-                "SELECT id, status FROM proposals WHERE org_id = $1 AND id::text = ANY($2)",
-                vec![m.org_id.into(), ids.into()],
-            ))
-            .await?;
-        let status = |id: &str| {
-            statuses
-                .iter()
-                .find(|r| {
-                    r.try_get::<Uuid>("", "id")
-                        .ok()
-                        .map(|u| u.to_string())
-                        .as_deref()
-                        == Some(id)
-                })
-                .and_then(|r| r.try_get::<String>("", "status").ok())
-                .unwrap_or_default()
         };
-        let accepted = m
-            .candidates
-            .iter()
-            .find(|c| {
-                c.proposal_id
-                    .as_deref()
-                    .is_some_and(|p| status(p) == "accepted")
-            })
-            .cloned();
-        if let Some(c) = accepted {
-            let source = format!("person_match:{}", m.id);
-            let person = m.person_id.to_string();
-            // Without its text the accepted link names the identifier already.
-            if let Some(a) = c.asset_id.as_deref().and_then(|a| Uuid::parse_str(a).ok()) {
-                profiles::attach_profile(ctx, m.org_id, &source, &person, &c.url, a).await?;
-            }
-            m.state = MatchState::Matched;
-            save(db, &m).await?;
-            n += 1;
+        if r.try_get::<bool>("", "open").unwrap_or(true) {
             continue;
         }
-        let open = m.candidates.iter().any(|c| {
-            c.proposal_id
-                .as_deref()
-                .is_some_and(|p| status(p) == "proposed")
-        });
-        if !open {
-            m.step += 1;
-            if spawn_search(ctx, &mut m).await.is_err() {
-                m.state = MatchState::Stopped;
+        let Ok(person_id) = Uuid::parse_str(&person) else {
+            continue;
+        };
+        let gone = profiles::person(db, org_id, person_id).await.is_err()
+            || profiles::opposed_any(db, org_id, &[format!("person:{person_id}")]).await?;
+        let accepted = r.try_get::<Option<String>>("", "accepted").ok().flatten();
+        match (gone, accepted) {
+            (true, _) => {}
+            (false, Some(url)) => {
+                let asset = db
+                    .query_one_raw(stmt(
+                        "SELECT id FROM media_assets WHERE org_id = $1
+                           AND metadata ->> 'source_url' = $2 ORDER BY created_at DESC LIMIT 1",
+                        vec![org_id.into(), url.into()],
+                    ))
+                    .await?
+                    .and_then(|a| a.try_get::<Uuid>("", "id").ok());
+                if let Some(a) = asset {
+                    profiles::stamp_to_read(ctx, org_id, &person, a).await?;
+                }
             }
-            save(db, &m).await?;
-            n += 1;
+            (false, None) => {
+                // Every proposal rejected: the next query of the latest ladder,
+                // in the agent of who asked it.
+                let step = r.try_get::<Option<i32>>("", "step").ok().flatten().unwrap_or(0);
+                let last = db
+                    .query_one_raw(stmt(
+                        "SELECT created_by, plan -> 'params' ->> 'subject' AS subject
+                         FROM agent_runs WHERE org_id = $1
+                           AND plan -> 'purpose' ->> 'pipeline' = $2
+                           AND plan -> 'params' ->> 'person_id' = $3
+                         ORDER BY created_at DESC LIMIT 1",
+                        vec![org_id.into(), PIPELINE.into(), person.clone().into()],
+                    ))
+                    .await?;
+                let author = last
+                    .as_ref()
+                    .and_then(|l| l.try_get::<Option<i64>>("", "created_by").ok().flatten());
+                let subject: Option<Value> = last
+                    .and_then(|l| l.try_get::<Option<String>>("", "subject").ok().flatten())
+                    .and_then(|s| serde_json::from_str(&s).ok());
+                let row = subject.and_then(|s| asked_row(&person, &s, step.max(0) as usize + 1));
+                if let Some(row) = row {
+                    if let Err(e) = store::run_asked(ctx, org_id, author, PIPELINE, vec![row]).await
+                    {
+                        tracing::warn!(org_id, error = ?e, "next person search not asked");
+                    }
+                }
+            }
         }
+        db.execute_raw(stmt(
+            "UPDATE proposals SET evidence = evidence || '{\"followed\": true}'::jsonb
+             WHERE id = ANY($1)",
+            vec![ids.into()],
+        ))
+        .await?;
+        n += 1;
     }
     Ok(n)
 }
@@ -679,13 +508,13 @@ async fn start_matches(ctx: &AppContext) -> Result<u64, ExtensionError> {
                      WHERE u.org_id = p.org_id AND u.relation = 'uses_identifier'
                        AND u.source_object_id = p.id AND u.valid_to IS NULL
                        AND i.properties ->> 'value' LIKE '%linkedin.com/in/%')
-                   AND NOT EXISTS (SELECT 1 FROM person_matches m
-                     WHERE m.org_id = p.org_id AND m.person_id = p.id
-                       AND (m.state IN ('searching', 'proposed')
-                            OR m.created_at > now() - make_interval(days => $2::int)))
+                   AND NOT EXISTS (SELECT 1 FROM agent_runs a
+                     WHERE a.org_id = p.org_id AND a.plan -> 'purpose' ->> 'pipeline' = $4
+                       AND a.plan -> 'params' ->> 'person_id' = p.id::text
+                       AND a.created_at > now() - make_interval(days => $2::int))
                  ORDER BY (c.properties ->> 'target_score')::numeric DESC NULLS LAST, p.created_at
                  LIMIT $3",
-                vec![org_id.into(), (retry as i32).into(), left.into()],
+                vec![org_id.into(), (retry as i32).into(), left.into(), PIPELINE.into()],
             ))
             .await?;
         for r in &people {

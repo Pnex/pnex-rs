@@ -72,7 +72,7 @@
 key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "4.2.0"
+version: "4.3.0"
 requires: [companies, web_presence, watch]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -1172,3 +1172,157 @@ page_templates:
         ## Critères du playbook abordés
 
         {{links:covered}}
+pipeline_functions:
+  # Scores the profiles a person search brought back (D788): the result
+  # cards pointing to a LinkedIn profile, the first five, each read with the
+  # profile opened for it (`profile.<n>`, in card order). Deterministic and
+  # explained, no model reads the page (D785). The subject comes folded from
+  # the route: name words, company names without their legal form, group
+  # names, cities, and the two thresholds.
+  # shortcut: the current position is told from the text after the name (the
+  # header), not from the dated history; upgrade once the navigation extracts
+  # the positions by selectors.
+  - name: person_match_score
+    language: starlark
+    description: Candidates of a person search (rows person_id, step, subject, name, text of each extract → url, score, verdict write/propose/drop, or the next query).
+    code: |
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "ã": "a", "å": "a", "ç": "c",
+              "é": "e", "è": "e", "ê": "e", "ë": "e", "í": "i", "ì": "i", "î": "i",
+              "ï": "i", "ñ": "n", "ó": "o", "ò": "o", "ô": "o", "ö": "o", "õ": "o",
+              "ø": "o", "ú": "u", "ù": "u", "û": "u", "ü": "u", "ý": "y", "ÿ": "y",
+              "œ": "oe", "æ": "ae", "ß": "ss"}
+      HEADER = 600
+      CANDIDATES = 5
+
+      def words(text):
+          out = []
+          cur = ""
+          for c in (text or "").lower().elems():
+              c = FOLD.get(c, c)
+              if c.isalnum():
+                  cur += c
+              elif cur:
+                  out.append(cur)
+                  cur = ""
+          if cur:
+              out.append(cur)
+          return out
+
+      def padded(ws):
+          return " " + " ".join(ws) + " "
+
+      def has(hay, phrase):
+          return len(phrase) > 0 and padded(phrase) in hay
+
+      # The canonical address of a profile link, None for anything else.
+      def profile_url(link):
+          at = (link or "").find("linkedin.com/in/")
+          if at < 0:
+              return None
+          slug = link[at + len("linkedin.com/in/"):].split("?")[0].split("#")[0].split("/")[0].lower()
+          if slug == "" or len(slug) > 100:
+              return None
+          for c in slug.elems():
+              if not (c.isalnum() or c in "-_%"):
+                  return None
+          return "https://www.linkedin.com/in/" + slug
+
+      def score(s, text):
+          t = words(text)
+          name = s.get("name") or []
+          out = {"total": 0, "detail": [], "left": False}
+          if not name or not t:
+              return out
+          full = padded(t)
+          at = full.find(padded(name))
+          if at >= 0:
+              header = full[at:at + HEADER] + " "
+              out["total"] += 30
+              out["detail"].append("name")
+          elif all([(" " + w + " ") in full for w in name]):
+              header = full[:HEADER] + " "
+              out["total"] += 10
+              out["detail"].append("name_partial")
+          else:
+              return out
+          orgs = s.get("orgs") or []
+          current = [o for o in orgs if has(header, o)]
+          past = [o for o in orgs if has(full, o)]
+          groups = [g for g in (s.get("groups") or []) if has(header, g)]
+          if current:
+              out["total"] += 50
+              out["detail"].append("current_company:" + " ".join(current[0]))
+          elif past:
+              out["total"] += 25
+              out["left"] = True
+              out["detail"].append("past_company:" + " ".join(past[0]))
+          elif groups:
+              out["total"] += 15
+              out["detail"].append("group:" + " ".join(groups[0]))
+          cities = [c for c in (s.get("cities") or []) if has(header, c)]
+          if cities:
+              out["total"] += 10
+              out["detail"].append("city:" + " ".join(cities[0]))
+          out["total"] = min(out["total"], 100)
+          return out
+
+      def row(r, **cols):
+          out = {"person_id": r.get("person_id"), "step": str(r.get("step")), "url": "",
+                 "score": "0", "detail": "", "left_company": "false", "verdict": "none",
+                 "profile": "", "evidence": "", "query": "", "subject": ""}
+          out.update(cols)
+          return out
+
+      def handle(rows):
+          by_person = {}
+          for r in rows:
+              p = by_person.setdefault(r.get("person_id"), {"row": r, "extracts": {}})
+              if r.get("name"):
+                  p["extracts"][r.get("name")] = r.get("text") or ""
+          out = []
+          for p in by_person.values():
+              r = p["row"]
+              s = json.decode(r.get("subject") or "{}")
+              cards = json.decode(p["extracts"].get("results") or "[]")
+              write_at = int(s.get("write_at") or 80)
+              propose_at = min(int(s.get("propose_at") or 40), write_at)
+              step = int(r.get("step") or 0)
+              seen = []
+              kept = False
+              for c in cards:
+                  url = profile_url(c.get("link"))
+                  if url == None or url in seen or len(seen) >= CANDIDATES:
+                      continue
+                  seen.append(url)
+                  # The navigation opens the first profiles in card order.
+                  profile = (p["extracts"].get("profile." + str(len(seen))) or "").strip()
+                  sc = score(s, (c.get("card") or "") + "\n" + profile)
+                  if sc["total"] >= write_at and not sc["left"]:
+                      verdict = "write"
+                  elif sc["total"] >= propose_at:
+                      verdict = "propose"
+                  else:
+                      verdict = "drop"
+                  kept = kept or verdict != "drop"
+                  evidence = json.encode({"url": url, "score": sc["total"], "detail": sc["detail"],
+                                          "left_company": sc["left"], "person_id": r.get("person_id"),
+                                          "step": step})
+                  out.append(row(r, url = url, score = str(sc["total"]), detail = ",".join(sc["detail"]),
+                                 left_company = "true" if sc["left"] else "false", verdict = verdict,
+                                 profile = profile, evidence = evidence))
+              # One profile is attached at most, the best; none is proposed then.
+              mine = [o for o in out if o["person_id"] == r.get("person_id")]
+              written = [o for o in mine if o["verdict"] == "write"]
+              if written:
+                  top = sorted(written, key = lambda o: -int(o["score"]))[0]
+                  for o in mine:
+                      if o != top and o["verdict"] != "drop":
+                          o["verdict"] = "drop"
+              queries = s.get("queries") or []
+              if not kept and step + 1 < len(queries):
+                  out.append(row(r, verdict = "next", step = str(step + 1), query = queries[step + 1],
+                                 subject = r.get("subject")))
+              elif not out:
+                  # A row even when nothing was found: the next steps read it.
+                  out.append(row(r))
+          return out

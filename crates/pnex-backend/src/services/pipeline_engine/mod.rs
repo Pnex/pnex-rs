@@ -191,6 +191,9 @@ pub trait Sink {
         rows: Vec<Map<String, Value>>,
     ) -> Result<u64, Failure>;
 
+    /// Asks these rows again of the pipeline once the run ends; the rows.
+    async fn ask(&mut self, rows: Vec<Map<String, Value>>) -> Result<u64, Failure>;
+
     /// Plays a navigation for the row `item` (D995): its extracts as
     /// `{name, text}` rows when known now (a replay), `None` once started:
     /// the row waits and the end of the navigation resumes it.
@@ -1038,6 +1041,10 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 .map(|n| Field::new(n, DataType::Utf8, true))
                 .collect(),
             Some(Step::Read(r)) if !r.columns.is_empty() => read::fields(r),
+            // A navigation that extracted nothing.
+            Some(Step::Browse(_)) => ["name", "text"]
+                .map(|n| Field::new(n, DataType::Utf8, true))
+                .to_vec(),
             _ => return Ok(None),
         };
         blob::BatchWriter::new(Arc::new(Schema::new(fields)))?
@@ -1167,6 +1174,9 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                 } else if let Some(p) = &w.proposals {
                     let rows = blocking(move || records_of(&batches)).await?;
                     *written += self.sink.proposals(p, rows).await?;
+                } else if w.ask.is_some() {
+                    let rows = blocking(move || records_of(&batches)).await?;
+                    *written += self.sink.ask(rows).await?;
                 } else if let Some(o) = w.objects.as_ref().filter(|o| !o.snapshot) {
                     let rows = blocking(move || records_of(&batches)).await?;
                     *written += self.sink.objects(o, rows).await?;

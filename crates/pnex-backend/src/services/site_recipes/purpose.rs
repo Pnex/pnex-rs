@@ -19,9 +19,6 @@ use super::{browser, insert_run, parse, NewRun, RecipeError, StartError};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Purpose {
-    /// One query of a person match (D788): extracts `results` (cards) and
-    /// `profile.<n>` (the profiles opened).
-    PersonMatch { match_id: String, step: u32 },
     /// A contact's connections list (D976): extracts `connections.<n>`
     /// (cards), filtered and erased by the server once read.
     ConnectionsCapture {
@@ -31,13 +28,19 @@ pub enum Purpose {
     },
     /// The `browse` step of a pipeline's row (pipeline-engine.md D995): the
     /// extracts resume the row.
-    Pipeline { pipeline: String, item: String },
+    Pipeline {
+        pipeline: String,
+        item: String,
+        /// The member whose agent plays it: rows the run asks again play
+        /// in the same agent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user: Option<i64>,
+    },
 }
 
 impl Purpose {
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::PersonMatch { .. } => "person_match",
             // The run's `trigger` holds 16 chars; runs are found by the tag.
             Self::ConnectionsCapture { .. } => "connections",
             Self::Pipeline { .. } => "pipeline",
@@ -123,21 +126,26 @@ pub async fn on_finished(ctx: &AppContext, org_id: i64, run_id: Uuid) {
             )
             .await
         }
-        Purpose::PersonMatch { match_id, step } => {
-            crate::services::person_match::search_finished(
-                ctx, org_id, run_id, match_id, *step, ok, &extracts,
-            )
-            .await
-        }
-        Purpose::Pipeline { pipeline, item } => {
+        Purpose::Pipeline {
+            pipeline,
+            item,
+            user,
+        } => {
             let texts = ok.then(|| {
                 extracts
                     .iter()
-                    .map(|e| (e.name.clone(), e.text.clone()))
+                    .map(|e| match e.cards.is_empty() {
+                        true => (e.name.clone(), e.text.clone()),
+                        // Cards reach the pipeline as a JSON array of records.
+                        false => (
+                            e.name.clone(),
+                            serde_json::to_string(&e.cards).unwrap_or_default(),
+                        ),
+                    })
                     .collect()
             });
             match crate::services::pipeline_engine::store::resume_row(
-                ctx, org_id, pipeline, item, texts,
+                ctx, org_id, pipeline, item, *user, texts,
             )
             .await
             {
