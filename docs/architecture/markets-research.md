@@ -728,7 +728,7 @@ MK11 codé, non poussé. Pièces :
 
 | | |
 |---|---|
-| Statut | **Proposé le 2026-11-08, rien de codé** (choix de Shan : PRD d'abord). Questions Q-MK15 à Q-MK20 à trancher avant tout code |
+| Statut | Proposé le 2026-11-08 ; **Q-MK15 à Q-MK20 tranchées par Shan le 2026-11-19** (D.5), code en cours |
 | Décisions | **D841…D846** |
 | S'appuie sur | D476 (`extractors:`, `due-diligence.md`), D477 (file de propositions), D529 (`market_event` sourcé), D531 (`known_at`), D544 (rubriques 8-K), D119 (aucun LLM plateforme), D780 (LLM en dernier) |
 
@@ -784,6 +784,14 @@ Un `market_event` accepté d'une société suivie rejoint l'avis de séance (D81
 - **Q-MK18** : langue : anglais seulement en V1 (sources SEC), ou dès le départ le français et l'allemand pour l'ESEF ?
 - **Q-MK19** : rattrapage de l'historique (coût en jetons) ou seulement les nouveaux dépôts à partir de l'activation ?
 - **Q-MK20** : `extractors:` sert aussi la due diligence (D476) : on livre le mécanisme commun dans MK3a, ou un lot à part dans `due-diligence.md` dont MK3 dépend ?
+
+**Réponses de Shan (2026-11-19)** :
+
+- Q-MK15 : acceptation **toujours humaine** ; aucune acceptation automatique, même avec toutes les citations retrouvées.
+- Q-MK16 et Q-MK18 : pièces 99.x des 8-K seulement, en anglais.
+- Q-MK17 et Q-MK19 : 50 documents par org et par jour ; seuls les dépôts arrivés après l'activation sont extraits, le rattrapage se fait sur demande explicite.
+- Q-MK20 : le mécanisme commun `extractors:` est livré dans MK3a ; la due diligence s'y branchera.
+- Lieu (D998) : l'extraction est une étape de pipeline du pack `markets` qui n'écrit que des propositions, jamais d'objet accepté ; l'essai réel passe par le fournisseur d'IA de l'org.
 
 #### MK11 bis — HistData (Shan, 2026-11-08 : « on peut démarrer sur ce site », Dukascopy en attente)
 
