@@ -8406,6 +8406,10 @@
       "DeployFlow": {
         "description": "Explicit deployment of a version (projection + runtime reload).\nAbsent `version_number` = latest version.",
         "properties": {
+          "force": {
+            "description": "Deploy even while a `site_recipe` node of the flow waits for a run:\nits outcome is then lost (`flow-collecting` otherwise).",
+            "type": "boolean"
+          },
           "version_number": {
             "format": "int64",
             "type": [
@@ -10658,6 +10662,24 @@
         "required": [
           "flow_id",
           "name"
+        ],
+        "type": "object"
+      },
+      "FlowRunNowResult": {
+        "description": "`POST /flows/{id}/nodes/{node}/run` answer.",
+        "properties": {
+          "flow_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "node_id": {
+            "description": "Canvas id of the Inject node fired.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "flow_id",
+          "node_id"
         ],
         "type": "object"
       },
@@ -63171,6 +63193,16 @@
             },
             "description": "Flow or version not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "A navigation rule this flow started is still running (`flow-collecting`, `args.runs`): its outcome would be lost; send `force` to deploy anyway"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -63271,6 +63303,124 @@
           "flows"
         ],
         "x-pnex-as-of": "current_only"
+      }
+    },
+    "/api/v1/flows/{id}/nodes/{node}/run": {
+      "post": {
+        "description": "Fires the Inject node `node` of the deployed version once, as its interval or cron would: its payload and topic go down its wires. Accepted once the runtime received it; what the flow then does is seen in its debug feed and node statuses. Requires the flow deploy permission (owner, admin or member).",
+        "operationId": "flows_nodes_run",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Flow id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Canvas id of an Inject node of the deployed version",
+            "in": "path",
+            "name": "node",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowRunNowResult"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The node is not an Inject of the deployed version (`flow-inject-node`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `flows:deploy`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Flow not found in this organisation"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The flow is not deployed (`flow-inject-not-deployed`)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No runtime received it (`flow-inject-unavailable`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run a flow now from one of its Inject triggers",
+        "tags": [
+          "flows"
+        ]
       }
     },
     "/api/v1/flows/{id}/restart": {
@@ -63467,6 +63617,16 @@
               }
             },
             "description": "Flow or version not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "A navigation rule this flow started is still running (`flow-collecting`, `args.runs`): its outcome would be lost; send `force` to deploy anyway"
           },
           "503": {
             "content": {

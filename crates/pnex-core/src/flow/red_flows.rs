@@ -716,6 +716,22 @@ pub fn to_red_flows_json_with(
         // attachment) and runtime attribution un-prefixes it.
         let node_id = format!("{tab_id}_{}", n.id);
         let wires = prefixed_wires(&wires, &tab_id);
+        // Each Inject gets a companion wired like it, fired by a person's
+        // "run now" (run_now.rs).
+        let companion = match &n.kind {
+            FlowNodeKind::Inject { config } => Some(serde_json::json!({
+                "id": format!("{node_id}{}", super::RUN_NOW_SUFFIX),
+                "type": "pnex-inject-now",
+                "z": tab_id,
+                "inject_of": n.id,
+                "payload": config.payload,
+                "topic": config.topic,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_org_id": meta.org_id,
+                "wires": wires.clone(),
+            })),
+            _ => None,
+        };
         {
             let obj = e.as_object_mut().expect("flows.json entry");
             obj.insert("id".into(), serde_json::Value::String(node_id));
@@ -741,6 +757,7 @@ pub fn to_red_flows_json_with(
             obj.insert("wires".into(), pad_wires(current, min_ports));
         }
         entries.push(e);
+        entries.extend(companion);
         entries.extend(taggers);
     }
 

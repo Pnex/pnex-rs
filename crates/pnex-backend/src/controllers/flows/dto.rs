@@ -92,3 +92,11 @@ pub(super) struct FlowStopResult {
     /// Always `stopped`.
     pub status: pnex_core::FlowStatus,
 }
+
+/// `POST /flows/{id}/nodes/{node}/run` answer.
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub(super) struct FlowRunNowResult {
+    pub flow_id: i64,
+    /// Canvas id of the Inject node fired.
+    pub node_id: String,
+}

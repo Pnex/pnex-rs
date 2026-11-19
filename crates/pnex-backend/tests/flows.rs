@@ -964,3 +964,128 @@ async fn flow_with_retired_node_reads_lists_and_deletes() {
     })
     .await;
 }
+
+/// Marks a flow deployed with its latest version, as an acknowledged deploy
+/// would (no engine in these tests).
+async fn mark_deployed(ctx: &loco_rs::app::AppContext, flow_id: i64) {
+    use sea_orm::ConnectionTrait;
+    ctx.db
+        .execute_unprepared(&format!(
+            "UPDATE flows SET status = 'deployed', deployed_version_id = \
+               (SELECT id FROM flow_versions WHERE flow_id = {flow_id} \
+                ORDER BY version_number DESC LIMIT 1) \
+             WHERE id = {flow_id}"
+        ))
+        .await
+        .expect("mark deployed");
+}
+
+/// Run now fires only an Inject of a deployed flow, and says so when no
+/// runtime holds it.
+#[tokio::test]
+#[serial]
+async fn run_now_needs_a_deployed_inject() {
+    with_app_flow_engine(false, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let created = create_flow(&server, &env.alice, org, "run now", 60.0).await;
+        let flow_id = created["id"].as_i64().unwrap();
+        let run = |node: &'static str| {
+            server
+                .post(&format!("/api/v1/flows/{flow_id}/nodes/{node}/run"))
+                .add_header("Authorization", bearer(&env.alice))
+                .add_header("X-Org-Id", org.to_string())
+        };
+
+        let draft = run("n1").await;
+        assert_eq!(draft.status_code(), 409, "{}", draft.text());
+        assert_eq!(
+            draft.json::<serde_json::Value>()["error"],
+            "flow-inject-not-deployed"
+        );
+
+        mark_deployed(&ctx, flow_id).await;
+        let debug = run("n2").await;
+        assert_eq!(debug.status_code(), 400, "{}", debug.text());
+        assert_eq!(
+            debug.json::<serde_json::Value>()["error"],
+            "flow-inject-node"
+        );
+
+        // No runtime subscribed in tests: the click is refused, never lost.
+        let inject = run("n1").await;
+        assert_eq!(inject.status_code(), 503, "{}", inject.text());
+        assert_eq!(
+            inject.json::<serde_json::Value>()["error"],
+            "flow-inject-unavailable"
+        );
+
+        // Another org's member cannot fire it.
+        let bob_org = personal_org(&server, &env.bob).await;
+        let other = server
+            .post(&format!("/api/v1/flows/{flow_id}/nodes/n1/run"))
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", bob_org.to_string())
+            .await;
+        assert_eq!(other.status_code(), 404, "{}", other.text());
+    })
+    .await;
+}
+
+/// A deploy of a flow whose site_recipe node waits for a run is refused
+/// unless forced: the new deployment would lose the run's outcome.
+#[tokio::test]
+#[serial]
+async fn deploy_waits_for_a_running_collection_unless_forced() {
+    with_app_flow_engine(false, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let created = create_flow(&server, &env.alice, org, "collecting", 60.0).await;
+        let flow_id = created["id"].as_i64().unwrap();
+        mark_deployed(&ctx, flow_id).await;
+
+        let recipe = pnex_backend::services::site_recipes::parse(
+            "name: page\nsite: example.org\nsession: required\nsteps:\n  - open: \"/\"\n",
+        )
+        .expect("recipe");
+        let node = pnex_core::ontology::flow::FlowNodeRef {
+            org_id: org,
+            flow_id,
+            version: 1,
+            node_id: "n9".into(),
+        };
+        let params = std::collections::BTreeMap::new();
+        let new = pnex_backend::services::site_recipes::NewRun {
+            recipe_id: None,
+            recipe_version: None,
+            recipe: &recipe,
+            yaml: "",
+            params: &params,
+            trigger: "flow",
+            user_id: None,
+            engine: recipe.engine(None),
+            purpose: None,
+            flow: Some(&node),
+        };
+        pnex_backend::services::site_recipes::insert_run(&ctx.db, org, &new)
+            .await
+            .expect("run");
+
+        let deploy = |force: bool| {
+            server
+                .post(&format!("/api/v1/flows/{flow_id}/deploy"))
+                .add_header("Authorization", bearer(&env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("Content-Type", "application/json")
+                .json(&serde_json::json!({ "force": force }))
+        };
+        let refused = deploy(false).await;
+        assert_eq!(refused.status_code(), 409, "{}", refused.text());
+        let body = refused.json::<serde_json::Value>();
+        assert_eq!(body["error"], "flow-collecting");
+        assert_eq!(body["errors"]["args"]["runs"], "1");
+
+        // Forced: past the guard (the engine is off here, hence 503).
+        let forced = deploy(true).await;
+        assert_eq!(forced.status_code(), 503, "{}", forced.text());
+    })
+    .await;
+}

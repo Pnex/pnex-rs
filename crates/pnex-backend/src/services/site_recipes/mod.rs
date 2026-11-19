@@ -443,6 +443,8 @@ pub struct NewRun<'a> {
     pub engine: RunEngine,
     /// What the server does with the outcome of a default rule (D780).
     pub purpose: Option<serde_json::Value>,
+    /// The flow node waiting for the outcome: a deploy of that flow would lose it.
+    pub flow: Option<&'a pnex_core::ontology::flow::FlowNodeRef>,
 }
 
 /// How long a run for a browser agent waits for one (D782).
@@ -489,7 +491,8 @@ pub async fn insert_run(
             run.recipe_version.into(),
             site_host(&run.recipe.site).unwrap_or_default().into(),
             run.recipe.name.clone().into(),
-            serde_json::json!({ "yaml": run.yaml, "params": run.params, "purpose": run.purpose })
+            serde_json::json!({ "yaml": run.yaml, "params": run.params, "purpose": run.purpose,
+                "flow": run.flow.map(|f| serde_json::json!({ "id": f.flow_id, "node": f.node_id })) })
                 .into(),
             run.trigger.to_string().into(),
         ],
@@ -908,6 +911,26 @@ pub async fn hand_to_extension(db: &DatabaseConnection, org_id: i64, run_id: Uui
     moved
 }
 
+/// Runs a flow's `site_recipe` nodes still wait for: deploying that flow
+/// again would drop the node and lose their outcome.
+pub async fn flow_collecting(
+    db: &impl ConnectionTrait,
+    org_id: i64,
+    flow_id: i64,
+) -> Result<i64, sea_orm::DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT count(*) AS n FROM agent_runs a JOIN runner_jobs j ON j.id = a.job_id \
+             WHERE a.org_id = $1 AND a.trigger = 'flow' AND a.plan->'flow'->>'id' = $2 \
+               AND j.state IN ('queued', 'running')",
+            vec![org_id.into(), flow_id.to_string().into()],
+        ))
+        .await?;
+    Ok(row
+        .and_then(|r| r.try_get::<i64>("", "n").ok())
+        .unwrap_or(0))
+}
+
 /// Waits for the end of a run played elsewhere (a browser agent), up to
 /// `limit`; `Running` when it is still not over.
 pub async fn wait_finished(
@@ -1001,6 +1024,7 @@ pub async fn start_run(
         user_id,
         engine,
         purpose: None,
+        flow: None,
     };
     let run = insert_run(&ctx.db, org_id, &new)
         .await

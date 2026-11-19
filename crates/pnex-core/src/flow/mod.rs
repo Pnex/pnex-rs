@@ -36,6 +36,7 @@ mod node_docs;
 mod node_types;
 mod payload;
 mod red_flows;
+mod run_now;
 #[cfg(test)]
 mod tests;
 mod validate;
@@ -48,6 +49,7 @@ pub use node_docs::*;
 pub use node_types::*;
 pub use payload::*;
 pub use red_flows::*;
+pub use run_now::*;
 pub use validate::*;
 
 /// Header carrying the flow runtime service token (nodes → backend `/internal`).

@@ -562,6 +562,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "environments_builds_create",
             "environments_builds_activate",
             "flows_deploy",
+            "flows_nodes_run",
             "flows_restart",
             "flows_rollback",
             "flows_start",

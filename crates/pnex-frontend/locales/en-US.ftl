@@ -468,6 +468,7 @@ toast-flow-deployed-remote = Flow redeployed by another user
 toast-flow-stopped = Flow stopped
 toast-flow-started = Flow started
 toast-flow-restarted = Flow restarted
+toast-flow-run-now = Flow run
 toast-flow-deleted = Flow deleted
 
 flows-dirty-unsaved = Unsaved changes
@@ -573,6 +574,8 @@ flows-inject-kind-json = JSON (advanced)
 flows-inject-bool-true = True (on, 1)
 flows-inject-bool-false = False (off, 0)
 flows-inject-payload-invalid = Invalid value
+flows-inject-run-now = Run now
+flows-inject-run-now-help = Sends this trigger's message right away, in the deployed version.
 flows-debug-active = Capture enabled
 flows-debug-complete = Captured property (empty = payload)
 flows-debug-console = Also on the runtime console
@@ -2246,6 +2249,10 @@ err-pin-reserved-by-flow = Pin { $pin } is reserved by flow “{ $flow }” (dep
 err-flow-debug-disabled = Debug tools are disabled (run mode).
 err-flow-stale-version = Stale version: expected { $expected }, current { $current } — reload the latest version.
 err-flow-stop-not-deployed = Only a deployed flow can be stopped.
+err-flow-collecting = A navigation rule this flow started is still running ({ $runs }): deploying now would lose its outcome. Click Deploy again to go ahead anyway.
+err-flow-inject-not-deployed = Deploy the flow before running it.
+err-flow-inject-node = This node is not an Inject trigger of the deployed version.
+err-flow-inject-unavailable = The flow runtime is not answering: the flow was not run.
 err-flow-start-not-stopped = Only a stopped flow can be started.
 err-flow-no-deployed-version = The flow has no deployed version.
 err-flow-device-write-values-empty = Values must not be empty.

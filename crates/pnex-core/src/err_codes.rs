@@ -198,6 +198,10 @@ pub const PIN_ALREADY_ASSIGNED: &str = "pin-already-assigned";
 pub const PIN_RESERVED_BY_FLOW: &str = "pin-reserved-by-flow";
 pub const FLOW_DEBUG_DISABLED: &str = "flow-debug-disabled";
 pub const FLOW_STALE_VERSION: &str = "flow-stale-version";
+pub const FLOW_COLLECTING: &str = "flow-collecting";
+pub const FLOW_INJECT_NOT_DEPLOYED: &str = "flow-inject-not-deployed";
+pub const FLOW_INJECT_NODE: &str = "flow-inject-node";
+pub const FLOW_INJECT_UNAVAILABLE: &str = "flow-inject-unavailable";
 pub const FLOW_STOP_NOT_DEPLOYED: &str = "flow-stop-not-deployed";
 pub const FLOW_START_NOT_STOPPED: &str = "flow-start-not-stopped";
 pub const FLOW_NO_DEPLOYED_VERSION: &str = "flow-no-deployed-version";
@@ -1697,6 +1701,10 @@ pub const ALL: &[&str] = &[
     PIN_RESERVED_BY_FLOW,
     FLOW_DEBUG_DISABLED,
     FLOW_STALE_VERSION,
+    FLOW_COLLECTING,
+    FLOW_INJECT_NOT_DEPLOYED,
+    FLOW_INJECT_NODE,
+    FLOW_INJECT_UNAVAILABLE,
     FLOW_STOP_NOT_DEPLOYED,
     FLOW_START_NOT_STOPPED,
     FLOW_NO_DEPLOYED_VERSION,

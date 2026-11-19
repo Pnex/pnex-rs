@@ -44,6 +44,7 @@ mod crud;
 mod dto;
 mod error;
 mod lifecycle;
+mod run_now;
 
 // Private globs: bring every submodule's visible items into this module's
 // namespace so `routes()` resolves its handlers and sibling submodules share
@@ -53,6 +54,7 @@ use crud::*;
 use dto::*;
 use error::*;
 use lifecycle::*;
+use run_now::*;
 
 // Disambiguate our `delete` handler from `loco_rs::prelude::delete`
 // (an explicit binding shadows glob imports).
@@ -81,6 +83,7 @@ pub fn routes() -> Routes {
         .add("/{id}/stop", post(stop))
         .add("/{id}/start", post(start))
         .add("/{id}/restart", post(restart))
+        .add("/{id}/nodes/{node}/run", post(run_now))
 }
 
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
@@ -101,7 +104,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         node_status,
         stop,
         start,
-        restart
+        restart,
+        run_now
     ))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()

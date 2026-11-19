@@ -80,6 +80,7 @@ pub async fn start(
         user_id,
         engine,
         purpose: Some(purpose_json),
+        flow: None,
     };
     let run = insert_run(&ctx.db, org_id, &new)
         .await

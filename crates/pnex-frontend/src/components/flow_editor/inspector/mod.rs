@@ -93,7 +93,13 @@ pub(crate) fn InspectorBody(mut cx: EditorCx, can_write: bool, flow_id: i64) -> 
 fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> Element {
     match &node.kind {
         FlowNodeKind::Inject { config } => rsx! {
-            InjectForm { cx, initial: config.clone(), can_write }
+            InjectForm {
+                cx,
+                initial: config.clone(),
+                can_write,
+                flow_id,
+                node_id: node.id.clone(),
+            }
         },
         FlowNodeKind::DeviceRead { config } => rsx! {
             DeviceReadForm { cx, initial: config.clone(), can_write }

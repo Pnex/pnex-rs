@@ -468,6 +468,7 @@ toast-flow-deployed-remote = Flow redéployé par un autre utilisateur
 toast-flow-stopped = Flow arrêté
 toast-flow-started = Flow démarré
 toast-flow-restarted = Flow redémarré
+toast-flow-run-now = Flow lancé
 toast-flow-deleted = Flow supprimé
 
 flows-dirty-unsaved = Modifications non enregistrées
@@ -573,6 +574,8 @@ flows-inject-kind-json = JSON (avancé)
 flows-inject-bool-true = Vrai (allumé, 1)
 flows-inject-bool-false = Faux (éteint, 0)
 flows-inject-payload-invalid = Valeur invalide
+flows-inject-run-now = Lancer maintenant
+flows-inject-run-now-help = Envoie tout de suite le message de ce déclencheur, dans la version déployée.
 flows-debug-active = Capture activée
 flows-debug-complete = Propriété capturée (vide = payload)
 flows-debug-console = Recopie sur la console du runtime
@@ -2245,6 +2248,10 @@ err-pin-reserved-by-flow = La pin { $pin } est réservée par le flow « { $flow
 err-flow-debug-disabled = Outils de debug désactivés (mode run).
 err-flow-stale-version = Version périmée : attendu { $expected }, version courante { $current } — rechargez la dernière version.
 err-flow-stop-not-deployed = Seul un flow déployé peut être arrêté.
+err-flow-collecting = Une règle de navigation lancée par ce flow tourne encore ({ $runs }) : redéployer maintenant perdrait son résultat. Clique encore sur Déployer pour passer outre.
+err-flow-inject-not-deployed = Déploie le flow avant de le lancer.
+err-flow-inject-node = Ce nœud n'est pas un déclencheur Inject de la version déployée.
+err-flow-inject-unavailable = Le moteur de flows ne répond pas : le flow n'a pas été lancé.
 err-flow-start-not-stopped = Seul un flow arrêté peut être démarré.
 err-flow-no-deployed-version = Le flow n'a pas de version déployée.
 err-flow-device-write-values-empty = Les valeurs ne doivent pas être vides.

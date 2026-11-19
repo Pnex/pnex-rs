@@ -10,7 +10,7 @@ pub(super) fn conflict(code: &str, msg: &str) -> Error {
 }
 
 /// Conflict carrying interpolation data in `errors.args`.
-fn conflict_args(code: &str, msg: &str, args: serde_json::Value) -> Error {
+pub(super) fn conflict_args(code: &str, msg: &str, args: serde_json::Value) -> Error {
     Error::CustomError(
         StatusCode::CONFLICT,
         loco_rs::controller::ErrorDetail {

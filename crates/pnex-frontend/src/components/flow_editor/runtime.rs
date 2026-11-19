@@ -16,6 +16,7 @@ pub(super) fn deploy_action(
     flow_id: i64,
     saved_version: Signal<i64>,
     mut deploying: Signal<bool>,
+    mut force_next: Signal<bool>,
     mut seen_deployed: Signal<Option<Option<i64>>>,
     mut reload_meta: Signal<u32>,
     mut propose_deploy: Signal<Option<i64>>,
@@ -30,8 +31,10 @@ pub(super) fn deploy_action(
         // server picks the latest saved version, possibly one saved by
         // another user that this editor never displayed.
         let version = Some(saved_version()).filter(|v| *v > 0);
+        let force = force_next();
+        force_next.set(false);
         spawn(async move {
-            match api::flows::deploy(flow_id, version).await {
+            match api::flows::deploy(flow_id, version, force).await {
                 Ok(deployed) => {
                     // Our own deploy: never reported as a remote change.
                     seen_deployed.set(Some(deployed.flow.deployed_version_number));
@@ -57,7 +60,14 @@ pub(super) fn deploy_action(
                 // Pre-flight rejected (400 engine_load): the **real** engine
                 // message is shown — never again a bare "HTTP 400".
                 // `ToastMessage::Api` resolves violations + code at render.
-                Err(err) => toasts::error(err),
+                Err(err) => {
+                    // A rule of the flow is still collecting: the message
+                    // says the next Deploy goes through and loses its outcome.
+                    if err.code.as_deref() == Some("flow-collecting") {
+                        force_next.set(true);
+                    }
+                    toasts::error(err)
+                }
             }
             deploying.set(false);
         });

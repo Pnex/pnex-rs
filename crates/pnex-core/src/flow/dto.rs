@@ -159,6 +159,10 @@ pub struct UpdateFlow {
 pub struct DeployFlow {
     #[serde(default)]
     pub version_number: Option<i64>,
+    /// Deploy even while a `site_recipe` node of the flow waits for a run:
+    /// its outcome is then lost (`flow-collecting` otherwise).
+    #[serde(default)]
+    pub force: bool,
 }
 
 /// Flow runtime status seen by the backend supervisor: process health

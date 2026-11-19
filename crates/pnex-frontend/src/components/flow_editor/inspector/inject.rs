@@ -1,11 +1,18 @@
 use super::helpers::*;
 use super::*;
-use crate::components::ui::FIELD_LABEL;
+use crate::components::ui::{BTN_SECONDARY, FIELD_LABEL};
+use crate::state::toasts;
 
 /// ─────────────── inject ───────────────
 
 #[component]
-pub(super) fn InjectForm(mut cx: EditorCx, initial: InjectConfig, can_write: bool) -> Element {
+pub(super) fn InjectForm(
+    mut cx: EditorCx,
+    initial: InjectConfig,
+    can_write: bool,
+    flow_id: i64,
+    node_id: String,
+) -> Element {
     let mut repeat = use_signal(move || initial.repeat_secs.map(v_to_string).unwrap_or_default());
     let mut cron = use_signal(move || initial.cron.clone());
     let mut once = use_signal(move || initial.once_delay_secs.map(v_to_string).unwrap_or_default());
@@ -14,6 +21,9 @@ pub(super) fn InjectForm(mut cx: EditorCx, initial: InjectConfig, can_write: boo
 
     rsx! {
         div { class: "space-y-3",
+            if crate::state::access::can("flows:deploy") {
+                RunNow { flow_id, node_id }
+            }
             {
                 text_field(
                     t!("flows-inject-repeat"),
@@ -91,6 +101,38 @@ pub(super) fn InjectForm(mut cx: EditorCx, initial: InjectConfig, can_write: boo
                 )
             }
             InjectPayloadField { cx, initial: initial_payload, can_write }
+        }
+    }
+}
+
+/// Fires this Inject of the deployed version now, instead of waiting for
+/// its interval or cron.
+#[component]
+fn RunNow(flow_id: i64, node_id: String) -> Element {
+    let mut busy = use_signal(|| false);
+    rsx! {
+        div { class: "space-y-1",
+            button {
+                class: "{BTN_SECONDARY} w-full",
+                r#type: "button",
+                disabled: busy(),
+                onclick: move |_| {
+                    if busy() {
+                        return;
+                    }
+                    busy.set(true);
+                    let node = node_id.clone();
+                    spawn(async move {
+                        match crate::api::flows::run_now(flow_id, &node).await {
+                            Ok(_) => toasts::success("toast-flow-run-now"),
+                            Err(err) => toasts::error(err),
+                        }
+                        busy.set(false);
+                    });
+                },
+                {t!("flows-inject-run-now")}
+            }
+            p { class: "text-xs text-gray-500", {t!("flows-inject-run-now-help")} }
         }
     }
 }

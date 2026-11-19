@@ -1080,21 +1080,21 @@ fn projection_flows_json_snapshot() {
     assert_eq!(out[1]["repeat"], 1.0);
     assert_eq!(out[1]["payloadType"], "date");
     // Custom node: custom type + version traceability.
-    assert_eq!(out[2]["type"], "pnex-value");
-    assert_eq!(out[2]["value"], 1);
-    assert_eq!(out[2]["pnex_flow_id"], 12);
-    assert_eq!(out[2]["pnex_version"], 3);
-    assert_eq!(out[2]["z"], "pnexflow12");
+    assert_eq!(out[3]["type"], "pnex-value");
+    assert_eq!(out[3]["value"], 1);
+    assert_eq!(out[3]["pnex_flow_id"], 12);
+    assert_eq!(out[3]["pnex_version"], 3);
+    assert_eq!(out[3]["z"], "pnexflow12");
     // debug: empty wiring, captures payload by default.
-    assert_eq!(out[3]["type"], "debug");
-    assert_eq!(out[3]["complete"], "payload");
+    assert_eq!(out[4]["type"], "debug");
+    assert_eq!(out[4]["complete"], "payload");
     // wires: n2 (port 0) → n3; n3 without output port → empty array
     // (target ids are prefixed by tab — unique within the artifact).
-    assert_eq!(out[2]["wires"], json!([["pnexflow12_n3"]]));
-    assert_eq!(out[3]["wires"], json!([]));
+    assert_eq!(out[3]["wires"], json!([["pnexflow12_n3"]]));
+    assert_eq!(out[4]["wires"], json!([]));
     // position carried over.
-    assert_eq!(out[2]["x"], 200.0);
-    assert_eq!(out[2]["name"], "query");
+    assert_eq!(out[3]["x"], 200.0);
+    assert_eq!(out[3]["name"], "query");
 }
 
 #[test]
@@ -1128,7 +1128,7 @@ fn projection_makes_ids_unique_across_flows() {
 
     // Wire targets follow the same prefix.
     let b = to_red_flows_json(&simple_graph(), &meta(13));
-    assert_eq!(b[2]["wires"], json!([["pnexflow13_n3"]]));
+    assert_eq!(b[3]["wires"], json!([["pnexflow13_n3"]]));
 }
 
 fn node_device_read(id: &str, device_id: &str, pins: &[&str]) -> FlowNode {
@@ -1408,7 +1408,7 @@ fn validate_coolprop_node() {
         o2_org: "o2-x".into(),
     };
     let red = to_red_flows_json(&g, &meta);
-    let entry = red[2].as_object().unwrap();
+    let entry = red[3].as_object().unwrap();
     assert_eq!(entry["type"], "pnex-coolprop");
     assert_eq!(entry["fluid_spec"], "Water");
     assert_eq!(entry["pnex_flow_id"], 7);
@@ -1878,16 +1878,16 @@ fn projection_display_node_stamped() {
         },
     );
     assert_eq!(out[0]["id"], "pnexflow12");
-    assert_eq!(out[2]["type"], "pnex-display");
+    assert_eq!(out[3]["type"], "pnex-display");
     // The raw canvas id is the panel/badge attachment key.
-    assert_eq!(out[2]["pnex_node_id"], "n3");
-    assert_eq!(out[2]["pnex_flow_id"], 12);
-    assert_eq!(out[2]["pnex_version"], 3);
-    assert_eq!(out[2]["pnex_org_id"], 7);
-    assert_eq!(out[2]["z"], "pnexflow12");
-    assert_eq!(out[2]["wires"], json!([["pnexflow12_n4"]]));
+    assert_eq!(out[3]["pnex_node_id"], "n3");
+    assert_eq!(out[3]["pnex_flow_id"], 12);
+    assert_eq!(out[3]["pnex_version"], 3);
+    assert_eq!(out[3]["pnex_org_id"], 7);
+    assert_eq!(out[3]["z"], "pnexflow12");
+    assert_eq!(out[3]["wires"], json!([["pnexflow12_n4"]]));
     // The builtin debug stays a builtin node (no custom stamp required).
-    assert_eq!(out[3]["type"], "debug");
+    assert_eq!(out[4]["type"], "debug");
 }
 
 #[test]
@@ -3509,4 +3509,44 @@ fn range_upsert_validates_and_projects() {
     for code in ["range_upsert_scope_invalid", "range_upsert_origin_invalid"] {
         assert!(codes.contains(&code.to_string()), "{code}: {codes:?}");
     }
+}
+
+#[test]
+fn an_inject_gets_a_run_now_companion_wired_like_it() {
+    let mut inject = node_inject("tick");
+    inject.outputs = vec![FlowWiring {
+        port: 0,
+        targets: vec!["out".into()],
+    }];
+    if let FlowNodeKind::Inject { config } = &mut inject.kind {
+        config.topic = Some("chimie".into());
+        config.payload = json!({"a": 1});
+    }
+    let meta = FlowArtifactMeta {
+        flow_id: 54,
+        version_number: 2,
+        org_id: 3,
+        o2_org: String::new(),
+    };
+    let g = FlowGraph {
+        nodes: vec![inject, node_display("out", &[])],
+    };
+    let red = to_red_flows_json(&g, &meta);
+    let arr = red.as_array().expect("entries");
+    let inject = arr.iter().find(|e| e["type"] == "inject").expect("inject");
+    let now = arr
+        .iter()
+        .find(|e| e["type"] == "pnex-inject-now")
+        .expect("companion");
+    assert_eq!(
+        now["id"],
+        format!("{}{RUN_NOW_SUFFIX}", inject["id"].as_str().unwrap())
+    );
+    assert_eq!(now["wires"], inject["wires"]);
+    assert_eq!(now["z"], inject["z"]);
+    assert_eq!(now["inject_of"], "tick");
+    assert_eq!(now["topic"], "chimie");
+    assert_eq!(now["payload"], json!({"a": 1}));
+    assert_eq!(now["pnex_flow_id"], 54);
+    assert_eq!(now["pnex_org_id"], 3);
 }

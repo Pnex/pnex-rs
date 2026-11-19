@@ -173,8 +173,15 @@ pub struct DeployedFlow {
     pub skipped_tabs: Vec<SkippedTab>,
 }
 
-pub async fn deploy(id: i64, version_number: Option<i64>) -> Result<DeployedFlow, ApiError> {
-    let body = DeployFlow { version_number };
+pub async fn deploy(
+    id: i64,
+    version_number: Option<i64>,
+    force: bool,
+) -> Result<DeployedFlow, ApiError> {
+    let body = DeployFlow {
+        version_number,
+        force,
+    };
     client::request(
         reqwest::Method::POST,
         &format!("/api/v1/flows/{id}/deploy"),
@@ -192,9 +199,21 @@ pub async fn rollback(id: i64, version_number: i64) -> Result<Flow, ApiError> {
         Some(
             serde_json::to_value(DeployFlow {
                 version_number: Some(version_number),
+                force: false,
             })
             .unwrap_or_default(),
         ),
+    )
+    .await
+}
+
+/// `POST /api/v1/flows/{id}/nodes/{node}/run` — fires an Inject of the
+/// deployed version now.
+pub async fn run_now(id: i64, node: &str) -> Result<serde_json::Value, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/flows/{id}/nodes/{node}/run"),
+        None,
     )
     .await
 }

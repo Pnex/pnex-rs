@@ -79,7 +79,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("topic", "optional string"),
             ("payload", "injected JSON value (null = timestamp)"),
         ],
-        notes: "One of repeat_secs, cron or once_delay_secs is required (no_trigger otherwise). To drive a device_write output, set payload to 1/0 or true/false, or declare the value on the device_write pin (values): the default timestamp is refused by digital outputs.",
+        notes: "One of repeat_secs, cron or once_delay_secs is required (no_trigger otherwise). Once deployed, Run now in its panel sends its message at once (the deployed version), so a test never needs a once_delay_secs trigger added then removed. To drive a device_write output, set payload to 1/0 or true/false, or declare the value on the device_write pin (values): the default timestamp is refused by digital outputs.",
     },
     NodeDoc {
         kind: "device_read",
