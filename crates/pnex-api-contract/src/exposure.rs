@@ -452,6 +452,11 @@ pub const EXPOSED: &[&str] = &[
     "mt5_terminals_list",
     "mt5_terminals_symbols",
     "mt5_terminals_update",
+    "qr_tags_list",
+    "qr_tags_get",
+    "qr_tags_sheets_create",
+    "qr_tags_for_object",
+    "qr_tags_link",
 ];
 
 /// Operations never served as tools, grouped by reason.
@@ -520,6 +525,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "secrets_delete",
             "connectors_delete",
             "mt5_terminals_delete",
+            "qr_tags_revoke",
             "image_registries_delete",
             "environments_delete",
             "site_recipes_delete",

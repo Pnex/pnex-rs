@@ -950,9 +950,6 @@ causal_pairs:
   - { cause: world.event, effect: price.move, max_gap_min: 1440, prior: 0.5 }
   - { cause: macro.release, effect: price.move, max_gap_min: 120, prior: 0.5 }
   - { cause: supply.disruption, effect: price.move, max_gap_min: 2880, prior: 0.5 }
-# Functions of the pipelines only (D940), never installed in the org's
-# function registry: the meeting pages of two central banks, read by the
-# position of their cells.
 # Fields the model step of `filing_events` asks the org's AI provider for
 # (D841–D844): each value quotes the release word for word, or is dropped.
 extractors:
@@ -979,6 +976,9 @@ extractors:
         default: unknown
         description: "Only when the release itself says it (raised, lowered, above or below expectations)."
       - { key: figures, kind: text, max_len: 300, description: "The figures stated (EPS, revenue, guidance range), copied as written." }
+# Functions of the pipelines only (D940), never installed in the org's
+# function registry: the meeting pages of the central banks, read by the
+# position of their cells, and the steps of the filing pipelines.
 pipeline_functions:
   # The Federal Reserve's FOMC calendar page: a panel per year ("2026 FOMC
   # Meetings"), a month cell then a date cell per meeting ("27-28", "17-18*"

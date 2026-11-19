@@ -210,6 +210,9 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("pois:delete", Level::Member),
     ("pois:read", Level::Viewer),
     ("pois:write", Level::Member),
+    // QR tags of objects (parts-docs.md D962): a member prints and links them.
+    ("qr-tags:read", Level::Viewer),
+    ("qr-tags:write", Level::Member),
     ("realtime:connect", Level::Viewer),
     ("resources:delete", Level::Member),
     ("resources:read", Level::Viewer),
@@ -1281,6 +1284,12 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("proposals_decide", Access::Org("proposals:decide")),
     ("proposals_get", Access::Org("proposals:read")),
     ("proposals_list", Access::Org("proposals:read")),
+    ("qr_tags_list", Access::Org("qr-tags:read")),
+    ("qr_tags_get", Access::Org("qr-tags:read")),
+    ("qr_tags_sheets_create", Access::Org("qr-tags:write")),
+    ("qr_tags_for_object", Access::Org("qr-tags:write")),
+    ("qr_tags_link", Access::Org("qr-tags:write")),
+    ("qr_tags_revoke", Access::Org("qr-tags:write")),
     ("web_search_providers_test", Access::Org("web-search:test")),
     (
         "web_search_providers_update",

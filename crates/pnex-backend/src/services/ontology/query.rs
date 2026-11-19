@@ -155,6 +155,14 @@ pub(super) fn filter_sql(
             let col = pnex_core::fold::sql(&format!("(o.properties ->> '{k}')"));
             format!("{col} LIKE {p}")
         }
+        FilterOp::StartsWith => {
+            let pat = text(&f.value)
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            let p = sql.bind(format!("{pat}%"));
+            format!("(o.properties ->> '{k}') LIKE {p}")
+        }
         FilterOp::Lt | FilterOp::Lte | FilterOp::Gt | FilterOp::Gte => {
             let op = match f.op {
                 FilterOp::Lt => "<",

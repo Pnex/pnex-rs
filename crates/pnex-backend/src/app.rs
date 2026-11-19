@@ -151,6 +151,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::connectors::routes())
         .add_route(controllers::hooks::routes())
         .add_route(controllers::mt5::routes())
+        .add_route(controllers::qr_tags::routes())
         .add_route(controllers::governance::routes())
         .add_route(controllers::analysis::routes())
         .add_route(controllers::rules::routes())

@@ -54,10 +54,12 @@ pub mod notifications;
 /// Ontology explorer, object page, type editor (ontology.md D186).
 pub mod ontology;
 pub mod orgs;
+pub mod parts;
 pub mod pipelines;
 pub mod profile;
 /// Web sites and their navigation studio (site-recipes.md D323–D326).
 pub mod proposals;
+pub mod qr;
 pub mod rules;
 pub mod secrets;
 pub mod server_url;

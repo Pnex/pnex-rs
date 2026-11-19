@@ -188,6 +188,11 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "object tabs of the markets pack (markets-research.md D541) and the session tab of its moves and world events (D738)",
     ),
     (
+        "pnex-frontend/src/pages/parts.rs",
+        &["part_reference", "refers_to", "supersedes"],
+        "spare parts search page built on the maintenance pack (parts-docs.md PD0, D961): its references, what they designate and the supersessions; a pack-declared reference search would lift it",
+    ),
+    (
         "pnex-backend/src/controllers/markets.rs",
         &["markets", "paper_position"],
         "market routes built on the markets pack: OpenAPI tag, paper positions",

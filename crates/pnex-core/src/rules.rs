@@ -221,6 +221,7 @@ pub fn filter_matches(f: &PropertyFilter, props: &Map<String, Value>) -> bool {
                 .to_lowercase()
                 .contains(&as_text(&f.value).to_lowercase())
         }),
+        FilterOp::StartsWith => got.is_some_and(|g| as_text(g).starts_with(&as_text(&f.value))),
         FilterOp::In => got.is_some_and(|g| {
             let g = as_text(g);
             f.value

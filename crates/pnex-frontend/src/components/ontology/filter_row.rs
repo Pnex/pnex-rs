@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::components::ui::{BTN_SECONDARY_SM, INPUT};
 
-const OPS: [(FilterOp, &str); 10] = [
+const OPS: [(FilterOp, &str); 11] = [
     (FilterOp::Eq, "eq"),
     (FilterOp::Ne, "ne"),
     (FilterOp::Lt, "lt"),
@@ -16,6 +16,7 @@ const OPS: [(FilterOp, &str); 10] = [
     (FilterOp::Gt, "gt"),
     (FilterOp::Gte, "gte"),
     (FilterOp::Contains, "contains"),
+    (FilterOp::StartsWith, "starts_with"),
     (FilterOp::In, "in"),
     (FilterOp::Exists, "exists"),
     (FilterOp::Missing, "missing"),
@@ -30,6 +31,7 @@ fn op_label(op: FilterOp) -> String {
         FilterOp::Gt => t!("apps-op-gt").to_string(),
         FilterOp::Gte => t!("apps-op-gte").to_string(),
         FilterOp::Contains => t!("apps-op-contains").to_string(),
+        FilterOp::StartsWith => t!("apps-op-starts-with").to_string(),
         FilterOp::In => t!("apps-op-in").to_string(),
         FilterOp::Exists => t!("apps-op-exists").to_string(),
         FilterOp::Missing => t!("apps-op-missing").to_string(),

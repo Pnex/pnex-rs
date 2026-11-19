@@ -499,6 +499,7 @@ fn prop(key: &str, kind: PropertyKind) -> PropertyDef {
         classification: Default::default(),
         contact_point: false,
         history: None,
+        normalize: None,
     }
 }
 
@@ -667,6 +668,7 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         classification: Default::default(),
         contact_point: false,
         history: None,
+        normalize: None,
     };
     let link = |key: &str, from: TypeSet, to: TypeSet| LinkTypeDef {
         inverse_names: Default::default(),

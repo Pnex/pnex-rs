@@ -76,6 +76,7 @@ pub mod pipelines;
 pub mod pois;
 pub mod proposals;
 pub mod public_tours;
+pub mod qr_tags;
 /// Cross-cutting organization layer (D42) — kind-agnostic endpoints.
 pub mod resources;
 pub mod rules;

@@ -65,6 +65,7 @@ pub mod pins;
 /// Site navigation rules and their runs (site-recipes.md D323–D326).
 pub mod pipelines;
 pub mod proposals;
+pub mod qr;
 /// Cross-cutting organisation layer (D42).
 pub mod resources;
 pub mod rules;

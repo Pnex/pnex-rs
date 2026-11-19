@@ -306,6 +306,9 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             | Route::Cases {}
             | Route::CaseWorkspace { .. }
             | Route::Calendar {}
+            | Route::Parts {}
+            | Route::QrTags {}
+            | Route::QrScan { .. }
     );
     let knowledge = matches!(
         route,
@@ -406,6 +409,18 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::Calendar {},
                     label: t!("nav-calendar"),
                     active: at(Route::Calendar {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Parts {},
+                    label: t!("nav-parts"),
+                    active: at(Route::Parts {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::QrTags {},
+                    label: t!("nav-qr-tags"),
+                    active: matches!(route, Route::QrTags {} | Route::QrScan { .. }),
                     on_navigate,
                 }
             }

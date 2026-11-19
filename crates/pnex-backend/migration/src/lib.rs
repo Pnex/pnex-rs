@@ -149,6 +149,7 @@ mod m20261117_000154_prediction_tables_to_pipelines;
 mod m20261117_000155_pipeline_items_waiting;
 mod m20261118_000156_drop_person_matches;
 mod m20261119_000157_proposal_create_link;
+mod m20261119_000158_qr_tags;
 
 pub struct Migrator;
 
@@ -294,6 +295,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261117_000155_pipeline_items_waiting::Migration),
             Box::new(m20261118_000156_drop_person_matches::Migration),
             Box::new(m20261119_000157_proposal_create_link::Migration),
+            Box::new(m20261119_000158_qr_tags::Migration),
         ]
     }
 }

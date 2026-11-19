@@ -171,6 +171,32 @@ pub struct PropertyDef {
     /// (sales-dashboards.md D722, D723).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history: Option<PropertyHistory>,
+    /// Text only: the value is stored in this form, whatever is typed or
+    /// imported (parts-docs.md D961), so an exact or prefix filter finds it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub normalize: Option<Normalize>,
+}
+
+/// How a text value is stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Normalize {
+    /// A part or product reference: letters and digits only, upper case
+    /// (`ab-12.3/x` → `AB123X`), separators and spaces dropped.
+    Reference,
+}
+
+impl Normalize {
+    pub fn apply(self, s: &str) -> String {
+        match self {
+            Normalize::Reference => s
+                .chars()
+                .filter(char::is_ascii_alphanumeric)
+                .map(|c| c.to_ascii_uppercase())
+                .collect(),
+        }
+    }
 }
 
 /// What a change of an enum property records. Its transitions go to the O2
@@ -327,6 +353,8 @@ impl<'de> Deserialize<'de> for PropertyDef {
             contact_point: bool,
             #[serde(default)]
             history: Option<PropertyHistory>,
+            #[serde(default)]
+            normalize: Option<Normalize>,
         }
         #[derive(Deserialize, Default)]
         #[serde(default)]
@@ -411,6 +439,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
             classification: h.classification,
             contact_point: h.contact_point,
             history: h.history,
+            normalize: h.normalize,
         })
     }
 }
@@ -487,6 +516,9 @@ pub fn check_defs(
             }
             _ => {}
         }
+        if d.normalize.is_some() && !matches!(d.kind, PropertyKind::Text { .. }) {
+            return Err(err(at("normalize"), FIELD_INVALID));
+        }
         if d.kind.is_temporal() && d.required {
             return Err(err(at("required"), FIELD_INVALID));
         }
@@ -558,7 +590,13 @@ fn check_value(d: &PropertyDef, v: &Value) -> Result<Value, String> {
             if s.chars().count() > max {
                 return Err(format!("{FIELD_MAX_LENGTH}:{max}"));
             }
-            Ok(Value::String(s.trim().to_string()))
+            match d.normalize {
+                Some(n) => match n.apply(s) {
+                    t if t.is_empty() => Err(invalid()),
+                    t => Ok(Value::String(t)),
+                },
+                None => Ok(Value::String(s.trim().to_string())),
+            }
         }
         (PropertyKind::Number { min, max, .. }, Value::Number(n)) => {
             let x = n.as_f64().ok_or_else(invalid)?;
@@ -747,7 +785,35 @@ mod tests {
             classification: Default::default(),
             contact_point: false,
             history: None,
+            normalize: None,
         }
+    }
+
+    #[test]
+    fn a_reference_is_stored_normalized() {
+        let mut d = def("reference", PropertyKind::Text { max_len: Some(64) });
+        d.normalize = Some(Normalize::Reference);
+        let v = |s: &str| {
+            check_values(
+                std::slice::from_ref(&d),
+                json!({ "reference": s }).as_object().unwrap(),
+            )
+        };
+        assert_eq!(v(" ab-12.3/x ").unwrap()["reference"], "AB123X");
+        assert_eq!(
+            v("--").unwrap_err(),
+            ("reference".to_string(), FIELD_INVALID.to_string())
+        );
+        let mut n = def(
+            "n",
+            PropertyKind::Number {
+                unit: None,
+                min: None,
+                max: None,
+            },
+        );
+        n.normalize = Some(Normalize::Reference);
+        assert!(check_defs(&[n], "properties", &|_| true).is_err());
     }
 
     #[test]

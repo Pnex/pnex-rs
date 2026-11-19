@@ -16,10 +16,16 @@
 # parts it used, and the stock levels flow sums the movements per part and
 # location and flags those under their minimum. Suppliers, prices and
 # technicians live in `maintenance_partners`.
+# Since 1.7.0 parts and documentation, lot PD0 (parts-docs.md D960–D961):
+# equipment models with their parts lists (bom_line), part references stored
+# normalized for an exact or prefix search, supersessions and equivalences,
+# part corrections; the text manufacturer and model fields of equipment and
+# parts give way to links (manufactures in `maintenance_partners`,
+# instance_of here). Parts lists and supersessions are imported from CSV.
 key: maintenance
 name: Augmented maintenance
 names: {fr: "Maintenance augmentée"}
-version: "1.6.0"
+version: "1.7.0"
 description: Sites, lines, machines and pumps; sensors bound to equipment series survive sensor replacements.
 descriptions: {fr: "Sites, lignes, machines et pompes ; les capteurs liés aux séries des équipements survivent à leur remplacement."}
 types:
@@ -53,7 +59,7 @@ types:
     may_be_contained_in: [line, folder]
     properties:
       - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, required: true, indexed: true }
-      - { key: manufacturer, name: Manufacturer, names: {fr: "Fabricant"}, kind: text, max_len: 255 }
+      - { key: manufactured_on, name: Manufactured on, names: {fr: "Fabriqué le"}, description: "Filters the parts list of its model (series and date ranges).", descriptions: {fr: "Filtre la nomenclature de son modèle (plages de séries et de dates)."}, kind: date }
       - { key: commissioned, name: Commissioned on, names: {fr: "Mise en service le"}, kind: date }
       - key: status
         name: Status
@@ -79,6 +85,7 @@ types:
     may_be_contained_in: [line, folder]
     properties:
       - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, required: true, indexed: true }
+      - { key: manufactured_on, name: Manufactured on, names: {fr: "Fabriqué le"}, description: "Filters the parts list of its model (series and date ranges).", descriptions: {fr: "Filtre la nomenclature de son modèle (plages de séries et de dates)."}, kind: date }
       - { key: rated_flow, name: Rated flow, names: {fr: "Débit nominal"}, kind: number, unit: m3/h, min: 0 }
       - key: status
         name: Status
@@ -106,8 +113,7 @@ types:
     may_be_contained_in: [line, site, folder]
     properties:
       - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, indexed: true }
-      - { key: manufacturer, name: Manufacturer, names: {fr: "Fabricant"}, kind: text, max_len: 255 }
-      - { key: model, name: Model, names: {fr: "Modèle"}, kind: text, max_len: 255 }
+      - { key: manufactured_on, name: Manufactured on, names: {fr: "Fabriqué le"}, description: "Filters the parts list of its model (series and date ranges).", descriptions: {fr: "Filtre la nomenclature de son modèle (plages de séries et de dates)."}, kind: date }
   - key: compressor
     name: Compressor
     names: {fr: "Compresseur"}
@@ -115,6 +121,7 @@ types:
     may_be_contained_in: [line, site, folder]
     properties:
       - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, indexed: true }
+      - { key: manufactured_on, name: Manufactured on, names: {fr: "Fabriqué le"}, description: "Filters the parts list of its model (series and date ranges).", descriptions: {fr: "Filtre la nomenclature de son modèle (plages de séries et de dates)."}, kind: date }
       - { key: refrigerant, name: Refrigerant, names: {fr: "Fluide frigorigène"}, kind: text, max_len: 32 }
       - { key: suction_pressure, name: Suction pressure, names: {fr: "Pression d'aspiration"}, kind: series, unit: bar }
       - { key: discharge_pressure, name: Discharge pressure, names: {fr: "Pression de refoulement"}, kind: series, unit: bar }
@@ -174,11 +181,62 @@ types:
     may_be_contained_in: [folder]
     properties:
       - { key: part_number, name: Part number, names: {fr: "Référence interne"}, kind: text, max_len: 64, required: true, unique: true }
-      - { key: manufacturer, name: Manufacturer, names: {fr: "Fabricant"}, kind: text, max_len: 255 }
-      - { key: manufacturer_ref, name: Manufacturer reference, names: {fr: "Référence fabricant"}, kind: text, max_len: 64, indexed: true }
+      - { key: family, name: Family, names: {fr: "Famille"}, kind: text, max_len: 120, indexed: true }
+      - { key: characteristics, name: Characteristics, names: {fr: "Caractéristiques"}, kind: text, max_len: 2000 }
       - { key: unit, name: Unit, names: {fr: "Unité"}, kind: text, max_len: 16 }
       - { key: unit_cost, name: Unit cost, names: {fr: "Coût unitaire"}, kind: money }
       - { key: datasheet, name: Datasheet, names: {fr: "Fiche technique"}, kind: url }
+  # PD0 (parts-docs.md §3): the model of an installed equipment carries its
+  # parts list; the equipment itself stays where it is, linked by instance_of.
+  - key: equipment_model
+    name: Equipment model
+    names: {fr: "Modèle d'appareil"}
+    icon: box
+    may_be_contained_in: [folder]
+    properties:
+      - { key: code, name: Model code, names: {fr: "Code modèle"}, kind: text, max_len: 64, required: true, unique: true }
+      - { key: family, name: Family, names: {fr: "Famille"}, kind: text, max_len: 120, indexed: true }
+      - { key: variants, name: Variants, names: {fr: "Variantes"}, description: "Comma-separated variants the parts lists use (market, voltage, option).", descriptions: {fr: "Variantes séparées par des virgules que les nomenclatures utilisent (marché, tension, option)."}, kind: text, max_len: 500 }
+  # A reference of a part as it is written somewhere: the title keeps it as
+  # typed, `reference` is stored normalized (D961) for an exact or prefix
+  # search; an old reference stays and keeps finding its part.
+  - key: part_reference
+    name: Part reference
+    names: {fr: "Référence de pièce"}
+    icon: tag
+    may_be_contained_in: [folder]
+    properties:
+      - { key: reference, name: Reference (normalized), names: {fr: "Référence (normalisée)"}, description: "Letters and digits only, upper case: typed as ab-12.3, stored AB123.", descriptions: {fr: "Lettres et chiffres seulement, en majuscules : saisie ab-12.3, gardée AB123."}, kind: text, max_len: 64, required: true, unique: true, normalize: reference }
+      - key: nature
+        name: Nature
+        names: {fr: "Nature"}
+        kind: enum
+        values: [origin, distributor, old]
+        labels: {origin: {fr: "Origine fabricant", en: "Manufacturer"}, distributor: {fr: "Distributeur", en: "Distributor"}, old: {fr: "Ancienne", en: "Old"}}
+        indexed: true
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 255 }
+  # A wrong reference found in the field (D967): validated, it feeds the
+  # search and the alerts of the org.
+  - key: part_correction
+    name: Part correction
+    names: {fr: "Correction de pièce"}
+    icon: flag
+    may_be_contained_in: [folder]
+    properties:
+      - { key: model, name: Model, names: {fr: "Modèle"}, kind: ref, to_type: equipment_model, indexed: true }
+      - { key: serial_from, name: From serial, names: {fr: "Du numéro de série"}, kind: text, max_len: 64 }
+      - { key: serial_to, name: To serial, names: {fr: "Au numéro de série"}, kind: text, max_len: 64 }
+      - { key: wrong_reference, name: Wrong reference, names: {fr: "Référence fausse"}, kind: text, max_len: 64, required: true, normalize: reference }
+      - { key: right_reference, name: Right reference, names: {fr: "Bonne référence"}, kind: text, max_len: 64, normalize: reference }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 500 }
+      - key: status
+        name: Status
+        names: {fr: "Statut"}
+        kind: enum
+        values: [reported, validated, rejected]
+        labels: {reported: {fr: "Signalée", en: "Reported"}, validated: {fr: "Validée", en: "Validated"}, rejected: {fr: "Rejetée", en: "Rejected"}}
+        colors: {reported: amber, validated: green, rejected: gray}
+        indexed: true
   - key: stock_location
     name: Stock location
     names: {fr: "Emplacement de stock"}
@@ -308,6 +366,64 @@ link_types:
     inverse_names: {fr: "reçoit la pièce"}
     from_types: [spare_part]
     to_types: "*"
+  # PD0 (parts-docs.md §3).
+  - key: instance_of
+    name: is an instance of
+    names: {fr: "est un exemplaire de"}
+    inverse_name: has instance
+    inverse_names: {fr: "a pour exemplaire"}
+    from_types: "*"
+    to_types: [equipment_model]
+    one_target: true
+  - key: refers_to
+    name: refers to
+    names: {fr: "désigne"}
+    inverse_name: is referred to by
+    inverse_names: {fr: "est désignée par"}
+    from_types: [part_reference]
+    to_types: [spare_part]
+    one_target: true
+  - key: supersedes
+    name: supersedes
+    names: {fr: "remplace"}
+    inverse_name: is superseded by
+    inverse_names: {fr: "est remplacée par"}
+    description: "The source part replaces the target: a search for the old part leads to the newest one."
+    descriptions: {fr: "La pièce source remplace la cible : chercher l'ancienne mène à la plus récente."}
+    from_types: [spare_part]
+    to_types: [spare_part]
+  - key: equivalent_to
+    name: is equivalent to
+    names: {fr: "est équivalente à"}
+    inverse_name: is equivalent to
+    inverse_names: {fr: "est équivalente à"}
+    from_types: [spare_part]
+    to_types: [spare_part]
+  - key: compatible_with
+    name: is compatible with
+    names: {fr: "est compatible avec"}
+    inverse_name: is compatible with
+    inverse_names: {fr: "est compatible avec"}
+    from_types: [spare_part]
+    to_types: [spare_part]
+    attributes:
+      - { key: conditions, name: Conditions, names: {fr: "Conditions"}, kind: text, max_len: 500 }
+  # A parts list line (Q-PD4): bounded by serial, date and an optional variant.
+  - key: bom_line
+    name: lists part
+    names: {fr: "comporte la pièce"}
+    inverse_name: is listed in
+    inverse_names: {fr: "figure dans la nomenclature de"}
+    from_types: [equipment_model]
+    to_types: [spare_part]
+    attributes:
+      - { key: position, name: Position, names: {fr: "Repère"}, kind: text, max_len: 32 }
+      - { key: quantity, name: Quantity, names: {fr: "Quantité"}, kind: number, min: 0 }
+      - { key: serial_from, name: From serial, names: {fr: "Du numéro de série"}, kind: text, max_len: 64 }
+      - { key: serial_to, name: To serial, names: {fr: "Au numéro de série"}, kind: text, max_len: 64 }
+      - { key: date_from, name: Built from, names: {fr: "Fabriqué à partir du"}, kind: date }
+      - { key: date_to, name: Built until, names: {fr: "Fabriqué jusqu'au"}, kind: date }
+      - { key: variant, name: Variant, names: {fr: "Variante"}, kind: text, max_len: 64 }
 settings:
   - key: causal_chains_enabled
     name: Causal chains in cases
@@ -457,3 +573,63 @@ flows:
         - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [unwrap] }] }
         - { id: unwrap, kind: pnex_function, config: { function_name: maint_unwrap, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - { id: write, kind: object_upsert, config: { object_type: stock_level, key: ref } }
+# Parts lists and supersessions from a CSV file of the org (PD0, D301): the
+# columns are documented in the assistant card `maintenance-parts`. A
+# manufacturer's own file is first saved in these columns.
+imports:
+  - name: Parts lists (CSV)
+    source: file
+    mapping:
+      key: maintenance_parts_lists
+      name: Parts lists
+      names: {fr: "Nomenclatures"}
+      description: "One line per part of a model: model, model_name, position, part_number, part_name, reference, quantity, serial_from, serial_to, date_from, date_to, variant."
+      format: csv
+      objects:
+        - as: model
+          type: equipment_model
+          key: code
+          title: { concat: [model_name, model], sep: " · " }
+          properties:
+            code: model
+        - as: part
+          type: spare_part
+          key: part_number
+          title: { concat: [part_name, part_number], sep: " · " }
+          properties:
+            part_number: part_number
+        - as: ref
+          type: part_reference
+          key: reference
+          title: reference
+          properties:
+            # A line without a reference has no reference object (skip).
+            reference: { from: reference, invalid: skip }
+          defaults:
+            nature: origin
+      links:
+        - type: bom_line
+          from: model
+          to: part
+          attributes:
+            position: position
+            quantity: quantity
+            serial_from: serial_from
+            serial_to: serial_to
+            date_from: date_from
+            date_to: date_to
+            variant: variant
+        - { type: refers_to, from: ref, to: part }
+  - name: Part supersessions (CSV)
+    source: file
+    mapping:
+      key: maintenance_supersessions
+      name: Part supersessions
+      names: {fr: "Remplacements de pièces"}
+      description: "One line per replacement: new_part_number replaces old_part_number, since (YYYY-MM-DD, optional)."
+      format: csv
+      objects:
+        - { as: new, type: spare_part, key: part_number, create: false, missing: skip, properties: { part_number: new_part_number } }
+        - { as: old, type: spare_part, key: part_number, create: false, missing: skip, properties: { part_number: old_part_number } }
+      links:
+        - { type: supersedes, from: new, to: old, valid_from: since }

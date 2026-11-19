@@ -5,11 +5,20 @@
 key: maintenance_partners
 name: Maintenance partners
 names: {fr: "Partenaires de maintenance"}
-version: "1.0.0"
+version: "1.1.0"
 requires: [maintenance, investigation]
 description: "Suppliers of spare parts with their prices, references and lead times; technicians and contractors of work orders. Questions: who sells this part cheapest? Which work orders are assigned to this technician?"
 descriptions: {fr: "Les fournisseurs des pièces détachées avec leurs prix, références et délais ; les techniciens et sous-traitants des ordres de travail. Questions : qui vend cette pièce le moins cher ? Quels ordres de travail sont confiés à ce technicien ?"}
 link_types:
+  # Since 1.1.0 (parts-docs.md §3): the maker of a model or a part, an
+  # organization of the graph, instead of a text field.
+  - key: manufactures
+    name: manufactures
+    names: {fr: "fabrique"}
+    inverse_name: is manufactured by
+    inverse_names: {fr: "est fabriqué par"}
+    from_types: [organization]
+    to_types: [equipment_model, spare_part]
   - key: supplies
     name: supplies
     names: {fr: "fournit"}

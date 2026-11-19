@@ -214,6 +214,9 @@ pub enum FilterOp {
     Gte,
     /// Case-insensitive substring of a text property.
     Contains,
+    /// The text property starts with the value, as stored (a normalized
+    /// reference, parts-docs.md D961).
+    StartsWith,
     Exists,
     /// The property is not set (an object never processed).
     Missing,

@@ -44,6 +44,13 @@ const RULES: &[Rule] = &[
         use_instead: "invite",
         allowed_keys: &["iam-", "access-"],
     },
+    // parts-docs.md D960: the parts of an equipment model form its parts list.
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "bill of materials",
+        use_instead: "parts list",
+        allowed_keys: &[],
+    },
     // markets-research.md D894: what an external model posts is a model decision.
     Rule {
         scope: Scope::Fr,

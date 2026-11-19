@@ -233,6 +233,9 @@ pub fn OntologyObject(id: String) -> Element {
                 }
             },
             div { class: "space-y-4",
+                if !closed {
+                    crate::pages::qr::ObjectQr { object_id: o.id.clone() }
+                }
                 crate::components::proposals_table::ProposalsTable {
                     object_id: Some(o.id.clone()),
                     status: pnex_core::ontology::proposal::ProposalStatus::Proposed,

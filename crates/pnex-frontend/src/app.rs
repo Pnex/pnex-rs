@@ -17,8 +17,10 @@ use crate::pages::mailbox_messages::MailboxMessages;
 use crate::pages::mailboxes::Mailboxes;
 use crate::pages::market_decisions::MarketDecisions;
 use crate::pages::mt5_terminals::{Mt5TerminalDetail, Mt5Terminals};
+use crate::pages::parts::Parts;
 use crate::pages::pipelines::{PipelineStudio, PipelineTable, Pipelines};
 use crate::pages::proposals::Proposals;
+use crate::pages::qr::{QrScan, QrSheet, QrTags};
 use crate::pages::rules::Rules;
 use crate::pages::web_sites::{WebSiteStudio, WebSites};
 use crate::pages::{
@@ -43,6 +45,11 @@ pub enum Route {
     // guard, here viewing is anonymous (token = the only key).
     #[route("/share/:token")]
     ShareTour { token: String },
+
+    // Printable sheet of QR labels (parts-docs.md D963) — outside the shell
+    // so only the labels print; its reads carry the session like any page.
+    #[route("/qr-sheet?:tokens")]
+    QrSheet { tokens: String },
 
     #[layout(pages::shell::Shell)]
         #[route("/")]
@@ -124,6 +131,17 @@ pub enum Route {
         // Org time ranges, recurrence occurrences included (ontology.md annex B).
         #[route("/calendar")]
         Calendar {},
+
+        // Spare parts found by any spelling of a reference (parts-docs.md PD0).
+        #[route("/parts")]
+        Parts {},
+
+        // QR tags (parts-docs.md D962): a scan opens /q/<token>.
+        #[route("/q/:token")]
+        QrScan { token: String },
+
+        #[route("/qr-tags")]
+        QrTags {},
 
         // Investigation cases and their workspace (cases.md).
         #[route("/cases")]

@@ -345,3 +345,27 @@ PD1 recoupe les lots C-QR1 et C-QR2 de l'annexe C : ils se font une fois.
   texte `manufacturer` et `manufacturer_ref` sont remplacés par le lien
   `manufactures` et par les objets `part_reference` de nature « origine » ;
   `part_number` (référence interne de l'org) reste.
+
+## 13. Avancement
+
+### PD0 — Socle (codé le 2026-11-19)
+
+- **Pack `maintenance` 1.7.0** : types `equipment_model` (code unique, famille, variantes), `part_reference` (référence normalisée unique, nature origine / distributeur / ancienne, source ; le titre garde l'écriture d'origine), `part_correction` (modèle, plage de séries, référence fausse et bonne, statut) ; liens `instance_of` (tout équipement → modèle), `refers_to`, `supersedes`, `equivalent_to`, `compatible_with` (conditions), `bom_line` (repère, quantité, série de/à, date de/à, variante) ; `manufactured_on` sur les équipements ; `spare_part` gagne famille et caractéristiques et perd les champs texte fabricant (éclaircissements du §12). **`maintenance_partners` 1.1.0** : lien `manufactures` (organisation → modèle ou pièce), là où vit `organization`.
+- **Moteur, générique** : option de propriété texte `normalize: reference` (lettres et chiffres en majuscules, appliquée à toute écriture : formulaire, import, flow, assistant ; une valeur sans lettre ni chiffre est refusée) et filtre `starts_with` d'`ontology_query` (sur la valeur telle que stockée). Aucune table métier ni route propre (D960).
+- **Imports livrés** (D301, fichier CSV de l'org) : « Parts lists (CSV) » (`model, model_name, position, part_number, part_name, reference, quantity, serial_from, serial_to, date_from, date_to, variant`) et « Part supersessions (CSV) » (`old_part_number, new_part_number, since`), avec aperçu avant écriture.
+- **Écran** `/parts` (menu Opérer, « Pièces détachées ») : un champ, l'écriture normalisée affichée sous le champ, les pièces désignées par les références qui commencent ainsi, leurs références et « Remplacée par » la plus récente (5 remplacements suivis au plus). Le bouton d'ajout ouvre les imports. Fiche pièce = la fiche objet générique.
+- **Acceptation mesurée** (`tests/maintenance_parts.rs::an_old_reference_finds_the_current_part_among_100000`, ignoré par défaut) : 100 000 pièces et références, une référence ancienne tapée avec séparateurs mène à la pièce actuelle en **258 ms** (build de débogage, deux requêtes HTTP, meilleur de trois).
+- **Écarts** :
+  - les règles de préfixe fabricant en YAML (§5.1) ne sont pas codées : la normalisation retire seulement séparateurs et casse ;
+  - le préfixe est lu sans index dédié (balayage des références de l'org) ; un index d'expression viendra si une base réelle le demande ;
+  - l'écran nomme les clés du pack (exception D441 consignée dans `tests/engine_genericity.rs`) ; une recherche par référence déclarée par le pack la lèverait ;
+  - l'écran lit les liens de chaque pièce trouvée (20 par page) : `shortcut:` dans le code ;
+  - lien `documents` (modèle → média) et `maintenance:validate` reportés à PD2 et aux propositions de PD1.
+
+### PD1a — Étiquettes QR (codé le 2026-11-20, nuit)
+
+- **Noyau** : table `qr_tags` (migration 000158 : jeton aléatoire de 26 caractères base32, org, objet facultatif, état `blank` / `linked` / `revoked`, planche), `pnex_core::qr`, `services::qr_tags`, routes `/api/v1/qr-tags` (liste filtrable par objet, état ou jetons ; planche vierge de 1 à 120 ; étiquette d'un objet, créée au premier usage ; lecture d'un jeton ; liaison d'une étiquette vierge ; révocation). Permissions `qr-tags:read` (lecteur) et `qr-tags:write` (membre) ; MCP : tout exposé sauf la révocation (destructive).
+- **R1** : un jeton se lit dans l'org de l'appelant seulement ; celui d'une autre org est inconnu (404), jamais un indice de son existence. Test `tests/qr_tags.rs`.
+- **Adresse imprimée** : `<serveur>/q/<jeton>` (l'adresse du serveur de l'app, mobile compris). Un téléphone l'ouvre avec son appareil photo ; sans session, la coquille demande la connexion (D964, phase PD1).
+- **Écrans** : `/q/:token` (étiquette liée → sa fiche ; vierge → choix de l'objet par son nom et « Lier ici » ; révoquée ou inconnue → message), « Code QR » sur toute fiche objet avec impression, page « Étiquettes QR » (menu Opérer : planche vierge, liste paginée, révocation), planche imprimable `/qr-sheet` hors de la coquille (4 × 10 par A4, seul le contenu s'imprime).
+- **Reste de PD1** : scanner intégré à l'app (caméra), nomenclature de l'appareil filtrée par série, date et variante, panier = OT et son export CSV, file d'envoi hors ligne (photos, notes).

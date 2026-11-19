@@ -743,6 +743,10 @@ pub const MARKET_DECISIONS_QUOTA: &str = "market-decisions-quota";
 pub const MARKET_BARS_TOO_MANY_FILES: &str = "market-bars-too-many-files";
 /// MT5 terminals (markets-research.md D847–D849).
 pub const MT5_TERMINAL_NOT_FOUND: &str = "mt5-terminal-not-found";
+/// A QR token unknown in the caller's org (parts-docs.md D962).
+pub const QR_TAG_NOT_FOUND: &str = "qr-tag-not-found";
+/// Only a blank QR tag can be linked (D963).
+pub const QR_TAG_NOT_BLANK: &str = "qr-tag-not-blank";
 pub const MT5_TERMINAL_NAME_TAKEN: &str = "mt5-terminal-name-taken";
 pub const MT5_TERMINAL_VERSION_CONFLICT: &str = "mt5-terminal-version-conflict";
 /// The org already has [`crate::mt5::TERMINALS_MAX`] terminals; args `max`.
@@ -1387,6 +1391,8 @@ pub const ALL: &[&str] = &[
     MARKET_DECISIONS_QUOTA,
     MARKET_BARS_TOO_MANY_FILES,
     MT5_TERMINAL_NOT_FOUND,
+    QR_TAG_NOT_FOUND,
+    QR_TAG_NOT_BLANK,
     MT5_TERMINAL_NAME_TAKEN,
     MT5_TERMINAL_VERSION_CONFLICT,
     MT5_TERMINALS_LIMIT,
