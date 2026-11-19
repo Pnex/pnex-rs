@@ -225,6 +225,33 @@ pub fn pack_functions(pack: &str) -> HashMap<String, String> {
         .unwrap_or_default()
 }
 
+/// The extractors a document's `model` steps name: `<name>` in its own
+/// pack, `<pack>/<name>` in another shipped pack (D841).
+pub fn model_extractors(
+    own: &str,
+    doc: &Document,
+) -> HashMap<String, pnex_core::extractor::Extractor> {
+    let packs = crate::services::ontology::packs::shipped();
+    doc.steps
+        .iter()
+        .filter_map(|s| match s {
+            pnex_core::pipeline::Step::Model(m) => Some(&m.extractor),
+            _ => None,
+        })
+        .filter_map(|name| {
+            let (pack, key) = name.split_once('/').unwrap_or((own, name.as_str()));
+            let ex = packs
+                .iter()
+                .find(|p| p.key == pack)?
+                .extractors
+                .iter()
+                .find(|e| e.key == key)?
+                .clone();
+            Some((name.clone(), ex))
+        })
+        .collect()
+}
+
 /// The code of the functions a document's calls name: `<name>` in its own
 /// pack, `<pack>/<name>` in another shipped pack (one its pack builds on).
 pub fn call_functions(own: &str, doc: &Document) -> HashMap<String, String> {
@@ -642,6 +669,48 @@ impl Sink for DatasetSink<'_> {
                 Some(v) => v.clone(),
                 None => Value::Null,
             };
+            // A new object (D843): its link, when the row names one, to the
+            // object found by `to_*`, both made on acceptance.
+            if text("kind").as_deref() == Some("object_create") {
+                let Some(type_key) = text("type_key") else {
+                    continue;
+                };
+                let mut input = ProposalInput {
+                    kind: Some(ProposalKind::ObjectCreate),
+                    type_key,
+                    title: text("title"),
+                    values: json_of("values").as_object().cloned().unwrap_or_default(),
+                    evidence: json_of("evidence"),
+                    origin: target.origin.clone(),
+                    confidence: text("confidence")
+                        .and_then(|c| c.parse().ok())
+                        .or(target.confidence),
+                    ..Default::default()
+                };
+                if let Some(link) = text("link_type") {
+                    let (Some(to_type), Some(to_by), Some(to_key)) =
+                        (text("to_type"), text("to_property"), text("to_key"))
+                    else {
+                        continue;
+                    };
+                    let Some((to, _)) =
+                        object_by(self.db, self.org, &to_type, &to_by, &to_key).await?
+                    else {
+                        continue;
+                    };
+                    input.link_type = Some(link);
+                    input.link_target_id = Some(to.to_string());
+                }
+                match crate::services::ontology::proposals::propose(self.db, self.org, &input).await
+                {
+                    Ok(_) => made += 1,
+                    Err(crate::services::ontology::OntologyError::Db(_)) => return Err(failed()),
+                    Err(e) => {
+                        tracing::info!(org = self.org, error = %e, "pipeline proposal refused")
+                    }
+                }
+                continue;
+            }
             let (Some(kind), Some(by), Some(key)) =
                 (text("type_key"), text("key_property"), text("key"))
             else {
@@ -658,6 +727,7 @@ impl Sink for DatasetSink<'_> {
                 target_id: Some(id.to_string()),
                 source_id: None,
                 link_target_id: None,
+                link_type: None,
                 title: text("title"),
                 values,
                 base_version: Some(version),
@@ -745,6 +815,94 @@ impl Sink for DatasetSink<'_> {
             tracing::info!(org = self.org, pipeline = self.pipeline, error = %e, "pipeline objects not written");
             fail("objects_refused", Value::Null)
         })
+    }
+
+    async fn model(
+        &mut self,
+        step: &pnex_core::pipeline::doc::Model,
+        ex: &pnex_core::extractor::Extractor,
+        rows: Vec<serde_json::Map<String, Value>>,
+    ) -> Result<Vec<super::Row>, Failure> {
+        use crate::services::ai::provider::{AiChatRequest, Msg};
+        use pnex_core::extractor::{answer_json, parts};
+        if rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        // D845: nothing without the org's own provider (D119).
+        let unconfigured = || fail("model_unconfigured", Value::Null);
+        let ctx = self.ctx.ok_or_else(unconfigured)?;
+        let cfg = crate::services::ai::config::resolve(
+            &ctx.db,
+            &ctx.config,
+            self.org,
+            pnex_core::LlmUsage::Extraction,
+        )
+        .await
+        .ok_or_else(unconfigured)?;
+        let system = ex.system();
+        let mut out = Vec::new();
+        let (mut tokens, mut rejected) = (0u64, 0usize);
+        for row in rows {
+            let text = row
+                .get(&step.text)
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if text.trim().is_empty() {
+                continue;
+            }
+            // Counted per document: the others wait for the next UTC day.
+            let what = format!("pipeline-model:{}", ex.key);
+            if crate::services::flow_ai::count_daily(
+                ctx,
+                &what,
+                self.org,
+                u64::from(step.daily_max),
+            )
+            .await
+            .is_err()
+            {
+                return Err(fail(
+                    "throttled",
+                    json!({ "what": "model_daily_max", "max": step.daily_max }),
+                ));
+            }
+            let (chunks, skipped) = parts(text);
+            let mut checked = pnex_core::extractor::Checked::default();
+            for chunk in chunks {
+                let msgs = [Msg::User {
+                    text: crate::services::ai::untrusted_data(chunk),
+                }];
+                let req = AiChatRequest {
+                    system: system.clone(),
+                    messages: &msgs,
+                    tools: &[],
+                    max_tokens: 4000,
+                };
+                let turn = cfg
+                    .provider
+                    .chat(crate::services::ai::agent::shared_http(), &cfg, &req)
+                    .await
+                    .map_err(|e| {
+                        tracing::warn!(org = self.org, pipeline = self.pipeline, error = %e, "model step call failed");
+                        fail("unreachable", json!({ "what": "ai_provider" }))
+                    })?;
+                tokens += turn.usage.input_tokens + turn.usage.output_tokens;
+                let answer = turn
+                    .text
+                    .as_deref()
+                    .and_then(answer_json)
+                    .unwrap_or(Value::Null);
+                // A quote is checked against the part it was read in.
+                let c = ex.check(chunk, &answer);
+                checked.rejected.extend(c.rejected);
+                checked.items.extend(c.items);
+            }
+            checked.items.truncate(ex.max_items);
+            rejected += checked.rejected.len();
+            out.extend(super::item_rows(&row, &step.text, &checked, skipped));
+        }
+        tracing::info!(org = self.org, pipeline = self.pipeline, extractor = %ex.key, items = out.len(), rejected, tokens, "model step");
+        Ok(out)
     }
 
     async fn ask(&mut self, rows: Vec<serde_json::Map<String, Value>>) -> Result<u64, Failure> {
@@ -1301,6 +1459,7 @@ async fn run_core(
     let (items, shas) = known(db, org, &id).await?;
     let mut inputs = inputs(db, org, &sp.doc, now.naive_utc(), shas).await?;
     inputs.functions = call_functions(&sp.pack, &sp.doc);
+    inputs.extractors = model_extractors(&sp.pack, &sp.doc);
     inputs.asked = asked;
     let mut sink = DatasetSink {
         db,
@@ -1419,6 +1578,7 @@ async fn resume_locked(
     let (items, shas) = known(&ctx.db, org, &id).await?;
     let mut inputs = inputs(&ctx.db, org, &sp.doc, Utc::now().naive_utc(), shas).await?;
     inputs.functions = call_functions(&sp.pack, &sp.doc);
+    inputs.extractors = model_extractors(&sp.pack, &sp.doc);
     let store = datasets::store_of(&ctx.config)?;
     let mut sink = DatasetSink {
         db: &ctx.db,

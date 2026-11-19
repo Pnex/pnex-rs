@@ -212,3 +212,104 @@ async fn proposals_wait_for_a_human_decision() {
     })
     .await;
 }
+
+/// D843: a proposed new object may come with its link, both written on
+/// acceptance, nothing before.
+#[tokio::test]
+#[serial]
+async fn a_created_object_comes_with_its_link() {
+    with_app(|server, env| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let (st, _) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/prospecting_b2b/install",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200);
+        let (_, mother) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/objects",
+            &env.alice,
+            org,
+            Some(json!({"type_key": "organization", "title": "Mother", "properties": {}})),
+        )
+        .await;
+        let mother = mother["id"].as_str().unwrap().to_string();
+        let input = ProposalInput {
+            kind: Some(ProposalKind::ObjectCreate),
+            type_key: "organization".into(),
+            title: Some("New subsidiary".into()),
+            link_type: Some("subsidiary_of".into()),
+            link_target_id: Some(mother.clone()),
+            evidence: json!({"quote": "our new subsidiary"}),
+            origin: "test:create".into(),
+            ..Default::default()
+        };
+        let id = propose(&env.db, org, &input).await.unwrap().expect("new");
+        let (_, p) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/proposals/{id}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(
+            p.to_string().contains("Mother"),
+            "the link target is shown: {p}"
+        );
+        let (_, before) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{mother}/links"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(before["count"], 0, "nothing written before the decision");
+        let (st, p) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/proposals/{id}/decision"),
+            &env.alice,
+            org,
+            Some(json!({"decision": "accept"})),
+        )
+        .await;
+        assert_eq!(st, 200, "{p}");
+        let created = p["applied"].as_str().unwrap();
+        let (_, links) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{created}/links"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(links["count"], 1, "{links}");
+        assert_eq!(links["results"][0]["link_type"], "subsidiary_of");
+        assert_eq!(links["results"][0]["target"]["id"], mother.as_str());
+        // A link type without its target is refused at once.
+        let bad = ProposalInput {
+            link_target_id: None,
+            title: Some("Other".into()),
+            ..input
+        };
+        assert!(propose(&env.db, org, &bad).await.is_err());
+    })
+    .await;
+}

@@ -1060,6 +1060,9 @@ struct HierarchyQuery {
     /// RFC 3339: links as known and valid at this instant, node titles and
     /// properties as recorded then (D913, D900). Default now.
     at: Option<String>,
+    /// RFC 3339: links valid at that instant in the world (D912), as known
+    /// at `at` (default `at`). Alone: what is known today about it.
+    valid_at: Option<String>,
 }
 
 #[utoipa::path(
@@ -1068,11 +1071,11 @@ struct HierarchyQuery {
     tag = "ontology",
     operation_id = "ontology_objects_hierarchy",
     summary = "Get the hierarchy tree under an object",
-    description = "Tree computed on the links a hierarchy of an installed pack declares (depth ≤ 6, 500 nodes), links as known and valid at `at` (a link recorded later is absent), node titles and properties as recorded then for packs with a history. A node with several parents appears under each, with the others in `also_under`. Lists the installed hierarchies too. Any org member.",
+    description = "Tree computed on the links a hierarchy of an installed pack declares (depth ≤ 6, 500 nodes), links valid at `valid_at` as known at `at` (both default now; `valid_at` defaults to `at`; a link recorded later is absent), node titles and properties as recorded then for packs with a history. A node with several parents appears under each, with the others in `also_under`. Lists the installed hierarchies too. Any org member.",
     params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), HierarchyQuery),
     responses(
         (status = 200, body = pnex_core::ontology::api::HierarchyView),
-        (status = 400, description = "Invalid `at` (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "Invalid `at` or `valid_at` (field → token)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -1087,6 +1090,10 @@ async fn object_hierarchy(
         Ok(t) => t,
         Err(e) => return onto_error(e),
     };
+    let valid_at = match onto::parse_instant("valid_at", q.valid_at.as_deref()) {
+        Ok(t) => t,
+        Err(e) => return onto_error(e),
+    };
     let hide = redaction(&ctx, &org)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -1096,6 +1103,7 @@ async fn object_hierarchy(
         parse_uuid(&id)?,
         q.key.as_deref(),
         at,
+        valid_at,
         hide,
     )
     .await;

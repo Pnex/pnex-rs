@@ -4,7 +4,8 @@
 //!
 //! Effects: 1-hour returns beyond the instrument's threshold (`price.move`).
 //! Causes: world events (`world.event`, or `supply.disruption` for a blockade
-//! or sanctions) on their country, macro releases on their series. Paths:
+//! or sanctions) on their country, macro releases on their series, and
+//! measured disruptions (a drop beyond a series' `disruption_drop_pct`). Paths:
 //! the `exposed_to` links (any link flagged `propagates_failure`).
 
 use chrono::{DateTime, Duration, Utc};
@@ -198,6 +199,57 @@ async fn macro_releases(
     Ok(out)
 }
 
+/// Measured supply disruptions known in `[from, as_of]`: a value of a
+/// series that declares `disruption_drop_pct` at least that far below the
+/// mean of its 7 previous values (same metric), all as known at `as_of`.
+/// The threshold is the current property, like an instrument's (H.8).
+async fn measured_disruptions(
+    db: &DatabaseConnection,
+    org: i64,
+    from: DateTime<Utc>,
+    as_of: DateTime<Utc>,
+) -> Result<Vec<Signal>, ChainsError> {
+    let rows = db
+        .query_all_raw(stmt(
+            "WITH s AS ( \
+               SELECT o.id, (o.properties ->> 'disruption_drop_pct')::float8 AS t FROM objects o \
+               WHERE o.org_id = $1 AND o.type_key = 'macro_series' AND o.valid_to IS NULL \
+                 AND jsonb_typeof(o.properties -> 'disruption_drop_pct') = 'number'), \
+             v AS ( \
+               SELECT DISTINCT ON (m.object_id, m.metric, m.period_end) \
+                      m.object_id, m.metric, m.period_end, m.value, m.known_at \
+               FROM market_observations m JOIN s ON s.id = m.object_id \
+               WHERE m.org_id = $1 AND m.known_at <= $3 \
+               ORDER BY m.object_id, m.metric, m.period_end, m.known_at DESC), \
+             w AS ( \
+               SELECT v.*, AVG(v.value) OVER (PARTITION BY v.object_id, v.metric \
+                 ORDER BY v.period_end ROWS BETWEEN 7 PRECEDING AND 1 PRECEDING) AS base FROM v) \
+             SELECT w.object_id, w.metric, w.known_at, (w.base - w.value) / w.base * 100 AS drop, s.t \
+             FROM w JOIN s ON s.id = w.object_id \
+             WHERE w.known_at BETWEEN $2 AND $3 AND w.base > 0 \
+               AND (w.base - w.value) / w.base * 100 >= s.t",
+            vec![org.into(), from.into(), as_of.into()],
+        ))
+        .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let id: Uuid = r.try_get("", "object_id")?;
+        let metric: String = r.try_get("", "metric")?;
+        let at: DateTime<chrono::FixedOffset> = r.try_get("", "known_at")?;
+        let drop: f64 = r.try_get("", "drop")?;
+        let t: f64 = r.try_get("", "t")?;
+        out.push(Signal {
+            id: format!("supply.disruption:{id}:{metric}:{}", at.timestamp()),
+            at: at.timestamp(),
+            on: id.to_string(),
+            kind: SignalKind::SupplyDisruption,
+            severity: (drop / (3.0 * t)).min(1.0),
+            source_ref: format!("observations:{id}:{}", at.timestamp()),
+        });
+    }
+    Ok(out)
+}
+
 /// Candidate chains of the instrument's price moves in `[from, as_of]`, as
 /// known at `as_of`, every one with its lift (never filtered: the model
 /// weighs them, H.7).
@@ -259,6 +311,7 @@ pub async fn chains(
     let causes_from = q.from - back;
     let mut signals = world_events(db, org, causes_from, q.as_of).await?;
     signals.extend(macro_releases(db, org, causes_from, q.as_of).await?);
+    signals.extend(measured_disruptions(db, org, causes_from, q.as_of).await?);
     signals.extend(effects.iter().cloned());
     let topology = crate::services::rca::topology(db, org, causes_from, q.as_of).await?;
     Ok(rca::chains(&effects, &signals, &topology, &pairs))

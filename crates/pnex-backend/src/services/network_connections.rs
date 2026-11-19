@@ -431,6 +431,7 @@ async fn propose_employs(
         target_id: None,
         source_id: Some(organization.to_string()),
         link_target_id: Some(person.to_string()),
+        link_type: None,
         title: Some(k.name.clone()),
         values,
         base_version: None,

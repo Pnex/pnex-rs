@@ -192,6 +192,16 @@ pub trait Sink {
         rows: Vec<Map<String, Value>>,
     ) -> Result<u64, Failure>;
 
+    /// Asks the org's AI provider for the extractor's fields in the `text`
+    /// column of each row (D841); the rows of the items kept, by
+    /// [`item_rows`].
+    async fn model(
+        &mut self,
+        step: &pnex_core::pipeline::doc::Model,
+        extractor: &pnex_core::extractor::Extractor,
+        rows: Vec<Map<String, Value>>,
+    ) -> Result<Vec<Row>, Failure>;
+
     /// Asks these rows again of the pipeline once the run ends; the rows.
     async fn ask(&mut self, rows: Vec<Map<String, Value>>) -> Result<u64, Failure>;
 
@@ -204,6 +214,47 @@ pub trait Sink {
         row: &Row,
         item: &str,
     ) -> Result<Option<Vec<Row>>, Failure>;
+}
+
+/// The rows of a document's items (D841): the input row's columns but its
+/// text, the item's rank, its values and quotes as JSON text, and what was
+/// left out of the whole document (`rejected` values, `parts_skipped`).
+pub fn item_rows(
+    input: &Map<String, Value>,
+    text: &str,
+    checked: &pnex_core::extractor::Checked,
+    parts_skipped: usize,
+) -> Vec<Row> {
+    checked
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let mut cols: Map<String, Value> = input
+                .iter()
+                .filter(|(k, _)| k.as_str() != text)
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            cols.insert("item".into(), Value::String(i.to_string()));
+            cols.insert(
+                "values".into(),
+                Value::String(Value::Object(item.values.clone()).to_string()),
+            );
+            cols.insert(
+                "evidence".into(),
+                Value::String(Value::Object(item.quotes.clone()).to_string()),
+            );
+            cols.insert(
+                "rejected".into(),
+                Value::String(checked.rejected.len().to_string()),
+            );
+            cols.insert(
+                "parts_skipped".into(),
+                Value::String(parts_skipped.to_string()),
+            );
+            Row { cols, file: None }
+        })
+        .collect()
 }
 
 /// The code of the failure that pauses a row on its navigation (D995).
@@ -276,6 +327,8 @@ pub struct Inputs {
     pub extra: HashMap<String, HashMap<String, Map<String, Value>>>,
     /// Starlark code of the functions of the document's pack, by name.
     pub functions: HashMap<String, String>,
+    /// Extractors the document's `model` steps name, by name (D841).
+    pub extractors: HashMap<String, pnex_core::extractor::Extractor>,
     pub now: NaiveDateTime,
     /// Vault name → value of the secrets a shipped document names.
     pub secrets: HashMap<String, String>,
@@ -1273,6 +1326,20 @@ impl<T: Transport, S: Sink, Q: sql::SqlRunner> Exec<'_, T, S, Q> {
                     .collect();
                 let out = self.sql.call(code, &settings, input).await?;
                 Table::Batches(out.into_iter().collect())
+            }
+            Step::Model(m) => {
+                let ex = self.inputs.extractors.get(&m.extractor).ok_or_else(|| {
+                    fail("extractor_unknown", json!({ "extractor": m.extractor }))
+                })?;
+                let rows = match tables.get(&m.from) {
+                    None => return Err(fail("unknown_table", json!({ "table": m.from }))),
+                    Some(Table::Rows(r)) => r.iter().map(|r| r.cols.clone()).collect(),
+                    Some(Table::Batches(files)) => {
+                        let files = files.clone();
+                        blocking(move || records_of(&files)).await?
+                    }
+                };
+                Table::Rows(self.sink.model(m, ex, rows).await?)
             }
             Step::Browse(b) => {
                 let (Some(item), Some(Table::Rows(rows))) = (

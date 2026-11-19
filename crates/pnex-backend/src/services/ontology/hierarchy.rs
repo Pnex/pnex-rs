@@ -27,6 +27,7 @@ pub async fn tree(
     root: Uuid,
     key: Option<&str>,
     at: Option<DateTimeWithTimeZone>,
+    valid_at: Option<DateTimeWithTimeZone>,
     hide: super::redact::Redaction,
 ) -> Result<HierarchyView> {
     let root_row = objects::find(db, org_id, root).await?;
@@ -42,9 +43,10 @@ pub async fn tree(
         });
     };
     // A given instant reads the links as known then (D913), not today's rows.
+    // `valid_at` alone: today's knowledge about that instant (D912).
     let at_cond = match at {
-        Some(t) => links::known_at(t, t),
-        None => links::valid_at(chrono::Utc::now().into()),
+        Some(t) => links::known_at(t, valid_at.unwrap_or(t)),
+        None => links::valid_at(valid_at.unwrap_or_else(|| chrono::Utc::now().into())),
     };
     let (children, truncated) = expand(db, org_id, root, &h, &at_cond).await?;
     let ids: HashSet<Uuid> = children

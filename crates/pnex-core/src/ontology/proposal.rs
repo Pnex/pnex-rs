@@ -117,9 +117,13 @@ pub struct ProposalInput {
     pub type_key: String,
     /// The object updated (object_update) or the link (link_update, link_close).
     pub target_id: Option<String>,
-    /// Ends of a link_create.
+    /// Ends of a link_create; with `link_type`, the object an object_create
+    /// is linked to on acceptance (D843).
     pub source_id: Option<String>,
     pub link_target_id: Option<String>,
+    /// object_create only: link type from the new object to `link_target_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_type: Option<String>,
     /// Title of an object_create (or a new title).
     pub title: Option<String>,
     /// Properties (objects) or attributes (links) proposed.

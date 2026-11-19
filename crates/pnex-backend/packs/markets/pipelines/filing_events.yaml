@@ -1,0 +1,83 @@
+# MK3 (markets-research.md D841–D845): the press releases attached to the
+# 8-K filings of followed companies (exhibits 99.x), read by the org's own AI
+# provider. Every event found is a proposal of a market event whose fields
+# quote the release, linked to the filer and known when the SEC accepted the
+# filing; a member accepts it (D843, Q-MK15). Only filings filed from
+# `markets.event_extraction_from` on (empty = off), 50 releases per org and
+# per day. D998: proposals only, nothing decided here.
+key: filing_events
+name: Events of 8-K press releases (AI, quoted)
+hosts: [www.sec.gov]
+schedule: 30m
+steps:
+  - enumerate:
+      as: filings
+      track: true
+      per_run: 10
+      empty: settled
+      cross:
+        - { as: since, setting: markets.event_extraction_from }
+        - as: url
+          objects: { type: filing, property: url, only: { form: [8-K, 8-K/A] }, columns: [accession, filed_on, accepted_at] }
+  - sql:
+      as: due
+      sql: >-
+        SELECT regexp_replace(url, '/[^/]*$', '') || '/' || accession || '-index.htm' AS index_url,
+          accession, accepted_at, right('0000000000' || split_part(url, '/', 7), 10) AS cik
+        FROM filings
+        WHERE url LIKE 'https://www.sec.gov/Archives/edgar/data/%' AND accession <> ''
+          AND accepted_at <> '' AND filed_on >= since
+  - fetch:
+      as: index
+      for_each: due
+      url: "{{index_url}}"
+      every: 150ms
+      missing_is_empty: true
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+  - read:
+      as: index_lines
+      from: index
+      format: lines
+      columns:
+        - { name: line, type: text, optional: true }
+        - { name: url, value: "{{url}}" }
+        - { name: accession, value: "{{accession}}" }
+        - { name: accepted_at, value: "{{accepted_at}}" }
+        - { name: cik, value: "{{cik}}" }
+  - call: { as: exhibits, from: index_lines, function: ex99_links }
+  - fetch:
+      as: exhibit
+      for_each: exhibits
+      url: "{{exhibit_url}}"
+      every: 150ms
+      missing_is_empty: true
+      headers: { User-Agent: "PNEX-Pipeline ({{setting.markets.source_contact}})" }
+      max_bytes: 8388608
+  - extract: { as: texts, from: exhibit, text: true }
+  - model: { as: items, from: texts, extractor: market_event, daily_max: 50 }
+  - call: { as: proposed, from: items, function: event_proposals }
+  - write: { from: proposed, proposals: { origin: markets.filing_events } }
+tests:
+  - name: a release gives a quoted event of the filer, an invented quote is left out
+    settings: { markets.source_contact: "Test test@example.org", markets.event_extraction_from: "2026-11-01" }
+    objects:
+      "filing.url?form=8-K,8-K/A?columns=accession,filed_on,accepted_at":
+        - "https://www.sec.gov/Archives/edgar/data/42/000004226000009/acme-8k.htm"
+        - "https://www.sec.gov/Archives/edgar/data/42/000004226000003/acme-8k-old.htm"
+    extra:
+      "filing.url?form=8-K,8-K/A?columns=accession,filed_on,accepted_at":
+        "https://www.sec.gov/Archives/edgar/data/42/000004226000009/acme-8k.htm": { accession: "0000042-26-000009", filed_on: "2026-11-05", accepted_at: "2026-11-05T21:05:12.000Z" }
+        "https://www.sec.gov/Archives/edgar/data/42/000004226000003/acme-8k-old.htm": { accession: "0000042-26-000003", filed_on: "2026-10-20", accepted_at: "2026-10-20T21:01:00.000Z" }
+    given:
+      "https://www.sec.gov/Archives/edgar/data/42/000004226000009/0000042-26-000009-index.htm": ex99_index.htm
+      "https://www.sec.gov/Archives/edgar/data/42/000004226000009/ex991.htm": ex99_release.htm
+      "model:items": ex99_answer.json
+    expect:
+      due:
+        rows: 1
+      items:
+        rows: 1
+      proposed:
+        rows: 1
+        contains:
+          - { kind: object_create, type_key: market_event, title: "ACME raises full-year guidance", link_type: event_about, to_key: "0000000042" }

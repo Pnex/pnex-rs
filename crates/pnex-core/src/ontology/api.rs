@@ -264,6 +264,12 @@ pub struct OntologyQuery {
     /// current labels and containment: refused to a point-in-time key.
     #[serde(default)]
     pub as_of: Option<String>,
+    /// RFC 3339: traversed links valid at that instant in the world (D912),
+    /// as known at `as_of` (default `as_of`). Alone: what is known today
+    /// about that instant. Objects stay read at `as_of`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
+    pub valid_at: Option<String>,
     /// `series` properties whose last value is joined (D185); never with
     /// `as_of` (the last value is the present's).
     #[serde(default)]
@@ -529,6 +535,10 @@ pub struct Pack {
     /// `handle(rows)` → rows: never installed in an org's registry.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pipeline_functions: Vec<PackFunction>,
+    /// Fields a `model` step of its pipelines asks the org's AI provider to
+    /// pull out of a document, each value with its quote (D841).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extractors: Vec<crate::extractor::Extractor>,
     /// Named read-only queries (pipeline-engine.md D948), run under the
     /// caller's rights by `POST /analysis/named/{pack}/{key}`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

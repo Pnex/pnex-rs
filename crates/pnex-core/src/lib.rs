@@ -19,6 +19,8 @@ pub mod agents;
 /// Edge agent contract (D95).
 /// Applications declared in an org (external-apps.md D433).
 pub mod apps;
+/// Quote-checked extraction from documents (markets-research.md D841).
+pub mod extractor;
 /// Large public files into tables: AIS, ADS-B, DVF (markets-research.md MK22–MK24).
 pub mod market_study;
 pub mod markets;

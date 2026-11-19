@@ -18845,6 +18845,14 @@
               "null"
             ]
           },
+          "valid_at": {
+            "description": "RFC 3339: traversed links valid at that instant in the world (D912),\nas known at `as_of` (default `as_of`). Alone: what is known today\nabout that instant. Objects stay read at `as_of`.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "within": {
             "description": "Descendants of this object in the containment tree.",
             "type": [
@@ -86328,7 +86336,7 @@
     },
     "/api/v1/ontology/objects/{id}/hierarchy": {
       "get": {
-        "description": "Tree computed on the links a hierarchy of an installed pack declares (depth ≤ 6, 500 nodes), links as known and valid at `at` (a link recorded later is absent), node titles and properties as recorded then for packs with a history. A node with several parents appears under each, with the others in `also_under`. Lists the installed hierarchies too. Any org member.",
+        "description": "Tree computed on the links a hierarchy of an installed pack declares (depth ≤ 6, 500 nodes), links valid at `valid_at` as known at `at` (both default now; `valid_at` defaults to `at`; a link recorded later is absent), node titles and properties as recorded then for packs with a history. A node with several parents appears under each, with the others in `also_under`. Lists the installed hierarchies too. Any org member.",
         "operationId": "ontology_objects_hierarchy",
         "parameters": [
           {
@@ -86368,6 +86376,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "RFC 3339: links valid at that instant in the world (D912), as known\nat `at` (default `at`). Alone: what is known today about it.",
+            "in": "query",
+            "name": "valid_at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -86389,7 +86406,7 @@
                 }
               }
             },
-            "description": "Invalid `at` (field → token)"
+            "description": "Invalid `at` or `valid_at` (field → token)"
           },
           "401": {
             "content": {

@@ -122,6 +122,8 @@ struct Memory(
     HashMap<String, Arc<Batches>>,
     /// Extracts of each navigation (`given: browse:<as>`): row → name → text.
     HashMap<String, Value>,
+    /// The model's answer of each `model` step (`given: model:<as>`).
+    HashMap<String, Value>,
 );
 
 impl Memory {
@@ -144,7 +146,15 @@ impl Memory {
                 Some((step.to_string(), v))
             })
             .collect();
-        Self(HashMap::new(), tables, browsed)
+        let answers = given
+            .iter()
+            .filter_map(|(k, f)| {
+                let step = k.strip_prefix("model:")?;
+                let v = serde_json::from_slice(file(f)).expect("model fixture is JSON");
+                Some((step.to_string(), v))
+            })
+            .collect();
+        Self(HashMap::new(), tables, browsed, answers)
     }
 }
 
@@ -228,6 +238,27 @@ impl Sink for Memory {
 
     async fn ask(&mut self, rows: Vec<serde_json::Map<String, Value>>) -> Result<u64, Failure> {
         Ok(rows.len() as u64)
+    }
+
+    async fn model(
+        &mut self,
+        step: &pnex_core::pipeline::doc::Model,
+        ex: &pnex_core::extractor::Extractor,
+        rows: Vec<serde_json::Map<String, Value>>,
+    ) -> Result<Vec<Row>, Failure> {
+        // The recorded answer, checked against each row's own text.
+        let answer = self.3.get(&step.as_).cloned().unwrap_or(Value::Null);
+        Ok(rows
+            .iter()
+            .flat_map(|r| {
+                let text = r
+                    .get(&step.text)
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let checked = ex.check(text, &answer);
+                super::item_rows(r, &step.text, &checked, 0)
+            })
+            .collect())
     }
 
     async fn browse(
@@ -343,6 +374,7 @@ async fn every_shipped_pipeline_passes_its_tests() {
                 secrets,
                 objects: case.objects.clone().into_iter().collect(),
                 functions: super::store::call_functions(&sp.pack, &sp.doc),
+                extractors: super::store::model_extractors(&sp.pack, &sp.doc),
                 asked: case
                     .asked
                     .iter()

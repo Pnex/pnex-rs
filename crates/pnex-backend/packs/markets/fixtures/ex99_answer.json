@@ -1,0 +1,8 @@
+{"items": [
+  {"kind": {"value": "guidance", "quote": "raises its full-year guidance"},
+   "title": {"value": "ACME raises full-year guidance", "quote": "The company raises its full-year guidance to $4.80 to $5.00 per share."},
+   "direction": {"value": "positive", "quote": "raises its full-year guidance"},
+   "figures": {"value": "$4.80 to $5.00 per share", "quote": "$4.80 to $5.00 per share"}},
+  {"kind": {"value": "earnings", "quote": "Revenue soared to a record"},
+   "title": {"value": "Record revenue", "quote": "Revenue soared to a record"}}
+]}

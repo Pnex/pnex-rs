@@ -77,7 +77,7 @@
 key: markets
 name: Markets
 names: {fr: "Marchés"}
-version: "1.20.1"
+version: "1.22.0"
 history: true
 requires: [companies]
 description: Companies followed by ticker with their filings and reported figures (SEC EDGAR), and macroeconomic series (FRED), each value dated by its publication. An aid to analysis, not investment advice.
@@ -137,10 +137,10 @@ settings:
   - key: calendars
     name: Calendars of releases and meetings
     names: {fr: "Calendriers des publications et réunions"}
-    description: "Comma-separated calendars read every day into the org's calendar: bls (US releases: CPI, employment, PPI), fomc (Federal Reserve decisions), ecb (ECB monetary policy decisions)."
-    descriptions: {fr: "Calendriers séparés par des virgules, lus chaque jour dans le calendrier de l'org : bls (publications américaines : IPC, emploi, prix à la production), fomc (décisions de la Réserve fédérale), ecb (décisions de politique monétaire de la BCE)."}
+    description: "Comma-separated calendars read every day into the org's calendar: bls (US releases: CPI, employment, PPI), fomc (Federal Reserve decisions), ecb (ECB monetary policy decisions), boe (Bank of England MPC decisions), boj (Bank of Japan monetary policy decisions)."
+    descriptions: {fr: "Calendriers séparés par des virgules, lus chaque jour dans le calendrier de l'org : bls (publications américaines : IPC, emploi, prix à la production), fomc (décisions de la Réserve fédérale), ecb (décisions de politique monétaire de la BCE), boe (décisions du MPC de la Banque d'Angleterre), boj (décisions de politique monétaire de la Banque du Japon)."}
     kind: text
-    default: "bls, fomc, ecb"
+    default: "bls, fomc, ecb, boe, boj"
   - key: cot_markets
     name: Positions of traders (CFTC COT)
     names: {fr: "Positions des opérateurs (CFTC COT)"}
@@ -202,6 +202,13 @@ settings:
     descriptions: {fr: "on : après une séance avec des mouvements anormaux, le fournisseur d'IA de l'org (analyses de fichiers) rédige une note courte envoyée avec l'avis de séance. Il lit seulement les mouvements, dépôts et événements du monde de la séance, ne décide ni n'écrit. off par défaut."}
     kind: text
     default: "off"
+  - key: event_extraction_from
+    name: Read 8-K press releases with AI from
+    names: {fr: "Lire les communiqués 8-K avec l'IA à partir du"}
+    description: "YYYY-MM-DD: the press releases (exhibits 99.x) of the 8-K filings of followed companies filed from that day on are read by the org's own AI provider, 50 per day at most; every event found is a proposal quoting the release, accepted by a member. Empty = off. An earlier day reads the older filings again (a cost in tokens)."
+    descriptions: {fr: "AAAA-MM-JJ : les communiqués (pièces 99.x) des dépôts 8-K des sociétés suivies déposés à partir de ce jour sont lus par le fournisseur d'IA de l'org, 50 par jour au plus ; chaque événement trouvé est une proposition qui cite le communiqué, acceptée par un membre. Vide = désactivé. Un jour plus ancien relit les dépôts antérieurs (un coût en jetons)."}
+    kind: text
+    default: ""
   - key: history_symbols
     name: Symbols of the minute history (Binance)
     names: {fr: "Symboles de l'historique à la minute (Binance)"}
@@ -360,6 +367,7 @@ types:
     icon: chart
     properties:
       - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 64, unique: true, required: true }
+      - { key: disruption_drop_pct, name: Supply disruption drop (%), names: {fr: "Baisse de rupture d'approvisionnement (%)"}, description: "A value at least this far below the mean of its 7 previous values is a supply disruption of the causal chains (transits, stocks); empty = never.", descriptions: {fr: "Une valeur au moins aussi loin sous la moyenne de ses 7 valeurs précédentes est une rupture d'approvisionnement des chaînes causales (passages, stocks) ; vide = jamais."}, kind: number, min: 0.01, max: 100 }
   # D529, D734: a dated market fact, always sourced. In V1 only the
   # market_move kind is written, by the detector from the series itself.
   - key: market_event
@@ -422,6 +430,24 @@ types:
       - { key: threshold, name: Threshold crossed, names: {fr: "Seuil franchi"}, kind: number }
       - { key: score, name: Change in sigmas, names: {fr: "Variation en sigmas"}, kind: number }
       - { key: metric, name: Source metric, names: {fr: "Mesure source"}, description: "The stored values the event was computed from: this metric of the series, at this session, as known at the time above.", descriptions: {fr: "Les valeurs stockées dont l'événement est calculé : cette mesure de la série, à cette séance, telle que connue à l'heure ci-dessus."}, kind: text, max_len: 64 }
+      # D841–D844: an event read from a press release by the org's AI and
+      # accepted by a member; every value quotes the release.
+      - key: direction
+        name: Direction stated
+        names: {fr: "Sens annoncé"}
+        description: "Only what the release says (raised guidance, below expectations); unknown otherwise. Never a sentiment score."
+        descriptions: {fr: "Seulement ce que dit le communiqué (prévision relevée, sous les attentes) ; inconnu sinon. Jamais un score de sentiment."}
+        kind: enum
+        values: [positive, negative, neutral, unknown]
+        labels:
+          positive: {fr: "Favorable", en: "Positive"}
+          negative: {fr: "Défavorable", en: "Negative"}
+          neutral: {fr: "Neutre", en: "Neutral"}
+          unknown: {fr: "Non dit", en: "Not stated"}
+      - { key: figures, name: Figures quoted, names: {fr: "Chiffres cités"}, description: "As written in the release, never recomputed.", descriptions: {fr: "Tels qu'écrits dans le communiqué, jamais recalculés."}, kind: text, max_len: 300 }
+      - { key: quote, name: Quote, names: {fr: "Citation"}, description: "The words of the release the event stands on.", descriptions: {fr: "Les mots du communiqué sur lesquels repose l'événement."}, kind: text, max_len: 300 }
+      - { key: published_at, name: Published at, names: {fr: "Publié le"}, kind: date_time }
+      - { key: source_url, name: Source, names: {fr: "Source"}, kind: url }
 link_types:
   - key: exposed_to
     name: exposes
@@ -439,7 +465,7 @@ link_types:
     inverse_name: has as event
     inverse_names: {fr: "a pour événement"}
     from_types: [market_event]
-    to_types: [instrument, macro_series]
+    to_types: [instrument, macro_series, organization]
     one_target: true
   - key: issues
     name: issues
@@ -927,6 +953,32 @@ causal_pairs:
 # Functions of the pipelines only (D940), never installed in the org's
 # function registry: the meeting pages of two central banks, read by the
 # position of their cells.
+# Fields the model step of `filing_events` asks the org's AI provider for
+# (D841–D844): each value quotes the release word for word, or is dropped.
+extractors:
+  - key: market_event
+    instructions: >-
+      The document is a press release a US-listed company attached to an 8-K
+      filing. List the market events it announces: results, guidance,
+      capital operations, mergers or acquisitions, management changes,
+      ratings, litigation, regulatory decisions. One item per event, at most
+      ten; boilerplate (forward-looking statements, safe harbor, contacts) is
+      no event.
+    max_items: 10
+    fields:
+      - key: kind
+        kind: enum
+        values: [earnings, guidance, capital_operation, m_and_a, management_change, rating, litigation, regulatory, other]
+        required: true
+        description: The nature of the event.
+      - { key: title, kind: text, required: true, max_len: 200, description: "One short line naming the event, in English." }
+      - { key: event_at, kind: date, description: "The day the event happens or happened, only when the release states it." }
+      - key: direction
+        kind: enum
+        values: [positive, negative, neutral, unknown]
+        default: unknown
+        description: "Only when the release itself says it (raised, lowered, above or below expectations)."
+      - { key: figures, kind: text, max_len: 300, description: "The figures stated (EPS, revenue, guidance range), copied as written." }
 pipeline_functions:
   # The Federal Reserve's FOMC calendar page: a panel per year ("2026 FOMC
   # Meetings"), a month cell then a date cell per meeting ("27-28", "17-18*"
@@ -1023,6 +1075,228 @@ pipeline_functions:
               if "monetary policy meeting" not in low or "non-monetary" in low or "day 1" in low:
                   continue
               out.append({"day": d[2] + "-" + d[1] + "-" + d[0], "label": what})
+          return out
+  # The Bank of England's MPC dates page: a "<year> confirmed dates" heading,
+  # then a table whose first cell per row is the decision day ("Thursday 5
+  # February").
+  - name: boe_page
+    language: starlark
+    description: Bank of England MPC decision days of the dates page (rows line → day, label).
+    code: |
+      MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august",
+                "september", "october", "november", "december"]
+
+      def pad(n, width):
+          s = str(n)
+          return "0" * (width - len(s)) + s
+
+      def handle(rows):
+          html = "\n".join([r.get("line") or "" for r in rows])
+          if "confirmed dates" not in html:
+              fail("not the Bank of England MPC dates page")
+          year = None
+          first = False
+          out = []
+          for p in html.split("<"):
+              parts = p.split(">", 1)
+              if len(parts) < 2:
+                  continue
+              tag, text = parts[0].strip().lower(), parts[1].replace("&nbsp;", " ").strip()
+              if tag.startswith("h2"):
+                  w = text.split(" ")
+                  year = int(w[0]) if len(w) > 1 and w[0].isdigit() and len(w[0]) == 4 and "confirmed" in text else None
+              elif tag.startswith("tr"):
+                  first = True
+              elif tag.startswith("td") and first:
+                  first = False
+                  w = text.split()
+                  if year == None or len(w) != 3 or not w[1].isdigit() or w[2].lower() not in MONTHS:
+                      continue
+                  m = MONTHS.index(w[2].lower()) + 1
+                  out.append({"day": pad(year, 4) + "-" + pad(m, 2) + "-" + pad(int(w[1]), 2),
+                              "label": "Bank of England MPC decision"})
+          return out
+  # The Bank of Japan's MPM schedule: a table per year (heading "<year>"),
+  # the first cell of a row lists the meeting days ("Jan. 22 (Thurs.), 23
+  # (Fri.)", "Apr. 30 (Thu.), May 1 (Fri.)"); the decision is the last day.
+  - name: boj_page
+    language: starlark
+    description: Bank of Japan monetary policy decision days of the schedule page (rows line → day, label).
+    code: |
+      MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+      def pad(n, width):
+          s = str(n)
+          return "0" * (width - len(s)) + s
+
+      def handle(rows):
+          html = "\n".join([r.get("line") or "" for r in rows])
+          if "Date of MPM" not in html:
+              fail("not the Bank of Japan MPM schedule page")
+          year = None
+          cell = None
+          out = []
+          for p in html.split("<"):
+              parts = p.split(">", 1)
+              if len(parts) < 2:
+                  continue
+              tag, text = parts[0].strip().lower(), parts[1].strip()
+              if tag.startswith("h2"):
+                  year = int(text) if len(text) == 4 and text.isdigit() else None
+              elif tag.startswith("tr"):
+                  cell = ""
+              elif tag.startswith("td") or tag.startswith("a "):
+                  if cell != None:
+                      cell += " " + text
+              elif tag == "/td" and cell != None:
+                  days = cell.split("[")[0]
+                  cell = None
+                  month = None
+                  day = None
+                  for w in days.replace(",", " ").split():
+                      n = w.rstrip(".").lower()
+                      if n[:3] in MONTHS and not n.startswith("("):
+                          month = MONTHS.index(n[:3]) + 1
+                      elif w.isdigit() and len(w) <= 2:
+                          day = int(w)
+                  if year == None or month == None or day == None:
+                      continue
+                  out.append({"day": pad(year, 4) + "-" + pad(month, 2) + "-" + pad(day, 2),
+                              "label": "Bank of Japan monetary policy decision"})
+          return out
+  # The press releases of an 8-K (MK3): every EX-99.x document of the filing
+  # index, on the same host, with the filing's columns.
+  - name: ex99_links
+    language: starlark
+    description: The exhibits 99.x of a filing index page (rows line, url, accession, accepted_at, cik → exhibit_url, accession, accepted_at, cik).
+    code: |
+      def text_of(cell):
+          out = []
+          in_tag = False
+          for ch in cell.elems():
+              if ch == "<":
+                  in_tag = True
+              elif ch == ">":
+                  in_tag = False
+                  out.append(" ")
+              elif not in_tag:
+                  out.append(ch)
+          return " ".join("".join(out).replace("&nbsp;", " ").split())
+
+      def cells_of(row):
+          low = row.lower()
+          cells = []
+          c = 0
+          for _ in range(len(row)):
+              o = low.find("<td", c)
+              if o < 0:
+                  break
+              b = low.find(">", o)
+              b = len(row) if b < 0 else b + 1
+              e = low.find("</td", b)
+              e = len(row) if e < 0 else e
+              cells.append(row[b:e])
+              c = e
+              if e >= len(row):
+                  break
+          return cells
+
+      def href_of(cell):
+          at = cell.lower().find("href=")
+          if at < 0:
+              return None
+          rest = cell[at + 5:]
+          if rest == "" or rest[0] not in "\"'":
+              return None
+          end = rest.find(rest[0], 1)
+          return rest[1:end] if end > 0 else None
+
+      def host_of(url):
+          parts = url.split("/")
+          return parts[2].lower() if len(parts) > 2 else ""
+
+      def absolute(page, href):
+          if href.startswith("https://"):
+              return href
+          parts = page.split("/")
+          if len(parts) < 3 or not href.startswith("/"):
+              return None
+          return parts[0] + "//" + parts[2] + href
+
+      def one(rows):
+          first = rows[0]
+          page = first.get("url") or ""
+          html = "\n".join([r.get("line") or "" for r in rows])
+          out = []
+          for row in html.split("<tr")[1:]:
+              cells = cells_of(row.split("</tr")[0])
+              kinds = [text_of(c).upper() for c in cells]
+              if not [k for k in kinds if k == "EX-99" or k.startswith("EX-99.")]:
+                  continue
+              for cell in cells:
+                  h = href_of(cell)
+                  if h == None:
+                      continue
+                  url = absolute(page, h)
+                  # The exhibit lives in the same filing, on the same host.
+                  if url != None and host_of(url) == host_of(page) and url.lower().endswith(".htm"):
+                      out.append({"exhibit_url": url, "accession": first.get("accession"),
+                                  "accepted_at": first.get("accepted_at"), "cik": first.get("cik")})
+                  break
+          return out
+
+      def handle(rows):
+          pages = {}
+          order = []
+          for r in rows:
+              u = r.get("url") or ""
+              if u not in pages:
+                  pages[u] = []
+                  order.append(u)
+              pages[u].append(r)
+          out = []
+          for u in order:
+              out.extend(one(pages[u]))
+          return out
+  # The items a model step kept (D843) as proposals of new market events,
+  # linked to the filer: known when the SEC accepted the filing, never at a
+  # date the model read.
+  - name: event_proposals
+    language: starlark
+    description: Proposals of market events from extracted items (rows exhibit_url, accession, accepted_at, cik, item, values, evidence → proposal columns).
+    code: |
+      def handle(rows):
+          out = []
+          for r in rows:
+              v = json.decode(r.get("values") or "{}")
+              q = json.decode(r.get("evidence") or "{}")
+              acc = r.get("accession") or ""
+              known = r.get("accepted_at") or ""
+              if acc == "" or known == "":
+                  continue
+              props = {
+                  "ref": "8k:" + acc + ":" + (r.get("item") or "0"),
+                  "kind": v.get("kind"),
+                  "direction": v.get("direction") or "unknown",
+                  "known_at": known,
+                  "published_at": known,
+                  "source_url": r.get("exhibit_url"),
+                  "quote": q.get("title") or q.get("kind"),
+              }
+              for k in ["event_at", "figures"]:
+                  if v.get(k) != None:
+                      props[k] = v.get(k)
+              out.append({
+                  "kind": "object_create",
+                  "type_key": "market_event",
+                  "title": v.get("title"),
+                  "values": json.encode(props),
+                  "evidence": json.encode({"quotes": q, "source": r.get("exhibit_url"), "accession": acc}),
+                  "link_type": "event_about",
+                  "to_type": "organization",
+                  "to_property": "cik",
+                  "to_key": r.get("cik"),
+              })
           return out
   # A company created from its SEC number found again in GLEIF (D812): only
   # a single record whose legal name (or another of its names) has the

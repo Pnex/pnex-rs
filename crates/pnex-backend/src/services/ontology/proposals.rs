@@ -49,6 +49,7 @@ async fn refs_of<C: ConnectionTrait>(db: &C, org_id: i64, p: &ProposalInput) -> 
                     .filter_map(|m| Uuid::parse_str(m.as_str()?).ok()),
             )
             .collect(),
+        Some(ProposalKind::ObjectCreate) => uuid(&p.link_target_id).into_iter().collect(),
         Some(ProposalKind::LinkCreate) => [uuid(&p.source_id), uuid(&p.link_target_id)]
             .into_iter()
             .flatten()
@@ -100,7 +101,11 @@ pub async fn propose<C: ConnectionTrait>(
         _ => Err(invalid(f, FIELD_REQUIRED)),
     };
     match kind {
-        ProposalKind::ObjectCreate => {}
+        ProposalKind::ObjectCreate => {
+            if p.link_type.is_some() {
+                needs("link_target_id", &p.link_target_id)?;
+            }
+        }
         ProposalKind::ObjectUpdate
         | ProposalKind::LinkUpdate
         | ProposalKind::LinkClose
@@ -156,8 +161,8 @@ pub async fn propose<C: ConnectionTrait>(
         .query_one_raw(stmt(
             "INSERT INTO proposals (id, org_id, kind, type_key, target_id, source_id, \
                link_target_id, title, vals, base_version, evidence, refs, origin, confidence, \
-               slot, fingerprint) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) \
+               slot, fingerprint, link_type) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) \
              ON CONFLICT (org_id, fingerprint) DO NOTHING RETURNING id",
             vec![
                 id.into(),
@@ -176,6 +181,7 @@ pub async fn propose<C: ConnectionTrait>(
                 p.confidence.into(),
                 slot.clone().into(),
                 fingerprint.clone().into(),
+                p.link_type.clone().into(),
             ],
         ))
         .await?;
@@ -415,7 +421,18 @@ async fn apply<C: ConnectionTrait>(
                 properties: values.clone(),
                 expected_version: None,
             };
-            objects::create(db, org_id, actor, &input).await?.id
+            let id = objects::create(db, org_id, actor, &input).await?.id;
+            // The link the source asserts comes with the object (D843).
+            if let (Some(link_type), Some(to)) = (text("link_type"), text("link_target_id")) {
+                let link = LinkInput {
+                    link_type,
+                    source_id: id.clone(),
+                    target_id: to,
+                    ..Default::default()
+                };
+                links::create(db, org_id, actor, &link).await?;
+            }
+            id
         }
         ProposalKind::ObjectUpdate => {
             let id = text("target_id")
@@ -553,7 +570,7 @@ pub async fn decide(
         let txn = db.begin().await?;
         let raw = txn
             .query_one_raw(stmt(
-                "SELECT target_id, source_id, link_target_id, base_version, status \
+                "SELECT target_id, source_id, link_target_id, link_type, base_version, status \
                  FROM proposals WHERE id = $1 AND org_id = $2 FOR UPDATE",
                 vec![id.into(), org_id.into()],
             ))

@@ -1,0 +1,39 @@
+# Bank of Japan monetary policy decisions, read from its MPM schedule page:
+# the last day of a meeting covers that day, UTC (the statement comes
+# around noon, Tokyo time).
+key: boj_calendar
+name: Bank of Japan MPM calendar
+hosts: [www.boj.or.jp]
+schedule: 24h
+steps:
+  - enumerate:
+      as: calendar
+      cross:
+        # Only when the org lists this calendar in `markets.calendars`.
+        - { as: key, setting: markets.calendars, case: lower, derive: { listed: [["boj", "yes"]] } }
+  - fetch:
+      as: page
+      for_each: calendar
+      url: "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm"
+  - read: { as: lines, from: page, format: lines, columns: [{ name: line, type: text, optional: true }] }
+  - call: { as: meetings, from: lines, function: boj_page }
+  - sql:
+      as: ranges
+      sql: >-
+        SELECT 'boj:' || day AS external_id, label,
+          CAST(day AS TIMESTAMP) AS planned_start,
+          CAST(day AS TIMESTAMP) + INTERVAL '1 day' AS planned_end,
+          'central_bank_meeting' AS category,
+          'https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm' AS source_url
+        FROM meetings
+  - write: { from: ranges, time_ranges: {} }
+tests:
+  - name: the decision day of each meeting of the year
+    settings: { markets.calendars: "boj" }
+    given:
+      "https://www.boj.or.jp/en/mopo/mpmsche_minu/index.htm": boj_calendar.html
+    expect:
+      ranges:
+        rows: 2
+        contains:
+          - { external_id: "boj:2026-12-18", planned_start: "2026-12-18T00:00:00", planned_end: "2026-12-19T00:00:00" }

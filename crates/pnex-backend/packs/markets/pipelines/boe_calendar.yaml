@@ -1,0 +1,38 @@
+# Bank of England MPC decisions, read from its dates page: a decision day
+# covers that day, UTC (the announcement is at noon, London time).
+key: boe_calendar
+name: Bank of England MPC calendar
+hosts: [www.bankofengland.co.uk]
+schedule: 24h
+steps:
+  - enumerate:
+      as: calendar
+      cross:
+        # Only when the org lists this calendar in `markets.calendars`.
+        - { as: key, setting: markets.calendars, case: lower, derive: { listed: [["boe", "yes"]] } }
+  - fetch:
+      as: page
+      for_each: calendar
+      url: "https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates"
+  - read: { as: lines, from: page, format: lines, columns: [{ name: line, type: text, optional: true }] }
+  - call: { as: meetings, from: lines, function: boe_page }
+  - sql:
+      as: ranges
+      sql: >-
+        SELECT 'boe:' || day AS external_id, label,
+          CAST(day AS TIMESTAMP) AS planned_start,
+          CAST(day AS TIMESTAMP) + INTERVAL '1 day' AS planned_end,
+          'central_bank_meeting' AS category,
+          'https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates' AS source_url
+        FROM meetings
+  - write: { from: ranges, time_ranges: {} }
+tests:
+  - name: the decision day of each meeting of the year
+    settings: { markets.calendars: "boe" }
+    given:
+      "https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates": boe_calendar.html
+    expect:
+      ranges:
+        rows: 2
+        contains:
+          - { external_id: "boe:2026-12-17", planned_start: "2026-12-17T00:00:00", planned_end: "2026-12-18T00:00:00" }

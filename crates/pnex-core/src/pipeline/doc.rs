@@ -73,6 +73,7 @@ pub enum Step {
     Read(Read),
     Sql(Sql),
     Call(Call),
+    Model(Model),
     Write(Write),
 }
 
@@ -697,6 +698,35 @@ pub struct Call {
     pub function: String,
 }
 
+/// Asks the org's AI provider for the fields of a pack extractor in a text
+/// column (markets-research.md D841): one row per item kept, its values and
+/// quotes as JSON (`values`, `evidence`), the row's other columns kept. A
+/// value whose quote is not in the text is dropped. Runs on the server.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Model {
+    #[serde(rename = "as")]
+    pub as_: String,
+    pub from: String,
+    /// `<name>` of the pack's `extractors`, or `<pack>/<name>`.
+    pub extractor: String,
+    /// Column holding the text (`text` by default).
+    #[serde(default = "text_column")]
+    pub text: String,
+    /// Documents read at most per org and per UTC day (D845); the others
+    /// wait for the next day.
+    #[serde(default = "model_daily_max")]
+    pub daily_max: u32,
+}
+
+fn text_column() -> String {
+    "text".into()
+}
+
+fn model_daily_max() -> u32 {
+    50
+}
+
 /// Where the rows end (D941): exactly one target.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -714,7 +744,9 @@ pub struct Write {
     /// Proposals to validate (D371), never a direct write. Columns:
     /// `type_key`, `key_property`, `key` (the object, found by that
     /// property's value), `title`, `values` and `evidence` (JSON objects);
-    /// a link also `link_type`, `to_type`, `to_property`, `to_key`.
+    /// a link also `link_type`, `to_type`, `to_property`, `to_key`. A row
+    /// with `kind = object_create` proposes a new object instead, linked on
+    /// acceptance when it names a link (D843).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proposals: Option<ProposalsTarget>,
     /// Documents of the org (media), indexed by the document search, each
@@ -856,6 +888,7 @@ impl Step {
             Step::Read(_) => "read",
             Step::Sql(_) => "sql",
             Step::Call(_) => "call",
+            Step::Model(_) => "model",
             Step::Write(_) => "write",
         }
     }
@@ -871,6 +904,7 @@ impl Step {
             Step::Read(s) => &s.as_,
             Step::Sql(s) => &s.as_,
             Step::Call(s) => &s.as_,
+            Step::Model(s) => &s.as_,
             Step::Write(_) => return None,
         })
     }
@@ -886,6 +920,7 @@ impl Step {
             Step::Unpack(s) => vec![&s.from],
             Step::Read(s) => vec![&s.from],
             Step::Call(s) => vec![&s.from],
+            Step::Model(s) => vec![&s.from],
             Step::Write(s) => vec![&s.from],
         }
     }
@@ -895,7 +930,7 @@ impl Step {
     pub fn on_server(&self) -> bool {
         matches!(
             self,
-            Step::Enumerate(_) | Step::Fetch(_) | Step::Browse(_) | Step::Write(_)
+            Step::Enumerate(_) | Step::Fetch(_) | Step::Browse(_) | Step::Model(_) | Step::Write(_)
         )
     }
 }
@@ -1446,6 +1481,14 @@ fn step_violations(
         Step::Call(c) => {
             if c.function.trim().is_empty() || c.function.len() > 255 {
                 bad(format!("{at}.function"), "required");
+            }
+        }
+        Step::Model(m) => {
+            if m.extractor.trim().is_empty() || m.extractor.len() > 255 {
+                bad(format!("{at}.extractor"), "required");
+            }
+            if !valid_name(&m.text) {
+                bad(format!("{at}.text"), "invalid");
             }
         }
         Step::Write(w) => {

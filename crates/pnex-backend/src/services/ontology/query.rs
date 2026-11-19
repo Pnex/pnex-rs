@@ -83,9 +83,10 @@ fn objects_as_of(at: &str, known: &str) -> String {
 }
 
 /// A link as known at `at` (D913): its last recorded state then decides.
-fn known_link(alias: &str, at: &str) -> String {
+/// The link's last recorded state at `at` (D913), valid at `valid` (D912).
+fn known_link(alias: &str, at: &str, valid: &str) -> String {
     format!(
-        "(SELECT v.valid_from <= {at} AND (v.valid_to IS NULL OR v.valid_to > {at}) AND NOT v.erased \
+        "(SELECT v.valid_from <= {valid} AND (v.valid_to IS NULL OR v.valid_to > {valid}) AND NOT v.erased \
           FROM link_versions v WHERE v.edge_id = {alias}.id AND v.at <= {at} \
           ORDER BY v.at DESC LIMIT 1) IS TRUE"
     )
@@ -296,6 +297,10 @@ pub(super) async fn plan(
     let at_ts: DateTimeWithTimeZone =
         parse_instant("as_of", q.as_of.as_deref())?.unwrap_or_else(|| chrono::Utc::now().into());
     let at = sql.bind(at_ts);
+    let valid = match parse_instant("valid_at", q.valid_at.as_deref())? {
+        Some(t) => sql.bind(t),
+        None => at.clone(),
+    };
     let archived = q.include_archived && q.as_of.is_none();
     let mut start = vec![format!("o.org_id = {org}"), object_validity(&at, archived)];
     if q.skip_erased {
@@ -415,8 +420,8 @@ pub(super) async fn plan(
                JOIN {source} o ON o.id = e.{to} AND {ov}{last})",
             n = i + 1,
             ev = match q.as_of.is_some() {
-                true => known_link("e", &at),
-                false => validity("e", &at, false),
+                true => known_link("e", &at, &valid),
+                false => validity("e", &valid, false),
             },
             ov = object_validity(&at, archived),
             last = if i + 1 == q.traverse.len() {

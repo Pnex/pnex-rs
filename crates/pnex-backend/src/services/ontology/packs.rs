@@ -1369,6 +1369,7 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
         imports: Vec::new(),
         functions: Vec::new(),
         pipeline_functions: Vec::new(),
+        extractors: Vec::new(),
         queries: Vec::new(),
         flows: Vec::new(),
         settings: Vec::new(),
@@ -1408,6 +1409,10 @@ mod tests {
             for q in &p.queries {
                 let v = q.violations();
                 assert!(v.is_empty(), "{}/{}: {v:?}", p.key, q.key);
+            }
+            for e in &p.extractors {
+                let v = e.violations();
+                assert!(v.is_empty(), "{}/{}: {v:?}", p.key, e.key);
             }
         }
         // A key belongs to one pack: two packs defining it cannot both install.

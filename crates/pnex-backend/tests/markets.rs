@@ -2406,6 +2406,39 @@ async fn mt5_terminals_push_into_tables() {
         }
         let (st, over) = api.call("POST", "/api/v1/mt5/terminals", Some(json!({ "name": "one more" }))).await;
         assert_eq!((st, over["error"].as_str()), (409, Some("mt5-terminals-limit")), "{over}");
+
+        // R2: reading needs metatrader:read, changing needs metatrader:write.
+        let key_with = |perms: Vec<&'static str>, name: &'static str| {
+            let api = &api;
+            async move {
+                let (_, sa) = api.call("POST", "/api/v1/iam/service-accounts", Some(json!({ "name": name }))).await;
+                let (_, role) = api
+                    .call("POST", "/api/v1/iam/roles", Some(json!({
+                        "key": name, "name": name, "statements": [{ "effect": "allow", "permissions": perms }]
+                    })))
+                    .await;
+                api.call("POST", "/api/v1/iam/assignments", Some(json!({ "service_account_id": sa["id"], "role_id": role["id"] }))).await;
+                let exp = (chrono::Utc::now() + chrono::Duration::days(1)).to_rfc3339();
+                let (_, key) = api
+                    .call("POST", &format!("/api/v1/iam/service-accounts/{}/keys", sa["id"].as_str().unwrap()), Some(json!({ "expires_at": exp })))
+                    .await;
+                key["secret"].as_str().unwrap().to_string()
+            }
+        };
+        let none = key_with(vec!["datasets:read"], "no-mt5").await;
+        let res = server.get("/api/v1/mt5/terminals").add_header("Authorization", format!("Bearer {none}")).await;
+        assert_eq!(res.status_code().as_u16(), 403, "{}", res.text());
+        assert!(res.text().contains("metatrader:read"), "{}", res.text());
+        let reader = key_with(vec!["metatrader:read"], "mt5-reader").await;
+        let res = server.get("/api/v1/mt5/terminals").add_header("Authorization", format!("Bearer {reader}")).await;
+        assert_eq!(res.status_code().as_u16(), 200, "{}", res.text());
+        let res = server
+            .post("/api/v1/mt5/terminals")
+            .add_header("Authorization", format!("Bearer {reader}"))
+            .json(&json!({ "name": "not allowed" }))
+            .await;
+        assert_eq!(res.status_code().as_u16(), 403, "{}", res.text());
+        assert!(res.text().contains("metatrader:write"), "{}", res.text());
     })
     .await;
 }
@@ -3507,6 +3540,18 @@ async fn point_in_time_reads_never_show_a_canary() {
         let exposures: Vec<&Value> = l["results"].as_array().unwrap().iter().filter(|x| x["link_type"] == "exposed_to").collect();
         assert_eq!(exposures.len(), 1, "{l}");
         assert!(l.to_string().contains("CANARY land"), "{l}");
+        // Same reading through a traversal and a hierarchy (valid_at alone).
+        let (_, t) = api
+            .call(
+                "POST",
+                "/api/v1/ontology/query",
+                Some(json!({ "ids": [gold_id], "traverse": [{ "link_type": "exposed_to", "direction": "in" }], "valid_at": at })),
+            )
+            .await;
+        assert!(t.to_string().contains("CANARY land"), "{t}");
+        let (st, h) = api.call("GET", &format!("/api/v1/ontology/objects/{holding}/hierarchy?key=group&valid_at={}", enc(&at)), None).await;
+        assert_eq!(st, 200, "{h}");
+        assert!(h.to_string().contains("CANARY Co"), "today's knowledge holds the late link: {h}");
 
         // Two minutes later, every canary is there.
         let later = (t0 + chrono::Duration::minutes(2)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -3679,6 +3724,42 @@ async fn price_moves_get_candidate_causal_chains() {
             .await;
         assert_eq!(st, 200, "{r}");
         assert_eq!(chains("2026-01-07T00:00:00Z").await["count"], 1, "a closing recorded later is not seen");
+        // A measured disruption: transits of a strait fall 75 % below their
+        // 7-day mean, known 5 h before the move, the series exposing gold.
+        let strait = create(json!({
+            "type_key": "macro_series", "title": "Strait transits",
+            "properties": { "code": "CHOKEPOINT6", "disruption_drop_pct": 30 }
+        }))
+        .await;
+        for d in 0..9 {
+            let day = chrono::NaiveDate::from_ymd_opt(2025, 12, 29).unwrap() + chrono::Duration::days(d);
+            let (value, known) = if d == 8 { (10.0, "2026-01-06T06:00:00Z".to_string()) } else { (40.0, format!("{day}T23:00:00Z")) };
+            ctx.db
+                .execute_unprepared(&format!(
+                    "INSERT INTO market_observations (org_id, object_id, metric, period_start, period_end, known_at, value, source_ref) \
+                     VALUES ({org}, '{strait}', 'n_tanker', '{day}', '{day}', '{known}', {value}, 'test')"
+                ))
+                .await
+                .unwrap();
+        }
+        let (st, r) = api
+            .call("POST", "/api/v1/ontology/links", Some(json!({
+                "link_type": "exposed_to", "source_id": strait, "target_id": gold,
+                "valid_from": "2025-01-01T00:00:00Z"
+            })))
+            .await;
+        assert_eq!(st, 201, "{r}");
+        ctx.db
+            .execute_unprepared(&format!("UPDATE link_versions SET at = '2025-12-01T00:00:00Z' WHERE edge_id = {}", r["id"]))
+            .await
+            .unwrap();
+        let r = chains("2026-01-07T00:00:00Z").await;
+        let disruption = r["results"].as_array().unwrap().iter().find(|c| c["hops"][0]["cause"]["kind"] == "supply.disruption");
+        let disruption = disruption.unwrap_or_else(|| panic!("a measured disruption is a cause: {r}"));
+        assert_eq!(disruption["hops"][0]["cause"]["on"], strait.as_str());
+        assert_eq!(disruption["hops"][0]["gap"], 5 * 3_600);
+        // Before the drop was known: none.
+        assert!(!chains("2026-01-06T05:00:00Z").await.to_string().contains("supply.disruption"));
         // A threshold above the move: no effect.
         let (_, obj) = api.call("GET", &format!("/api/v1/ontology/objects/{gold}"), None).await;
         let (st, r) = api
