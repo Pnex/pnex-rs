@@ -167,8 +167,6 @@ pub mod fold;
 /// Navigation rules shipped with PneX, replacing mission types (D780, U4).
 pub mod default_rules;
 
-/// A person entered by a sales rep matched with a network profile (D788).
-
 /// Mailboxes as sources, messages, the `mail_received` trigger (mail.md).
 pub mod mail;
 
