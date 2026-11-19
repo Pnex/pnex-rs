@@ -1866,6 +1866,7 @@ async fn a_rule_needing_a_session_goes_to_an_agent_and_a_blocked_run_moves_over(
             user_id: Some(alice_id),
             engine: pnex_core::site_recipe::RunEngine::ServerBrowser,
             purpose: None,
+            flow: None,
         };
         let blocked = recipes::insert_run(&env.db, org, &new).await.unwrap();
         let id = uuid::Uuid::parse_str(&blocked.id).unwrap();
