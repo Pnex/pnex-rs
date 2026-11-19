@@ -28,7 +28,7 @@ test.describe('mt5 terminals', { tag: ['@markets', '@i18n'] }, () => {
     await page.getByRole('button', { name: app.t('mt5-add') }).first().click();
     const name = `${prefix} gold demo`;
     await page.getByLabel(app.t('mt5-field-name')).fill(name);
-    await page.getByRole('button', { name: app.t('mt5-create') }).click();
+    await page.getByRole('button', { name: app.t('mt5-create'), exact: true }).click();
     await expect(page).toHaveURL(/\/mt5-terminals\/[0-9a-f-]{36}/);
     await expect(page.getByRole('heading', { name: app.t('mt5-connect-title') })).toBeVisible();
     await expect(page.getByText(app.t('mt5-catalogue-empty'))).toBeVisible();

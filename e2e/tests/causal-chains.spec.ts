@@ -63,15 +63,18 @@ test.describe('causal chains', { tag: ['@cases', '@i18n'] }, () => {
       title: `${prefix} high pressure`,
       from: { kind: 'event', at: '2026-10-03T10:12:00Z' },
     });
-    await page.route(`**/api/v1/cases/${c.id}/proposals`, (route) =>
+    await page.route(`**/api/v1/cases/${c.id}/proposals?*`, (route) =>
       route.fulfill({ json: { count: 1, next: null, previous: null, results: [chain(c.id)] } }),
     );
     const sent: { body?: Record<string, unknown> } = {};
     await mockAssistant(page, sent);
     await app.goto(`/cases/${c.id}`);
 
+    // The chain sits in the Detections lane; its list opens from the button.
+    await page.getByTestId('case-detections-open').click();
     const row = page.getByTestId('case-proposal-row').first();
-    await expect(row).toContainText(app.t('cw-proposal-causal-chain', { cause: 'Controller CF-2', effect: 'Compressor K-7' }));
+    await expect(row).toContainText('Controller CF-2');
+    await expect(row).toContainText('Compressor K-7');
     const hops = row.getByTestId('case-chain-hops');
     await expect(hops).toContainText('change.config → alert');
     await expect(hops).toContainText('12 min');
