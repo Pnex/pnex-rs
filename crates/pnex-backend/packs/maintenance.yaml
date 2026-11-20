@@ -198,7 +198,7 @@ types:
   - key: equipment_model
     name: Equipment model
     names: {fr: "Modèle d'appareil"}
-    icon: box
+    icon: cube
     may_be_contained_in: [folder]
     properties:
       - { key: code, name: Model code, names: {fr: "Code modèle"}, kind: text, max_len: 64, required: true, unique: true }
