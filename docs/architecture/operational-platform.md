@@ -434,7 +434,7 @@ noyau.
 | D934 (`pipelines.md`) | « Tout est un pipeline », décisions comprises | Un seul format pour l'**ingestion** ; l'organisation de l'ontologie est en flow ou à la main (D998) |
 | D996 (`pipelines.md`) | Score et rattachement dans le pipeline de collecte | Collecte en pipeline, score et rattachement en flow (D998) |
 | D438, D512 | Client générique ; pas de code en application | SDK typés, code sur origine isolée (D560) |
-| `hub.md` §3 | Gel, pas de kits payants | Dégel et kits payants à OP12 (D562) |
+| `hub.md` §1 | Gel, pas de kits payants | Dégel et kits payants à OP12 (D562) |
 | `agents.md` §3.18 | Pas de fleet manager | Vrai pour la fabric ; centre de livraison à part (D562) |
 
 **Inchangé** : R1–R23, frontière org puis plateforme, briques permissives, pas de reconnaissance
