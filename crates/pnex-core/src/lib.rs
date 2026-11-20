@@ -161,7 +161,7 @@ pub mod media_review;
 pub mod voice_id;
 pub mod voice_recognition;
 
-/// Browser agents (extension-collector.md D254–D269): pairing, missions,
+/// Browser agents (browser-agents.md D254–D269): pairing, missions,
 /// `/ws/extension` protocol.
 pub mod browser_agent;
 

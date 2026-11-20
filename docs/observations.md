@@ -1834,8 +1834,8 @@ décisions ci-dessous.
   TikTok (`item_list`) face aux fixtures.
 - Sous-titres YouTube lisibles depuis l'extension (json3).
 - Son présent dans un enregistrement d'une vidéo coupée (`muted`).
-- Onglets en arrière-plan par plateforme (tableau §16.1 de
-  `extension-collector.md`, régler `needs_foreground`).
+- Onglets en arrière-plan par plateforme (tableau §7.1 de
+  `browser-agents.md`, régler `needs_foreground`).
 - TikTok : téléchargement direct de `playAddr` ou bascule en
   enregistrement ; mode dédié sur un vrai PC.
 - Firefox : chargement temporaire et lien.

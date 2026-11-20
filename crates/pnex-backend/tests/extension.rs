@@ -1,4 +1,4 @@
-//! Browser agents (extension-collector.md D254–D269, lot L0): signed
+//! Browser agents (browser-agents.md D254–D269, lot L0): signed
 //! pairing, credential rotation, signed single-use tickets, the Noise link
 //! `/ws/extension`, the lease of a target (one agent per target), value
 //! reports into telemetry, mission states, viewer read-only (R2) and org

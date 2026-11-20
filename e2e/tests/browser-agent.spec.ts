@@ -1,4 +1,4 @@
-// Browser agent (extension-collector.md L0–L1): the extension zip served by
+// Browser agent (browser-agents.md L0–L1): the extension zip served by
 // the server is loaded in a real Chromium, paired with the test org, then
 // runs two missions on a local page: a value read into a series, a page
 // kept as a document. A page on an origin the agent was not allowed stays

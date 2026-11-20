@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the PNeX browser agent as an unpacked extension into $1 (the
-# server zips it on download, D-distribution in extension-collector.md).
+# server zips it on download, D270 in browser-agents.md).
 # wasm-bindgen must match the crate version pinned in Cargo.lock: taken
 # from PATH, else from dx's tool cache (dx downloads it for the frontend),
 # else built once.

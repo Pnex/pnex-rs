@@ -1442,7 +1442,7 @@ edgerefs-scan-prefix = Préfixe LAN (vide = auto)
 edgerefs-scan-none = Aucun serveur PNeX trouvé sur la plage sondée.
 edgerefs-scan-register = Enregistrer
 
-## Agents navigateur (extension-collector.md D254–D270)
+## Agents navigateur (browser-agents.md D254–D270)
 browser-agents-title = Agents navigateur
 browser-agents-subtitle = Extensions de navigateur qui exécutent vos missions de collecte dans leurs propres onglets, à un rythme humain. Un agent navigateur par ordinateur.
 browser-agents-tab-agents = Agents navigateur

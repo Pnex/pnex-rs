@@ -60,7 +60,7 @@ pub enum Format {
     M4a,
     /// MP4 / QuickTime video (Vision Lab: frames of a video).
     Mp4,
-    /// WebM (Matroska), recorded by a browser (lives, extension-collector.md).
+    /// WebM (Matroska), recorded by a browser (lives, browser-agents.md).
     Webm,
     /// Binary glTF 2.0: 3D model of an object's gallery (D231).
     Glb,

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 /// firmware, pins or OTA (daemon on a computer).
 pub const EDGE_AGENT_PREDEF: &str = "edge_agent";
 
-/// Predefined device name of a browser agent (extension-collector.md
+/// Predefined device name of a browser agent (browser-agents.md
 /// D255): a browser extension paired from its options page, never created
 /// from the device wizard.
 pub const BROWSER_AGENT_PREDEF: &str = "browser_agent";

@@ -5,7 +5,7 @@
 //!
 //! - `pnex` runs come from the batch transcription of a version (D211).
 //! - `platform` runs are the subtitles a platform gave with a post
-//!   (browser agents, `extension-collector.md`): no speakers, timed per
+//!   (browser agents, `browser-agents.md`): no speakers, timed per
 //!   cue, stored by [`store_platform_run`], possibly before any video file.
 //!
 //! The org always comes from the caller (R1); subtitle text is untrusted

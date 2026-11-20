@@ -3,7 +3,7 @@ name = "pnex-extension"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "PNeX browser agent (extension-collector.md D254–D269): Chrome/Firefox extension logic compiled to wasm (sign-in, pairing, Noise link, missions)"
+description = "PNeX browser agent (browser-agents.md D254–D269): Chrome/Firefox extension logic compiled to wasm (sign-in, pairing, Noise link, missions)"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

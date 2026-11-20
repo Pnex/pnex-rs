@@ -14,7 +14,7 @@
 > `pnex-business/lucas/`).
 
 Liens : `pipelines.md` (D317–D322, open data France Compétences dans un
-flow), `extension-collector.md` (D254–D284, amendés par D307–D310),
+flow), `browser-agents.md` (D254–D284, amendés par D307–D310),
 `ontology.md` (D176–D191, D190 packs), `iam.md` (D285–D299, comptes de
 service), `notifications.md` (D49–D68), `flow-engine.md`, `media.md`
 (versions), `doc-search.md`, `pages.md` (PDF), `api.md`,

@@ -20,7 +20,7 @@ types système, plages D182, provenance D184, rapports D187), `viz-bases.md`
 dashboard), `studio.md` (S3 versioning, S5 lien public), `security.md` §9
 (D113 `SecretRef`, D116/D119 LLM d'org), `ai-assistant.md` (D142–D145,
 règle d'extension §9.3), `security.md` (R1–R20, grille §6),
-`runtime.md` §3.5 (migrations, PostgreSQL seul), `extension-collector.md` (C1b).
+`runtime.md` §3.5 (migrations, PostgreSQL seul), `browser-agents.md` (C1b).
 
 > **Numérotation** : PRD rédigé avec les numéros D148–D164 ; renuméroté D159–D175 à
 > l'intégration (D148–D158 déjà pris par `security.md` §8).
@@ -844,7 +844,7 @@ Dépendances :
 - Apparitions des personnes dans les flux (présent, parle, mentionné ;
   heure de diffusion live ou différé) : `cases.md` K17–K18.
 - Empreintes de jingles (recalage précis des plages sans transcription).
-- Extension navigateur (P2.1) : v2 proposée (`extension-collector.md`
+- Extension navigateur (P2.1) : v2 proposée (`browser-agents.md`
   D254–D269) — lives captés en temps réel comme flux `browser`, vidéos
   de comptes déclarés ; jamais de contenu protégé (DRM), YouTube VOD
   exclu tant que la question Q1 n'est pas tranchée.
@@ -889,7 +889,7 @@ fournie par l'utilisateur, qui reste responsable de ses sources.
   préréglage de téléchargeur YouTube ou de déverrouillage de flux à
   DRM) : fournir un tel moyen est en soi un délit (CPI L335-3-1 s.,
   DMCA), indépendamment de l'usage.
-  **Mise à jour 2026-10-18 (`extension-collector.md` D282)** : sur
+  **Mise à jour 2026-10-18 (`browser-agents.md` D282)** : sur
   décision de l'utilisateur, les agents navigateur peuvent enregistrer
   les vidéos des comptes qu'il déclare, YouTube compris, à partir de ce
   que le navigateur lit déjà ; jamais de contenu protégé (DRM) ni de

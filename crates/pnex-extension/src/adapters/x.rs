@@ -1,4 +1,4 @@
-//! X adapter (extension-collector.md §8): reads the posts out of the JSON
+//! X adapter (browser-agents.md §3.7): reads the posts out of the JSON
 //! the X web app already receives (`UserTweets`, `UserMedia`…), relayed by
 //! the page hook. No DOM scraping, no call of its own.
 //!

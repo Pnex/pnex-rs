@@ -1206,7 +1206,7 @@ pub const ANNOTATION_LAYER_INVALID: &str = "annotation-layer-invalid";
 /// Fluid mixture violations.
 pub const MIXTURE_INVALID: &str = "mixture-invalid";
 
-// ── Browser agents (extension-collector.md D254–D269) ───────────────────
+// ── Browser agents (browser-agents.md D254–D269) ───────────────────
 
 /// Browser agent not found (or not in the org).
 pub const EXTENSION_AGENT_NOT_FOUND: &str = "extension-agent-not-found";

@@ -1,4 +1,4 @@
-//! Browser agents (extension-collector.md D254–D269): pairing, tickets,
+//! Browser agents (browser-agents.md D254–D269): pairing, tickets,
 //! missions and their leases. Shared by the HTTP controller and the
 //! `/ws/extension` link.
 //!

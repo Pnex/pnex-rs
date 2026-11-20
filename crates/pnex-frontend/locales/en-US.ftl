@@ -1443,7 +1443,7 @@ edgerefs-scan-prefix = LAN prefix (empty = auto)
 edgerefs-scan-none = No PNeX server found on the scanned range.
 edgerefs-scan-register = Register
 
-## Browser agents (extension-collector.md D254–D270)
+## Browser agents (browser-agents.md D254–D270)
 browser-agents-title = Browser agents
 browser-agents-subtitle = Browser extensions that run your collection missions in their own tabs, at a human pace. One browser agent per computer.
 browser-agents-tab-agents = Browser agents

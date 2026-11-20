@@ -1,4 +1,4 @@
-//! Browser agents API (extension-collector.md D254–D269).
+//! Browser agents API (browser-agents.md D254–D269).
 //!
 //! - management plane (user bearer + org): pairing, agents, missions. Org
 //!   from the principal (R1), `can_write` at the head of every write (R2);

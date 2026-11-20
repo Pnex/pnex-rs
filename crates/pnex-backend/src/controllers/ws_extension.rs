@@ -1,5 +1,5 @@
 //! `GET /ws/extension?ticket=` — link of a browser agent
-//! (extension-collector.md D262).
+//! (browser-agents.md D262).
 //!
 //! - admission: one-time ticket from `POST /api/v1/extension/ws-ticket`
 //!   (4001, obtained over HTTPS with the agent's token), then the Noise

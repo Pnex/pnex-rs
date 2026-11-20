@@ -312,7 +312,7 @@ Chaque concept a un seul nom dans chaque langue, un seul composant et une seule 
 | Os d'un modèle 3D qu'on fait tourner | Articulation | Joint | pas « os », pas « bone » |
 | Média produit par un fournisseur de génération (D235) | Généré | Generated | — |
 | Extension de navigateur appairée qui exécute des missions, une par ordinateur (D255) | Agent navigateur | Browser agent | pas « collecteur », pas « extension » seule (= le logiciel à installer) |
-| Agent navigateur qui exécute les missions de tous les membres sans le leur, posé par un admin (extension-collector.md D550) ; sinon il est personnel | Agent commun | Common agent | pas « partagé » (= mode d'exécution, D269) |
+| Agent navigateur qui exécute les missions de tous les membres sans le leur, posé par un admin (browser-agents.md D550) ; sinon il est personnel | Agent commun | Common agent | pas « partagé » (= mode d'exécution, D269) |
 | Ce qu'un agent navigateur exécute : une page, un compte, un live (D256) | Mission | Mission | pas « règle », pas « tâche » |
 | Ensemble nommé de permissions, attribuable (iam.md D287) | Rôle | Role | le rôle d'un acteur dans un dossier |
 | Rôle donné à un membre ou à une équipe (D288) | Attribution | Assignment | pas « affectation », pas un partage |

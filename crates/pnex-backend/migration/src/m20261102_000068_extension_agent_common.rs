@@ -1,4 +1,4 @@
-//! Personal or common browser agent (extension-collector.md D550): an agent
+//! Personal or common browser agent (browser-agents.md D550): an agent
 //! runs the missions of the member who paired it (`paired_by`) unless an
 //! admin made it common.
 

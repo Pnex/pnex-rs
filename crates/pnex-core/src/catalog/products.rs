@@ -99,7 +99,7 @@ pub static ALL: &[CatalogProduct] = &[
         description: "Rust agent running on a computer (Linux, Windows, Raspberry Pi): any script pushes free-form values to a local HTTP API; the agent buffers them on disk and forwards them securely to PNeX.",
         description_i18n: "device-predef-edge-agent-desc",
     },
-    // Browser agent (extension-collector.md D255): a Chrome/Firefox
+    // Browser agent (browser-agents.md D255): a Chrome/Firefox
     // extension paired from the browser, one per computer.
     CatalogProduct {
         name: crate::devices::BROWSER_AGENT_PREDEF,

@@ -202,7 +202,7 @@ pub enum Route {
         #[route("/edges/refs")]
         EdgeRefs {},
 
-        // Browser agents and their missions (extension-collector.md D255).
+        // Browser agents and their missions (browser-agents.md D255).
         #[route("/edges/browser-agents")]
         BrowserAgents {},
 

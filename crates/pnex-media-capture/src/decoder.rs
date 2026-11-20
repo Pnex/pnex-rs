@@ -70,7 +70,7 @@ const MP4: InputFormat = InputFormat {
 };
 
 /// WebM (Matroska): what a browser's MediaRecorder writes (lives captured by
-/// the browser agents, extension-collector.md).
+/// the browser agents, browser-agents.md).
 const WEBM: InputFormat = InputFormat {
     demuxer: "matroska",
     decoders: "opus,libopus,vorbis",

@@ -30,7 +30,7 @@ pub mod edge_refs;
 pub mod environments;
 /// JSON events stored as OpenObserve logs (D84).
 pub mod events;
-/// Browser agents API (extension-collector.md D254–D269).
+/// Browser agents API (browser-agents.md D254–D269).
 pub mod extension;
 pub mod firmware_projects;
 pub mod flow_cluster;

@@ -1,4 +1,4 @@
-//! Page `/edges/browser-agents` (extension-collector.md D254–D270): the
+//! Page `/edges/browser-agents` (browser-agents.md D254–D270): the
 //! browser agents of the org (paired from the extension, one per computer)
 //! and their missions.
 //!

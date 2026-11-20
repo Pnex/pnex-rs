@@ -1,4 +1,4 @@
-//! Browser agents (extension-collector.md D254–D269): the credentials of
+//! Browser agents (browser-agents.md D254–D269): the credentials of
 //! an extension install (kept apart from `device_tokens`, so no device link
 //! accepts them) and the missions of the org.
 

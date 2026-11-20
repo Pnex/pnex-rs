@@ -1,4 +1,4 @@
-//! Video registry of the browser agents (extension-collector.md D259): one
+//! Video registry of the browser agents (browser-agents.md D259): one
 //! row per post an agent saw, unique per (org, platform, post), so no agent
 //! downloads the same video twice.
 

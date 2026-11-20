@@ -1,4 +1,4 @@
-//! Browser agents (extension-collector.md v2, D254–D269): pairing,
+//! Browser agents (browser-agents.md, D254–D269): pairing,
 //! missions and the `/ws/extension` protocol, shared by the backend and the
 //! wasm extension. Pure, wasm-safe.
 //!
@@ -1631,9 +1631,9 @@ pub struct CaptionsUpload {
     pub cues: Vec<CaptionCue>,
 }
 
-/// Most browser agents an org may pair (extension-collector.md §13).
+/// Most browser agents an org may pair (browser-agents.md §4).
 pub const AGENTS_MAX: i64 = 20;
-/// Most missions an org may hold (extension-collector.md §13).
+/// Most missions an org may hold (browser-agents.md §4).
 pub const MISSIONS_MAX: i64 = 200;
 /// Most parts of one post's video (16 × 30 min, O92).
 pub const VIDEO_PARTS_MAX: u32 = 16;

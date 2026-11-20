@@ -1,4 +1,4 @@
-//! Browser agents API (extension-collector.md D254–D270):
+//! Browser agents API (browser-agents.md D254–D270):
 //! `/api/v1/extension/{agents,missions,download}`.
 
 use pnex_core::browser_agent::{

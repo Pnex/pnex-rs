@@ -1,4 +1,4 @@
-//! Progress of a browser agent mission (extension-collector.md D256), written
+//! Progress of a browser agent mission (browser-agents.md D256), written
 //! by the server only: the document of a `collect_page` mission and the
 //! digest of its last text (an unchanged page adds no version).
 

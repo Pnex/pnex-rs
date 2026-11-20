@@ -450,7 +450,7 @@ modèle eboot 8266, stratégie TLS/CA, checklists matérielles) :
      sortie = message standard du moteur → séries O2 ; zéro table, zéro UI
      dédiée (crate `pnex-node-http-fetch` + kind `http_fetch`).
    - **C1b — extension navigateur « type device »** : **spécification
-     écrite** ✅ (2026-09-15) — `docs/architecture/extension-collector.md`
+     écrite** ✅ (2026-09-15) — `docs/architecture/browser-agents.md`
      (10 décisions tranchées : WS device unique, crypto WASM pnex-core,
      entité `extension_rules`, variant `ServerMsg::RulesConfig`, OIDC pour
      le plan gestion / device token pour le plan données, connect-on-wake,
@@ -458,7 +458,7 @@ modèle eboot 8266, stratégie TLS/CA, checklists matérielles) :
      spec.
 5. **C2** — agent local (premier client Rust) — **livré** 2026-09-30, cf. `edge-agent.md` (D95–D99).
 6. **C3** — extension Chrome/Firefox : implémentation de la spec C1b
-   (`extension-collector.md`), MV3 + consentement par tâche. **v2
+   (`browser-agents.md`), MV3 + consentement par tâche. **v2
    proposée le 2026-10-18** (D254–D265) : agents de veille, transport
    ticket device + upload (le `/ws/device` mTLS est hors de portée d'un
    navigateur).

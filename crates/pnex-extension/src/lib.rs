@@ -1,4 +1,4 @@
-//! PNeX browser agent (extension-collector.md D254–D269), compiled to wasm
+//! PNeX browser agent (browser-agents.md D254–D269), compiled to wasm
 //! and loaded by the extension's service worker and options page.
 //!
 //! - options page: [`login`] (PKCE through the server's native sign-in

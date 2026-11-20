@@ -5,7 +5,7 @@
 > habilité, le faire valider, puis le crawler chaque semaine pour la
 > conformité. Suit `pipelines.md` (D344–D358). Liens : `pipelines.md`
 > (D317–D322), `partner-watch.md` (D301–D316, D307 crawl, D312 nœuds
-> ontologie), `extension-collector.md` (D254), `site-recipes.md`
+> ontologie), `browser-agents.md` (D254), `site-recipes.md`
 > (D323–D328), `geo-layers.md` (fournisseurs géo), `security.md` §9 (D110–D118),
 > `security.md` (R1, R2, R4, R8, R16).
 

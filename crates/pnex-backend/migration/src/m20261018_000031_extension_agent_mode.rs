@@ -1,4 +1,4 @@
-//! Mode of a browser agent (extension-collector.md D269): `shared` runs
+//! Mode of a browser agent (browser-agents.md D269): `shared` runs
 //! every platform but the exclusive ones (TikTok pauses in a hidden tab),
 //! `dedicated:<platform>` runs that platform only.
 

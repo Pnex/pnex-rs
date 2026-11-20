@@ -189,7 +189,7 @@ seule.
   consultables.
 - Une passe porte une **origine** : `pnex` (ASR + diarisation de PNeX)
   ou `platform` (sous-titres fournis par la plateforme d'où vient le
-  média, `extension-collector.md` D267). Une passe `platform` :
+  média, `browser-agents.md` D267). Une passe `platform` :
   - n'a ni diarisation ni `S#` : pas de couloir Locuteurs, « Réidentifier
     les voix » grisé avec la raison (« retranscrire d'abord ») ;
   - est horodatée par sous-titre, pas au mot : la règle du milieu (D272)
@@ -230,10 +230,10 @@ seule.
   Il dit **qui a publié** le contenu, jamais qui parle dedans : un compte
   qui reprend l'extrait d'une émission n'est pas un intervenant. Posé par
   l'agent navigateur quand la mission suit un compte rattaché à un objet
-  (`extension-collector.md`), ou à la main. `sourced_by` et `about` ne
+  (`browser-agents.md`), ou à la main. `sourced_by` et `about` ne
   conviennent pas : les deux partent d'une `claim`.
 
-## 5bis. Articulation avec les agents navigateur (`extension-collector.md`, D254–D270)
+## 5bis. Articulation avec les agents navigateur (`browser-agents.md`, D254–D270)
 
 Accord du 2026-10-18 avec la session des agents navigateur :
 
