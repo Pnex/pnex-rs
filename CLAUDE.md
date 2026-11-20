@@ -147,32 +147,12 @@ Cause réelle, 5ᵉ fois : un build Rust lancé depuis un terminal vit dans le c
 - **Jamais `dx fmt` à la main** (bugs de recollage : commentaires déplacés/dupliqués, tokens perdus, non-convergence ; `--check` réécrit les fichiers). Détail : `docs/architecture/design-system.md` §9.
 - Fichier refusé par `task fmt` → réécrire la construction fautive (liste dans `design-system.md` §9 : `{match … => rsx!{}}` en bloc, expression multi-ligne en attribut, handler `let … else { return; };` sur une ligne, `with_mut` multi-ligne…). Ne jamais contourner la garde.
 
-## Passe STE sur `docs/` (en cours depuis 2026-11-20)
+## Organisation de `docs/` (passe STE terminée le 2026-11-20)
 
-- Boucle `/loop` en auto-compaction : **un doc cible par itération** (une fusion compte pour une itération), au gabarit ci-dessus. Puis un commit local `docs(<scope>): rewrite <doc> in STE with diagrams`, chemins explicites. Pas de push : Shan relit et pousse.
-- Fait = `git log --oneline --grep 'in STE with diagrams'`. Carte cible validée par Shan (104 docs → environ 45), à traiter dans cet ordre :
-
-| Doc cible (`docs/architecture/`) | Fusionne |
-|---|---|
-| `operational-platform.md` | (seul) |
-| `ontology.md`, `flow-engine.md`, `iam.md`, `governance.md` | (seuls) |
-| `api.md` | `api-contract`, `mcp`, `cli` |
-| `security.md` | + `security-tiers`, `secrets` |
-| `pipelines.md` | `pipeline-engine`, `data-pipelines`, `ingestion`, `connectors`, `watch` |
-| `runtime.md` | `features`, `migrations`, `container-images`, `horizontal-scaling`, `postgres-19`, `system-admin` |
-| `design-system.md` | + `editor-shell`, `mobile-ui`, `rsx-fmt` |
-| `agents.md` | `autonomous-agents`, `agent-environments`, `agent-environments-recette`, `agent-unification`, `validation-gate`, `site-recipes`, `worker-fabric` |
-| `browser-agents.md` | `extension-collector` |
-| `cases.md` | + `cases-workspace`, `cases-money`, `cases-graph-sigma` |
-| `media.md` | + `media-ingest`, `media-import-pipeline`, `media-review`, `media-asr-bench`, `voice-id`, `call-recording` |
-| `vision.md` | `camera-video`, `ml-vision`, `annotations`, `media-vision-studio`, `media-vision-studio-concepts` |
-| `edge.md` | `edge-model`, `edge-agent`, `m2m-resilient`, `tls-edge`, `ota` |
-| `firmware.md` | `brick0`, `firmware-build`, `custom-firmware`, `pin-selftest`, `control-cards` |
-| `viz.md` | `viz-bases`, `studio`, `home-dashboards`, `surfaces-controls`, `object-aggregates` |
-| `crm.md` | + `account-mapping`, `sales-dashboards` |
-| `partners.md` | `partner-watch`, `network-check` |
-| réécrits seuls, ordre alphabétique | `ai-assistant`, `analysis`, `app-builder`, `assisted-creation`, `discourse-analysis`, `doc-search`, `due-diligence`, `external-apps`, `geo-layers`, `hub`, `labor-market`, `legal-research`, `mail`, `markets-research`, `notifications`, `pages`, `parts-docs`, `proposals`, `roadmap`, `software-delivery`, `use-cases`, `web-presence` |
-| `docs/journal/` (déplacés, résumé + diagrammes seulement : on ne réécrit pas un constat daté) | `audit-2026-11-06`, `test-grandeur-nature-2026-11-06`, `observations`, `inventory`, `bench/` |
+- `docs/architecture/` : 42 docs de domaine, tous au gabarit STE ci-dessus. Un sujet = un doc. Un nouveau sujet va d'abord dans le doc de son domaine ; un nouveau doc seulement pour un domaine nouveau.
+- `docs/journal/` : constats datés (audits, tests grandeur nature, observations, inventaire de migration D1–D72, benchmarks). On ne les réécrit pas ; on ajoute.
+- `roadmap.md` ne dit que ce qui vient ensuite : une ligne par domaine, renvoi au « Reste à faire » du doc qui le porte.
+- Retouche d'un doc : il reste à l'état actuel (le périmé se supprime, git le garde) ; les renvois `§n` cités par le code ou d'autres docs se mettent à jour dans le même commit.
 
 ## graphify
 
