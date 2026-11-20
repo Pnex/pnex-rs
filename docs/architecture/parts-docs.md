@@ -369,3 +369,12 @@ PD1 recoupe les lots C-QR1 et C-QR2 de l'annexe C : ils se font une fois.
 - **Adresse imprimée** : `<serveur>/q/<jeton>` (l'adresse du serveur de l'app, mobile compris). Un téléphone l'ouvre avec son appareil photo ; sans session, la coquille demande la connexion (D964, phase PD1).
 - **Écrans** : `/q/:token` (étiquette liée → sa fiche ; vierge → choix de l'objet par son nom et « Lier ici » ; révoquée ou inconnue → message), « Code QR » sur toute fiche objet avec impression, page « Étiquettes QR » (menu Opérer : planche vierge, liste paginée, révocation), planche imprimable `/qr-sheet` hors de la coquille (4 × 10 par A4, seul le contenu s'imprime).
 - **Reste de PD1** : scanner intégré à l'app (caméra), nomenclature de l'appareil filtrée par série, date et variante, panier = OT et son export CSV, file d'envoi hors ligne (photos, notes).
+
+### PD1b et PD1c — Nomenclature de l'appareil, panier, scanner (codés le 2026-11-20, nuit)
+
+- **`maintenance` 1.8.0** : propriété `variant` sur les équipements.
+- **Fiche d'un appareil** relié à son modèle (`instance_of`) : section « Nomenclature (modèle) » avec les lignes qui s'appliquent à son numéro de série (comparaison naturelle, `S900` < `S1000`), à sa date de fabrication et à sa variante ; une donnée inconnue de l'appareil garde la ligne ; « Afficher les N autres lignes du modèle » montre le reste en grisé. **Ajouter à l'OT** prend l'OT ouvert de l'appareil (demandé, planifié, en cours ou en attente) ou en crée un (« Intervention · <appareil> », correctif, lien `work_order_on`), puis pose `uses_part` avec la quantité de la ligne.
+- **Fiche d'un OT** : « Exporter les pièces (CSV) » (`part_number,part,quantity`), Q-PD5.
+- **Scanner** `/scan` (menu Opérer) : caméra arrière, `BarcodeDetector` du navigateur ou de la vue web de l'app ; une étiquette PNEX ouvre `/q/<jeton>`, un autre code est signalé ; sans lecteur de codes ou caméra refusée, le message renvoie vers l'appareil photo du téléphone, qui ouvre l'adresse imprimée.
+- **Écarts** : écrans bâtis sur le pack (exceptions D441 consignées) ; scanner non essayé sur un téléphone réel ni dans l'APK (l'e2e Linux sans `BarcodeDetector` vérifie seulement le message de repli).
+- **Reste de PD1 (PD1d)** : file d'envoi hors ligne des photos et notes terrain ; les notes passent en proposition validée par `maintenance:validate` (pas d'auto-validation), à construire avec le rattachement d'un média à un objet.

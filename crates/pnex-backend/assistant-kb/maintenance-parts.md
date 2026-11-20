@@ -19,6 +19,9 @@ The **Augmented maintenance** pack keeps the spare parts of the org with their r
 ## Finding a part
 Open **Spare parts** in the **Operate** menu and type a reference, even partial: spaces, dashes, dots and case do not matter, at least 3 letters or digits. Each part found shows its references and, when it was replaced, **Replaced by** with the newest part. Open a row to see the part and its links.
 
+## The parts of an equipment
+An equipment linked to its model by **is an instance of** shows **Parts list (model)** on its page: only the lines that fit its serial number, its **Manufactured on** date and its **Variant**; **Show the other lines of the model** shows the rest, greyed. A value the equipment lacks keeps the line. **Add to the work order** puts the part in the equipment's open work order (requested, planned, in progress or on hold), made when there is none. On a work order's page, **Export the parts (CSV)** gives part number, part and quantity.
+
 ## Importing parts lists
 On the **Imports** tab of the ontology, use **Parts lists (CSV)** with one line per part of a model and these columns: `model`, `model_name`, `position`, `part_number`, `part_name`, `reference`, `quantity`, `serial_from`, `serial_to`, `date_from` (YYYY-MM-DD), `date_to`, `variant`. A manufacturer's file is first saved in these columns. A line without a reference still adds the part to the list. Replacements come from **Part supersessions (CSV)**: `old_part_number`, `new_part_number`, `since`. Each import shows a preview before anything is written.
 

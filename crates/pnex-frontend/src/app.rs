@@ -22,6 +22,7 @@ use crate::pages::pipelines::{PipelineStudio, PipelineTable, Pipelines};
 use crate::pages::proposals::Proposals;
 use crate::pages::qr::{QrScan, QrSheet, QrTags};
 use crate::pages::rules::Rules;
+use crate::pages::scan::Scan;
 use crate::pages::web_sites::{WebSiteStudio, WebSites};
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Calendar, Cameras, CaseWorkspace, Cases, Catalog,
@@ -142,6 +143,10 @@ pub enum Route {
 
         #[route("/qr-tags")]
         QrTags {},
+
+        // In-app QR reader (parts-docs.md PD1, C-QR2).
+        #[route("/scan")]
+        Scan {},
 
         // Investigation cases and their workspace (cases.md).
         #[route("/cases")]

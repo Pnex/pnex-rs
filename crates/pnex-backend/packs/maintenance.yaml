@@ -22,10 +22,13 @@
 # part corrections; the text manufacturer and model fields of equipment and
 # parts give way to links (manufactures in `maintenance_partners`,
 # instance_of here). Parts lists and supersessions are imported from CSV.
+# Since 1.8.0 (PD1) an equipment carries its variant: its page lists the
+# parts of its model for its serial, build date and variant, and adds them
+# to a work order.
 key: maintenance
 name: Augmented maintenance
 names: {fr: "Maintenance augmentée"}
-version: "1.7.0"
+version: "1.8.0"
 description: Sites, lines, machines and pumps; sensors bound to equipment series survive sensor replacements.
 descriptions: {fr: "Sites, lignes, machines et pompes ; les capteurs liés aux séries des équipements survivent à leur remplacement."}
 types:
@@ -60,6 +63,7 @@ types:
     properties:
       - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, required: true, indexed: true }
       - { key: manufactured_on, name: Manufactured on, names: {fr: "Fabriqué le"}, description: "Filters the parts list of its model (series and date ranges).", descriptions: {fr: "Filtre la nomenclature de son modèle (plages de séries et de dates)."}, kind: date }
+      - { key: variant, name: Variant, names: {fr: "Variante"}, description: "Market, voltage or option of this unit: parts list lines of another variant are left out.", descriptions: {fr: "Marché, tension ou option de cet exemplaire : les lignes de nomenclature d'une autre variante sont écartées."}, kind: text, max_len: 64 }
       - { key: commissioned, name: Commissioned on, names: {fr: "Mise en service le"}, kind: date }
       - key: status
         name: Status
@@ -86,6 +90,7 @@ types:
     properties:
       - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, required: true, indexed: true }
       - { key: manufactured_on, name: Manufactured on, names: {fr: "Fabriqué le"}, description: "Filters the parts list of its model (series and date ranges).", descriptions: {fr: "Filtre la nomenclature de son modèle (plages de séries et de dates)."}, kind: date }
+      - { key: variant, name: Variant, names: {fr: "Variante"}, description: "Market, voltage or option of this unit: parts list lines of another variant are left out.", descriptions: {fr: "Marché, tension ou option de cet exemplaire : les lignes de nomenclature d'une autre variante sont écartées."}, kind: text, max_len: 64 }
       - { key: rated_flow, name: Rated flow, names: {fr: "Débit nominal"}, kind: number, unit: m3/h, min: 0 }
       - key: status
         name: Status
@@ -114,6 +119,7 @@ types:
     properties:
       - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, indexed: true }
       - { key: manufactured_on, name: Manufactured on, names: {fr: "Fabriqué le"}, description: "Filters the parts list of its model (series and date ranges).", descriptions: {fr: "Filtre la nomenclature de son modèle (plages de séries et de dates)."}, kind: date }
+      - { key: variant, name: Variant, names: {fr: "Variante"}, description: "Market, voltage or option of this unit: parts list lines of another variant are left out.", descriptions: {fr: "Marché, tension ou option de cet exemplaire : les lignes de nomenclature d'une autre variante sont écartées."}, kind: text, max_len: 64 }
   - key: compressor
     name: Compressor
     names: {fr: "Compresseur"}
@@ -122,6 +128,7 @@ types:
     properties:
       - { key: serial, name: Serial number, names: {fr: "Numéro de série"}, kind: text, max_len: 64, indexed: true }
       - { key: manufactured_on, name: Manufactured on, names: {fr: "Fabriqué le"}, description: "Filters the parts list of its model (series and date ranges).", descriptions: {fr: "Filtre la nomenclature de son modèle (plages de séries et de dates)."}, kind: date }
+      - { key: variant, name: Variant, names: {fr: "Variante"}, description: "Market, voltage or option of this unit: parts list lines of another variant are left out.", descriptions: {fr: "Marché, tension ou option de cet exemplaire : les lignes de nomenclature d'une autre variante sont écartées."}, kind: text, max_len: 64 }
       - { key: refrigerant, name: Refrigerant, names: {fr: "Fluide frigorigène"}, kind: text, max_len: 32 }
       - { key: suction_pressure, name: Suction pressure, names: {fr: "Pression d'aspiration"}, kind: series, unit: bar }
       - { key: discharge_pressure, name: Discharge pressure, names: {fr: "Pression de refoulement"}, kind: series, unit: bar }

@@ -7601,3 +7601,22 @@ qr-state-linked = Liée
 qr-state-revoked = Révoquée
 qr-revoke = Révoquer
 qr-tags-empty = Aucune étiquette. Créez une planche vierge, ou affichez le code QR d'un objet depuis sa fiche.
+
+# Parts of an equipment (parts-docs.md PD1)
+eq-parts-title = Nomenclature ({ $model })
+eq-parts-show-all = Afficher les { $count } autres lignes du modèle
+eq-parts-only-unit = Seulement les lignes de cet exemplaire
+eq-parts-empty = Ce modèle n'a pas encore de nomenclature.
+eq-parts-add = Ajouter à l'OT
+eq-parts-added = Ajoutée à l'OT
+eq-parts-wo-title = Intervention
+eq-parts-export = Exporter les pièces (CSV)
+
+# In-app QR reader (parts-docs.md PD1)
+nav-scan = Scanner
+scan-title = Scanner une étiquette
+scan-subtitle = Visez le code QR d'une étiquette PNEX : sa fiche s'ouvre.
+scan-unsupported = Ce navigateur ne lit pas les codes QR. Utilisez l'appareil photo du téléphone : il ouvre l'adresse imprimée.
+scan-denied = La caméra est refusée. Autorisez-la dans les réglages du navigateur ou de l'app, puis réessayez.
+scan-not-pnex = Ce code n'est pas une étiquette PNEX.
+scan-again = Réessayer

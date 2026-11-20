@@ -28,6 +28,7 @@ pub mod docs;
 /// Edge references (WiFi / PNeX servers) — CRUD used by the device
 /// wizard and the firmware build queue.
 pub mod edge_refs;
+pub mod equipment_parts;
 /// JSON events written by flows (camera-video.md D84).
 pub mod events;
 pub mod firmware;
@@ -61,6 +62,7 @@ pub mod profile;
 pub mod proposals;
 pub mod qr;
 pub mod rules;
+pub mod scan;
 pub mod secrets;
 pub mod server_url;
 pub mod share;

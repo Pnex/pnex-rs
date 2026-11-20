@@ -235,6 +235,10 @@ pub fn OntologyObject(id: String) -> Element {
             div { class: "space-y-4",
                 if !closed {
                     crate::pages::qr::ObjectQr { object_id: o.id.clone() }
+                    crate::pages::equipment_parts::EquipmentParts { object: o.clone() }
+                }
+                if o.type_key == "work_order" {
+                    crate::pages::equipment_parts::BasketExport { object: o.clone() }
                 }
                 crate::components::proposals_table::ProposalsTable {
                     object_id: Some(o.id.clone()),

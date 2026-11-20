@@ -184,8 +184,13 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
     ),
     (
         "pnex-frontend/src/pages/ontology/object.rs",
-        &["macro_series", "instrument", "paper_position", "market_event", "geo_event"],
-        "object tabs of the markets pack (markets-research.md D541) and the session tab of its moves and world events (D738)",
+        &["macro_series", "instrument", "paper_position", "market_event", "geo_event", "work_order"],
+        "object tabs of the markets pack (markets-research.md D541) and the session tab of its moves and world events (D738); the parts export of a maintenance work order (parts-docs.md PD1)",
+    ),
+    (
+        "pnex-frontend/src/pages/equipment_parts.rs",
+        &["instance_of", "bom_line", "work_order", "work_order_on", "uses_part"],
+        "parts list of an installed equipment and its work order basket, built on the maintenance pack (parts-docs.md PD1, Q-PD4)",
     ),
     (
         "pnex-frontend/src/pages/parts.rs",

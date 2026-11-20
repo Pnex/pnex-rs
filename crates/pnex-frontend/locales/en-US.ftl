@@ -7605,3 +7605,22 @@ qr-state-linked = Linked
 qr-state-revoked = Revoked
 qr-revoke = Revoke
 qr-tags-empty = No tag yet. Make a blank sheet, or show the QR code of an object from its page.
+
+# Parts of an equipment (parts-docs.md PD1)
+eq-parts-title = Parts list ({ $model })
+eq-parts-show-all = Show the { $count } other lines of the model
+eq-parts-only-unit = Only the lines of this unit
+eq-parts-empty = This model has no parts list yet.
+eq-parts-add = Add to the work order
+eq-parts-added = Added to the work order
+eq-parts-wo-title = Intervention
+eq-parts-export = Export the parts (CSV)
+
+# In-app QR reader (parts-docs.md PD1)
+nav-scan = Scanner
+scan-title = Scan a tag
+scan-subtitle = Point at the QR code of a PNEX tag: its page opens.
+scan-unsupported = This browser does not read QR codes. Use the phone's camera: it opens the printed address.
+scan-denied = The camera is refused. Allow it in the browser or app settings, then try again.
+scan-not-pnex = This code is not a PNEX tag.
+scan-again = Try again

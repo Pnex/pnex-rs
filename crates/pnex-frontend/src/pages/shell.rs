@@ -309,6 +309,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
             | Route::Parts {}
             | Route::QrTags {}
             | Route::QrScan { .. }
+            | Route::Scan {}
     );
     let knowledge = matches!(
         route,
@@ -415,6 +416,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::Parts {},
                     label: t!("nav-parts"),
                     active: at(Route::Parts {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Scan {},
+                    label: t!("nav-scan"),
+                    active: at(Route::Scan {}),
                     on_navigate,
                 }
                 NavItem {
