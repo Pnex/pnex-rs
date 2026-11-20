@@ -1,5 +1,5 @@
 //! `SecretField` — the single secret input of every functional form
-//! (notification channel, HTTP node, WiFi, LLM provider; secrets.md D113).
+//! (notification channel, HTTP node, WiFi, LLM provider; security.md D113).
 //!
 //! Two modes, no templating: type a value (owner/admin, creates or
 //! replaces the field's dedicated secret server-side) or pick an existing

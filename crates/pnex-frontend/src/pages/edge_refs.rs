@@ -368,7 +368,7 @@ fn WifiForm(
             .map(|w| w.ssid.clone())
             .unwrap_or_default()
     });
-    // Vault field (secrets.md S6): type a value or pick a secret; an
+    // Vault field (security.md S6): type a value or pick a secret; an
     // existing entry shows "set · <name>".
     let password =
         use_signal(|| SecretDraft::from_view(existing.as_ref().and_then(|w| w.password.clone())));

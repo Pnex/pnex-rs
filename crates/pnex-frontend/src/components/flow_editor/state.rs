@@ -363,7 +363,7 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
 /// input per node: the device-write/function input anchors are
 /// cosmetic, outside this count.)
 /// After a save, adopts the vault references the server gave to the
-/// secret values typed in `current` (secrets.md S5): the editor no longer
+/// secret values typed in `current` (security.md S5): the editor no longer
 /// holds the plaintext, and the graph matches the saved one again. Only
 /// `Value` slots whose node/field the server turned into a reference
 /// change; anything edited meanwhile is kept.

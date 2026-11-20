@@ -392,7 +392,7 @@ pub struct AiStatus {
     pub model: Option<String>,
 }
 
-/// LLM provider of an org (secrets.md D116, D119):
+/// LLM provider of an org (security.md D116, D119):
 /// `GET /api/v1/ai/providers`. The API key is a vault reference, never a
 /// value.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

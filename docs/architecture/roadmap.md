@@ -220,7 +220,7 @@ tâche).
 | **Workers / fabric** | 2 workers Loco CPU co-localisés sur le control plane (`build_firmware`, `stitch_panorama`) ; claim idempotent + timeout par job (stitch, 2026-10-01) ; **PRD fabric proposé** (`worker-fabric.md`, 2026-09-25) | Validation du PRD (P1.6) puis MVP (P2.7) — pré-requis de tout job GPU (Gaussian Splatting, axe C) |
 | **Prédictif** (anomaly/forecast) | **Livré** 2026-09-29 (`pnex-node-predict` : BOCPD maison + forecast) — étape 3 du pilier ML/Vision | Branchement documenté anomalie → notify (cas « anomalie persistante ») ; E2E sur séries réelles |
 | **Firmware custom** (D87–D94) | **Livré, désactivé par défaut** — L1, L3, L4, L5 : API `addMetric`/`publish`/`onCommand`, projets + révisions, catalogue de libs, Verify en job de file, firmware choisi au provisioning (1→N devices, build de la dernière révision) ; L2 partiel (bwrap optionnel, pas actif en stack dev) | Sandbox D91 réelle, magasin de libs offline, nœud flow des commandes custom, révision déployée sur la page device (D94), E2E BME280 → O2 → flow → notification |
-| **Coffre de secrets** (D110–D119) | **Livré 2026-10-01** — S1–S8 (`secrets.md`) : XChaCha20-Poly1305, trousseau en env, références typées, runtime qui résout par id, rôle `member`, rotation + rechiffrement | Clés device et tokens agent hors coffre (chiffrement au repos possible plus tard) |
+| **Coffre de secrets** (D110–D119) | **Livré 2026-10-01** — S1–S8 (`security.md` §9) : XChaCha20-Poly1305, trousseau en env, références typées, runtime qui résout par id, rôle `member`, rotation + rechiffrement | Clés device et tokens agent hors coffre (chiffrement au repos possible plus tard) |
 | **API publique** | **Rien** — aucune API destinée aux programmes tiers en dehors de l'agent edge (push de valeurs) | Horizon P3 (abonnements live, jetons à portée, REST documentée) |
 | **Mémoire d'org** (Valkey) | Livré — `memory-write`/`memory-read` par org, source « Mémoire » des widgets | — |
 | **Flux média entrants** (D159–D175) | **Code des lots 0 → 6 sur `main`** (2026-10-10, `media-ingest.md` §16–§18) : capture confinée + porteur `worker`, santé et alerte « flux muet », `media_source`, taxonomies + `topic_classify` (mots-clés), plages + import CSV/ICS, agrégats par plage + widget, VAD + diarisation locale, piste vidéo RTSP, boîtier de capture `pnex-media-capture` | Runs 24 h (sorties des lots 1 et 6), image ffmpeg avec décodeurs vidéo, RTSP sur vraie caméra, cross-builds agent, classifieur LLM + reclassement, vérification navigateur — P2.13 |
@@ -284,10 +284,10 @@ domaine + roadmap.
 ### P0.2 — N5 : chiffrement AEAD des secrets de notifications
 
 > **✅ Livré le 2026-10-01** par le coffre de secrets (S1–S8,
-> `secrets.md`). Section conservée pour l'historique.
+> `security.md` §9). Section conservée pour l'historique.
 
 > **Élargi le 2026-10-01** en coffre de secrets par org
-> (`secrets.md`, D110–D118, tranché) : notifications, nœud HTTP, WiFi,
+> (`security.md` §9, D110–D118, tranché) : notifications, nœud HTTP, WiFi,
 > fournisseurs LLM en CRUD, rôle `member`. N5 est fermé par le lot S4 ;
 > ordre des lots S1 → S2 → S4 → S5 → S6 → S7 → S3 → S8.
 
@@ -635,7 +635,7 @@ Pré-requis, dans l'ordre :
 4. **Déclencheurs** : webhook entrant, cron (aujourd'hui dans inject),
    événement plateforme (device en ligne/hors ligne, alerte, OTA).
 5. **Credentials** : coffre par org réutilisable par les nœuds
-   (s'appuie sur le coffre de secrets livré, `secrets.md` — le nœud
+   (s'appuie sur le coffre de secrets livré, `security.md` §9 — le nœud
    http-fetch l'utilise déjà).
 6. **Intégrations** : HTTP générique d'abord (http-fetch enrichi :
    méthodes, auth, pagination), puis nœuds dédiés par service.
@@ -1331,7 +1331,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   API REST documentée sur les mêmes jetons. Aujourd'hui seul le push de
   valeurs existe, via l'agent edge (D95–D99). Hors 0.1.0 : la priorité
   est le contenu pour faire adhérer une communauté. Décision #11.
-- **Profils de sécurité, du maker au militaire** (`security-tiers.md`,
+- **Profils de sécurité, du maker au militaire** (`security.md` §8,
   D148–D152, ajout 2026-10-08) : exigences les plus élevées tracées
   (IEC 62443 SL1 → SL4, CRA, ANSSI), activables par flags
   (`open` par défaut, `industrial`, `critical`, `sovereign`). Vagues :
@@ -1374,7 +1374,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 10 | Parité n8n : périmètre V1 (logique de flux, déclencheurs, credentials, quelles intégrations d'abord) et descripteur généré vs inspecteurs dédiés | Au PRD de P2.11 |
 | 11 | API publique : transport des abonnements live (WebSocket vs SSE vs REST), modèle de jetons (portée device/flow, lecture/écriture, rotation), lien avec les déclencheurs webhook de P2.11 | Au passage de P3 à P2 |
 | 12 | ~~Base de dev antérieure à D120~~ — tranché 2026-10-03 : tout détruit, `pnex` recréée (O18) | ✅ |
-| 13 | ~~Jetons device dans l'URL des WebSockets~~ — tranché 2026-10-09 : en-tête `Authorization` partout (lot L2 de D153, `security-tiers.md` §6 bis), jeton en URL ignoré | ✅ |
+| 13 | ~~Jetons device dans l'URL des WebSockets~~ — tranché 2026-10-09 : en-tête `Authorization` partout (lot L2 de D153, `security.md` §8.3), jeton en URL ignoré | ✅ |
 | 14 | ~~Version firmware par rebuild~~ — tranché 2026-10-03 : 1 build = 1 enregistrement = 1 version, OTA en lot manuelle (O22) | ✅ |
 | 15 | Profils de sécurité : ~~date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19)~~ ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : ✅ livrée le 2026-10-09 (D153–D158) ; V4 : après 1 à 2 ans de communauté |
 | 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media-ingest.md` §14) | Lot 0 (POC ASR) ; ordre à la validation |
@@ -1454,7 +1454,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   sprint de consolidation court (P0.2, P0.3, P0.1) puis extension
   navigateur (P2.1).
 - **2026-10-01 (coffre de secrets)** — N5 élargi en coffre par org
-  (`secrets.md`, D110–D118) : une valeur chiffrée par ligne
+  (`security.md` §9, D110–D118) : une valeur chiffrée par ligne
   (XChaCha20-Poly1305, trousseau en env), références typées sans
   templating, page CRUD centrale + édition au lieu fonctionnel, runtime
   qui résout par id (jamais de valeur dans `flows.json`), rôle `member`,
@@ -1499,14 +1499,14 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   validé) ; mode sombre global (REP-1) et code PIN serrure/alarme (REP-2)
   reportés et consignés.
 - **2026-10-08** — Ajout en P3 : profils de sécurité du maker au
-  militaire (`security-tiers.md`, D148–D152), décision #15. Exigences
+  militaire (`security.md` §8, D148–D152), décision #15. Exigences
   tracées, implémentation par vagues ; eFuses gelés jusqu'à 1 à 2 ans de
   validation communautaire du firmware. Registre : SEC-17 à SEC-20.
 - **2026-10-09 (média + ontologie)** — Deux PRD proposés, rien
   d'implémenté : P2.13 ingestion de flux média (`media-ingest.md`,
   D159–D175, décision #16) et P2.14 noyau ontologique de la 0.2.0
   (`ontology.md`, D176–D191, décision #17). Numérotation décalée de +11 à
-  l'intégration (D148–D158 déjà pris par `security-tiers.md`).
+  l'intégration (D148–D158 déjà pris par `security.md` §8).
 - **2026-10-10 (Media & Vision Studio)** — PRD proposé, rien
   d'implémenté : P2.15 (`media-vision-studio.md`, décision #18), relu
   contre la doc (stockage RustFS, tract, kinds existants, LLM

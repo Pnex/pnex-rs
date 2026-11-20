@@ -17,7 +17,7 @@
 //! graph decides (switch/range).
 //!
 //! Secrets (bearer, basic/proxy passwords, key header value): vault
-//! references in flows.json (secrets.md D115, lot S5). They are fetched
+//! references in flows.json (security.md D115, lot S5). They are fetched
 //! from `PNEX_FLOW_SECRET_URL` on the first request (the backend serves a
 //! secret only once the flow is marked deployed, right after the runtime
 //! acknowledged the artifact), then kept in memory until the next deploy.

@@ -4,7 +4,7 @@
 |---|---|
 | Statut | Périmètre validé le 2026-11-03. OP1 en grande partie livré. OP2, OP3, OP5 (hors AN4) et OP9 livrés. État des lots au **§11** |
 | Numérotation | **D551…D568**, lots **OP1…OP15** |
-| Repose sur | `ontology.md`, `data-pipelines.md`, `iam.md`, `proposals.md`, `autonomous-agents.md`, `worker-fabric.md` §14, `surfaces-controls.md`, `security-tiers.md`, `app-builder.md`, `external-apps.md` |
+| Repose sur | `ontology.md`, `data-pipelines.md`, `iam.md`, `proposals.md`, `autonomous-agents.md`, `worker-fabric.md` §14, `surfaces-controls.md`, `security.md` §8, `app-builder.md`, `external-apps.md` |
 | Sécurité | Chaque lot passe `security.md` §6. Un finding = une ligne SEC-n au §7 |
 
 ## Résumé
@@ -84,7 +84,7 @@ Relevé du 2026-11-03. L'état détaillé de chaque capacité est dans les docs 
 
 Ordre : OP1 → OP2 → OP3, puis OP5 et OP9. Le reste suit la demande client. La certification (ISO
 27001, SOC 2, SecNumCloud, HDS) n'est pas un lot de code. Ses exigences se tracent dans
-`security-tiers.md`.
+`security.md` §8.
 
 ## 3. Données (D554–D557, D998)
 

@@ -234,7 +234,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                 step.set(Step::BuildProgress);
                                 let params = pnex_core::CreateBuild {
                                     device_id: id,
-                                    // The build references the entry's vault secret (secrets.md S6).
+                                    // The build references the entry's vault secret (security.md S6).
                                     wifi_credential_id: creds.id,
                                     pnex_host: srv.host,
                                 };

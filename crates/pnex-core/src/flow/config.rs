@@ -878,7 +878,7 @@ pub struct AntiSpamConfig {
 /// key in a header), configurable proxy (direct or scraping provider).
 /// The response replaces the payload; the standard ETL engine takes over.
 /// Secret fields (basic/proxy passwords, bearer token, key header value)
-/// are [`crate::SecretSlot`] vault references once saved (secrets.md S5).
+/// are [`crate::SecretSlot`] vault references once saved (security.md S5).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HttpFetchHeader {
     pub name: String,

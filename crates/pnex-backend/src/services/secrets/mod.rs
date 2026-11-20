@@ -1,4 +1,4 @@
-//! Org secrets vault (secrets.md D110–D118).
+//! Org secrets vault (security.md D110–D118).
 
 pub mod binding;
 pub mod browser;

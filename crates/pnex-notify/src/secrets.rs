@@ -1,4 +1,4 @@
-//! Vault references in channel configs (secrets.md D113, lot S4).
+//! Vault references in channel configs (security.md D113, lot S4).
 //!
 //! A `secret` field of a stored channel config holds
 //! `{"secret_id": "<uuid>"}`, never a value. The backend resolves it with

@@ -8,7 +8,7 @@
 #                 whose content materialises the received env (the test proves
 #                 the propagation: the 5 device vars in base64, WS_SSL
 #                 true/false; the WiFi password too, decrypted from the
-#                 vault by the worker — secrets.md S6).
+#                 vault by the worker — security.md S6).
 mkdir -p .pio/build/stub
 
 case "$WIFI_SSID" in

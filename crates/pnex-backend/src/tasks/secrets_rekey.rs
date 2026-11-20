@@ -1,4 +1,4 @@
-//! Master key rotation of the vault (secrets.md S8, §7), for operators
+//! Master key rotation of the vault (security.md S8, §9.7), for operators
 //! without the web UI. Same singleton as the /admin/status button.
 //!
 //! Usage: `cargo loco task secrets_rekey` (or `pnex-server task

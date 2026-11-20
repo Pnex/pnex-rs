@@ -1,4 +1,4 @@
-//! Org secrets vault (secrets.md D110–D118) — shared DTOs, wasm-safe.
+//! Org secrets vault (security.md D110–D118) — shared DTOs, wasm-safe.
 //!
 //! A value never leaves the server: lists and forms only carry ids and
 //! names. A consumer config holds a typed [`SecretRef`], never a `{{…}}`
@@ -240,7 +240,7 @@ pub struct OrgSecretInput {
     pub value: Option<String>,
 }
 
-/// `POST /api/v1/system/secrets/rekey` (platform admin, secrets.md S8):
+/// `POST /api/v1/system/secrets/rekey` (platform admin, security.md S8):
 /// outcome of the master key rotation run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

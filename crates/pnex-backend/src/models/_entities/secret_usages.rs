@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Which consumer field references which secret (secrets.md D114).
+/// Which consumer field references which secret (security.md D114).
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "secret_usages")]
 pub struct Model {

@@ -1,4 +1,4 @@
-//! WiFi credentials as vault consumers (secrets.md lot S6).
+//! WiFi credentials as vault consumers (security.md lot S6).
 //!
 //! The password of a `wifi_credentials` row lives in the vault
 //! (`secret_id`); a typed value goes to the dedicated secret

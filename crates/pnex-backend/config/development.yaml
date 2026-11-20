@@ -97,7 +97,7 @@ settings:
   # lan = loopback, link-local and metadata refused, LAN reachable;
   # public = private ranges refused too (shared hosting); open = no filter.
   egress: <%= get_env(name="PNEX_EGRESS", default="lan") %>
-  # Org secrets vault keyring (secrets.md D112): "<id>:<base64 32 bytes>",
+  # Org secrets vault keyring (security.md D112): "<id>:<base64 32 bytes>",
   # write key first. Fixed DEV key — never reuse it in production.
   secrets:
     keys: "<%= get_env(name="PNEX_SECRETS_KEYS", default="dev:rJlgG51k+ePf2XrLPnEAXacoz7wUPHiYSxkGT2upQPQ=") %>"
@@ -130,7 +130,7 @@ settings:
     internal_token: <%= get_env(name="PNEX_NOTIFY_INTERNAL_TOKEN", default="pnex-dev-notify-token") %>
     deliver_url: <%= get_env(name="PNEX_NOTIFY_DELIVER_URL", default="http://127.0.0.1:5150/internal/notify/deliver") %>
   # AI assistant kill-switch. LLM providers are managed in the UI
-  # (secrets.md D116): no provider configuration in the environment.
+  # (security.md D116): no provider configuration in the environment.
   ai:
     enabled: <%= get_env(name="PNEX_AI_ENABLED", default="true") %>
   rauthy:

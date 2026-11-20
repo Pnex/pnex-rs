@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Org secrets vault (secrets.md D110): one encrypted value per row.
+/// Org secrets vault (security.md D110): one encrypted value per row.
 /// Never serialized to a client — the DTO is `pnex_core::OrgSecret`.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "org_secrets")]

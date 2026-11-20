@@ -7119,7 +7119,7 @@
             "type": "string"
           },
           "wifi_credential_id": {
-            "description": "WiFi entry of the org's referential (secrets.md S6): the build\nreferences its vault secret, the password never travels.",
+            "description": "WiFi entry of the org's referential (security.md S6): the build\nreferences its vault secret, the password never travels.",
             "format": "int64",
             "type": "integer"
           }
@@ -14516,7 +14516,7 @@
         "type": "object"
       },
       "LlmProvider": {
-        "description": "LLM provider of an org (secrets.md D116, D119):\n`GET /api/v1/ai/providers`. The API key is a vault reference, never a\nvalue.",
+        "description": "LLM provider of an org (security.md D116, D119):\n`GET /api/v1/ai/providers`. The API key is a vault reference, never a\nvalue.",
         "properties": {
           "api_key": {
             "$ref": "#/components/schemas/SecretFieldView",
@@ -17815,7 +17815,7 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/SecretFieldView"
             },
-            "description": "Vault reference of each set `secret` field (`field → {secret_id,\nname}`, secrets.md D113) — what the form shows, never a value.",
+            "description": "Vault reference of each set `secret` field (`field → {secret_id,\nname}`, security.md D113) — what the form shows, never a value.",
             "propertyNames": {
               "type": "string"
             },
@@ -30188,7 +30188,7 @@
         "type": "object"
       },
       "SecretsRekeyReport": {
-        "description": "`POST /api/v1/system/secrets/rekey` (platform admin, secrets.md S8):\noutcome of the master key rotation run.",
+        "description": "`POST /api/v1/system/secrets/rekey` (platform admin, security.md S8):\noutcome of the master key rotation run.",
         "properties": {
           "remaining": {
             "description": "Rows still not under the write key after the run.",

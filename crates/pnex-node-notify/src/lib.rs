@@ -43,7 +43,7 @@
 //! (`PNEX_NOTIFY_DELIVER_URL`/`_TOKEN`) from the runtime env — missing at
 //! build ⇒ explicit `BadFlowsJson`.
 //!
-//! Vault (secrets.md D115, lot S4): the snapshot only carries
+//! Vault (security.md D115, lot S4): the snapshot only carries
 //! `{"secret_id"}` references. The node fetches their values from
 //! `PNEX_FLOW_SECRET_URL` on its first send (the backend only serves a
 //! secret once the flow is marked deployed, which happens right after the

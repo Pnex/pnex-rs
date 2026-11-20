@@ -1,4 +1,4 @@
-//! Signed OTA images (SEC-18, security-tiers.md EX-B1/EX-B2).
+//! Signed OTA images (SEC-18, security.md EX-B1/EX-B2).
 //!
 //! The server signs, with the Ed25519 key of the instance, a short message
 //! that binds the image to its device and its version; the firmware checks

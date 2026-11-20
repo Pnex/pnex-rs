@@ -1,4 +1,4 @@
-//! LLM providers as vault consumers (secrets.md lot S7, D116).
+//! LLM providers as vault consumers (security.md lot S7, D116).
 //!
 //! The API key of an `llm_providers` row lives in the vault (`secret_id`);
 //! a typed value goes to the dedicated secret `llm/<provider>/api_key`,

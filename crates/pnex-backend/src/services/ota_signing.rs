@@ -1,5 +1,5 @@
 //! Ed25519 key of the instance that signs OTA images (SEC-18,
-//! security-tiers.md EX-B1).
+//! security.md EX-B1).
 //!
 //! The 32-byte seed is a **platform secret of the vault** (`org_secrets`,
 //! `org_id = NULL`, name [`KEY_NAME`]): encrypted at rest by the keyring and

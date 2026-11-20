@@ -1,5 +1,5 @@
 //! Org WiFi credentials referential — no re-typing in the device wizard.
-//! The password lives in the secrets vault (secrets.md S6).
+//! The password lives in the secrets vault (security.md S6).
 pub use super::_entities::wifi_credentials::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
 pub type WifiCredentials = Entity;

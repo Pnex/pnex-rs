@@ -1,4 +1,4 @@
-//! LLM providers of the org (secrets.md D116, D119): list + inline form,
+//! LLM providers of the org (security.md D116, D119): list + inline form,
 //! shown in the org detail page — the only place they are managed (users
 //! bring their own LLM, the platform provides none). The API key is a
 //! [`SecretField`]: typed or picked, never shown.

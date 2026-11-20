@@ -192,7 +192,7 @@ même chemin pnex-notify que le nœud flow — pas de code d'envoi dupliqué.
   `field_spec` sont write-only — PUT les accepte, GET ne les rend jamais
   (le front affiche « défini » + bouton « remplacer »). Pattern
   `deserialize_some` déjà connu du front.
-- **Remplacé par le coffre de secrets (2026-10-01, `secrets.md` lot S4)** :
+- **Remplacé par le coffre de secrets (2026-10-01, `security.md` §9 lot S4)** :
   les champs `secret` sont des références vers `org_secrets`
   (XChaCha20-Poly1305, clé hors base), le snapshot ne porte que des
   `secret_id` et le runtime résout via `/internal/flow/secret/{id}` ; la
@@ -311,7 +311,7 @@ Pièges consignés :
 > — le supervisor l'injecte au runtime avec `PNEX_NOTIFY_DELIVER_URL`. Le
 > jeton est accepté par `/internal/notify/deliver` en `x-pnex-internal-token`
 > **ou** `Authorization: Bearer` (le canal pnex-notify poste en Bearer).
-| N5 | chiffrement AEAD des secrets, clé env partagée backend↔engine | rotation de clé documentée — **livré par `secrets.md` S4 (coffre, sans clé dans le runtime)** |
+| N5 | chiffrement AEAD des secrets, clé env partagée backend↔engine | rotation de clé documentée — **livré par `security.md` §9 S4 (coffre, sans clé dans le runtime)** |
 | N6 | (points d'extension) reporting engine→backend pour le journal, webhooks entrants | — |
 
 ## 12. Sources de l'étude amont

@@ -13,7 +13,7 @@
 //! null as long as the user has not clicked "replace"). No secret
 //! appears in error messages or logs.
 //!
-//! Vault (secrets.md lot S4): stored `secret` fields are references
+//! Vault (security.md lot S4): stored `secret` fields are references
 //! `{"secret_id"}` to `org_secrets`; a typed value lands in the channel's
 //! dedicated secret, sends resolve the references in memory.
 

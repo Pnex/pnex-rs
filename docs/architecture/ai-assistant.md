@@ -5,7 +5,7 @@
 > Détail des décisions : `docs/inventory.md` D20b ; plan de conception
 > validé en session (A1–A5).
 >
-> **2026-10-01 (secrets.md D116, lot S7)** : le connecteur par org et les
+> **2026-10-01 (security.md D116, lot S7)** : le connecteur par org et les
 > `PNEX_AI_*` sont remplacés par des **fournisseurs LLM en CRUD**
 > (`llm_providers`, clé dans le coffre). A3 et A5 sont caducs ; §2, §3, §6,
 > §7 décrivent l'état actuel.

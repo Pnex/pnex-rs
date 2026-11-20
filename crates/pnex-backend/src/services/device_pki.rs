@@ -1,4 +1,4 @@
-//! Device PKI (D153, lots L3–L4 of security-tiers.md §6 bis): the X.509
+//! Device PKI (D153, lots L3–L4 of security.md §8.3): the X.509
 //! identity of a device on its TLS link.
 //!
 //! - One certificate authority per org (ECDSA P-256, 30 years), created on

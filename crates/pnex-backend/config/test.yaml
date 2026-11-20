@@ -40,7 +40,7 @@ database:
 settings:
   # Mock servers listen on loopback: no egress filtering in tests.
   egress: <%= get_env(name="PNEX_EGRESS", default="open") %>
-  # Org secrets vault keyring (secrets.md D112): "<id>:<base64 32 bytes>",
+  # Org secrets vault keyring (security.md D112): "<id>:<base64 32 bytes>",
   # write key first. Fixed DEV key — never reuse it in production.
   secrets:
     keys: "<%= get_env(name="PNEX_SECRETS_KEYS", default="dev:rJlgG51k+ePf2XrLPnEAXacoz7wUPHiYSxkGT2upQPQ=") %>"
@@ -67,7 +67,7 @@ settings:
     batch_max: <%= get_env(name="PNEX_BATCH_MAX", default="500") %>
     batch_flush_secs: <%= get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") %>
   # AI assistant kill-switch. LLM providers are managed in the UI
-  # (secrets.md D116): no provider configuration in the environment.
+  # (security.md D116): no provider configuration in the environment.
   ai:
     enabled: <%= get_env(name="PNEX_AI_ENABLED", default="true") %>
   rauthy:

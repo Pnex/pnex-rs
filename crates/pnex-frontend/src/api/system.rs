@@ -86,7 +86,7 @@ pub async fn orgs_overview() -> Result<Vec<OrgSystemRow>, ApiError> {
 }
 
 /// `POST /api/v1/system/secrets/rekey` — platform admin: re-encrypts every
-/// vault secret with the write key (secrets.md S8).
+/// vault secret with the write key (security.md S8).
 pub async fn rekey_secrets() -> Result<pnex_core::SecretsRekeyReport, ApiError> {
     client::request(reqwest::Method::POST, "/api/v1/system/secrets/rekey", None).await
 }

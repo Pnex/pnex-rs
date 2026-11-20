@@ -238,7 +238,7 @@ pub const OTA_NO_ACTIVE: &str = "ota-no-active";
 pub const OTA_AUTH_FAILED: &str = "ota-auth-failed";
 /// OTA artifact missing from the store at download time.
 pub const OTA_ARTIFACT_NOT_FOUND: &str = "ota-artifact-not-found";
-/// Org secrets vault (secrets.md D110–D118).
+/// Org secrets vault (security.md D110–D118).
 pub const SECRET_NOT_FOUND: &str = "secret-not-found";
 pub const SECRET_IN_USE: &str = "secret-in-use";
 pub const SECRET_NOT_REFERENCED: &str = "secret-not-referenced";

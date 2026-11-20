@@ -1,5 +1,5 @@
 //! AI assistant endpoints — status, LLM providers of the org (key = vault
-//! reference, secrets.md D116), provider test, and the user's private
+//! reference, security.md D116), provider test, and the user's private
 //! conversations (D145).
 
 use pnex_core::{

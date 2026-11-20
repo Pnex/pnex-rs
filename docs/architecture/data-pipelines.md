@@ -4,7 +4,7 @@
 > session `pnex-quali-watch` après l'incident du 2026-10-21 (flow 9,
 > org 4, dev.pnex.io). Étend D301/D303 (`partner-watch.md`) et remplace à
 > terme la chaîne `ingest` D317–D322 (`ingestion.md`). Liens :
-> `ontology.md` (D176–D191), `secrets.md` (D110–D118), `security.md`
+> `ontology.md` (D176–D191), `security.md` §9 (D110–D118), `security.md`
 > (R1, R2, R8), `system-admin.md` (D72), `editor-shell.md`.
 >
 > Contrainte posée par Shan : **tout en Rust, dans pnex**. dlt, Airbyte,

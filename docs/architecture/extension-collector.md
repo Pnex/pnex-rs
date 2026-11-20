@@ -11,7 +11,7 @@
 > du HTML, plusieurs agents déployés, chacun verrouillé sur une seule
 > page. La collecte basique devient une mission parmi d'autres (§5).
 
-Liens : `edge-model.md` §8 (doctrine edge), `security-tiers.md` §6 bis
+Liens : `edge-model.md` §8 (doctrine edge), `security.md` §8.3
 (identité device D153–D158), `media-ingest.md` (flux, segments, D159),
 `media.md` (médias), `doc-search.md` (indexation), `cases.md` §4 et
 `discourse-analysis.md` DA6 (périmètre, rouvert par D254),

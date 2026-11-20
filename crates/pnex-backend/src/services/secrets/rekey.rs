@@ -1,4 +1,4 @@
-//! Master key rotation (secrets.md lot S8, §7).
+//! Master key rotation (security.md lot S8, §9.7).
 //!
 //! Procedure: put the new key first in `PNEX_SECRETS_KEYS`, restart every
 //! pod, then run [`rekey`] (platform admin button in /admin/status, or the

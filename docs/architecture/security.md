@@ -1,16 +1,42 @@
-# Sécurité : modèle de menace, règles, revue, registre
+# Sécurité : menace, règles, registre, profils, coffre
 
-> **Statut : socle posé le 2026-10-04 (D130).** Premier audit de sécurité
-> du dépôt (audit de base, §7). À partir de cette date, **toute
-> modification passe la revue de sécurité du §6** — règle reprise dans
-> `CLAUDE.md`. Les findings vivent dans le registre §7 jusqu'à leur
-> correction ; un finding corrigé y reste (statut + commit).
+## Résumé
 
-## 1. Décision
+Ce document fixe la sécurité de PneX comme une garde permanente (D130).
+Il donne le modèle de menace, les règles invariantes R1–R23, la grille de revue et le registre des findings.
+Il décrit aussi les profils de sécurité, du maker au souverain (D148–D158), et le coffre de secrets des orgs (D110–D119).
+Toute modification de code passe la grille du §6 avant commit. Un finding va au registre du §7, même s'il n'est pas corrigé.
 
-| # | Décision |
-|---|---|
-| D130 | La sécurité est une garde permanente, pas un chantier : (1) règles invariantes §3, opposables à toute PR ; (2) revue de sécurité de chaque diff avant commit (§6) ; (3) garde dépendances bloquante en CI (`cargo deny`, §5) ; (4) registre unique des findings §7, audit complet re-joué à chaque release majeure. |
+## 1. Concepts
+
+- **Org** : la frontière de sécurité principale. La plateforme est la deuxième frontière.
+- **Principal** : l'identité vérifiée de l'appelant (utilisateur, jeton device, clé d'accès). L'org vient toujours de lui.
+- **Runtime de flows** : le process qui exécute le code utilisateur de plusieurs orgs. Il est non fiable.
+- **Règle invariante (R-n)** : une règle opposable à toute modification. Un écart = refus, ou une ligne au registre.
+- **Finding (SEC-n)** : un défaut de sécurité constaté. Il reste au registre après sa correction.
+- **Profil de sécurité** : un niveau d'exigences (`open`, `industrial`, `critical`, `sovereign`).
+- **Exigence (EX-n)** : une exigence d'un profil, rattachée à une vague (V1 à V5).
+- **Coffre** : la table `org_secrets`. Une ligne = une valeur secrète chiffrée.
+- **Référence de secret** : `{"secret_id": "…"}`, à la place d'une valeur dans une config.
+- **Trousseau** : la liste des clés maîtresses du coffre, hors base (`PNEX_SECRETS_KEYS`).
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  P[Principal] --> O[Org]
+  O --> S[Coffre]
+  O --> F[Flows]
+  F --> RT[Runtime non fiable]
+  RT -->|référence| S
+  R[Règles R-n] --> REV[Revue §6]
+  REV --> REG[Registre SEC-n]
+  PR[Profil] --> EX[Exigences EX-n]
+  EX --> V[Vagues V1–V5]
+  O --> PR
+```
 
 ## 2. Modèle de menace
 
@@ -19,639 +45,765 @@
 | Attaquant | Ce qu'il a | Ce qu'il ne doit jamais obtenir |
 |---|---|---|
 | **Visiteur anonyme** | Accès réseau à nginx (80/443), liens `/share/<token>` | Toute donnée hors tour publié partagé ; toute exécution de script sur l'origine de l'app |
-| **Utilisateur inscrit quelconque** | Un compte Rauthy → **une org personnelle dont il est owner** (provisioning). Il peut donc créer flows, fonctions JS/Starlark, médias, tours, canaux de notification | Données, devices, secrets, télémétrie d'**une autre org** ; secrets plateforme (env du serveur, du runtime, DB, clés du coffre) ; session d'un autre utilisateur |
+| **Utilisateur inscrit quelconque** | Un compte Rauthy, donc **une org personnelle dont il est owner**. Il crée flows, fonctions JS/Starlark, médias, tours, canaux de notification | Données, devices, secrets, télémétrie d'**une autre org** ; secrets plateforme (env du serveur et du runtime, DB, clés du coffre) ; session d'un autre utilisateur |
 | **Viewer d'une org** | Lecture de l'org | Toute écriture, tout déclenchement d'action (OTA, actionneur), tout identifiant de device |
 | **Member d'une org** | Écriture (flows, médias, devices) | Valeurs des secrets du coffre (D117), administration de l'org |
-| **Device / agent edge compromis** | Son jeton + sa clé ChaCha20 | Agir au nom d'un autre device ou d'une autre org |
-| **Réseau local / MITM** | Trafic device ↔ serveur | Jetons en clair si wss avec CA épinglée |
+| **Device ou agent edge compromis** | Son certificat, son jeton, sa clé partagée | Agir au nom d'un autre device ou d'une autre org |
+| **Réseau local, MITM** | Trafic device ↔ serveur | Jetons et commandes (TLS mutuel et couche Noise, §8.3) |
 
-Conséquence clé : **« member » n'est pas une barrière** — n'importe qui
-devient owner de sa propre org. Tout ce qu'un member peut faire, un
-attaquant anonyme qui s'inscrit le peut aussi. La frontière qui compte est
-**l'organisation**, puis la **plateforme**.
+« Member » n'est pas une barrière : tout inscrit devient owner de sa propre org.
+Tout ce qu'un member peut faire, un attaquant anonyme qui s'inscrit le peut aussi.
+La frontière qui compte est l'org, puis la plateforme.
 
 ### Frontières de confiance
 
-1. **nginx → backend** : seule entrée publique. `/internal/*` ne doit pas
-   y être routé (§3 R7).
-2. **backend ↔ runtime de flows** : le runtime exécute du code utilisateur
-   (JS, Starlark, nœuds) de **plusieurs orgs dans un même process**. Il
-   est traité comme **non fiable** : tout ce qu'il envoie au backend est
-   re-vérifié côté backend.
-3. **backend ↔ build worker firmware** : code C++ utilisateur compilé sous
-   bwrap (sans réseau, hôte en lecture seule).
-4. **navigateur** : contenu utilisateur (labels, médias, Markdown) rendu
-   sur **l'origine de l'app**, où vivent les jetons (`localStorage`).
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  NAV[Navigateur<br/>origine de l'app] --> NG[nginx]
+  DEV[Device / agent] -->|mTLS| NGD[Point d'entrée devices]
+  NG --> BE[Backend]
+  NGD -->|X-Pnex-Edge| BE
+  BE <-->|re-vérifié| RT[Runtime de flows<br/>non fiable]
+  BE --> BW[Build worker<br/>bwrap sans réseau]
+  NG -.->|"/internal/* : 404"| BE
+```
+
+1. **nginx → backend** : la seule entrée publique. nginx ne route jamais `/internal/*` (R7).
+2. **Backend ↔ runtime de flows** : le runtime exécute le code de plusieurs orgs dans un même process. Le backend re-vérifie tout ce que le runtime envoie.
+3. **Backend ↔ build worker firmware** : le code C++ utilisateur compile sous bwrap, sans réseau, hôte en lecture seule.
+4. **Navigateur** : le contenu utilisateur (étiquettes, médias, Markdown) est rendu sur l'origine de l'app, où vivent les jetons (`localStorage`).
 
 ## 3. Règles invariantes (opposables à toute modification)
 
 ### Locataire et rôles
 
-- **R1 — L'org vient du principal, jamais de la requête.** `OrgContext`
-  (JWT + `X-Org-Id` + appartenance vérifiée) ou le jeton device sont les
-  seules sources de `org_id` / `device_id`. Toute requête par id filtre
-  `OrgId = org.org.id` ; cross-org = **404 uniforme**.
-- **R2 — Chaque opération déclare sa permission au registre IAM**
-  (`pnex-api-contract/src/iam.rs`, garde `tests/iam.rs`) ; l'extracteur
-  `OrgContext` l'applique avant le handler (403 `access-denied`,
-  `iam.md` D291). Les gardes de rôle des handlers (`can_write`,
-  `can_administer`, `can_manage_secrets`, `PlatformAdmin`) restent en
-  défense en profondeur jusqu'à leur retrait. Un nouvel endpoint sans
-  entrée au registre = test rouge ; un test de régression « principal
-  sans la permission → 403 » accompagne toute route d'écriture nouvelle.
-- **R3 — Les champs de locataire sont tamponnés par le serveur en dernier.**
-  Aucune config fournie par l'utilisateur (nœud, graphe, payload) ne peut
-  porter `pnex_org_id`, `pnex_o2_org`, `pnex_flow_id` ou un type `pnex-*`
-  qui serait relu tel quel ; la projection les écrase après tout le reste.
-- **R4 — Les identifiants d'accès (jeton device, clé ChaCha20, code
-  d'enrôlement) ne sortent que vers les rôles qui provisionnent**
-  (`can_write` au minimum), jamais dans un DTO de lecture générique.
+- **R1 — L'org vient du principal, jamais de la requête.** `OrgContext` (JWT + `X-Org-Id` + appartenance vérifiée) ou le jeton device sont les seules sources de `org_id` et `device_id`. Toute requête par id filtre `OrgId = org.org.id`. Un accès cross-org reçoit un 404 uniforme.
+- **R2 — Chaque opération déclare sa permission au registre IAM** (`pnex-api-contract/src/iam.rs`, garde `tests/iam.rs`). L'extracteur `OrgContext` l'applique avant le handler (403 `access-denied`, `iam.md` D291). Un endpoint sans entrée au registre fait échouer le test. Toute route d'écriture nouvelle porte un test « principal sans la permission → 403 ».
+- **R3 — Le serveur tamponne les champs de locataire en dernier.** Aucune config utilisateur (nœud, graphe, payload) ne peut porter `pnex_org_id`, `pnex_o2_org`, `pnex_flow_id` ou un type `pnex-*` relu tel quel. La projection les écrase après tout le reste.
+- **R4 — Les identifiants d'accès sortent seulement vers les rôles qui provisionnent.** Jeton device, clé partagée et code d'enrôlement exigent l'écriture au minimum. Ils ne figurent jamais dans un DTO de lecture générique.
 
 ### Code utilisateur (flows, fonctions, firmware)
 
-- **R5 — Registre de nœuds = liste blanche explicite.** Le runtime
-  n'enregistre que les nœuds PneX et les builtins sans effet hôte
-  (change, switch, json, delay, split/join…). Jamais `exec`, `file`,
-  `file in`, `watch`, tcp/udp, ni aucun builtin non revu. Le `validate`
-  du graphe rejette au save **et** au deploy tout type hors liste.
-- **R6 — Aucun secret plateforme visible du code utilisateur.** Le code
-  JS/Starlark ne voit ni l'environnement du process (`env.get`), ni les
-  fichiers, ni les jetons de service. Les identifiants des nœuds natifs
-  passent par un canal Rust inaccessible au sandbox.
-- **R7 — Les routes `/internal/*` sont privées et scoppées.** Jeton de
-  service comparé en temps constant (`auth::service_token::matches`,
-  échec fermé si vide) ; **non routées par nginx** ; l'`org_id` fourni est
-  re-vérifié contre ce que le déploiement autorise (device de l'org,
-  secret référencé par un flow déployé de l'org) ; fencing **fermé** si
-  l'en-tête manque en mode cluster.
-- **R8 — Requêtes sortantes vers des hôtes choisis par l'utilisateur**
-  (http-fetch, webhooks, fournisseurs LLM) : refuser loopback,
-  link-local (169.254/16, fe80::/10), métadonnées cloud et noms de
-  services internes ; re-vérifier à chaque redirection.
-- **R9 — Un secret du coffre est lié à sa destination.** Seuls owner et
-  admin (`can_manage_secrets`) câblent un secret : le choisir, le changer
-  de champ, ou changer l'origine (schéma, hôte, port ; hôte, port et mode
-  TLS en SMTP) d'un nœud / canal qui en porte un. Un member (et
-  l'assistant) ne peut que **garder** un triplet (champ, secret,
-  destination) que le **même** consommateur porte déjà (même flow —
-  version la plus récente ou déployée —, même canal) ; tout le reste est
-  **refusé** avec `secret-destination-locked` (403), y compris un flow
-  dupliqué ou importé qui porte des références et un test-draft qui
-  diffère du canal enregistré (D117 : aucun rôle ne relit une valeur, y
-  compris en la redirigeant). Garde : `services/secrets/binding.rs`.
-- **R10 — Processus enfants : `env_clear()` + liste blanche**, secrets
-  jamais en argv ; build firmware utilisateur sous bwrap (défaut).
+- **R5 — Le registre de nœuds est une liste blanche explicite.** Le runtime enregistre seulement les nœuds PneX et les builtins sans effet hôte. Jamais `exec`, `file`, `file in`, `watch`, tcp/udp, ni un builtin non revu. Le `validate` du graphe rejette tout type hors liste, au save et au deploy.
+- **R6 — Le code utilisateur ne voit aucun secret plateforme.** Le code JS/Starlark ne voit ni l'environnement du process (`env.get`), ni les fichiers, ni les jetons de service. Les identifiants des nœuds natifs passent par un canal Rust hors du sandbox.
+- **R7 — Les routes `/internal/*` sont privées et scopées.** Le jeton de service est comparé en temps constant (`auth::service_token::matches`, échec fermé si vide). nginx ne les route pas. Le backend re-vérifie l'`org_id` fourni contre ce que le déploiement autorise. En mode cluster, un en-tête de fencing absent ferme l'accès.
+- **R8 — Les requêtes sortantes vers un hôte choisi par l'utilisateur passent la garde d'egress** (http-fetch, webhooks, fournisseurs LLM, pipelines). La garde refuse loopback, link-local (169.254/16, fe80::/10), métadonnées cloud et noms de services internes. Elle re-vérifie chaque redirection.
+- **R9 — Un secret du coffre est lié à sa destination.** Seuls les titulaires de `secrets:write` câblent un secret : le choisir, le changer de champ, ou changer l'origine (schéma, hôte, port ; mode TLS en SMTP) de son consommateur. Un member et l'assistant peuvent seulement garder un triplet (champ, secret, destination) que le même consommateur porte déjà. Tout le reste reçoit `secret-destination-locked` (403), y compris un flow dupliqué ou importé et un test-draft différent du canal enregistré. Garde : `services/secrets/binding.rs`.
+- **R10 — Un processus enfant démarre avec `env_clear()` et une liste blanche.** Un secret ne passe jamais en argv. Le build firmware utilisateur tourne sous bwrap par défaut.
 
 ### Contenu servi au navigateur
 
-- **R11 — Pas de HTML utilisateur sur l'origine de l'app.** Texte rendu
-  par rsx (échappé) ou `textContent` côté JS ; bibliothèques tierces en
-  mode échappement (`escapeHTML: true` pour pannellum) ; jamais
-  `innerHTML` / `dangerous_inner_html` sur une donnée non assainie ;
-  Markdown : HTML brut supprimé **et** URLs limitées à
-  `http(s):`/`mailto:`/relatives.
-- **R12 — Octets utilisateur servis = type autorisé + `nosniff`.**
-  `Content-Type` en liste blanche par `kind` (images raster,
-  `application/octet-stream`), jamais la valeur client brute ; toute
-  réponse de contenu utilisateur porte `X-Content-Type-Options: nosniff`
-  et `Content-Security-Policy: sandbox; default-src 'none'` ;
-  `Content-Disposition: attachment` hors images.
-- **R13 — Données vers JS : encodage JSON, jamais de `format!` en
-  `'{}'`.** wasm : `JsValue` / `Reflect` ; natif : `serde_json::to_string`
-  comme littéral JS, ou un helper unique `JSON.parse('…')` échappé.
+- **R11 — Pas de HTML utilisateur sur l'origine de l'app.** Le texte passe par rsx (échappé) ou `textContent`. Les bibliothèques tierces tournent en mode échappement (`escapeHTML: true` pour pannellum). Jamais `innerHTML` ni `dangerous_inner_html` sur une donnée non assainie. Markdown : HTML brut supprimé et URLs limitées à `http(s):`, `mailto:` et relatives.
+- **R12 — Les octets utilisateur servis ont un type autorisé et `nosniff`.** Le `Content-Type` vient d'une liste blanche par `kind`, jamais du client. Toute réponse de contenu utilisateur porte `X-Content-Type-Options: nosniff` et `Content-Security-Policy: sandbox; default-src 'none'`. Hors images, elle porte `Content-Disposition: attachment`.
+- **R13 — Les données vers JS sont encodées en JSON, jamais par `format!` en `'{}'`.** wasm : `JsValue` ou `Reflect`. Natif : `serde_json::to_string` comme littéral JS.
 
 ### Crypto, secrets, stockage
 
-- **R14 — Chiffrement au repos = `Keyring::seal/open`** (XChaCha20-Poly1305,
-  nonce aléatoire, AAD lié org + propriétaire + ligne). Pas de crypto
-  maison.
-- **R15 — Aléa de sécurité = CSPRNG** (`rand::rng()`, `getrandom`),
-  ≥ 128 bits pour un jeton ; codes courts = hachés au repos + consommation
-  atomique unique + TTL.
-- **R16 — Jamais de secret en clair** dans une réponse d'API, un log, la
-  file de jobs, `flows.json` ou le fil inter-pods : références UUID
-  seulement, résolues au point d'usage.
-- **R17 — JWT : une seule `Validation`** (`auth/jwks.rs` : RS256, `iss`,
-  `aud`, `exp`, `kid`). Aucune autre construction.
-- **R18 — Clés de stockage construites côté serveur** (ids +
-  `sanitize_segment`) ; un endpoint d'octets résout d'abord une ligne
-  filtrée par org puis lit sa `storage_key` ; jamais de chemin/clé reçu.
-- **R19 — Déploiement : secrets obligatoires** (`${VAR:?}` générés par
-  `install.sh`), valeurs par défaut réservées au compose de dev ; TLS
-  vérifié partout (seule exception : bootstrap de l'agent edge, épinglé
-  par empreinte).
-- **R20 — Dépendances : licence permissive** (règle existante) **et
-  `cargo deny` vert** ; toute exception `deny.toml` porte sa
-  justification d'inexploitabilité. Les images livrées sont **Chainguard
-  (Wolfi) uniquement** (`glibc-dynamic`, `wolfi-base`) ; les étages de
-  build Debian ne sont jamais livrés. Un binaire tiers compilé hors cargo
-  et copié dans une image (ffmpeg, archives sherpa-onnx) a sa source
-  épinglée en sha256 dans le Dockerfile (`ADD --checksum`).
-- **R22 — Aucune permission `iam:*` ni plateforme pour un compte de
-  service** (`iam.md` D293) : un rôle personnalisé n'accorde ni ne retire
-  jamais `iam:*`, le rôle géré admin n'est jamais attribué à un compte de
-  service, et l'extracteur refuse `iam` à une clé d'accès ; les
-  extracteurs humains (`AuthUser`, `PlatformAdmin`) refusent toute clé.
-- **R23 — Secret de clé d'accès** : 32 octets d'un CSPRNG, préfixe
-  `pnex_sk_`, montré une seule fois, stocké en sha256 seulement (jamais
-  relu), expiration obligatoire (366 jours au plus), révocation effective
-  à l'appel suivant (`services/iam/service.rs`).
+- **R14 — Le chiffrement au repos passe par `Keyring::seal/open`** (XChaCha20-Poly1305, nonce aléatoire, AAD lié au domaine, au propriétaire et à la ligne). Pas de crypto maison.
+- **R15 — L'aléa de sécurité vient d'un CSPRNG** (`rand::rng()`, `getrandom`), 128 bits au moins pour un jeton. Un code court est haché au repos, consommé une seule fois de façon atomique, avec un TTL.
+- **R16 — Jamais de secret en clair** dans une réponse d'API, un journal, la file de jobs, `flows.json` ou le fil inter-pods. Seules des références UUID circulent, résolues au point d'usage.
+- **R17 — Une seule `Validation` JWT** (`auth/jwks.rs` : RS256, `iss`, `aud`, `exp`, `kid`). Aucune autre construction.
+- **R18 — Le serveur construit les clés de stockage** (ids + `sanitize_segment`). Un endpoint d'octets résout d'abord une ligne filtrée par org, puis lit sa `storage_key`. Il n'accepte jamais un chemin ou une clé reçus.
+- **R19 — Le déploiement exige ses secrets** (`${VAR:?}` générés par `install.sh`). Les valeurs par défaut sont réservées au compose de dev. Le TLS est vérifié partout. Seule exception : le bootstrap de l'agent edge, épinglé par empreinte.
+- **R20 — Une dépendance a une licence permissive et `cargo deny` reste vert.** Toute exception `deny.toml` porte sa justification. Les images livrées sont Chainguard (Wolfi) seulement (`glibc-dynamic`, `wolfi-base`). Un binaire tiers compilé hors cargo a sa source épinglée en sha256 (`ADD --checksum`).
+- **R21 — Réservée** à l'ontologie fine.
+- **R22 — Un compte de service n'a aucune permission `iam:*` ni plateforme** (`iam.md` D293). Un rôle personnalisé n'accorde ni ne retire `iam:*`. Le rôle géré admin n'est jamais attribué à un compte de service. Les extracteurs humains (`AuthUser`, `PlatformAdmin`) refusent toute clé d'accès.
+- **R23 — Secret de clé d'accès** : 32 octets d'un CSPRNG, préfixe `pnex_sk_`, montré une seule fois, stocké en sha256 seulement. L'expiration est obligatoire (366 jours au plus). La révocation s'applique à l'appel suivant (`services/iam/service.rs`).
 
 ## 4. Bons motifs existants (à imiter)
 
 - `OrgContext` : appartenance jamais mise en cache, 404 masqué.
 - `auth::service_token::matches` : `subtle::ct_eq`, vide = refus.
-- Coffre : AAD `domaine ‖ propriétaire ‖ org ‖ secret_id`, trousseau
-  obligatoire au boot, rotation par `key_id`.
-- Enrôlement agent : code haché, `UPDATE … WHERE used_at IS NULL AND
-  expires_at > now()` atomique, CA épinglée par empreinte.
-- Builds firmware : `env_clear` + liste blanche, `wifi_secret_id` seul
-  dans la file (test `queued_args_never_carry_the_wifi_password`).
-- Tours publics : jeton 122 bits + asset référencé par la version publiée
-  + asset de l'org du tour.
+- Coffre : AAD `domaine ‖ propriétaire ‖ org ‖ secret_id`, trousseau obligatoire au boot, rotation par `key_id` (§9).
+- Enrôlement agent : code haché, `UPDATE … WHERE used_at IS NULL AND expires_at > now()` atomique, CA épinglée par empreinte.
+- Builds firmware : `env_clear` + liste blanche, `wifi_secret_id` seul dans la file (test `queued_args_never_carry_the_wifi_password`).
+- Tours publics : jeton de 122 bits, asset référencé par la version publiée et de l'org du tour.
 - OAuth : PKCE S256 obligatoire, redirect URIs exactes côté Rauthy.
-- Requêtes O2 : littéraux échappés et exécutées avec les identifiants de
-  l'org elle-même.
+- Requêtes O2 : littéraux échappés, exécution avec les identifiants de l'org elle-même.
 
 ## 5. Garde dépendances
 
-- `deny.toml` à la racine ; `task security:deps` = job CI `deny`
-  (bloquant) : avis RustSec + sources (crates.io et `path =` uniquement).
-- Exceptions actuelles (sans correctif amont, justifiées dans
-  `deny.toml`) : `rsa` (Marvin — vérification de signature publique
-  uniquement), `bincode`, `smallstr`, `atomic-polyfill`, `derivative`,
-  `fxhash`, `paste`, `pin-utils`, `proc-macro-error` (non maintenues, aucune vuln).
-- Une nouvelle exception = justification d'inexploitabilité dans
-  `deny.toml` + ligne ici.
+- `deny.toml` à la racine. `task security:deps` = job CI `deny`, bloquant : avis RustSec et sources (crates.io et `path =` seulement).
+- Exceptions actuelles, sans correctif amont : `rsa` (Marvin, vérification de signature publique seulement), `bincode`, `smallstr`, `atomic-polyfill`, `derivative`, `fxhash`, `paste`, `pin-utils`, `proc-macro-error` (non maintenues, aucune vulnérabilité).
+- Une nouvelle exception exige une justification d'inexploitabilité dans `deny.toml` et une ligne ici.
 
 ## 6. Revue de sécurité d'une modification (obligatoire)
 
-Avant chaque commit touchant du code, parcourir le diff avec cette grille
-(et lancer `/security-review` avant merge d'une branche) :
+Avant chaque commit qui touche du code, parcourez le diff avec cette grille.
+Avant le merge d'une branche, lancez `/security-review`.
 
-1. **Nouvelle route ?** Garde d'auth, permission inscrite au registre IAM
-   (R2), org depuis le principal (R1), test sans la permission → 403 /
-   cross-org → 404.
-2. **Nouvelle donnée renvoyée ?** Pas d'identifiant d'accès ni de secret
-   (R4, R16).
-3. **Nouveau nœud / type de flow / champ de config ?** Liste blanche
-   runtime (R5), tampons de locataire écrasés (R3), pas d'accès env (R6).
+1. **Nouvelle route ?** Garde d'auth, permission au registre IAM (R2), org depuis le principal (R1), test sans la permission → 403, cross-org → 404.
+2. **Nouvelle donnée renvoyée ?** Pas d'identifiant d'accès ni de secret (R4, R16).
+3. **Nouveau nœud, type de flow ou champ de config ?** Liste blanche du runtime (R5), tampons de locataire écrasés (R3), pas d'accès à l'env (R6).
 4. **Requête sortante ou URL utilisateur ?** R8, R9.
 5. **Rendu de texte ou d'octets utilisateur ?** R11, R12, R13.
-6. **SQL / requête O2 / clé Valkey / chemin de stockage construit avec
-   une entrée ?** Paramètres liés, littéraux échappés, préfixe d'org
-   d'abord, `sanitize_segment` (R18).
+6. **SQL, requête O2, clé Valkey ou chemin de stockage construit avec une entrée ?** Paramètres liés, littéraux échappés, préfixe d'org d'abord, `sanitize_segment` (R18).
 7. **Processus enfant, crypto, aléa, jeton ?** R10, R14, R15, R17.
-8. **Nouvelle dépendance ?** Licence + `task security:deps` (R20).
+8. **Nouvelle dépendance ?** Licence et `task security:deps` (R20).
 9. **Config de déploiement ?** R7 (nginx), R19.
 
-Tout écart assumé est consigné en §7 avec sa justification ; un finding
-découvert en route est ajouté au registre même s'il n'est pas corrigé
-dans la même PR.
+Un écart assumé va au §7 avec sa justification.
+Un finding trouvé en route va au registre, même si la PR ne le corrige pas.
 
 ## 7. Registre des findings
 
-Audit de base du 2026-10-04 : 6 audits de domaine (authz/locataire,
-surface device/WS/OTA, sandboxes/injection/SSRF, fichiers/médias,
-crypto/secrets/déploiement, front XSS/ponts JS), puis vérification
-contradictoire de chaque finding ; seuls les findings à confiance ≥ 8/10
-sont retenus.
+```mermaid
+stateDiagram-v2
+  [*] --> ouvert : finding relevé
+  ouvert --> corrigé : commit + test
+  ouvert --> accepté : justification consignée
+  accepté --> corrigé : correctif ultérieur
+  corrigé --> [*]
+```
 
-Statuts : **ouvert** · **corrigé** (commit) · **accepté** (justification).
-Sévérité : HIGH = compromission inter-org / plateforme ou prise de compte ;
-MEDIUM = escalade à l'intérieur d'une org ; LOW = défaut de cloisonnement
-sans impact exploitable démontré.
+L'audit de base du 2026-10-04 a couvert six domaines : authz et locataire, surface device/WS/OTA, sandboxes et SSRF, fichiers et médias, crypto et déploiement, front et ponts JS.
+Chaque finding a eu une vérification contradictoire. Le registre principal retient les findings à confiance ≥ 8/10.
 
-### Retenus (confiance ≥ 8/10)
+Statuts : **ouvert**, **corrigé** (date ou commit), **accepté** (justification), **borné** (accepté avec limites).
+Sévérité : HIGH = compromission inter-org, plateforme ou prise de compte. MEDIUM = escalade dans une org. LOW = défaut de cloisonnement sans impact exploitable démontré.
+
+### Retenus
 
 | # | Sév. | Finding | Règle | Statut |
 |---|---|---|---|---|
-| SEC-1 | HIGH | **RCE par le nœud `red` → `exec`** | R5 | corrigé |
-| SEC-2 | HIGH | **Falsification de `pnex_org_id` via un nœud `red` `pnex-*`** | R3 | corrigé |
+| SEC-1 | HIGH | **RCE par le nœud `red` → `exec`** | R5 | corrigé (détail ci-dessous) |
+| SEC-2 | HIGH | **Falsification de `pnex_org_id` par un nœud `red` `pnex-*`** | R3 | corrigé |
 | SEC-3 | HIGH | **`env.get` des fonctions JS lit l'environnement du runtime** | R6 | corrigé (+ fork edgelinkd) |
-| SEC-4 | HIGH* | **`/internal/*` exposé et `org_id` fourni par l'appelant** | R7 | corrigé — exposition ; résiduel ci-dessous |
+| SEC-4 | HIGH* | **`/internal/*` exposé et `org_id` fourni par l'appelant** | R7 | corrigé pour l'exposition ; résiduel fermé par SEC-76 |
 | SEC-5 | HIGH | **XSS stocké : médias servis avec le `Content-Type` du client** | R12 | corrigé |
-| SEC-6 | HIGH | **XSS stocké : labels pannellum sans `escapeHTML`** | R11 | corrigé |
-| SEC-7 | MEDIUM | **Viewer : déploiement / annulation OTA** | R2 | corrigé |
-| SEC-8 | MEDIUM | **Viewer : jetons et clés des devices, firmware avec PSK WiFi** | R4 | corrigé |
+| SEC-6 | HIGH | **XSS stocké : étiquettes pannellum sans `escapeHTML`** | R11 | corrigé |
+| SEC-7 | MEDIUM | **Viewer : déploiement et annulation OTA** | R2 | corrigé |
+| SEC-8 | MEDIUM | **Viewer : jetons et clés des devices, firmware avec PSK WiFi** | R4 | corrigé ; un member peut encore télécharger l'image qui porte le PSK (inhérent au provisioning, rattaché à SEC-W2) |
 | SEC-9 | LOW | **Dashboard : id de contrôle d'une autre org accepté au save** | R1 | corrigé (18484ae) |
-| SEC-10 | MEDIUM | **APK Android distribué « debuggable » : session lisible par USB** | R16 | accepté pour 0.1.0-beta.1 (sideload, testeurs connus) — 2026-10-09 : APK release non debuggable signé prêt (`task build:frontend:android:release`, job CI `android`) ; reste à créer la clé et la poser en secrets GitHub |
-| SEC-11 | MEDIUM | **Markdown de l'assistant : liens `javascript:` et images distantes** (ex-SEC-W1, relevé à l'audit de release) | R11 | corrigé |
-| SEC-12 | LOW | **Sauvegarde Android (auto-backup, transfert) emportait le jeton de rafraîchissement** | R16 | corrigé |
+| SEC-10 | MEDIUM | **APK Android distribué « debuggable » : session lisible par USB** | R16 | accepté pour 0.1.0-beta.1 (sideload, testeurs connus) ; APK release non debuggable prêt (`task build:frontend:android:release`, job CI `android`) ; reste la clé de signature à créer et à poser en secrets GitHub |
+| SEC-11 | MEDIUM | **Markdown de l'assistant : liens `javascript:` et images distantes** (ex-SEC-W1) | R11 | corrigé |
+| SEC-12 | LOW | **Sauvegarde Android (auto-backup, transfert) avec le jeton de rafraîchissement** | R16 | corrigé |
 | SEC-13 | LOW | **Assistant : widget libre re-lié au contrôle d'un flow déployé** | D144 | corrigé |
-| SEC-14 | LOW | **URL d'un fournisseur LLM vers un hôte interne (SSRF aveugle)** | R8 | corrigé 2026-10-07 — résolveur filtrant `pnex_core::egress` (avec SEC-W3) |
-| SEC-15 | LOW | **Image `pnex-builder-rs` : paquets Python vulnérables (7 HIGH, 0 CRITICAL)** | dépendances | corrigé pour 0.1.0-beta.4 (11 sur 12) ; `ecdsa` accepté (pas de correctif amont) |
-| SEC-16 | LOW | **Firmware : CA épinglée décodée dans un buffer fixe avant le contrôle de taille (débordement mémoire)** | D70 | corrigé 2026-10-08 (trouvé en route le 2026-10-07) |
-| SEC-17 | HIGH | **Frames device non authentifiées et sans anti-rejeu** (ChaCha20 seul, D8) | D8 | corrigé (couche interne) 2026-10-08 — lien Noise NNpsk0 (D156) serveur + agent + firmware, D8 supprimé ; reste le TLS mutuel (D153, lots L2–L4) |
-| SEC-18 | MEDIUM | **OTA non authentifiée, pas d'anti-downgrade sur ESP32** | — | corrigé 2026-10-09 (banc 8266 + C6 : OTA signée acceptée, downgrade refusé — signature invalide testée sur hôte seulement) — image signée Ed25519 liée au device + version, clé publique compilée, anti-downgrade sur toutes les puces (ota.md §4) ; signature hors builder = EX-B7 (V2) |
-| SEC-19 | MEDIUM | **Firmware : clé de chiffrement vide = trafic en clair** (repli silencieux) | R16 | corrigé 2026-10-08 — sans clé valide le device ne se connecte pas (`pnex_crypto.cpp`, `pnex_transport.cpp`) |
-| SEC-20 | LOW | **Secrets du device en clair dans le flash** (PSK WiFi, jeton, clé ChaCha) | R16 | accepté jusqu'à V4 (EX-C1/C3) : exige des eFuses, gelés avant la validation communautaire du firmware |
-| SEC-21 | HIGH | **En-têtes de l'edge crus sans preuve d'origine** (`X-Forwarded-Proto`, puis `X-Client-Cert`) : le port du backend est joignable sans nginx (compose publie 5150), un client pouvait les forger | R7 | corrigé 2026-10-09 (trouvé en route, lot L4) — secret partagé edge ↔ backend (`PNEX_EDGE_SECRET`, en-tête `X-Pnex-Edge`, comparaison à temps constant) ; sans lui les en-têtes de l'edge sont ignorés ; vérifié en direct (close 4013) |
-| SEC-22 | MEDIUM | **JWT de l'utilisateur dans l'URL des WebSockets navigateur** (`/ws/notify?token=`, `/ws/camera/live?token=`) : l'URL finit dans les journaux d'accès (proxy, CDN, contrôleur d'ingress) — même classe que O19 côté devices | R16 | corrigé 2026-10-09 (inventaire des ruptures pré-0.1.0) — ticket à usage unique `POST /api/v1/ws-ticket` (60 s, lié à l'utilisateur et à l'org du principal, consommé par `GETDEL` Valkey) ; ticket rejoué → 4001 (test) |
-| SEC-23 | LOW | **Filtre d'egress : angles morts** (`pnex-core/src/egress.rs`) — `ip_allowed` ne juge pas les adresses IPv6 qui embarquent une IPv4 (NAT64 `64:ff9b::/96`, 6to4 `2002::/16`) par leur IPv4 ; en `lan`, les noms `*.svc.cluster.local` et les adresses du réseau d'infra (Docker/k8s : Postgres, Valkey, O2, RustFS) restent joignables par toute org via `http_fetch` (et demain les flux média) | R8 | **corrigé** 2026-10-15 : IPv4 embarquée jugée comme IPv4, `*.svc`/`*.cluster.local` refusés, `PNEX_EGRESS_DENY_CIDRS` pour le réseau d'infra : en compose (`pnex-deploy`) = `PNEX_NET_SUBNET` par défaut ; en Helm = `api.egressDenyCidrs` (CIDR pods/services de la distribution, avertissement NOTES tant qu'il est vide) |
-| SEC-24 | LOW | **Modèles audio : disque du cache d'extraction** (`services/media_ingest/asr`) — chaque modèle audio importé est extrait dans `PNEX_ASR_MODELS_DIR` (borne de 4 Gio par modèle, traversée de chemins et liens refusés) ; aucune limite du nombre de modèles par org : une org peut remplir le disque du serveur en important des modèles distincts | — | ouvert — relevé 2026-10-10 au lot 1 de `media-ingest.md` ; piste : quota de modèles audio par org (verrou advisory, école D159), purge LRU du cache, taille d'upload `model` dédiée |
-| SEC-25 | LOW | **Binaires média hors veille CVE** (`deploy/docker/Dockerfile`, étages `ffmpeg` et `asr`) — ffmpeg (compilé par nous) et onnxruntime (lié statiquement dans `pnex-asr` via les archives sherpa-onnx) ne viennent pas de paquets Wolfi : ni l'avis CVE de Chainguard ni `cargo deny` ne les suivent. Ils décodent des médias non fiables | R20 | atténué 2026-10-10 : ffmpeg réduit au protocole `pipe` + démuxeurs/décodeurs audio listés (lot 6a : + décodeurs vidéo natifs H.264/HEVC/MJPEG, encodeur MJPEG, `image2pipe`, process vidéo distinct au même confinement, 2 threads), les deux process confinés (seccomp sans socket, Landlock lecture seule, rlimits, vérifié dans un conteneur Wolfi) ; reste : relever les versions épinglées à chaque release (scan d'image Trivy/Grype en CI) |
-| SEC-27 | LOW | **Secret d'accès d'un flux remis à son boîtier de capture** (`services/media_ingest/boxes.rs`, `/ws/media`, lot 6b de `media-ingest.md`) — un flux `capture_on = device:<id>` dont la source exige un secret (en-tête, identifiants RTSP/Tvheadend) ne peut être ouvert que par le boîtier : le serveur lui envoie la valeur du secret avec la liste de ses flux. Nouvelle exposition : un boîtier compromis (Pi sur le LAN de l'utilisateur) livre les secrets des flux qu'il capte ; un membre qui déplacerait un flux à secret vers un agent qu'il contrôle obtiendrait le secret en clair | R9, R16 | accepté 2026-10-10 avec garde-fous : secret envoyé seulement au boîtier désigné par le flux (org et device tirés de l'identité mTLS + Noise, R1), sur son lien chiffré, jamais dans un DTO de lecture ni dans un journal, gardé en mémoire seulement par l'agent (aucun fichier) ; c'est le secret **de la source** (déjà destiné à l'hôte de l'URL), jamais un secret de stockage (le boîtier n'a ni clé RustFS ni jeton de service) ; déplacer un flux qui porte un secret vers un boîtier exige `can_manage_secrets` (R9 : `secret-destination-locked` sinon, test `media_box.rs`) ; seul un agent qui a annoncé `media_capture` est un lieu de capture valide |
-| SEC-28 | LOW | **Pages : débit non borné par connexion** (`services/pages/room.rs`) — `/ws/doc/{id}` borne la taille de chaque trame (256 Kio) et de la page (8 Mio), pas le nombre de trames par seconde ; un membre peut saturer le journal `doc_updates` et le relais de présence de son org | R2 | ✅ 2026-10-10 : seau à jetons par session (rafale 200, 50 messages/s), fermeture 4429 (`controllers/ws_doc.rs`) |
-| SEC-29 | LOW | **Pages : rôle figé à l'ouverture du websocket** (`controllers/ws_doc.rs`) — rôle et appartenance lus à la connexion ; un membre rétrogradé viewer ou retiré garde l'écriture jusqu'à la déconnexion (même comportement que `/ws/notify`) | R2 | **corrigé** 2026-10-15 : rôle relu à chaque battement (30 s) ; retiré → fermeture 4006, rétrogradé viewer → lecture seule ; une erreur de lecture garde le droit courant |
-| SEC-35 | MEDIUM | **Plages d'objet sans garde du type** (`controllers/time_ranges.rs`) — création, modification, suppression et import d'une plage rattachée à un objet ne vérifiaient que le rôle d'org, pas le `write_role` du type de l'objet (D188) : un membre pouvait écrire le calendrier d'un type réservé aux admins | R2 | ✅ 2026-10-13 (`feat/gmao-plans`) : même garde que l'objet lui-même, test viewer/member → 403 `ontology-write-forbidden` ; le nœud `range_upsert` (flow déployé par un humain) inchangé |
-| SEC-36 | MEDIUM | **PDF de page : un mot géant bloque le rendu** (`pnex-pdf`, découpe d'un mot plus large que la ligne) — chaque essai remesurait tout le préfixe : un mot de 100 000 caractères occupait un thread bloquant des heures, répétable par un viewer (`GET …/versions/{n}/pdf`) | — (déni de service) | ✅ 2026-10-13 (merge `feat/media-vision-studio`) : essais bornés à 96 caractères, plafond de 1000 pages, test « mot de 100 000 caractères » |
-| SEC-37 | MEDIUM | **Vision Lab : une org monopolise l'entraînement** (`services/lab_train.rs`) — un seul entraînement par serveur, contrôle « occupé » par projet : N projets = N runs en file devant les autres orgs | — (déni de service) | ✅ 2026-10-13 : un run en file ou en cours par org, runs périmés fermés par org. Résiduel accepté : l'import vidéo du Lab (1 à la fois, ≤ 300 s) peut faire attendre les autres orgs |
-| SEC-38 | LOW | **PDF de page sans CSP sandbox** (`controllers/docs.rs` `version_pdf`) — en-têtes faits main, sans la CSP des contenus utilisateur | R12 | ✅ 2026-10-13 : `default-src 'none'; sandbox` ajouté (contenu généré par le serveur, nom de fichier assaini) |
-| SEC-39 | LOW | **Pièce jointe : version courante de l'asset exporté** (`/internal/flow/media/{id}`) — un membre peut poser une nouvelle version (autre fichier) sur l'asset d'un PDF exporté, que `pnex_notify` enverra | R7 | accepté 2026-10-13 : même org, membre déjà autorisé à envoyer ce fichier ; piste : mémoriser `media_version_id` dans `doc_version_exports`. Noté au même endroit : l'approbation D210 est un **contrôle de processus**, pas une frontière (l'auteur du flow peut la décocher, `can_write` requis dans les deux cas) |
-| SEC-40 | LOW | **Récurrences : ~90 plages par plan, sans plafond par org** (`services/ontology/recurrence.rs`) — beaucoup de plans gonflent la base et allongent le balayage commun | — (déni de service) | accepté 2026-10-13 (aucun plafond d'objets ni de plages par org, préexistant) ; à traiter avec les quotas par tier |
-| SEC-41 | LOW | **Déconnexion sans `id_token` : cookie SSO Rauthy possiblement conservé** (`pnex-frontend` `state/session.rs::logout`) — sans indice, la déconnexion purge l'app mais n'appelle plus l'end-session Rauthy (qui répondait un 400 brut quand sa session était déjà morte) ; si le cookie SSO vit encore, le login suivant peut se faire sans formulaire (poste partagé) | — (session) | **corrigé** 2026-10-15 : une déconnexion sans `id_token` pose `pnex.force_login` ; le login suivant part avec `prompt=login` (Rauthy 0.36.2 ignore alors la session SSO, vérifié dans son `get_authorize`) ; le drapeau tombe au premier jeton reçu. Seule la valeur `login` est relayée par `/oauth2/sso` (test `tenant_isolation.rs`) |
-| SEC-42 | LOW | **zip < 9 : extraction sur disque non confinée** (RUSTSEC-2026-0367/0368/0369 — bits SUID/SGID conservés, liens symboliques hors de la cible, permissions appliquées à travers un lien) — failles de `ZipArchive::extract` / `ZipStreamReader::extract` | — (élévation de privilèges, écriture hors cible) | ✅ 2026-10-17 : nos dépendances directes passent à zip 9 ; reste zip 8.6 via calamine 0.36.1 (lecture xlsx en mémoire, `extract()` jamais appelé, ni chez nous ni dans calamine) : 2026-11-03 : calamine 0.38 ne dépend plus de zip 8 et corrige RUSTSEC-2026-0436 (panique et allocation non bornée sur un fichier OLE2 piégé) ; l'exception `deny.toml` ne couvre plus que zip 2, dans le script de build de sherpa-onnx-sys, à retirer quand sherpa-onnx passe à zip 9 |
-| SEC-43 | LOW | **Scan LAN déclenché par un viewer** (`GET /api/v1/edge/lan-scan?prefix=`, `controllers/edge_refs.rs`) — tout membre de l'org, viewer compris, fait sonder par le serveur un /24 privé de son choix (ports 5150 et 443) ; la réponse n'identifie que des serveurs `pnex-server`, mais c'est du sondage réseau interne piloté par l'utilisateur | reconnaissance du réseau du serveur | ✅ 2026-10-17 (relevé le même jour, audit du contrat d'API) : garde `can_write()` en tête du handler → 403 `edge-write-forbidden` pour un viewer (R2) ; un `prefix` explicite hors RFC 1918 (`a.b.c.`, `Ipv4Addr::is_private`) → 400 `field-invalid` avant toute sonde ; tests `org_isolation_and_auth_401`, `lan_scan_prefix_is_rfc1918_only` (`tests/edge_refs.rs`) et `explicit_prefix_must_be_rfc1918` |
-| SEC-44 | LOW | **Agents navigateur : contrôle d'usage unique contournable** (`services/extension.rs::first_use`) — la clé anti-rejeu était le hachage du texte de la signature : la même signature suivie d'un espace, ou sa forme `(r, n−s)` (ECDSA malléable, `ring` n'impose pas s bas), repassait dans la fenêtre de ±120 s ; effet : un upload capté rejoué crée un média de plus | R15 | ✅ 2026-10-18 : clé sur `r` décodé (identique pour toutes les formes d'une signature) ; test « rejouée telle quelle, avec espace, en `(r, n−s)` → 401 » (`tests/extension.rs`) |
-| SEC-45 | LOW | **Agents navigateur : trames `seen` sans débit** (`controllers/ws_extension.rs`) — un agent forgé (n'importe quel inscrit, son org, sa clé Noise) pouvait insérer des lignes `social_videos` sans limite dans la base partagée | — (déni de service) | ✅ 2026-10-18 : 60 lots `seen` par minute et par lien, au-delà ignorés ; plafonds d'org 20 agents, 200 missions (`extension-limit-reached`). Registre plafonné à 500 000 posts par org (`ext-registry-full`, O89) |
-| SEC-46 | LOW | **Agents navigateur : `collect_page` sur x.com / youtube.com sans consentement par site** (`pnex-core::browser_agent::check_page_url`, `manifest.json` `content_scripts`) — ces deux hôtes sont accordés à l'installation ; un membre peut garder en document une page privée du compte connecté sur l'agent (messages, historique) | R2 | **accepté** 2026-10-18 (décision utilisateur, O90) : même org, l'agent est le compte de l'org et doit pouvoir tout collecter |
-| SEC-47 | LOW | **Tours publics : `share_token` stocké en clair** (`tours.share_token`, `controllers/public_tours.rs:33`) — jeton de 122 bits comparé par égalité SQL ; une fuite de la base (sauvegarde, réplica) donne l'accès à tous les tours publiés, alors que les codes d'enrôlement sont stockés hachés | R16 | ouvert (relevé 2026-10-18 à l'étude IAM, `iam.md` §5.4) |
-| SEC-48 | LOW | **Historiques : auteur de version fourni par le client** (`flow_versions`, `dashboard_versions`, `tour_versions`, `annotation_layer_versions` : colonne `author` texte, remplie depuis le corps de la requête, ex. `controllers/flows/crud.rs:40`) — tout membre en écriture peut attribuer une version à quelqu'un d'autre ; l'email recopié échappe en outre à l'effacement du compte | R3 | ouvert (relevé 2026-10-19 à l'étude IAM, correctif `iam.md` D299) |
-| SEC-49 | LOW | **Imports d'ontologie : l'URL source est lue par tout membre** (`object_imports.source_url`, `ObjectImportView`, partner-watch.md D301) — une clé d'API placée dans la query de l'URL serait visible de l'org entière (R4, R16) | R4, R16 | accepté (2026-10-19) : les sources livrées sont publiques et sans clé ; aide de l'écran Imports « jamais de secret dans l'adresse » ; une source authentifiée prendra une référence du coffre (D110) quand le besoin existera |
-| SEC-50 | LOW | **`/ws/extension` sans vérification de l'edge device (4013)** (`controllers/ws_extension.rs`) — un agent navigateur passe par l'adresse de l'app (ingress public), jamais par l'edge mTLS des devices qui pose `X-Pnex-Edge` : la vérification fermait toute connexion (agent toujours « hors ligne » sur dev.pnex.io, 2026-10-19) | **accepté** 2026-10-19 (décision user) : admission par ticket à usage unique obtenu en HTTPS avec le jeton de l'agent, puis poignée de main Noise NNpsk0 avec sa clé (D262) ; le TLS de l'app reste assuré par l'ingress |
-| SEC-26 | MEDIUM | **Clé de frame forgée dans un message de flow** (`pnex-node-camera/src/record.rs`, `pnex-node-vision/src/lib.rs`) — `video_record` et `vision_detect` faisaient `GET` de `payload.frame_key` tel que reçu ; un nœud `function` (code utilisateur) pouvait forger une clé d'une autre org (`pnex:cam:v1:{autre org}:…`) ou toute clé Valkey de type chaîne, puis la lire via l'enregistrement ou la détection | R3 | ✅ 2026-10-10 (lot 6a média) : `camera::frame_key_in_org` — clé lue seulement si elle est une clé de frame de l'org tamponnée (espace device `pnex:cam:v1:{org}:` ou flux `pnex:media:v1:{org}:`, segment `:f:`) ; test `frame_keys_are_bound_to_their_org` |
-| SEC-28 | LOW | **Fil bloqué par un document hostile** (`services/doc_search.rs`, P1 de `doc-search.md`) — l'extraction (pdf-extract, calamine, quick-xml) est du code synchrone sur des octets utilisateur ; un PDF piégé peut boucler. Garde-fous : zip-bomb refusée sur le répertoire central, inflate et texte plafonnés, `spawn_blocking` (panique → `media-index-malformed`), délai de 300 s → `media-index-too-large`. Reste : le fil bloquant d'une extraction hors délai n'est pas annulable et tourne jusqu'à sa fin (sous-processus si constaté en pratique) | — (disponibilité) | accepté 2026-10-10 (shortcut commenté dans le code) |
-| SEC-30 | MEDIUM | **Export COCO du Vision Lab en mémoire** (`services/lab.rs::export`) — archive construite en mémoire, déclenchable par un lecteur ; seul plafond initial : 3000 images | — (disponibilité) | ✅ 2026-10-13 : somme des `size_bytes` vérifiée avant toute lecture, 512 Mo d'images au plus → 413 `lab-export-too-large` |
-| SEC-31 | MEDIUM | **Import de trames d'enregistrement : segments chargés en bloc** (`services/lab.rs::import_recording`) — toute l'heure de segments en mémoire pour garder quelques trames | — (disponibilité) | ✅ 2026-10-13 : trames choisies sur les métadonnées, segments lus un par un (un seul en mémoire), plafond 2 Gio lus par import |
-| SEC-32 | MEDIUM | **Modèle de décision partagé sans quota par org** (`services/decide.rs`) — un seul calcul à la fois pour tout le serveur ; une org pouvait l'occuper en continu | — (disponibilité) | ✅ 2026-10-13 : compteur quotidien par org (Valkey, 20 000 décisions/jour) avant le sémaphore ; message d'échec de chargement générique côté org, détail dans les journaux seulement |
-| SEC-33 | LOW | **État des nœuds vision par source non borné** (`pnex-node-vision`: track, zone, caption) — identifiants de source et tableaux de détections forgeables par le code utilisateur | — (disponibilité) | ✅ 2026-10-13 : 256 sources au plus par nœud (au-delà l'état repart), 300 détections par trame ; `add_images` ne lit que des `image/*` ≤ 50 Mo |
-| SEC-34 | LOW | **Routes `/internal/flow/ai/*` : org crue après jeton + fencing** (`controllers/internal_flow.rs`) — un runtime compromis pourrait consommer le fournisseur LLM et le quota d'une autre org (en mono-runtime le fencing ne lie pas l'org) ; même niveau de confiance que les autres routes internes (`event`, `time-range`, `video-annotations`). La légende est en partie protégée par `frame_key_in_org` | R7 | **corrigé** 2026-10-15 : chaque route `/internal/flow/ai/*` exige un flow déployé de l'org qui contient un nœud du type appelant (`vision_caption`, `media_fuse`, `llm_text`, `text_decide`), sinon 403 `flow-ai-node-absent` (test `internal_flow.rs`) |
-| SEC-51 | MEDIUM | **Requête d'ontologie = oracle des données masquées** (`services/ontology/query.rs`) — un membre sans `ontology.personal:read` voit le titre et les propriétés personnelles masqués, mais `text`, un filtre (`contains`, `eq`…) ou `order_by` sur ces valeurs changeait le résultat : on pouvait les deviner lettre par lettre (UI, assistant, MCP, ensembles d'application). Trouvé à l'essai CRM du 2026-10-26 | R2 | **corrigé** 2026-10-26 : `query::run` reçoit la `Redaction` de l'appelant ; sur les types où la valeur est masquée, recherche et filtre ne trouvent rien, le tri la traite comme absente (test `personal_data.rs`). Les flows lisent sans masque, comme le reste de leur org |
-| SEC-52 | MEDIUM | **Effacement annulable et transfert forgeable** — (1) une coquille effacée (D446) restait modifiable : un `PUT` lui rendait nom et propriétés personnelles, et elle prenait de nouveaux liens ; (2) la relève des boîtes mail croyait l'en-tête `Authentication-Results` du message : chez un hébergeur qui n'en ajoute pas (cPanel/o2switch), l'expéditeur pouvait écrire `dmarc=pass` et faire lier son mail (ou croire un faux transfert, D463). Trouvés à l'essai CRM du 2026-10-26 | R2 | **corrigé** 2026-10-26 : (1) objet effacé en lecture seule, `ontology-erased` 409 (test `personal_data.rs`) ; (2) PneX vérifie lui-même DKIM aligné sur le `From:` (`services/mail/verify.rs`, crate `mail-auth`), l'en-tête du message n'est jamais lu (tests `verify.rs`, `parse.rs`) ; vérifié sur un vrai Gmail (pass) et un mail usurpé (none) |
-| SEC-53 | MEDIUM | **Page générée depuis un objet = lecture sans masque** (`services/ontology/cases/pages.rs`, `from_object`) — un membre sans `ontology.personal:read` qui créait une page depuis un modèle (plan de compte, fiche opportunité) y trouvait en clair le titre et les propriétés personnelles de l'objet, de ses liens (contacts) et de ses hiérarchies : la page les recopiait sans le masque appliqué à ses autres lectures. Trouvé en reprenant le reste de D443 le 2026-10-27 | R2 | **corrigé** 2026-10-27 : la page reçoit la `Redaction` de son auteur (objet, liens, hiérarchies), test `personal_data.rs` ; reste ouvert : un lecteur ultérieur qui lit moins que l'auteur voit ce que l'auteur voyait (visibilité par objet, iam.md I5) |
-| SEC-54 | LOW | **Alertes zstd (RUSTSEC-2026-0391, -0398, -0403, -0410)**, job CI `deny` rouge le 2026-10-27 : zstd 0.14.0 / zstd-safe 8.0 / zstd-sys 2.1.0 au runtime (tower-http, compression), et zstd 0.13 / zstd-safe 7 via zip 2 dans le script de build de `sherpa-onnx-sys` 1.13 | — | **corrigé** 2026-10-27 au runtime (`cargo update` : zstd 0.14.3, zstd-safe 8.2, zstd-sys 2.1.2) ; reste accepté : la copie du script de build de sherpa, jamais liée ni nourrie de données non fiables (exceptions dans `deny.toml`), à retirer au passage à sherpa-onnx 2.x (zip 9) ; **exceptions retirées** 2026-11-09 (zstd 0.13.4 / zstd-safe 7.4 corrigés) |
-| SEC-55 | MEDIUM | **Écriture masquée = perte de données** (`controllers/ontology.rs`, `update_object`, `update_link`) — un rôle en écriture sans `ontology.personal:read` recevait un titre `••••` et des propriétés retirées ; renvoyer la fiche écrivait le masque à la place du vrai nom et effaçait les valeurs cachées, sans trace visible pour lui | `Redaction::keep_hidden`, `keep_hidden_attributes` | **corrigé** 2026-11-02, réponse de la mise à jour masquée elle aussi (revue avant push : `keep_hidden` aurait sinon renvoyé le vrai nom à l'appelant) : ce que l'appelant ne peut pas lire reste tel que stocké ; test `personal_data.rs` |
-| SEC-56 | HIGH | **Agent navigateur partagé par défaut** (`services/extension.rs`, `services/profiles.rs`) — tout membre peut appairer un navigateur, et une mission sans agent désigné (toute capture de profil en crée une) part sur n'importe quel agent de l'org : un membre peut faire lire une page dans la session connectée d'un collègue, et le texte devient un document de l'org. Le modèle de menace D130 ne s'y oppose pas côté org, mais une session personnelle n'est pas une ressource d'org | — | **corrigé** 2026-11-02 (D550) : agent personnel par défaut, agent commun réservé aux admins (`extension:share`), filtre `runs_on` relu à chaque contrôle, modifier la mission d'un collègue la transfère, départ d'un membre = ses agents déconnectés |
-| SEC-57 | LOW | **Balayage des documents de dépôts non équitable** (`services/markets/documents.rs`) — 20 dépôts tirés au hasard par passage, toutes orgs confondues : une org qui saisit beaucoup de dépôts ralentit les autres. Pas de fuite (URL limitées aux archives SEC et ESEF, contact de l'org, média privé). Non corrigé : à répartir par org si plusieurs orgs utilisent le pack. |
-| SEC-58 | MEDIUM | **Élévation en éditant un import** (`services/ontology/imports/mod.rs`) — un run sans humain écrit avec le rôle de l'auteur (D303), et `update` gardait l'auteur d'origine : un membre modifiait l'import d'un admin (source, type réservé) puis le lançait avec les droits de l'admin. Antérieur à OP1. |
-| SEC-59 | HIGH | **Valeurs effacées dans les diffs conservés** (`services/ontology/erase.rs`) — les aperçus et runs refusés gardent titres et propriétés dans `object_import_runs.diff`, lisibles par `ontology:read` après l'effacement. Antérieur à OP1. |
-| SEC-60 | LOW | **Parties multipart orphelines** (`pnex-pipeline-worker`, `datasets/parquet.rs`) — un délai dépassé ou un processus tué laisse des parties d'upload invisibles à `list_prefix`, donc à la purge et à l'effacement. **Corrigé le 2026-11-05** : la passe de purge annule tout upload de plus de 24 h sous `org_*` (`S3Config::abort_stale_uploads`, vérifié sur RustFS, worker tué compris). Jusqu'à 24 h, ces parties peuvent contenir une personne effacée. |
-| SEC-61 | MEDIUM | **Cloisonnement du worker de pipelines** (`deploy`, chart `pnex-deploy`) — en local le rôle `pnex_pipeline_worker` est pris par `SET ROLE` avec le compte de l'application, sans isolation réseau. Chart prêt le 2026-11-05 (`pipelineWorker.enabled`, faux par défaut : login dédié, `NetworkPolicy` limitée à Postgres, RustFS et DNS), rendu vérifié, jamais déployé sur un cluster : à essayer avant toute mise en service (`data-pipelines.md` §9.4). **Écart relevé en revue le 2026-11-05, non corrigé** : le worker reçoit l'identifiant racine de RustFS du chart. Un bug du moteur lirait ou réécrirait le média et les documents de toutes les orgs : sur S3, la frontière d'org n'existe que dans son code. **Corrigé dans le chart le 2026-11-06** : le job RustFS du chart crée au worker son propre utilisateur (clés `rustfs-pipeline-*`), politique limitée à `org_*/datasets/*` par l'API d'admin de RustFS. Vérifié en local sur RustFS 1.0.0-rc.2 : média, racine du bucket, autre bucket et liste des buckets refusés ; `dataset_sync::an_erasure_reaches_what_the_worker_computed` passe sous cette identité. Reste : la frontière d'org entre deux orgs sur `datasets/` vit toujours dans le code du worker. |
-| SEC-62 | LOW | **Mémoire d'une recherche de chemin** (`services/ontology/graph.rs`, D589) — une requête charge jusqu'à 200 000 liens en mémoire, chaque identifiant en `String`, sans limite de requêtes simultanées. Pic non mesuré. Non corrigé : à mesurer, puis à borner si plusieurs requêtes parallèles pèsent sur le serveur. |
-| SEC-63 | MEDIUM | **Un effacement laissait des données personnelles** (`services/ontology/erase.rs`, `services/profiles.rs`, packs `crm`, `prospecting_b2b`, D610) — l'adresse dans la clé d'une piste, le texte des mails dans les activités, le nom dans la clé d'un contact de liste, les mails reçus d'une piste, les mails sortants, et rien n'empêchait l'adresse de revenir par un flow. Trouvé par audit le 2026-11-04, prouvé par `tests/crm.rs`. | R4 | Corrigé, D610. Reste : compte rendu et enregistrement d'un rendez-vous, non touchés par son effacement. |
-| SEC-65 | MEDIUM | **Le serveur jetait ses propres journaux** (`app.rs`) : le filtre de Loco ne laisse passer que `app_name()`, qui valait `pnex-server` alors que les cibles sont `pnex_backend::…`. Hors `RUST_LOG`, aucun avertissement ni erreur du backend ne sortait : refus de nœuds, écritures fenced, échecs du journal, diagnostics que SEC-32 renvoie « dans les journaux » | — (détection) | corrigé 2026-11-05 : `app_name()` = `pnex_backend`, test de garde. Sur une suite e2e complète, aucun jeton ni mot de passe dans la sortie (mots-clés et motif JWT). **Reste :** les erreurs Starlark et les refus du serveur y sont recopiés tels quels, donc une valeur de message peut y figurer : à relire avant d'envoyer ces journaux vers un outil externe |
-| SEC-66 | MEDIUM | **Une org supprimée laissait ses journaux dans O2** (`controllers/orgs.rs`) : la purge ne visait que les streams de métriques ; le journal des objets (avant et après de chaque changement), les transitions et les événements restaient jusqu'à leur rétention, sans plus aucune org pour les lire ni les effacer | — (données personnelles) | corrigé 2026-11-05 : `purge_org_streams` supprime aussi les streams de logs. **Reste :** le purge d'une org existante (`system.rs`) reste volontairement limité aux métriques ; les orgs déjà supprimées ne sont pas rattrapées ; une écriture du journal encore en file au moment de la suppression échoue mais n'est pas prouvée sans effet côté O2 |
+| SEC-14 | LOW | **URL d'un fournisseur LLM vers un hôte interne (SSRF aveugle)** | R8 | corrigé 2026-10-07 : résolveur filtrant `pnex_core::egress` (avec SEC-W3) |
+| SEC-15 | LOW | **Image `pnex-builder-rs` : paquets Python vulnérables (7 HIGH, 0 CRITICAL)** | R20 | corrigé pour 0.1.0-beta.4 (11 sur 12) ; `ecdsa` accepté (pas de correctif amont) |
+| SEC-16 | LOW | **Firmware : CA épinglée décodée dans un buffer fixe avant le contrôle de taille** | D70 | corrigé 2026-10-08 |
+| SEC-17 | HIGH | **Frames device non authentifiées et sans anti-rejeu** (ChaCha20 seul, D8) | D8 | corrigé 2026-10-08 : lien Noise NNpsk0 (D156) serveur, agent et firmware, D8 supprimé ; TLS mutuel livré ensuite (D153, §8.3) |
+| SEC-18 | MEDIUM | **OTA non authentifiée, pas d'anti-downgrade sur ESP32** | — | corrigé 2026-10-09 : image signée Ed25519 liée au device et à la version, clé publique compilée, anti-downgrade sur toutes les puces (`ota.md` §4) ; banc 8266 + C6 : OTA signée acceptée, downgrade refusé ; signature invalide testée sur hôte seulement ; signature hors builder = EX-B7 (V2) |
+| SEC-19 | MEDIUM | **Firmware : clé de chiffrement vide = trafic en clair** | R16 | corrigé 2026-10-08 : sans clé valide le device ne se connecte pas (`pnex_crypto.cpp`, `pnex_transport.cpp`) |
+| SEC-20 | LOW | **Secrets du device en clair dans le flash** (PSK WiFi, jeton, clé) | R16 | accepté jusqu'à V4 (EX-C1, EX-C3) : exige des eFuses, gelés avant la validation communautaire du firmware |
+| SEC-21 | HIGH | **En-têtes de l'edge crus sans preuve d'origine** (`X-Forwarded-Proto`, `X-Client-Cert`) : le port du backend est joignable sans nginx, un client pouvait les forger | R7 | corrigé 2026-10-09 : secret partagé edge ↔ backend (`PNEX_EDGE_SECRET`, en-tête `X-Pnex-Edge`, temps constant) ; sans lui les en-têtes de l'edge sont ignorés ; vérifié en direct (close 4013) |
+| SEC-22 | MEDIUM | **JWT dans l'URL des WebSockets navigateur** (`/ws/notify?token=`, `/ws/camera/live?token=`) : l'URL finit dans les journaux d'accès | R16 | corrigé 2026-10-09 : ticket à usage unique `POST /api/v1/ws-ticket` (60 s, lié à l'utilisateur et à l'org, consommé par `GETDEL` Valkey) ; ticket rejoué → 4001 (test) |
+| SEC-23 | LOW | **Filtre d'egress : angles morts** (`pnex-core/src/egress.rs`) : IPv6 qui embarque une IPv4 (NAT64, 6to4) non jugée comme IPv4 ; en `lan`, noms `*.svc.cluster.local` et réseau d'infra joignables par `http_fetch` | R8 | corrigé 2026-10-15 : IPv4 embarquée jugée comme IPv4, `*.svc` et `*.cluster.local` refusés, `PNEX_EGRESS_DENY_CIDRS` pour le réseau d'infra (compose : `PNEX_NET_SUBNET` ; Helm : `api.egressDenyCidrs`, avertissement NOTES tant qu'il est vide) |
+| SEC-24 | LOW | **Modèles audio : disque du cache d'extraction** (`services/media_ingest/asr`) : 4 Gio par modèle, mais aucune limite du nombre de modèles par org | — | ouvert (2026-10-10) ; piste : quota par org, purge LRU, taille d'upload dédiée |
+| SEC-25 | LOW | **Binaires média hors veille CVE** (`deploy/docker/Dockerfile`, étages `ffmpeg` et `asr`) : ffmpeg et onnxruntime ne viennent pas de Wolfi et décodent des médias non fiables | R20 | atténué 2026-10-10 : ffmpeg réduit au protocole `pipe` et aux démuxeurs et décodeurs listés, process vidéo distinct, les deux confinés (seccomp sans socket, Landlock lecture seule, rlimits) ; reste : relever les versions épinglées à chaque release (scan d'image en CI) |
+| SEC-26 | MEDIUM | **Clé de frame forgée dans un message de flow** (`pnex-node-camera/src/record.rs`, `pnex-node-vision/src/lib.rs`) : un nœud `function` pouvait faire lire une clé Valkey d'une autre org | R3 | corrigé 2026-10-10 : `camera::frame_key_in_org`, clé lue seulement si elle est une clé de frame de l'org tamponnée ; test `frame_keys_are_bound_to_their_org` |
+| SEC-27 | LOW | **Secret d'accès d'un flux remis à son boîtier de capture** (`services/media_ingest/boxes.rs`, `/ws/media`) : un boîtier compromis livre les secrets des flux qu'il capte | R9, R16 | accepté 2026-10-10 avec garde-fous : secret envoyé seulement au boîtier désigné (org et device tirés de l'identité mTLS + Noise, R1), sur son lien chiffré, en mémoire seulement, jamais un secret de stockage ; déplacer un flux à secret exige `secrets:write` (`secret-destination-locked` sinon, test `media_box.rs`) ; seul un agent qui annonce `media_capture` capte |
+| SEC-28 | LOW | **Pages : débit non borné par connexion** (`services/pages/room.rs`) | R2 | corrigé 2026-10-10 : seau à jetons par session (rafale 200, 50 messages/s), fermeture 4429 (`controllers/ws_doc.rs`) |
+| SEC-28 (bis) | LOW | **Fil bloqué par un document hostile** (`services/doc_search.rs`) : extraction synchrone sur des octets utilisateur ; zip-bomb refusée, inflate et texte plafonnés, `spawn_blocking`, délai de 300 s ; le fil hors délai n'est pas annulable | — (disponibilité) | accepté 2026-10-10 (shortcut commenté dans le code) |
+| SEC-29 | LOW | **Pages : rôle figé à l'ouverture du websocket** (`controllers/ws_doc.rs`) | R2 | corrigé 2026-10-15 : rôle relu à chaque battement (30 s) ; retiré → 4006, rétrogradé viewer → lecture seule |
+| SEC-30 | MEDIUM | **Export COCO du Vision Lab en mémoire** (`services/lab.rs::export`) | — (disponibilité) | corrigé 2026-10-13 : 512 Mo d'images au plus, vérifié avant lecture → 413 `lab-export-too-large` |
+| SEC-31 | MEDIUM | **Import de trames : segments chargés en bloc** (`services/lab.rs::import_recording`) | — (disponibilité) | corrigé 2026-10-13 : segments lus un par un, plafond 2 Gio par import |
+| SEC-32 | MEDIUM | **Modèle de décision partagé sans quota par org** (`services/decide.rs`) | — (disponibilité) | corrigé 2026-10-13 : 20 000 décisions par jour et par org (Valkey) avant le sémaphore ; détail d'échec dans les journaux seulement |
+| SEC-33 | LOW | **État des nœuds vision par source non borné** (`pnex-node-vision` : track, zone, caption) | — (disponibilité) | corrigé 2026-10-13 : 256 sources par nœud, 300 détections par trame ; `add_images` lit seulement des `image/*` ≤ 50 Mo |
+| SEC-34 | LOW | **Routes `/internal/flow/ai/*` : org crue après jeton et fencing** (`controllers/internal_flow.rs`) | R7 | corrigé 2026-10-15 : chaque route exige un flow déployé de l'org qui contient un nœud du type appelant, sinon 403 `flow-ai-node-absent` |
+| SEC-35 | MEDIUM | **Plages d'objet sans garde du type** (`controllers/time_ranges.rs`) : le `write_role` du type (D188) n'était pas vérifié | R2 | corrigé 2026-10-13 : même garde que l'objet, viewer et member → 403 `ontology-write-forbidden` |
+| SEC-36 | MEDIUM | **PDF de page : un mot géant bloque le rendu** (`pnex-pdf`) | — (déni de service) | corrigé 2026-10-13 : essais bornés à 96 caractères, 1000 pages au plus, test « mot de 100 000 caractères » |
+| SEC-37 | MEDIUM | **Vision Lab : une org monopolise l'entraînement** (`services/lab_train.rs`) | — (déni de service) | corrigé 2026-10-13 : un run en file ou en cours par org ; résiduel accepté : l'import vidéo du Lab (1 à la fois, ≤ 300 s) peut faire attendre les autres orgs |
+| SEC-38 | LOW | **PDF de page sans CSP sandbox** (`controllers/docs.rs` `version_pdf`) | R12 | corrigé 2026-10-13 : `default-src 'none'; sandbox` |
+| SEC-39 | LOW | **Pièce jointe : version courante de l'asset exporté** (`/internal/flow/media/{id}`) | R7 | accepté 2026-10-13 : même org, member déjà autorisé à envoyer ce fichier ; piste : mémoriser `media_version_id` dans `doc_version_exports`. L'approbation D210 est un contrôle de processus, pas une frontière |
+| SEC-40 | LOW | **Récurrences : environ 90 plages par plan, sans plafond par org** (`services/ontology/recurrence.rs`) | — (déni de service) | accepté 2026-10-13 ; à traiter avec les quotas par profil |
+| SEC-41 | LOW | **Déconnexion sans `id_token` : cookie SSO Rauthy possiblement conservé** (`state/session.rs::logout`) | — (session) | corrigé 2026-10-15 : `pnex.force_login`, le login suivant part avec `prompt=login` ; `/oauth2/sso` relaie seulement `login` (test `tenant_isolation.rs`) |
+| SEC-42 | LOW | **zip < 9 : extraction sur disque non confinée** (RUSTSEC-2026-0367/0368/0369) | — | corrigé 2026-10-17 pour nos dépendances (zip 9) ; calamine 0.38 ne dépend plus de zip 8 (2026-11-03, corrige aussi RUSTSEC-2026-0436) ; l'exception `deny.toml` couvre seulement zip 2 dans le script de build de `sherpa-onnx-sys`, à retirer au passage de sherpa-onnx à zip 9 |
+| SEC-43 | LOW | **Scan LAN déclenché par un viewer** (`GET /api/v1/edge/lan-scan?prefix=`) | R2 | corrigé 2026-10-17 : viewer → 403 `edge-write-forbidden` ; préfixe hors RFC 1918 → 400 `field-invalid` ; tests `tests/edge_refs.rs` |
+| SEC-44 | LOW | **Agents navigateur : contrôle d'usage unique contournable** (`services/extension.rs::first_use`) : signature malléable rejouée dans la fenêtre de ±120 s | R15 | corrigé 2026-10-18 : clé sur `r` décodé ; test « rejouée telle quelle, avec espace, en `(r, n−s)` → 401 » |
+| SEC-45 | LOW | **Agents navigateur : trames `seen` sans débit** (`controllers/ws_extension.rs`) | — (déni de service) | corrigé 2026-10-18 : 60 lots par minute et par lien ; plafonds d'org 20 agents, 200 missions (`extension-limit-reached`) ; registre plafonné à 500 000 posts par org (`ext-registry-full`) |
+| SEC-46 | LOW | **Agents navigateur : `collect_page` sur x.com et youtube.com sans consentement par site** | R2 | accepté 2026-10-18 (décision utilisateur) : même org, l'agent est le compte de l'org |
+| SEC-47 | LOW | **Tours publics : `share_token` stocké en clair** (`controllers/public_tours.rs`) : une fuite de la base donne tous les tours publiés | R16 | ouvert (2026-10-18, `iam.md`) |
+| SEC-48 | LOW | **Historiques : auteur de version fourni par le client** (`flow_versions`, `dashboard_versions`, `tour_versions`, `annotation_layer_versions`) | R3 | ouvert (2026-10-19, correctif `iam.md` D299) |
+| SEC-49 | LOW | **Imports d'ontologie : l'URL source est lue par tout membre** (`object_imports.source_url`) : une clé d'API dans l'URL serait visible de l'org | R4, R16 | accepté 2026-10-19 : sources livrées publiques ; aide « jamais de secret dans l'adresse » ; une source authentifiée prendra une référence du coffre |
+| SEC-50 | LOW | **`/ws/extension` sans vérification de l'edge device (4013)** : l'agent navigateur passe par l'ingress public | R7 | accepté 2026-10-19 (décision utilisateur) : ticket à usage unique obtenu en HTTPS, puis poignée de main Noise NNpsk0 (D262) |
+| SEC-51 | MEDIUM | **Requête d'ontologie = oracle des données masquées** (`services/ontology/query.rs`) : filtre, recherche ou tri sur une valeur masquée | R2 | corrigé 2026-10-26 : `query::run` reçoit la `Redaction` de l'appelant ; test `personal_data.rs` ; les flows lisent sans masque |
+| SEC-52 | MEDIUM | **Effacement annulable et transfert forgeable** : coquille effacée modifiable (D446) ; `Authentication-Results` du message cru (D463) | R2 | corrigé 2026-10-26 : objet effacé en lecture seule (`ontology-erased` 409) ; PneX vérifie lui-même DKIM aligné sur `From:` (`services/mail/verify.rs`) |
+| SEC-53 | MEDIUM | **Page générée depuis un objet = lecture sans masque** (`services/ontology/cases/pages.rs`) | R2 | corrigé 2026-10-27 : la page reçoit la `Redaction` de son auteur ; reste ouvert : un lecteur ultérieur voit ce que l'auteur voyait (`iam.md` I5) |
+| SEC-54 | LOW | **Alertes zstd (RUSTSEC-2026-0391, -0398, -0403, -0410)** | R20 | corrigé 2026-10-27 au runtime ; exceptions du script de build de sherpa retirées le 2026-11-09 |
+| SEC-55 | MEDIUM | **Écriture masquée = perte de données** (`controllers/ontology.rs`) : renvoyer une fiche masquée écrivait le masque | R2 | corrigé 2026-11-02 : `Redaction::keep_hidden`, `keep_hidden_attributes`, réponse masquée aussi ; test `personal_data.rs` |
+| SEC-56 | HIGH | **Agent navigateur partagé par défaut** (`services/extension.rs`) : une mission sans agent désigné partait sur la session d'un collègue | — | corrigé 2026-11-02 (D550) : agent personnel par défaut, agent commun réservé aux admins (`extension:share`) |
+| SEC-57 | LOW | **Balayage des documents de dépôts non équitable** (`services/markets/documents.rs`) : 20 dépôts au hasard par passage, toutes orgs confondues | — (équité) | ouvert : à répartir par org si plusieurs orgs utilisent le pack |
+| SEC-58 | MEDIUM | **Élévation en éditant un import** : un run sans humain écrit avec le rôle de l'auteur (D303), qu'une édition ne changeait pas | R2 | corrigé (revue du 2026-11-04, `data-pipelines.md`) : une édition fait de l'éditeur l'auteur de l'import (`services/ontology/imports/mod.rs`) ; même règle pour les plannings de pipelines (test `data_builds.rs`) |
+| SEC-59 | HIGH | **Valeurs effacées dans les diffs conservés** (`object_import_runs.diff`) | RGPD | corrigé (revue du 2026-11-04) : l'effacement vide les diffs en aperçu ou refusés (`services/ontology/erase.rs`) |
+| SEC-60 | LOW | **Parties multipart orphelines** (`pnex-pipeline-worker`) : invisibles à la purge et à l'effacement | RGPD | corrigé 2026-11-05 : la purge annule tout upload de plus de 24 h (`S3Config::abort_stale_uploads`) ; jusqu'à 24 h, une partie peut contenir une personne effacée |
+| SEC-61 | MEDIUM | **Cloisonnement du worker de pipelines** (chart `pnex-deploy`) | R1 | corrigé dans le chart 2026-11-06 : login dédié, `NetworkPolicy`, utilisateur RustFS limité à `org_*/datasets/*` ; jamais déployé sur un cluster ; reste : la frontière entre orgs sur `datasets/` vit dans le code du worker |
+| SEC-62 | LOW | **Mémoire d'une recherche de chemin** (`services/ontology/graph.rs`, D589) : jusqu'à 200 000 liens en mémoire, sans limite de requêtes simultanées | — (disponibilité) | ouvert : à mesurer, puis à borner |
+| SEC-63 | MEDIUM | **Un effacement laissait des données personnelles** (clés de piste et de contact, textes de mails, mails sortants ; retour possible par un flow) | R4 | corrigé (D610) ; reste : compte rendu et enregistrement d'un rendez-vous |
+| SEC-64 | LOW | **Connecteur : certificat non vérifié** (`services/connectors.rs`, D352) : la connexion part vers l'adresse vérifiée par l'egress | R8 | accepté (`data-pipelines.md` §9.6) : `sslrootcert` par connecteur à la demande d'un client |
+| SEC-65 | MEDIUM | **Le serveur jetait ses propres journaux** (`app.rs`, filtre de Loco sur `app_name()`) | — (détection) | corrigé 2026-11-05 : `app_name()` = `pnex_backend`, test de garde ; reste : erreurs Starlark et refus recopiés tels quels, à relire avant un envoi vers un outil externe |
+| SEC-66 | MEDIUM | **Une org supprimée laissait ses journaux dans O2** (`controllers/orgs.rs`) | — (données personnelles) | corrigé 2026-11-05 : `purge_org_streams` supprime aussi les streams de logs ; orgs déjà supprimées non rattrapées |
+| SEC-E1 | MEDIUM | **Pod de build d'image moins durci que D387** (`pnex-runner/src/k8s.rs`, D701) : BuildKit rootless exige seccomp et AppArmor `Unconfined` | D387 | accepté 2026-11-05 (cluster du client, ses propres Dockerfile, pas de gVisor ni de Kata par décision utilisateur) ; à revoir avant d'ouvrir le build à du code tiers |
+| SEC-E2 | MEDIUM | **Pod de build et pod de scan sans `NetworkPolicy`** | R8 | corrigé 2026-11-05 : `k8s::job_policy` (DNS et internet public seulement, plus `PNEX_RUNNER_JOB_EGRESS`) ; reste : un `RUN` joint tout l'internet public (Q-E13) |
+| SEC-E3 | LOW | **Digest et rapport déclarés par le pod** : un Dockerfile peut annoncer une autre image de la même org | R4, R16 | ouvert ; correctif : relire le digest dans le registre |
+| SEC-E4 | MEDIUM | **Une `NetworkPolicy` s'applique après coup** : mesuré sur kind, un pod sort librement pendant le délai | R8 | corrigé 2026-11-06 : porte `egress-gate` avant tout conteneur du bac, des pods de build, de scan et de sonde |
+| SEC-E5 | MEDIUM | **Le bac joint l'API Kubernetes de son nœud** (kind), en anonyme seulement | R8 | ouvert pour kind et tout plugin qui exempte ce trafic ; refusé sur le cluster de recette (microk8s, Calico, 2026-11-07) ; correctif par cluster : `--anonymous-auth=false` |
+| SEC-E6 | MEDIUM | **Le runner Firecracker relit un disque écrit par l'invité** (`debugfs` côté hôte, D762) | R5 | ouvert : e2fsprogs tenu à jour ; à reprendre avant d'ouvrir E6 à du code tiers |
+| SEC-E7 | MEDIUM | **La porte d'egress du bac s'ouvrait sans son outil de sonde** (`curl` absent) | R8 | corrigé 2026-11-07 : refus sans `curl`, test `the_egress_gate_never_opens_without_its_probe_tool` |
 
-\* SEC-4 seul exige le jeton de service ; c'est l'amplificateur qui rend
-SEC-1 / SEC-3 inter-org (actionneurs de n'importe quelle org).
+\* SEC-4 seul exige le jeton de service. Il amplifiait SEC-1 et SEC-3 en inter-org.
 
-**SEC-9 — Contrôle étranger dans un layout de dashboard (trouvé en route,
-2026-10-04, D131).** Contrairement aux annotations, le save d'un dashboard
-ne vérifiait pas que `options.control` désignait un contrôle de l'org :
-un membre pouvait stocker l'UUID d'un contrôle d'une autre org. Sans impact
-démontré — l'écriture (`/controls/{id}/value`) et la lecture des valeurs
-restent filtrées par l'org du principal (404 / `null`) — mais la règle R1
-n'était pas tenue au stockage. *Correctif* : `services/surface_controls.rs`
-ne lie qu'un contrôle de l'org ; un id inconnu est remplacé par la source
-propre du widget (`tests/controls.rs`,
-`surface_declared_controls_are_provisioned_and_released`).
+### Détail des findings de l'audit de base
 
-**SEC-15 — CVE Python de l'image builder (trouvé en route, 2026-10-05,
-release 0.1.0-beta.3).** `trivy image` sur `pnex-builder-rs:0.1.0-beta.2`
-(builder inchangé en beta.3) : 7 HIGH, 4 MEDIUM, 1 LOW, aucune CRITICAL,
-toutes Python — base wolfi propre. HIGH : `urllib3` 2.7.0 (→ 2.8.0, ×2),
-`starlette` 0.52.1 (→ 1.3.1, ×2), `msgpack` 1.1.2 (→ 1.2.1), `setuptools`
-70.3.0 (→ 78.1.1), `ecdsa` 0.19.2 (Minerva, sans correctif amont). Deux
-venvs en cause : `/opt/pio` (pip : platformio + esptool) et
-`/opt/platformio/penv` (venv interne créé par pio au pré-chauffage).
-*Exposition* : faible — le worker n'expose aucun service HTTP (starlette =
-PIO Home, jamais lancé), `ecdsa` ne signe rien côté serveur, le builder
-compile du code utilisateur dans un conteneur dédié. *Correctif
-(beta.4, Dockerfile étape `builder`)* : msgpack, setuptools et urllib3 2.7.0
-étaient les copies embarquées par **pip** (`pip/_vendor`, même pip 26.2.1)
-dans les trois Python de l'image → pip retiré après le pré-chauffage (venv
-`/opt/pio`, `penv`, paquet apk `py3.14-pip`) ; `penv` installe avec `uv`,
-pio ne le réinstalle pas. `starlette` de `penv` forcé ≥ 1.3.1 malgré
-l'épinglage `<1` de pioarduino (PIO Home seul l'importe, jamais lancé). Les
-5 builds de pré-chauffage repassent ; trivy : 12 → 1. *Accepté* : `ecdsa`
-0.19.2 (CVE-2024-23342, attaque temporelle Minerva sur la signature), exigé
-par la plateforme pioarduino (`python_deps`), sans correctif amont ; le
-builder ne signe rien avec. *Constat annexe* (corrigé dans la même beta.4) : le
-pré-chauffage ne couvrait pas tout — libs téléchargées à chaque build,
-cores pioarduino / officiel qui s'écrasaient ; builds hors ligne désormais
-(custom-firmware.md §8).
+**SEC-1 — RCE par le nœud `red` (confiance 9).** `FlowNodeKind::Red` acceptait tout `type_name`, et le runtime enregistrait tous les builtins, dont `exec` (`sh -c`).
+Tout inscrit pouvait déployer inject → red:exec → debug et lire `/proc/<ppid>/environ` (`DATABASE_URL`, `PNEX_SECRETS_KEYS`, identifiants O2 root).
+*Correctif* : le kind `red` est retiré (2026-10-14). Le registre du runtime se réduit aux builtins émis par la projection (`inject`, `debug`, `function`, `comment`, placeholders) et aux `pnex-*`.
+Tests : `raw_red_kind_is_refused`, `tests/flows.rs`, `env_isolation.rs`.
 
-**SEC-1 — RCE par le nœud `red` (confiance 9).** `FlowNodeKind::Red`
-accepte tout `type_name` (`pnex-core/src/flow/graph.rs:271`) ;
-`validate.rs:253-266` ne vérifie que non-vide + objet ; `red_flows.rs:361`
-recopie tel quel ; le runtime (`pnex-flow-runtime/src/main.rs:154`,
-`RegistryBuilder::default()`) enregistre tous les builtins dont `exec`
-(`vendor/edgelinkd/…/function_nodes/exec.rs:169`, `sh -c`), non gaté par
-feature (`file`/`file in` le sont : `nodes_storage` off). Tout inscrit
-(owner de son org perso) déploie inject → red:exec → debug : shell sous
-l'uid du serveur, lecture de `/proc/<ppid>/environ` (`DATABASE_URL`,
-`PNEX_SECRETS_KEYS`), identifiants O2 root, Valkey, jetons de service.
-*Correctif* : liste blanche de types `red` dans `validate.rs` (save +
-deploy) et dans `red_flows.rs` ; gater `exec` derrière une feature off dans
-le fork edgelinkd ; registre runtime explicite ; à terme uid / sandbox
-dédiés pour le runtime.
+**SEC-2 — Falsification du locataire (confiance 8).** Un `red` de type `pnex-device-write`, `pnex-device-read` ou `pnex-memory-*` gardait son `pnex_org_id`.
+Il donnait la mémoire Valkey, la télémétrie et les devices d'une autre org. *Correctif* : celui de SEC-1, puis la projection re-tamponne depuis `meta` (R3).
 
-**SEC-2 — Falsification du locataire (confiance 8).** Un `red` de type
-`pnex-device-write` / `pnex-device-read` / `pnex-memory-*` (enregistrés
-sous ces noms : `pnex-node-device/src/write.rs:47`, `read.rs:65`,
-`pnex-node-memory/src/lib.rs:91,211`) garde son `pnex_org_id` /
-`pnex_o2_org` (`red_flows.rs:361-386` n'écrase que id/z/name/x/y/wires).
-Lecture/écriture de la mémoire Valkey d'une autre org, lecture de sa
-télémétrie (O2 root), actionnement de ses devices via
-`/internal/flow/device-write` (lookup device sur l'org falsifiée ; fencing
-passant en mono-pod). Ids d'org séquentiels, slugs device énumérables.
-Ne nécessite pas `exec`. *Correctif* : refuser `type_name` `pnex-*` en
-`red` ; supprimer toute clé `pnex_*` puis re-tamponner depuis `meta` ;
-à terme org passée hors bande au runtime, jamais lue de la config.
+**SEC-3 — Environnement du runtime lisible par le JS (confiance 9).** `Engine::with_json` copiait l'environnement du process dans le magasin d'env du sandbox.
+`env.get("OPENOBSERVE_ROOT_PASSWORD")` donnait la télémétrie de toutes les orgs.
+*Correctif* : le fork `vendor/edgelinkd` ne copie plus l'environnement. Test `env_isolation.rs`.
 
-**SEC-3 — Environnement du runtime lisible par le JS (confiance 9).**
-`vendor/edgelinkd/crates/core/src/runtime/engine.rs:115`
-(`with_process_env()`), atteint via `Engine::with_json`
-(`pnex-flow-runtime/src/engines.rs:404`) ; `env` global du sandbox
-(`function/mod.rs:344`, `env_class.rs:24`) ; les fonctions JS du registre
-deviennent ce nœud (`red_flows.rs:273-292`) sans masquer `env`. Le
-superviseur injecte `OPENOBSERVE_ROOT_*`, `VALKEY_URL`,
-`PNEX_FLOW_WRITE_TOKEN`, `PNEX_NOTIFY_DELIVER_TOKEN`
-(`flow_supervisor/process.rs:8-80`). `return env.get("OPENOBSERVE_ROOT_PASSWORD")`
-→ télémétrie de toutes les orgs. *Correctif* : magasin d'env vide ou
-liste blanche dans le fork ; secrets lus puis `remove_var` au démarrage
-du runtime ; à terme identifiants O2 par org ; test de régression
-`env.get(...) === undefined`.
+**SEC-4 — Routes internes (confiance 8).** nginx et l'ingress routaient `/internal/*`, et le handler prenait `org_id` du corps.
+*Correctif* : `location /internal/ { return 404; }` (edge et pnex-deploy). Le middleware `auth::internal_guard` renvoie 404 à toute requête `/internal/*` qui porte un en-tête de proxy. Test `internal_via_public_proxy_404`.
 
-**SEC-4 — Routes internes (confiance 8).** Loco écoute `0.0.0.0`,
-nginx (`deploy/edge/nginx/templates/default.conf.template:101`,
-pnex-deploy `:110`, ingress Helm `/`) route `/internal/*` ;
-`internal_flow.rs` / `internal_notify.rs` : un jeton plateforme unique
-puis `org_id` pris du corps/query ; `fence_ok(.., None) => true`
-(`services/flow_cluster/mod.rs:444`). *Correctif* : `location /internal/
-{ return 404; }` + exclusion ingress (ou listener interne) ; fence
-obligatoire en mode cluster ; jetons par org (HMAC d'`org_id`).
+**SEC-5 — XSS par médias (confiance 8).** Le serveur stockait `?content_type=` tel quel et servait les octets `inline`, sans `nosniff` ni CSP.
+*Correctif* : `services::media::safe_content_type` à l'écriture et au service, `user_content_headers` (R12). Test `tours.rs`.
 
-**SEC-5 — XSS via médias (confiance 8).** `controllers/media/crud.rs:92-99`
-et `versions.rs:44-50` stockent `?content_type=` tel quel
-(`media_sniff.rs` l'ignore) ; `public_tours.rs:212-231` (non authentifié)
-sert les octets avec ce type, `inline`, sans `nosniff` ni CSP ;
-`secure_headers` Loco désactivé ; SPA et jetons (`localStorage`) sur la
-même origine. Upload `text/html` ou SVG en `kind=floorplan`, tour publié
-et partagé, lien envoyé à une victime d'une autre org / admin plateforme →
-vol des jetons. *Correctif* : liste blanche de types par `kind` à
-l'écriture ; `nosniff` + `CSP: sandbox; default-src 'none'` +
-`attachment` hors images sur `public_tours` et `media/content.rs` ;
-`nosniff` global en nginx ; à terme origine dédiée au contenu
-utilisateur.
+**SEC-6 — XSS par étiquettes pannellum (confiance 9).** pannellum faisait `innerHTML` des étiquettes sans `escapeHTML`, aussi sur la page publique `/share/:token`.
+*Correctif* : `escapeHTML: true` sur les deux viewers. La garde `pnex-frontend/src/js_guard.rs` l'exige.
 
-**SEC-6 — XSS via labels pannellum (confiance 9).**
-`crates/pnex-frontend/js/viewers.js:224` (`text: h.label`) et `:454`
-(annotations) ; configs `viewers.js:75`, `:237` sans `escapeHTML: true` ;
-pannellum 2.5.7 fait `span.innerHTML = hs.text` dans ce cas. Labels non
-validés (`pnex-core/src/tour.rs`), page publique `/share/:token`
-(`pages/share.rs:47`) sur l'origine de l'app. Label
-`<img src=x onerror=…>` → vol de session inter-org. *Correctif* :
-`escapeHTML: true` sur chaque `pannellumLib.viewer(` + test garde qui
-l'exige ; option `createTooltipFunc` + `textContent`.
+**SEC-7 — OTA sans garde de rôle (confiance 8).** `deploy` et `cancel` de `controllers/ota.rs` n'avaient pas de garde. *Correctif* : garde d'écriture (`device-write-forbidden`).
 
-**SEC-7 — OTA sans garde de rôle (confiance 8).** `controllers/ota.rs`
-`deploy` (~122) et `cancel` (~293) n'appellent pas `can_write()` : un
-viewer re-flashe un build antérieur du device (`force: true`) ou annule
-un déploiement. *Correctif* : garde `can_write` + test viewer → 403.
+**SEC-8 — Identifiants device exposés aux viewers (confiance 8).** `device_token` sortait pour tout membre, et `GET /download/firmware/{id}` n'avait pas de garde.
+*Correctif* : jeton absent sans droit d'écriture, téléchargement sous garde. Test `devices.rs::tenant_isolation_and_roles`.
 
-**SEC-8 — Identifiants device exposés aux viewers (confiance 8).**
-`controllers/devices/dto.rs:146-151` sérialise `device_token {token,
-encryption_key}` pour tout membre (`GET /devices`, `/devices/{id}`) ; le
-binaire OTA (`ota.rs:329`) et `GET /download/firmware/{id}`
-(`builds.rs:585`, sans garde de rôle) contiennent le PSK WiFi en base64,
-réservé owner/admin par le coffre. *Correctif* : `device_token` à `None`
-hors `can_write` (ou endpoint « révéler » dédié) ; `builds.rs::download`
-sous `can_manage_secrets`.
+**SEC-9 — Contrôle étranger dans un dashboard (D131).** Le save ne vérifiait pas que `options.control` était un contrôle de l'org. Écriture et lecture restaient filtrées.
+*Correctif* : `services/surface_controls.rs` lie seulement un contrôle de l'org. Test `surface_declared_controls_are_provisioned_and_released`.
 
-**SEC-10 — APK distribué debuggable (confiance 9, trouvé 2026-10-04 en
-validant l'app sur téléphone).** `task build:frontend:android` produit
-`gradlew assembleDebug` signé avec la clé debug de dx : l'APK porte
-`android:debuggable`. Conséquences : `adb shell run-as io.pnex.app cat
-files/pnex-storage.json` lit access/refresh/id tokens et la CA épinglée, et
-la WebView est inspectable (`webview_devtools_remote_<pid>`) — exécution de
-JS arbitraire dans la session. Prérequis : accès physique au téléphone
-déverrouillé avec le débogage USB actif (d'où MEDIUM). *Correctif* :
-variante release (`assembleRelease`, `debuggable false`, clé de signature
-de release hors dépôt) pour l'APK distribué ; la variante debuggable reste
-réservée à l'APK e2e (`task build:frontend:android:e2e`, qui en a besoin
-pour `run-as`).
+**SEC-10 — APK debuggable (confiance 9).** `run-as` lisait les jetons, et la WebView était inspectable. L'attaque exige le téléphone déverrouillé, débogage USB actif.
+*Correctif* : variante release (`assembleRelease`, `debuggable false`). La variante debuggable reste réservée à l'APK e2e.
 
-### Correctifs (2026-10-04)
+**SEC-15 — CVE Python de l'image builder.** `trivy` sur `pnex-builder-rs:0.1.0-beta.2` : 7 HIGH, toutes Python. Le worker n'expose aucun service HTTP.
+*Correctif (beta.4)* : pip retiré après le pré-chauffage, `penv` installé avec `uv`, `starlette` ≥ 1.3.1. Trivy passe de 12 à 1.
+*Accepté* : `ecdsa` 0.19.2 (CVE-2024-23342, Minerva), exigé par pioarduino, sans correctif amont. Le builder ne signe rien avec.
 
-- **SEC-1 / SEC-2** — `pnex_core::flow::node_types` : `RED_ALLOWED_TYPES`
-  (transformations pures) vérifiée par `validate_graph` (save + deploy,
-  violation `red_type_forbidden`) ; la projection retire toute clé
-  `pnex_*` d'une config `red` ; le runtime n'enregistre que
-  `runtime_type_allowed` (allowlist + `function` + `pnex-*` + placeholders
-  `unknown`) — un artefact ancien portant `exec` charge un nœud inerte.
-  Tests : `red_node_rejects_host_effect_and_pnex_types`,
-  `red_projection_strips_user_tenant_fields`, `tests/flows.rs`
-  (`red_type_forbidden`), `env_isolation.rs` (exec jamais exécuté).
-  **2026-10-14** : le kind `red` est retiré (aucun usage) — la surface
-  disparaît ; `RED_ALLOWED_TYPES` supprimée, le registre du runtime se
-  réduit aux builtins émis par la projection (`inject`, `debug`,
-  `function`, `comment`, placeholders) + `pnex-*`. Tests :
-  `raw_red_kind_is_refused`, `tests/flows.rs` (kind `red` → 4xx),
-  `env_isolation.rs`.
-- **SEC-3** — fork `vendor/edgelinkd` : `Engine::with_json` ne copie plus
-  l'environnement du process dans le magasin d'env (le JS `env.get`,
-  les propriétés `env` des nœuds n'y voient que l'env du flow). Test
-  `env_isolation.rs` (rouge sans le correctif, vérifié).
-- **SEC-4** — `location /internal/ { return 404; }` (edge + pnex-deploy) ;
-  middleware `auth::internal_guard` : toute requête `/internal/*` portant
-  `X-Forwarded-For` / `X-Real-IP` / `Forwarded` → 404 (couvre l'ingress
-  Helm `/`). Test `internal_via_public_proxy_404`.
-  *Résiduel accepté* : jeton de service unique et `fence_ok(None) = true`
-  — inexploitables sans le jeton, désormais hors de portée du code
-  utilisateur (SEC-1, SEC-3) et du réseau public ; jetons par org (HMAC
-  d'`org_id`) = durcissement futur.
-- **SEC-5** — `services::media::safe_content_type` (liste blanche images /
-  vidéo, sinon `application/octet-stream`) à l'écriture et au service ;
-  `user_content_headers` : `nosniff`, `CSP: default-src 'none'; sandbox`,
-  `attachment` hors liste. Test `tours.rs` (plan déclaré `text/html`).
-- **SEC-6** — `escapeHTML: true` sur les deux viewers pannellum ; garde
-  `pnex-frontend/src/js_guard.rs` (tout viewer pannellum échappe, aucun
-  puits HTML hors `innerHTML = ''`).
+**SEC-16 — Débordement du buffer de CA dans le firmware.** `pnex_tls_init` décodait la CA dans `s_ca_pem[2048]` avant de comparer la longueur. L'entrée vient de l'opérateur.
+*Correctif* : `cryptoB64DecodeBounded` calcule la taille avant d'écrire. Une CA trop grande est refusée en échec fermé. `PNEX_CA_PEM_MAX` = 4 096 sur ESP32, 2 048 sur ESP8266.
+Le worker refuse au build une CA trop grande pour la puce (`build_ca_too_large`, test `device_ca_limit_matches_the_firmware_buffer`).
 
-### Audit de release 0.1.0-beta.1 (2026-10-04)
+**SEC-17 à SEC-20 — Revue externe du firmware (2026-10-08).** Ces findings ont ouvert les profils de sécurité (§8).
+SEC-17 : frame malléable et rejouable. SEC-18 : OTA vérifiée par un sha256 du même canal. SEC-19 : clé vide = clair. SEC-20 : secrets lisibles par `esptool read_flash`.
 
-Delta `c2d69ae..HEAD` (42 commits : assistant v2, contrôles et surfaces,
-dashboards Maison, nœuds météo / ui-control, front mobile, e2e Linux) en
-4 audits de domaine (assistant ; surfaces, contrôles, médias ; flows,
-nœuds, runtime ; front et ponts JS), même seuil de confiance ≥ 8.
-`task security:deps` vert (advisories, sources). Aucun HIGH ; aucun
-contournement inter-org trouvé.
+**Audit de release 0.1.0-beta.1 (2026-10-04)** : quatre audits du delta `c2d69ae..HEAD`, aucun HIGH, aucun contournement inter-org.
+Il a relevé SEC-11 à SEC-14. Points sous le seuil restés ouverts :
 
-- **SEC-11** — `components/markdown.rs` : un lien ne garde sa cible que
-  pour `http(s):`, `mailto:` ou une URL relative (espaces et caractères de
-  contrôle retirés avant le test du schéma) ; une image n'est jamais
-  chargée (son texte alternatif reste) — un `![](https://…)` injecté
-  aurait exfiltré la conversation sans clic. Tests
-  `unsafe_links_render_as_text`, `safe_links_are_kept`,
-  `images_never_load`.
-- **SEC-12** — `patch-android-manifest.py::patch_no_backup` :
-  `allowBackup=false`, `fullBackupContent=false` et
-  `data_extraction_rules.xml` excluant tous les domaines (sauvegarde
-  cloud et transfert d'appareil).
-- **SEC-13** — `services/ai/dashboard_tools.rs::coupling_conflicts` :
-  re-lier un widget existant (libre ou lié à un autre contrôle) à un
-  contrôle écouté par un flow déployé est refusé (`ai-flow-running`),
-  comme la modification d'un widget déjà couplé. Test
-  `free_widget_rebound_onto_a_running_flow_is_refused`.
-- **SEC-14** — un owner (donc tout inscrit) peut viser un hôte interne
-  avec `base_url` ; la réponse n'est jamais rendue (statut seul). Les
-  clients LLM ne suivent plus aucune redirection. Le filtrage des plages
-  privées n'est **pas** posé : un LLM local sur le LAN (Ollama) est un
-  usage central en auto-hébergé — il viendra avec le résolveur filtrant
-  de SEC-W3, activable en SaaS. **2026-10-07** : résolveur filtrant posé
-  (`pnex_core::egress`, feature `egress`) sur les clients LLM, les canaux
-  de notification et http-fetch ; politique `settings.egress` /
-  `PNEX_EGRESS` : `lan` (défaut : loopback, link-local, métadonnées cloud,
-  multicast et noms d'hôte sans point refusés, LAN joignable), `public`
-  (plages privées refusées aussi, hébergement partagé), `open` (tests).
-  Les littéraux IP (non résolus) sont vérifiés avant l'envoi et chaque
-  redirection est re-vérifiée. `PNEX_EGRESS_ALLOW_HOSTS` autorise des noms
-  internes choisis (`ollama`) ; leurs adresses restent filtrées. Le moteur
-  de flows hérite de la politique du serveur. Hors périmètre : SMTP
-  (lettre, hôte saisi par l'owner). **2026-10-15 (SEC-23)** : une IPv6
-  qui embarque une IPv4 (NAT64, 6to4, IPv4-compatible) est jugée comme
-  cette IPv4 ; noms `*.svc` et `*.cluster.local` refusés hors
-  `PNEX_EGRESS_ALLOW_HOSTS` ; `PNEX_EGRESS_DENY_CIDRS` (ex.
-  `10.42.0.0/16,10.43.0.0/16`) refuse le réseau d'infra (pods, services,
-  pont Docker) sous `lan` et `public`, transmis au moteur de flows.
+- corps de réponse météo non borné, bannissement d'un fournisseur météo par volume ;
+- `update_dashboard` : fenêtre de l'ordre de la ms, résiduel accepté (`ai-assistant.md` §10) ;
+- `restore_version` d'un dashboard ne repasse pas la synchro des contrôles ;
+- asset d'une visite publique servi à sa version courante ;
+- magasin desktop `pnex-storage.json` en 0644 ;
+- `\` non échappé dans deux ponts JS natifs (non exploitable, R13).
 
-**À surveiller (relevés de l'audit de release, < 8)** : corps de réponse
-météo non borné (taille) ; bannissement d'un fournisseur météo par
-volume (UA/IP plateforme partagés) ; ~~erreurs brutes (`DbErr`) dans les
-sorties d'outils de l'assistant~~ (corrigé 2026-10-07 : refus générique
-`ai-tool-internal`, détail journalisé) ; ~~check « flow déployé » hors de
-la transaction d'écriture (`update_flow`~~ corrigé 2026-10-07 : relu sous
-le verrou de ligne, `append_version_if_stopped`) ; `update_dashboard` :
-résiduel accepté (fenêtre de l'ordre de la ms, couplage porté par les
-deploys d'autres flows sans verrou commun — `ai-assistant.md` §10) ;
-`restore_version` d'un dashboard ne repasse pas la synchro des contrôles
-(SEC-9 « stocké, non appliqué ») ; asset d'une visite publique servi à sa
-version courante et non à celle publiée ; magasin desktop
-`pnex-storage.json` en 0644 ; `\` non échappé dans deux ponts JS
-natifs (non exploitable, R13 demande `serde_json`).
+### Sous le seuil (confiance < 8)
 
-**SEC-16 — Débordement du buffer de CA dans le firmware (trouvé en route,
-2026-10-07, mise en place de la démo dev.pnex.io).** `pnex_tls_init`
-(`firmware/lib/pnex/src/pnex_tls.cpp:28`) décode le base64 de
-`PNEX_CA_CERT` dans `s_ca_pem[2048]` **puis** compare la longueur : une
-CA de plus de 2 047 octets PEM écrit au-delà du tableau. Constaté avec un
-bundle de 3 racines (GTS R4 + R1 + ISRG X1, 4 615 octets) : l'ESP32-C6
-plante au boot (panic, message « CA truncated » encore lisible dans la
-pile). L'entrée vient de l'opérateur (`PNEX_CA_CERT_FILE`), pas d'un
-utilisateur : pas d'exploitation démontrée, d'où LOW. *Correctif proposé* :
-vérifier la longueur décodée (`ceil(len_b64 / 4) * 3`) avant de décoder,
-ou décoder dans un buffer alloué à la taille ; côté serveur, refuser au
-build une CA plus grande que la limite firmware (code machine dédié) ;
-porter la limite à 4 Ko sur ESP32 pour autoriser plusieurs racines.
-Contournement : une seule racine (GTS Root R4, 765 octets, sur dev.pnex.io).
-*Corrigé (2026-10-08)* : `cryptoB64DecodeBounded` (`chacha_crypto.cpp`)
-calcule la longueur décodée avant d'écrire et n'écrit rien quand elle ne
-tient pas ; la CA est alors refusée **en échec fermé** (ni ancre ni
-`setInsecure`, toute poignée de main échoue — l'ancien code retombait en
-mode non vérifié) ; même décodage borné pour
-WIFI_SSID / WIFI_PASSWORD / HOST / DEVICE_ID. `PNEX_CA_PEM_MAX`
-(`pnex_tls.h`) passe à 4 096 sur ESP32 (deux racines), reste 2 048 sur
-ESP8266. Le worker refuse au build une CA plus grande que la limite de la
-puce : `build_ca_too_large` (`pnex_core::builds::device_ca_max_pem_bytes`,
-test `device_ca_limit_matches_the_firmware_buffer` qui relit l'en-tête
-firmware, `oversized_device_ca_is_refused_per_soc`).
-
-**SEC-17 à SEC-20 — Revue externe du firmware (2026-10-08).** Constats
-vérifiés dans le code ; plan complet et profils dans
-`security-tiers.md` (D148–D152).
-
-- **SEC-17** — `pnex_core::frame` : `base64(nonce ‖ ChaCha20(json))`,
-  sans Poly1305. Le chiffrement est malléable : le JSON étant très
-  prévisible, un attaquant réseau qui capture une frame peut retrouver
-  le flux de clé et forger une commande de même longueur (actionneur,
-  URL + sha d'OTA). Aucun compteur : une frame capturée se rejoue. Seule
-  barrière en `ws://` LAN. *Correctif prévu* : ChaCha20-Poly1305 +
-  compteur monotone par session dans les données authentifiées, des
-  deux côtés, golden vectors partagés.
-- **SEC-18** — L'OTA vérifie un sha256 livré par le même canal que
-  l'ordre : intégrité, pas authenticité. Le refus d'une version plus
-  ancienne n'existe que sur ESP8266 (`firmware/lib/pnex/src/pnex.cpp`).
-  *Correctif prévu* : signature Ed25519 de l'image (clé publique
-  embarquée, signature hors du builder) + version minimale en NVS sur
-  toutes les puces.
-- **SEC-19** — `pnex_config.h` : `ENCRYPTION_KEY` vide → frames en clair.
-  Le serveur réel refuse, mais le firmware ne doit pas pouvoir être
-  construit ainsi hors mock. *Correctif prévu* : `#error`.
-- **SEC-20** — PSK WiFi, jeton et clé compilés dans l'image : un
-  `esptool read_flash` les livre. Correctif = Secure Boot + Flash
-  Encryption ou NVS chiffré (eFuses) : **gelé** jusqu'à la vague V4
-  (D149), ESP8266 non corrigeable (profil `open` uniquement).
-
-### Sous le seuil (confiance < 8) — à surveiller, non bloquants
-
-| # | Conf. | Sujet | Note |
+| # | Conf. | Sujet | Statut |
 |---|---|---|---|
-| SEC-W1 | 7 | Markdown de l'assistant : liens `javascript:` | → **SEC-11**, corrigé |
-| SEC-W2 | 7 | Member redirige un secret du coffre vers son hôte (`notify/testing.rs:90` test-draft, http-fetch avec `Ref`) | ✅ 2026-10-07 : R9 appliquée strictement (décision produit : seuls owner/admin câblent un secret) — `binding::check` dans `store_graph_secrets` (flows, assistant compris), `notify::plan` (création, mise à jour, test-draft) ; refus `secret-destination-locked` ; tests `secrets.rs::members_keep_secrets_but_never_rewire_them`, `members_never_wire_secrets_nor_administer`, `binding::tests`. WiFi aussi (`store::save_single`) : un member garde le mot de passe, ne le remplace pas et ne renomme pas le SSID qui le porte (cas 7 du même test) |
-| SEC-W3 | 6 | SSRF http-fetch avec lecture de la réponse (`pnex-node-http-fetch/src/lib.rs:370`) | ✅ 2026-10-07 : résolveur filtrant + redirections re-vérifiées (cf. SEC-14) ; test `http_fetch_refuses_loopback_under_the_lan_policy` |
-| SEC-W4 | 4 | `version` non assainie dans `ota_artifact_key` (`pnex-firmware-builder/src/store.rs:104`) | inexploitable en backend `db` ; `sanitize_segment` (R18) — ✅ 2026-10-09 : `version` assainie aussi (`ota_key_sanitizes_every_segment`) |
-| SEC-W5 | — | `email_verified` non exigé au rattachement de compte (`auth/provisioning.rs:117`) | sûr tant que Rauthy garantit l'email ; à exiger avant tout IdP amont — ✅ 2026-10-09 : re-liaison par email seulement si `email_verified` (Rauthy l'émet dans l'access token), sinon 401 (`relink_by_email_requires_a_verified_email`) |
-| SEC-W6 | — | Firmware `setInsecure` sans `PNEX_CA_CERT_FILE` | ✅ 2026-10-07 : build `wss` sans CA refusé (`build_no_ca`, `settings.firmware.require_device_ca`, vrai par défaut, faux en test seulement) |
-| SEC-W7 | 5 | Le firmware imprime l'URL WebSocket complète sur le port série, jeton du device inclus (base64) (`firmware/lib/pnex/src/pnex.cpp:397`) ; idem l'URL OTA (`pnex_ota.cpp:105`) | accès USB requis, mais les logs série sont collés tels quels dans les forums et tickets (tutoriels) ; masquer le paramètre `token` à l'impression (R16). Relevé le 2026-10-05 — ✅ 2026-10-07 : `pnex_conn_string()` renvoie l'URL au jeton masqué (`token=***`), l'URL OTA est imprimée sans sa requête |
-| SEC-W8 | 5 | Fond de carte : un owner/admin peut choisir n'importe quel secret du coffre de l'org comme clé de fond ; la clé d'un fond est une clé navigateur, ajoutée à `style_url` et visible de tous les membres, viewers compris (`services/geo/providers.rs`, `basemaps`) | **accepté** 2026-10-10 (décision user L27 : clé de fond = clé navigateur, comme Google Maps) ; même niveau de confiance que l'URL d'un fournisseur LLM choisie par un admin. Piste : n'autoriser pour un fond que des secrets dédiés `geo/<nom>/` |
-| SEC-64 | LOW | **Connecteur : certificat non vérifié** (`services/connectors.rs`, D352) — TLS `Require` sans contrôle du certificat, car la connexion part vers l'adresse vérifiée par l'egress et non vers le nom. Un homme du milieu actif pourrait lire le mot de passe. Non corrigé : `sslrootcert` par connecteur quand un client le demandera. | R8 | Accepté, consigné dans `data-pipelines.md` §9.6. |
-| SEC-E1 | MEDIUM | **Pod de build d'image moins durci que D387** (`pnex-runner/src/k8s.rs`, D701) — BuildKit rootless exige seccomp et AppArmor `Unconfined`, `allowPrivilegeEscalation` et `--oci-worker-no-process-sandbox`, mesuré le 2026-11-05 : sans cela, `newuidmap` échoue. Une étape `RUN` peut donc atteindre le secret d'écriture du registre de ce pod. Bornes : un pod par build, pas de jeton d'API, secret limité au registre de l'environnement, build réservé à `environments:build` (Admin), runner activé explicitement (`PNEX_RUNNER_BUILDS`). Pas de gVisor ni de Kata, décision de l'utilisateur. | D387 | Accepté le 2026-11-05 : cluster du client et ses propres Dockerfile. À revoir avant d'ouvrir le build à du code tiers. |
-| SEC-E2 | MEDIUM | **Pod de build et pod de scan sans `NetworkPolicy`** (`pnex-runner/src/k8s.rs`, D701, D720) — seul le bac à sable en a une. Une étape `RUN` d'un Dockerfile peut joindre le réseau du cluster, services internes compris, avec le secret d'écriture du registre et les identifiants du cache à portée (SEC-E1). Bornes : Admin seul, runner activé explicitement, namespace dédié. Correctif : une règle de sortie par pod, vers le registre, le stockage du cache et les miroirs de paquets, ce qui demande de régler le problème des noms (Q-E13). | R8 | Corrigé (2026-11-05) : chaque pod de build, de scan ou de sonde reçoit avant de démarrer une `NetworkPolicy` (`k8s::job_policy`) : aucune entrée, sortie vers le DNS du cluster et l'internet public seulement (plages privées, CGNAT, lien local et métadonnées exclues), plus les destinations internes listées par l'opérateur (`PNEX_RUNNER_JOB_EGRESS`, `ns:<namespace>` ou CIDR, pour un cache dans le cluster). Prouvé sur le cluster par `k8s_build --ignored` : Internet joint, service du namespace en délai dépassé (contre-épreuve sans la règle : 403), build poussé sous la règle. Reste ouvert : un `RUN` joint tout l'internet public (exfiltration possible, bornée à l'org, Q-E13) et les IP publiques des nœuds s'il y en a. |
-| SEC-E3 | LOW | **Digest et rapport déclarés par le pod** (`pnex-runner/src/k8s.rs`, `services/environments.rs`) — le digest d'un build vient du message de fin de son pod, qu'une étape `RUN` peut écrire : un Dockerfile de l'org peut annoncer une autre image de la même org. Le rapport de scan est borné et validé côté serveur. Correctif : relire le digest du tag dans le registre avec le secret de lecture. Le `Debug` de `RunnerSandboxInput` montrait les variables des services, qui portent depuis D758 les mots de passe générés au claim : il n'en montre plus que les noms (2026-11-06). | R4, R16 | Ouvert (2026-11-05), impact limité à l'org. |
-| SEC-E4 | MEDIUM | **Une `NetworkPolicy` s'applique après coup** (`pnex-runner/src/k8s.rs`, D705, D731) — le plugin réseau la met en place quelque temps après sa création : mesuré le 2026-11-06 sur kind (kindnet), un pod lancé tout de suite après sa règle a joint une adresse interdite, et le même pod lancé 5 s plus tard ne l'a plus jointe. L'hypothèse « la règle d'abord, donc rien ne sort » était fausse : pendant ce délai, le pod sort librement. | R8 | Corrigé pour le bac (2026-11-06) : son premier conteneur, `egress-gate`, attend qu'une adresse publique, que la règle refuse, cesse de répondre, et fait échouer le pod au bout d'une minute ; clone, services, `setup` et agent ne démarrent qu'après. Corrigé aussi pour les pods de build, de scan et de sonde (2026-11-06) : leur règle autorise Internet mais pas le cluster, donc leur porte, `pnex-runner egress-gate` tiré de l'image du runner (`PNEX_RUNNER_IMAGE`), sonde le pod du runner lui-même (port 7171, adresse donnée par l'API descendante `POD_IP`) jusqu'à ne plus le joindre. Prouvé sur kind : un build passe derrière la porte, et un pod sans règle joint bien cette sonde. |
-| SEC-E5 | MEDIUM | **Le bac joint l'API Kubernetes de son nœud** (`pnex-runner/src/k8s.rs`, D705) — mesuré le 2026-11-06 sur kind : sous sa `NetworkPolicy` (DNS et passerelle seulement), un pod du bac joint encore `https://$KUBERNETES_SERVICE_HOST`, servi par le nœud même. La spec Kubernetes laisse au plugin réseau le trafic d'un pod vers son propre nœud. Le pod n'a pas de jeton de service (`automountServiceAccountToken: false`) : il n'obtient que ce que l'API donne en anonyme (`/version`, `/healthz` selon le réglage du cluster), et rien d'autre que le nœud n'est joignable à travers cette brèche si le nœud n'expose rien d'autre. | R8 | Ouvert (2026-11-06). Correctif à décider par cluster : couper l'accès anonyme à l'API (`--anonymous-auth=false`), et vérifier sur le plugin réseau du cluster cible (Calico, Cilium) que le trafic d'un pod vers son nœud suit la règle ; à mesurer sur le cluster de recette (D753). Mesuré le 2026-11-07 sur ce cluster (microk8s, Calico) : la même sonde vers `https://10.152.183.1` est refusée, le trafic vers le nœud y suit la règle ; reste ouvert pour kind et tout plugin qui l'exempte. |
-| SEC-E6 | MEDIUM | **Le runner Firecracker relit un disque écrit par l'invité** (`pnex-runner/src/firecracker.rs`, D762) — sorties et caches d'un bac en micro-VM sont lus sur son disque ext4 par `debugfs`, côté hôte, sous l'utilisateur du runner. L'agent est root dans sa VM : il peut forger les structures de ce système de fichiers pour viser un défaut d'analyse d'e2fsprogs (chemins, liens et noms sont déjà bornés : aucun montage, liens recréés jamais suivis, extraction dans le dossier du job). Bornes : runner sans root, capacité `NET_ADMIN` seulement, disque d'un seul job. Correctif possible : extraire dans une VM jetable ou un processus confiné (seccomp, sans réseau), ou faire envoyer les sorties par l'invité lui-même vers un port vsock de l'hôte. | R5 | Ouvert (2026-11-06) : e2fsprogs tenu à jour sur l'hôte du runner, à reprendre avant d'ouvrir E6 à du code tiers. |
-| SEC-E7 | MEDIUM | **La porte d'egress du bac s'ouvrait sans son outil de sonde** (`pnex-runner/src/k8s.rs`, `EGRESS_GATE_SCRIPT`, SEC-E4) — la boucle `while curl …` attend que la sonde échoue ; sans `curl` dans l'image d'init, la commande échoue tout de suite (127) et la porte annonçait « egress rule in place » sans rien avoir sondé. Vu le 2026-11-07 sur le cluster de recette avec une image d'init sans `curl`. Le bac démarrait alors avant que sa règle ne tienne. | R8 | Corrigé (2026-11-07) : la porte refuse de démarrer sans `curl` (`command -v`), test `the_egress_gate_never_opens_without_its_probe_tool`. |
+| SEC-W1 | 7 | Markdown de l'assistant : liens `javascript:` | → SEC-11, corrigé |
+| SEC-W2 | 7 | Member redirige un secret du coffre vers son hôte (test-draft, http-fetch avec `Ref`) | corrigé 2026-10-07 : R9 (`binding::check` dans `store_graph_secrets`, `notify::plan`, `store::save_single` pour le WiFi) ; tests `secrets.rs::members_keep_secrets_but_never_rewire_them` |
+| SEC-W3 | 6 | SSRF http-fetch avec lecture de la réponse | corrigé 2026-10-07 : résolveur filtrant (SEC-14) ; test `http_fetch_refuses_loopback_under_the_lan_policy` |
+| SEC-W4 | 4 | `version` non assainie dans `ota_artifact_key` | corrigé 2026-10-09 (`ota_key_sanitizes_every_segment`) |
+| SEC-W5 | — | `email_verified` non exigé au rattachement de compte | corrigé 2026-10-09 : re-liaison seulement si `email_verified`, sinon 401 |
+| SEC-W6 | — | Firmware `setInsecure` sans `PNEX_CA_CERT_FILE` | corrigé 2026-10-07 : build `wss` sans CA refusé (`build_no_ca`) |
+| SEC-W7 | 5 | Le firmware imprime l'URL WebSocket avec le jeton sur le port série | corrigé 2026-10-07 : `token=***`, URL OTA sans sa requête |
+| SEC-W8 | 5 | Fond de carte : la clé choisie par un admin est visible de tous les membres | accepté 2026-10-10 (clé de fond = clé navigateur) ; piste : secrets dédiés `geo/<nom>/` |
 
-- **SEC-7** — `controllers/ota.rs` : `deploy` et `cancel` exigent
-  `can_write` (`device-write-forbidden`).
-- **SEC-8** — liste et détail des devices : `device_token` absent hors
-  `can_write` ; `GET /download/firmware/{id}` exige `can_write`. Test
-  `devices.rs::tenant_isolation_and_roles` (viewer : pas de jeton, 403 OTA
-  et téléchargement ; owner : jeton présent).
-  *Note* : un member peut toujours lancer un build et télécharger
-  l'image (qui embarque le PSK WiFi) — inhérent au provisioning, rattaché
-  à SEC-W2.
+### Audit du dépôt du 2026-11-06
 
-### Audit du dépôt du 2026-11-06 — à discuter
-
-Lecture seule, détail et correctifs proposés dans `audit-2026-11-06.md`
-(référence entre parenthèses). Confiance non contre-vérifiée par un second
-lecteur ; ✔ = relu dans le code à la main.
+Détail et correctifs dans `audit-2026-11-06.md` (référence entre parenthèses). ✔ = relu dans le code à la main.
 
 | # | Sév. | Finding | Règle | Statut |
 |---|---|---|---|---|
-| SEC-67 | HIGH | **Fonction JS déployée sans limite de temps ni de mémoire** ✔ (A1) — `while(true){}` bloque le runtime partagé de toutes les orgs | R5 | **corrigé** (2026-11-07) : appels JS sous 128 Mio, pile 1 Mio et budget de 10 s par init/message/finalize (fork edgelinkd), espace d'adressage du runtime plafonné à 4 Gio par défaut ; test `pnex-flow-runtime/tests/function_budget.rs` |
-| SEC-68 | HIGH | **Limite de tas Starlark contournée par une allocation unique** (A2) — OOM du runtime partagé | R5 | **corrigé** (2026-11-07) : `*` réécrit en `__pnex_mul` qui refuse plus de 8 Mi éléments, `range` borné de même, `*=` refusé ; test dans `pnex-node-starlark/src/executor.rs` |
-| SEC-69 | MEDIUM | **Renvoi d'une écriture de pin périmée** ✔ (A3) — le device revient à un état physique antérieur | D123 | **corrigé** (2026-11-07) : une écriture plus récente sur la même gpio remplace l'attente ; renvois dans l'ordre d'envoi ; test `cmd_acks` |
-| SEC-70 | HIGH | **SSRF par le proxy du nœud http-fetch** ✔ (A4) — le proxy échappe à la garde de sortie | R8 | **corrigé** (2026-11-07) : `egress::check_url` sur l'URL du proxy dans `build_client` ; test |
-| SEC-71 | MEDIUM | **Exfiltration par injection : `try_site_recipe` en YAML libre sans confirmation** ✔ (A5) | D142 | **corrigé** (2026-11-07) : `try_site_recipe` ne joue qu'une recette enregistrée (`ai-site-recipe-saved-only`) ; tour « contaminé » dès qu'un outil renvoie du contenu extérieur (mails, recettes, docs, pages) : ses outils d'écriture (`*:write`, hors `propose_*`) sont retenus (`ai-confirm-required`) et ne s'exécutent qu'à la confirmation de l'humain dans le chat, une seule fois, mêmes contrôles (`ai-confirm-stale` sinon) ; tests `tests/ai.rs` |
-| SEC-72 | MEDIUM | **Ajout de membre sans consentement + oracle d'existence d'email** ✔ (A6) | R1 | **corrigé** (2026-11-07) : adhésion seulement par invitation acceptée par l'invité (`org_invitations`, 14 jours) ; 202 identique que le compte existe ou non, sans `user_id` ; acceptation par l'email invité vérifié par l'IdP seulement ; rôle owner = `orgs.owners:write` ; tests `tests/org_invitations.rs` |
-| SEC-73 | MEDIUM | **Délimiteur `<data>` non échappé dans les sorties d'outils mail/site** ✔ (B3) | D142 | **corrigé** (2026-11-07) : un helper `services::ai::untrusted_data` échappe `&` et `<` ; utilisé pour mails, extraits de sites, analyses média et nœuds IA de flow ; test |
-| SEC-74 | LOW | **Websockets caméra / notifications / docs sans permission IAM de lecture** (B4) | R2 | **corrigé** (2026-11-07) : `iam::store::member_grants` + `cameras:read` / `notify:read` / `docs:read` (et `docs:write` à la relecture du rôle), 4006 sinon ; test `notify.rs` (Deny) |
-| SEC-75 | LOW | **Routes `orgs` en tests de rôle, hors moteur IAM** (B5) | R2 | **corrigé** (2026-11-07) : toutes les routes `/orgs/{id}…` passent par `OrgContext` (refus audités, D294) ; 403 `org-path-mismatch` si l'org du chemin diffère de `X-Org-Id` ; actes owner = porte `orgs.owners:write` ; départ `POST /orgs/{id}/leave` ; tests |
-| SEC-76 | MEDIUM | **Écriture device interne sans fence : `org_id` du corps cru** (B6) — résiduel de SEC-4, aggravé par SEC-67/68 | R7 | **corrigé** (2026-11-07) : écriture sans fence refusée dès qu'un worker runtime est inscrit ; le device doit être la cible d'un nœud `device_write` d'un flow déployé de l'org (404 sinon, oui mis en cache 2 s) ; tests `ws_device.rs`, `internal_flow.rs`, `flow_cluster.rs` |
-| SEC-77 | LOW | **Promotion admin plateforme sans `email_verified`** (C2) — prolonge SEC-W5 | R1 | **corrigé** (2026-11-07) : promotion admin plateforme et resynchronisation d'email exigent `email_verified == Some(true)` ; test |
-| SEC-78 | LOW | **Contrôle de version non atomique de `update_notification_template` (assistant)** (C5) | D144 | **corrigé** (2026-11-07) : `notify_templates::update_if_unchanged`, un seul `UPDATE … WHERE updated_at = <lu>`, conflit sinon ; test |
-| SEC-79 | LOW | **`authorize_tool` ouvert sur un outil hors registre IAM** (C6) — rien d'exposé aujourd'hui | R2 | **corrigé** (2026-11-07) : nom hors registre IAM refusé avant toute exécution ; test |
-| SEC-80 | LOW | **L'extracteur `OrgContext` laisse passer une route absente du registre IAM** (`operation_of` → `None` : aucune décision) — vu au lot G6 de `governance.md`, une route oubliée au registre répondait à un simple membre | R2 | **ouvert** : seule la garde `tests/iam.rs` (couverture exacte du spec) empêche une livraison ; à fermer en refusant par défaut une route `/api/v1` sans entrée, après inventaire des routes hors spec (WebSockets, `/internal`) |
-| SEC-81 | LOW | **AIS danois servi en HTTP clair, sans somme de contrôle** (MK23, `markets-research.md` F.7) : l'autorité maritime danoise ne propose pas HTTPS ; un fichier altéré en route ne serait pas détecté | R8 | **accepté** (2026-11-09) : hôte fixé dans le code (R9), aucune clé ni donnée de l'org envoyée, contenu décodé strictement (en-tête vérifié, ligne > 64 Kio = fichier refusé, transaction validée seulement fichier lu en entier) ; données publiques de positions, jamais exécutées ; à revoir si l'autorité ouvre HTTPS |
-| SEC-82 | MEDIUM | **Chargements massifs déclenchables par n'importe quel inscrit** (MK22–MK24) : tout inscrit est owner de son org, un réglage `adsb_from` faisait télécharger 3,2 Go par jour à la plateforme et occuper 10 min de calcul, par org | R2 (ressources plateforme) | **corrigé** (2026-11-09) : `bulk_history` ne tourne que pour une org dont un admin plateforme a fixé le quota de tables (D821) ; réglage dans l'UI (`/admin/status`, colonne Tables (quota)) ; test « pas de quota fixé : rien demandé » |
-| SEC-83 | LOW | **Lectures non bornées d'un fichier massif** : une trace ADS-B géante, une bombe gzip ou une ligne sans fin auraient rempli la mémoire du serveur | R8 | **corrigé** (2026-11-09) : trace ≤ 64 Mio avant et après décompression, ligne ≤ 64 Kio, lots de 200 000 lignes ; mémoire mesurée 485–540 Mo sur une vraie journée AIS / ADS-B |
-| SEC-84 | MEDIUM | **Boîte des terminaux MT5 sans plafond par org** (appendice E) : tout inscrit peut enregistrer des terminaux et pousser des appels de 1 Mio qui attendent en base | R2 (ressources plateforme) | **corrigé** (2026-11-09) : 20 terminaux par org (`mt5-terminals-limit`), 2 000 appels en attente par org (`mt5-inbox-full`), corps de 1 Mio (ingestion) et 4 Mio (annonce) ; jeton par terminal haché (SHA-256), jamais relu (R4, R16), org du terminal seule (R1) ; test |
-| SEC-85 | MEDIUM | **Première écriture d'un compte de service** (markets-research.md D891, appendice G) : la règle V1 « un compte de service ne fait que lire » est amendée pour le runner d'un modèle externe | R2, R1 | **accepté et borné** (2026-11-09) : liste blanche fermée `SERVICE_WRITES` = `market-decisions:write` seul (ajout, jamais modification, suppression ni effet physique ; aucune route ne relie une décision à MT5) ; org du principal (R1) ; 2 000 décisions par org et par jour (`market-decisions-quota`, compteur lu avant l'insertion : deux envois simultanés peuvent le dépasser de peu) ; `inputs` ≤ 4 Kio ; lecture des barres soumise aux marquages de la table (D801) et à `datasets:read`, y compris le repli du graphique (trouvé en revue) ; lecture bornée à 20 000 fichiers et 5 000 barres, mesure bornée à la même fenêtre (trouvé en revue) ; aucun identifiant de compte de service dans les réponses (R4) ; test : un compte de service reste refusé sur une autre écriture que son rôle autorise |
-| SEC-86 | LOW | **Point-in-time et chaînes causales** (markets-research.md appendice H, cases-workspace.md appendice I) : nouvelle route `GET /markets/chains`, clé d'accès point-in-time, conversation figée de l'assistant, détecteur de chaînes dans les dossiers | R1, R2, R4 | **corrigé en revue** (2026-11-09) : la route des chaînes rendait les ids d'objets sans appliquer les marquages (D801) : une chaîne qui touche un objet masqué pour l'appelant est retirée entière ; `datasets:read` + garde `ontology:read` (test 403 sans elle) ; org du principal partout (R1) ; aucune donnée de compte de service ni secret dans les chaînes ou les propositions (R4). La clé point-in-time ne fait que restreindre (lectures datées seules, aucune écriture) ; une conversation figée retire écritures et lectures du présent (`ai-frozen-tool`), elle n'ajoute aucun droit. Les triggers `object_versions` et `device_events` écrivent dans l'org de la ligne source. Reste : les propositions de chaîne d'un dossier montrent leurs objets comme les autres détections (titres des membres du dossier, lecture `cases:read`) |
-| SEC-87 | MEDIUM | **Effacement RGPD et historique des états** (markets-research.md D900, D913) : l'effacement d'un objet retirait titre et propriétés personnelles de `objects` et des attributs de `resource_edges`, mais pas des versions gardées dans `object_versions` ; une lecture à une date antérieure les rendait | RGPD (crm.md D446) | **corrigé** (2026-11-10, MK34) : l'effacement applique le même retrait aux versions de l'objet et aux versions de ses liens (`link_versions`) ; un lien supprimé garde ses versions vidées, `erased = true`, absent à toute date (Q-BT2) ; `link_versions` lue seulement par des liens déjà filtrés sur l'org (R1), trigger dans l'org de la ligne source |
-| SEC-88 | LOW | **Marchés de prédiction : sortie vers les API publiques et proxy d'org** (markets-research.md appendice J) : collecteur de fond vers trois hôtes fixés dans le code, joignables en France seulement par un proxy ; détecteur de mises sur des wallets | R8, R9, R1, R4 | **borné** (2026-11-10, MK37–MK41) : hôtes fixés (aucune URL saisie, R9) ; proxy lu dans le coffre de l'org (`polymarket_proxy`), schéma http(s) seul, hôte du proxy passé à la garde egress (R8) ; un proxy illisible arrête la passe de l'org, jamais d'appel direct de repli ; corps ≤ 20 Mio, 60 requêtes par org et par passe ; lignes de prix et d'échanges dans l'org (R1) ; adresses de wallets = données publiques, objet seulement sur rétention d'une proposition, aucune attribution à une personne (J.5) ; routes de lecture `ontology:read` et `market-decisions:read`, marquages appliqués aux marchés (D801) ; aucun secret dans les réponses (R4) ; **2026-11-17** : collecte passée aux pipelines du pack (hôtes déclarés par document, D942) ; `fetch.proxy` générique : clé du coffre, schéma http(s), hôte passé à `egress::check_url`, une clé posée mais illisible fait échouer l'étape (jamais d'appel direct), adresse du proxy absente des erreurs |
-| SEC-89 | LOW | **Hôtes des sources d'une org dans un pipeline** (watch.md D975) : un `fetch` joint l'hôte d'une adresse saisie par un membre (`news_source.url`) | R8, R9, R1 | **borné** (2026-11-14) : garde egress du client (résolveur filtrant) + contrôle des IP littérales avant l'appel (`egress::check_url`, test 169.254.169.254) ; redirections sur le même hôte ; secrets et jetons seulement vers les `hosts` écrits du document (test) ; objets de l'org seule (R1) ; un appel par seconde et par hôte (D938). Reste : le nombre de sources d'une org n'est pas plafonné au-delà de la limite d'énumération, une org peut faire lire n'importe quelle page publique (comme le nœud http-fetch) |
+| SEC-67 | HIGH | **Fonction JS déployée sans limite de temps ni de mémoire** ✔ (A1) | R5 | corrigé 2026-11-07 : 128 Mio, pile 1 Mio, 10 s par appel, espace d'adressage du runtime plafonné à 4 Gio ; test `function_budget.rs` |
+| SEC-68 | HIGH | **Limite de tas Starlark contournée par une allocation unique** (A2) | R5 | corrigé 2026-11-07 : `__pnex_mul` refuse plus de 8 Mi éléments, `range` borné, `*=` refusé |
+| SEC-69 | MEDIUM | **Renvoi d'une écriture de pin périmée** ✔ (A3) | D123 | corrigé 2026-11-07 : une écriture plus récente sur la même gpio remplace l'attente ; test `cmd_acks` |
+| SEC-70 | HIGH | **SSRF par le proxy du nœud http-fetch** ✔ (A4) | R8 | corrigé 2026-11-07 : `egress::check_url` sur l'URL du proxy |
+| SEC-71 | MEDIUM | **Exfiltration par injection : `try_site_recipe` en YAML libre** ✔ (A5) | D142 | corrigé 2026-11-07 : recette enregistrée seulement ; tour contaminé = écritures retenues jusqu'à la confirmation humaine (`ai-confirm-required`, `ai-confirm-stale`) |
+| SEC-72 | MEDIUM | **Ajout de membre sans consentement + oracle d'existence d'email** ✔ (A6) | R1 | corrigé 2026-11-07 : invitation acceptée par l'invité (`org_invitations`, 14 jours), 202 identique |
+| SEC-73 | MEDIUM | **Délimiteur `<data>` non échappé dans les sorties d'outils** ✔ (B3) | D142 | corrigé 2026-11-07 : `services::ai::untrusted_data` |
+| SEC-74 | LOW | **Websockets caméra, notifications, docs sans permission IAM de lecture** (B4) | R2 | corrigé 2026-11-07 : `cameras:read`, `notify:read`, `docs:read`, 4006 sinon |
+| SEC-75 | LOW | **Routes `orgs` en tests de rôle, hors moteur IAM** (B5) | R2 | corrigé 2026-11-07 : `OrgContext` partout, 403 `org-path-mismatch` |
+| SEC-76 | MEDIUM | **Écriture device interne sans fence : `org_id` du corps cru** (B6) | R7 | corrigé 2026-11-07 : refus sans fence dès qu'un worker est inscrit ; device cible d'un `device_write` d'un flow déployé de l'org |
+| SEC-77 | LOW | **Promotion admin plateforme sans `email_verified`** (C2) | R1 | corrigé 2026-11-07 |
+| SEC-78 | LOW | **Contrôle de version non atomique de `update_notification_template`** (C5) | D144 | corrigé 2026-11-07 : `update_if_unchanged` |
+| SEC-79 | LOW | **`authorize_tool` ouvert sur un outil hors registre IAM** (C6) | R2 | corrigé 2026-11-07 |
+| SEC-80 | LOW | **`OrgContext` laisse passer une route absente du registre IAM** (`operation_of` → `None`) | R2 | ouvert : seule `tests/iam.rs` empêche la livraison ; à fermer par un refus par défaut, après inventaire des routes hors spec |
+| SEC-81 | LOW | **AIS danois servi en HTTP clair, sans somme de contrôle** (`markets-research.md` F.7) | R8 | accepté 2026-11-09 : hôte fixé, rien de l'org envoyé, décodage strict |
+| SEC-82 | MEDIUM | **Chargements massifs déclenchables par tout inscrit** (MK22–MK24) | R2 | corrigé 2026-11-09 : `bulk_history` seulement avec un quota de tables fixé par un admin plateforme (D821) |
+| SEC-83 | LOW | **Lectures non bornées d'un fichier massif** (ADS-B, gzip) | R8 | corrigé 2026-11-09 : 64 Mio avant et après décompression, ligne ≤ 64 Kio |
+| SEC-84 | MEDIUM | **Boîte des terminaux MT5 sans plafond par org** | R2 | corrigé 2026-11-09 : 20 terminaux, 2 000 appels en attente, jeton haché |
+| SEC-85 | MEDIUM | **Première écriture d'un compte de service** (`markets-research.md` D891) | R2, R1 | borné 2026-11-09 : `SERVICE_WRITES` = `market-decisions:write` seul, 2 000 décisions par jour, marquages D801 appliqués |
+| SEC-86 | LOW | **Point-in-time et chaînes causales** (`GET /markets/chains`) | R1, R2, R4 | corrigé en revue 2026-11-09 : chaîne qui touche un objet masqué retirée entière ; la clé point-in-time ne fait que restreindre |
+| SEC-87 | MEDIUM | **Effacement RGPD et historique des états** (D900, D913) | RGPD | corrigé 2026-11-10 (MK34) : l'effacement vide aussi `object_versions` et `link_versions` |
+| SEC-88 | LOW | **Marchés de prédiction : API publiques et proxy d'org** | R8, R9, R1, R4 | borné 2026-11-10 : hôtes fixés, proxy lu au coffre et passé à `egress::check_url`, jamais d'appel direct de repli |
+| SEC-89 | LOW | **Hôtes des sources d'une org dans un pipeline** (`watch.md` D975) | R8, R9, R1 | borné 2026-11-14 : garde egress, secrets seulement vers les `hosts` du document, un appel par seconde et par hôte ; reste : nombre de sources non plafonné |
 
-### Reste à faire
+## 8. Profils de sécurité
 
-SEC-10 (APK release non debuggable, signature de release — accepté
-pour la beta 1) ; un member peut toujours lancer un build et télécharger
-l'image qui embarque le PSK WiFi (SEC-8, inhérent au provisioning) ; les
-points à surveiller selon priorité produit. SEC-17 à SEC-19 : vague V1 de
-`security-tiers.md` ; SEC-20 : vague V4 (eFuses, après validation
-communautaire du firmware).
+Les profils servent à la fois les makers et les clients les plus exigeants (D148).
+Le profil `open` reste le défaut, pour toujours. Tout verrouillage est un choix explicite, par org et par device.
+PneX n'est jamais le seul détenteur des clés d'un client durci (D150).
+Argument produit : *« vos cartes restent les vôtres : reflashables à vie, et pourtant trafic et mises à jour authentifiés »*.
+
+### 8.1 Les profils
+
+| Profil | Public | Référentiels visés | IEC 62443 | Matériel admis | Irréversible |
+|---|---|---|---|---|---|
+| `open` | Makers, écoles, communauté, démos | CRA, ETSI EN 303 645 | ≈ SL1 | Toutes cartes (ESP8266 compris) | Non |
+| `industrial` | PME, ETI, intégrateurs, bâtiment | IEC 62443-3-3 / 4-2, NIS2 des clients | SL2 | C3, S3, C6 pour le matériel ; ESP32 classique en logiciel seulement | Optionnel, par device |
+| `critical` | OIV, OSE : énergie, eau, transport, pharma GxP | IEC 62443 SL3, guides ANSSI, FDA 21 CFR Part 11 | SL3 | C3, S3, C6 durcis ; filaire recommandé | Oui |
+| `sovereign` | Défense, nucléaire | IEC 62443 SL4, homologation ANSSI, II 901 | SL4 | À définir | Oui |
+
+Un ESP32 du commerce ne sera probablement pas accepté en `sovereign` : pas d'élément sécurisé certifié, sans-fil souvent interdit.
+À ce niveau, le rôle réaliste de PneX est la supervision sur réseau isolé, avec des devices filaires ou des automates certifiés.
+Les cibles SL sont indicatives. La correspondance exacte exige le texte de IEC 62443-4-2, à acquérir avant V3.
+
+### 8.2 Mécanisme de flags
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TB
+  PL[Plateforme<br/>deployment_mode, security_floor] -->|plancher| ORG[Org<br/>security_profile]
+  ORG -->|défauts et refus| DEV[Device<br/>flags de durcissement]
+  CAT[Catalogue des cartes<br/>D121] -->|compatibilité| DEV
+  DEV --> FACT[Faits enregistrés<br/>jamais remis à faux]
+```
+
+| Niveau | Réglage | Qui le change | Effet |
+|---|---|---|---|
+| Plateforme | `deployment_mode` (`saas`, `self_hosted`) ; `security_floor` | Admin plateforme (config) | Un déploiement `critical` refuse toute org sous le plancher |
+| Org | `security_profile` | Monter : owner. Descendre : admin plateforme seul, tracé | Défauts et refus de l'org |
+| Device | Flags de durcissement effectifs | Le build et le provisioning | Un flag matériel devient un fait daté, jamais remis à faux |
+
+Seul `deployment_mode` existe dans le code (`pnex_core::DeploymentMode`). `security_floor`, `security_profile` et les flags par device arrivent en V2.
+
+Règles du mécanisme :
+
+1. Baisser le profil d'une org ne dé-durcit aucune carte. L'UI montre alors les devices plus durcis que le profil.
+2. Le serveur refuse un flag matériel pour une carte incompatible (`hardening-board-unsupported`, à créer en V4).
+3. Le catalogue des cartes (`pnex_core::catalog`, D121) déclare les durcissements de chaque carte. Les cartes HIL sont non durcissables.
+4. Une suite de tests vérifie les refus attendus de chaque profil.
+
+### 8.3 Identité et lien device (V1, lots L1–L6)
+
+```mermaid
+sequenceDiagram
+  participant D as Device
+  participant N as Point d'entrée devices (nginx)
+  participant B as Backend
+  D->>N: TLS mutuel, certificat de l'org
+  N->>B: /ws/device + X-Client-Cert + X-Pnex-Edge
+  B->>B: chaîne vs CA de l'org, empreinte vs registre, révocation
+  alt certificat invalide
+    B-->>D: close 4014
+  end
+  D->>B: Authorization: Bearer (jeton)
+  D->>B: poignée de main Noise NNpsk0
+  alt poignée de main refusée
+    B-->>D: close 4011
+  end
+  B-->>D: frames ChaCha20-Poly1305, nonces = compteurs
+```
+
+Le lien device a deux couches. Chacune a son rôle (D155) :
+
+- **TLS mutuel (D153, D154)** : identité standard par X.509 et confidentialité persistante. `ws://` est refusé.
+- **Couche Noise (D156)** : `Noise_NNpsk0_25519_ChaChaPoly_SHA256`, clé partagée de 256 bits mélangée dès le premier message. Elle apporte la confidentialité post-quantique et l'intégrité de bout en bout.
+
+**Attention :** ne supprimez pas la couche Noise en la croyant redondante avec TLS. TLS échange ses clés en ECDHE, cassable par un ordinateur quantique.
+
+Faits du lien :
+
+- **PKI par org (L3)** : CA ECDSA P-256 par org, créée au premier build, clé au coffre. Au build : clé et certificat du device (CN = `device_id`, SAN = org, 10 ans). La clé privée vit seulement dans l'image. Registre `device_certificates` (empreinte SHA-256, série, révocation). Pas de CRL.
+- **Vérification (L4)** : nginx `ssl_verify_client optional_no_ca` sur le point d'entrée devices. Il transmet `X-Client-Cert` et efface la valeur venue du client. Le backend croit ces en-têtes seulement avec `X-Pnex-Edge` (SEC-21).
+- **Point d'entrée devices (D158)** : `PNEX_DEVICE_HOST` (chart : `deviceHost`), 4443 en LAN, `devices.` + hôte en cloud. Certificat serveur émis par la CA PneX de l'instance. 8883 est réservé à MQTT.
+- **Firmware (L5)** : certificat et clé compilés (`PNEX_CLIENT_CERT/KEY`). ESP32 : `WiFiClientSecure`. ESP8266 : BearSSL `setClientECCert`.
+- **Agent edge et déploiement (L6)** : certificat rustls émis à l'enrôlement. Compose et Helm portent le point d'entrée devices dédié.
+- **Jeton (L2)** : en-tête `Authorization: Bearer` sur `/ws/device`, `/ws/camera` et le téléchargement OTA. Un jeton en URL est ignoré.
+- **Pas de compatibilité (D157)** : le format D8 est supprimé partout. Un device non recompilé est refusé et doit être reflashé.
+- **Rotation de CA d'org** : non outillée (CA 30 ans, certificats 10 ans). Une compromission impose une nouvelle CA, un rebuild et un flash de l'org (EX-A8, V3).
+
+**Danger :** ne passez jamais en proxy un enregistrement DNS qui résout l'hôte devices. Le proxy termine le TLS, et le certificat client n'arrive plus à nginx.
+
+### 8.4 Exigences
+
+Colonnes : profil minimal (O = open, I = industrial, C = critical, S = sovereign, « opt » = optionnel).
+Impact : **L** = logiciel réversible, **E** = eFuse irréversible, **P** = processus ou documentation.
+
+**A. Protocole device ↔ serveur**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-A1 | Frames chiffrées authentifiées (ChaCha20-Poly1305) | O | L | V1 | Fait (Noise, L1) |
+| EX-A2 | Anti-rejeu par compteur dans les données authentifiées | O | L | V1 | Fait (Noise, L1) |
+| EX-A3 | Plus de repli « clé vide = clair » | O | L | V1 | Fait (L1) |
+| EX-A4 | Jeton hors de l'URL | O | L | V1 | Fait (L2) |
+| EX-A5 | TLS obligatoire, `ws://` refusé | O | L | V1 | Fait (L2) : sans `X-Forwarded-Proto: https` de l'edge, close 4013 ; `ingestion.require_tls` |
+| EX-A6 | Identité par device en X.509 + TLS mutuel | O (repli jeton, D157) | L | V1 | Fait (L3–L6), validé sur NodeMCU et C6 |
+| EX-A7 | Certificats émis par l'autorité du client (BYOK, PKCS#11, HSM) | C | L | V3 | Absent |
+| EX-A8 | Rotation des clés et certificats sans reflash USB | I | L | V3 | Rotation de CA = rebuild + OTA |
+| EX-A9 | Crypto agile, algorithmes ANSSI, FIPS 140-3 en option | S | L | V5 | Absent |
+| EX-A10 | Confidentialité post-quantique (couche Noise, D155) ; la clé partagée voyage dans l'image en TLS classique | O | L | V1 (couche), V3 (transport de la clé) | Couche faite ; transport absent |
+| EX-A11 | TLS hybride ML-KEM jusqu'au device | C | L | Quand ESP-IDF le propose | Absent |
+
+**B. OTA et cycle de vie du firmware**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-B1 | Image signée Ed25519, clé publique embarquée, vérifiée avant bascule | O | L | V1 | Fait (SEC-18, `ota.md` §4) |
+| EX-B2 | Anti-downgrade logiciel sur toutes les puces | O | L | V1 | Fait sans NVS : version signée comparée à l'image en cours |
+| EX-B3 | Fenêtres de maintenance et approbation avant OTA | I | L | V2 | OTA immédiate |
+| EX-B4 | Déploiement progressif, arrêt sur échec | I | L | V2 | OTA en lot manuelle |
+| EX-B5 | Approbation à deux personnes (deploy, OTA, secret) | C | L | V3 | Absent |
+| EX-B6 | Anti-rollback eFuse `secure_version` | C opt, S | E | V5 | Absent |
+| EX-B7 | Signature de l'image hors du builder | I | L | V2 | Absent |
+| EX-B8 | Fin de vie d'un device : effacement, révocation, trace | I | L+P | V3 | Suppression simple |
+
+**C. Matériel**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-C1 | NVS chiffré par HMAC (C3, S3, C6) | I opt | E | V4 | Secrets en clair (SEC-20) |
+| EX-C2 | Secure Boot v2, clés hors puce + clé de secours | I opt, C | E | V4 | Absent |
+| EX-C3 | Flash Encryption release, clé hors puce conservée | I opt, C | E | V4 | Absent (SEC-20) |
+| EX-C4 | Secure Download Mode | avec EX-C3 | E | V4 | Absent |
+| EX-C5 | JTAG désactivé | C | E | V4 | Absent |
+| EX-C6 | Download UART désactivé (plus aucun reflash USB) | S seulement | E | V5 | Absent, volontairement réservé |
+| EX-C7 | Élément sécurisé pour l'identité | S | matériel | V5 | Absent |
+| EX-C8 | Détection d'ouverture du boîtier | S | matériel | V5 | Hors périmètre |
+
+Prérequis de V4, à lever avant tout eFuse :
+
+- passer à ESP-IDF (ou pioarduino) ou au firmware Rust, car l'Arduino précompilé bloque Secure Boot et Flash Encryption ;
+- vérifier le flash navigateur (esptool-js) en Secure Download Mode, sinon seule l'app desktop reflashe ;
+- vérifier l'écriture d'images pré-chiffrées sur ESP32 classique ;
+- mesurer l'impact du chiffrement sur ESP32-CAM et la place des slots OTA ;
+- accepter que seules les cartes neuves ou repassées en USB sont durcies (le bootloader ne se met pas à jour par OTA) ;
+- tester la récupération de bout en bout sur 10 cartes sacrifiables au moins.
+
+**D. Réseau et architecture**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-D1 | Connexions sortantes seulement côté device | O | L | — | Fait |
+| EX-D2 | Contrôle sans dépendance cloud | I | L | — | Fait (pnex-deploy) |
+| EX-D3 | Fail-safe défini par sortie à la perte de communication | I | L | V2 | Partiel (cartes de régulation D20) |
+| EX-D4 | Installation et mises à jour sans Internet | C | L | V3 | Builder hors ligne fait ; le reste absent |
+| EX-D5 | Segmentation par zones et conduits (IEC 62443-3-2) | C | P | V3 | Absent |
+| EX-D6 | Compatibilité diode réseau | S | L | V5 | Absent |
+| EX-D7 | Transports filaires (Ethernet, RS-485, Modbus) | C opt, S | L+matériel | V5 | WiFi seulement |
+
+**E. Serveur et plateforme**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-E1 | Chiffrement au repos de la base et du stockage objet ; résidence | C | L+P | V3 | Coffre seulement (§9) |
+| EX-E2 | Images conteneur durcies | I | L | V2 | Partiel |
+| EX-E3 | Clés plateforme dans un HSM | C | L | V3 | Absent |
+| EX-E4 | Sauvegarde testée des clés de devices | I | L+P | V3 | Absent, prérequis de toute carte durcie |
+
+**F. Identité et accès**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-F1 | MFA obligatoire, session bornée | I | L | V2 | Possible via Rauthy, non imposé |
+| EX-F2 | Fédération AD / LDAP | I | L | V3 | Absent |
+| EX-F3 | Accès « bris de glace » tracé | C | L+P | V3 | Absent |
+| EX-F4 | Qui écrit un flow ≠ qui le déploie | C | L | V3 | Absent |
+
+**G. Traçabilité**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-G1 | Journal d'audit de toutes les actions | I | L | V2 | Partiel |
+| EX-G2 | Export SIEM (syslog, CEF) | I | L | V2 | Absent |
+| EX-G3 | Journal infalsifiable | C | L | V3 | Absent |
+| EX-G4 | Piste d'audit FDA 21 CFR Part 11 | C opt | L | V3 | Absent |
+
+**H. Chaîne d'approvisionnement**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-H1 | SBOM CycloneDX à chaque release | O | L+P | V2 | `cargo deny` seulement |
+| EX-H2 | Releases et images signées | O | L | V2 | Absent |
+| EX-H3 | Builds reproductibles | C | L | V3 | Absent |
+| EX-H4 | Dossier type pour questionnaire fournisseur | I | P | V2 | Ce document, interne seulement |
+| EX-H5 | Pentest externe périodique | I | P | V3 | Absent |
+| EX-H6 | Développement conforme IEC 62443-4-1 | C | P | V3 | Partiel (§6, §7) |
+| EX-H7 | Certification de composant (62443-4-2, CSPN) | C opt, S | P | V5 | Absent |
+
+**I. Vulnérabilités et réglementaire**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-I1 | Politique de divulgation (`security.txt`) | O | P | V2 | Absent |
+| EX-I2 | CRA : signalement ENISA (24 h, 72 h, rapport final), en vigueur depuis le 11/09/2026 | O | P | V2 | Absent, à qualifier juridiquement |
+| EX-I3 | Durée de support de sécurité annoncée (≥ 5 ans) | O | P | V2 | Absent |
+| EX-I4 | Directive radio (EN 18031) si PneX vend des cartes | — | P | — | Question ouverte (§11) |
+
+**J. Sûreté de fonctionnement et pérennité**
+
+| ID | Exigence | Profil | Impact | Vague | État |
+|---|---|---|---|---|---|
+| EX-J1 | Watchdog et état sûr au redémarrage | I | L | V2 | Partiel |
+| EX-J2 | PneX n'est pas un système de sécurité IEC 61508 (pas de SIL) | tous | P | V2 | Non écrit |
+| EX-J3 | Continuité si PneX disparaît (séquestre, self-hosted autonome) | C | P | V3 | Self-hosted fait ; séquestre absent |
+
+### 8.5 Vagues
+
+```mermaid
+stateDiagram-v2
+  V1 : V1 protocole pour tous (livrée)
+  V2 : V2 industrial logiciel
+  V3 : V3 critical logiciel
+  V4 : V4 durcissement matériel (eFuse)
+  V5 : V5 sovereign
+  [*] --> V1
+  V1 --> V2
+  V2 --> V3 : premier client industriel
+  V3 --> V4 : firmware validé 1 à 2 ans + banc sacrifiable
+  V4 --> V5 : client défense avec budget
+```
+
+| Vague | Contenu |
+|---|---|
+| V1 | EX-A1–A6, A10 (couche), B1, B2. Livrée le 2026-10-09 |
+| V2 | B3, B4, B7, D3, E2, F1, G1, G2, H1, H2, H4, I1–I3, J1, J2 ; mécanisme de flags (§8.2) |
+| V3 | A7, A8, A10 (transport), B5, B8, D4, D5, E1, E3, E4, F2–F4, G3, G4, H3, H5, H6, J3 |
+| V4 | C1–C5, après les prérequis du §8.4 C |
+| V5 | A9, B6, C6–C8, D6, D7, H7 |
+
+### 8.6 Garde-fous eFuse (non négociables)
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  REQ[Demande d'eFuse] --> P{Profil explicite ?}
+  P -- non --> X[Refus]
+  P -- oui --> C{Carte compatible<br/>hors banc HIL ?}
+  C -- non --> X
+  C -- oui --> K{Restauration des clés<br/>prouvée EX-E4 ?}
+  K -- non --> X
+  K -- oui --> H{Confirmation qui<br/>nomme l'irréversible ?}
+  H -- non --> X
+  H -- oui --> F[eFuse brûlé<br/>fait enregistré]
+```
+
+1. Aucun eFuse n'est brûlé par défaut, ni par un outil de test, ni « pour essayer » (D149).
+2. Jamais sur une carte du banc HIL ni sur une carte de développement.
+3. Un eFuse brûlé est un fait enregistré par device. Aucune action ne prétend l'annuler.
+4. Le download UART n'est jamais désactivé hors `sovereign` (D151).
+5. Le profil `open` ne perd jamais une capacité : flash navigateur, reflash libre, ESP8266.
+
+## 9. Coffre de secrets
+
+Le coffre garde tous les secrets d'une org en un seul endroit, chiffrés (D110).
+Un consommateur (canal, nœud, WiFi, fournisseur LLM) porte une référence, jamais une valeur (D113).
+Aucun rôle ne relit une valeur (D117).
+Les secrets d'infrastructure (`DATABASE_URL`, clés S3, jetons de service, trousseau) restent hors du coffre, en env ou SOPS. Le coffre ne peut pas contenir sa propre clé.
+
+### 9.1 Modèle
+
+```mermaid
+classDiagram
+  class org_secrets {
+    id
+    org_id : NULL = plateforme
+    name (unique par org)
+    ciphertext, nonce, key_id
+  }
+  class secret_usages {
+    secret_id
+    consumer_kind, consumer_id
+    field
+  }
+  class SecretRef {
+    secret_id
+  }
+  class Consommateur {
+    config fonctionnelle
+  }
+  Consommateur --> SecretRef : champ secret
+  SecretRef --> org_secrets
+  secret_usages --> org_secrets
+  secret_usages --> Consommateur
+```
+
+- Une ligne de `org_secrets` = une chaîne secrète. Les parties non secrètes (SSID, nom d'en-tête, utilisateur basic, URL de base) restent dans la config du consommateur (D110).
+- Un secret n'a ni portée ni catégorie. La frontière est l'usage : le runtime résout un secret seulement s'il est référencé par un flow déployé de l'org (D111).
+- Chiffrement XChaCha20-Poly1305, nonce aléatoire de 24 octets par écriture. L'AAD lie le texte chiffré au domaine (`pnex-secret-v1`), au propriétaire et à la ligne. Une ligne recopiée sur une autre org ou un autre secret ne se déchiffre pas (D112).
+- Le trousseau est obligatoire au boot. Sans lui, le serveur refuse de démarrer (D112).
+- `secret_usages` est réécrit à chaque sauvegarde d'un consommateur. Il sert la colonne « utilisé par » et le refus de suppression (409 `secret-in-use`, D114).
+- Un **secret dédié** est créé par une saisie au lieu fonctionnel. Il porte un nom dérivé de son lieu et disparaît avec son consommateur s'il n'a plus d'usage.
+
+Consommateurs actuels (`services/secrets/`) : canaux de notification, nœud http-fetch, WiFi, fournisseurs LLM, connecteurs, boîtes mail, flux média, fournisseurs géo, recherche web, points d'accès navigateur, registres d'images.
+
+### 9.2 Saisie et choix d'un secret
+
+```mermaid
+sequenceDiagram
+  participant U as Formulaire (SecretField)
+  participant B as Backend
+  participant V as Coffre
+  alt saisie {"value"} (secrets:write)
+    U->>B: champ = {"value": "…"}
+    B->>V: crée ou remplace le secret dédié
+  else choix {"secret_id"}
+    U->>B: champ = {"secret_id": "…"}
+    B->>B: secret de l'org ? R9 respectée ?
+  end
+  B->>V: réécrit secret_usages
+  B-->>U: {"secret_id", "name"}, jamais de valeur
+```
+
+Le composant `SecretField` sert tous les formulaires. Il montre « défini · nom du secret » et les actions selon les droits.
+La validation propre au consommateur (URL Slack, token Telegram) porte sur la valeur résolue côté serveur. Un test d'envoi résout en mémoire et n'écrit rien au coffre.
+
+Règles par consommateur :
+
+- **Canaux de notification (S4)** : secret dédié `notify/<canal>/<champ>`. Il suit le renommage du canal. Le snapshot du runtime porte seulement des références.
+- **Nœud http-fetch (S5)** : `pnex_core::SecretSlot` (`Unset`, `Ref`, `Value`) pour `auth.password`, `auth.token`, `auth.value`, `proxy.password`. Secret dédié `flow/<flow_id>/<node_id>/<champ>`. Les usages couvrent la dernière version et la version déployée. Les secrets dédiés ne sont pas élagués à la sauvegarde, pour qu'un rollback retrouve ses secrets. L'éditeur adopte les références stockées (`adopt_stored_secrets`).
+- **WiFi (S6)** : `wifi_credentials.secret_id`, secret dédié `wifi/<ssid>/password`. Le job de build porte seulement `wifi_secret_id`. Le worker déchiffre au moment du build.
+- **Fournisseurs LLM (S7)** : table `llm_providers` par org, secret dédié `llm/<nom>/api_key`, un seul défaut par org. Pas de LLM plateforme (D119). `POST …/{id}/test` fait un ping réel.
+- **Assistant** : il ne saisit jamais de valeur. Il garde ou choisit une référence, sous R9.
+
+### 9.3 Résolution par le runtime
+
+```mermaid
+sequenceDiagram
+  participant N as Nœud (runtime)
+  participant B as Backend
+  participant V as Coffre
+  N->>B: GET /internal/flow/secret/{id}?org_id= (x-pnex-flow-token)
+  B->>B: jeton en temps constant, fencing D106
+  B->>B: secret de l'org, référencé par un flow déployé de l'org
+  alt non trouvé ou non référencé
+    B-->>N: 404 secret-not-referenced
+  else autorisé
+    B->>V: déchiffre
+    B-->>N: valeur
+    N->>N: garde la valeur en mémoire jusqu'au prochain deploy
+  end
+```
+
+- `flows.json` et `ApplyOrg` portent seulement des `secret_id` (D115).
+- Le nœud résout au premier envoi, pas à la construction. Le deploy applique le fragment avant de marquer le flow déployé en base. Le nœud réessaie brièvement un 404.
+- Un canal désactivé coupe ses envois au premier envoi suivant, sans redeploy.
+- La clé maîtresse ne va jamais au runtime. Les nœuds fonction (JS, Starlark) n'ont pas accès aux secrets.
+- Changer une valeur ne déclenche rien en cascade (D118). Un flow prend la valeur au prochain deploy. Un firmware garde l'ancienne valeur jusqu'à son reflash, device par device. L'UI le signale à la sauvegarde.
+
+### 9.4 Droits
+
+| Permission | Plus bas rôle | Effet |
+|---|---|---|
+| `secrets:read` | Viewer | Liste des secrets, noms des secrets référencés |
+| `secrets:usage` | Member | Garder une référence déjà câblée (R9) |
+| `secrets:write` | Admin | Créer, renommer, remplacer une valeur, câbler un secret |
+| `secrets:delete` | Admin | Supprimer un secret non utilisé |
+| plateforme | Admin plateforme | Rechiffrement (`POST /api/v1/system/secrets/rekey`) |
+
+Source : `crates/pnex-api-contract/src/iam.rs`. Une saisie de valeur sans `secrets:write` reçoit 403 `secret-write-forbidden`.
+
+### 9.5 API
+
+| Route | Effet |
+|---|---|
+| `GET /api/v1/secrets` | Nom, description, `updated_at/by`, usages. Jamais de valeur. Pagination et recherche |
+| `POST /api/v1/secrets` | Crée un secret |
+| `PUT /api/v1/secrets/{id}` | Nom, description, nouvelle valeur optionnelle |
+| `DELETE /api/v1/secrets/{id}` | Supprime, 409 `secret-in-use` si utilisé |
+| `GET /internal/flow/secret/{id}` | Résolution par le runtime (§9.3) |
+| `POST /api/v1/system/secrets/rekey` | Rechiffrement : renvoie `rewritten`, `unreadable`, `skipped`, `remaining` |
+
+Champ secret d'un formulaire : `{"secret_id": …}` (choix) ou `{"value": "…"}` (saisie). En lecture : `{"secret_id", "name"}`.
+Codes d'erreur : `secret-not-found`, `secret-in-use`, `secret-not-referenced`, `secret-name-taken`, `secret-write-forbidden`, `secret-destination-locked`.
+
+### 9.6 UI
+
+- Page `/secrets` (réglages de l'org) : nom, utilisé par (liens vers le consommateur), modifié le, par. Actions : créer, renommer, remplacer la valeur, supprimer.
+- Fournisseurs LLM : composant `LlmProviders`, dans le détail de l'org (`/orgs/current`).
+- `/admin/status` : composant « Coffre de secrets » (clé d'écriture, nombre de clés, secrets stockés, secrets sous une ancienne clé) et bouton « Rechiffrer les secrets ». Le coffre est dégradé si une ligne est sous une clé absente.
+
+### 9.7 Rotation et exploitation (S8)
+
+Format : `PNEX_SECRETS_KEYS="<id>:<base64 de 32 octets>,…"`. La première entrée chiffre, les suivantes relisent seulement.
+Un id fait au plus 32 caractères `[A-Za-z0-9_-]`. Pour générer une clé : `openssl rand -base64 32`. pnex-deploy la génère à l'installation.
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  A[Poser k2 en tête<br/>k2:new,k1:old] --> B[Redémarrer tous les pods]
+  B --> C{Clé d'écriture = k2<br/>dans /admin/status ?}
+  C -- oui --> D[Rechiffrer<br/>bouton ou task secrets_rekey]
+  D --> E{Secrets sous une<br/>ancienne clé = 0 ?}
+  E -- oui --> F[Retirer k1, redémarrer]
+  E -- non --> D
+```
+
+- Le rechiffrement (`services::secrets::rekey`) parcourt les lignes par lots de 200, sous le verrou consultatif `SECRETS_REKEY`. Un second lancement attend le premier.
+- Un `UPDATE` conditionné sur l'ancien nonce et l'ancien `key_id` évite d'écraser un remplacement concurrent. Valeur, `updated_at` et `updated_by` ne changent pas.
+- Une ligne illisible reste telle quelle. Son id est journalisé, jamais sa valeur.
+- Le rechiffrement ne tourne jamais au boot. En rolling upgrade, un pod qui rechiffre trop tôt rendrait le coffre illisible pour les autres.
+- Une rotation de clé ne change aucune valeur. Si une valeur a fuité, remplacez-la dans `/secrets`.
+
+**Danger :** rangez le trousseau à part de la base, jamais dans le même dump. Une sauvegarde de la base sans le trousseau ne restitue aucun secret.
+
+**Attention :** une clé perdue rend ses lignes illisibles pour toujours. Les consommateurs échouent proprement. Le remède est de ressaisir chaque valeur depuis l'UI.
+
+## 10. Décisions
+
+| # | Décision |
+|---|---|
+| D110 | Coffre unique `org_secrets` : une ligne = une valeur secrète, parties non secrètes dans la config du consommateur |
+| D111 | Pas de portée ni de catégorie : la frontière est l'usage par un flow déployé de l'org |
+| D112 | XChaCha20-Poly1305, AAD lié au propriétaire et à la ligne, trousseau en env obligatoire au boot |
+| D113 | Références typées `{"secret_id"}`, jamais de templating ; composant unique `SecretField` |
+| D114 | `secret_usages` : « utilisé par » et refus de suppression d'un secret utilisé |
+| D115 | Le runtime reçoit des `secret_id` et les résout par `/internal/flow/secret/{id}` ; jamais la clé maîtresse |
+| D116 | Fournisseurs LLM en CRUD, `PNEX_AI_*` retirés (partie plateforme remplacée par D119) |
+| D117 | Aucun rôle ne relit une valeur ; seuls les admins câblent un secret (amendé par R9, SEC-W2) ; droits IAM au §9.4 |
+| D118 | Changer une valeur ne déclenche rien en cascade : redeploy pour les flows, reflash un par un pour le WiFi |
+| D119 | Pas de LLM plateforme : chaque org apporte son LLM, sans repli |
+| D130 | Sécurité = garde permanente : règles §3, revue §6, `cargo deny` bloquant §5, registre unique §7 |
+| D148 | Profils gradués `open`, `industrial`, `critical`, `sovereign` ; `open` reste le défaut |
+| D149 | Rien d'irréversible par défaut ; eFuses gelés jusqu'à la fin de la phase communautaire (V4) |
+| D150 | PneX ne détient jamais seul les clés d'un client durci |
+| D151 | Le matériel reste réutilisable par son propriétaire ; anti-downgrade logiciel en `open` et `industrial` |
+| D152 | Exigences tracées maintenant, implémentées par vagues ; SEC-17 à SEC-19 corrigés pour tous en V1 |
+| D153 | Identité device = X.509 + TLS mutuel, une CA par org, révocation par registre ; Rauthy reste l'IdP des humains (D19) |
+| D154 | TLS obligatoire, jeton hors de l'URL |
+| D155 | La couche interne chiffrée reste sous TLS, pour la confidentialité post-quantique |
+| D156 | Couche interne = Noise NNpsk0, une seule pile crypto avec le M2M |
+| D157 | Aucune compatibilité avant release : D8 supprimé, reflash obligatoire ; repli jeton en `open` pour une carte en échec HIL |
+| D158 | Point d'entrée devices dédié, jamais derrière un proxy TLS ; CA de l'instance ; 8883 réservé à MQTT |
+
+## 11. Reste à faire
+
+- **SEC-10** : créer la clé de signature de l'APK release et la poser en secrets GitHub.
+- **SEC-28** est utilisé deux fois (débit des pages, document hostile). Choix de Shan : garder les deux entrées telles quelles, ou attribuer un nouveau numéro à la seconde.
+- **SEC-17 à SEC-20** : SEC-20 attend V4 (eFuses, après la validation communautaire du firmware).
+- **V2** : mécanisme de flags (`security_floor`, `security_profile`, flags par device) et exigences du profil `industrial`.
+- **Rotation de CA d'org** : outillage absent (double CA de transition, OTA), EX-A8 en V3.
+- **Questions de Shan, à trancher** :
+  1. CRA : PneX est-il un produit avec éléments numériques mis sur le marché, ou un logiciel libre exempté ? Qui est fabricant quand l'utilisateur assemble sa carte ? Avis juridique avant V2.
+  2. Directive radio : obligations si PneX vend un jour des cartes.
+  3. Socle de V4 : migration ESP-IDF (C++) ou firmware Rust (esp-hal) ?
+  4. `sovereign` : quel matériel (élément sécurisé, filaire, automates derrière passerelle) ? À trancher avec un client réel.
+  5. Format d'export et de séquestre des clés (EX-E4, D150).
+- **Coffre, hors périmètre** : chiffrement au repos des clés device et des tokens agent ; jeton d'ingestion O2 par org à la place du mot de passe root dans le runtime ; « révéler une valeur », coffre externe (Vault, KMS), clé par org (crypto-shredding).

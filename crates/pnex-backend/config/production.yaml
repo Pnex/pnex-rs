@@ -68,7 +68,7 @@ settings:
   # lan = loopback, link-local and metadata refused, LAN reachable;
   # public = private ranges refused too (shared hosting); open = no filter.
   egress: <%= get_env(name="PNEX_EGRESS", default="lan") %>
-  # Org secrets vault keyring (secrets.md D112), mandatory: the server
+  # Org secrets vault keyring (security.md D112), mandatory: the server
   # refuses to start without it. "k2:<b64>,k1:<b64>" — write key first,
   # older keys only decrypt (rotation). Generate: `openssl rand -base64 32`.
   secrets:
@@ -114,7 +114,7 @@ settings:
     batch_max: <%= get_env(name="PNEX_BATCH_MAX", default="500") %>
     batch_flush_secs: <%= get_env(name="PNEX_BATCH_FLUSH_SECS", default="10") %>
   # AI assistant kill-switch. LLM providers are managed in the UI
-  # (secrets.md D116): no provider configuration in the environment.
+  # (security.md D116): no provider configuration in the environment.
   ai:
     enabled: <%= get_env(name="PNEX_AI_ENABLED", default="true") %>
   rauthy:

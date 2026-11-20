@@ -45,7 +45,7 @@ pub mod function_node_preview;
 pub mod function_ports;
 pub mod function_templates;
 pub mod functions_reference;
-/// Secret input shared by every functional form (secrets.md D113).
+/// Secret input shared by every functional form (security.md D113).
 pub mod geo_providers;
 pub mod gerbe;
 /// Home icon catalog of the dashboard cards (D136).

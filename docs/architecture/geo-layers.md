@@ -12,7 +12,7 @@
 > (jobs par capabilities), `ontology.md` (D181 temps des objets, D184
 > provenance obligatoire), `roadmap.md` (§ Geofencing : PostGIS accepté
 > GPL-2, stockage pas temps réel ; PostgreSQL seul moteur, décision #19),
-> `secrets.md` (D110 références de coffre, D116/D119 fournisseurs LLM
+> `security.md` §9 (D110 références de coffre, D116/D119 fournisseurs LLM
 > d'org), `horizontal-scaling.md` (D108 Valkey obligatoire).
 >
 > Positionnement : **extension de la base map**, pas un nouveau pilier

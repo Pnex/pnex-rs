@@ -1,4 +1,4 @@
-//! Org secrets vault API (secrets.md §5, D110–D117).
+//! Org secrets vault API (security.md §9.5, D110–D117).
 //!
 //! - `GET /api/v1/secrets`: every role; viewers only get ids and names.
 //!   Never a value, for anyone.
@@ -321,7 +321,7 @@ async fn remove(
     }
 }
 
-/// `POST /api/v1/system/secrets/rekey` — platform admin (secrets.md S8):
+/// `POST /api/v1/system/secrets/rekey` — platform admin (security.md S8):
 /// rewrites every vault row under the write key of `PNEX_SECRETS_KEYS`.
 /// Run only once every pod has restarted with the new keyring.
 #[utoipa::path(

@@ -1,4 +1,4 @@
-//! Notification channels as vault consumers (secrets.md lot S4, closes
+//! Notification channels as vault consumers (security.md lot S4, closes
 //! notifications.md N5).
 //!
 //! The `secret` fields of a stored channel config hold

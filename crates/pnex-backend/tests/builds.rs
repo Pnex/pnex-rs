@@ -779,7 +779,7 @@ async fn org_isolation_and_auth() {
     .await;
 }
 
-/// Vault (secrets.md S6): a build referencing a WiFi entry compiles the
+/// Vault (security.md S6): a build referencing a WiFi entry compiles the
 /// password decrypted by the worker; the legacy typed request lands in
 /// the referential (and the vault) first.
 #[tokio::test]

@@ -5,7 +5,7 @@
 //!
 //! `selected` is a signal of the parent (wizard): the picker only keeps
 //! it up to date; the submit sends the entry id in `CreateBuild` (the
-//! password stays in the vault, secrets.md S6).
+//! password stays in the vault, security.md S6).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;

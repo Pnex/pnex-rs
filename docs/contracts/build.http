@@ -31,7 +31,7 @@ Authorization: Bearer {{token}}
 X-Org-Id: 4
 
 # WiFi : une entrée du référentiel de l'org (`wifi_credential_id`) — le mot
-# de passe reste dans le coffre et le worker le déchiffre (secrets.md S6).
+# de passe reste dans le coffre et le worker le déchiffre (security.md S6).
 {
   "wifi_credential_id": 7,
   "device_id": "capteur-jardin",

@@ -7,7 +7,7 @@
 //! field stays empty; submitting sends `null` for secrets not typed
 //! (server-side merge = unchanged).
 //!
-//! Vault (secrets.md D113, lot S4): each `secret` field is a
+//! Vault (security.md D113, lot S4): each `secret` field is a
 //! [`SecretField`] — type a value (owner/admin, stored in the channel's
 //! dedicated secret) or pick a secret of the org; a set field shows
 //! "set · <secret name>".

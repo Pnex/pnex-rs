@@ -5,7 +5,7 @@
 //! `build_records` (no polling: the worker IS the executor).
 //!
 //! Secrets: the queue args carry the WiFi SSID and the **vault id** of its
-//! password (secrets.md lot S6), decrypted here at `perform` time; the
+//! password (security.md lot S6), decrypted here at `perform` time; the
 //! **token and the encryption key are re-read from the database**. No
 //! secret value travels through `pg_loco_queue.task_data`.
 //!

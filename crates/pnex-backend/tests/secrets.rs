@@ -1,4 +1,4 @@
-//! Org secrets vault (secrets.md D110–D117): CRUD without values, AEAD at
+//! Org secrets vault (security.md D110–D117): CRUD without values, AEAD at
 //! rest, org isolation, viewer restrictions, usages + 409 on delete,
 //! secret-field resolution (pick / dedicated value).
 

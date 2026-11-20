@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **Choix produit tranchés par Shan le 2026-11-07** (§3). **CN1 à CN5 codés le 2026-11-07/08** (§9) ; reste à confirmer le choix du secret des webhooks (§3) |
 | Déclencheur | Ordre OP1 → OP2 → OP3 (`operational-platform.md` §2) ; OP1 livré en grande partie |
-| Repose sur | `operational-platform.md` (D555), `data-pipelines.md` (D352, §9.6 « Connecteurs, premier lot »), `secrets.md` (D113, D115), `security.md` (R1, R2, R4, R8, R16), `iam.md`, `crm.md` (D369) |
+| Repose sur | `operational-platform.md` (D555), `data-pipelines.md` (D352, §9.6 « Connecteurs, premier lot »), `security.md` §9 (D113, D115), `security.md` (R1, R2, R4, R8, R16), `iam.md`, `crm.md` (D369) |
 | Numérotation | **D791…D797**, lots **CN1…CN5** |
 | Revient sur | D352 (`elasticsearch` et `http` sortent de la liste des sortes, `rest` et `webhook` y entrent) ; la ligne « stockage cloud » d'OP2 (D796) |
 

@@ -1,4 +1,4 @@
-//! Org secrets vault — central CRUD page (secrets.md §6, D110–D117).
+//! Org secrets vault — central CRUD page (security.md §9.6, D110–D117).
 //!
 //! Lists every secret of the org with its consumers ("used by"); never
 //! shows a value. Owner/admin create, rename, replace a value, delete

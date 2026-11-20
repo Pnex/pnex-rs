@@ -15,7 +15,7 @@ pub struct Model {
     pub kind: String,
     pub name: String,
     /// Typed by kind; `secret` fields hold vault references
-    /// `{"secret_id"}` (secrets.md lot S4), never a value.
+    /// `{"secret_id"}` (security.md lot S4), never a value.
     #[sea_orm(column_type = "JsonBinary")]
     pub config: Json,
     pub enabled: bool,

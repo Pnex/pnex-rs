@@ -1,5 +1,5 @@
 //! AI assistant — `/api/v1/ai/*`: state (UI visibility), LLM providers of
-//! the org (secrets.md D116, key = vault reference), provider test, and
+//! the org (security.md D116, key = vault reference), provider test, and
 //! the user's private conversations (D145).
 //! The platform provides no LLM (D119): each org brings its own.
 //!

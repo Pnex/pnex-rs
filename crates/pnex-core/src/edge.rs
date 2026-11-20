@@ -5,7 +5,7 @@
 //! is **unchanged** (the wizard resolves entry → values) — a purely
 //! additive change, CONTRACT unchanged (2).
 //!
-//! WiFi password: a vault secret (secrets.md lot S6) — the API only carries
+//! WiFi password: a vault secret (security.md lot S6) — the API only carries
 //! its reference and name, never the value; builds reference the
 //! credential and the build worker decrypts at run time. wasm-safe (serde
 //! only, dates as RFC 3339 String).

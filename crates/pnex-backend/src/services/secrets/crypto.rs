@@ -1,4 +1,4 @@
-//! At-rest encryption of org secrets (secrets.md D112).
+//! At-rest encryption of org secrets (security.md D112).
 //!
 //! XChaCha20-Poly1305 with a random 24-byte nonce per write. The AAD binds
 //! a ciphertext to its owner (`org_id`, or the platform) and to its row
@@ -6,7 +6,7 @@
 //! open. The master keys live outside the database, in a keyring
 //! (`settings.secrets.keys`, env `PNEX_SECRETS_KEYS` in production):
 //! `"k2:<b64>,k1:<b64>"` — the first key encrypts, the others only decrypt
-//! (rotation, D112 / §7).
+//! (rotation, D112 / §9.7).
 
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;

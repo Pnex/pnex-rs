@@ -6,7 +6,7 @@
 > conformité. Suit `data-pipelines.md` (D344–D358). Liens : `ingestion.md`
 > (D317–D322), `partner-watch.md` (D301–D316, D307 crawl, D312 nœuds
 > ontologie), `extension-collector.md` (D254), `site-recipes.md`
-> (D323–D328), `geo-layers.md` (fournisseurs géo), `secrets.md` (D110–D118),
+> (D323–D328), `geo-layers.md` (fournisseurs géo), `security.md` §9 (D110–D118),
 > `security.md` (R1, R2, R4, R8, R16).
 
 ## 1. Constat (code lu le 2026-10-22)

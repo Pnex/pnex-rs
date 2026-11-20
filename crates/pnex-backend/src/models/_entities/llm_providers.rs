@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// LLM provider (secrets.md D116). Never serialized to a client — the DTO
+/// LLM provider (security.md D116). Never serialized to a client — the DTO
 /// is `pnex_core::LlmProvider`.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "llm_providers")]

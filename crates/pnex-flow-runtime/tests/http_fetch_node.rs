@@ -286,7 +286,7 @@ fn http_fetch_refuses_loopback_under_the_lan_policy() {
     );
 }
 
-/// Vault reference (secrets.md S5): the node fetches the token from the
+/// Vault reference (security.md S5): the node fetches the token from the
 /// secret endpoint on its first request and sends it as the bearer; the
 /// artifact itself never holds the value.
 #[test]

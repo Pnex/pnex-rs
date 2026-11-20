@@ -52,7 +52,7 @@ tokio = { version = "1.45", default-features = false, features = [
 ] }
 async-trait = { version = "0.1" }
 axum = { version = "0.8", features = ["ws"] }
-# Org secrets vault (secrets.md D112): XChaCha20-Poly1305 AEAD at rest.
+# Org secrets vault (security.md D112): XChaCha20-Poly1305 AEAD at rest.
 chacha20poly1305 = "0.11"
 # OTA image signatures (SEC-18), BSD-3-Clause.
 ed25519-dalek = "3"

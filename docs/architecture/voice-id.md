@@ -6,7 +6,7 @@ non-objectif « identifier une personne par sa voix » (`media-ingest.md` §2)
 contrôle humain. Numéro D à attribuer à la validation (D192+ réservé).
 **Renvois :** `cases.md` K19 (cadre juridique, variante B non retenue),
 `media-ingest.md` D166–D167 (registre audio, process `pnex-asr`, diarisation
-anonyme), `secrets.md` D112 (scellement), `security.md` R1–R20.
+anonyme), `security.md` §9 D112 (scellement), `security.md` R1–R20.
 
 ## 1. Décisions
 

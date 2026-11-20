@@ -1,4 +1,4 @@
-//! LLM providers (secrets.md D116, D119): CRUD of the org API
+//! LLM providers (security.md D116, D119): CRUD of the org API
 //! (`/api/v1/ai/providers`) and resolution of the provider an org runs on
 //! — its own default. The platform provides no LLM: each org brings its own.
 

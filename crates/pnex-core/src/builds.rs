@@ -21,7 +21,7 @@ pub struct CreateBuild {
     /// Registered device of the org; its model and frozen board drive the
     /// build.
     pub device_id: String,
-    /// WiFi entry of the org's referential (secrets.md S6): the build
+    /// WiFi entry of the org's referential (security.md S6): the build
     /// references its vault secret, the password never travels.
     pub wifi_credential_id: i64,
     /// PneX server host (e.g. `dev1.pnex.io`), passed to the firmware in

@@ -6,7 +6,7 @@
 | **Licence** | MIT (projet) + DCO sur les contributions |
 | **Dépendances bloquantes** | Noyau ontologique 0.2.0 (`ontology.md`, D176–D191), références inter-objets par UUID |
 | **Entrée roadmap** | P3 (horizons), décision #23 |
-| **Renvois** | `ontology.md` (D190 packs, D176 types), `secrets.md` (D110 références de coffre), `custom-firmware.md` (D87–D94), `flow-engine.md` (fonctions JS / Starlark), `security.md` (R1–R20), `pages.md` (modèles dans les packs) |
+| **Renvois** | `ontology.md` (D190 packs, D176 types), `security.md` §9 (D110 références de coffre), `custom-firmware.md` (D87–D94), `flow-engine.md` (fonctions JS / Starlark), `security.md` (R1–R20), `pages.md` (modèles dans les packs) |
 
 ---
 

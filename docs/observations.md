@@ -966,7 +966,7 @@ cartes réelles : NodeMCU V3 OLED, ESP32-C6-Zero
 3. P2.13, P2.16–P2.19 : « zéro code avant validation » alors que le code est
    sur main ; même contradiction dans la ligne de statut d'`ontology.md` ;
    `media-ingest.md` et `geo-layers.md` encore « Proposé ».
-4. `security-tiers.md` : « rien n'est implémenté » alors que V1 est livré
+4. `security.md` §8 : « rien n'est implémenté » alors que V1 est livré
    (2026-10-09) ; décision #15 « V1 : prochaine passe sécurité » encore ouverte.
 5. Tableau d'état : OTA « OTA sur ESP32 réel » encore à faire ; Organisations
    « UI arbre » alors que P1.1 a livré Sites + labels ; Android « dérivé du
@@ -994,7 +994,7 @@ Autres écarts fiche ↔ app :
 - troubleshooting-stream-silent.md:16-17 : états « Backoff / Running /
   skipped (backlog) » ≠ UI « Retrying soon / Capturing / Too late (skipped) »
   (en-US.ftl:3772, 3774, 3809).
-- secrets.md:18 : « Used by » sans flux média ni fournisseur géo (en-US.ftl:3760-3761).
+- `security.md` §9.6 : « Used by » sans flux média ni fournisseur géo (en-US.ftl:3760-3761).
 - assistant.md:11 : bouton « en bas à droite » → pied de la barre latérale
   (shell.rs:604-633) ; assistant.md:7 : outils ontologie, enquêtes,
   calendrier absents (services/ai/tools.rs:393-460).

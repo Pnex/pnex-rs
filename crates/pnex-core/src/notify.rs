@@ -75,7 +75,7 @@ pub struct NotifyChannel {
     pub config: serde_json::Value,
     pub secrets_set: Vec<String>,
     /// Vault reference of each set `secret` field (`field → {secret_id,
-    /// name}`, secrets.md D113) — what the form shows, never a value.
+    /// name}`, security.md D113) — what the form shows, never a value.
     #[serde(default)]
     pub secrets: std::collections::BTreeMap<String, crate::SecretFieldView>,
     /// Outcome of the last journaled delivery.

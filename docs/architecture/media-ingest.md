@@ -13,17 +13,17 @@ redistribution de contenu.
 **Renvois :** `camera-video.md` (D74 bus, D78 source/record, D79 segments,
 D81 registre de modèles, D84 logs O2, D100 validation de modèle),
 `worker-fabric.md` (capabilities, worker distant), `media.md` (D21
-MediaStore), `edge-agent.md` (D95 agent = device), `security-tiers.md`
+MediaStore), `edge-agent.md` (D95 agent = device), `security.md` §8
 (D153–D158 identité X.509 + mTLS des devices), `ontology.md` (D176–D191 :
 types système, plages D182, provenance D184, rapports D187), `viz-bases.md`
 (dashboards, studio SCADA D40), `surfaces-controls.md` (D123 format de
-dashboard), `studio.md` (S3 versioning, S5 lien public), `secrets.md`
+dashboard), `studio.md` (S3 versioning, S5 lien public), `security.md` §9
 (D113 `SecretRef`, D116/D119 LLM d'org), `ai-assistant.md` (D142–D145,
 règle d'extension §9.3), `security.md` (R1–R20, grille §6),
 `migrations.md` §2 et §4 (migrations, PostgreSQL seul), `extension-collector.md` (C1b).
 
 > **Numérotation** : PRD rédigé avec les numéros D148–D164 ; renuméroté D159–D175 à
-> l'intégration (D148–D158 déjà pris par `security-tiers.md`).
+> l'intégration (D148–D158 déjà pris par `security.md` §8).
 
 > **Ordre vis-à-vis de l'ontologie (décision #17, tranchée par l'user le
 > 2026-10-09 : média d'abord)** : P2.13 démarre sans attendre la 0.2.0.

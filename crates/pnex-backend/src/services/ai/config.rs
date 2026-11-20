@@ -1,5 +1,5 @@
 //! Effective LLM configuration: kill-switch `settings.ai.enabled` (yaml)
-//! and the provider an org runs on — its default provider (secrets.md
+//! and the provider an org runs on — its default provider (security.md
 //! D116, D119: the platform provides no LLM). No provider configuration
 //! comes from the environment: providers are managed in the UI.
 

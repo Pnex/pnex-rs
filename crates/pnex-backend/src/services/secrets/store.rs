@@ -1,4 +1,4 @@
-//! Vault rows and usage tracking (secrets.md D110, D113, D114).
+//! Vault rows and usage tracking (security.md D110, D113, D114).
 //!
 //! Every function is scoped by owner (`org_id`, `None` = platform): a row
 //! of another org is reported as not found. Values are only decrypted by

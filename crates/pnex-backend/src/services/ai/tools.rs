@@ -1191,7 +1191,7 @@ fn flow_write_error_string(e: flow::FlowWriteError) -> String {
 }
 
 /// The assistant never types a secret value: it may only keep or pick
-/// vault references (secrets.md D117).
+/// vault references (security.md D117).
 const ASSISTANT_WRITER: crate::services::secrets::flow::GraphWriter<'static> =
     crate::services::secrets::flow::GraphWriter {
         ring: None,

@@ -482,7 +482,7 @@ async fn probe_host(ctx: &AppContext) -> ComponentStatus {
     out
 }
 
-/// Vault keyring (secrets.md D112, S8): write key, rows still under an
+/// Vault keyring (security.md D112, S8): write key, rows still under an
 /// older key (rekey candidates) and rows under a key the keyring lacks.
 async fn probe_secrets(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("secrets", OK);

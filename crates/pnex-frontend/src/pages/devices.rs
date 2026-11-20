@@ -756,7 +756,7 @@ fn RebuildModal(
         launching.set(true);
         let params = pnex_core::CreateBuild {
             device_id: submit_device.clone(),
-            // The build references the entry's vault secret (secrets.md S6).
+            // The build references the entry's vault secret (security.md S6).
             wifi_credential_id: creds.id,
             pnex_host: srv.host,
         };

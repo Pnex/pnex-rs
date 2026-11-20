@@ -9,7 +9,7 @@
 //! wizard must never conflict: saving again = updating the
 //! password (a host is returned as is).
 //!
-//! The WiFi password lives in the secrets vault (secrets.md S6): only its
+//! The WiFi password lives in the secrets vault (security.md S6): only its
 //! reference is returned, never the value.
 
 use std::net::Ipv4Addr;
@@ -90,7 +90,7 @@ pub fn routes() -> Routes {
 
 // ───────────────────────── WiFi credentials ─────────────────────────
 
-// The password is a vault secret (secrets.md lot S6): the API only shows
+// The password is a vault secret (security.md lot S6): the API only shows
 // its reference and name; a typed value lands in `wifi/<ssid>/password`.
 
 /// Read model of a row, `name` = vault name of its password.

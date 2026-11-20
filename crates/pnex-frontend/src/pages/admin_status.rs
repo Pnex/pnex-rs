@@ -122,7 +122,7 @@ fn stale_secrets(
         .map(|v| v as u64)
 }
 
-/// Master key rotation (secrets.md S8): re-encrypts every vault secret
+/// Master key rotation (security.md S8): re-encrypts every vault secret
 /// with the write key, once every pod runs with the new keyring.
 #[component]
 fn SecretsRekey(stale: Option<u64>, on_done: EventHandler<()>) -> Element {

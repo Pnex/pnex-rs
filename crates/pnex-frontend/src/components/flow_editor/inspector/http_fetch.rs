@@ -40,7 +40,7 @@ pub(super) fn HttpFetchForm(
     // Display values of the auth/proxy sub-fields: derived from the props on
     // every render (the graph is the source of truth — no local signal
     // that would go stale on mode change).
-    // Secret fields are vault slots (secrets.md S5): typed values become
+    // Secret fields are vault slots (security.md S5): typed values become
     // the node's dedicated secret on save, picks are references.
     let (auth_username, auth_name, auth_secret) = match &initial.auth {
         HttpFetchAuth::Basic { username, password } => {

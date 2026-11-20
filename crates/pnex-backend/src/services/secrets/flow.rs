@@ -1,4 +1,4 @@
-//! Flow graphs as vault consumers (secrets.md lot S5, http-fetch node).
+//! Flow graphs as vault consumers (security.md lot S5, http-fetch node).
 //!
 //! A secret field of a node is a [`SecretSlot`]. On save every typed
 //! value becomes a reference to the node field's dedicated secret

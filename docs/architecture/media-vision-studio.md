@@ -19,7 +19,7 @@
 > (lot 0 ASR), `ml-vision.md` (pilier ML, stack tout-Rust),
 > `worker-fabric.md` (P2.7, workers GPU), `media.md` (D21 bibliothèque
 > média, versioning), `ontology.md` (D176–D191, provenance D184, rapports
-> D187), `secrets.md` (D119 LLM d'org), `surfaces-controls.md` (D128
+> D187), `security.md` §9 (D119 LLM d'org), `surfaces-controls.md` (D128
 > frontière d'actionnement), `security.md` (R1–R20), `ai-assistant.md` §9.
 
 ---

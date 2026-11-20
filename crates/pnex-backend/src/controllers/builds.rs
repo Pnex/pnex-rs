@@ -158,7 +158,7 @@ async fn create(
         ));
     }
     // WiFi: the build references the vault secret of a referential entry
-    // (secrets.md S6), the password never enters the queue.
+    // (security.md S6), the password never enters the queue.
     let Some(cred) = crate::models::_entities::wifi_credentials::Entity::find()
         .filter(crate::models::_entities::wifi_credentials::Column::OrgId.eq(org.org.id))
         .filter(

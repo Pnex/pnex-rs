@@ -474,7 +474,7 @@ Corrections apportées à la v0.1 à l'intégration :
   de l'objet, jamais dans une série alimentée par un device.
 - **Signature (Q6)** : trace d'identité en V1 (qui, quand, version
   figée) ; signature cryptographique renvoyée aux profils de sécurité
-  (`security-tiers.md`, V2+).
+  (`security.md` §8, V2+).
 - **Nom (Q7)** : « **Pages** » ; « Documents » reste l'onglet des fichiers
   indexés (`doc-search.md` F14).
 - **Loro ou yrs (Q3)** : **yrs** côté serveur, **Yjs** côté client — tranché au spike L0 (§14).
