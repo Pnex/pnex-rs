@@ -1,4 +1,4 @@
-//! Runners (agent-environments.md lot E0): enrolment, the job queue, leases and the
+//! Runners (agents.md §3.3): enrolment, the job queue, leases and the
 //! reaper, through the real routes. The `pnex-runner` crate tests the runner's side.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL) and the compose `valkey` service.

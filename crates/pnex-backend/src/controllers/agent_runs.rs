@@ -1,4 +1,4 @@
-//! Runs of hosted agents and their LLM gateway (agent-environments.md D731, D732). The run
+//! Runs of hosted agents and their LLM gateway (agents.md D731, D732). The run
 //! routes take the org from the principal (R1) with permissions applied by `OrgContext`
 //! (R2); the gateway routes take a run token, valid only while its job runs.
 

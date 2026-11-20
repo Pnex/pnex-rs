@@ -1,4 +1,4 @@
-//! Skills of hosted agents (`controllers/agent_skills.rs`, agent-environments.md D711).
+//! Skills of hosted agents (`controllers/agent_skills.rs`, agents.md D711).
 
 use pnex_core::agent_skills::{
     AgentSkill, AgentSkillActivate, AgentSkillCreate, AgentSkillUpdate, AgentSkillVersion,

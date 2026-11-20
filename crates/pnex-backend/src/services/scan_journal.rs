@@ -1,4 +1,4 @@
-//! SBOMs and scan events in OpenObserve (agent-environments.md D728): both are JSON text,
+//! SBOMs and scan events in OpenObserve (agents.md D728): both are JSON text,
 //! to consult and to follow over time. One stream holds each SBOM document as written, the
 //! other one event per scan and per finding. The database keeps the checksum only.
 

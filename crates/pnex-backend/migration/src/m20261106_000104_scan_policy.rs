@@ -1,4 +1,4 @@
-//! Scan policy of an org and the count of a scan against it (agent-environments.md D748):
+//! Scan policy of an org and the count of a scan against it (agents.md D748):
 //! a version over the threshold is signaled by default, refused in `refuse` mode.
 
 use sea_orm_migration::prelude::*;

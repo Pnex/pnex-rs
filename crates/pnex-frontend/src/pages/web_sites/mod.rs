@@ -1,4 +1,4 @@
-//! Web sites and their navigation studio (site-recipes.md D323–D326).
+//! Web sites and their navigation studio (agents.md D323–D326).
 //!
 //! `/web-sites` lists the sites carrying a rule. `/web-sites/:site` is the
 //! studio of one site, in the shared editor shell (D222): the rule as

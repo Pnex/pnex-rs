@@ -299,7 +299,7 @@ Le voisinage, l'impact et le chemin utilisent l'interface graphe interne (annexe
 | `/ontology/types/:type_key` | éditeur de type |
 
 L'éditeur de type (as-UI) et l'export / import YAML (as-code) écrivent la même source de vérité
-(`worker-fabric.md` §9). Les pages `/devices`, `/media`, `/cameras`, les dashboards et les tours
+(`agents.md` §3.18). Les pages `/devices`, `/media`, `/cameras`, les dashboards et les tours
 restent. Ce sont des vues de types système, avec un bouton « Page objet ». Un utilisateur hobbyiste
 peut ignorer l'ontologie : il passe par les packs et les pages spécialisées.
 

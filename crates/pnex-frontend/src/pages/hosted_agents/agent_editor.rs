@@ -1,4 +1,4 @@
-//! Editor of an agent's record (agent-environments.md D757, D710, D714, D717, D730, D744,
+//! Editor of an agent's record (agents.md D757, D710, D714, D717, D730, D744,
 //! D775): every field of its spec, a save makes a new version on the version read, and the
 //! common version history. The role is set at creation only; skills are pinned from the
 //! skill editor and only shown here.

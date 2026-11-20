@@ -4,7 +4,7 @@
 |---|---|
 | Statut | Périmètre validé le 2026-11-03. OP1 en grande partie livré. OP2, OP3, OP5 (hors AN4) et OP9 livrés. État des lots au **§11** |
 | Numérotation | **D551…D568**, lots **OP1…OP15** |
-| Repose sur | `ontology.md`, `pipelines.md`, `iam.md`, `proposals.md`, `autonomous-agents.md`, `worker-fabric.md` §14, `surfaces-controls.md`, `security.md` §8, `app-builder.md`, `external-apps.md` |
+| Repose sur | `ontology.md`, `pipelines.md`, `iam.md`, `proposals.md`, `agents.md` (§3.3), `surfaces-controls.md`, `security.md` §8, `app-builder.md`, `external-apps.md` |
 | Sécurité | Chaque lot passe `security.md` §6. Un finding = une ligne SEC-n au §7 |
 
 ## Résumé
@@ -248,11 +248,11 @@ ensembles d'objets. Rien d'utilisateur en HTML sur l'origine de l'app.
 ### D561 — Charges de travail : un seul exécuteur
 
 Agent, connecteur, transformation lourde, entraînement et module client sont des jobs de la fabric.
-Le runner de `worker-fabric.md` §14 les exécute : image épinglée par digest, registre, secrets, pod
+Le runner de `agents.md` §3.3 les exécute : image épinglée par digest, registre, secrets, pod
 par tâche (D386–D394).
 
 - Une org construit sa propre image depuis un Dockerfile, dans un bac à sable BuildKit (D700 de
-  `agent-environments.md`). L'image va vers un registre, puis l'org l'épingle par digest.
+  `agents.md`). L'image va vers un registre, puis l'org l'épingle par digest.
 - Les secrets du run arrivent par un Secret Kubernetes propre au run, en variables d'environnement
   ou en fichier (D705).
 - La clé du fournisseur LLM reste hors du bac (D385).
@@ -390,7 +390,7 @@ de versions, les canaux et le canari. Il promeut sur critères de santé et dur�
 gère rappel, retour arrière, fenêtres de maintenance et approbations. Il donne SBOM et CVE par
 déploiement, et des bundles signés pour l'air-gap.
 
-Chaque déploiement tire en sortant (modèle D386) : **aucun kubeconfig central**. `worker-fabric.md`
+Chaque déploiement tire en sortant (modèle D386) : **aucun kubeconfig central**. `agents.md`
 §13 reste vrai pour la fabric. OP12 dégèle le hub de kits, kits payants admis.
 
 ### D565 — IA
@@ -434,7 +434,7 @@ noyau.
 | D996 (`pipelines.md`) | Score et rattachement dans le pipeline de collecte | Collecte en pipeline, score et rattachement en flow (D998) |
 | D438, D512 | Client générique ; pas de code en application | SDK typés, code sur origine isolée (D560) |
 | `hub.md` §3 | Gel, pas de kits payants | Dégel et kits payants à OP12 (D562) |
-| `worker-fabric.md` §13 | Pas de fleet manager | Vrai pour la fabric ; centre de livraison à part (D562) |
+| `agents.md` §3.18 | Pas de fleet manager | Vrai pour la fabric ; centre de livraison à part (D562) |
 
 **Inchangé** : R1–R23, frontière org puis plateforme, briques permissives, pas de reconnaissance
 faciale, flow déployé par un humain seul à agir sur le physique, `expected_version`, secrets jamais
@@ -464,7 +464,7 @@ Décisions des lots : D791–D806 (OP2, OP3), D825–D832 (OP5), D833–D840 (OP
 | OP2 | Livré (CN1–CN5) | `pipelines.md` §3.10 | choix du secret des webhooks, provisoire (`pipelines.md` §7) |
 | OP3 | Livré (G1–G7) | `governance.md` §7 | SAML à la première demande client, I4 général, SEC-80 ouvert |
 | OP5 | Livré (AN1–AN3) + agrégats | `analysis.md` §6, `object-aggregates.md` | AN4 (analyse sans code), règle → proposition (D829) |
-| OP9 | Livré (VG1–VG3) | `validation-gate.md` §6 | voir le PRD |
+| OP9 | Livré (VG1–VG3) | `agents.md` §3.12 | voir le PRD |
 | OP4, OP6–OP8, OP10–OP15 | Non commencés | — | OP10 dépend aussi de P0.1 et P0.3 |
 
 ## Reste à faire

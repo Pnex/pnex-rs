@@ -411,7 +411,7 @@ fn token_field() -> String {
     "access_token".into()
 }
 
-/// Navigation actions (site-recipes.md D323) played per row (D936).
+/// Navigation actions (agents.md D323) played per row (D936).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Browse {

@@ -273,8 +273,7 @@ Pipelines turn sources into versioned datasets
 ### Agents, environments and runners
 
 Agents run on the org's own infrastructure, governed in one place
-([`agent-environments.md`](docs/architecture/agent-environments.md),
-[`autonomous-agents.md`](docs/architecture/autonomous-agents.md)):
+([`agents.md`](docs/architecture/agents.md)):
 
 - **Agent**: an IAM service account, created by an admin, whose role never exceeds its
   author's; the engine and the LLM provider are the org's choice. Budget per run and per day.
@@ -288,7 +287,7 @@ Agents run on the org's own infrastructure, governed in one place
 - **Run**: the project is cloned in an init container, secrets arrive as per-run variables,
   the provider key stays outside the sandbox (the gateway calls the model), and the run
   returns its files, masked logs, a branch (opened as a merge request) or proposals.
-- **Validation gate** ([`validation-gate.md`](docs/architecture/validation-gate.md)): each tool
+- **Validation gate** ([`agents.md`](docs/architecture/agents.md)): each tool
   of an agent writes automatically, after a validator agent, or after a human; a circuit
   breaker stops an agent that misbehaves. Everything is visible on the
   **Agents** page, in the API, the MCP server and the CLI.
@@ -327,7 +326,7 @@ Design records (in French): [`docs/architecture/`](docs/architecture) — start 
 [`flow-engine.md`](docs/architecture/flow-engine.md),
 [`media-ingest.md`](docs/architecture/media-ingest.md),
 [`pipelines.md`](docs/architecture/pipelines.md),
-[`agent-environments.md`](docs/architecture/agent-environments.md) and
+[`agents.md`](docs/architecture/agents.md) and
 [`runtime.md`](docs/architecture/runtime.md).
 
 ## Repository layout

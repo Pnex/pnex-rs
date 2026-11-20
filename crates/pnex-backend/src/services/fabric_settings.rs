@@ -1,4 +1,4 @@
-//! Global settings of the agent fabric (agent-environments.md D755): sizes and retentions
+//! Global settings of the agent fabric (agents.md D755): sizes and retentions
 //! chosen by whoever runs the platform, read from `settings.agents`, not values of the code.
 //! The limits of artifacts and caches live beside their use (`agent_artifacts`).
 //! A platform admin may store other values (R9, `system_settings`): read at use time,

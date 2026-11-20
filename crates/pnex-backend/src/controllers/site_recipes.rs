@@ -1,4 +1,4 @@
-//! Site navigation rules API (site-recipes.md D323–D326): web sites of the
+//! Site navigation rules API (agents.md D323–D326): web sites of the
 //! org, recipes anchored on them, test runs on the server browser and the
 //! run journal with its screenshots and PDFs. Org from the principal (R1),
 //! `site-recipes:*` checked by the IAM extractor (R2).

@@ -1,4 +1,4 @@
-//! Runs of hosted agents (agent-environments.md D731): one sandbox job each, a run token
+//! Runs of hosted agents (agents.md D731): one sandbox job each, a run token
 //! stored hashed, and the usage counted by the LLM gateway (D732).
 
 use sea_orm_migration::prelude::*;

@@ -1,4 +1,4 @@
-//! `site_recipe` flow node (site-recipes.md D327). The flow runtime is not
+//! `site_recipe` flow node (agents.md D327). The flow runtime is not
 //! trusted: each call names its deployed node, whose recipe is read from
 //! the deployed version, in the node's org. The run is journaled like a
 //! studio run (trigger `flow`) and waited for.

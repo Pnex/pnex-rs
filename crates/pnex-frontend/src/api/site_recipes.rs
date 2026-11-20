@@ -1,4 +1,4 @@
-//! Site navigation rules API (site-recipes.md D323–D326): web sites,
+//! Site navigation rules API (agents.md D323–D326): web sites,
 //! recipes, test runs on the server browser and the run journal.
 
 use pnex_core::site_recipe::{

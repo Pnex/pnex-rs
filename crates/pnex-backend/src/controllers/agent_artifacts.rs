@@ -1,4 +1,4 @@
-//! Artifacts of agent runs (agent-environments.md D729, D744). Org routes take the org from
+//! Artifacts of agent runs (agents.md D729, D744). Org routes take the org from
 //! the principal (R1), permissions applied by `OrgContext` (R2); the content is downloaded
 //! as an attachment under its own permission, never shown on the origin of the app (R11).
 //! The transfer routes take the artifact token of a run, valid only while its job runs.

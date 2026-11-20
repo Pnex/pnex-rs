@@ -12,7 +12,7 @@ chaîne (radios et TNT publiques) — statistiques globales, pas de
 redistribution de contenu.
 **Renvois :** `camera-video.md` (D74 bus, D78 source/record, D79 segments,
 D81 registre de modèles, D84 logs O2, D100 validation de modèle),
-`worker-fabric.md` (capabilities, worker distant), `media.md` (D21
+`agents.md` (capabilities, worker distant), `media.md` (D21
 MediaStore), `edge-agent.md` (D95 agent = device), `security.md` §8
 (D153–D158 identité X.509 + mTLS des devices), `ontology.md` (D176–D191 :
 types système, plages D182, provenance D184, rapports D187), `viz-bases.md`
@@ -176,7 +176,7 @@ reçoit du **texte** et des événements, et fait l'ETL léger.
   son crash ne touche ni le serveur ni les autres flux. En multi-pod, un
   bail par flux (`services::singleton`, clé `media-capture:<stream_id>`)
   garantit un seul capteur par flux.
-- `worker` : process de la fabric (`worker-fabric.md`, capabilities
+- `worker` : process de la fabric (`agents.md`, capabilities
   `has:ffmpeg` + `feature:media_capture`, même id que l'`Announce` D159). Attention : un process
   `--worker` Loco ne passe jamais par `after_routes` ; le superviseur y
   est démarré par son propre hook (au démarrage du worker), pas par celui
@@ -291,7 +291,7 @@ reçoit du **texte** et des événements, et fait l'ETL léger.
   (accès PG direct, jeton de service, identifiants S3 limités dont le
   worker ASR a besoin pour lire les blobs) est de l'**infrastructure
   plateforme** : une org ne joint jamais un tel worker ; un worker d'org
-  passera par l'API de job authentifiée (`worker-fabric.md` §6).
+  passera par l'API de job authentifiée (`agents.md` §3.18).
 - `device:<id>` : **jamais** de jeton de service sur un device (un device
   compromis ne doit agir pour personne d'autre). Upload par un canal
   binaire **device** sur l'endpoint mTLS + Noise (école `/ws/camera`,
@@ -464,7 +464,7 @@ boucles (« il, il, il… ») à 15 s.
 - Dépendance : la fabric de workers (P2.7) pour le worker GPU distant.
   En attendant le MVP fabric : process `--worker=asr` sur la machine GPU,
   joint par mesh WireGuard — archétype « control léger + worker
-  distant » (`worker-fabric.md` §5, réseau §6) ; il atteint Postgres
+  distant » (`agents.md` §3.18, réseau §6) ; il atteint Postgres
   (queue) et le stockage (blobs) par le mesh, jamais par Internet.
 
 ### D167 — Import de modèles audio : extension du registre D81, même UX que la vision

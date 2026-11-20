@@ -1,4 +1,4 @@
-//! Site navigation rule node (site-recipes.md D327): `pnex-site-recipe`.
+//! Site navigation rule node (agents.md D327): `pnex-site-recipe`.
 //! The runtime holds no rule and no browser: each message calls
 //! `POST /internal/flow/site-recipe` naming the deployed node; the backend
 //! plays the rule read from the deployed config, journals the run and

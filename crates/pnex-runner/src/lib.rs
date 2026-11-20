@@ -1,4 +1,4 @@
-//! Runner of the worker fabric (worker-fabric.md section 14): polls out, holds jobs
+//! Runner of the worker fabric (agents.md section 3.3): polls out, holds jobs
 //! by lease, and keeps one workload per job. All state lives on the server: a runner
 //! that restarts destroys what it no longer knows, and the reaper hands its jobs to
 //! another one.

@@ -1,4 +1,4 @@
-//! Browser endpoints of the org (site-recipes.md D325): CDP browsers the
+//! Browser endpoints of the org (agents.md D325): CDP browsers the
 //! navigation rules play on, with a Test button. Token = [`SecretField`]
 //! (typed or picked, never shown). School of the geo providers section.
 

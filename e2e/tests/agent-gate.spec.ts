@@ -1,4 +1,4 @@
-// Validation gate (validation-gate.md D833–D836): who decides each write of an internal
+// Validation gate (agents.md D833–D836): who decides each write of an internal
 // agent, set on its record, and the validator agent it names.
 import { expect, test } from '../src/fixtures.ts';
 

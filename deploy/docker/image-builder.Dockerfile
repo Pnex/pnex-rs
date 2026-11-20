@@ -1,4 +1,4 @@
-# Image of the pod that builds an agent environment (agent-environments.md D700, D701):
+# Image of the pod that builds an agent environment (agents.md D700, D701):
 # rootless BuildKit on Wolfi. Not the firmware `builder` target of the main Dockerfile.
 FROM cgr.dev/chainguard/wolfi-base@sha256:771146c2dfc880902a185f060c3db5571473c46b267edd98c3119c83068dfb61
 RUN apk add --no-cache buildctl buildkitd rootlesskit runc shadow-subids slirp4netns \

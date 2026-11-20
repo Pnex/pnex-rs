@@ -1,4 +1,4 @@
-//! Artifacts of a run (agent-environments.md D729, D744): two containers of their own move
+//! Artifacts of a run (agents.md D729, D744): two containers of their own move
 //! them through PneX, never the agent and never the runner. `artifacts-in` fetches each
 //! input and checks its SHA-256 before anything else starts; `artifacts-out`, a native
 //! sidecar, waits for the end of the agent (its `SIGTERM`) and sends each output, also

@@ -123,7 +123,7 @@ pub mod settings;
 pub mod shared_valkey;
 pub mod singleton;
 pub mod site_crawl;
-/// Site navigation rules and the server browser (site-recipes.md D323–D326).
+/// Site navigation rules and the server browser (agents.md D323–D326).
 pub mod site_recipes;
 pub mod software_supply;
 pub mod stitch;

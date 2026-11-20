@@ -1,4 +1,4 @@
-//! Player of navigation rules in the user's browser (agent-unification.md
+//! Player of navigation rules in the user's browser (agents.md
 //! D781–D783). It plays the plan the server sealed, to its end, in the tab
 //! of the rule's platform, at a reader's pace (D258), and sends back each
 //! step, each extract and the outcome. What a step does inside the page is

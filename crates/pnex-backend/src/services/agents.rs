@@ -1,4 +1,4 @@
-//! Agents of an org (agent-environments.md D757, D761). Creating one creates a service
+//! Agents of an org (agents.md D757, D761). Creating one creates a service
 //! account of the org and gives it a managed role through the IAM assignment, with its
 //! check: never `admin` (D293), never above the caller. The record is versioned; a run
 //! starts from it and may only tighten it (D380).
@@ -463,7 +463,7 @@ pub async fn start_run(
     start_agent(db, artifacts, org_id, caller_id, agent, start).await
 }
 
-/// A validation run of agent `id` (validation-gate.md D836): the request is its one input,
+/// A validation run of agent `id` (agents.md D836): the request is its one input,
 /// which its record need not declare.
 pub async fn start_validation(
     db: &DatabaseConnection,

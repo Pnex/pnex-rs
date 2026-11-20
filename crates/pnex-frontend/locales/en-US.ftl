@@ -6535,7 +6535,7 @@ toast-access-service-account-deleted = Service account deleted
 toast-access-key-revoked = Key revoked
 toast-access-secret-copied = Key copied
 
-## Web sites and navigation rules (site-recipes.md D323–D326)
+## Web sites and navigation rules (agents.md D323–D326)
 nav-web-sites = Websites
 proposals-title = To validate
 proposals-subtitle = What imports, flows and detectors propose to write without being sure. Accept writes it into the ontology; reject keeps it with its reason, and the same value is never proposed again.
@@ -7148,7 +7148,7 @@ pipe-check-max-drop = Largest fall in rows, in %
 pipe-check-same-columns = Same columns as the current version
 pipe-transform-delete = Delete this transform
 
-## Hosted agents (agent-environments.md D757, D761)
+## Hosted agents (agents.md D757, D761)
 nav-agents = Agents
 agents-title = Agents
 agents-subtitle = The agents of the organization, their runs, their inputs and their outputs.

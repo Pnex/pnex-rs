@@ -1,4 +1,4 @@
-//! Agent environments (agent-environments.md D702, D704): a Dockerfile and its text
+//! Agent environments (agents.md D702, D704): a Dockerfile and its text
 //! context, versioned in the database. Immutable versions, numbered per environment.
 
 use sea_orm_migration::prelude::*;

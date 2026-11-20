@@ -1,4 +1,4 @@
-//! Ended agent runs into the ontology (agent-environments.md D708, D761): the environment,
+//! Ended agent runs into the ontology (agents.md D708, D761): the environment,
 //! the agent, the run and the files it took and left become objects of the `agent_ops` pack,
 //! installed on first use. Safe to run again: everything is matched on its natural key.
 

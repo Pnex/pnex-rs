@@ -1,4 +1,4 @@
-//! Site navigation rules and their run journal (site-recipes.md D323,
+//! Site navigation rules and their run journal (agents.md D323,
 //! D326): a rule belongs to one web site (normalised host), is plain YAML
 //! with a version bumped on each save; a run keeps the YAML it executed
 //! (a studio test run plays an unsaved draft), its steps, extracts and the

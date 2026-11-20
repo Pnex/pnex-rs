@@ -1,4 +1,4 @@
-//! Site recipe runs move into the unified run model (agent-unification.md D781, lot U1):
+//! Site recipe runs move into the unified run model (agents.md D781, lot U1):
 //! a `server_browser` job holds the state, an `agent_runs` row what the recipe played.
 //! The view `recipe_runs` keeps the old journal shape for the readers.
 

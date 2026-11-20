@@ -1,4 +1,4 @@
-//! Agent runs chained by flows (agent-environments.md D713, D716, D718, D765–D768).
+//! Agent runs chained by flows (agents.md D713, D716, D718, D765–D768).
 //!
 //! A deployed flow starts a run with the `agent_run` node, which answers at once with the
 //! run and chain ids; when a run ends, the backend publishes an [`AgentRunFinishedEvent`]

@@ -1,4 +1,4 @@
-//! Skills of hosted agents (agent-environments.md D711, autonomous-agents.md D396). A skill
+//! Skills of hosted agents (agents.md D711, D396). A skill
 //! is text of an org, versioned: every new text is a draft, and only a person holding
 //! `agents:write` activates a version, after its diff. Nothing activates by itself, not even
 //! a text an agent wrote: a skill is read by every run, a trapped one is a permanent

@@ -1,4 +1,4 @@
-//! Image scans of an environment (agent-environments.md D720): each one is a runner job,
+//! Image scans of an environment (agents.md D720): each one is a runner job,
 //! whose state it takes, plus the report it brought back.
 
 use sea_orm_migration::prelude::*;

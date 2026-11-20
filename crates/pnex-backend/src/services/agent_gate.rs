@@ -1,4 +1,4 @@
-//! Validation gate of internal agents (validation-gate.md D833–D840): who decides each write
+//! Validation gate of internal agents (agents.md D833–D840): who decides each write
 //! an agent asks for. Every write stays a `tool_call` proposal; its `values` carry the gate:
 //! `gate` (the mode), `gate_stage` (`validator` while the validator agent reads it, `human`
 //! while it waits for a person) and `validator` (`agent_id`, `run_id`, then `decision`,

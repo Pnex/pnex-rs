@@ -4,7 +4,7 @@
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
 | Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), **D890…D897** (appendice G), **D986…D993** (appendice L), lots **MK0…MK14**, **MK15…MK26** (appendice F), **MK27…MK30** (appendice G) |
-| Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
+| Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`pipelines.md` D344–D358), règles de sites (`agents.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
 > Avertissement produit à afficher sur chaque écran du domaine : les indicateurs, événements et tests sont des aides à l'analyse, pas un conseil en investissement ni une recommandation.
@@ -30,7 +30,7 @@ Hors du besoin : prix temps réel des actions, exécution d'ordres, messagerie e
 | Propriétés `series` (D185) + `telemetry/aggregate` | O2 | cours et volumes d'un instrument, lus par objet |
 | Sociétés, SIREN, dirigeants, BODACC | packs `companies`, `companies_fr` | l'émetteur **est** l'organisation déjà connue |
 | Imports déclaratifs et pipelines | D301, D344–D358 | référentiels (LEI, ISIN), cours de clôture, filings |
-| Collecte web gardée | `site-recipes.md`, crawl | pages de communiqués, sites d'information sans flux |
+| Collecte web gardée | `agents.md`, crawl | pages de communiqués, sites d'information sans flux |
 | Audio / vidéo → texte | `media-ingest.md`, ASR | podcasts, webcasts de résultats |
 | Recherche documentaire | `doc-search.md` | recherche plein texte des articles collectés |
 | Extraction LLM à citation vérifiée | `due-diligence.md` D476 | même règle pour les événements (citation retrouvée ou rejet) |
@@ -609,7 +609,7 @@ Comme `KEYED_SOURCES` (D543, R9) : une import nomme une source de `HISTORY_SOURC
 
 #### D824 — Le flux continu (MT5) écrit la même forme, plus tard
 
-Un adaptateur MT5 (agent desktop, `agent-environments.md`) écrira des transactions `append` dans une table de forme `quote_tick` ou `ohlcv`, avec `source = mt5:<courtier>`. Même schéma que l'historique : le modèle voit la même donnée à l'entraînement et en direct. PRD à part, rien n'est prévu ici au-delà du schéma commun. Aucun ordre passé par PNeX (D534, D123).
+Un adaptateur MT5 (agent desktop, `agents.md`) écrira des transactions `append` dans une table de forme `quote_tick` ou `ohlcv`, avec `source = mt5:<courtier>`. Même schéma que l'historique : le modèle voit la même donnée à l'entraînement et en direct. PRD à part, rien n'est prévu ici au-delà du schéma commun. Aucun ordre passé par PNeX (D534, D123).
 
 ### C.4 Lots
 

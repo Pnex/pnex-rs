@@ -1,4 +1,4 @@
-//! Image registries tab (agent-environments.md D703): where environment images go. A
+//! Image registries tab (agents.md D703): where environment images go. A
 //! registry is read without its secrets; its read and write secrets are set through the
 //! common secret field and never shown.
 

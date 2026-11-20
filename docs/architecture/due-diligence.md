@@ -267,7 +267,7 @@ Outils en lecture : `fin_company_summary`, `fin_facts_query`, `fin_compare`, `fi
 | Objets ontologiques | quelques centaines (sociétés, tiers majeurs, contrats, clauses) — on ne crée un tiers que s'il dépasse un seuil de volume |
 | Pages extraites par LLM | quelques centaines → coûts et temps affichés avant lancement |
 
-Les extractions passent par la file Loco (`num_workers` bas) ; la fabric de workers (`worker-fabric.md`) prendra le relais pour le SaaS.
+Les extractions passent par la file Loco (`num_workers` bas) ; la fabric de workers (`agents.md`) prendra le relais pour le SaaS.
 
 ---
 

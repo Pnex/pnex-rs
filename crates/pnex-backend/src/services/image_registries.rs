@@ -1,4 +1,4 @@
-//! Image registries (agent-environments.md D703). The test is the only thing this
+//! Image registries (agents.md D703). The test is the only thing this
 //! server does with one: `GET /v2/`, the challenge it answers, then the right on the
 //! repository. Every connection goes to an address checked by the egress rule of
 //! `pnex_core::connectors`, without following any redirect.

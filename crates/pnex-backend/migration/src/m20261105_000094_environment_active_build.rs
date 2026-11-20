@@ -1,4 +1,4 @@
-//! The active build of an environment (agent-environments.md D704): chosen by a person,
+//! The active build of an environment (agents.md D704): chosen by a person,
 //! what its runs will execute.
 
 use sea_orm_migration::prelude::*;

@@ -1,4 +1,4 @@
-//! Environments tab (agent-environments.md D702, D704, D748, D763): the list, a new
+//! Environments tab (agents.md D702, D704, D748, D763): the list, a new
 //! environment, the scan policy of the org; an environment opens on its editor.
 
 use dioxus::prelude::*;

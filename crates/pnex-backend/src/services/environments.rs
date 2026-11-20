@@ -1,4 +1,4 @@
-//! Agent environments (agent-environments.md D702, D704): versions in the database,
+//! Agent environments (agents.md D702, D704): versions in the database,
 //! immutable, each with the SHA-256 of its source. A build is a runner job: the server
 //! keeps no credential with the job, and hands them over at the claim only (D701).
 

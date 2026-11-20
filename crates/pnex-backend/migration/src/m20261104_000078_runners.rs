@@ -1,4 +1,4 @@
-//! Runners of the worker fabric (agent-environments.md lot E0): single-use join
+//! Runners of the worker fabric (agents.md §3.3): single-use join
 //! tokens, enrolled runners, and the queue of jobs they poll for. Tokens are stored
 //! hashed; a job only reaches a runner of its own org.
 

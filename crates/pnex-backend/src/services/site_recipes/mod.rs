@@ -1,4 +1,4 @@
-//! Site navigation rules and their run journal (site-recipes.md D323,
+//! Site navigation rules and their run journal (agents.md D323,
 //! D326). A recipe is YAML anchored on one web site (normalised host,
 //! [`site_host`]); saving bumps its version. A run records the YAML it
 //! played (a studio run plays an unsaved draft), its steps as they finish,
@@ -456,7 +456,7 @@ pub async fn insert_run(
     run: &NewRun<'_>,
 ) -> Result<SiteRecipeRun, sea_orm::DbErr> {
     use sea_orm::TransactionTrait;
-    // A run of the unified model (agent-unification.md D781): its job carries
+    // A run of the unified model (agents.md D781): its job carries
     // the engine and the state, the run row what the recipe played.
     let id = Uuid::new_v4();
     let txn = db.begin().await?;

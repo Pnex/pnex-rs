@@ -62,7 +62,7 @@ pub mod ontology;
 pub mod orgs;
 pub mod ota;
 pub mod pins;
-/// Site navigation rules and their runs (site-recipes.md D323–D326).
+/// Site navigation rules and their runs (agents.md D323–D326).
 pub mod pipelines;
 pub mod proposals;
 pub mod qr;

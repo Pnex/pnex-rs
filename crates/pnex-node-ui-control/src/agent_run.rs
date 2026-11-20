@@ -1,4 +1,4 @@
-//! Agent run node (agent-environments.md D713): `pnex-agent-run`. Each message reads the
+//! Agent run node (agents.md D713): `pnex-agent-run`. Each message reads the
 //! artifact ids, the chain id and the subject at the paths of the deployed config, then
 //! calls `POST /internal/flow/agent-run`; the backend reads the agent and the chain bounds
 //! from the deployed graph and answers the run id at once. The flow never waits for the

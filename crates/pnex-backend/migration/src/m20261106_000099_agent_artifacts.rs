@@ -1,4 +1,4 @@
-//! Artifacts of agent runs (agent-environments.md D729, D744): files kept in the store of
+//! Artifacts of agent runs (agents.md D729, D744): files kept in the store of
 //! the org between runs, a row each with its checksum and expiry, never the content. A run
 //! keeps what it declared and its own artifact token, stored hashed like its run token.
 

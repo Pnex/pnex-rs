@@ -1,4 +1,4 @@
-//! Journal of runner jobs in OpenObserve (agent-environments.md D719). Before finishing a
+//! Journal of runner jobs in OpenObserve (agents.md D719). Before finishing a
 //! job, its runner sends the last lines of each container, the secrets it delivered masked;
 //! the server masks again what looks like a credential and keeps one record per line. The
 //! database keeps nothing of it: a run carries the link, not the lines.

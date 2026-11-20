@@ -313,7 +313,7 @@ fn DecisionDialog(
 
 /// What the values column shows: a case detection by its detector and span
 /// (its key and members are internal; the members are in Objects).
-/// Where an agent's open request stands in the validation gate (validation-gate.md D836).
+/// Where an agent's open request stands in the validation gate (agents.md D836).
 fn gate_note(p: &ProposalView) -> Option<String> {
     if p.kind != ProposalKind::ToolCall || p.status != ProposalStatus::Proposed {
         return None;

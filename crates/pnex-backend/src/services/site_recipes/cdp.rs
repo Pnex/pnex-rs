@@ -1,4 +1,4 @@
-//! Minimal Chrome DevTools Protocol client (site-recipes.md D325): the
+//! Minimal Chrome DevTools Protocol client (agents.md D325): the
 //! dozen commands the navigation rules use, over one WebSocket.
 //!
 //! Messages are read as `serde_json::Value`, never into generated types:

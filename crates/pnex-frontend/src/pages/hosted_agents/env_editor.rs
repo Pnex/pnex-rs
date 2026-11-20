@@ -1,4 +1,4 @@
-//! Editor of an environment (agent-environments.md D702, D221, D222): its Dockerfile and
+//! Editor of an environment (agents.md D702, D221, D222): its Dockerfile and
 //! context files as tabs, a save makes a new version on the latest one read, the common
 //! version history, and the builds beside it. Building and activating stay human gestures.
 

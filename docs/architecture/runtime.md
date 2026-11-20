@@ -182,7 +182,7 @@ flowchart LR
 
 Le worker de build lance `pio` et `esptool` (Python, toolchains glibc) : il ne peut pas tourner sans shell. Le serveur dépend seulement de glibc et libstdc++. Les étapes de build utilisent Debian trixie, car le `dx` précompilé exige glibc ≥ 2.39. Les images Chainguard livrent glibc 2.44 (compatible vers le haut). Alpine est écarté (musl, alors que les toolchains PlatformIO sont glibc).
 
-Les images de l'environnement d'agents (`image-builder`, `image-scanner`, `sandbox-init`) sont décrites dans `agent-environments.md`.
+Les images de l'environnement d'agents (`image-builder`, `image-scanner`, `sandbox-init`) sont décrites dans `agents.md`.
 
 Exécution locale : `compose.app.yaml` ajoute `pnex-server` et `pnex-builder` à l'infra de `compose.yaml`. `LOCO_ENV=production` charge `production.yaml` (migration au boot, issuer, flows actifs, outils de debug coupés). nginx de l'edge résout ses upstreams à chaque requête : il suit la nouvelle IP d'un conteneur recréé.
 

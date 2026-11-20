@@ -1,4 +1,4 @@
-//! Runners of the worker fabric (agent-environments.md lot E0). Org routes manage
+//! Runners of the worker fabric (agents.md §3.3). Org routes manage
 //! them under `runners:read`, `runners:manage` and `runners:delete`; `/runner/...` routes are called
 //! by the runner itself with its own token, and the org comes from that token (R1).
 

@@ -1,4 +1,4 @@
-//! `site_recipe` flow node (site-recipes.md D327): the internal endpoint
+//! `site_recipe` flow node (agents.md D327): the internal endpoint
 //! plays the rule of the deployed node only, answers on the passed /
 //! failed / broke ports, and the studio reads when the rule plays next
 //! from the deployed flows' cron.

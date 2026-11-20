@@ -1,4 +1,4 @@
-//! Builds of an environment (agent-environments.md D703, D720, D748): state, digest, scan
+//! Builds of an environment (agents.md D703, D720, D748): state, digest, scan
 //! and its findings, activation on the version of the environment read, and the journal.
 
 use dioxus::prelude::*;

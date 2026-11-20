@@ -1,4 +1,4 @@
-//! Runs of hosted agents (autonomous-agents.md D382, agent-environments.md D731, D732): one
+//! Runs of hosted agents (agents.md D382, D731, D732): one
 //! sandbox job on the active image of an environment, a run token that opens the LLM
 //! gateway only while the job runs, and usage counted by the gateway.
 

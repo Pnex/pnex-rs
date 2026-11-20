@@ -17,7 +17,7 @@
 > (D159–D175 : flux, capture, ASR, `media_source`, D173/D174 rapports et
 > synthèses reportés, D175 caméras IP sur le bus), `media-asr-bench.md`
 > (lot 0 ASR), `ml-vision.md` (pilier ML, stack tout-Rust),
-> `worker-fabric.md` (P2.7, workers GPU), `media.md` (D21 bibliothèque
+> `agents.md` (P2.7, workers GPU), `media.md` (D21 bibliothèque
 > média, versioning), `ontology.md` (D176–D191, provenance D184, rapports
 > D187), `security.md` §9 (D119 LLM d'org), `surfaces-controls.md` (D128
 > frontière d'actionnement), `security.md` (R1–R20), `ai-assistant.md` §9.

@@ -8,7 +8,7 @@
 >
 > Renvois : `viz-bases.md` (D27 maplibre 4.x + style Protomaps auto-hébergé,
 > D37 clustering POI, D38 positions GPS), `media.md` (D21 — octets jamais en
-> base, MediaStore opendal `fs`/`s3`, versions append-only), `worker-fabric.md`
+> base, MediaStore opendal `fs`/`s3`, versions append-only), `agents.md`
 > (jobs par capabilities), `ontology.md` (D181 temps des objets, D184
 > provenance obligatoire), `roadmap.md` (§ Geofencing : PostGIS accepté
 > GPL-2, stockage pas temps réel ; PostgreSQL seul moteur, décision #19),

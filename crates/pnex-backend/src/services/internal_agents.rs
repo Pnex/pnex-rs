@@ -1,8 +1,8 @@
-//! Internal agents (autonomous-agents.md D378, agent-unification.md D781, D785): the loop of
+//! Internal agents (agents.md D378, D781, D785): the loop of
 //! the assistant, run in the backend on an `internal_llm` job of the unified run. The run
 //! has the rights of the agent's service account, a closed subset of the assistant's tools
 //! and its own budget. Each write tool call becomes a `tool_call` proposal, decided as its
-//! record says (validation-gate.md D833): by a person (run then with that person's rights),
+//! record says (agents.md D833): by a person (run then with that person's rights),
 //! at once or by a validator agent (run then with the agent's service account). No secret,
 //! env, image or repository ever reaches it.
 

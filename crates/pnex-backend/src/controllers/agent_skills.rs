@@ -1,4 +1,4 @@
-//! Skills of hosted agents (agent-environments.md D711, autonomous-agents.md D396). The org
+//! Skills of hosted agents (agents.md D711, D396). The org
 //! comes from the principal (R1), permissions are applied by `OrgContext` (R2):
 //! `agents:read` to read, `agents:write` (Admin) to write a draft or activate a version,
 //! `agents:delete` to remove. Every text lands as a draft; only a person activates one.

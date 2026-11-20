@@ -1,4 +1,4 @@
-//! Agent environments (agent-environments.md D702, D704): a Dockerfile and its text
+//! Agent environments (agents.md D702, D704): a Dockerfile and its text
 //! context, versioned in the database. DTOs and checks, wasm-safe.
 
 use std::collections::BTreeMap;

@@ -1,4 +1,4 @@
-//! Agents of an org (agent-environments.md D757, D761, autonomous-agents.md D379): each one
+//! Agents of an org (agents.md D757, D761, D379): each one
 //! is a service account of the org with a versioned record of what it runs. A run starts
 //! from that record and may only tighten it (D380).
 
@@ -13,7 +13,7 @@ use crate::agent_runs::{
 pub const NAME_MAX: usize = 80;
 pub const DESCRIPTION_MAX: usize = 1000;
 
-/// Default of `max_steps` of an internal agent, and its bounds (autonomous-agents.md D380).
+/// Default of `max_steps` of an internal agent, and its bounds (agents.md D380).
 pub const MAX_STEPS_DEFAULT: i32 = 20;
 pub const MAX_STEPS_MAX: i32 = 50;
 /// Most tools one internal agent may be given.
@@ -23,7 +23,7 @@ pub const REPORT_OUTPUT: &str = "report";
 /// The same tool call (name and arguments) this many times ends the run (`loop_guard`).
 pub const LOOP_GUARD_REPEATS: u32 = 3;
 
-/// Where the loop of an agent runs (autonomous-agents.md D378, D785).
+/// Where the loop of an agent runs (agents.md D378, D785).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
@@ -80,7 +80,7 @@ pub struct AgentSpec {
     /// Internal only: most model calls of one run; 20 when absent.
     #[serde(default)]
     pub max_steps: Option<i32>,
-    /// Internal only: who decides each write tool (validation-gate.md D833); a tool absent
+    /// Internal only: who decides each write tool (agents.md D833); a tool absent
     /// here is decided by a person.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub gate: BTreeMap<String, GateMode>,
@@ -139,7 +139,7 @@ pub struct AgentToolInfo {
     pub summary: String,
     /// A write: on an internal agent, each call becomes a proposal.
     pub write: bool,
-    /// A write only a person may decide, whatever the record says (validation-gate.md D838).
+    /// A write only a person may decide, whatever the record says (agents.md D838).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub never_delegated: bool,
 }
@@ -189,7 +189,7 @@ pub struct Agent {
     pub role: AgentRole,
     pub version: i32,
     pub spec: AgentSpec,
-    /// As a validator, its circuit breaker tripped (validation-gate.md D839): `rate` or
+    /// As a validator, its circuit breaker tripped (agents.md D839): `rate` or
     /// `all_accepted`. Its requests go to a person until it is re-armed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validator_tripped: Option<String>,

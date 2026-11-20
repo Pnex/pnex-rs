@@ -1,4 +1,4 @@
-//! Artifacts of agent runs (agent-environments.md D729, D744). S3 is the only store between
+//! Artifacts of agent runs (agents.md D729, D744). S3 is the only store between
 //! runs, under `org_<id>/agent-artifacts/`; the server alone talks to it. A sandbox reaches
 //! the transfer routes with an artifact token of its run, valid while its job runs and only
 //! for the names that run declared.

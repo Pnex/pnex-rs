@@ -1,4 +1,4 @@
-//! Image registries as vault consumers (agent-environments.md D703).
+//! Image registries as vault consumers (agents.md D703).
 //!
 //! Each registry holds up to two secrets, read and write. A typed value goes to the
 //! dedicated secret `image-registry/<id>/<field>`: named by id, so a rename touches

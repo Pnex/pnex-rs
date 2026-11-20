@@ -1,4 +1,4 @@
-//! Agents of an org (agent-environments.md D757, D761): a service account each, with a
+//! Agents of an org (agents.md D757, D761): a service account each, with a
 //! versioned record of what it runs; runs keep the agent and the version they ran, and the
 //! tiers get a cap of agents apart from the human seats.
 

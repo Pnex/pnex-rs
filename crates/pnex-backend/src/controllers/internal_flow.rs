@@ -73,7 +73,7 @@ pub fn routes() -> Routes {
         .add("/internal/flow/mail/replay", post(flow_mail_replay))
         .add("/internal/flow/mail/ack", post(flow_mail_ack))
         .add("/internal/flow/mail/send", post(flow_mail_send))
-        // Website navigation rules played by flows (site-recipes.md D327).
+        // Website navigation rules played by flows (agents.md D327).
         .add("/internal/flow/site-recipe", post(flow_site_recipe))
         // Web search candidates of web_search nodes (web-presence.md D361).
         .add("/internal/flow/web-search", post(flow_web_search))
@@ -81,7 +81,7 @@ pub fn routes() -> Routes {
         .add("/internal/flow/web-visit", post(flow_web_visit))
         // Server crawls started by site_crawl nodes (network-check.md D407).
         .add("/internal/flow/site-crawl", post(flow_site_crawl))
-        // Agent runs started by agent_run nodes (agent-environments.md D713).
+        // Agent runs started by agent_run nodes (agents.md D713).
         .add("/internal/flow/agent-run", post(flow_agent_run))
         // Rows asked of a pack pipeline by pipeline_ask nodes (pipelines.md D999).
         .add("/internal/flow/pipeline-ask", post(flow_pipeline_ask))

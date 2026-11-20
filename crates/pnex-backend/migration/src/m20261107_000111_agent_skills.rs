@@ -1,4 +1,4 @@
-//! Skills of hosted agents (agent-environments.md D711, autonomous-agents.md D396): versioned
+//! Skills of hosted agents (agents.md D711, D396): versioned
 //! text of an org. A text is a draft until a person activates it; agents pin activated ones.
 
 use sea_orm_migration::prelude::*;

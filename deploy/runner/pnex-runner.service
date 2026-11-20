@@ -1,5 +1,5 @@
 # Installs one runner on a VM or a bare machine, as a user service with rootless
-# Podman (agent-environments.md D706). As that user:
+# Podman (agents.md D706). As that user:
 #
 #   sudo loginctl enable-linger "$USER"
 #   install -D -m 755 pnex-runner ~/.local/bin/pnex-runner

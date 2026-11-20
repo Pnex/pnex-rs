@@ -1,4 +1,4 @@
-//! Agents page (agent-environments.md D757, D761): the agents of the org and their runs.
+//! Agents page (agents.md D757, D761): the agents of the org and their runs.
 //! A run opens on its log and its outputs; an output is only downloaded, never shown
 //! (R11), and its download needs `agent-artifacts:read`.
 

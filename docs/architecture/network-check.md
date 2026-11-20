@@ -3,7 +3,7 @@
 > **Statut : proposé (2026-10-24)**, demande de la session `pnex-quali-watch`
 > (Shan : « coder tout ce qu'il faut […] et anticiper les futurs dév pour
 > vérifier aussi les noms, la conformité, les règles de navigation »).
-> Suit `partner-watch.md` (D300–D316), `site-recipes.md` (D323–D328),
+> Suit `partner-watch.md` (D300–D316), `agents.md` (D323–D328),
 > `web-presence.md` (D359–D366), `pipelines.md` (D344–D358) et
 > `proposals.md` (D371–D377). Côté produit : PRD Quali-Watch §5.3, §5.4,
 > §5.7 et §8, `navigation.md`, `pipelines.md`. Défauts retenus en attendant

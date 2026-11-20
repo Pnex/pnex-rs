@@ -102,7 +102,7 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_MAIL_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/mail"),
             )
-            // Website navigation rules (site-recipes.md D327).
+            // Website navigation rules (agents.md D327).
             .env(
                 "PNEX_FLOW_SITE_RECIPE_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/site-recipe"),

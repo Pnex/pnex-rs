@@ -1,4 +1,4 @@
-//! Skills tab of the Agents page (agent-environments.md D711): texts the agents read at each
+//! Skills tab of the Agents page (agents.md D711): texts the agents read at each
 //! run. Every save is a draft; a person holding `agents:write` activates a version after
 //! comparing it in the common versions drawer (D221, D222). The editor is the common shell.
 

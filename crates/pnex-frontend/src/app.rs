@@ -165,7 +165,7 @@ pub enum Route {
         #[route("/ontology/types/:type_key")]
         OntologyType { type_key: String },
 
-        // Hosted agents and their runs (agent-environments.md D757, D761).
+        // Hosted agents and their runs (agents.md D757, D761).
         #[route("/agents")]
         HostedAgents {},
 
@@ -206,7 +206,7 @@ pub enum Route {
         #[route("/edges/browser-agents")]
         BrowserAgents {},
 
-        // Web sites and their navigation studio (site-recipes.md D323–D326).
+        // Web sites and their navigation studio (agents.md D323–D326).
         #[route("/web-sites")]
         WebSites {},
 

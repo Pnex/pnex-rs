@@ -1,4 +1,4 @@
-//! Image registries (agent-environments.md D703): saved access to an OCI registry,
+//! Image registries (agents.md D703): saved access to an OCI registry,
 //! with distinct read and write secrets in the vault. DTOs and checks, wasm-safe.
 
 use serde::{Deserialize, Serialize};

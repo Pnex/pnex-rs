@@ -1,4 +1,4 @@
-//! Agents of an org (agent-environments.md D757, D761). The org comes from the principal
+//! Agents of an org (agents.md D757, D761). The org comes from the principal
 //! (R1) and permissions are applied by `OrgContext` (R2): `agents:read` to read,
 //! `agents:write` (Admin) to create or change, `agents:delete` to remove, `agents:run` to
 //! start a run. The role of an agent never exceeds its author's.
@@ -258,7 +258,7 @@ async fn update(
     }
 }
 
-/// `POST /api/v1/agents/{id}/validator/rearm` (validation-gate.md D839)
+/// `POST /api/v1/agents/{id}/validator/rearm` (agents.md D839)
 #[utoipa::path(
     post,
     path = "/api/v1/agents/{id}/validator/rearm",

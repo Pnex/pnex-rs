@@ -1,4 +1,4 @@
-//! Browser endpoints as vault consumers (site-recipes.md D325).
+//! Browser endpoints as vault consumers (agents.md D325).
 //!
 //! The token of a `browser_endpoints` row lives in the vault (`secret_id`);
 //! a typed value goes to the dedicated secret `browser/<endpoint>/auth`,

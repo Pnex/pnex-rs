@@ -1,7 +1,6 @@
-//! Runners of the worker fabric (worker-fabric.md section 14, agent-environments.md
-//! lot E0): a runner joins with a single-use token, polls out, and runs each job in
-//! a pod of its own namespace. This is the contract shared by the server and the
-//! `pnex-runner` binary.
+//! Runners of the worker fabric (agents.md section 3.3): a runner joins with a single-use
+//! token, polls out, and runs each job in a pod of its own namespace. This is the contract
+//! shared by the server and the `pnex-runner` binary.
 
 use std::collections::BTreeMap;
 

@@ -1,4 +1,4 @@
-//! Firecracker executor (agent-environments.md D749, D762): each job in a micro-VM of its
+//! Firecracker executor (agents.md D749, D762): each job in a micro-VM of its
 //! own, booted from the image pinned by digest, destroyed with the job.
 //!
 //! A sandbox keeps the order of its pod (D714, D717) with no token ever inside the VM: the

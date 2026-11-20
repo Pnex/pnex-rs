@@ -1,4 +1,4 @@
-//! Repositories and test services of an agent run (agent-environments.md D758): what the
+//! Repositories and test services of an agent run (agents.md D758): what the
 //! sandbox clones and starts beside the agent. A repository names its token in the vault,
 //! never the token itself.
 

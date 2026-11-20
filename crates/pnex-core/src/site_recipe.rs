@@ -1,4 +1,4 @@
-//! Site navigation rules (site-recipes.md D323–D326): a declarative YAML
+//! Site navigation rules (agents.md D323–D326): a declarative YAML
 //! recipe bound to one web site, made of closed actions, played step by
 //! step by the server browser. Configuration, never code. Pure, wasm-safe:
 //! the backend parses the YAML into JSON, this module validates it.
@@ -841,7 +841,7 @@ pub fn page_call(function: &str, args: &[Value]) -> String {
 
 // ───────────────────────────── browser endpoints ─────────────────────────────
 
-/// A CDP browser of the org (site-recipes.md D325). The token is a vault
+/// A CDP browser of the org (agents.md D325). The token is a vault
 /// reference, never its value (R4, R16).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

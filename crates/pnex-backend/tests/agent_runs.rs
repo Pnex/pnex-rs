@@ -1,4 +1,4 @@
-//! Runs of hosted agents and their LLM gateway (agent-environments.md D731, D732), against
+//! Runs of hosted agents and their LLM gateway (agents.md D731, D732), against
 //! a fake provider on a local port.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL).

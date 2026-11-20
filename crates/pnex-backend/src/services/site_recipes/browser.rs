@@ -1,4 +1,4 @@
-//! Server browser executor (site-recipes.md D325): plays a recipe in a
+//! Server browser executor (agents.md D325): plays a recipe in a
 //! `chrome-headless-shell` reached over CDP (`PNEX_BROWSER_URL`, its own
 //! container), one fresh browser context per run, one screenshot per step
 //! with the target outlined.

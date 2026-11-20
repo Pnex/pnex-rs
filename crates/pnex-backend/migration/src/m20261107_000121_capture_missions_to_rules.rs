@@ -1,5 +1,5 @@
 //! Profile and employee list captures are default navigation rules now
-//! (agent-unification.md D780, lot U4): the missions of those two kinds go.
+//! (agents.md D780, lot U4): the missions of those two kinds go.
 //! Beta, no compatibility kept; the documents they captured stay.
 
 use sea_orm_migration::prelude::*;

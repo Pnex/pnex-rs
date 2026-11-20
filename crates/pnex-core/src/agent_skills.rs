@@ -1,4 +1,4 @@
-//! Skills of hosted agents (autonomous-agents.md D396, agent-environments.md D711): versioned
+//! Skills of hosted agents (agents.md D396, D711): versioned
 //! text of an org. Every new text is a draft; only a person activates a version, after
 //! reading its diff. An agent pins skills at an activated version, and its runs find them as
 //! read-only files under `/artifacts/in/skills/` (D770).

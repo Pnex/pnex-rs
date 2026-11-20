@@ -1,4 +1,4 @@
-# Pack "Software supply" (agent-environments.md D728): what an image is made of, and which
+# Pack "Software supply" (agents.md D728): what an image is made of, and which
 # known flaws touch it. Generic on purpose: a later pack following software from source
 # code to production requires this one and links its releases and deployments to these
 # objects. A component is one object per package and version (its purl), shared by every

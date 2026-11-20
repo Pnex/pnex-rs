@@ -6531,7 +6531,7 @@ toast-access-service-account-deleted = Compte de service supprimé
 toast-access-key-revoked = Clé révoquée
 toast-access-secret-copied = Clé copiée
 
-## Web sites and navigation rules (site-recipes.md D323–D326)
+## Web sites and navigation rules (agents.md D323–D326)
 nav-web-sites = Sites web
 proposals-title = À valider
 proposals-subtitle = Ce que les imports, les flows et les détecteurs proposent d'écrire sans en être sûrs. Accepter l'écrit dans l'ontologie ; rejeter le garde avec son motif, et la même valeur ne sera plus proposée.
@@ -7144,7 +7144,7 @@ pipe-check-max-drop = Baisse de lignes au plus, en %
 pipe-check-same-columns = Mêmes colonnes que la version courante
 pipe-transform-delete = Supprimer ce traitement
 
-## Hosted agents (agent-environments.md D757, D761)
+## Hosted agents (agents.md D757, D761)
 nav-agents = Agents
 agents-title = Agents
 agents-subtitle = Les agents de l'organisation, leurs exécutions, leurs entrées et leurs sorties.

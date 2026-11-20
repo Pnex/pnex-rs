@@ -1,4 +1,4 @@
-//! Agent environments API (agent-environments.md D702, D704). Org from the principal
+//! Agent environments API (agents.md D702, D704). Org from the principal
 //! (R1), permissions applied by `OrgContext` (R2).
 
 use axum::extract::{Path, Query, State};

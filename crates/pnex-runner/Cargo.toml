@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Polls the PneX server and runs each job in a hardened pod of its own namespace (worker-fabric.md section 14)"
+description = "Polls the PneX server and runs each job in a hardened pod of its own namespace (agents.md section 3.3)"
 
 [lib]
 path = "src/lib.rs"

@@ -1,4 +1,4 @@
-//! Versions of the site navigation rules (site-recipes.md D323, D221):
+//! Versions of the site navigation rules (agents.md D323, D221):
 //! every save keeps its YAML; the studio opens, compares and restores them.
 
 use sea_orm_migration::prelude::*;

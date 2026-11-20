@@ -1,4 +1,4 @@
-//! Skills of hosted agents (agent-environments.md D711, autonomous-agents.md D396): drafts,
+//! Skills of hosted agents (agents.md D711, D396): drafts,
 //! activation by a person after the diff, secret refusal, pinning on agents.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL).

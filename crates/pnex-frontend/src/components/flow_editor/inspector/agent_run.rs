@@ -6,7 +6,7 @@ use super::*;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::agent_chains::{AgentRunFinishedConfig, AgentRunNodeConfig, ChainLimits};
 
-// ─────────────── agent-run / agent-run-finished (agent-environments.md D713) ───────────────
+// ─────────────── agent-run / agent-run-finished (agents.md D713) ───────────────
 
 const INPUT: &str = "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm";
 

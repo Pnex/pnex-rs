@@ -1,6 +1,5 @@
-//! Runners and their job queue (agent-environments.md lot E0, worker-fabric.md
-//! section 8 and 14): state lives in PostgreSQL; a runner polls out, holds a job by
-//! lease, and a reaper gives back what a dead runner held.
+//! Runners and their job queue (agents.md §3.3): state lives in PostgreSQL; a runner
+//! polls out, holds a job by lease, and a reaper gives back what a dead runner held.
 
 use std::time::Duration;
 

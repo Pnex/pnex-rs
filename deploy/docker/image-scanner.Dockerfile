@@ -1,4 +1,4 @@
-# Image of the pod that scans an environment image (agent-environments.md D720): Trivy from
+# Image of the pod that scans an environment image (agents.md D720): Trivy from
 # the Wolfi package, never the vendor's releases, and pinned: its releases 0.69.4 to 0.69.6
 # were compromised in March 2026 (CVE-2026-33634). Moving this pin is a reviewed change.
 FROM cgr.dev/chainguard/wolfi-base@sha256:771146c2dfc880902a185f060c3db5571473c46b267edd98c3119c83068dfb61

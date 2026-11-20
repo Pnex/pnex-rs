@@ -64,7 +64,7 @@ const RULES: &[Rule] = &[
         use_instead: "model decision",
         allowed_keys: &[],
     },
-    // validation-gate.md D836: the agent that accepts or refuses requests is a validator.
+    // agents.md D836: the agent that accepts or refuses requests is a validator.
     Rule {
         scope: Scope::Fr,
         term: "agent de contrôle",
@@ -543,7 +543,7 @@ const RULES: &[Rule] = &[
         use_instead: "default profile",
         allowed_keys: &[],
     },
-    // agent-environments.md D720: what an image scan finds is a « faille ».
+    // agents.md D720: what an image scan finds is a « faille ».
     Rule {
         scope: Scope::Fr,
         term: "vulnérabilité",

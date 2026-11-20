@@ -1,5 +1,5 @@
 //! Hosted agents, their runs and artifacts (`controllers/agents.rs`, `agent_runs.rs`,
-//! `agent_artifacts.rs`; agent-environments.md D731–D761). An artifact's content is only
+//! `agent_artifacts.rs`; agents.md D731–D761). An artifact's content is only
 //! ever downloaded, never shown.
 
 use pnex_core::agent_runs::{AgentArtifact, AgentRun};
@@ -53,7 +53,7 @@ pub async fn agent_tools() -> Result<Vec<AgentToolInfo>, ApiError> {
     }
 }
 
-/// Lets a tripped validator agent decide again (validation-gate.md D839).
+/// Lets a tripped validator agent decide again (agents.md D839).
 pub async fn rearm_validator(id: &str) -> Result<Agent, ApiError> {
     client::request(
         reqwest::Method::POST,

@@ -260,7 +260,7 @@ pub enum FlowNodeKind {
         config: crate::office::SheetWriteConfig,
     },
     /// Plays a saved site navigation rule on the server browser
-    /// (site-recipes.md D327).
+    /// (agents.md D327).
     SiteRecipe {
         #[serde(default)]
         config: crate::site_recipe::SiteRecipeNodeConfig,

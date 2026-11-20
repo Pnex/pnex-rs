@@ -1,5 +1,5 @@
 //! A person entered by a sales rep, matched with a network profile through
-//! the search bar of a default rule (agent-unification.md D788): where each match stands, its
+//! the search bar of a default rule (agents.md D788): where each match stands, its
 //! ladder of queries and its candidates with their scores.
 
 use sea_orm_migration::prelude::*;

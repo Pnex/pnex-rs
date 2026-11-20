@@ -1,4 +1,4 @@
-//! What the server does when a run of a default rule ends (agent-unification
+//! What the server does when a run of a default rule ends (agents.md
 //! D780, lot U4). A default rule is played like any rule; the purpose it was
 //! started for is kept in its plan, and acting on the outcome is the server's
 //! job: never a kind of mission, never the agent. Profile and employee list

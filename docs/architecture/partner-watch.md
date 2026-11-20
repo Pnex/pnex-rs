@@ -94,7 +94,7 @@ Entité org `object_imports` (CRUD `can_write`, API annotée D238) :
   fiche objet « venu de l'import X le … ».
 - Plafonds : 50 000 lignes par run (250 000 depuis l’écriture en bloc, D347), 200 Mo de fichier décompressé, durée
   bornée ; travail exécuté hors requête HTTP, par le worker du backend
-  (la fabric de `worker-fabric.md` plus tard, Q-PW3).
+  (la fabric de `agents.md` plus tard, Q-PW3).
 - Assistant : l'outil d'aperçu peut être proposé, l'application jamais
   (écriture en masse = humain).
 
@@ -367,7 +367,7 @@ PW0–PW3 ne dépendent pas de l'IAM. PW7 attend I0, I1, I3, I4, I6 de
 2. **Q-PW2 — Horodatage qualifié** RFC 3161 (prestataire eIDAS) : sur
    chaque preuve ou à la demande (mise en demeure) ?
 3. **Q-PW3 — Imports et fabric de workers** : les imports et le crawl
-   tournent-ils sur la fabric (`worker-fabric.md`, non validée) ou sur le
+   tournent-ils sur la fabric (`agents.md`, non validée) ou sur le
    worker actuel du backend en attendant ?
 4. **Q-PW4 — `site_page` système ou type de pack** : le registre est du
    noyau (comme `social_videos`), mais son exposition en type système

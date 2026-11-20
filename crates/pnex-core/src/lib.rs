@@ -10,7 +10,7 @@
 pub mod agent;
 /// Agent runs chained by flows: budget, rounds, subject lock (D713, D716, D718).
 pub mod agent_chains;
-/// Runs of hosted agents and their LLM gateway (agent-environments.md D731, D732).
+/// Runs of hosted agents and their LLM gateway (agents.md D731, D732).
 pub mod agent_runs;
 /// Skills of hosted agents: versioned text, activated by a person (D396, D711).
 pub mod agent_skills;
@@ -31,7 +31,7 @@ pub mod named_query;
 pub mod qr;
 /// Causal chain detector (cases-workspace.md appendix I, D904–D908).
 pub mod rca;
-/// Runners of the worker fabric (agent-environments.md lot E0).
+/// Runners of the worker fabric (agents.md §3.3).
 pub mod runners;
 #[cfg(feature = "starlark")]
 pub mod starlark_sandbox;
@@ -179,10 +179,10 @@ pub mod analysis;
 pub mod connectors;
 /// Dataset catalogue DTOs (pipelines.md D569).
 pub mod datasets;
-/// Agent environments (agent-environments.md D702, D704).
+/// Agent environments (agents.md D702, D704).
 pub mod environments;
 pub mod governance;
-/// OCI image registries (agent-environments.md D703).
+/// OCI image registries (agents.md D703).
 pub mod image_registries;
 /// Media files sent in parts (pipelines.md §3.12).
 pub mod media_upload;
@@ -228,7 +228,7 @@ pub mod frame;
 /// Paragraph diff of two document versions (partner-watch.md D311).
 pub mod text_diff;
 
-/// Site navigation rules played by the server browser (site-recipes.md D323–D326).
+/// Site navigation rules played by the server browser (agents.md D323–D326).
 pub mod site_recipe;
 
 /// Web search providers and the `web_search` node (web-presence.md D360–D361).

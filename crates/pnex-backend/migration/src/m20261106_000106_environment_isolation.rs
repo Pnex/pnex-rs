@@ -1,4 +1,4 @@
-//! Isolation of the runs of an environment (agent-environments.md D763): a pod by default,
+//! Isolation of the runs of an environment (agents.md D763): a pod by default,
 //! a micro-VM on request.
 
 use sea_orm_migration::prelude::*;

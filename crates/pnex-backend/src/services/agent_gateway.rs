@@ -1,4 +1,4 @@
-//! LLM gateway of hosted agents (autonomous-agents.md D385, agent-environments.md D732).
+//! LLM gateway of hosted agents (agents.md D385, D732).
 //! A sandbox speaks the Anthropic or the OpenAI protocol to PneX with its run token; PneX
 //! calls the provider the org routes to the `agent` usage, with a key that never enters the
 //! sandbox. Each call is counted against the run and the org, and journaled in O2 with the

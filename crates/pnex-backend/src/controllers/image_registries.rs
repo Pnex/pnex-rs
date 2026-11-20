@@ -1,4 +1,4 @@
-//! Image registries API (agent-environments.md D703). Org from the principal (R1),
+//! Image registries API (agents.md D703). Org from the principal (R1),
 //! permissions applied by `OrgContext` (R2), and no secret in any answer (R4, R16).
 
 use axum::extract::{Path, Query, State};

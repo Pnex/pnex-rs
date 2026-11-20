@@ -1,4 +1,4 @@
-// Page side of a navigation rule (site-recipes.md, agent-unification.md
+// Page side of a navigation rule (agents.md
 // D780): the only code that runs inside the visited page, shared by both
 // players. The server browser embeds this file and evaluates one function
 // over CDP; the browser extension imports it and hands one function to

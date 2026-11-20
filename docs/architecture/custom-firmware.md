@@ -3,7 +3,7 @@
 **Statut :** Livré, désactivé par défaut — L1, L3, L4, L5 livrés ; L2 partiel (sandbox bwrap optionnelle) ; offline livré le 2026-10-05 (§8) ; commandes custom pilotables par Device (write) (D146, 2026-10-06)
 **Portée :** firmware ESP (lib PneX), build serveur, front (éditeur), protocole device
 **Renvois :** `firmware-build.md` (pipeline de build par device), `edge-model.md`
-(D44–D48 : manifeste de capacités, golden vectors), `ota.md`, `worker-fabric.md`
+(D44–D48 : manifeste de capacités, golden vectors), `ota.md`, `agents.md`
 (isolation des workers), `design-system.md` §8 (coquille d'éditeur), `runtime.md`
 
 ---
@@ -273,7 +273,7 @@ worker**, même avec un seul fichier :
 - Limites de ressources : timeout, CPU, mémoire, taille de sortie.
 
 Mise en œuvre : sandbox légère sur le worker co-localisé (bubblewrap /
-namespaces) en V1 ; dans la fabric (`worker-fabric.md`), un profil de
+namespaces) en V1 ; dans la fabric (`agents.md`), un profil de
 worker « firmware-build » en conteneur dédié. Tant que D91 n'est pas en
 place, la feature reste désactivée par défaut (flag admin plateforme).
 

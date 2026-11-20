@@ -58,7 +58,7 @@ pub mod orgs;
 pub mod parts;
 pub mod pipelines;
 pub mod profile;
-/// Web sites and their navigation studio (site-recipes.md D323–D326).
+/// Web sites and their navigation studio (agents.md D323–D326).
 pub mod proposals;
 pub mod qr;
 pub mod rules;

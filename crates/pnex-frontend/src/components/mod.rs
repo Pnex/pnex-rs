@@ -12,7 +12,7 @@ pub mod app_widgets;
 pub mod assistant;
 pub mod badges;
 pub mod board_pinout_editor;
-/// Browser endpoints of the org (site-recipes.md D325).
+/// Browser endpoints of the org (agents.md D325).
 pub mod browser_endpoints;
 pub mod build_failure;
 pub mod charts;

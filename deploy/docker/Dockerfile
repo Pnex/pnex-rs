@@ -221,7 +221,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-$
     mkdir -p /out/bin /out/spill; \
     cp "target/$triple/release/pnex-pipeline-worker" /out/bin/
 
-# Runner of the worker fabric (worker-fabric.md section 14): one binary, no shell.
+# Runner of the worker fabric (agents.md section 3.3): one binary, no shell.
 FROM toolchain AS runner-build
 ARG TARGETARCH
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-${TARGETARCH} \

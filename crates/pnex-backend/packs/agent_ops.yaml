@@ -1,4 +1,4 @@
-# Pack "Agent operations" (agent-environments.md D708, D761): the durable facts of the agent
+# Pack "Agent operations" (agents.md D708, D761): the durable facts of the agent
 # fabric, installed on first use. An environment and an agent are objects; each run that
 # ended is an object, linked to its agent and its environment; each file a run took or left
 # is an object, linked to the run that produced it and the runs that read it. This answers

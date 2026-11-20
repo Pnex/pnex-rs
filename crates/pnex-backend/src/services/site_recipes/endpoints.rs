@@ -1,4 +1,4 @@
-//! Browser endpoints of an org (site-recipes.md D325): CDP browsers the
+//! Browser endpoints of an org (agents.md D325): CDP browsers the
 //! navigation rules play on, school of the geo providers (token in the
 //! vault, one default, a Test button).
 //!

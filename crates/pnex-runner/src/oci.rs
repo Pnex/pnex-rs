@@ -1,4 +1,4 @@
-//! An image pinned by digest, unpacked into a folder (agent-environments.md D762): the root
+//! An image pinned by digest, unpacked into a folder (agents.md D762): the root
 //! file system of a micro-VM. Every blob is checked against its digest; a layer never
 //! writes outside the folder, and its whiteouts remove what an earlier layer added.
 

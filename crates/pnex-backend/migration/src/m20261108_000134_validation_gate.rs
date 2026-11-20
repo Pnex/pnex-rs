@@ -1,4 +1,4 @@
-//! Validation gate of agents (validation-gate.md D839): the circuit breaker of a validator
+//! Validation gate of agents (agents.md D839): the circuit breaker of a validator
 //! agent. The state of each request lives in its `tool_call` proposal.
 
 use sea_orm_migration::prelude::*;

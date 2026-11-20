@@ -99,7 +99,7 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
             "bom_lists_component",
             "image_exposed_to",
         ],
-        "the fabric projects what it scans into its own pack (agent-environments.md D708, D728)",
+        "the fabric projects what it scans into its own pack (agents.md D708, D728)",
     ),
     (
         "pnex-backend/src/services/agent_ops.rs",
@@ -114,7 +114,7 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
             "file_produced_by",
             "run_read_file",
         ],
-        "the fabric projects its ended runs into its own pack (agent-environments.md D708, D761)",
+        "the fabric projects its ended runs into its own pack (agents.md D708, D761)",
     ),
     (
         "pnex-backend/src/services/profiles.rs",
@@ -390,7 +390,7 @@ const HOST_DEBT: &[(&str, &[&str], &str)] = &[
     (
         "pnex-extension/src/",
         &["www.tiktok.com", "www.youtube.com", "x.com"],
-        "site adapters of the extension, to become rules (agent-unification.md D780)",
+        "site adapters of the extension, to become rules (agents.md D780)",
     ),
 ];
 

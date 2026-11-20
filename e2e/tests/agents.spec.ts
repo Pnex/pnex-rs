@@ -1,7 +1,7 @@
-// Agents page (agent-environments.md D757, D761): create an agent, start a run by giving
+// Agents page (agents.md D757, D761): create an agent, start a run by giving
 // its input file, follow it to its end, download its output, stop another run. A runner
 // stands in through its own API (claim, transfer, logs, finish): the sandbox itself is
-// proven on a cluster (docs/architecture/agent-environments-recette.md).
+// proven on a cluster (docs/architecture/agents.md §3.17).
 import type { APIRequestContext } from '@playwright/test';
 import { expect, test } from '../src/fixtures.ts';
 import { BASE_URL } from '../src/env.ts';

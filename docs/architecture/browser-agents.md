@@ -1,6 +1,6 @@
 # Agents navigateur (extension Chrome/Firefox)
 
-Décisions D254–D270, D281–D284, D550. Liens : `edge-model.md` §8 (doctrine edge), `security.md` (identité device D153–D158, grille §6, registre §7), `media-ingest.md` (flux, segments), `media-review.md` (passes, relecture), `doc-search.md` (indexation), `account-mapping.md` (profils D333, salariés D779, relations D976–D977), `partner-watch.md` (sites et preuves D307–D310), `agent-unification.md` (règles jouées par l'extension D780–D790), `api.md`, `ai-assistant.md` §9.
+Décisions D254–D270, D281–D284, D550. Liens : `edge-model.md` §8 (doctrine edge), `security.md` (identité device D153–D158, grille §6, registre §7), `media-ingest.md` (flux, segments), `media-review.md` (passes, relecture), `doc-search.md` (indexation), `account-mapping.md` (profils D333, salariés D779, relations D976–D977), `partner-watch.md` (sites et preuves D307–D310), `agents.md` (règles jouées par l'extension D780–D790), `api.md`, `ai-assistant.md` §9.
 
 ## 1. Résumé
 
@@ -252,7 +252,7 @@ sequenceDiagram
   S->>S: action selon le but du passage
 ```
 
-Une règle de navigation qui exige une session (`session: required`) part sur un agent (D782, `agent-unification.md`). L'agent joue le plan reçu, sans aller-retour de validation (D783). Il le joue dans l'onglet de la plateforme du site, avec la même cadence que les missions. Une étape hors du site termine le passage en échec (`off-site`). Un flow joue une règle à session seulement sur un agent commun.
+Une règle de navigation qui exige une session (`session: required`) part sur un agent (D782, `agents.md`). L'agent joue le plan reçu, sans aller-retour de validation (D783). Il le joue dans l'onglet de la plateforme du site, avec la même cadence que les missions. Une étape hors du site termine le passage en échec (`off-site`). Un flow joue une règle à session seulement sur un agent commun.
 
 Trois usages passent par des règles par défaut (`pnex_core::default_rules`), plus par des types de mission :
 
@@ -310,7 +310,7 @@ L'agent du demandeur exécute la capture, sinon un agent commun. Sans agent appa
 | D284 | Mission simple | un compte à suivre ; texte par défaut, case `force_video` |
 | D550 | Agent personnel ou commun | un agent est personnel ; un admin (`extension:share`) le rend commun pour les membres sans agent et les tâches du serveur (SEC-56) |
 
-Décisions liées, tenues ailleurs : D307–D310 (`partner-watch.md`), D333 et D779 (`account-mapping.md`), D976–D977 (`account-mapping.md`), D780–D790 (`agent-unification.md`), D341 (opposition).
+Décisions liées, tenues ailleurs : D307–D310 (`partner-watch.md`), D333 et D779 (`account-mapping.md`), D976–D977 (`account-mapping.md`), D780–D790 (`agents.md`), D341 (opposition).
 
 ## 6. Interfaces
 
@@ -343,7 +343,7 @@ Tests : `crates/pnex-backend/tests/extension.rs`, tests unitaires des adaptateur
 
 - **Publication** (question 4) : Chrome Web Store et signature AMO pour Firefox, ou chargement non empaqueté seulement ? Aujourd'hui : chargement non empaqueté en mode développeur. Choix de Shan.
 - **D976 retiré le 2026-11-18** (`account-mapping.md`) : supprimer du code la règle `connections_capture`, la table `network_connections`, les routes `connection` et `connections-captures`, et le panneau de la fiche.
-- **U4b** (`agent-unification.md`) : `collect_value`, `collect_page`, `follow_account`, `watch_live`, `crawl_site` et `capture_proof` doivent devenir des étapes ou des sorties de règle.
+- **U4b** (`agents.md`) : `collect_value`, `collect_page`, `follow_account`, `watch_live`, `crawl_site` et `capture_proof` doivent devenir des étapes ou des sorties de règle.
 - **D268** : coder la rétention par mission avec la phase « rétention et limites d'usage » (O91).
 - **Mission `search`** (proposée) : une recherche sur une plateforme dont chaque résultat passe par le registre des vidéos.
 - **Campagne de test réelle** : X, YouTube, TikTok, lives et Firefox ne sont pas encore éprouvés en conditions réelles.

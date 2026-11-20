@@ -1,4 +1,4 @@
-//! `pnex-agent-run-finished` — event source of the ended agent runs (agent-environments.md
+//! `pnex-agent-run-finished` — event source of the ended agent runs (agents.md
 //! D713).
 //!
 //! When a run ends, the backend publishes its summary once on `pnex:agentrun:v1:{org}`.

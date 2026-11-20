@@ -1,4 +1,4 @@
-//! Image registries (agent-environments.md D703): vault, CRUD, rights, and the test
+//! Image registries (agents.md D703): vault, CRUD, rights, and the test
 //! against a stand-in registry speaking the bearer flow of the distribution spec.
 //! `a_real_registry_answers` runs against a real one, see its comment.
 //!

@@ -5,7 +5,7 @@ use crate::app::Route;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::site_recipe::SiteRecipeNodeConfig;
 
-// ─────────────── site recipe (site-recipes.md D327) ───────────────
+// ─────────────── site recipe (agents.md D327) ───────────────
 
 /// Website rule inspector: the saved rule played at each message and the
 /// values of its parameters.

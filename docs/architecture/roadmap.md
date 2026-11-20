@@ -217,7 +217,7 @@ tâche).
 | **CoolProp** | In-process mergé (d126225) | — |
 | **Brick 0** (prototypage rapide) | PRD (`brick0.md`) | e2e carte réelle, quota mixed 0→1 à valider, persistance ack |
 | **Caméra & vidéo** (D73–D86, D100–D104) | **Phases V et W implémentées** (2026-09-29/30) : `/ws/camera`, CameraHub, `camera-source`/`video-record`/`vision-detect`/`event-log`, registre `ml_models` (tract YOLOX), fiabilité W5 ; flash web ESP32-CAM-MB validé, stream 5 fps stable (XCLK 16 MHz) | E2E complet caméra → vision → événement → notification sur carte réelle |
-| **Workers / fabric** | 2 workers Loco CPU co-localisés sur le control plane (`build_firmware`, `stitch_panorama`) ; claim idempotent + timeout par job (stitch, 2026-10-01) ; **PRD fabric proposé** (`worker-fabric.md`, 2026-09-25) | Validation du PRD (P1.6) puis MVP (P2.7) — pré-requis de tout job GPU (Gaussian Splatting, axe C) |
+| **Workers / fabric** | 2 workers Loco CPU co-localisés sur le control plane (`build_firmware`, `stitch_panorama`) ; claim idempotent + timeout par job (stitch, 2026-10-01) ; **PRD fabric proposé** (`agents.md`, 2026-09-25) | Validation du PRD (P1.6) puis MVP (P2.7) — pré-requis de tout job GPU (Gaussian Splatting, axe C) |
 | **Prédictif** (anomaly/forecast) | **Livré** 2026-09-29 (`pnex-node-predict` : BOCPD maison + forecast) — étape 3 du pilier ML/Vision | Branchement documenté anomalie → notify (cas « anomalie persistante ») ; E2E sur séries réelles |
 | **Firmware custom** (D87–D94) | **Livré, désactivé par défaut** — L1, L3, L4, L5 : API `addMetric`/`publish`/`onCommand`, projets + révisions, catalogue de libs, Verify en job de file, firmware choisi au provisioning (1→N devices, build de la dernière révision) ; L2 partiel (bwrap optionnel, pas actif en stack dev) | Sandbox D91 réelle, magasin de libs offline, nœud flow des commandes custom, révision déployée sur la page device (D94), E2E BME280 → O2 → flow → notification |
 | **Coffre de secrets** (D110–D119) | **Livré 2026-10-01** — S1–S8 (`security.md` §9) : XChaCha20-Poly1305, trousseau en env, références typées, runtime qui résout par id, rôle `member`, rotation + rechiffrement | Clés device et tokens agent hors coffre (chiffrement au repos possible plus tard) |
@@ -424,7 +424,7 @@ vidéo V1 ; module GPS choisi ; plan de tranches labo), prêtes à
 implémenter en P2. Ce travail débloque le cœur de la directive produit —
 il précède toute ligne de code des axes.
 
-### P1.6 — Fabric de workers : valider le PRD (`worker-fabric.md`)
+### P1.6 — Fabric de workers : valider le PRD (`agents.md`)
 
 Infra transverse, **pré-requis de tout worker lourd** (Gaussian
 Splatting, jobs GPU de l'axe C). Principe : **un seul runtime worker**,
@@ -598,7 +598,7 @@ Portrait 2 anneaux (16 à plat + 12 incliné), montée en résolution
 
 ### P2.7 — Fabric de workers : MVP (après P1.6)
 
-Phase MVP de `worker-fabric.md` §12 : runtime worker unifié + routage par
+Phase MVP de `agents.md` §3.18 : runtime worker unifié + routage par
 capabilities sur la queue PG existante ; **un seul** archetype distant
 (control léger + worker GPU distant via mesh WireGuard) ; join token
 single-use + enregistrement par capabilities ; lease/heartbeat/reaper ;
@@ -947,7 +947,7 @@ temps, les flows, les dossiers et les pages déjà en place.
   `software_supply` (image, SBOM, composant, vulnérabilité, D728) ; Application,
   Version, Dépôt, Constat, Licence, pipelines CI/CD et demandes de fusion n'ont
   ni type ni ingestion. Les demandes de fusion des agents codeurs n'existent que
-  comme URL sur le run (`agent-environments.md` D708, écart).
+  comme URL sur le run (`agents.md` D708, écart).
   **Pont avec le socle IoT** : chaque build firmware enregistré produit
   son SBOM, chaque appareil sait ce qu'il exécute → exposition d'une flotte à
   une CVE en une requête (exigence CRA).
@@ -1115,10 +1115,10 @@ tous les packs livrés. Ils sont analysés une fois par processus : la suite
 retombe à 118 s (`ontology` 72 → 31 s, `personal_data` 64 → 13 s), et
 l'installation d'un pack sur un serveur est d'autant plus rapide.
 
-### P2.29 — Agents autonomes : gouvernance, passerelle LLM, bacs à sable (ajout 2026-10-23) — **Environnements d'agents (D700–D720) livrés ; A1 et A2 repris dans `agent-unification.md` (D780–D790, U1–U6 livrés le 2026-11-07, U4b et D786 ouverts)**
+### P2.29 — Agents autonomes : gouvernance, passerelle LLM, bacs à sable (ajout 2026-10-23) — **Environnements d'agents (D700–D720) livrés ; A1 et A2 repris dans `agents.md` (D780–D790, U1–U6 livrés le 2026-11-07, U4b et D786 ouverts)**
 
-Doc : `autonomous-agents.md` (D378–D401, lots A0–A5) ; infrastructure dans
-`worker-fabric.md` §14. Trois niveaux (interne, hébergé, libre), agent =
+Doc : `agents.md` (D378–D401, lots A0–A5) ; infrastructure dans
+`agents.md` §3.3. Trois niveaux (interne, hébergé, libre), agent =
 compte de service configurable (placement, moteur, rôle, compétences),
 politique par tâche, runs journalisés et arrêtables,
 passerelle LLM unique budgétée par usage, runners par cluster sans
@@ -1236,7 +1236,7 @@ Doc : `operational-platform.md` (D551–D568, lots OP1–OP15). Chaque lot a son
 PRD avant le code. La priorité en cours (robustesse et tests) et P0 passent
 avant ; P0.1 et P0.3 sont des prérequis d'OP10.
 
-Environnements d'agents, validés le 2026-11-04 (`agent-environments.md`,
+Environnements d'agents, validés le 2026-11-04 (`agents.md`,
 D700–D720, lots E0–E6) : préparation et exécution des agents d'OP11. Ils passent
 devant l'ordre OP1 → OP3 par choix explicite, sur une première cible interne ;
 aucun client réel avant OP3 et le masquage (D715).
@@ -1255,7 +1255,7 @@ failles (demande du 2026-11-05, D728).
 | OP6 | Tableur et traitement de texte (GridCraft, WordCraft), après POC |
 | OP7 | Notebooks Python en déploiement séparé, SDK d'accès aux données |
 | OP8 | SDK typés, applications en code sur origine isolée, génération par l'IA, hors ligne |
-| OP9 | Porte de validation des agents (`validation-gate.md`, D833–D840) : mode par outil d'écriture (personne, autonome, validateur, chaîne), compte de service de l'agent, agent validateur, jamais délégable, disjoncteur — codé le 2026-11-08 |
+| OP9 | Porte de validation des agents (`agents.md`, D833–D840) : mode par outil d'écriture (personne, autonome, validateur, chaîne), compte de service de l'agent, agent validateur, jamais délégable, disjoncteur — codé le 2026-11-08 |
 | OP10 | Action physique gouvernée : enveloppes, mode fantôme, vérification d'effet, état sûr |
 | OP11 | Agents (P2.29), évaluations LLM, OCR, vecteurs, scénarios, modèles tabulaires |
 | OP12 | Centre de livraison, SBOM de parc, air-gap, hub de kits dégelé |
@@ -1316,7 +1316,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   prototype MTU avant tout engagement. UI de gestion seulement à M3.
 - **iOS** : décision de phase explicite (runtime.md). Le desktop est
   livré (2026-10-01, Linux + Windows).
-- **Fabric de workers v2/v3** (`worker-fabric.md` §12) : générateur de
+- **Fabric de workers v2/v3** (`agents.md` §3.18) : générateur de
   script d'install + UI de fleet + pools GitOps/HPA (v2) ; frontière
   managée par API job authentifiée, multi-tenant, compute managé (v3,
   lié au PRD monétisation). La fabric enregistre et route, elle ne
@@ -1416,7 +1416,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   Détail : `ml-vision.md` (4 étapes : POC YOLOX ONNX → pipeline RTSP →
   nœuds augurs → linfa + registre). Stockage des modèles = RustFS
   ou Postgres.
-- **2026-09-25 (fabric de workers)** — Ajout du PRD `worker-fabric.md`
+- **2026-09-25 (fabric de workers)** — Ajout du PRD `agents.md`
   (proposé) : un seul runtime worker, routage par capabilities,
   enregistrement join-by-token façon runner GitLab CI, polling sortant,
   comm selon la frontière de confiance (mesh WireGuard vs API job

@@ -1,4 +1,4 @@
-//! Navigation rule tools of the assistant (site-recipes.md D324, N4): list
+//! Navigation rule tools of the assistant (agents.md D324, N4): list
 //! and read the rules of the org, try a saved rule on the server browser,
 //! read a run, propose a rule. The assistant never saves a rule: a
 //! proposal opens in the studio from the button under the answer, the

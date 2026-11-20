@@ -1,4 +1,4 @@
-//! Rule runs played by a browser agent (agent-unification.md D781–D783):
+//! Rule runs played by a browser agent (agents.md D781–D783):
 //! the `extension` engine. A run started for it waits queued in
 //! `runner_jobs`; the link of an agent allowed to play it (its creator's own
 //! browser, else a common one, D550) leases it, one at a time, and receives

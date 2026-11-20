@@ -991,7 +991,7 @@ pub const INGEST_UNSAFE_PATH: &str = "ingest-unsafe-path";
 /// holds (D322); `args.closed`, `args.held`, `args.max_pct`.
 pub const INGEST_SUSPICIOUS_CLOSURES: &str = "ingest-suspicious-closures";
 
-// ── Site navigation rules (site-recipes.md D323–D326) ───────────────────
+// ── Site navigation rules (agents.md D323–D326) ───────────────────
 
 /// A site recipe is not valid YAML or breaks a rule; `errors.violations`
 /// No such media upload in this org.

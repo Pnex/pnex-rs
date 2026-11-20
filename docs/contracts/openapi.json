@@ -322,7 +322,7 @@
             "type": "string"
           },
           "validator_tripped": {
-            "description": "As a validator, its circuit breaker tripped (validation-gate.md D839): `rate` or\n`all_accepted`. Its requests go to a person until it is re-armed.",
+            "description": "As a validator, its circuit breaker tripped (agents.md D839): `rate` or\n`all_accepted`. Its requests go to a person until it is re-armed.",
             "type": [
               "string",
               "null"
@@ -722,7 +722,7 @@
         "type": "object"
       },
       "AgentLevel": {
-        "description": "Where the loop of an agent runs (autonomous-agents.md D378, D785).",
+        "description": "Where the loop of an agent runs (agents.md D378, D785).",
         "enum": [
           "hosted",
           "internal"
@@ -1289,7 +1289,7 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/GateMode"
             },
-            "description": "Internal only: who decides each write tool (validation-gate.md D833); a tool absent\nhere is decided by a person.",
+            "description": "Internal only: who decides each write tool (agents.md D833); a tool absent\nhere is decided by a person.",
             "propertyNames": {
               "type": "string"
             },
@@ -1389,7 +1389,7 @@
             "type": "string"
           },
           "never_delegated": {
-            "description": "A write only a person may decide, whatever the record says (validation-gate.md D838).",
+            "description": "A write only a person may decide, whatever the record says (agents.md D838).",
             "type": "boolean"
           },
           "summary": {
@@ -4161,7 +4161,7 @@
         "type": "object"
       },
       "BrowserEndpoint": {
-        "description": "A CDP browser of the org (site-recipes.md D325). The token is a vault\nreference, never its value (R4, R16).",
+        "description": "A CDP browser of the org (agents.md D325). The token is a vault\nreference, never its value (R4, R16).",
         "properties": {
           "cdp_url": {
             "description": "`wss://…`, `ws://…`, or the `http(s)://host:port` of `/json/version`.",

@@ -38,9 +38,9 @@ pub mod ns {
     pub const ONTOLOGY_PACK: i32 = 0x504e_000a;
     /// Ontology import runs of one org (one application at a time, D301).
     pub const ONTOLOGY_IMPORT: i32 = 0x504e_000b;
-    /// Projection of image scans of one org (agent-environments.md D728).
+    /// Projection of image scans of one org (agents.md D728).
     pub const SOFTWARE_SUPPLY: i32 = 0x504e_000c;
-    /// Projection of ended agent runs of one org (agent-environments.md D761).
+    /// Projection of ended agent runs of one org (agents.md D761).
     pub const AGENT_OPS: i32 = 0x504e_000d;
     /// Price history passes of one org (markets-research.md D808): two
     /// passes would load the same partition twice.

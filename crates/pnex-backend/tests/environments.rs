@@ -1,4 +1,4 @@
-//! Agent environments (agent-environments.md D702, D704): versions in the database.
+//! Agent environments (agents.md D702, D704): versions in the database.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL).
 

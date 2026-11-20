@@ -1,4 +1,4 @@
-//! Scans into the ontology (agent-environments.md D708, D728): the image, its SBOM, its
+//! Scans into the ontology (agents.md D708, D728): the image, its SBOM, its
 //! components and the flaws it is exposed to become objects of the `software_supply` pack,
 //! installed on first use. Safe to run again: everything is matched on its natural key, and
 //! an exposure a scan no longer finds is closed, so it stays as history.

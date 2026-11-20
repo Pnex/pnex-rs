@@ -1,4 +1,4 @@
-//! Image registries (agent-environments.md D703): an OCI registry and repository,
+//! Image registries (agents.md D703): an OCI registry and repository,
 //! with distinct read and write secrets in the vault.
 
 use sea_orm_migration::prelude::*;

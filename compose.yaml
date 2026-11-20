@@ -159,7 +159,7 @@ services:
       timeout: 3s
       retries: 10
 
-  # Server browser of the navigation rules (site-recipes.md D325): Chrome
+  # Server browser of the navigation rules (agents.md D325): Chrome
   # headless-shell over CDP. No token: reachable from the compose network
   # and 127.0.0.1 only (host-run backend: http://127.0.0.1:9222).
   browser:

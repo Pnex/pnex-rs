@@ -1,4 +1,4 @@
-//! Org browser endpoints (site-recipes.md D325): CDP browsers the org plays
+//! Org browser endpoints (agents.md D325): CDP browsers the org plays
 //! its navigation rules on. The token lives in the vault (`secret_id`,
 //! school of `geo_providers`); one default per org.
 

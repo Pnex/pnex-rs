@@ -144,7 +144,7 @@ pub enum SecretConsumerKind {
     MediaStream,
     /// Credential of an org geo provider (geo-layers.md L19).
     GeoProvider,
-    /// Token of an org browser endpoint (site-recipes.md D325).
+    /// Token of an org browser endpoint (agents.md D325).
     BrowserEndpoint,
     /// Key of an org web search provider (web-presence.md D360).
     WebSearchProvider,
@@ -152,7 +152,7 @@ pub enum SecretConsumerKind {
     Mailbox,
     /// Password of a connector to an outside database (pipelines.md D352).
     Connector,
-    /// Read or write secret of an image registry (agent-environments.md D703).
+    /// Read or write secret of an image registry (agents.md D703).
     ImageRegistry,
 }
 

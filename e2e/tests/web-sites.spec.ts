@@ -1,4 +1,4 @@
-// Websites and their navigation studio (site-recipes.md D323–D326): a site
+// Websites and their navigation studio (agents.md D323–D326): a site
 // added from the list, its starter rule saved, a step added by the action
 // strip, the code tab, two versions, then the rule deleted. No run is played:
 // that would depend on an outside site.

@@ -333,7 +333,7 @@ pub(crate) async fn unknown_datasets_for_deploy(
     Ok(violations)
 }
 
-/// Agents gate (agent-environments.md D713, D757): an `agent_run` names an agent of the
+/// Agents gate (agents.md D713, D757): an `agent_run` names an agent of the
 /// org and the person deploying may run agents; the runtime re-checks that person at each
 /// run. An `agent_run_finished` filtered on an agent names one of the org.
 pub(crate) async fn agent_runs_for_deploy(

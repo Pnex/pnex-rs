@@ -1,4 +1,4 @@
-//! Internal agents (agent-unification.md D781, D785): the assistant's loop on an
+//! Internal agents (agents.md D781, D785): the assistant's loop on an
 //! `internal_llm` run, against a scripted fake model. Every write becomes a proposal; a
 //! person's acceptance runs it with that person's rights.
 //!
@@ -450,7 +450,7 @@ async fn an_internal_agent_reads_proposes_its_writes_and_reports() {
     .await;
 }
 
-/// Plays the validation run of request `p` (validation-gate.md D836).
+/// Plays the validation run of request `p` (agents.md D836).
 async fn play_validator(
     server: &axum_test::TestServer,
     ctx: &loco_rs::app::AppContext,

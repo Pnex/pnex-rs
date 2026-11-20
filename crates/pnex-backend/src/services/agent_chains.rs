@@ -1,4 +1,4 @@
-//! Chains of agent runs (agent-environments.md D713, D716, D718, D765–D768). A chain has one
+//! Chains of agent runs (agents.md D713, D716, D718, D765–D768). A chain has one
 //! budget (runs, rounds of one agent, model calls of all its runs) and holds at most one
 //! subject among the active chains of the org. It runs one run at a time. When a run ends,
 //! its summary is published once on the org channel for the `agent_run_finished` nodes.

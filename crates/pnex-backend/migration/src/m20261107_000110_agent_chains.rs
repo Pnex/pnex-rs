@@ -1,4 +1,4 @@
-//! Chains of agent runs (agent-environments.md D716, D718): one budget and one subject per
+//! Chains of agent runs (agents.md D716, D718): one budget and one subject per
 //! chain, at most one active chain per subject; the run carries its chain and whether its
 //! end was published (D398). A flow remembers who deployed it: its `agent_run` nodes act
 //! within that person's rights (D757).

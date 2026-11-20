@@ -1,4 +1,4 @@
-//! Network of a micro-VM (agent-environments.md D762): one tap per VM, a /30 of its own,
+//! Network of a micro-VM (agents.md D762): one tap per VM, a /30 of its own,
 //! and an nftables table of its own on the host side. What leaves the tap goes only to
 //! the destinations of the claim and to the resolver; the rest is dropped, whatever the
 //! guest does inside. Needs `CAP_NET_ADMIN` in the runner's network namespace.

@@ -1,4 +1,4 @@
-//! Dependency caches of an agent run (agent-environments.md D730): what the sandbox restores
+//! Dependency caches of an agent run (agents.md D730): what the sandbox restores
 //! before setup and saves after the agent, by name and key, under the environment.
 
 use sea_orm_migration::prelude::*;

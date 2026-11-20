@@ -83,7 +83,7 @@ pub mod rules;
 pub mod runners;
 /// Org secrets vault (D110–D118).
 pub mod secrets;
-/// Site navigation rules, test runs and their journal (site-recipes.md D323–D326).
+/// Site navigation rules, test runs and their journal (agents.md D323–D326).
 pub mod site_recipes;
 pub mod stitch_jobs;
 /// System: O2 retention/cleanup + platform status (D72).

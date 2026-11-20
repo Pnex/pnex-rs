@@ -1,4 +1,4 @@
-//! Builds of an agent environment (agent-environments.md D700, D701): each one is a
+//! Builds of an agent environment (agents.md D700, D701): each one is a
 //! runner job, whose state it takes, plus the digest of the image it pushed.
 
 use sea_orm_migration::prelude::*;

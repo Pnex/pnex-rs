@@ -1,4 +1,4 @@
-//! The checksum of the SBOM of a scan (agent-environments.md D728): the document lives in
+//! The checksum of the SBOM of a scan (agents.md D728): the document lives in
 //! OpenObserve, and this says it was stored and what it must read back as.
 
 use sea_orm_migration::prelude::*;

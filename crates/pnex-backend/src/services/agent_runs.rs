@@ -1,4 +1,4 @@
-//! Runs of hosted agents (agent-environments.md D731). A run is a `sandbox` job on the
+//! Runs of hosted agents (agents.md D731). A run is a `sandbox` job on the
 //! active image of an environment. Its token is minted at each claim, stored hashed, and
 //! opens the LLM gateway only while that job runs: a stop, the end of the job or a
 //! takeover by another runner closes it at once.
