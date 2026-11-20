@@ -158,7 +158,7 @@ Les pipelines des deux packs collectent et stockent le brut. Les flows du pack r
 | Signal d'une page suivie (D335) | flow `Prospecting · watched pages to signals` | toutes les heures |
 | Nouvel établissement | flow `Prospecting · new establishments` | chaque matin |
 | Article rattaché à un compte | pipeline `press_gdelt` (filtre par nom) | écart justifié par le volume, au tableau D998 |
-| Relations d'un contact (D976) | code `services/network_connections.rs` | écart levé, code à retirer (§7) |
+| Relations d'un contact (D976) | pipeline du pack `prospecting_b2b` (PE5.4, en cours) | filtre à la collecte justifié par la minimisation, au tableau D998 |
 
 Le pipeline de recherche d'une personne collecte. Les trois flows du pack notent le profil, proposent ou capturent, puis relancent la requête suivante (`pipeline_ask`, D999). Rescorer veut dire relancer la collecte.
 
@@ -220,7 +220,7 @@ PneX ne surveille aucun profil et ne parcourt aucun graphe social (D254). Chaque
 
 Le texte capturé est purgé après 30 jours. Une personne opposée n'est ni capturée ni lue (`prospecting-opposed`).
 
-**Relations d'un contact (D976–D977) : retirées le 2026-11-18, code présent.** Le code lit les relations d'un contact déclaré en relation avec le membre. Il garde seulement les personnes d'une organisation qui porte l'étiquette du réglage `connections_keep_label`. Il écrit `knows` et propose `employs`. Le code restant :
+**Relations d'un contact (D976–D977) : gardées (Shan, 2026-11-20).** Le retrait du 2026-11-18 est annulé. La capture passe de la règle `connections_capture` à un pipeline du pack `prospecting_b2b` (PE5.4, en cours, `pipelines.md`). Le code lit les relations d'un contact déclaré en relation avec le membre. Il garde seulement les personnes d'une organisation qui porte l'étiquette du réglage `connections_keep_label`. Il écrit `knows` et propose `employs`. Le code actuel, avant PE5.4 :
 
 - la table `network_connections` (migration `m20261114_000152_network_connections`) et `services/network_connections.rs`.
 - les routes `GET`/`PUT /api/v1/extension/people/{id}/connection` et `GET`/`POST …/connections-captures`.
@@ -448,8 +448,8 @@ La période de l'écran Résultats est un filtre de session (D509, 365 jours par
 | D726 | Définition affichée | taux de gain, conversion, bloquée ; clic de barre sur le même écran |
 | D727 | Motifs de perte | `loss_category` + texte libre |
 | D779 | Liste des salariés d'une entreprise | une page, demandée par un humain, 10 par jour par org |
-| D976 | Relations d'un contact | retirée le 2026-11-18 ; code encore présent (§3.6) |
-| D977 | État de relation et règle `connections_capture` | retirée avec D976 ; code encore présent |
+| D976 | Relations d'un contact | gardée le 2026-11-20 ; capture par un pipeline de pack (PE5.4, en cours, §3.6) |
+| D977 | État de relation et règle `connections_capture` | gardée avec D976 ; la règle devient un pipeline de pack (PE5.4) |
 
 ## 6. Interfaces
 
@@ -464,7 +464,7 @@ Routes (sous `/api/v1`) :
 | `GET`/`POST /extension/people/{id}/profile-captures` | `extension:read` / `extension:write` | captures de profil |
 | `GET`/`POST /extension/organizations/{id}/people-captures` | `extension:read` / `extension:write` | listes de salariés |
 | `GET`/`POST /extension/people/{id}/opposition` | `extension:read` / `extension:write` | opposition |
-| `GET`/`PUT /extension/people/{id}/connection`, `GET`/`POST …/connections-captures` | `extension:read` / `extension:write` | D976–D977, à retirer |
+| `GET`/`PUT /extension/people/{id}/connection`, `GET`/`POST …/connections-captures` | `extension:read` / `extension:write` | D976–D977 |
 
 - **Packs** : `crates/pnex-backend/packs/{companies,companies_fr,prospecting_b2b,prospecting_b2b_fr,crm}.yaml`. Pipelines dans `packs/prospecting_b2b/pipelines/` et `packs/prospecting_b2b_fr/pipelines/`.
 - **Noyau** : `pnex_core::{fold, org_resolve, browser_agent}`, `ontology::{schema, page_render, aggregate, flow, api}`.
@@ -484,7 +484,6 @@ Routes (sous `/api/v1`) :
 
 Choix de Shan :
 
-- **D976–D977** : retirer le code des relations d'un contact (§3.6 : table, service, routes, règle, réglage, panneau) et la ligne du tableau des écarts D998. Ou rétablir l'écart comme justifié.
 - **Filtre par propriétaire et écran Équipe** : seulement après l'avis d'un juriste sur le suivi de l'activité de salariés. Objectifs par personne avec l'écran Équipe.
 - **Formulaire public de pistes** : reporté (2026-11-04), avec sa protection contre les abus.
 - **Q-CRM1** : purger du journal O2 les lignes d'un objet effacé avant sa rétention. Défaut tenu : pas de purge.

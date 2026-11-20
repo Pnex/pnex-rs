@@ -279,7 +279,7 @@ La route publique n'a pas d'authentification (S10). Elle sert un média seulemen
 9. Un enregistrement avec une version périmée doit répondre 409.
 10. Le format d'un tableau de bord ne doit pas changer après sa création.
 11. Une cible ou un média absent doit désactiver l'élément au rendu, jamais provoquer de panic.
-12. Un widget ne doit jamais lancer de calcul sur un dataset.
+12. Un widget ne doit jamais lancer de calcul sur une Table.
 13. Un calcul sur des objets ne doit jamais grouper, filtrer ni compter sur une donnée que l'appelant ne peut pas lire.
 14. Un calcul ne doit jamais additionner deux devises.
 15. Le partage public d'un parcours ne doit servir que les médias du document publié.
@@ -342,7 +342,7 @@ Calculs sur des objets :
 - **D582** : refus de tout calcul sur ce que l'appelant ne peut pas lire.
 - **D583** : `SourceRef.objects` (ensemble nommé ou requête).
 - **D584** : les widgets existants lisent la source, `object_count` retiré.
-- **D585** : un contrat, deux sources. Un widget ne lance jamais de calcul sur dataset.
+- **D585** : un contrat, deux sources. Un widget ne lance jamais de calcul sur une Table.
 - **D586** : délai de 5 s, minuteur propre, pas de cache.
 - **D587** : MCP, assistant, flows et SDK par la même route.
 - **D588** : le pack `crm` ne livre que des données d'écran.

@@ -17,7 +17,8 @@ porte aussi D998, la règle des trois couches : ingérer, manipuler, organiser (
 ## Concepts
 
 - **Lot (OP1…OP15)** : ensemble de capacités livré sous un PRD propre (§2).
-- **Dataset** : table versionnée par transactions sur S3, cataloguée dans PostgreSQL (D554).
+- **Table** : données versionnées par transactions sur S3, cataloguées dans PostgreSQL (D554).
+  Le code dit `dataset`.
 - **Connecteur** : cadre commun de lecture, d'écriture retour et de CDC vers un système externe
   (D555).
 - **Branche** : mécanisme unique pour données, schémas, applications et flows (D556).
@@ -66,7 +67,7 @@ Relevé du 2026-11-03. L'état détaillé de chaque capacité est dans les docs 
 
 | Lot | Capacités | Point de départ | Dépend de |
 |---|---|---|---|
-| **OP1** | Datasets versionnés (transactions, historique, retour dans le temps), lignage amont et aval, santé des données, ordonnanceur à dépendances, type d'objet adossé à un dataset | Rien (provenance par objet D184 seulement) | — |
+| **OP1** | Tables versionnées (transactions, historique, retour dans le temps), lignage amont et aval, santé des données, ordonnanceur à dépendances, type d'objet adossé à une Table | Rien (provenance par objet D184 seulement) | — |
 | **OP2** | Framework de connecteurs, bases (D352), SaaS et ERP, stockage cloud, écoute de webhooks, CDC, tables virtuelles, écriture retour déclarative | Fichier, URL, API, IMAP, RTSP | OP1 |
 | **OP3** | Droits par ligne (I4, I5), marquages obligatoires, habilitations utilisateur, accès par finalité, justification d'accès, détection de données sensibles, pseudonymisation, SAML, export d'audit, droits des personnes | Colonnes sensibles D442, audit D294 | — |
 | **OP4** | Branches transverses : données, ontologie, applications, flows ; revue et fusion ; polymorphisme (interfaces) d'ontologie | Versions par document | OP1 |
@@ -88,11 +89,11 @@ Ordre : OP1 → OP2 → OP3, puis OP5 et OP9. Le reste suit la demande client. L
 
 ## 3. Données (D554–D557, D998)
 
-### D554 — Le dataset devient une notion du noyau
+### D554 — La Table devient une notion du noyau
 
-Un dataset est une table versionnée par transactions sur S3, en Parquet. Le format ouvert Iceberg
+Une Table est versionnée par transactions sur S3, en Parquet. Le format ouvert Iceberg
 est retenu si `iceberg-rust` tient la mesure (Q-O1). Le catalogue est dans PostgreSQL. Un type
-d'objet peut être adossé à un dataset. Le stockage JSONB reste le défaut. L'exécution écrit le
+d'objet peut être adossé à une Table. Le stockage JSONB reste le défaut. L'exécution écrit le
 lignage, personne ne le déclare à la main.
 
 ### D555 — Connecteurs : un cadre unique, y compris en écriture
@@ -172,7 +173,7 @@ Tableau des écarts :
 | `markets/filing_events` (MK3) fait lire les communiqués 8-K par le fournisseur d'IA de l'org et en tire des événements | **ingestion** du contenu d'un document de la source. Le pipeline écrit seulement des **propositions** (création de `market_event` + lien `event_about` vers le déposant, affirmé par la source), chaque champ cité mot pour mot. Un membre accepte (Q-MK15, D119) | justifié le 2026-11-19 (markets 1.22.0) |
 | `markets/sec_subsidiaries` pose `subsidiary_of` depuis l'Exhibit 21 | lien affirmé par la source (le groupe déclare ses filiales) : admis | à garder |
 | `prospecting_b2b/profile_capture_*` posent `uses_identifier` vers le profil capté | adresse donnée par un humain sur la fiche de la personne : décision humaine, admis | à garder |
-| Relations d'un contact (D976, PE5.4) : seules les personnes nommant une organisation de la sélection sont gardées, à la collecte | **minimisation** (D254, D341) : une personne hors sélection n'est jamais écrite. `knows` est affirmé par le réseau | **levée le 2026-11-18** : exploration retirée (LinkedIn limité aux relations du membre connecté). Ligne à supprimer avec le code |
+| Relations d'un contact (D976, PE5.4) : seules les personnes nommant une organisation de la sélection sont gardées, à la collecte | **minimisation** (D254, D341) : une personne hors sélection n'est jamais écrite. `knows` est affirmé par le réseau | **justifié le 2026-11-20** : D976 gardé (Shan), le retrait du 2026-11-18 est annulé. La capture passe dans un pipeline du pack `prospecting_b2b` (PE5.4, en cours) |
 
 Décision sur Q-D998-1 (Q-D998-2 : voir la ligne presse du tableau des écarts) :
 
@@ -233,7 +234,7 @@ par défaut. Le cœur le connaît seulement comme un client de l'API.
 - **Export** : journalisé. Selon le marquage, il est bloqué ou soumis à justification.
 
 Le SDK Python et le SDK Rust sont générés du même spec et testés par la même garde que `task sdk`.
-Un notebook ne se déploie jamais en production. Une revue promeut son résultat en dataset ou en
+Un notebook ne se déploie jamais en production. Une revue promeut son résultat en Table ou en
 fonction.
 
 ### D560 — SDK typés et applications en code
@@ -461,7 +462,7 @@ Décisions des lots : D791–D806 (OP2, OP3), D825–D832 (OP5), D833–D840 (OP
 | Lot | État | PRD | Reste |
 |---|---|---|---|
 | OP1 | En grande partie livré | `pipelines.md` | voir le PRD |
-| OP2 | Livré (CN1–CN5) | `pipelines.md` §3.10 | choix du secret des webhooks, provisoire (`pipelines.md` §7) |
+| OP2 | Livré (CN1–CN5) | `pipelines.md` §3.10 | aucun : secret des webhooks généré ou collé, décidé le 2026-11-20 |
 | OP3 | Livré (G1–G7) | `governance.md` §7 | SAML à la première demande client, I4 général |
 | OP5 | Livré (AN1–AN3) + agrégats | `analysis.md` §2, `viz.md` | AN4 (analyse sans code), règle → proposition (D829) |
 | OP9 | Livré (VG1–VG3) | `agents.md` §3.12 | voir le PRD |
@@ -469,11 +470,5 @@ Décisions des lots : D791–D806 (OP2, OP3), D825–D832 (OP5), D833–D840 (OP
 
 ## Reste à faire
 
-Choix de Shan :
-
-- **D976** : le tableau des écarts dit l'exploration des relations d'un contact levée et « ligne à
-  supprimer avec le code ». Le code existe encore (`services/network_connections.rs`, routes D976 de
-  `controllers/extension.rs`, réglage `connections_keep_label` du pack `prospecting_b2b`). Retirer
-  ce code, ou rétablir l'écart comme justifié.
-- **« Dataset » ou « Table »** : le lexique de `design-system.md` §7 dit « Table » à l'écran. Ce
-  document dit « dataset » (D554). Décider si les docs d'architecture suivent le mot de l'UI.
+- **D976** (gardé le 2026-11-20) : la capture des relations d'un contact passe dans un pipeline
+  du pack `prospecting_b2b`. Ce lot (PE5.4, `pipelines.md`) est en cours.

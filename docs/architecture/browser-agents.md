@@ -260,7 +260,7 @@ Trois usages passent par des règles par défaut (`pnex_core::default_rules`), p
 |---|---|---|---|
 | Profil d'une personne (D333) : LinkedIn, X, Facebook, Instagram, TikTok, YouTube | fiche `person` | 30 par réseau | `ext-target-not-profile`, `prospecting-opposed` |
 | Salariés d'une entreprise sur LinkedIn (D779), 5 écrans | fiche `organization` | 10 | `ext-target-not-people-page` |
-| Relations LinkedIn d'un contact (D976–D977), 3 pages | fiche `person`, si l'utilisateur est en relation | 10 | `ext-not-connected`, `ext-connections-hidden` |
+| Relations LinkedIn d'un contact (D976–D977), 3 pages, bientôt par un pipeline de pack (PE5.4) | fiche `person`, si l'utilisateur est en relation | 10 | `ext-not-connected`, `ext-connections-hidden` |
 
 L'agent du demandeur exécute la capture, sinon un agent commun. Sans agent appairé, la demande est refusée (`site-recipe-no-agent`). L'opposition d'une personne (D341) bloque toute capture de son profil.
 
@@ -342,7 +342,7 @@ Tests : `crates/pnex-backend/tests/extension.rs`, tests unitaires des adaptateur
 ## 7. Reste à faire
 
 - **Publication** (question 4) : Chrome Web Store et signature AMO pour Firefox, ou chargement non empaqueté seulement ? Aujourd'hui : chargement non empaqueté en mode développeur. Choix de Shan.
-- **D976 retiré le 2026-11-18** (`crm.md` §3.6) : supprimer du code la règle `connections_capture`, la table `network_connections`, les routes `connection` et `connections-captures`, et le panneau de la fiche.
+- **D976 gardé le 2026-11-20** (`crm.md` §3.6) : le retrait du 2026-11-18 est annulé. La règle `connections_capture` devient un pipeline du pack `prospecting_b2b` (PE5.4, en cours, `pipelines.md`).
 - **U4b** (`agents.md`) : `collect_value`, `collect_page`, `follow_account`, `watch_live`, `crawl_site` et `capture_proof` doivent devenir des étapes ou des sorties de règle.
 - **D268** : coder la rétention par mission avec la phase « rétention et limites d'usage » (O91).
 - **Mission `search`** (proposée) : une recherche sur une plateforme dont chaque résultat passe par le registre des vidéos.
