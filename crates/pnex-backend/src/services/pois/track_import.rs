@@ -1,4 +1,4 @@
-//! Track files (cases-workspace.md K26): GPX (track points) and CSV (a time
+//! Track files (cases.md K26): GPX (track points) and CSV (a time
 //! column, latitude, longitude, optional altitude) read into fixes. Times
 //! with an offset or a `Z` are exact; times without one need the time zone
 //! of the recording, never guessed. Every unreadable row is reported, not

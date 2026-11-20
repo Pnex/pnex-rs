@@ -1,4 +1,4 @@
-// Causal chains and point-in-time views (cases-workspace.md appendix I,
+// Causal chains and point-in-time views (cases.md §3.6,
 // markets-research.md appendix H): a proposed chain shows its hops and lift,
 // a case opened from an alert offers the assistant frozen at the alert
 // + 15 min, and the model decisions page opens an analysis at a date. The

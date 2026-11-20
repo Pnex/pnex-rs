@@ -1,4 +1,4 @@
-//! Money flows of a case (cases-money.md K54–K57): payments extracted from
+//! Money flows of a case (cases.md K54–K57): payments extracted from
 //! the case events, and the Sankey layout of the Money view. Deterministic
 //! and wasm32-safe: the same input always draws the same diagram.
 //!

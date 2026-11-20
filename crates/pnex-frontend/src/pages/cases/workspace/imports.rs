@@ -1,4 +1,4 @@
-//! Imported tracks of a member (cases-workspace.md K26): pick a GPX or CSV
+//! Imported tracks of a member (cases.md K26): pick a GPX or CSV
 //! file, read the preview (points, span, rejected rows), give the time zone
 //! when the file's times carry none, then import. The imports of the member
 //! are listed with their file fingerprint and can be removed.

@@ -62,7 +62,7 @@ mod cluster;
 mod links;
 mod pins;
 mod placements;
-/// Position history in O2 (cases-workspace.md K26).
+/// Position history in O2 (cases.md K26).
 pub mod position_log;
 mod positions;
 pub mod track_import;

@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **Proposition — 2026-10-21, livrée par lots** (CC1, CC2, CC4, CC5, CC6, réunions, collecte, D779, D788 ; état en §10). Ouvert : registres étrangers, §8 |
 | Déclencheur | Besoin de prospection B2B : développer les comptes existants (filiales, sites, décideurs), cibler de nouvelles entreprises, repérer les événements déclencheurs, garder une trace de qui a recommandé qui |
-| Repose sur | `ontology.md` (D176–D191), `partner-watch.md` (D300–D316 : imports, clé naturelle, pack `companies_fr`, vue Hiérarchie, crawl, preuves, nœuds ontologie), `browser-agents.md` (D254–D284), `cases-money.md` et `cases-graph-sigma.md` (graphe, chemins K51), `iam.md` (D298 classification) |
+| Repose sur | `ontology.md` (D176–D191), `partner-watch.md` (D300–D316 : imports, clé naturelle, pack `companies_fr`, vue Hiérarchie, crawl, preuves, nœuds ontologie), `browser-agents.md` (D254–D284), `cases.md` (graphe, chemins K51), `iam.md` (D298 classification) |
 | Numérotation | **D329…D343**, lots **CC0…CC6** |
 | Cas de référence | un compte client à quelques sites dans un groupe plus large ; un grand groupe international avec filiales étrangères |
 

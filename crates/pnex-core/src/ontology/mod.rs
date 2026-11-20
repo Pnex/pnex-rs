@@ -245,7 +245,7 @@ pub struct LinkTypeDef {
     /// (markets-research.md D742, a market move attributed to a cause).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub member_only: bool,
-    /// A failure of the source may reach the target (cases-workspace.md
+    /// A failure of the source may reach the target (cases.md
     /// D905): a causal chain only follows these links, in their direction,
     /// open at the instant of the cause.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -432,7 +432,7 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
             may_contain: Some(TypeSet::Any),
             ..leaf(KIND_FOLDER)
         },
-        // Investigation case (cases-workspace.md): its events and its undated
+        // Investigation case (cases.md): its events and its undated
         // pieces are `in_case` links, its other members are what the events
         // involve; sub-cases by containment.
         ObjectTypeDef {
@@ -442,7 +442,7 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
             may_be_contained_in: Some(TypeSet::only(&[KIND_FOLDER, KIND_CASE])),
             ..leaf(KIND_CASE)
         },
-        // Dated event, the pivot of a case (cases-workspace.md K20): an
+        // Dated event, the pivot of a case (cases.md K20): an
         // instant or a period, to which objects are attached by `involves`.
         ObjectTypeDef {
             icon: "layers".into(),
@@ -566,7 +566,7 @@ pub const CASE_STATUS: &str = "status";
 pub const CASE_STATUSES: [&str; 3] = ["open", CASE_CONCLUDED, "archived"];
 pub const CASE_CONCLUDED: &str = "concluded";
 /// Declared processing basis of the personal data in the case: required
-/// before a person is attached (cases-workspace.md K38).
+/// before a person is attached (cases.md K38).
 pub const CASE_LEGAL_BASIS: &str = "legal_basis";
 /// Detector thresholds of the case (K30); unset = the detector default.
 pub const CASE_COPRESENCE_DISTANCE_M: &str = "copresence_distance_m";
@@ -574,7 +574,7 @@ pub const CASE_COPRESENCE_MIN_S: &str = "copresence_min_s";
 pub const CASE_STOP_DIAMETER_M: &str = "stop_diameter_m";
 pub const CASE_STOP_MIN_S: &str = "stop_min_s";
 pub const CASE_SIGNAL_GAP_S: &str = "signal_gap_s";
-/// Lift a causal chain must reach to be proposed (cases-workspace.md D908).
+/// Lift a causal chain must reach to be proposed (cases.md D908).
 pub const CASE_CAUSAL_MIN_LIFT: &str = "causal_min_lift";
 /// The page holding the conclusion (K8), versioned when the case concludes.
 pub const CASE_CONCLUSION_PAGE: &str = "conclusion_page";
@@ -588,7 +588,7 @@ pub const CHECK_RESULTS: [&str; 3] = ["ok", "unknown", "finding"];
 /// case; removing it closes the link. Roles live on `involves`.
 pub const REL_IN_CASE: &str = "in_case";
 
-/// Dated event (cases-workspace.md K20): system type without a native table.
+/// Dated event (cases.md K20): system type without a native table.
 pub const KIND_EVENT: &str = "event";
 /// When it happened, at the precision known (instant or `range` period).
 pub const EVENT_OCCURRED: &str = "occurred";
@@ -602,7 +602,7 @@ pub const EVENT_ORIGIN_FLOW: &str = "flow";
 /// Place set by hand when no attached object locates the event.
 pub const EVENT_LOCATION: &str = "location";
 /// Money moved by the event: with `payer` and `payee` attachments, the
-/// event is a payment (cases-money.md K55).
+/// event is a payment (cases.md K55).
 pub const EVENT_AMOUNT: &str = "amount";
 /// Analysis note (K34): system type without a native table.
 pub const KIND_NOTE: &str = "note";

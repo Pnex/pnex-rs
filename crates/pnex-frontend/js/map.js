@@ -44,7 +44,7 @@ maplibreGl.setWorkerUrl(
   'use strict';
 
   var VIEW_DEBOUNCE_MS = 300;
-  // Track layers (cases-workspace.md K28): whole route dashed, then the
+  // Track layers (cases.md K28): whole route dashed, then the
   // past up to the cursor in two opacity slices by age.
   var TRACK_LAYERS = [
     { id: 'pnex-trk-full', opacity: 0.35, width: 2, dash: [2, 2] },

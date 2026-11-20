@@ -1,4 +1,4 @@
-//! Cases API (cases-workspace.md): `/api/v1/cases/*`. Edits of an event's
+//! Cases API (cases.md): `/api/v1/cases/*`. Edits of an event's
 //! title or date, and of the case itself, go through the ontology API.
 
 use pnex_core::ontology::api::{

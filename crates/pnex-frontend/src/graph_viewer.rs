@@ -1,4 +1,4 @@
-//! Bridge to the Sigma case graph (cases-graph-sigma.md GS1–GS2):
+//! Bridge to the Sigma case graph (cases.md GS1–GS2):
 //! `assets/graph.js` exposes `window.pnexGraph`, loaded by `main.rs` like
 //! `map.js`. Every payload crosses as JSON (R13). Events come back by
 //! polling `window.__pnexGraphEvent` (no closure crosses the bridge, works

@@ -5782,7 +5782,7 @@ voice-page-clips = { $count } clip(s)
 voice-identify-title = Recognize a voice
 voice-identify-help = Compares a recording with every ready profile of the chosen model. The tested audio is not kept.
 
-# Case workspace (cases-workspace.md)
+# Case workspace (cases.md)
 cw-title = Investigation name
 cw-status = Status
 cw-frame = Frame
@@ -6248,7 +6248,7 @@ err-lab-review-full = The review queue of this project is full (500 pictures): l
 err-lab-propagate-no-previous = Label a picture before this one in the same video or recording.
 err-asr-runtime-unavailable = This server cannot run models of family { $family }: its transcription runtime is not installed. Import a sherpa-onnx model instead, or ask the administrator for a build with this runtime.
 
-## Money view of a case (cases-money.md K57)
+## Money view of a case (cases.md K57)
 money-view = Money
 money-empty-title = No payment in this case
 money-empty-help = A payment is an event with an amount: open an event, enter its amount, then attach a payer and a payee.

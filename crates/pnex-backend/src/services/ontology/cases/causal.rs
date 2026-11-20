@@ -1,4 +1,4 @@
-//! Typed signals of a case (cases-workspace.md D904, L8b): the raw signals
+//! Typed signals of a case (cases.md D904, L8b): the raw signals
 //! of the case (`signals.rs`) turned into `pnex_core::rca::Signal`, plus the
 //! device transitions (`device_events`) and the crossings of the declared
 //! bounds of member series. The detector `causal_chain@1` (`detect.rs`)

@@ -1,4 +1,4 @@
-//! `/cases` — investigation cases (docs/architecture/cases-workspace.md): a
+//! `/cases` — investigation cases (docs/architecture/cases.md): a
 //! case holds dated events and undated pieces. The list creates a case from
 //! a title dialog, or from an exported case file; the workspace (`workspace/`) is the timeline, the map,
 //! the links and the inspector on one screen.

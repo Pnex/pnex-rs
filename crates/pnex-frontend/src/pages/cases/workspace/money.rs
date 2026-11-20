@@ -1,4 +1,4 @@
-//! Money view of a case (cases-money.md K57): a Sankey diagram of the
+//! Money view of a case (cases.md K57): a Sankey diagram of the
 //! payments, from payers on the left to payees on the right. What an
 //! intermediary received and did not pass on shows as "untraced"; a payment
 //! that goes back up the chain is a dashed loop above, never dropped. A

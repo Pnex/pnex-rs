@@ -420,7 +420,7 @@ const RULES: &[Rule] = &[
         term: "annotated",
         use_instead: "labeled (Vision Lab)",
         allowed_keys: &["annot-"],
-    }, // cases-money.md: money moved by an event is a « versement » shown in
+    }, // cases.md: money moved by an event is a « versement » shown in
     // the « Argent » view; « flux » is the stream (Flux / Streams).
     Rule {
         scope: Scope::Fr,

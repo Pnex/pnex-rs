@@ -1,4 +1,4 @@
-//! Areas (cases-workspace.md K29): the `geo_area` property kind, a circle
+//! Areas (cases.md K29): the `geo_area` property kind, a circle
 //! `{"center": {"lon", "lat"}, "radius_m"}` or a GeoJSON polygon with one
 //! outer ring `{"type": "Polygon", "coordinates": [[[lon, lat], ...]]}`
 //! (closed, at most [`MAX_VERTICES`] vertices, not self-intersecting).

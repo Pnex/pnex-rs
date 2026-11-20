@@ -1,4 +1,4 @@
-//! Case workspace (cases-workspace.md K30, K33, K44, K45): proposals computed
+//! Case workspace (cases.md K30, K33, K44, K45): proposals computed
 //! by the detectors (proposed → retained | rejected, never re-proposed after
 //! a rejection thanks to the fingerprint) and frozen snapshots of a case
 //! (canonical JSON + SHA-256, immutable), and imported tracks (K26): files

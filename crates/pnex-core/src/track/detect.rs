@@ -1,4 +1,4 @@
-//! Detectors over the tracks of a case window (cases-workspace.md K30):
+//! Detectors over the tracks of a case window (cases.md K30):
 //! co-presence of two members, stops, signal losses, visits of an area. Pure functions on
 //! gap-free segments ([`super::split_gaps`]); a signal gap is never bridged,
 //! so nothing is detected while a member is unobserved. The server turns the

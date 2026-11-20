@@ -1,4 +1,4 @@
-//! Deterministic force layout of a case graph (cases-workspace.md K31):
+//! Deterministic force layout of a case graph (cases.md K31):
 //! Fruchterman–Reingold on a fixed number of iterations, seeded by a string
 //! (the case id), so the same graph always draws the same. Nodes with a
 //! position already (placed earlier, or moved by hand) stay put: adding a

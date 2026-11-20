@@ -1,4 +1,4 @@
-//! Map of the case (cases-workspace.md K28): each tracked member's route,
+//! Map of the case (cases.md K28): each tracked member's route,
 //! travelled up to the cursor, and where it stands at the cursor; the
 //! located members (places, areas, POIs) as markers; on the org basemap,
 //! framed once on all of it. A list of what is located centres the map on

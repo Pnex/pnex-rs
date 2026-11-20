@@ -556,7 +556,7 @@ pub struct Pack {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub settings: Vec<PackSetting>,
     /// Cause → effect pairs of the causal chain detector
-    /// (cases-workspace.md D906); each one is also two settings.
+    /// (cases.md D906); each one is also two settings.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub causal_pairs: Vec<crate::rca::PackPair>,
 }
@@ -950,7 +950,7 @@ pub struct PackTakeInput {
     pub names: Vec<String>,
 }
 
-/// Opening a case: from scratch, or from a dated alert (cases-workspace.md
+/// Opening a case: from scratch, or from a dated alert (cases.md
 /// K20): its first event is then the alert, with the flow that raised it
 /// and the flow's neighbours attached as context.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -959,7 +959,7 @@ pub struct CaseOpenInput {
     pub title: String,
     #[serde(default)]
     pub from: Option<CaseFrom>,
-    /// Opens it as a sub-case of this case (cases-graph-sigma.md GS16).
+    /// Opens it as a sub-case of this case (cases.md GS16).
     #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub parent_id: Option<String>,
@@ -1319,7 +1319,7 @@ pub struct CaseBoard {
     pub contradicted: Vec<BoardClaim>,
 }
 
-/// Tracks request (cases-workspace.md K27): an RFC 3339 window, the
+/// Tracks request (cases.md K27): an RFC 3339 window, the
 /// duration one timeline pixel stands for (drives the generalisation), and
 /// the gap beyond which two observations are a signal loss.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

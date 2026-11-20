@@ -1,6 +1,6 @@
 # Benchmark — Dossier d'enquête (phase 0 de la refonte)
 
-**Date :** 2026-10-12 · **Pour :** PRD `docs/architecture/cases-workspace.md`
+**Date :** 2026-10-12 · **Pour :** PRD `docs/architecture/cases.md`
 (refonte de l'écran dossier, phase 0 « benchmark open source »).
 **Fiches complètes** (une par projet, 9 sections, références
 `chemin:ligne`) : `docs/bench/dossier-enquete/*.md`. Ce fichier en est la

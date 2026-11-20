@@ -1,4 +1,4 @@
-//! The case graph (cases-workspace.md K31): events (diamonds) and the
+//! The case graph (cases.md K31): events (diamonds) and the
 //! objects they involve (circles), an edge per attachment with its role,
 //! the ontology relations among members dashed (faded before they start,
 //! hidden once closed at the cursor). A deterministic force layout (`pnex_core::ontology::layout`,
@@ -8,7 +8,7 @@
 //! after the cursor fades (only classes change per frame). Double-click an
 //! object to expand it: its neighbours counted by link and type, then the
 //! ones picked, until "Undo expansion" or "Keep" (they join the undated).
-//! Drawn by Sigma.js when the browser can (cases-graph-sigma.md, bridge in
+//! Drawn by Sigma.js when the browser can (cases.md, bridge in
 //! `graph_viewer.rs`), by the SVG below otherwise.
 
 use std::collections::{HashMap, HashSet};
@@ -54,11 +54,11 @@ pub(super) struct GNode {
     pub family: &'static str,
     /// The object's type key (`event` for an event): the cluster view's group.
     pub type_key: String,
-    /// Pieces and claims folded into this node (cases-money.md K49).
+    /// Pieces and claims folded into this node (cases.md K49).
     pub evidence: usize,
 }
 
-/// Colour family of an object type in the graph (cases-graph-sigma.md GS6).
+/// Colour family of an object type in the graph (cases.md GS6).
 pub(super) fn family(type_key: &str) -> &'static str {
     match type_key {
         "person" => "person",
@@ -368,7 +368,7 @@ pub(super) fn faded(nodes: &[GNode], edges: &[GEdge], cursor: i64) -> Vec<bool> 
     out
 }
 
-/// What graph.js draws (cases-graph-sigma.md GS3): nodes with their saved
+/// What graph.js draws (cases.md GS3): nodes with their saved
 /// or held position if any, edges by node id.
 pub(super) fn sigma_data(
     nodes: &[GNode],

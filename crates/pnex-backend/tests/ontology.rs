@@ -713,7 +713,7 @@ async fn device_placements_become_placed_at_links() {
     .await;
 }
 
-/// Case tracks (cases-workspace.md K27): the window is bounded and
+/// Case tracks (cases.md K27): the window is bounded and
 /// validated; another org gets 404 (R1); without a readable position
 /// history the answer says so instead of failing.
 #[tokio::test]
@@ -747,7 +747,7 @@ async fn case_tracks_window_isolation_and_unavailable_history() {
     .await;
 }
 
-/// Case detections (cases-workspace.md K30): without a readable position
+/// Case detections (cases.md K30): without a readable position
 /// history nothing is proposed; a proposal is retained once (same event on a
 /// second retain, members attached as actors, provenance of the proposal,
 /// listed in the shared inbox),
@@ -842,7 +842,7 @@ async fn case_detections_are_proposed_and_reviewed_by_a_human() {
     .await;
 }
 
-/// Imported tracks (cases-workspace.md K26, K29, K30): a GPX previewed then
+/// Imported tracks (cases.md K26, K29, K30): a GPX previewed then
 /// imported onto a member serves its track with no telemetry store, the same
 /// file twice is one import, a CSV without offset needs a time zone, the
 /// detectors see the import (a zone visit and a stop, nothing new on a
@@ -1113,7 +1113,7 @@ fn undated(w: &Value) -> Vec<String> {
     t
 }
 
-/// Case workspace (cases-workspace.md K20–K22): events created with their
+/// Case workspace (cases.md K20–K22): events created with their
 /// first attachments in one gesture, roles defaulting by type and closed,
 /// undated pieces, detaching keeps a piece in the case, removing an event
 /// keeps its pieces; signals leave the workspace's own operations out;
@@ -1219,7 +1219,7 @@ async fn case_workspace_events_attachments_and_signals() {
     .await;
 }
 
-/// Opening a case from an alert (cases-workspace.md K20): its first event is
+/// Opening a case from an alert (cases.md K20): its first event is
 /// the alert at its instant, the flow that raised it attached as source,
 /// its neighbours then as context; a range scoped on a member is a signal;
 /// another org's flow adds nothing (R1); a viewer cannot open a case (R2).
@@ -1289,7 +1289,7 @@ async fn case_opened_from_an_alert() {
     .await;
 }
 
-/// Sub-cases (cases-graph-sigma.md GS16, GS17): opened under a case of the
+/// Sub-cases (cases.md GS16, GS17): opened under a case of the
 /// org, they take its legal basis; the parent lists them with the members
 /// they share, the sub-case lists its parents; a parent from another org
 /// or that is not a case is refused (R1); a viewer cannot open one (R2).
@@ -1425,11 +1425,11 @@ async fn sub_cases_nest_under_their_parent() {
     .await;
 }
 
-/// Investigation pack (cases.md K5, K7, cases-workspace.md K38): approximate
+/// Investigation pack (cases.md K5, K7, K38): approximate
 /// dates are validated; a person joins a case only once its processing
 /// basis is declared; a claim becomes corroborated only with two pieces of
 /// distinct origins.
-/// cases-money.md K54–K56: an event with an amount and payer/payee
+/// cases.md K54–K56: an event with an amount and payer/payee
 /// attachments is a payment; money and shares are validated server-side.
 #[tokio::test]
 #[serial]
@@ -1965,7 +1965,7 @@ async fn investigation_pack_legal_basis_and_claims() {
     .await;
 }
 
-/// Board and export (cases.md K8, cases-workspace.md K33): the board puts
+/// Board and export (cases.md K8, K33): the board puts
 /// claims for and against each hypothesis and flags unsourced and
 /// contradicted claims; the export (`pnex.case/1`) holds the workspace,
 /// counts persons and lists pieces; another org reads nothing (R1).

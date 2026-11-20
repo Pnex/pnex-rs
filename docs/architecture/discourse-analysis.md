@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | Statut | **Proposé — 2026-10-12**, zéro code. Emplacement du composant **ouvert** (§5) |
-| Contexte | Prolongement de l'enquête média (`cases-workspace.md` K42–K47) : repérer les formules qui reviennent d'un locuteur et d'un média à l'autre, mesurer la diversité des voix et des sources, documenter des indices de coordination |
-| Repose sur | Captation et transcription (`media-ingest.md` D159–D175, lots 0–6 codés), déclarations et détecteurs (`cases-workspace.md` K43–K45), apparitions (`cases.md` K17), ontologie (liens temporels D179, packs D190), recherche documentaire (`doc-search.md` : Postgres + `pg_trgm` + `pgvector`), assistant (`ai-assistant.md` §9, D123) |
+| Contexte | Prolongement de l'enquête média (`cases.md` K42–K47) : repérer les formules qui reviennent d'un locuteur et d'un média à l'autre, mesurer la diversité des voix et des sources, documenter des indices de coordination |
+| Repose sur | Captation et transcription (`media-ingest.md` D159–D175, lots 0–6 codés), déclarations et détecteurs (`cases.md` K43–K45), apparitions (K17), ontologie (liens temporels D179, packs D190), recherche documentaire (`doc-search.md` : Postgres + `pg_trgm` + `pgvector`), assistant (`ai-assistant.md` §9, D123) |
 | Numérotation | **DA1…DA10** |
 
 ## 1. Le besoin
@@ -152,7 +152,7 @@ de `cases.md` K11, l'humain accepte un par un ou par lot.
 | Couche | Où | Rôle |
 |---|---|---|
 | Brut | O2 `tx_<slug>` (existant, D165) | Tout ce qui est capté ; relu par fenêtre de temps et par flux ; `match_all` pour une formule **connue**, `histogram` pour sa courbe |
-| Déclarations | O2 `statements`, puis objets `statement` dans Postgres une fois retenues (`cases-workspace.md` K43) | Volume borné aux intervenants suivis |
+| Déclarations | O2 `statements`, puis objets `statement` dans Postgres une fois retenues (`cases.md` K43) | Volume borné aux intervenants suivis |
 | Empreintes | Option A : calculées à la volée ; option B : Postgres `phrase_fingerprints` | Découverte des formules (O2 n'a ni index de fragments ni recherche vectorielle) |
 | Variantes | Postgres `pgvector` (existant pour les documents) | Similarité de sens |
 | Actionnariat, liens, affiliations | Ontologie Postgres (graphe par requête récursive, existant) | Contexte des propos |
@@ -215,7 +215,7 @@ Contenu :
 Il requiert le pack Couverture médiatique (actionnariat, chaînes,
 émissions) et `investigation` (déclarations).
 
-## 9. Lots (après le lot L7 de `cases-workspace.md`)
+## 9. Lots (après l'enquête média de `cases.md` §3.11)
 
 | Lot | Contenu | Sortie vérifiable |
 |---|---|---|

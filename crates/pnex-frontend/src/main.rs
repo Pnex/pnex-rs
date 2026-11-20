@@ -139,7 +139,7 @@ fn App() -> Element {
         // Pages editor (pages.md #21) — ProseMirror + Yjs, IIFE exposing
         // window.pnexDoc (see doc_editor.rs).
         script { src: asset!("/assets/doc.js") }
-        // Case graph (cases-graph-sigma.md) — Sigma.js + graphology, IIFE
+        // Case graph (cases.md) — Sigma.js + graphology, IIFE
         // exposing window.pnexGraph (see graph_viewer.rs).
         script { src: asset!("/assets/graph.js") }
         style { {VIEWERS_CSS_INLINE} }

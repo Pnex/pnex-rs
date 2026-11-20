@@ -1,4 +1,4 @@
-//! Position history (cases-workspace.md K26): every complete GPS pair of a
+//! Position history (cases.md K26): every complete GPS pair of a
 //! device lands in the org's O2 `positions` logs stream, so a case can
 //! replay trajectories. `device_positions` keeps only the latest one (D38).
 //!

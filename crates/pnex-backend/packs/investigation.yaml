@@ -4,10 +4,10 @@
 # claims sourced by pieces at an exact locator (corroborated with two
 # origins, or one and a written justification), hypotheses they support or
 # contradict, identifiers. Events and the `involves` attachment are core
-# types since 1.3.0 (cases-workspace.md K20, K21): the pack uses them. Since
+# types since 1.3.0 (cases.md K20, K21): the pack uses them. Since
 # 1.4.0 a place may carry a zone (geo_area, K29) for the zone detector.
 # Since 1.5.0 names carry their French translation (`names`, O43).
-# Since 1.6.0 `owns` carries the share held (cases-money.md K56): chains
+# Since 1.6.0 `owns` carries the share held (cases.md K56): chains
 # of shares give the computed beneficial owners.
 # Since 1.7.0 people and organizations carry their Wikidata id, and
 # `owns`, `employs`, `member_of` carry their provenance (source, retrieval
@@ -18,7 +18,7 @@
 # Since 1.9.0 `about` may name the very link a claim bears on (`link`, the
 # link id): a second source or a diverging date for a fact already linked.
 # Since 1.10.0 a statement is quoted word for word from a media, said by a
-# person (cases-workspace.md K43), and a person appears in a media file
+# person (cases.md K43), and a person appears in a media file
 # (`appears_in`, cases.md K17, media-review.md D278): present, speaking or
 # mentioned, with the origin of the finding. The programme grain stays
 # `appears_on` of the media coverage pack.

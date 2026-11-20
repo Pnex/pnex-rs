@@ -1,4 +1,4 @@
-// Cuts a track at the cursor (cases-workspace.md K28). A segment is a
+// Cuts a track at the cursor (cases.md K28). A segment is a
 // gap-free list of [lon, lat, t_ms] sorted by time; nothing is interpolated
 // across two segments (signal gap). Mirrors pnex_core::track::sample.
 

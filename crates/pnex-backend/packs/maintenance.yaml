@@ -10,7 +10,7 @@
 # Since 1.3.0 names carry their French translation (`names`, O43).
 # Since 1.5.0 controllers and compressors, links that propagate a failure
 # (regulates, powers, cools, feeds) and the cause → effect pairs of the causal
-# chain detector (cases-workspace.md D905, D906).
+# chain detector (cases.md D905, D906).
 # Since 1.6.0 work orders, spare parts, stock locations and a stock kept as a
 # ledger of movements (ontology.md annex C): closing a work order issues the
 # parts it used, and the stock levels flow sums the movements per part and

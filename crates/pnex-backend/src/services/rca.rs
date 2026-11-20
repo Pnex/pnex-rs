@@ -1,4 +1,4 @@
-//! Shared inputs of the causal chain detector (cases-workspace.md D905,
+//! Shared inputs of the causal chain detector (cases.md D905,
 //! markets-research.md H.7): the links that propagate a failure, as they
 //! were known at an instant, and the pairs in force for the org.
 

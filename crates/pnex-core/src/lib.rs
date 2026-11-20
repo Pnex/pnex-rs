@@ -29,7 +29,7 @@ pub mod mt5;
 pub mod named_query;
 /// QR tags of objects (parts-docs.md D962–D963).
 pub mod qr;
-/// Causal chain detector (cases-workspace.md appendix I, D904–D908).
+/// Causal chain detector (cases.md §3.6, D904–D908).
 pub mod rca;
 /// Runners of the worker fabric (agents.md §3.3).
 pub mod runners;
@@ -43,7 +43,7 @@ pub mod builds;
 pub mod egress;
 pub mod geo;
 /// Position tracks of a case: normalisation, signal gaps, sampling,
-/// generalisation (cases-workspace.md K25–K28).
+/// generalisation (cases.md K25–K28).
 pub mod geo_area;
 pub mod track;
 pub use builds::*;

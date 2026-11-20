@@ -1,4 +1,4 @@
-// The case graph drawn by Sigma.js (cases-graph-sigma.md GS1–GS10), bundled
+// The case graph drawn by Sigma.js (cases.md GS1–GS10), bundled
 // as an IIFE into assets/graph.js and loaded by main.rs like map.js.
 //
 // window.pnexGraph:
@@ -89,7 +89,7 @@ function drawLabel(ctx, data, settings) {
   ctx.font = `${data.highlighted ? 600 : 400} ${size}px ${settings.labelFont}`;
   const [x, y] = [data.x + data.size + 4, data.y + size / 3];
   const textW = ctx.measureText(data.label).width;
-  // Folded pieces and claims (cases-money.md K49): a count pill after the label.
+  // Folded pieces and claims (cases.md K49): a count pill after the label.
   const badge = data.evidence > 0 ? String(data.evidence) : '';
   const badgeW = badge ? ctx.measureText(badge).width + 10 : 0;
   const box = [x - 2, y - size, x + textW + (badge ? badgeW + 6 : 0) + 2, y + 4];

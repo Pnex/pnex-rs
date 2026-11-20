@@ -1,4 +1,4 @@
-//! Frozen states of a case (cases-workspace.md K33), in the case frame:
+//! Frozen states of a case (cases.md K33), in the case frame:
 //! freeze with an optional label, list them with their fingerprint, save
 //! one as JSON (the fingerprinted bytes) or as Markdown.
 

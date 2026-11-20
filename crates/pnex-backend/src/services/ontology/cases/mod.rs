@@ -1,4 +1,4 @@
-//! Investigation cases (cases-workspace.md). A case holds dated events and
+//! Investigation cases (cases.md). A case holds dated events and
 //! undated pieces through `in_case` links; objects are attached to events by
 //! `involves` with a role (evidence, actor, context, hypothesis, source).
 //! Members are derived: the events, what they involve, the undated pieces.

@@ -1,4 +1,4 @@
-//! The "+" panel (cases-workspace.md K22, K34): the case members and a
+//! The "+" panel (cases.md K22, K34): the case members and a
 //! search over the org's objects, dragged onto an event, a lane or the
 //! graph; a click selects. The undated pieces are its second tab, still a
 //! drop target. Opened on demand, like the editors' palette.

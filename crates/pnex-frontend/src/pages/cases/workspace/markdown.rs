@@ -1,4 +1,4 @@
-//! Markdown export of a case (cases-workspace.md K33): the frame, the
+//! Markdown export of a case (cases.md K33): the frame, the
 //! timeline with what each event involves, the undated pieces, the
 //! hypotheses board, the pieces manifest and, from a frozen state, its
 //! number, fingerprint and reviewed detections. Rendered here so the

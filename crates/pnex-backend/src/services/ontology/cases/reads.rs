@@ -1,4 +1,4 @@
-//! Access log of persons' tracks (cases-workspace.md K38): every read of
+//! Access log of persons' tracks (cases.md K38): every read of
 //! tracks that holds a person (the timeline, the detectors, a frozen state)
 //! lands in the org's O2 `case_reads` stream: who, which case, which
 //! objects, which window. Ids only: a purged person leaves no name behind.

@@ -1,4 +1,4 @@
-//! Saved arrangement of the case graph (cases-workspace.md K31): when the
+//! Saved arrangement of the case graph (cases.md K31): when the
 //! team moves nodes for a clearer picture, the positions are kept for
 //! everyone who opens the case; "Re-layout" clears them and the automatic
 //! layout takes over again. Layout coordinates, never screen pixels.

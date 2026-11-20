@@ -230,7 +230,7 @@ tâche).
 | **Marché du travail** | **Premiers lots** 2026-11-15 (`labor-market.md` §11) : pack `labor_market_fr`, pipelines BMO, tension (API France Travail) et offres d'emploi quotidiennes, requêtes nommées ; moteur : xlsx, client credentials, POST JSON, pagination par plage | Identifiants francetravail.io de l'org au coffre ; ISCO/NUTS (LM1), rapprochement offres → sites (LM2), INSEE (LM3), score et zones (LM4, LM5) |
 | **Pages collaboratives** | **L1–L2 sur `main`** 2026-10-10/11 (`pages.md` §15) : yrs serveur + Yjs client, édition live multi-pods, versions nommées, commentaires ancrés, import/export Markdown, éditeur façon Notion. 2026-10-13 : versions écrites par un flow, approbation, **export PDF** (krilla, part de L7) | Indexation des pages, import .docx, test multi-pods réel ; L3+ (mentions, vues de collection, procédures) — P2.17 |
 | **Documents & recherche IA** | **P1 sur `main`** 2026-10-10 (`doc-search.md` §14) : extraction txt/md/docx/pdf/csv/xlsx/ods, `text_chunks` partagé, recherche lexicale, outils de l'assistant cités, **liste blanche stricte des téléversements** | Visionneuse PDF, outils testés avec un vrai LLM ; P2+ (pgvector, tableurs en SQL) après la 0.2.0 — P2.18 |
-| **Dossiers (enquête, RCA)** | **Sur `main`** 2026-10-11/12 (`cases.md`, `cases-workspace.md`) : dossiers à membres et liens datés, ouverture depuis un événement, pack `investigation`, hypothèses, gel et export, **espace de travail plein écran** frise × carte × graphe (sigma, repli SVG), traces O2 `positions`. **Empreinte vocale** K19 variante A (`voice-id.md`) : profils consentis par Personne | Détecteurs (co-présence, zones, arrêts), enquête média K42–K47, avis juridique K19, ACL par dossier (V2, D188) — P2.19 |
+| **Dossiers (enquête, RCA)** | **Sur `main`** 2026-10-11/12 (`cases.md`) : dossiers à membres et liens datés, ouverture depuis un événement, pack `investigation`, hypothèses, gel et export, **espace de travail plein écran** frise × carte × graphe (sigma, repli SVG), traces O2 `positions`. **Empreinte vocale** K19 variante A (`voice-id.md`) : profils consentis par Personne | Détecteurs (co-présence, zones, arrêts), enquête média K42–K47, avis juridique K19, ACL par dossier (V2, D188) — P2.19 |
 | **Hub de kits** | **PRD gelé** 2026-10-10 (`hub.md`) — partage communautaire par Git + CI + index statique, slots et requirements | Rien avant la 0.2.0 — P3 |
 
 ## Branches mergées le 2026-10-13
@@ -839,7 +839,7 @@ Lots C0 → C8. Proposé à l'origine : C0–C1 comme validation de la 0.2.0
 (première application du noyau) ; C0–C7 sont sur `main` depuis le
 2026-10-12. Décision #24.
 
-**Refonte de l'écran (2026-10-12)** — PRD `cases-workspace.md` v0.2
+**Refonte de l'écran (2026-10-12)** — PRD `cases.md` v0.2
 (K20–K41) : l'écran formulaire devient un espace de travail frise ×
 carte × graphe. L'événement daté entre dans le noyau (`event`, attache
 `involves` à rôle fermé), les membres se déduisent des attaches, les
@@ -1572,7 +1572,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   fragments), mesures de pluralisme sourcées, indices de coordination
   documentés sans conclusion automatique ; emplacement du composant
   ouvert (proposé : outil de l'assistant depuis une note).
-- **2026-10-12 (dossiers, refonte)** — PRD `cases-workspace.md` v0.2 et
+- **2026-10-12 (dossiers, refonte)** — PRD `cases.md` v0.2 et
   benchmark de 6 projets (OpenAleph, OpenCTI, Timesketch, DFIR-IRIS,
   kepler.gl, MovingPandas) : brut et retenu séparés, événement au noyau,
   traces O2, graphe natif ; amende K1, K2, K6 de `cases.md`.

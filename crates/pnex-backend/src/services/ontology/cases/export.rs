@@ -1,4 +1,4 @@
-//! Export of a case (cases-workspace.md K33, schema `pnex.case/1`): its
+//! Export of a case (cases.md K33, schema `pnex.case/1`): its
 //! events with their attachments, its undated pieces, the hypotheses board
 //! and the pieces manifest, as they are now. Frozen states come from
 //! `case_snapshots`, never from replaying the change journal.

@@ -19,7 +19,7 @@
 | Orchestrateur d'analyses d'un fichier | `media_analyses` (D213) | codé (`index`, `summarize`) |
 | Profil vocal par Personne, test 1:1 et 1:N, verdict avec marge | `services/voice_id/`, `pnex_core::voice_id` | livré, **une seule voix par extrait testé** |
 | Apparitions (`present` / `speaking` / `mentioned`, origine, confiance) | `cases.md` K17 | spécifié |
-| Déclaration verbatim rattachée à sa source (`statement`, `said_by`) | `cases-workspace.md` K43, pack `investigation` | spécifié |
+| Déclaration verbatim rattachée à sa source (`statement`, `said_by`) | `cases.md` K43, pack `investigation` | spécifié |
 
 Ce qui manque : l'écran, la notion d'**attribution** d'un passage à une
 personne, l'identification vocale **par locuteur** (et non par extrait),

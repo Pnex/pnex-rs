@@ -244,7 +244,7 @@ pub async fn aggregate_objects(
 /// Signals of a case handed to the model (newest kept).
 const SIGNALS_CAP: usize = 200;
 
-/// A case as the workspace shows it (cases-workspace.md K22): its events
+/// A case as the workspace shows it (cases.md K22): its events
 /// oldest first with what each involves and the role, and its undated
 /// pieces. Read-only: the assistant never attaches nor detaches.
 pub async fn case_workspace(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {

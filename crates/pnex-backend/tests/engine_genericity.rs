@@ -37,7 +37,7 @@ const ENGINE_WORDS: &[(&str, &str)] = &[
     ),
     (
         "maintenance",
-        "category of a time range read as a maintenance window by the causal chains (cases-workspace.md D904)",
+        "category of a time range read as a maintenance window by the causal chains (cases.md D904)",
     ),
 ];
 

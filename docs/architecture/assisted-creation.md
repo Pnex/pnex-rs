@@ -1,6 +1,6 @@
 # PRD — Création assistée : noyau et pack
 
-> Statut : **v0.3, 2026-10-16**, redéfinition du pré-PRD v0.2 après le chantier « argent et navigation » des dossiers (`cases-money.md`). Décisions **D225–D237 validées le 2026-10-16** ; la signature C2PA est reportée (D235). Lexique arbitré (§9). Roadmap : P2.22. Aucun code.
+> Statut : **v0.3, 2026-10-16**, redéfinition du pré-PRD v0.2 après le chantier « argent et navigation » des dossiers (`cases.md`). Décisions **D225–D237 validées le 2026-10-16** ; la signature C2PA est reportée (D235). Lexique arbitré (§9). Roadmap : P2.22. Aucun code.
 >
 > Ce qui change par rapport à la v0.2 : la v0.2 posait un modèle à part (Projet, Scène, Plan, Personnage…). La v0.3 applique la règle tirée de K55 (« un versement est un événement ») : **aucun type nouveau quand un type existant plus un rôle suffit**. Une scène devient un événement, une production devient un espace de travail comme le dossier, et les vues des dossiers (frise, Histoire, graphe, carte, Argent) servent telles quelles.
 

@@ -1,4 +1,4 @@
-//! Position tracks of a case (cases-workspace.md K25–K28): normalisation at
+//! Position tracks of a case (cases.md K25–K28): normalisation at
 //! the boundary, split at signal gaps, sampling at the cursor, time-aware
 //! generalisation. Pure functions, wasm-safe: the detectors (server) and the
 //! inspector (front) share them.

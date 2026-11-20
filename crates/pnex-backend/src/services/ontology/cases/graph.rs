@@ -1,4 +1,4 @@
-//! The case graph (cases-workspace.md K31): the ontology relations among the
+//! The case graph (cases.md K31): the ontology relations among the
 //! members, with their history (the client fades them by the cursor without
 //! asking again), and the two-step expansion of a node: its neighbours
 //! counted by link type and object type over the case window (open links

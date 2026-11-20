@@ -1,4 +1,4 @@
-//! Frozen states of a case (cases-workspace.md K33): the export of the case,
+//! Frozen states of a case (cases.md K33): the export of the case,
 //! its reviewed detections and its generalised tracks, stored as canonical
 //! JSON with its SHA-256 and an increasing number. A frozen state is never
 //! modified (no route writes one twice) and reads back byte for byte, even

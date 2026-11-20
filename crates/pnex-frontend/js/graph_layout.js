@@ -1,4 +1,4 @@
-// Pure layout helpers of the case graph (cases-graph-sigma.md GS4, GS5),
+// Pure layout helpers of the case graph (cases.md GS4, GS5),
 // kept apart from graph.js so `bun test js/` runs them without WebGL.
 import Graph from 'graphology';
 import forceAtlas2 from 'graphology-layout-forceatlas2';

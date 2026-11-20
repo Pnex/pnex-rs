@@ -1,4 +1,4 @@
-//! The timeline, always on top (cases-workspace.md K23), drawn by the
+//! The timeline, always on top (cases.md K23), drawn by the
 //! shared `components::timeline`: the ruler with the density of what
 //! happens, the events (click = instant, drag = period, drag an event =
 //! move it), the raw signals, one lane per tracked member (covered spans,

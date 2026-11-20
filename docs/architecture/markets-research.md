@@ -1170,7 +1170,7 @@ Le modèle et son entraînement (projet à part) ; l'exécution du modèle dans 
 
 ## Appendice H — Point-in-time strict : plafond `as_of` imposé et audit de fuite (D898–D903)
 
-Statut : décidé le 2026-11-09 (Shan). Origine : lecture de `FareedKhan-dev/ontology-driven-observability` (fait canari daté après T0, agents qui ne voient le dossier que tel qu'il était à `T0 + 15 min`). Va avec l'appendice I de `cases-workspace.md` (chaînes causales), dont les chaînes marchés (H.7) sont une lecture point-in-time.
+Statut : décidé le 2026-11-09 (Shan). Origine : lecture de `FareedKhan-dev/ontology-driven-observability` (fait canari daté après T0, agents qui ne voient le dossier que tel qu'il était à `T0 + 15 min`). Va avec le §3.6 de `cases.md` (chaînes causales), dont les chaînes marchés (H.7) sont une lecture point-in-time.
 
 ### H.1 Le besoin
 
@@ -1216,7 +1216,7 @@ Couverture de collecte par source et fenêtre ; le backtest lui-même (projet Py
 
 ### H.7 Chaînes causales marchés : une lecture point-in-time pour la couche gold
 
-Le cœur `pnex_core::rca` de l'appendice I (`cases-workspace.md`) sert aussi aux marchés, **en variable d'entrée du modèle**, pas en proposition (Shan, 2026-11-09).
+Le cœur `pnex_core::rca` du §3.6 (`cases.md`) sert aussi aux marchés, **en variable d'entrée du modèle**, pas en proposition (Shan, 2026-11-09).
 
 - `GET /api/v1/markets/chains?as_of=…` : chaînes connues à `as_of`, confiance **et lift contre le placebo**, **sans filtre de lift** (le modèle apprend le poids ; top 3 par effet gardé). Sémantique `point_in_time`, couverte par le canari D901.
 - Topologie : nouveau lien `exposed_to` du pack markets (pays, région ou organisation → instrument), **déclaré par un membre**, drapeau `propagates_failure`. Un `geo_event` rejoint son pays par sa propriété.
@@ -1316,7 +1316,7 @@ Statut : proposé le 2026-11-10 (direction validée par Shan le même jour : bru
 ### J.1 Le besoin
 
 1. Une **variable d'entrée** de plus pour le modèle de décision (G) : la probabilité implicite qu'un événement macro ou géopolitique se produise (baisse de taux de la Fed, cessez-le-feu, sanctions), alignée sur la frise, GDELT et les chaînes H.7.
-2. Une **piste d'enquête** pour le dossier (`cases-workspace.md`) : repérer les mises « informées » (wallet neuf, financé juste avant, misé gros sur un seul marché, peu avant un événement).
+2. Une **piste d'enquête** pour le dossier (`cases.md`) : repérer les mises « informées » (wallet neuf, financé juste avant, misé gros sur un seul marché, peu avant un événement).
 3. Un **point de référence** pour mesurer le modèle : s'il ne fait pas mieux que le marché, il n'apporte rien.
 
 Cadre : PNeX **lit** des données publiques ; il ne parie pas, ne signe aucune transaction, ne détient aucune clé de wallet. Parier sur Polymarket n'est pas autorisé en France ; la lecture de données publiques n'en dépend pas, mais les conditions d'usage de chaque source sont à vérifier (comme §6).

@@ -1,4 +1,4 @@
-//! Imported tracks of a case (cases-workspace.md K26): a GPX or CSV file of
+//! Imported tracks of a case (cases.md K26): a GPX or CSV file of
 //! past positions put onto a case member, previewed (points, span, rejected
 //! rows and why) before it is written. The points live in Postgres as case
 //! evidence: no ingestion window and no telemetry retention apply, and they

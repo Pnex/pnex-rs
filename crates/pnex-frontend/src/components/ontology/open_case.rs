@@ -1,4 +1,4 @@
-//! "Open a case" on a dated alert (cases-workspace.md K20): one click creates
+//! "Open a case" on a dated alert (cases.md K20): one click creates
 //! the case, its first event being the alert with the flow that raised it,
 //! then opens the case workspace.
 

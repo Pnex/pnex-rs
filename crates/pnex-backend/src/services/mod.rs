@@ -106,7 +106,7 @@ pub mod provisioning;
 pub mod qr_tags;
 /// Cross-pod rate limiting of unauthenticated / sensitive routes.
 pub mod rate_limit;
-/// Shared inputs of the causal chain detector (cases-workspace.md D905).
+/// Shared inputs of the causal chain detector (cases.md D905).
 pub mod rca;
 pub mod regulator;
 /// Cross-cutting organization layer (D42): labels / containment / edges.

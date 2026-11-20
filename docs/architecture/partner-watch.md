@@ -141,7 +141,7 @@ Pack générique (requires `investigation`) :
   `personal` (D298).
 
 Pourquoi pas de type « entreprise » : `organization` porte déjà `owns`
-(bénéficiaires effectifs calculés, cases-money K56), `employs`,
+(bénéficiaires effectifs calculés, cases.md K56), `employs`,
 `member_of` et tout l'outillage des dossiers ; un second type couperait le
 graphe en deux.
 

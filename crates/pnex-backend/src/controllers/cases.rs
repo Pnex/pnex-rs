@@ -1,4 +1,4 @@
-//! Cases (docs/architecture/cases-workspace.md): a case is an ontology object
+//! Cases (docs/architecture/cases.md): a case is an ontology object
 //! (`case`) holding dated events and undated pieces; objects are attached to
 //! events with a role. This controller serves the workspace and its
 //! gestures, the raw signals, the tracks, the detections and their review,

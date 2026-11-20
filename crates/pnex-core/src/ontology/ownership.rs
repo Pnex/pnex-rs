@@ -1,4 +1,4 @@
-//! Effective ownership along chains of `owns` links (cases-money.md K56):
+//! Effective ownership along chains of `owns` links (cases.md K56):
 //! the share of an owner in a company is the product of the shares along
 //! each chain, summed over the chains. A computed beneficial owner is a
 //! deduction, never a fact: it always comes with the chains behind it.

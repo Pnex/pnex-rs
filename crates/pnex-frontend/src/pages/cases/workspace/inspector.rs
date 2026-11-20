@@ -1,4 +1,4 @@
-//! Inspector (cases-workspace.md K32), a drawer over the main view, open
+//! Inspector (cases.md K32), a drawer over the main view, open
 //! on a selection or on demand. Without selection, the case at the
 //! cursor (what has happened, where the tracked members are, the signals
 //! around, each retainable as an event); an event (title, when, pieces with
@@ -688,7 +688,7 @@ fn ObjectPanel(id: String, workspace: CaseWorkspace) -> Element {
     }
 }
 
-/// Amount of an event (cases-money.md K55): with a payer and a payee
+/// Amount of an event (cases.md K55): with a payer and a payee
 /// attached, the event is a payment of the Money view. Saved on change;
 /// an empty amount removes it.
 #[component]
@@ -762,7 +762,7 @@ fn AmountField(current: Option<Value>, disabled: bool, on_save: EventHandler<Val
     }
 }
 
-/// "How is it linked to …?" (cases-money.md K51): the shortest chain of
+/// "How is it linked to …?" (cases.md K51): the shortest chain of
 /// links to another member of the case, listed and lit in the graph.
 // shortcut: one shortest path from the existing endpoint, upgrade to the
 // k shortest with their link types when one path proves too little.
@@ -890,7 +890,7 @@ fn PathFinder(id: String, workspace: CaseWorkspace) -> Element {
 }
 
 /// Who holds this object and what it holds, through chains of `owns`
-/// links among the case members (cases-money.md K56). People at or above
+/// links among the case members (cases.md K56). People at or above
 /// the threshold are computed beneficial owners: a deduction, labelled so.
 #[component]
 fn Ownership(id: String) -> Element {
@@ -1010,7 +1010,7 @@ fn Ownership(id: String) -> Element {
     }
 }
 
-/// The hops of a proposed causal chain (cases-workspace.md D907): rule,
+/// The hops of a proposed causal chain (cases.md D907): rule,
 /// gap and distance of each, then confidence and lift against the placebo.
 #[component]
 fn ChainHops(payload: serde_json::Value) -> Element {

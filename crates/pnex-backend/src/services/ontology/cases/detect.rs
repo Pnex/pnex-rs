@@ -1,4 +1,4 @@
-//! Detections of a case (cases-workspace.md K30): the detectors of
+//! Detections of a case (cases.md K30): the detectors of
 //! `pnex_core::track::detect` run on the members' tracks over a window and
 //! write proposals of kind `case_event` in the shared inbox (proposals.md
 //! P3). A key (detector, members, start to the minute) makes a
@@ -235,7 +235,7 @@ pub async fn detect(
         }
     }
 
-    // Causal chains (cases-workspace.md D909): leads over the members'
+    // Causal chains (cases.md D909): leads over the members'
     // typed signals, only when the org turned them on and they beat the
     // placebo by the case's lift.
     if causal_enabled(db, org_id).await? {

@@ -1929,7 +1929,7 @@ async fn assistant_searches_and_reads_documents() {
     .await;
 }
 
-/// Cases (cases-workspace.md K22, K30): the assistant reads a case's
+/// Cases (cases.md K22, K30): the assistant reads a case's
 /// workspace and signals through the same services as the UI; a viewer
 /// reads too; an object that is not a case is a readable refusal; nothing
 /// is written.

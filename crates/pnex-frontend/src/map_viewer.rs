@@ -134,7 +134,7 @@ pub async fn set_items(host_id: &str, items: &[MapItem]) -> bool {
     set_items_impl(host_id, &serde_json::Value::Array(json).to_string()).await
 }
 
-/// Tracks of a window (cases-workspace.md K28), sent once: `data` is
+/// Tracks of a window (cases.md K28), sent once: `data` is
 /// `{recentMs, tracks: [{id, color, segments: [[[lon, lat, t_ms]]]}]}`.
 pub async fn set_tracks(host_id: &str, data: &serde_json::Value) -> bool {
     call_json(host_id, "setTracks", &data.to_string()).await

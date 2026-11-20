@@ -1,4 +1,4 @@
-//! Case frame (cases-workspace.md K33): the question, the processing basis
+//! Case frame (cases.md K33): the question, the processing basis
 //! of personal data (required before a person is attached), the window
 //! derived from the events, the detector thresholds, the frozen states, the
 //! access log of persons' tracks, the hypotheses board, the pages and, once

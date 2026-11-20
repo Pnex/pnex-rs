@@ -1,4 +1,4 @@
-//! Device transitions as dated signals (cases-workspace.md D904, L8b): the
+//! Device transitions as dated signals (cases.md D904, L8b): the
 //! reaper's online / offline flips and firmware version changes, written by
 //! a trigger on `device_registries` so no write path forgets them. A causal
 //! chain reads them as `device.online`, `device.offline`, `change.firmware`.

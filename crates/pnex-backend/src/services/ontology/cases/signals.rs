@@ -1,4 +1,4 @@
-//! Raw signals of a case (cases-workspace.md K30): around the members, over
+//! Raw signals of a case (cases.md K30): around the members, over
 //! a window, the openings and closings of their links (D179), their object
 //! changes (D184, O2), the ranges scoped on them (D182), the notifications
 //! of member flows (D86) and the approximate dates of members (K5).

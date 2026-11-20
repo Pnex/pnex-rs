@@ -1,4 +1,4 @@
-//! Tracks of a case (cases-workspace.md K25–K27): the members that have a
+//! Tracks of a case (cases.md K25–K27): the members that have a
 //! position source, their positions over a window read once from O2
 //! `positions`, normalised, split at signal gaps and generalised for the
 //! zoom level, merged with the tracks imported onto members (Postgres, K26).

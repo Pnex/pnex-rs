@@ -1,4 +1,4 @@
-//! "Add to a case" (cases-workspace.md K22): puts any object among the
+//! "Add to a case" (cases.md K22): puts any object among the
 //! undated pieces of an open case; its role is chosen when it is attached
 //! to an event of the case.
 

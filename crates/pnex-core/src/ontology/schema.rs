@@ -73,7 +73,7 @@ pub enum PropertyKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         unit: Option<String>,
         /// Declared bounds: a value leaving them is a `series.threshold`
-        /// signal of the causal chains (cases-workspace.md D904).
+        /// signal of the causal chains (cases.md D904).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         min: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -89,7 +89,7 @@ pub enum PropertyKind {
     /// A day-granular period (`super::recurrence::Recurrence`): its
     /// occurrences are materialized as time ranges of the object.
     Recurrence,
-    /// An amount of money (cases-money.md K54):
+    /// An amount of money (cases.md K54):
     /// `{"amount": f64, "currency": ISO 4217, "estimated"?: bool}`.
     Money,
 }

@@ -1,4 +1,4 @@
-//! `/cases/:id` — the case workspace (cases-workspace.md): the timeline on
+//! `/cases/:id` — the case workspace (cases.md): the timeline on
 //! top (events, raw signals, one lane per tracked member), then the object
 //! palette, the links graph and the map with the undated pieces, and the
 //! inspector. Every gesture is one server call returning the workspace.
@@ -107,7 +107,7 @@ pub(super) enum View {
     Map,
     /// Actors as threads through time (storyline).
     Story,
-    /// Payments as a Sankey diagram (cases-money.md K57).
+    /// Payments as a Sankey diagram (cases.md K57).
     Money,
 }
 

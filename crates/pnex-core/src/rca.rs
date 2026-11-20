@@ -1,4 +1,4 @@
-//! Causal chain detector (cases-workspace.md appendix I, D904–D908;
+//! Causal chain detector (cases.md §3.6, D904–D908;
 //! markets-research.md H.7). Pure and deterministic: typed signals, the
 //! links that propagate a failure, declared cause → effect pairs. A chain
 //! is a lead, never a fact, and is measured against a placebo.

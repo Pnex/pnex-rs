@@ -1,4 +1,4 @@
-// Case workspace (cases-workspace.md): events placed on the timeline,
+// Case workspace (cases.md): events placed on the timeline,
 // objects attached by drag and drop with a role, undated pieces, the
 // inspector, a case opened from an alert, the frame (pages, thresholds,
 // frozen states, purge), the Markdown export and the re-import. Objects
@@ -271,7 +271,7 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     });
     const ev: string = seen.events[0].event.id;
     await app.goto(`/cases/${c.id}`);
-    // Sigma draws on a canvas (cases-graph-sigma.md §5): positions and
+    // Sigma draws on a canvas (cases.md GS9): positions and
     // screen points come from window.pnexGraph.
     const host = 'cw-graph-sigma';
     const placed = () =>

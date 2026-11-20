@@ -1,4 +1,4 @@
-//! Nested cases (cases-graph-sigma.md GS16): the enclosing cases as a
+//! Nested cases (cases.md GS16): the enclosing cases as a
 //! breadcrumb, the sub-cases as links with their member count, and a new
 //! sub-case in one click (no modal, D222: renamed in place once open).
 

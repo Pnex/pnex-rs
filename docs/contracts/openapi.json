@@ -5243,13 +5243,13 @@
         "type": "object"
       },
       "CaseOpenInput": {
-        "description": "Opening a case: from scratch, or from a dated alert (cases-workspace.md\nK20): its first event is then the alert, with the flow that raised it\nand the flow's neighbours attached as context.",
+        "description": "Opening a case: from scratch, or from a dated alert (cases.md\nK20): its first event is then the alert, with the flow that raised it\nand the flow's neighbours attached as context.",
         "properties": {
           "from": {
             "$ref": "#/components/schemas/CaseFrom"
           },
           "parent_id": {
-            "description": "Opens it as a sub-case of this case (cases-graph-sigma.md GS16).",
+            "description": "Opens it as a sub-case of this case (cases.md GS16).",
             "format": "uuid",
             "type": [
               "string",
@@ -14252,7 +14252,7 @@
             "type": "boolean"
           },
           "propagates_failure": {
-            "description": "A failure of the source may reach the target (cases-workspace.md\nD905): a causal chain only follows these links, in their direction,\nopen at the instant of the cause.",
+            "description": "A failure of the source may reach the target (cases.md\nD905): a causal chain only follows these links, in their direction,\nopen at the instant of the cause.",
             "type": "boolean"
           },
           "propose_erase_targets": {
@@ -26964,7 +26964,7 @@
                 ]
               },
               "min": {
-                "description": "Declared bounds: a value leaving them is a `series.threshold`\nsignal of the causal chains (cases-workspace.md D904).",
+                "description": "Declared bounds: a value leaving them is a `series.threshold`\nsignal of the causal chains (cases.md D904).",
                 "format": "double",
                 "type": [
                   "number",
@@ -27033,7 +27033,7 @@
             "type": "object"
           },
           {
-            "description": "An amount of money (cases-money.md K54):\n`{\"amount\": f64, \"currency\": ISO 4217, \"estimated\"?: bool}`.",
+            "description": "An amount of money (cases.md K54):\n`{\"amount\": f64, \"currency\": ISO 4217, \"estimated\"?: bool}`.",
             "properties": {
               "kind": {
                 "enum": [

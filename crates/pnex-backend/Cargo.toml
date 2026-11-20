@@ -168,7 +168,7 @@ chrono = { workspace = true }
 chrono-tz = "0.10"
 # Next runs of the flows that play a site recipe (D326); already locked via edgelink.
 croner = "4"
-# GPX track import (cases-workspace.md K26); MIT, same version as pnex-core's.
+# GPX track import (cases.md K26); MIT, same version as pnex-core's.
 quick-xml = "0.42"
 # Same versions as opendal: signs the S3 calls it has no API for (multipart listing).
 http = "1"

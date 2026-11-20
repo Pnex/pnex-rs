@@ -5781,7 +5781,7 @@ voice-page-clips = { $count } extrait(s)
 voice-identify-title = Reconnaître une voix
 voice-identify-help = Compare un enregistrement à toutes les empreintes prêtes du modèle choisi. L'audio testé n'est pas conservé.
 
-# Case workspace (cases-workspace.md)
+# Case workspace (cases.md)
 cw-title = Nom de l'enquête
 cw-status = Statut
 cw-frame = Cadre
@@ -6244,7 +6244,7 @@ err-lab-review-full = La file « à revoir » de ce projet est pleine (500 image
 err-lab-propagate-no-previous = Étiquetez une image avant celle-ci dans la même vidéo ou le même enregistrement.
 err-asr-runtime-unavailable = Ce serveur ne peut pas exécuter les modèles de la famille { $family } : leur moteur de transcription n'est pas installé. Importez plutôt un modèle sherpa-onnx, ou demandez à l'administrateur une version avec ce moteur.
 
-## Vue Argent d'un dossier (cases-money.md K57)
+## Vue Argent d'un dossier (cases.md K57)
 money-view = Argent
 money-empty-title = Aucun versement dans ce dossier
 money-empty-help = Un versement est un événement avec un montant : ouvrez un événement, saisissez son montant, puis attachez un payeur et un bénéficiaire.
