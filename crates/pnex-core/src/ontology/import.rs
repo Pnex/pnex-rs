@@ -1,4 +1,4 @@
-//! Declarative imports into the ontology (partner-watch.md D301): a YAML
+//! Declarative imports into the ontology (partners.md D301): a YAML
 //! mapping turns the records of a file or an API into planned objects
 //! (upserted on a unique property, D302) and links. No code in a mapping:
 //! column paths, constants and a closed list of conversions only.

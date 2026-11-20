@@ -328,7 +328,7 @@ Chaque concept a un seul nom dans chaque langue, un seul composant et une seule 
 | Agent interne qui lit la demande d'écriture d'un autre agent et l'accepte ou la refuse (agents.md D836) | Agent validateur ; « Qui décide » ; « Réarmer » | Validator agent ; « Who decides » ; « Rearm » | pas « agent de contrôle », pas « approbateur » |
 | Distribution datée (`buy`, `neutral`, `sell`) postée par le runner d'un modèle externe (markets-research.md D894) | Décision de modèle ; la page « Décisions de modèles » | Model decision ; « Model decisions » | pas « signal de trading », pas « recommandation », jamais « ordre » (aucun ordre n'est passé) ; distinct de « Décision sur texte » (nœud `text_decide`) |
 | Affaire suivie avec un compte, de la découverte à la signature (crm.md D449) | Opportunité | Opportunity | pas « affaire », pas « deal » |
-| Passage consigné d'un contrôle de veille sur un sujet (network-check.md D426), son résultat | Vérification | Check | pas « contrôle » (= surface pilotable D123), pas « audit » |
+| Passage consigné d'un contrôle de veille sur un sujet (partners.md D426), son résultat | Vérification | Check | pas « contrôle » (= surface pilotable D123), pas « audit » |
 | Ce qui est fait ou à faire pour un compte : appel, mail, message… (crm.md D450) | Activité | Activity | pas « tâche » seule (= une nature d'activité) |
 | Étape du plan de relance de l'org : jour, nature, consigne (crm.md D450) | Étape de relance ; plan de relance | Follow-up step ; follow-up plan | pas « séquence » (= production), pas « cadence » (= lecture d'un pin) |
 | Point exigé d'une opportunité avant une étape (crm.md D449) | Critère de qualification | Qualification criterion | pas « critère du playbook » (= rendez-vous) |

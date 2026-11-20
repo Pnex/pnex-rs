@@ -1,4 +1,4 @@
-//! Web proofs (partner-watch.md D308, D310). A relevant page new or changed
+//! Web proofs (partners.md D308, D310). A relevant page new or changed
 //! gets a `capture_proof` task for a browser agent of the org (one open
 //! task per page, the D257 lease per target applies). The agent uploads
 //! three signed parts: a full-page screenshot, the rendered HTML with
@@ -165,7 +165,7 @@ async fn open_proof<C: ConnectionTrait>(
 }
 
 /// Who takes a proof: an agent of the org, or the server's browser
-/// (network-check.md D408); `who` is written in the manifest.
+/// (partners.md D408); `who` is written in the manifest.
 pub(crate) struct Taker {
     pub org_id: i64,
     pub who: String,
@@ -826,7 +826,7 @@ struct Waiting {
 }
 
 /// Proofs waiting without an agent are taken by the server's browser
-/// (network-check.md D408), one pod at a time.
+/// (partners.md D408), one pod at a time.
 pub fn spawn_server_executor(ctx: &AppContext) {
     let ctx = ctx.clone();
     tokio::spawn(async move {

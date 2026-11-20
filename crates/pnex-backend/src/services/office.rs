@@ -1,4 +1,4 @@
-//! Office documents of the flows (network-check.md D416, D420):
+//! Office documents of the flows (partners.md D416, D420):
 //! `document_text` reads a document of the media library, `sheet_write`
 //! writes an xlsx workbook into it. Both check the node against the
 //! deployed version and stay in its org (R1).

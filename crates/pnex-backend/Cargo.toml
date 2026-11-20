@@ -99,7 +99,7 @@ snap = "1"
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }
-# Site crawl (partner-watch.md D307): HTML → links and readable text, no
+# Site crawl (partners.md D307): HTML → links and readable text, no
 # script run (MIT/ISC, same versions as already in the tree).
 scraper = "0.29"
 ego-tree = "0.11"

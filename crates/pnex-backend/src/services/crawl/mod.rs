@@ -1,4 +1,4 @@
-//! Site crawls (partner-watch.md D307, D309): `crawl_site` missions walk
+//! Site crawls (partners.md D307, D309): `crawl_site` missions walk
 //! one declared site and keep its pages in the `site_pages` registry.
 //!
 //! The server executor (default) reads public pages without running any
@@ -637,7 +637,7 @@ pub struct CrawlOutcome {
     pub relevant: usize,
     pub truncated: bool,
     pub blocked: Option<&'static str>,
-    /// The relevant pages read, text clipped (network-check.md D407).
+    /// The relevant pages read, text clipped (partners.md D407).
     pub found: Vec<pnex_core::site_crawl::SiteCrawlPage>,
 }
 

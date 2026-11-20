@@ -1002,7 +1002,7 @@ pub struct PageRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proof_link: Option<String>,
     /// Link type from the page object to each document it links (PDF,
-    /// DOCX), kept as a media of the org (network-check.md D421), with
+    /// DOCX), kept as a media of the org (partners.md D421), with
     /// `url`, `seen_on`, `first_seen` and `sha256` when the link type
     /// declares them.
     #[serde(default, skip_serializing_if = "Option::is_none")]

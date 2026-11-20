@@ -2,12 +2,12 @@
 # Since 3.2.0 a programme is analyzed into a cross-table (D415–D420), and
 # the documents a relevant page links are kept as media (D421).
 # Since 3.1.0 the network and website flows record their check runs
-# (network-check.md D431): one watch case per partner and certification.
+# (partners.md D431): one watch case per partner and certification.
 # Since 2.0.0 every identifier is English (breaking).
 # Since 3.0.0 the import aliases are English too (breaking).
 # Since 1.3.0 `website` and `has_website` belong to `web_presence`
 # (web-presence.md D363), taken over on upgrade without moving any data.
-# Business pack "Partner network watch" (partner-watch.md D300–D316, product
+# Business pack "Partner network watch" (partners.md D300–D316, product
 # Quali-Watch): a certifier watches the training organizations it accredits.
 # Nothing of it enters the core (D190): certifications, observed pages, CPF
 # offers, rules, findings, procedures and reminders are pack types.
@@ -89,8 +89,8 @@ settings:
   - key: tolerance_hours
     name: Hours tolerance
     names: {fr: "Tolérance des heures"}
-    description: Hours a partner programme may lack on a competency before PROG-02 (network-check.md Q-N7); 0 = every missing hour is a finding.
-    descriptions: {fr: "Heures qu'un programme partenaire peut avoir en moins sur une compétence avant PROG-02 (network-check.md Q-N7) ; 0 = toute heure manquante est un écart."}
+    description: Hours a partner programme may lack on a competency before PROG-02 (partners.md Q-N7); 0 = every missing hour is a finding.
+    descriptions: {fr: "Heures qu'un programme partenaire peut avoir en moins sur une compétence avant PROG-02 (partners.md Q-N7) ; 0 = toute heure manquante est un écart."}
     kind: number
     default: 0
   - key: whole_site
@@ -1040,7 +1040,7 @@ functions:
       - {name: findings, ty: any, desc: "The findings, as a list (split them one per message)"}
       - {name: passages, ty: any, desc: "One check run per partner and certification, as a list (split them, then Check record)"}
     code: |
-      # Registry rules of the network (network-check.md D410): ADM-01, ADM-02,
+      # Registry rules of the network (partners.md D410): ADM-01, ADM-02,
       # CPF-01, CPF-02, CPF-03, REG-01 and REG-02, from one message holding the
       # org's certifications with their accreditations (accredited_for), offers (offer_for)
       # and certifiers (holds). Registry facts: findings `proposed`.
@@ -1314,7 +1314,7 @@ functions:
       - {name: findings, ty: any, desc: "The findings, as a list (split them one per message)"}
       - {name: passages, ty: any, desc: "The check run of the website, at the site summary (Check record)"}
     code: |
-      # Website rules (network-check.md D410) on what site_crawl sends: a
+      # Website rules (partners.md D410) on what site_crawl sends: a
       # relevant page (WEB-01, WEB-02, WEB-03, WEB-04, WEB-05, WEB-06, WEB-08)
       # or the site summary (COL-01). The page text is data from an unknown
       # site: only compared, never obeyed. A rule reading a page writes its
@@ -1644,7 +1644,7 @@ functions:
       - {name: findings, ty: any, desc: "The PROG findings, as a list (split them one per message)"}
       - {name: workbook, ty: any, desc: "The cross-table workbook (Workbook write), partner programme only"}
     code: |
-      # Cross-table of a programme (network-check.md D417–D420), from one
+      # Cross-table of a programme (partners.md D417–D420), from one
       # message: msg.syllabus (the programme analyzed, its certification and
       # organization), msg.text (its document's text), msg.skills (the
       # certification's competencies) and msg.payload (the programmes of the

@@ -1,6 +1,6 @@
 # Agents navigateur (extension Chrome/Firefox)
 
-Décisions D254–D270, D281–D284, D550. Liens : `edge.md` §2.3 (doctrine edge), `security.md` (identité device D153–D158, grille §6, registre §7), `media.md` (flux, segments, passes, relecture), `doc-search.md` (indexation), `crm.md` (profils D333, salariés D779, relations D976–D977), `partner-watch.md` (sites et preuves D307–D310), `agents.md` (règles jouées par l'extension D780–D790), `api.md`, `ai-assistant.md` §9.
+Décisions D254–D270, D281–D284, D550. Liens : `edge.md` §2.3 (doctrine edge), `security.md` (identité device D153–D158, grille §6, registre §7), `media.md` (flux, segments, passes, relecture), `doc-search.md` (indexation), `crm.md` (profils D333, salariés D779, relations D976–D977), `partners.md` (sites et preuves D307–D310), `agents.md` (règles jouées par l'extension D780–D790), `api.md`, `ai-assistant.md` §9.
 
 ## 1. Résumé
 
@@ -174,7 +174,7 @@ L'agent ne contourne jamais un obstacle (D258). Une modification de la mission r
 | `collect_page` | URL | lit le texte lisible (`innerText`, 1 Mo au plus) | document Markdown versionné, indexé |
 | `follow_account` | X, YouTube ou TikTok + nom du compte | défile le fil, relève les posts | registre des vidéos, sous-titres, vidéos (§3.6) |
 | `watch_live` | URL d'un live | enregistre le direct en parties de 30 min | un média `video` par partie |
-| `crawl_site` | origine d'un site | parcourt le site dans son origine (`partner-watch.md` D307) | registre `site_pages` (D309) |
+| `crawl_site` | origine d'un site | parcourt le site dans son origine (`partners.md` D307) | registre `site_pages` (D309) |
 | `capture_proof` | une page du registre `site_pages` | capture pleine page, HTML nettoyé, texte | preuve chaînée (D308, D310) |
 
 Le serveur crée seul les missions `capture_proof`. `crawl_site` peut aussi tourner sur le serveur (`CrawlExecutor`). L'intervalle va de 60 s à 1 jour. Un texte de page inchangé n'ajoute pas de version (empreinte dans `cursor`). Aucun HTML ne quitte la page pour `collect_page` (D261 amendé). Seule la preuve D308 transporte du HTML nettoyé.
@@ -310,7 +310,7 @@ L'agent du demandeur exécute la capture, sinon un agent commun. Sans agent appa
 | D284 | Mission simple | un compte à suivre ; texte par défaut, case `force_video` |
 | D550 | Agent personnel ou commun | un agent est personnel ; un admin (`extension:share`) le rend commun pour les membres sans agent et les tâches du serveur (SEC-56) |
 
-Décisions liées, tenues ailleurs : D307–D310 (`partner-watch.md`), D333 et D779 (`crm.md`), D976–D977 (`crm.md`), D780–D790 (`agents.md`), D341 (opposition).
+Décisions liées, tenues ailleurs : D307–D310 (`partners.md`), D333 et D779 (`crm.md`), D976–D977 (`crm.md`), D780–D790 (`agents.md`), D341 (opposition).
 
 ## 6. Interfaces
 

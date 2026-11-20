@@ -306,11 +306,11 @@ impl Hooks for App {
         crate::services::internal_agents::spawn(ctx);
         crate::services::environments::spawn_rescans(ctx);
         crate::services::agent_artifacts::spawn_sweeper(ctx);
-        // Scheduled ontology imports (partner-watch.md D303).
+        // Scheduled ontology imports (partners.md D303).
         crate::services::ontology::imports::spawn_scheduler(ctx);
         // Chained runs, stale tables, dataset events (pipelines.md D575–D578).
         crate::services::data_builds::spawn(ctx);
-        // Server site crawls (partner-watch.md D307).
+        // Server site crawls (partners.md D307).
         crate::services::crawl::spawn_scheduler(ctx);
         crate::services::markets::spawn_scheduler(ctx);
         crate::services::pipeline_engine::store::spawn(ctx);

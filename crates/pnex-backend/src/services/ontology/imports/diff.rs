@@ -617,7 +617,7 @@ pub async fn against<C: ConnectionTrait>(
                     .unwrap_or(Ok(Map::new()));
                 let pin = a.type_key == pnex_core::resources::KIND_MAP_PIN;
                 // A register site without coordinates is left out, its row
-                // kept (network-check.md D406): a warning, not an error.
+                // kept (partners.md D406): a warning, not an error.
                 if pin && full.is_ok() && a.location.is_none() {
                     ends.push(End::Missing);
                     diff.warnings.push(RowIssue {

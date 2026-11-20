@@ -1,4 +1,4 @@
-//! Site crawls in the browser agents page (partner-watch.md D307–D310):
+//! Site crawls in the browser agents page (partners.md D307–D310):
 //! the `crawl_site` fields of the mission form, and the pages of a crawled
 //! site with their proofs and the check of the proof chain.
 

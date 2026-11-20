@@ -197,7 +197,7 @@ d'un lien. La purge `purge_for` (D42) ferme les liens, elle ne les supprime pas.
 Le containment sert la hiérarchie physique et organisationnelle : un parent, pas de cycle. Le schéma
 de type déclare « peut contenir » et « peut être contenu dans ». Les liens servent tout le reste. Un
 arbre se navigue, un graphe se requête : le noyau ne les fusionne pas. Une hiérarchie à plusieurs
-parents (groupes, filiales) est une vue d'arbre calculée sur des liens de pack (`partner-watch.md`
+parents (groupes, filiales) est une vue d'arbre calculée sur des liens de pack (`partners.md`
 D305).
 
 ### D181 — Le temps appartient aux objets, pas aux devices

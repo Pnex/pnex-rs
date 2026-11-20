@@ -1,4 +1,4 @@
-// Partner network watch (network-check.md D426–D431, D415–D420), on the
+// Partner network watch (partners.md D426–D431, D415–D420), on the
 // quali_watch pack. Each test works in an organization of its own
 // ("e2e-watch-…", deleted by the next global setup): the pack's unique
 // keys (certification code, SIREN, watch key) never collide between runs,

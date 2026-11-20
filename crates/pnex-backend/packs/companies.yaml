@@ -11,10 +11,10 @@
 # headcount a number range, so targeting and scores work across countries.
 # A company of a country without its pack is still described here, by hand,
 # by a file or by the worldwide sources (LEI, Wikidata).
-# Personal data is minimized (partner-watch.md D304): officers carry their
+# Personal data is minimized (partners.md D304): officers carry their
 # name, the role on the link and a register key that merges the same
 # officer across companies; no full birth date, no personal address.
-# Hierarchy (partner-watch.md D305): a tree computed on links (several
+# Hierarchy (partners.md D305): a tree computed on links (several
 # parents allowed), never containment.
 # Since 1.1.0 the group structure lives here (crm.md D331):
 # `subsidiary_of` carries a control or consolidation relation as open sources

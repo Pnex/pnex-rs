@@ -1,6 +1,6 @@
 # Suivi commercial : comptes, données personnelles et pack `crm`
 
-Décisions D329–D343, D442–D452, D514–D517, D522, D537–D539, D590, D591, D610, D611, D721–D727, D779, D976–D977. Liens : `ontology.md` (D176–D191, D368 réglages de pack, D370 libellés), `partner-watch.md` (D300–D316 : imports, clé naturelle, vue Hiérarchie, crawl, preuves), `browser-agents.md` (D254–D284), `agents.md` (D780–D790, recherche d'une personne D788), `pipelines.md` (D972–D973 pack `watch`, D996–D999), `operational-platform.md` (D998), `iam.md` (D296, D298), `proposals.md` (D367, D371–D377), `mail.md` (D453–D462, D518–D521), `viz.md` §3.5 (calculs sur des objets, D579–D588), `app-builder.md` (D506–D513), `cases.md` (chemins K51), `labor-market.md`.
+Décisions D329–D343, D442–D452, D514–D517, D522, D537–D539, D590, D591, D610, D611, D721–D727, D779, D976–D977. Liens : `ontology.md` (D176–D191, D368 réglages de pack, D370 libellés), `partners.md` (D300–D316 : imports, clé naturelle, vue Hiérarchie, crawl, preuves), `browser-agents.md` (D254–D284), `agents.md` (D780–D790, recherche d'une personne D788), `pipelines.md` (D972–D973 pack `watch`, D996–D999), `operational-platform.md` (D998), `iam.md` (D296, D298), `proposals.md` (D367, D371–D377), `mail.md` (D453–D462, D518–D521), `viz.md` §3.5 (calculs sur des objets, D579–D588), `app-builder.md` (D506–D513), `cases.md` (chemins K51), `labor-market.md`.
 
 ## 1. Résumé
 

@@ -225,7 +225,7 @@ pub use prompb::*;
 #[cfg(feature = "frame-crypto")]
 pub mod frame;
 
-/// Paragraph diff of two document versions (partner-watch.md D311).
+/// Paragraph diff of two document versions (partners.md D311).
 pub mod text_diff;
 
 /// Site navigation rules played by the server browser (agents.md D323–D326).
@@ -237,7 +237,7 @@ pub mod site_crawl;
 pub mod web_search;
 pub mod web_visit;
 
-/// Readers of ontology import sources (partner-watch.md D301).
+/// Readers of ontology import sources (partners.md D301).
 #[cfg(feature = "doc-extract")]
 pub mod import_read;
 
@@ -291,7 +291,7 @@ pub mod ontology;
 /// Document extraction + chunking of the media library search (doc-search.md).
 pub mod doc_extract;
 
-/// Office documents read and written by flows (network-check.md D416, D420).
+/// Office documents read and written by flows (partners.md D416, D420).
 pub mod office;
 
 /// Machine error codes shared backend ↔ frontend (i18n) — doctrine and

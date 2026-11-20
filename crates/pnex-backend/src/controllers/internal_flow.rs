@@ -56,7 +56,7 @@ pub fn routes() -> Routes {
         .add("/internal/flow/video-annotations", post(video_annotations))
         // Org model calls of the vision-caption / media-fuse nodes (D195/D196).
         .add("/internal/flow/ai/caption", post(flow_ai_caption))
-        // Ontology nodes (partner-watch.md D312).
+        // Ontology nodes (partners.md D312).
         .add("/internal/flow/ontology/query", post(flow_ontology_query))
         .add(
             "/internal/flow/ontology/aggregate",
@@ -64,7 +64,7 @@ pub fn routes() -> Routes {
         )
         .add("/internal/flow/ontology/upsert", post(flow_ontology_upsert))
         .add("/internal/flow/ontology/link", post(flow_ontology_link))
-        // Watch check runs of check_record nodes (network-check.md D426).
+        // Watch check runs of check_record nodes (partners.md D426).
         .add("/internal/flow/ontology/check", post(flow_ontology_check))
         // Office documents of document_text / sheet_write nodes (D416, D420).
         .add("/internal/flow/document-text", post(flow_document_text))
@@ -79,7 +79,7 @@ pub fn routes() -> Routes {
         .add("/internal/flow/web-search", post(flow_web_search))
         .add("/internal/flow/org-resolve", post(flow_org_resolve))
         .add("/internal/flow/web-visit", post(flow_web_visit))
-        // Server crawls started by site_crawl nodes (network-check.md D407).
+        // Server crawls started by site_crawl nodes (partners.md D407).
         .add("/internal/flow/site-crawl", post(flow_site_crawl))
         // Agent runs started by agent_run nodes (agents.md D713).
         .add("/internal/flow/agent-run", post(flow_agent_run))
@@ -974,7 +974,7 @@ async fn flow_web_visit(
 }
 
 /// `POST /internal/flow/site-crawl` — one site of a deployed `site_crawl`
-/// node (network-check.md D407), answered when the crawl ends. A refused
+/// node (partners.md D407), answered when the crawl ends. A refused
 /// crawl answers 200 on its failure port; only a forged or stale node is
 /// refused.
 async fn flow_site_crawl(

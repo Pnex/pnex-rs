@@ -1,4 +1,4 @@
-//! Declarative imports into the ontology (partner-watch.md D301, D303): an
+//! Declarative imports into the ontology (partners.md D301, D303): an
 //! import holds its mapping, source and schedule; each run is journaled
 //! with its counters, and a preview keeps the difference it will apply.
 

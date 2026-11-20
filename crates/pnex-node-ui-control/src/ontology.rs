@@ -1,4 +1,4 @@
-//! Ontology nodes (partner-watch.md D312): `pnex-ontology-query`,
+//! Ontology nodes (partners.md D312): `pnex-ontology-query`,
 //! `pnex-object-upsert`, `pnex-link-upsert`, `pnex-check-record`. The runtime has no database
 //! access: each node calls `/internal/flow/ontology/{query,upsert,link}`
 //! naming itself (org, flow, version, node); the backend reads the node
@@ -436,7 +436,7 @@ impl ObjectUpsertNode {
 
 // ───────────────────────────── check-record ─────────────────────────────
 
-/// Records a watch check run (network-check.md D426); `msg.check` = the
+/// Records a watch check run (partners.md D426); `msg.check` = the
 /// server's answer.
 #[flow_node("pnex-check-record", red_name = "pnex-check-record")]
 struct CheckRecordNode {

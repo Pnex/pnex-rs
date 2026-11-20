@@ -1,4 +1,4 @@
-//! Readers of import sources (partner-watch.md D301): hostile input, read
+//! Readers of import sources (partners.md D301): hostile input, read
 //! with caps (§5): zip bombs refused from the central directory and the
 //! inflate itself capped, XML without DTD or entities and with a bounded
 //! depth, sheets cut at the row cap. Each reader yields the records the

@@ -5640,7 +5640,7 @@
             "$ref": "#/components/schemas/ObjectView"
           },
           "checks": {
-            "description": "Watch checks feeding the case (network-check.md D430).",
+            "description": "Watch checks feeding the case (partners.md D430).",
             "items": {
               "$ref": "#/components/schemas/CaseCheck"
             },
@@ -19652,7 +19652,7 @@
             ]
           },
           "kept": {
-            "description": "Functions, flows and imports of an installed pack the org edited\nsince the pack wrote them: an upgrade keeps the org's version (D368,\nnetwork-check.md D424).",
+            "description": "Functions, flows and imports of an installed pack the org edited\nsince the pack wrote them: an upgrade keeps the org's version (D368,\npartners.md D424).",
             "items": {
               "type": "string"
             },
@@ -19690,7 +19690,7 @@
         "description": "Relevant pages written as objects of an org type: registry field →\nproperty key (`url` → the type's unique property). Optional link of\neach page object to one object (its site).",
         "properties": {
           "document_link": {
-            "description": "Link type from the page object to each document it links (PDF,\nDOCX), kept as a media of the org (network-check.md D421), with\n`url`, `seen_on`, `first_seen` and `sha256` when the link type\ndeclares them.",
+            "description": "Link type from the page object to each document it links (PDF,\nDOCX), kept as a media of the org (partners.md D421), with\n`url`, `seen_on`, `first_seen` and `sha256` when the link type\ndeclares them.",
             "type": [
               "string",
               "null"

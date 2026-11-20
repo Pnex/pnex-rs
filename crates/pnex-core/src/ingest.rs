@@ -142,7 +142,7 @@ pub struct IngestConfig {
     pub values: Vec<String>,
     /// `in`: the values are the codes of this pack setting
     /// (`<pack>.<key>`, comma-separated) instead of `values`; an empty
-    /// setting keeps every row (network-check.md D425).
+    /// setting keeps every row (partners.md D425).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub setting: Option<String>,
     /// `in_objects`: type and property whose values are kept.

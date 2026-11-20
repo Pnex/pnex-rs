@@ -1,4 +1,4 @@
-# Country pack "French companies" (partner-watch.md D304–D306,
+# Country pack "French companies" (partners.md D304–D306,
 # crm.md D343): the French specifics on top of the worldwide
 # `companies` pack. A legal unit carries its SIREN and its French codes,
 # an establishment its SIRET; the shared fields (country, NACE activity,

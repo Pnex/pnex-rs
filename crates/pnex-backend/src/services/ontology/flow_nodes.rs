@@ -1,4 +1,4 @@
-//! Ontology flow nodes on the server side (partner-watch.md D312). The
+//! Ontology flow nodes on the server side (partners.md D312). The
 //! flow runtime runs user code and is not trusted: each call names its
 //! deployed node, whose config is read from the *deployed* version of the
 //! flow (never from the request); the writes go through the services the
@@ -221,7 +221,7 @@ pub async fn query(
 }
 
 /// Open links of `types` touching the rows, by row id then link type
-/// (network-check.md D402): one statement for the links, one for their
+/// (partners.md D402): one statement for the links, one for their
 /// other ends.
 async fn joined_links(
     db: &DatabaseConnection,
@@ -451,7 +451,7 @@ pub async fn upsert(
     }
 }
 
-/// `check_record`: one run of a watch check (network-check.md D426).
+/// `check_record`: one run of a watch check (partners.md D426).
 pub async fn check(
     db: &DatabaseConnection,
     req: &pnex_core::ontology::check::CheckRecordRequest,

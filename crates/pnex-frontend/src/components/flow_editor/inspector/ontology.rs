@@ -6,7 +6,7 @@ use pnex_core::ontology::flow::{
     LinkUpsertConfig, ObjectUpsertConfig, OntologyAggregateConfig, OntologyQueryConfig, QueryOutput,
 };
 
-// ─────────────── ontology nodes (partner-watch.md D312) ───────────────
+// ─────────────── ontology nodes (partners.md D312) ───────────────
 
 const SELECT: &str = "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm";
 

@@ -1,4 +1,4 @@
-//! Documents linked from a relevant page (network-check.md D421): each PDF
+//! Documents linked from a relevant page (partners.md D421): each PDF
 //! or DOCX of the same site becomes a media of the org, one version per
 //! SHA-256 (D311), linked from the page object by the record's
 //! `document_link` with its url and dates. Fetched by the guarded client of

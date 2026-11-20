@@ -1105,13 +1105,13 @@ pub const WEB_VISIT_UNREACHABLE: &str = "web-visit-unreachable";
 pub const WEB_VISIT_BLOCKED: &str = "web-visit-blocked";
 /// The org passed its daily number of visits; `args.cap`.
 pub const WEB_VISIT_QUOTA: &str = "web-visit-quota";
-/// A `site_crawl` address that is not an http(s) site (network-check.md D407).
+/// A `site_crawl` address that is not an http(s) site (partners.md D407).
 pub const SITE_CRAWL_URL_INVALID: &str = "site-crawl-url-invalid";
 /// The crawl the message describes is refused (too many rules, a rule too
 /// long, a bad regular expression); `args.field`.
 pub const SITE_CRAWL_INVALID: &str = "site-crawl-invalid";
 /// `document_text`: the document has no text layer (a scan, an image) and
-/// the organization has no OCR model (network-check.md D416).
+/// the organization has no OCR model (partners.md D416).
 pub const DOCUMENT_TEXT_NO_TEXT: &str = "document-text-no-text";
 /// `document_text`: the media is not a readable document (format, damage).
 pub const DOCUMENT_TEXT_UNREADABLE: &str = "document-text-unreadable";

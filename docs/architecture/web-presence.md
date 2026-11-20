@@ -4,7 +4,7 @@
 > de la session `pnex-quali-watch` : trouver le site de chaque organisme
 > habilité, le faire valider, puis le crawler chaque semaine pour la
 > conformité. Suit `pipelines.md` (D344–D358). Liens : `pipelines.md`
-> (D317–D322), `partner-watch.md` (D301–D316, D307 crawl, D312 nœuds
+> (D317–D322), `partners.md` (D301–D316, D307 crawl, D312 nœuds
 > ontologie), `browser-agents.md` (D254), `agents.md`
 > (D323–D328), `geo-layers.md` (fournisseurs géo), `security.md` §9 (D110–D118),
 > `security.md` (R1, R2, R4, R8, R16).
@@ -237,7 +237,7 @@ permission `ontology:write`.
 W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
 
 **W0 livré (2026-10-24, demandé par Shan pendant la recette R1 de
-`network-check.md`)** :
+`partners.md`)** :
 
 - **Retirés** : tout ce que liste D359. S'y ajoutent les étapes
   `ontology_import` **et** `staging_cleanup` du cœur (le nettoyage se fait en
@@ -260,7 +260,7 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
 - **Remplacement** : les cinq imports France Compétences de `quali_watch`
   1.5.0 portent leurs `steps:` et une récurrence quotidienne.
   - Le filtre des certificateurs lit le nouveau réglage `certifiers`
-    (`rows_filter.setting`, `network-check.md` D425). Vide = tous les
+    (`rows_filter.setting`, `partners.md` D425). Vide = tous les
     certificateurs.
   - Les autres imports filtrent sur les certifications de l'org
     (`in_objects`).

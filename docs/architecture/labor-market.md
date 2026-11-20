@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **Premiers lots codés (2026-11-15)** : moteur LM0, BMO, tension, offres (§11) ; le reste proposé |
 | Déclencheur | Cibler des sites industriels selon les métiers en tension, la rotation et la pyramide des âges du territoire ; afficher le tout sur la carte, sous les établissements |
-| Repose sur | `pipelines.md` (D344–D358, D569–D578 tables), `partner-watch.md` (pack `companies_fr`), `crm.md` (D329–D343, `map_pin.headcount_band`, critères de score D336), `geo-layers.md` (L1–L28, phase A livrée le 2026-11-14), `security.md` §9 (D110), `security.md` (R1, R2, R8) |
+| Repose sur | `pipelines.md` (D344–D358, D569–D578 tables), `partners.md` (pack `companies_fr`), `crm.md` (D329–D343, `map_pin.headcount_band`, critères de score D336), `geo-layers.md` (L1–L28, phase A livrée le 2026-11-14), `security.md` §9 (D110), `security.md` (R1, R2, R8) |
 | Numérotation | décisions **M1–M18 provisoires**, renumérotées `Dxxx` au merge (D970–D975 pris au 2026-11-14 par `crm.md` et `pipelines.md`, D976–D977 par les relations d'un contact (`crm.md`) : D978–D985 par la reconnaissance par empreintes (`media.md` §3.12), D986–D993 par l'ingestion de contenus (`markets-research.md` appendice L), D994 par les messages joints (`mail.md`) : prochain libre D995, à revérifier au merge) ; lots **LM0…LM5** |
 | Exécution | **pipelines uniquement** : aucun flow, aucun nœud. Chaque source = un fichier YAML de pipeline dans un pack, planifié par `recurrence` |
 

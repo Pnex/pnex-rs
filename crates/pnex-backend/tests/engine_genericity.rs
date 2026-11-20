@@ -17,7 +17,7 @@ const ENGINE_WORDS: &[(&str, &str)] = &[
     ("before", "the journal's before/after documents"),
     (
         "finding",
-        "result of a watch check, ok | unknown | finding (network-check.md D426)",
+        "result of a watch check, ok | unknown | finding (partners.md D426)",
     ),
     (
         "meeting",

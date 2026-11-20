@@ -1033,7 +1033,7 @@ gestion par la CLI `pnex` et la page Réglages › Accès). Restent I4, I5.
 
 ### P2.26 — Veille de réseaux de partenaires : briques pour un SaaS tiers (ajout 2026-10-19) — **proposition, rien d'implémenté**
 
-`partner-watch.md`, D300–D316. Déclencheur : Quali-Watch (dépôt
+`partners.md`, D300–D316. Déclencheur : Quali-Watch (dépôt
 `pnex-quali-watch`), SaaS pour organismes certificateurs, dont PNEX est le
 moteur sans en être l'interface. Briques génériques : imports déclaratifs
 et synchros planifiées vers l'ontologie (Excel, open data, API), propriété
@@ -1645,7 +1645,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   (CycloneDX, SPDX), VEX, SARIF, scans et qualité du code ingérés et reliés
   à l'ontologie, SBOM par build firmware, état des pipelines CI/CD, builds,
   couverture et rapports de tests ; rien d'implémenté.
-- **2026-10-19 (veille de réseaux)** — Ajout de P2.26 (`partner-watch.md`,
+- **2026-10-19 (veille de réseaux)** — Ajout de P2.26 (`partners.md`,
   D300–D316) pour porter Quali-Watch : imports et synchros vers
   l'ontologie, crawl de site et preuves horodatées, nœuds ontologie,
   relances par e-mail, SaaS tiers sur compte de service. Amende D254 et

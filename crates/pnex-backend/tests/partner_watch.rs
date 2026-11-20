@@ -1,4 +1,4 @@
-//! Partner network watch, core bricks (partner-watch.md): natural keys
+//! Partner network watch, core bricks (partners.md): natural keys
 //! (D302), pack extensions of required and system types (D306), the
 //! `companies_fr` and `quali_watch` packs and their hierarchy (D304,
 //! D305), declarative imports with preview, application, snapshot
@@ -1304,7 +1304,7 @@ async fn imports_preview_apply_and_close_missing_links() {
     .await;
 }
 
-/// network-check.md D424: an upgrade rewrites the pack's imports the org
+/// partners.md D424: an upgrade rewrites the pack's imports the org
 /// left as is, keeps the edited ones (named, with what differs), and taking
 /// the pack's version keeps the org's schedule.
 #[tokio::test]
@@ -1378,7 +1378,7 @@ async fn pack_upgrade_follows_untouched_imports() {
     .await;
 }
 
-/// network-check.md §7: an update without `recurrence`, `max_pages` or
+/// partners.md §3.2: an update without `recurrence`, `max_pages` or
 /// `source_url` keeps them; an explicit `null` clears them.
 #[tokio::test]
 #[serial]
@@ -2747,7 +2747,7 @@ async fn mock_training_registers(
     base
 }
 
-/// network-check.md D402–D405: the training registers are queried for the
+/// partners.md D402–D405: the training registers are queried for the
 /// network only, CPF offers arrive by certification (an outsider selling
 /// it included), and a query reads the network with its links.
 #[tokio::test]

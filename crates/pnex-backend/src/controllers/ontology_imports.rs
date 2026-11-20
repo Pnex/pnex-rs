@@ -1,4 +1,4 @@
-//! Ontology imports API (partner-watch.md D301, D303) under
+//! Ontology imports API (partners.md D301, D303) under
 //! `/api/v1/ontology/imports`. Org from the principal (R1); every write
 //! needs `can_write` (R2), the type write roles still apply to what an
 //! import writes (D188). Previews and applications run in the background:

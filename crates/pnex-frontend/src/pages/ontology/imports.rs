@@ -1,4 +1,4 @@
-//! Imports tab (partner-watch.md D301, D303): declarative imports of
+//! Imports tab (partners.md D301, D303): declarative imports of
 //! records into the ontology. A preview shows what would be created,
 //! changed and closed, and the errors by row and column; nothing is
 //! written before « Apply ». URL and API imports may run on a schedule.

@@ -1,4 +1,4 @@
-//! Ontology flow nodes (partner-watch.md D312): `ontology_query`,
+//! Ontology flow nodes (partners.md D312): `ontology_query`,
 //! `object_upsert` and `link_upsert`. Their configs (shared by the editor
 //! and the runtime) and the bodies of the internal routes the runtime
 //! calls; the backend reads the node config from the *deployed* graph, so
@@ -21,7 +21,7 @@ pub const VALUE_MSG_PREFIX: &str = "$msg.";
 pub const VALUE_DAYS_MAX: i64 = 3650;
 /// `in` value resolved by the server: the codes of a pack setting
 /// (`$setting.<pack>.<key>`); an empty setting drops the filter
-/// (network-check.md D423).
+/// (partners.md D423).
 pub const VALUE_SETTING_PREFIX: &str = "$setting.";
 
 /// Writes accepted per org and per minute from the ontology nodes.
@@ -58,7 +58,7 @@ pub struct OntologyQueryConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub traverse: Vec<Hop>,
     /// Link types joined to each row, both directions, open links only
-    /// (network-check.md D402).
+    /// (partners.md D402).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub with_links: Vec<String>,
 }

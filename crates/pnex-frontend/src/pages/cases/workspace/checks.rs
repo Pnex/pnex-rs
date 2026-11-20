@@ -1,4 +1,4 @@
-//! Checks panel of a watch case (network-check.md D430): per check, the
+//! Checks panel of a watch case (partners.md D430): per check, the
 //! worst latest result, its rules, the last run and since when it holds.
 //! Read from the workspace (`checks`), no journal query when the case opens.
 

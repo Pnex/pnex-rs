@@ -1,4 +1,4 @@
-//! Watch checks (network-check.md D426–D431): one run of a check on a
+//! Watch checks (partners.md D426–D431): one run of a check on a
 //! subject (a partner) within a scope (a certification), as the
 //! `check_record` node and the import service send it. The server keeps a
 //! state per (check, subject, scope) and writes an event only when the

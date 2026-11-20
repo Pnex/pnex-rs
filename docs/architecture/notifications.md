@@ -506,7 +506,7 @@ le journal des livraisons quitte la base relationnelle.
 
 ## 16. Amendement proposé — destinataire dynamique et webhook signé (D313, D315, 2026-10-19)
 
-Détail : `partner-watch.md`.
+Détail : `partners.md`.
 
 - **D313** : `pnex_notify` gagne `to_field` (adresse tirée du message) pour
   les seuls canaux SMTP marqués `dynamic_recipients` par un admin d'org ;

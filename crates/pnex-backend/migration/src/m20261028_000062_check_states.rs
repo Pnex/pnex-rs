@@ -1,4 +1,4 @@
-//! Working state of the watch checks (network-check.md D427): one row per
+//! Working state of the watch checks (partners.md D427): one row per
 //! org, check, subject and scope. Holds the fingerprint of the last result,
 //! the open event and the run counters, so a run that changes nothing
 //! writes no object. Not business data: an object would cost a version per

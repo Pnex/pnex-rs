@@ -117,7 +117,7 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_WEB_VISIT_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/web-visit"),
             )
-            // Server crawls of a site (network-check.md D407).
+            // Server crawls of a site (partners.md D407).
             .env(
                 "PNEX_FLOW_SITE_CRAWL_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/site-crawl"),

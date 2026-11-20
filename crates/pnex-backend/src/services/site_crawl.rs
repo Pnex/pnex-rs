@@ -1,4 +1,4 @@
-//! The `site_crawl` flow node on the server (network-check.md D407). The
+//! The `site_crawl` flow node on the server (partners.md D407). The
 //! node's options come from the deployed version of the flow; the site and
 //! its relevance rules from the message. One `crawl_site` mission per site
 //! is kept for the flows (disabled: the hourly sweep never plays it), so

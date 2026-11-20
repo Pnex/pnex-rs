@@ -1,4 +1,4 @@
-//! Hierarchies (partner-watch.md D305): trees computed at read time on the
+//! Hierarchies (partners.md D305): trees computed at read time on the
 //! links a pack declares, never containment (D180 keeps one parent). A
 //! node reached from several parents appears under each one, marked with
 //! the others; links are read valid at an instant (D179).

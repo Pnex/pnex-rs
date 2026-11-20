@@ -3,7 +3,7 @@ use super::*;
 
 use pnex_core::site_crawl::SiteCrawlConfig;
 
-// ─────────────── site crawl (network-check.md D407) ───────────────
+// ─────────────── site crawl (partners.md D407) ───────────────
 
 /// Site crawl inspector: page cap, proofs, changed pages only. The page
 /// record and excluded paths are kept as they are (set by a pack flow).

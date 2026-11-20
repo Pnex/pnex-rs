@@ -1,4 +1,4 @@
-//! Site crawls and web proofs (partner-watch.md D307–D310): a server crawl
+//! Site crawls and web proofs (partners.md D307–D310): a server crawl
 //! of a local site (robots.txt, sitemap, links, never off the origin),
 //! relevance, the page registry and its `record` objects, misses → gone,
 //! then the proof of a relevant page uploaded part by part by a paired
@@ -306,7 +306,7 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
     .await;
 }
 
-/// network-check.md D407: a flow's `site_crawl` node walks the site of its
+/// partners.md D407: a flow's `site_crawl` node walks the site of its
 /// message with the message's rules, through a disabled mission kept per
 /// site, and answers the relevant pages and a summary.
 #[tokio::test]
@@ -417,7 +417,7 @@ async fn flow_node_crawls_the_site_of_its_message() {
     .await;
 }
 
-/// network-check.md D408: a proof no agent took is tried by the server's
+/// partners.md D408: a proof no agent took is tried by the server's
 /// browser, three times at most; without a browser it stays for an agent.
 #[tokio::test]
 #[serial]

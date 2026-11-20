@@ -1,5 +1,5 @@
 //! Daily counters of the notifications sent to recipients taken from flow
-//! messages (partner-watch.md D313): per channel and per recipient (hashed
+//! messages (partners.md D313): per channel and per recipient (hashed
 //! address), so that a flow never turns into a bulk mailer.
 
 use sea_orm_migration::prelude::*;

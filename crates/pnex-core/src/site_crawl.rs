@@ -1,4 +1,4 @@
-//! The `site_crawl` flow node (network-check.md D407): the server crawl of
+//! The `site_crawl` flow node (partners.md D407): the server crawl of
 //! D307 started by a flow, on the site and relevance rules of the message.
 //! The flow's trigger says when a site is walked, its function says what
 //! makes a page relevant (codes, titles, names); registry, gone pages and

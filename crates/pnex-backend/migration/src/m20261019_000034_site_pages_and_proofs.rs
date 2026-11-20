@@ -1,4 +1,4 @@
-//! Site page registry and web proofs (partner-watch.md D307–D310): one row
+//! Site page registry and web proofs (partners.md D307–D310): one row
 //! per page of a crawled site (`gone` after two crawls without it), and an
 //! append-only chain of proofs per org (each manifest names the SHA-256 of
 //! the previous one).

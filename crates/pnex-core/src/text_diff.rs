@@ -1,4 +1,4 @@
-//! Diff of two versions of a document by paragraph (partner-watch.md
+//! Diff of two versions of a document by paragraph (partners.md
 //! D311): what was added, removed or changed, and where. Pure, wasm-safe.
 //!
 //! Common head and tail are cut first (edits are mostly local), then the

@@ -1,6 +1,6 @@
 //! What a pack last wrote in one of its imports (mapping, source, URL): an
 //! upgrade updates an import the org left as is, keeps an edited one
-//! (network-check.md D424).
+//! (partners.md D424).
 
 use sea_orm_migration::prelude::*;
 

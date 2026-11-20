@@ -1,6 +1,6 @@
 # Dossiers d'enquête
 
-Décisions K1–K64, GS1–GS17, D904–D911. Liens : `ontology.md` (D176–D191 : types, liens temporels D179, provenance D184, requête D185, packs D190), `pages.md` (P5, P6, P13), `proposals.md` (boîte commune), `media.md` (D271–D280 : apparitions, déclarations), `media.md` §3.12 (K19 variante A), `network-check.md` (dossiers de veille D426–D431), `markets-research.md` (appendice H : cœur causal réutilisé), `discourse-analysis.md`, `security.md`, `ai-assistant.md` §9. Benchmark : `docs/bench/dossier-enquete.md` et `docs/bench/dossier-enquete/`.
+Décisions K1–K64, GS1–GS17, D904–D911. Liens : `ontology.md` (D176–D191 : types, liens temporels D179, provenance D184, requête D185, packs D190), `pages.md` (P5, P6, P13), `proposals.md` (boîte commune), `media.md` (D271–D280 : apparitions, déclarations), `media.md` §3.12 (K19 variante A), `partners.md` (dossiers de veille D426–D431), `markets-research.md` (appendice H : cœur causal réutilisé), `discourse-analysis.md`, `security.md`, `ai-assistant.md` §9. Benchmark : `docs/bench/dossier-enquete.md` et `docs/bench/dossier-enquete/`.
 
 ## 1. Résumé
 
@@ -301,7 +301,7 @@ Une déclaration (`statement`) est citée mot pour mot, avec `aired`, `locator`,
 
 Un dossier peut contenir des sous-dossiers. Un sous-dossier est une lecture plus étroite, pas une copie. Il reçoit une copie de la `legal_basis` du parent à la création. Dans le graphe du parent, un sous-dossier est un nœud `case` : un double-clic l'ouvre. Un bandeau porte le fil d'Ariane et **+ Sous-dossier**. L'espace de travail se remonte à chaque changement de dossier.
 
-Un dossier de veille porte une `watch_key` et un `watch_state`. Le nœud `check_record` y écrit des événements `origin = flow`, et le panneau *Contrôles* en montre l'état (`network-check.md` D426–D431).
+Un dossier de veille porte une `watch_key` et un `watch_state`. Le nœud `check_record` y écrit des événements `origin = flow`, et le panneau *Contrôles* en montre l'état (`partners.md` D426–D431).
 
 ## 4. Exigences
 
@@ -449,7 +449,7 @@ Chaînes causales (D904–D911) :
 | D910 | Assistant figé | un paquet tel qu'à `T0 + 15 min` (D902) |
 | D911 | Mesurer, ne pas apprendre | bilan par couple dans les réglages du pack ; signalé sous 20 %, jamais désactivé |
 
-Décisions liées, tenues ailleurs : D176–D191 (`ontology.md`), D159–D175 (`media.md`), D271–D280 (`media.md`), D426–D431 (`network-check.md`), D441 (garde `engine_genericity`), D902 (`markets-research.md`).
+Décisions liées, tenues ailleurs : D176–D191 (`ontology.md`), D159–D175 (`media.md`), D271–D280 (`media.md`), D426–D431 (`partners.md`), D441 (garde `engine_genericity`), D902 (`markets-research.md`).
 
 ## 6. Interfaces
 

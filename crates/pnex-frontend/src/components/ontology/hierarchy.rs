@@ -1,4 +1,4 @@
-//! Hierarchy tab of the object page (partner-watch.md D305): a tree
+//! Hierarchy tab of the object page (partners.md D305): a tree
 //! computed on the links a pack declares, at a date; a node with several
 //! parents shows under each, with the others named. Coloured statuses
 //! (D339) mark the nodes; the coverage of the tree (D330) sums its users,

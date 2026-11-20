@@ -1,4 +1,4 @@
-//! Office documents read and written by flows (network-check.md D416,
+//! Office documents read and written by flows (partners.md D416,
 //! D420): `document_text` reads the text of a document of the media
 //! library, `sheet_write` writes an xlsx workbook into it. Configs and the
 //! bodies of the internal routes; the backend checks the node against the

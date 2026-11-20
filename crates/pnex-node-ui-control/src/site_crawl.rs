@@ -1,4 +1,4 @@
-//! Site crawl node (network-check.md D407): `pnex-site-crawl`. The
+//! Site crawl node (partners.md D407): `pnex-site-crawl`. The
 //! runtime reads no site: each message calls `POST /internal/flow/site-crawl`
 //! naming the deployed node with the site and relevance rules of the
 //! message; the backend crawls (minutes) and answers the relevant pages,

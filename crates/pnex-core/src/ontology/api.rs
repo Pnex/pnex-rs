@@ -929,7 +929,7 @@ pub struct PackView {
     pub settings: Vec<PackSettingView>,
     /// Functions, flows and imports of an installed pack the org edited
     /// since the pack wrote them: an upgrade keeps the org's version (D368,
-    /// network-check.md D424).
+    /// partners.md D424).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub kept: Vec<String>,
     /// For each import of `kept`, what differs from the pack's version:
@@ -1030,7 +1030,7 @@ pub struct CaseWorkspace {
     /// Sub-cases (GS16).
     #[serde(default)]
     pub children: Vec<CaseChild>,
-    /// Watch checks feeding the case (network-check.md D430).
+    /// Watch checks feeding the case (partners.md D430).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub checks: Vec<CaseCheck>,
 }

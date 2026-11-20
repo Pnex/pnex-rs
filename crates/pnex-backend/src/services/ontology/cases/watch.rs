@@ -1,4 +1,4 @@
-//! Watch checks (network-check.md D426–D431). A run of a check on a subject
+//! Watch checks (partners.md D426–D431). A run of a check on a subject
 //! within a scope updates a working state (`check_states`); only a run whose
 //! fingerprint differs from the previous one writes objects: the open event
 //! of the check closes, a new one opens in the subject's watch case (found

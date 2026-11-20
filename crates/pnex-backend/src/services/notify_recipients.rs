@@ -1,4 +1,4 @@
-//! Recipients taken from flow messages (partner-watch.md D313). A notify
+//! Recipients taken from flow messages (partners.md D313). A notify
 //! node with `to_field` asks here before each e-mail: the call must come
 //! from that deployed node, the SMTP channel must be marked
 //! `dynamic_recipients` by an org admin, the address must be one valid

@@ -559,6 +559,6 @@ Reste à faire :
 - Les routes `orgs/{id}/…` restent hors moteur.
 
 Questions ouvertes (choix de Shan) :
-- **Compte de service qui écrit pour un SaaS tiers** (`partner-watch.md` D300) : objets, liens et
+- **Compte de service qui écrit pour un SaaS tiers** (`partners.md` D300) : objets, liens et
   actions bornés aux types d'un pack, sans IAM, suppression, deploy ni action physique. Aujourd'hui,
   `SERVICE_WRITES` n'ouvre que `market-decisions:write`.

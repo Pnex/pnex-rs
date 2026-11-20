@@ -222,7 +222,7 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::mail::MailSendConfig,
     },
-    /// Objects of one type matching filters (partner-watch.md D312).
+    /// Objects of one type matching filters (partners.md D312).
     OntologyQuery {
         #[serde(default)]
         config: crate::ontology::flow::OntologyQueryConfig,
@@ -243,13 +243,13 @@ pub enum FlowNodeKind {
         config: crate::ontology::flow::LinkUpsertConfig,
     },
     /// Records one run of a watch check; an event only when the result
-    /// changes (network-check.md D426).
+    /// changes (partners.md D426).
     CheckRecord {
         #[serde(default)]
         config: crate::ontology::check::CheckRecordConfig,
     },
     /// Text of the current version of a document of the media library
-    /// (network-check.md D416).
+    /// (partners.md D416).
     DocumentText {
         #[serde(default)]
         config: crate::office::DocumentTextConfig,
@@ -284,7 +284,7 @@ pub enum FlowNodeKind {
         config: crate::web_visit::WebVisitConfig,
     },
     /// The server crawl of a site started by the flow, relevance rules from
-    /// the message; one message per relevant page (network-check.md D407).
+    /// the message; one message per relevant page (partners.md D407).
     SiteCrawl {
         #[serde(default)]
         config: crate::site_crawl::SiteCrawlConfig,

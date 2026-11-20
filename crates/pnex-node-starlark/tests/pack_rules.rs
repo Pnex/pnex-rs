@@ -1,4 +1,4 @@
-//! The Starlark rules shipped by the `quali_watch` pack (partner-watch.md
+//! The Starlark rules shipped by the `quali_watch` pack (partners.md
 //! D314, D316) and the target score of `prospecting_b2b`
 //! (crm.md D336) run as the flow runtime runs them.
 
@@ -1384,7 +1384,7 @@ fn an_invitation_becomes_a_meeting_with_its_people() {
     );
 }
 
-/// A reference programme and a partner's (fictitious, network-check.md
+/// A reference programme and a partner's (fictitious, partners.md
 /// D419), as their documents read.
 const REFERENCE_TEXT: &str = "Programme de référence\n\
 Cadrer le projet de référencement naturel (C1) (2h)\n\

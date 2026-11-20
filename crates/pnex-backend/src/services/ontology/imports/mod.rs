@@ -1,4 +1,4 @@
-//! Declarative imports into the ontology (partner-watch.md D301, D303).
+//! Declarative imports into the ontology (partners.md D301, D303).
 //!
 //! An import = a YAML mapping, a source (file sent with each preview, URL,
 //! paginated or per-object API), a mode (`incremental` or `snapshot`) and
