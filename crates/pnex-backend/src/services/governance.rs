@@ -21,6 +21,7 @@ pub enum GovernanceError {
     Invalid { field: String, token: String },
     MarkingNotFound,
     KeyTaken,
+    NameTaken,
     InUse,
     ClearanceNotFound,
     ObjectNotFound,
@@ -82,7 +83,7 @@ pub async fn create_marking(
     let done = db
         .execute_raw(stmt(
             "INSERT INTO markings (id, org_id, key, name, description, created_by) \
-             VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (org_id, key) DO NOTHING",
+             VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
             vec![
                 id.into(),
                 org_id.into(),
@@ -94,7 +95,19 @@ pub async fn create_marking(
         ))
         .await?;
     if done.rows_affected() == 0 {
-        return Err(GovernanceError::KeyTaken);
+        // The key or the name (case aside) is taken: say which.
+        let key_taken = db
+            .query_one_raw(stmt(
+                "SELECT 1 AS x FROM markings WHERE org_id = $1 AND key = $2",
+                vec![org_id.into(), input.key.clone().into()],
+            ))
+            .await?
+            .is_some();
+        return Err(if key_taken {
+            GovernanceError::KeyTaken
+        } else {
+            GovernanceError::NameTaken
+        });
     }
     journal(
         org_id,
@@ -691,6 +704,7 @@ pub async fn detect_pass(
         let org_id: i64 = row.try_get("", "org_id")?;
         let seq: i64 = row.try_get("", "seq")?;
         if dataset_markings(db, id).await?.is_empty() {
+            let keys: Vec<String> = markings(db, org_id).await?.into_iter().map(|m| m.key).collect();
             let sample =
                 crate::services::datasets::sample(db, store, org_id, id, DETECT_ROWS, None).await;
             if let Ok(sample) = sample {
@@ -707,7 +721,10 @@ pub async fn detect_pass(
                     values.insert("column".into(), name.clone().into());
                     values.insert("category".into(), category.as_str().into());
                     values.insert("share".into(), share.into());
-                    values.insert("marking".into(), DETECTED_MARKING.into());
+                    values.insert(
+                        "marking".into(),
+                        marking_for(&keys, category.as_str()).into(),
+                    );
                     let input = ProposalInput {
                         kind: Some(ProposalKind::DatasetMark),
                         type_key: "dataset".into(),
@@ -736,6 +753,15 @@ pub async fn detect_pass(
         .await?;
     }
     Ok(proposed)
+}
+
+/// Marking proposed for a detected category: the org's marking keyed by
+/// the category (`iban`, `nir`…) when it has one, else [`DETECTED_MARKING`].
+fn marking_for(keys: &[String], category: &str) -> String {
+    match keys.iter().any(|k| k == category) {
+        true => category.to_string(),
+        false => DETECTED_MARKING.to_string(),
+    }
 }
 
 /// Accepts a `dataset_mark` proposal: the table gets the proposed marking, created
@@ -805,6 +831,14 @@ pub async fn accept_dataset_mark(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_detection_proposes_the_marking_of_its_category() {
+        let keys = vec!["hr".to_string(), "iban".to_string()];
+        assert_eq!(marking_for(&keys, "iban"), "iban");
+        assert_eq!(marking_for(&keys, "nir"), DETECTED_MARKING);
+        assert_eq!(marking_for(&[], "email"), DETECTED_MARKING);
+    }
 
     #[test]
     fn the_journal_exports_as_csv() {

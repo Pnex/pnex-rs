@@ -4596,6 +4596,7 @@ err-hook-secret-missing = This webhook has no secret yet: generate one, then giv
 err-marking-required = This data carries markings you are not cleared for: ask an administrator for a clearance.
 err-marking-not-found = This marking does not exist.
 err-marking-key-taken = A marking of this organization already has this key.
+err-marking-name-taken = A marking of this organization already has this name.
 err-marking-in-use = Data still carries this marking: declassify it first.
 err-clearance-not-found = This clearance does not exist.
 err-governance-journal-unavailable = The journal of governed reads cannot be read right now: try again later.

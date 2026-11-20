@@ -794,6 +794,8 @@ pub const HOOK_SECRET_MISSING: &str = "hook-secret-missing";
 pub const MARKING_REQUIRED: &str = "marking-required";
 pub const MARKING_NOT_FOUND: &str = "marking-not-found";
 pub const MARKING_KEY_TAKEN: &str = "marking-key-taken";
+/// Another marking of the org has this name (case aside).
+pub const MARKING_NAME_TAKEN: &str = "marking-name-taken";
 /// A marking still carried by data cannot be deleted.
 pub const MARKING_IN_USE: &str = "marking-in-use";
 pub const CLEARANCE_NOT_FOUND: &str = "clearance-not-found";
@@ -1419,6 +1421,7 @@ pub const ALL: &[&str] = &[
     MARKING_REQUIRED,
     MARKING_NOT_FOUND,
     MARKING_KEY_TAKEN,
+    MARKING_NAME_TAKEN,
     MARKING_IN_USE,
     CLEARANCE_NOT_FOUND,
     GOVERNANCE_JOURNAL_UNAVAILABLE,

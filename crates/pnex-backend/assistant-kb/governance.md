@@ -4,7 +4,7 @@ title: Markings and clearances
 kind: feature
 pages: /pipelines/tables/:id, /ontology
 nodes:
-err_codes: marking-required, marking-not-found, marking-key-taken, marking-in-use, clearance-not-found, governance-journal-unavailable
+err_codes: marking-required, marking-not-found, marking-key-taken, marking-name-taken, marking-in-use, clearance-not-found, governance-journal-unavailable
 tags: marking, marquage, clearance, habilitation, purpose, finalité, declassify, déclassifier, sensitive, sensible, governance, gouvernance
 ---
 A **marking** is a compartment of the organization, such as HR or Health. A table that carries markings shows its rows only to people **cleared** for every one of them; its name, columns and versions stay visible to all. The owner and the administrators need a clearance too.
@@ -15,7 +15,7 @@ An **object** of the ontology can carry markings too, set by an administrator or
 
 What a pipeline computes from a marked table carries the same markings. Removing a marking from a table is a **declassification**: it needs a written reason, kept in the journal, and a later run that still reads marked data puts the marking back.
 
-PneX also reads the first rows of each new table version and, when a column looks like e-mails, phone numbers, IBANs, card numbers or social security numbers, proposes in **To validate** to mark the table *personal*. Nothing changes until an administrator accepts.
+PneX also reads the first rows of each new table version and, when a column looks like e-mails, phone numbers, IBANs, card numbers or social security numbers, proposes in **To validate** to mark the table: with the org's marking keyed by that category (`iban`, `nir`…) if there is one, else *personal*. Nothing changes until an administrator accepts. Two markings of an org never share a key or a name.
 
 When a person asks for the data the organization holds about them, an administrator exports their object: one JSON file with the object, every link it has or had (the cases and pages where it appears) and the history of its changes.
 

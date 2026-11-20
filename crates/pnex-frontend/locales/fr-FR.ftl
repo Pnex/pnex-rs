@@ -4595,6 +4595,7 @@ err-hook-secret-missing = Ce webhook n'a pas encore de secret : générez-en un,
 err-marking-required = Ces données portent des marquages pour lesquels vous n'êtes pas habilité : demandez une habilitation à un administrateur.
 err-marking-not-found = Ce marquage n'existe pas.
 err-marking-key-taken = Un marquage de cette organisation porte déjà cette clé.
+err-marking-name-taken = Un marquage de cette organisation porte déjà ce nom.
 err-marking-in-use = Des données portent encore ce marquage : déclassifiez-les d'abord.
 err-clearance-not-found = Cette habilitation n'existe pas.
 err-governance-journal-unavailable = Le journal des lectures gouvernées est illisible pour le moment : réessayez plus tard.

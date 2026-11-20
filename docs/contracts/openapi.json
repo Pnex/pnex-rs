@@ -67187,7 +67187,7 @@
                 }
               }
             },
-            "description": "`marking-key-taken`"
+            "description": "`marking-key-taken`, `marking-name-taken`"
           }
         },
         "security": [

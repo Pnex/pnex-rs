@@ -69,6 +69,11 @@ fn governance_error(e: GovernanceError) -> Result<Response> {
             err_codes::MARKING_KEY_TAKEN,
             "A marking of the org already has this key.",
         ),
+        GovernanceError::NameTaken => (
+            StatusCode::CONFLICT,
+            err_codes::MARKING_NAME_TAKEN,
+            "A marking of the org already has this name.",
+        ),
         GovernanceError::InUse => (
             StatusCode::CONFLICT,
             err_codes::MARKING_IN_USE,
@@ -155,7 +160,7 @@ async fn markings(
         (status = 201, body = pnex_core::governance::Marking),
         (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`marking-key-taken`", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`marking-key-taken`, `marking-name-taken`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]

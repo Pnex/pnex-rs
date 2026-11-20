@@ -130,6 +130,13 @@ async fn a_marked_table_reads_only_with_a_clearance() {
         let (s, m) = call(&server, a, org, "POST", "/api/v1/governance/markings",
             Some(json!({ "key": "hr", "name": "HR" }))).await;
         assert_eq!(s, 201, "{m}");
+        // One key, one name per org (case aside): pick lists stay unambiguous.
+        let (s, e) = call(&server, a, org, "POST", "/api/v1/governance/markings",
+            Some(json!({ "key": "hr", "name": "Other" }))).await;
+        assert_eq!((s, e["error"].as_str()), (409, Some("marking-key-taken")), "{e}");
+        let (s, e) = call(&server, a, org, "POST", "/api/v1/governance/markings",
+            Some(json!({ "key": "hr2", "name": "hr" }))).await;
+        assert_eq!((s, e["error"].as_str()), (409, Some("marking-name-taken")), "{e}");
         let (s, _) = call(&server, b, org, "POST", "/api/v1/governance/markings",
             Some(json!({ "key": "x", "name": "X" }))).await;
         assert_eq!(s, 403, "a member does not set markings");

@@ -14,7 +14,7 @@ d'org décide, sans rôle dédié, et le journal enregistre chaque geste.
 
 ## 1. Concepts
 
-- **Marquage** : compartiment nommé par l'org, avec une clé anglaise (`hr`, `health`).
+- **Marquage** : compartiment nommé par l'org, avec une clé anglaise (`hr`, `health`). La clé et le nom sont uniques dans l'org (le nom sans tenir compte de la casse).
 - **Habilitation** : droit d'une personne à lire un marquage, pour une **finalité** (texte libre,
   200 caractères au plus), jusqu'à une échéance.
 - **Habilitation complète** : une habilitation active pour **tous** les marquages de la donnée.
@@ -101,13 +101,13 @@ sequenceDiagram
   participant A as Admin
   W->>T: lit 200 lignes de la nouvelle version
   W->>A: proposition dataset_mark par colonne
-  A->>T: accepte : marquage personal
+  A->>T: accepte : marquage de la catégorie, sinon personal
 ```
 
 Le détecteur reconnaît e-mail, téléphone, IBAN (clé mod 97), carte (Luhn) et NIR (avec sa clé). Une
 colonne déclenche une proposition à partir de 5 valeurs reconnues et de 60 % de la colonne. Une
 table déjà marquée est ignorée. Une proposition refusée ne revient pas pour la même colonne. Seule une
-personne avec `governance:write` accepte. Le premier accord crée le marquage `personal`.
+personne avec `governance:write` accepte. La proposition porte le marquage dont la clé est la catégorie (`email`, `phone`, `iban`, `card`, `nir`), si l'org en a un. Sinon elle porte `personal`, que le premier accord crée.
 
 ### 2.5 Pseudonymisation
 
@@ -186,7 +186,7 @@ Préfixe `/api/v1`. Permissions au registre `pnex-api-contract/src/iam.rs`.
   `503 governance-journal-unavailable`.
 - Export : objet, liens passés et présents, 10 000 changements au plus, masque de l'appelant.
   `history_complete: false` signale un journal O2 absent.
-- Erreurs : `marking-required`, `marking-not-found`, `marking-key-taken`, `marking-in-use`,
+- Erreurs : `marking-required`, `marking-not-found`, `marking-key-taken`, `marking-name-taken`, `marking-in-use`,
   `clearance-not-found`, `governance-journal-unavailable`.
 - UI : onglet « Marquages et habilitations » de `/access` (`?tab=governance`), panneau
   `components/markings.rs` sur une table et une fiche d'objet.
@@ -202,7 +202,5 @@ Préfixe `/api/v1`. Permissions au registre `pnex-api-contract/src/iam.rs`.
 
 - SAML à la première demande d'un client. I4 général et I5 : `iam.md`.
 - D801, à coder (choix de Shan, 2026-11-20) : un pipeline ou une build doit vérifier l'habilitation de son auteur sur les données marquées qu'il lit.
-- Détection, à coder (choix de Shan, 2026-11-20) : la détection doit proposer le marquage de la catégorie trouvée. Sans ce marquage dans l'org, elle propose `personal`.
-- Marquages, à coder (choix de Shan, 2026-11-20) : le nom d'un marquage doit être unique dans l'org (409 à la création et au renommage).
 - Hors dépôt : `PNEX_PSEUDONYM_KEY` en secret dans le chart `pipelineWorker` de `pnex-deploy`.
 - L'onglet « Marquages et habilitations » n'a pas de passe axe dédiée.
