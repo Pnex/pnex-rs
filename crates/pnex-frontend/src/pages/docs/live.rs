@@ -10,7 +10,7 @@ use pnex_core::analysis::{AnalysisState, REUSE_MAX_SECS};
 use pnex_core::ontology::aggregate::{
     AggregateGroup, AggregateQuery, DateBucket, GroupKey, Metric, MetricOp,
 };
-use pnex_core::ontology::api::{ObjectTypeView, OntologyQuery};
+use pnex_core::ontology::api::{FilterOp, ObjectTypeView, OntologyQuery, PropertyFilter};
 use pnex_core::ontology::PropertyKind;
 use pnex_core::pages::{LiveBlock, LIVE_TITLE_MAX};
 
@@ -18,9 +18,10 @@ use crate::api;
 use crate::api::error_i18n::{localize, localize_code};
 use crate::components::crud::form::FormDialog;
 use crate::components::objects_widget::{group_label, money_text};
+use crate::components::ontology::filter_row::FilterRow;
 use crate::components::ontology::property_input::prop_label;
 use crate::components::ontology::type_label;
-use crate::components::ui::{FIELD_LABEL, INPUT};
+use crate::components::ui::{BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
 use crate::doc_editor::{self, LiveResult};
 
 /// Rows drawn in the page; the others are counted.
@@ -29,6 +30,9 @@ const ROWS_SHOWN: usize = 50;
 const METRIC: &str = "value";
 /// Groups of a calculation shown, the rest summed under "Others".
 const GROUPS: u32 = 20;
+/// Cells of a crosstab read (row × column pairs), and its columns shown (AN4).
+const PIVOT_CELLS: u32 = 1000;
+const PIVOT_COLUMNS: usize = 12;
 const OPS: [MetricOp; 5] = [
     MetricOp::Count,
     MetricOp::Sum,
@@ -143,6 +147,36 @@ async fn objects(q: &AggregateQuery, types: &[ObjectTypeView]) -> LiveResult {
     let grouped = !q.group_by.is_empty();
     let metric = q.metrics.first();
     let key = metric.map(|m| m.key.as_str()).unwrap_or(METRIC);
+    if let Some(across) = q.group_by.get(1).and_then(|g| g.property.as_deref()) {
+        let label = |g: &AggregateGroup, i: usize, p: Option<&str>| {
+            let one = AggregateGroup {
+                key: vec![g.key.get(i).cloned().flatten()],
+                labels: vec![g.labels.get(i).cloned().flatten()],
+                ..Default::default()
+            };
+            group_label(&one, types, type_key, p)
+        };
+        let cells: Vec<(String, String, String)> = res
+            .groups
+            .iter()
+            .map(|g| {
+                let v = g.values.get(key).map(value_text).unwrap_or_default();
+                (label(g, 0, by), label(g, 1, Some(across)), v)
+            })
+            .collect();
+        let corner = by
+            .map(|p| property_name(types, type_key, p))
+            .unwrap_or_default();
+        let (columns, rows, cut) = pivot(corner, &cells, PIVOT_COLUMNS);
+        let mut out = done(columns, rows);
+        if cut || res.others.is_some() {
+            out.more = [out.more, t!("live-pivot-cut").to_string()]
+                .join(" ")
+                .trim()
+                .to_string();
+        }
+        return out;
+    }
     let mut columns = Vec::new();
     if grouped {
         columns.push(
@@ -151,15 +185,7 @@ async fn objects(q: &AggregateQuery, types: &[ObjectTypeView]) -> LiveResult {
         );
     }
     columns.push(metric_header(metric, types, type_key));
-    let cell = |g: &AggregateGroup| {
-        g.values
-            .get(key)
-            .map(|v| match v.value {
-                Some(x) => number(x),
-                None => money_text(v, 2),
-            })
-            .unwrap_or_default()
-    };
+    let cell = |g: &AggregateGroup| g.values.get(key).map(value_text).unwrap_or_default();
     let mut rows: Vec<Vec<String>> = res
         .groups
         .iter()
@@ -178,6 +204,62 @@ async fn objects(q: &AggregateQuery, types: &[ObjectTypeView]) -> LiveResult {
         rows.push(r);
     }
     done(columns, rows)
+}
+
+fn value_text(v: &pnex_core::ontology::aggregate::AggregateValue) -> String {
+    match v.value {
+        Some(x) => number(x),
+        None => money_text(v, 2),
+    }
+}
+
+/// A crosstab of `(row, column, value)` cells: rows and columns in the order they
+/// first come, `max_columns` columns at most; `true` when columns were left out.
+fn pivot(
+    corner: String,
+    cells: &[(String, String, String)],
+    max_columns: usize,
+) -> (Vec<String>, Vec<Vec<String>>, bool) {
+    let mut columns: Vec<&str> = Vec::new();
+    let mut rows: Vec<(&str, Vec<String>)> = Vec::new();
+    let mut cut = false;
+    for (r, c, v) in cells {
+        let j = match columns.iter().position(|x| x == c) {
+            Some(j) => j,
+            None if columns.len() < max_columns => {
+                columns.push(c);
+                columns.len() - 1
+            }
+            None => {
+                cut = true;
+                continue;
+            }
+        };
+        let i = match rows.iter().position(|(x, _)| x == r) {
+            Some(i) => i,
+            None => {
+                rows.push((r, Vec::new()));
+                rows.len() - 1
+            }
+        };
+        let row = &mut rows[i].1;
+        if row.len() <= j {
+            row.resize(j + 1, String::new());
+        }
+        row[j] = v.clone();
+    }
+    let width = columns.len();
+    let header = std::iter::once(corner)
+        .chain(columns.iter().map(|c| c.to_string()))
+        .collect();
+    let body = rows
+        .into_iter()
+        .map(|(r, mut vs)| {
+            vs.resize(width, String::new());
+            std::iter::once(r.to_string()).chain(vs).collect()
+        })
+        .collect();
+    (header, body, cut)
 }
 
 async fn sql(text: &str, force: bool) -> LiveResult {
@@ -219,14 +301,18 @@ async fn sql(text: &str, force: bool) -> LiveResult {
 
 /// Settings of a block as the dialog edits them.
 #[derive(Debug, Clone, PartialEq, Default)]
-struct Draft {
+pub(crate) struct Draft {
     title: String,
     source: String,
     sql: String,
     type_key: String,
     op: String,
     property: String,
+    /// Rows: the property the objects are split by.
     group: String,
+    /// Columns of a crosstab (AN4), only with `group`.
+    column: String,
+    filters: Vec<PropertyFilter>,
 }
 
 impl Draft {
@@ -250,6 +336,21 @@ impl Draft {
                 .first()
                 .and_then(|g| g.property.clone())
                 .unwrap_or_default(),
+            column: q
+                .group_by
+                .get(1)
+                .and_then(|g| g.property.clone())
+                .unwrap_or_default(),
+            filters: q.query.filters,
+        }
+    }
+
+    /// A calculation on objects, as the crosstab tab starts it.
+    pub(crate) fn objects() -> Self {
+        Self {
+            source: "objects".into(),
+            op: "count".into(),
+            ..Default::default()
         }
     }
 
@@ -259,7 +360,7 @@ impl Draft {
             .unwrap_or(MetricOp::Count)
     }
 
-    fn block(&self, bid: &str, types: &[ObjectTypeView]) -> LiveBlock {
+    pub(crate) fn block(&self, bid: &str, types: &[ObjectTypeView]) -> LiveBlock {
         let query = if self.source == "objects" && !self.type_key.is_empty() {
             let op = self.op();
             let def = types.iter().find(|v| v.def.key == self.type_key);
@@ -267,18 +368,23 @@ impl Draft {
                 def.and_then(|v| v.def.properties.iter().find(|p| p.key == k))
                     .is_some_and(|p| matches!(p.kind, PropertyKind::Date | PropertyKind::DateTime))
             };
+            let key = |p: &String| GroupKey {
+                property: Some(p.clone()),
+                bucket: is_date(p).then_some(DateBucket::Month),
+                hops: Vec::new(),
+            };
+            let pivot = !self.group.is_empty() && !self.column.is_empty();
             let q = AggregateQuery {
                 query: OntologyQuery {
                     type_key: Some(self.type_key.clone()),
+                    filters: self.filters.clone(),
                     ..Default::default()
                 },
-                group_by: (!self.group.is_empty())
-                    .then(|| GroupKey {
-                        property: Some(self.group.clone()),
-                        bucket: is_date(&self.group).then_some(DateBucket::Month),
-                        hops: Vec::new(),
-                    })
+                group_by: [&self.group, &self.column]
                     .into_iter()
+                    .take(if pivot { 2 } else { 1 })
+                    .filter(|p| !p.is_empty())
+                    .map(key)
                     .collect(),
                 metrics: vec![Metric {
                     key: METRIC.into(),
@@ -290,7 +396,7 @@ impl Draft {
                     ratio: Vec::new(),
                     percent: false,
                 }],
-                limit: Some(GROUPS),
+                limit: Some(if pivot { PIVOT_CELLS } else { GROUPS }),
             };
             serde_json::to_string(&q).unwrap_or_default()
         } else {
@@ -310,7 +416,7 @@ impl Draft {
     }
 
     /// Ready to save: a query, or a type (and a number for a non-count).
-    fn complete(&self) -> bool {
+    pub(crate) fn complete(&self) -> bool {
         self.title.chars().count() <= LIVE_TITLE_MAX
             && match self.source.as_str() {
                 "objects" => {
@@ -330,35 +436,6 @@ pub(super) fn LiveBlockDialog(host: String, block: LiveBlock, on_close: Callback
     let mut failed = use_signal(|| false);
     let all_types = types.read().clone().unwrap_or_default();
     let d = draft();
-    let props: Vec<_> = all_types
-        .iter()
-        .find(|v| v.def.key == d.type_key)
-        .map(|v| v.def.properties.clone())
-        .unwrap_or_default();
-    let numbers: Vec<(String, String)> = props
-        .iter()
-        .filter(|p| matches!(p.kind, PropertyKind::Number { .. } | PropertyKind::Money))
-        .map(|p| (p.key.clone(), prop_label(p)))
-        .collect();
-    let groups: Vec<(String, String)> = props
-        .iter()
-        .filter(|p| {
-            matches!(
-                p.kind,
-                PropertyKind::Enum { .. }
-                    | PropertyKind::Text { .. }
-                    | PropertyKind::Bool
-                    | PropertyKind::Date
-                    | PropertyKind::DateTime
-                    | PropertyKind::Ref { .. }
-            )
-        })
-        .map(|p| (p.key.clone(), prop_label(p)))
-        .collect();
-    let type_choices: Vec<(String, String)> = all_types
-        .iter()
-        .map(|v| (v.def.key.clone(), type_label(&v.def)))
-        .collect();
     let bid = block.bid.clone();
     let submit = move |_| {
         let host = host.clone();
@@ -372,7 +449,6 @@ pub(super) fn LiveBlockDialog(host: String, block: LiveBlock, on_close: Callback
         });
     };
     let source = d.source.clone();
-    let op = d.op();
     rsx! {
         FormDialog {
             title: t!("live-settings").to_string(),
@@ -427,90 +503,200 @@ pub(super) fn LiveBlockDialog(host: String, block: LiveBlock, on_close: Callback
                         }
                     }
                 } else {
-                    div {
-                        label { class: FIELD_LABEL, r#for: "live-type", {t!("rules-type")} }
-                        select {
-                            id: "live-type",
-                            class: INPUT,
-                            onchange: move |e| {
-                                draft
-                                    .with_mut(|d| {
-                                        d.type_key = e.value();
-                                        d.property.clear();
-                                        d.group.clear();
-                                    })
-                            },
-                            option { value: "", selected: d.type_key.is_empty(), {t!("gov-choose")} }
-                            for (key, label) in type_choices {
-                                option {
-                                    key: "{key}",
-                                    value: "{key}",
-                                    selected: d.type_key == key,
-                                    "{label}"
-                                }
-                            }
-                        }
-                    }
-                    div {
-                        label { class: FIELD_LABEL, r#for: "live-op", {t!("live-op")} }
-                        select {
-                            id: "live-op",
-                            class: INPUT,
-                            onchange: move |e| draft.with_mut(|d| d.op = e.value()),
-                            for o in OPS {
-                                option {
-                                    key: "{op_wire(o)}",
-                                    value: "{op_wire(o)}",
-                                    selected: op == o,
-                                    {op_label(o)}
-                                }
-                            }
-                        }
-                    }
-                    if op != MetricOp::Count {
-                        div {
-                            label { class: FIELD_LABEL, r#for: "live-prop", {t!("live-property")} }
-                            select {
-                                id: "live-prop",
-                                class: INPUT,
-                                onchange: move |e| draft.with_mut(|d| d.property = e.value()),
-                                option {
-                                    value: "",
-                                    selected: d.property.is_empty(),
-                                    {t!("gov-choose")}
-                                }
-                                for (key, label) in numbers {
-                                    option {
-                                        key: "{key}",
-                                        value: "{key}",
-                                        selected: d.property == key,
-                                        "{label}"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    div {
-                        label { class: FIELD_LABEL, r#for: "live-group", {t!("live-group")} }
-                        select {
-                            id: "live-group",
-                            class: INPUT,
-                            onchange: move |e| draft.with_mut(|d| d.group = e.value()),
-                            option { value: "", selected: d.group.is_empty(), {t!("live-group-none")} }
-                            for (key, label) in groups {
-                                option {
-                                    key: "{key}",
-                                    value: "{key}",
-                                    selected: d.group == key,
-                                    "{label}"
-                                }
-                            }
-                        }
-                    }
+                    ObjectsFields { draft, types: all_types.clone() }
                 }
                 p { class: "text-sm text-gray-600", {t!("live-rights-help")} }
                 if failed() {
                     p { class: "text-sm text-red-600", role: "alert", {t!("live-save-failed")} }
+                }
+            }
+        }
+    }
+}
+
+/// The calculation on objects: type, operation, rows, columns of a crosstab
+/// (AN4) and filters. Used by a live block and by the crosstab tab.
+#[component]
+pub(crate) fn ObjectsFields(draft: Signal<Draft>, types: Vec<ObjectTypeView>) -> Element {
+    let all_types = types;
+    let d = draft();
+    let op = d.op();
+    let props: Vec<_> = all_types
+        .iter()
+        .find(|v| v.def.key == d.type_key)
+        .map(|v| v.def.properties.clone())
+        .unwrap_or_default();
+    let numbers: Vec<(String, String)> = props
+        .iter()
+        .filter(|p| matches!(p.kind, PropertyKind::Number { .. } | PropertyKind::Money))
+        .map(|p| (p.key.clone(), prop_label(p)))
+        .collect();
+    let groups: Vec<(String, String)> = props
+        .iter()
+        .filter(|p| {
+            matches!(
+                p.kind,
+                PropertyKind::Enum { .. }
+                    | PropertyKind::Text { .. }
+                    | PropertyKind::Bool
+                    | PropertyKind::Date
+                    | PropertyKind::DateTime
+                    | PropertyKind::Ref { .. }
+            )
+        })
+        .map(|p| (p.key.clone(), prop_label(p)))
+        .collect();
+    let type_choices: Vec<(String, String)> = all_types
+        .iter()
+        .map(|v| (v.def.key.clone(), type_label(&v.def)))
+        .collect();
+    let columns: Vec<(String, String)> = groups
+        .iter()
+        .filter(|(k, _)| *k != d.group)
+        .cloned()
+        .collect();
+    let filter_props: Vec<(String, String)> = props
+        .iter()
+        .map(|p| (p.key.clone(), prop_label(p)))
+        .collect();
+    rsx! {
+        div {
+            label { class: FIELD_LABEL, r#for: "live-type", {t!("rules-type")} }
+            select {
+                id: "live-type",
+                class: INPUT,
+                onchange: move |e| {
+                    draft
+                        .with_mut(|d| {
+                            d.type_key = e.value();
+                            d.property.clear();
+                            d.group.clear();
+                        })
+                },
+                option { value: "", selected: d.type_key.is_empty(), {t!("gov-choose")} }
+                for (key, label) in type_choices {
+                    option {
+                        key: "{key}",
+                        value: "{key}",
+                        selected: d.type_key == key,
+                        "{label}"
+                    }
+                }
+            }
+        }
+        div {
+            label { class: FIELD_LABEL, r#for: "live-op", {t!("live-op")} }
+            select {
+                id: "live-op",
+                class: INPUT,
+                onchange: move |e| draft.with_mut(|d| d.op = e.value()),
+                for o in OPS {
+                    option {
+                        key: "{op_wire(o)}",
+                        value: "{op_wire(o)}",
+                        selected: op == o,
+                        {op_label(o)}
+                    }
+                }
+            }
+        }
+        if op != MetricOp::Count {
+            div {
+                label { class: FIELD_LABEL, r#for: "live-prop", {t!("live-property")} }
+                select {
+                    id: "live-prop",
+                    class: INPUT,
+                    onchange: move |e| draft.with_mut(|d| d.property = e.value()),
+                    option { value: "", selected: d.property.is_empty(), {t!("gov-choose")} }
+                    for (key, label) in numbers {
+                        option {
+                            key: "{key}",
+                            value: "{key}",
+                            selected: d.property == key,
+                            "{label}"
+                        }
+                    }
+                }
+            }
+        }
+        div {
+            label { class: FIELD_LABEL, r#for: "live-group", {t!("live-group")} }
+            select {
+                id: "live-group",
+                class: INPUT,
+                onchange: move |e| {
+                    draft
+                        .with_mut(|d| {
+                            d.group = e.value();
+                            d.column.clear();
+                        })
+                },
+                option { value: "", selected: d.group.is_empty(), {t!("live-group-none")} }
+                for (key, label) in groups {
+                    option {
+                        key: "{key}",
+                        value: "{key}",
+                        selected: d.group == key,
+                        "{label}"
+                    }
+                }
+            }
+        }
+        if !d.group.is_empty() {
+            div {
+                label { class: FIELD_LABEL, r#for: "live-column", {t!("live-column")} }
+                select {
+                    id: "live-column",
+                    class: INPUT,
+                    onchange: move |e| draft.with_mut(|d| d.column = e.value()),
+                    option { value: "", selected: d.column.is_empty(), {t!("live-column-none")} }
+                    for (key, label) in columns {
+                        option {
+                            key: "{key}",
+                            value: "{key}",
+                            selected: d.column == key,
+                            "{label}"
+                        }
+                    }
+                }
+            }
+        }
+        if !d.type_key.is_empty() {
+            div { class: "space-y-2",
+                p { class: FIELD_LABEL, {t!("rules-filters")} }
+                for (i, f) in d.filters.clone().into_iter().enumerate() {
+                    FilterRow {
+                        key: "{i}",
+                        i,
+                        filter: f,
+                        props: filter_props.clone(),
+                        placeholder: String::new(),
+                        on_change: move |next: PropertyFilter| draft.with_mut(|d| d.filters[i] = next),
+                        on_remove: move |_| {
+                            draft
+                                .with_mut(|d| {
+                                    d.filters.remove(i);
+                                })
+                        },
+                    }
+                }
+                button {
+                    r#type: "button",
+                    class: BTN_SECONDARY_SM,
+                    disabled: filter_props.is_empty(),
+                    onclick: move |_| {
+                        let first = filter_props.first().map(|p| p.0.clone()).unwrap_or_default();
+                        draft
+                            .with_mut(|d| {
+                                d.filters
+                                    .push(PropertyFilter {
+                                        key: first,
+                                        op: FilterOp::Eq,
+                                        value: serde_json::Value::Null,
+                                    })
+                            });
+                    },
+                    {t!("rules-add-filter")}
                 }
             }
         }
@@ -522,6 +708,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_crosstab_puts_each_value_in_its_cell() {
+        let c = |r: &str, col: &str, v: &str| (r.to_string(), col.to_string(), v.to_string());
+        let cells = [
+            c("won", "Ann", "3"),
+            c("lost", "Bob", "1"),
+            c("won", "Bob", "2"),
+            c("open", "Cid", "7"),
+        ];
+        let (head, rows, cut) = pivot("Stage".into(), &cells, 2);
+        assert_eq!(head, ["Stage", "Ann", "Bob"]);
+        assert_eq!(rows, [vec!["won", "3", "2"], vec!["lost", "", "1"]]);
+        assert!(cut, "Cid is past the column limit");
+        let (_, rows, cut) = pivot(String::new(), &cells, 12);
+        assert_eq!((rows.len(), cut), (3, false));
+    }
+
+    #[test]
     fn a_draft_round_trips_through_the_block() {
         let d = Draft {
             title: "Open deals".into(),
@@ -530,6 +733,12 @@ mod tests {
             op: "sum".into(),
             property: "amount".into(),
             group: "stage".into(),
+            column: "owner".into(),
+            filters: vec![PropertyFilter {
+                key: "amount".into(),
+                op: FilterOp::Gt,
+                value: serde_json::json!(10),
+            }],
             ..Default::default()
         };
         let b = d.block("b1", &[]);

@@ -5,11 +5,13 @@ kind: feature
 pages: /pipelines
 nodes:
 err_codes: analysis-busy, analysis-not-found, analysis-table-unknown, analysis-sql-invalid, analysis-timeout, analysis-result-too-large, analysis-too-many-objects, analysis-unavailable, marking-required
-tags: sql, query, requête, analysis, analyse, select, table, objects
+tags: sql, query, requête, analysis, analyse, select, table, objects, crosstab, tableau croisé, pivot, no code, sans code
 ---
 A member can ask a question in SQL: one read-only `SELECT` on the tables of the organization, and on the objects of a type written `objects.<type>` (for example `SELECT title FROM objects.client`). The objects are read as the member sees them: masked properties stay empty and objects behind a marking they are not cleared for are absent. A marked table needs a clearance.
 
 A query waits its turn on the pipeline worker, before any pipeline; it runs 60 seconds at most and returns its first 1,000 rows. One query at a time per person; the result is kept a day and only its author reads it.
+
+**Without SQL**, the **Crosstab** tab of Pipelines counts, adds up or averages the objects of a type, split in rows by one property and in columns by another, with filters. It reads the objects as the member sees them. It shows 12 columns at most: narrow the filters if a note says some are left out. A page keeps the same table with a live block (its **Columns** setting).
 
 ## Troubleshooting
 - ***analysis-table-unknown*.** The query names a table that does not exist in the organization, or an object type that does not: check the names on the Tables tab and in the ontology.

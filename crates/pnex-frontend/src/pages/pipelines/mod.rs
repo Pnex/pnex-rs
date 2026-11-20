@@ -5,6 +5,7 @@
 mod connector_form;
 mod connectors;
 mod graph;
+mod pivot;
 mod query;
 mod studio;
 mod table;
@@ -122,6 +123,7 @@ enum Tab {
     Builds,
     Connectors,
     Query,
+    Pivot,
 }
 
 #[component]
@@ -135,7 +137,7 @@ pub fn Pipelines() -> Element {
             can("datasets:write"),
             Some(t!("pipe-table-add").to_string()),
         ),
-        Tab::Builds | Tab::Query => (false, None),
+        Tab::Builds | Tab::Query | Tab::Pivot => (false, None),
         Tab::Connectors => (
             can("connectors:write"),
             Some(t!("pipe-connector-add").to_string()),
@@ -177,6 +179,13 @@ pub fn Pipelines() -> Element {
                             {t!("pipe-tab-query")}
                         }
                     }
+                    if can("ontology:read") {
+                        button {
+                            class: if tab() == Tab::Pivot { TAB_ACTIVE } else { TAB },
+                            onclick: move |_| open(Tab::Pivot),
+                            {t!("pipe-tab-pivot")}
+                        }
+                    }
                     if can("connectors:read") {
                         button {
                             class: if tab() == Tab::Connectors { TAB_ACTIVE } else { TAB },
@@ -201,6 +210,9 @@ pub fn Pipelines() -> Element {
                 },
                 Tab::Query => rsx! {
                     query::QueryPanel {}
+                },
+                Tab::Pivot => rsx! {
+                    pivot::PivotPanel {}
                 },
             }
         }

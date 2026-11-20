@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | Livré (lots AN1 à AN3, règle qui propose D829). AN4 reste à faire (§7) |
+| Statut | Livré (lots AN1 à AN4, règle qui propose D829) |
 | Repose sur | `operational-platform.md` (D557), `pipelines.md` (worker D571–D574, requêtes nommées D948), `governance.md` (D801, D803), `crm.md` (masque D443), `ontology.md` (requête D185), `viz.md` (agrégats D579), `pages.md` |
 
 ## Résumé
@@ -22,6 +22,8 @@ page, calculée avec les droits du lecteur. Tout se fait en lecture seule (D557)
   déclenché. Il attend dans « À valider » (`proposals.md`).
 - **Rejeu** : aperçu des déclenchements d'une règle sur une fenêtre passée. Il n'envoie rien.
 - **Bloc vivant** : nœud de page `live_block` qui porte une requête SQL ou un calcul sur des objets.
+- **Tableau croisé** (AN4) : calcul sur des objets réparti en lignes et en colonnes par deux
+  propriétés, avec des filtres. Il se construit sans code.
 
 ```mermaid
 classDiagram
@@ -195,6 +197,14 @@ Une règle se rejoue sur une fenêtre passée, sans rien envoyer.
 
 Un bloc porte une requête SQL ou un agrégat (D579), calculé à l'affichage avec les droits du lecteur.
 
+### AN4 — Tableau croisé sans code
+
+Le tableau croisé réutilise l'agrégat D579 avec deux clés de répartition. Il ne demande aucune
+route nouvelle. Il s'ouvre dans l'onglet « Tableau croisé » de `/pipelines`, à côté de « Requête
+SQL ». Le même réglage existe dans un bloc vivant, par le champ « Colonnes ». Le calcul lit 1 000
+cellules au plus et montre 12 colonnes au plus. Au-delà, une note demande de resserrer les filtres.
+L'onglet demande `ontology:read`. Le calcul se fait avec les droits du lecteur (D831).
+
 ### D832 — Export PDF
 
 L'export PDF recalcule chaque bloc et le date « au <date> ».
@@ -238,6 +248,5 @@ L'export PDF recalcule chaque bloc et le date « au <date> ».
 
 ## 7. Reste à faire
 
-- **AN4** : analyse sans code (tableau croisé).
 - **D827, worker dédié aux requêtes** : l'ancien texte cite `PNEX_WORKER_QUEUES=analysis`, absent
   du code. Choix de Shan : le coder, ou retirer cette option.

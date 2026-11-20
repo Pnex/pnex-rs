@@ -3,7 +3,7 @@
 
 mod comments;
 mod editor;
-mod live;
+pub(crate) mod live;
 mod versions;
 
 use dioxus::prelude::*;
