@@ -1,4 +1,4 @@
-//! Decisions of an external model (markets-research.md appendix G, D892–D896):
+//! Decisions of an external model (markets-research.md §3.11, D892–D896):
 //! bars read at a date, the checks of a posted decision, its realized outcome
 //! and the scores of a model. Pure code: no I/O. An aid to analysis: nothing
 //! here places an order.
@@ -63,7 +63,7 @@ pub struct Bar {
 /// Minute bars in commit order → bars of `interval_us` aligned on the epoch,
 /// opening in [`from_us`, `to_us`) and closed at `as_of_us` (a bar is known at
 /// its close, D892). A minute written twice keeps its last write (MT5
-/// backfill, E.5).
+/// backfill, markets-research.md §3.9).
 pub fn resample(
     minutes: impl IntoIterator<Item = Bar>,
     interval_us: i64,

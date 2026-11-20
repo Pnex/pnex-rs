@@ -1,5 +1,5 @@
 //! MetaTrader 5 terminals as registered data sources (markets-research.md
-//! appendix E, D847–D849). A terminal is not a device: it borrows only the
+//! §3.9, D847–D849). A terminal is not a device: it borrows only the
 //! device journey (a record made in the UI, generated code carrying its own
 //! token, an announced catalogue, a configuration decided by the server, a
 //! presence). Its calls wait in `mt5_inbox` until the markets sweep writes

@@ -56,7 +56,7 @@ pub async fn refs<C: ConnectionTrait>(
 
 /// `refs` with each title and property document as recorded at `at`
 /// (D900): an object of a pack without history keeps its current state
-/// (reference objects, markets-research.md H.8).
+/// (reference objects, markets-research.md §3.12).
 pub async fn refs_at<C: ConnectionTrait>(
     db: &C,
     org_id: i64,

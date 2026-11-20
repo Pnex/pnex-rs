@@ -30795,7 +30795,7 @@
         "type": "object"
       },
       "SignalKind": {
-        "description": "Closed list of signal kinds (D904, H.7).",
+        "description": "Closed list of signal kinds (D904, markets-research.md §3.14).",
         "enum": [
           "change.config",
           "change.firmware",

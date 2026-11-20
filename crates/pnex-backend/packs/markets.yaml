@@ -67,7 +67,7 @@
 # FRED series: with the dollar, the macro drivers of gold. `eia_series`
 # reads the EIA (US public domain) with the org's own key (vault secret
 # `markets_eia_key`): weekly oil stocks and production by default.
-# Since 1.10.0 (markets-research.md H.7) countries (type `nation`), the
+# Since 1.10.0 (markets-research.md §3.14) countries (type `nation`), the
 # `exposed_to` link a member declares (country, company or macro series → instrument, it
 # propagates a shock), a price move threshold per instrument and the cause
 # → effect pairs read by `GET /markets/chains`: candidate chains computed at
@@ -944,7 +944,7 @@ queries:
     sql: >-
       SELECT id, title, kind, event_at FROM objects.market_event
       WHERE CAST(event_at AS DATE) BETWEEN {{from}} AND {{to}} ORDER BY event_at, id
-# Cause → effect pairs of the market causal chains (H.7, D906): each one is
+# Cause → effect pairs of the market causal chains (markets-research.md §3.14, D906): each one is
 # two settings (prior, maximal gap) the org may set.
 causal_pairs:
   - { cause: world.event, effect: price.move, max_gap_min: 1440, prior: 0.5 }

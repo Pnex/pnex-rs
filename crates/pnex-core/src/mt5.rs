@@ -1,5 +1,5 @@
 //! MetaTrader 5 terminals as registered data sources (markets-research.md
-//! appendix E, D847–D849): the shared types of the API, the choice of the
+//! §3.9, D847–D849): the shared types of the API, the choice of the
 //! symbols a terminal pushes, its presence, the reading of its catalogue,
 //! and the Expert Advisor generated for it. Pure code: no I/O, no clock.
 //! A terminal never places an order (D534, D123).

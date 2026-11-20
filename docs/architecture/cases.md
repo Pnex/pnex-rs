@@ -1,6 +1,6 @@
 # Dossiers d'enquête
 
-Décisions K1–K64, GS1–GS17, D904–D911. Liens : `ontology.md` (D176–D191 : types, liens temporels D179, provenance D184, requête D185, packs D190), `pages.md` (P5, P6, P13), `proposals.md` (boîte commune), `media.md` (D271–D280 : apparitions, déclarations), `media.md` §3.12 (K19 variante A), `partners.md` (dossiers de veille D426–D431), `markets-research.md` (appendice H : cœur causal réutilisé), `discourse-analysis.md`, `security.md`, `ai-assistant.md` §9. Benchmark : `docs/bench/dossier-enquete.md` et `docs/bench/dossier-enquete/`.
+Décisions K1–K64, GS1–GS17, D904–D911. Liens : `ontology.md` (D176–D191 : types, liens temporels D179, provenance D184, requête D185, packs D190), `pages.md` (P5, P6, P13), `proposals.md` (boîte commune), `media.md` (D271–D280 : apparitions, déclarations), `media.md` §3.12 (K19 variante A), `partners.md` (dossiers de veille D426–D431), `markets-research.md` (§3.14 : cœur causal réutilisé), `discourse-analysis.md`, `security.md`, `ai-assistant.md` §9. Benchmark : `docs/bench/dossier-enquete.md` et `docs/bench/dossier-enquete/`.
 
 ## 1. Résumé
 

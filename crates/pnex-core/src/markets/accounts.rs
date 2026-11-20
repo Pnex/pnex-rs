@@ -1,4 +1,4 @@
-//! Public trading accounts (markets-research.md appendix K, D930): figures on
+//! Public trading accounts (markets-research.md §3.16, D930): figures on
 //! when an account's entries fall, before a move of the instrument or
 //! around a release of the calendar. Pure code: no I/O, no clock. Figures
 //! only: no intention is ever attributed (D742), a proposal is a lead.

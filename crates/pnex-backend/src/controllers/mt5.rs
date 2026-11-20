@@ -1,4 +1,4 @@
-//! MT5 terminals API (markets-research.md appendix E, D847–D849). The UI's
+//! MT5 terminals API (markets-research.md §3.9, D847–D849). The UI's
 //! routes take the org from the principal (R1) with their permission applied
 //! by `OrgContext` (R2), and never return a token (R4, R16) except inside
 //! the generated EA. The EA's routes are `Machine`: its bearer token is the

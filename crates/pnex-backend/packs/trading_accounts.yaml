@@ -1,8 +1,8 @@
-# Pack "Trading accounts" (markets-research.md appendix K, D926-D933): the
+# Pack "Trading accounts" (markets-research.md §3.16, D926-D933): the
 # trades of public trading accounts, as their authors published them on a
 # tracking platform, read as analysis data next to the bars and the
 # calendar. PNeX only reads: it never copies a position, places an order or
-# logs into a third party's account (K.4).
+# logs into a third party's account (markets-research.md §3.16).
 # Source: the CSV export of an account, uploaded by a member (D929 a). The
 # platform's API waits for its terms of use to be read (Q-TA1); its HTML
 # pages are never read.

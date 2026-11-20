@@ -1,4 +1,4 @@
-//! Public trading accounts (markets-research.md appendix K, D927): their
+//! Public trading accounts (markets-research.md §3.16, D927): their
 //! trades are rows keyed by account and trade, never objects. A re-imported
 //! trade keeps its first `known_at`; deleting the account purges its rows
 //! (D932). PostgreSQL rows rather than a dataset, Shan's choice

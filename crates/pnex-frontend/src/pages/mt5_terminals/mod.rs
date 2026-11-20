@@ -1,4 +1,4 @@
-//! Page `/mt5-terminals` (markets-research.md appendix E, D847–D849): the
+//! Page `/mt5-terminals` (markets-research.md §3.9, D847–D849): the
 //! MetaTrader 5 terminals registered as data sources of the org, their
 //! presence and what they send. The server checks every right; the page
 //! hides what the caller may not do.

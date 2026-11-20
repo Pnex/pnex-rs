@@ -1,6 +1,6 @@
 # Hourly probabilities of each outcome of the followed markets, one closed
 # day at a time from the setting `history_from`. A price is public at its
-# instant (H.8): `ts` is when it was known.
+# instant (markets-research.md §3.12): `ts` is when it was known.
 key: prices
 name: Prediction market prices (hourly)
 hosts: [clob.polymarket.com]

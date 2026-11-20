@@ -1,1703 +1,1039 @@
-# Recherche et décision d'investissement — PRD (D523–D536)
+# Recherche et décision d'investissement : données de marché datées
 
 | | |
 |---|---|
-| Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
-| Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), **D890…D897** (appendice G), **D986…D993** (appendice L), lots **MK0…MK14**, **MK15…MK26** (appendice F), **MK27…MK30** (appendice G) |
-| Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`pipelines.md` D344–D358), règles de sites (`agents.md` D323–D328), ingestion média (`media.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
-| Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
+| **Statut** | Codé : packs `markets` 1.22.0, `world_events` 1.4.0, `prediction_markets` 2.0.0, `trading_accounts` 1.0.0, `trade_flows` 1.1.0, `real_estate`, `consumer_prices`, `investment_thesis`, `market_attribution` 1.0.0. Proposé : la suite de l'ingestion de contenus (§3.17). |
+| **Numérotation** | Décisions **D523–D546**, **D734–D743**, **D807–D849**, **D880–D933**, **D986–D993**. Lots **MK0–MK45**, **MT5-1–MT5-4**, **L1–L8** (§6.4). Questions **Q-MK**, **Q-MT**, **Q-F**, **Q-MD**, **Q-PT**, **Q-BT**, **Q-PM**, **Q-TA**, **Q-IN** (§6.5). Le code cite ces numéros. |
+| **Repose sur** | `ontology.md` (D176–D191), `pipelines.md` (D934–D953), `cases.md` (D904–D911), `proposals.md` (D371–D377), `iam.md`, `api.md`, `security.md` (§6, R1–R16), `ai-assistant.md`, `due-diligence.md` (D476), `media.md`, `mail.md` |
 
-> Avertissement produit à afficher sur chaque écran du domaine : les indicateurs, événements et tests sont des aides à l'analyse, pas un conseil en investissement ni une recommandation.
+## 1. Résumé
 
-## 1. Le besoin
+Ce domaine collecte des données de marché publiques et les date par l'instant où elles sont devenues connues. Il sert une org qui analyse des sociétés cotées, des séries macro, des événements du monde et des flux physiques. Il sert aussi un modèle de décision externe qui lit ces données à une date passée sans voir le futur. PneX ingère, range, mesure et sert des lectures. Le modèle de prévision vit dans un projet à part (market-advisor) : PneX ne prévoit rien et ne passe aucun ordre.
 
-Outiller la démarche d'une équipe d'analyse sectorielle :
+Les écrans du domaine affichent : « aide à l'analyse, pas un conseil en investissement ni une recommandation ».
 
-1. **Couvrir** une liste de sociétés (30 à 300) et leurs instruments cotés.
-2. **Voir passer** tout ce qui les concerne : articles, communiqués, publications réglementaires, appels de résultats, données macro.
-3. **Transformer** ce flux en **événements datés et sourcés** (résultats, révision de prévisions, opération sur capital, changement de dirigeant, litige, notation).
-4. **Mesurer** la réaction du cours autour de chaque événement.
-5. **Écrire une thèse** avant de décider (catalyseurs datés, critères d'invalidation, taille), tenir un **journal**, faire la **revue** après coup.
-6. **Tester** une règle (« après une révision à la hausse, sur-performance à 20 jours ? ») sur des données **telles qu'elles étaient connues à la date** (point-in-time), sans biais d'anticipation.
+## 2. Concepts
 
-Hors du besoin : prix temps réel des actions, exécution d'ordres, messagerie entre acteurs, diffusion de signaux.
-
-## 2. Ce qui existe déjà
-
-| Brique | Où | Rôle ici |
-|---|---|---|
-| Objets, liens, provenance, historique | ontologie 0.2.0 | émetteurs, instruments, événements ; `ontology_objects_changes` donne l'état à une date |
-| Propriétés `series` (D185) + `telemetry/aggregate` | O2 | cours et volumes d'un instrument, lus par objet |
-| Sociétés, SIREN, dirigeants, BODACC | packs `companies`, `companies_fr` | l'émetteur **est** l'organisation déjà connue |
-| Imports déclaratifs et pipelines | D301, D344–D358 | référentiels (LEI, ISIN), cours de clôture, filings |
-| Collecte web gardée | `agents.md`, crawl | pages de communiqués, sites d'information sans flux |
-| Audio / vidéo → texte | `media.md`, ASR | podcasts, webcasts de résultats |
-| Recherche documentaire | `doc-search.md` | recherche plein texte des articles collectés |
-| Extraction LLM à citation vérifiée | `due-diligence.md` D476 | même règle pour les événements (citation retrouvée ou rejet) |
-| File « À valider » | `proposals.md` | les événements extraits sont des propositions |
-| Ratios financiers | `pnex_core::finance` (D478) | fondamentaux des émetteurs (lot DD2) |
-| Détection d'anomalies, prévision | nœuds `anomaly`, `forecast` | volume ou cours anormal → alerte |
-| Dossier, chronologie, preuves | `cases` | support de la thèse |
-
-## 3. Ce qui manque
-
-- un référentiel **instrument / cotation / émetteur** avec identifiants (ISIN, LEI, FIGI, MIC) ;
-- l'import des **cours de clôture** avec **opérations sur titres** (divisions, dividendes) ;
-- le type **article** relié aux émetteurs, et le type **événement de marché** ;
-- un calcul **d'étude d'événement** (rendement anormal) ;
-- un dossier **thèse d'investissement** avec journal et positions fictives ;
-- une lecture **point-in-time** pour les tests.
-
-## 4. Principe d'architecture
+| Terme | Définition |
+|---|---|
+| **Source primaire** | Source qui publie le chiffre elle-même : SEC, FRED, BRI, BCE, Eurostat, CFTC, EIA, UCDP. La presse détecte, elle ne nourrit aucun calcul (D540). |
+| **Valeur datée** | Ligne de `market_observations` : objet, indicateur, période, valeur, `known_at`. Une valeur révisée ajoute une ligne (D541). |
+| **`known_at`** | Instant où PneX pouvait savoir un fait. Toute lecture à une date `t` filtre `known_at <= t` (D531). |
+| **`backfilled`** | Marque d'une valeur rattrapée sans date de publication. Les tests l'excluent par défaut. |
+| **Table** | Table de l'org (`pipelines.md`) qui porte un historique fin : barres, ticks, positions, transactions. Jamais d'objet par ligne (D807). |
+| **Barre** | Bougie OHLCV d'un instrument, ouverte à `ts`, connue à sa clôture `ts + interval` (D892). |
+| **Mouvement de marché** | `market_event` de nature `market_move` : séance anormale d'une série, trouvée dans la série elle-même (D734). |
+| **Événement du monde** | `geo_event` : un lieu, une date, une source, un statut `unconfirmed`, `confirmed` ou `dismissed` (D739). |
+| **Terminal MT5** | Terminal MetaTrader 5 enregistré comme source. Son Expert Advisor (EA) généré pousse barres et ticks (D847). |
+| **Décision de modèle** | Distribution datée `buy` / `neutral` / `sell` postée par le runner d'un modèle externe (D894). |
+| **Clé point-in-time** | Clé d'accès qui exige l'instant `as_of` à chaque lecture et n'écrit jamais (D898). |
+| **Chaîne candidate** | Suite cause → effet calculée à la lecture, jamais stockée comme cause (D742, §3.14). |
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart LR
-  subgraph Sources
-    R[flux RSS / Atom]
-    F[filings réglementaires]
-    W[pages web<br/>site-recipes]
-    A[audio / webcasts<br/>media-ingest]
-    P[cours de clôture<br/>pipelines]
-    G[référentiels LEI / ISIN / FIGI]
-  end
-  G --> I[instrument ↔ émetteur]
-  P --> S[séries O2<br/>par instrument]
-  R & F & W & A --> D[article<br/>média + texte]
-  D --> L[liaison aux émetteurs]
-  L --> X[extraction d'événements<br/>citation vérifiée]
-  X --> Q[À valider]
-  Q --> E[événement de marché]
-  E & S --> ES[étude d'événement<br/>pnex_core::markets]
-  E & S --> T[dossier thèse<br/>journal + positions fictives]
-  E & S --> B[test point-in-time]
-  S --> N[anomaly → notification]
+  org[organization] -->|emet| ins[instrument]
+  org -->|filed_by| fil[filing]
+  fil -->|filing_document| doc[document de l'org]
+  ev[market_event] -->|event_about| ins
+  ev -->|event_about| org
+  ms[macro_series] --> obs[market_observations]
+  org --> obs
+  geo[geo_event] -.->|attributed_to, membre| ev
+  ins --> tab[Tables : barres, ticks]
+  tab --> dec[market_decisions]
+  pm[prediction_market] -->|bears_on| ins
+  ta[trading_account] -->|trades| ins
 ```
+
+## 3. Fonctionnement
+
+### 3.1 Sources et collecte
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  src[Source publique] --> pipe[Pipeline du pack]
+  pipe --> tab[Table de l'org]
+  tab -->|import| obs[market_observations]
+  tab -->|import| obj[Objets]
+  pipe --> tr[Plages de temps]
+  pipe --> prop[Propositions]
+  mt5[Terminal MT5] -->|POST /mt5/ingest| box[Boîte du terminal]
+  box --> tab
+```
+
+Toute collecte est un pipeline de pack (`packs/<pack>/pipelines/*.yaml`, `pipelines.md` D934–D953). Aucune collecte ne passe par un flow. Une source est fixée dans le pipeline : hôtes déclarés, cadence, garde egress (R8). Une clé d'API vient du coffre de l'org et part vers les seuls hôtes de la source (R9). Les lectures `/api/v1/markets/*` gardent leur forme sur ces tables.
+
+| Pack | Pipelines | Contenu |
+|---|---|---|
+| `markets` | `sec_companies`, `edgar_filings`, `edgar_figures`, `sec_documents`, `sec_subsidiaries`, `gleif_identity`, `esef_filings`, `filing_events` | sociétés suivies, dépôts, chiffres XBRL, documents, filiales, LEI, rapports ESEF, événements extraits |
+| `markets` | `fred_series`, `fred_move_series`, `alfred_series`, `alfred_move_series`, `ecb_series`, `bis_series`, `eurostat_series`, `eia_series`, `cftc_cot`, `portwatch_chokepoints` | séries macro, taux directeurs, inflation, pétrole, positions COT, détroits |
+| `markets` | `tiingo_daily_prices`, `tiingo_move_tickers`, `tiingo_benchmark` | clôtures quotidiennes (clé Tiingo de l'org) |
+| `markets` | `binance_klines_1m`, `binance_trades`, `dukascopy_ticks`, `dukascopy_m1`, `histdata_m1`, `histdata_ticks` | historique fin de prix |
+| `markets` | `bls_calendar`, `fomc_calendar`, `ecb_calendar`, `boe_calendar`, `boj_calendar` | calendrier des publications |
+| `markets` | `market_moves`, `market_press` | séances anormales, pistes de presse (GDELT) |
+| `world_events` | `gdelt_events`, `gdelt_events_history`, `ucdp_events`, `ucdp_ged_file`, `ucdp_candidate_file`, `acled_events`, `lead_confirmations` | événements du monde |
+| `prediction_markets` | `markets`, `prices`, `prices_fine`, `trades` | marchés de prédiction |
+| `trade_flows` | `ais_dk`, `ais_noaa`, `adsb_lol` | positions de navires et d'avions |
+| `real_estate` | `dvf` | ventes immobilières en France |
+| `consumer_prices` | `open_prices` | prix produit par produit |
+
+Le réglage `source_contact` déclare un contact dans chaque requête. La SEC et le BLS refusent un client sans contact. Chaque source a ses conditions d'usage. Une table d'une source aux conditions non vérifiées reste privée à l'org.
+
+### 3.2 Valeurs datées
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  pub[Publication par la source] --> read[Lecture par le pipeline]
+  read --> k{Date de publication connue ?}
+  k -->|oui| ka[known_at = publication]
+  k -->|non| kb[known_at = lecture]
+  kb --> bf[backfilled si ancienne]
+  ka --> row[Nouvelle ligne si valeur changée]
+  bf --> row
+```
+
+Une valeur datée se lit à une date `t` : pour chaque période, la dernière ligne avec `known_at <= t`. Un dépôt SEC est connu à la fin de son jour de dépôt (UTC). ALFRED donne à une valeur FRED sa date de première publication (D811). Sans ALFRED, une valeur FRED ou BRI de plus de 5 jours est marquée `backfilled`. Un rapport COT est connu trois jours après son mardi. Une série hebdomadaire de l'EIA est connue cinq jours après sa semaine. Les valeurs restent celles de la source, sous le nom de son concept : aucun rapprochement de concepts.
+
+Une barre ou un tick est connu à son instant, même chargé plus tard. Sinon aucun backtest sur un historique téléchargé n'est possible.
+
+### 3.3 Émetteurs et dépôts
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  set[covered_tickers] --> co[sec_companies]
+  co --> fi[edgar_filings]
+  co --> fg[edgar_figures]
+  fi --> sd[sec_documents]
+  sd --> doc[Document indexé]
+  fi --> sub[sec_subsidiaries]
+  sub --> org[organization + subsidiary_of]
+  co --> gl[gleif_identity]
+  gl --> prop[Proposition LEI]
+```
+
+Une organisation devient émettrice par son lien vers un `instrument` (D523). Le pipeline `sec_documents` fait du document principal de chaque dépôt un document de l'org, indexé par la recherche documentaire (D542). Le texte reste privé à l'org (D527). Les rubriques d'un 8-K (2.02 résultats, 5.02 dirigeants) donnent sa nature sans LLM (D544).
+
+Le pipeline `sec_subsidiaries` lit l'Exhibit 21 des 10-K. Chaque filiale devient une `organization` retrouvée par `declared_key` (pays et nom). Son lien `subsidiary_of` (nature `declared`) commence au premier rapport qui la cite. L'import ferme ce lien quand le dernier rapport ne la cite plus. Le pipeline `gleif_identity` cherche le LEI d'une société SEC par nom légal : un candidat unique devient une proposition, jamais une fusion (D812). Une société non trouvée est redemandée 30 jours plus tard. Le pipeline `esef_filings` lit les rapports européens des LEI du réglage `covered_leis`.
+
+### 3.4 Mouvements de marché et séance
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  ser[Séries surveillées] --> sql[Pipeline market_moves]
+  sql --> imp[Import Abnormal sessions]
+  imp --> ev[market_event market_move]
+  ev --> rule[Règle d'avis de l'org]
+  ev --> ses[Vue Séance]
+  ses --> sum[Synthèse quotidienne]
+  sum --> ch[move_notify_channels]
+```
+
+Le pipeline `market_moves` lit les séries de `move_series` (FRED, `bis:` pour la BRI) et de `move_tickers` (Tiingo). Format d'une entrée : `[bis:]CODE:mode:classe[:k[:plancher]]`. Une séance est anormale si sa variation dépasse `k` écarts types des 250 variations précédentes **et** un plancher absolu (D735). Il faut 60 points au moins. Les jours sans cotation sont ignorés, jamais interpolés.
+
+| Mode | Mesure | Plancher par défaut |
+|---|---|---|
+| `log_return` | rendement logarithmique (prix, indices) | 2 % (0,75 % pour `fx`) |
+| `diff` | écart en points (taux, VIX) | 15 pb |
+| `volume` | `ln` du volume moins sa moyenne, hausse seulement (D810) | `ln 2` |
+
+Valeurs par défaut : VIX, taux US à 10 ans, WTI, Brent, dollar pondéré, et les taux directeurs du G10 en `bis:` avec `k = 1` et un plancher de 0,05 (D881, D888). `SPY` et `QQQ` remplacent les indices FRED `SP500` et `NASDAQCOM`, dont la reproduction exige un accord (Q-MK5).
+
+Le mouvement hérite le `known_at` de la valeur qui le déclenche, et sa marque `backfilled` (D736). Il est créé sans file « À valider » (D738). La vue **Séance** (`GET /markets/sessions/{date}`) liste les mouvements d'une date par |mesure| / sigma. La synthèse quotidienne (D814, réglage `session_summary`, `off` par défaut) est rédigée par le fournisseur d'IA de l'org. Elle part dans l'application et vers les canaux de `move_notify_channels`. Rien n'est stocké comme objet.
+
+### 3.5 Événements du monde
+
+```mermaid
+stateDiagram-v2
+  [*] --> unconfirmed: piste GDELT
+  [*] --> confirmed: UCDP, ACLED ou saisie
+  unconfirmed --> confirmed: lead_confirmations ou membre
+  unconfirmed --> dismissed: membre
+  confirmed --> dismissed: membre
+```
+
+Le pack `world_events` (`geo_event`) ne dépend pas de `markets` (D739). GDELT donne une piste par (pays, code CAMEO racine, jour), jamais une ligne par enregistrement (D740). Les pays suivis sont dans `geo_watch`, vide par défaut. UCDP (CC BY 4.0) et ACLED (compte et licence de l'org) donnent des événements vérifiés, agrégés par (pays, nature, jour). Les pays sont en ISO 3166 alpha-2 partout, convertis à la lecture.
+
+Le pipeline `lead_confirmations` confirme une piste GDELT par un événement vérifié du même pays, à un jour près, de nature compatible (D741). Un statut posé par un membre n'est jamais repris. Les événements s'affichent sur la carte générale (30 jours) et sur la carte des dossiers.
+
+PneX ne stocke aucun lien de cause entre un `geo_event` et un `market_event` (D742). Il calcule à la lecture une concomitance (même fenêtre, ±1 séance). Seul un membre crée `attributed_to` (pack `market_attribution`), depuis un dossier, avec une justification et une source. Le type de lien porte `member_only: true` : l'assistant, un import ou un service est refusé (`ontology-link-member-only`).
+
+### 3.6 Événements extraits des communiqués
+
+```mermaid
+sequenceDiagram
+  participant P as Pipeline filing_events
+  participant M as Fournisseur d'IA de l'org
+  participant Q as File de propositions
+  participant H as Membre
+  P->>P: pièces EX-99.x des 8-K
+  P->>M: étape model (extracteur du pack)
+  M-->>P: champs + citations
+  P->>P: citation retrouvée mot pour mot, sinon rejet
+  P->>Q: proposition market_event + lien event_about
+  H->>Q: accepte ou refuse
+```
+
+Un pack déclare ses extracteurs (`extractors:`, `pnex_core::extractor`) : un schéma et une consigne (D841). Chaque valeur porte une citation de 300 caractères au plus, retrouvée mot pour mot à espaces près. L'étape `model` lit 50 documents par org et par jour UTC, puis attend le lendemain. Sans fournisseur, elle s'arrête sur `model_unconfigured`.
+
+Le pipeline `filing_events` lit les pièces 99.x des 8-K des sociétés suivies, en anglais, depuis `event_extraction_from` (D842). Le `market_event` proposé a `known_at` = `published_at` = acceptation SEC du dépôt (D843). Sa `direction` vient d'une citation, sinon `unknown` (D844). L'acceptation est toujours humaine (Q-MK15).
+
+### 3.7 Étude d'événement, test de règle, thèse
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  dates[Dates : rubrique 8-K, geo_event, market_move] --> pit[Lecture à known_at]
+  pit --> grp[Regroupement des dates proches]
+  grp --> study[Rendement anormal par fenêtre]
+  rnd[20 dates tirées par instrument] --> study
+  study --> out[Distribution + effectif + part non confirmée]
+```
+
+L'étude d'événement est une fonction pure (`pnex_core::market_study`, D532). Elle calcule le rendement anormal (modèle de marché, β estimé sur [−250, −30] jours) sur les fenêtres [−1, +1], [0, +5] et [0, +20]. Une `macro_series` est mesurée sans modèle de marché : la variation brute.
+
+Le test de règle (`GET /markets/rule-test`) n'a aucun paramètre à optimiser (D545). Il compare toujours à 20 dates tirées par instrument, avec un tirage reproductible. La mesure commence à la séance qui suit le jour de connaissance. Des `geo_event` proches comptent une fois (28 jours civils, D743). Les pistes non confirmées sont exclues sauf choix explicite. Limite affichée : seuls les instruments suivis aujourd'hui sont mesurés (biais du survivant).
+
+Le pack `investment_thesis` fait d'un dossier une thèse : instrument, sens, catalyseurs datés, critères d'invalidation (D533). Une `paper_position` se mesure sur les clôtures, jamais sur un prix saisi (D546, `GET /markets/positions/{id}/result`). La fiche d'un émetteur a un onglet **Cours** : clôtures, séances anormales, dépôts et décisions de modèle sur la même frise (D813, D897).
+
+### 3.8 Historique fin de prix
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  bin[Binance public] --> p1[Pipelines binance_*]
+  duk[Dukascopy public] --> p2[Pipelines dukascopy_*]
+  hd[HistData] --> p3[Pipelines histdata_*]
+  p1 --> t[Tables de l'org]
+  p2 --> t
+  p3 --> t
+  t --> files[GET /datasets/id/files]
+  t --> bars[GET /markets/bars]
+  files --> py[Projet d'entraînement]
+```
+
+Une bougie ou un tick n'est pas un objet : il vit dans une table, l'instrument en colonne (D807). Les prix sont en décimal, les horodatages en µs UTC. Aucun ajustement, aucune bougie reconstruite : un trou reste un trou (D809).
+
+| Table | Forme | Source | Réglages |
+|---|---|---|---|
+| `binance_klines_1m` | `ohlcv` | Binance spot, un mois clos par fichier, SHA-256 vérifié | `history_symbols`, `history_from` |
+| `binance_trades` | `trade_tick` | Binance spot, un fichier par jour | `history_trade_symbols`, `history_trade_from` |
+| `dukascopy_quotes` | `quote_tick` | Dukascopy, fichiers horaires LZMA, un jour par transaction | `history_fx_pairs`, `history_fx_from` |
+| `dukascopy_ohlcv_1m` | `ohlcv` | Dukascopy, bid puis ask, un jour UTC par fichier, un fichier toutes les 10 s | `dukascopy_m1_symbols`, `dukascopy_m1_from` |
+| `histdata_m1` | `ohlcv` | HistData, bid, une année close par fichier, heure de New York avec heure d'été | `histdata_pairs`, `histdata_from` |
+| `histdata_quotes` | `quote_tick` | HistData, un mois clos par fichier | `histdata_tick_pairs`, `histdata_tick_from` |
+| `mt5_ohlcv_1m`, `mt5_ticks` | `ohlcv`, `quote_tick` | terminaux MT5 (§3.9) | — |
+
+L'état de chaque fichier est suivi par le registre des pipelines (`pipeline_items`, D937). Un fichier `done` n'est jamais relu. Une période vide (week-end, avant la cotation) est `empty`. Les échelles de prix Dukascopy sont fixées dans le code : 3 places pour une cotation en JPY, l'or et l'argent, 5 sinon. Une paire inconnue est laissée de côté.
+
+Le quota de tables d'une org vaut 20 Go par défaut. L'admin plateforme le relève (`PUT /system/orgs/{org_id}/dataset-quota`, D821). Les chargements massifs exigent ce quota posé (SEC-82). Le code d'entraînement lit les fichiers Parquet de la vue courante, ou à `as_of`, sans passer par l'API JSON (D823). Le rééchantillonnage est une transformation SQL (`date_trunc`, `date_bin`).
+
+Mesure : la vue d'une table tient à 10⁵ transactions `append` (431 ms pour lister les fichiers). Le compactage mensuel n'est donc pas nécessaire à cette échelle.
+
+### 3.9 Terminaux MT5
+
+```mermaid
+sequenceDiagram
+  participant U as Membre (UI)
+  participant S as PneX
+  participant E as EA du terminal
+  U->>S: crée le terminal, génère l'EA
+  S-->>U: EA avec URL et jeton
+  E->>S: POST /mt5/announce (catalogue)
+  U->>S: choisit symboles, ticks, rattrapage
+  E->>S: GET /mt5/config (toutes les 5 min)
+  E->>S: POST /mt5/ingest (barres M1, ticks)
+  S-->>E: 202
+  S->>S: boîte vidée vers mt5_ohlcv_1m, mt5_ticks
+```
+
+Un terminal MT5 est une source de données, pas un device (D847). Il emprunte seulement le parcours d'un device : fiche, code généré, annonce, configuration décidée côté serveur, présence. Le jeton (`pnex_mt5_` + 32 octets) n'apparaît que dans l'EA généré. Seul son SHA-256 est gardé. Régénérer l'EA révoque l'ancien jeton.
+
+L'EA annonce tout le catalogue du courtier avec la profondeur d'historique de chaque symbole (D848). Un nouveau terminal envoie les bougies M1 de tout son catalogue, et les ticks d'une liste choisie (Q-MT3, Q-MT4). L'EA envoie un battement par minute. Le terminal est en ligne sous 3 min, en retard sous 1 h, hors ligne ensuite. L'EA ne contient aucun appel d'ordre (test : `OrderSend` absent du rendu).
+
+Plafonds (SEC-84) : 20 terminaux par org, 2 000 appels en attente par org, 1 Mio par appel d'ingestion, 4 Mio par annonce. Un rattrapage renvoie des barres déjà présentes. La lecture des barres garde la dernière écriture d'une minute.
+
+### 3.10 Contexte macro et flux physiques
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  cb[BRI WS_CBPOL] --> rate[Taux directeurs]
+  rate --> mv[market_move par décision]
+  cal[BLS, FOMC, BCE, BoE, BoJ] --> tr[Plages de temps]
+  inf[Eurostat, FRED] --> ser[Séries macro]
+  cot[CFTC COT] --> ser
+  eia[EIA] --> ser
+  pw[PortWatch] --> ser
+  raw[AIS, ADS-B, DVF] --> tab[Tables brutes]
+```
+
+Les taux directeurs viennent de la BRI (`bis_series`, G10 par défaut, depuis 2000, D880). Chaque décision devient un `market_move` (D881). Rejeu sur l'historique réel : JP 14/14 décisions, NO 74/74, XM 58/59.
+
+Les dates à venir viennent du calendrier publié par chaque institution, jamais d'un agrégateur (D882). Elles deviennent des **plages de temps** de l'org (D182) : page calendrier, outils de l'assistant, lecteur ICS. Le fichier `pnex-core/src/markets/fomc_2009_2020.tsv` fige 100 décisions FOMC de 2009 à 2020, chacune à son heure de New York. Une réunion non programmée est marquée « unscheduled ».
+
+Séries par défaut : IPCH Eurostat en COICOP 2018 (`prc_hicp_minr`), indices immobiliers (BRI `WS_SPP`, Eurostat `prc_hpi_q`, FHFA sur FRED), COT de l'or, de l'argent et du WTI, stocks et production de pétrole de l'EIA (clé `markets_eia_key`), 8 détroits PortWatch (D883–D885). Un indice propriétaire est écarté, même règle que `SP500`.
+
+Les flux physiques vivent dans des packs à part (D887) : `trade_flows`, `real_estate`, `consumer_prices`. Les positions brutes vont dans des tables, jamais dans l'ontologie (D889). Le chargement est en flux : `datasets::append_stream` écrit un seul fichier Parquet par transaction, validée seulement à la fin du fichier. Un fichier coupé revient au passage suivant. L'autorité maritime danoise sert ses fichiers en HTTP clair, sans somme de contrôle (SEC-81, accepté).
+
+| Essai réel | Volume | Durée |
+|---|---|---|
+| DVF 2025 | 3 714 829 lignes, 75 Mo | 30 s |
+| AIS danois, un jour | 14,6 M positions, 320 Mo | 2 min 15 |
+| ADS-B adsb.lol, un jour | 87,5 M positions, 2 Go | 9 min 30 |
+
+**Cas de l'or (XAUUSD)** : barres minute HistData et MT5, taux réel `DFII10`, point mort `T10YIE`, dollar `DTWEXBGS`, taux directeurs BRI, COT, calendrier, événements du monde. Le test ignoré `gold_real_sources` lit ces sources réelles en 52 s. Les achats d'or des banques centrales et les encours des ETF or ne sont pas couverts.
+
+### 3.11 Barres et décisions d'un modèle externe
+
+```mermaid
+sequenceDiagram
+  participant R as Runner (compte de service)
+  participant S as PneX
+  R->>S: GET /markets/bars?as_of= (barres closes)
+  R->>S: lectures de séries, calendrier, événements à as_of
+  R->>R: calcule la décision
+  R->>S: POST /markets/decisions
+  S->>S: re-vérifie, calcule best et confidence
+  S-->>R: 201, 200 si identique, 409 si différente
+  S->>S: issue mesurée une fois l'horizon clos
+```
+
+Le modèle et son runner vivent dans un projet Python privé, hors de PneX (D890). Pour PneX, c'est un client de l'API : HTTP, SDK généré, Parquet pour le volume. Le même code de features sert à l'entraînement et en direct : seule la date `as_of` change. Les alertes sont faites par le projet Python.
+
+Le runner est un compte de service (D891). La liste blanche `SERVICE_WRITES` ne contient que `market-decisions:write` : toute autre écriture d'un compte de service est refusée (SEC-85).
+
+`GET /markets/bars` rééchantillonne les minutes d'une seule source (`binance_public`, `histdata`, `mt5:<courtier>`) en barres alignées sur l'époque UTC (D892). Seules les barres closes à `as_of` sont rendues. Une décision porte sa `source` : l'écart entre HistData et MT5 doit être mesuré avant un usage en direct (D893).
+
+Une décision (D894) porte le modèle, sa version, l'instrument, la source, l'intervalle, `horizon_bars`, `as_of`, trois probabilités et des barrières en ATR optionnelles. Le serveur vérifie la somme à 1 ± 1e-3 et l'âge d'`as_of` (deux intervalles au plus). Il calcule `best` et `confidence` (1 − entropie normalisée). Plafond : 2 000 décisions par jour et par org.
+
+`pnex_core::markets::decisions::outcome` mesure l'issue sur les barres de la même source (D896). Avec barrières : triple barrière, ATR = moyenne simple du true range sur `atr_period` barres. Take-profit touché d'abord → `buy`, stop d'abord → `sell`, rien ou les deux dans la même barre → `neutral`. Cette règle est le contrat d'étiquetage du projet Python. `GET /markets/decisions/scores` donne la réussite, le score de Brier et la fiabilité par tranche de 0,1. La page **Décisions de modèles** (`/market-decisions`, groupe Connaissance) montre la liste et ces mesures (D897).
+
+### 3.12 Point-in-time strict
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TB
+  req[Requête avec une clé point-in-time] --> w{Écriture ?}
+  w -->|oui| u1[400 as-of-unsupported]
+  w -->|non| s{Sémantique de la route}
+  s -->|point_in_time| a{as_of donné ?}
+  a -->|non| r[400 as-of-required]
+  a -->|oui| ok[Lecture à as_of]
+  s -->|timeless| ok2[Lecture permise]
+  s -->|partial ou current_only| u2[400 as-of-unsupported]
+```
+
+Une lecture à `as_of` doit rendre ce qui était connu à cet instant, rien de plus. L'attribut `point_in_time` est porté par une clé, pas par le compte (D898). Un même compte a donc une clé live et une clé de backtest.
+
+L'inventaire `pnex_api_contract::as_of` classe chaque lecture : `point_in_time`, `partial`, `timeless` ou `current_only` (D899). L'OpenAPI l'expose (`x-pnex-as-of`). `POST /ontology/query` et `GET /ontology/objects/{id}` relisent titre et propriétés à `as_of` dans `object_versions` (D900). Chaque ligne porte `properties_as_of` (`exact` ou `unknown`).
+
+Le test `point_in_time_reads_never_show_a_canary` écrit des canaris après T0 et appelle chaque route `point_in_time` à T0 (D901). L'ensemble des routes testées doit égaler l'inventaire. Une conversation de l'assistant peut être figée à un instant (D902, `frozen_at`). Les outils datés reçoivent cet instant. Un outil qui lit le présent ou écrit est retiré (`ai-frozen-tool`). Un dossier ouvert depuis une alerte propose « l'alerte + 15 min ».
+
+Écarts voulus :
+
+- Un objet sans `known_at` (instrument, société) reste visible à tout `as_of`. Sinon un backtest ne trouve aucun instrument importé aujourd'hui.
+- Une barre, un tick ou un prix de marché de prédiction est connu à son instant, même chargé plus tard.
+- Un seuil de lecture (seuil de mouvement d'un instrument) est un réglage courant, pas un fait daté.
+- Étiquettes et rangement ne sont pas datés : `label` et `within` sont refusés à une clé point-in-time.
+
+### 3.13 Ce qu'on savait : le temps de connaissance
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  edge[resource_edges] -->|trigger| lv[link_versions]
+  lv --> last[Dernière version avec at <= as_of]
+  last --> val[Filtre de validité à valid_at]
+  val --> out[Lien tel que connu]
+```
+
+Un fait a deux dates : quand il est vrai dans le monde (« Vrai le ») et quand PneX l'a su (« Su le ») (D912). Une lecture prend `as_of` et, en option, `valid_at`, qui vaut `as_of` par défaut. `valid_at` seul lit la connaissance courante : il est refusé à une clé point-in-time.
+
+Un trigger sur `resource_edges` remplit `link_versions` à chaque création ou changement (D913). Un lien déclaré aujourd'hui « depuis 2025 » n'existe donc pas dans un backtest de 2025. Un lien fermé après coup reste ouvert à un `as_of` antérieur. Un lien antérieur à la migration porte `history: partial`. Un lien effacé garde des versions vides (`erased = true`).
+
+Un pack déclare `history: true` pour garder les états de ses objets (D914). Un type déclare ses deux propriétés de date (`times.event_property`, `times.known_property`, D915). Le canari couvre aussi les liens rétroactifs (D916). Les écarts voulus de §3.12 restent hors de ce mécanisme (D917).
+
+### 3.14 Chaînes causales marchés
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  cause[Cause connue à as_of] --> topo[Liens propagates_failure à as_of]
+  topo --> eff[price.move de l'instrument]
+  plc[Placebo] --> lift[Lift]
+  eff --> lift
+  lift --> ch[Chaînes candidates, top 3]
+```
+
+`GET /markets/chains?instrument=&source=&as_of=` sert au modèle externe une variable d'entrée, pas une proposition. Il réutilise `pnex_core::rca` (`cases.md` D904–D911). Un effet `price.move` est un rendement sur 1 h au-delà du seuil de l'instrument, sinon `price_move_threshold_pct` (1,5 %). Les causes sont :
+
+- `world.event` : un `geo_event` posé sur le pays (type `nation`).
+- `macro.release` : une valeur macro connue dans la fenêtre.
+- `supply.disruption` : un `geo_event` `blockade` ou `sanctions`, ou une valeur de série au moins `disruption_drop_pct` sous la moyenne de ses 7 précédentes.
+
+La topologie vient du lien `exposed_to` (pays, société ou série → instrument), déclaré par un membre. Aucun filtre de lift n'est appliqué : le modèle apprend le poids. Rien n'est stocké comme cause (D742). Une chaîne retenue par un humain ne sert jamais d'étiquette d'entraînement. La fenêtre fait 31 jours au plus, 7 par défaut.
+
+### 3.15 Marchés de prédiction
+
+```mermaid
+stateDiagram-v2
+  [*] --> proposed
+  proposed --> disputed
+  disputed --> disputed
+  disputed --> final
+  proposed --> final
+  disputed --> indeterminate
+  final --> [*]
+  indeterminate --> [*]
+```
+
+Le pack `prediction_markets` (D918, `history: true`) lit les API publiques de lecture de Polymarket. PneX ne parie pas, ne signe aucune transaction et ne détient aucune clé de wallet. Parier sur Polymarket n'est pas autorisé en France.
+
+**Attention :** les hôtes de Polymarket sont bloqués en France (résolution DNS vers la page de l'ANJ). Une org en France doit poser son proxy dans le coffre (`polymarket_proxy`, URL http(s)). Sans ce secret, le serveur appelle les hôtes en direct.
+
+Les probabilités et les échanges sont des lignes de table, jamais des objets (D919, D923). Le pipeline `prices` lit 1 h par jour clos depuis `history_from`. Le pipeline `prices_fine` lit la minute pour les marchés de `fine_markets`. Chaque état de résolution vu devient un `prediction_resolution` daté (D920). Un marché en litige à `as_of` n'est pas résolu.
+
+Un membre déclare le lien `bears_on` (marché → instrument, pays ou organisation) avec une direction attendue (D921). `GET /markets/prediction-features` rend, à `as_of`, la probabilité, ses variations 1 h et 24 h et les jours restants (D922). Le détecteur `early_bet@1` propose dans un dossier un wallet jeune, concentré et misé peu avant un saut ou une résolution (D924). La proposition contient des chiffres, jamais une intention. `GET /markets/decisions/forecast-scores` compare le Brier du modèle et celui du marché au même instant (D925).
+
+### 3.16 Comptes de trading publics
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  csv[CSV canonique d'un compte] -->|POST import| tab[account_trades]
+  tab --> read[GET account-trades?as_of=]
+  tab --> det[Détecteur entry_timing@1]
+  bars[Barres 5 min] --> det
+  cal[Calendrier] --> det
+  det --> prop[Proposition dans un dossier]
+  prop -->|rétention| acc[trading_account + lien trades]
+```
+
+Le pack `trading_accounts` lit l'historique qu'un auteur a rendu public sur une plateforme de suivi (D926). PneX ne copie aucune position, ne passe aucun ordre et ne se connecte au compte de personne. Les transactions vont dans la table PostgreSQL `account_trades` (D927). Une transaction réimportée garde son premier `known_at`. Sans preuve de publication, `known_at` = date d'import et `backfilled = true` (D928).
+
+L'import accepte un CSV canonique produit par le client (D929). L'API Myfxbook attend la lecture de ses conditions par Shan (Q-TA1). Les pages HTML de la plateforme ne sont jamais lues. Le détecteur `entry_timing@1` propose un compte dont les entrées précèdent les mouvements ou entourent les publications (D930). La décomposition du profit se fait dans le projet Python (D931).
+
+**Danger :** un compte ne doit jamais être relié à une personne. Le type déclare `never_linked_to: [person]` : tout lien est refusé (`ontology-link-not-allowed`), quel que soit le chemin d'écriture (D933). Effacer le compte purge ses lignes (D932).
+
+### 3.17 Ingestion de newsletters (contenus génériques)
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TB
+  mail[mail_received] --> prep[Transferts d'un membre seulement]
+  prep --> llm[llm_text : une ligne par approche]
+  llm --> chk[Thème connu, citation et lien présents dans le mail]
+  chk --> item[object_upsert news_item]
+  item --> res[org_resolve par SIREN]
+  res -->|net| org[organization + item_about proposé]
+  res -->|ambigu| keep[Item sans lien, dans la Veille]
+  org --> tgt[account_status = target si absent]
+```
+
+Une boîte partagée de l'org reçoit les newsletters qu'un membre transfère (D987). Le flow « Prospecting · forwarded newsletters » en tire des `news_item` (pack `watch`) : thème, résumé, extrait cité, lien (D986). Une approche dont la citation n'est pas dans le mail est jetée (D990). L'entreprise trouvée par son SIREN devient une cible si elle n'a pas de statut de compte (D992).
+
+Le flow, le prompt et la liste des vecteurs d'accroche vivent dans le projet pnex-sales (D991). PneX ne livre que des nœuds et des types génériques. PneX ne crée ni `lead` ni piste dans le CRM externe : un commercial la crée depuis pnex-sales. Le lot L1 réutilise l'existant sans table neuve (D989). La carte des relations se construit dans pnex-sales sur `/ontology/query` et `/objects/{id}/graph` (D993).
+
+Modèle proposé pour la suite (brouillon du 2026-11-17, non codé) :
+
+- **Source** : une instance de configuration (`imap`, `rss`, `http_poll`, `webhook`, `file_drop`, `web_agent`), avec découverte, acquisition désactivée par défaut et politique de contenu : `retention` (`store_full`, `metadata_only`, `ephemeral`), `content_license` déclarée, `llm_scope`.
+- **Item** : URL canonique, `published_at`, `ingested_at`, `content_hash`, `raw_ref` nul sauf `store_full`, analyse active.
+- **ItemAnalysis** : analyse en ajout seul (modèle, `prompt_version`, `schema_version`, résumé, entités, tags). Un retraitement produit de nouvelles analyses et n'écrase rien.
+- **Mode éphémère** : type `Ephemeral<T>` sans `Serialize`, mis à zéro au `Drop`, jamais en file ni en journal. Un test de conformité vérifie qu'un texte marqueur n'est nulle part après exécution.
+
+## 4. Exigences
+
+1. Un chiffre d'un calcul doit venir d'une source primaire. Un article ne doit nourrir aucun calcul.
+2. Une valeur révisée doit ajouter une ligne. Aucune valeur datée ne doit être remplacée.
+3. Toute lecture à une date `t` doit filtrer `known_at <= t`. Une valeur `backfilled` doit être exclue par défaut, et sa part affichée si incluse.
+4. Une barre doit être rendue seulement si elle est close à `as_of`.
+5. Une clé point-in-time doit recevoir 400 `as-of-required` sans instant et 400 `as-of-unsupported` sur une écriture ou une route non datée.
+6. Chaque route `point_in_time` doit passer le test canari, liens rétroactifs compris.
+7. Un lien de cause (`attributed_to`) doit être créé par un membre seulement, avec justification et source.
+8. Une extraction par LLM doit produire une proposition. Chaque valeur doit citer le texte mot pour mot.
+9. PneX ne doit passer aucun ordre : ni route, ni outil, ni EA, ni compte de service.
+10. Un compte de service doit avoir pour seule écriture `market-decisions:write`.
+11. Un `trading_account` ne doit être relié à aucune `person`.
+12. Une table d'historique doit rester privée à l'org.
+13. Chaque écran du domaine doit afficher l'avertissement « aide à l'analyse ».
+14. Une clé d'API ou un proxy doit venir du coffre et partir vers les seuls hôtes de sa source.
 
 ## 5. Décisions
 
-### D523 — Un pack `markets`, l'émetteur reste l'organisation
+Une ligne par décision. « Remplacée » renvoie à la décision qui la remplace.
 
-Pack `markets` (`requires: [companies]`). Types : `instrument` (action, obligation, ETF, indice, crypto-actif, devise ; ISIN, FIGI, devise de cotation), `listing` (instrument × place, MIC, ticker), lien `emet` (`organization` → `instrument`), `index_member` (instrument → indice, avec dates). Pas de type « société cotée » : une organisation devient émettrice par son lien. Couche pays éventuelle `markets_fr` (place Euronext Paris, code AMF) selon la règle des packs.
+### 5.1 Socle (D523–D546)
 
-### D524 — Référentiels par imports, jamais saisis à la main
+#### D523 — Un pack `markets`, l'émetteur reste l'organisation
+Types `instrument`, `listing`, lien `emet`. Une organisation devient émettrice par son lien. Codé.
 
-LEI (GLEIF, données ouvertes) → `organization.lei` ; ISIN ↔ LEI (fichier de correspondance GLEIF) ; FIGI et tickers (OpenFIGI, clé d'API au coffre) ; référentiel d'instruments européen (ESMA FIRDS). Chacun est une import D301 / pipeline D344 avec `skip_if_unchanged`. Rapprochement émetteur ↔ organisation existante par LEI puis SIREN, sinon proposition.
+#### D524 — Référentiels par imports, jamais saisis à la main
+LEI, ISIN, FIGI, FIRDS par import, rapprochement par LEI puis SIREN, sinon proposition. Codé en partie : LEI par D812. OpenFIGI et FIRDS non codés.
 
-### D525 — Cours de clôture dans O2, bruts + facteurs d'ajustement
+#### D525 — Cours de clôture dans O2, bruts + facteurs d'ajustement
+Remplacée par D543 : les cours vont dans `market_observations`. Le principe « brut, ajustement à la lecture » tient.
 
-Une série par instrument et par champ (`close`, `open`, `high`, `low`, `volume`), labels `object=instrument/<id>`. On stocke le **brut** ; les opérations sur titres sont des objets `corporate_action` (date, type, ratio) et l'ajustement se calcule à la lecture. Raison : un ajustement réécrit dans la série casse le point-in-time. Granularité V1 : quotidienne. Crypto : la même chaîne, granularité minute possible (sources publiques gratuites).
+#### D526 — Une source = une import ou une règle de site, liste blanche par org
+Pas de collecteur dédié, `license_note` par source, pas de contournement de paywall. Forme remplacée par les pipelines (D934).
 
-### D526 — Une source = une import ou une règle de site, liste blanche par org
+#### D527 — L'article est un média, son texte reste privé à l'org
+Jamais exposé par lien public ni page publiée. Tient.
 
-Pas de collecteur dédié : les flux RSS/Atom, filings et API de cours passent par les pipelines ; les pages sans flux par `site-recipes`. Liste des sources par org, chacune avec sa licence notée (champ `license_note`) et son rythme. Egress R8, `robots.txt` respecté, pas de contournement de paywall.
+#### D528 — Liaison article → émetteurs déterministe d'abord
+Identifiants, puis nom exact, puis LLM en proposition. Non codé pour la presse (piste GDELT `market_press` seulement).
 
-### D527 — L'article est un média, son texte reste privé à l'org
+#### D529 — L'événement de marché est un objet, toujours sourcé
+Type `market_event` (`kind`, `direction`, trois dates, `event_about`). Codé.
 
-Un article = un `media_asset` texte (titre, source, URL, `published_at`, `fetched_at`, langue) indexé par la recherche documentaire. Jamais exposé par lien public ni par page publiée (`pages.md`, studio S5) : la conservation du texte sert l'analyse interne seulement. Purge par rétention d'org.
+#### D530 — Événements : propositions, acceptation automatique possible par règle
+Événement extrait = proposition. L'acceptation automatique est écartée par Q-MK15.
 
-### D528 — Liaison article → émetteurs déterministe d'abord
+#### D531 — Trois horodatages, le test lit `known_at`
+`event_at`, `published_at`, `known_at`. Rattrapage marqué `backfilled`. Codé.
 
-Par ordre : identifiants présents (ISIN, LEI, ticker avec place), nom exact ou alias de l'organisation, puis LLM usage `extraction` sur les cas ambigus → proposition. Un lien porte son mode (`id`, `alias`, `llm`) et son score.
+#### D532 — Étude d'événement : calcul pur dans `pnex_core::markets`
+Rendement anormal sur fenêtres fixes, testé sur séries synthétiques. Codé (`market_study`).
 
-### D529 — L'événement de marché est un objet, toujours sourcé
+#### D533 — Le dossier « thèse » étend `case`
+Pack `investment_thesis` : sens, catalyseurs, critères d'invalidation. Codé, voir D546.
 
-Type `market_event` : `kind` (enum fermée minuscule : `earnings`, `guidance`, `capital_operation`, `m_and_a`, `management_change`, `rating`, `litigation`, `regulatory`, `macro`, `other`), `direction` (`positive`, `negative`, `neutral`, `unknown`), `event_at`, `published_at`, `known_at`, liens `concerne` → émetteur/instrument, `source` → article. Extraction : schéma JSON du pack (`extractors:`, comme D476), chaque champ porte `quote` retrouvée verbatim dans l'article, sinon rejet. La direction est celle **dite par la source**, pas un score de sentiment opaque.
+#### D534 — Positions fictives, aucun lien vers un courtier en V1
+`paper_position` mesurée sur les clôtures. Aucun ordre. Codé.
 
-### D530 — Événements : propositions, acceptation automatique possible par règle
+#### D535 — Test de règle = requête point-in-time + étude d'événement
+Rejeu à `known_at`, comparaison au hasard, effectif affiché. Précisée par D545.
 
-Les événements extraits passent par la file « À valider » (D371). Pour un volume élevé, une règle d'org D377 peut accepter automatiquement une classe (`kind` + source), tracée. Un doublon (même émetteur, même `kind`, même jour, articles différents) fusionne ses sources au lieu de créer un second événement (empreinte D372).
+#### D536 — Assistant : lit, résume, propose ; ne décide pas
+Outils de lecture, synthèse, aucune écriture de thèse ni ordre. Codé.
 
-### D531 — Trois horodatages, le test lit `known_at`
+#### D540 — Les sources primaires d'abord, la presse détecte
+Dépôts SEC, FRED, banques centrales. La presse donne une piste non confirmée. La forme d'import est remplacée par les pipelines (`pipelines.md` D953).
 
-`event_at` (quand c'est arrivé), `published_at` (quand la source l'a dit), `known_at` (quand PNEX l'a su : `fetched_at` de l'article ou date d'import). Toute lecture « à la date t » filtre `known_at <= t` pour les objets et `ts <= t` pour les cours bruts. Un événement importé après coup (rattrapage d'historique) garde `known_at` = date d'import et est marqué `backfilled` : il est exclu des tests par défaut, inclus seulement sur choix explicite affiché.
+#### D541 — Valeurs datées : on ajoute, on ne remplace jamais
+Table `market_observations`. Codé.
 
-### D532 — Étude d'événement : calcul pur dans `pnex_core::markets`
+#### D542 — Le document d'un dépôt devient un média de l'org
+Pipeline `sec_documents`. Codé.
 
-Fonction pure (cours, indice de référence, date, fenêtres) → rendement, rendement anormal (modèle de marché simple : rendement − β × rendement de l'indice, β estimé sur [−250, −30] jours), cumul sur fenêtres [−1, +1], [0, +5], [0, +20], et volume relatif. Agrégat sur un ensemble d'événements : moyenne, médiane, part positive, intervalle par bootstrap, effectif affiché. Testé sur des séries synthétiques à résultat connu.
+#### D543 — Cours : Tiingo, clé d'org au coffre, valeurs brutes (tranche Q-MK1)
+Clé `markets_tiingo_key`, valeurs brutes dans `market_observations`. Codé, jamais essayé sur le vrai Tiingo.
 
-### D533 — Le dossier « thèse » étend `case`
+#### D544 — Les événements de marché sans LLM : les rubriques des dépôts
+Les rubriques 8-K donnent la nature d'un dépôt. Codé.
 
-Pack `investment_thesis` (`requires: [markets, investigation]`) : `case_kind = investment`, instrument(s), sens (`long`, `short`, `watch`), date d'ouverture, **catalyseurs datés** (objets reliés, échéance), **critères d'invalidation** écrits, horizon, taille prévue. Journal = événements de dossier existants (note, décision, révision). Revue de clôture obligatoire pour fermer le dossier : résultat, ce qui était juste, ce qui ne l'était pas. Le dossier se gèle à chaque décision (snapshot existant) : la thèse d'origine ne se réécrit pas.
+#### D545 — Test de règle : pas de paramètre, toujours face au hasard
+20 dates tirées par instrument, tirage reproductible. Codé.
 
-### D534 — Positions fictives, aucun lien vers un courtier en V1
+#### D546 — Thèse : extension de `case`, position fictive mesurée
+Résultat sur les clôtures. La revue de clôture est un champ, non exigé. Codé.
 
-`paper_position` (instrument, sens, quantité, prix et date d'entrée, sortie) reliée au dossier ; P&L calculé sur les clôtures. Import CSV d'un relevé de courtier possible plus tard (lecture seule). Jamais d'ordre passé par PNEX : exclu de l'API exposée à l'assistant et au MCP sous le motif `physical`/`outbound`, au même titre que les commandes de devices (D123).
-
-### D535 — Test de règle = requête point-in-time + étude d'événement
-
-Une règle = filtre d'événements (`kind`, `direction`, univers d'instruments, période) + fenêtre. Le moteur rejoue jour par jour avec la lecture D531, applique D532, rend la distribution et la comparaison à un tirage aléatoire de dates sur le même univers. Affichage obligatoire : effectif, période, part d'événements `backfilled`, univers (biais du survivant : un instrument radié reste dans l'univers à ses dates). Pas d'optimisation de paramètres en V1 (sur-ajustement).
-
-### D536 — Assistant : lit, résume, propose ; ne décide pas
-
-Outils de lecture (événements d'un émetteur, étude d'événement, état d'une thèse), synthèse quotidienne privée par notification, propositions d'événements. Jamais d'ordre, jamais de modification d'une thèse gelée, toute affirmation reliée à un article. Réponses marquées « aide à l'analyse ». Fiches `assistant-kb` à chaque lot.
-
-### D540 — Les sources primaires d'abord, la presse détecte
-
-Un chiffre se lit à sa source : dépôts SEC, séries FRED, puis banques centrales et publications réglementées. Le socle de calcul ne contient que des sources primaires. Un article sert à repérer un événement que les chiffres ne disent pas encore (litige, enquête, négociation) ; son contenu n'alimente aucun calcul et reste non confirmé tant qu'aucune source primaire ne le recoupe. Cela précise D526 et D527 : les flux d'articles passent après.
-
-Mise en œuvre dans l'import D301, sans collecteur dédié : `shape` lit une réponse qu'aucun chemin ne décrit (`sec_tickers`, `edgar_filings`, `xbrl_facts`, `dated_csv`) ; `contact_setting` déclare un contact dans le `User-Agent`, sans lequel la SEC répond 403 et FRED coupe la connexion ; `per_setting_code` et `rows_in_setting` limitent la lecture à la liste de l'org, un registre entier n'étant jamais voulu. Chaque requête reste derrière le garde R8.
-
-### D541 — Valeurs datées : on ajoute, on ne remplace jamais
-
-Table `market_observations` (objet, indicateur, unité, période, `known_at`, valeur, source, `backfilled`), en PostgreSQL et non en objets (≈ 1 700 valeurs par société) ni dans O2 (D525 reste pour les cours : la lecture « dernière valeur connue à t » par période est une requête SQL directe, et la rétention O2 ne doit pas toucher un historique financier).
-
-- Une valeur inchangée n'ajoute rien ; une valeur différente ajoute une ligne. Lecture à la date t = pour chaque période, la dernière ligne avec `known_at <= t`.
-- Dépôt : `known_at` = fin de la journée de dépôt (UTC), jamais avant que le marché ait pu le lire.
-- Source sans date de publication (FRED) : `known_at` = instant de lecture, et les premières valeurs d'un indicateur sont marquées `backfilled`, exclues d'une lecture datée sauf demande (D531).
-- Les valeurs restent celles de la source, sous le nom de son concept. Mesuré sur un vrai dossier : le chiffre d'affaires change de concept selon les années, et une « révision » peut être un arrondi ou une erreur de balisage. Aucun rapprochement de concepts tant qu'un calcul n'en a pas besoin.
-
-Limite connue : seuls les 1000 derniers dépôts (`filings.recent`) sont lus. Les valeurs d'époque FRED antérieures à la première lecture ne sont pas importées (l'API ALFRED demande une clé).
-
-### D542 — Le document d'un dépôt devient un média de l'org
-
-Une tâche de fond lit le document principal de chaque dépôt (20 par passage de 5 minutes, 150 ms entre deux requêtes, sous le plafond de 10 requêtes par seconde de la SEC), en garde le texte lisible, en fait un média indexé par la recherche documentaire (D527) et le relie par `filing_document`. Seules les orgs ayant déclaré un contact sont lues. L'état du dépôt (`document_state`) évite de relire. Le média reste privé à l'org.
-
-### D543 — Cours : Tiingo, clé d'org au coffre, valeurs brutes (tranche Q-MK1)
-
-Essais du 2026-11-02 : Stooq impose un contrôle JavaScript, Yahoo n'a pas d'API autorisée : écartés (pas de contournement, D526). Tiingo a une API officielle et une offre gratuite à usage interne personnel (50 requêtes/heure, 1000/jour), une offre commerciale à 50 $/mois ; sa couverture européenne n'est pas confirmée. Le format `daily_prices` reste indépendant du fournisseur. **Aucune clé n'était disponible : le chemin est testé sur un mock, jamais sur le vrai Tiingo.**
-
-Corrige D525 : les cours vont dans `market_observations` et non dans O2, pour une seule lecture datée et sans rétention O2. On stocke `close`, `volume`, `dividend`, `split` bruts ; l'ajustement se calcule à la lecture.
-
-Sécurité (R9) : une import nomme une source de `KEYED_SOURCES`, jamais un secret ni un hôte. Hôte et nom de secret sont fixés dans le code, l'URL est vérifiée avant de lire le coffre, la clé part en en-tête (absente des URL et des journaux), et reqwest la retire sur redirection vers un autre hôte.
-
-### D544 — Les événements de marché sans LLM : les rubriques des dépôts
-
-Un 8-K déclare déjà sa nature (2.02 résultats, 5.02 dirigeants, 1.01 accord, 2.01 acquisition). L'étude et le test de règle lisent directement ces rubriques, datées par le dépôt lui-même : pas de `backfilled` possible (D531). Cela couvre MK6 et une grande part de MK3 sans LLM ; l'extraction à citation vérifiée (D529) reste à faire, le mécanisme `extractors:` de D476 n'existant pas encore dans le code.
-
-### D545 — Test de règle : pas de paramètre, toujours face au hasard
-
-`rule-test` : formulaire + rubrique, fenêtres fixes, distribution du rendement anormal, comparée à 20 dates tirées par instrument (tirage déterministe, résultat reproductible), effectif affiché. Limite affichée : seuls les instruments suivis aujourd'hui sont mesurés (biais du survivant, D535 non tenu en entier : pas d'univers historique).
-
-### D546 — Thèse : extension de `case`, position fictive mesurée
-
-Pack `investment_thesis` conforme à D533–D534. Le résultat d'une position se calcule sur les clôtures, jamais sur un prix saisi. Limite : la revue de clôture est un champ, non exigée à la fermeture ; le gel passe par les snapshots existants, à la main.
-
-## 6. Sources V1 (conditions d'usage à vérifier source par source)
-
-| Source | Contenu | Accès |
-|---|---|---|
-| GLEIF | LEI, correspondance ISIN ↔ LEI | ouvert |
-| OpenFIGI | FIGI, tickers | clé gratuite |
-| ESMA FIRDS | référentiel d'instruments UE | ouvert |
-| SEC EDGAR | filings US (8-K, 10-Q, 10-K) | ouvert, `User-Agent` déclaré, quota |
-| Publications réglementées UE / FR | communiqués d'émetteurs, déclarations | ouvert |
-| Banques centrales, statistiques publiques | taux, inflation, agrégats | ouvert |
-| Flux RSS des médias | titre, chapô, lien | selon conditions de chaque éditeur |
-| Pages de communiqués des émetteurs | texte des communiqués | `site-recipes` |
-| Cours de clôture actions | OHLCV quotidien | **à choisir** : fournisseur branché par une clé au coffre (D113) |
-| Places crypto | OHLCV, carnet | API publiques |
-
-## 7. Lots
-
-| Lot | Contenu | Valeur sans LLM |
-|---|---|---|
-| **MK0** | pack `markets`, imports GLEIF / OpenFIGI / FIRDS, rapprochement émetteurs | oui |
-| **MK1** | cours de clôture + `corporate_action`, séries par instrument, fiche instrument (graphique, émetteur) | oui |
-| **MK2** | sources d'articles (RSS, filings), type article, liaison D528 déterministe, fil par émetteur | oui |
-| **MK3** | extraction d'événements à citation vérifiée, propositions, règle d'acceptation, alertes | non |
-| **MK4** | `pnex_core::markets` (étude d'événement), widget sur la fiche émetteur et le dossier | oui |
-| **MK5** | dossier thèse, journal, positions fictives, revue de clôture | oui |
-| **MK6** | test de règle point-in-time | oui |
-| **MK7…MK10** | mouvements de marché et événements géopolitiques : voir appendice A (§A.3) | oui |
-| **MK11…MK14** | historique de prix en masse (minute, tick) en tables, pour l'entraînement : voir appendice C (§C.4) | oui |
-
-Premier ensemble utile : MK0 → MK2 + MK4 (suivre ses valeurs, lire leur fil, voir la réaction aux publications réglementaires), avant toute extraction LLM.
-
-## 7 bis. Reste à faire (2026-11-02)
-
-- Essai réel de Tiingo (clé à poser au coffre) et couverture européenne des cours.
-- MK0 : GLEIF/OpenFIGI/FIRDS, rapprochement avec une organisation existante (aujourd'hui une société SEC est créée par CIK, un doublon est possible avec une société déjà connue par LEI ou SIREN).
-- MK3 : extraction LLM à citation vérifiée (D476 absent du code), règles d'acceptation.
-- Répartition du balayage des documents entre orgs ; millésimes FRED antérieurs à la première lecture ; dépôts plus anciens que `filings.recent` ; alertes `anomaly` sur volume ; synthèse quotidienne de l'assistant ; widget de fiche émetteur.
-- ~~**Imports : passer sur les pipelines de données en masse**~~ (clos, appendice B.2) (`pipelines.md` D344–D358, prévus pour les gros volumes et les fichiers volumineux). Une partie des imports du domaine a été commencée par flow ; recenser ce qui passe encore par un flow (cours, FRED, dépôts, documents) et le transférer sur les pipelines avant de reprendre le domaine marchés. Aucun nouvel import marchés par flow, y compris pour l’appendice A (MK7–MK10). Noté le 2026-11-06, à traiter.
-
-### 7 ter. Filiales déclarées : Exhibit 21 des 10-K (lot F6 du test grandeur nature, 2026-11-06)
-
-- **Lecture** : pour chaque 10-K d'une société suivie, le service des documents lit l'index du dépôt (`<accession>-index.htm`), trouve le document `EX-21` / `EX-21.x` sur le même hôte, et en extrait les lignes nom + juridiction (`pnex_core::markets::exhibit21` : tableau HTML ou texte, entités décodées). Une juridiction inconnue laisse sa ligne de côté ; un État américain donne `US`.
-- **Écriture** : chaque filiale devient une `organization` retrouvée par `declared_key` (pays et nom normalisés, unique). Elle porte `country` et `incorporated_in`, et un lien `subsidiary_of` vers le déclarant (nature `declared`, source = adresse de l'exhibit). Le dépôt reçoit `subsidiaries_state` (`read`, `none` ou `unreadable`) et n'est lu qu'une fois.
-- **Essai réel** (un groupe suivi, 6 rapports annuels de 2021 à 2026) : toutes les listes sont lues, les noms et les pays sont justes (Pays-Bas, Chine, Maurice, îles Caïmans…). Le rapport de 2022 liste 70 filiales, les suivants seulement les principales. Une filiale qui disparaît d'une liste ferme son lien à la date du rapport qui l'omet (voir ci-dessous).
-- **Datation (2026-11-08)** : le lien commence à la date du dépôt (`filed_on`, `valid_from`). Les rapports sont lus du plus ancien au plus récent ; quand le dernier rapport lu d'un déclarant ne cite plus une filiale, son lien `declared` se ferme à la date de ce rapport. Le lien dit donc « déclarée de telle date à telle date ». Limites : un rapport plus ancien lu après un plus récent (dépôt importé plus tard) ne ferme ni ne recule aucun lien ; un lien ouvert avant cette datation, daté de sa création, reste ouvert. Test : `tests/markets.rs::exhibit_21_subsidiaries_become_organizations`.
-- **Reste à faire** : utiliser le LEI quand GLEIF le donne (MK0).
-
-## 8. Hors périmètre V1
-
-Prix temps réel des actions, carnet d'ordres actions, exécution, connexion courtier en écriture, options et dérivés (grecques, surfaces), données alternatives payantes, optimisation de portefeuille, diffusion ou partage de signaux hors de l'org.
-
-## 9. Questions ouvertes
-
-- **Q-MK1** : tranché pour les États-Unis (Tiingo, D543) ; Europe ouverte.
-- **Q-MK2** : univers de départ (indices, liste personnelle) et profondeur d'historique pour MK6.
-- **Q-MK3** : crypto en MK1 ou plus tard ; granularité minute = volume O2 à mesurer.
-- **Q-MK4** : appels de résultats : webcasts publics par `media-ingest`, ou seulement les communiqués écrits en V1.
-
-## Appendice A — Mouvements de marché et événements géopolitiques (D734–D743)
-
-| | |
-|---|---|
-| Statut | Proposé le 2026-11-06 ; **MK7 à MK10 codés le 2026-11-06** (questions tranchées au §A.5, écarts au §A.6) |
-| Lots | **MK7…MK10** |
-| Origine | séance du 2026-11-05 (Nasdaq −5,5 %, SOX −12 %, pétrole US ≈ +3 %, or et dollar en hausse) : aucun objet PNEX ne pouvait représenter un mouvement de l'ensemble du marché, ni un événement géopolitique |
-| Repose sur | D525/D541/D543 (valeurs datées), D529 (`market_event`), D531 (trois horodatages), D532 (étude d'événement), D540 (sources primaires d'abord), D545 (test face au hasard), dossiers (`cases.md`), carte, notifications (D49–D68) |
-
-### A.1 Le besoin
-
-1. Garder la trace, comme **fait daté et sourcé**, d'un mouvement anormal d'une série : indice, pétrole, taux, volatilité, or. La source est la série elle-même, pas la presse.
-2. Garder la trace des **événements géopolitiques** (conflit, attaque, sanctions, blocus, cessez-le-feu) : un lieu, une date, une source.
-3. Pouvoir **mesurer** la réaction des séries autour de ces dates, sans jamais **affirmer** de cause.
-
-Hors du besoin : la prédiction, les scores de sentiment ou de risque pays, l'intrajournalier, toute explication générée automatiquement.
-
-### A.2 Décisions
+### 5.2 Mouvements et événements du monde (D734–D743, D810–D816)
 
 #### D734 — Un mouvement de série est un fait primaire : `kind = market_move`
-
-Cela précise D529 : on ajoute la valeur `market_move` à l'enum `kind`, et deux champs.
-- `asset_class` : `equity_index`, `commodity`, `rates`, `volatility`, `fx`, `crypto`.
-- `move_direction` : `up` ou `down`. On n'utilise pas `direction` (`positive`/`negative`) parce qu'une hausse du pétrole n'est ni bonne ni mauvaise en soi.
-
-L'événement porte la valeur mesurée (rendement ou écart), le seuil franchi et `sigma`. Son lien `source` pointe sur les lignes de `market_observations` qui l'ont déclenché, et non sur un article. Lien `concerne` vers l'`instrument` ou la `macro_series`.
-
-C'est la première implémentation du type `market_event`. En V1, les autres `kind` restent alimentés par les rubriques 8-K (D544) et, plus tard, par l'extraction (MK3).
+Champs `asset_class`, `move_direction`, mesure, seuil, sigma. Codé.
 
 #### D735 — Un détecteur générique, fonction pure dans `pnex_core::markets`
-
-Entrée : une série quotidienne, une date, un mode, des paramètres. Sortie : déclenché ou non, avec la valeur, `sigma` et le seuil.
-
-- Le mode est fixé par série. `log_return` pour les prix et les indices. `diff` pour les taux, en points de base, et pour le VIX, en points. Un rendement sur un taux n'a pas de sens.
-- `sigma` = écart-type de la mesure sur la fenêtre [−250, −1]. La date testée est exclue.
-- Déclenchement si |mesure| ≥ `k` × `sigma` **et** si |mesure| ≥ un plancher absolu. Ce plancher évite les déclenchements sur une série presque plate. Par défaut : `k = 3`, plancher 2 % en `log_return` et 15 pb en `diff`. Les deux sont réglables par org et par série.
-- Il faut au moins 60 points d'historique, sinon aucune détection. Les jours sans cotation sont ignorés, jamais interpolés.
-- Tests sur des séries synthétiques à résultat connu, comme pour D532.
-
-La détection s'exécute **après chaque import** de la série concernée, sans cron séparé. L’import est un pipeline D344, jamais un flow (voir §7 bis) : la détection s’accroche à la fin d’exécution du pipeline. Elle est idempotente : l'empreinte (série, date, mode) empêche un doublon (D372).
+`k` sigmas et plancher, 60 points au moins. Exécuté par le pipeline `market_moves`. Codé.
 
 #### D736 — `known_at` hérité, jamais antérieur
-
-`event_at` = date de la séance. `known_at` = le `known_at` de l'observation qui déclenche, au plus tôt. Si cette observation est `backfilled`, l'événement l'est aussi.
-
-Une détection lancée sur un historique rattrapé, par exemple à la première activation d'une série, marque **tous** les événements produits `backfilled`. Ils restent exclus des tests par défaut (D531).
+Le mouvement hérite `known_at` et `backfilled` de sa valeur. Codé.
 
 #### D737 — Les séries surveillées : un réglage, des valeurs par défaut primaires
-
-Nouveau réglage du pack : `move_series`. C'est une liste de codes FRED ou de tickers, chacun avec son mode.
-
-Valeurs par défaut (FRED, sans clé) :
-
-| Code | Contenu | Mode | `asset_class` |
-|---|---|---|---|
-| `SP500` | S&P 500 | `log_return` | `equity_index` |
-| `NASDAQCOM` | Nasdaq Composite | `log_return` | `equity_index` |
-| `VIXCLS` | VIX | `diff` | `volatility` |
-| `DGS10` | taux US à 10 ans | `diff` | `rates` |
-| `DCOILWTICO` | pétrole WTI | `log_return` | `commodity` |
-| `DCOILBRENTEU` | pétrole Brent | `log_return` | `commodity` |
-| `DTWEXBGS` | dollar pondéré | `log_return` | `fx` |
-
-Optionnel, avec la clé Tiingo de l'org (D543) : `GLD`, `USO`, `ITA`, `SMH`.
-
-À vérifier série par série, en notant la réponse dans `license_note` (D526) :
-- les séries d'indices sur FRED (S&P DJI, Nasdaq) ont des conditions propres : historique limité, redistribution restreinte ;
-- les séries pétrole proviennent de l'EIA et sont publiées avec retard. `known_at` absorbe ce retard, et l'événement n'apparaît qu'au jour où la valeur est connue.
+`move_series` et `move_tickers`. Codé.
 
 #### D738 — Pas de file « À valider » pour un `market_move`
-
-Le calcul est déterministe sur une source primaire : l'événement est créé directement, contrairement à D530. La notification passe par une règle d'org D49 et regroupe en **un seul message** les mouvements d'une même séance, par exemple « 5/11 : NASDAQCOM −5,5 %, VIXCLS +x pts, DCOILWTICO +y % ». Une vue « Séance » liste, pour une date, tous les `market_move` en ordre de |mesure| / `sigma`.
+Création directe, vue Séance, avis par règle d'org. Codé.
 
 #### D739 — Pack `world_events`, type `geo_event`, hors du pack `markets`
-
-Un événement géopolitique se définit par un lieu, pas par un prix. Il est donc utile aussi aux dossiers d'enquête, et ne dépend pas de `markets`.
-
-- Pack `world_events` (`requires: []`). Lien optionnel aux dossiers via `investigation`.
-- Type `geo_event` :
-  - `kind` (enum fermée) : `armed_conflict`, `attack`, `sanctions`, `blockade`, `ceasefire`, `natural_disaster`, `other` ;
-  - horodatages `event_at`, `published_at` et `known_at` (D531) ;
-  - lieu : point, code pays ISO 3166 et région administrative si connue ;
-  - `actors` : texte libre en V1, rapprochement avec `organization` plus tard ;
-  - `source_kind` : `gdelt`, `acled`, `ucdp` ou `manual` ;
-  - `status` : `unconfirmed`, `confirmed` ou `dismissed`, même modèle que `market_news` ;
-  - `counts` : nombre de sources et d'articles agrégés.
-- Affiché sur la **carte** et dans la **chronologie** des dossiers.
+Codé.
 
 #### D740 — GDELT Events : des pistes agrégées, jamais une ligne par enregistrement
-
-Import des exports GDELT 2.0 Events (toutes les 15 minutes), filtré par la liste de l'org.
-- Pays ou régions suivis (réglage `geo_watch`).
-- Codes CAMEO racine retenus : `18` (assaut), `19` (combat), `20` (violence de masse), `163` (embargo, sanctions), `17` (coercition, sur choix explicite).
-- Seuils : `NumSources` ≥ N et `GoldsteinScale` ≤ G, réglables.
-- **Un `geo_event` par (pays, code racine, jour)**, et non un par ligne GDELT : le flux brut est trop bruité. Les identifiants GDELT agrégés sont gardés dans la provenance (D184).
-
-Un événement venu de GDELT est toujours `unconfirmed` : il ne nourrit aucun calcul par défaut (règle D540 appliquée au géopolitique). Conditions d'usage GDELT à noter dans `license_note`. Egress R8.
+Une piste par (pays, code racine, jour), `unconfirmed`. Codé.
 
 #### D741 — Confirmation : ACLED / UCDP plus tard, ou un humain
-
-- **UCDP** (GED et Candidate, licence ouverte, publication décalée) et **ACLED** (vérifié à la main, hebdomadaire, compte et clé exigés, conditions restrictives pour un usage commercial ou une redistribution) arrivent dans un lot séparé, **après vérification de la licence**, en particulier pour le mode SaaS. Clé au coffre (D113), même garde que D543 (R9).
-- Une piste GDELT passe `confirmed` si un événement ACLED ou UCDP correspond (même pays, ±1 jour, `kind` compatible), ou si un utilisateur la confirme en citant une source. L'action est tracée.
+Pipeline `lead_confirmations`. Codé. Selon D998-T5 (`operational-platform.md`), ce rapprochement doit passer en flow.
 
 #### D742 — Aucune causalité automatique
-
-- Entre un `geo_event` et un `market_event`, PNEX ne **stocke** aucun lien. Il **calcule à la lecture** une concomitance : même fenêtre, ±1 séance par défaut. L'interface l'affiche comme « même fenêtre » et jamais comme « cause ».
-- Un lien `attributed_to` (`market_event` → `geo_event`, ou → `market_news`) ne peut être créé **que par un utilisateur, dans un dossier**, avec une note de justification et une source. Ces deux champs sont obligatoires.
-- L'assistant (D536) peut signaler une concomitance, en la marquant « concomitance, pas cause ». Il ne crée jamais `attributed_to` et ne présente jamais une explication de presse comme un fait.
+Concomitance à la lecture, `attributed_to` par un membre seulement. Codé.
 
 #### D743 — Étude d'événement sur des dates géopolitiques
-
-On étend `rule-test` (D545). La source des dates peut être :
-- une rubrique 8-K (existant) ;
-- un filtre `geo_event` (`kind`, pays, `status`, `confirmed` par défaut) ;
-- un filtre `market_move` (`asset_class`, `move_direction`).
-
-On peut alors mesurer **n'importe quelle série suivie**, y compris une `macro_series` comme le pétrole. Les règles D545 s'appliquent telles quelles : aucun paramètre à optimiser, comparaison à des dates tirées au hasard, effectif affiché.
-
-Ajouts propres à ce cas :
-- **Regroupement** : des `geo_event` qui se suivent dans la fenêtre de mesure ne comptent qu'une fois, pour ne pas compter plusieurs fois le même choc. Le nombre de regroupements est affiché.
-- Les `unconfirmed` sont exclus par défaut. Si on les inclut, c'est un choix explicite et la part concernée est affichée.
-- Un avertissement est affiché : une date géopolitique est souvent connue avant d'être codée, donc `event_at` ≠ `known_at`. Le test lit `known_at`.
-
-### A.3 Lots
-
-| Lot | Contenu | Valeur sans LLM |
-|---|---|---|
-| **MK7** | `market_event` `kind = market_move` (D734), détecteur pur et tests synthétiques (D735), héritage de `known_at` (D736), réglage `move_series` et séries FRED par défaut (D737), notification de séance et vue « Séance » (D738) | oui |
-| **MK8** | pack `world_events`, `geo_event` sur carte et chronologie (D739), import GDELT agrégé (D740), concomitance calculée à la lecture et `attributed_to` manuel (D742) | oui |
-| **MK9** | `rule-test` sur dates `geo_event` et `market_move`, séries macro mesurées, regroupement (D743) | oui |
-| **MK10** | UCDP puis ACLED après vérification de licence, rapprochement de confirmation (D741) | oui |
-
-Premier ensemble utile : **MK7 seul**. La séance du 2026-11-05 doit produire, sur données réelles, au moins `NASDAQCOM` `down`, `SP500` `down` et `VIXCLS` `up`, et `DCOILWTICO` `up` si le seuil est franchi, sans aucune intervention. C'est le test d'acceptation du lot.
-
-### A.4 Hors périmètre
-
-Prédiction de mouvement, score de risque pays ou de sentiment, intrajournalier, explication générée automatiquement, diffusion des événements hors de l'org, toute action déclenchée par un événement (ordre, device), cohérente avec D534 et D123.
-
-### A.5 Questions tranchées (Shan, 2026-11-06)
-
-- **Q-MK5** : les pages FRED de `SP500` (« Reproduction of S&P 500 in any form is prohibited except with the prior written permission of S&P Dow Jones Indices LLC ») et `NASDAQCOM` (« Copyrighted: Pre-Approval Required ») interdisent la reproduction sans accord. Ces deux séries **sortent des valeurs par défaut**. Les indices actions passent par `SPY` et `QQQ` sur Tiingo (réglage `move_tickers`, avec la clé de l'org). `VIXCLS` exige une citation (Cboe). `DCOILWTICO` et `DCOILBRENTEU` (EIA) et `DTWEXBGS` (Fed) sont du domaine public, avec une citation demandée.
-- **Q-MK6** : `geo_watch` vide par défaut.
-- **Q-MK7** : mesuré sur l'année 2025-11 → 2026-11, sur les données FRED réelles, avec un portage fidèle du détecteur. Déclenchements avec k = 3 :
-
-  | Série | Déclenchements | Mois touchés | Max par mois |
-  |---|---|---|---|
-  | NASDAQCOM | 2 | 2 | 1 |
-  | SP500 | 1 | 1 | 1 |
-  | VIXCLS | 3 | 3 | 1 |
-  | DGS10 | 2 | 2 | 1 |
-  | DCOILWTICO | 11 | 4 | 5 |
-  | DCOILBRENTEU | 13 | 6 | 7 |
-  | DTWEXBGS | 0 avec un plancher de 2 %, 3 avec 0,75 % | 3 | 1 |
-
-  Le pétrole se déclenche pendant un vrai choc (variations de 8 à 17 %, mars-avril 2026). On garde k = 3. Le plancher d'une série `fx` passe à **0,75 %** (`FX_FLOOR`) ; un plancher écrit dans l'entrée l'emporte toujours. Test d'acceptation : le 2026-11-05, `NASDAQCOM` −5,7 % en log, soit 4,8 σ, est détecté `down`. `SP500` et `VIXCLS` n'étaient pas encore publiés sur FRED le 2026-11-06.
-- **Q-MK8** : pas d'événement de niveau séance ; la vue **Séance** suffit.
-- **Pays** : ISO 3166 alpha-2 partout. Les codes de GDELT (FIPS 10-4), d'UCDP (Gleditsch & Ward) et d'ACLED (ISO numérique) sont convertis à la lecture.
-- **Avis** : en plus de l'avis dans l'application, l'org nomme ses canaux (e-mail, Slack, ntfy…) dans le réglage `move_notify_channels`.
-- **Carte** : les événements du monde s'affichent sur la carte générale (une case du panneau, 30 jours) et sur la carte des dossiers.
-- **ACLED** : lu seulement avec le compte et la licence de l'org. Le CLUF ACLED (§1.2, §3.1, §3.3) interdit l'usage commercial et l'accès direct sans licence entreprise. **UCDP** : licence CC BY 4.0, jeton à demander à Uppsala, 5 000 requêtes par jour.
-
-### A.6 Ce qui est codé (2026-11-06) et écarts au texte
-
-| Décision | Où | Écart ou précision |
-|---|---|---|
-| D734 | type `market_event` du pack `markets` 1.1.0 (`kind` D529 + `market_move`), lien `event_about` → `instrument` / `macro_series` | la « source » est portée par `series_code`, `metric` et `known_at` : ils désignent les lignes de `market_observations`, qui ne sont pas des objets |
-| D735 | `pnex_core::markets::moves::detect` ; `services::markets::moves::after_store`, appelé en fin d'écriture de toute import qui stocke des observations | la détection relit toute la série touchée (idempotence par `ref` = `move:<code>:<date>:<mode>`, objets archivés compris) ; un échec ne fait pas échouer l'import, le run suivant répare ; **2026-11-17** : remplacé par le pipeline `markets/market_moves` (SQL) et l'import « Abnormal sessions », tiré chaque jour après les séries FRED surveillées ; avis par règle (pipelines.md, section du 2026-11-17) |
-| D736 | `known_at` / `backfilled` repris de l'observation qui déclenche | — |
-| D737 | réglages `move_series` (FRED) et `move_tickers` (Tiingo, `SPY`, `QQQ`), même format `CODE:mode:classe[:k[:plancher]]` ; imports « Watched series (FRED) » et « Watched prices (Tiingo) » | `PerObjectSetting::codes` ignore ce qui suit `:` ; plancher `fx` à 0,75 % (Q-MK7) |
-| D738 | avis groupé par séance : websocket de l'org, plus les canaux nommés dans `move_notify_channels` (envoi direct par `pnex_notify`, journalisé avec la source `market-moves`) ; jamais pour un `backfilled`. Onglet **Séance** sur `market_event` et `geo_event`, route `GET /api/v1/markets/sessions/{date}` | la « règle d'org » D49 est un réglage du pack, pas un objet de règle |
-| D739 | pack `world_events` (`geo_event`), sans dépendance. Calque de la carte générale (`GET /api/v1/markets/world-events`, 30 jours, vert si confirmé, ambre sinon) et carte des dossiers | pays en ISO alpha-2 ; le FIPS de GDELT est converti par `gdelt_events::iso_of_fips` |
-| D740 | `pnex_core::gdelt_events` (pur, testé), `events_feed` d'une import, `source::fetch_events` | `known_at` = dernier `DATEADDED` agrégé, `published_at` = le premier. Fenêtre de 48 h par run quotidien : les compteurs suivent la dernière lecture, le statut n'est écrit qu'à la création (`defaults`) |
-| D741 | `pnex_core::conflict_events` : lecture UCDP et ACLED, tables Gleditsch & Ward → ISO et ISO numérique → alpha-2, critère `confirms`. Une import porte un `conflict_feed` (hôte et secrets fixés par la source, R9). Imports « Verified events (UCDP) » et « Verified events (ACLED, your account) ». La passe `services::markets::world::confirm_leads` tourne après toute import à `events_feed` ou `conflict_feed` | la confirmation écrit `status = confirmed` et `confirmed_with` (la référence UCDP ou ACLED) comme une version de l'objet, faite par l'import ; un statut posé par un membre n'est jamais repris. La version UCDP Candidate est dans l'adresse de l'import, à mettre à jour à chaque publication. La table Gleditsch & Ward est partielle (les États présents dans UCDP) : un numéro inconnu est laissé de côté. **Téléchargements UCDP (2026-11-06, demande de Shan)** : GED 26.1 (`ged261-csv.zip`, 39 Mo zippé, 274 Mo, 418 000 événements 1989-2025) et Candidate de l'année (`GEDEvent_v26_01_26_09.csv`), sans jeton, lus en flux (`csv-core`). Seuls les pays surveillés sont gardés. Les événements vérifiés sont **agrégés par (pays, nature, jour)** : l'Ukraine passe de 40 434 événements à 2 929 jours, la Syrie de 88 289 à 6 935. `known_at` = fin du premier jour où une source en a parlé (`source_date`) : 100 % des jours ukrainiens et 99 % des jours syriens sont ainsi datés (délai médian de 0 à 1 jour), contre 56 % pour Israël. Un jour sans date de source n'a pas de `known_at` et reste hors des tests du passé (D531). L'API (jeton) reste pour le direct ; **2026-11-17** : la confirmation est le pipeline `world_events/lead_confirmations` et l'import « World event confirmations », chaque jour après GDELT ; `conflict_events` et `confirm_leads` supprimés | *D998 (2026-11-18) : ce rapprochement est de l'organisation, à refaire en flow (D998-T5, `operational-platform.md`).*
-| D742 | concomitance calculée à la lecture (`session`, fenêtre ±1 séance, week-ends sautés, jours fériés ignorés). Le lien `attributed_to` vit dans un pack à part, `market_attribution` (qui requiert `markets` et `world_events`), avec les attributs `justification` et `source` obligatoires. Le type de lien porte **`member_only: true`**, un drapeau générique du moteur | « dans un dossier » = la source du lien est membre d'un dossier (`in_case`) ou attachée à un de ses événements (`involves`). Le lien est refusé à l'assistant, à toute import (mapping refusé) et à tout acteur non humain : `ontology-link-member-only`. Le moteur ne nomme aucun type de pack (D441) |
-| D743 | `rule-test?dates=geo_events|market_moves&series=…` (`study::rule_on_dates`), regroupement `moves::cluster` (28 jours civils ≈ 20 séances), part des non confirmés | une `macro_series` est mesurée sans modèle de marché : l'« anormal » est la variation brute, comparée aux dates tirées. Le mode vient de `move_series` ou `move_tickers`, et vaut « rendement » sinon |
-
-Assistant : outil `market_session` (lecture) et `market_rule_test` étendu ; fiche `assistant-kb/market-moves.md`. Garde D441 : les littéraux restants des services marchés et de la fiche objet sont inscrits aux deux exceptions marchés existantes de `tests/engine_genericity.rs`, ce qui reste une dette.
-
-### A.7 Validation du 2026-11-06
-
-**Relecture indépendante (agent sans contexte) : défauts confirmés et corrigés.**
-
-| # | Défaut | Correctif |
-|---|---|---|
-| 1 | Un ticker activé lit des années de cours, chacun connu le jour même : des dizaines d'avis pour de vieilles séances | avis limités aux séances des 5 derniers jours (`NOTICE_DAYS`) |
-| 2 | Le jeton UCDP (en-tête propre) et le mot de passe ACLED (corps du POST) suivaient une redirection vers un autre hôte (R9) | client `http_keyed` sans redirection pour toute requête qui porte un secret |
-| 3 | Les pages de l'API UCDP commencent à 0 (vérifié dans sa doc) : la page 0 était sautée | boucle depuis 0 ; le serveur simulé du test ne répond plus qu'à `page=0` |
-| 4 | `member_only` gardait la création seulement, pas la modification ni la fermeture (flow `link_upsert`, assistant `close_link`) | contrôle aussi dans `update_with` et `close` |
-| 5 | Deux runs simultanés pouvaient créer deux fois le même mouvement (refs non uniques en base) | détection et confirmation sous le verrou d'import de l'org |
-| 6 | `LIMIT 20000` sans ordre : test de règle tronqué en silence | une ligne par jour de connaissance, agrégée en SQL, sans limite |
-| 7 | Une piste GDELT confirmée plus tard était datée de son propre `known_at` : lecture anticipée | « confirmé » = vérifié (UCDP, ACLED, saisi), les pistes GDELT seulement avec `include_unconfirmed` |
-| 8 | Le mouvement déclencheur entrait dans sa propre fenêtre de mesure | mesure à partir de la séance qui suit le jour de connaissance |
-| 9 | UCDP et ACLED réécrivaient `status: confirmed` à chaque run, ce qui annulait un rejet posé par un membre | statut posé à la création seulement (`defaults`) |
-| 10 | La Serbie est codée 345 par UCDP (vérifié sur GED 26.1), absente de la table | ligne ajoutée ; les 126 identifiants de GED 26.1 sont couverts |
-| — | Une vue de carte au-delà de ±180° ou traversant la ligne de changement de date renvoyait une erreur 400 | toutes les longitudes dans ce cas |
-
-**Essai réel** (`world_events_real_sources`, 10 pays) :
-- **FRED** : 65 956 valeurs en 46 s ; NASDAQCOM du 2026-11-05 détecté (−5,7 % en log, 4,8 σ). Les 939 mouvements historiques sont `backfilled`, aucun avis.
-- **UCDP GED** : 417 968 lignes lues en flux, 220 125 gardées, 44 785 jours créés en 46 s (≈ 970 objets/s), dont 70 % datés par un article.
-- **GDELT** : 189 fichiers sur 192 lus (230 674 lignes) mais 7 pistes seulement. Sur un échantillon réel, 166 lignes retenues sur 168 ont `NumSources = 1`, car une ligne naît avec une source et les reprises arrivent dans d'autres fichiers. Le seuil `min_sources` passe de 3 à 1.
-- La confirmation ne peut pas se vérifier sur 48 h : le Candidate UCDP s'arrête à fin septembre. L'essai de volume (3 mois de GDELT) recouvre août-septembre.
-- Le test de règle sur toutes les dates `geo_events` regroupe presque tout (391 dates gardées, 6 076 regroupées) : un conflit continu donne une date par fenêtre de 28 jours, et le résultat ne se distingue pas du hasard. Il faut filtrer par pays et par nature.
-- Le test de règle sur `market_moves` est vide à la première installation : l'historique FRED est `backfilled` (pas de millésimes, §7 bis).
-
-**Essai de volume** (`world_events_volume`, tous pays `*`, avec un O2 isolé, 9 min 35 s au total) :
-
-| Étape | Volume | Durée |
-|---|---|---|
-| UCDP GED, tous pays | 417 968 lignes → 147 608 jours | 184 s (≈ 800 objets/s) |
-| UCDP Candidate 2026 | 16 633 lignes → 6 499 jours | 19 s |
-| GDELT 3 mois (`World events history`) | 8 830 fichiers sur 8 832, 9,1 M lignes → 41 966 pistes | 319 s |
-| GDELT 48 h | 190 fichiers → 522 pistes mises à jour | 4,6 s |
-
-- **Confirmation réelle** : sur août-septembre 2026, 2 763 des 23 152 pistes GDELT sont confirmées par UCDP. Une deuxième passe n'en confirme aucune de plus (930 ms sur 196 000 objets).
-- **Lectures** : test de règle sur 154 000 jours en 0,2 à 0,4 s ; carte monde en 77 ms ; séance en 37 ms ; recherche globale en 0,64 s. Postgres : 256 Mo pour la table `objects`, 342 Mo pour la base.
-- **O2** : 154 000 documents `object_changes` ingérés sans erreur.
-- **Constat moteur, non corrigé ici (`ontology/changes.rs`, D184, D350)** : la file du journal est plafonnée à 100 000 changements par transaction et laisse tomber le surplus. 47 000 créations de l'import GED sont sans historique dans O2. Il faudrait un journal résumé pour les imports en masse, ou une contre-pression dans l'import, qui est asynchrone.
-- **Constat** : pendant l'import, une lecture de l'API a attendu une connexion du pool (`sqlx::pool::acquire` lent). L'import monopolise des connexions.
-- **Corrigé** : la carte ne montrait que les 300 événements les plus récents sur 12 883 ; elle montre désormais les 300 plus importants (morts, puis sources, puis date).
-
-## Appendice B — Fin du domaine (D810–D816, 2026-11-08)
-
-| | |
-|---|---|
-| Statut | Questions tranchées par Shan le 2026-11-08 ; avancement en §B.3 |
-
-### B.1 Décisions
+`rule-test` sur `geo_event` et `market_move`, regroupement. Codé.
 
 #### D810 — Volume anormal : un mode du détecteur, pas un second détecteur
-
-Une entrée `CODE:volume:classe` de `move_tickers` surveille le volume échangé d'un ticker. La mesure est `ln(v[t])` moins la moyenne de `ln(v)` sur la fenêtre, comparée à `k` × l'écart type de cette même fenêtre, avec un plancher de `ln 2` (au moins le double du volume habituel). Seule une hausse est un mouvement : un volume faible ne dit rien. L'événement est un `market_move` de mesure `volume` (pack `markets` 1.3.0), même avis de séance, même `known_at` hérité (D736). Un volume n'a pas de fenêtre de cours : le test de règle sur une série garde le mode de cours de cette série. Valeurs par défaut : `SPY` et `QQQ` en volume, en plus de leur cours.
+Mode `volume`, hausse seulement. Codé.
 
 #### D811 — Millésimes FRED par ALFRED, clé d'org au coffre
-
-Une import optionnelle lit les millésimes ALFRED (valeurs telles que publiées à chaque date) avec la clé FRED de l'org au coffre, sous la même garde d'hôte que D543. Sans clé, rien ne change : l'historique lu d'un coup reste `backfilled`. Chaque millésime devient une observation datée par sa date de publication (`realtime_start`), donc lisible par le test de règle.
+Pipelines `alfred_*`, clé `markets_fred_key`. Codé, jamais essayé sur le vrai ALFRED.
 
 #### D812 — Rapprochement CIK ↔ LEI : une proposition, jamais une fusion
-
-La SEC ne publie pas le LEI. Pour une société créée par son CIK, une recherche GLEIF par nom légal et pays (`US`) qui renvoie exactement un candidat, déjà connu dans l'org par son LEI, produit une proposition « même société » (D375) qu'un humain accepte. Aucune fusion automatique.
+Pipeline `gleif_identity`. Codé, jamais essayé sur le vrai GLEIF.
 
 #### D813 — Fiche émetteur : cours et événements
-
-La fiche d'une organisation qui a un instrument montre le graphique des clôtures et, sur la même frise, ses `market_event` et ses dépôts.
+Onglet **Cours**, `GET /markets/issuers/{id}/chart`. Codé.
 
 #### D814 — Synthèse quotidienne : l'assistant de l'org, en lecture
-
-Après la séance, une note de synthèse (mouvements, dépôts, événements du monde de la fenêtre) est rédigée par le fournisseur d'IA de l'org (D119 : aucun LLM plateforme), sans action ni écriture d'objet. Sans fournisseur configuré, rien n'est produit. **Placement (Shan, 2026-11-08)** : un paragraphe de l'avis de séance (application et canaux `move_notify_channels`), une fois par jour ; rien n'est stocké comme objet.
+Réglage `session_summary`, un paragraphe par séance, rien stocké. Codé, jamais essayé avec un vrai fournisseur.
 
 #### D815 — MK3 (extraction par LLM) après tout le reste
-
-Les rubriques 8-K (D544) couvrent l'essentiel ; l'extraction à citation vérifiée attend le mécanisme `extractors:` (D476), en cohérence avec D780 (LLM en dernier). PRD : appendice D.
+Tenue : MK3 codé en dernier (§3.6).
 
 #### D816 — Cours en direct : un connecteur MetaTrader 5 maison
+EA en lecture seule. La forme par webhook est remplacée par D847–D849.
 
-Shan, 2026-11-08 : « pour les cours il y aura un connecteur MT5 qui va envoyer des données en live (PneX maison, pour éviter que les gens payent) ». Cela lève en partie le hors-périmètre « prix temps réel » du §8 pour la lecture (jamais d'ordre, D534). **Forme (Shan, 2026-11-08)** : un Expert Advisor MQL5 fourni par PneX pousse les barres par `WebRequest` vers un webhook signé (CN3, `pipelines.md` D795), lecture seule, jamais d'ordre. Le stockage suit l'appendice C (D824 : même forme de table que l'historique). Détail et réponses de Shan : §C.7, « D816 ».
-
-### B.2 Imports et pipelines (§7 bis, vérifié le 2026-11-08)
-
-Recensement : aucune import marchés ni monde ne passe par un flow. Toutes sont des imports de pack (`imports:` de `markets.yaml` et `world_events.yaml`), lues par sources `url` / `api`, la plupart `per_object` (une requête par instrument ou série). D571 garde ce chemin pour l'enrichissement `per_object`, qui n'est pas un calcul d'ensemble. Les observations vont dans `market_observations` (D541), pas dans des objets, donc pas par `ontology_sync`. Le point du §7 bis est clos sans transfert ; une source en masse (fichier GLEIF complet, MT5) passera par un pipeline.
-
-### B.3 Avancement
-
-| Décision | État |
-|---|---|
-| 7 ter datation des filiales | codé, d40f7f60 |
-| D810 | codé : `pnex_core::markets::moves` (mode `Volume`), `services::markets::moves::metric_of`, pack 1.3.0, test `prices_with_a_vault_key_and_the_reaction_to_a_filing` |
-| D811 | codé, b0cb1567 : forme `alfred_vintages` (`output_type=4`, premières publications), source à clé `fred` (clé en paramètre de requête ajoutée à l'envoi seulement, jamais dans l'URL stockée ni un journal), imports « Watched series first releases (ALFRED) » et « Macroeconomic series first releases (ALFRED) » chaque semaine ; un mouvement trouvé sur une valeur rattrapée prend la date d'une publication datée de même valeur. Jamais essayé sur le vrai ALFRED (pas de clé) ; test `fred_first_releases_date_the_moves` |
-| D812 | codé, 54765942 : `pnex_core::markets::same_company` (clé de nom légal, candidat unique), `services::markets::identity` (10 sociétés par passage, avec le balayage des documents), réglage d'état `lei_state`, lien `same_company_as` ; test `sec_companies_are_matched_to_their_lei_by_proposal`. Jamais essayé sur le vrai GLEIF |
-| D813 | codé : route `GET /api/v1/markets/issuers/{id}/chart` (9f188637, organisation ou instrument, `days` 1 à 3650, `ontology:read`, exposée au MCP), onglet **Cours** de la fiche (5bb0de44) : clôtures en encre, séances en triangles `warn`, dépôts en traits sur l'axe, marqueur choisi nommé et lié sous le graphique. Design : skills `frontend-design`, pire cas façon `break-ui` dans l'e2e `markets-chart.spec.ts` (décennie plate, 200 marqueurs, titres longs) ; corrigés en route : série plate centrée et valeur affichée une fois, libellés d'axe à taille fixe. Limite : 200 marqueurs = 200 arrêts clavier |
-| D814 | codé, 62111cdb : réglage `session_summary` (`off` par défaut), `services::markets::summary` (toutes les 30 min après 12 h UTC, séance de la veille ouvrée), réclamation par org et séance (migration 000130), fournisseur `extraction` de l'org, quota IA quotidien, aucun outil ; test avec un LLM simulé. Jamais essayé avec un vrai fournisseur |
-| D816 | forme tranchée, PRD de détail à écrire (avec D824) |
-
-## Appendice C — Historique de prix en masse pour l'entraînement (D807–D809, D820–D824)
-
-| | |
-|---|---|
-| Statut | Proposé le 2026-11-08 ; MK11 à MK14 codés le 2026-11-08 (§C.7) ; mesure MK13 à 10⁵ transactions faite à échelle réduite |
-| Lots | **MK11…MK14** |
-| Origine | volet trading de PNeX : un modèle entraîné sur des images de graphiques, du texte et la frise des événements (`geo_event`, `market_event`), puis une boucle qui cherche les meilleurs trades. Ici, **seulement la collecte de l'historique** : ni le modèle, ni l'entraînement, ni le flux continu |
-| Repose sur | tables et pipelines (`pipelines.md` D569–D578 : Parquet sur S3, transactions `append`, worker DataFusion, ordonnanceur D575), D526 (une source = une import, liste blanche), D531 (lecture à la date t), D540 (sources primaires), D543 (sources fixées dans le code, R9), §7 bis (aucun import marchés par flow) |
-| Sécurité | `security.md` §6 avant chaque lot ; hôtes fixés dans le code, egress R8 |
-
-### C.1 Le besoin
-
-1. Charger **l'historique complet** de prix à granularité fine (minute, tick) sur un univers choisi : crypto (Binance), forex et CFD (Dukascopy), des années d'historique par instrument.
-2. Le garder **tel que la source l'a publié**, en colonnes typées, pour le relire par fenêtre de temps et le joindre aux événements datés (`known_at`) déjà dans PNeX.
-3. Reprendre un chargement coupé sans tout retélécharger, puis suivre la source chaque jour.
-
-Volume visé : de quelques Go (bougies minute) à plusieurs To (ticks, trades). Le volume ne passe ni par PostgreSQL ni par l'ontologie.
-
-Hors du besoin : l'entraînement, les images (générées à la lecture, jamais stockées), le flux continu MT5 (D824), l'affichage de graphiques intrajournaliers.
-
-### C.2 Ce qui bloque aujourd'hui (relevé dans le code)
-
-| Point | Où | Effet |
-|---|---|---|
-| Une import lit **une** URL ou **un** fichier | `services/ingest` (`source_resolve` → `file_download`) | Binance publie un zip par symbole et par mois, Dukascopy un fichier par heure et par instrument : 10⁴ à 10⁵ fichiers par instrument |
-| Format binaire | — | les `.bi5` Dukascopy sont du LZMA brut, pas du CSV |
-| `QUOTA_BYTES` = 20 Go, constante | `services/datasets/mod.rs` | bloque bien avant le To (§9.9, ligne Quota) |
-| `UNZIPPED_MAX` = 200 Mo par fichier extrait | `pnex_core::import_read` | un fichier mensuel de trades BTCUSDT le dépasse |
-| `STAGING_QUOTA_BYTES` = 2 Go | `pnex_core::ingest` | une zone de transit par run, faite pour un fichier, pas pour une série |
-| Colonnes tout en texte au chargement | D569, OP1.1 | les types viennent d'une transformation : un passage SQL de plus sur des To |
-| Cours dans `market_observations` | D541, D543 | une ligne PostgreSQL par valeur quotidienne : adapté au journalier, pas à 10⁹ ticks |
-
-### C.3 Décisions
+### 5.3 Historique fin et MT5 (D807–D809, D820–D824, D841–D849)
 
 #### D807 — L'historique fin vit dans des tables, jamais dans l'ontologie ni dans `market_observations`
-
-Application de D570 : une bougie ou un tick n'est pas un objet. `market_observations` reste la source du journalier, des études d'événement et du test de règle (D541, D543), sans changement. L'historique fin est une **table** (D569) par (source, forme), par exemple `binance_spot_klines_1m`, `dukascopy_ticks`. L'instrument est une colonne, pas une table : un univers de 300 symboles reste une table.
-
-Le lien avec l'ontologie passe par la colonne `instrument`, rapprochée de `listing.ticker` ou d'un code de source (`instrument.source_codes`, à ajouter au pack `markets`). Pas de déclaration d'identité (D569, effacement) : ces tables ne contiennent aucune personne.
+Tient. Forme de chargement remplacée par les pipelines (`pipelines.md` D953).
 
 #### D808 — Origine `partitioned_download` : un modèle d'URL, une plage, une partition = une transaction `append`
-
-Nouvelle origine d'import, exécutée par le backend (D573 : l'origine voit l'egress, le worker non).
-
-- **Partition** = (instrument, période). La période vaut `month`, `day` ou `hour` selon la source. Les URLs viennent d'un modèle fixé par la source (D822), jamais d'une URL saisie.
-- **Univers** : liste d'instruments lue dans un réglage d'org (même école que `move_series`, D737), plage `from` / `to` (`to` absent = jusqu'à la dernière période close).
-- **Registre de partitions** : table `market_history_partitions` (`org_id`, `import_id`, `instrument`, `period_start`, `state` `done|empty|failed`, `bytes`, `rows`, `sha256`, `transaction_id`, `fetched_at`). Une partition `done` n'est jamais relue. Un run reprend donc là où le précédent s'est arrêté, après un pod tué compris (D346 sans le staging).
-- **404 = partition vide** (`empty`, week-end, instrument pas encore coté), pas un échec. Une partition `empty` plus récente que 7 jours est retentée (publication tardive).
-- **Écriture** : chaque partition est décodée en flux (D820) et commitée en transaction `append` dans la table. La zone de transit D318 n'est pas utilisée : le fichier source est petit et lu une fois.
-- **Somme de contrôle** : vérifiée quand la source la publie (`.CHECKSUM` Binance). Un écart = `failed`, partition retentée au run suivant.
-- **Débit** : concurrence bornée par hôte (défaut 4) et pause entre requêtes, fixées par la source. Un 429 ou un 503 met la source en attente, sans compter d'échec.
-- **Suivi quotidien** : la planification D575 relance l'import, qui ne prend que les partitions nouvelles. Pas de cron à part, pas de flow (§7 bis).
-
-Ce qui reste à vérifier dans le lot : la vue courante d'une table à 10⁵ transactions `append` (lecture du catalogue, nombre de fichiers par requête DataFusion). Si elle ne tient pas, un compactage par mois (une transaction `snapshot` d'un mois remplace ses `append`) est le remède prévu, pas avant la mesure.
+Remplacée par D934 et D937 (pipelines suivis, `pipeline_items`).
 
 #### D809 — Deux formes de table, colonnes typées dès l'écriture
-
-Écart assumé à « un fichier chargé est tout en texte » (OP1.1) : le décodeur est notre code, sur une source fixée, les types sont donc connus.
-
-| Forme | Colonnes |
-|---|---|
-| `ohlcv` | `instrument` text, `ts` timestamp µs UTC (ouverture de la bougie), `interval` text, `open`, `high`, `low`, `close` decimal, `volume` decimal, `quote_volume` decimal null, `trades` int64 null, `source` text |
-| `quote_tick` | `instrument` text, `ts` timestamp µs UTC, `bid`, `ask` decimal, `bid_volume`, `ask_volume` float64, `source` text |
-| `trade_tick` (MK13) | `instrument` text, `ts` timestamp µs UTC, `price` decimal, `qty` decimal, `side` text null, `trade_id` int64, `source` text |
-
-- **Prix en décimal**, jamais en flottant : Dukascopy publie un entier à l'échelle de l'instrument, Binance une chaîne décimale.
-- **Horodatage normalisé en µs UTC** : Binance passe des millisecondes aux microsecondes sur le spot à partir du 2025-01-01 (README de `binance-public-data`). Le décodeur détecte l'unité par fichier, pas par date codée en dur.
-- **Pas de `known_at`** : un prix brut est connu à `ts` (D531 : `ts <= t` pour les cours bruts). Une jointure avec un événement lit `known_at` côté événement, `ts` côté prix.
-- **Valeurs brutes** : pas d'ajustement, pas de bougie reconstruite, pas de jour comblé (D525, D735). Un trou reste un trou.
+Formes `ohlcv`, `quote_tick`, `trade_tick`. Tient, chargement par pipelines (D953).
 
 #### D820 — Décodeurs natifs, purs, dans `pnex_core::market_history`
-
-Fonctions pures (octets → lignes typées), testées sur des fichiers réels mis en fixtures, sans réseau.
-
-- `binance_klines` et `binance_trades` : zip contenant un CSV, sans en-tête selon la période. Lecteur `csv-core` existant.
-- `dukascopy_bi5` : LZMA brut (crate `lzma-rs`, pure Rust, licence à vérifier par `task security:deps`), enregistrements de 20 octets gros-boutistes : décalage en ms depuis le début de l'heure (u32), ask (u32), bid (u32), volume ask (f32), volume bid (f32). Prix = entier / échelle de l'instrument (10⁵ pour la plupart des paires, 10³ pour les paires en JPY, autre pour métaux et indices). **Table des échelles dans le code**, un instrument absent est refusé (`market-history-unknown-scale`), jamais deviné. Mois numérotés de 0 dans l'URL Dukascopy.
-- Un fichier qui ne se décode pas = partition `failed` avec son code, jamais une table à moitié écrite (la transaction n'est commitée qu'entière).
+Décodeurs Binance et Dukascopy. Les pipelines lisent désormais par lecteurs de format (D939).
 
 #### D821 — Les plafonds deviennent des réglages plateforme
-
-- `QUOTA_BYTES` des tables devient un réglage plateforme par org (`dataset_quota_bytes`, défaut 20 Go inchangé), posé par l'admin plateforme seulement (même école que Q-P1, Q-P2). En SaaS il suivra le tier (§9.9, ligne Quota).
-- `UNZIPPED_MAX` reste à 200 Mo : il protège d'un zip hostile, et une partition le respecte si sa période est bien choisie. Les trades Binance se lisent par **jour**, pas par mois.
-- Le staging (2 Go) n'est pas concerné : D808 ne l'utilise pas.
-- La rétention `retain_days` ne touche que des versions remplacées : une table en `append` garde tout son historique.
+Quota de tables par org, 20 Go par défaut, posé par l'admin plateforme. Codé.
 
 #### D822 — Sources fixées dans le code, conditions notées
-
-Comme `KEYED_SOURCES` (D543, R9) : une import nomme une source de `HISTORY_SOURCES`, jamais un hôte. Chaque source fixe son hôte, ses modèles d'URL, ses périodes, sa concurrence et son `license_note`.
-
-| Source | Hôte | Contenu | Période | Clé |
-|---|---|---|---|---|
-| `binance_public` | `data.binance.vision` | spot et futures USD-M / COIN-M : klines (1s à 1mo), trades, aggTrades | mois clos, jour pour le mois en cours | non |
-| `dukascopy_public` | `datafeed.dukascopy.com` | ticks bid/ask forex, métaux, CFD indices et actions | heure | non |
-
-- **Conditions d'usage à vérifier avant MK11 et MK12** et à écrire dans `license_note` : usage interne, redistribution, SaaS. Dukascopy en particulier, dont les prix de CFD sont des cotations de courtier, pas des données de bourse.
-- Les tables restent privées à l'org (même règle que D527) : jamais exposées par un lien public ni une page publiée.
-- Les données de bourse en profondeur (CME, actions US L2/L3) restent hors V1 : fournisseur payant, licences d'échange, voir B.6.
+Hôtes fixés par la source, tables privées à l'org. Tient, dans les pipelines.
 
 #### D823 — Lecture pour l'entraînement : fenêtres, rééchantillonnage en SQL, pas d'image stockée
-
-- Le rééchantillonnage (M1 → M5, H1, D1 ; ticks → M1) est une **transformation SQL** du pipeline (D572), sortie dans une table, avec `checks:` (D576). Pas de fonction dédiée.
-- Les images de graphiques sont générées par le code d'entraînement à partir de l'OHLCV, jamais stockées dans PNeX.
-- Export : lecture des fichiers Parquet de la vue courante (ou `as_of`) par une route de lecture paginée par fichier, droits `datasets:read`. Le code d'entraînement lit le Parquet directement, sans passer les lignes par l'API JSON. La route exacte se décide dans MK14.
-- La jointure prix × événements respecte D531 : un événement n'entre dans une fenêtre qu'à partir de son `known_at`, un `backfilled` est exclu par défaut. La règle « mesure à partir de la séance qui suit le jour de connaissance » (A.7, point 8) vaut aussi ici.
+`GET /datasets/{id}/files`, `date_bin`. Codé.
 
 #### D824 — Le flux continu (MT5) écrit la même forme, plus tard
-
-Un adaptateur MT5 (agent desktop, `agents.md`) écrira des transactions `append` dans une table de forme `quote_tick` ou `ohlcv`, avec `source = mt5:<courtier>`. Même schéma que l'historique : le modèle voit la même donnée à l'entraînement et en direct. PRD à part, rien n'est prévu ici au-delà du schéma commun. Aucun ordre passé par PNeX (D534, D123).
-
-### C.4 Lots
-
-| Lot | Contenu | Acceptance |
-|---|---|---|
-| **MK11** | D807, D808, D809 (`ohlcv`), D820 (`binance_klines`), D822 (`binance_public`) ; registre de partitions ; planification | BTCUSDT et ETHUSDT spot 1m depuis 2017-08 : nombre de lignes égal au nombre de minutes moins les trous publiés ; pod tué au milieu → le run suivant ne retélécharge que les partitions non `done` ; second run complet = zéro téléchargement ; une partition au `.CHECKSUM` faux reste `failed` |
-| **MK12** | D809 (`quote_tick`), D820 (`dukascopy_bi5` + table des échelles), D822 (`dukascopy_public`) | EURUSD et USDJPY, une année de ticks : prix comparés à un échantillon décodé à part ; échelle JPY juste ; heure sans tick = `empty` ; débit tenu sans 429 |
-| **MK13** | D821 (quota par org), `trade_tick` + `binance_trades` par jour, mesure de la vue courante à 10⁵ transactions (compactage seulement si elle échoue) | un univers de 20 symboles sur 5 ans sous un quota posé à 2 To ; temps de lecture d'une fenêtre d'un mois mesuré et noté |
-| **MK14** | D823 : transformations de rééchantillonnage d'exemple dans le pack, lecture Parquet pour l'entraînement | M1 → H1 d'une année BTCUSDT, contrôle `unique` sur (`instrument`, `ts`) ; un script externe lit une fenêtre de la vue courante sans passer par l'API JSON |
-
-Premier ensemble utile : **MK11 seul**. Il valide toute la chaîne (origine en partitions, reprise, `append`, planification) sur une source simple, avant le format binaire de Dukascopy.
-
-### C.5 Questions ouvertes
-
-- **Q-MK9** : univers de départ (quels symboles Binance, quelles paires Dukascopy) et profondeur d'historique.
-- **Q-MK10** : klines seulement en MK11, ou aussi `aggTrades` (bien plus volumineux) ?
-- **Q-MK11** : conditions d'usage Dukascopy et Binance pour le mode SaaS (B.3, D822).
-- **Q-MK12** : quota par défaut d'une org self-hosted : 20 Go inchangé, ou plus haut puisque le disque est celui de l'utilisateur ?
-- **Q-MK13** : table par (source, forme) avec `interval` en colonne, ou table par intervalle ? Proposé : par forme, `interval` en colonne, une table par intervalle seulement si la lecture mesurée (MK13) le demande.
-
-### C.6 Hors périmètre
-
-Entraînement et modèle ; génération d'images ; carnets d'ordres et profondeur de marché ; données de bourse payantes (CME, OPRA, actions US L2/L3) ; fournisseurs à clé (à ajouter plus tard sous D543) ; adaptateur MT5 (D824, PRD à part) ; toute exécution d'ordre.
-
-### C.7 Avancement et écarts (2026-11-08)
-
-MK11 codé, non poussé. Pièces :
-
-- `pnex_core::markets::history` : `plan` (mois clos entiers, mois courant par jours), `binance_klines` (unité ms ou µs lue par valeur), `scaled` (décimal à 8 places, jamais arrondi), `checksum_of`, source `BINANCE_SPOT_1M` ;
-- `services::markets::history` : balayage, écriture et registre ;
-- `datasets::append_batch` : une transaction `append` typée ;
-- migration 000133 `market_history_partitions` ;
-- pack `markets` 1.4.0 : réglages `history_symbols` (vide par défaut) et `history_from` (`2017-08` par défaut) ;
-- fiche `markets.md` ;
-- test `minute_history_is_loaded_by_partitions_and_resumed`.
-
-Écarts au texte :
-
-- **Pas de nouvelle origine d'import ni de planification D575.** Les pipelines n'ont pas encore d'origine dans le code : seules les transformations existent. Une import d'ontologie, elle, finit toujours en objets. L'historique est donc lu par un balayage du service marchés, comme les documents et GLEIF : toutes les 5 minutes, 24 partitions au plus par org et par passage. Le registre n'a pas de colonne `import_id` ; sa clé est (org, source, instrument, période). À reprendre quand les pipelines auront des origines.
-- **Une requête à la fois, pause de 250 ms**, au lieu d'une concurrence de 4 par hôte. Un 429, un 503 ou une source injoignable arrêtent le passage sans rien compter.
-- **Un mois clos dont un jour est déjà chargé continue par jours.** Ainsi, aucune minute n'est chargée deux fois quand le mois courant se ferme.
-- **Fichier publié sans `.CHECKSUM`** : il est chargé sans contrôle (marqué `shortcut:` dans le code).
-- **Réponses de Shan (2026-11-08 au soir)** :
-  - Q-MK9 : univers vide par défaut, l'org liste ses symboles ; acceptation MK12 sur EURUSD et USDJPY, une année ;
-  - Q-MK10 : bougies seulement ;
-  - Q-MK11 : table privée à l'org, `license_note` qui dit que les conditions ne sont pas vérifiées, aucun partage entre orgs ;
-  - Q-MK12 : 20 Go par défaut, relevé à la main en local pour l'acceptation ;
-  - Q-MK13 : une table par forme, `interval` en colonne (pris par défaut, non contredit) ;
-  - LZMA de Dukascopy : `lzma-rs` ;
-  - D816 : l'EA pousse les bougies M1 **et** les ticks, vers des tables dataset (`ohlcv`, `quote_tick`) ; secret du webhook collé dans les paramètres de l'EA, montré une fois par l'UI ; test par envois signés simulés ;
-  - MK3 : PRD d'abord, pas de code ; pas de nouvelle UI cette nuit.
-- **Pas encore mesuré** :
-  - le vrai `data.binance.vision`, jamais appelé ;
-  - l'acceptation MK11 sur BTCUSDT et ETHUSDT depuis 2017-08, soit environ 220 partitions, à peu près 50 minutes de remplissage ;
-  - la vue courante à 10⁵ transactions (MK13).
-
-#### MK12 (2026-11-08, nuit)
-
-- `pnex_core::markets::history` : `DUKASCOPY_TICKS`, `fx_scale` (table des échelles : 10 devises, 3 places pour une cotation en JPY, 5 sinon ; métal, indice ou CFD refusés), `dukascopy_path` (mois comptés de 0), `plan_days`, `dukascopy_bi5` ; `import_read::unlzma` (plafond `UNZIPPED_MAX`) ; `lzma-rs` 0.3, déjà dans `Cargo.lock`.
-- `services::markets::history` : `fx_pass` et `fetch_day`, `quote_tick_batch` ; `Fetched::Rows` porte désormais un `RecordBatch`, l'écriture et le registre sont communs aux sources.
-- Pack `markets` 1.5.0 : réglages `history_fx_pairs` (vide) et `history_fx_from` (vide = douze mois en arrière).
-- **Écart : une partition Dukascopy est un jour, pas une heure.** Les 24 fichiers horaires d'un jour forment une seule transaction `append` ; une heure illisible fait échouer le jour entier, qui est retenté. Sans cela, une année de deux paires ferait 17 500 transactions au lieu de 730. Pas de migration : `period = 'day'` existait, la colonne `source` distingue les sources.
-- Une heure sans tick est un 404 ou un fichier vide ; un jour sans aucun tick est `empty` (le samedi en particulier).
-- Pas de somme de contrôle publiée par Dukascopy : `sha256` est celui des fichiers du jour mis bout à bout.
-- 14 jours par org et par passage, pause de 100 ms entre deux fichiers.
-- Pas de fixture réelle dans le dépôt (données tierces) : le test compresse ses propres fichiers avec `lzma-rs`.
-
-#### D821 (quota par org)
-
-- Réglage plateforme dans `system_settings` (clé `dataset_quota_bytes:<org>`), sans migration ; absent = 20 Go (`QUOTA_BYTES`).
-- `GET` et `PUT /api/v1/system/orgs/{org_id}/dataset-quota`, admin plateforme seulement (`Access::Platform`, exclus du MCP avec les hôtes de connecteurs) ; `null` revient au défaut.
-- L'argument `max` de l'erreur `dataset-quota` disparaît : il donnait le défaut, faux pour une org relevée ; le message n'en dépendait pas.
-
-#### Passes exclusives par org (constaté pendant l'acceptation MK11)
-
-- Premier run réel : 37 partitions chargées deux fois (1,6 M de lignes en trop). La boucle de fond de l'application tournait en même temps que le balayage du test. Chaque passe lit le registre au départ, avant que l'autre n'y écrive, et recharge donc ce que l'autre vient de commiter.
-- Le même cas existe en production quand une passe dure plus que son tour (`singleton::my_turn`) : un autre pod prend le tour et la double.
-- Remède : verrou consultatif `db_lock::ns::MARKET_HISTORY` par org (`TenantLock`, 1 s d'attente, sinon l'org est sautée à ce passage). Le test des transactions lance deux balayages à la fois.
-
-#### MK13 (transactions Binance)
-
-- `binance_trades` et `binance_trades_path` (un fichier par jour, D821), table `binance_spot_trades` de forme `trade_tick` ; `side` vaut `sell` quand l'acheteur est le teneur de marché, `buy` sinon.
-- Pack `markets` 1.6.0 : `history_trade_symbols` (vide) et `history_trade_from` (vide = un mois en arrière) ; 4 jours par passage.
-- Le service est refait autour d'un `Job` (bougies, ticks, transactions) : réglages, plan, budget et lecture par source, une seule boucle de passage.
-- **Écart à l'acceptation** : « 20 symboles sur 5 ans sous un quota de 2 To » est impossible sur la machine de dev (≈ 100 Go libres). La mesure est faite à échelle réduite, voir plus bas.
-- **Mesure de la vue courante (2026-11-09, test `the_view_holds_many_appends`)** : une table, transactions `append` d'une ligne, base et stockage locaux.
-
-  | Transactions | Liste des fichiers | Aperçu (200 lignes) | Lecture de la table |
-  |---|---|---|---|
-  | 1 000 | 86 ms | 129 ms | 13 ms |
-  | 10 000 | 48 ms | 77 ms | 11 ms |
-  | 100 000 | 431 ms | 438 ms | 30 ms |
-
-  La vue tient à 10⁵ : **le compactage mensuel prévu par D808 n'est pas nécessaire à cette échelle**. Pour comparer : 236 partitions pour deux symboles Binance depuis 2017, 36 fichiers par paire HistData, 36 500 jours pour 20 symboles de transactions sur 5 ans. L'écriture, elle, ralentit : 37 ms par `append` sur les 10 000 premières, 54 ms en moyenne sur les 100 000 (1 h 31). La place restante (`room`) additionne à chaque écriture les octets de toutes les transactions de l'org ; à reprendre (compteur tenu au commit) si une charge réelle le montre.
-
-#### MK14 (lecture pour l'entraînement)
-
-- `GET /api/v1/datasets/{id}/files` (liste paginée des fichiers Parquet de la vue courante ou de `as_of`) et `GET /api/v1/datasets/{id}/files/{index}` (le fichier entier, `application/vnd.apache.parquet`, lu par morceaux de 8 Mo). Droit `datasets:read`, mêmes marquages que l'aperçu (D801, journalisé). La liste est exposée au MCP, le téléchargement exclu (binaire).
-- Rééchantillonnage : `date_bin` ajouté à la liste blanche du moteur ; test `minute_bars_are_resampled` (M1 → H1 avec `date_trunc`, M1 → M5 avec `date_bin`). Le SQL d'exemple est dans la fiche `pipelines.md`, pas dans le pack : un pack ne porte pas de pipeline aujourd'hui.
-
-#### Acceptations réelles (2026-11-08, nuit, machine de dev, base de test dédiée)
-
-- **MK11 Binance : réussie.** BTCUSDT et ETHUSDT de 2017-08 au 2026-11-07 : 236 partitions (2 × 111 mois + 2 × 7 jours), 9 687 997 lignes pour 9 751 680 minutes (99,35 %, les trous publiés restent des trous), 327 Mo de Parquet, 16 min. Aucune partition `failed` ; lignes de la table = somme du registre ; second passage : aucun téléchargement.
-- **MK12 Dukascopy : bloquée, à trancher par Shan.** `datafeed.dukascopy.com` refuse notre client (`PNEX-Import/<version>`, réponse non 2xx et non 404, donc `import-source-unreachable`) dès la première heure. Un contournement par un faux User-Agent de navigateur est exclu. Pistes : demander un accès à Dukascopy, passer par leur outil officiel d'export puis un envoi CSV, ou une autre source de ticks forex. Le code et le test simulé restent valides.
-- **Fuseau des horodatages** : `+00:00` au lieu de `UTC`. L'aperçu d'une table (formatage arrow sans `chrono-tz`) échouait sur un fuseau nommé, donc sur toutes les tables d'historique.
-
-#### D816 (pont MetaTrader 5, lecture seule)
-
-- ~~L'org crée un connecteur `webhook` (CN3), colle son URL et son secret dans les paramètres de l'Expert Advisor `examples/mt5/PnexBridge.mq5`, et nomme le connecteur dans le réglage `mt5_connector` (pack 1.6.0).~~ Remplacé le 2026-11-09 par les terminaux enregistrés (appendice E, Q-MT6).
-- Appel : `{"v": 1, "broker", "bars": [{symbol, time (s UTC), open, high, low, close, volume}], "ticks": [{symbol, time_msc (ms UTC), bid, ask}]}`, prix en texte décimal. L'EA convertit l'heure du serveur du courtier en UTC, signe le corps (HMAC-SHA256, même convention que le webhook), plafonne un appel à 3 000 bougies et 3 000 ticks, et n'avance ses curseurs que sur un `202`.
-- Le balayage marchés vide la boîte du connecteur (1 000 appels par lot, dans l'org seulement) vers `mt5_ohlcv_1m` (forme `ohlcv`) et `mt5_ticks` (forme `quote_tick`), `source = mt5:<courtier>` ; un appel illisible est écarté et journalisé. Volumes absents (MT5 n'en publie pas par côté, ni en devise de cotation) = `null`, jamais zéro.
-- Au moins une fois : une réponse perdue, ou un pod tué entre le commit et l'effacement, rejoue des appels (marqué `shortcut:`) ; d'où le contrôle `unique` conseillé dans la fiche.
-- **Non fait** : l'EA n'est pas compilé ici (pas de MetaEditor) ; pas de téléchargement de l'EA depuis l'UI (fichier du dépôt).
-
-## Appendice D — MK3 : événements extraits par LLM, à citation vérifiée
-
-| | |
-|---|---|
-| Statut | Proposé le 2026-11-08 ; **Q-MK15 à Q-MK20 tranchées par Shan le 2026-11-19** (D.5), code en cours |
-| Décisions | **D841…D846** |
-| S'appuie sur | D476 (`extractors:`, `due-diligence.md`), D477 (file de propositions), D529 (`market_event` sourcé), D531 (`known_at`), D544 (rubriques 8-K), D119 (aucun LLM plateforme), D780 (LLM en dernier) |
-
-### D.1 Le besoin
-
-Les rubriques 8-K (D544) disent la nature d'un dépôt (2.02 résultats, 5.02 dirigeants…), pas son contenu : « résultats publiés » sans dire s'ils dépassent la prévision, « prévision relevée » sans le chiffre. Le texte des communiqués joints (pièces 99.x des 8-K) porte ce contenu. MK3 en tire des `market_event` (D529) dont chaque champ cite le texte, sous forme de propositions qu'un humain accepte.
-
-### D.2 Ce qui existe (relevé dans le code le 2026-11-08)
-
-- Le balayage des documents de marché télécharge déjà les dépôts SEC des sociétés suivies, avec le contact déclaré de l'org : aucune nouvelle sortie réseau n'est nécessaire.
-- La file de propositions existe (D812 s'en sert pour les LEI) ; l'assistant de l'org (D119) sait appeler le fournisseur d'IA de l'org (D814).
-- **Absent** : le mécanisme `extractors:` de D476 (aucune occurrence dans le code), la vérification de citation, tout extracteur.
-
-### D.3 Décisions proposées
+Tables `mt5_ohlcv_1m` et `mt5_ticks`. Codé.
 
 #### D841 — `extractors:` dans les packs, mécanisme commun
-
-Implémente le cœur de D476, pour les marchés comme pour la due diligence : pour une classe de document, un schéma JSON et une consigne. Le fournisseur d'IA de l'org rend du JSON, validé contre le schéma ; chaque champ porte `quote` (≤ 300 caractères), qui doit se retrouver mot pour mot dans le texte source (espaces normalisés, rien d'autre), sinon le champ est rejeté, et l'élément entier s'il était requis. Fonctions pures de validation et de recherche de citation dans `pnex_core`, testées sans réseau ni LLM ; l'appel au fournisseur passe par le service partagé de l'assistant.
+Étape `model`, citation vérifiée. Codé. La due diligence s'y branchera.
 
 #### D842 — Extracteur `market_event` sur les communiqués SEC seulement (V1)
-
-Entrée : les pièces 99.x des 8-K déjà téléchargées, des sociétés suivies. Pas d'article de presse (les pistes GDELT restent « non confirmées », D544), pas de 10-Q ni de document européen en V1 (voir Q-MK16). Une pièce est extraite une fois ; un changement de version du pack ne relance que sur demande.
+Pièces 99.x des 8-K, en anglais. Codé.
 
 #### D843 — Toujours une proposition, `known_at` donné par le dépôt
-
-Le LLM propose, l'humain accepte (D477) : jamais d'objet écrit directement. À l'acceptation, `market_event` reçoit `published_at` et `known_at` = horodatage d'acceptation du dépôt à la SEC, jamais une date lue par le LLM ; `event_at` vient d'une citation. Le lien `concerne` pointe l'émetteur du dépôt, pas un nom extrait. Pas de `backfilled` : la date de connaissance est celle du dépôt.
+Codé. Une proposition `object_create` porte son lien (migration 000157).
 
 #### D844 — La direction est celle que dit la source
-
-`direction` (`positive`, `negative`, `neutral`, `unknown`) n'est remplie que si une citation la porte (« relève sa prévision », « en dessous des attentes ») ; sinon `unknown`. Aucun score de sentiment. Les chiffres cités (BPA, chiffre d'affaires, prévision) restent du texte cité, jamais recalculés.
+Sinon `unknown`. Codé.
 
 #### D845 — Coût borné et visible
-
-Rien sans fournisseur configuré. Plafond quotidien de documents extraits par org (réglage du pack), sociétés suivies seulement ; jetons et refus comptés par passage et visibles dans l'historique des runs. Un document trop long est découpé par sections du dépôt, jamais tronqué en silence.
+50 documents par org et par jour. Plafond fixé dans le pipeline, pas en réglage.
 
 #### D846 — Alertes sur événement accepté
-
-Un `market_event` accepté d'une société suivie rejoint l'avis de séance (D814) et les canaux `move_notify_channels`, avec sa citation. Pas d'alerte sur une proposition non revue.
-
-### D.4 Lots
-
-| Lot | Contenu | Acceptation |
-|---|---|---|
-| **MK3a** | D841 : `extractors:` (schéma, consigne), validation et recherche de citation pures, appel au fournisseur de l'org, faux fournisseur de test | une citation inventée ou retouchée est rejetée ; un JSON hors schéma est refusé avec son chemin ; aucun appel sans fournisseur |
-| **MK3b** | D842–D845 : extracteur `market_event` du pack `markets`, propositions, plafond, fiche `assistant-kb` | sur dix communiqués réels (résultats, prévision, dirigeant), chaque proposition a ses citations retrouvées ; `known_at` égal à l'acceptation SEC |
-| **MK3c** | D846 : alertes, test e2e d'une acceptation | un événement accepté apparaît dans l'avis de séance avec sa citation |
-
-### D.5 Questions pour Shan
-
-- **Q-MK15** : acceptation toujours humaine, ou acceptation automatique possible (réglage d'org) pour un événement dont toutes les citations sont retrouvées ?
-- **Q-MK16** : sources V1 : communiqués 8-K seulement, ou aussi les 10-Q (prévisions dans le rapport de gestion) et les rapports ESEF européens ?
-- **Q-MK17** : plafond quotidien par défaut (proposé : 50 documents par org et par jour).
-- **Q-MK18** : langue : anglais seulement en V1 (sources SEC), ou dès le départ le français et l'allemand pour l'ESEF ?
-- **Q-MK19** : rattrapage de l'historique (coût en jetons) ou seulement les nouveaux dépôts à partir de l'activation ?
-- **Q-MK20** : `extractors:` sert aussi la due diligence (D476) : on livre le mécanisme commun dans MK3a, ou un lot à part dans `due-diligence.md` dont MK3 dépend ?
-
-**Réponses de Shan (2026-11-19)** :
-
-- Q-MK15 : acceptation **toujours humaine** ; aucune acceptation automatique, même avec toutes les citations retrouvées.
-- Q-MK16 et Q-MK18 : pièces 99.x des 8-K seulement, en anglais.
-- Q-MK17 et Q-MK19 : 50 documents par org et par jour ; seuls les dépôts arrivés après l'activation sont extraits, le rattrapage se fait sur demande explicite.
-- Q-MK20 : le mécanisme commun `extractors:` est livré dans MK3a ; la due diligence s'y branchera.
-- Lieu (D998) : l'extraction est une étape de pipeline du pack `markets` qui n'écrit que des propositions, jamais d'objet accepté ; l'essai réel passe par le fournisseur d'IA de l'org.
-
-### D.6 Ce qui est codé (2026-11-19) et écarts
-
-- **MK3a (D841)** : `pnex_core::extractor` (déclaration `extractors:` d'un pack, schéma de réponse envoyé au modèle, contrôle des valeurs, citation retrouvée mot pour mot à espaces près, découpage d'un long texte aux fins de paragraphe, 8 parties au plus, les autres comptées dans `parts_skipped`). Nouvelle étape de pipeline **`model`** (zone serveur, D943) : fournisseur d'IA de l'org à l'usage « analyses de fichiers », texte encadré comme donnée non fiable, `daily_max` documents par org et par jour UTC (compteur Valkey commun avec les autres plafonds IA), au-delà la passe s'arrête et les lignes attendent le lendemain ; sans fournisseur, `model_unconfigured` et rien n'est lu. Rejeu des tests : réponse enregistrée `given: model:<as>`. Les extracteurs livrés sont vérifiés par `shipped_packs_are_valid`.
-- **MK3b (D842–D845)** : pipeline `markets/filing_events` (index du dépôt → pièces EX-99.x du même hôte → texte → `model` → fonction `event_proposals` → `write: proposals`). Réglage `event_extraction_from` (vide = désactivé ; Q-MK19 : un jour plus ancien relit les dépôts antérieurs). Le `market_event` proposé porte `ref` = `8k:<accession>:<rang>`, `known_at` = `published_at` = acceptation SEC, `direction` (non dit par défaut), `figures`, `quote`, `source_url` ; lien `event_about` vers le déposant (`organization`, ajoutée aux cibles du lien).
-- **Socle générique** : une proposition `object_create` peut porter son lien (`link_type` + `link_target_id`, migration 000157), créé avec l'objet à l'acceptation ; le cible `proposals` des pipelines le propose par une colonne `kind = object_create`. Test `tests/proposals.rs::a_created_object_comes_with_its_link`.
-- **Écarts** : le plafond est fixé dans le pipeline (50), pas un réglage d'org. Jetons et refus sont journalisés (trace du serveur) et portés par les lignes (`rejected`, `parts_skipped`), pas encore affichés dans l'historique des runs. MK3c (D846, alerte sur événement accepté) n'est pas codé. L'essai réel sur dix communiqués (acceptation MK3b) reste à faire avec un fournisseur configuré dans l'org de test.
-
-#### MK11 bis — HistData (Shan, 2026-11-08 : « on peut démarrer sur ce site », Dukascopy en attente)
-
-- **Pourquoi** : bougies bid d'une minute gratuites, 66 instruments (forex majeur et croisé, or, argent, WTI, Brent, indices), depuis 2000 à 2010 selon la paire ; aucun captcha ni pare-feu. Le site ne publie ni licence ni conditions (`/terms-of-use/` en 404), ne nomme pas sa source et vend l'accès automatisé (FTP 27 $ pour 15 jours, mises à jour 7 $ par mois).
-- **Comment, sans scraping agressif** : la page de la période est lue, et son propre formulaire (`/get.php`, jeton `tk` et champs cachés, renvoyés tels quels, lettres et chiffres seulement) est renvoyé avec la page en referer et notre nom de client (`PNEX-Import`). **Un fichier par org et par passage de 5 minutes**, 5 s de pause ; une année close = un fichier, jamais redemandé ; l'année en cours par mois clos. EURUSD depuis 2000 ≈ 36 fichiers.
-- **Données** : `histdata_ohlcv_1m` (forme `ohlcv`), heure EST fixe (UTC−5, sans heure d'été) convertie en UTC. **Faux, relevé le 2026-11-12** : HistData suit l'heure de New York avec heure d'été, ces minutes étaient 1 h en retard d'avril à octobre ; remplacé par le pipeline `markets/histdata_m1` et la table `histdata_m1` (`pipelines.md` D939), volume publié à 0 gardé tel quel, `quote_volume` et `trades` nuls ; table privée à l'org (`license_note`).
-- **Registre** : migration 000135, période `year`. Une année vide (avant la première de la paire, ou pas encore publiée) est redemandée pendant un an.
-- **Correctif commun** : dans un passage, les partitions jamais demandées passent avant celles qu'on redemande (vides récentes, échecs). Sans cela, avec un budget d'un fichier, une année pas encore publiée bloquait les mois de l'année en cours.
-- **À trancher par Shan** : écrire à HistData pour un accord d'usage (ou prendre leur offre payante) avant tout usage en SaaS.
-- **Acceptation réelle (2026-11-08)** : EURUSD de 2000 à 2026-10 : 36 fichiers (26 années + 10 mois), 9 028 816 bougies, 120 Mo de Parquet, 4 min 30 s en boucle de test (en production : un fichier toutes les 5 minutes, ≈ 3 h). Aucun échec. 2023 n'a que 322 638 minutes (environ 372 000 les autres années pleines) : un trou publié par HistData, gardé tel quel. Analyse du fichier : 679 trous de 31 à 180 minutes, dont 587 d'exactement une heure et 85 de deux, tous finis à :00, presque tous entre 9 h et 23 h UTC et de février à juillet (8 000 à 9 500 minutes manquantes par mois). Ce sont des heures entières perdues par la source de HistData, pas un défaut de lecture. Aucun comblement (D525).
-- **Ticks HistData (2026-11-10, demandés par la session market-advisor, validés par Shan : « il faut prendre les ticks »)** : réglages `histdata_tick_pairs` et `histdata_tick_from` (AAAA-MM, le mois dernier si vide) du pack markets. Table `histdata_ticks`, forme `quote_tick` (bid, ask, sans volume : HistData publie 0, et pas par côté), source `histdata_tick`. C'est une clé à part parce que le registre des partitions est indexé par source, et que le job M1 tient déjà des mois de `histdata`. Un mois clos par fichier, un fichier par passage (page, formulaire `file_down` renvoyé avec la page en referer, zip : même parcours que le M1, format vérifié sur le vrai fichier de juin 2024). Le CSV est lu en flux, par lots de 500 000 ticks, dans une seule transaction (`append_stream`) : on ne garde jamais les 210 Mo décompressés en mémoire. EST sans heure d'été + 5 h = UTC ; une tick est connue à son instant (comme une barre, H.8). Mesure XAUUSD juin 2024 : 4 666 550 ticks, zip de 32 Mo, CSV de 210 Mo ; le Parquet écrit se lit dans la colonne `bytes` du registre après le premier passage réel.
-
-## Appendice E — MT5 comme source de données enregistrée
-
-| | |
-|---|---|
-| Statut | **Proposé le 2026-11-08 au soir ; questions tranchées et MT5-1 à MT5-3 codés le 2026-11-09 (E.5) ; MT5-4 (essai dans MetaTrader) reste à Shan.** Demande de Shan : « pour MT5 c'est comme une source, donc générateur de code… idéalement on doit pouvoir tout choper (instruments depuis l'expert, ou filtrer quelques instruments) », « un peu comme les devices ». Questions Q-MT1 à Q-MT6 à trancher avant tout code |
-| Décisions | **D847…D849** |
-| Remplace | la sélection des symboles par les paramètres de l'EA (D816 tel que codé en 8dc9ea35) ; le chemin de données (boîte, tables `mt5_ohlcv_1m` et `mt5_ticks`) est gardé |
-
-### E.1 Le parcours, emprunté aux devices
-
-Un terminal MT5 **n'est pas un device** et n'entre pas dans ce domaine : ni registre de devices, ni flows, ni OTA, ni identité X.509. C'est une source de données, rangée avec les autres sources (pipelines, connecteurs). Seul le parcours est emprunté :
-
-
-| Device | Terminal MT5 |
-|---|---|
-| Fiche créée dans l'UI | Fiche « terminal MT5 » : nom, courtier, serveur, numéro de compte (pas un secret) |
-| Firmware ou code généré par device, identité intégrée (Tier 2 : code à copier) | EA généré par terminal, URL et jeton du terminal intégrés ; régénérer révoque l'ancien jeton |
-| Annonce des capacités (`Announce.pins`) | Annonce du catalogue : tous les symboles du courtier, avec description, chemin, devises, décimales, taille de contrat, premier M1 et premier tick disponibles |
-| Configuration décidée côté serveur | Choix dans l'UI : tout, des filtres (`EUR*`, `XAU*`) ou une liste, séparément pour les bougies et les ticks ; l'EA relit sa configuration |
-| Présence (D108) | Battement de l'EA : en ligne, en retard, hors ligne ; version de l'EA, build du terminal |
-| Lecture seule des mesures | Bougies M1 et ticks vers les tables ; rattrapage d'historique demandé depuis l'UI. **Jamais d'ordre** (D534, D123) |
-
-### E.2 Décisions proposées
+Non codé (MK3c).
 
 #### D847 — Le terminal est une source enregistrée, son EA est généré
-
-Registre `mt5_terminals` (org, nom, courtier, serveur, compte, empreinte du jeton, version de l'EA, vu pour la dernière fois). L'EA est rendu depuis un modèle embarqué dans `pnex_core` (fonction pure, testée) avec l'URL et le jeton du terminal ; l'UI le propose au téléchargement comme le code d'un device Tier 2. Le jeton n'est lisible que dans le fichier généré à cet instant ; il n'est jamais relu (R4, R16).
+Codé. Routes gardées par `pipelines.md` D950.
 
 #### D848 — L'EA annonce tout, PneX choisit
-
-Au démarrage puis chaque jour, l'EA envoie le catalogue complet du courtier (`SymbolsTotal(false)`), avec la profondeur d'historique de chaque symbole (premier M1 par `SERIES_SERVER_FIRSTDATE`, premier tick trouvé par `CopyTicksRange`). Le catalogue va dans une table par terminal. L'UI y choisit les instruments ; l'EA relit sa configuration (instruments, ticks oui ou non, jours de rattrapage) toutes les quelques minutes par une route en lecture authentifiée par son jeton. **La profondeur annoncée répond aussi à la question « quel courtier a l'historique le plus large »** : il suffit de brancher un compte démo de chaque courtier et de comparer.
+Catalogue, profondeur, sélection par filtres. Codé.
 
 #### D849 — Un point d'entrée dédié, la même file, la même écriture
+Accès `Machine`, jeton du terminal, 202. Codé.
 
-Route d'ingestion propre aux terminaux (accès `Machine` au registre IAM, jeton du terminal, org du terminal : R1), réponse `202` après mise en boîte comme CN3 ; le balayage marchés écrit les mêmes tables (D824). Plafonds par terminal : appels par minute, taille d'appel, ticks par symbole. Le battement est un appel sans données.
-
-### E.3 Lots
-
-| Lot | Contenu | Acceptation |
-|---|---|---|
-| **MT5-1** | D847, D849 : registre, jeton, ingestion, configuration, IAM, OpenAPI, MCP (exclu : machine) | un terminal simulé s'enregistre, envoie, reçoit sa configuration ; un jeton révoqué est refusé |
-| **MT5-2** | D847 : modèle de l'EA, rendu pur, écran « terminaux MT5 » (tableau et pager, skills de design, `break-ui`), téléchargement | parcours e2e : créer un terminal, télécharger l'EA, voir le terminal en ligne (simulé) |
-| **MT5-3** | D848 : catalogue, profondeur, sélection par filtres, rattrapage | 1 000 symboles annoncés, filtre `EUR*` appliqué, rattrapage de 30 jours de M1 en paquets de moins de 1 Mio |
-| **MT5-4** | Compilation et essai réel dans MetaTrader 5 sur deux comptes démo | profondeur mesurée et comparée ; aucune requête refusée |
-
-### E.4 bis Questions tranchées (Shan, 2026-11-09)
-
-- **Q-MT1** : une page à part sous **Sources**.
-- **Q-MT2** : un **jeton par terminal** (`Authorization: Bearer`, comme les devices), révocable ; la signature HMAC du webhook CN3 n'est plus utilisée.
-- **Q-MT3** : un nouveau terminal envoie par défaut **les bougies M1 de tout son catalogue**.
-- **Q-MT4** : les ticks **seulement pour une liste choisie** (XAUUSD d'abord).
-- **Q-MT5** : le catalogue **reste une table** du terminal ; un objet `instrument` n'est créé que pour un symbole suivi.
-- **Q-MT6** : le pont par webhook (8dc9ea35) est **remplacé** (installation neuve, aucune migration) ; les tables `mt5_ohlcv_1m` et `mt5_ticks` restent.
-
-### E.4 Questions pour Shan
-
-- **Q-MT1** : place dans l'UI, côté sources : un onglet « Terminaux MT5 » de la page Pipelines (à côté des connecteurs), ou une page à part sous Sources ?
-- **Q-MT2** : authentification : jeton par terminal (comme les devices, `Authorization: Bearer`), ou garder la signature HMAC du webhook CN3 ?
-- **Q-MT3** : sélection par défaut d'un nouveau terminal : rien tant qu'on n'a pas choisi, les bougies de tout le catalogue, ou la seule fenêtre Market Watch ?
-- **Q-MT4** : ticks pour « tout » autorisés, avec un plafond par terminal, ou seulement sur une liste ?
-- **Q-MT5** : le catalogue annoncé crée-t-il des objets `instrument` dans l'ontologie (en propositions), ou reste-t-il une table ?
-- **Q-MT6** : le pont actuel par webhook (8dc9ea35) reste-t-il comme mode simple, ou est-il remplacé ?
-
-## Appendice F — Contexte macro et flux physiques pour un trader particulier (D880–D889)
-
-| | |
-|---|---|
-| Statut | **Proposé le 2026-11-09 ; MK15 à MK24 codés le même jour ; questions F.4 tranchées par Shan**, le reste à faire dans l'ordre des lots |
-| Cible | Shan d'abord, trader particulier, puis d'autres clients (§1) : ce qui lui sert passe en premier ; ce qu'un client exigerait seul (gros volumes, conformité) est reporté, pas refusé |
-
-### F.1 Le besoin
-
-Comprendre pourquoi le marché bouge et ne pas se faire surprendre : décisions des banques centrales, publications d'inflation, chocs d'approvisionnement, cycle immobilier. Face à un trader particulier, qui lit un graphique et des titres, ces données réunies et datées (`known_at`, D531) sont un avantage réel ; face à un fonds, elles n'en sont pas un, et ce n'est pas la cible de cet appendice.
-
-Ordre de valeur retenu : banques centrales, calendrier des publications, inflation détaillée, agrégats maritimes, immobilier ; les positions brutes de navires et d'avions en dernier.
-
-### F.2 Décisions
+### 5.4 Macro et flux physiques (D880–D889)
 
 #### D880 — Banques centrales : la BRI d'abord, une source pour toutes
-
-Le jeu `WS_CBPOL` de la BRI donne le taux directeur d'une quarantaine de banques centrales, quotidien, en SDMX CSV. Une import de pack « Central bank series (BIS) » lit les clés du réglage `bis_series` (`flux.clé`, par défaut le G10 : `WS_CBPOL.D.US`, `XM` pour la zone euro, `JP`, `GB`, `CA`, `CH`, `AU`, `NZ`, `SE`, `NO`), depuis 2000, dans `market_observations` comme les séries BCE (même forme `ecb_csv` ; la BRI ne répète pas la clé, la série est celle demandée). Le réglage accepte tout autre flux BRI : il sert aussi à l'immobilier (D884). Les API propres des banques centrales (BoC Valet, BoE IADB, BoJ) ne viennent qu'au-delà du taux (courbes, bilans), une forme chacune. Conditions BRI : usage non commercial libre, BRI citée ; les statistiques ont leurs conditions propres, à relire avant tout usage hors de l'org.
+Pipeline `bis_series`. Codé.
 
 #### D881 — Un mouvement de taux directeur est un `market_move`
-
-Une décision de taux est un changement de niveau, pas une séance anormale : le détecteur D735 en mode `diff` avec un plancher (`:k:floor`) suffit, sans nouveau détecteur, avec k = 1 et un plancher de 0,05 (D888). L'étude d'événement (D743) mesure ensuite la réaction des séries surveillées à chaque décision.
+Mode `diff`, `k = 1`, plancher 0,05. Codé.
 
 #### D882 — Calendrier des publications : les dates à venir sont des faits sourcés
-
-Les dates des prochaines réunions et publications viennent des calendriers publiés par chaque institution, jamais d'un agrégateur de presse. Elles deviennent des **plages de temps de l'org** (D182), pas des objets : la page calendrier, l'assistant et le lecteur ICS existent déjà (remarque de Shan, 2026-11-09). Sources lisibles : BLS en iCalendar, pages FOMC et BCE. BoJ et BoE suivent la même voie depuis le 2026-11-19 (pipelines `boe_calendar` et `boj_calendar`, calendriers `boe` et `boj`, jour de décision entier en UTC) ; les autres viendront quand leur page sera relue.
+Plages de temps de l'org. BLS, FOMC, BCE, BoE, BoJ codés.
 
 #### D883 — Inflation détaillée : sous-indices officiels, prix individuels plus tard
-
-Sous-indices HICP d'Eurostat (énergie, alimentation, services, biens), IPC de l'INSEE, sous-séries CPI de FRED, indice FAO des prix alimentaires : des séries comme les autres, une forme par source (Eurostat et l'INSEE parlent aussi SDMX). Les prix produit par produit (Open Prices) attendent Q-F2.
+Eurostat et FRED codés. Prix individuels : pack `consumer_prices` (Q-F2).
 
 #### D884 — Immobilier : indices d'abord
-
-Prix résidentiels de la BRI (`WS_SPP`, même import que D880), indice Eurostat des prix des logements, Case-Shiller sur FRED (forme existante). Les transactions une par une (DVF, Land Registry) sont de gros fichiers : pipeline vers une table (D807), plus tard (Q-F3).
+Indices BRI, Eurostat, FHFA. Transactions DVF en table (Q-F3). Codé.
 
 #### D885 — Flux maritimes : les agrégats pour les marchés, le brut pour l'enquête
-
-Pour les marchés : escales et passages quotidiens par port et par détroit (IMF PortWatch), en séries. L'AIS brut (flux temps réel par clé, historiques NOAA ou de l'autorité maritime danoise) est un volume de table (D807) et sert d'abord les dossiers d'enquête (lien `tracks`, K25) : lot à part.
+PortWatch en séries, AIS en tables. Codé.
 
 #### D886 — Flux aériens : en dernier
-
-Peu utiles au trading hors compagnies aériennes. Si on les prend : adsb.lol (ODbL) ; OpenSky seulement après lecture de ses conditions d'usage commercial.
-
-### F.3 Lots
-
-| Lot | Contenu | Vérification |
-|---|---|---|
-| **MK15** | D880 : import BRI, réglage `bis_series`, forme SDMX sans `KEY` (pack 1.7.0) | codé, test `prices_with_a_vault_key_and_the_reaction_to_a_filing` ; essai réel à faire |
-| **MK16** | D881, D888 : décisions de taux en `market_move`, valeurs par défaut de `move_series` | codé : entrées `bis:` (k 1, plancher 0,05) pour le G10, ignorées par les imports FRED ; tests `a_policy_rate_decision_is_a_move_and_a_flat_rate_none` et `prices_with_a_vault_key_and_the_reaction_to_a_filing`. Rejoué hors ligne sur les vraies séries BRI depuis 2000 : JP 14/14 décisions, NO 74/74, XM 58/59, GB 54/56, CA 74/76 ; AU 72/109 (petits ajustements avant 2008 sous le plancher) |
-| **MK17** | D882 : calendrier des publications | codé : réglage `calendars` (`bls, fomc, ecb`), lus chaque jour avec le contact déclaré (le BLS refuse sans) et écrits en **plages de temps de l'org** (D182, réutilisées : page calendrier, outils calendrier de l'assistant, lecteur ICS existant), `external_id` `bls:<UID>`, `fomc:<jour>`, `ecb:<jour>` ; une publication dure une minute (le BLS donne `PT0M`). Pages réelles relues : 16 décisions FOMC 2026–2027, réunions BCE jusqu'en 2028. **Historique FOMC 2009–2020** (2026-11-10) : 100 décisions figées dans `pnex-core/src/markets/fomc_2009_2020.tsv`, une par communiqué public, à l'heure de New York relevée sur l'index des communiqués de la Fed (14:15, 12:30 les jours de conférence 2011–2012, 14:00 depuis mars 2013) ; réunions et votes non programmés marqués « unscheduled » (pas connus à l'avance) ; les décisions FOMC lues sur la page courante sont à 14:00 New York (une minute), plus à la journée. Test `calendars_eurostat_and_chokepoints` |
-| **MK18** | D883 : sous-indices d'inflation | codé : import Eurostat (SDMX CSV, même forme que BCE et BRI), réglage `eurostat_series` (IPCH zone euro : ensemble, énergie, alimentation, services, sous-jacent) — depuis 2026 en COICOP 2018 (`prc_hicp_minr`, ensemble = `AP`), l'ancien `prc_hicp_manr` s'arrête en décembre 2025 (vu à l'essai réel du 2026-11-09), `CPILFESL` dans FRED. Écarts : INSEE laissé de côté (SDMX en XML seulement ; la France est couverte par l'IPCH Eurostat), FAO laissé de côté (le fichier à adresse fixe s'arrête en 2018, le courant change de nom chaque mois) |
-| **MK19** | D884 : indices immobiliers | codé, configuration seule : BRI `WS_SPP` (US, zone euro, Royaume-Uni), Eurostat `prc_hpi_q` (zone euro, France, Allemagne), FHFA `USSTHPI` sur FRED. Case-Shiller écarté : propriété de S&P Dow Jones Indices, même règle que SP500 |
-| **MK20** | D885 : agrégats maritimes PortWatch | codé : forme `portwatch_daily` (ArcGIS JSON), réglage `chokepoints` (8 passages par défaut), une série par passage (`n_total`, `n_tanker`, `n_container`, `n_dry_bulk`, `n_cargo`, `capacity`), lecture par `{since}` et 1 000 jours au plus par requête (l'historique se rattrape en quelques passages) |
+adsb.lol (ODbL) en table. Codé.
 
 #### D887 — Les flux physiques vivent dans des packs à part
-
-Navires, avions, prix des produits et transactions immobilières servent aussi les dossiers d'enquête et la due diligence : packs `trade_flows` (navires, avions), `consumer_prices` (prix des produits) et `real_estate` (indices et transactions), hors de `markets`. Les séries d'indices officielles (D883, D884) restent dans `markets`, à côté des taux.
+`trade_flows`, `consumer_prices`, `real_estate`. Codé.
 
 #### D888 — Un mouvement de série BRI se déclare dans `move_series`, préfixé
-
-Une entrée `bis:WS_CBPOL.D.US:diff:rates:…` voisine les codes FRED dans le même réglage : une seule liste à tenir.
+Entrée `bis:`. Codé.
 
 #### D889 — Positions brutes dès maintenant, en tables
+Codé. Le pont table → trace d'un dossier n'est pas codé. Forme remplacée par les pipelines (D953).
 
-Navires (AIS) et avions (ADS-B) : agrégats pour les marchés et positions brutes pour les dossiers dans la même vague. Les positions vont dans des tables (D807), jamais dans l'ontologie ; un navire ou un avion suivi devient un objet relié à sa trace (`tracks`, K25), à la demande.
-
-### F.4 Questions tranchées (Shan, 2026-11-09)
-
-- **Q-F1** : forex (MT5), indices et actions, matières premières, crypto ; horizons mixtes. Rien ne tombe : l'ordre suit l'effort, le calendrier (MK17) d'abord.
-- **Q-F2** : sous-indices officiels **et** prix produit par produit (Open Prices) : lot MK21, pack `consumer_prices`.
-- **Q-F3** : indices **et** transactions DVF : lot MK22, pack `real_estate`, pipeline vers une table.
-- **Q-F4** : agrégats **et** positions brutes, maintenant (D889) : lots MK23 (AIS) et MK24 (ADS-B), pack `trade_flows`.
-- **Q-F5** : packs à part (D887).
-- **Q-F6** : même réglage `move_series`, préfixe de source (D888).
-- Pousser : en fin de session.
-
-### F.5 Lots ajoutés
-
-| Lot | Contenu | Vérification |
-|---|---|---|
-| **MK21** | Open Prices : prix produit par produit, pack `consumer_prices` | codé : type `consumer_product` (EAN), réglages `tracked_products` et `source_contact`, forme `open_prices` : une série par magasin (nom, ville, pays, identifiant OpenStreetMap), devise en unité, prix remisé en série à part ; lecture par `{since}`, 100 prix par requête. Test `open_prices_give_one_series_per_shop` |
-| **MK22** | DVF : transactions, pack `real_estate` | codé : réglage `dvf_from` (année), table `dvf_mutations` (une ligne par bien d'une vente), années closes, une par passage. Écart : pas un pipeline D344 mais le chargement en flux commun à MK23–MK24 (`services::bulk_history`). Essai réel : 2025 entier, 3 714 829 lignes, 75 Mo, 30 s |
-| **MK23** | AIS : historiques ouverts en table, sans temps réel (Q-F7) | codé : pack `trade_flows`, réglages `ais_dk_from` et `ais_noaa_from`, tables `ais_dk_positions` et `ais_noaa_positions` (navires seulement), un jour par passage ; la NOAA attend son premier jour non publié. Essai réel : 1er et 2 novembre 2026 danois, 14,6 et 14,4 M positions, 320 Mo chacun, 2 min 15, 485 Mo de mémoire au plus |
-| **MK24** | ADS-B : adsb.lol (ODbL) en table | codé : réglage `adsb_from`, table `adsb_lol_positions`, les morceaux `.aa`, `.ab`… lus comme un seul tar, une trace par avion. Essai réel : 30 décembre 2025, 87,5 M positions, 2 Go stockés, 9 min 30, 540 Mo de mémoire au plus |
-
-### F.6 Questions tranchées ensuite (Shan, 2026-11-09)
-
-- **Q-F7** : AIS par fichiers historiques seulement (NOAA, autorité maritime danoise), pas de temps réel pour l'instant. MK23 sans clé ni flux continu.
-- **Q-F8** : tout garder, plafonné par le quota de jeux de données de l'org (D821, 20 Go par défaut) ; pas d'échantillonnage ni de zone imposés.
-
-### F.6 bis Cas réel : l'or (2026-11-09)
-
-Shan teste un premier cas réel sur l'or (XAUUSD), les modèles étant faits dans un projet à part : PNEX fournit les données datées. Ce qui sert à l'or et ce qui a été ajouté pour lui :
-
-| Besoin | Source dans PNEX | État |
-|---|---|---|
-| Cours minute XAUUSD | HistData (`histdata_pairs` = `XAUUSD`), MT5 en direct | existant |
-| Taux réel, point mort d'inflation | FRED `DFII10`, `T10YIE` | **ajoutés** aux séries macro par défaut |
-| Dollar, taux directeurs | FRED `DTWEXBGS`, BRI `WS_CBPOL` (décisions en `market_move`) | existant (MK15–MK16) |
-| Positionnement des spéculateurs | CFTC Commitments of Traders, rapport hebdomadaire (lot **MK25**) | **ajouté** : réglage `cot_markets` (or, argent, WTI par défaut), forme `cftc_cot`, positions du mardi connues le vendredi |
-| Calendrier (Fed, BCE, IPC, emploi) | MK17 | existant |
-| Géopolitique | GDELT, UCDP, ACLED (`world_events`) | existant, réglage `geo_watch` à remplir |
-| Achats d'or des banques centrales | — | **non couvert** : le World Gold Council n'a pas d'accès ouvert ; les réserves du FMI (jeu `IL`, SDMX) demandent un en-tête `Accept` propre et des codes d'indicateur à résoudre, à étudier |
-| Encours des ETF or | — | **non couvert** (pas de source primaire ouverte relue) |
-
-**Essai réel du cas or (2026-11-09, test ignoré `gold_real_sources`, 52 s)** : FRED `DFII10` 5 966 valeurs (2003–2026), `T10YIE` 5 967, `DTWEXBGS` 5 222, `FEDFUNDS` 868 ; BRI taux directeurs US, zone euro, Japon 25 094 valeurs, 218 décisions en `market_move` ; COT or 1 401 semaines × 9 mesures (2000–2026) ; IPCH zone euro 298 mois jusqu'en septembre 2026 ; 387 dates au calendrier ; XAUUSD 2025 en barres minute 354 011 lignes. Corrigé en route : l'IPCH Eurostat a changé de jeu en 2026 (`prc_hicp_minr`).
-
-#### MK26 — Statistiques pétrole et gaz de l'EIA
-
-Pour l'étape pétrole : API v2 de l'EIA (domaine public américain) avec la clé gratuite de l'org (secret `markets_eia_key`, source à clé `eia` liée à `api.eia.gov`, clé en paramètre ajoutée à l'envoi seulement, comme FRED). Réglage `eia_series` : stocks hebdomadaires de brut hors réserve stratégique, d'essence, de distillats, production hebdomadaire de brut. Une série hebdomadaire est connue cinq jours après la fin de sa semaine (le mercredi du rapport). Jamais essayé sur la vraie API (pas de clé) ; identifiants de séries à vérifier au premier essai. Test : `calendars_eurostat_and_chokepoints`.
-
-#### MK25 — Rapport COT de la CFTC
-
-Données publiques (domaine public américain), API Socrata `publicreporting.cftc.gov` (jeu `6dca-aqww`, legacy futures only). Par marché : positions ouvertes, acheteuses, vendeuses et nettes des non-commerciaux et des commerciaux, non déclarées. Une valeur est de la date du rapport (mardi) et connue trois jours plus tard (vendredi) : une lecture « connu au » antérieure ne la voit pas. Écart : un vendredi décalé (jour férié, fermeture) reste daté à J+3. Essai réel : 1 401 rapports de l'or de 2000 à 2026. Test `calendars_eurostat_and_chokepoints`.
-
-### F.7 Chargement en flux (MK22–MK24) et écarts
-
-- **Socle** : `datasets::append_stream` reçoit des lots sur un canal et les écrit dans un seul fichier Parquet d'une seule transaction ; le lecteur envoie une marque de fin quand le fichier est lu jusqu'au bout, et seulement alors la transaction est validée. Un canal fermé avant (téléchargement coupé, ligne illisible) l'annule. `append_batch` en est le cas d'un lot. Le quota est vérifié au fil de l'écriture.
-- **Téléchargement** : `source::open_large` (même garde sortante, contact déclaré, aucun délai total, 120 s par lecture) ; un pompage asynchrone passe les morceaux à un fil bloquant qui décompresse (zip en flux, tar, gzip) et décode ligne à ligne (`pnex_core::bulk`), 200 000 lignes par lot. Rien n'est tenu entier en mémoire.
-- **Registre** : celui de l'historique de prix (`market_history_partitions`), source = `ais_dk`, `ais_noaa`, `adsb_lol`, `dvf` ; un fichier coupé n'est pas inscrit et revient au passage suivant, un fichier illisible est inscrit `failed`.
-- **Écarts à D889** : un navire ou un avion suivi n'est pas encore relié à sa trace dans un dossier (`tracks`, K25) ; le pont table → trace reste à faire. L'autorité maritime danoise ne sert ses fichiers qu'en HTTP clair, sans somme de contrôle.
-- **Revue de sécurité (2026-11-09)** : SEC-81 (AIS danois en HTTP clair, accepté), SEC-82 (chargements massifs réservés aux orgs dont un admin plateforme a fixé le quota de tables, réglage ajouté à `/admin/status`), SEC-83 (lectures bornées). Corrigé en route : une transaction de plus de 10 minutes sans battement était annulée et effacée par la purge (un jour ADS-B dure 9 min 30) ; `append_stream` bat toutes les minutes et vide ses groupes de lignes à 64 Mio comme le chemin CSV.
-
-### E.5 Ce qui est codé (2026-11-09) et écarts
-
-- **Registre et parcours** : migration 000136 (`mt5_terminals`, `mt5_symbols`, `mt5_inbox`), `pnex_core::mt5` (types, sélection `*` / noms / préfixes, présence en ligne < 3 min, en retard < 1 h, hors ligne ensuite, lecture de l'annonce, rendu de l'EA), `services::mt5`, `controllers::mt5`. Routes de l'UI (`metatrader:read` membre, `metatrader:write` et `metatrader:delete` admin) : liste, création, lecture, remplacement sur la version lue, suppression, génération de l'EA, demande de rattrapage, catalogue filtré. Routes de l'EA (`Machine`, jeton porteur) : `GET /api/v1/mt5/config`, `POST /api/v1/mt5/announce` (4 Mio), `POST /api/v1/mt5/ingest` (1 Mio, 202). MCP : lecture et écriture de la sélection exposées, génération de l'EA exclue (secret), suppression exclue (destructif), routes de l'EA exclues (canal machine).
-- **Jeton** : `pnex_mt5_` + 32 octets aléatoires, seul son SHA-256 est gardé ; il n'apparaît que dans le fichier généré ; régénérer révoque l'ancien aussitôt.
-- **EA** : modèle `crates/pnex-core/src/mt5_ea.mq5` rempli par `render_ea` (adresse publique lue de `X-Forwarded-*` / `Host`, vérifiée, jeton, nom du terminal neutralisé). Annonce le catalogue au démarrage puis chaque jour (premier M1 par `SERIES_SERVER_FIRSTDATE`), relit sa configuration toutes les cinq minutes, pousse les M1 fermées par paquets de moins de 700 Ko, les ticks de la liste choisie, un battement par minute sans données. Horloge locale pour l'ordonnancement (celle du serveur s'arrête marché fermé). Aucun appel d'ordre (test : `OrderSend` absent du rendu).
-- **Rattrapage** : la demande donne `backfill_id` et `backfill_from` ; l'EA recule ses curseurs une fois par demande (variable globale du terminal). Écart : les bougies déjà présentes sont renvoyées, donc en double dans la table ; à dédoublonner à la lecture (D823).
-- **Plafonds (SEC-84)** : 20 terminaux par org, 2 000 appels en attente par org ; la boîte est vidée par le balayage marchés même sans le pack.
-- **UI** : pages `/mt5-terminals` (liste, création) et `/mt5-terminals/:id` (état, mise en route en trois étapes, sélection, rattrapage, catalogue avec recherche, suppression), menu Sources ; fiche de l'assistant `mt5-terminals`.
-- **Pas fait** : la compilation et l'essai réel dans MetaTrader 5 (MT5-4, à Shan).
-- **2026-11-19** : test 403 par appel (`metatrader:read`, `metatrader:write`) et e2e `e2e/tests/mt5-terminals.spec.ts` (enregistrement, liste, pire cas). Le doublon du rattrapage est déjà écarté à la lecture des barres (`resample` garde la dernière écriture d'une minute).
-
-## Appendice G — Modèle de décision externe : entraîné à part, branché en direct (D890–D897)
-
-| | |
-|---|---|
-| Statut | **Proposé le 2026-11-09 ; questions G.5 tranchées par Shan le même jour ; MK27 à MK30 codés (G.7).** Demande de Shan : PNeX sert de référence de données ; un petit projet Python à côté entraîne le modèle ; en direct, PNeX fournit les flux et l'interface, le modèle s'y connecte pour décider |
-| Décisions | **D890…D897** |
-| Lots | **MK27…MK30** |
-| Repose sur | D553 et D559 (Python hors du cœur, client de l'API), comptes de service et clés d'accès (`iam.md` §7), D823 et MK14 (lecture Parquet pour l'entraînement), D824 et D849 (MT5 en direct, même forme de table), D531 (`known_at`), D197 (forme des décisions de `text_decide`), D534 et D123 (jamais d'ordre), D813 (onglet Cours) |
-| Premier cas | l'or (XAUUSD), F.6 bis |
-
-### G.1 Le besoin
-
-1. Un **projet Python à part** (hors de `pnex-rs`) entraîne un petit modèle de décision sur l'historique de PNeX : une question à options (`buy`, `neutral`, `sell`), une probabilité calibrée par option, comme Laya (§3.5 de `vision.md`).
-2. En direct, **le même projet** tourne en service (le « runner ») : il lit dans PNeX ce qui est connu maintenant (barres, séries macro, calendrier, événements), décide, et renvoie sa décision à PNeX.
-3. PNeX **range, affiche et mesure** les décisions. Il n'exécute ni le modèle ni Python, et ne passe aucun ordre.
-
-### G.2 Ce qui existe, ce qui manque (relevé dans le code le 2026-11-09)
-
-| Besoin | État |
-|---|---|
-| Historique en masse pour l'entraînement | **existe** : `GET /api/v1/datasets/{id}/files?as_of=` (MK14), Parquet lu directement |
-| Séries datées (taux réels, dollar, COT, IPCH…) à une date donnée | **existe** : `GET /api/v1/ontology/objects/{id}/observations?as_of=` (« la dernière valeur connue à `as_of` ») |
-| Calendrier des publications | **existe** : `GET /api/v1/time-ranges` (`from` / `to`) |
-| Événements géopolitiques connus à une date | **existe** : `POST /api/v1/ontology/query` sur `geo_event`, filtre `known_at` ≤ `as_of` (Q-MD6) |
-| Flux MT5 en direct, même forme que l'historique | **existe** : D849, tables `mt5_ohlcv_1m` et `mt5_ticks` ; doublons possibles après un rattrapage (E.5) |
-| Identité non humaine, clé révocable, dernière utilisation | **existe** : comptes de service, clés `pnex_sk_…` (expiration ≤ 1 an, deux clés actives pour la rotation) ; **lecture seule en V1** (`auth/mod.rs`) |
-| Lire les dernières barres closes d'un instrument, rééchantillonnées, sans doublon | **manque** : `sample` rend les premières lignes de la vue, pas les dernières |
-| Renvoyer une décision à PNeX | **manque** |
-| Voir les décisions sur le graphique, mesurer après coup | **manque** |
-
-### G.3 Décisions
+### 5.5 Modèle externe, point-in-time, bitemporel (D890–D917)
 
 #### D890 — Le modèle vit hors de PNeX ; PNeX ne voit qu'un client
-
-- Le projet Python (entraînement + runner) est un **dépôt privé à part** (Q-MD1). Pour PNeX, c'est un client de l'API comme un notebook (D559) : HTTP ou SDK généré du spec, Parquet pour le volume (D823). Aucun accès direct à PostgreSQL, S3, Valkey ou O2.
-- **Le même code de features sert à l'entraînement et en direct**, seule la date de lecture change (`as_of` passé contre maintenant). C'est la raison de ce choix : exporter le modèle en ONNX vers PNeX (tract, comme D197) obligerait à réécrire les features en Rust, avec un risque d'écart silencieux. Possible plus tard, pas en V1.
-- PNeX ne stocke pas le modèle en V1 (pas d'entrée `ml_models`) : chaque décision porte le nom et la version du modèle qui l'a prise.
-- **Les alertes sont faites par le projet Python** (Shan, 2026-11-09) : PNeX n'écrit pas de flux d'événements `ev_market_decisions` et ne prévoit pas de flow d'alerte.
+Projet Python privé, alertes côté Python. Tient.
 
 #### D891 — Le runner est un compte de service ; une seule écriture lui est ouverte
-
-- Identité = un **compte de service** de l'org, avec sa clé d'accès (`Authorization: Bearer pnex_sk_…`). Pas de registre ni de jeton maison : la rotation, l'expiration, la révocation, l'audit et la dernière utilisation existent déjà. Contrairement à D847, il n'y a aucun code généré à distribuer.
-- Lecture : un rôle avec `ontology:read`, `datasets:read`, `time-ranges:read`, `market-decisions:read`.
-- **Amendement de la règle V1 « un compte de service ne fait que lire »** : une liste blanche fermée des écritures permises aux comptes de service, qui ne contient que `market-decisions:write`. C'est un ajout seul : ni modification, ni suppression, ni effet physique. Tout le reste reste refusé (test dédié). Revue `security.md` §6 avant le lot ; ligne au registre §7.
+`SERVICE_WRITES` = `market-decisions:write`. Codé.
 
 #### D892 — Barres de cours : une route de lecture, à une date donnée
-
-`GET /api/v1/markets/bars`, permission `datasets:read`.
-
-- Paramètres :
-  - `instrument` ;
-  - `source`, **obligatoire** (`histdata`, `mt5:<courtier>`…), jamais de mélange implicite entre sources ;
-  - `interval` (`1m`, `5m`, `15m`, `1h`, `4h`, `1d`) ;
-  - `from` / `to`, ou `limit` (les N dernières barres, 5 000 au plus) ;
-  - `as_of` (défaut : maintenant).
-- **Une barre est connue à sa clôture** (`ts + interval`), pas à son ouverture (`ts` est l'ouverture, D809). À `as_of`, seules les barres closes sont rendues ; la barre en cours ne l'est jamais. C'est ce qui empêche le runner de voir en direct ce que l'entraînement ne voyait pas.
-- Rééchantillonnage depuis la M1, barres alignées sur l'époque UTC (comme `date_bin` avec l'origine 1970-01-01, D823). Dédoublonnage sur (`instrument`, `ts`, `source`), ce qui règle à la lecture les doublons du rattrapage MT5 (E.5).
-- Réponse `Paginated` (contrat d'API). Lecture exposée au MCP.
-- Deux usages : le runner en direct, et le projet Python pour vérifier que sa propre lecture Parquet + rééchantillonnage donne exactement les mêmes barres (test de parité dans le projet).
+`GET /markets/bars`, barre connue à sa clôture. Codé (rééchantillonnage en Rust).
 
 #### D893 — La source lue en direct est celle de l'entraînement, ou l'écart est mesuré
-
-HistData et le flux MT5 d'un courtier ne cotent pas le même prix (cotations du courtier, fuseau, spread). Chaque décision porte sa `source`. **Choix pour l'or (Q-MD4)** : entraînement sur HistData, direct sur MT5 du courtier ; avant tout usage en direct, l'écart entre HistData et `mt5:<courtier>` est mesuré sur une période commune (|Δ clôture| / ATR, moyenne et maximum par intervalle) et noté. Si l'écart est trop grand, le modèle est entraîné sur l'historique MT5 du courtier, rattrapé par D848 (qui donne aussi la profondeur disponible par courtier).
+Mesure HistData / MT5 non faite.
 
 #### D894 — Une décision = une distribution datée, à la forme de `text_decide`
-
-`POST /api/v1/markets/decisions`, permission `market-decisions:write`.
-
-- Corps :
-  - `model`, `model_version` ;
-  - `instrument`, `source`, `interval`, `horizon_bars` ;
-  - `as_of` : l'instant des données lues ;
-  - `options` : fixées à `buy`, `neutral`, `sell` (Q-MD2) ;
-  - `probabilities`, dans l'ordre des options ;
-  - `barriers` (optionnel) : `take_profit_atr`, `stop_atr`, `atr_period` ;
-  - `inputs` (optionnel) : JSON libre de 4 Kio au plus, pour la traçabilité (dernière barre lue, dates des séries).
-- **Re-vérifié côté serveur** (comme les questions de D197) :
-  - probabilités dans [0, 1], somme à 1 ± 1e-3 ;
-  - `as_of` ≤ maintenant, et pas plus vieux que deux intervalles (sinon `decision-stale`) ;
-  - instrument connu.
-- `best` et `confidence` (1 − entropie normalisée, même formule que `pnex-decide`) sont **calculés par le serveur**, jamais crus.
-- Idempotence : une seule décision par (`model`, `model_version`, `instrument`, `interval`, `as_of`). La même renvoyée = 200, une différente = 409.
-- Stockage : table PostgreSQL `market_decisions` (Q-MD5). Le volume est faible : une décision par barre et par instrument. Plafond : 2 000 décisions par jour et par org (ligne SEC au registre).
+`POST /markets/decisions`, table `market_decisions`. Codé.
 
 #### D895 — Conseil seulement
-
-Aucun ordre (D534, D123). Aucune route ne relie une décision à MT5, et le compte de service n'a aucune écriture `metatrader:*`. L'avertissement produit du domaine s'affiche sur l'écran des décisions. Passer d'une décision à une position fictive (D546) est un geste humain, jamais automatique.
+Aucune route entre une décision et MT5. Codé.
 
 #### D896 — PNeX mesure les décisions après coup
-
-- Fonction pure `pnex_core::markets::decisions::outcome` : à partir des barres de **la même source** après `as_of`, elle donne l'issue réalisée.
-  - Si la décision a déclaré ses barrières : triple barrière. Le take-profit et le stop sont exprimés en ATR, calculés sur la clôture à `as_of` ; premier contact sur le haut ou le bas des barres suivantes, dans la limite de `horizon_bars`.
-    - Take-profit haussier touché en premier → `buy` ; stop touché en premier → `sell` ; rien de touché → `neutral`.
-    - Les deux touchés dans la même barre → `neutral`.
-  - Sans barrières déclarées : seulement le rendement à l'horizon.
-- **Cette définition est le contrat d'étiquetage** : le projet Python étiquette son jeu d'entraînement avec exactement la même règle (même ATR, même convention pour une barre ambiguë). Sinon la mesure en direct ne compare pas la même chose. Précisions du code : ATR = **moyenne simple** du true range des `atr_period` dernières barres closes à `as_of` (true range = max(haut − bas, |haut − clôture précédente|, |bas − clôture précédente|)) ; barrière haute = clôture + `take_profit_atr` × ATR, basse = clôture − `stop_atr` × ATR ; les barres suivantes sont celles qui ouvrent à `as_of` ou après ; issue mesurée seulement quand les `horizon_bars` barres sont toutes closes.
-- Par (modèle, version, instrument) :
-  - taux de réussite ;
-  - score de Brier ;
-  - courbe de fiabilité par tranche de probabilité (0–0,1, …, 0,9–1) ;
-  - nombre de décisions au-dessus d'un seuil.
-
-  Une courbe de fiabilité qui s'écarte de la diagonale est le premier signe que le modèle dérive.
+Triple barrière, Brier, fiabilité. Codé.
 
 #### D897 — Affichage
+Marqueurs sur l'onglet Cours, page Décisions de modèles. Codé.
 
-- Onglet **Cours** de la fiche instrument (D813) : la décision s'affiche en marqueur sur le graphique, coloré par option, d'autant plus opaque que la probabilité est haute. Filtre par modèle.
-- Page **Décisions** (menu Marchés) : liste paginée (filtres modèle, version, instrument), et le tableau de mesure de D896.
-- Fiche assistant `market-decisions`, clés `.ftl` dans les deux langues, et ligne au lexique pour « Décision » / « Decision » (vérifier la collision avec `text_decide`).
+#### D898 — Clé « point-in-time »
+Attribut de la clé. Codé.
 
-### G.4 Lots
+#### D899 — Sémantique temporelle par route
+Inventaire `pnex_api_contract::as_of`. Codé.
 
-| Lot | Contenu | Acceptation |
-|---|---|---|
-| **MK27** | D891 (liste blanche d'écriture des comptes de service), D892 (`GET /markets/bars`), IAM, OpenAPI, MCP (lecture exposée) | un compte de service lit 500 barres H4 XAUUSD `histdata` à un `as_of` donné ; une barre non close à `as_of` n'est jamais rendue (test à la minute près) ; des doublons MT5 en table ne sortent qu'une fois ; un compte de service reste refusé sur toute autre écriture (test) |
-| **MK28** | D894, D895 : `POST` et `GET /markets/decisions`, table, re-vérifications, plafond | un runner simulé (script de test) poste 100 décisions ; probabilités fausses → 400 ; `as_of` trop vieux → `decision-stale` ; renvoi identique → 200, différent → 409 |
-| **MK29** | D896 : `outcome`, mesures par modèle et version, route de lecture | fixtures de barres à issue connue : take-profit touché, stop touché, aucun, les deux dans la même barre ; Brier et fiabilité exacts sur 1 000 décisions simulées |
-| **MK30** | D897 : marqueurs sur l'onglet Cours, page Décisions, fiche assistant, lexique | e2e : les décisions d'un runner simulé apparaissent sur le graphique XAUUSD et dans la liste, avec la mesure une fois l'horizon passé |
+#### D900 — Propriétés d'objet à `as_of`
+`object_versions`. Codé.
 
-Ordre : MK27 puis MK28 suffisent pour brancher le runner en direct. MK29 et MK30 rendent les décisions lisibles et mesurables.
+#### D901 — Test canari
+Codé.
 
-**Côté projet Python (hors de ce dépôt, pour mémoire)** : lecture Parquet (MK14) et séries à `as_of` pour l'entraînement ; étiquetage selon D896 ; test de parité des barres contre D892 ; en direct, une boucle à la clôture de chaque barre H4 : lecture D892 + séries, décision, `POST` D894 ; alertes.
+#### D902 — Assistant figé à un instant
+`frozen_at`. Codé.
 
-### G.5 Questions tranchées (Shan, 2026-11-09)
-
-- **Q-MD1** : le projet Python est privé ; son nom et sa licence ne sont pas notés ici.
-- **Q-MD2** : options fixées en V1 : `buy`, `neutral`, `sell`.
-- **Q-MD3** : intervalle de décision H4 en V1 (la route accepte les autres intervalles).
-- **Q-MD4** : HistData à l'entraînement, MT5 du courtier en direct, écart mesuré (D893).
-- **Q-MD5** : décisions en PostgreSQL.
-- **Q-MD6** : `POST /ontology/query` sur `geo_event` filtré par `known_at` ≤ `as_of`, rien à coder. Limite : la requête lit l'état courant de l'objet ; un statut `confirmed` posé après `as_of` serait vu. Le projet Python ignore `status`, ou ne garde que les événements UCDP/ACLED (vérifiés dès leur `known_at`).
-- **Alertes** : côté projet Python (D890).
-
-### G.6 Hors périmètre
-
-Le modèle et son entraînement (projet à part) ; l'exécution du modèle dans PNeX (ONNX + tract, possible plus tard si les features sont portées en Rust) ; tout ordre ; le backtest (fait par le projet Python) ; plusieurs modèles combinés ; les alertes (projet Python).
-
-### G.7 Ce qui est codé (2026-11-09) et écarts
-
-- **Cœur pur** `pnex_core::markets::decisions` : intervalles et tables par source (`bar_table`), `resample` (barres alignées sur l'époque UTC, seulement celles closes à `as_of`, une minute écrite deux fois garde sa dernière écriture), `decimal_text`, contrôle des probabilités, `best_and_confidence`, `outcome` (triple barrière, contrat d'étiquetage de D896), `scores` (réussite, Brier multi-classe, fiabilité par dixième, seuil). Tests sur fixtures à issue connue, dont 1 000 décisions simulées.
-- **MK27** : `GET /api/v1/markets/bars` (`datasets:read`, marquages de la table D801, exposé au MCP). Liste blanche `SERVICE_WRITES` = `market-decisions:write` dans `pnex_api_contract::iam`, appliquée par l'extracteur `OrgContext`. Permissions `market-decisions:read` (lecteur) et `market-decisions:write` (membre).
-- **MK28** : `POST` et `GET /api/v1/markets/decisions`, table `market_decisions` (migration 000137), 201 à la création, 200 au renvoi identique, 409 `market-decision-conflict`, 400 `market-decision-stale`, 429 `market-decisions-quota`. Le `POST` est exclu du MCP (canal machine, comme les routes de l'EA).
-- **MK29** : `GET /api/v1/markets/decisions/scores` (`market-decisions:read`, exposé au MCP), par (modèle, version, instrument, source, intervalle).
-- **MK30** : marqueurs ronds sur l'onglet Cours (vert achat, rouge vente, gris neutre, opacité = probabilité, la dernière décision du jour par modèle), liste de modèles au-dessus du graphique ; page **Décisions de modèles** (`/market-decisions`) avec la mesure et une petite courbe de fiabilité par modèle ; fiche `assistant-kb/market-decisions.md` ; lexique « Décision de modèle » (distincte de « Décision sur texte ») et règle de garde.
-- Test d'intégration `tests/markets.rs::an_external_model_reads_bars_and_posts_decisions` : un compte de service lit 500 barres H4 XAUUSD `histdata` à un `as_of` donné, une minute de moins retire la dernière barre, l'heure MT5 écrite deux fois sort une fois, 100 décisions postées, renvoi 200, conflit 409, probabilités fausses 400, `as_of` trop vieux, instrument inconnu, autre écriture refusée même si le rôle la donne, mesures exactes sur deux décisions passées, graphique de l'instrument (clôtures et marqueurs).
-
-Écarts au texte :
-- **Rééchantillonnage en Rust, pas en SQL** : le backend n'embarque pas DataFusion (il vit dans le worker de pipelines). Les fichiers Parquet de la vue courante sont lus avec un élagage par statistiques de `ts`, et par date de commit (une ligne n'est jamais plus récente que son commit, donc un fichier commité avant `from` est sauté). Les barres restent alignées comme `date_bin` sur 1970-01-01 : la parité avec le projet Python tient.
-- **Bornes de lecture** : 20 000 fichiers par lecture (`market-bars-too-many-files`), 5 000 barres ; une table MT5 en direct écrit ≈ 288 fichiers par jour, donc une fenêtre H4 longue sur MT5 peut atteindre la borne. Remède prévu : le compactage mensuel de D808, si une charge réelle le montre (marqué `shortcut:`).
-- **Mesures** : calculées à la lecture, sans stockage de l'issue ; 5 000 décisions au plus par groupe, sur une fenêtre de 5 000 barres, 100 groupes au plus. Les plus anciennes sont comptées dans `decisions` mais pas mesurées.
-- **Instrument connu** = une partition `done` de l'historique de prix ou un symbole annoncé par un terminal MT5 de l'org, pas un objet `instrument`.
-- **Graphique** : un instrument sans clôtures journalières (cas de XAUUSD, qui n'a que des barres minute) affiche les barres journalières de la source de sa dernière décision, si l'appelant a `datasets:read`.
-- **Codes d'erreur** préfixés `market-` (`market-decision-stale` et non `decision-stale`), comme les autres codes du domaine.
-- **Menu** : la page est dans le groupe **Connaissance** (il n'y a pas de menu Marchés).
-- **Pas de flux d'événements ni de flow d'alerte** (alertes côté Python, G.5).
-- **Pas fait** : l'e2e Playwright `e2e/tests/market-decisions.spec.ts` est écrit (liste, mesure, pire cas, filtre par modèle sur le graphique) mais pas lancé ici ; la mesure de l'écart HistData / MT5 (D893) attend un vrai flux MT5 (MT5-4).
-- Sécurité : SEC-85.
-
----
-
-## Appendice H — Point-in-time strict : plafond `as_of` imposé et audit de fuite (D898–D903)
-
-Statut : décidé le 2026-11-09 (Shan). Origine : lecture de `FareedKhan-dev/ontology-driven-observability` (fait canari daté après T0, agents qui ne voient le dossier que tel qu'il était à `T0 + 15 min`). Va avec le §3.6 de `cases.md` (chaînes causales), dont les chaînes marchés (H.7) sont une lecture point-in-time.
-
-### H.1 Le besoin
-
-L'entraînement et le backtest du modèle de décision (G) ne valent que si chaque lecture rend **ce qui était connu à `as_of`, rien de plus**. Une seule fuite rend les scores faux sans que rien ne le signale. Il manque : une garantie qui ne dépende pas d'un oubli, et une **preuve** qu'elle tient, sur toutes les routes.
-
-### H.2 Ce qui existe, ce qui manque (relevé le 2026-11-09)
-
-| Point | État |
-|---|---|
-| Barres closes seulement à `as_of` | existe (D892) |
-| Observations « dernière valeur connue à `as_of` » | existe (`known_at`) |
-| Liens valides à `as_of` | existe (`links::valid_at`) |
-| Fichiers de dataset à `as_of` | existe (MK14) |
-| `as_of` absent = maintenant | **risque** : un paramètre oublié côté Python lit le présent sans erreur |
-| Propriétés d'objet à `as_of` | **manque** : `query.rs` lit l'état courant (Q-MD6) |
-| Assistant | **risque** : `as_of` est choisi par le modèle |
-| Preuve sur l'ensemble des routes | **manque** |
-
-### H.3 Décisions
-
-- **D898 — Clé « point-in-time »** : attribut `point_in_time` d'une **clé** (pas du compte : un même compte a une clé live et une clé backtest, Shan 2026-11-09). Avec elle, toute lecture `point_in_time` sans son instant → 400 `as-of-required` ; toute lecture `partial` ou `current_only` et **toute écriture** → 400 `as-of-unsupported` (Shan : une clé PIT n'écrit jamais dans la base vivante). Les clés existantes ne changent pas.
-- **D899 — Sémantique temporelle par route** : inventaire `pnex_api_contract::as_of` : `point_in_time`, `partial` (champs restés courants listés), **`timeless`** (catalogues et schémas, sans état daté : permis à la clé PIT, Shan 2026-11-09), et `current_only` par défaut. Exposée dans l'OpenAPI (`x-pnex-as-of`, `x-pnex-as-of-current`) et dans la description des outils MCP.
-- **D900 — Propriétés d'objet à `as_of`** : `POST /ontology/query` et `GET /ontology/objects/{id}` reconstituent les propriétés à l'instant en rejouant les changements d'objet. Les changements des types `geo_event` et des packs marchés sont gardés **dans PostgreSQL** (Q-PT1, Shan) ; les autres viennent de l'historique disponible, sinon `properties_as_of: "unknown"`. Ferme Q-MD6.
-- **D901 — Test canari** : une org de test reçoit un canari daté de `T0 + 1 min` par source ; le test parcourt l'inventaire D899, appelle chaque route `point_in_time` à `as_of = T0` et échoue si un canari apparaît. Une route `point_in_time` sans canari fait échouer le test.
-- **D902 — Assistant figé à un instant** : une conversation peut être figée (dossier ouvert depuis une alerte : `T0 + 15 min`, Q-PT2 ; « analyse à date » sur Marchés). Le harnais impose `as_of` à chaque outil ; un `as_of` plus tard est ramené et signalé ; les outils `current_only` sont retirés ; la **recherche documentaire masque les documents indexés après l'instant** (Q-PT3, Shan) ; bandeau « Vue au … ».
-- **D903 — Canari côté projet Python** : hors dépôt, même principe dans son test de parité.
-
-### H.4 Lots
-
-| Lot | Contenu |
-|---|---|
-| MK31 | D898, D899 |
-| MK32 | D900, D901 |
-| MK33 | D902, fiches assistant |
-
-### H.5 Questions tranchées (Shan, 2026-11-09)
-
-Q-PT1 : PostgreSQL pour `geo_event` et les types marchés. Q-PT2 : `T0 + 15 min`. Q-PT3 : oui, documents indexés après l'instant masqués. Plus : attribut sur la clé ; `timeless` permis ; écritures refusées.
-
-### H.6 Hors périmètre
-
-Couverture de collecte par source et fenêtre ; le backtest lui-même (projet Python, G.6).
-
-### H.7 Chaînes causales marchés : une lecture point-in-time pour la couche gold
-
-Le cœur `pnex_core::rca` du §3.6 (`cases.md`) sert aussi aux marchés, **en variable d'entrée du modèle**, pas en proposition (Shan, 2026-11-09).
-
-- `GET /api/v1/markets/chains?as_of=…` : chaînes connues à `as_of`, confiance **et lift contre le placebo**, **sans filtre de lift** (le modèle apprend le poids ; top 3 par effet gardé). Sémantique `point_in_time`, couverte par le canari D901.
-- Topologie : nouveau lien `exposed_to` du pack markets (pays, région ou organisation → instrument), **déclaré par un membre**, drapeau `propagates_failure`. Un `geo_event` rejoint son pays par sa propriété.
-- Couples de départ : `world.event → price.move` (24 h), `macro.release → price.move` (2 h), `supply.disruption → price.move` (48 h). `price.move` = franchissement d'un seuil déclaré : |rendement| ≥ 1,5 % sur 1 h par défaut, réglable par instrument dans les Settings du pack.
-- **D742 tient** : rien n'est stocké comme cause ; la chaîne est calculée à la lecture et dite « candidate ». Les chaînes retenues par un humain ne servent jamais d'étiquettes d'entraînement (jugement rétrospectif).
-
-### H.8 Ce qui est codé et écarts
-
-- **MK31** (2026-11-09) : colonne `iam_access_keys.point_in_time` (migration 000138), case « Clé point-in-time » et badge dans la boîte des clés ; `pnex_api_contract::as_of` (inventaire) ; contrôle dans l'extracteur `OrgContext` (`point_in_time_gate`) ; un instant dans le corps (`ontology_query`) est vérifié par son handler (`OrgContext::point_in_time`) ; `x-pnex-as-of` dans le spec et les descriptions MCP ; codes `as-of-required`, `as-of-unsupported`. Gardes : `tests/iam.rs::as_of_inventory_matches_the_spec` (toute lecture qui prend `as_of`/`at` est classée, chaque entrée existe, est une lecture, a son paramètre), `point_in_time_keys` (intégration).
-- Écart : `ontology_query` et les liens restent `partial` jusqu'à MK32 (titres et propriétés courants), donc refusés à la clé PIT pendant ce lot.
-- **MK32** (2026-11-09) : table `object_versions` (migration 000139) remplie par un trigger sur `objects` pour les types des packs `markets` et `world_events` (liste dans la fonction du trigger, `shortcut:` jusqu'à un drapeau de pack) ; `POST /ontology/query` avec `as_of` relit titre et propriétés (jointure latérale sur la dernière version ≤ `as_of`), écarte un objet dont le propre `known_at` est plus tard, ne joint plus `latest` (télémétrie du présent), et marque chaque ligne `properties_as_of` (`exact` / `unknown`) ; `GET /ontology/objects/{id}?as_of=` idem (404 si pas encore connu). `ontology_query` et `ontology_objects_get` passent `point_in_time`. Test `tests/markets.rs::point_in_time_reads_never_show_a_canary` : 7 routes `point_in_time`, canaris (fichier de dataset, barre M1, `geo_event`, statut, observation) écrits après T0, absents à T0, présents à T0 + 2 min ; l'ensemble des routes testées doit égaler l'inventaire.
-- Écarts MK32 : un objet sans `known_at` (référence : instrument, société) reste visible quelle que soit sa date de création, sinon un backtest ne trouverait aucun instrument importé aujourd'hui. Avec une clé PIT, `label` et `within` sont refusés (`as-of-unsupported`) : étiquettes et rangement ne sont pas datés. Les liens (`ontology_objects_links`, hiérarchie) restent `partial` : titres des extrémités courants. Pas de canari « lien » ni « plage de temps » ni « décision de modèle » : aucune de ces lectures n'est `point_in_time`. L'historique d'un objet commence à sa première écriture après la migration : avant, `properties_as_of: unknown` si l'objet a changé depuis.
-- **Chaînes marchés** (H.7, 2026-11-09) : `GET /api/v1/markets/chains?instrument=&source=&as_of=&from=` (`datasets:read` + garde `ontology:read`, exposé au MCP, `point_in_time`, couvert par le canari). Effets : rendements 1 h des barres closes à `as_of` au-delà du seuil (propriété `move_threshold_pct` de l'instrument, sinon réglage `price_move_threshold_pct`, 1,5 %), datés à la clôture de l'heure. Causes : `world.event` = un `geo_event` (statut à `as_of`, écarté = rien ; `blockade` et `sanctions` = `supply.disruption`) posés sur l'objet `nation` (type « Pays ») de même code, valeurs macro connues dans la fenêtre sur leur `macro_series`. Chemins : liens `propagates_failure` ouverts à `as_of` (un lien ouvert plus tard est absent). Fenêtre de 31 jours au plus (7 par défaut), causes lues jusqu'à l'écart le plus long + 7 jours (placebo). Service `services/markets/chains.rs`, topologie commune `services/rca.rs`. Test `tests/markets.rs::price_moves_get_candidate_causal_chains` (sans lien rien, lien déclaré depuis 2025 → une chaîne, écart 3 h, lift ≥ 2, avant la clôture rien, seuil de l'instrument relevé → rien, ticker inconnu 400, fenêtre trop large 400).
-- Écarts chaînes marchés : le **seuil** d'un instrument est un réglage de lecture, pas un fait daté : la valeur courante s'applique à tout `as_of` (une même feature garde le même sens sur tout un backtest). Une **barre** est connue à sa clôture même si l'historique a été chargé plus tard (sinon aucun backtest sur HistData) ; une correction a posteriori d'une minute est donc vue à `as_of`. `supply.disruption` = `geo_event` de nature `blockade` ou `sanctions`, et depuis le 2026-11-19 toute valeur d'une `macro_series` (EIA, PortWatch) au moins `disruption_drop_pct` sous la moyenne de ses 7 valeurs précédentes, connue à `as_of` ; l'AIS, en table brute et non en série, n'en fait pas partie. Pas de type « région » : un `geo_event` sans pays reconnu n'est pas une cause.
-- **MK33** (2026-11-09) : colonne `ai_conversations.frozen_at` (migration 000141), `frozen_at` à la création (`AiConversationWrite`, 400 `in_future`/`invalid`) et dans `AiConversation`. Politique `services/ai/frozen.rs` : outils datés (`query_ontology` → `query.as_of`, `get_object` → `as_of` désormais pris en charge, `market_figures` → `as_of`, `case_signals` → `to`) reçoivent l'instant, ramené à l'instant figé quand le modèle demande plus tard, et la réponse le dit (`as_of`, `as_of_note`) ; outils de schéma conservés (`describe_ontology`, `describe_node_types`, `search_knowledge`, `read_knowledge`, `case_proposals`) ; documents (`search_docs`) filtrés sur la date de création de la version ; tout autre outil, écritures comprises, est retiré de la liste et refusé (`ai-frozen-tool`, `tool`, `at`). Le prompt système le dit. UI : bandeau « Vue au … » dans le panneau assistant, bouton « Interroger l'assistant à l'alerte + 15 min » dans le Cadre d'un dossier ouvert depuis une alerte (D910), section « Analyse à date » sur la page Décisions de modèles. Test : fin de `point_in_time_reads_never_show_a_canary` (une conversation figée à T0 ne voit ni canari ni statut postérieur même si le modèle demande `as_of` plus tard ; `create_object` et `list_devices` refusés).
-- Écarts MK33 : `read_chunk` et `open_page` restent permis (leurs ids viennent d'une recherche déjà filtrée). Un document créé avant l'instant mais indexé après reste visible (on filtre sur la création de la version, la connaissance du document, pas sur l'indexation technique). `case_proposals` rend les propositions du dossier telles qu'elles sont : le détecteur lit une fenêtre qui peut dépasser l'instant figé.
-- Écart D441 (garde `engine_genericity`, CI du 2026-11-09) : le moteur ne nomme aucune clé de pack, d'où le type « Pays » de clé `nation` (`country` est déjà une propriété partout), le signal `world.event` (et non `geo_event`, la clé du type) et le lien `regulates` (« régule ») au lieu de `drives`.
-
-## Appendice I — Bitemporel complet : ce qu'on savait, pas seulement ce qui était vrai (D912–D917)
-
-Statut : proposé le 2026-11-10. Origine : litige Polymarket « Strategy vend du Bitcoin avant le 31 mai 2026 » — vente faite le 26–31 mai, connue le 1ᵉʳ juin ; l'oracle a tranché sur la date où le fait est devenu public. Complète l'appendice H : H garantit qu'aucune **valeur** postérieure à `as_of` ne fuit ; il reste des **faits rétroactifs** qui fuient.
-
-### I.1 Le besoin
-
-Un fait a deux dates : quand il est vrai dans le monde (**temps de validité**) et quand PNeX l'a su (**temps de connaissance**). Une lecture `as_of = t` doit rendre « ce qu'on savait à t », pas « ce qu'on sait aujourd'hui de t ». D531 le fait pour les événements et les observations ; le noyau ne le fait pas pour les liens.
-
-### I.2 Ce qui fuit aujourd'hui (relevé dans le code le 2026-11-10, `15a0a81`)
-
-| Point | État |
-|---|---|
-| Valeurs, barres, observations, `geo_event` | tenu (`known_at`, D531, D541, H) |
-| Propriétés d'objet des packs `markets` / `world_events` | tenu (`object_versions`, D900) — liste de packs codée en dur dans le trigger (`shortcut:`) |
-| **Lien créé aujourd'hui avec `valid_from` passé** | **fuite** : `links::valid_at` et `rca::topology` ne filtrent que `valid_from` / `valid_to`. Un `exposed_to` déclaré le 2026-11-10 « depuis 2025 » est vu par un backtest à `as_of = 2025-06` |
-| **Lien fermé après coup** (`valid_to` posé dans le passé) | **fuite inverse** : la ligne est modifiée en place ; à `as_of` antérieur à la correction, le lien était cru ouvert, il apparaît fermé |
-| Correction d'attributs d'un lien | écrasée en place, pas d'historique en base |
-| `markets_chains` | classé `point_in_time` (D899) alors qu'il lit la topologie ci-dessus : **le canari D901 ne couvre pas les liens** |
-
-Conséquence directe : les chaînes causales (H.7) sont une **variable d'entrée du modèle**. Un lien déclaré après coup donne au modèle, en backtest, une structure que personne ne connaissait à la date : scores gonflés, sans signal.
-
-### I.3 Décisions
+#### D903 — Canari côté projet Python
+Hors dépôt.
 
 #### D912 — Deux axes, deux paramètres, un défaut sûr
-
-- Temps de validité : `valid_from` / `valid_to` (existant, D179). Temps de connaissance : instant d'écriture en base, jamais saisi.
-- Une lecture datée prend `as_of` (connaissance) et, optionnellement, `valid_at` (monde). **Défaut : `valid_at = as_of`** — « ce qu'on savait à t de l'état à t ». Une lecture `valid_at` sans `as_of` = connaissance courante (« ce qu'on sait aujourd'hui de t »), utile en enquête, **refusée à la clé PIT** (`as-of-required`).
-- Vocabulaire UI : « Vrai le… » / « Su le… ». Pas de jargon « bitemporel » à l'écran.
+`as_of` et `valid_at`. Codé.
 
 #### D913 — `link_versions` : le même mécanisme que `object_versions`
-
-- Table `link_versions` (`edge_id`, `org_id`, `at`, `valid_from`, `valid_to`, `attributes`, `source_ref`, `erased`), remplie par un **trigger sur `resource_edges`** à l'insertion et à tout changement de validité ou d'attributs. Aucun chemin d'écriture ne peut l'oublier (même raison que D900).
-- Lecture à `as_of` : pour chaque lien, la dernière version avec `at <= as_of`, puis le filtre de validité à `valid_at`. Un lien sans version antérieure à `as_of` n'existe pas à cette date, quel que soit son `valid_from`.
-- `links::valid_at` et `rca::topology` passent par cette lecture dès qu'un `as_of` est donné. Sans `as_of`, rien ne change (lecture courante).
-- Reprise : chaque lien existant reçoit une version à son `created_at` (connaissance minimale prouvable). Les fermetures antérieures à la migration restent inconnues : marquées `history: partial` dans la réponse, comme `properties_as_of: unknown` (H.8).
+Codé.
 
 #### D914 — L'historique devient un drapeau de pack
-
-Le `shortcut:` de la migration 000139 est levé : `history: true` dans le manifeste d'un pack active la capture `object_versions` pour ses types (le pack `prediction_markets` de l'appendice J est le troisième). `markets` et `world_events` le déclarent ; le trigger lit le drapeau au lieu de la liste. Les liens sont versionnés **pour tous les packs** (volume faible, et la fuite est la même partout).
+`history: true`. Codé.
 
 #### D915 — Le temps de connaissance d'un objet : déclaré par son type
-
-D531 sort du pack `markets` : le schéma d'un type (D176) peut désigner sa propriété de temps du monde (`event_at`) et sa propriété de temps de connaissance (`known_at`). Le noyau applique la règle H.8 (« un objet dont le `known_at` est plus tard est écarté ») à tout type qui la déclare, pas seulement aux types marchés. Un type sans déclaration garde le comportement actuel (objet de référence, visible quelle que soit sa date : écart H.8 conservé, il est voulu).
+`times.event_property`, `times.known_property`. Codé.
 
 #### D916 — Le canari couvre les liens
-
-D901 gagne deux canaris : un **lien rétroactif** (écrit après T0, `valid_from` avant T0) qui doit être absent à `as_of = T0`, et une **fermeture rétroactive** (lien ouvert avant T0, fermé après T0 avec `valid_to` avant T0) qui doit être **présente et ouverte** à `as_of = T0`. `markets_chains`, `ontology_objects_links` et `ontology_objects_hierarchy` doivent passer ces canaris ; les deux derniers passent de `partial` à `point_in_time` quand les titres des extrémités sont relus à `as_of` (D900, D914).
+Codé.
 
 #### D917 — Ce qui reste volontairement hors du bitemporel
+Barres, seuils, étiquettes et rangement (§3.12). Tient.
 
-Barres de cours (connues à leur clôture, écart H.8 maintenu), seuils de lecture (réglage, pas fait daté), étiquettes et containment (refusés à la clé PIT, inchangé). Chaque exception est listée dans la sémantique de route (D899), jamais implicite.
-
-### I.4 Lots
-
-| Lot | Contenu | Acceptation |
-|---|---|---|
-| MK34 | D913 migration + reprise, lecture `as_of` des liens, `rca::topology` | test : lien déclaré aujourd'hui « depuis 2025 » → aucune chaîne à `as_of = 2025-06`, une chaîne à `as_of = maintenant` |
-| MK35 | D916 canaris liens ; `ontology_objects_links` / `hierarchy` → `point_in_time` | `point_in_time_reads_never_show_a_canary` couvre l'inventaire complet |
-| MK36 | D912 paramètre `valid_at`, UI « Vrai le / Su le » ; D914 drapeau `history` ; D915 déclaration par type | un type d'org hors pack marchés déclare `known_at` et est écarté à `as_of` antérieur |
-
-### I.5 Questions ouvertes
-
-- Q-BT1 (tranchée, Shan 2026-11-10) : les fermetures de lien pré-migration sont rendues, marquées `history: partial` ; pas de refus à la clé PIT.
-- Q-BT2 (tranchée, Shan 2026-11-10) : un lien effacé garde ses lignes `link_versions` avec `erased = true`, sans attributs ni `source_ref` ; il disparaît à tout `as_of`.
-
-### I.6 Ce qui est codé et écarts (2026-11-10)
-
-- **MK34** : table `link_versions` (migration 000142) remplie par deux triggers sur `resource_edges` (insertion et tout changement de validité, d'attributs ou de provenance ; suppression → versions vidées, `erased = true`). Reprise : une version par lien à son `created_at`, `partial` quand le lien est fermé ou modifié avant la migration. Lecture : `links::known_at(as_of, valid_at)` (dernière version ≤ `as_of`, puis validité à `valid_at`) et `links::as_known` (validité, attributs et provenance de cette version, `history: partial` dans `LinkView`). Passent par elle : `GET /ontology/objects/{id}/links?as_of=` (y compris `history=true` : l'historique tel que connu à `as_of`), la hiérarchie (`at`), la traversée de `POST /ontology/query` avec `as_of` (fuite trouvée en route : elle lisait la ligne courante), `rca::topology` (chaînes marchés et détecteur de dossiers). Les appels internes des dossiers qui voulaient « valide à t » passent `valid_at` (connaissance courante). L'effacement RGPD retire aussi les valeurs des versions d'objet et de lien (SEC-87). Test : `price_moves_get_candidate_causal_chains` (lien déclaré aujourd'hui « depuis 2025 » → aucune chaîne en janvier ; même lien daté de 2025-12 → une chaîne ; fermé aujourd'hui au 2025-06 → toujours une chaîne en janvier).
-- **MK35** : `ontology_objects_links` et `ontology_objects_hierarchy` passent `point_in_time` ; titres et propriétés des extrémités et des nœuds relus dans `object_versions` à l'instant (`links::refs_at`). Canaris ajoutés à `point_in_time_reads_never_show_a_canary` : lien rétroactif (absent à T0, sur les liens, la hiérarchie et la traversée), fermeture rétroactive (présente et ouverte à T0), extrémité renommée après T0 (ancien titre à T0).
-- **MK36** : paramètre `valid_at` sur `GET /ontology/objects/{id}/links` (seul = connaissance courante, refusé à la clé PIT par `as-of-required`) ; UI « Vrai le » / « Su le » dans l'onglet Liens, marque « historique partiel ». D914 : `history: true` dans le manifeste (`markets` 1.11.0, `world_events` 1.1.0), colonne `packs.history`, trigger `object_versions_capture` relu sur ce drapeau (migration 000143). D915 : `times.event_property` / `times.known_property` sur un type (propriété date-heure, refus sinon), lus par `ontology_query` et `ontology_objects_get` à `as_of` ; sans déclaration, la propriété `known_at` garde son rôle ; éditeur de type « Dates du fait ». Test `declared_knowledge_time_hides_later_facts`.
-- Écarts : les champs s'appellent `event_property` / `known_property` (et non `event_at` / `known_at`) : la garde du contrat lit tout `*_at` comme un horodatage. Un objet d'un pack sans historique garde son titre courant sur une lecture datée (écart H.8 conservé). `valid_at` est pris aussi par la hiérarchie et par la traversée d'`ontology_query` depuis le 2026-11-19 (seul, il lit la connaissance courante et reste refusé à une clé point-in-time).
-
----
-
-## Appendice J — Marchés de prédiction : probabilités en entrée, wallets à la demande (D918–D925)
-
-Statut : proposé le 2026-11-10 (direction validée par Shan le même jour : brut en colonnes, ontologie seulement pour les entités d'intérêt, périmètre Polymarket d'abord). Repose sur l'appendice I : un marché de prédiction est un fait à **trois dates** (événement, publication, résolution), et sa résolution elle-même peut être contestée puis révisée.
-
-### J.1 Le besoin
-
-1. Une **variable d'entrée** de plus pour le modèle de décision (G) : la probabilité implicite qu'un événement macro ou géopolitique se produise (baisse de taux de la Fed, cessez-le-feu, sanctions), alignée sur la frise, GDELT et les chaînes H.7.
-2. Une **piste d'enquête** pour le dossier (`cases.md`) : repérer les mises « informées » (wallet neuf, financé juste avant, misé gros sur un seul marché, peu avant un événement).
-3. Un **point de référence** pour mesurer le modèle : s'il ne fait pas mieux que le marché, il n'apporte rien.
-
-Cadre : PNeX **lit** des données publiques ; il ne parie pas, ne signe aucune transaction, ne détient aucune clé de wallet. Parier sur Polymarket n'est pas autorisé en France ; la lecture de données publiques n'en dépend pas, mais les conditions d'usage de chaque source sont à vérifier (comme §6).
-
-### J.2 Décisions
+### 5.6 Marchés de prédiction et comptes de trading (D918–D933)
 
 #### D918 — Pack `prediction_markets`, à part
-
-Pack séparé (comme `world_events`, D739), `history: true` (D914). Types : `prediction_market` (plateforme, identifiant externe D369, question, **règles de résolution en texte intégral**, source de résolution déclarée, échéance, issues, statut) et `prediction_resolution` (voir D920). Aucune dépendance du pack `markets` vers ce pack : le lien passe par D921.
+Codé.
 
 #### D919 — Les probabilités sont des séries en table, jamais des objets
-
-Même règle que D807 : historique fin en table (`prediction_prices` : marché, issue, `ts`, prix ∈ [0,1], volume, `known_at`, source), forme D809, lecture `point_in_time` au rééchantillonnage D823. Granularité de collecte : 1 h par défaut, 1 min pour les marchés suivis par le modèle (Q-PM2). Le moteur de pipelines collecte (D344), pas de CronJob.
+Tables de l'org, par pipelines. Codé.
 
 #### D920 — La résolution est un fait daté, contestable, révisable
-
-Une résolution n'est pas un booléen : c'est une suite d'états datés `proposed` → `disputed` (×n) → `final` (ou `indeterminate`), chacun avec son `known_at`. Le cas Strategy (vente le 26–31 mai, connue le 1ᵉʳ juin, « Non » final) et le cas Zelensky (sources crédibles en désaccord) sont les deux tests d'acceptation. Le modèle et la mesure de calibration (D924) ne lisent **que** l'état connu à `as_of` ; un marché en litige à `as_of` est `unresolved`, jamais résolu par anticipation.
+États datés. Codé.
 
 #### D921 — Lien `bears_on`, déclaré par un membre
-
-`prediction_market` → instrument, pays (`nation`) ou organisation, déclaré par un membre (comme `exposed_to`, H.7), jamais inféré. Il porte une direction attendue (`up`, `down`, `unknown`) **dite par le membre**. Versionné (D913) : un lien posé aujourd'hui n'existe pas dans un backtest d'hier.
+Codé. Les variables lisent seulement les liens posés sur l'instrument.
 
 #### D922 — Variable d'entrée du modèle : niveau et variation, à `as_of`
-
-La route de lecture d'entraînement (MK14) expose, par instrument, les marchés `bears_on` ouverts à `as_of` : probabilité, variation 1 h / 24 h, volume, jours avant échéance. Rien n'est filtré par pertinence : le modèle apprend le poids (même règle que H.7). Couverte par le canari (D916).
+`GET /markets/prediction-features`. Codé.
 
 #### D923 — Wallets : brut en colonnes, objet seulement sur signalement
-
-- Brut : uniquement les contrats de la plateforme suivie (échanges et dépôts/retraits liés), en tables colonnes (D807), jamais un objet par wallet. Ordre de grandeur attendu : dizaines à centaines de Go pour Polymarket, contre plusieurs To pour tout Polygon (non visé).
-- Un wallet devient un objet `wallet` (identifiant externe = adresse) **seulement** quand un membre l'ajoute à un dossier ou qu'un détecteur le propose (D367). Les liens `funded_by` / `traded` sont alors matérialisés pour ce wallet et son voisinage à profondeur 2, à la demande.
+Codé. Aucune source de financement lue.
 
 #### D924 — Détecteur « mise précoce », une proposition, jamais une accusation
-
-Fonction pure dans `pnex_core` : wallet de moins de N jours, part de son volume sur un seul marché ≥ X %, mise ≥ Y, dans la fenêtre W avant un changement brusque de probabilité ou une résolution. Sortie = proposition dans un dossier, avec les chiffres qui l'ont déclenchée. Aucune intention attribuée, aucun nom (D742 tient : rien n'est stocké comme cause). Seuils réglables par org.
+`early_bet@1`. Codé.
 
 #### D925 — Calibration : le marché comme point de référence
-
-D896 (mesure après coup) ajoute, sur les marchés `bears_on` résolus `final` : score de Brier du modèle, du marché à la même date, et courbe de calibration par tranches de 10 %. Affiché sur la page Décisions de modèles. Conseil seulement (D895).
-
-### J.3 Lots
-
-| Lot | Contenu |
-|---|---|
-| MK37 | D918, D919 : pack, import des marchés et des probabilités (Polymarket), pipeline 1 h |
-| MK38 | D920 : états de résolution datés ; acceptation sur les cas Strategy et Zelensky |
-| MK39 | D921, D922 : `bears_on`, variable d'entrée dans la lecture d'entraînement |
-| MK40 | D925 : Brier et calibration |
-| MK41 | D923, D924 : wallets en colonnes, détecteur, proposition dans un dossier |
-
-Ordre : MK34 (appendice I) avant MK39 — sans lui, `bears_on` fuit comme `exposed_to`.
-
-### J.4 Questions ouvertes
-
-Tranchées par Shan le 2026-11-10 :
-
-- Q-PM1 : ingestion par les **API publiques de la plateforme** (hôtes fixés dans le code, R9, liste blanche egress R8) : marchés, questions et règles de résolution par l'API de métadonnées, probabilités par l'historique de prix du carnet, échanges par l'API de données publique. Conditions d'usage notées dans `license_note`.
-- Q-PM2 : réglage d'org du pack (`fine_markets`, liste d'identifiants de marché), vide par défaut, même école que `move_series` (D737).
-- Q-PM3 : Kalshi plus tard, pas dans ce tour.
-- Q-PM4 : votes de l'oracle plus tard, pas dans ce tour.
-- Seuils D924 par défaut : wallet de moins de 7 jours, ≥ 80 % de son volume sur un marché, mise ≥ 10 000 USDC, dans les 48 h avant un saut de probabilité ≥ 15 points ou une résolution. Réglables par org.
-- D923 : échanges collectés depuis l'API publique **pour les marchés suivis seulement** (`bears_on` ou `fine_markets`), pas tout l'historique de la plateforme ; financement (dépôts USDC) si une source publique l'expose, sinon écart noté.
-
-### J.6 Ce qui est codé et écarts (2026-11-10)
-
-> **2026-11-17** : la collecte est passée en pipelines du pack (`prediction_markets` 2.0.0,
-> pipelines.md, section du 2026-11-17) : la passe Rust, ses curseurs et les tables
-> PostgreSQL ci-dessous n'existent plus ; prix et échanges sont des tables de l'org, la résolution
-> d'un état porte `condition_id` et le lien `resolution_of`, le réglage `history_days` devient
-> `history_from`. Les lectures (MK39, MK40, détecteur D924) sont inchangées pour leurs appelants.
-
-- **Accès** : les hôtes de la plateforme sont bloqués en France (résolution DNS vers la page de l'ANJ, constatée le 2026-11-10). Décision de Shan : passer par un proxy. Le collecteur lit le proxy de l'org dans le coffre (`polymarket_proxy`, URL http(s), hôte passé à la garde egress) ; sans secret, appel direct ; secret illisible ou invalide = passe de l'org arrêtée, jamais d'appel direct de repli (SEC-88). Les formes des réponses n'ont pas pu être vérifiées depuis la France (documentation elle aussi bloquée) : décodeurs tolérants, à confirmer au premier passage réel par le proxy.
-- **MK37** : pack `prediction_markets` 1.0.0 (`history: true`, `requires: [markets]`) : types `prediction_market` (`times` : `end_at` / `known_at`), `prediction_resolution`, `wallet` ; liens `bears_on` (attribut `direction`), `traded`, `funded_by` ; réglages `market_ids`, `fine_markets`, `history_days`, seuils D924. Module pur `pnex_core::markets::prediction` (décodeurs, résolution datée, variables, Brier, calibration, détecteur). Service `services/markets/prediction.rs`, passe toutes les 5 min dans l'ordonnanceur des marchés : métadonnées relues au plus une fois par heure, probabilités à 60 min (et 1 min pour `fine_markets`) avec un curseur par jeton, échanges des marchés suivis avec un curseur par marché.
-- **MK38** : chaque état vu (`proposed`, `disputed`, `final`, `indeterminate`) devient un objet `prediction_resolution` daté de sa lecture ; `resolution_at` ne résout qu'un état final connu à l'instant. Cas Strategy et Zelensky en tests unitaires ; test d'intégration : proposé → litige (toujours une entrée du modèle) → final (plus une entrée, sauf lu avant).
-- **MK39** : `GET /api/v1/markets/prediction-features?instrument=&as_of=` (`ontology:read`, `point_in_time`, exposé au MCP, couvert par le canari : prix postérieur et marché lu après T0 absents) : marchés `bears_on` connus à `as_of` (D913), non résolus à `as_of`, probabilité du premier résultat, variations 1 h / 24 h, jours restants.
-- **MK40** : `forecasts` (≤ 50) sur une décision de modèle (colonne `market_decisions.forecasts`, migration 000144) ; `GET /api/v1/markets/decisions/forecast-scores` (`market-decisions:read`) : Brier et calibration du modèle et du marché au même instant, marchés résolus finaux ; section « Face au marché de prédiction » sur la page Décisions de modèles.
-- **MK41** : tables `prediction_prices` et `prediction_trades` ; détecteur `early_bet@1` dans les détections d'un dossier qui contient un marché (déclencheurs : saut ≥ seuil en une heure, résolution finale) ; une proposition par wallet et marché ; la rétention crée l'objet `wallet` (retrouvé par son adresse) et le lien `traded`, note chiffrée sans intention. Test : collecte simulée, variables, scores (Brier modèle 0,04, marché 0,16), proposition puis rétention, passage par le proxy.
-- Écarts : probabilités et échanges en **tables PostgreSQL**, pas en tables Parquet (D807) : les variables se lisent point par point à un instant (`shortcut:` dans la migration). Un prix est connu à son instant (comme une barre, H.8). L'**âge d'un wallet** est son premier échange parmi les échanges collectés (marchés suivis seulement), sa **part de volume** aussi : approximation notée dans la fiche et la note. **Financement** (`funded_by`) : aucune source publique lue, lien déclaré à la main seulement ; voisinage à profondeur 2 non matérialisé. Les variables ne lisent que les liens `bears_on` posés directement sur l'instrument, pas ceux posés sur un pays ou une société exposés à l'instrument. Volume par marché non exposé dans les variables (non daté). Kalshi et votes de l'oracle : plus tard (Q-PM3, Q-PM4).
-
-### J.5 Hors périmètre
-
-Toute mise, tout ordre, toute signature ; les autres chaînes que celle de la plateforme suivie ; l'attribution d'un wallet à une personne.
-
-## Appendice K — Comptes de trading publics : transactions en table, compte à la demande (D926–D933)
-
-Statut : proposé le 2026-11-10, demandé par Shan (via la session market-advisor) ; questions K.5 tranchées par Shan le même jour. Calqué sur D923/D924 : brut en table, objet seulement sur ajout d'un membre, import ou proposition d'un détecteur.
-
-### K.1 Le besoin
-
-Le modèle de G (XAUUSD, H4) prédit l'**amplitude** des mouvements de l'or, pas leur sens. Question de Shan : **quand** et **pourquoi** des traders profitables sur l'or entrent, et si leur profit vient :
-
-- du **sens** (ils achètent avant les hausses) ;
-- du **moment** (entrées autour des publications du calendrier, D882 et l'historique FOMC 2009–2020) ;
-- ou de la **gestion de position** (grilles sans stop, moyenne à la baisse), qui gagne souvent et perd rarement mais beaucoup.
-
-Exemple étudié : un compte public Myfxbook d'une grille de ventes sans stop sur l'or, 1 849 transactions.
-
-Cadre : PNeX **lit** des historiques que leurs auteurs ont rendus publics sur une plateforme de suivi. Il ne copie aucune position, ne passe aucun ordre et ne relie jamais un compte à une personne.
-
-### K.2 Décisions proposées
+`GET /markets/decisions/forecast-scores`. Codé.
 
 #### D926 — Pack `trading_accounts`, à part
-
-Pack séparé, `requires: [markets]`, `history: true` (D914).
-
-- **Type `trading_account`** : identifiant externe `<plateforme>:<id du compte>` (D369). Il ne porte que ce que la plateforme déclare : nom affiché (pseudonyme de plateforme), courtier, levier, type déclaré (`real`, `demo`, `unknown`), stratégie déclarée, mise à jour en direct déclarée (oui/non) et statistiques publiées. Ces statistiques sont datées par l'historique du pack : une valeur lue le 10 n'existe pas le 9.
-- **Lien `traded`** vers l'objet `instrument`, avec les attributs `trade_count`, `first_open_at` et `last_close_at`. Il est versionné (D913).
+Codé.
 
 #### D927 — Les transactions sont des lignes de table, jamais des objets
-
-Table PostgreSQL `account_trades` (comme `prediction_trades`, J.6), décidée par Shan le 2026-11-10 à la place d'un dataset Parquet : la suppression d'un compte (D932) et le dédoublonnage n'y sont qu'une requête, alors qu'un dataset, qui ne fait qu'ajouter, doit être relu ou réécrit. Colonnes :
-
-- `platform`, `account_ref`, `trade_key` (le ticket, ou à défaut une empreinte de l'ouverture : instant, symbole, sens, lots, prix) ;
-- `symbol`, `side` (`buy`/`sell`), `lots` ;
-- `open_at`, `close_at`, `open_price`, `close_price`, `sl`, `tp` ;
-- `profit`, `pips`, `commission`, `swap`, `magic`, `comment` (quand ils sont présents) ;
-- `source` (nom du fichier importé), `known_at`, `backfilled`.
-
-Clé (`org_id`, `platform`, `account_ref`, `trade_key`) : une transaction réimportée n'ajoute pas de ligne et garde son premier `known_at`. Lecture : `GET /api/v1/markets/account-trades?account=&as_of=` (paginée, `point_in_time`, exposée au MCP, couverte par le canari D901) ; elle remplace la liste de fichiers Parquet (MK14) pour le projet Python.
+Table PostgreSQL `account_trades`. Codé.
 
 #### D928 — Point-in-time : connu au plus tôt à la clôture, sinon à l'import
-
-Une transaction n'est publique à son **ouverture** que si le compte publie en direct, et seulement si on en a la preuve. Sinon elle l'est au mieux à sa **clôture**. Sans aucune preuve (cas de l'export CSV), `known_at` = date de l'import, avec `backfilled = true`, comme les observations (`services/markets/mod.rs`). Le détecteur et les lectures à `as_of` ne voient que `known_at <= as_of`.
+Codé.
 
 #### D929 — Sources : l'export CSV d'abord, l'API plus tard
-
-- **a) Export CSV** d'un compte, envoyé par un membre depuis la page du compte ou la page des marchés (`POST /api/v1/markets/account-trades/import`, écriture d'ontologie). La **forme d'export Myfxbook est reconnue** à son en-tête exact (relevé sur un vrai fichier), puis convertie en lignes D927 ; un fichier d'une autre forme est refusé avec un code machine, jamais deviné. L'import crée ou met à jour l'objet `trading_account` et ses liens `trades` (Q-TA5).
-- **b) API officielle Myfxbook** (`login.json`, historique) : **en attente** (Q-TA1). Ses conditions d'utilisation n'ont pas pu être lues le 2026-11-10 (refus des clients automatisés). Décision de Shan le même jour : CSV seulement tant qu'il ne les a pas lues.
-- Jamais de lecture des pages HTML de la plateforme.
+CSV canonique codé. API en attente (Q-TA1).
 
 #### D930 — Détecteur « entrée avant mouvement », une proposition, jamais une accusation
-
-Fonction pure dans `pnex_core`, sur le modèle d'`early_bet` (D924). Dans un dossier qui contient un instrument, elle propose les comptes dont des entrées tombent :
-
-- dans les N minutes avant un mouvement ≥ seuil de l'instrument (barres D809) ;
-- ou dans une fenêtre autour d'une publication du calendrier (`economic_release`, `central_bank_meeting`).
-
-La proposition contient seulement les chiffres : nombre d'entrées, part des entrées concernées et profit associé. Aucune intention n'est attribuée, et D742 tient : rien n'est stocké comme cause. Les seuils sont réglables par org. Seuils par défaut (Q-TA2) : entrées dans les 60 min avant un mouvement ≥ 1 % sur l'heure suivante, ou à ±30 min d'une publication ; au moins 10 entrées concernées et ≥ 30 % des entrées du compte. La rétention crée l'objet `trading_account` et le lien `traded`.
+`entry_timing@1`. Codé.
 
 #### D931 — Décomposition du profit : côté Python, pas dans PNeX
-
-Sens, moment (publications) et gestion de position (transactions sans stop, ajouts dans le sens de la perte, profondeur de grille) se calculent dans le projet market-advisor (Q-TA3). PNeX fournit les transactions à `as_of`, les barres et le calendrier : rien de plus.
+Tient.
 
 #### D932 — Rétention des données d'un tiers
-
-Ce sont des données publiées par un tiers sous pseudonyme. Elles sont gardées tant que l'org les garde ; supprimer l'objet `trading_account` purge ses lignes du dataset (Q-TA4). Elles restent dans l'org qui les a importées (R1), sans export hors org au-delà des lectures existantes.
+Purge à l'effacement du compte. Codé.
 
 #### D933 — Aucun rapprochement avec une personne
+Garde `never_linked_to`. Codé.
 
-Le nom affiché est un pseudonyme de plateforme. Aucun lien d'un `trading_account` vers une `person`, une organisation ou un compte de réseau social n'est permis. Ce n'est pas seulement une règle écrite : une garde l'impose (lien refusé, test).
+### 5.7 Ingestion de contenus (D986–D993)
 
-### K.3 Lots
+#### D986 — Le résultat est un `news_item`, l'entreprise devient une cible
+Lien `item_about` proposé. PneX ne crée aucune piste commerciale. Codé (flow de pnex-sales).
 
-| Lot | Contenu |
+#### D987 — Source = une boîte partagée dédiée
+Transferts d'un membre seulement. Expéditeur non signé : « expéditeur non vérifié » (`mail.md` D994). Codé.
+
+#### D988 — Premier lot : le texte du mail seul
+Article complet aux lots L2 et L5. Tient.
+
+#### D989 — L'appendice est rattaché à l'existant
+Aucune table neuve au lot L1. Tient.
+
+#### D990 — Extrait vérifié
+Citation présente mot pour mot dans le mail, lien présent. Codé.
+
+#### D991 — Aucun vecteur d'accroche dans PneX
+Prompt, vecteurs et flow dans pnex-sales. Tient.
+
+#### D992 — Retrouver dans PneX
+`org_resolve` par SIREN, cas ambigu sans lien. Codé.
+
+#### D993 — Carte des relations
+Construite dans pnex-sales. PneX fournit les liens.
+
+## 6. Interfaces
+
+### 6.1 Routes
+
+| Route | Permission | MCP |
+|---|---|---|
+| `GET /api/v1/markets/sessions/{date}` | `ontology:read` | exposé |
+| `GET /api/v1/markets/world-events` | `ontology:read` | exposé |
+| `GET /api/v1/markets/rule-test` | `ontology:read` | exposé |
+| `GET /api/v1/markets/instruments/{id}/event-study` | `ontology:read` | exposé |
+| `GET /api/v1/markets/issuers/{id}/chart` | `ontology:read` | exposé |
+| `GET /api/v1/markets/positions/{id}/result` | `ontology:read` | exposé |
+| `GET /api/v1/markets/bars` | `datasets:read` | exposé |
+| `GET /api/v1/markets/chains` | `datasets:read` + `ontology:read` | exposé |
+| `POST /api/v1/markets/decisions` | `market-decisions:write` | exclu (machine) |
+| `GET /api/v1/markets/decisions`, `…/scores`, `…/forecast-scores` | `market-decisions:read` | exposé |
+| `GET /api/v1/markets/prediction-features` | `ontology:read` | exposé |
+| `GET /api/v1/markets/account-trades` | `ontology:read` | exposé |
+| `POST /api/v1/markets/account-trades/import` | `ontology:write` | exclu (corps CSV) |
+| `GET /api/v1/datasets/{id}/files`, `…/files/{index}` | `datasets:read` | liste exposée, fichier exclu |
+| `GET`, `PUT /api/v1/system/orgs/{org_id}/dataset-quota` | `Platform` | exclu |
+| `/api/v1/mt5/terminals…` | `metatrader:read`, `:write`, `:delete` | lecture et sélection exposées |
+| `GET /api/v1/mt5/config`, `POST /mt5/announce`, `POST /mt5/ingest` | `Machine` (jeton du terminal) | exclu |
+
+Codes d'erreur du domaine : préfixe `market-` (`market-decision-stale`, `market-decision-conflict`, `market-decisions-quota`, `market-bars-too-many-files`), plus `as-of-required`, `as-of-unsupported`, `ai-frozen-tool`, `account-trades-csv-invalid`, `ontology-link-member-only`, `ontology-link-not-allowed`.
+
+### 6.2 Réglages principaux
+
+| Pack | Réglages |
 |---|---|
-| MK42 | D926, D933 : pack, garde « aucune personne » |
-| MK43 | D927, D928, D929 a) : forme `account_trades`, reconnaissance de l'export Myfxbook, dédoublonnage, `known_at`/`backfilled` |
-| MK44 | D930 : détecteur, proposition, rétention |
-| MK45 | D929 b) : client API (selon Q-TA1) |
+| `markets` | `source_contact`, `covered_tickers`, `covered_leis`, `benchmark_ticker`, `macro_series`, `ecb_series`, `bis_series`, `eurostat_series`, `eia_series`, `cot_markets`, `chokepoints`, `calendars`, `move_series`, `move_tickers`, `move_notify_channels`, `session_summary`, `event_extraction_from`, `price_move_threshold_pct`, réglages d'historique (§3.8) |
+| `world_events` | `geo_watch`, `gdelt_codes` |
+| `prediction_markets` | `market_ids`, `fine_markets`, `history_from`, `early_bet_*` |
+| `trading_accounts` | `bars_source`, `entry_window_minutes`, `entry_move_pct`, `release_window_minutes`, `entry_min_count`, `entry_min_share_pct` |
+| `trade_flows` | `source_contact`, `ais_dk_from`, `ais_noaa_from`, `adsb_from` |
 
-### K.4 Hors périmètre
+Secrets du coffre : `markets_tiingo_key`, `markets_fred_key`, `markets_eia_key`, `polymarket_proxy`, jeton UCDP, compte ACLED.
 
-Copier une position, passer un ordre, se connecter au compte d'un tiers ; lire les pages HTML de la plateforme ; attribuer un compte à une personne (nom, visage, réseau, courtier client) ; dire pourquoi un trader est entré (intention) : PNeX donne des chiffres.
+### 6.3 Tables PostgreSQL
 
-### K.5 Questions tranchées (Shan, 2026-11-10)
+`market_observations`, `market_decisions`, `account_trades`, `object_versions`, `link_versions`, `mt5_terminals`, `mt5_symbols`, `mt5_inbox`, `market_history_partitions` (à supprimer, PE9), `market_session_summaries`.
 
-- **Q-TA1** — API Myfxbook : conditions d'utilisation illisibles par un client automatisé ; **CSV seulement** tant que Shan ne les a pas lues (MK45 en attente).
-- **Q-TA2** — Seuils du détecteur : 60 min avant un mouvement ≥ 1 % H1, ±30 min autour d'une publication, ≥ 10 entrées et ≥ 30 % des entrées.
-- **Q-TA3** — Décomposition du profit : côté Python seulement.
-- **Q-TA4** — Rétention : gardées, purgées à la suppression du compte.
-- **Q-TA5** — Création d'un compte : par l'import d'un membre, le dossier ou le détecteur ; pas de réglage `accounts` avant l'API.
-- Forme exacte de l'export Myfxbook : relevée sur un vrai fichier fourni par Shan, jamais devinée.
-- Stockage (D927) : table PostgreSQL et route de lecture, pas de dataset Parquet.
+### 6.4 Lots
 
-### K.6 Ce qui est codé et écarts (2026-11-10)
+| Lot | Contenu | État |
+|---|---|---|
+| MK0 | pack `markets`, référentiels LEI / FIGI / FIRDS | partiel : LEI par D812 |
+| MK1 | cours de clôture, fiche instrument | codé (Tiingo) |
+| MK2 | sources d'articles, fil par émetteur | presse = piste GDELT seulement |
+| MK3 (MK3a, MK3b, MK3c) | extraction à citation vérifiée | MK3a et MK3b codés, MK3c non codé |
+| MK4 | étude d'événement | codé |
+| MK5 | thèse, positions fictives | codé |
+| MK6 | test de règle point-in-time | codé |
+| MK7 | `market_move`, vue Séance | codé |
+| MK8 | `world_events`, GDELT, concomitance | codé |
+| MK9 | `rule-test` sur dates du monde et mouvements | codé |
+| MK10 | UCDP, ACLED, confirmation | codé |
+| MK11 | bougies minute Binance | codé, acceptation réelle passée (236 fichiers, 9,7 M lignes) |
+| MK11 bis | bougies minute et ticks HistData | codé, EURUSD 2000–2026 chargé (9 M bougies) |
+| MK12 | ticks Dukascopy | codé |
+| MK13 | transactions Binance, quota par org, mesure de la vue | codé |
+| MK14 | lecture Parquet, rééchantillonnage | codé |
+| MK15 | taux directeurs BRI | codé |
+| MK16 | décisions de taux en `market_move` | codé |
+| MK17 | calendrier des publications | codé |
+| MK18 | sous-indices d'inflation | codé (INSEE et FAO écartés) |
+| MK19 | indices immobiliers | codé |
+| MK20 | détroits PortWatch | codé |
+| MK21 | Open Prices | codé |
+| MK22 | DVF | codé |
+| MK23 | AIS (fichiers historiques) | codé |
+| MK24 | ADS-B adsb.lol | codé |
+| MK25 | COT CFTC | codé |
+| MK26 | EIA | codé, jamais essayé sur la vraie API |
+| MK27 | `GET /markets/bars`, écriture des comptes de service | codé |
+| MK28 | `POST` et `GET /markets/decisions` | codé |
+| MK29 | mesure des décisions | codé |
+| MK30 | affichage des décisions | codé |
+| MK31 | clé point-in-time, inventaire | codé |
+| MK32 | `object_versions`, canari | codé |
+| MK33 | assistant figé | codé |
+| MK34 | `link_versions` | codé |
+| MK35 | canaris des liens | codé |
+| MK36 | `valid_at`, `history: true`, dates par type | codé |
+| MK37 | pack et collecte des marchés de prédiction | codé |
+| MK38 | résolution datée | codé |
+| MK39 | `bears_on`, variables | codé |
+| MK40 | Brier et calibration face au marché | codé |
+| MK41 | wallets, `early_bet` | codé |
+| MK42 | pack `trading_accounts`, garde « aucune personne » | codé |
+| MK43 | `account_trades`, import CSV | codé |
+| MK44 | `entry_timing` | codé |
+| MK45 | client API Myfxbook | en attente (Q-TA1) |
+| MT5-1 | registre, jeton, ingestion, configuration | codé |
+| MT5-2 | EA généré, écran « terminaux MT5 » | codé |
+| MT5-3 | catalogue, profondeur, rattrapage | codé |
+| MT5-4 | essai réel dans MetaTrader 5 | à faire par Shan |
+| L1 | flow des newsletters sur l'existant | codé (pnex-sales) |
+| L2–L8 | acquisition, analyses versionnées, retraitement, agent navigateur, frise, éphémère, carte | proposés |
 
-- **MK42** : pack `trading_accounts` 1.0.0 (`history: true`, `requires: [markets]`). Il porte le type `trading_account` (`account_ref` unique, plateforme, pseudonyme, courtier, levier, **devise** ISO ou `USC` pour un compte en cents, compte déclaré, stratégie, mise à jour en direct, gain et drawdown publiés, `known_at`), le lien **`trades`** vers `instrument` (la clé `traded` est déjà prise par `prediction_markets`) et les réglages du détecteur ainsi que de la source des cours (`histdata` par défaut).
-- **D933 en garde générique** : un type déclare `never_linked_to` (ici `[person]`). Tout lien entre ces deux types est refusé (`ontology-link-not-allowed`), quel que soit le type de lien (même déclaré par un membre), sur les trois chemins d'écriture : lien unitaire, liens en masse, arêtes de ressources. Le moteur ne nomme aucun type métier.
-- **MK43** : table `account_trades` (migration 000146). Import : `POST /api/v1/markets/account-trades/import?account=&name=&currency=&source=`, corps CSV canonique, `ontology:write`, exclu du MCP (corps non JSON), 16 Mio et 50 000 lignes au plus. Le fichier est refusé entier à la première cellule fautive (`account-trades-csv-invalid`, ligne et colonne). Format validé par la session market-advisor le 2026-11-10, avec quatre ajouts :
-  - la devise du compte ;
-  - `gain_pct` ;
-  - une clé sans ticket qui inclut la clôture ;
-  - le rang des lignes identiques d'un même fichier (une grille ferme souvent un panier de positions identiques).
-  - `lots` facultatif (migration 000147) : un propriétaire peut masquer la taille de ses positions sur la plateforme ; absent, il compte comme une valeur à part dans la clé sans ticket.
-- **Lecture** : `GET /api/v1/markets/account-trades` (`ontology:read`, `point_in_time`, exposée au MCP, couverte par le canari). Un compte masqué par un marquage est exclu (D801). Effacer le compte purge ses lignes (D932).
-- **MK44** : détecteur `entry_timing@1` (fonction pure `pnex_core::markets::accounts`). Les cours sont lus en barres de 5 min depuis la source réglée. La rétention crée ou retrouve le compte, rafraîchit ses liens `trades` et pose une note chiffrée sans intention.
-- **Écarts** :
-  - La forme brute de l'export Myfxbook n'est pas reconnue : c'est le client (script Python) qui produit le CSV canonique.
-  - Le client API Myfxbook attend Q-TA1.
-  - Aucun écran d'import : l'import vient d'un client avec jeton.
-  - Le déplacement des prix est mesuré sur des barres de 5 min, pas à la minute.
-  - Deux lignes identiques en tout (ouverture, clôture, rang) d'**exports différents** restent une seule transaction.
+### 6.5 Questions tranchées
 
-### K.7 Revue de sécurité (§6 de security.md, 2026-11-10)
-
-- **Routes** : `OrgContext`, permissions inscrites (lecture `ontology:read`, import `ontology:write`), org tirée du principal, toutes les requêtes filtrées par `org_id` ; un compte marqué reste caché aux non-habilités.
-- **Secret de session** : aucun dans ce lot (pas d'appel à l'API Myfxbook, Q-TA1). Le jour où il viendra : secret au coffre, jamais dans une réponse (R4, R16), hôte fixé dans le code et passé à la garde egress (R8, R9).
-- **Données d'un tiers** : des historiques publiés sous pseudonyme par leurs auteurs. Aucun rapprochement avec une personne (garde D933, testée). Ils restent dans l'org qui les importe, et l'effacement du compte les supprime (D932).
-- **Entrées** : paramètres SQL liés ; motif `LIKE` du ticker purgé de `%` et `_` ; CSV borné (taille, lignes, longueur des cellules texte) ; limite axum posée sur la route au double du plafond, pour qu'un dépassement donne le 413 codé.
-- Aucune requête sortante, aucune dépendance nouvelle, aucun rendu HTML de texte importé.
-
-## Appendice L — Ingestion de contenus générique : sources → items → synthèse (D986–D993)
-
-Statut : brouillon reçu le 2026-11-17, avec un premier usage. Dans l'org « Test industrie grandeur nature » (dev.pnex.io), le directeur commercial transfère les newsletters qu'il reçoit. PneX doit y reconnaître la **nature de l'approche commerciale** (nouvelle usine, difficulté de recrutement, création d'un centre de formation…), l'entreprise et le site, puis retrouver l'entreprise, ses sites et ses contacts. Le commercial crée ensuite la piste dans Odoo depuis pnex-sales. Les choix de L.0 sont ceux de Shan (2026-11-17). Périmètre : ingestion et ETL seulement, aucune action device.
-
-### L.0 Décisions et correspondance avec l'existant
-
-| # | Décision |
+| Question | Réponse |
 |---|---|
-| D986 | **Le résultat est un `news_item` (pack `watch`), et l'entreprise devient une cible.** Thème = vecteur d'accroche, avec résumé, extrait cité, lien et newsletter d'origine. Lien `item_about` vers l'entreprise, proposé (à valider). Une entreprise sans statut de compte passe en `target`, et un compte connu garde le sien. **La piste n'est créée que dans Odoo, par un commercial, depuis pnex-sales** (pnex-sales PRD V2, V5). PneX ne crée ni `lead` du pack `crm` ni piste Odoo (Shan, 2026-11-17). |
-| D987 | **Source = une boîte partagée dédiée** (par exemple `veille@`), relevée en IMAP (mail.md D453–D463). Seuls les **transferts d'un membre** sont lus ; un autre expéditeur ne produit rien (Shan, 2026-11-17). Un membre dont le domaine ne signe pas ses mails est lu quand même (`forwarded.member`, mail.md D994) et ses éléments portent « expéditeur non vérifié » ; une newsletter jointe en `.eml` est traitée comme un transfert à part. |
-| D988 | **Premier lot : le texte du mail seul** (accroche et lien de chaque article). L'article complet vient au lot L2, d'abord la page publique (`web_visit`), puis l'agent navigateur pour les sites où l'utilisateur est connecté (L5) (Shan, 2026-11-17). |
-| D989 | **L'appendice est rattaché à l'existant**, sans tables neuves au premier lot (Shan, 2026-11-17). Source = boîte mail (`mailboxes`) ou `news_source`. Item = `news_item`. Nœuds = `mail_received`, `llm_text`, `pnex_function`, `org_resolve`, `object_upsert`, `link_upsert`. Les analyses versionnées (`ItemAnalysis`), le retraitement et le mode éphémère restent des lots ultérieurs (§9), ouverts quand un retraitement réel sera demandé. |
-| D990 | **Extrait vérifié** : chaque approche que le LLM rend doit citer une phrase **présente mot pour mot** dans le mail (espaces et casse ignorés). Sinon elle est jetée. Un lien n'est gardé que s'il figure dans le mail. Le texte du mail est une donnée, jamais une consigne (D458). |
-| D991 | **Aucun vecteur d'accroche dans PneX** (Shan, 2026-11-17 : « il ne faut pas hardcoder un vecteur d'accroche pour du lead dans PneX »). Le prompt, la liste des vecteurs et le flow sont le métier de l'équipe commerciale. Ils vivent dans **pnex-sales** (`flows/newsletters.yaml`, avec ses fonctions Starlark et son test), qui les installe dans l'org comme n'importe quel flow d'org. PneX ne livre que les nœuds et types génériques. Vecteurs de l'équipe (2026-11-17) : nouvelle usine, centre de formation, augmentation de la production, ramp-up, problème de qualité, embauche, acquisition d'usine, problème de production, vieillissement des collaborateurs, turnover, captation des talents, transfert de technologie. Un vecteur n'est qu'une étiquette (`topic`) sur le `news_item`, et une entreprise peut en porter plusieurs. |
-| D992 | **Retrouver dans PneX** : l'entreprise est cherchée par son SIREN au registre (`org_resolve`, avec nom, ville et code postal). Une correspondance nette crée ou retrouve l'`organization` par SIREN et propose le lien. Un cas ambigu laisse l'item sans lien, à traiter dans la Veille. Les sites (`establishment`), contacts (`employs`, `list_contact`) et relations déjà connus suivent l'entreprise : pnex-sales les montre sur la fiche. La recherche de profils des cibles (D788) part de là. La capture LinkedIn des salariés reste **déclenchée par un humain**, sur la page de l'entreprise, avec l'agent navigateur (D254/D333). |
-| D993 | **Carte des relations (demandée par Shan le 2026-11-17)** : une entreprise par cercle, ses personnes dedans, les liens entre personnes (`knows`, D976) et entre entreprises, avec des filtres (statut de compte, groupement, persona, vecteur). Elle se construit dans **pnex-sales** (`src/ui/graph.rs`, commencé le 2026-11-17 : chaque entreprise est une boîte, ses personnes autour, colorées par rôle). PneX fournit les liens via `/ontology/query` et `/objects/{id}/graph`. |
+| Q-MK1 | Cours US : Tiingo (D543). L'Europe reste ouverte (§7). |
+| Q-MK5 | `SP500` et `NASDAQCOM` sortent des valeurs par défaut, remplacés par `SPY` et `QQQ`. |
+| Q-MK6 | `geo_watch` vide par défaut. |
+| Q-MK7 | `k = 3` gardé, plancher `fx` à 0,75 % (`FX_FLOOR`). |
+| Q-MK8 | Pas d'événement de niveau séance : la vue Séance suffit. |
+| Q-MK9 | Univers d'historique vide par défaut, l'org liste ses symboles. |
+| Q-MK10 | Bougies seulement, sans `aggTrades`. |
+| Q-MK11 | Table privée à l'org, conditions non vérifiées notées, aucun partage entre orgs. |
+| Q-MK12 | Quota de 20 Go par défaut. |
+| Q-MK13 | Une table par forme, `interval` en colonne. |
+| Q-MK15 | Acceptation toujours humaine. |
+| Q-MK16, Q-MK18 | Pièces 99.x des 8-K seulement, en anglais. |
+| Q-MK17, Q-MK19 | 50 documents par org et par jour, dépôts postérieurs à l'activation, rattrapage sur demande. |
+| Q-MK20 | Mécanisme `extractors:` commun livré dans MK3a. |
+| Q-MT1 | Page à part sous **Sources**. |
+| Q-MT2 | Un jeton par terminal (`Authorization: Bearer`). |
+| Q-MT3 | Bougies M1 de tout le catalogue par défaut. |
+| Q-MT4 | Ticks pour une liste choisie seulement. |
+| Q-MT5 | Le catalogue reste une table. |
+| Q-MT6 | Pont par webhook remplacé, tables gardées. |
+| Q-F1 | Forex, indices, actions, matières premières, crypto, horizons mixtes. |
+| Q-F2 | Sous-indices et prix produit par produit (MK21). |
+| Q-F3 | Indices et transactions DVF (MK22). |
+| Q-F4 | Agrégats et positions brutes (MK23, MK24). |
+| Q-F5 | Packs à part (D887). |
+| Q-F6 | Même réglage `move_series`, préfixe de source (D888). |
+| Q-F7 | AIS par fichiers historiques seulement, sans temps réel. |
+| Q-F8 | Tout garder, sous le quota de tables de l'org. |
+| Q-MD1 | Projet Python privé, nom et licence non notés. |
+| Q-MD2 | Options `buy`, `neutral`, `sell`. |
+| Q-MD3 | Intervalle H4 en V1. |
+| Q-MD4 | HistData à l'entraînement, MT5 en direct, écart mesuré. |
+| Q-MD5 | Décisions en PostgreSQL. |
+| Q-MD6 | `geo_event` lu par `POST /ontology/query` à `known_at`. Fermée par D900. |
+| Q-PT1 | Versions des types marchés dans PostgreSQL. |
+| Q-PT2 | Assistant figé à l'alerte + 15 min. |
+| Q-PT3 | Documents indexés après l'instant masqués. |
+| Q-BT1 | Fermetures antérieures à la migration rendues avec `history: partial`. |
+| Q-BT2 | Lien effacé : versions vides, `erased = true`. |
+| Q-PM1 | API publiques de la plateforme, hôtes fixés. |
+| Q-PM2 | `fine_markets`, vide par défaut. |
+| Q-PM3 | Autre plateforme plus tard. |
+| Q-PM4 | Votes de l'oracle plus tard. |
+| Q-TA1 | CSV seulement tant que Shan n'a pas lu les conditions de l'API. |
+| Q-TA2 | 60 min avant un mouvement ≥ 1 % H1, ±30 min d'une publication, ≥ 10 entrées et ≥ 30 %. |
+| Q-TA3 | Décomposition du profit côté Python. |
+| Q-TA4 | Lignes purgées à la suppression du compte. |
+| Q-TA5 | Compte créé par un import, un dossier ou le détecteur. |
 
-Flow du lot L1 : **« Prospecting · forwarded newsletters »**, dans pnex-sales (`flows/newsletters.yaml`, D991), installé dans l'org comme brouillon. Une personne choisit la boîte et déploie dans PneX.
+## 7. Reste à faire
 
-```
-mail_received ─▶ nl_prep (transferts d'un membre authentifié seulement)
-  ─▶ llm_text (une ligne par approche : thème | société | ville | CP | résumé | phrase citée | lien)
-  ─▶ nl_read (thème connu, citation présente dans le mail, lien présent) ─▶ json_split
-  ─▶ nl_item ─▶ object_upsert news_item (clé = lien ou Message-ID + société + thème, skip_existing)
-  ─▶ nl_ask ─▶ org_resolve ─┬─ 0 ─▶ nl_found ─▶ object_upsert organization (siren)
-                            │        ─▶ nl_about ─┬─▶ link_upsert item_about (propose)
-                            │                     └─▶ object_upsert organization (account_status = target si absent)
-                            └─ 1 (ambigu) : l'item reste sans lien, à valider dans la Veille
-```
+**Choix de Shan :**
 
-Mise en route sur l'org : installer `watch`, monter `crm` et `prospecting_b2b*`, installer le flow de pnex-sales, créer la boîte partagée et la donner à lire, inscrire le directeur commercial comme membre avec l'adresse depuis laquelle il transfère, choisir la boîte dans le nœud *Mail received*, puis déployer.
+- Q-MK1 : source des cours européens.
+- Q-MK2 : univers de départ (indices, liste personnelle) et profondeur d'historique du test de règle.
+- Q-MK3 : place de la crypto dans les cours quotidiens. Les bougies minute Binance existent en table.
+- Q-MK4 : appels de résultats par webcast, ou communiqués écrits seulement.
+- Accord d'usage avec HistData (ou offre payante) avant tout usage en SaaS. Conditions SaaS de Binance et Dukascopy.
+- Licence ACLED pour un usage commercial.
+- Q-TA1 : lecture des conditions de l'API Myfxbook (MK45).
+- MT5-4 : compilation de l'EA et essai sur deux comptes démo.
+- Q-IN1 : mise à jour d'un article (même URL, hash différent) : nouveau brut sous le même item, ou nouvel item ?
+- Q-IN2 : modèle local de référence pour `llm_scope = local_only`.
+- Q-IN3 : brut = HTML d'origine + texte, ou texte seul ?
+- Q-IN4 : propriété `place` sur `news_item`, ou établissement proposé ?
 
-**PRD reçu (brouillon du 2026-11-17)**, conservé tel quel ci-dessous. Les numéros de section sont ceux du brouillon.
+**Essais réels non faits :**
 
-### L.1 Problème
+- Tiingo, ALFRED, EIA (aucune clé). GLEIF pour D812. Synthèse quotidienne avec un vrai fournisseur.
+- MK3b sur dix communiqués réels, avec un fournisseur configuré.
+- Marchés de prédiction : formes des réponses à confirmer au premier passage par le proxy.
+- D893 : écart HistData / MT5, après MT5-4.
 
-PNEX doit ingérer des contenus textuels venant de sources hétérogènes : newsletters e-mail, RSS, pages web, API, dépôts de fichiers. Souvent, la source ne donne qu'un **pointeur** (lien, accroche) et le contenu complet est ailleurs : derrière une session, un paywall ou une API authentifiée.
+**Code :**
 
-Ce qu'on veut en sortir, c'est **une synthèse, des entités et des tags d'impact** rattachés à la frise et à l'ontologie. Le texte brut est conservé pour pouvoir **retraiter** le stock quand on change de modèle, de prompt ou de schéma d'extraction.
-
-Aucune source ne doit être codée en dur. Une source est **une instance de configuration**, et PNEX reste neutre.
-
-### L.2 Principes
-
-1. **Découverte ≠ acquisition ≠ traitement** : trois étapes séparées et interchangeables.
-2. **La politique de rétention est déclarée par source et appliquée par le moteur**, jamais par un script utilisateur.
-3. **Toute l'I/O passe par des nœuds natifs** (Rust), comme pour le reste du flow engine.
-4. **L'utilisateur déclare ses droits** sur chaque source (`content_license`). PNEX applique la déclaration, il ne juge pas.
-5. **Brut immuable, analyses versionnées** : le texte stocké ne change jamais ; chaque passage LLM produit une nouvelle version d'analyse, comparable aux précédentes.
-
-### L.3 Modèle
-
-#### L.3.1 Source
-
-```yaml
-source:
-  id: <uuid>
-  name: "Newsletter presse X"
-  kind: imap | rss | http_poll | webhook | file_drop | web_agent
-  connection: { ... }            # dépend du kind ; secrets via le store PNEX, jamais en clair
-  discovery:                     # comment produire des items candidats
-    link_rules:
-      include: ["https://www.example.com/article/*"]
-      exclude: ["*/unsubscribe*", "*/preferences*"]
-    resolve_redirects: true      # liens de tracking des newsletters → URL canonique
-  acquisition:
-    enabled: false               # désactivé par défaut
-    fetcher: http | http_auth | web_agent
-    web_agent_id: <optionnel>    # extension navigateur avec session utilisateur
-    max_rate: "1/30s"            # cadence de lecteur, pas de parallélisme agressif
-  content_policy:
-    retention: store_full | metadata_only | ephemeral   # défaut : store_full
-    content_license: "déclaration libre de l'utilisateur"
-    ttl: null                    # optionnel, ex. "730d" ; purge auto du brut, analyses conservées
-    encrypt_at_rest: true        # chiffrement S3 avec clé par org
-    raw_access: [role:analyst]   # qui peut lire le texte brut dans l'UI/API
-    allow_export: false          # export/partage du brut hors PNEX
-    llm_scope: local_only | any
-  processing:
-    pipeline_id: <uuid>          # pipeline de traitement à appliquer
-```
-
-#### L.3.2 Item (crate `core`, source de vérité partagée)
-
-| Champ | Type | Note |
-|---|---|---|
-| `id` | uuid | |
-| `source_id` | uuid | |
-| `canonical_url` | text | après résolution des redirections, sans paramètres de tracking |
-| `title`, `teaser` | text | issus de la découverte |
-| `published_at` | timestamptz | temps de validité |
-| `ingested_at` | timestamptz | temps de transaction (bitemporel) |
-| `content_hash` | bytea | dédup + détection de mise à jour, calculé même en `ephemeral` |
-| `retention` | enum | copie de la politique au moment de l'ingestion |
-| `raw_ref` | text NULL | clé S3 du brut (HTML + texte extrait), **NULL si `ephemeral` ou `metadata_only`** |
-| `current_analysis_id` | uuid NULL | analyse active (celle affichée et utilisée par la frise) |
-
-#### L.3.3 ItemAnalysis (append-only)
-
-| Champ | Type | Note |
-|---|---|---|
-| `id` | uuid | |
-| `item_id` | uuid | |
-| `run_id` | uuid | lot de retraitement auquel elle appartient |
-| `model` | text | ex. `qwen3-8b-q4@local`, `glm-5.3-flash@cloud` |
-| `prompt_version` | text | hash ou tag du gabarit |
-| `schema_version` | text | version du schéma d'extraction (entités/tags) |
-| `summary` | text | reformulée, bornée |
-| `entities` | jsonb | sociétés, sites, secteurs, matières, lieux → liens ontologie |
-| `tags` | jsonb | dont `impact` |
-| `metrics` | jsonb | latence, tokens, coût, score qualité éventuel |
-| `created_at` | timestamptz | |
-
-Déduplication : `canonical_url`, puis `content_hash`.
-
-### L.4 Nœuds (flow engine / pipelines)
-
-| Nœud | Rôle | Sortie |
-|---|---|---|
-| `imap_trigger` | nouveau message dans une boîte/dossier | `message` |
-| `rss_poll` / `http_poll` | interrogation périodique | `feed_entries` |
-| `extract_links` | extraction de liens + règles include/exclude + résolution des redirections | `item_candidates[]` |
-| `dedup` | filtrage sur `canonical_url` | `item_candidates[]` |
-| `fetch_content` | acquisition via le fetcher configuré | `Ephemeral<Content>` ou `Content` |
-| `readability` | extraction du texte principal | même enveloppe que l'entrée |
-| `llm_summarize` | synthèse avec gabarit (longueur bornée, reformulation imposée) | `summary` |
-| `llm_extract` | entités + tags d'impact (sortie JSON typée) | `entities`, `tags` |
-| `persist_item` | écriture de l'item ; refuse `raw_ref` si la politique l'interdit | `item` |
-
-`llm_*` : le modèle est choisi par org/source. Si `llm_scope = local_only`, le moteur **refuse** l'exécution sur un modèle cloud, au lieu de basculer dessus en silence.
-
-Correspondance actuelle (D989) : `imap_trigger` = `mail_received` ; `rss_poll` = pipeline `watch/rss` ; `dedup` + `persist_item` = `object_upsert` sur la clé unique `ref` avec `skip_existing` ; `llm_summarize` / `llm_extract` = `llm_text` + une fonction qui valide la sortie ; `fetch_content` = `web_visit` (public) ou l'agent navigateur ; `extract_links` / `readability` : pas encore de nœud dédié.
-
-### L.5 Retraitement (changement de modèle / prompt / schéma)
-
-- **Run de retraitement** : sélection d'items (source, période, filtre) + pipeline cible (modèle, `prompt_version`, `schema_version`). Exécuté par la queue de workers, reprenable, avec cadence et budget max.
-- Lit le brut depuis S3, produit de nouvelles `ItemAnalysis` ; **n'écrase rien**.
-- **Comparaison** : vue côte à côte ancienne/nouvelle analyse sur un échantillon, métriques agrégées (latence, coût, divergence des entités/tags d'impact).
-- **Bascule** : promotion d'un run ⇒ `current_analysis_id` mis à jour en masse ; rollback = repromouvoir le run précédent (même logique que enregistrer/déployer des flows).
-- **Évaluation** : possibilité de marquer un jeu d'items « référence » annoté à la main pour noter les modèles.
-- Les liens ontologie/frise suivent l'analyse active.
-
-### L.6 Mode optionnel « éphémère »
-
-Pour les sources où l'utilisateur ne veut ou ne peut pas garder le brut. `ephemeral` = le texte complet est traité en mémoire puis jeté (pas de retraitement possible). Le moteur doit le garantir, pas le laisser à la discipline de chacun :
-
-- **Type `Ephemeral<T>`** dans `core` : pas de `Serialize`, `Debug` masqué (`<redacted n bytes>`), `Drop` qui met la mémoire à zéro (`zeroize`).
-- **Exécution in-process** : un `Ephemeral<T>` ne peut pas traverser une file (Valkey, queue PG) ni être persisté entre deux nœuds. Toute la séquence `fetch_content → … → llm_*` tourne dans une seule tâche.
-- **Observabilité** : traces et logs OpenObserve ne reçoivent que des métadonnées (taille, hash, durée, statut).
-- **Retries** : on relance le `fetch`, on ne met jamais le contenu en cache.
-- **Erreurs** : les messages d'erreur ne contiennent pas d'extrait du contenu.
-- **Test de conformité** : test d'intégration qui injecte un texte marqueur et vérifie qu'il est absent des logs, traces, tables, S3 et Valkey après exécution.
-
-### L.7 UI
-
-- Écran **Sources** : création depuis un type, test de connexion, aperçu des items découverts, avant toute activation de l'acquisition.
-- Activer l'acquisition affiche la politique (rétention, LLM, cadence) et le champ `content_license` à remplir.
-- Vue **Items** : liste, filtre par source/entité/impact, clic → synthèse active + historique des analyses + lien vers l'original ; texte brut visible seulement pour les rôles `raw_access`.
-- Vue **Runs** : lancer un retraitement, suivre l'avancement, comparer, promouvoir/rollback.
-- Les items alimentent la frise et la carte comme les autres objets temporels.
-
-### L.8 Hors périmètre
-
-- Crawl de site (suivre les liens au-delà de ceux fournis par la source).
-- Contournement d'authentification ou de protection anti-bot.
-- Republication du contenu.
-
-### L.9 Livraison par étapes
-
-1. **L1** : `Source`, `Item`, `ItemAnalysis` dans `core`, migrations, `imap_trigger`, `extract_links`, `dedup`, `persist_item`. **Codé le 2026-11-17 sur l'existant (D989)** : le flow « Prospecting · forwarded newsletters », livré par pnex-sales (D991).
-2. **L2** : `fetch_content` (`http`, `http_auth`) + stockage brut S3 chiffré (`store_full`).
-3. **L3** : `llm_summarize` / `llm_extract` produisant des `ItemAnalysis` versionnées.
-4. **L4** : runs de retraitement + comparaison + promotion/rollback.
-5. **L5** : fetcher `web_agent` (extension navigateur PNEX).
-6. **L6** : rattachement ontologie / frise, vues UI.
-7. **L7** : mode `ephemeral` + test de conformité (si besoin).
-8. **L8** : carte des relations (D993).
-
-### L.10 Questions ouvertes
-
-- **Q-IN1** : mise à jour d'un article (même URL, hash différent) : nouveau brut versionné sous le même item, ou nouvel item ?
-- **Q-IN2** : modèle local de référence pour `llm_scope = local_only` (dépend du choix GPU). L'org de test tourne aujourd'hui sur `lfm3` local.
-- **Q-IN3** : format du brut : HTML d'origine + texte extrait, ou texte extrait seul (plus léger, mais retraitement de l'extraction impossible) ?
-- **Q-IN4** : le site cité (« nouvelle usine à Y ») n'est souvent pas encore au registre. Faut-il une propriété `place` sur `news_item`, ou un établissement proposé ? Au lot L1, la ville n'apparaît que dans le résumé.
+- MK0 : OpenFIGI et FIRDS.
+- MK3c (D846) : alerte sur événement accepté. Plafond de D845 en réglage d'org. Jetons et refus dans l'historique des runs.
+- D741 : rapprochement des pistes à refaire en flow (D998-T5, `operational-platform.md`).
+- D889 : pont table → trace d'un dossier pour un navire ou un avion suivi.
+- D923 : source de financement des wallets, voisinage à profondeur 2. D921 : liens `bears_on` posés sur un pays ou une société exposés.
+- D929 : reconnaissance de l'export brut Myfxbook, écran d'import.
+- `GET /markets/bars` ne lit pas `dukascopy_ohlcv_1m` (`bar_table` ne connaît que `binance_public`, `histdata` et `mt5:`).
+- « Instrument connu » d'une décision lit encore `market_history_partitions`, à supprimer (`pipelines.md` PE9). Lectures `/markets/*` à côté des requêtes nommées (PE7, PE8).
+- Couverture de l'or : achats des banques centrales, encours des ETF.
+- Lots L2 à L8 de l'ingestion de contenus (§3.17).
+- À vérifier : le plafond de 100 000 changements par transaction du journal `object_changes` (constaté sur un import UCDP en masse).

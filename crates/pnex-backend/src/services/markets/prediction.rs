@@ -1,4 +1,4 @@
-//! Prediction markets (markets-research.md appendix J, D918–D925): reads
+//! Prediction markets (markets-research.md §3.15, D918–D925): reads
 //! over what the pack's pipelines collect (pipelines.md D946): the
 //! markets and their dated resolution states as objects, their prices and
 //! trades in the org's tables `prediction_prices` and `prediction_trades`.
@@ -172,7 +172,7 @@ fn float(v: Option<&Value>) -> Option<f64> {
 }
 
 /// Price points of a token in `[from, as_of]`, sorted, the finest reading
-/// of an instant kept. A price is public at its instant (H.8).
+/// of an instant kept. A price is public at its instant (markets-research.md §3.12).
 async fn points_of(
     db: &DatabaseConnection,
     store: &S3Store,

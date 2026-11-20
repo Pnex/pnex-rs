@@ -1,4 +1,4 @@
-//! Bars and decisions of an external model (markets-research.md appendix G,
+//! Bars and decisions of an external model (markets-research.md §3.11,
 //! D891–D896). The runner is a service account: it reads bars and posts
 //! decisions, the only write open to it. Advice only: nothing here orders.
 

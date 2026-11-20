@@ -1,5 +1,5 @@
 //! Candidate causal chains of an instrument's price moves, as known at a
-//! date (markets-research.md H.7): an input of an external model, computed
+//! date (markets-research.md §3.14): an input of an external model, computed
 //! at reading time and never stored as a cause (D742).
 //!
 //! Effects: 1-hour returns beyond the instrument's threshold (`price.move`).
@@ -202,7 +202,7 @@ async fn macro_releases(
 /// Measured supply disruptions known in `[from, as_of]`: a value of a
 /// series that declares `disruption_drop_pct` at least that far below the
 /// mean of its 7 previous values (same metric), all as known at `as_of`.
-/// The threshold is the current property, like an instrument's (H.8).
+/// The threshold is the current property, like an instrument's (markets-research.md §3.12).
 async fn measured_disruptions(
     db: &DatabaseConnection,
     org: i64,
@@ -252,7 +252,7 @@ async fn measured_disruptions(
 
 /// Candidate chains of the instrument's price moves in `[from, as_of]`, as
 /// known at `as_of`, every one with its lift (never filtered: the model
-/// weighs them, H.7).
+/// weighs them, markets-research.md §3.14).
 pub async fn chains(
     db: &DatabaseConnection,
     store: &S3Store,

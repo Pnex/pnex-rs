@@ -1,4 +1,4 @@
-//! Prediction markets (markets-research.md appendix J): probabilities and
+//! Prediction markets (markets-research.md §3.15): probabilities and
 //! trades are rows, never objects (D919, D923); a cursor per series keeps
 //! a reading where it stopped; a model decision may carry forecasts on
 //! markets, scored against the market once resolved (D925).

@@ -1,4 +1,4 @@
-//! Decisions of an external model (markets-research.md appendix G): bars
+//! Decisions of an external model (markets-research.md §3.11): bars
 //! read at a date from the price tables (D892), decisions posted by a
 //! service account (D894) and their scores (D896). Advice only (D895):
 //! nothing here reaches a terminal or places an order.

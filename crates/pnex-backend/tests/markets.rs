@@ -2913,7 +2913,7 @@ async fn bulk_real_files() {
     .await;
 }
 
-/// The gold case on the real sources, by hand (appendix F.6 bis):
+/// The gold case on the real sources, by hand (markets-research.md §3.10):
 /// `MARKETS_CONTACT="Name mail" cargo test -p pnex-backend --test markets
 /// gold_real -- --ignored --nocapture`. Prints what each source gave.
 #[tokio::test]
@@ -3627,7 +3627,7 @@ fn minute_rows_at(
     pnex_backend::services::markets::history::ohlcv_batch("1m", "histdata", &names, &rows).unwrap()
 }
 
-/// H.7: a world event in a country a member declared exposing gold explains
+/// markets-research.md §3.14: a world event in a country a member declared exposing gold explains
 /// the next 3.5 % hourly move, with its lift; nothing before the event is
 /// known, nothing through a link opened later, nothing without the link.
 #[tokio::test]
@@ -4093,7 +4093,7 @@ async fn seed_prediction_prices(
         .unwrap();
 }
 
-/// Public trading accounts (markets-research.md appendix K): trades stored
+/// Public trading accounts (markets-research.md §3.16): trades stored
 /// once (D927), read as known at a date (D928), an entry-timing proposal
 /// around releases (D930) retained into the account object, never a link to
 /// a person whatever the link type (D933), purged with the account (D932).

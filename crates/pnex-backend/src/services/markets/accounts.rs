@@ -1,4 +1,4 @@
-//! Public trading accounts (markets-research.md appendix K): their trades are
+//! Public trading accounts (markets-research.md §3.16): their trades are
 //! rows of `account_trades` (D927), known at their import unless proven
 //! otherwise (D928); an account is an object once imported, added to a case
 //! or retained from a detection (Q-TA5); erasing it purges its rows (D932).

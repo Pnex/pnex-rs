@@ -1,5 +1,5 @@
 //! Causal chain detector (cases.md §3.6, D904–D908;
-//! markets-research.md H.7). Pure and deterministic: typed signals, the
+//! markets-research.md §3.14). Pure and deterministic: typed signals, the
 //! links that propagate a failure, declared cause → effect pairs. A chain
 //! is a lead, never a fact, and is measured against a placebo.
 
@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-/// Closed list of signal kinds (D904, H.7).
+/// Closed list of signal kinds (D904, markets-research.md §3.14).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum SignalKind {

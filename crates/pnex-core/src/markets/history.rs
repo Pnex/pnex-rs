@@ -1,4 +1,4 @@
-//! Fine price history (markets-research.md appendix C: D807–D809, D820,
+//! Fine price history (markets-research.md §3.8: D807–D809, D820,
 //! D822): the rows MT5 terminals push and their decoding. The public files
 //! are pipelines (pipelines.md). Pure code: no I/O.
 

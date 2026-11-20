@@ -1,4 +1,4 @@
-// MetaTrader 5 terminals (markets-research.md appendix E, D847–D849): a
+// MetaTrader 5 terminals (markets-research.md §3.9, D847–D849): a
 // terminal is registered from the list and opens on its connection steps;
 // the list shows its presence. Worst case (break-ui): served rows with very
 // long names and brokers, every presence, a full page.
