@@ -1,6 +1,7 @@
 //! Rules (analysis.md D829–D830): stored conditions on objects or series, a pass
-//! every five minutes under the rights of each rule's author that notifies when a
-//! condition turns true, and a replay on the past that sends nothing.
+//! every five minutes under the rights of each rule's author that notifies (and may
+//! propose an object) when a condition turns true, and a replay on the past that
+//! sends nothing.
 
 use std::collections::BTreeSet;
 
@@ -39,7 +40,7 @@ const TS: &str = "'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"'";
 
 fn select() -> String {
     format!(
-        "SELECT id, name, condition, channel_id, enabled, firing, version, created_by, state, \
+        "SELECT id, name, condition, propose, channel_id, enabled, firing, version, created_by, state, \
            to_char(last_fired_at AT TIME ZONE 'UTC', {TS}) AS last_fired_at, \
            to_char(updated_at AT TIME ZONE 'UTC', {TS}) AS updated_at FROM rules"
     )
@@ -47,10 +48,12 @@ fn select() -> String {
 
 fn view(r: &QueryResult) -> Result<Rule, DbErr> {
     let condition: Value = r.try_get("", "condition")?;
+    let propose: Option<Value> = r.try_get("", "propose")?;
     Ok(Rule {
         id: r.try_get::<Uuid>("", "id")?.to_string(),
         name: r.try_get("", "name")?,
         condition: serde_json::from_value(condition).unwrap_or_default(),
+        propose: propose.and_then(|v| serde_json::from_value(v).ok()),
         channel_id: r
             .try_get::<Option<Uuid>>("", "channel_id")?
             .map(|u| u.to_string()),
@@ -94,7 +97,7 @@ pub async fn get(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<Rule,
     Ok(view(&row)?)
 }
 
-/// The channel must be one of the org's.
+/// The channel must be one of the org's, the proposed types known.
 async fn checked(
     db: &DatabaseConnection,
     org_id: i64,
@@ -105,6 +108,22 @@ async fn checked(
             field: field.into(),
             token,
         });
+    }
+    if let Some(p) = &input.propose {
+        let unknown = crate::services::ontology::proposals::types_known(
+            db,
+            org_id,
+            &p.type_key,
+            [&p.link_type].into_iter(),
+        )
+        .await
+        .map_err(|e| RuleError::Db(DbErr::Custom(format!("{e:?}"))))?;
+        if let Some(field) = unknown {
+            return Err(RuleError::Invalid {
+                field: format!("propose.{field}"),
+                token: "invalid".into(),
+            });
+        }
     }
     let Some(raw) = input.channel_id.as_deref().filter(|c| !c.is_empty()) else {
         return Ok(None);
@@ -123,6 +142,13 @@ async fn checked(
     Ok(Some(id))
 }
 
+fn propose_json(input: &RuleInput) -> Option<Value> {
+    input
+        .propose
+        .as_ref()
+        .map(|p| serde_json::to_value(p).unwrap_or_default())
+}
+
 fn is_unique_violation(e: &DbErr) -> bool {
     e.to_string().contains("duplicate key")
 }
@@ -137,8 +163,8 @@ pub async fn create(
     let id = Uuid::new_v4();
     let condition = serde_json::to_string(&input.condition).unwrap_or_default();
     db.execute_raw(stmt(
-        "INSERT INTO rules (id, org_id, name, condition, channel_id, enabled, created_by) \
-         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)",
+        "INSERT INTO rules (id, org_id, name, condition, channel_id, enabled, created_by, propose) \
+         VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)",
         vec![
             id.into(),
             org_id.into(),
@@ -147,6 +173,7 @@ pub async fn create(
             channel.into(),
             input.enabled.into(),
             by.into(),
+            propose_json(input).into(),
         ],
     ))
     .await
@@ -183,7 +210,7 @@ pub async fn update(
             "UPDATE rules SET name = $3, condition = $4::jsonb, channel_id = $5, enabled = $6, \
                created_by = $7, state = CASE WHEN $8 THEN NULL ELSE state END, \
                firing = CASE WHEN $8 THEN false ELSE firing END, \
-               version = version + 1, updated_at = now() \
+               propose = $10, version = version + 1, updated_at = now() \
              WHERE org_id = $1 AND id = $2 AND version = $9",
             vec![
                 org_id.into(),
@@ -196,6 +223,7 @@ pub async fn update(
                 by.into(),
                 restart.into(),
                 expected.into(),
+                propose_json(input).into(),
             ],
         ))
         .await
@@ -228,12 +256,13 @@ pub async fn delete(db: &DatabaseConnection, org_id: i64, id: Uuid) -> Result<()
 }
 
 /// The mask of a rule's author, from the managed role of their membership (as a
-/// schedule, D303); `None` when they left the org or may no longer write rules.
+/// schedule, D303), and whether they may file proposals; `None` when they left the
+/// org or may no longer write rules.
 pub async fn author_mask(
     db: &DatabaseConnection,
     org_id: i64,
     author: i64,
-) -> Result<Option<Redaction>, DbErr> {
+) -> Result<Option<(Redaction, bool)>, DbErr> {
     use crate::models::_entities::organization_members as om;
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     let role = om::Entity::find()
@@ -249,9 +278,11 @@ pub async fn author_mask(
     if !can("rules:write") {
         return Ok(None);
     }
-    Ok(Some(
+    let file = can("proposals:file");
+    Ok(Some((
         Redaction::of(can).with_markings(db, org_id, author).await?,
-    ))
+        file,
+    )))
 }
 
 /// Ids of the objects matching an objects condition, as `hide` sees them.
@@ -403,9 +434,11 @@ pub async fn pass(ctx: &loco_rs::app::AppContext) -> Result<u64, DbErr> {
             continue;
         };
         // Its author left or lost the right: the rule rests until someone saves it.
-        let Some(hide) = author_mask(db, org_id, author).await? else {
+        let Some((hide, may_file)) = author_mask(db, org_id, author).await? else {
             continue;
         };
+        // What fired this pass: (object, value) to propose for.
+        let mut fired_on: Vec<(String, Option<f64>)> = Vec::new();
         let c = &rule.condition;
         let (now_state, firing, message) = match c.kind {
             RuleKind::Objects => {
@@ -415,7 +448,10 @@ pub async fn pass(ctx: &loco_rs::app::AppContext) -> Result<u64, DbErr> {
                 let before: Option<BTreeSet<String>> = state
                     .as_ref()
                     .and_then(|s| serde_json::from_value(s["ids"].clone()).ok());
-                let new = before.as_ref().map_or(0, |b| now.difference(b).count());
+                if let Some(b) = &before {
+                    fired_on.extend(now.difference(b).map(|id| (id.clone(), None)));
+                }
+                let new = fired_on.len();
                 let message =
                     (new > 0).then(|| format!("{new} new object(s) of type {} match.", c.type_key));
                 (json!({ "ids": now }), !now.is_empty(), message)
@@ -441,6 +477,7 @@ pub async fn pass(ctx: &loco_rs::app::AppContext) -> Result<u64, DbErr> {
                     });
                 let message = (holding && !rule.firing).then(|| {
                     let v = points.last().map(|p| p.1).unwrap_or_default();
+                    fired_on.push((c.device_id.clone(), Some(v)));
                     format!("{} of {} is {v}.", c.metric, c.device_id)
                 });
                 (json!({ "holding": holding }), holding, message)
@@ -449,6 +486,9 @@ pub async fn pass(ctx: &loco_rs::app::AppContext) -> Result<u64, DbErr> {
         if let Some(body) = &message {
             notify(ctx, org_id, &rule, body.clone()).await;
             fired += 1;
+        }
+        if let (Some(p), true) = (&rule.propose, may_file) {
+            propose(db, org_id, &rule, p, &fired_on).await;
         }
         db.execute_raw(stmt(
             "UPDATE rules SET state = $2::jsonb, firing = $3, \
@@ -463,6 +503,51 @@ pub async fn pass(ctx: &loco_rs::app::AppContext) -> Result<u64, DbErr> {
         .await?;
     }
     Ok(fired)
+}
+
+/// Proposals filed by one pass of one rule at most: beyond, the rest only notifies.
+const PROPOSALS_PER_PASS: usize = 50;
+
+/// D829: one `object_create` proposal per firing, linked to what fired (an object,
+/// or the object of the series' device; no link when the device has none). The
+/// firing instant is in the slot: a new firing never replaces an open proposal.
+async fn propose(
+    db: &DatabaseConnection,
+    org_id: i64,
+    rule: &Rule,
+    p: &pnex_core::rules::RuleProposal,
+    fired_on: &[(String, Option<f64>)],
+) {
+    use crate::services::ontology::{objects, proposals};
+    use pnex_core::ontology::proposal::{ProposalInput, ProposalKind};
+    let now = chrono::Utc::now().timestamp_micros();
+    for (key, value) in fired_on.iter().take(PROPOSALS_PER_PASS) {
+        let found = match value {
+            None => match Uuid::parse_str(key) {
+                Ok(id) => objects::find(db, org_id, id).await.ok(),
+                Err(_) => None,
+            },
+            Some(_) => objects::find_by_native(db, org_id, "device", key)
+                .await
+                .ok(),
+        };
+        let target = found.map(|o| o.id.to_string());
+        let input = ProposalInput {
+            kind: Some(ProposalKind::ObjectCreate),
+            type_key: p.type_key.clone(),
+            title: Some(p.title_for(*value)),
+            link_type: target.as_ref().map(|_| p.link_type.clone()),
+            link_target_id: target.clone(),
+            values: p.values.clone(),
+            evidence: json!({ "rule_id": rule.id, "rule": rule.name, "value": value }),
+            origin: "rule".into(),
+            ..Default::default()
+        };
+        let scope = format!("|rule:{}|{key}|{now}", rule.id);
+        if let Err(e) = proposals::propose_by(db, org_id, &input, None, &scope, &[]).await {
+            tracing::warn!(rule = %rule.id, error = ?e, "rule proposal refused");
+        }
+    }
 }
 
 /// D830: when the rule would have fired over a window preset, under `hide` (the

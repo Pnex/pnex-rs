@@ -58,6 +58,14 @@ fn rule_error(e: RuleError) -> Result<Response> {
     })
 }
 
+/// A rule that proposes files proposals in its author's name (D829).
+fn may_propose(org: &OrgContext, input: &RuleInput) -> Result<()> {
+    if input.propose.is_some() && !org.can("proposals:file") {
+        return Err(crate::auth::access_denied("proposals:file"));
+    }
+    Ok(())
+}
+
 #[derive(serde::Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 struct PageQuery {
@@ -107,7 +115,7 @@ async fn list(
     tag = "rules",
     operation_id = "rules_create",
     summary = "Create a rule",
-    description = "A condition on the objects of a type (filters of the ontology query) or on a series (threshold held for some minutes), evaluated every five minutes with the rights of who saved it, notifying in-app or by a channel of the org when it turns true. Never writes anything else. Requires `rules:write`.",
+    description = "A condition on the objects of a type (filters of the ontology query) or on a series (threshold held for some minutes), evaluated every five minutes with the rights of who saved it, notifying in-app or by a channel of the org when it turns true. With `propose`, each firing also files an object proposal linked to what fired, which a member validates; it never writes the object itself. Requires `rules:write`, and `proposals:file` with `propose`.",
     request_body = pnex_core::rules::RuleInput,
     responses(
         (status = 201, body = pnex_core::rules::Rule),
@@ -122,6 +130,7 @@ async fn create(
     org: OrgContext,
     Json(input): Json<RuleInput>,
 ) -> Result<Response> {
+    may_propose(&org, &input)?;
     match rules::create(&ctx.db, org.org.id, org.auth.user.id, &input).await {
         Ok(r) => Ok((StatusCode::CREATED, Json(r)).into_response()),
         Err(e) => rule_error(e),
@@ -162,7 +171,7 @@ async fn one(
     tag = "rules",
     operation_id = "rules_update",
     summary = "Replace a rule",
-    description = "Replaces the rule on the version read (`expected_version`); it then runs with the rights of who saved it. A changed condition starts again from what is true now. Requires `rules:write`.",
+    description = "Replaces the rule on the version read (`expected_version`); it then runs with the rights of who saved it. A changed condition starts again from what is true now. Requires `rules:write`, and `proposals:file` with `propose`.",
     params(("id" = String, Path, format = "uuid", description = "Rule id (UUID)")),
     request_body = pnex_core::rules::RuleInput,
     responses(
@@ -180,6 +189,7 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(input): Json<RuleInput>,
 ) -> Result<Response> {
+    may_propose(&org, &input)?;
     match rules::update(&ctx.db, org.org.id, id, org.auth.user.id, &input).await {
         Ok(r) => format::json(r),
         Err(e) => rule_error(e),

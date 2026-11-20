@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{FilterOp, PropertyFilter};
-use pnex_core::rules::{Cmp, Rule, RuleCondition, RuleInput, RuleKind};
+use pnex_core::rules::{Cmp, Rule, RuleCondition, RuleInput, RuleKind, RuleProposal};
 use serde_json::Value;
 
 use super::cmp_label;
@@ -39,6 +39,14 @@ pub(super) fn RuleForm(
             .unwrap_or_default()
     });
     let mut enabled = use_signal(|| initial.as_ref().is_none_or(|r| r.enabled));
+    let propose = use_signal(|| initial.as_ref().and_then(|r| r.propose.clone()));
+    let propose_values = use_signal(|| {
+        initial
+            .as_ref()
+            .and_then(|r| r.propose.as_ref())
+            .map(|p| p.values.clone())
+            .unwrap_or_default()
+    });
     let mut busy = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let id = initial.as_ref().map(|r| r.id.clone());
@@ -63,6 +71,10 @@ pub(super) fn RuleForm(
                 .unwrap_or(f64::NAN),
             hold_minutes: hold().trim().parse().unwrap_or(0),
         },
+        propose: propose().map(|p| RuleProposal {
+            values: propose_values(),
+            ..p
+        }),
         channel_id: Some(channel()).filter(|c| !c.is_empty()),
         enabled: enabled(),
         expected_version: version,
@@ -294,6 +306,13 @@ pub(super) fn RuleForm(
                                 "{c.name}"
                             }
                         }
+                    }
+                }
+                if crate::state::access::can("proposals:file") {
+                    super::propose::ProposeFields {
+                        propose,
+                        values: propose_values,
+                        types: all_types.clone(),
                     }
                 }
                 label { class: "flex items-center gap-2 text-sm text-ink",

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | Livré (lots AN1 à AN3). AN4 et la règle qui propose restent à faire (§7) |
+| Statut | Livré (lots AN1 à AN3, règle qui propose D829). AN4 reste à faire (§7) |
 | Repose sur | `operational-platform.md` (D557), `pipelines.md` (worker D571–D574, requêtes nommées D948), `governance.md` (D801, D803), `crm.md` (masque D443), `ontology.md` (requête D185), `viz.md` (agrégats D579), `pages.md` |
 
 ## Résumé
@@ -18,6 +18,8 @@ page, calculée avec les droits du lecteur. Tout se fait en lecture seule (D557)
 - **Objet figé** : copie Parquet des objets d'un type, tels que l'auteur de la requête les voit.
 - **Requête nommée** : requête d'un pack installé, avec des paramètres typés (D948, `pipelines.md`).
 - **Règle** : condition sur les objets d'un type ou sur une série, avec son auteur.
+- **Proposition de règle** : objet qu'une règle propose à chaque déclenchement, lié à ce qui a
+  déclenché. Il attend dans « À valider » (`proposals.md`).
 - **Rejeu** : aperçu des déclenchements d'une règle sur une fenêtre passée. Il n'envoie rien.
 - **Bloc vivant** : nœud de page `live_block` qui porte une requête SQL ou un calcul sur des objets.
 
@@ -31,6 +33,8 @@ classDiagram
   Regle --> Objet : surveille
   Regle --> Serie : surveille
   Regle --> Notification : envoie
+  Regle --> Proposition : dépose
+  Proposition --> Objet : lié à
   BlocVivant --> Requete : calcule
   Page "1" --> "*" BlocVivant : contient
 ```
@@ -98,10 +102,20 @@ flowchart TD
   T --> C
   C -- oui --> CH[Envoi sur le canal]
   C -- non --> APP[Notification dans l'app]
+  O --> PR{Proposition demandée ?}
+  T --> PR
+  PR -- oui --> PP[Dépose un objet à valider]
 ```
 
 Le passage tourne en singleton `rules-pass`. Une règle suit au plus 2 000 objets. Une condition
 modifiée remet l'état de la règle à zéro.
+
+Une règle qui propose dépose une proposition `object_create` par déclenchement, 50 au plus par
+passage. L'origine de la proposition est `rule`. L'objet proposé porte le type, le titre et les
+valeurs fixes de la règle. Il est lié à l'objet qui a déclenché, ou à l'objet du device d'une
+série. Le titre remplace `{value}` par la valeur de la série. Il ne cite jamais le titre de l'objet
+déclencheur : la proposition montre cet objet masqué pour chaque lecteur. Une proposition n'a pas
+d'auteur : tout membre qui peut valider l'accepte, l'auteur de la règle aussi.
 
 Le rejeu lit l'historique des changements (objets) et les séries (O2). Il calcule les instants de
 déclenchement sur 24 h, 7 j ou 30 j, avec les droits de la personne qui demande.
@@ -143,7 +157,7 @@ laisse le bloc vide. L'export Markdown écrit la requête d'un bloc SQL et le ti
 4. Un type d'objet cité doit contenir 50 000 objets au plus (`analysis-too-many-objects`).
 5. Le texte SQL doit tenir en 64 Ko.
 6. Le résultat d'une requête doit être lisible par son seul auteur (404 pour les autres).
-7. Une règle ne doit jamais écrire de donnée (D557).
+7. Une règle ne doit jamais écrire de donnée (D557). Elle peut seulement déposer une proposition.
 8. Le rejeu ne doit rien envoyer ni stocker.
 9. Un bloc vivant doit se calculer avec les droits du lecteur, jamais avec ceux de l'auteur.
 10. Les attributs d'un bloc vivant doivent être des chaînes bornées, validées par le serveur (titre
@@ -169,8 +183,9 @@ Une requête sur une table marquée laisse une ligne `governance_reads`, comme u
 
 ### D829 — Règles : une condition, une alerte ou une proposition (AN2)
 
-Une règle porte sur un type d'objet (filtres D185) ou sur une série (seuil, durée). Seule la
-notification est livrée. La proposition attend (§7).
+Une règle porte sur un type d'objet (filtres D185) ou sur une série (seuil, durée). Elle notifie.
+Elle peut aussi proposer un objet lié à ce qui a déclenché (choix de Shan, 2026-11-20). Proposer
+demande `proposals:file` à l'auteur de la règle, à l'enregistrement et à chaque passage.
 
 ### D830 — Rejeu
 
@@ -204,7 +219,8 @@ L'export PDF recalcule chaque bloc et le date « au <date> ».
 - **Codes** : `analysis-busy`, `analysis-unavailable`, `analysis-table-unknown`,
   `analysis-sql-invalid`, `analysis-timeout`, `analysis-result-too-large`,
   `analysis-too-many-objects`, `named-query-not-found`, `rule-not-found`.
-- **Tables** : `analysis_queries` (migration 000131), `rules` (migration 000132).
+- **Tables** : `analysis_queries` (migration 000131), `rules` (migrations 000132 et 000161,
+  colonne `propose`).
 - **UI** : onglet « Requête SQL » de `/pipelines` (Ctrl+Entrée). Page `/rules` sous Automatisation.
   Fiche `assistant-kb/rules.md`.
 - **Code** : `pnex_core::{analysis, rules, pages}`, `services/{analysis,rules}.rs`, module
@@ -223,7 +239,5 @@ L'export PDF recalcule chaque bloc et le date « au <date> ».
 ## 7. Reste à faire
 
 - **AN4** : analyse sans code (tableau croisé).
-- **D829, règle qui propose** : pas encore codée (elle passe par une proposition, OP9). Choix de Shan :
-  quand la livrer.
 - **D827, worker dédié aux requêtes** : l'ancien texte cite `PNEX_WORKER_QUEUES=analysis`, absent
   du code. Choix de Shan : le coder, ou retirer cette option.

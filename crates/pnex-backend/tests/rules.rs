@@ -154,3 +154,57 @@ async fn a_rule_notifies_what_starts_matching() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn a_rule_proposes_a_linked_object() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = env.alice.as_str();
+        sql(&ctx.db, "DELETE FROM rules").await;
+        let (s, r) = call(&server, a, org, "POST", "/api/v1/ontology/packs/maintenance/install", None).await;
+        assert!(s < 300, "{r}");
+        let machine = |serial: &str| json!({ "type_key": "machine", "title": serial, "properties": { "serial": serial } });
+        call(&server, a, org, "POST", "/api/v1/ontology/objects", Some(machine("P-1"))).await;
+        let propose = json!({ "type_key": "work_order", "title": "Inspect the new machine",
+            "link_type": "work_order_on", "values": { "kind": "inspection", "state": "requested" } });
+        let rule = |p: Value| json!({ "name": "New machines", "propose": p,
+            "condition": { "kind": "objects", "type_key": "machine" } });
+
+        // Unknown types are refused before anything runs.
+        let (s, e) = call(&server, a, org, "POST", "/api/v1/rules",
+            Some(rule(json!({ "type_key": "nope", "title": "x", "link_type": "work_order_on" })))).await;
+        assert_eq!(s, 400, "{e}");
+        assert!(e["errors"]["fields"].get("propose.type_key").is_some(), "{e}");
+        let (s, e) = call(&server, a, org, "POST", "/api/v1/rules",
+            Some(rule(json!({ "type_key": "work_order", "title": "x", "link_type": "nope" })))).await;
+        assert!(s == 400 && e["errors"]["fields"].get("propose.link_type").is_some(), "{e}");
+        let (s, r) = call(&server, a, org, "POST", "/api/v1/rules", Some(rule(propose))).await;
+        assert_eq!(s, 201, "{r}");
+        assert_eq!(r["propose"]["values"]["kind"], "inspection", "{r}");
+
+        // First pass records; a new machine then fires and proposes a work order on it.
+        pnex_backend::services::rules::pass(&ctx).await.unwrap();
+        let (_, m) = call(&server, a, org, "POST", "/api/v1/ontology/objects", Some(machine("P-2"))).await;
+        let m = m["id"].as_str().unwrap().to_string();
+        pnex_backend::services::rules::pass(&ctx).await.unwrap();
+        let rows = sql(&ctx.db, "SELECT id::text AS id, origin, link_target_id, title FROM proposals \
+            WHERE type_key = 'work_order' AND status = 'proposed'").await;
+        assert_eq!(rows.len(), 1, "one proposal for the one new machine");
+        let row = &rows[0];
+        let get = |k: &str| row.try_get::<String>("", k).unwrap();
+        assert_eq!((get("origin"), get("link_target_id"), get("title")),
+            ("rule".into(), m.clone(), "Inspect the new machine".into()));
+
+        // Nobody filed it: the rule's author accepts it like any member.
+        let (s, v) = call(&server, a, org, "POST", &format!("/api/v1/proposals/{}/decision", get("id")),
+            Some(json!({ "decision": "accept" }))).await;
+        assert_eq!((s, v["status"].as_str()), (200, Some("accepted")), "{v}");
+        let wo = v["applied"].as_str().unwrap();
+        let links = sql(&ctx.db, &format!("SELECT target_object_id::text AS t FROM resource_edges \
+            WHERE source_object_id = '{wo}' AND relation = 'work_order_on'")).await;
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].try_get::<String>("", "t").unwrap(), m);
+    })
+    .await;
+}

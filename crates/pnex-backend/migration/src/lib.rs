@@ -152,6 +152,7 @@ mod m20261119_000157_proposal_create_link;
 mod m20261119_000158_qr_tags;
 mod m20261120_000159_marking_names_unique;
 mod m20261120_000160_proposal_author;
+mod m20261120_000161_rule_propose;
 
 pub struct Migrator;
 
@@ -300,6 +301,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261119_000158_qr_tags::Migration),
             Box::new(m20261120_000159_marking_names_unique::Migration),
             Box::new(m20261120_000160_proposal_author::Migration),
+            Box::new(m20261120_000161_rule_propose::Migration),
         ]
     }
 }

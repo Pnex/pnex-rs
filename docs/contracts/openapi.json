@@ -28429,6 +28429,9 @@
           "name": {
             "type": "string"
           },
+          "propose": {
+            "$ref": "#/components/schemas/RuleProposal"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -28540,6 +28543,10 @@
           },
           "name": {
             "type": "string"
+          },
+          "propose": {
+            "$ref": "#/components/schemas/RuleProposal",
+            "description": "An object to propose each time the rule fires; absent = notify only."
           }
         },
         "required": [
@@ -28554,6 +28561,33 @@
           "series"
         ],
         "type": "string"
+      },
+      "RuleProposal": {
+        "description": "D829: the object a rule proposes when it fires, linked to what fired it (the\nobject that started matching, or the series' device).",
+        "properties": {
+          "link_type": {
+            "description": "Link from the proposed object to what fired.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Its title; `{value}` becomes the series value. Never the title of what fired:\nthe proposal shows that object as each reader may see it (masking).",
+            "type": "string"
+          },
+          "type_key": {
+            "description": "Type of the proposed object.",
+            "type": "string"
+          },
+          "values": {
+            "description": "Fixed property values of the proposed object (its required ones, at least).",
+            "type": "object"
+          }
+        },
+        "required": [
+          "type_key",
+          "title",
+          "link_type"
+        ],
+        "type": "object"
       },
       "RuleReplay": {
         "properties": {
@@ -94492,7 +94526,7 @@
         "x-pnex-as-of": "current_only"
       },
       "post": {
-        "description": "A condition on the objects of a type (filters of the ontology query) or on a series (threshold held for some minutes), evaluated every five minutes with the rights of who saved it, notifying in-app or by a channel of the org when it turns true. Never writes anything else. Requires `rules:write`.",
+        "description": "A condition on the objects of a type (filters of the ontology query) or on a series (threshold held for some minutes), evaluated every five minutes with the rights of who saved it, notifying in-app or by a channel of the org when it turns true. With `propose`, each firing also files an object proposal linked to what fired, which a member validates; it never writes the object itself. Requires `rules:write`, and `proposals:file` with `propose`.",
         "operationId": "rules_create",
         "parameters": [
           {
@@ -94729,7 +94763,7 @@
         "x-pnex-as-of": "current_only"
       },
       "put": {
-        "description": "Replaces the rule on the version read (`expected_version`); it then runs with the rights of who saved it. A changed condition starts again from what is true now. Requires `rules:write`.",
+        "description": "Replaces the rule on the version read (`expected_version`); it then runs with the rights of who saved it. A changed condition starts again from what is true now. Requires `rules:write`, and `proposals:file` with `propose`.",
         "operationId": "rules_update",
         "parameters": [
           {

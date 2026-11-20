@@ -19,6 +19,7 @@ Some writes come from a source that is not sure it is right: a group link from a
 - **Case event**: a detection of an investigation case (two members together, a stop, a signal lost); accepting it adds the event to the case, as **Retain** does in the case; *Correct and accept* edits the event's title.
 - **Recognized voice**: a person recognized by their voice on an audio or video file (consented voice profile). It is listed here but decided on the file's review page, where you can hear it and move its span: **Listen and decide** opens it.
 - **Field note** (maintenance pack): a technician writes a note on an equipment, a part or a model, with photos, from the object page. It waits here; once accepted, it is a field note linked to the object, with its photos. Without network, the app keeps the note and sends it when the network is back.
+- **Rule**: an object a rule proposes when it fires (Automation › Rules), linked to the object or device that fired it. Nobody filed it: any member who may validate accepts it.
 - Filter by status: to validate, accepted, rejected, replaced (a newer proposal for the same thing replaced it before anyone decided).
 
 Viewers read the proposals but do not decide. A person never accepts a proposal they filed: another member does. The maintenance pack's proposals need the right to validate maintenance: an org can keep it to its referents with a custom role. The assistant never decides: it can only list them.

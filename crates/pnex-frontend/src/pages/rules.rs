@@ -19,6 +19,7 @@ use crate::components::ui::BTN_SECONDARY_SM;
 use crate::state::access::can;
 
 mod form;
+mod propose;
 mod replay;
 
 /// What a rule watches, in words; `names` maps type keys to their labels.

@@ -93,7 +93,7 @@ pub async fn propose<C: ConnectionTrait>(
     org_id: i64,
     p: &ProposalInput,
 ) -> Result<Option<Uuid>> {
-    propose_by(db, org_id, p, None, &[]).await
+    propose_by(db, org_id, p, None, "", &[]).await
 }
 
 /// One extra link an `object_create` makes on acceptance, from the new object.
@@ -105,11 +105,13 @@ pub struct ExtraLink {
 
 /// [`propose`], filed by a person (`author`, who never accepts it) and, for an
 /// `object_create`, with extra links made on acceptance (parts-docs.md PD1d).
+/// `scope` narrows the slot and the fingerprint (who filed it, about what).
 pub async fn propose_by<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
     p: &ProposalInput,
     author: Option<i64>,
+    scope: &str,
     extra: &[ExtraLink],
 ) -> Result<Option<Uuid>> {
     let Some(kind) = p.kind else {
@@ -170,7 +172,7 @@ pub async fn propose_by<C: ConnectionTrait>(
             format!("{FIELD_MAX_LENGTH}:{VALUES_MAX_BYTES}"),
         ));
     }
-    let Some((slot, fingerprint)) = keys(p, author) else {
+    let Some((slot, fingerprint)) = keys(p, scope) else {
         return Err(invalid("kind", FIELD_INVALID));
     };
     let refs = refs_of(db, org_id, p).await?;
@@ -233,18 +235,13 @@ pub async fn propose_by<C: ConnectionTrait>(
     Ok(Some(id))
 }
 
-/// Slot and fingerprint. A person's proposal competes only with their own about the
-/// same object: two people's notes with the same title never replace each other.
-fn keys(p: &ProposalInput, author: Option<i64>) -> Option<(String, String)> {
+/// Slot and fingerprint, narrowed by `scope`. A person's proposal competes only with
+/// their own about the same object: two people's notes with the same title never
+/// replace each other.
+fn keys(p: &ProposalInput, scope: &str) -> Option<(String, String)> {
     let (mut slot, mut text) = (slot(p)?, fingerprint_text(p)?);
-    if let Some(a) = author {
-        let by = format!(
-            "|author:{a}|{}",
-            p.link_target_id.as_deref().unwrap_or_default()
-        );
-        slot.push_str(&by);
-        text.push_str(&by);
-    }
+    slot.push_str(scope);
+    text.push_str(scope);
     Some((slot, digest(&text)))
 }
 
@@ -257,10 +254,14 @@ pub async fn file(
     p: &ProposalInput,
     extra: &[ExtraLink],
 ) -> Result<ProposalView> {
-    if let Some(id) = propose_by(db, org_id, p, Some(author), extra).await? {
+    let scope = format!(
+        "|author:{author}|{}",
+        p.link_target_id.as_deref().unwrap_or_default()
+    );
+    if let Some(id) = propose_by(db, org_id, p, Some(author), &scope, extra).await? {
         return get(db, org_id, id).await;
     }
-    let (_, fingerprint) = keys(p, Some(author)).ok_or_else(|| invalid("kind", FIELD_INVALID))?;
+    let (_, fingerprint) = keys(p, &scope).ok_or_else(|| invalid("kind", FIELD_INVALID))?;
     let id = db
         .query_one_raw(stmt(
             "SELECT id FROM proposals WHERE org_id = $1 AND fingerprint = $2",

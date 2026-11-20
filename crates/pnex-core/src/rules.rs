@@ -1,6 +1,7 @@
 //! Rules (analysis.md D829–D830): a condition on the objects of a type or on a
-//! series, evaluated every few minutes, notifying when it turns true, and replayed
-//! on the past. DTOs and the pure evaluation, wasm-safe.
+//! series, evaluated every few minutes, notifying (and optionally proposing an
+//! object) when it turns true, and replayed on the past. DTOs and the pure
+//! evaluation, wasm-safe.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -70,11 +71,49 @@ pub struct RuleCondition {
     pub hold_minutes: u32,
 }
 
+/// D829: the object a rule proposes when it fires, linked to what fired it (the
+/// object that started matching, or the series' device).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RuleProposal {
+    /// Type of the proposed object.
+    pub type_key: String,
+    /// Its title; `{value}` becomes the series value. Never the title of what fired:
+    /// the proposal shows that object as each reader may see it (masking).
+    pub title: String,
+    /// Link from the proposed object to what fired.
+    pub link_type: String,
+    /// Fixed property values of the proposed object (its required ones, at least).
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub values: Map<String, Value>,
+}
+
+impl RuleProposal {
+    pub fn title_for(&self, value: Option<f64>) -> String {
+        let value = value.map(|v| v.to_string()).unwrap_or_default();
+        self.title
+            .replace("{value}", &value)
+            .trim()
+            .chars()
+            .take(TITLE_MAX)
+            .collect()
+    }
+}
+
+/// Longest title of a proposed object.
+pub const TITLE_MAX: usize = 200;
+/// Largest `values` of a proposed object, in bytes of JSON.
+pub const VALUES_MAX: usize = 8 * 1024;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RuleInput {
     pub name: String,
     pub condition: RuleCondition,
+    /// An object to propose each time the rule fires; absent = notify only.
+    #[serde(default)]
+    pub propose: Option<RuleProposal>,
     /// A notification channel of the org; absent = in-app.
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     #[serde(default)]
@@ -134,6 +173,23 @@ impl RuleInput {
                 }
             }
         }
+        if let Some(p) = &self.propose {
+            if !key_ok(&p.type_key) {
+                return Some(("propose.type_key", "required".into()));
+            }
+            if !key_ok(&p.link_type) {
+                return Some(("propose.link_type", "required".into()));
+            }
+            if p.title.trim().is_empty() {
+                return Some(("propose.title", "required".into()));
+            }
+            if p.title.chars().count() > TITLE_MAX {
+                return Some(("propose.title", format!("max_length:{TITLE_MAX}")));
+            }
+            if Value::Object(p.values.clone()).to_string().len() > VALUES_MAX {
+                return Some(("propose.values", format!("max_length:{VALUES_MAX}")));
+            }
+        }
         None
     }
 }
@@ -146,6 +202,8 @@ pub struct Rule {
     pub id: String,
     pub name: String,
     pub condition: RuleCondition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub propose: Option<RuleProposal>,
     #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub channel_id: Option<String>,
     pub enabled: bool,
@@ -374,6 +432,23 @@ mod tests {
     }
 
     #[test]
+    fn a_proposed_title_names_what_fired() {
+        let p = RuleProposal {
+            type_key: "work_order".into(),
+            title: "Temperature at {value}".into(),
+            link_type: "concerns".into(),
+            values: Map::new(),
+        };
+        assert_eq!(p.title_for(Some(81.5)), "Temperature at 81.5");
+        assert_eq!(p.title_for(None), "Temperature at");
+        let long = RuleProposal {
+            title: "{value}".repeat(60),
+            ..p
+        };
+        assert_eq!(long.title_for(Some(1234.5)).chars().count(), TITLE_MAX);
+    }
+
+    #[test]
     fn inputs_are_checked() {
         let ok = RuleInput {
             name: "Big deals".into(),
@@ -382,11 +457,22 @@ mod tests {
                 filters: vec![f("amount", FilterOp::Gt, json!(1000))],
                 ..Default::default()
             },
+            propose: None,
             channel_id: None,
             enabled: true,
             expected_version: None,
         };
         assert!(ok.violation().is_none());
+        let proposing = RuleInput {
+            propose: Some(RuleProposal {
+                type_key: "work_order".into(),
+                title: " ".into(),
+                link_type: "concerns".into(),
+                values: Map::new(),
+            }),
+            ..ok.clone()
+        };
+        assert_eq!(proposing.violation().unwrap().0, "propose.title");
         let series = RuleInput {
             condition: RuleCondition {
                 kind: RuleKind::Series,
