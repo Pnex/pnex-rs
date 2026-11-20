@@ -1,4 +1,4 @@
-//! 3D model viewer (assisted-creation.md §8, D231): orbit view of a GLB,
+//! 3D model viewer (assisted-creation.md §2.3, D231): orbit view of a GLB,
 //! its animations, its skeleton, bone rotation and named poses. The WebGL
 //! side is `js/mesh.js` (`window.pnexViewers.mesh`), reached through
 //! `media_viewer::mesh_call`.

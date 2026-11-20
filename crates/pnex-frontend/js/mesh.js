@@ -1,4 +1,4 @@
-// 3D model viewer (assisted-creation.md §8, D231): a GLB in an orbit view,
+// 3D model viewer (assisted-creation.md §2.3, D231): a GLB in an orbit view,
 // its skeleton, bone rotation, named poses, embedded animations and a PNG
 // thumbnail. Bundled into viewers.js; exposed as `window.pnexViewers.mesh`.
 // Every entry point returns plain JSON-able values and never throws: the
