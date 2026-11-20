@@ -1,4 +1,4 @@
-//! The person search functions of the `prospecting_b2b` pack (pipeline-engine.md
+//! The person search functions of the `prospecting_b2b` pack (pipelines.md
 //! D999), run in the sandbox the flows use: the subject built from the graph,
 //! the score of what a search kept, and the follow-up of a human decision.
 #![cfg(feature = "starlark")]

@@ -1,4 +1,4 @@
-//! Sync from a dataset (data-pipelines.md D577): what a run planned and could not
+//! Sync from a dataset (pipelines.md D577): what a run planned and could not
 //! write because an object it needs did not exist. The source does not change when
 //! that object appears, so the next run must not count these as already applied.
 

@@ -150,7 +150,7 @@ pub enum SecretConsumerKind {
     WebSearchProvider,
     /// Password of a mailbox (mail.md D453).
     Mailbox,
-    /// Password of a connector to an outside database (data-pipelines.md D352).
+    /// Password of a connector to an outside database (pipelines.md D352).
     Connector,
     /// Read or write secret of an image registry (agent-environments.md D703).
     ImageRegistry,

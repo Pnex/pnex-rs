@@ -3,7 +3,7 @@
 > **Statut : proposé (2026-10-22), questions Q-W1–Q-W4 tranchées par Shan le même jour (§6).** Demande
 > de la session `pnex-quali-watch` : trouver le site de chaque organisme
 > habilité, le faire valider, puis le crawler chaque semaine pour la
-> conformité. Suit `data-pipelines.md` (D344–D358). Liens : `ingestion.md`
+> conformité. Suit `pipelines.md` (D344–D358). Liens : `pipelines.md`
 > (D317–D322), `partner-watch.md` (D301–D316, D307 crawl, D312 nœuds
 > ontologie), `extension-collector.md` (D254), `site-recipes.md`
 > (D323–D328), `geo-layers.md` (fournisseurs géo), `security.md` §9 (D110–D118),

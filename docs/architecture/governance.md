@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Statut | Livré (lots G1 à G7). SAML, I4 général et I5 restent à faire (§7) |
-| Repose sur | `iam.md` (D285–D299, I4, I5), `crm.md` (D442, D443 masque, D446 effacement), `data-pipelines.md` (D569–D578, lignage), `connectors.md` |
+| Repose sur | `iam.md` (D285–D299, I4, I5), `crm.md` (D442, D443 masque, D446 effacement), `pipelines.md` (D569–D578, lignage), `pipelines.md` |
 
 ## Résumé
 

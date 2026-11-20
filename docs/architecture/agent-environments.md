@@ -327,7 +327,7 @@ flowchart LR
 
 | Sens | Exemple | État | Où |
 |---|---|---|---|
-| Entrée | Ticket Jira | ⬜ Pas de connecteur Jira. Le webhook signé d'OP2 (CN3, D795) sait recevoir un webhook Jira dans une table ; aucun déclencheur ne lance un run sur cet événement (D398 : seul le nœud de flow `agent_run` existe, source non branchée) | `connectors.md`, nœud `agent_run` |
+| Entrée | Ticket Jira | ⬜ Pas de connecteur Jira. Le webhook signé d'OP2 (CN3, D795) sait recevoir un webhook Jira dans une table ; aucun déclencheur ne lance un run sur cet événement (D398 : seul le nœud de flow `agent_run` existe, source non branchée) | `pipelines.md`, nœud `agent_run` |
 | Entrée | Mail | 🟡 Boîtes livrées (`services/mail`) ; aucun déclencheur de run sur un message entrant | `mail.md` |
 | Entrée | Données | ✅ MCP PneX avec le token de run | passerelle D732 |
 | Sortie | Code | ✅ GitHub seul (D752) : branche `pnex/run-<id>` poussée par le sidecar (D775), demande de fusion ouverte par le serveur, lien gardé dans `agent_runs.merge_requests`. Démontré le 2026-11-08 (`agent-environments-recette.md` §6). GitLab et Forgejo absents. Un push refusé laisse le run réussi | `services/forge.rs`, `services/agent_runs.rs` `open_merge_requests` |

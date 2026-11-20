@@ -1,4 +1,4 @@
-//! Sync of a dataset into the ontology (data-pipelines.md D577, §9.7 ter): each
+//! Sync of a dataset into the ontology (pipelines.md D577, §3.6): each
 //! run plans the transactions of the current view and those last applied, by
 //! entity, and writes what changed between them. An edit made in the ontology
 //! therefore survives until the source changes that value (Q-P6).
@@ -46,7 +46,7 @@ pub(super) fn steps_fill_a_table(m: &Mapping) -> bool {
 }
 
 /// A table is readable by any viewer of the org, a sensitive value only by an admin
-/// (data-pipelines.md §9.4): such a mapping does not go through a table.
+/// (pipelines.md §4.2): such a mapping does not go through a table.
 pub(super) fn maps_sensitive(s: &super::super::OrgSchema, m: &Mapping) -> bool {
     use pnex_core::ontology::schema::Classification::Sensitive;
     let objects = m.objects.iter().any(|o| {

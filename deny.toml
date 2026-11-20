@@ -13,7 +13,7 @@ ignore = [
     # We only verify RS256 signatures with Rauthy's public keys, and sqlx-mysql
     # encrypts a password with the server's public key: no private-key operation
     # (the Marvin timing attack needs one) runs in the process. MySQL connectors
-    # also require TLS, so that path is never taken (connectors.md D792). No fixed
+    # also require TLS, so that path is never taken (pipelines.md D792). No fixed
     # release upstream.
     { id = "RUSTSEC-2023-0071", reason = "public-key operations only, MySQL under TLS, no fix upstream" },
     # Unmaintained, no vulnerability, no maintained drop-in upstream.
@@ -56,7 +56,7 @@ ignore = [
     { id = "RUSTSEC-2026-0429", reason = "zip 2 in sherpa-onnx-sys build script only (SEC-42)" },
     # quick-xml 0.39 in object_store 0.13, pinned by DataFusion 55: it parses the
     # answers of our own S3, never a user file. Remove when DataFusion moves to
-    # object_store 0.14, which fixes it (data-pipelines.md §9.8).
+    # object_store 0.14, which fixes it (pipelines.md §3.8).
     { id = "RUSTSEC-2026-0194", reason = "quick-xml in object_store 0.13, S3 answers only" },
     { id = "RUSTSEC-2026-0195", reason = "quick-xml in object_store 0.13, S3 answers only" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained (unic-langid macros, build time)" },

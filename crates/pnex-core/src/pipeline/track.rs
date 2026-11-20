@@ -1,4 +1,4 @@
-//! The state of each enumerated row between runs (pipeline-engine.md D937):
+//! The state of each enumerated row between runs (pipelines.md D937):
 //! which rows a run takes, and in what order.
 
 use serde::{Deserialize, Serialize};

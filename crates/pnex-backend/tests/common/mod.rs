@@ -489,7 +489,7 @@ pub async fn join_org(
     assert_eq!(res.status_code(), 200, "accept {email}: {}", res.text());
 }
 
-/// The pipeline worker in this process (pipeline-engine.md D943): the `sql`
+/// The pipeline worker in this process (pipelines.md D943): the `sql`
 /// steps of the shipped pipelines wait on it.
 pub fn spawn_pipeline_worker() -> tokio::task::JoinHandle<()> {
     use pnex_pipeline_worker::{engine::Limits, Config, Worker};

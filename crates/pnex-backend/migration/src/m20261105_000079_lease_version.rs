@@ -1,4 +1,4 @@
-//! Who holds a lease, in which version and since when (data-pipelines.md §7 bis,
+//! Who holds a lease, in which version and since when (pipelines.md §3.13,
 //! point 2): an old pod holding a sweep was invisible during a partial rollout.
 
 use sea_orm_migration::prelude::*;

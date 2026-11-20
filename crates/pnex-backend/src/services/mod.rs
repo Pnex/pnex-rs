@@ -78,7 +78,7 @@ pub mod media_detect;
 pub mod media_ingest;
 pub mod media_runs;
 pub mod media_sniff;
-/// Media files sent in parts (data-pipelines.md §9.9).
+/// Media files sent in parts (pipelines.md §3.12).
 pub mod media_uploads;
 pub mod memory;
 /// MT5 terminals as registered data sources (markets-research.md D847–D849).

@@ -763,7 +763,7 @@ fn step_name(step: &str) -> String {
         "table_inspect" => t!("onto-imp-step-inspect"),
         "rows_filter" => t!("onto-imp-step-filter"),
         "connector_query" => t!("onto-imp-step-connector"),
-        // Steps of a pipeline (pipeline-engine.md D936).
+        // Steps of a pipeline (pipelines.md D936).
         "enumerate" => t!("onto-imp-step-enumerate"),
         "fetch" => t!("onto-imp-step-download"),
         "extract" => t!("onto-imp-step-pick"),

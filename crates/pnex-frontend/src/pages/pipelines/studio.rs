@@ -1,4 +1,4 @@
-//! Studio of a pipeline (data-pipelines.md §9.5), in the shared editor shell (D222):
+//! Studio of a pipeline (pipelines.md §6.3), in the shared editor shell (D222):
 //! the graph of its tables fills the stage, with the first rows of the selected one
 //! under it; a closable column holds the transform, its code (YAML), its runs and its
 //! schedule. Versions in the shell (D221).

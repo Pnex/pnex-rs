@@ -308,7 +308,7 @@ impl Hooks for App {
         crate::services::agent_artifacts::spawn_sweeper(ctx);
         // Scheduled ontology imports (partner-watch.md D303).
         crate::services::ontology::imports::spawn_scheduler(ctx);
-        // Chained runs, stale tables, dataset events (data-pipelines.md D575–D578).
+        // Chained runs, stale tables, dataset events (pipelines.md D575–D578).
         crate::services::data_builds::spawn(ctx);
         // Server site crawls (partner-watch.md D307).
         crate::services::crawl::spawn_scheduler(ctx);
@@ -429,7 +429,7 @@ impl Hooks for App {
         // Side by side, within the pod's grace period: hand the orgs of the
         // local flow worker over (D106); let the import runs finish, none
         // starting any more, the late ones failed `import-run-interrupted`
-        // (data-pipelines.md §7 bis).
+        // (pipelines.md §3.13).
         tokio::join!(
             crate::services::flow_cluster::shutdown(),
             crate::services::ontology::imports::stop::shutdown(

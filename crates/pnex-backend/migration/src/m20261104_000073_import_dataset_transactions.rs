@@ -1,4 +1,4 @@
-//! Sync from a dataset (data-pipelines.md D577): the transactions a run read,
+//! Sync from a dataset (pipelines.md D577): the transactions a run read,
 //! which the next run compares against.
 
 use sea_orm_migration::prelude::*;

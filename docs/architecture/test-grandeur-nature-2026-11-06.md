@@ -181,7 +181,7 @@ la sous-traitance privée de rang 2 et 3 reste partielle.
   autre import de l'org (clé prise, version changée) le recalcule une fois et réécrit.
   **Audit C4** : le délai du verrou d'org a son code, `import-org-busy`.
 - **C6** : repli en jointure par fusion avec tri sur disque quand la table de hachage
-  dépasse le pool (`data-pipelines.md` §9.7 quater) ; mesure réelle 44,5 M × 38 M après
+  dépasse le pool (`pipelines.md` §3.8) ; mesure réelle 44,5 M × 38 M après
   déploiement.
 - **C7** : une conversion d'upload perdue est reprise après 3 min sans battement (au
   lieu de 10), avec la transaction ouverte par le pod perdu.

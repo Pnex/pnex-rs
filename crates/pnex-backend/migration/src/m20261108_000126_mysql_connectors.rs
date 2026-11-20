@@ -1,4 +1,4 @@
-//! MySQL connectors, under TLS only (connectors.md D792).
+//! MySQL connectors, under TLS only (pipelines.md D792).
 
 use sea_orm_migration::prelude::*;
 

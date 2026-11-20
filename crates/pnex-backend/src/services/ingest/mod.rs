@@ -1,5 +1,5 @@
-//! Open-data ingestion steps on the server side (ingestion.md D317–D321):
-//! the `steps:` of an import (data-pipelines.md D344), configured on the
+//! Open-data ingestion steps on the server side (pipelines.md D317–D321):
+//! the `steps:` of an import (pipelines.md D344), configured on the
 //! import, never taken from a request. Bytes live in the S3 staging area
 //! (`org_{id}/staging/0/{run}/…`), never on a local disk; every step is
 //! journaled in `ingest_steps` with its manifest (run history) and the

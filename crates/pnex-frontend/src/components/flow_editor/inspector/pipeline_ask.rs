@@ -4,7 +4,7 @@ use super::*;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::pipeline::ask::{PipelineAskConfig, PER_DAY_DEFAULT, PER_DAY_MAX};
 
-// ─────────────── pipeline-ask (pipeline-engine.md D999) ───────────────
+// ─────────────── pipeline-ask (pipelines.md D999) ───────────────
 
 const INPUT: &str = "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm";
 

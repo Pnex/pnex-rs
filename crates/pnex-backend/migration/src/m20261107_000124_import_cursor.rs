@@ -1,4 +1,4 @@
-//! Incremental reads (connectors.md D794): the last cursor value an import committed
+//! Incremental reads (pipelines.md D794): the last cursor value an import committed
 //! and how many incremental reads ran since the last full one.
 
 use sea_orm_migration::prelude::*;

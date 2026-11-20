@@ -355,7 +355,7 @@ const ENGINE_HOSTS: &[(&str, &str)] = &[
 ];
 
 /// Data sources and sites named by the engine, frozen: each line leaves with
-/// the lot that moves it to a pipeline of a pack (pipeline-engine.md D951,
+/// the lot that moves it to a pipeline of a pack (pipelines.md D951,
 /// lots PE2-PE9). (file, hosts, reason). A new one fails the guard; one that
 /// is gone must be removed from here.
 const HOST_DEBT: &[(&str, &[&str], &str)] = &[

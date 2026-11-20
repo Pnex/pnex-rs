@@ -1,6 +1,6 @@
 //! Fine price history (markets-research.md appendix C: D807–D809, D820,
 //! D822): the rows MT5 terminals push and their decoding. The public files
-//! are pipelines (pipeline-engine.md). Pure code: no I/O.
+//! are pipelines (pipelines.md). Pure code: no I/O.
 
 /// Decimal places of the prices and volumes kept (Binance publishes 8).
 pub const SCALE: u32 = 8;

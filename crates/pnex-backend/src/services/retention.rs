@@ -30,7 +30,7 @@ pub const MAX_DAYS: u32 = 3650;
 /// `system_settings` key of the platform default retention.
 const DEFAULT_RETENTION_KEY: &str = "default_retention_days";
 
-/// `system_settings` key of how long the provenance journal is kept (data-pipelines.md
+/// `system_settings` key of how long the provenance journal is kept (pipelines.md
 /// D350, Q-P1): a choice of its own, whatever the tier or the telemetry retention say.
 const HISTORY_RETENTION_KEY: &str = "history_retention_days";
 /// Provenance serves to follow an entity over years.

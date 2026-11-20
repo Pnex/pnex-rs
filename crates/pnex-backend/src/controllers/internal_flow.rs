@@ -83,7 +83,7 @@ pub fn routes() -> Routes {
         .add("/internal/flow/site-crawl", post(flow_site_crawl))
         // Agent runs started by agent_run nodes (agent-environments.md D713).
         .add("/internal/flow/agent-run", post(flow_agent_run))
-        // Rows asked of a pack pipeline by pipeline_ask nodes (pipeline-engine.md D999).
+        // Rows asked of a pack pipeline by pipeline_ask nodes (pipelines.md D999).
         .add("/internal/flow/pipeline-ask", post(flow_pipeline_ask))
         // Pages written by page-write nodes (D209).
         .add("/internal/flow/page-write", post(flow_page_write))

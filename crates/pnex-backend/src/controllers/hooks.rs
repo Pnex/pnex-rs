@@ -1,4 +1,4 @@
-//! Incoming webhooks (connectors.md D795). Public: the signature with the connector's
+//! Incoming webhooks (pipelines.md D795). Public: the signature with the connector's
 //! secret is the authentication, and the org comes from the connector (R1).
 
 use axum::body::Bytes;

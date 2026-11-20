@@ -23,7 +23,7 @@ use crate::services::secrets::Keyring;
 const SWEEP_EVERY: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// The pass of the markets still outside the pipelines: the MT5 inbox
-/// (pipeline-engine.md PE8).
+/// (pipelines.md PE8).
 pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
     init(ctx);
     let ctx = ctx.clone();

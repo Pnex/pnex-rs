@@ -1,4 +1,4 @@
-//! Who saved each version of a pipeline (data-pipelines.md D354): the studio shows it.
+//! Who saved each version of a pipeline (pipelines.md D354): the studio shows it.
 
 use sea_orm_migration::prelude::*;
 

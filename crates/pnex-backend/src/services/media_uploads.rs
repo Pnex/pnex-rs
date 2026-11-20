@@ -1,4 +1,4 @@
-//! A media file sent in several requests (data-pipelines.md §9.9). A proxy limits each
+//! A media file sent in several requests (pipelines.md §3.12). A proxy limits each
 //! request (Cloudflare: 100 MB) and the time of its answer (about 100 s): parts wait on
 //! S3, one object each, and any pod joins them afterwards into one version, streaming
 //! part by part (one part in memory at a time). Same shape as dataset uploads

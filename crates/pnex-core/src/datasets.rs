@@ -1,4 +1,4 @@
-//! Datasets (data-pipelines.md D569): DTOs of the catalogue. Pure, wasm-safe.
+//! Datasets (pipelines.md D569): DTOs of the catalogue. Pure, wasm-safe.
 
 use serde::{Deserialize, Serialize};
 

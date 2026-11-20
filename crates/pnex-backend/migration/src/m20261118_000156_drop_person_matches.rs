@@ -1,4 +1,4 @@
-//! Person matches run as a pack pipeline (pipeline-engine.md D996): their
+//! Person matches run as a pack pipeline (pipelines.md D996): their
 //! state is the pipeline's rows, navigations and proposals, not a table.
 
 use sea_orm_migration::prelude::*;

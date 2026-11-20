@@ -1,5 +1,5 @@
 //! `pnex-ontology-trigger`: event source of one object type
-//! (operational-platform.md D998, pipeline-engine.md D999).
+//! (operational-platform.md D998, pipelines.md D999).
 //!
 //! The server publishes object, link and decided-proposal events on
 //! `pnex:onto:v1:{org}`. This node subscribes to the org channel and emits one

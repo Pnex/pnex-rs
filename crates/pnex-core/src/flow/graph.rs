@@ -191,12 +191,12 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ontology::trigger::OntologyTriggerConfig,
     },
-    /// Asks a pack pipeline for rows of its `asked` axis (pipeline-engine.md D999).
+    /// Asks a pack pipeline for rows of its `asked` axis (pipelines.md D999).
     PipelineAsk {
         #[serde(default)]
         config: crate::pipeline::ask::PipelineAskConfig,
     },
-    /// Event source fed by new versions of a table (data-pipelines.md D578).
+    /// Event source fed by new versions of a table (pipelines.md D578).
     DatasetTrigger {
         #[serde(default)]
         config: crate::pipelines::DatasetTriggerConfig,

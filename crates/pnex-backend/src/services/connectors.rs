@@ -1,4 +1,4 @@
-//! Connectors (data-pipelines.md D352): saved access to an outside database. Only
+//! Connectors (pipelines.md D352): saved access to an outside database. Only
 //! this server connects, through the egress rule of `pnex_core::connectors`, to the
 //! address it checked, so that a name resolving elsewhere later changes nothing.
 
@@ -590,7 +590,7 @@ const REST_TRIES: u32 = 5;
 const REST_TIMEOUT: Duration = Duration::from_secs(120);
 const TOKEN_MAX_BYTES: usize = 64 * 1024;
 
-/// A REST connector ready to send GETs (connectors.md D793). The client reaches the
+/// A REST connector ready to send GETs (pipelines.md D793). The client reaches the
 /// connector's host at the address checked above only, follows no redirect, and every
 /// other host (the OAuth2 token endpoint) goes through the guarded resolver.
 pub(crate) struct RestTarget {

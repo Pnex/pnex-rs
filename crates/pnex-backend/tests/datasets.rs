@@ -1,4 +1,4 @@
-//! Datasets API (data-pipelines.md D569): load, view, time travel, refusals,
+//! Datasets API (pipelines.md D569): load, view, time travel, refusals,
 //! org isolation (R1), viewer read-only (R2), and a bench that a large file is
 //! not held in memory.
 //!

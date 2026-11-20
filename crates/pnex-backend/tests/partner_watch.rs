@@ -1488,7 +1488,7 @@ async fn imports_apply_thousands_of_records_quickly() {
     .await;
 }
 
-/// An import with its own steps runs them on "Run now" (data-pipelines.md
+/// An import with its own steps runs them on "Run now" (pipelines.md
 /// D344): no flow, the zip fetched, extracted, filtered, then applied.
 #[tokio::test]
 #[serial]
@@ -1893,7 +1893,7 @@ async fn message_recipients_need_an_admin_flag_and_respect_the_caps() {
     .await;
 }
 
-// ───────────── open-data ingestion (ingestion.md D317–D322) ─────────────
+// ───────────── open-data ingestion (pipelines.md D317–D322) ─────────────
 
 const FC_STANDARD: &str = concat!(
     "\"Id_Fiche\";\"Numero_Fiche\";\"Intitule\";\"Nomenclature_Europe_Niveau\";\"Date_Decision\";\"Date_Fin_Enregistrement\";\"Date_Effet\";\"Actif\"\n",
@@ -3259,7 +3259,7 @@ async fn the_news_and_shows_of_an_organization_are_one_query_each() {
     .await;
 }
 
-/// watch.md D975: the org's own feed is read from its host, each item kept
+/// pipelines.md D975: the org's own feed is read from its host, each item kept
 /// once and linked to its source, so to the company the source belongs to.
 #[tokio::test]
 #[serial]

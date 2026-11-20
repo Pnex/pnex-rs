@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **AN1, AN2 et AN3 codés le 2026-11-08** (§6) ; OP5 complet hors AN4 |
 | Déclencheur | Ordre OP1 → OP2 → OP3, puis OP5 (`operational-platform.md` §2) ; agrégats déjà livrés (`object-aggregates.md`) |
-| Repose sur | `operational-platform.md` (D557 : lecture seule, droits de l'appelant), `data-pipelines.md` (worker D571–D574), `governance.md` (marquages D801), `crm.md` (masque D443), `ontology.md` (D185 requête), `pages` |
+| Repose sur | `operational-platform.md` (D557 : lecture seule, droits de l'appelant), `pipelines.md` (worker D571–D574), `governance.md` (marquages D801), `crm.md` (masque D443), `ontology.md` (D185 requête), `pages` |
 | Numérotation | **D825…D832**, lots **AN1…AN3** (AN4, analyse sans code, plus tard) |
 
 ## 1. Le besoin en une phrase

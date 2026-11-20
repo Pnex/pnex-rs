@@ -37,7 +37,7 @@ pub fn interval_us(interval: &str) -> Option<i64> {
 
 /// The table of a `source` column value (D807): one per (source, shape).
 // shortcut: names the tables the market pipelines write; goes with the market
-// routes in PE7 (pipeline-engine.md D948).
+// routes in PE7 (pipelines.md D948).
 pub fn bar_table(source: &str) -> Option<&'static str> {
     if source.starts_with("mt5:") && source.len() > 4 {
         return Some(super::history::MT5_OHLCV_1M.table);

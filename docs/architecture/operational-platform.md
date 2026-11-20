@@ -4,7 +4,7 @@
 |---|---|
 | Statut | Périmètre validé le 2026-11-03. OP1 en grande partie livré. OP2, OP3, OP5 (hors AN4) et OP9 livrés. État des lots au **§11** |
 | Numérotation | **D551…D568**, lots **OP1…OP15** |
-| Repose sur | `ontology.md`, `data-pipelines.md`, `iam.md`, `proposals.md`, `autonomous-agents.md`, `worker-fabric.md` §14, `surfaces-controls.md`, `security.md` §8, `app-builder.md`, `external-apps.md` |
+| Repose sur | `ontology.md`, `pipelines.md`, `iam.md`, `proposals.md`, `autonomous-agents.md`, `worker-fabric.md` §14, `surfaces-controls.md`, `security.md` §8, `app-builder.md`, `external-apps.md` |
 | Sécurité | Chaque lot passe `security.md` §6. Un finding = une ligne SEC-n au §7 |
 
 ## Résumé
@@ -155,7 +155,7 @@ Règles :
   proposition (D367, `link_upsert` en `propose`), sauf au-dessus d'un seuil sûr déclaré. Il passe
   aussi par la porte D563 quand elle s'applique.
 - **Le volume et la planification séparent la couche 1 de la couche 2**, pas « web ou non ». Le
-  runtime de flows exécute du code utilisateur et ne voit pas les octets (`data-pipelines.md` §2.1).
+  runtime de flows exécute du code utilisateur et ne voit pas les octets (`pipelines.md` §3.2).
 - **Un calcul dérivé est admis en couche 1.** Une table recalculée entièrement depuis ses sources
   (agrégat, indicateur) n'est pas une décision figée.
 - **Tout écart a une ligne au tableau des écarts** : quoi, pourquoi, quand il se lève. Si une revue
@@ -423,15 +423,15 @@ noyau.
 | `ontology.md` §3 | Parité fonctionnelle exclue | Levée (D551) |
 | `ontology.md` §3 | Notebooks exclus | Déploiement séparé (D559) |
 | `ontology.md` §3, R1 | Pas de fédération | Partage contractuel explicite (D567) |
-| Tout-Rust (`data-pipelines.md`, décisions #5, #18) | Ni Python ni JVM | Cœur en Rust ; Python en déploiement séparé (D553) |
+| Tout-Rust (`pipelines.md`, décisions #5, #18) | Ni Python ni JVM | Cœur en Rust ; Python en déploiement séparé (D553) |
 | D353 | Moteur SQL « sur besoin mesuré » | Retenu (D557) |
 | D355 | Studio sans canevas de graphe | Canevas admis pour les pipelines à plusieurs étapes (OP1) |
 | D369 | Connecteurs CRM/ERP non planifiés | Planifiés à OP2, écriture retour par action et D563 (D555) |
 | D374 | Seul un humain décide | Agent désigné, hors liste réservée (D563) |
 | D119 | Pas de LLM plateforme | Option d'un déploiement géré (D565) |
 | D123, D144, D391 | Aucune action physique par agent | Action gouvernée, à la livraison d'OP10 (D564) |
-| D934 (`pipeline-engine.md`) | « Tout est un pipeline », décisions comprises | Un seul format pour l'**ingestion** ; l'organisation de l'ontologie est en flow ou à la main (D998) |
-| D996 (`pipeline-engine.md`) | Score et rattachement dans le pipeline de collecte | Collecte en pipeline, score et rattachement en flow (D998) |
+| D934 (`pipelines.md`) | « Tout est un pipeline », décisions comprises | Un seul format pour l'**ingestion** ; l'organisation de l'ontologie est en flow ou à la main (D998) |
+| D996 (`pipelines.md`) | Score et rattachement dans le pipeline de collecte | Collecte en pipeline, score et rattachement en flow (D998) |
 | D438, D512 | Client générique ; pas de code en application | SDK typés, code sur origine isolée (D560) |
 | `hub.md` §3 | Gel, pas de kits payants | Dégel et kits payants à OP12 (D562) |
 | `worker-fabric.md` §13 | Pas de fleet manager | Vrai pour la fabric ; centre de livraison à part (D562) |
@@ -443,7 +443,7 @@ en sortie d'outil.
 ## 10. Questions ouvertes
 
 - **Q-O1** — Moteur de calcul Rust (DataFusion, Polars) et format (Iceberg, Delta) : à trancher au
-  PRD d'OP1 par un test de charge (`data-pipelines.md` §9, D569–D578, lot OP1.0).
+  PRD d'OP1 par un test de charge (`pipelines.md` §3.7, D569–D578, lot OP1.0).
 - **Q-O2** — Bureautique : cadre isolé ou portage de l'UI en Dioxus ? Le POC d'OP6 tranche.
 - **Q-O3** — Enquêtes sur des personnes : avis juridique et accès par finalité avant toute levée de
   l'exclusion.
@@ -460,8 +460,8 @@ Décisions des lots : D791–D806 (OP2, OP3), D825–D832 (OP5), D833–D840 (OP
 
 | Lot | État | PRD | Reste |
 |---|---|---|---|
-| OP1 | En grande partie livré | `data-pipelines.md` | voir le PRD |
-| OP2 | Livré (CN1–CN5) | `connectors.md` §9 | choix du secret des webhooks, provisoire (`connectors.md` §3) |
+| OP1 | En grande partie livré | `pipelines.md` | voir le PRD |
+| OP2 | Livré (CN1–CN5) | `pipelines.md` §3.10 | choix du secret des webhooks, provisoire (`pipelines.md` §7) |
 | OP3 | Livré (G1–G7) | `governance.md` §7 | SAML à la première demande client, I4 général, SEC-80 ouvert |
 | OP5 | Livré (AN1–AN3) + agrégats | `analysis.md` §6, `object-aggregates.md` | AN4 (analyse sans code), règle → proposition (D829) |
 | OP9 | Livré (VG1–VG3) | `validation-gate.md` §6 | voir le PRD |

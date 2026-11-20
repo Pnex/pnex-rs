@@ -1,4 +1,4 @@
-//! Parquet on the object store (data-pipelines.md D569): a sink that streams a
+//! Parquet on the object store (pipelines.md D569): a sink that streams a
 //! file through a multipart upload while hashing it, and a reader by byte range.
 
 use std::collections::{HashMap, HashSet};

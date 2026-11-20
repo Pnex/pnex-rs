@@ -1,4 +1,4 @@
-//! Flow import runs outlive the HTTP call of their step (ingestion.md
+//! Flow import runs outlive the HTTP call of their step (pipelines.md
 //! D322): `heartbeat_at` is refreshed while a run works, so a run whose
 //! pod died is told from one still running on another pod; the ingest
 //! pass and node that started a run find it again when they poll.

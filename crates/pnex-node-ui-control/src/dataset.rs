@@ -1,4 +1,4 @@
-//! `pnex-dataset-trigger`: event source of one dataset (data-pipelines.md D578).
+//! `pnex-dataset-trigger`: event source of one dataset (pipelines.md D578).
 //!
 //! The server publishes `dataset.committed` and `dataset.synced` on
 //! `pnex:ds:v1:{org}`. This node subscribes to the org channel and emits one message

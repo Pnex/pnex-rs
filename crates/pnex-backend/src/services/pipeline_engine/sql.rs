@@ -1,4 +1,4 @@
-//! The `sql` step (pipeline-engine.md D936, D943): the working tables a
+//! The `sql` step (pipelines.md D936, D943): the working tables a
 //! query names are staged as Parquet, the pipeline worker runs it, and its
 //! result comes back as a working table. User SQL never runs in the server.
 

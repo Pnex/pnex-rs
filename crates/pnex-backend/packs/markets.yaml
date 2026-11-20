@@ -28,7 +28,7 @@
 # `binance_klines_1m`, a closed month per transaction, never into objects. Binance's terms for redistribution or a
 # SaaS use are not checked: the table stays private to the org.
 # Since 1.13.0 the public price files are pipelines of this pack
-# (`pipelines/*.yaml`, pipeline-engine.md), each in a new table loaded again
+# (`pipelines/*.yaml`, pipelines.md), each in a new table loaded again
 # from the start: times are read in their source's zone (D939).
 # Since 1.5.0 (MK12) the pairs of `history_fx_pairs` get their bid/ask ticks
 # from Dukascopy's public hour files into the table `dukascopy_quotes`, one
@@ -39,7 +39,7 @@
 # terminals): their bars and ticks go to `mt5_ohlcv_1m` and `mt5_ticks`.
 # `histdata_pairs` loads HistData.com's free 1-minute bid bars (forex, metals,
 # oil, indices) into `histdata_m1`, a closed year per file, by the pipeline
-# `pipelines/histdata_m1.yaml` (pipeline-engine.md D939: New York time with
+# `pipelines/histdata_m1.yaml` (pipelines.md D939: New York time with
 # daylight saving).
 # Since 1.19.0 the symbols of `dukascopy_m1_symbols` get Dukascopy's
 # 1-minute bid and ask bars into the table `dukascopy_ohlcv_1m`, a UTC day
@@ -931,7 +931,7 @@ imports:
       links:
         - { type: event_about, from: event, to: series, close_missing: false, when: { from: target_type, equals: macro_series } }
         - { type: event_about, from: event, to: instrument, close_missing: false, when: { from: target_type, equals: instrument } }
-# Read-only queries of the pack (pipeline-engine.md D948), run under the
+# Read-only queries of the pack (pipelines.md D948), run under the
 # caller's rights by `POST /analysis/named/markets/<key>`.
 queries:
   - key: market_moves

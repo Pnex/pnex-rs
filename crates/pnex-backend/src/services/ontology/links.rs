@@ -587,7 +587,7 @@ pub async fn close<C: ConnectionTrait>(
 
 use sea_orm::sea_query::IntoCondition;
 
-// ─────────────────────────── bulk (data-pipelines.md D347) ───────────────────────────
+// ─────────────────────────── bulk (pipelines.md D347) ───────────────────────────
 
 const BULK_CHUNK: usize = super::objects::BULK_CHUNK;
 

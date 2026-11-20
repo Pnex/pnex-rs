@@ -4,7 +4,7 @@ use super::*;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::pipelines::DatasetTriggerConfig;
 
-// ─────────────── dataset-trigger (data-pipelines.md D578) ───────────────
+// ─────────────── dataset-trigger (pipelines.md D578) ───────────────
 
 /// Table trigger inspector: the table by name, since a pipeline creates its table at
 /// its first run, and which event.

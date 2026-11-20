@@ -166,7 +166,7 @@ Flow modèle « CRM · drafts to the outbox » (toutes les heures, 20 au plus) :
 
 ### D590 — Une liste de salon devient des pistes (2026-11-04)
 
-> Amendée par D973 (2026-11-14, `watch.md`) : le salon est le `show` neutre du pack `watch`, étendu de `list` ; ses chiffres (coût, conversion, retour) sont supprimés.
+> Amendée par D973 (2026-11-14, `pipelines.md`) : le salon est le `show` neutre du pack `watch`, étendu de `list` ; ses chiffres (coût, conversion, retour) sont supprimés.
 
 Avant : le fichier donnait des `list_contact` et une société proposée (D337), mais rien ne menait à une piste ni au salon, et le ROI de D588 partait de saisies à la main.
 

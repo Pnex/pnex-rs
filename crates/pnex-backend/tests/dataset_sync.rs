@@ -1,4 +1,4 @@
-//! Sync of a dataset into the ontology (data-pipelines.md D577, §9.7 ter): the
+//! Sync of a dataset into the ontology (pipelines.md D577, §3.6): the
 //! delta is by planned entity, so an edit survives until the source changes that
 //! value, and a row gone does not close what its sibling rows still hold.
 //!

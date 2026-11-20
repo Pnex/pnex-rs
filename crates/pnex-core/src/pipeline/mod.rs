@@ -1,4 +1,4 @@
-//! The pipeline engine (pipeline-engine.md D934–D953): one document for every
+//! The pipeline engine (pipelines.md D934–D953): one document for every
 //! source and every transform, closed steps over named working tables. Pure,
 //! wasm-safe: the backend parses the YAML and runs the steps.
 

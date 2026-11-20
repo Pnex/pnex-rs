@@ -1,6 +1,6 @@
 //! Prediction market prices, trades and read cursors leave PostgreSQL: the
 //! pack's pipelines write them into the org's tables `prediction_prices` and
-//! `prediction_trades`, reloaded from zero (pipeline-engine.md D946, D952).
+//! `prediction_trades`, reloaded from zero (pipelines.md D946, D952).
 
 use sea_orm_migration::prelude::*;
 

@@ -1,4 +1,4 @@
-//! The `sql` step of a pipeline (pipeline-engine.md D936, D943). The server
+//! The `sql` step of a pipeline (pipelines.md D936, D943). The server
 //! stages the working tables a query reads and queues it; this runs it with
 //! the transforms' session, allow list and limits, and writes the result
 //! back as one Parquet file. User SQL stays out of the server.

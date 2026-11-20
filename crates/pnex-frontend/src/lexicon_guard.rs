@@ -99,7 +99,7 @@ const RULES: &[Rule] = &[
         use_instead: "marquage",
         allowed_keys: &[],
     },
-    // connectors.md D795: a connector that receives signed calls is a webhook.
+    // pipelines.md D795: a connector that receives signed calls is a webhook.
     // A lifting hook in a SCADA symbol (`sym-`) is a real hook.
     Rule {
         scope: Scope::Fr,
@@ -107,7 +107,7 @@ const RULES: &[Rule] = &[
         use_instead: "webhook",
         allowed_keys: &["sym-"],
     },
-    // data-pipelines.md D358: the words of a pipeline screen.
+    // pipelines.md D358: the words of a pipeline screen.
     Rule {
         scope: Scope::Fr,
         term: "transformation",

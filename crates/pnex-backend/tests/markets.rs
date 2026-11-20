@@ -492,7 +492,7 @@ async fn prices_with_a_vault_key_and_the_reaction_to_a_filing() {
                 .await
                 .unwrap();
         }
-        // The key's host is the shipped pipeline's own (pipeline-engine.md D942):
+        // The key's host is the shipped pipeline's own (pipelines.md D942):
         // no address an org edits can carry it elsewhere.
         pnex_backend::services::markets::allow_test_host(&base);
         pnex_backend::services::pipeline_engine::store::route_for_tests("stats.bis.org", &base);
@@ -2615,7 +2615,7 @@ END:VCALENDAR\r\n".to_string())
         // CFTC COT: positions of Tuesday, known on Friday (no look-ahead).
         let r = api.run("Positions of traders (CFTC COT)").await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
-        // The run history shows the pipeline's steps (pipeline-engine.md D944).
+        // The run history shows the pipeline's steps (pipelines.md D944).
         let steps: Vec<&str> = r["steps"].as_array().unwrap().iter().filter_map(|s| s["step"].as_str()).collect();
         assert_eq!(steps, ["enumerate", "fetch", "read", "sql", "write"], "{r}");
         let gold = object_id(&db, org, "macro_series", "code", "088691").await.expect("COT series");

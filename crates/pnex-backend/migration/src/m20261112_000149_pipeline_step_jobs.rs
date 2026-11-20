@@ -1,4 +1,4 @@
-//! The `sql` steps of pipelines (pipeline-engine.md D936, D943): the server
+//! The `sql` steps of pipelines (pipelines.md D936, D943): the server
 //! stages the working tables a query reads as Parquet and queues it; the
 //! worker runs it with the transforms' guards and writes the result back
 //! under `output_key`. A job is kept a day.

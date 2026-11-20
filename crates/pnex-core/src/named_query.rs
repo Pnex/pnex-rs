@@ -1,4 +1,4 @@
-//! Named queries of a pack (pipeline-engine.md D948): a read-only `SELECT`
+//! Named queries of a pack (pipelines.md D948): a read-only `SELECT`
 //! with typed parameters, run like any analysis query (D825, D826) under
 //! the caller's rights. A value never becomes SQL: it is checked against
 //! its type, then written as a literal (a text quoted, its quotes doubled).

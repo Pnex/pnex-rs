@@ -1,4 +1,4 @@
-//! Pipelines (data-pipelines.md D571, D573, D574): versioned documents, the run
+//! Pipelines (pipelines.md D571, D573, D574): versioned documents, the run
 //! queue the worker takes from, and lineage. The server never runs user SQL.
 
 use pnex_core::datasets::Dataset;

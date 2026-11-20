@@ -1,4 +1,4 @@
-//! The request of a `connector_query` step on a REST connector (connectors.md D793):
+//! The request of a `connector_query` step on a REST connector (pipelines.md D793):
 //! path, parameters, where the records sit, which columns to keep, how to page.
 //! Pure logic only; the server sends the requests.
 

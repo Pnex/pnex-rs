@@ -53,7 +53,7 @@ pub mod as_of;
 /// `capture_profile` and `capture_people` (default navigation rules now); the two
 /// capture routes answer a `ProfileCapture` instead of a `Mission`. `PageSnapshot`,
 /// `RunInput` and `SiteRecipeRun` carry the rule engine and the new rule steps.
-/// 10 (2026-11-18, pipeline-engine.md D999): the person search routes
+/// 10 (2026-11-18, pipelines.md D999): the person search routes
 /// (`/extension/people/{id}/matches`) are removed; a person's profile is found
 /// by the pack's flows (action `find_profile`), its state read on the person.
 pub const CONTRACT: u32 = 10;

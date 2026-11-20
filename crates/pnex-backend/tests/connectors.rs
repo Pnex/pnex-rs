@@ -1,4 +1,4 @@
-//! Connectors (data-pipelines.md D352): an import reads an outside database into a
+//! Connectors (pipelines.md D352): an import reads an outside database into a
 //! table, read-only, with the password in the vault and rights checked on each run.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL, which also plays the outside database) and the

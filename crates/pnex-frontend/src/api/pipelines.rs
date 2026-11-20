@@ -1,4 +1,4 @@
-//! Data pipelines API (data-pipelines.md D571–D578): tables, pipelines, chained runs
+//! Data pipelines API (pipelines.md D571–D578): tables, pipelines, chained runs
 //! and connectors.
 
 use pnex_core::connectors::{Connector, ConnectorInput, ConnectorSecret, ConnectorTest};

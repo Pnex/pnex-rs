@@ -5,7 +5,7 @@ use pnex_core::media_upload::{MediaUploadComplete, MediaUploadInput};
 
 use crate::services::media_uploads::{self, UploadError};
 
-// ───────────────────── Uploads in parts (data-pipelines.md §9.9) ─────────────────────
+// ───────────────────── Uploads in parts (pipelines.md §3.12) ─────────────────────
 
 fn upload_error(e: UploadError) -> Result<Response> {
     let (status, text) = match &e {

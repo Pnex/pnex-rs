@@ -3,7 +3,7 @@
 # A year's page carries a download form; the file is the answer to that
 # form. A year before a pair's first shows the form with an empty token:
 # nothing to read, asked again a week later.
-# Times are New York wall clock, daylight saving included (pipeline-engine.md
+# Times are New York wall clock, daylight saving included (pipelines.md
 # D939): 08:30 in New York is 12:30 UTC in July, 13:30 in January.
 # HistData publishes no license: the table stays inside the org.
 key: histdata_m1

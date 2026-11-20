@@ -1,4 +1,4 @@
-//! Clean stop of import runs (data-pipelines.md §7 bis, point 1). On
+//! Clean stop of import runs (pipelines.md §3.13). On
 //! SIGTERM the pod starts no run; those it holds get [`grace`] to finish,
 //! then are failed `import-run-interrupted` instead of left running until
 //! the sweep finds them without a heartbeat.

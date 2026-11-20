@@ -2,7 +2,7 @@
 //! D780, lot U4). A default rule is played like any rule; the purpose it was
 //! started for is kept in its plan, and acting on the outcome is the server's
 //! job: never a kind of mission, never the agent. Profile and employee list
-//! captures are pipelines of the prospecting pack (pipeline-engine.md D996):
+//! captures are pipelines of the prospecting pack (pipelines.md D996):
 //! their navigations resume their rows ([`Purpose::Pipeline`]).
 
 use std::collections::BTreeMap;
@@ -26,7 +26,7 @@ pub enum Purpose {
         user_id: i64,
         url: String,
     },
-    /// The `browse` step of a pipeline's row (pipeline-engine.md D995): the
+    /// The `browse` step of a pipeline's row (pipelines.md D995): the
     /// extracts resume the row.
     Pipeline {
         pipeline: String,

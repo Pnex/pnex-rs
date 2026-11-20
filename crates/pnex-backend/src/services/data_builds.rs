@@ -1,4 +1,4 @@
-//! Scheduler with dependencies (data-pipelines.md D575): a build runs a target and
+//! Scheduler with dependencies (pipelines.md D575): a build runs a target and
 //! what it depends on, one step at a time, with the state in PostgreSQL so that
 //! another pod carries on. Pipelines run in the worker, imports in the server; a
 //! failed step blocks what depends on it, which keeps its last valid version.

@@ -1,4 +1,4 @@
-//! Periods of an `enumerate` axis (pipeline-engine.md D936): the years,
+//! Periods of an `enumerate` axis (pipelines.md D936): the years,
 //! months, days or hours from a start to today, each with the parts an
 //! address template needs.
 

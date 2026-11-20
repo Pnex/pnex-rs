@@ -1,4 +1,4 @@
-//! The pipeline engine on a real base (pipeline-engine.md D937, D941): runs
+//! The pipeline engine on a real base (pipelines.md D937, D941): runs
 //! write the org's table and keep the state of each row, so that a row done
 //! is never asked again and an empty one waits its days.
 

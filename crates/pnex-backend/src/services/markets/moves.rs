@@ -1,6 +1,6 @@
 //! Abnormal sessions of the watched series (markets-research.md D734-D738):
 //! found by the pack's pipeline `markets/market_moves` and created by the
-//! import "Abnormal sessions" (pipeline-engine.md D946, D949). Here: the
+//! import "Abnormal sessions" (pipelines.md D946, D949). Here: the
 //! watched entries, the session view and the channels of the daily summary.
 
 use chrono::NaiveDate;

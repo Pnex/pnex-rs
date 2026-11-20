@@ -1,4 +1,4 @@
-//! Journal of the open-data ingestion steps (ingestion.md D317–D322): one
+//! Journal of the open-data ingestion steps (pipelines.md D317–D322): one
 //! row per step a flow node ran, with its manifest (node panel, run log),
 //! the staging objects it wrote (quota, cleanup, purge) and the sha256 of a
 //! download (`skip_if_unchanged`).

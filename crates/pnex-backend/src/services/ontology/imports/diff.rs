@@ -126,7 +126,7 @@ struct Pair {
 
 /// What a run's records ask for, deduplicated: objects on (type, key), links on
 /// their pair of objects. Sibling rows are merged here, so two plans compare by
-/// entity and not by row (data-pipelines.md §9.7 ter).
+/// entity and not by row (pipelines.md §3.6).
 #[derive(Default)]
 pub struct Planned {
     objs: Vec<Agg>,
@@ -140,7 +140,7 @@ pub struct Planned {
     pub rows: usize,
     pub errors: Vec<RowIssue>,
     pub warnings: Vec<RowIssue>,
-    /// Rows are a history read with a cursor (connectors.md D794): a later row is the
+    /// Rows are a history read with a cursor (pipelines.md D794): a later row is the
     /// newer state of its object, not a conflict, and its title wins too.
     pub replace: bool,
 }

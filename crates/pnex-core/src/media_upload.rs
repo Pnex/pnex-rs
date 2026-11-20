@@ -1,4 +1,4 @@
-//! A media file sent in several requests (data-pipelines.md §9.9): a proxy limits each
+//! A media file sent in several requests (pipelines.md §3.12): a proxy limits each
 //! request (Cloudflare: 100 MB). Parts wait on S3, then a server joins them into one
 //! version. Pure, wasm-safe.
 

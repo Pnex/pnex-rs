@@ -4,7 +4,7 @@
 # bet early, as leads of a case. PNeX only reads public data: it never bets,
 # signs a transaction or holds a wallet key (J.1, J.5).
 # Source: the platform's public read-only APIs, read by the pack's pipelines
-# (pipeline-engine.md D946): markets and their resolution rules (daily
+# (pipelines.md D946): markets and their resolution rules (daily
 # import), hourly prices by closed day (every minute for the markets listed
 # in `fine_markets`), trades of the followed markets. The hosts are blocked
 # in France: an org reaches them through its own proxy, vault secret

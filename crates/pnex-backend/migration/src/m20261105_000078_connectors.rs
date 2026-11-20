@@ -1,4 +1,4 @@
-//! Connectors (data-pipelines.md D352): saved access to an outside database, its
+//! Connectors (pipelines.md D352): saved access to an outside database, its
 //! password in the vault, and the private hosts the platform admin lets an org reach.
 
 use sea_orm_migration::prelude::*;

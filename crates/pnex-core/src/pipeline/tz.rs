@@ -1,4 +1,4 @@
-//! Wall clocks in their IANA zone (pipeline-engine.md D939): a time written
+//! Wall clocks in their IANA zone (pipelines.md D939): a time written
 //! without an offset is read in its zone, daylight saving included, never
 //! with a fixed offset. Shared by the `read` step and the SQL functions of
 //! the pipeline worker.

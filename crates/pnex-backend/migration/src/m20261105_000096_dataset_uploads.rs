@@ -1,4 +1,4 @@
-//! A file sent in several requests (data-pipelines.md D569): a proxy limits each
+//! A file sent in several requests (pipelines.md D569): a proxy limits each
 //! request, Cloudflare to 100 MB. Parts wait on S3, then the server converts them.
 
 use sea_orm_migration::prelude::*;

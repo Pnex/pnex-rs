@@ -6967,7 +6967,7 @@ objects-bucket-quarter = By quarter
 objects-bucket-year = By year
 objects-advanced = Calculation shipped by a pack: { $metrics }. It is changed in its definition.
 
-# Data pipelines (data-pipelines.md §9.5)
+# Data pipelines (pipelines.md §6.3)
 nav-pipelines = Pipelines
 pipe-title = Pipelines
 pipe-subtitle = Versioned tables, and the SQL transforms that compute them.

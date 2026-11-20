@@ -1,5 +1,5 @@
 //! How long replaced versions of a pipeline output stay readable, set by the
-//! transform that writes it (data-pipelines.md). Null: the default, 90 days.
+//! transform that writes it (pipelines.md). Null: the default, 90 days.
 
 use sea_orm_migration::prelude::*;
 

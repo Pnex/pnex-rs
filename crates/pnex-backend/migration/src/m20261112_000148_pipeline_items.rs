@@ -1,5 +1,5 @@
 //! The state of each enumerated row of a pipeline between runs
-//! (pipeline-engine.md D937): one row per (org, pipeline, item). The item
+//! (pipelines.md D937): one row per (org, pipeline, item). The item
 //! `''` holds the outcome of the last run, `@sha:…` the bytes last read by a
 //! fetch that skips an unchanged source.
 

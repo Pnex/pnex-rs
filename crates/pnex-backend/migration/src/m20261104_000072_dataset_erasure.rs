@@ -1,4 +1,4 @@
-//! Erasure in datasets (data-pipelines.md D569): which columns identify which
+//! Erasure in datasets (pipelines.md D569): which columns identify which
 //! objects, and the durable queue of erasures still to apply to the files. The
 //! worker sees only that an org has one pending, never the erased values.
 

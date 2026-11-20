@@ -174,7 +174,7 @@ async fn installed(
     tag = "analysis",
     operation_id = "analysis_named_list",
     summary = "List the named queries of the installed packs",
-    description = "Each read-only query a pack the org installed declares (pipeline-engine.md D948): its key, its typed parameters and its SQL. Run one with `POST /analysis/named/{pack}/{key}`. Requires `analysis:run`.",
+    description = "Each read-only query a pack the org installed declares (pipelines.md D948): its key, its typed parameters and its SQL. Run one with `POST /analysis/named/{pack}/{key}`. Requires `analysis:run`.",
     responses(
         (status = 200, body = pnex_core::Paginated<pnex_core::named_query::NamedQueryView>),
         (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail)

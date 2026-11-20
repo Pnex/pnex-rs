@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OP1.0 measurement (data-pipelines.md D572). Every engine run lives in its own
+# OP1.0 measurement (pipelines.md D572). Every engine run lives in its own
 # capped scope, like a pod: usage: run.sh <fc-dir> [rows-list]
 # Writes data/results.tsv and data/guard.txt. S3_* optional for the S3 stage.
 set -uo pipefail

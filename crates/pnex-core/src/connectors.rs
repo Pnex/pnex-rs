@@ -1,4 +1,4 @@
-//! Connectors (data-pipelines.md D352): saved access to an outside database, the
+//! Connectors (pipelines.md D352): saved access to an outside database, the
 //! password in the vault. Only the server uses one: neither the worker nor the flow
 //! runtime ever sees a connector or its secret. DTOs and checks, wasm-safe.
 
@@ -21,7 +21,7 @@ pub const ALLOWED_HOSTS_MAX: usize = 100;
 pub enum ConnectorKind {
     #[default]
     Postgres,
-    /// An HTTP API read with GET (connectors.md D793).
+    /// An HTTP API read with GET (pipelines.md D793).
     Rest,
     /// Calls an outside system sends, signed, kept until an import reads them (D795).
     Webhook,
@@ -89,7 +89,7 @@ fn root() -> String {
     "/".into()
 }
 
-/// How the sender of a webhook signs its calls (connectors.md D795): HMAC-SHA256 of
+/// How the sender of a webhook signs its calls (pipelines.md D795): HMAC-SHA256 of
 /// the body, or of `<timestamp>.<body>` when a timestamp header is named, with the
 /// connector's secret, hex encoded after `signature_prefix`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

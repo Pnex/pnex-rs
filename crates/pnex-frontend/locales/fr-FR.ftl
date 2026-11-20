@@ -6963,7 +6963,7 @@ objects-bucket-quarter = Par trimestre
 objects-bucket-year = Par année
 objects-advanced = Calcul livré par un pack : { $metrics }. Il se modifie dans sa définition.
 
-# Data pipelines (data-pipelines.md §9.5)
+# Data pipelines (pipelines.md §6.3)
 nav-pipelines = Pipelines
 pipe-title = Pipelines
 pipe-subtitle = Des tables versionnées, et les traitements SQL qui les calculent.

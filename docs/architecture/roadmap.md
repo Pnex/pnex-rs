@@ -1248,7 +1248,7 @@ failles (demande du 2026-11-05, D728).
 | Lot | Contenu |
 |---|---|
 | OP1 | Datasets versionnés, lignage, santé des données, ordonnanceur à dépendances |
-| OP2 | Cadre de connecteurs (`connectors.md`, D791–D797) : PostgreSQL, MySQL sous TLS, REST générique, lecture incrémentale par curseur, webhooks entrants, écran — codés le 2026-11-08 ; écriture retour à OP9, tables virtuelles après OP3, stockage cloud réduit au S3 de PneX (D796) |
+| OP2 | Cadre de connecteurs (`pipelines.md`, D791–D797) : PostgreSQL, MySQL sous TLS, REST générique, lecture incrémentale par curseur, webhooks entrants, écran — codés le 2026-11-08 ; écriture retour à OP9, tables virtuelles après OP3, stockage cloud réduit au S3 de PneX (D796) |
 | OP3 | Gouvernance (`governance.md`, D798–D806) : marquages, habilitations à finalité, héritage par lignage, objets masqués, détection proposée, `pseudonym()`, export d'une personne, écrans — codés le 2026-11-08 ; SAML à la demande, I4 général (droits par ligne de toutes les listes) ensuite |
 | OP4 | Branches transverses, interfaces d'ontologie |
 | OP5 | Agrégats (`object-aggregates.md`, D579–D588, validé et codé le 2026-11-04 ; passe avant OP1) ; analyse (`analysis.md`, D825–D832) : SQL en lecture par le worker, règles avec rejeu (`/rules`), blocs vivants dans les pages et PDF daté — codés le 2026-11-08 ; analyse sans code (AN4) ensuite |

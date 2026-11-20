@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **PRD proposé le 2026-11-08, rien d'implémenté.** Décisions D850–D866 **proposées**, à trancher par Shan (§10) ; plusieurs mois de travail en lots SD0–SD9 |
 | Déclencheur | Démonstration D752 (agent codeur → demande de fusion) et constat de Shan : tickets, code, builds, artefacts, déploiements, scans, stores, infra et télémétrie vivent dans des outils séparés ; savoir « quoi tourne où, issu de quoi, avec quel risque » est un travail d'enquête |
-| Repose sur | `ontology.md` (D176–D191, liens temporels D179, provenance D184, packs D190), `connectors.md` (D791–D797 : REST déclaratif, webhooks signés), `data-pipelines.md` (OP1), `agent-environments.md` (packs `agent_ops`, `software_supply`, D708), `roadmap.md` P2.23 (télémétrie) et P2.24 (sécurité et qualité du code), `operational-platform.md` (OP2, OP3, OP9, OP12), `cases.md` (enquêtes), `security.md` |
+| Repose sur | `ontology.md` (D176–D191, liens temporels D179, provenance D184, packs D190), `pipelines.md` (D791–D797 : REST déclaratif, webhooks signés), `pipelines.md` (OP1), `agent-environments.md` (packs `agent_ops`, `software_supply`, D708), `roadmap.md` P2.23 (télémétrie) et P2.24 (sécurité et qualité du code), `operational-platform.md` (OP2, OP3, OP9, OP12), `cases.md` (enquêtes), `security.md` |
 | Remplace | Le pack `software` esquissé en P2.24 de la roadmap (absorbé, §5) |
 | Numérotation | **D850…D879** (D850–D866 utilisées), lots **SD0…SD9**, questions **Q-SD1…** |
 | Sources | Trois recherches du 2026-11-08 (§12) ; chiffres d'éditeurs et articles de normes payantes signalés comme tels |

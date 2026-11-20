@@ -1,4 +1,4 @@
-//! Worker process of data pipelines (data-pipelines.md D573): takes runs from
+//! Worker process of data pipelines (pipelines.md D573): takes runs from
 //! the queue, one at a time, until SIGTERM gives its run back to the queue.
 
 use std::time::Duration;

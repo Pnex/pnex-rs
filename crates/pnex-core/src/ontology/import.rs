@@ -15,7 +15,7 @@ use super::schema::{check_values, valid_key, PropertyDef};
 use super::{localized, LinkTypeDef, Names, ObjectTypeDef, PropertyKind};
 use crate::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 
-/// Rows of one run: 50,000 until the bulk write (data-pipelines.md D347),
+/// Rows of one run: 50,000 until the bulk write (pipelines.md D347),
 /// which applies FC networks of ~55k filtered rows in one go. Rows are
 /// held in memory, the 200 MB and `PLANNED_MAX` caps bound a run.
 pub const ROWS_MAX: usize = 250_000;
@@ -507,19 +507,19 @@ pub struct Mapping {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observations: Option<crate::markets::ObservationTarget>,
     /// The pipeline that fills the import's table (`<pack>/<key>`,
-    /// pipeline-engine.md D941): its `write` names the table `key`, then
+    /// pipelines.md D941): its `write` names the table `key`, then
     /// the table is synced into objects (D577). Replaces `steps` and the feeds
     /// and the feeds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pipeline: Option<String>,
-    /// Pipeline steps run by the server before the mapping (data-pipelines.md
+    /// Pipeline steps run by the server before the mapping (pipelines.md
     /// D344): resolve, download, extract, inspect, filter; the records are
     /// read from the file they leave staged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
     pub steps: Vec<crate::ingest::IngestConfig>,
     /// Keys of the imports whose objects this one needs: a schedule runs them first
-    /// (data-pipelines.md D575).
+    /// (pipelines.md D575).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub after: Vec<String>,
     #[serde(default)]
@@ -1642,7 +1642,7 @@ pub enum ImportSource {
     Url,
     /// A paginated JSON API (`page_param` or `cursor_path`).
     Api,
-    /// A dataset of the org, its id in `source_url` (data-pipelines.md D577).
+    /// A dataset of the org, its id in `source_url` (pipelines.md D577).
     /// Each run compares its current view to the transactions last applied.
     Dataset,
 }

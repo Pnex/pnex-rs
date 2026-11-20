@@ -22,7 +22,7 @@
 > surface publique.
 >
 > Liens : `external-apps.md` (D432–D441, SDK d'applications, garde de
-> généricité), `ingestion.md` (D317–D322), `partner-watch.md` (D303
+> généricité), `pipelines.md` (D317–D322), `partner-watch.md` (D303
 > synchronisations), `ontology.md` (D176–D191, D184 provenance, D185
 > requêtes, D190 packs), `doc-search.md` (index plein texte et
 > vectoriel), `iam.md` (comptes de service), `api.md`,

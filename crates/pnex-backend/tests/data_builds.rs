@@ -1,4 +1,4 @@
-//! Chained runs (data-pipelines.md D575), stale tables (D576) and dataset events
+//! Chained runs (pipelines.md D575), stale tables (D576) and dataset events
 //! (D578): imports really run; the worker's job is played in SQL, its own tests
 //! cover what it computes.
 //!

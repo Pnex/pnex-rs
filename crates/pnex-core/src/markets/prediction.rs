@@ -1,7 +1,7 @@
 //! Prediction markets (markets-research.md appendix J, D918–D925): a
 //! resolution as dated states, the model features at an instant, the
 //! calibration against the market and the early bet detector. Pure code: no
-//! I/O. The pack's pipelines read the platform (pipeline-engine.md D946).
+//! I/O. The pack's pipelines read the platform (pipelines.md D946).
 
 use serde::{Deserialize, Serialize};
 

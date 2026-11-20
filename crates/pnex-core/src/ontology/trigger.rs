@@ -1,4 +1,4 @@
-//! Ontology change events (operational-platform.md D998, pipeline-engine.md
+//! Ontology change events (operational-platform.md D998, pipelines.md
 //! D999): the bus frame and the `ontology-trigger` node config. serde-only,
 //! wasm32-safe.
 //!

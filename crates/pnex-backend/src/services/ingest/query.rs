@@ -1,4 +1,4 @@
-//! `connector_query` (data-pipelines.md D352): runs one read-only query on an outside
+//! `connector_query` (pipelines.md D352): runs one read-only query on an outside
 //! database and streams its result as CSV into the staging, where the next steps of
 //! the import read it like a downloaded file. The result is untrusted data.
 
@@ -294,7 +294,7 @@ fn staged(
     out
 }
 
-/// Reads a REST API page after page into one CSV (connectors.md D793). Bodies count
+/// Reads a REST API page after page into one CSV (pipelines.md D793). Bodies count
 /// against `cap`, the CSV against the staging room.
 async fn rest(
     cx: &Cx<'_>,
@@ -452,7 +452,7 @@ async fn inbox(cx: &Cx<'_>, cfg: &IngestConfig, connector: Uuid, cap: u64, room:
     }
     let (stored, _) = cursor_state(cx).await;
     let from: i64 = stored.as_deref().and_then(|v| v.parse().ok()).unwrap_or(0);
-    // Calls past the retention go, read or not (connectors.md D795).
+    // Calls past the retention go, read or not (pipelines.md D795).
     let _ = cx
         .db
         .execute_raw(stmt(

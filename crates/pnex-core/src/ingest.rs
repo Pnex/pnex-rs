@@ -1,5 +1,5 @@
-//! Open-data ingestion steps (ingestion.md D317–D321): the `steps:` of a
-//! declarative import (data-pipelines.md D344), run by the server before
+//! Open-data ingestion steps (pipelines.md D317–D321): the `steps:` of a
+//! declarative import (pipelines.md D344), run by the server before
 //! the import reads its file — resolve a source, download it to the S3
 //! staging area, extract an archive, inspect a table, filter rows. The flow
 //! node `ingest` that chained them is retired (web-presence.md D359).
@@ -44,7 +44,7 @@ pub enum IngestStep {
     ArchiveExtract,
     TableInspect,
     RowsFilter,
-    /// One read-only query on a connector, its result as CSV (data-pipelines.md D352).
+    /// One read-only query on a connector, its result as CSV (pipelines.md D352).
     ConnectorQuery,
 }
 
@@ -164,10 +164,10 @@ pub struct IngestConfig {
     /// One read-only statement (database connectors).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub query: String,
-    /// The request (REST connectors, connectors.md D793).
+    /// The request (REST connectors, pipelines.md D793).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rest: Option<crate::connectors::rest::RestQuery>,
-    /// Read only what is past the last value seen (connectors.md D794).
+    /// Read only what is past the last value seen (pipelines.md D794).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor: Option<CursorSpec>,
 }
@@ -175,7 +175,7 @@ pub struct IngestConfig {
 /// Placeholder of the cursor in a SQL query, replaced by a literal the source quotes.
 pub const CURSOR_PLACEHOLDER: &str = "{{cursor}}";
 
-/// An incremental read (connectors.md D794).
+/// An incremental read (pipelines.md D794).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CursorSpec {
@@ -406,7 +406,7 @@ pub struct IngestMsg {
     /// Extracted entries (archive_extract).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<StagedEntry>,
-    /// Set by a `connector_query` with a cursor (connectors.md D794): whether it read
+    /// Set by a `connector_query` with a cursor (pipelines.md D794): whether it read
     /// everything (`true`) or only what is past the stored cursor (`false`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub full_read: Option<bool>,

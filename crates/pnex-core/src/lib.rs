@@ -175,20 +175,20 @@ pub mod default_rules;
 pub mod mail;
 
 pub mod analysis;
-/// Connectors to outside databases (data-pipelines.md D352).
+/// Connectors to outside databases (pipelines.md D352).
 pub mod connectors;
-/// Dataset catalogue DTOs (data-pipelines.md D569).
+/// Dataset catalogue DTOs (pipelines.md D569).
 pub mod datasets;
 /// Agent environments (agent-environments.md D702, D704).
 pub mod environments;
 pub mod governance;
 /// OCI image registries (agent-environments.md D703).
 pub mod image_registries;
-/// Media files sent in parts (data-pipelines.md §9.9).
+/// Media files sent in parts (pipelines.md §3.12).
 pub mod media_upload;
-/// The pipeline engine's document and pure parts (pipeline-engine.md D934–D953).
+/// The pipeline engine's document and pure parts (pipelines.md D934–D953).
 pub mod pipeline;
-/// Pipeline documents and DTOs (data-pipelines.md D571).
+/// Pipeline documents and DTOs (pipelines.md D571).
 pub mod pipelines;
 pub mod rules;
 /// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
@@ -241,7 +241,7 @@ pub mod web_visit;
 #[cfg(feature = "doc-extract")]
 pub mod import_read;
 
-/// Open-data ingestion flow nodes (ingestion.md D317–D322).
+/// Open-data ingestion flow nodes (pipelines.md D317–D322).
 pub mod ingest;
 
 pub mod pagination;

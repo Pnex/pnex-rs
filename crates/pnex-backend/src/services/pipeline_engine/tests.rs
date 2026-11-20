@@ -1,4 +1,4 @@
-//! The replay tests of every shipped pipeline (pipeline-engine.md D945):
+//! The replay tests of every shipped pipeline (pipelines.md D945):
 //! each `tests:` case runs on recorded answers, without network nor base,
 //! and its working tables are compared with what it expects.
 

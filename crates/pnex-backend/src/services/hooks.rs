@@ -1,4 +1,4 @@
-//! Incoming webhooks (connectors.md D795): a call signed with the connector's secret
+//! Incoming webhooks (pipelines.md D795): a call signed with the connector's secret
 //! lands in its inbox, in the connector's org (R1); an import reads the inbox later.
 //! Nothing of the request names the org, and nothing tells an unknown connector
 //! from a bad signature.

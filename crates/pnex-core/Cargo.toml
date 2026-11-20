@@ -22,7 +22,7 @@ egress = ["dep:reqwest", "dep:tokio"]
 doc-extract = ["dep:zip", "dep:quick-xml", "dep:lopdf", "dep:calamine", "dep:lzma-rs"]
 # OpenAPI schemas of the API DTOs (docs/contracts/openapi.json) — backend only.
 openapi = ["dep:utoipa"]
-# Wall clocks in their IANA zone (pipeline-engine.md D939) — backend and pipeline worker.
+# Wall clocks in their IANA zone (pipelines.md D939) — backend and pipeline worker.
 tz = ["dep:chrono-tz"]
 # Sandboxed Starlark (functions, a pipeline's `call` step) — flow runtime and
 # pipeline worker; never the wasm front nor the server.

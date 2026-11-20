@@ -1,4 +1,4 @@
-//! `pipeline_ask` flow nodes on the server side (pipeline-engine.md D999).
+//! `pipeline_ask` flow nodes on the server side (pipelines.md D999).
 //!
 //! The flow runtime runs user code and is not trusted: the pipeline and the
 //! daily ceiling come from the *deployed* node, the request gives rows only.

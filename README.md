@@ -256,17 +256,17 @@ The Lab turns pictures into a detection model without leaving PNeX
 ### Data pipelines
 
 Pipelines turn sources into versioned datasets
-([`data-pipelines.md`](docs/architecture/data-pipelines.md) §9):
+([`pipelines.md`](docs/architecture/pipelines.md) §3.7):
 
 - **Datasets** are versioned tables stored as Parquet on S3, with transactions, retention of
   replaced versions, sampling, profiling, lineage and erasure of personal data.
-- **Pipelines** are YAML in packs, run by one engine ([`pipeline-engine.md`](docs/architecture/pipeline-engine.md)):
+- **Pipelines** are YAML in packs, run by one engine ([`pipelines.md`](docs/architecture/pipelines.md)):
   fetch, parse, Starlark and browse steps; a browse step pauses its row and resumes on the
   extracts.
 - **Transforms** are SQL, planned and run by `pnex-pipeline-worker` (Apache DataFusion, a
   separate image) under an allowlist of functions and memory limits — never in the server.
 - **Runs** are chained, retried and journaled; connectors
-  ([`connectors.md`](docs/architecture/connectors.md): PostgreSQL, MySQL, REST, webhooks, files
+  ([`pipelines.md`](docs/architecture/pipelines.md): PostgreSQL, MySQL, REST, webhooks, files
   uploaded in parts) materialize their input before the worker reads it. Importing into the ontology is a
   pipeline step, written in bulk.
 
@@ -326,7 +326,7 @@ Design records (in French): [`docs/architecture/`](docs/architecture) — start 
 [`roadmap.md`](docs/architecture/roadmap.md), [`ontology.md`](docs/architecture/ontology.md),
 [`flow-engine.md`](docs/architecture/flow-engine.md),
 [`media-ingest.md`](docs/architecture/media-ingest.md),
-[`data-pipelines.md`](docs/architecture/data-pipelines.md),
+[`pipelines.md`](docs/architecture/pipelines.md),
 [`agent-environments.md`](docs/architecture/agent-environments.md) and
 [`horizontal-scaling.md`](docs/architecture/horizontal-scaling.md).
 

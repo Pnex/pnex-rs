@@ -1,4 +1,4 @@
-//! Datasets (data-pipelines.md D569): tables as Parquet files on S3, versioned
+//! Datasets (pipelines.md D569): tables as Parquet files on S3, versioned
 //! by transactions, with the catalogue in PostgreSQL. The current view is the
 //! latest committed snapshot, then the appends committed after it.
 

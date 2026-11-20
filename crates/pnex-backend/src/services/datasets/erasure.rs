@@ -1,4 +1,4 @@
-//! Erasure in datasets (data-pipelines.md D569). A person's row is removed from
+//! Erasure in datasets (pipelines.md D569). A person's row is removed from
 //! every version still readable, not only from the current view. A dataset is
 //! reached by a declared identity column; what its rows fed is recomputed.
 //!

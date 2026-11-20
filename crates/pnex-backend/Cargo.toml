@@ -127,7 +127,7 @@ yrs = "0.28"
 # sha256 fingerprint of firmware artifacts (integrity, firmware_artifacts table)
 sha2 = "0.11"
 hex = "0.4"
-# HMAC-SHA256 of incoming webhook calls (connectors.md D795)
+# HMAC-SHA256 of incoming webhook calls (pipelines.md D795)
 hmac = "0.13"
 # Browser agent signatures (WebCrypto ECDSA P-256, D266); already in the tree via rustls-webpki.
 ring = "0.17"
@@ -152,7 +152,7 @@ arrow-schema = "59"
 arrow-select = "59"
 parquet = { version = "59", default-features = false, features = ["arrow", "async", "zstd"] }
 csv-core = "0.1"
-# Pipeline engine (pipeline-engine.md D939): CSV read as a stream, working
+# Pipeline engine (pipelines.md D939): CSV read as a stream, working
 # tables spilled to Arrow IPC files, fetched files spooled to disk. Already in
 # the tree through DataFusion and the test harness.
 csv = "1"
@@ -198,7 +198,7 @@ path = "src/bin/main.rs"
 
 [dev-dependencies]
 # The replay tests of shipped pipelines run their `sql` steps with the worker's
-# own session (pipeline-engine.md D945).
+# own session (pipelines.md D945).
 pnex-pipeline-worker = { path = "../pnex-pipeline-worker" }
 loco-rs = { version = "1.3", default-features = false, features = ["testing"] }
 # Same major as loco-rs testing (its TestServer is handed to our helpers).

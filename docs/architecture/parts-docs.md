@@ -186,7 +186,7 @@ Cœur du coût et de la valeur.
 - Import des PDF fabricants (vues éclatées, nomenclatures, manuels) dans
   la médiathèque.
 - **D965 (acceptée 2026-11-17)** : extraction par **flows et pipelines PNEX**
-  (`pipeline-engine.md`), jamais un traitement à côté :
+  (`pipelines.md`), jamais un traitement à côté :
   1. découpage et classification des pages (vue éclatée, nomenclature,
      schéma, texte) ;
   2. extraction des tableaux de nomenclature (repère, référence,

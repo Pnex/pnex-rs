@@ -1,4 +1,4 @@
-//! Pipelines API (data-pipelines.md D571, D573): documents, runs, lineage. Org
+//! Pipelines API (pipelines.md D571, D573): documents, runs, lineage. Org
 //! from the principal (R1), permissions applied by `OrgContext` (R2).
 
 use axum::extract::{Path, Query, State};

@@ -1,4 +1,4 @@
-//! The pipeline engine (pipeline-engine.md D934–D953): runs a pipeline
+//! The pipeline engine (pipelines.md D934–D953): runs a pipeline
 //! document step by step over named working tables. The transport, the
 //! sink and the registry are given by the caller: the server passes the
 //! network, the org's tables and `pipeline_items`; the replay tests (D945)

@@ -23,8 +23,8 @@
 # The partner network import reads the certifier's sheet (one row per
 # partner × certification, pnex-quali-watch/import-excel.md) as a snapshot:
 # a row gone closes its accreditation, nothing is deleted.
-# France Compétences open data (ingestion.md D317–D321) arrives through the
-# steps of the imports themselves (data-pipelines.md D344, web-presence.md
+# France Compétences open data (pipelines.md D317–D321) arrives through the
+# steps of the imports themselves (pipelines.md D344, web-presence.md
 # D359): each night the zip of data.gouv.fr is resolved, downloaded,
 # extracted, inspected, filtered (the certifiers of the `certifiers`
 # setting, then the certifications they hold) and imported by

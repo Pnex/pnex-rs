@@ -1,4 +1,4 @@
-//! A pipeline row may wait for its navigation (pipeline-engine.md D995).
+//! A pipeline row may wait for its navigation (pipelines.md D995).
 
 use sea_orm_migration::prelude::*;
 

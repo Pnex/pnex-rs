@@ -1,4 +1,4 @@
-//! An import's own steps (data-pipelines.md D344), run by the server for an
+//! An import's own steps (pipelines.md D344), run by the server for an
 //! import run and journaled in `ingest_steps` under that run. No flow, no
 //! runtime: the config comes from the import, never from a request.
 

@@ -1,6 +1,6 @@
 //! The arguments of a run's refusal or failure (`{rows, max}` for a source
 //! too large, the missing columns…): History renders the message with them
-//! (data-pipelines.md §7 bis, point 3).
+//! (pipelines.md §3.13).
 
 use sea_orm_migration::prelude::*;
 

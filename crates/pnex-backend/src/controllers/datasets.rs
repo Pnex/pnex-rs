@@ -1,4 +1,4 @@
-//! Datasets API (data-pipelines.md D569): catalogue, CSV load, sample. Org from
+//! Datasets API (pipelines.md D569): catalogue, CSV load, sample. Org from
 //! the principal (R1), permissions applied by `OrgContext` (R2).
 
 use axum::body::Body;

@@ -824,7 +824,7 @@ pub(crate) fn error_code(e: &OntologyError) -> &'static str {
 /// One application per org at a time.
 /// Once applied, `diff.written` holds what was really written.
 /// Writes rows planned with `m` at once, without preview (a pipeline's
-/// `write: objects`, pipeline-engine.md D941): planned, diffed and written
+/// `write: objects`, pipelines.md D941): planned, diffed and written
 /// under the org's import lock, `source_ref` as provenance. Never closes
 /// what the rows no longer hold. The objects and links created or updated.
 pub async fn write_rows(
@@ -1188,7 +1188,7 @@ async fn previous_rows<C: ConnectionTrait>(db: &C, import_id: Uuid) -> Result<us
 
 /// Starts a run in the background and returns it `running` (manual
 /// launch or schedule): an import with its own steps runs them, then
-/// applies the file they staged (data-pipelines.md D344); a URL or API
+/// applies the file they staged (pipelines.md D344); a URL or API
 /// import fetches its source. Checked and applied with the author's role
 /// (D303). A file import has nothing to fetch: it is previewed with a file.
 pub async fn start(
@@ -1298,7 +1298,7 @@ pub async fn start(
     Ok(view)
 }
 
-/// An import fed by a pipeline (pipeline-engine.md D941): the pipeline
+/// An import fed by a pipeline (pipelines.md D941): the pipeline
 /// writes the import's own table, whole, then the table is synced (D577).
 async fn pipeline_then_sync(
     db: &DatabaseConnection,

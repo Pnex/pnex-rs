@@ -1,4 +1,4 @@
-//! Connectors API (data-pipelines.md D352): saved access to an outside database. Org
+//! Connectors API (pipelines.md D352): saved access to an outside database. Org
 //! from the principal (R1), permissions applied by `OrgContext` (R2), and no password
 //! in any answer (R4, R16).
 

@@ -206,7 +206,7 @@ pub fn bar_out(b: &Bar) -> BarOut {
 /// of a pipeline keyed by it, or an MT5 symbol announced by one of its
 /// terminals.
 // shortcut: reads the first label of a pipeline row as the instrument; goes
-// with the market routes in PE7 (pipeline-engine.md D948).
+// with the market routes in PE7 (pipelines.md D948).
 pub async fn known_instrument<C: ConnectionTrait>(
     db: &C,
     org: i64,

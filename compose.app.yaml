@@ -115,7 +115,7 @@ services:
       - pnex-appdata:/data
       - ./deploy/edge/pki-data:/pki:ro
 
-  # SQL transforms of data pipelines (data-pipelines.md D573): `task
+  # SQL transforms of data pipelines (pipelines.md D573): `task
   # pipeline-worker:up`. Only the catalogue role and S3 reach it, none of the
   # application environment. The pod cap comes with the pool of the worker
   # (§9.7 bis): 3 GB out of 4. A profile so that `up` does not build the engine.

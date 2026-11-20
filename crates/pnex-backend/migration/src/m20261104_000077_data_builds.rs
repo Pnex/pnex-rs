@@ -1,4 +1,4 @@
-//! Chained runs and commit checks (data-pipelines.md D575, D576, D578): a build runs
+//! Chained runs and commit checks (pipelines.md D575, D576, D578): a build runs
 //! a target and its dependencies in order, a transaction keeps its check results,
 //! a dataset can require a new version every so often, and committed versions wait
 //! in place until the server publishes them.

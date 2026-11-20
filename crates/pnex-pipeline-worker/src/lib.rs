@@ -1,4 +1,4 @@
-//! Runs of data pipelines (data-pipelines.md D571–D574): a queue in PostgreSQL,
+//! Runs of data pipelines (pipelines.md D571–D574): a queue in PostgreSQL,
 //! SQL transforms over datasets, each output committed as a transaction with the
 //! transactions it read. This process holds no secret but its catalogue and S3
 //! access, and sees no business table. Keys and commits follow

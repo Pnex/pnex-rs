@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **Validé par Shan le 2026-11-04.** AG0, AG1, AG2, AG3 codés ; AG4 partiel (§12) ; AG5 attend OP1.2 |
 | Déclencheur | Tableaux de bord commerciaux (`crm.md`, CRM3), resté sans spec. Demande de Shan (2026-11-04) : passer par le système SCADA et son runner plutôt que par un widget métier |
-| Repose sur | `operational-platform.md` (premier morceau d'OP5, D557), `data-pipelines.md` §9 (D569–D578), `ontology.md` (D185 requête, D187 dashboards de type), `external-apps.md` (D434 ensembles d'objets), `app-builder.md` (D506–D512), `viz-bases.md` (D31, D40), `crm.md` (D442–D443 masquage) |
+| Repose sur | `operational-platform.md` (premier morceau d'OP5, D557), `pipelines.md` §3.7 (D569–D578), `ontology.md` (D185 requête, D187 dashboards de type), `external-apps.md` (D434 ensembles d'objets), `app-builder.md` (D506–D512), `viz-bases.md` (D31, D40), `crm.md` (D442–D443 masquage) |
 | Numérotation | **D579…D588**, lots **AG0…AG5** |
 | Revient sur | D510 (`object_count` disparaît), et l'ordre d'OP5 (§9) |
 
@@ -129,9 +129,9 @@ D570 : une ligne n'est pas forcément un objet. Une partie des données restera 
 
 - la **forme de réponse** de D579 est celle que tout widget consomme, quelle que soit la source ;
 - `ObjectsSource` gagnera un champ `dataset`, au même titre que `object_set` et `query` ;
-- **un widget ne déclenche jamais de calcul sur dataset.** D573 garde DataFusion hors de `pnex-server`, et un `GROUP BY` sur 50 M de lignes prend des minutes (`data-pipelines.md` §9.7 bis). Un pipeline calcule une table, planifiée par D575 ; le widget lit cette table, petite, par le crate `parquet` dans le backend, comme le delta de D577. Il affiche sa date de calcul et le résultat de ses contrôles (D576).
+- **un widget ne déclenche jamais de calcul sur dataset.** D573 garde DataFusion hors de `pnex-server`, et un `GROUP BY` sur 50 M de lignes prend des minutes (`pipelines.md` §3.8). Un pipeline calcule une table, planifiée par D575 ; le widget lit cette table, petite, par le crate `parquet` dans le backend, comme le delta de D577. Il affiche sa date de calcul et le résultat de ses contrôles (D576).
 
-Droits de cette variante : permission `datasets:read`, le dataset étant protégé en entier tant qu'OP3 n'est pas livré (`data-pipelines.md` §9.4). La lecture réutilise le lecteur S3 de `services/datasets/parquet.rs`. Rien n'est codé avant OP1.2.
+Droits de cette variante : permission `datasets:read`, le dataset étant protégé en entier tant qu'OP3 n'est pas livré (`pipelines.md` §4.2). La lecture réutilise le lecteur S3 de `services/datasets/parquet.rs`. Rien n'est codé avant OP1.2.
 
 ### D586 — Coût : délai et rythme propre, pas de cache
 

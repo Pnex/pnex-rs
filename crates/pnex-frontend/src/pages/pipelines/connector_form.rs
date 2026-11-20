@@ -1,4 +1,4 @@
-//! The form of a connector (connectors.md D791): its kind first, then only the
+//! The form of a connector (pipelines.md D791): its kind first, then only the
 //! fields that kind uses. Every right is checked again by the server.
 
 use dioxus::prelude::*;

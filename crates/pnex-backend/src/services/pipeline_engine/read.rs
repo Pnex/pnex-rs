@@ -1,4 +1,4 @@
-//! `read` (pipeline-engine.md D939): files into typed rows, by a format
+//! `read` (pipelines.md D939): files into typed rows, by a format
 //! reader that knows no source. Decimals stay exact; a time without an
 //! offset is read in its IANA zone, daylight saving included.
 

@@ -1,4 +1,4 @@
-//! `{{name}}` templates of a step (pipeline-engine.md D936): filled from the
+//! `{{name}}` templates of a step (pipelines.md D936): filled from the
 //! columns of a row, or `{{setting.<pack>.<key>}}` from the org's settings.
 //! A name may end with filters: `{{pair|lower}}`, `{{code|upper}}`,
 //! `{{month_m|int}}`, `{{code|before:.}}`, `{{code|after:.}}`,

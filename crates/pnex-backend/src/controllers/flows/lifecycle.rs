@@ -291,7 +291,7 @@ pub(crate) async fn unknown_actions_for_deploy(
     Ok(violations)
 }
 
-/// Tables gate (data-pipelines.md D578): a `dataset_trigger` names a table of the
+/// Tables gate (pipelines.md D578): a `dataset_trigger` names a table of the
 /// org, otherwise it would never fire.
 pub(crate) async fn unknown_datasets_for_deploy(
     ctx: &AppContext,

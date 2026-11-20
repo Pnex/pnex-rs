@@ -13,7 +13,7 @@
 > étudiées (usurpation de marque, faux RIB, appels d'offres :
 > `pnex-business/lucas/`).
 
-Liens : `ingestion.md` (D317–D322, open data France Compétences dans un
+Liens : `pipelines.md` (D317–D322, open data France Compétences dans un
 flow), `extension-collector.md` (D254–D284, amendés par D307–D310),
 `ontology.md` (D176–D191, D190 packs), `iam.md` (D285–D299, comptes de
 service), `notifications.md` (D49–D68), `flow-engine.md`, `media.md`

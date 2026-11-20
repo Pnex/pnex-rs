@@ -542,7 +542,7 @@ pub struct Pack {
     /// pull out of a document, each value with its quote (D841).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extractors: Vec<crate::extractor::Extractor>,
-    /// Named read-only queries (pipeline-engine.md D948), run under the
+    /// Named read-only queries (pipelines.md D948), run under the
     /// caller's rights by `POST /analysis/named/{pack}/{key}`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queries: Vec<crate::named_query::NamedQuery>,
@@ -831,7 +831,7 @@ pub struct HierarchyView {
 }
 
 /// Properties and actions a pack adds to a type it does not own (D306;
-/// actions: pipeline-engine.md D999, a flow of the pack handles them).
+/// actions: pipelines.md D999, a flow of the pack handles them).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TypeExtension {

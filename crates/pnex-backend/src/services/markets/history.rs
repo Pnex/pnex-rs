@@ -1,5 +1,5 @@
 //! Price rows pushed by MetaTrader 5 terminals (markets-research.md D849).
-//! The public price and bulk files are pipelines (pipeline-engine.md D939).
+//! The public price and bulk files are pipelines (pipelines.md D939).
 
 use std::sync::Arc;
 
@@ -26,7 +26,7 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
 }
 
 /// One pass of the MT5 terminals' inbox of each org that has calls in it
-/// (D849). The public price files are pipelines now (pipeline-engine.md).
+/// (D849). The public price files are pipelines now (pipelines.md).
 pub async fn sweep(ctx: &AppContext, _today: NaiveDate) -> Result<(), DatasetError> {
     let orgs: Vec<i64> = ctx
         .db

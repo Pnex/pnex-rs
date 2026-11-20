@@ -1,4 +1,4 @@
-//! Pipeline ask node (pipeline-engine.md D999): `pnex-pipeline-ask`. Each message gives
+//! Pipeline ask node (pipelines.md D999): `pnex-pipeline-ask`. Each message gives
 //! its `payload` (one object or an array of objects) as rows to
 //! `POST /internal/flow/pipeline-ask`; the backend reads the pipeline and the daily
 //! ceiling from the deployed graph and answers at once. The flow never waits for the

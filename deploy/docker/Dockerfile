@@ -201,7 +201,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-a
  && mv target/.src-manifest.new target/.src-manifest
 
 # ── pipeline worker ──────────────────────────────────────────────────
-# SQL transforms of data pipelines (data-pipelines.md D573). Its own build and
+# SQL transforms of data pipelines (pipelines.md D573). Its own build and
 # image: the engine never enters pnex-server, and this image holds no
 # configuration, no fixture and no front.
 FROM toolchain AS pipeline-worker-build

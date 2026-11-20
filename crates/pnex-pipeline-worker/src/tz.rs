@@ -1,5 +1,5 @@
 //! The SQL functions `local_to_utc` and `utc_to_local` of a pipeline
-//! (pipeline-engine.md D939), on the zone code of `pnex_core::pipeline::tz`.
+//! (pipelines.md D939), on the zone code of `pnex_core::pipeline::tz`.
 
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -1,7 +1,7 @@
 # Règles de navigation des sites web — studio, navigateur serveur (D323–D328)
 
 > Proposition source : `pnex-quali-watch/navigation.md` v0.3 (Quali-Watch). Ici : ce que
-> le noyau PNeX livre. Suite de `partner-watch.md` (D300–D316) et d'`ingestion.md`
+> le noyau PNeX livre. Suite de `partner-watch.md` (D300–D316) et d'`pipelines.md`
 > (D317–D322). **N1 codé le 2026-10-20** (D323–D326 + navigateurs configurables) ;
 > **N2 codé le 2026-10-20** (D327 nœud de flow, notification ok → échec, prochains
 > passages, extraits versés à la médiathèque, rétention des captures D268) ; D328 (`llm_extract`) reste à faire.

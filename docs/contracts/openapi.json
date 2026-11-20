@@ -35133,7 +35133,7 @@
         "type": "object"
       },
       "WebhookSettings": {
-        "description": "How the sender of a webhook signs its calls (connectors.md D795): HMAC-SHA256 of\nthe body, or of `<timestamp>.<body>` when a timestamp header is named, with the\nconnector's secret, hex encoded after `signature_prefix`.",
+        "description": "How the sender of a webhook signs its calls (pipelines.md D795): HMAC-SHA256 of\nthe body, or of `<timestamp>.<body>` when a timestamp header is named, with the\nconnector's secret, hex encoded after `signature_prefix`.",
         "properties": {
           "signature_header": {
             "type": "string"
@@ -40375,7 +40375,7 @@
     },
     "/api/v1/analysis/named": {
       "get": {
-        "description": "Each read-only query a pack the org installed declares (pipeline-engine.md D948): its key, its typed parameters and its SQL. Run one with `POST /analysis/named/{pack}/{key}`. Requires `analysis:run`.",
+        "description": "Each read-only query a pack the org installed declares (pipelines.md D948): its key, its typed parameters and its SQL. Run one with `POST /analysis/named/{pack}/{key}`. Requires `analysis:run`.",
         "operationId": "analysis_named_list",
         "parameters": [
           {

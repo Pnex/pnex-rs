@@ -1,4 +1,4 @@
-// Connectors by kind (connectors.md D791–D797): a webhook created from the screen
+// Connectors by kind (pipelines.md D791–D797): a webhook created from the screen
 // leaves with its address and a secret shown once, and a call signed with it is
 // kept; a REST connector keeps its authentication; MySQL always goes through TLS.
 import { createHmac } from 'node:crypto';

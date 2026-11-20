@@ -220,7 +220,7 @@ pub enum Route {
         #[route("/web-sites/:site")]
         WebSiteStudio { site: String },
 
-        // Data pipelines: tables, studio, chained runs, connectors (data-pipelines.md §9.5).
+        // Data pipelines: tables, studio, chained runs, connectors (pipelines.md §6.3).
         #[route("/pipelines")]
         Pipelines {},
 

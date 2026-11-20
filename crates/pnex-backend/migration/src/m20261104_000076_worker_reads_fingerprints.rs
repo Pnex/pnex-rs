@@ -1,4 +1,4 @@
-//! The worker leaves erased people out of what it writes (data-pipelines.md D569):
+//! The worker leaves erased people out of what it writes (pipelines.md D569):
 //! it reads their fingerprints, never a value.
 
 use sea_orm_migration::prelude::*;

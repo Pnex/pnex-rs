@@ -1,4 +1,4 @@
-//! Connectors (connectors.md D791–D797): saved access to an outside database or API,
+//! Connectors (pipelines.md D791–D797): saved access to an outside database or API,
 //! read only, or a webhook other systems call; secrets in the vault. Org admins only,
 //! the server checks each right.
 

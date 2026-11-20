@@ -1,4 +1,4 @@
-//! Incremental CSV reader (data-pipelines.md D569): bytes in, Arrow batches of
+//! Incremental CSV reader (pipelines.md D569): bytes in, Arrow batches of
 //! text columns out, in memory bounded by [`RECORD_MAX`] and the batch size,
 //! whatever the size of the file. The input is hostile (D319, D320): a record
 //! or a header past the bounds is refused, never buffered.

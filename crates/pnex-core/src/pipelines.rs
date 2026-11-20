@@ -1,4 +1,4 @@
-//! Pipelines (data-pipelines.md D571): the document, its validation and the
+//! Pipelines (pipelines.md D571): the document, its validation and the
 //! DTOs of the API. Pure, wasm-safe. The YAML is parsed by the callers.
 
 use std::collections::{BTreeMap, HashSet};

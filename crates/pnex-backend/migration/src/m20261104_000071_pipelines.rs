@@ -1,4 +1,4 @@
-//! Pipelines (data-pipelines.md D571, D573, D574): versioned documents, their
+//! Pipelines (pipelines.md D571, D573, D574): versioned documents, their
 //! job queue, and the lineage each run writes. `pnex_pipeline_worker` is the
 //! role of the worker that runs user SQL: catalogue and queue only, no business
 //! table and no secret.
@@ -66,7 +66,7 @@ impl MigrationTrait for Migration {
                  CREATE INDEX dataset_transaction_inputs_input
                    ON dataset_transaction_inputs (input_transaction_id);
                  -- A managed database user may not create roles: the worker role is then
-                 -- left to the database admin (data-pipelines.md), and the boot goes on.
+                 -- left to the database admin (pipelines.md), and the boot goes on.
                  DO $$ BEGIN
                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pnex_pipeline_worker') THEN
                      IF NOT (SELECT rolcreaterole OR rolsuper FROM pg_roles WHERE rolname = current_user) THEN

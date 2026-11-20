@@ -4,7 +4,7 @@
 |---|---|
 | Statut | Proposé le 2026-10-31 ; **codé le 2026-11-02 : MK0 partiel, MK1, MK2 (presse = piste), MK4, MK5, MK6 sur dépôts, D536 outils de lecture**. Reste : §7 bis |
 | Numérotation | **D523…D536, D540…D546, D734…D743** (appendice A), **D810…D816** (appendice B), **D807…D809, D820…D824** (appendice C), **D841…D846** (appendice D), **D847…D849** (appendice E), **D880…D889** (appendice F), **D890…D897** (appendice G), **D986…D993** (appendice L), lots **MK0…MK14**, **MK15…MK26** (appendice F), **MK27…MK30** (appendice G) |
-| Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`data-pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
+| Repose sur | ontologie (D176–D191, séries D185, provenance D184), `companies` / `companies_fr` (D304–D306), pipelines (`pipelines.md` D344–D358), règles de sites (`site-recipes.md` D323–D328), ingestion média (`media-ingest.md` D159–D175), dossiers (`cases.md`), moteur financier (`due-diligence.md` D478), propositions (`proposals.md` D371–D377), nœuds `anomaly` / `forecast`, notifications (D49–D68), assistant (`ai-assistant.md` §9) |
 | Sécurité | `security.md` §6 avant chaque lot ; sources sortantes via `pnex_core::egress` (R8), clés d'API au coffre (D113) |
 
 > Avertissement produit à afficher sur chaque écran du domaine : les indicateurs, événements et tests sont des aides à l'analyse, pas un conseil en investissement ni une recommandation.
@@ -209,7 +209,7 @@ Premier ensemble utile : MK0 → MK2 + MK4 (suivre ses valeurs, lire leur fil, v
 - MK0 : GLEIF/OpenFIGI/FIRDS, rapprochement avec une organisation existante (aujourd'hui une société SEC est créée par CIK, un doublon est possible avec une société déjà connue par LEI ou SIREN).
 - MK3 : extraction LLM à citation vérifiée (D476 absent du code), règles d'acceptation.
 - Répartition du balayage des documents entre orgs ; millésimes FRED antérieurs à la première lecture ; dépôts plus anciens que `filings.recent` ; alertes `anomaly` sur volume ; synthèse quotidienne de l'assistant ; widget de fiche émetteur.
-- ~~**Imports : passer sur les pipelines de données en masse**~~ (clos, appendice B.2) (`data-pipelines.md` D344–D358, prévus pour les gros volumes et les fichiers volumineux). Une partie des imports du domaine a été commencée par flow ; recenser ce qui passe encore par un flow (cours, FRED, dépôts, documents) et le transférer sur les pipelines avant de reprendre le domaine marchés. Aucun nouvel import marchés par flow, y compris pour l’appendice A (MK7–MK10). Noté le 2026-11-06, à traiter.
+- ~~**Imports : passer sur les pipelines de données en masse**~~ (clos, appendice B.2) (`pipelines.md` D344–D358, prévus pour les gros volumes et les fichiers volumineux). Une partie des imports du domaine a été commencée par flow ; recenser ce qui passe encore par un flow (cours, FRED, dépôts, documents) et le transférer sur les pipelines avant de reprendre le domaine marchés. Aucun nouvel import marchés par flow, y compris pour l’appendice A (MK7–MK10). Noté le 2026-11-06, à traiter.
 
 ### 7 ter. Filiales déclarées : Exhibit 21 des 10-K (lot F6 du test grandeur nature, 2026-11-06)
 
@@ -396,7 +396,7 @@ Prédiction de mouvement, score de risque pays ou de sentiment, intrajournalier,
 | Décision | Où | Écart ou précision |
 |---|---|---|
 | D734 | type `market_event` du pack `markets` 1.1.0 (`kind` D529 + `market_move`), lien `event_about` → `instrument` / `macro_series` | la « source » est portée par `series_code`, `metric` et `known_at` : ils désignent les lignes de `market_observations`, qui ne sont pas des objets |
-| D735 | `pnex_core::markets::moves::detect` ; `services::markets::moves::after_store`, appelé en fin d'écriture de toute import qui stocke des observations | la détection relit toute la série touchée (idempotence par `ref` = `move:<code>:<date>:<mode>`, objets archivés compris) ; un échec ne fait pas échouer l'import, le run suivant répare ; **2026-11-17** : remplacé par le pipeline `markets/market_moves` (SQL) et l'import « Abnormal sessions », tiré chaque jour après les séries FRED surveillées ; avis par règle (pipeline-engine.md, section du 2026-11-17) |
+| D735 | `pnex_core::markets::moves::detect` ; `services::markets::moves::after_store`, appelé en fin d'écriture de toute import qui stocke des observations | la détection relit toute la série touchée (idempotence par `ref` = `move:<code>:<date>:<mode>`, objets archivés compris) ; un échec ne fait pas échouer l'import, le run suivant répare ; **2026-11-17** : remplacé par le pipeline `markets/market_moves` (SQL) et l'import « Abnormal sessions », tiré chaque jour après les séries FRED surveillées ; avis par règle (pipelines.md, section du 2026-11-17) |
 | D736 | `known_at` / `backfilled` repris de l'observation qui déclenche | — |
 | D737 | réglages `move_series` (FRED) et `move_tickers` (Tiingo, `SPY`, `QQQ`), même format `CODE:mode:classe[:k[:plancher]]` ; imports « Watched series (FRED) » et « Watched prices (Tiingo) » | `PerObjectSetting::codes` ignore ce qui suit `:` ; plancher `fx` à 0,75 % (Q-MK7) |
 | D738 | avis groupé par séance : websocket de l'org, plus les canaux nommés dans `move_notify_channels` (envoi direct par `pnex_notify`, journalisé avec la source `market-moves`) ; jamais pour un `backfilled`. Onglet **Séance** sur `market_event` et `geo_event`, route `GET /api/v1/markets/sessions/{date}` | la « règle d'org » D49 est un réglage du pack, pas un objet de règle |
@@ -484,7 +484,7 @@ Les rubriques 8-K (D544) couvrent l'essentiel ; l'extraction à citation vérifi
 
 #### D816 — Cours en direct : un connecteur MetaTrader 5 maison
 
-Shan, 2026-11-08 : « pour les cours il y aura un connecteur MT5 qui va envoyer des données en live (PneX maison, pour éviter que les gens payent) ». Cela lève en partie le hors-périmètre « prix temps réel » du §8 pour la lecture (jamais d'ordre, D534). **Forme (Shan, 2026-11-08)** : un Expert Advisor MQL5 fourni par PneX pousse les barres par `WebRequest` vers un webhook signé (CN3, `connectors.md` D795), lecture seule, jamais d'ordre. Le stockage suit l'appendice C (D824 : même forme de table que l'historique). Détail et réponses de Shan : §C.7, « D816 ».
+Shan, 2026-11-08 : « pour les cours il y aura un connecteur MT5 qui va envoyer des données en live (PneX maison, pour éviter que les gens payent) ». Cela lève en partie le hors-périmètre « prix temps réel » du §8 pour la lecture (jamais d'ordre, D534). **Forme (Shan, 2026-11-08)** : un Expert Advisor MQL5 fourni par PneX pousse les barres par `WebRequest` vers un webhook signé (CN3, `pipelines.md` D795), lecture seule, jamais d'ordre. Le stockage suit l'appendice C (D824 : même forme de table que l'historique). Détail et réponses de Shan : §C.7, « D816 ».
 
 ### B.2 Imports et pipelines (§7 bis, vérifié le 2026-11-08)
 
@@ -509,7 +509,7 @@ Recensement : aucune import marchés ni monde ne passe par un flow. Toutes sont 
 | Statut | Proposé le 2026-11-08 ; MK11 à MK14 codés le 2026-11-08 (§C.7) ; mesure MK13 à 10⁵ transactions faite à échelle réduite |
 | Lots | **MK11…MK14** |
 | Origine | volet trading de PNeX : un modèle entraîné sur des images de graphiques, du texte et la frise des événements (`geo_event`, `market_event`), puis une boucle qui cherche les meilleurs trades. Ici, **seulement la collecte de l'historique** : ni le modèle, ni l'entraînement, ni le flux continu |
-| Repose sur | tables et pipelines (`data-pipelines.md` D569–D578 : Parquet sur S3, transactions `append`, worker DataFusion, ordonnanceur D575), D526 (une source = une import, liste blanche), D531 (lecture à la date t), D540 (sources primaires), D543 (sources fixées dans le code, R9), §7 bis (aucun import marchés par flow) |
+| Repose sur | tables et pipelines (`pipelines.md` D569–D578 : Parquet sur S3, transactions `append`, worker DataFusion, ordonnanceur D575), D526 (une source = une import, liste blanche), D531 (lecture à la date t), D540 (sources primaires), D543 (sources fixées dans le code, R9), §7 bis (aucun import marchés par flow) |
 | Sécurité | `security.md` §6 avant chaque lot ; hôtes fixés dans le code, egress R8 |
 
 ### C.1 Le besoin
@@ -804,7 +804,7 @@ Un `market_event` accepté d'une société suivie rejoint l'avis de séance (D81
 
 - **Pourquoi** : bougies bid d'une minute gratuites, 66 instruments (forex majeur et croisé, or, argent, WTI, Brent, indices), depuis 2000 à 2010 selon la paire ; aucun captcha ni pare-feu. Le site ne publie ni licence ni conditions (`/terms-of-use/` en 404), ne nomme pas sa source et vend l'accès automatisé (FTP 27 $ pour 15 jours, mises à jour 7 $ par mois).
 - **Comment, sans scraping agressif** : la page de la période est lue, et son propre formulaire (`/get.php`, jeton `tk` et champs cachés, renvoyés tels quels, lettres et chiffres seulement) est renvoyé avec la page en referer et notre nom de client (`PNEX-Import`). **Un fichier par org et par passage de 5 minutes**, 5 s de pause ; une année close = un fichier, jamais redemandé ; l'année en cours par mois clos. EURUSD depuis 2000 ≈ 36 fichiers.
-- **Données** : `histdata_ohlcv_1m` (forme `ohlcv`), heure EST fixe (UTC−5, sans heure d'été) convertie en UTC. **Faux, relevé le 2026-11-12** : HistData suit l'heure de New York avec heure d'été, ces minutes étaient 1 h en retard d'avril à octobre ; remplacé par le pipeline `markets/histdata_m1` et la table `histdata_m1` (`pipeline-engine.md` D939), volume publié à 0 gardé tel quel, `quote_volume` et `trades` nuls ; table privée à l'org (`license_note`).
+- **Données** : `histdata_ohlcv_1m` (forme `ohlcv`), heure EST fixe (UTC−5, sans heure d'été) convertie en UTC. **Faux, relevé le 2026-11-12** : HistData suit l'heure de New York avec heure d'été, ces minutes étaient 1 h en retard d'avril à octobre ; remplacé par le pipeline `markets/histdata_m1` et la table `histdata_m1` (`pipelines.md` D939), volume publié à 0 gardé tel quel, `quote_volume` et `trades` nuls ; table privée à l'org (`license_note`).
 - **Registre** : migration 000135, période `year`. Une année vide (avant la première de la paire, ou pas encore publiée) est redemandée pendant un an.
 - **Correctif commun** : dans un passage, les partitions jamais demandées passent avant celles qu'on redemande (vides récentes, échecs). Sans cela, avec un budget d'un fichier, une année pas encore publiée bloquait les mois de l'année en cours.
 - **À trancher par Shan** : écrire à HistData pour un accord d'usage (ou prendre leur offre payante) avant tout usage en SaaS.
@@ -1382,7 +1382,7 @@ Tranchées par Shan le 2026-11-10 :
 ### J.6 Ce qui est codé et écarts (2026-11-10)
 
 > **2026-11-17** : la collecte est passée en pipelines du pack (`prediction_markets` 2.0.0,
-> pipeline-engine.md, section du 2026-11-17) : la passe Rust, ses curseurs et les tables
+> pipelines.md, section du 2026-11-17) : la passe Rust, ses curseurs et les tables
 > PostgreSQL ci-dessous n'existent plus ; prix et échanges sont des tables de l'org, la résolution
 > d'un état porte `condition_id` et le lien `resolution_of`, le réglage `history_days` devient
 > `history_from`. Les lectures (MK39, MK40, détecteur D924) sont inchangées pour leurs appelants.

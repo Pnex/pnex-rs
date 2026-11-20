@@ -1,4 +1,4 @@
-//! REST connectors (connectors.md D793): a kind beyond `postgres` and the settings it
+//! REST connectors (pipelines.md D793): a kind beyond `postgres` and the settings it
 //! needs besides host, port and TLS.
 
 use sea_orm_migration::prelude::*;

@@ -1,4 +1,4 @@
-//! Files of a run (pipeline-engine.md D935): a fetched body, an archive
+//! Files of a run (pipelines.md D935): a fetched body, an archive
 //! entry, a table read. Small ones stay in memory; past a few MB they spill
 //! to a temporary file, deleted with the last row that holds it.
 

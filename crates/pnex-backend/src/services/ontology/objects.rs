@@ -541,7 +541,7 @@ pub async fn archive<C: ConnectionTrait>(
     Ok(())
 }
 
-// ─────────────────────────── bulk (data-pipelines.md D347) ───────────────────────────
+// ─────────────────────────── bulk (pipelines.md D347) ───────────────────────────
 
 /// Rows per bulk statement (one JSON parameter each).
 pub(super) const BULK_CHUNK: usize = 5_000;

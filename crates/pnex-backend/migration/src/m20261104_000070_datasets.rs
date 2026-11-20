@@ -1,4 +1,4 @@
-//! Datasets (data-pipelines.md D569): tables stored as Parquet files on S3,
+//! Datasets (pipelines.md D569): tables stored as Parquet files on S3,
 //! versioned by transactions. Committing is a PostgreSQL write, so an open or
 //! aborted transaction stays invisible to readers.
 

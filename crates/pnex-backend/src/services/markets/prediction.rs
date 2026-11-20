@@ -1,5 +1,5 @@
 //! Prediction markets (markets-research.md appendix J, D918–D925): reads
-//! over what the pack's pipelines collect (pipeline-engine.md D946): the
+//! over what the pack's pipelines collect (pipelines.md D946): the
 //! markets and their dated resolution states as objects, their prices and
 //! trades in the org's tables `prediction_prices` and `prediction_trades`.
 //! Reads: the model inputs at an instant (D922), the external model's

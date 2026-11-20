@@ -1,4 +1,4 @@
-//! Data pipelines (data-pipelines.md §9.5, lot OP1.5): `/pipelines` lists pipelines,
+//! Data pipelines (pipelines.md §6.3, lot OP1.5): `/pipelines` lists pipelines,
 //! tables, chained runs and connectors; `/pipelines/:id` is the studio of a pipeline,
 //! `/pipelines/tables/:id` the page of a table.
 

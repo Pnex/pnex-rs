@@ -1,4 +1,4 @@
-//! Connectors as vault consumers (data-pipelines.md D352).
+//! Connectors as vault consumers (pipelines.md D352).
 //!
 //! The password of a `connectors` row lives in the vault (`secret_id`);
 //! a typed value goes to the dedicated secret `connector/<name>/auth`,

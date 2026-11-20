@@ -1,4 +1,4 @@
-//! The DataFusion session of a transform (data-pipelines.md D572). User SQL is a
+//! The DataFusion session of a transform (pipelines.md D572). User SQL is a
 //! hostile input: a session holds only the declared inputs, refuses anything but
 //! a query on the logical plan, and offers functions from an allow list.
 //!
@@ -37,7 +37,7 @@ const SCALAR_FUNCTIONS: &[&str] = &[
     "date_part",
     "date_trunc",
     "ends_with",
-    // Bounded math, for measures on series (pipeline-engine.md D949).
+    // Bounded math, for measures on series (pipelines.md D949).
     "exp",
     "floor",
     "greatest",

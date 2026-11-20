@@ -1,4 +1,4 @@
-//! Pipelines API (data-pipelines.md D571, D573, D574): documents, versions, run
+//! Pipelines API (pipelines.md D571, D573, D574): documents, versions, run
 //! queue, org isolation (R1), permissions (R2). The worker has its own tests.
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL).

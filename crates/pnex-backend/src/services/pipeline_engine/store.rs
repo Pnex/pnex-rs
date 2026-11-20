@@ -1,4 +1,4 @@
-//! The server side of the pipeline engine (pipeline-engine.md D937–D946):
+//! The server side of the pipeline engine (pipelines.md D937–D946):
 //! the pipelines shipped in the packs, the registry of their rows, the
 //! network under the egress guard, the org's tables, and the scheduler.
 

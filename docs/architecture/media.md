@@ -55,7 +55,7 @@ vieux clients).
   `content_length()`). Le corps est lu en mémoire : au pire
   `PNEX_UPLOAD_MAX_CONCURRENT` (4) × 2 Gio de RAM ; l'edge nginx laisse
   passer 2100 Mo.
-- **Envoi par parties (2026-11-05, data-pipelines.md §9.9)** : derrière Cloudflare
+- **Envoi par parties (2026-11-05, pipelines.md §3.12)** : derrière Cloudflare
   une requête porte 100 Mo au plus. Au-delà de 32 Mio, le front ouvre
   `POST /api/v1/media/uploads` (nouvel asset, ou nouvelle version d'`asset_id`),
   envoie des parties de 32 Mio (`PUT .../parts/{n}`, 64 Mio au plus, 1000 parties,

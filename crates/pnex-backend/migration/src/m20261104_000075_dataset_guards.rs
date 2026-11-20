@@ -1,4 +1,4 @@
-//! Guards on datasets (data-pipelines.md D569, D577): the table an import fills
+//! Guards on datasets (pipelines.md D569, D577): the table an import fills
 //! belongs to it, an erasure stays as a fingerprint that later loads filter, and
 //! lineage outlives a deleted pipeline so erasure still follows it.
 

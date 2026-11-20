@@ -49,7 +49,7 @@ settings:
     descriptions: {fr: "Le fichier open data de l'édition lue (France Travail le renomme chaque année). Vide : BMO n'est pas lu."}
     kind: text
     default: "https://www.francetravail.org/files/live/sites/peorg/files/documents/Statistiques-et-analyses/Open-data/BMO/Base-open-data-BMO-2026.xlsx"
-# Read-only queries (pipeline-engine.md D948), run under the caller's rights
+# Read-only queries (pipelines.md D948), run under the caller's rights
 # by `POST /analysis/named/labor_market_fr/<key>`.
 queries:
   - key: bmo

@@ -1,4 +1,4 @@
-//! A queued pipeline step is a query or a Starlark `call` (pipeline-engine.md
+//! A queued pipeline step is a query or a Starlark `call` (pipelines.md
 //! D936): `sql` holds its text, `settings` the pack settings a call reads.
 
 use sea_orm_migration::prelude::*;

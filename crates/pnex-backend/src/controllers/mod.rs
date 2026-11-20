@@ -13,12 +13,12 @@ pub mod camera_recordings;
 /// Cameras settings + recorded segments API (D76/D79).
 pub mod cameras;
 pub mod cases;
-/// Pipelines (data-pipelines.md D571).
+/// Pipelines (pipelines.md D571).
 pub mod connectors;
 pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
-/// Datasets (data-pipelines.md D569).
+/// Datasets (pipelines.md D569).
 pub mod datasets;
 pub mod device_link;
 pub mod devices;

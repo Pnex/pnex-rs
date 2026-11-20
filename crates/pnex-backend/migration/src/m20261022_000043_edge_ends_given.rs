@@ -1,4 +1,4 @@
-//! Bulk link writes (data-pipelines.md D347) pass the identities of both
+//! Bulk link writes (pipelines.md D347) pass the identities of both
 //! ends: the trigger only resolves an end left empty. Resolving 60,000
 //! fresh links one lookup at a time scanned `objects` per row (no
 //! statistics yet for the rows the same transaction just inserted).

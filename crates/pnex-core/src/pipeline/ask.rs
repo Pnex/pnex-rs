@@ -1,4 +1,4 @@
-//! `pipeline_ask` flow node (pipeline-engine.md D999): a flow asks a pack
+//! `pipeline_ask` flow node (pipelines.md D999): a flow asks a pack
 //! pipeline for rows of its `asked` axis (D997), as a route does. serde-only,
 //! wasm32-safe.
 //!

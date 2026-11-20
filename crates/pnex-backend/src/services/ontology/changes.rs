@@ -5,7 +5,7 @@
 //! Writes are best effort and queued (`notify_journal` school): a journal
 //! failure never fails the write it describes. Reads never provision O2.
 //! A transaction wraps its work in [`deferred`] so its changes are queued
-//! only once it committed (data-pipelines.md D350).
+//! only once it committed (pipelines.md D350).
 
 use std::cell::RefCell;
 use std::collections::HashMap;

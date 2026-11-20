@@ -1,4 +1,4 @@
-//! The pipeline document (pipeline-engine.md D934–D936): closed steps, each
+//! The pipeline document (pipelines.md D934–D936): closed steps, each
 //! reading a working table by name and writing one. The backend parses the
 //! YAML into JSON; this module checks it.
 

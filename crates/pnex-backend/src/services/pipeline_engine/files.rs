@@ -1,4 +1,4 @@
-//! `extract` and `unpack` (pipeline-engine.md D936): rows drawn from the
+//! `extract` and `unpack` (pipelines.md D936): rows drawn from the
 //! files of a working table. Fetched files are hostile input: archives are
 //! capped by entries and by unpacked bytes, pages are only parsed.
 

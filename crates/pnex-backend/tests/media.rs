@@ -709,7 +709,7 @@ async fn send_in_parts(
     panic!("upload never ended");
 }
 
-/// A file too large for one request behind a proxy (data-pipelines.md §9.9): parts
+/// A file too large for one request behind a proxy (pipelines.md §3.12): parts
 /// joined in the background into a new asset, then into a new version of it. The
 /// format is judged on the whole, another org reaches nothing.
 #[tokio::test]

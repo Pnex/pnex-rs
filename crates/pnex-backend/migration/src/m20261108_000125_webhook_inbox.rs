@@ -1,4 +1,4 @@
-//! Incoming webhooks (connectors.md D795): the kind, and the inbox that keeps each
+//! Incoming webhooks (pipelines.md D795): the kind, and the inbox that keeps each
 //! signed call until an import reads it into a table.
 
 use sea_orm_migration::prelude::*;

@@ -1,4 +1,4 @@
-//! A file sent in several requests (data-pipelines.md D569). A proxy limits each
+//! A file sent in several requests (pipelines.md D569). A proxy limits each
 //! request (Cloudflare: 100 MB) and the time of its answer (about 100 s): parts wait on
 //! S3, one object each, and any pod converts them afterwards through [`load_csv`]. A part
 //! can be sent again, and a conversion lost with its pod starts again.
