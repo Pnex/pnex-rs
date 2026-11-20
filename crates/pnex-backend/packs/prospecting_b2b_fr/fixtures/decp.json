@@ -1,0 +1,4 @@
+{"total_count": 2, "results": [
+  {"id": "2026EX001", "nature": "Marché", "objet": "Maintenance of the cooling plant", "codecpv": "50730000-1", "procedure": "Appel d'offres ouvert", "titulaire_id_1": "10000000900017", "titulaire_typeidentifiant_1": "SIRET", "titulaire_id_2": "CDL", "titulaire_id_3": "CDL", "acheteur_id": "20000000800014", "dureemois": 48, "datenotification": "2026-11-17", "montant": 80000.0, "lieuexecution_code": "80"},
+  {"id": "2026EX002", "nature": "Marché", "objet": "Heat pumps for a school", "procedure": "Procédure adaptée", "titulaire_id_1": "30000000700011", "titulaire_id_2": "10000000900017", "titulaire_id_3": "CDL", "acheteur_id": "20000000800014", "datenotification": "2026-10-02", "montant": null, "lieuexecution_code": null}
+]}

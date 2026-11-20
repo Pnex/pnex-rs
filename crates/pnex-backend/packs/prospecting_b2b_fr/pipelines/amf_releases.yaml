@@ -1,0 +1,46 @@
+# Regulated releases of each followed listed account (customer, prospect,
+# target), by its LEI: results, outlook, inside information (acquisitions,
+# plants, restructurings), annual reports. Listed issuers file most of them
+# twice (French and English): the French one only is kept. Each release is
+# a PDF, its address is the item's source.
+key: amf_releases
+name: Regulated releases (AMF)
+hosts: [www.info-financiere.gouv.fr]
+steps:
+  - enumerate: { as: rows, cross: [{ as: lei, objects: { type: organization, property: lei, only: { account_status: [customer, prospect, target] } } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://www.info-financiere.gouv.fr/api/explore/v2.1/catalog/datasets/flux-amf-new-prod/records?where=identificationsociete_iso_cd_lei%3D%22{{lei}}%22%20and%20informationdeposee_inf_lng_inf%3D%22Fran%C3%A7ais%22&order_by=uin_dat_amf%20desc&limit=20"
+      every: 200ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /results
+      columns:
+        - { name: lei, value: "{{lei}}" }
+        - { name: id, at: /uin_idt_uin }
+        - { name: title, at: /informationdeposee_inf_tit_inf, optional: true }
+        - { name: kind, at: /sous_type_d_information, optional: true }
+        - { name: filed_at, at: /uin_dat_amf }
+        - { name: pdf, at: /url_de_recuperation, optional: true }
+  - sql:
+      as: releases
+      sql: |
+        SELECT lei, 'amf:' || id AS ref, substr(filed_at, 1, 10) AS date,
+               coalesce(title, id) AS title, kind AS summary, pdf AS url
+        FROM found
+  - write: { from: releases, table: { name: amf_releases, replace: true } }
+tests:
+  - name: the French releases of one listed account
+    objects: { "organization.lei?account_status=customer,prospect,target": ["969500EXAMPLE0000001"] }
+    given:
+      "https://www.info-financiere.gouv.fr/api/explore/v2.1/catalog/datasets/flux-amf-new-prod/records?where=identificationsociete_iso_cd_lei%3D%22969500EXAMPLE0000001%22%20and%20informationdeposee_inf_lng_inf%3D%22Fran%C3%A7ais%22&order_by=uin_dat_amf%20desc&limit=20": amf.json
+    expect:
+      releases:
+        rows: 1
+        columns: [lei, ref, date, title, summary, url]
+        contains:
+          - { lei: "969500EXAMPLE0000001", ref: "amf:000001_20261119", date: "2026-11-19", title: "ACME : new plant in Lyon", url: "https://fr.ftp.opendatasoft.com/datadila/INFOFI/ECO/2026/11/EXAMPLE000001.pdf" }

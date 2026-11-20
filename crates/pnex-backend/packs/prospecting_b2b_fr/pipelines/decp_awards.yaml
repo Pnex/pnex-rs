@@ -1,0 +1,52 @@
+# Public contracts won by each followed account (customer, prospect,
+# target), by its SIREN: the essential data of public procurement (DECP),
+# the award notices French buyers must publish. A holder is a SIRET, and a
+# contract has up to three holders (a consortium): a prefix match on the
+# SIREN finds every site of the company in any of the three places.
+key: decp_awards
+name: Public contracts won (DECP)
+hosts: [data.economie.gouv.fr]
+steps:
+  - enumerate: { as: rows, cross: [{ as: siren, objects: { type: organization, property: siren, only: { account_status: [customer, prospect, target] } } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/decp-2022-marches-valides/records?where=startswith(titulaire_id_1%2C%22{{siren}}%22)%20or%20startswith(titulaire_id_2%2C%22{{siren}}%22)%20or%20startswith(titulaire_id_3%2C%22{{siren}}%22)&order_by=datenotification%20desc&limit=50"
+      every: 200ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /results
+      columns:
+        - { name: siren, value: "{{siren}}" }
+        - { name: id, at: /id }
+        - { name: buyer_siret, at: /acheteur_id, optional: true }
+        - { name: amount, at: /montant, type: float, optional: true }
+        - { name: subject, at: /objet, optional: true }
+        - { name: procedure, at: /procedure, optional: true }
+        - { name: place, at: /lieuexecution_code, optional: true }
+        - { name: notified_on, at: /datenotification }
+  - sql:
+      as: awards
+      sql: |
+        SELECT siren, 'decp:' || id AS ref, notified_on AS date,
+               coalesce(subject, id) AS title,
+               substr(coalesce(subject, '') || ' — ' || coalesce(procedure, '')
+                      || CASE WHEN amount IS NOT NULL THEN ' — ' || CAST(amount AS VARCHAR) || ' EUR' ELSE '' END
+                      || CASE WHEN place IS NOT NULL THEN ' — ' || place ELSE '' END, 1, 2000) AS summary,
+               buyer_siret
+        FROM found
+  - write: { from: awards, table: { name: decp_awards, replace: true } }
+tests:
+  - name: the contracts of one account, keyed and summarized
+    objects: { "organization.siren?account_status=customer,prospect,target": ["100000009"] }
+    given:
+      "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/decp-2022-marches-valides/records?where=startswith(titulaire_id_1%2C%22100000009%22)%20or%20startswith(titulaire_id_2%2C%22100000009%22)%20or%20startswith(titulaire_id_3%2C%22100000009%22)&order_by=datenotification%20desc&limit=50": decp.json
+    expect:
+      awards:
+        rows: 2
+        columns: [siren, ref, date, title, summary, buyer_siret]
+        contains:
+          - { siren: "100000009", ref: "decp:2026EX001", date: "2026-11-17", title: "Maintenance of the cooling plant", buyer_siret: "20000000800014" }

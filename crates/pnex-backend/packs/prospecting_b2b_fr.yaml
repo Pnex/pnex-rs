@@ -32,13 +32,34 @@
 # a captured profile.
 # Since 4.0.0 the press import writes news items of the `watch` pack,
 # linked by `item_about` (breaking).
+# Since 4.1.0 public contracts won (DECP), building permits for premises
+# (Sitadel), regulated releases (AMF, by LEI) and the inspections of the
+# sites' classified installations (Géorisques, by SIRET) are news items too,
+# and so are the open tenders on the org's trade (BOAMP, settings).
 key: prospecting_b2b_fr
 name: B2B prospecting, France layer
 names: {fr: "Prospection B2B, couche France"}
-version: "4.0.0"
+version: "4.1.0"
 requires: [companies_fr, prospecting_b2b]
 description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
 descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
+settings:
+  - key: tender_descriptors
+    name: Tender descriptors followed
+    names: {fr: "Descripteurs d'appels d'offres suivis"}
+    description: "Comma-separated BOAMP descriptor codes of the org's trade, for example 196,59 (maintenance, heating operation). Empty: tenders are not read."
+    descriptions: {fr: "Codes de descripteurs BOAMP du métier de l'org, séparés par des virgules, par exemple 196,59 (maintenance, exploitation du chauffage). Vide : les appels d'offres ne sont pas lus."}
+    kind: text
+    max_len: 2000
+    default: ""
+  - key: tender_departments
+    name: Tender departments followed
+    names: {fr: "Départements d'appels d'offres suivis"}
+    description: "Comma-separated French department codes, for example 69,01,38. Empty: tenders are not read."
+    descriptions: {fr: "Codes de départements séparés par des virgules, par exemple 69,01,38. Vide : les appels d'offres ne sont pas lus."}
+    kind: text
+    max_len: 500
+    default: ""
 imports:
   - name: Press (GDELT)
     source: file
@@ -377,6 +398,133 @@ imports:
             excerpt: { from: acte, convert: [json, "field:descriptif"] }
       links:
         - { type: signal_about, from: sig, to: legal_unit }
+  - name: Public contracts won (DECP)
+    source: file
+    mapping:
+      key: decp_awards
+      pipeline: prospecting_b2b_fr/decp_awards
+      name: Public contracts won (DECP)
+      names: {fr: "Marchés publics remportés (DECP)"}
+      description: The public contracts awarded to an account followed (customer, prospect, target), from the essential data of public procurement. Source data.economie.gouv.fr, Licence Ouverte.
+      objects:
+        - as: item
+          type: news_item
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: ref
+            summary: summary
+            date: date
+            source_url: { value: "https://data.economie.gouv.fr/explore/dataset/decp-2022-marches-valides/" }
+            lang: { value: fr }
+            topic: { value: contract_award }
+            credit: { value: "DECP, data.economie.gouv.fr" }
+            state: { value: to_validate }
+        - { as: about, type: organization, key: siren, create: false, missing: skip, properties: { siren: siren } }
+      links:
+        - { type: item_about, from: item, to: about }
+  - name: Building permits for premises (Sitadel)
+    source: file
+    mapping:
+      key: sitadel_permits
+      pipeline: prospecting_b2b_fr/sitadel_permits
+      name: Building permits for premises (Sitadel)
+      names: {fr: "Permis de construire de locaux (Sitadel)"}
+      description: The building permits for non-residential premises filed by an account followed (customer, prospect, target), with the floor areas created. Source SDES, Sitadel, Licence Ouverte.
+      objects:
+        - as: item
+          type: news_item
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: ref
+            summary: summary
+            date: date
+            source_url: { value: "https://www.statistiques.developpement-durable.gouv.fr/" }
+            lang: { value: fr }
+            topic: { value: building_permit }
+            credit: { value: "Sitadel, SDES" }
+            state: { value: to_validate }
+        - { as: about, type: organization, key: siren, create: false, missing: skip, properties: { siren: siren } }
+      links:
+        - { type: item_about, from: item, to: about }
+  - name: Regulated releases (AMF)
+    source: file
+    mapping:
+      key: amf_releases
+      pipeline: prospecting_b2b_fr/amf_releases
+      name: Regulated releases (AMF)
+      names: {fr: "Information réglementée (AMF)"}
+      description: The regulated releases (results, inside information, annual reports) of a listed account followed (customer, prospect, target), the French version, each a PDF. Source info-financiere.gouv.fr (DILA).
+      objects:
+        - as: item
+          type: news_item
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: ref
+            summary: summary
+            date: date
+            source_url: url
+            lang: { value: fr }
+            topic: { value: regulated_release }
+            credit: { value: "info-financiere.gouv.fr" }
+            state: { value: to_validate }
+        - { as: about, type: organization, key: lei, create: false, missing: skip, properties: { lei: lei } }
+      links:
+        - { type: item_about, from: item, to: about }
+  - name: Classified installations inspections (Géorisques)
+    source: file
+    mapping:
+      key: icpe_inspections
+      pipeline: prospecting_b2b_fr/icpe_inspections
+      name: Classified installations inspections (Géorisques)
+      names: {fr: "Inspections des installations classées (Géorisques)"}
+      description: The environmental inspections of the sites (establishments) of the accounts followed, with the inspection report when published. Source Géorisques, georisques.gouv.fr.
+      objects:
+        - as: item
+          type: news_item
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: ref
+            summary: summary
+            date: date
+            source_url: url
+            lang: { value: fr }
+            topic: { value: inspection }
+            credit: { value: "Géorisques, georisques.gouv.fr" }
+            state: { value: to_validate }
+        - { as: about, type: map_pin, key: siret, create: false, missing: skip, properties: { siret: siret } }
+      links:
+        - { type: item_about, from: item, to: about }
+  - name: Open public tenders (BOAMP)
+    source: file
+    mapping:
+      key: boamp_tenders
+      pipeline: prospecting_b2b_fr/boamp_tenders
+      name: Open public tenders
+      names: {fr: "Appels d'offres ouverts (BOAMP)"}
+      description: The calls for tenders of the last seven days on the org's trade and departments (pack settings). Source BOAMP, DILA.
+      objects:
+        - as: item
+          type: news_item
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: ref
+            summary: summary
+            date: date
+            source_url: url
+            lang: { value: fr }
+            topic: { value: tender }
+            credit: { value: "BOAMP, DILA" }
+            state: { value: to_validate }
 functions:
   - name: pl_prepare
     language: starlark

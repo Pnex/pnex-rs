@@ -1,0 +1,56 @@
+# Open public tenders on the org's trade: the calls for tenders of the last
+# seven days in the official bulletin of public procurement (BOAMP), for
+# each pair of a business descriptor and a department the org follows
+# (settings). A tender is keyed by its notice number: a later run finds the
+# same notices and adds nothing. Which buyer it is about is the org's flow.
+key: boamp_tenders
+name: Open public tenders (BOAMP)
+hosts: [boamp-datadila.opendatasoft.com]
+requires: [prospecting_b2b_fr.tender_descriptors, prospecting_b2b_fr.tender_departments]
+steps:
+  - enumerate:
+      as: asked
+      cross:
+        - { as: descriptor, setting: prospecting_b2b_fr.tender_descriptors }
+        - { as: department, setting: prospecting_b2b_fr.tender_departments, case: upper }
+  - fetch:
+      as: answer
+      for_each: asked
+      url: "https://boamp-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/boamp/records?where=nature%3D%22APPEL_OFFRE%22%20and%20descripteur_code%3D%22{{descriptor}}%22%20and%20code_departement%3D%22{{department}}%22%20and%20dateparution%3E%3Dnow(days%3D-7)&order_by=dateparution%20desc&limit=100"
+      every: 200ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /results
+      columns:
+        - { name: id, at: /idweb }
+        - { name: subject, at: /objet, optional: true }
+        - { name: buyer, at: /nomacheteur, optional: true }
+        - { name: published_on, at: /dateparution }
+        - { name: deadline, at: /datelimitereponse, optional: true }
+        - { name: procedure, at: /procedure_libelle, optional: true }
+        - { name: url, at: /url_avis, optional: true }
+  - sql:
+      as: tenders
+      sql: |
+        SELECT DISTINCT 'boamp:' || id AS ref, published_on AS date,
+               coalesce(subject, id) AS title,
+               concat_ws(' — ', buyer, procedure,
+                 CASE WHEN deadline IS NOT NULL THEN 'deadline ' || substr(deadline, 1, 10) END) AS summary,
+               url
+        FROM found
+  - write: { from: tenders, table: { name: boamp_tenders, replace: true } }
+tests:
+  - name: one notice found by two descriptors is kept once
+    settings: { prospecting_b2b_fr.tender_descriptors: "196,59", prospecting_b2b_fr.tender_departments: "69" }
+    given:
+      "https://boamp-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/boamp/records?where=nature%3D%22APPEL_OFFRE%22%20and%20descripteur_code%3D%22196%22%20and%20code_departement%3D%2269%22%20and%20dateparution%3E%3Dnow(days%3D-7)&order_by=dateparution%20desc&limit=100": boamp.json
+      "https://boamp-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/boamp/records?where=nature%3D%22APPEL_OFFRE%22%20and%20descripteur_code%3D%2259%22%20and%20code_departement%3D%2269%22%20and%20dateparution%3E%3Dnow(days%3D-7)&order_by=dateparution%20desc&limit=100": boamp.json
+    expect:
+      tenders:
+        rows: 1
+        columns: [ref, date, title, summary, url]
+        contains:
+          - { ref: "boamp:26-000001", date: "2026-11-19", title: "Maintenance of the heating plants", summary: "Example town (69) — Procédure Ouverte — deadline 2026-12-17", url: "https://www.boamp.fr/pages/avis/?q=idweb:26-000001" }

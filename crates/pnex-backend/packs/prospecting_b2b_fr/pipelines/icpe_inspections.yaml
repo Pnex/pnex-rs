@@ -1,0 +1,57 @@
+# Inspections of the classified installations (ICPE) of the followed
+# accounts' sites, by the site's SIRET: the environmental inspectorate's
+# visits, often with their report as a PDF (what the site runs: cooling,
+# combustion, storage). Each site is read again weekly for new visits.
+# shortcut: an inspection is keyed by SIRET and date (two installations of
+# one SIRET inspected the same day merge), key by AIOT code if one does.
+key: icpe_inspections
+name: Classified installations inspections (Géorisques)
+hosts: [georisques.gouv.fr]
+steps:
+  - enumerate: { as: rows, track: true, again_days: 7, per_run: 500, cross: [{ as: siret, objects: { type: map_pin, property: siret } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://georisques.gouv.fr/api/v1/installations_classees?siret={{siret}}&page=1&page_size=10"
+      every: 500ms
+      missing_is_empty: true
+  - read:
+      as: sites
+      from: answer
+      format: json
+      records: /data
+      columns:
+        - { name: siret, value: "{{siret}}" }
+        - { name: name, at: /raisonSociale, optional: true }
+        - { name: regime, at: /regime, optional: true }
+        - { name: seveso, at: /statutSeveso, optional: true }
+  - read:
+      as: visits
+      from: answer
+      format: json
+      records: /data/*/inspections/*
+      columns:
+        - { name: siret, value: "{{siret}}" }
+        - { name: date, at: /dateInspection }
+        - { name: report, at: /fichierInspection/urlFichier, optional: true }
+  - sql:
+      as: inspections
+      sql: |
+        SELECT DISTINCT v.siret, 'icpe:' || v.siret || ':' || v.date AS ref, v.date,
+               'Inspection ICPE · ' || coalesce(s.name, v.siret) AS title,
+               coalesce(s.regime, '') || CASE WHEN s.seveso IS NOT NULL THEN ' — Seveso ' || s.seveso ELSE '' END AS summary,
+               v.report AS url
+        FROM visits v LEFT JOIN sites s ON s.siret = v.siret
+  - write: { from: inspections, table: { name: icpe_inspections, replace: true } }
+tests:
+  - name: each inspection of a site, with its report
+    objects: { "map_pin.siret": ["10000000900017"] }
+    given:
+      "https://georisques.gouv.fr/api/v1/installations_classees?siret=10000000900017&page=1&page_size=10": icpe.json
+    expect:
+      inspections:
+        rows: 2
+        columns: [siret, ref, date, title, summary, url]
+        contains:
+          - { ref: "icpe:10000000900017:2025-03-12", title: "Inspection ICPE · ACME INDUSTRIE", summary: "Enregistrement", url: "https://www.georisques.gouv.fr/webappReport/ws/installations/document/example-report.pdf" }
+          - { ref: "icpe:10000000900017:2019-06-01" }

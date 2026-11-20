@@ -1,0 +1,67 @@
+# Building permits for non-residential premises (factories, warehouses,
+# offices, shops) filed by each followed account (customer, prospect,
+# target), by the applicant's SIREN, from the national register of planning
+# permits (Sitadel, SDES). A company that files for a plant or a warehouse
+# will build, equip and hire. Surfaces are the floor areas created.
+# shortcut: the 100 latest-filed permits per company (the API's page size,
+# no sort), follow `nextPage` if a followed group files more.
+key: sitadel_permits
+name: Building permits for premises (Sitadel)
+hosts: [data.statistiques.developpement-durable.gouv.fr]
+steps:
+  - enumerate: { as: rows, cross: [{ as: siren, objects: { type: organization, property: siren, only: { account_status: [customer, prospect, target] } } }] }
+  - fetch:
+      as: answer
+      for_each: rows
+      url: "https://data.statistiques.developpement-durable.gouv.fr/dido/api/v1/datafiles/f8f0700f-806c-40a7-83b1-f21cf507e7c4/rows?page=1&pageSize=100&SIREN_DEM=eq:{{siren}}"
+      every: 300ms
+      missing_is_empty: true
+  - read:
+      as: found
+      from: answer
+      format: json
+      records: /data
+      columns:
+        - { name: siren, value: "{{siren}}" }
+        - { name: id, at: /NUM_DAU }
+        - { name: kind, at: /TYPE_DAU, optional: true }
+        - { name: applicant, at: /DENOM_DEM, optional: true }
+        - { name: street, at: /ADR_LIBVOIE_TER, optional: true }
+        - { name: town, at: /ADR_LOCALITE_TER, optional: true }
+        - { name: postcode, at: /ADR_CODPOST_TER, optional: true }
+        - { name: authorized_on, at: /DATE_REELLE_AUTORISATION, optional: true }
+        - { name: filed_on, at: /DR_DEPOT, optional: true }
+        - { name: works_on, at: /DATE_REELLE_DOC, optional: true }
+        - { name: industry_m2, at: /SURF_IND_CREEE, type: float, optional: true }
+        - { name: warehouse_m2, at: /SURF_ENT_CREEE, type: float, optional: true }
+        - { name: office_m2, at: /SURF_BUR_CREEE, type: float, optional: true }
+        - { name: premises_m2, at: /SURF_LOC_CREEE, type: float, optional: true }
+        - { name: extension, at: /I_EXTENSION, type: bool, optional: true }
+  - sql:
+      as: permits
+      sql: |
+        SELECT siren, 'sitadel:' || id AS ref, coalesce(authorized_on, filed_on) AS date,
+               coalesce(kind, 'PC') || ' ' || id || ' · ' || coalesce(town, '') AS title,
+               concat_ws(' — ',
+                 CASE WHEN extension THEN 'extension' END,
+                 CASE WHEN coalesce(industry_m2, 0) > 0 THEN 'industry ' || CAST(CAST(industry_m2 AS BIGINT) AS VARCHAR) || ' m²' END,
+                 CASE WHEN coalesce(warehouse_m2, 0) > 0 THEN 'warehouse ' || CAST(CAST(warehouse_m2 AS BIGINT) AS VARCHAR) || ' m²' END,
+                 CASE WHEN coalesce(office_m2, 0) > 0 THEN 'offices ' || CAST(CAST(office_m2 AS BIGINT) AS VARCHAR) || ' m²' END,
+                 CASE WHEN coalesce(premises_m2, 0) > 0 THEN 'premises ' || CAST(CAST(premises_m2 AS BIGINT) AS VARCHAR) || ' m²' END,
+                 CASE WHEN works_on IS NOT NULL THEN 'works opened ' || works_on END,
+                 concat_ws(' ', street, postcode, town)) AS summary,
+               coalesce(industry_m2, 0) + coalesce(warehouse_m2, 0) AS plant_m2
+        FROM found
+  - write: { from: permits, table: { name: sitadel_permits, replace: true } }
+tests:
+  - name: the permits of one account, with the floor areas created
+    objects: { "organization.siren?account_status=customer,prospect,target": ["100000009"] }
+    given:
+      "https://data.statistiques.developpement-durable.gouv.fr/dido/api/v1/datafiles/f8f0700f-806c-40a7-83b1-f21cf507e7c4/rows?page=1&pageSize=100&SIREN_DEM=eq:100000009": sitadel.json
+    expect:
+      permits:
+        rows: 2
+        columns: [siren, ref, date, title, summary, plant_m2]
+        contains:
+          - { ref: "sitadel:06912325A0001", date: "2026-03-12", title: "PC 06912325A0001 · DECINES-CHARPIEU", summary: "extension — industry 4200 m² — warehouse 800 m² — 1 RUE DE L'EXEMPLE 69150 DECINES-CHARPIEU", plant_m2: 5000.0 }
+          - { ref: "sitadel:06912324A0002", date: "2024-01-01" }
