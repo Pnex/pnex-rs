@@ -2,154 +2,228 @@
 
 | | |
 |---|---|
-| Statut | **Choix produit tranchés par Shan le 2026-11-08** (§2). **AN1, AN2 et AN3 codés le 2026-11-08** (§6) ; OP5 complet hors AN4 |
-| Déclencheur | Ordre OP1 → OP2 → OP3, puis OP5 (`operational-platform.md` §2) ; agrégats déjà livrés (`viz.md`) |
-| Repose sur | `operational-platform.md` (D557 : lecture seule, droits de l'appelant), `pipelines.md` (worker D571–D574), `governance.md` (marquages D801), `crm.md` (masque D443), `ontology.md` (D185 requête), `pages` |
-| Numérotation | **D825…D832**, lots **AN1…AN3** (AN4, analyse sans code, plus tard) |
+| Statut | Livré (lots AN1 à AN3). AN4 et la règle qui propose restent à faire (§7) |
+| Repose sur | `operational-platform.md` (D557), `pipelines.md` (worker D571–D574, requêtes nommées D948), `governance.md` (D801, D803), `crm.md` (masque D443), `ontology.md` (requête D185), `viz.md` (agrégats D579), `pages.md` |
 
-## 1. Le besoin en une phrase
+## Résumé
 
-Poser une question en SQL à ses tables et à ses objets sans rien écrire, la surveiller par une règle
-qu'on peut rejouer sur le passé, et en mettre la réponse vivante dans une page.
+L'analyse permet de poser une question en SQL aux tables et aux objets d'une org, sans rien écrire.
+Une règle surveille une condition et notifie quand elle devient vraie. Le rejeu montre sur le passé
+les instants où une règle s'est déclenchée. Un bloc vivant met la réponse d'une requête dans une
+page, calculée avec les droits du lecteur. Tout se fait en lecture seule (D557).
 
-## 2. Choix de Shan (2026-11-08)
+## 1. Concepts
 
-| Question | Réponse |
-|---|---|
-| Premier morceau | SQL en lecture |
-| Où s'exécute une requête | Le worker DataFusion, en file |
-| Ce que lit le SQL | Les tables **et** les objets de l'ontologie |
-| Suite | Règles avec rejeu, puis blocs vivants ; l'analyse sans code attend |
-| Portée des règles | Objets et séries |
-| Bloc vivant dans un PDF | Valeur recalculée à l'export, datée |
+- **Requête** : une instruction `SELECT` d'une personne, exécutée par le worker de pipelines.
+- **Objet figé** : copie Parquet des objets d'un type, tels que l'auteur de la requête les voit.
+- **Requête nommée** : requête d'un pack installé, avec des paramètres typés (D948, `pipelines.md`).
+- **Règle** : condition sur les objets d'un type ou sur une série, avec son auteur.
+- **Rejeu** : aperçu des déclenchements d'une règle sur une fenêtre passée. Il n'envoie rien.
+- **Bloc vivant** : nœud de page `live_block` qui porte une requête SQL ou un calcul sur des objets.
 
-## 3. Décisions
+```mermaid
+classDiagram
+  direction LR
+  Requete --> Table : lit
+  Requete --> ObjetFige : lit
+  ObjetFige --> Objet : copie
+  RequeteNommee --> Requete : crée
+  Regle --> Objet : surveille
+  Regle --> Serie : surveille
+  Regle --> Notification : envoie
+  BlocVivant --> Requete : calcule
+  Page "1" --> "*" BlocVivant : contient
+```
+
+## 2. Fonctionnement
+
+### 2.1 Exécuter une requête
+
+```mermaid
+sequenceDiagram
+  participant U as Personne
+  participant S as Serveur
+  participant W as Worker
+  U->>S: POST /analysis/queries (sql)
+  S->>S: tables lisibles, refus des tables marquées
+  S->>S: objets cités figés en Parquet
+  S-->>U: 202, requête en file
+  W->>W: prend la requête avant les runs
+  W->>W: lit ce que le serveur a fixé
+  U->>S: GET /analysis/queries/{id}
+  S-->>U: état puis lignes
+```
+
+Le serveur fixe à l'envoi tout ce que la requête peut lire :
+
+- **Tables** : les tables de l'org que l'auteur lit. Une table marquée sans habilitation complète,
+  citée par son nom, fait échouer la requête en `marking-required`.
+- **Objets** : chaque `objects.<type>` cité devient un objet figé. Le masque D443 et les marquages
+  D801 s'appliquent. Les objets cachés sont absents.
+
+Le worker n'a ni l'ontologie ni les droits. Il lit seulement les clés que le serveur a listées.
+
+### 2.2 Cycle de vie d'une requête
+
+```mermaid
+stateDiagram-v2
+  [*] --> EnFile : envoi
+  EnFile --> EnCours : le worker la prend
+  EnCours --> Finie : lignes rendues
+  EnCours --> Echouee : refus, délai, taille
+  EnCours --> Echouee : bloquée plus de 5 min
+  Finie --> [*] : purge à 24 h
+  Echouee --> [*] : purge à 24 h
+```
+
+Une personne a au plus une requête en file ou en cours (`analysis-busy`). La boucle horaire purge
+les requêtes et leurs objets figés après un jour.
+
+### 2.3 Passage d'une règle
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TD
+  P[Passage toutes les 5 min] --> M[Masque de l'auteur recalculé]
+  M --> K{Type de règle}
+  K -- objets --> F{Premier passage ?}
+  F -- oui --> N[Note les objets, n'envoie rien]
+  F -- non --> O[Notifie les nouveaux objets]
+  K -- série --> S{Seuil tenu pendant la durée ?}
+  S -- oui --> T[Notifie]
+  O --> C{Canal choisi ?}
+  T --> C
+  C -- oui --> CH[Envoi sur le canal]
+  C -- non --> APP[Notification dans l'app]
+```
+
+Le passage tourne en singleton `rules-pass`. Une règle suit au plus 2 000 objets. Une condition
+modifiée remet l'état de la règle à zéro.
+
+Le rejeu lit l'historique des changements (objets) et les séries (O2). Il calcule les instants de
+déclenchement sur 24 h, 7 j ou 30 j, avec les droits de la personne qui demande.
+
+### 2.4 Calculer un bloc vivant
+
+```mermaid
+sequenceDiagram
+  participant L as Lecteur
+  participant F as Front
+  participant S as Serveur
+  L->>F: ouvre la page
+  F->>S: analysis_queries_create (max_age_secs ≤ 300)
+  alt requête du lecteur de moins de 5 min
+    S-->>F: requête existante
+  else
+    S-->>F: nouvelle requête
+  end
+  F->>S: GET /analysis/queries/{id}
+  S-->>F: lignes ou raison du refus
+  F-->>L: tableau, ou bloc vide avec la raison
+```
+
+Le front calcule les blocs un par un, avec les droits du lecteur. Il recalcule un bloc quand ses
+réglages changent, au bout de 5 min ou sur « Recalculer ». L'éditeur insère un bloc par l'entrée
+« Bloc vivant » du menu `/`.
+
+À l'export PDF, la route `docs_versions_pdf` recalcule chaque bloc avec les droits de la personne
+qui exporte. Le tableau porte « Valeur au … UTC » et 200 lignes au plus. Le nœud de flow `page_pdf`
+laisse le bloc vide. L'export Markdown écrit la requête d'un bloc SQL et le titre d'un calcul.
+
+## 3. Exigences
+
+1. Une requête doit contenir une seule instruction `SELECT`, avec la liste blanche de fonctions des
+   transformations (D572), sans fichier ni réseau.
+2. Une requête doit s'arrêter à 60 s (`analysis-timeout`).
+3. Le résultat doit tenir en 10 Mo (`analysis-result-too-large`). Au-delà de 1 000 lignes, il porte
+   `truncated`.
+4. Un type d'objet cité doit contenir 50 000 objets au plus (`analysis-too-many-objects`).
+5. Le texte SQL doit tenir en 64 Ko.
+6. Le résultat d'une requête doit être lisible par son seul auteur (404 pour les autres).
+7. Une règle ne doit jamais écrire de donnée (D557).
+8. Le rejeu ne doit rien envoyer ni stocker.
+9. Un bloc vivant doit se calculer avec les droits du lecteur, jamais avec ceux de l'auteur.
+10. Les attributs d'un bloc vivant doivent être des chaînes bornées, validées par le serveur (titre
+    ≤ 200 caractères). L'éditeur affiche du texte seulement, jamais de HTML.
+
+## 4. Décisions
 
 ### D825 — Une requête est un travail du worker, sous les droits de l'appelant
 
-`POST /analysis/queries` (`sql`) crée une requête en file ; `GET /analysis/queries/{id}` rend son
-état puis son résultat. Le serveur fixe tout ce que la requête peut lire **au moment de l'envoi** :
-
-- **tables** : celles de l'org que l'appelant lit, sauf les tables marquées pour lesquelles il n'est
-  pas habilité, que la requête cite par leur nom et qui la font échouer en `marking-required` ;
-- **objets** : chaque `objects.<type>` cité dans le texte devient une table figée des objets de ce
-  type **tels que l'appelant les voit** (masque D443 et marquages D801 appliqués, objets cachés
-  absents), écrite en Parquet dans un préfixe de la requête, effacée après.
-
-Le worker n'a ni l'ontologie ni les droits : il lit seulement ce que le serveur lui a donné.
+Le serveur fixe à l'envoi les tables lisibles et fige les objets cités. Le worker lit seulement ça.
 
 ### D826 — Lecture seule, bornée
 
-Mêmes garde-fous que les transformations (D572) : une seule instruction, `SELECT` seulement, liste
-blanche de fonctions, pas de fichier ni de réseau, pool mémoire plafonné. En plus : 60 s, 1 000
-lignes rendues (`truncated` au-delà), 10 Mo de résultat, une requête en cours ou en file par
-personne (`analysis-busy`). Le résultat reste 24 h.
+Mêmes garde-fous que D572, plus 60 s, 1 000 lignes, 10 Mo, une requête par personne et 24 h de garde.
 
 ### D827 — Les requêtes passent avant les pipelines
 
-Le worker prend d'abord une requête en file, puis un run de pipeline. Un run déjà commencé n'est pas
-interrompu : sous une longue transformation, une requête attend. Un worker dédié aux requêtes
-(`PNEX_WORKER_QUEUES=analysis`) se déploie à côté quand cette attente gêne.
+Le worker prend une requête en file avant un run. Il n'interrompt jamais un run commencé.
 
 ### D828 — Une lecture marquée se trace
 
-Une requête qui lit une table marquée (son auteur étant habilité) laisse une ligne
-`governance_reads` avec les marquages et les finalités, comme un échantillon (D803).
+Une requête sur une table marquée laisse une ligne `governance_reads`, comme un échantillon (D803).
 
 ### D829 — Règles : une condition, une alerte ou une proposition (AN2)
 
-Une règle porte sur un type d'objet (filtres de la requête D185 sur ses propriétés) ou sur une série
-(seuil, durée). Quand elle devient vraie : une notification ou une proposition, jamais une écriture
-(D557). Elle s'évalue sous les droits de son auteur, revérifiés à chaque passage.
+Une règle porte sur un type d'objet (filtres D185) ou sur une série (seuil, durée). Seule la
+notification est livrée. La proposition attend (§7).
 
 ### D830 — Rejeu
 
-Une règle se rejoue sur une période passée : l'historique des changements (objets) et les séries
-(O2) donnent les instants où elle se serait déclenchée, sans rien envoyer. Le rejeu est un aperçu.
+Une règle se rejoue sur une fenêtre passée, sans rien envoyer.
 
 ### D831 — Bloc vivant (AN3)
 
-Un bloc de page porte une requête SQL ou un agrégat (D579) ; il se calcule à l'affichage, sous les
-droits du lecteur (pas de l'auteur de la page) ; un lecteur sans droit voit le bloc vide avec la
-raison.
+Un bloc porte une requête SQL ou un agrégat (D579), calculé à l'affichage avec les droits du lecteur.
 
 ### D832 — Export PDF
 
-Un bloc est recalculé à l'export et porte « au <date> ».
+L'export PDF recalcule chaque bloc et le date « au <date> ».
 
-## 4. Sécurité
+## 5. Interfaces
 
-- R1 : org de la requête = org du principal ; le worker ne lit que les clés que le serveur a listées.
-- R2 : `analysis:run` (Membre) ; tables et objets filtrés à l'envoi ; marquages vérifiés à l'envoi.
-- Le texte SQL est hostile : mêmes défenses que les transformations, plus le délai et le plafond.
-- Le résultat est lisible par son seul auteur (404 pour les autres).
+| Route | Opération | Permission |
+|---|---|---|
+| `POST /api/v1/analysis/queries` | `analysis_queries_create` | `analysis:run` (Membre) |
+| `GET /api/v1/analysis/queries/{id}` | `analysis_queries_get` | `analysis:run` |
+| `GET /api/v1/analysis/named` | `analysis_named_list` | `analysis:run` |
+| `POST /api/v1/analysis/named/{pack}/{key}` | `analysis_named_run` | `analysis:run` |
+| `GET /api/v1/rules`, `GET …/{id}` | `rules_list`, `rules_get` | `rules:read` (Lecteur) |
+| `POST /api/v1/rules`, `PUT …/{id}` | `rules_create`, `rules_update` | `rules:write` (Membre) |
+| `DELETE /api/v1/rules/{id}` | `rules_delete` | `rules:delete` (Membre) |
+| `POST /api/v1/rules/{id}/replay` | `rules_replay_preview` | `rules:read` |
 
-## 5. Lots
+- **MCP** : requêtes, lecture et rejeu des règles exposés. Écriture et suppression des règles exclues
+  (une règle envoie des messages).
+- **Écritures de règle** : à `expected_version` (`rule-version-conflict`), nom unique par org
+  (`rule-name-taken`).
+- **Codes** : `analysis-busy`, `analysis-unavailable`, `analysis-table-unknown`,
+  `analysis-sql-invalid`, `analysis-timeout`, `analysis-result-too-large`,
+  `analysis-too-many-objects`, `named-query-not-found`, `rule-not-found`.
+- **Tables** : `analysis_queries` (migration 000131), `rules` (migration 000132).
+- **UI** : onglet « Requête SQL » de `/pipelines` (Ctrl+Entrée). Page `/rules` sous Automatisation.
+  Fiche `assistant-kb/rules.md`.
+- **Code** : `pnex_core::{analysis, rules, pages}`, `services/{analysis,rules}.rs`, module
+  `analysis.rs` du worker.
 
-| Lot | Contenu |
-|---|---|
-| **AN1** | D825–D828 : requêtes SQL en lecture, objets figés, priorité, trace ; API, puis un éditeur simple dans `/pipelines` |
-| **AN2** | D829–D830 : règles et rejeu |
-| **AN3** | D831–D832 : blocs vivants dans les pages |
-| AN4 | Analyse sans code (tableau croisé), plus tard |
+## 6. Limites assumées
 
-## 6. Avancement
+- Le serveur trace D828 à l'envoi, pour les tables marquées dont le nom apparaît dans le texte. Il
+  compare des mots, il n'utilise pas l'analyse du moteur.
+- Un objet figé d'une requête jamais exécutée reste jusqu'à la purge du lendemain (`shortcut:`).
+- Sous une longue transformation, une requête attend la fin du run en cours.
+- L'aperçu d'une version figée (panneau Versions) montre le titre d'un bloc sans le calculer.
+- Les nombres d'un bloc n'ont pas de séparateur de milliers.
+- Dans un PDF, un bloc en échec dit seulement « ouvrez la page ». La page donne la raison traduite.
 
-**AN1 (2026-11-08)** : migration 000131 (`analysis_queries`, droits du rôle restreint du worker),
-`pnex_core::analysis`, `services/analysis.rs` (envoi : tables lisibles et refusées, objets figés en
-Parquet sous le masque de l'auteur ; lecture ; purge à un jour dans la boucle horaire),
-`controllers/analysis.rs` (`analysis_queries_create`, `analysis_queries_get`, `analysis:run` Membre,
-exposés au MCP), module `analysis.rs` du worker (pris avant les runs, tables enregistrées seulement si
-autorisées, schéma `objects`, 60 s, 1 000 lignes, 10 Mo ; une requête bloquée plus de 5 min échoue
-d'elle-même). Onglet « Requête SQL » de `/pipelines` (Ctrl+Entrée, suivi de l'état, résultat en
-tableau, raison du moteur affichée telle quelle sous le message traduit). Tests : `tests/analysis.rs`
-(backend), `a_query_reads_only_what_the_server_fixed` (worker, vraie base et vrai stockage),
-`e2e/tests/analysis.spec.ts` avec un vrai worker, deux fois vert.
+## 7. Reste à faire
 
-Écarts à relire : la journalisation D828 se fait **à l'envoi**, pour les tables marquées dont le nom
-apparaît dans le texte (une correspondance de mot, pas l'analyse du moteur) ; un objet figé d'une
-requête jamais exécutée reste jusqu'à la purge du lendemain (`shortcut:` dans le code). `break-ui` :
-le message d'une requête refusée disait « pas un seul SELECT » pour une colonne inconnue ; reformulé
-en « le moteur a refusé : sa raison suit ».
-
-**AN2 (2026-11-08)** : migration 000132 (`rules`, canal de notification optionnel, nom unique par
-org), `pnex_core::rules` (condition objets ou série, filtres D185, évaluation pure des événements),
-`services/rules.rs` (CRUD à `expected_version`, une condition changée remet l'état à zéro ; passage
-toutes les 5 min en singleton `rules-pass`, sous le masque de l'auteur recalculé à chaque passage ;
-objets : le premier passage note les objets qui correspondent sans rien envoyer, les suivants
-notifient les nouveaux ; série : notifie quand le seuil tient la durée demandée ; envoi sur le canal
-choisi, sinon notification dans l'app ; rejeu sur 24 h, 7 j ou 30 j sans rien envoyer),
-`controllers/rules.rs` (`rules:read` Lecteur, `rules:write` et `rules:delete` Membre ; lecture et
-rejeu exposés au MCP, écriture et suppression exclues). Page `/rules` sous Automatisation (tableau +
-pager, formulaire, rejeu avec liens vers les objets), fiche `assistant-kb/rules.md`, ligne
-« Règle » au lexique. Tests : `tests/rules.rs`, tests du cœur, `e2e/tests/rules.spec.ts`.
-
-Écarts à relire : D829 prévoit « une notification **ou une proposition** » ; seule la notification
-est livrée (choix de Shan pour AN2), la proposition attend OP9. `break-ui` : la colonne « Surveille »
-montrait la clé du type au lieu de son nom, et l'état disait « fausse au dernier passage » pour une
-règle jamais évaluée ; corrigés (nom du type, « Déclenchée / Non déclenchée », pluriel des filtres).
-
-**AN3 (2026-11-08)** : nœud de page `live_block` (liste blanche `pnex_core::pages`, attributs
-chaînes bornés et validés côté serveur : source `sql` ou `objects`, SQL ≤ 64 Ko, calcul JSON relu
-comme `AggregateQuery`, titre ≤ 200). Choix de Shan : SQL et calcul sur des objets, requête rangée
-dans la page, cache de 5 min par lecteur, export de flow sans calcul. Éditeur : entrée « Bloc
-vivant » du menu `/`, rendu par une vue ProseMirror (texte seulement, jamais de HTML), réglages dans
-une fenêtre Dioxus (titre, source ; type, calcul, nombre, répartition ; ou SQL). Le calcul se fait
-côté client, avec les droits du lecteur, un bloc après l'autre : `analysis_queries_create` reçoit
-`max_age_secs` (≤ 300) et répond par la requête du même lecteur en cours ou finie depuis moins de
-5 min ; « Recalculer » force un nouveau calcul ; un bloc est recalculé quand ses réglages changent
-ou au bout de 5 min. Un lecteur sans droit voit la raison traduite (D831). PDF (D832) : la route
-`docs_versions_pdf` recalcule chaque bloc avec les droits de la personne qui exporte, tableau daté
-« Valeur au … UTC » (200 lignes au plus, nouveau bloc `Table` de `pnex-pdf`), noms des propriétés
-et des valeurs d'énumération dans la langue du PDF ; le nœud `page_pdf` laisse le bloc vide (« Non
-calculé dans un export automatique »). Export Markdown : un bloc SQL devient sa requête, un calcul
-son titre. Tests : `live_block_takes_bounded_string_attributes`, `live_block_attributes_are_bounded`,
-`an_automatic_export_leaves_live_blocks_uncomputed`, `a_table_cuts_long_cells_and_breaks_pages`,
-réutilisation dans `tests/analysis.rs`, `e2e/tests/live-blocks.spec.ts`.
-
-Écarts à relire : l'aperçu d'une version figée (panneau Versions) montre le titre du bloc sans le
-calculer ; les nombres ne portent pas de séparateur de milliers ; un bloc dont la requête échoue
-dans un PDF dit seulement « ouvrez la page » (la raison détaillée est dans la page, traduite).
-`break-ui` : colonnes écrasées lettre par lettre sur téléphone (`overflow-wrap:anywhere`), en-tête
-qui se cassait avec un long titre, blocs insérés à l'envers faute de ligne après un bloc en fin de
-page, PDF sans titre de bloc et avec les clés internes en en-têtes ; tout corrigé.
+- **AN4** : analyse sans code (tableau croisé).
+- **D829, règle qui propose** : pas encore codée (elle passe par une proposition, OP9). Choix de Shan :
+  quand la livrer.
+- **D827, worker dédié aux requêtes** : l'ancien texte cite `PNEX_WORKER_QUEUES=analysis`, absent
+  du code. Choix de Shan : le coder, ou retirer cette option.
