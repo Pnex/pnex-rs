@@ -49,10 +49,11 @@ Mermaid :
 - Un diagramme = une idée, 15 nœuds au plus, libellés courts avec les mots du texte.
 - `flowchart` : en-tête `---` / `config:` / `  layout: elk` / `---`, comme les diagrammes existants.
 
-Retouche d'un doc existant :
-- Garder intacts les numéros Dn, les décisions, les liens et les titres cités ailleurs (grep avant de renommer un titre).
-- Réécrire en STE les phrases floues ; ne pas reformuler une phrase déjà claire.
-- Supprimer une redite ou un historique périmé seulement si le registre de décisions ou git le garde.
+Retouche d'un doc existant (réécrire, regrouper, nettoyer : accord de Shan du 2026-11-20) :
+- Un doc décrit l'**état actuel**. Le contenu périmé se supprime : plan déjà livré, état « au 2026-xx-xx » dépassé, option écartée, déroulé historique. Git le garde. Pas de section « Historique ».
+- Chaque décision reste trouvable : son numéro Dn, son titre et une ligne qui dit ce qui a été décidé (et ce qui l'a remplacée, si elle est levée).
+- Réécrire librement en STE ; le doc doit en sortir plus court, pas plus long.
+- Avant de renommer, fusionner ou déplacer un doc ou un titre : `git grep` de son chemin et de ses `§n`. Mettre à jour toutes les références (code, tests, CLAUDE.md, autres docs, mémoire) dans le même commit.
 - Un choix qui revient à Shan ne se tranche pas : il va dans « Reste à faire ».
 
 ## Langues
@@ -147,9 +148,30 @@ Cause réelle, 5ᵉ fois : un build Rust lancé depuis un terminal vit dans le c
 
 ## Passe STE sur `docs/` (en cours depuis 2026-11-20)
 
-- Boucle `/loop` en auto-compaction : **un doc par itération**, au gabarit ci-dessus, puis un commit local `docs(<scope>): restructure <doc> in STE with diagrams` avec chemins explicites. Pas de push : Shan relit et pousse.
-- Fait = `git log --oneline --grep 'in STE with diagrams'`. Ordre : les docs centraux d'abord (`operational-platform`, `ontology`, `flow-engine`, `iam`, `api-contract`, `security`, `data-pipelines`, `ingestion`, `ai-assistant`, `design-system`), puis le reste de `docs/architecture/` par ordre alphabétique, puis `docs/*.md`.
-- Les journaux datés (`audit-*`, `test-grandeur-nature-*`, `*-recette`, `docs/bench/`) reçoivent seulement un résumé et des diagrammes : on ne réécrit pas un constat daté.
+- Boucle `/loop` en auto-compaction : **un doc cible par itération** (une fusion compte pour une itération), au gabarit ci-dessus. Puis un commit local `docs(<scope>): rewrite <doc> in STE with diagrams`, chemins explicites. Pas de push : Shan relit et pousse.
+- Fait = `git log --oneline --grep 'in STE with diagrams'`. Carte cible validée par Shan (104 docs → environ 45), à traiter dans cet ordre :
+
+| Doc cible (`docs/architecture/`) | Fusionne |
+|---|---|
+| `operational-platform.md` | (seul) |
+| `ontology.md`, `flow-engine.md`, `iam.md`, `governance.md` | (seuls) |
+| `api.md` | `api-contract`, `mcp`, `cli` |
+| `security.md` | + `security-tiers`, `secrets` |
+| `pipelines.md` | `pipeline-engine`, `data-pipelines`, `ingestion`, `connectors`, `watch` |
+| `runtime.md` | `features`, `migrations`, `container-images`, `horizontal-scaling`, `postgres-19`, `system-admin` |
+| `design-system.md` | + `editor-shell`, `mobile-ui`, `rsx-fmt` |
+| `agents.md` | `autonomous-agents`, `agent-environments`, `agent-environments-recette`, `agent-unification`, `validation-gate`, `site-recipes`, `worker-fabric` |
+| `browser-agents.md` | `extension-collector` |
+| `cases.md` | + `cases-workspace`, `cases-money`, `cases-graph-sigma` |
+| `media.md` | + `media-ingest`, `media-import-pipeline`, `media-review`, `media-asr-bench`, `voice-id`, `call-recording` |
+| `vision.md` | `camera-video`, `ml-vision`, `annotations`, `media-vision-studio`, `media-vision-studio-concepts` |
+| `edge.md` | `edge-model`, `edge-agent`, `m2m-resilient`, `tls-edge`, `ota` |
+| `firmware.md` | `brick0`, `firmware-build`, `custom-firmware`, `pin-selftest`, `control-cards` |
+| `viz.md` | `viz-bases`, `studio`, `home-dashboards`, `surfaces-controls`, `object-aggregates` |
+| `crm.md` | + `account-mapping`, `sales-dashboards` |
+| `partners.md` | `partner-watch`, `network-check` |
+| réécrits seuls, ordre alphabétique | `ai-assistant`, `analysis`, `app-builder`, `assisted-creation`, `discourse-analysis`, `doc-search`, `due-diligence`, `external-apps`, `geo-layers`, `hub`, `labor-market`, `legal-research`, `mail`, `markets-research`, `notifications`, `pages`, `parts-docs`, `proposals`, `roadmap`, `software-delivery`, `use-cases`, `web-presence` |
+| `docs/journal/` (déplacés, résumé + diagrammes seulement : on ne réécrit pas un constat daté) | `audit-2026-11-06`, `test-grandeur-nature-2026-11-06`, `observations`, `inventory`, `bench/` |
 
 ## graphify
 
