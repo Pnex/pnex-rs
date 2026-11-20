@@ -1,7 +1,7 @@
 //! Document search P1 (docs/architecture/doc-search.md, decision #22):
 //! indexing state of a media version and its lexical text chunks.
 //!
-//! `text_chunks` is shared with the collaborative pages (pages.md §12):
+//! `text_chunks` is shared with the collaborative pages (pages.md §7):
 //! its source is a media version here; the pages migration adds its own
 //! nullable source column (real FK) next to `media_version_id`.
 

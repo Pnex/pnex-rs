@@ -1,517 +1,294 @@
-# Notifications — abstraction multi-canaux, templates et nœud flow (D49–D54, D61–D65)
+# Notifications : canaux, modèles et nœud de flow (D49–D68, D86)
 
-> **Statut : DOCTRINE (réflexion tranchée le 2026-09-13, implémentation par
-> phases — §11). AMENDEMENTS 2026-09-14 (implémentation N1–N3, worktree
-> `notifications`) :** ntfy retiré et smtp reporté — le registre v1 ne
-> livre que **`websocket`** (bus interne `/ws/notify` + endpoint interne
-> `/internal/notify/deliver`, jeton de service `settings.notifications`)
-> et **`webhook`** (POST générique — couvre ntfy/Gotify/Telegram/domotique,
-> qui ne sont que des POST ; ntfy/smtp dédiés restent des extensions
-> ~30 lignes). **Pas de centre de notifications dans le front PNeX** (l'app
-> a déjà ses toasts ; le websocket est un canal configurable consommé par
-> des clients externes). **Push natif FCM/APNs reporté** : produit
-> self-hosté à distribution unique ⇒ creds push configurables par instance
-> (point d'extension). Reporting engine→backend pour le journal websocket :
-> partiellement tiré de N6 (endpoint interne + journal source `flow`).
-> AMENDEMENT N4 (2026-09-14, §13) : canaux dédiés ntfy, telegram, slack,
-> discord, smtp (D61–D65) + picker de kind + garde i18n registry↔locales.
-> Référence pour tout le
-> chantier notification : choix de l'abstraction (D49), modèle à trois
-> objets org-scoped avec résolution au déploiement (D50), registre de
-> canaux extensible (D51), templates minijinja (D52), sémantique de
-> livraison (D53), secrets (D54). Sources amont :
-> `docs/architecture/flow-engine.md` (save ≠ déployé, nœuds `pnex_*`),
-> `docs/architecture/edge.md` (D44–D48), pattern registre
-> `ai_connectors` (migration 000010).
-
-## 1. Le problème
-
-Les événements applicatifs de PNeX (seuil dépassé, job de stitch terminé,
-device offline, fin de provisioning…) doivent pouvoir rejoindre des
-systèmes externes : ntfy, e-mail, Telegram, Slack, Discord, webhooks
-domotique. Aujourd'hui : rien. L'étude de l'écosystème (Apprise,
-Shoutrrr, shoutrrr-rs) conclut :
-
-| Option | Verdict |
+| | |
 |---|---|
-| **Apprise** (Python) | standard de fait (60+ services) mais Python : un sidecar de plus à opérer — exclu (pas de microservice de plus) |
-| **Shoutrrr** (Go) | bon design URL-based, mais lib Go — non liable depuis pnex |
-| **shoutrrr-rs** | le seul port Rust, archi saine (runtime-agnostic, transport en trait) mais **3 canaux** (Slack/Discord/webhook) — il faudrait contribuer tous les canaux utiles sur une crate jeune |
-| **Trait maison + crates éprouvées** | ntfy/Telegram/Slack/Discord/Gotify = un `reqwest::post` chacun (~30 l. chacun) ; SMTP = `lettre` ; templates = minijinja. Le périmètre utile est 5–7 canaux, pas 60 |
+| **Statut** | Codé. Sept canaux, modèles minijinja, nœud `pnex_notify`, journal des envois dans OpenObserve, destinataire tiré du message (D313), webhook signé (D315), pièce jointe PDF (D209). |
+| **Code** | crate `pnex-notify` (canaux, rendu, relances), crate `pnex-node-notify` (nœud du moteur), `controllers/notify/`, `controllers/internal_notify.rs`, `services/notify_journal.rs`, `services/notify_recipients.rs`, page `pages/notifications.rs` |
+| **Renvois** | `flow-engine.md` (version sauvegardée ≠ déployée), `security.md` (coffre de secrets, lot S4), `edge.md` (D44–D48), `partners.md` (D313, D315), `vision.md` (D86, D209) |
 
-**D49 — abstraction en lib maison.** Un trait `Channel` + une crate
-partagée `pnex-notify` (zéro dep loco), utilisée par le backend (envois
-directs, tests UI) et par le nœud flow (envois depuis edgelinkd). La
-couverture Apprise (60 services) n'est pas un objectif ; le périmètre
-cible est 5–7 canaux éprouvés. Pas de microservice de plus à côté de
-Rauthy et OpenObserve.
+## 1. Résumé
 
-## 2. Le modèle : trois objets, org-scoped (D50)
+Une notification transmet un événement de PneX à un système externe : seuil dépassé, device hors ligne, fin d'un job. Un admin d'org configure des canaux (ntfy, e-mail, Telegram, Slack, Discord, webhook, bus websocket) et des modèles de message. Un flow envoie par le nœud `pnex_notify`, qui rend un modèle et l'envoie sur un ou plusieurs canaux. Le backend, les boutons Test et le nœud passent tous par la même crate `pnex-notify`. Chaque envoi va au journal des envois, dans OpenObserve.
 
-Trois objets métier, tous scopés par `org_id` (couche D42, header
-`X-Org-Id`) :
+Hors périmètre : les alertes d'infrastructure (OpenObserve envoie déjà ses propres alertes), la couverture de 60 services (5 à 7 canaux suffisent), les préférences par utilisateur (l'exploitation est au niveau de l'org).
 
-| Objet | Table (DSL loco, migration 000020) | Contenu |
-|---|---|---|
-| **Canal** (destination) | `notify_channel` → `notify_channels` | `kind` (ntfy, webhook, smtp…), `name` unique par org, `config` JSON typé par kind (contient les secrets), `enabled` |
-| **Template** | `notify_template` → `notify_templates` | `name` unique par org, `subject` (optionnel, minijinja), `body` (minijinja), `vars` déclarées `[{name, example}]` pour le picker UI et l'aperçu |
-| **Nœud flow `pnex_notify`** | config du nœud dans le graphe | `channel_ids` (1..n), `template_id`, `vars` (overrides), `strict: bool` |
+## 2. Concepts
 
-**Résolution au déploiement (snapshot).** Le nœud du graphe ne porte que
-des références (`channel_ids`, `template_id`). **Au déploiement**, le
-backend résout les références et injecte dans la config du nœud déployé
-un snapshot `{kind, config, subject, body}`. Conséquences assumées :
+| Terme | Définition |
+|---|---|
+| **Canal** | Destination d'envoi de l'org : `kind`, `name` unique dans l'org, `config` JSON propre au kind, `enabled`. Table `notify_channels`. |
+| **Kind** | Type de canal. Une implémentation du trait `Channel` dans `pnex-notify`. |
+| **FieldSpec** | Description d'un champ de configuration d'un kind (`text`, `secret`, `number`, `select`, `bool`). Le formulaire de l'UI vient de là. |
+| **Modèle** | Message réutilisable : `subject` optionnel, `body`, `vars` déclarées `{name, example}`. Écrit en minijinja. Table `notify_templates`. |
+| **Nœud `pnex_notify`** | Nœud de flow : `channel_ids`, `template_id`, `vars`, `strict`, anti-spam, port `trigger`. |
+| **Snapshot** | Copie des canaux et du modèle, résolue par le backend au déploiement et portée par l'artefact du flow. |
+| **Trigger** | Entrée booléenne obligatoire du nœud. Elle arme ou désarme l'envoi. |
+| **Journal des envois** | Stream OpenObserve `notify_deliveries` de l'org. Une entrée par tentative. |
 
-- cohérent avec la doctrine « version sauvegardée ≠ déployée » :
-  éditer un canal ou un template ne mute pas les flows déjà déployés —
-  **re-déployer le flow pour propager** ;
-- le backend ne liant jamais le moteur, il n'y a **pas** d'aller-retour
-  engine→backend au send : le snapshot rend le nœud autonome ;
-- le toast de deploy liste les nœuds `pnex_notify` dont les références
-  sont périmées (snapshot ≠ config courante du canal/template), à
-  l'image de la chip runtime déjà pollée 5 s ;
-- rotation d'un secret côté canal ⇒ re-déployer les flows qui
-  l'utilisent.
+Les trois objets métier (canal, modèle, nœud) appartiennent à une org (couche D42, en-tête `X-Org-Id`).
 
-## 3. Registre des canaux (D51)
-
-Chaque kind = une implémentation du trait (dans `pnex-notify`) :
-
-```rust
-#[async_trait]
-pub trait Channel: Send + Sync {
-    /// identifiant du kind, ex. "ntfy"
-    fn kind(&self) -> &'static str;
-    /// spécification des champs de config (source du formulaire UI)
-    fn field_spec() -> Vec<FieldSpec>;
-    /// validation de la config à la sauvegarde
-    fn validate(config: &serde_json::Value) -> Result<(), String>;
-    async fn send(cfg: &serde_json::Value, msg: &Message) -> Result<(), NotifyError>;
-}
+```mermaid
+classDiagram
+  class Org
+  class Canal {
+    kind
+    config
+    enabled
+  }
+  class Modele {
+    subject
+    body
+    vars
+  }
+  class NoeudNotify {
+    channel_ids
+    template_id
+    vars
+    strict
+  }
+  class Snapshot
+  class Journal
+  Org "1" --> "*" Canal
+  Org "1" --> "*" Modele
+  NoeudNotify "*" --> "1..*" Canal : référence
+  NoeudNotify "*" --> "1" Modele : référence
+  NoeudNotify --> Snapshot : au déploiement
+  Canal --> Journal : chaque tentative
 ```
 
-Chaque kind = « 1 variante + 1 impl du trait + 1 `field_spec` + 2 clés
-i18n » — même économie de points d'extension que le registre des
-attachments POI.
+## 3. Fonctionnement
 
-`FieldSpec` décrit un champ de formulaire
-(`id, label_i18n, type: text|secret|number|select|bool, required, placeholder, help_i18n`).
-Le backend expose `GET /api/notify/kinds` → `[{kind, label, field_spec}]` :
-le front rend le formulaire d'édition canal **depuis le backend** (source
-unique de vérité, zéro drift front/back pour un produit à formulaires) ;
-les labels/icons restent locaux au front (registre front pour l'icône,
-i18n `notify-kind-*`).
+### 3.1 Résolution au déploiement (D50)
 
-Canaux (ordre du registre = ordre du picker) :
+```mermaid
+sequenceDiagram
+  participant UI as Éditeur de flows
+  participant B as Backend
+  participant R as Moteur de flows
+  UI->>B: déployer le flow
+  B->>B: lire canaux actifs et modèle
+  B->>R: artefact avec snapshot (références de secrets)
+  R-->>B: accusé
+  B-->>UI: flow + stale_notify_nodes
+  Note over R: au premier envoi
+  R->>B: GET /internal/flow/secret/{id}
+  B-->>R: valeur du secret, gardée en mémoire
+```
 
-| Kind | Transport | Champs |
-|---|---|---|
-| `websocket` | bus interne `/ws/notify` + `/internal/notify/deliver` | aucun (creds d'instance par env) |
-| `webhook` | reqwest POST JSON `{subject, body, meta}` | `url`, `secret_header`/`secret_value` (secret) |
-| `ntfy` | reqwest publication JSON `{topic, message, title, priority, tags}` | `server`, `topic`, `token` (secret), `priority` (select), `tags` |
-| `telegram` | Bot API `sendMessage` | `bot_token` (secret), `chat_id` |
-| `slack` | incoming webhook `{"text"}` | `webhook_url` (secret) |
-| `discord` | webhook `{"content"}` | `webhook_url` (secret), `username` |
-| `smtp` | lettre 0.11 (rustls) | `host`, `port`, `tls` (select starttls/tls/none), `username`, `password` (secret), `from`, `to` |
-| `gotify` | reqwest POST | `url`, `app_token` (secret), `priority` — en réserve |
+Le nœud porte seulement des références. Au déploiement, le backend résout ces références et injecte un snapshot dans l'artefact. Le moteur n'appelle donc jamais le backend pour rendre un message. Modifier un canal ou un modèle ne change pas un flow déjà déployé : il faut redéployer. La réponse de déploiement liste les nœuds dont le snapshot est périmé (`stale_notify_nodes`), et l'éditeur les affiche dans un toast.
 
-N4 livré : ntfy, telegram, slack, discord, smtp (D61–D65) ; gotify
-reste en réserve (~30 l. quand le besoin arrive).
+Le déploiement ignore un canal `enabled: false`. Le bouton Test, au contraire, envoie aussi sur un canal désactivé.
 
-## 4. Templates minijinja (D52)
+### 3.2 Envoi par le nœud (D53, D66–D68)
 
-**minijinja** (pas tera : plus petit, embeddable côté nœud sans tirer un
-stack de mailer, sandbox par conception, filtres custom faciles). Le
-moteur de rendu vit dans `pnex-notify`, partagé backend + nœud.
+```mermaid
+stateDiagram-v2
+  [*] --> Desarme
+  Desarme --> Arme : trigger vrai (front montant)
+  Arme --> Desarme : trigger faux ou non reconnu
+  Arme --> Grace : trigger vrai sur un set complet
+  Grace --> Envoi : après 250 ms
+  Arme --> Envoi : set complet, gate armé
+  Envoi --> AntiSpam
+  AntiSpam --> Arme : envoyé
+  AntiSpam --> Arme : bloqué, set gardé
+```
 
-Contexte de rendu :
+Chaque variable du modèle devient une ancre d'entrée sur le canevas. Les messages remplissent le set des variables, et la dernière valeur gagne. Le nœud rend et envoie seulement quand le set est complet et le gate armé. Ensuite, il vide le set.
+
+Le port `trigger` est obligatoire (D67). Une fonction logique y branche sa sortie booléenne et décide de l'envoi. Les règles du gate sont :
+
+- Un message de topic `trigger` met à jour le gate. Il ne passe jamais vers l'aval.
+- La coercion suit Node-RED : booléens, nombres non nuls, chaînes `"true"`/`"false"`/`"1"`/`"0"`. Toute autre valeur désarme.
+- Un `true` sur un set en attente lance le rendu après `COMMIT_GRACE` (250 ms). Les données qui arrivent pendant ce délai mettent le set à jour. Raison : l'ordre du fan-out d'edgelink n'est pas garanti.
+- Un modèle sans variable envoie sur le front montant du trigger. Un `true` maintenu n'envoie rien de plus. Un `false` réarme le front suivant.
+
+L'anti-spam est optionnel : au plus N envois par fenêtre de D secondes. En mode ancres, un envoi bloqué est différé, jamais perdu. Sans ancre, un envoi bloqué est abandonné.
+
+Par défaut, un échec d'envoi ne fait pas tomber le flow : le nœud journalise et transmet le message. Avec `strict: true`, l'échec devient une erreur du flow, isolée, sans boucle de redémarrage.
+
+### 3.3 Rendu d'un modèle (D52)
+
+Le rendu se fait en deux temps. D'abord, le nœud rend ses `vars` contre `{msg, meta}`. Une var peut donc être un littéral `"80"` ou une référence `"{{ msg.value }}"`. Ensuite, le modèle est rendu contre `{msg, meta, vars}`.
 
 ```json
 {
-  "msg":  { "payload entrant du flow (objet quelconque)" },
+  "msg":  { "payload entrant du flow" },
   "meta": { "flow": "…", "node": "…", "ts": "…", "org": "…" },
-  "vars": { "overrides du nœud, pré-rendus contre {msg, meta}" }
+  "vars": { "vars du nœud, déjà rendues" }
 }
 ```
 
-Le payload entrant est **aussi** exposé à la racine du contexte
-(`{{ temperature }}` = `{{ msg.temperature }}`) pour l'ergonomie ;
-en cas de collision, la var explicite gagne.
+Les clés du payload et les vars sont aussi lisibles sans préfixe : `{{ temperature }}` = `{{ msg.temperature }}`. En cas de collision, l'ordre de priorité est : clé du payload < var < espace de noms explicite (`msg`, `meta`, `vars`). minijinja n'a ni accès disque ni include libre. La sortie (sujet + corps) est bornée à 64 KiB (`MAX_OUTPUT_BYTES`).
 
-Les `vars` rendues suivent la même école : référençables avec ou sans
-préfixe (`{{ seuil }}` = `{{ vars.seuil }}` — l'éditeur de templates
-laisse écrire les deux). Précédence en collision : clé payload < var
-racine < namespace explicite (`msg`/`meta`/`vars` — une var nommée
-`meta` ne masque jamais le namespace).
+Projection sur un canal (D62) : `subject` devient le titre (objet de l'e-mail, `title` ntfy, première ligne ailleurs). `body` devient le texte brut. `meta` n'est jamais projeté.
 
-**Composition à deux niveaux** : les `vars` du nœud sont rendues
-d'abord contre `{msg, meta}`, puis le template est rendu contre
-`{msg, meta, vars}`. Une var peut donc être un littéral `"80"` ou une
-référence `"{{ msg.value }}"`.
+### 3.4 Relances et taille (D53, D63)
 
-```jinja
-{# corps type #}
-⚠️ {{ device }} : {{ value }} {{ unit }} (seuil {{ vars.seuil }}, {{ meta.ts }})
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  s[Tentative, timeout 10 s] --> ok{Résultat}
+  ok -->|succès| j[Journal : sent]
+  ok -->|réseau, 5xx, 429| r[Relance 1 s / 5 s / 25 s]
+  r --> s
+  ok -->|4xx, config, rendu, taille| f[Journal : failed]
+  r -->|3 relances épuisées| f
 ```
 
-**Bornes de rendu** : minijinja est sandbox par conception (pas
-d'accès disque, pas d'include arbitraire) ; les seules bornes à poser
-soi-même : longueur de sortie bornée 64 KiB et profondeur limitée — un
-template utilisateur peut s'auto-inonder.
+La livraison est « au moins une fois ». Une erreur qui se reproduirait (4xx, config invalide) n'est pas relancée. Une taille trop grande échoue sans troncature (D63) : Telegram au-delà de 4096 caractères, Discord au-delà de 2000. ntfy convertit un long message en pièce jointe. Slack et SMTP laissent le serveur décider. Une alerte tronquée en silence est dangereuse.
 
-**Preview API** : `POST /api/notify/templates/:id/preview` rend avec les
-`example` des vars déclarées (ou un payload fourni), **sans envoi**. Le
-bouton Test d'un template (envoi réel sur un canal choisi) emprunte le
-même chemin pnex-notify que le nœud flow — pas de code d'envoi dupliqué.
+### 3.5 Journal des envois (D86)
 
-## 5. Sémantique de livraison (D53)
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  ws[Canal websocket] -->|deliver_in_app| srv[Backend]
+  node[Nœud pnex_notify] -->|POST /internal/notify/journal| srv
+  test[Boutons Test] --> srv
+  ota[Issue OTA] --> srv
+  srv -->|writer de fond| o2[(O2 : notify_deliveries)]
+  o2 --> list[GET /deliveries]
+  o2 --> badge[Badge du canal]
+```
 
-- **at-least-once** : retry 3× (backoff 1 s / 5 s / 25 s), timeout 10 s
-  par tentative (total borné ~40 s).
-- **Nœud flow lenient par défaut** : un échec de notification ne fait
-  **pas** tomber le flow (tracing warn + entrée journal `failed`) ;
-  `strict: true` → échec = `flow_error` isolé (philosophie ferme
-  d'engines : jamais de crash-loop).
-- **Journal `notify_deliveries`** — *remplacé par D86 (§15) : le journal
-  vit dans OpenObserve, la table est supprimée* : `(id, org_id, channel_id,
-  template_id?, source: flow|direct|test, status: sent|failed, error?,
-  ts, flow_run?)`, pruning 30 j (worker loco — précédent : worker de
-  build firmware). Badge « dernier statut » sur la carte canal de l'UI.
-  v1 : le journal couvre les envois backend + tests ; le nœud flow
-  journalise côté moteur (tracing + debug feed) ; un endpoint interne
-  engine→backend de reporting est un point d'extension (N6, nécessite
-  un jeton de service — hors périmètre v1).
-- **Test** : `POST /api/notify/channels/:id/test` envoie un message de
-  test rendu depuis un template built-in ; `POST
-  /api/notify/channels/test-draft` permet de tester un brouillon avant
-  sauvegarde. Les deux passent par pnex-notify.
+Tout envoi est journalisé. Le backend journalise lui-même chaque envoi websocket. Pour les autres canaux, le nœud poste chaque tentative (`sent`, `failed`, `blocked`) dans une tâche détachée. Le journal ne retarde jamais un envoi et ne le fait jamais échouer.
 
-## 6. Secrets (D54)
+Une entrée porte `channel_id`, `channel_kind`, `template_id`, `source` (`flow`, `test`, `ota`), `status`, `http_status`, `error`, `subject`, `flow_id`, `node_id`, `delivered` (sessions websocket atteintes), `recipient_hash` et `message` (champ plein texte). La rétention est celle d'O2 (D72). Sans O2, la lecture répond `available: false` et l'écriture est perdue, avec un warn.
 
-- **Masqués en API/UI** : les champs déclarés `secret` dans le
-  `field_spec` sont write-only — PUT les accepte, GET ne les rend jamais
-  (le front affiche « défini » + bouton « remplacer »). Pattern
-  `deserialize_some` déjà connu du front.
-- **Remplacé par le coffre de secrets (2026-10-01, `security.md` §9 lot S4)** :
-  les champs `secret` sont des références vers `org_secrets`
-  (XChaCha20-Poly1305, clé hors base), le snapshot ne porte que des
-  `secret_id` et le runtime résout via `/internal/flow/secret/{id}` ; la
-  clé maîtresse ne va jamais dans le runtime. Le paragraphe ci-dessous est
-  l'intention d'origine, conservée pour l'historique.
-- **Chiffrement at rest en phase N5** : AEAD XChaCha20-Poly1305, clé
-  maître en config/env **partagée backend ↔ edgelinkd** (le snapshot du
-  nœud transporte le chiffré, l'engine déchiffre au send). Avant N5 :
-  plaintext en DB et dans `flow-state/flows.json` — fichiers
-  serveur-locaux, risque documenté et accepté en v1. (NB : `chacha20`
-  nu est déjà dep backend pour les tokens device — D8, parité avec le
-  POC initial ;
-  ici il faut un AEAD, donc `chacha20poly1305` en plus, feature-gated
-  dans pnex-notify.)
-- **Jamais de secret dans les URLs ni les logs** : les URLs sont
-  loggées, les champs `secret` jamais ; le token est toujours un champ
-  secret séparé, jamais concaténé dans une URL.
+Le badge « dernier statut » d'un canal vient d'une seule requête agrégée sur 30 jours. Si O2 est indisponible, le badge manque, sans erreur.
 
-## 7. API (loco, org-scoped `X-Org-Id`, gated `can_write`)
+### 3.6 Destinataire tiré du message (D313)
+
+```mermaid
+sequenceDiagram
+  participant N as Nœud pnex_notify
+  participant B as Backend
+  participant S as Serveur SMTP
+  N->>N: lire to_field et cc_field
+  N->>B: POST /internal/notify/recipient
+  B->>B: canal dynamic_recipients ? adresse valide ? plafonds ?
+  B-->>N: accepté ou code de refus
+  N->>S: envoi (si accepté)
+```
+
+Le nœud peut lire l'adresse dans le message (`to_field`). Seul un canal SMTP marqué `dynamic_recipients` par un admin d'org l'accepte. Le déploiement refuse un nœud `to_field` sur un autre canal. Les plafonds sont de 200 envois par canal et par jour, et de 3 par destinataire et par jour. Le journal garde seulement l'adresse hachée. Codes de refus : `notify-dynamic-recipients-off`, `notify-recipient-invalid`, `notify-channel-daily-cap`, `notify-recipient-daily-cap`.
+
+### 3.7 Pièce jointe (D209)
+
+`attach_field` désigne l'id d'un PDF exporté par un nœud `page_pdf`. Le nœud lit le fichier sur `/internal/flow/media/{id}` à chaque envoi. Le backend sert seulement un PDF de la même org, de 10 Mio au plus. Seul le canal `smtp` porte une pièce jointe. Sans valeur au chemin, le message part sans pièce jointe.
+
+## 4. Exigences
+
+1. Un envoi (backend, Test, nœud) doit passer par `pnex-notify`. Aucun code d'envoi ne doit être dupliqué.
+2. Un nouveau kind doit apporter une variante, une implémentation de `Channel`, un `field_spec` et ses clés dans les deux `.ftl`.
+3. Le test `field_spec_keys_present_in_the_locales` (`registry.rs`) doit échouer si une clé de `field_spec` manque dans une locale (D65).
+4. Un champ `secret` doit être en écriture seule : `PUT` l'accepte, `GET` ne le rend jamais. L'UI affiche « défini » et un bouton « remplacer ».
+5. Un champ `secret` stocké doit être une référence `{"secret_id"}` vers le coffre. Le snapshot ne doit porter que ces références.
+6. Un secret ne doit jamais paraître dans une URL ni dans un log. Un token est un champ séparé, jamais concaténé dans une URL.
+7. La sauvegarde d'un flow doit refuser un nœud `pnex_notify` sans trigger câblé (`notify_trigger_required`).
+8. Le moteur doit refuser de construire un artefact sans le drapeau `pnex_notify_trigger`.
+9. Une var de modèle nommée `trigger` doit lever `notify_trigger_conflict` quand le trigger est câblé (D68).
+10. Le canal websocket doit refuser l'envoi sans `PNEX_NOTIFY_INTERNAL_TOKEN` côté serveur (fermé par défaut).
+11. Une évolution de `FieldSpec` doit rester additive : le front construit ses formulaires depuis `GET /kinds`.
+
+## 5. Décisions
+
+| Dn | Titre | Décidé |
+|---|---|---|
+| D49 | Bibliothèque maison | Trait `Channel` + crate `pnex-notify`, sans dépendance loco. Pas de service Python (Apprise) ni de bibliothèque Go. |
+| D50 | Trois objets, snapshot au déploiement | Canal, modèle, nœud par org. Le backend résout les références au déploiement : redéployer pour propager. |
+| D51 | Registre de canaux | Un kind = une implémentation du trait. L'UI rend le formulaire depuis `GET /kinds`. |
+| D52 | Modèles minijinja | Rendu en deux temps, sortie bornée à 64 KiB. |
+| D53 | Sémantique de livraison | Au moins une fois, 3 relances, nœud tolérant par défaut, `strict` en option. |
+| D54 | Secrets | Écriture seule en API. Le chiffrement N5 prévu à l'origine a été remplacé par le coffre de secrets (`security.md`, lot S4). |
+| D61 | Registre à 7 canaux | Les identifiants vivent dans la config du canal, jamais dans l'environnement (sauf websocket). |
+| D62 | Projection du message | `subject` → titre, `body` → texte, `meta` jamais projeté. |
+| D63 | Taille sans troncature | `TooLarge`, non relancé. |
+| D64 | SMTP lettre en rustls | `relay` (465), `starttls_relay` (587, défaut), `builder_dangerous` (25). Erreur transitoire relancée, 535 non. |
+| D65 | URL porteuse de secret | L'URL de webhook Slack ou Discord est un champ `secret`. Garde des clés i18n des `field_spec`. |
+| D66 | Ancres du canevas | Une ancre par variable du modèle. |
+| D67 | Trigger obligatoire | Gate booléen, front montant, commit après 250 ms, dernière valeur gagnante. |
+| D68 | Nom `trigger` réservé | Conflit si une var porte ce nom avec le trigger câblé. |
+| D86 | Journal dans OpenObserve | Table `notify_deliveries` supprimée (migration 000037), stream O2 à la place. |
+| D209 | Pièce jointe PDF | Un PDF de `page_pdf` part en pièce jointe SMTP (`vision.md`). |
+| D313 | Destinataire tiré du message | `to_field` sur canal SMTP `dynamic_recipients`, plafonds, adresse hachée (`partners.md`). |
+| D315 | Webhook signé | Mode `hmac` du canal `webhook` (`partners.md`). |
+
+Renvois : D42 (couche org), D14 (enveloppe de liste), D72 (rétention O2).
+
+## 6. Interfaces
+
+### 6.1 Canaux
+
+L'ordre du registre est l'ordre du sélecteur de l'UI.
+
+| Kind | Transport | Champs |
+|---|---|---|
+| `websocket` | bus `/ws/notify` (fan-out entre pods par Valkey) | aucun, identifiants d'instance par l'environnement |
+| `webhook` | POST JSON `{subject, body, meta}` | `url`, `signing` (`header` ou `hmac`), `secret_header`, `secret_value` (secret) |
+| `ntfy` | POST JSON `{topic, message, title, priority, tags}` sur `{server}/` | `server`, `topic`, `token` (secret), `priority`, `tags` |
+| `telegram` | Bot API `sendMessage` | `bot_token` (secret), `chat_id` |
+| `slack` | webhook entrant `{"text"}` | `webhook_url` (secret) |
+| `discord` | webhook `{"content"}` | `webhook_url` (secret), `username` |
+| `smtp` | lettre 0.11, rustls | `host`, `port`, `tls` (`starttls`, `tls`, `none`), `username`, `password` (secret), `from`, `to`, `dynamic_recipients` |
+
+En mode `hmac` (D315), le secret ne part jamais. Chaque requête porte `x-pnex-timestamp` et `x-pnex-signature: sha256=<HMAC(secret, timestamp + "." + corps)>`. Le récepteur doit refuser un horodatage de plus de 5 min.
+
+**Attention :** ntfy reçoit du JSON, jamais des en-têtes `X-Title`. Un sujet UTF-8 dans un en-tête HTTP casse la requête.
+
+### 6.2 Routes
+
+Routes de l'org (`X-Org-Id`) :
 
 ```
-GET    /api/v1/notify/kinds                          → [{kind, label, field_spec}]
-GET    /api/v1/notify/channels                       → liste (secrets masqués)
-POST   /api/v1/notify/channels                       → création (secrets write-only)
-GET    /api/v1/notify/channels/:id                   → détail (secrets masqués)
-PUT    /api/v1/notify/channels/:id
-DELETE /api/v1/notify/channels/:id
-POST   /api/v1/notify/channels/test-draft            {kind, config} → test d'un brouillon
-POST   /api/v1/notify/channels/:id/test              → message de test (template built-in)
-GET    /api/v1/notify/channels/:id/deliveries        ?limit=50 (journal O2 du canal, D86)
-GET    /api/v1/notify/deliveries                     ?channel_id&status&source&q&from&to (D86)
-POST   /internal/notify/journal                      jeton interne — 1 tentative du nœud flow (D86)
+GET    /api/v1/notify/kinds                     → [{kind, label, field_spec}]
+GET    /api/v1/notify/channels                  → liste, secrets masqués
+POST   /api/v1/notify/channels
+GET    /api/v1/notify/channels/{id}
+PUT    /api/v1/notify/channels/{id}
+DELETE /api/v1/notify/channels/{id}
+POST   /api/v1/notify/channels/test-draft       {kind, config} → test d'un brouillon
+POST   /api/v1/notify/channels/{id}/test        → message de test
+GET    /api/v1/notify/deliveries                ?channel_id&status&source&q&from&to
 GET    /api/v1/notify/templates
 POST   /api/v1/notify/templates
-GET    /api/v1/notify/templates/:id
-PUT    /api/v1/notify/templates/:id
-DELETE /api/v1/notify/templates/:id
-POST   /api/v1/notify/templates/:id/preview          {vars?} → rendu seul, jamais d'envoi
+GET    /api/v1/notify/templates/{id}
+PUT    /api/v1/notify/templates/{id}
+DELETE /api/v1/notify/templates/{id}
+POST   /api/v1/notify/templates/{id}/preview    {vars?} → rendu, jamais d'envoi
 ```
 
-Règle : **le test contourne `enabled: false`** (c'est son but) ; en
-revanche, au déploiement, les canaux `enabled: false` référencés par un
-nœud `pnex_notify` sont ignorés et listés dans le toast de deploy.
+Routes internes du moteur (jeton de service, `Authorization: Bearer` ou `x-pnex-internal-token`) :
 
-## 8. UI (page `/notifications`)
+```
+POST /internal/notify/deliver     envoi websocket
+POST /internal/notify/journal     une tentative du nœud (D86)
+POST /internal/notify/recipient   contrôle d'un destinataire (D313)
+```
 
-Deux onglets (navigation principale → « Notifications ») :
+### 6.3 Environnement du moteur
 
-**Onglet Connect** — liste de cartes canal (icône kind, nom, enabled,
-badge dernier statut de livraison) :
-- **Nouveau** → dialogue : picker de kind (grille d'icônes) → formulaire
-  dynamique généré depuis `GET /api/notify/kinds` (field_spec) ; secrets
-  write-only ; bouton **Test** (test-draft) avant même la sauvegarde ;
-- édition = même formulaire pré-rempli, champs secret affichés
-  « défini » avec bouton « remplacer » ;
-- toggle enabled + Test sur carte ; bouton **Journal** → onglet
-  Événements filtré sur le canal (D86).
+Le superviseur injecte `PNEX_NOTIFY_DELIVER_URL`, `PNEX_NOTIFY_DELIVER_TOKEN` et `PNEX_NOTIFY_JOURNAL_URL`. Le serveur lit `PNEX_NOTIFY_INTERNAL_TOKEN`. Le nœud lit les secrets sur `PNEX_FLOW_SECRET_URL` et les pièces jointes sur `PNEX_FLOW_MEDIA_URL`.
 
-**Onglet Modèles** — liste + éditeur (nom, sujet, corps minijinja, vars
-déclarées `{name, example}` avec aide à la saisie `{{ }}`), bouton
-**Aperçu** (preview API), bouton **Test d'envoi** (canal choisi dans un
-dialogue, chemin pnex-notify unique).
+### 6.4 UI
 
-**Éditeur de flows** : inspecteur du nœud `pnex_notify` (nouvelle branche
-d'inspecteur par kind — pattern inject/debug/red) :
-- multi-select canaux de l'org + select template ;
-- éditeur de `vars` : lignes clé/valeur, la valeur est un littéral **ou**
-  une expression `{{ msg.x }}` pré-rendue contre le payload entrant ;
-- switch `strict` ;
-- payload d'exemple éditable + bouton Aperçu (même preview API).
+La page `/notifications` a trois onglets : **Canaux**, **Modèles**, **Journal des envois**.
 
-## 9. Payoffs / pièges
+- **Canaux** : un sélecteur de kind, puis le formulaire construit depuis `field_spec`. Le bouton Test marche avant la sauvegarde (`test-draft`).
+- **Modèles** : nom, sujet, corps, vars déclarées, boutons Aperçu et Test d'envoi.
+- **Journal des envois** : filtres canal, statut, source, période et texte. Une ligne s'ouvre sur l'erreur, le nœud et le modèle.
 
-Payoffs :
-- un chemin d'envoi unique (pnex-notify) pour backend, tests UI et nœud
-  flow — pas de code d'envoi dupliqué ;
-- nouveau canal = 1 variante + 1 impl + 1 field_spec + 2 clés i18n —
-  même économie que le registre des attachments POI ;
-- snapshot au deploy = nœud autonome, pas d'engine→backend au send,
-  cohérent avec « save ≠ déployé » ;
-- le trio ntfy/webhook/SMTP couvre le self-host domotique ; ntfy apporte
-  le push téléphone sans infra de push propriétaire.
+L'inspecteur du nœud `pnex_notify` propose les canaux, le modèle, les vars (littéral ou `{{ msg.x }}`), `strict`, l'anti-spam et un aperçu sur un payload d'exemple. PneX n'a pas de centre de notifications dans l'app : le canal websocket sert les clients externes.
 
-Pièges consignés :
-- **pluraliseur loco** : DSL `notify_channel` → table `notify_channels`
-  (piège déjà mordu avec `resource_containments`) ;
-- **clé fluent manquante = panic** — sweep `t!()` avant commit (i18n
-  `notify-*`) ;
-- **deploy ≠ save** : un template/canal édité ne se propage pas aux
-  flows déployés — d'où le toast de périmés au deploy ;
-- le front construit le formulaire depuis `GET /kinds` : toute évolution
-  de `FieldSpec` est un changement de contrat front↔back — versionner
-  `notify-kinds.v1`, évolution additive-only (école CONTRACT).
+## 7. Reste à faire
 
-## 10. Non-goals
-
-- alerting infra (seuils métriques) = **OpenObserve alert destinations**,
-  qui fait déjà le fan-out (Slack/webhook/email) — pnex-notify couvre
-  les événements applicatifs et les flows ;
-- couverture Apprise (60+ services) — 5–7 canaux éprouvés suffisent ;
-- webhooks **entrants** (trigger de flow par HTTP externe) — point
-  d'extension documenté, pas de phase ;
-- préférences de notification par utilisateur — PNeX est org-scoped
-  pour l'exploitation.
-
-## 11. Phases
-
-| Phase | Contenu | Critère de sortie |
-|---|---|---|
-| **N1** ✅ | crate `pnex-notify` (trait + minijinja + **websocket/webhook**), tables **[000021]**, CRUD API + tests + journal backend + bus WS + endpoint interne | 21 tests crate + 8 intégration (masquage, WS, journal) |
-| **N2** ✅ | UI `/notifications` : onglet Connect (formulaires dynamiques field_spec, test, masquage secrets) + Modèles (éditeur, preview, test) — **pas de centre de notifications dans l'app** (décision 2026-09-14) | E2E web headless (login scripté Rauthy) |
-| **N4** ✅ | **canaux dédiés ntfy, telegram, slack, discord, smtp** (D61–D65) + picker de kind à la création (grille, doctrine §8) + garde i18n registry↔locales | 41 tests crate (7 kinds) + e2e (contrat field_spec, masquage D54 sur un 2e kind, test-draft ntfy) ; testés en réel par le produit |
-
-> **Exploitation (constaté E2E 2026-09-14)** : le canal websocket des nœuds
-> flow exige `PNEX_NOTIFY_INTERNAL_TOKEN` (env du serveur, fail-closed sans)
-> — le supervisor l'injecte au runtime avec `PNEX_NOTIFY_DELIVER_URL`. Le
-> jeton est accepté par `/internal/notify/deliver` en `x-pnex-internal-token`
-> **ou** `Authorization: Bearer` (le canal pnex-notify poste en Bearer).
-| N5 | chiffrement AEAD des secrets, clé env partagée backend↔engine | rotation de clé documentée — **livré par `security.md` §9 S4 (coffre, sans clé dans le runtime)** |
-| N6 | (points d'extension) reporting engine→backend pour le journal, webhooks entrants | — |
-
-## 12. Sources de l'étude amont
-
-- Apprise (Python, 60–100+ services, schéma d'URL par service) —
-  standard de fait, non-Rust.
-- Shoutrrr (Go) — design URL-based, utilisé par Watchtower/Kured.
-- shoutrrr-rs (connyay/shoutrrr-rs) — port Rust à 3 canaux, archi
-  runtime-agnostic + transport en trait — point de départ envisagé puis
-  écarté (couverture insuffisante).
-- ferro-notifications — plus de canaux mais couplé au framework Ferro,
-  churn 0.2.x — écarté.
-- minijinja — moteur de templates sandbox par conception.
-- lettre 0.11 — SMTP Rust de référence, rustls.
-
-## 13. Amendement N4 — canaux dédiés (D61–D65, 2026-09-14)
-
-Choix produit : tous les systèmes de notification visibles dans le picker
-avec leurs champs propres (doctrine §8 appliquée) — l'utilisateur ne
-devine jamais comment configurer un service. Livré : ntfy, telegram,
-slack, discord, smtp.
-
-- **D61 — Registre à 7 canaux, creds par canal.** ntfy/telegram/slack/
-  discord/smtp sont auto-porteurs : toute la config vit dans `config`
-  JSONB du canal (secrets write-only D54) — **jamais** de creds d'instance
-  env (le chemin `apply_runtime_env` reste l'exception websocket). Kinds
-  strings exacts : `ntfy`, `telegram`, `slack`, `discord`, `smtp`. Le
-  champ ntfy s'appelle `server` (le croquis §3 disait `url` : l'endpoint
-  est composé `{server}/{topic}` → publication JSON sur `{server}/`).
-  Les valeurs des selects (`priority`, `tls`) sont techniques, rendues
-  telles quelles par le formulaire générique (entériné).
-- **D62 — Projection du Message.** `subject` → titre du canal (objet de
-  l'e-mail, première ligne du texte telegram/slack/discord, `title` ntfy) ;
-  `body` → texte brut ; **`meta` jamais projeté** (le template a déjà
-  `{{ meta.* }}` à disposition — projeter meta masquerait l'origine).
-  Composition `"{subject}\n{body}"` via le helper partagé `compose_text`.
-- **D63 — Bornes de taille fail-loud, pas de troncature.** telegram 4096
-  chars, discord 2000 chars → `NotifyError::TooLarge` (non retryable) via
-  `size_guard` ; ntfy exempt (son serveur attache en pièce jointe au-delà
-  de 4096 octets au lieu de rejeter) ; slack/smtp délèguent au serveur.
-  Cohérent avec la borne de rendu 64 KiB ; une notification tronquée en
-  silence est dangereuse pour l'alerting.
-- **D64 — SMTP lettre 0.11 rustls-only.** `default-features = false`
-  (le défaut tire native-tls) + `tokio1-rustls`/`rustls` +
-  `rustls-native-certs` (CA privées des relais self-hostés) + `ring`
-  (cohérence reqwest). Modes : `tls` → `relay` (465), `starttls` →
-  `starttls_relay` (587, défaut), `none` → `builder_dangerous` (25 —
-  **pas d'`unencrypted_relay`**, ça n'existe pas). Ports toujours posés
-  explicitement. Erreurs lettre : `is_transient()/is_timeout()` →
-  `Network` (retryable), sinon → `Config` (un 535 permanent ne se répare
-  pas au retry).
-- **D65 — URL porteuse de secret + garde i18n registry↔locales.**
-  slack/discord : l'URL du webhook **est** le secret (token dans le
-  chemin) → classée champ `secret` (write-only, masquée, jamais loggée) —
-  exception assumée à D54. Et : les `label_i18n`/`help_i18n` des
-  field_spec ne passent pas par `t!("littéral")` — le sweep front ne les
-  voit pas (une clé manquante = panic à l'ouverture du formulaire : les 3
-  clés webhook manquaient). Garde : test `field_spec_keys_present_in_the_locales`
-  dans `registry.rs` qui inclut les deux .ftl et échoue si une clé du
-  field_spec manque (ferme la classe de bug ; la garde ntfy avait d'abord
-  montré la lacune).
-
-Pièges à consigner : ntfy publie **en JSON** (`{topic, message, title…}`
-vers `{server}/`) et non en headers `X-Title` — un sujet de template est
-UTF-8 arbitraire et un header HTTP non-ASCII casse la requête ; les
-messages Fluent **échappent les accolades** — une desc i18n contenant
-`{…}` est un placeable, la locale entière est rejetée (tombée au 1er
-lancement).
-
-## 14. Amendement N5 — ancres canvas + port trigger obligatoire (D66–D68, 2026-09-24)
-
-Deux manques livrés ensemble : les ancres d'entrée par var de template
-n'étaient **pas rendues** sur le canvas (la géométrie les calculait, le
-rendu canvas ne les connaissait pas — un seul point mid-height), et
-l'envoi partait à chaque message complétant le set, soit du spam potentiel
-sur une source rapide.
-
-- **D66 — Ancres canvas = un arm par rangée labellisée.** Le match
-  `in_anchor_rows` de `canvas.rs` ne couvrait que device-write / fonction /
-  json-merge ; notify tombait dans le cas fourre-tout. Arm `PnexNotify`
-  ajouté (zip rangées ↔ labels) : le reste du pipeline (fils annotés,
-  reverse-wiring, prune) étant générique et piloté par les labels, les
-  ancres vars apparaissent dès le stamp du pick (effet inspecteur).
-- **D67 — Port `trigger` booléen OBLIGATOIRE (anti-spam).** Le nœud
-  gagne une ancre permanente `trigger` (1ʳᵉ rangée, au-dessus des vars) :
-  une fonction logique (comparaison, seuil…) y branche sa sortie booléenne
-  et **décide** de l'envoi. Sémantique runtime : un message `topic =
-  "trigger"` est une mise à jour du gate — jamais des données template —
-  et est **avalé** (pas de passthrough du booléen vers l'aval) ; les
-  envois ne partent que gate armé ; un set complet non armé attend
-  (`ready`), un `trigger = true` le commit. Coercion école Node-RED :
-  booléens, nombres non nuls, chaînes `"true"/"false"/"1"/"0"`
-  (insensibles à la casse) — tout le reste désarme (fail-safe). Le gate est
-  **obligatoire** : `validate_graph` pose `notify_trigger_required` sur
-  tout nœud notify sans câblage trigger (save bloquée), et le runtime
-  **refuse de construire** un artefact sans le flag deploy-dérivé
-  `pnex_notify_trigger` (école D50 « redéployez » — un artefact de l'ère
-  always-send ne doit jamais pouvoir envoyer).
-- **D68 — Nom `trigger` réservé (si câblé).** Une var de template nommée
-  littéralement `trigger` partagerait le tagger `topic = "trigger"` du
-  gate : violation `notify_trigger_conflict` (renommer la var dans le
-  template). Non câblé, le nom reste utilisable — mais la save exige
-  alors le câblage (D67), donc le cas réel est couvert par D68.
-
-Routage : le deploy réutilise les taggers — toute annotation
-`pin = "trigger"` sur un nœud notify reçoit un tagger `topic = "trigger"`
-comme une var, et la projection estampe `pnex_notify_trigger: true` sur
-l'entrée artefact (dérivé du graphe, zéro état UI, self-healing au
-redéploiement). Anti-spam et passthrough inchangés ; le msg de commit
-(trigger) ne passe pas non plus vers l'aval.
-
-**Amendement 2026-09-30 (observations O10/O11).** Deux corrections de
-sémantique, vécues en E2E réel (flow prédictif → ntfy) :
-
-- **Dernière valeur gagnante** : un set en attente (gate désarmé ou
-  anti-spam) est rafraîchi par chaque nouvelle valeur — « différé, jamais
-  perdu » signifie que la notification finit par partir, **pas** avec des
-  données figées au moment où le set est devenu complet (avant : alerte
-  « ETA 0 min » envoyée 9 min plus tard alors que la prévision disait 17).
-- **Commit différé (`COMMIT_GRACE` = 250 ms)** : un `trigger = true` sur
-  un set en attente ne rend plus immédiatement ; le commit est planifié et
-  exécuté par une tâche dédiée du nœud après la fenêtre de grâce. Les
-  données qui arrivent pendant la fenêtre rafraîchissent le set sans
-  envoyer seules. Motif : la même sortie amont alimente à la fois une var
-  et la logique du trigger ; l'ordre d'arrivée du fan-out edgelink n'est
-  pas garanti, et un trigger arrivé avant sa donnée envoyait le set du tick
-  précédent (vibration 2.06 au lieu du pic 10.71). Coût : ≤ 250 ms de
-  latence sur ce chemin ; un set complet arrivant gate déjà armé part
-  toujours immédiatement.
-- **Template sans variables (2026-10-02)** : aucune ancre de données, donc
-  aucun set à remplir — le `trigger = true` armé est lui-même l'alerte et
-  rend + envoie le template (soumis à l'anti-spam). Avant, un tel nœud ne
-  pouvait jamais rien envoyer (mode historique sans vars = envoi sur
-  message de données, qui n'arrive plus depuis le gate obligatoire), et
-  l'éditeur ne retenait même pas le choix du template.
-- **Front montant (2026-10-03, O23)** : l'envoi ci-dessus n'a lieu que sur
-  le **front montant** du trigger (false/non reconnu → true) ; un `true`
-  maintenu (Inject périodique) n'envoie plus rien, un `false` réarme le
-  front suivant. Choix : sémantique d'alarme (une alerte par déclenchement),
-  coût nul (état précédent déjà tenu par `armed`, ni timer ni base) ;
-  l'anti-spam reste optionnel, pour l'alarme qui oscille.
-
-## 15. Amendement D86 — journal des livraisons dans OpenObserve (2026-09-29)
-
-Décision (demande produit : « pas besoin de pourrir psql/sqlite avec ça ») :
-le journal des livraisons quitte la base relationnelle.
-
-- **Stockage** : stream O2 logs `notify_deliveries` dans l'organisation O2
-  de l'org (provisioning paresseux à la première écriture, comme la
-  télémétrie). Table `notify_deliveries` **supprimée** (migration
-  000037) ; les anciennes lignes ne sont **pas** migrées. Plus de pruner :
-  la rétention est celle d'O2 (D72). OpenObserve est **obligatoire** dans
-  la stack — sans O2, les lectures répondent `available: false` et les
-  écritures sont perdues (log warn).
-- **Document** (plat, O2 aplatit les objets) : `channel_id`,
-  `channel_kind`, `template_id?`, `source` (`flow`|`test`|`ota`),
-  `status` (`sent`|`failed`|`blocked`), `http_status?` (retour amont),
-  `error?`, `subject?`, `flow_id?`, `node_id?`, `delivered?` (sessions WS
-  atteintes), `message` (sujet + erreur — champ plein texte : `match_all`
-  n'indexe que les clés FTS par défaut d'O2).
-- **Écrivains — tout envoi est journalisé** :
-  - websocket (bus interne) : `deliver_in_app` côté serveur — seul chemin,
-    qu'il vienne d'un flow, du bouton Test (loopback, source `test` via
-    `meta.test`) ou d'une issue OTA ;
-  - autres canaux depuis un flow : le nœud `pnex-notify` poste chaque
-    tentative (`sent`, `failed` + HTTP, `blocked` par l'anti-spam) sur
-    `POST /internal/notify/journal` (même jeton que deliver, URL
-    `PNEX_NOTIFY_JOURNAL_URL` injectée par le superviseur), en tâche
-    détachée — le journal ne retarde ni ne fait échouer un envoi ; un
-    websocket réussi n'est pas re-journalisé par le nœud (le serveur l'a
-    fait) ;
-  - boutons Test : `send_test` (sauf websocket réussi, journalisé par le
-    loopback).
-  Côté serveur, les écritures passent par un writer de fond (`submit`,
-  spawné au boot) : les transitions OTA n'ont qu'une connexion DB.
-- **Lecteurs** : `GET /api/v1/notify/deliveries` (enveloppe D14 +
-  `available`, total par une requête `count(*)` séparée — le `total`
-  d'O2 ne compte que la page) ; badge « dernier statut » des cartes canal
-  = **une** requête agrégée `first_value(status ORDER BY _timestamp DESC)
-  … GROUP BY channel_id` sur 30 jours (best effort : O2 indisponible =
-  pas de badge, jamais une erreur).
-- **UI** : 3e onglet **Événements** dans /notifications (canaux ·
-  modèles · événements) — filtres canal / statut / source / période /
-  plein texte, ligne dépliable (erreur, nœud, modèle, sessions atteintes),
-  lien vers le flow.
-- **Validé E2E réel (2026-09-29)** : serveur isolé (base dédiée, séquence
-  d'org décalée pour ne pas re-provisionner les orgs O2 du stack de dev),
-  O2 + Rauthy réels ; Test webhook OK / 404 / websocket, flow `inject →
-  pnex-notify` vers 3 canaux (2 webhooks + bus) → 3 entrées `flow` avec
-  `flow_id`, `node_id`, `template_id`, HTTP 404 ; badges ; UI fr/en
-  (Playwright), bouton Journal préfiltré.
-
-## 16. Amendement proposé — destinataire dynamique et webhook signé (D313, D315, 2026-10-19)
-
-Détail : `partners.md`.
-
-- **D313** : `pnex_notify` gagne `to_field` (adresse tirée du message) pour
-  les seuls canaux SMTP marqués `dynamic_recipients` par un admin d'org ;
-  contenu = modèle seulement, plafonds par canal et par destinataire,
-  adresse hachée au journal D86, expéditeur = SMTP de l'org.
-- **D315** : le canal `webhook` garde l'en-tête secret statique et gagne un
-  mode `hmac` (`x-pnex-timestamp`, `x-pnex-signature: sha256=…` sur
-  `timestamp.corps`), secret au coffre (D54).
+- Canal `gotify` : en réserve, sans code. À faire quand un besoin arrive.
+- Webhooks entrants (lancer un flow par un appel HTTP externe) : point d'extension, sans lot.
+- Push natif FCM ou APNs : reporté. Il demande des identifiants de push par instance.

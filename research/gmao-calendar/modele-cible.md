@@ -11,7 +11,7 @@
 | Ajout | Pourquoi au noyau | Détail |
 |---|---|---|
 | Type de propriété `recurrence` (D178) | sert aussi aux plages média, aux postes d'équipe, aux rapports périodiques | valeur = `{rrule, dtstart, tzid}`. Validation et énumération **bornée** dans `pnex-core` (même code front et back), fuseaux IANA seuls, revalidée côté serveur |
-| Vue calendrier des plages | `pages.md` §10 et les dossiers (`cases.md`) la veulent aussi | lit `time_ranges` de n'importe quelle portée ; mois, semaine, liste, timeline de ressources |
+| Vue calendrier des plages | `pages.md` §7 et les dossiers (`cases.md`) la veulent aussi | lit `time_ranges` de n'importe quelle portée ; mois, semaine, liste, timeline de ressources |
 | Flux `.ics` en lecture seule | interop absente partout, attendue | jeton révocable par utilisateur × org (R4 : jamais en clair dans un DTO de lecture) ; pas de CalDAV en V1 |
 
 ## 2. Ce que le pack Maintenance gagne (YAML, version 1.2.0)
