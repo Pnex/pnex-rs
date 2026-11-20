@@ -815,7 +815,7 @@ Un admin plateforme les remplace dans la carte « Limites des agents hébergés 
 
 ## 7. Reste à faire
 
-- **D786** (choix de Shan) : replier le nœud `site_recipe` dans `agent_run`. Les sorties diffèrent : ports de chaîne d'un côté, ports *réussi / cassé / échoué* et extraits de l'autre.
+- **D786** (décidé par Shan le 2026-11-20, à coder) : le nœud `site_recipe` se replie dans `agent_run`, avec les ports d'`agent_run` (*réussi / cassé / échoué* et extraits). Les flows qui utilisent `site_recipe` sont recâblés.
 - **Missions de l'extension** : `collect_value`, `collect_page`, `follow_account`, `watch_live`, `crawl_site`, `capture_proof` restent des types de mission (`MissionSpec`). Chacune doit devenir une étape ou une sortie déclarée d'une règle.
 - **Rôles de lien (D441)** : un rôle déclaré sur le type de lien par son pack, en un seul lot pour tous les couplages gelés de `tests/engine_genericity.rs`.
 - **Niveau libre (D378)** : non codé. L'extension est un moteur, pas un niveau d'agent.

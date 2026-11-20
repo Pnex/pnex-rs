@@ -201,9 +201,8 @@ Préfixe `/api/v1`. Permissions au registre `pnex-api-contract/src/iam.rs`.
 ## 7. Reste à faire
 
 - SAML à la première demande d'un client. I4 général et I5 : `iam.md`.
-- Choix de Shan : un pipeline et une build ne vérifient pas l'habilitation de leur auteur, contre
-  D801. Le lignage ferme la fuite. Ajouter la vérification, ou amender D801 ?
-- Choix de Shan : la détection propose toujours `personal`, quelle que soit la catégorie.
-- Choix de Shan : deux marquages peuvent porter le même nom. Les listes de choix sont ambiguës.
+- D801, à coder (choix de Shan, 2026-11-20) : un pipeline ou une build doit vérifier l'habilitation de son auteur sur les données marquées qu'il lit.
+- Détection, à coder (choix de Shan, 2026-11-20) : la détection doit proposer le marquage de la catégorie trouvée. Sans ce marquage dans l'org, elle propose `personal`.
+- Marquages, à coder (choix de Shan, 2026-11-20) : le nom d'un marquage doit être unique dans l'org (409 à la création et au renommage).
 - Hors dépôt : `PNEX_PSEUDONYM_KEY` en secret dans le chart `pipelineWorker` de `pnex-deploy`.
 - L'onglet « Marquages et habilitations » n'a pas de passe axe dédiée.

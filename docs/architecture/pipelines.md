@@ -596,7 +596,7 @@ Authentification, pagination et colonnes en YAML. Aucun connecteur par éditeur.
 Curseur avancé après le commit. `full_every` relance une lecture complète.
 
 ### D795 — Webhooks entrants vers une table
-HMAC-SHA256, boîte `connector_inbox`, `202` immédiat, lecture par l'import du connecteur.
+HMAC-SHA256, boîte `connector_inbox`, `202` immédiat, lecture par l'import du connecteur. PneX génère le secret, ou l'utilisateur colle celui que le service impose (choix de Shan, 2026-11-20).
 
 ### D796 — Pas de stockage cloud externe
 Seul le S3 de PneX. Aucun identifiant de compartiment tiers.
@@ -811,7 +811,6 @@ tests:
 
 **Connecteurs :**
 
-- Secret des webhooks : choix provisoire « les deux » (généré ou collé), à reconfirmer par Shan.
 - TLS sans vérification du certificat (SEC-64) : `sslrootcert` par connecteur à la première demande.
 - Elasticsearch : attendre un besoin réel.
 - Q-CN2 : un `POST` en lecture (API de recherche), drapeau à ouvrir au premier besoin.
