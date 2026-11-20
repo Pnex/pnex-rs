@@ -85,6 +85,12 @@ fn pipeline_error(e: PipelineError) -> Result<Response> {
             err_codes::PIPELINE_NAME_TAKEN,
             "A pipeline of the org already has this name.",
         ),
+        PipelineError::MarkingRequired(missing) => super::coded_error(
+            StatusCode::FORBIDDEN,
+            err_codes::MARKING_REQUIRED,
+            "A clearance is missing for a marking of a table the pipeline reads.",
+            Some(serde_json::json!({ "markings": missing })),
+        ),
         PipelineError::RunActive => detail(
             StatusCode::CONFLICT,
             err_codes::PIPELINE_RUN_ACTIVE,
@@ -384,11 +390,11 @@ async fn versions(
     tag = "pipelines",
     operation_id = "pipelines_runs_start",
     summary = "Run a pipeline",
-    description = "Queues a run of the current version for the worker; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, and `datasets:read` and `datasets:write` since the run reads and writes datasets.",
+    description = "Queues a run of the current version for the worker; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, and `datasets:read` and `datasets:write` since the run reads and writes datasets, and a clearance for every marking of the tables it reads.",
     params(("id" = String, Path, format = "uuid", description = "Pipeline id (UUID)")),
     responses(
         (status = 202, body = pnex_core::pipelines::PipelineRun),
-        (status = 403, description = "`access-denied`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`, `marking-required` (`errors.args.markings`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`pipeline-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`pipeline-run-active`", body = crate::openapi::ErrorDetail)
     ),
@@ -404,7 +410,7 @@ async fn start_run(
             return Err(crate::auth::access_denied(needed));
         }
     }
-    match pipelines::start_run(&ctx.db, org.org.id, id).await {
+    match pipelines::start_run(&ctx.db, org.org.id, id, org.auth.user.id).await {
         Ok(r) => Ok((StatusCode::ACCEPTED, Json(r)).into_response()),
         Err(e) => pipeline_error(e),
     }

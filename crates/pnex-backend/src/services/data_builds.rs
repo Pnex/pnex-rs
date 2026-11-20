@@ -458,6 +458,26 @@ async fn start_step(
     };
     match step.kind {
         BuildTargetKind::Pipeline => {
+            // The build reads under its author's rights (governance.md D801).
+            let doc = db
+                .query_one_raw(stmt(
+                    "SELECT document FROM pipelines WHERE org_id = $1 AND id = $2",
+                    vec![org_id.into(), id.into()],
+                ))
+                .await?
+                .and_then(|r| r.try_get::<String>("", "document").ok());
+            if let Some(doc) = doc {
+                let missing = crate::services::pipelines::missing_markings(
+                    db,
+                    org_id,
+                    author.unwrap_or(-1),
+                    &doc,
+                )
+                .await?;
+                if !missing.is_empty() {
+                    return fail(step, err_codes::MARKING_REQUIRED);
+                }
+            }
             let row = db
                 .query_one_raw(stmt(
                     "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger) \

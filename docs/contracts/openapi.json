@@ -90298,7 +90298,7 @@
         "x-pnex-as-of": "current_only"
       },
       "post": {
-        "description": "Queues a run of the current version for the worker; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, and `datasets:read` and `datasets:write` since the run reads and writes datasets.",
+        "description": "Queues a run of the current version for the worker; read its state with `GET /pipelines/{id}/runs/{run_id}`. Requires `pipelines:run`, and `datasets:read` and `datasets:write` since the run reads and writes datasets, and a clearance for every marking of the tables it reads.",
         "operationId": "pipelines_runs_start",
         "parameters": [
           {
@@ -90351,7 +90351,7 @@
                 }
               }
             },
-            "description": "`access-denied` · `access-denied` (`args.permission` = `pipelines:run`): the caller's role does not grant it"
+            "description": "`access-denied`, `marking-required` (`errors.args.markings`) · `access-denied` (`args.permission` = `pipelines:run`): the caller's role does not grant it"
           },
           "404": {
             "content": {

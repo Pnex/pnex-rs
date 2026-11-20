@@ -566,3 +566,36 @@ async fn an_object_exports_whole_to_the_admin_masked_by_markings() {
     })
     .await;
 }
+
+/// D801: a pipeline runs under its starter's rights; reading a marked table
+/// needs a clearance for each of its markings.
+#[tokio::test]
+#[serial]
+async fn a_pipeline_run_needs_a_cleared_starter() {
+    with_app(|server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let a = env.alice.as_str();
+        let (s, d) = call(&server, a, org, "POST", "/api/v1/datasets", Some(json!({ "name": "staff" }))).await;
+        assert_eq!(s, 201, "{d}");
+        let staff = d["id"].as_str().unwrap().to_string();
+        call(&server, a, org, "POST", "/api/v1/governance/markings", Some(json!({ "key": "hr", "name": "HR" }))).await;
+        call(&server, a, org, "POST", &format!("/api/v1/datasets/{staff}/markings"),
+            Some(json!({ "markings": ["hr"] }))).await;
+        let doc = "transforms:\n  - output: staff_copy\n    inputs: { s: staff }\n    sql: SELECT * FROM s\n";
+        let (s, p) = call(&server, a, org, "POST", "/api/v1/pipelines", Some(json!({ "name": "copy", "document": doc }))).await;
+        assert_eq!(s, 201, "{p}");
+        let runs = format!("/api/v1/pipelines/{}/runs", p["id"].as_str().unwrap());
+
+        let (s, e) = call(&server, a, org, "POST", &runs, None).await;
+        assert_eq!((s, e["error"].as_str()), (403, Some("marking-required")), "{e}");
+        assert_eq!(e["errors"]["args"]["markings"], json!(["hr"]), "{e}");
+
+        let alice: i64 = sql(&ctx.db, "SELECT id FROM users WHERE email = 'alice@example.com'").await[0]
+            .try_get("", "id").unwrap();
+        call(&server, a, org, "POST", "/api/v1/governance/clearances",
+            Some(json!({ "user_id": alice, "marking_key": "hr", "purpose": "copy", "days": 1 }))).await;
+        let (s, r) = call(&server, a, org, "POST", &runs, None).await;
+        assert_eq!(s, 202, "{r}");
+    })
+    .await;
+}

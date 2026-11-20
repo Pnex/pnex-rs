@@ -27,6 +27,8 @@ pub enum PipelineError {
     },
     /// A run of this pipeline is already queued or running.
     RunActive,
+    /// The caller is not cleared for these markings of the tables it reads (D801).
+    MarkingRequired(Vec<String>),
     RunNotFound,
     Db(DbErr),
 }
@@ -379,8 +381,13 @@ pub async fn start_run(
     db: &DatabaseConnection,
     org_id: i64,
     id: Uuid,
+    user: i64,
 ) -> Result<PipelineRun, PipelineError> {
     let pipeline = get(db, org_id, id).await?;
+    let missing = missing_markings(db, org_id, user, &pipeline.document).await?;
+    if !missing.is_empty() {
+        return Err(PipelineError::MarkingRequired(missing));
+    }
     let row = db
         .query_one_raw(stmt(
             "INSERT INTO pipeline_jobs (org_id, pipeline_id, version, trigger) \
@@ -392,6 +399,37 @@ pub async fn start_run(
         .await?
         .ok_or(PipelineError::RunActive)?;
     get_run(db, org_id, id, row.try_get("", "id")?).await
+}
+
+/// Markings of the tables a pipeline document reads that `user` is not
+/// cleared for: a run reads under its starter's rights (governance.md D801).
+pub async fn missing_markings(
+    db: &DatabaseConnection,
+    org_id: i64,
+    user: i64,
+    document: &str,
+) -> Result<Vec<String>, DbErr> {
+    let Ok(doc) = serde_saphyr::from_str::<PipelineDocument>(document) else {
+        return Ok(Vec::new());
+    };
+    let names: std::collections::BTreeSet<&String> = doc
+        .transforms
+        .iter()
+        .flat_map(|t| t.inputs.values())
+        .collect();
+    let mut out = std::collections::BTreeSet::new();
+    for name in names {
+        let row = db
+            .query_one_raw(stmt(
+                "SELECT id FROM datasets WHERE org_id = $1 AND name = $2",
+                vec![org_id.into(), name.clone().into()],
+            ))
+            .await?;
+        if let Some(id) = row.and_then(|r| r.try_get::<Uuid>("", "id").ok()) {
+            out.extend(crate::services::governance::missing_for(db, org_id, user, id).await?);
+        }
+    }
+    Ok(out.into_iter().collect())
 }
 
 pub async fn get_run(

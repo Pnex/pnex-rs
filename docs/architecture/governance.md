@@ -89,7 +89,7 @@ flowchart LR
 
 Le trigger `dataset_markings_inherit` donne à la version écrite l'union des marquages de ses
 entrées. Une synchro lit avec les droits de son auteur : un auteur non habilité fait échouer le run
-(`marking-required`). La synchro marque les objets écrits avant de déclarer le run fini. La
+(`marking-required`). Un pipeline SQL lit aussi avec les droits de qui le lance : le lancement manuel répond 403 `marking-required`, et l'étape d'une build échoue avec ce code. La synchro marque les objets écrits avant de déclarer le run fini. La
 propagation suivante remet un marquage déclassifié seulement si une entrée le porte encore.
 
 ### 2.4 Détection de données personnelles
@@ -201,6 +201,5 @@ Préfixe `/api/v1`. Permissions au registre `pnex-api-contract/src/iam.rs`.
 ## 7. Reste à faire
 
 - SAML à la première demande d'un client. I4 général et I5 : `iam.md`.
-- D801, à coder (choix de Shan, 2026-11-20) : un pipeline ou une build doit vérifier l'habilitation de son auteur sur les données marquées qu'il lit.
 - Hors dépôt : `PNEX_PSEUDONYM_KEY` en secret dans le chart `pipelineWorker` de `pnex-deploy`.
 - L'onglet « Marquages et habilitations » n'a pas de passe axe dédiée.

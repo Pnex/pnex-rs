@@ -13,7 +13,7 @@ An administrator creates the markings, marks a table, and clears a member for a 
 
 An **object** of the ontology can carry markings too, set by an administrator or by the sync of a marked table into objects. Someone not cleared sees the object masked (`•••• ` and the start of its id, no property), cannot change or archive it, and a search or a filter never returns it. An import that reads a marked table needs an author cleared for its markings, otherwise its run fails with *marking-required*.
 
-What a pipeline computes from a marked table carries the same markings. Removing a marking from a table is a **declassification**: it needs a written reason, kept in the journal, and a later run that still reads marked data puts the marking back.
+What a pipeline computes from a marked table carries the same markings. Running a pipeline that reads a marked table needs a clearance for each of its markings, for the person who runs it or for the author of the build. Removing a marking from a table is a **declassification**: it needs a written reason, kept in the journal, and a later run that still reads marked data puts the marking back.
 
 PneX also reads the first rows of each new table version and, when a column looks like e-mails, phone numbers, IBANs, card numbers or social security numbers, proposes in **To validate** to mark the table: with the org's marking keyed by that category (`iban`, `nir`…) if there is one, else *personal*. Nothing changes until an administrator accepts. Two markings of an org never share a key or a name.
 
