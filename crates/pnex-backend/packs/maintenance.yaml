@@ -193,7 +193,7 @@ types:
       - { key: unit, name: Unit, names: {fr: "Unité"}, kind: text, max_len: 16 }
       - { key: unit_cost, name: Unit cost, names: {fr: "Coût unitaire"}, kind: money }
       - { key: datasheet, name: Datasheet, names: {fr: "Fiche technique"}, kind: url }
-  # PD0 (parts-docs.md §3): the model of an installed equipment carries its
+  # PD0 (parts-docs.md §2): the model of an installed equipment carries its
   # parts list; the equipment itself stays where it is, linked by instance_of.
   - key: equipment_model
     name: Equipment model
@@ -373,7 +373,7 @@ link_types:
     inverse_names: {fr: "reçoit la pièce"}
     from_types: [spare_part]
     to_types: "*"
-  # PD0 (parts-docs.md §3).
+  # PD0 (parts-docs.md §2).
   - key: instance_of
     name: is an instance of
     names: {fr: "est un exemplaire de"}

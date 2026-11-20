@@ -213,7 +213,7 @@ async fn a_parts_list_is_found_by_any_spelling_of_a_reference() {
     .await;
 }
 
-/// PD0 acceptance (parts-docs.md §8): with 100,000 parts, an old reference
+/// PD0 acceptance (parts-docs.md §4): with 100,000 parts, an old reference
 /// typed with separators leads to the current part in less than 300 ms.
 /// Run by hand: `cargo test --test maintenance_parts -- --ignored`.
 #[tokio::test]

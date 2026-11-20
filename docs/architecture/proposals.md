@@ -2,183 +2,211 @@
 
 | | |
 |---|---|
-| Statut | **P0, P1, P2 et P4 livrés le 2026-10-22, P3 le 2026-10-23** |
-| Décision mère | D367 (`ontology.md` §11) : la proposition est un objet du noyau, priorité 1 |
-| Repose sur | ontologie (D176–D191), propositions des dossiers (`cases.md` K30, K33), attributions vocales (`media.md` D275), packs (D190, D368) |
-| Numérotation | **D371…D377**, lots **P0…P4** |
-| Couche | Un lien **déduit** passe par une proposition, posée par un flow ou un humain, jamais figée dans un pipeline de collecte (D998, `operational-platform.md`) |
+| **Statut** | Codé : lots P0 à P4. Reste : acceptation automatique pour `object_upsert` et les imports, proposition d'objet dans un mapping. |
+| **Décision mère** | D367 (`ontology.md` §11) : la proposition est un objet du noyau. |
+| **Renvois** | `ontology.md` (D176–D191, provenance D184, packs D190, réglages D368), `cases.md` (détections), `media.md` (D275 voix), `operational-platform.md` (D563, D998), `agents.md` (porte de validation), `crm.md` (D445), `governance.md` (D804) |
 
-## 1. Constat
+## 1. Résumé
 
-Quatre mécanismes disent aujourd'hui « une machine pense que… » :
+Une proposition est une écriture que la plateforme ne fait pas seule, parce qu'elle n'est pas sûre que la donnée soit vraie. Une machine la produit : import, flow, détecteur, modèle, agent. Un humain l'accepte ou la rejette depuis une seule boîte, « À valider ». Accepter écrit par les mêmes services que l'UI. Chaque décision reste dans un journal complet, et une valeur rejetée ne revient jamais.
 
-| Où | Forme | Défaut |
-|---|---|---|
-| Dossiers | table `case_proposals` (détecteurs, empreinte, retenue / rejetée) | propre au dossier, ne crée que des événements |
-| Voix | attributions `origin = voice`, `status = proposed` | propre aux médias |
-| Labo vision | suggestions dans les images d'un projet | propre au labo |
-| Packs | état dans un champ : `subsidiary_of.state = to_validate`, `has_website.status = proposed`, `sales_signal.state`, constats `quali_watch` | la proposition est déjà une donnée vivante ; chaque requête doit filtrer ; pas de boîte commune ; pas de journal des décisions |
+Un lien déduit passe par une proposition, posée par un flow ou un humain. Un pipeline de collecte ne fige jamais un lien déduit (D998).
 
-## 2. Ce qui est une proposition, ce qui ne l'est pas
+## 2. Concepts
 
-- **Proposition** : une écriture que la plateforme n'a pas le droit de faire seule parce qu'elle n'est pas sûre que ce soit **vrai**. Exemples : un lien de groupe tiré de Wikidata, le site web d'une organisation, une société retrouvée par son nom, la voix d'une personne, un événement détecté, une extraction par LLM.
-- **Pas une proposition** : un **statut de tri** d'une donnée vraie. Un signal BODACC existe, c'est un fait ; « retenu » ou « écarté » dit seulement s'il intéresse le commercial. Un constat d'écart produit par une règle déterministe est un fait daté ; son suivi (relances, clôture) est un workflow. Ces champs restent des propriétés métier du pack (voir Q-P1).
+| Terme | Définition |
+|---|---|
+| **Proposition** | Écriture en attente d'un humain, dans la table `proposals`. |
+| **Producteur** | Ce qui crée la proposition : import, nœud de flow, détecteur, modèle, agent, assistant. Son `origin` le nomme. |
+| **Empreinte** | Clé calculée par le producteur (type, extrémités, clé, valeurs). Elle est unique par org. |
+| **Décision** | Acceptation ou rejet, avec qui, quand et le motif. |
+| **Règle d'org** | Seuil qui accepte une proposition sans humain (D377). |
+| **Statut de tri** | Choix métier sur une donnée vraie (signal retenu ou écarté). Ce n'est pas une proposition. |
 
-## 3. Décisions
+Exemples de propositions : un lien de groupe tiré de Wikidata, le site web d'une organisation, une société retrouvée par son nom, la voix d'une personne, un événement détecté, une extraction par LLM. Un constat d'écart d'une règle déterministe est un fait daté, et son suivi est un workflow (Q-P1).
+
+```mermaid
+classDiagram
+  class Producteur {
+    origin
+  }
+  class Proposition {
+    kind
+    fingerprint
+    status
+    confidence
+  }
+  class Decision {
+    decided_by
+    reason
+  }
+  class Ecriture["objet ou lien écrit"]
+  Producteur --> Proposition : propose
+  Proposition --> Decision : 0..1
+  Decision --> Ecriture : applied, provenance proposal:id
+```
+
+## 3. Fonctionnement
+
+### 3.1 Cycle de vie d'une proposition
+
+```mermaid
+stateDiagram-v2
+  [*] --> proposed : producteur
+  proposed --> accepted : humain ou règle d'org
+  proposed --> rejected : humain
+  proposed --> superseded : version plus récente de la même cible
+  proposed --> proposed : même empreinte reçue, preuves et confiance mises à jour
+  accepted --> [*]
+  rejected --> [*] : empreinte bloquée à jamais
+  superseded --> [*]
+```
+
+Une nouvelle valeur (une autre mère, un autre site) fait une autre empreinte. Accepter et rejeter sont idempotents. Une décision contraire à une décision passée répond `proposal-decided` (409).
+
+### 3.2 Accepter
+
+```mermaid
+sequenceDiagram
+  participant H as Humain
+  participant B as Boîte « À valider »
+  participant P as services ontology::proposals
+  participant S as Services objets et liens
+  H->>B: Accepter, ou Corriger et accepter
+  B->>P: POST /proposals/{id}/decision
+  P->>P: proposals:decide et droit d'écrire le type (D188)
+  P->>S: même écriture que l'UI, base_version
+  alt objet modifié depuis base_version
+    S-->>P: 409
+    P-->>H: rejeter ou relancer le producteur
+  else
+    S-->>P: objet ou lien écrit
+    P-->>H: accepted, provenance proposal:<id>
+  end
+```
+
+L'écriture se fait sous l'utilisateur qui décide. L'origine machine reste lisible sur la proposition. « Corriger et accepter » remplace les valeurs proposées, et la correction reste sur la décision (Q-P5). Un rejet peut porter un motif de 500 caractères au plus.
+
+### 3.3 Producteurs
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  imp[Import : lien propose true] --> T[(proposals)]
+  lu[Nœud link_upsert propose] --> T
+  ou[Nœud object_upsert propose] --> T
+  det[Détecteur de dossier : case_event] --> T
+  ag[Agent interne : tool_call] --> T
+  ret[File de rétention : object_erase] --> T
+  gov[Gouvernance : dataset_mark] --> T
+  voix[speech_attributions origine voice] -.lecture.-> boite[Boîte « À valider »]
+  T --> boite
+```
+
+Le pack ne déclare plus d'état `to_validate`. Il déclare qui propose.
+
+- **Import** : une entrée de lien d'un mapping peut porter `propose: true`. Le diff l'indique. L'écriture crée la proposition dans la même transaction. Premier cas : les liens Wikidata de `companies_fr`.
+- **`link_upsert`** : l'option `propose` garde `msg.payload.confidence` et `evidence`. La réponse est `{proposed, proposal_id}`. Premier cas : le flow de présence web écrit à partir de 80 et propose de 40 à 79.
+- **`object_upsert`** : l'option `propose` crée `object_create` pour un objet absent. Pour un objet présent, elle crée `object_update` avec les seules propriétés et le titre qui diffèrent, sur `base_version`. Si rien ne diffère, rien n'est proposé. La réponse est l'objet tel qu'il est (`null` s'il n'existe pas) et `msg.proposed = true`.
+- **Dossiers** : une détection est une proposition `case_event`. `target_id` est le dossier. L'empreinte est `case_event|<dossier>|<key>`, donc un recalcul ne repropose rien. Accepter crée l'événement. Les routes du dossier passent par la décision commune.
+- **Voix** : la boîte lit `speech_attributions` d'origine `voice` (`kind = voice_span`) en lecture seule. La décision reste dans la relecture du média, et la décision commune répond 404 (Q-P3).
+- **Autres kinds** : `tool_call` (écriture d'un agent interne, `agents.md` D785, porte D563), `object_erase` (effacement de données personnelles, `crm.md` D445), `dataset_mark` (marquage d'une Table, `governance.md` D804). Une règle d'org ne les accepte jamais.
+
+### 3.4 Acceptation automatique (D377)
+
+```mermaid
+sequenceDiagram
+  participant F as Fonction du pack
+  participant N as Nœud link_upsert
+  participant P as services proposals
+  F->>F: lit le seuil par pack_setting (D368)
+  F->>N: msg.payload.accept = texte de la règle
+  N->>P: proposer
+  alt empreinte déjà rejetée
+    P-->>N: reste rejetée (D372)
+  else
+    P->>P: accepter, decided_by vide, motif = règle
+    alt écriture refusée (cardinalité, validation)
+      P-->>N: proposition ouverte pour un humain
+    end
+  end
+```
+
+L'UI affiche « Automatique : <règle> », par exemple `web_presence.confirm_threshold >= 80 (score 92)`. Le code du flow peut déjà écrire sans proposer : `accept` n'ouvre donc aucun droit nouveau.
+
+## 4. Exigences
+
+1. Une empreinte rejetée ne doit jamais produire une nouvelle proposition ouverte.
+2. Accepter doit écrire par les services de l'UI, avec les mêmes validations, cardinalités et 409.
+3. L'écriture acceptée doit porter la provenance `proposal:<id>` (D184).
+4. Décider doit exiger `proposals:decide` et le droit d'écrire le type visé. Un test vérifie le 403 (R2).
+5. L'org doit venir du principal ou du nœud déployé (R1).
+6. `decided_by` doit s'afficher par le nom, jamais par l'e-mail (R4).
+7. Une preuve citée doit s'afficher en texte, jamais en HTML (R11).
+8. L'assistant et le MCP ne doivent jamais décider. La lecture leur est ouverte.
+9. Une acceptation automatique doit rester écrite comme proposition `accepted`, avec la règle citée.
+10. Une source déclarée fiable (registre officiel) doit écrire directement, sans proposition.
+
+## 5. Décisions
+
+### D367 — La proposition est un objet du noyau
+
+Une table commune au noyau remplace les états « à valider » propres à chaque module.
 
 ### D371 — Une table `proposals` au noyau
 
-Champs :
-- `org_id` ;
-- `kind` : `object_create`, `object_update`, `link_create`, `link_update`, `link_close`, `case_event` (liste fermée ; `case_event` depuis P3). La boîte montre aussi `voice_span`, lu depuis la relecture média sans être stocké ici ;
-- `target` : le type ou l'objet visé, le type de lien et ses deux extrémités ;
-- `diff` : propriétés ou attributs proposés, titre ;
-- `base_version` : version de l'objet lue, pour une mise à jour ;
-- `evidence` : extraits cités, adresses, identifiants de preuve (D310) ;
-- `refs` : objets concernés, pour filtrer la boîte par objet ;
-- `origin` : `import:<id>@<run>`, `flow:<id>@<version>:<node>`, `detector:<clé>`, `llm:<modèle>`, `assistant` ;
-- `confidence` (0–100, facultatif) ;
-- `fingerprint` ;
-- `status` : `proposed`, `accepted`, `rejected`, `superseded` ;
-- décision : qui, quand, motif ;
-- `applied` : l'objet ou le lien écrit ;
-- dates.
+Champs : `org_id`, `kind` (liste fermée, §6), `target`, `diff`, `base_version`, `evidence` (preuves D310), `refs`, `origin`, `confidence` (0 à 100, facultatif), `fingerprint`, `status`, décision, `applied`, dates.
 
 ### D372 — Une empreinte, jamais reproposé
 
-L'empreinte est calculée par le producteur (type, extrémités, clé, valeurs proposées), unique par org. Une proposition rejetée bloque la même empreinte à jamais. Une nouvelle valeur (une autre mère, un autre site) fait une autre empreinte. Une proposition encore ouverte qui reçoit une version plus récente de la même cible passe en `superseded`.
+Une proposition rejetée bloque son empreinte à jamais. Une version plus récente de la même cible remplace une proposition ouverte (`superseded`).
 
 ### D373 — Accepter = écrire par le service partagé
 
-Accepter applique la différence par les mêmes services que l'UI (objets, liens) : mêmes validations, mêmes cardinalités, mêmes 409. La décision écrit sous l'utilisateur qui décide, avec la provenance `proposal:<id>` (D184) ; l'origine machine reste lisible sur la proposition. Une mise à jour dont l'objet a bougé depuis `base_version` est refusée (`proposal-stale`) : on la rejette ou on relance le producteur. Accepter et rejeter sont idempotents.
+Accepter applique la différence par les services de l'UI, sous l'utilisateur qui décide. Une mise à jour dont l'objet a bougé est refusée.
 
 ### D374 — Une boîte « À valider », une permission
 
-> **Amendé le 2026-11-03 (D563, `operational-platform.md`)** : kind `operation`
-> pour toute opération du spec ; un agent désigné peut décider, hors liste réservée.
-
-- **Page** « À valider » : filtres par origine, type et objet ; décision une par une ou en lot. **Pastille** sur la page d'un objet concerné.
-- **Permissions** : `proposals:read` (lecteur) et `proposals:decide` (membre). Décider vérifie en plus le droit d'écrire le type visé (D188).
-- **Assistant et MCP** : lecture exposée ; décision exclue (« sign-off » : un humain décide).
+Une page commune et deux permissions : `proposals:read` (lecteur) et `proposals:decide` (membre). Assistant et MCP lisent seulement. Amendée par D563 (`operational-platform.md`) : un agent validateur désigné peut décider une proposition `tool_call` (`agents.md`).
 
 ### D375 — Les producteurs disent « proposer » au lieu d'« écrire »
 
-- **Import** : une entrée d'objet ou de lien d'un mapping peut porter `propose: true`. Le diff produit alors des propositions au lieu d'écritures. Exemple : les liens Wikidata.
-- **Nœuds `object_upsert` et `link_upsert`** : option `propose` avec `confidence`. Exemples : le flow de présence web pour les scores moyens, les extractions par LLM.
-- Le pack ne déclare plus d'état `to_validate` ; il déclare **qui propose**.
+Mappings et nœuds `link_upsert` / `object_upsert` portent `propose`. Le pack déclare qui propose.
 
 ### D376 — Migration des packs existants
 
-- Les liens `subsidiary_of` de nature `wikidata` encore `to_validate` deviennent des propositions `link_create`, et le lien vivant est fermé. Les liens `has_website` au statut `proposed` suivent le même chemin.
-- Les attributs `state` de `subsidiary_of` et `status = proposed` d'`has_website` disparaissent des packs, avec une nouvelle version des packs ; `status` ne garde que `confirmed` / `rejected`, ou disparaît (voir Q-P1).
-- La section « Sites à valider » devient un filtre de la boîte.
+Les liens en attente (`subsidiary_of` Wikidata, `has_website` proposés) sont devenus des propositions, et leurs attributs d'état ont disparu (migration 000047).
 
 ### D377 — Acceptation automatique : une règle d'org, tracée
 
-Au-dessus d'un seuil déclaré par le pack et surchargeable par l'org (D368), une proposition est acceptée sans humain. Exemple : un site confirmé par SIREN et NDA.
+Au-dessus d'un seuil du pack, surchargeable par l'org (D368), une proposition est acceptée sans humain. Codé pour `link_upsert` seulement.
 
-Elle reste écrite comme proposition, `accepted` par `system` avec la règle citée : le journal des décisions est complet. Une source déclarée fiable (registre officiel) n'est jamais proposée : elle écrit directement, comme aujourd'hui.
+## 6. Interfaces
 
-**Livré (P4)** : un nœud `link_upsert` `propose: true` reçoit `msg.payload.accept`, le texte de la règle (exemple : `web_presence.confirm_threshold >= 80 (score 92)`). Le service propose puis accepte aussitôt : `decided_by` vide, motif = la règle ; l'UI affiche « Automatique : <règle> ». La même valeur encore ouverte est acceptée ; une valeur déjà rejetée le reste (D372) ; une écriture refusée (cardinalité, validation) laisse la proposition ouverte pour un humain. Le seuil vit dans la fonction du pack, qui le lit par `pack_setting` (D368) : c'est elle qui pose `accept`. Le message vient du code du flow, qui pourrait aussi bien écrire sans proposer : `accept` n'ouvre aucun droit nouveau. Pas fait : `object_upsert` et les imports n'ont pas encore d'acceptation automatique.
+| Route | Effet | Permission | MCP |
+|---|---|---|---|
+| `GET /api/v1/proposals` | liste, filtres `status`, `origin` (préfixe), objet | `proposals:read` | exposé |
+| `GET /api/v1/proposals/{id}` | une proposition | `proposals:read` | exposé |
+| `POST /api/v1/proposals/{id}/decision` | `decision` (`accept` / `reject`), `reason`, `values` | `proposals:decide` | exclu (sign-off) |
 
-## 4. Lots
+- **Kinds** : `object_create`, `object_update`, `link_create`, `link_update`, `link_close`, `case_event`, `voice_span` (lu, jamais stocké), `object_erase`, `tool_call`, `dataset_mark`.
+- **Statuts** : `proposed`, `accepted`, `rejected`, `superseded`.
+- **Origines** : `import:<id>@<run>`, `flow:<id>@<version>:<node>`, `detector:<clé>`, `llm:<modèle>`, `agent:<id>`, `assistant`.
+- **Code d'erreur** : `proposal-decided`.
+- **Code** : `pnex_core::ontology::proposal`, `services/ontology/proposals.rs`, `controllers/proposals.rs`, migrations 000046 (table), 000047 (D376), 000049 (détections des dossiers).
+- **UI** : page « À valider » (`/proposals`, menu Connaissance, filtre par statut, origine passée par l'adresse), section des propositions ouvertes en tête de la page d'un objet. Fiche `assistant-kb/proposals.md`. Lexique : « Proposition » (`design-system.md` §7).
+- **Tests** : `tests/proposals.rs`, `ontology` `case_detections_are_proposed_and_reviewed_by_a_human`, `media_review` `voice_proposals_respect_what_people_decided`, `partner_watch`.
 
-| Lot | Contenu | Prérequis |
-|---|---|---|
-| **P0** | Table, service (créer, lister, accepter, rejeter, remplacer), routes, IAM, MCP, tests | — |
-| **P1** | Page « À valider », pastille sur l'objet, fiche de l'assistant | P0 |
-| **P2** | Producteurs : `propose` dans les mappings et les nœuds ; bascule de Wikidata et de la présence web ; migration D376 | P0 |
-| **P3** | `case_proposals` et attributions vocales dans la même table (`kind` dédiés), une seule boîte | P1 |
-| **P4** | Acceptation automatique par règle d'org (D377) | D368 |
+## 7. Reste à faire
 
-## 5. Questions (défaut retenu en attendant Shan)
-
-- **Q-P1** : statuts de tri (signal retenu ou écarté, constats) : propriétés métier, pas des propositions. **Défaut : oui.** On ne migre que ce qui dit « est-ce vrai ? ».
-- **Q-P2** : données communautaires (Wikidata) en propositions, plutôt qu'en liens vivants à fermer. **Défaut : oui.** Le graphe vivant reste propre.
-- **Q-P3** : dossiers et voix unifiés dans la même table (P3) ou fédérés en lecture. **Retenu : même table pour les dossiers, lecture fédérée pour la voix.** Une voix se décide en l'écoutant, et on ajuste souvent son intervalle avant de la confirmer : cela reste dans la relecture du média. Ses propositions sont aussi régénérées à chaque analyse, ce que la règle « jamais reproposé » de la table ne permet pas.
-- **Q-P4** : une proposition sans réponse expire-t-elle ? **Défaut : non** ; filtre « ancienneté » dans la boîte.
-- **Q-P5** : une décision humaine peut-elle modifier la valeur proposée avant d'accepter (« accepter avec correction ») ? **Défaut : oui pour les propriétés**, la correction est tracée dans la décision.
-
-## 6. Sécurité
-
-- R1 : org tirée du principal ou du nœud déployé.
-- R2 : `proposals:read` / `proposals:decide` + droit d'écriture du type, avec un test 403.
-- R4 : `decided_by` est rendu par le nom affiché, jamais par l'e-mail.
-- Une preuve citée (texte d'un site inconnu) est une donnée, jamais rendue en HTML (R11).
-- L'assistant ne décide pas.
-
-## 7. État
-
-- **P0** (`8776c7ff`) :
-  - table `proposals` (migration 000046), cœur `ontology::proposal`
-    (types, `slot`, texte d'empreinte haché en SHA-256 par le serveur) ;
-  - service `ontology::proposals` (`propose`, `list`, `get`, `decide`) ;
-  - routes `GET /api/v1/proposals`, `GET /api/v1/proposals/{id}`,
-    `POST /api/v1/proposals/{id}/decision` ;
-  - permissions `proposals:read` (lecteur) et `proposals:decide`
-    (membre) ; MCP : lecture exposée, décision sous « sign-off » ;
-  - code `proposal-decided` ;
-  - test `tests/proposals.rs`.
-- **P1** :
-  - motif de rejet et « Corriger et accepter » (valeurs texte) dans
-    l'UI ;
-  - page « À valider » (menu Connaissance, `/proposals`, filtre par
-    statut) ;
-  - section des propositions ouvertes en tête de la page d'un objet ;
-  - fiche `assistant-kb/proposals.md` ;
-  - ligne au lexique (« Proposition », la garde refuse « suggestion de
-    la machine »).
-- **P2** :
-  - `propose: true` sur une entrée de lien d'un mapping (le diff
-    l'indique, l'écriture crée la proposition dans la même transaction) ;
-  - option `propose` du nœud `link_upsert` (`msg.payload.confidence`
-    gardé ; réponse `{proposed, proposal_id}`) ;
-  - packs : `companies` 1.2.0 (sans `subsidiary_of.state`),
-    `companies_fr` 2.2.0 (Wikidata propose ses liens) et
-    `web_presence` 1.1.0 (sans `has_website.status` ; le flow écrit à
-    partir de 80 et propose de 40 à 79) ;
-  - la section « Sites à valider » et ses deux routes
-    `/web-presence/candidates` sont retirées : la boîte commune les
-    remplace ;
-  - migration 000047 (D376) : les liens en attente deviennent des
-    propositions (empreinte `migration:<id>`, remplacée par une nouvelle
-    proposition du même lien) et sont fermés ; les attributs d'état
-    disparaissent ;
-  - tests mis à jour : `partner_watch` (Wikidata accepté depuis la boîte,
-    nœud qui propose), `pack_rules`.
-- Reste :
-  - P3, dossiers (2026-10-23) : les détections d'un dossier sont des
-    propositions `case_event` de la table commune (migration 000049,
-    données recopiées avec leur id et leur décision, `case_proposals`
-    supprimée). `target_id` = le dossier ; `values` = `key` (l'ancienne
-    empreinte : détecteur, membres triés, début à la minute), détecteur,
-    seuils, membres, `from_ms` / `to_ms`, `payload` ; empreinte =
-    `case_event|<dossier>|<key>`, donc un recalcul ne repropose rien.
-    Titre proposé : `<détecteur> : <membres>`. Accepter crée l'événement
-    (provenance `proposal:<id>`) ; « Corriger et accepter » choisit son
-    titre. Les routes du dossier gardent leur forme et passent par la
-    décision commune ; `cases_proposals_retain` et `…_reject` sortent du
-    MCP (« sign-off », D374). Test : `ontology`
-    `case_detections_are_proposed_and_reviewed_by_a_human` ;
-  - P3, voix (2026-10-23) : la boîte lit aussi `speech_attributions`
-    d'origine `voice` (union dans `proposals::list`, `kind = voice_span`,
-    confirmé = `accepted`, valeurs = média et intervalle, confiance × 100,
-    objets = la personne et le média). En lecture seule : la décision
-    reste dans la relecture du média (lien « Écouter et décider »), et
-    `POST /proposals/{id}/decision` sur une voix répond 404. Test :
-    `media_review` `voice_proposals_respect_what_people_decided` ;
-  - P4 : livré pour `link_upsert` (D377, voir plus haut) ; reste `object_upsert` et les imports ;
-  - fait depuis : la même proposition reçue à nouveau avec des preuves
-    (`evidence` du nœud `link_upsert`), encore ouverte, prend ces preuves
-    et la nouvelle confiance ; la boîte affiche les preuves en texte ;
-  - option `propose` du nœud `object_upsert` (2026-10-27, premier cas : le
-    profil LinkedIn d'une personne retrouvé sur le web) : un objet absent
-    devient une proposition `object_create` ; un objet présent, une
-    proposition `object_update` qui ne porte que les propriétés et le
-    titre qui diffèrent, sur la version lue (`base_version`) ; rien qui
-    diffère, rien de proposé. `msg.confidence` et `msg.evidence` sont
-    gardés (la charge utile, ce sont les propriétés). Réponse : l'objet tel
-    qu'il est (`null` s'il n'existe pas) et `msg.proposed = true`. Pas
-    d'acceptation automatique (D377) pour ce nœud ;
-  - entrée d'objet d'un mapping qui propose : à faire quand un cas réel le
-    demande.
+- Acceptation automatique (D377) pour `object_upsert` et pour les imports.
+- Entrée d'objet d'un mapping qui propose : à faire quand un cas réel le demande.
+- La boîte n'a pas de décision en lot ni de filtre par type. L'API filtre par objet, l'UI ne l'expose pas.
+- Choix de Shan : les défauts appliqués restent à confirmer.
+  - **Q-P1** : un statut de tri reste une propriété métier, pas une proposition. Défaut appliqué.
+  - **Q-P2** : les données communautaires (Wikidata) entrent en propositions. Défaut appliqué.
+  - **Q-P4** : une proposition sans réponse n'expire pas. Défaut appliqué, sans filtre d'ancienneté dans la boîte.
+  - **Q-P5** : « Corriger et accepter » vaut pour les propriétés. Défaut appliqué.
