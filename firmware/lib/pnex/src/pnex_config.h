@@ -1,6 +1,6 @@
 //
 // Compiled config of the PneX lib — includes through -D defines (contract
-// docs/architecture/firmware-build.md §2.1): WIFI_SSID/WIFI_PASSWORD/
+// docs/architecture/firmware.md §3.4): WIFI_SSID/WIFI_PASSWORD/
 // HOST/TOKEN/DEVICE_ID IN BASE64, ENCRYPTION_KEY b64. Always wss/https
 // (D154): there is no clear-text build.
 //

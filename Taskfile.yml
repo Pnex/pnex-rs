@@ -664,7 +664,7 @@ tasks:
   # (build_flags -D … of platformio.ini): "the settings are ok" on the
   # server side says nothing about the image actually flashed. The serial monitor
   # reveals it at boot ([WiFi] Connecting to <ssid>) — see
-  # docs/architecture/firmware-build.md §2.1.
+  # docs/architecture/firmware.md §3.4.
 
   fw:ports:
     desc: List the USB serial ports (identify the ESP — /dev/ttyUSB0, /dev/ttyACM0…)

@@ -8,7 +8,7 @@
 //! backend at admission (`Announce` → provisioning), before every command
 //! push (POST commands) and when casting control cards (regulator.rs)
 //! — an illegal op is rejected 400 with a reason, never pushed to the device
-//! (brick0.md §6/§8).
+//! (firmware.md §6.1/§3.2).
 //!
 //! ESP8266 (P0):
 //! - GPIO6–11 = SPI flash → **forbidden**;
@@ -597,7 +597,7 @@ pub struct ValidatedPin {
 
 /// Validation of a pin against the SoC chip-caps — **single point** used
 /// at admission, before every command push and at control cast
-/// (brick0.md §2/§6/§8).
+/// (firmware.md §3.2/§6.1).
 pub fn validate(
     soc: Soc,
     gpio: u16,

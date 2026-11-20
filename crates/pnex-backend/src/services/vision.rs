@@ -1,4 +1,4 @@
-//! Vision registry services (camera-video.md D81/D82): DTO mapping, model
+//! Vision registry services (vision.md D81/D82): DTO mapping, model
 //! bytes resolution through the media library, and a small in-process cache
 //! of loaded detectors (tract plans are costly to optimize, cheap to run).
 //!

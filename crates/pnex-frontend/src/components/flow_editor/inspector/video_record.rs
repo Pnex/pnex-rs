@@ -2,7 +2,7 @@ use super::helpers::*;
 use super::*;
 use crate::components::ui::FIELD_LABEL;
 
-// ─────────────── video-record (camera-video.md D78/D79) ───────────────
+// ─────────────── video-record (vision.md D78/D79) ───────────────
 
 /// Field keys of the video-record form (also the parse-error markers).
 const F_SEGMENT_SECS: &str = "segment_secs";

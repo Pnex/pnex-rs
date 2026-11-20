@@ -8,7 +8,7 @@
 | **Cible version** | 0.1.x (phase 1) → 0.2.0 (rattachement ontologie) — à confirmer vis-à-vis du gel 0.2.0 (décision #22) |
 | **Composants** | Loco (API + worker), Dioxus (UI), PostgreSQL + pgvector + pg_trgm, MediaStore (fs / S3 RustFS, D21), Valkey, assistant IA (LLM de l'org, D119) |
 | **Entrée roadmap** | P2.18, décision #22 |
-| **Renvois** | `media.md` (D21 bibliothèque, versions, MediaStore), `ai-assistant.md` (D142–D145, §9 règle d'extension), `security.md` §9 (D110, D116/D119 fournisseurs d'org), `ontology.md` (D179 liens, D184 provenance), `pages.md` (index partagé), `geo-layers.md` (image Postgres étendue), `security.md` (R1–R20, R8 egress), `ml-vision.md` (stack d'inférence tract) |
+| **Renvois** | `media.md` (D21 bibliothèque, versions, MediaStore), `ai-assistant.md` (D142–D145, §9 règle d'extension), `security.md` §9 (D110, D116/D119 fournisseurs d'org), `ontology.md` (D179 liens, D184 provenance), `pages.md` (index partagé), `geo-layers.md` (image Postgres étendue), `security.md` (R1–R20, R8 egress), `vision.md` §3.4 (stack d'inférence tract) |
 
 ---
 

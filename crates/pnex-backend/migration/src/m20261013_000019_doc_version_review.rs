@@ -1,4 +1,4 @@
-//! Named page versions written by flows (media-vision-studio.md D209/D210):
+//! Named page versions written by flows (vision.md D209/D210):
 //! whether the version holds AI-generated text, which flow wrote it, and
 //! who approved it (an AI report leaves PneX approved by default).
 

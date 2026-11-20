@@ -15,7 +15,7 @@
 //   link losses (§3/§8).
 //
 // Device config: -D b64 defines via ${sysenv.*} (server build per
-// device, contract docs/architecture/firmware-build.md §2.1).
+// device, contract docs/architecture/firmware.md §3.4).
 // PNEX_BOARD_NAME distinguishes the announce (wire id of the variant).
 //
 

@@ -1,4 +1,4 @@
-//! Vision Lab contract (media-vision-studio.md §4.6, D198–D200): projects
+//! Vision Lab contract (vision.md §3.8, D198–D200): projects
 //! of object classes, images of the media library annotated with boxes,
 //! frozen dataset versions and their COCO export. Pure, wasm-safe.
 

@@ -11,7 +11,7 @@ pub mod agent_skills;
 pub mod annotations;
 pub mod apps;
 pub mod auth_callback;
-/// Cameras: live view, capture settings and recordings (camera-video.md D80).
+/// Cameras: live view, capture settings and recordings (vision.md D80).
 pub mod calendar;
 pub mod cameras;
 pub mod catalog;
@@ -29,7 +29,7 @@ pub mod docs;
 /// wizard and the firmware build queue.
 pub mod edge_refs;
 pub mod equipment_parts;
-/// JSON events written by flows (camera-video.md D84).
+/// JSON events written by flows (vision.md D84).
 pub mod events;
 pub mod firmware;
 pub mod flows;
@@ -47,7 +47,7 @@ pub mod mailboxes;
 pub mod map;
 pub mod market_decisions;
 pub mod media;
-/// Vision model registry (camera-video.md D81).
+/// Vision model registry (vision.md D81).
 pub mod models;
 pub mod mt5_terminals;
 pub mod not_found;

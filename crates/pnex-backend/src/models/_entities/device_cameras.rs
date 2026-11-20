@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Camera capture settings, one row per camera device (camera-video.md D76).
+/// Camera capture settings, one row per camera device (vision.md D76).
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "device_cameras")]
 pub struct Model {

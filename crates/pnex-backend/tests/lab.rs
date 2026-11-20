@@ -1,4 +1,4 @@
-//! Vision Lab (media-vision-studio.md D198–D200): project → images of the
+//! Vision Lab (vision.md D198–D200): project → images of the
 //! media library → boxes (optimistic 409) → frozen version → COCO zip;
 //! org isolation (R1) and viewer read-only (R2).
 //!

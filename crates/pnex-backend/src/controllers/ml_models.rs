@@ -1,4 +1,4 @@
-//! Vision model registry API (camera-video.md D81) — org-scoped, writes
+//! Vision model registry API (vision.md D81) — org-scoped, writes
 //! gated by their IAM permission.
 //!
 //! - `GET    /api/v1/ml/models` — D14 envelope (`search`)

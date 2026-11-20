@@ -107,7 +107,7 @@ pub use tour::*;
 
 /// Media annotations (D55–D60) — versioned layers anchored on
 /// `media_asset_id`, weak targets resolved at read; doctrine
-/// `docs/architecture/annotations.md`.
+/// `docs/architecture/vision.md` §3.7.
 pub mod annotation;
 pub use annotation::*;
 
@@ -120,7 +120,7 @@ pub use calc::*;
 pub mod naming;
 pub use naming::*;
 
-/// Camera & video contract (camera-video.md D73–D80): uplink frame header,
+/// Camera & video contract (vision.md D73–D80): uplink frame header,
 /// frame sizes, capture settings, Valkey frame bus keys, segment DTO.
 pub mod camera;
 
@@ -203,7 +203,7 @@ pub mod time_range;
 /// `telemetry/aggregate` read primitive and the `range_bars` widget options.
 pub mod aggregate;
 
-/// Predictive telemetry (ml-vision.md step 3): `anomaly` / `forecast` node
+/// Predictive telemetry (vision.md §3.10): `anomaly` / `forecast` node
 /// configs, validation, port counts.
 pub mod predictive;
 

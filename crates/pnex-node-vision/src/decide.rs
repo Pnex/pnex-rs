@@ -1,4 +1,4 @@
-//! `pnex-text-decide` node (media-vision-studio.md D197) — typed questions
+//! `pnex-text-decide` node (vision.md D197) — typed questions
 //! about the text of each message, answered by the server's Laya model
 //! through `/internal/flow/ai/decide` (the model lives once in the backend,
 //! not in every org runtime).

@@ -232,7 +232,7 @@ pub struct Device {
     #[serde(default)]
     pub discovered_measurements: Vec<String>,
     pub max_unique_measurements: i32,
-    /// Custom firmware project the device runs (custom-firmware.md D94) —
+    /// Custom firmware project the device runs (firmware.md D94) —
     /// `None` = generic preset firmware.
     #[serde(default)]
     pub firmware_project_id: Option<i64>,
@@ -252,7 +252,7 @@ pub struct CreateDevice {
     /// model's default board.
     #[serde(default)]
     pub board_id: Option<i64>,
-    /// Custom firmware chosen at provisioning (custom-firmware.md D94) —
+    /// Custom firmware chosen at provisioning (firmware.md D94) —
     /// must belong to the org and target the board's chip. Absent = the
     /// generic preset firmware.
     #[serde(default)]

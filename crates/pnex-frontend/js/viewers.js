@@ -1296,7 +1296,7 @@ window.pnexViewers.tour = {
 };
 
 // ─────────────────────────────────────────────────────────────────
-// Camera live view (camera-video.md D75) — WebSocket of raw JPEG binary
+// Camera live view (vision.md D75) — WebSocket of raw JPEG binary
 // frames (`/ws/camera/live`), each frame becomes a blob URL on an <img>
 // (the previous URL is revoked). Auto-reconnect with a 1 → 10 s backoff
 // while mounted. No polling, no storage. Works on web and in the Android

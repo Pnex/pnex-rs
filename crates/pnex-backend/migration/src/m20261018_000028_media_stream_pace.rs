@@ -1,4 +1,4 @@
-//! Batch analysis of a library file (media-vision-studio.md D211,
+//! Batch analysis of a library file (vision.md D211,
 //! media.md D276): a stream reads its file as fast as the ASR keeps
 //! up (`pace = batch`), on the analysed version, and each launch is a run.
 

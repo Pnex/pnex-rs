@@ -1,4 +1,4 @@
-//! Custom firmware projects (custom-firmware.md D89) — append-only
+//! Custom firmware projects (firmware.md D89) — append-only
 //! revisions of one `main.cpp` + pinned catalog libraries, org-scoped.
 //! School `services/functions.rs` (transaction, circular current pointer).
 //!

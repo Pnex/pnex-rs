@@ -47,7 +47,7 @@ pub(super) enum MediaKind {
     Splat,
     /// Imported floor plan (referenced by `tour_versions.doc`).
     Floorplan,
-    /// ONNX model of the vision registry (camera-video.md D81).
+    /// ONNX model of the vision registry (vision.md D81).
     Model,
     /// Indexed for search (doc-search.md P1).
     Document,
@@ -55,7 +55,7 @@ pub(super) enum MediaKind {
     Table,
     /// Voice clips (media.md §3.12: enrolment of a voice profile).
     Audio,
-    /// MP4 / MOV clips (Vision Lab frames, media-vision-studio.md).
+    /// MP4 / MOV clips (Vision Lab frames, vision.md).
     Video,
     /// GLB 3D model of an object's gallery (assisted-creation.md D231).
     Mesh,

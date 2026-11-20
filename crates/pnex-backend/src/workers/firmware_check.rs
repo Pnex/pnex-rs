@@ -1,4 +1,4 @@
-//! Compile-only check of a custom firmware revision (custom-firmware.md
+//! Compile-only check of a custom firmware revision (firmware.md
 //! D90) — queue worker, same school as [`super::stitch_panorama`]: tiny
 //! args, the row `firmware_checks` carries the state (`queued → running →
 //! succeeded|failed|error`). Runs where PlatformIO lives (the `pnex-builder`

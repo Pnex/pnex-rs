@@ -6,7 +6,7 @@
 > **Dépend de** : ontologie 0.2.0 (livrée), GMAO générique (`ontology.md`
 > annexe C : `spare_part`, `work_order`, stock, fournisseurs), Pages
 > (procédures L6), médias et annotations (D147, D219), recherche documentaire
-> (`doc-search.md`), vision (`ml-vision.md`).
+> (`doc-search.md`), vision (`vision.md`).
 > **Périmètre** : tout corps de métier de la maintenance (froid, CVC,
 > cuisines professionnelles, électricité, ascenseurs, machines de
 > production…). Aucun type ni aucune règle propre à un métier dans le moteur :
@@ -254,7 +254,7 @@ chaque lot.
 | Médiathèque, `doc-search.md` | Documents, recherche texte et vectorielle |
 | Annotations (D147, D219) | Ancres, hotspots de vue éclatée |
 | Pages L6 | Procédures de montage |
-| Vision (`ml-vision.md`) | Repères sur vues éclatées, similarité de pièce |
+| Vision (`vision.md`) | Repères sur vues éclatées, similarité de pièce |
 | Assistant | Lecture (recherche de pièce, nomenclature filtrée d'un appareil, remplacements, fiche pièce) ; écritures en proposition seulement : ajout au panier d'un OT, correction de pièce, via le service partagé avec l'UI |
 | Moteur de pipelines, flows | Ingestion et validation |
 | Propositions | Validation humaine de tout ce qui est extrait ou proposé |

@@ -1,5 +1,5 @@
 //
-// PneX pin self-test console (D122, docs/architecture/pin-selftest.md).
+// PneX pin self-test console (D122, docs/architecture/firmware.md §3.9).
 //
 // Offline build (no WiFi, no server, no device config) driven over the
 // serial port, 115200 baud, one command per line:

@@ -1,4 +1,4 @@
-//! PDF rendering of a page (media-vision-studio.md D209): structured blocks
+//! PDF rendering of a page (vision.md D209): structured blocks
 //! in, A4 PDF out. Two passes: the blocks are laid out into lines and
 //! pages (words measured with the same shaper krilla uses), then drawn,
 //! so the footer knows the page count ("page N / M").

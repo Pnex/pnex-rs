@@ -1,4 +1,4 @@
-//! Typed decisions of the `text_decide` flow node (media-vision-studio.md
+//! Typed decisions of the `text_decide` flow node (vision.md
 //! D197): the Laya model runs **here**, once per server process, instead of
 //! once per org runtime (≈ 1.3 GB of weights). The bundle is installed by
 //! the platform administrator (`settings.decide.model_dir`, env

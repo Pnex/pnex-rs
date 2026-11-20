@@ -1,4 +1,4 @@
-//! `pnex-vision-track` node (media-vision-studio.md D192) — follows the
+//! `pnex-vision-track` node (vision.md D192) — follows the
 //! `vision-detect` objects from frame to frame and gives each one a stable
 //! `track_id`, per camera or stream.
 //!

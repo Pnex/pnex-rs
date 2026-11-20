@@ -1,4 +1,4 @@
-//! Custom firmware builds (custom-firmware.md D89–D92).
+//! Custom firmware builds (firmware.md D89–D92).
 //!
 //! A custom build is a generic build whose project gets the revision's
 //! `src/main.cpp` and extra pinned `lib_deps`; the `platformio.ini` itself

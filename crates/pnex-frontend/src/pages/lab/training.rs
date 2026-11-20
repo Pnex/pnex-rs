@@ -1,4 +1,4 @@
-//! Training of a project (media-vision-studio.md D204): one button trains
+//! Training of a project (vision.md D204): one button trains
 //! on the current pictures (frozen into a new version on the way); the
 //! version, the starting model and the epochs are advanced options. Runs
 //! are listed with their progress, refreshed while one is active.

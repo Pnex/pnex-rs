@@ -1,4 +1,4 @@
-//! Firmware choice at the wizard (custom-firmware.md D94): the generic PneX
+//! Firmware choice at the wizard (firmware.md D94): the generic PneX
 //! preset (default) or a custom firmware project whose chip family matches
 //! the effective board. The device carries the choice (`firmware_project_id`).
 

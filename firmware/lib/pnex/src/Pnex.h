@@ -2,7 +2,7 @@
 // PneX — generic lib of the PNeX project's ESP firmwares (publishable PIO
 // package). Holds the MECHANICS: transport (WiFi + WS + ChaCha20
 // framing, ex pnex-transport), compiled config (pnex_config.h, -D
-// b64 defines — contract firmware-build.md §2.1) and the `pin_slave` profile
+// b64 defines — contract firmware.md §3.4) and the `pin_slave` profile
 // (announces/proto: pin map pushed in the ProvisionAck, RPCs
 // SetMode/Write/Subscribe + Ack, timed reads as StateReport).
 //

@@ -1,4 +1,4 @@
-//! Vision model registry API (camera-video.md D81) — client of
+//! Vision model registry API (vision.md D81) — client of
 //! `/api/v1/ml/models`: D14 list, create/update/delete, and the "test with
 //! an image" endpoint (image bytes → detections).
 

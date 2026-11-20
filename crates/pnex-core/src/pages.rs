@@ -288,7 +288,7 @@ pub enum PageWriteMode {
     Append,
 }
 
-/// Config of the `page_write` flow node (media-vision-studio.md D209).
+/// Config of the `page_write` flow node (vision.md D209).
 /// Templates (`title`, `version_label`) accept `{date}`, `{time}`,
 /// `{week}` (UTC at write time).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

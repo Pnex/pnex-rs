@@ -32,9 +32,9 @@ Firmware ESP8266 et ESP32-C3 du projet pnex, convergé dans le monorepo —
 
 Le worker de build (`crates/pnex-firmware-builder`) compile les presets
 avec la config device en variables d'environnement (base64) — contrat
-détaillé dans `docs/architecture/firmware-build.md`. Le firmware custom
+détaillé dans `docs/architecture/firmware.md` §3.4. Le firmware custom
 (IDE, modèles génériques uniquement) passe par le même worker — voir
-`docs/architecture/custom-firmware.md`.
+`docs/architecture/firmware.md` §3.7.
 
 ## Toolchain
 

@@ -1,4 +1,4 @@
-//! Cameras & recordings API (camera-video.md D75/D76/D79/D80) — client of
+//! Cameras & recordings API (vision.md D75/D76/D79/D80) — client of
 //! the `/api/v1/cameras` controller: camera list, capture settings, the
 //! per-day recording timeline (segment bytes, range export, range delete) and the
 //! `/ws/camera/live` URL builder for the live viewer.

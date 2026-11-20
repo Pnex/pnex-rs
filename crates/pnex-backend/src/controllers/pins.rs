@@ -1,4 +1,4 @@
-//! Generic device pins & commands (Brick 0, brick0.md §6).
+//! Generic device pins & commands (Brick 0, firmware.md §6.1).
 //!
 //! - `GET /api/v1/devices/{id}/pins` — instances + overlay labels +
 //!   `last_value` (session memory, absent if offline); viewer included;
@@ -673,7 +673,7 @@ async fn commands(
         "set_mode" => {
             let mode = str_to_mode_local(cmd.mode.as_deref().unwrap_or(""));
             let opts = cmd.opts.unwrap_or_default();
-            // Single validation point (brick0.md §2) — BEFORE any update/push.
+            // Single validation point (firmware.md §3.2) — BEFORE any update/push.
             // pnex-core owns the per-violation code (`caps-*`) and the
             // canonical English reason; `$value` carries the gpio.
             let validated = pnex_core::caps::validate(soc, cmd.gpio, mode, &opts).map_err(|v| {

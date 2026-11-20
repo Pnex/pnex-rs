@@ -1,4 +1,4 @@
-//! `pnex-llm-text` node (media-vision-studio.md D208) — for each message,
+//! `pnex-llm-text` node (vision.md D208) — for each message,
 //! sends the author's instruction and the message data (whole payload or
 //! `data_field`) to the organization's LLM through the backend
 //! (`/internal/flow/ai/text`) and emits the answer.

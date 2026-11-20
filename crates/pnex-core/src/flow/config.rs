@@ -411,7 +411,7 @@ pub struct DisplayConfig;
 /// **Mixed** card: the sensor and the output belong to the **same
 /// device** — control runs embedded on the ESP (D13/D17: no
 /// server loop), the server only casts this config (docs/
-/// architecture/control-cards.md). Pins are **labels** (authoring)
+/// architecture/firmware.md §3.10). Pins are **labels** (authoring)
 /// resolved to gpio by the backend at sync (parity with `DeviceRead`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegTtConfig {
@@ -1055,7 +1055,7 @@ where
 /// source node: subscribes to the camera frame bus of one device (Valkey
 /// pub/sub, fed by the backend CameraHub) and emits one message per frame.
 /// Messages carry a **reference** to the JPEG (`payload.frame_key`, TTL
-/// 15 s), never the bytes (camera-video.md D74).
+/// 15 s), never the bytes (vision.md D74).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CameraSourceConfig {
     /// Where the frames come from (D175); `device` by default.

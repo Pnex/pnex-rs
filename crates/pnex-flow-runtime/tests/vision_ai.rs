@@ -1,4 +1,4 @@
-//! Video understanding nodes on the real engine (media-vision-studio.md
+//! Video understanding nodes on the real engine (vision.md
 //! D195–D197): `vision-caption`, `media-fuse` and `text-decide` against a
 //! canned backend (`/internal/flow/ai/{caption,fuse,decide}`) — the runtime side only: the
 //! backend reads the frame and calls the org model.

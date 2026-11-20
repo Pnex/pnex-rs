@@ -1,4 +1,4 @@
-//! Pin self-test bench (D122, `docs/architecture/pin-selftest.md`).
+//! Pin self-test bench (D122, `docs/architecture/firmware.md` §3.9).
 //!
 //! Every catalog board ships with a hardware-in-the-loop report: the bench
 //! firmware (`firmware/selftest`, console `PNEXT {json}`) exercises each
@@ -546,7 +546,7 @@ mod tests {
     fn every_board_has_a_passing_bench_report() {
         assert!(
             HIL_PENDING.len() <= HIL_PENDING_MAX,
-            "HIL_PENDING only shrinks: a new board needs its bench report (pin-selftest.md)"
+            "HIL_PENDING only shrinks: a new board needs its bench report (firmware.md §3.9)"
         );
         let mut problems = Vec::new();
         for name in HIL_PENDING {

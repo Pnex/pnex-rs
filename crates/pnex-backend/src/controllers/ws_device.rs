@@ -1,4 +1,4 @@
-//! Bidirectional device channel — WS `/ws/device` (Brick 0, brick0.md §3).
+//! Bidirectional device channel — WS `/ws/device` (Brick 0, firmware.md §3.1).
 //!
 //! Auth and framing from `device_link` (`authenticate_device`, Noise
 //! NNpsk0 transport frames), PING/PONG; business messages as JSON tagged `t`
@@ -302,7 +302,7 @@ async fn session_loop(
                 let _ = socket.send(Message::Text(codec.seal(&plain).into())).await;
             }
             // ── Actuations without `Ack`: resend a write once, report the
-            // loss otherwise (custom-firmware.md §14.6) ──
+            // loss otherwise (firmware.md §3.8) ──
             _ = ack_tick.tick(), if !acks.is_empty() => {
                 use crate::services::cmd_acks::Overdue;
                 for late in acks.overdue(Instant::now()) {
@@ -473,7 +473,7 @@ async fn session_loop(
                             // boards) — tolerated when absent (the generic never
                             // emits it). Routed to O2 telemetry (F2: lifts the
                             // "logged, not yet routed" limit of §8 of
-                            // control-cards.md).
+                            // firmware.md §3.10).
                             for e in &entries {
                                 handle_reg_diag(&snap, e);
                             }
@@ -826,7 +826,7 @@ async fn handle_announce(
                     );
                 }
             }
-            // Camera (camera-video.md D76): a `camera` cap creates the
+            // Camera (vision.md D76): a `camera` cap creates the
             // settings row on first announce, then the current CameraConfig
             // (enabled = demand) is cast — same re-push school as above.
             if caps.is_some_and(|cs| cs.iter().any(|c| c.id == "camera")) {
@@ -1041,7 +1041,7 @@ fn handle_metric_report(snap: &DeviceSnapshot, cap_id: Option<&str>, value: serd
 }
 
 /// A `RegState` entry → O2 telemetry points (F2: lifts the
-/// "logged, not yet routed" limit of §8 of control-cards.md). Three series
+/// "logged, not yet routed" limit, firmware.md §3.10). Three series
 /// per control loop: `<node>_sensor`, `<node>_out`, `<node>_cycles` —
 /// `source_type=reg_state`. NaN measurement (unreadable sensor) = no point
 /// (gap, never invented data); output/cycles always finite.

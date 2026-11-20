@@ -27,9 +27,9 @@ members = [
     # Configurable HTTP client request (C1a) — everyday web collection is
     # a plain flow block (D48 amendment, edge.md §2.3, 2026-09-15).
     "crates/pnex-node-http-fetch",
-    # Camera frame source + MJPEG-AVI recorder (camera-video.md D78).
+    # Camera frame source + MJPEG-AVI recorder (vision.md D78).
     "crates/pnex-node-camera",
-    # JSON event log → OpenObserve logs (camera-video.md D84).
+    # JSON event log → OpenObserve logs (vision.md D84).
     "crates/pnex-node-events",
     # Vision inference (tract ONNX, YOLOX) — backend test endpoint + flow node.
     "crates/pnex-vision",

@@ -1,4 +1,4 @@
-//! Events (camera-video.md D84): API without OpenObserve (test config) and
+//! Events (vision.md D84): API without OpenObserve (test config) and
 //! a live round trip against a local O2 (`--ignored`).
 
 mod common;

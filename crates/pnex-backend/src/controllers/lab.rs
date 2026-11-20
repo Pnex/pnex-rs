@@ -1,4 +1,4 @@
-//! Vision Lab API (media-vision-studio.md §4.6, D198–D200). Org from the
+//! Vision Lab API (vision.md §3.8, D198–D200). Org from the
 //! principal (R1), `require_write` at the head of every write handler (R2);
 //! another org's ids answer 404.
 

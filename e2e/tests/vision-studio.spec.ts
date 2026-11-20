@@ -1,4 +1,4 @@
-// Media & Vision Studio nodes in the flow editor (media-vision-studio.md
+// Media & Vision Studio nodes in the flow editor (vision.md
 // D192–D197): zones drawn over the image, tracking ports, caption / fusion
 // settings and the decision question editor. The flow is saved and
 // validated by the server (no deploy), so no model, camera or LLM provider

@@ -1,4 +1,4 @@
-//! "Pins" panel of generic devices (Brick 0, brick0.md §7).
+//! "Pins" panel of generic devices (Brick 0, firmware.md §6.2).
 //!
 //! Pin grid from `GET /devices/{id}/pins` (15 s polling — dashboard
 //! pattern), mode/safe-state selects + write toggles + read

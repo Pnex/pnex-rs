@@ -5,7 +5,7 @@
 > (D131–D133, §5)** : la surface déclare, le moteur enregistre — plus de
 > contrôle à choisir avant de pouvoir enregistrer un dashboard.
 > Docs liés : `viz-bases.md` (D24 versioning, D31 polling, D40 canvas libre,
-> D41 bibliothèque), `annotations.md` (D55–D60, porte ouverte « inputs »),
+> D41 bibliothèque), `vision.md` (D55–D60, porte ouverte « inputs »),
 > `flow-engine.md` (nœuds custom, deploy, fencing D106), `inventory.md`
 > (D13, D17 amendé : une seule source d'écriture par pin).
 
@@ -86,7 +86,7 @@ C'est le pendant symétrique de la mémoire d'org :
 | L4 front dashboards | choix PC/Mobile, éditeur composer mobile + rendu live, `components/surface/` (contrôles + lecture + sparkline), page Data > Contrôles | `i18n_guard`, build wasm |
 | L5 composer guidé | ajout depuis device/pin, « Créer le flow » (brouillon pré-câblé) | e2e Playwright : switch → LED réelle |
 | L6 annotations | items `control` / `reading` sur pano et photo via `components/surface/`, D60 mise à jour | e2e annotation → flow |
-| L7 docs | `viz-bases.md` (non-but précisé, schéma JSON à jour), `annotations.md`, `flow-engine.md`, `inventory.md` §0, roadmap | — |
+| L7 docs | `viz-bases.md` (non-but précisé, schéma JSON à jour), `vision.md`, `flow-engine.md`, `inventory.md` §0, roadmap | — |
 
 ## 3. Questions ouvertes
 
@@ -106,8 +106,8 @@ C'est le pendant symétrique de la mémoire d'org :
 | L3 | Nœud `pnex-control-source` (crate `pnex-node-ui-control`) : SUBSCRIBE, rejeu MGET après abonnement, statuts `control-listening` / `control-bus-unavailable` ; palette Déclencheurs, inspecteur avec création à la volée | `crates/pnex-node-ui-control`, `flow_editor` |
 | L4 | « + Nouveau » → tuiles PC / Mobile ; badge de format en liste ; `format_immutable` au save ; composer mobile (sections, cartes ½ / pleine largeur, glisser-déposer + flèches) ; cartes de contrôle live (`components/surface/`) ; page Data › Contrôles | `dashboard_editor/mobile.rs`, `components/surface/`, `pages/controls.rs` |
 | L5 | Palette « Depuis un device » : sorties digitales → interrupteur, PWM → curseur (contrôle créé, ou réutilisé si la clé existe), mesures → valeur / jauge / courbe ; « Créer le flow » (brouillon `control-source` → `device-write`, ouvert dans l'éditeur, jamais déployé automatiquement) | `dashboard_editor/device_panel.rs`, `control_panel.rs` |
-| L6 | Annotations `control` / `reading` (cf. `annotations.md` §12) | `pnex_core::annotation`, `components/surface/annotation.rs` |
-| L7 | Cette section, `viz-bases.md`, `annotations.md`, `flow-engine.md`, `inventory.md`, `roadmap.md` | — |
+| L6 | Annotations `control` / `reading` (cf. `vision.md` §3.7) | `pnex_core::annotation`, `components/surface/annotation.rs` |
+| L7 | Cette section, `viz-bases.md`, `vision.md`, `flow-engine.md`, `inventory.md`, `roadmap.md` | — |
 
 Écarts et précisions par rapport aux décisions :
 

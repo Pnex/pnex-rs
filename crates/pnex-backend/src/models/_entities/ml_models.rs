@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Vision model registry (camera-video.md D81) — ONNX bytes in the media
+/// Vision model registry (vision.md D81) — ONNX bytes in the media
 /// library (`asset_id`), inference spec here.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "ml_models")]

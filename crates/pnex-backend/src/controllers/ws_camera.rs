@@ -1,4 +1,4 @@
-//! Camera WebSockets (camera-video.md D73/D75).
+//! Camera WebSockets (vision.md D73/D75).
 //!
 //! - `GET /ws/camera` + `Authorization: Bearer <token>` (D154) — device
 //!   uplink, binary

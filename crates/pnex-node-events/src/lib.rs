@@ -1,4 +1,4 @@
-//! `pnex-event-log` node (camera-video.md D84) — writes `msg.payload` (any
+//! `pnex-event-log` node (vision.md D84) — writes `msg.payload` (any
 //! JSON) as one event in the org's OpenObserve logs stream, through the
 //! backend internal route `/internal/flow/event` (the backend owns the O2
 //! org provisioning). Lenient: a failed write is logged, the message always

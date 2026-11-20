@@ -1,4 +1,4 @@
-//! Models page (camera-video.md D81): the org's vision model registry —
+//! Models page (vision.md D81): the org's vision model registry —
 //! D14 list, create (existing `model` media asset, or direct ONNX upload),
 //! spec edit, delete, and "test with an image" (boxes drawn over the
 //! picture). Writes are owner/admin only (the server enforces, the UI

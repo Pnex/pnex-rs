@@ -1,4 +1,4 @@
-//! Media annotations (D55–D60, doctrine `docs/architecture/annotations.md`)
+//! Media annotations (D55–D60, doctrine `docs/architecture/vision.md` §3.7)
 //! — JSONB document of the layers (`annotation_layer_versions.doc`, structure
 //! `pnex_core::AnnotationDoc`): items anchored on `media_assets` by UUID
 //! (never on a scene or a tour — D55), weak targets resolved at read

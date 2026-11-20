@@ -24,7 +24,7 @@
 >
 > Numérotation : décisions **L1–L28 provisoires**, renumérotées `Dxxx` au
 > merge (prochain libre au moment de la validation ; D192+ est déjà réservé
-> par `media-vision-studio.md`).
+> par `vision.md`).
 
 ## 1. Constat
 

@@ -1,6 +1,6 @@
 # PRD — PNEX Pages : documents collaboratifs reliés à l'ontologie
 
-**Statut :** Draft v0.1 — 2026-10-10. **L1–L2 livrés sur `main` le 2026-10-11** (§15) ; export PDF des versions et versions écrites par un flow le 2026-10-13 (`media-vision-studio.md` D209–D210).
+**Statut :** Draft v0.1 — 2026-10-10. **L1–L2 livrés sur `main` le 2026-10-11** (§15) ; export PDF des versions et versions écrites par un flow le 2026-10-13 (`vision.md` D209–D210).
 **Auteur :** Shan
 **Périmètre :** nouvelle surface d'édition collaborative (texte riche, tableaux,
 mesures, procédures/workflows, cartes, médias), dont chaque bloc peut désigner
@@ -9,7 +9,7 @@ n'importe quel objet PNEX.
 de la 0.2.0 (`ontology.md`, D176–D191), et le gel des nouveaux piliers pendant
 la 0.2.0 s'applique (`roadmap.md` P2.14). Entrée roadmap : P2.17, décision #21.
 **Numérotation :** décisions notées **P1…P16** ici ; numéros D attribués à la
-validation (D192+ déjà réservé par `media-vision-studio.md`).
+validation (D192+ déjà réservé par `vision.md`).
 **Renvois :** `ontology.md` (D176 types, D179 liens, D183 actions, D184
 provenance, D185 requête, D186 explorateur, D188 permissions, D190 packs),
 `media.md` (D21 bibliothèque média, MediaStore), `viz-bases.md` (`pnexMap`,

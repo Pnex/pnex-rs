@@ -2,7 +2,7 @@
 //! session (`Write`, `Command`): the device answers `Ack{cmd_id}`.
 //!
 //! Before this, the push was fire-and-forget: a command lost between the
-//! WebSocket push and the device handler left no trace (custom-firmware.md
+//! WebSocket push and the device handler left no trace (firmware.md
 //! §14.6, 2026-10-06). The session now remembers each pushed command,
 //! logs its acknowledgement, warns when none comes back within
 //! [`ACK_TIMEOUT`], and pushes an unacknowledged `Write` once more — a pin

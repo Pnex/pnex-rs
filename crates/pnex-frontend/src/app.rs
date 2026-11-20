@@ -89,11 +89,11 @@ pub enum Route {
         #[route("/pages?:id")]
         Docs { id: String },
 
-        // Camera live view, settings and recordings (camera-video.md D80).
+        // Camera live view, settings and recordings (vision.md D80).
         #[route("/cameras")]
         Cameras {},
 
-        // Vision model registry (camera-video.md D81).
+        // Vision model registry (vision.md D81).
         #[route("/models")]
         Models {},
 
@@ -109,14 +109,14 @@ pub enum Route {
         #[route("/voice-id")]
         VoiceId {},
 
-        // Vision Lab: datasets of custom object detectors (media-vision-studio.md D198).
+        // Vision Lab: datasets of custom object detectors (vision.md D198).
         #[route("/lab")]
         Lab {},
 
         #[route("/lab/:id")]
         LabProjectPage { id: String },
 
-        // JSON events stored in OpenObserve (camera-video.md D84).
+        // JSON events stored in OpenObserve (vision.md D84).
         #[route("/events")]
         Events {},
 
@@ -187,7 +187,7 @@ pub enum Route {
         #[route("/functions")]
         Functions {},
 
-        // Custom firmware IDE (custom-firmware.md D87–D94).
+        // Custom firmware IDE (firmware.md D87–D94).
         #[route("/firmware")]
         Firmware {},
 

@@ -136,7 +136,7 @@ async fn run() -> ExitCode {
     pnex_node_notify::registered();
     // Client HTTP request (C1a, D48 amendment, edge.md §2.3, 2026-09-15) — same guard.
     pnex_node_http_fetch::registered();
-    // Camera frame source + video recorder (camera-video.md D78).
+    // Camera frame source + video recorder (vision.md D78).
     pnex_node_camera::registered();
     // JSON event log → OpenObserve logs (D84).
     pnex_node_events::registered();

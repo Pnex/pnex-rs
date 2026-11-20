@@ -1,4 +1,4 @@
-//! Device channel wire protocol — WS `/ws/device` (Brick 0, `docs/architecture/brick0.md` §3).
+//! Device channel wire protocol — WS `/ws/device` (Brick 0, `docs/architecture/firmware.md` §3.1).
 //!
 //! **Source of truth of the contract**: this file. The C++ firmware
 //! (`firmware/generic_esp8266`) is a **mirror** of it — the ESP8266 does not compile
@@ -39,7 +39,7 @@ pub enum Mode {
 }
 
 /// Idle state of an output — applied on link loss, at boot and at
-/// admission (safe-states, brick0.md §8). Default `Low` — same convention
+/// admission (safe-states, firmware.md §3.2). Default `Low` — same convention
 /// as the server default of `ModeOpts::safe_state`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -495,7 +495,7 @@ pub enum ServerMsg {
         /// server never sends an unsigned order.
         sig: String,
     },
-    /// RPC: camera capture settings (camera-video.md D76) — pushed after the
+    /// RPC: camera capture settings (vision.md D76) — pushed after the
     /// announce of a device carrying the `camera` cap, on every settings
     /// change and on every live-demand transition (`on_demand` mode).
     /// `enabled = false` stops the `/ws/camera` uplink; the device answers

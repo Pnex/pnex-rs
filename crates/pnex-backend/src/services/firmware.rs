@@ -33,7 +33,7 @@ pub struct FirmwareSettings {
     pub esptool_cmd: String,
     /// Global build budget.
     pub timeout_secs: u64,
-    /// Custom firmware IDE (custom-firmware.md D91): disabled unless the
+    /// Custom firmware IDE (firmware.md D91): disabled unless the
     /// operator turns it on — compiling user C++ runs user code on the
     /// worker.
     pub custom: CustomFirmwareSettings,

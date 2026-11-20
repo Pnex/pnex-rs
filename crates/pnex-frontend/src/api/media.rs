@@ -17,7 +17,7 @@ pub enum MediaKind {
     /// Floor plan — consumed by the base map (viz) and referenced by
     /// `tour_versions.doc` (S9 studio.md); kind = application string.
     Floorplan,
-    /// ONNX model backing a vision registry entry (camera-video.md D81).
+    /// ONNX model backing a vision registry entry (vision.md D81).
     Model,
     /// Text document (txt, md, docx, pdf) indexed for search (doc-search.md).
     Document,

@@ -1,4 +1,4 @@
-//! Predictive telemetry contract (ml-vision.md step 3, roadmap P2.3):
+//! Predictive telemetry contract (vision.md §3.10, roadmap P2.3):
 //! `anomaly` and `forecast` flow node configs, shared by the editor
 //! (validation, port counts) and the runtime (`pnex-node-predict`).
 //! Pure, wasm-safe — the algorithms (augurs) live in the runtime crate.

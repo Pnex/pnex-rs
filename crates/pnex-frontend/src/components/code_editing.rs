@@ -10,7 +10,7 @@
 use pnex_core::FunctionLanguage;
 
 /// Language of an editor buffer: the function languages plus C++ for the
-/// custom firmware IDE (custom-firmware.md D93).
+/// custom firmware IDE (firmware.md D93).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CodeLang {
     Js,

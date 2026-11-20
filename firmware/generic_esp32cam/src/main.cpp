@@ -1,7 +1,7 @@
 //
 // Generic ESP32-CAM firmware (AI-Thinker, Tier 1 preset) — the generic
 // ESP32 pin_slave (server-driven pins: flash LED GPIO4, red LED GPIO33)
-// plus the PneX camera module (camera-video.md D73/D76/D77): frames are
+// plus the PneX camera module (vision.md D73/D76/D77): frames are
 // pushed on a second WebSocket /ws/camera while the server asks for them
 // (ServerMsg::CameraConfig).
 //
@@ -9,7 +9,7 @@
 // FTDI adapter with GPIO0 tied to GND at reset.
 //
 // Device config: -D defines (b64) via ${sysenv.*}, built per device by the
-// server (docs/architecture/firmware-build.md §2.1).
+// server (docs/architecture/firmware.md §3.4).
 //
 
 #include <Pnex.h>

@@ -1,4 +1,4 @@
-//! Vision Lab (media-vision-studio.md D198–D200) — model wrapper.
+//! Vision Lab (vision.md D198–D200) — model wrapper.
 
 pub use super::_entities::lab_projects::{ActiveModel, Column, Entity, Model};
 use sea_orm::entity::prelude::*;

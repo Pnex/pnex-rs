@@ -1,4 +1,4 @@
-// Vision Lab improvement loop (media-vision-studio.md D203–D206): frames of
+// Vision Lab improvement loop (vision.md D203–D206): frames of
 // an uploaded video, box interpolation between annotated frames, a
 // Python-free training started from the panel, and a library file used as
 // a stream source. Needs `ffmpeg` on the test machine (synthetic clip) and

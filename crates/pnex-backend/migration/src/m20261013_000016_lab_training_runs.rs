@@ -1,4 +1,4 @@
-//! Vision Lab training runs (media-vision-studio.md D204): head
+//! Vision Lab training runs (vision.md D204): head
 //! fine-tuning of a registered YOLOX model on a frozen dataset version, in
 //! process, liveness by heartbeat.
 

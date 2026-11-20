@@ -1,5 +1,5 @@
 //! AI-Thinker ESP32-CAM (OV2640 + 4 MB PSRAM), generic camera firmware
-//! (camera-video.md D77).
+//! (vision.md D77).
 //!
 //! Two 8-pin headers. No USB: index 0 = the 5V / 3V3 end, where the
 //! ESP32-CAM-MB carrier plugs its USB bridge. Almost every GPIO is taken by

@@ -1,5 +1,5 @@
 //
-// pnex-camera — optional camera module of the PneX lib (camera-video.md
+// pnex-camera — optional camera module of the PneX lib (vision.md
 // D73/D76/D77). Compiled only when PNEX_CAMERA_ENABLE == 1 on a classic
 // ESP32 (AI-Thinker ESP32-CAM pinout, OV2640 + PSRAM); every other build
 // gets the inline no-op stubs below and never pulls esp_camera.

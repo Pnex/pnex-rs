@@ -1,4 +1,4 @@
-//! Vision model registry (camera-video.md D81/D82): media `model` kind,
+//! Vision model registry (vision.md D81/D82): media `model` kind,
 //! CRUD validation, and the "test with an image" endpoint.
 
 mod common;

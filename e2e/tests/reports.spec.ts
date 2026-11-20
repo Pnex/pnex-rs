@@ -1,4 +1,4 @@
-// Reports (media-vision-studio.md D209/D210): a flow writes an AI version of
+// Reports (vision.md D209/D210): a flow writes an AI version of
 // a page, a person approves it in Pages, then downloads its PDF. The flow
 // side is played through the internal route, so the test needs the server's
 // runtime token in PNEX_E2E_FLOW_TOKEN (same value as PNEX_FLOW_RUNTIME_TOKEN).

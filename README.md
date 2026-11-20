@@ -221,7 +221,7 @@ checked by blocking tests. From that one spec:
 ### Vision Lab: from footage to a deployed model
 
 The Lab turns pictures into a detection model without leaving PNeX
-([`media-vision-studio.md`](docs/architecture/media-vision-studio.md)):
+([`vision.md`](docs/architecture/vision.md)):
 
 1. **Pictures** from photos of the media library, frames sampled from videos (one picture
    every N seconds) or from camera recordings. Each import is one *source*, kept whole on the

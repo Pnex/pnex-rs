@@ -16,7 +16,7 @@
 //   that port with ARDUINO_USB_CDC_ON_BOOT=1.
 //
 // Device config: b64 -D defines via ${sysenv.*} (per-device server build,
-// contract in docs/architecture/firmware-build.md §2.1). PNEX_BOARD_NAME
+// contract in docs/architecture/firmware.md §3.4). PNEX_BOARD_NAME
 // distinguishes the announce (wire id of the board variant).
 //
 

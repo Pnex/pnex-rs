@@ -4,7 +4,7 @@ use super::*;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::pages::{PagePdfConfig, PagePdfSource, PageWriteConfig, PageWriteMode};
 
-// ─────────────── page-write (media-vision-studio.md D209) ───────────────
+// ─────────────── page-write (vision.md D209) ───────────────
 
 fn patch_page(cx: &mut EditorCx, f: impl FnOnce(&mut PageWriteConfig) + 'static) {
     patch_selected(cx, move |node: &mut FlowNode| {

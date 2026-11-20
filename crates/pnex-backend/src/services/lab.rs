@@ -1,4 +1,4 @@
-//! Vision Lab (media-vision-studio.md §4.6, D198–D200): projects, images of
+//! Vision Lab (vision.md §3.8, D198–D200): projects, images of
 //! the media library with their boxes, frozen dataset versions and the COCO
 //! export. Every function takes the org of the principal (R1); writes are
 //! gated by the controller (R2).

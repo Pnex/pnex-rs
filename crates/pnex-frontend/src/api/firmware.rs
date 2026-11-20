@@ -1,4 +1,4 @@
-//! Custom firmware IDE API (custom-firmware.md D87–D94): projects with
+//! Custom firmware IDE API (firmware.md D87–D94): projects with
 //! append-only revisions, pinned library catalog, compile-only checks,
 //! device attachment and custom device commands. Types live in
 //! `pnex_core::firmware` (shared with the backend).

@@ -6,7 +6,7 @@ use pnex_core::events::{event_stream_name, EventLevel, EventLogConfig, EVENT_STR
 use crate::components::ui::FIELD_LABEL;
 use crate::pages::events::level_label;
 
-// ─────────────── event-log (camera-video.md D84) ───────────────
+// ─────────────── event-log (vision.md D84) ───────────────
 
 /// Max message length (mirror of `EventLogConfig::check`).
 const MESSAGE_MAX: usize = 500;

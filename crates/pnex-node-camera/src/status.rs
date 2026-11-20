@@ -1,4 +1,4 @@
-//! Node status publication (camera-video.md D103): camera and vision nodes
+//! Node status publication (vision.md D103): camera and vision nodes
 //! report what they are doing — and why frames are dropped — on the engine
 //! debug channel, tagged [`pnex_core::vision::NODE_STATUS_FORMAT`], under
 //! their raw canvas id (same matching as the `pnex-display` probe).

@@ -45,7 +45,7 @@
 - **Corrigé** (commit `81c37a2`) : `task dev` → `dev:backend` lance
   `--server-and-worker` ; l'ancien comportement devient
   `dev:backend:server-only`. Rappel déploiement : le process prod doit être
-  lancé avec worker (déjà consigné dans `firmware-build.md`).
+  lancé avec worker (déjà consigné dans `firmware.md`).
 - **Statut** : ✅ résolu.
 
 ### O3 — Auto-build proposé pour les devices custom (`custom_sensor`, `custom_device`)
@@ -57,7 +57,7 @@
 - **Parité avec le POC initial** : le POC ne filtre pas non plus — le
   `predefined_device_name` part tel quel au job k8s, qui échoue pareil.
   Comportement backend conforme ; échec propre, file saine.
-- **Amélioration UX** (directive déjà consignée `firmware-build.md` §3) :
+- **Amélioration UX** (directive déjà consignée `firmware.md` §3.3) :
   ne pas proposer « Compiler maintenant » à l'enregistrement d'un
   `custom_*` ni dans le formulaire Builds ; afficher à la place le
   **snippet de configuration** du code source pour guider l'utilisateur.
@@ -116,7 +116,7 @@
 - **Corrigé** : `dev:backend` (Taskfile) évalue ces trois variables —
   venv du dépôt firmwares s'il existe (`$HOME`-based), fallback `pio` du
   PATH. Les déploiements prod documentent déjà ces variables
-  (`firmware-build.md`, `.env.example`).
+  (`firmware.md`, `.env.example`).
 - **Statut** : ✅ résolu (2026-08-17).
 
 ## 2026-09-14 — upgrade OpenObserve v0.92.1 → v1.0.0 (drop-in validé)

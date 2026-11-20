@@ -1,4 +1,4 @@
-//! PNeX vision inference (camera-video.md D82) — pure-Rust ONNX detectors
+//! PNeX vision inference (vision.md D82) — pure-Rust ONNX detectors
 //! on tract, shared by the backend model test endpoint and the flow
 //! `vision-detect` node.
 //!

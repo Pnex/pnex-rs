@@ -1,4 +1,4 @@
-//! Events page (camera-video.md D84): JSON events written by the flow
+//! Events page (vision.md D84): JSON events written by the flow
 //! `event-log` node into OpenObserve logs streams (`ev_…`) — stream, level,
 //! full-text and period filters, D14 pagination, expandable JSON payload.
 //! `available: false` → explanatory empty state (O2 not configured or no

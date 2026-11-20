@@ -1,4 +1,4 @@
-//! Vision Lab (media-vision-studio.md §4.6, D198–D200): projects of object
+//! Vision Lab (vision.md §3.8, D198–D200): projects of object
 //! classes, images of the media library annotated with normalized boxes
 //! (jsonb, optimistic `version`), and append-only frozen dataset versions
 //! (school `flow_versions`, D18) that exports and trainings read.

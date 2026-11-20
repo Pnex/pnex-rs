@@ -1,4 +1,4 @@
-//! "Live test" modal (camera-video.md D104): pick a camera, loop
+//! "Live test" modal (vision.md D104): pick a camera, loop
 //! `POST /api/v1/ml/models/{id}/test-live` (next request once the previous
 //! answer is drawn, at least [`ROUND_GAP_MS`] apart) and draw every
 //! detection on the analysed frame — solid above the threshold, dashed grey

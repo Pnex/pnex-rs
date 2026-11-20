@@ -1,4 +1,4 @@
-//! Camera & video (camera-video.md D73–D79): `/ws/camera` uplink, live
+//! Camera & video (vision.md D73–D79): `/ws/camera` uplink, live
 //! viewer `/ws/camera/live`, settings API, snapshot, and segments written
 //! through `/internal/flow/video-segment`.
 //!

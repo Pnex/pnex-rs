@@ -1,4 +1,4 @@
-//! `pnex-media-fuse` node (media-vision-studio.md D196) — every window,
+//! `pnex-media-fuse` node (vision.md D196) — every window,
 //! sends what the flow received (transcripts, detection / tracking / zone
 //! events, captions) to the organization's LLM through the backend
 //! (`/internal/flow/ai/fuse`) and emits a short description whose every

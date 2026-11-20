@@ -1,4 +1,4 @@
-//! Cameras page (camera-video.md D80): the org's cameras as a CRUD table
+//! Cameras page (vision.md D80): the org's cameras as a CRUD table
 //! (crud socle) — live state, capture summary — with three row actions in
 //! modals: live view (`/ws/camera/live`, open only while the modal is: a
 //! viewer keeps an `on_demand` camera awake), continuous recording (one

@@ -1,4 +1,4 @@
-//! Predictive telemetry flow nodes (ml-vision.md step 3, roadmap P2.3):
+//! Predictive telemetry flow nodes (vision.md §3.10, roadmap P2.3):
 //! `pnex-anomaly` (robust z / forecast band / changepoint) and
 //! `pnex-forecast` (ETS-MSTL / linear trend, threshold breach ETA).
 //!

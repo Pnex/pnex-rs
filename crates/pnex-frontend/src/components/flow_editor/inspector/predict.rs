@@ -7,7 +7,7 @@ use pnex_core::predictive::{
     FORECAST_HORIZON_MAX, PREDICT_MIN_SAMPLES_FLOOR, PREDICT_WINDOW_MAX, PREDICT_WINDOW_MIN,
 };
 
-// ─────────────── anomaly / forecast (ml-vision.md step 3) ───────────────
+// ─────────────── anomaly / forecast (vision.md §3.10) ───────────────
 
 /// Field keys shared by both forms (also the parse-error markers).
 const F_KEY: &str = "key";

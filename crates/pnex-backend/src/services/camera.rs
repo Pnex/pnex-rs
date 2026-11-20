@@ -1,4 +1,4 @@
-//! CameraHub (camera-video.md D74/D76) — in-memory live fan-out of camera
+//! CameraHub (vision.md D74/D76) — in-memory live fan-out of camera
 //! frames plus the Valkey frame bus towards the flow runtime.
 //!
 //! - One [`Entry`] per camera device: last frame, `broadcast` channel for

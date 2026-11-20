@@ -1,4 +1,4 @@
-//! Video understanding contract (media-vision-studio.md D194–D196): the
+//! Video understanding contract (vision.md D194–D196): the
 //! `vision_caption` and `media_fuse` flow nodes and the internal routes
 //! that call the organization's own model for them (D119: no platform
 //! LLM). Pure, wasm-safe.

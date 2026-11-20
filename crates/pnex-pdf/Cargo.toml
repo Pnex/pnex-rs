@@ -3,7 +3,7 @@ name = "pnex-pdf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "PNeX PDF rendering of pages (media-vision-studio.md D209): layout + krilla"
+description = "PNeX PDF rendering of pages (vision.md D209): layout + krilla"
 
 [dependencies]
 # PDF writer (MIT OR Apache-2.0). Without its `simple-text` feature: that

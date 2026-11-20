@@ -5,7 +5,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Recorded MJPEG-AVI segment (camera-video.md D79) — bytes in the
+/// Recorded MJPEG-AVI segment (vision.md D79) — bytes in the
 /// MediaStore under `storage_key`, never in the database.
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "video_segments")]

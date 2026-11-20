@@ -1,4 +1,4 @@
-//! Vision E2E (camera-video.md D83): camera frames on the Valkey bus →
+//! Vision E2E (vision.md D83): camera frames on the Valkey bus →
 //! `camera-source` → `vision-detect` (registry model served by a canned
 //! backend) → debug event carrying the detections. Requires a live Valkey
 //! and `PNEX_VISION_TEST_DIR` (yolox_nano.onnx + dog.jpg): `--ignored`.

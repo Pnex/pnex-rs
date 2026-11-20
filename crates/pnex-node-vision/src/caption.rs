@@ -1,4 +1,4 @@
-//! `pnex-vision-caption` node (media-vision-studio.md D195) — describes a
+//! `pnex-vision-caption` node (vision.md D195) — describes a
 //! camera frame with the organization's vision-language model, through the
 //! backend (`/internal/flow/ai/caption`: the backend reads the frame from
 //! the bus itself and holds the provider key; the runtime never sees it).

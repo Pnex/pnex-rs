@@ -1,4 +1,4 @@
-//! Camera & video contract (camera-video.md D73–D80) — pure, wasm-safe.
+//! Camera & video contract (vision.md D73–D80) — pure, wasm-safe.
 //!
 //! - [`FrameHeader`]: the 16-byte clear header that prefixes every JPEG on
 //!   the `/ws/camera` uplink (inside the ChaCha20 ciphertext);

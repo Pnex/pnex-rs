@@ -1,4 +1,4 @@
-//! Events contract (camera-video.md D84) — JSON events stored as
+//! Events contract (vision.md D84) — JSON events stored as
 //! OpenObserve **logs**, never in the relational database. Pure, wasm-safe.
 //!
 //! - [`event_stream_name`]: user label → O2 logs stream (`ev_<slug>`);

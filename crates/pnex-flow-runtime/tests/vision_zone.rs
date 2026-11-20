@@ -1,4 +1,4 @@
-//! Tracking + zones on the real engine (media-vision-studio.md D192/D193):
+//! Tracking + zones on the real engine (vision.md D192/D193):
 //! a function node fakes `vision-detect` output (one person walking left to
 //! right, 100 px/s on a 400 px frame) → `vision-track` → `vision-zone`
 //! (left half) → debug. No Valkey, no model: pure flow logic.

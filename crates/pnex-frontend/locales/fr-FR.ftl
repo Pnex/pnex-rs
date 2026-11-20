@@ -2574,7 +2574,7 @@ admin-orgs-tables-default = (par défaut)
 admin-orgs-tables-placeholder = Go
 admin-orgs-tables-invalid = Le quota de tables est un nombre positif de Go.
 
-## Caméras et vidéo (camera-video.md D75–D80)
+## Caméras et vidéo (vision.md D75–D80)
 nav-cameras = Caméras
 flows-palette-camera-source = Source caméra
 flows-palette-camera-source-help = Émet un message par image de la caméra (une référence, jamais les octets)
@@ -2715,7 +2715,7 @@ cameras-flash-offline = Caméra hors ligne — le flash sera pilotable à sa rec
 cameras-flash-reserved = Le flash est piloté par le flow { $flow }.
 cameras-flash-mode-conflict = Des flows déployés utilisent cette pin ({ $flows }) : arrêtez-les d'abord depuis le panneau Pins du device.
 
-## Modèles de vision et événements (camera-video.md D81–D85)
+## Modèles de vision et événements (vision.md D81–D85)
 nav-models = Modèles
 nav-events = Événements
 media-kind-model = Modèle de vision
@@ -3114,7 +3114,7 @@ models-test-running = Exécution du modèle…
 models-test-summary = { $count } détections en { $ms } ms ({ $width }×{ $height })
 models-test-none = Rien de détecté au-dessus du seuil.
 
-# Custom firmware IDE (custom-firmware.md D87–D94)
+# Custom firmware IDE (firmware.md D87–D94)
 nav-firmware = Firmware custom
 firmware-subtitle = Écrivez le firmware de vos devices dans le navigateur : bibliothèque PNeX, votre carte, votre logique
 firmware-new = Nouveau projet
@@ -3186,7 +3186,7 @@ firmware-lib-remove = Retirer cette bibliothèque
 refresh-rate-label = Rafraîchir toutes les
 refresh-rate-option = { $secs } s
 
-## Nœuds prédictifs (anomalie / prévision — ml-vision.md étape 3)
+## Nœuds prédictifs (anomalie / prévision — vision.md §3.10)
 flows-palette-anomaly = Détection d'anomalie
 flows-palette-anomaly-help = Repère les valeurs inhabituelles d'une mesure (pic, chute, changement de régime) sans seuil fixe
 flows-palette-forecast = Prévision

@@ -1,4 +1,4 @@
-//! Vision Lab training (media-vision-studio.md D204): fine-tunes the head
+//! Vision Lab training (vision.md D204): fine-tunes the head
 //! of a registered YOLOX model on a frozen dataset version, pure Rust
 //! (`pnex_vision::train`), in the API process.
 //!

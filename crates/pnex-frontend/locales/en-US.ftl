@@ -2575,7 +2575,7 @@ admin-orgs-tables-default = (default)
 admin-orgs-tables-placeholder = GB
 admin-orgs-tables-invalid = The table quota is a positive number of GB.
 
-## Cameras & video (camera-video.md D75–D80)
+## Cameras & video (vision.md D75–D80)
 nav-cameras = Cameras
 flows-palette-camera-source = Camera source
 flows-palette-camera-source-help = Emit one message per camera frame (a reference, never the image bytes)
@@ -2716,7 +2716,7 @@ cameras-flash-offline = Camera offline — the flash can be switched once it rec
 cameras-flash-reserved = The flash is driven by the flow { $flow }.
 cameras-flash-mode-conflict = Deployed flows use this pin ({ $flows }): stop them from the device Pins panel first.
 
-## Vision models & events (camera-video.md D81–D85)
+## Vision models & events (vision.md D81–D85)
 nav-models = Models
 nav-events = Events
 media-kind-model = Vision model
@@ -3115,7 +3115,7 @@ models-test-running = Running the model…
 models-test-summary = { $count } detections in { $ms } ms ({ $width }×{ $height })
 models-test-none = Nothing detected above the threshold.
 
-# Custom firmware IDE (custom-firmware.md D87–D94)
+# Custom firmware IDE (firmware.md D87–D94)
 nav-firmware = Custom firmware
 firmware-subtitle = Write your device firmware in the browser: PNeX library, your board, your logic
 firmware-new = New project
@@ -3187,7 +3187,7 @@ firmware-lib-remove = Remove this library
 refresh-rate-label = Refresh every
 refresh-rate-option = { $secs } s
 
-## Predictive nodes (anomaly / forecast — ml-vision.md step 3)
+## Predictive nodes (anomaly / forecast — vision.md §3.10)
 flows-palette-anomaly = Anomaly detection
 flows-palette-anomaly-help = Flag unusual values of a measurement (spike, drop, regime change) without a fixed threshold
 flows-palette-forecast = Forecast

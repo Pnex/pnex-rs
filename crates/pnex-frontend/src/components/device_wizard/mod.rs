@@ -289,7 +289,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
             models
                 .iter()
                 // Tier 2 "custom_device" is superseded by the custom
-                // firmware IDE (custom-firmware.md): never offered.
+                // firmware IDE (firmware.md §3.7): never offered.
                 .filter(|pd| !is_custom(&pd.name))
                 .filter(|pd| term.is_empty() || model_matches(pd, &term))
                 .cloned()

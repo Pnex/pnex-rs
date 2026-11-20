@@ -103,7 +103,7 @@ pub enum FlowNodeKind {
     /// is emitted on every msg (state = node context, reset on redeploy).
     JsonMerge { config: JsonMergeConfig },
     /// Event-driven source: one message per camera frame (Valkey frame bus,
-    /// camera-video.md D78) — payload = frame reference, never the bytes.
+    /// vision.md D78) — payload = frame reference, never the bytes.
     CameraSource { config: CameraSourceConfig },
     /// MJPEG-AVI segment recorder (duration/size/gap flush) → MediaStore
     /// through the backend (D78/D79).

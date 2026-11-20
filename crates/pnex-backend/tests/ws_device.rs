@@ -644,7 +644,7 @@ async fn state_report_cap_routes_the_direction() {
 }
 
 /// RegState → O2 series (F2: lifts the "journaled, not yet routed"
-/// limitation of control-cards.md §8). NaN measurement = no point (gap,
+/// limitation of firmware.md §3.10). NaN measurement = no point (gap,
 /// never invented); out/cycles always emitted.
 #[tokio::test]
 #[serial]

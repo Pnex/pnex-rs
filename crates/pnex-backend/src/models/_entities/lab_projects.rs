@@ -3,7 +3,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Vision Lab project (media-vision-studio.md D198): object classes of a
+/// Vision Lab project (vision.md D198): object classes of a
 /// custom detector.
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "lab_projects")]

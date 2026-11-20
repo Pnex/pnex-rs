@@ -1,4 +1,4 @@
-//! Custom firmware projects (custom-firmware.md D89–D94): versioned CRUD
+//! Custom firmware projects (firmware.md D89–D94): versioned CRUD
 //! (append-only revisions, hash dedup, optimistic 409), sketch guard and
 //! library catalog 400s, org isolation (masked 404), compile gate (409 when
 //! custom firmware is disabled), device attachment (chip guard, delete 409).

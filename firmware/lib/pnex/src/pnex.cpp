@@ -874,7 +874,7 @@ void PnexDevice::applyProvisionAck(JsonDocument& doc) {
 }
 
 // SetMode/Write/Subscribe were validated by caps::validate on the
-// server side BEFORE push (brick0.md §8) — the device trusts, but stays
+// server side BEFORE push (firmware.md §3.2) — the device trusts, but stays
 // fault-tolerant (Ack err if unknown pin).
 
 void PnexDevice::handleSetMode(JsonDocument& doc) {
@@ -980,7 +980,7 @@ bool PnexDevice::apply_pin(PnexPin& p) {
 }
 
 /// All outputs to their safe-state — called on EVERY loss
-/// (close, PONG timeout, WiFi down) : brick0.md §8.
+/// (close, PONG timeout, WiFi down) : firmware.md §3.2.
 void PnexDevice::forceAllOff() {
     for (auto& p : pins_) {
         if (p.mode == PNEX_PWM_OUT) {

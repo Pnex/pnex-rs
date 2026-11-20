@@ -1,4 +1,4 @@
-//! Continuous recording of one camera (camera-video.md D79/D80) — the
+//! Continuous recording of one camera (vision.md D79/D80) — the
 //! segments stay small on disk (crash resilience, per-minute retention),
 //! the API exposes them as one timeline:
 //!

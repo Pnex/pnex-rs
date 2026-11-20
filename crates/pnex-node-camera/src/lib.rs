@@ -1,4 +1,4 @@
-//! Camera flow nodes (camera-video.md D78):
+//! Camera flow nodes (vision.md D78):
 //!
 //! - `pnex-camera-source` — first **event-driven** source node: subscribes
 //!   to the camera frame bus of one device (Valkey pub/sub fed by the

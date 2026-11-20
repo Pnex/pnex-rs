@@ -1,4 +1,4 @@
-//! `pnex-vision-detect` node (camera-video.md D83) — runs a registry model
+//! `pnex-vision-detect` node (vision.md D83) — runs a registry model
 //! on `camera-source` frames and emits the detections.
 //!
 //! - The model (spec + ONNX bytes) is pulled from the backend internal

@@ -1,4 +1,4 @@
-//! PDF of a named page version (media-vision-studio.md D209): the frozen
+//! PDF of a named page version (vision.md D209): the frozen
 //! Yjs tree becomes `pnex_pdf` blocks, rendered off the async workers.
 //!
 //! The few words of the PDF itself (page numbers, AI notice) are chosen by

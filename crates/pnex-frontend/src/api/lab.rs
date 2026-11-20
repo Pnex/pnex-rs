@@ -1,4 +1,4 @@
-//! Vision Lab API (media-vision-studio.md §4.6, D198–D200):
+//! Vision Lab API (vision.md §3.8, D198–D200):
 //! `/api/v1/lab/…` — projects, images, annotations, dataset versions.
 
 use pnex_core::lab::{

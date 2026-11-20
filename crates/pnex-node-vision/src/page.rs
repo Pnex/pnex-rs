@@ -1,4 +1,4 @@
-//! `pnex-page-write` node (media-vision-studio.md D209) — the Markdown of
+//! `pnex-page-write` node (vision.md D209) — the Markdown of
 //! each message becomes a page of the org (or is appended to one) through
 //! the backend (`/internal/flow/page-write`), which freezes a named version
 //! stamped with the flow and the AI provenance of the text

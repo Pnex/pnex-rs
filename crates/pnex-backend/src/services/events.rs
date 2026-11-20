@@ -1,4 +1,4 @@
-//! Events → OpenObserve logs (camera-video.md D84): write path used by the
+//! Events → OpenObserve logs (vision.md D84): write path used by the
 //! internal flow endpoint (`event-log` node), read path for the Events page.
 //!
 //! Doctrine of the O2 module kept: the write path may provision the org

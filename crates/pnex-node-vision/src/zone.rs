@@ -1,4 +1,4 @@
-//! `pnex-vision-zone` node (media-vision-studio.md D193) — enter / exit
+//! `pnex-vision-zone` node (vision.md D193) — enter / exit
 //! events of the `vision-track` objects in zones drawn over the image.
 //!
 //! - Zones are polygons in normalized coordinates (0–1), tested against the

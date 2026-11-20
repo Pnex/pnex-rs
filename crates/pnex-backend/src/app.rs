@@ -415,7 +415,7 @@ impl Hooks for App {
         // Capture of `capture_on = worker` streams on a mesh worker (D160),
         // opt-in by PNEX_MEDIA_CAPTURE_WORKER.
         crate::services::media_ingest::capture::spawn_worker_supervisor(ctx);
-        // Custom firmware compile-only checks (custom-firmware.md D90):
+        // Custom firmware compile-only checks (firmware.md D90):
         // must run where PlatformIO lives (pnex-builder in containers).
         queue
             .register(crate::workers::firmware_check::FirmwareCheckWorker::build(

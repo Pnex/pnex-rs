@@ -380,7 +380,7 @@ impl Client {
     }
 
     /// JSON logs ingestion (`POST /api/{org}/{stream}/_json`, JSON array
-    /// body) — events stored as **logs** (camera-video.md D84), with the
+    /// body) — events stored as **logs** (vision.md D84), with the
     /// org's ingestion Basic `email:passcode`. O2 creates the stream on the
     /// first write; `_timestamp` (µs) is taken from the document when set.
     pub async fn ingest_json(

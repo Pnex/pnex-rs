@@ -1,4 +1,4 @@
-//! Typed decisions contract (media-vision-studio.md §4.5bis, D197): the
+//! Typed decisions contract (vision.md §3.5, D197): the
 //! `text_decide` flow node asks typed questions about a text and gets a
 //! probability per option from the server's Laya model (non-generative,
 //! Apache-2.0 weights). Pure, wasm-safe.

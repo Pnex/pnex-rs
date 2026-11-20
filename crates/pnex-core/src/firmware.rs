@@ -1,4 +1,4 @@
-//! Custom firmware (custom-firmware.md D87–D94) — shared contract between
+//! Custom firmware (firmware.md D87–D94) — shared contract between
 //! the backend (storage, build) and the frontend IDE:
 //!
 //! - [`generic_project`]: the server-built PlatformIO project a custom sketch

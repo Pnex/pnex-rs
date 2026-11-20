@@ -1,4 +1,4 @@
-//! Custom firmware projects (custom-firmware.md D89–D92) — org-scoped CRUD,
+//! Custom firmware projects (firmware.md D89–D92) — org-scoped CRUD,
 //! append-only revisions, library catalog, compile-only « Verify » checks
 //! (devices pick a project at provisioning — `CreateDevice.firmware_project_id`). School `controllers/functions.rs`: cross-org 404,
 //! writes gated by their IAM permission, 400 field by field with machine tokens.

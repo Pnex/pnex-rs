@@ -1,4 +1,4 @@
-//! Model calls of the video understanding flow nodes (media-vision-studio.md
+//! Model calls of the video understanding flow nodes (vision.md
 //! D194–D196): `vision_caption` (image → caption) and `media_fuse` (window
 //! of texts → sourced description), on the organization's LLM provider of
 //! the matching usage (D212; D119: no platform model).

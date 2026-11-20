@@ -1,4 +1,4 @@
-//! PNeX typed decisions (media-vision-studio.md §4.5bis, D197) — Laya, a
+//! PNeX typed decisions (vision.md §3.5, D197) — Laya, a
 //! non-generative decision model (Convai Innovations, Apache-2.0 weights):
 //! one forward pass answers typed questions about a state with a
 //! probability per option. Pure Rust: tract for the ONNX graph, the Hugging

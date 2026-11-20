@@ -9,7 +9,7 @@
 //! backends, implemented in pnex-backend; only the contract here).
 //!
 //! Firmware build contract (verified, see
-//! `docs/architecture/firmware-build.md` §2): the device config goes through
+//! `docs/architecture/firmware.md` §3.4): the device config goes through
 //! **environment variables** of the `pio run` subprocess — WIFI_SSID,
 //! WIFI_PASSWORD, HOST, TOKEN and DEVICE_ID in base64 (a literal SSID
 //! with spaces would break the `-D` flag), always wss (D154) —

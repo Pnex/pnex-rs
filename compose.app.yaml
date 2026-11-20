@@ -59,9 +59,9 @@ x-pnex-env: &pnex-env
   # by apply-edge.sh). The server reads PNEX_DEVICE_HOST, not the port alone.
   PNEX_DEVICE_HOST: ${PNEX_DEVICE_HOST:-}
   # Production server host imposed on firmware builds; empty = users pick
-  # from the org's host referential (docs/architecture/firmware-build.md).
+  # from the org's host referential (docs/architecture/firmware.md §3.6).
   PNEX_PROD_HOST: ${PNEX_PROD_HOST:-}
-  # Custom firmware IDE (custom-firmware.md D91): compiling user C++ runs
+  # Custom firmware IDE (firmware.md D91): compiling user C++ runs
   # user code in pnex-builder. The image has no bubblewrap (and Docker's
   # default seccomp blocks user namespaces), so this dev stack compiles
   # unsandboxed: single-user dev only. Set PNEX_FIRMWARE_CUSTOM_ENABLED=false

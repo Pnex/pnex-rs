@@ -1,4 +1,4 @@
-//! Recorded video segments (camera-video.md D78/D79) — storage + rows +
+//! Recorded video segments (vision.md D78/D79) — storage + rows +
 //! retention pruner.
 //!
 //! Write order: **storage first, row second** (an orphan blob is purgeable,

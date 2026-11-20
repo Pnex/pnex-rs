@@ -326,7 +326,7 @@ pub const O2_TIME_RANGE_INVALID: &str = "o2-time-range-invalid";
 /// The typed confirmation does not match the organization name.
 pub const CONFIRMATION_MISMATCH: &str = "confirmation-mismatch";
 
-// ── Camera & video (camera-video.md D73–D80) ─────────────────────────────
+// ── Camera & video (vision.md D73–D80) ─────────────────────────────
 
 /// The device is not a camera (no `camera` cap announced yet).
 pub const CAMERA_UNKNOWN: &str = "camera-unknown";
@@ -367,7 +367,7 @@ pub const ML_MODEL_INFERENCE_FAILED: &str = "ml-model-inference-failed";
 /// The model refuses the spec or fails its test inference (D100) — args `{detail}`.
 pub const ML_MODEL_INVALID: &str = "ml-model-invalid";
 
-// ── Custom firmware (custom-firmware.md D87–D94) ─────────────────────────
+// ── Custom firmware (firmware.md D87–D94) ─────────────────────────
 
 /// Custom firmware compiling is off on this server (settings.firmware.custom.enabled).
 pub const FIRMWARE_CUSTOM_DISABLED: &str = "firmware-custom-disabled";
@@ -1143,7 +1143,7 @@ pub const TRACK_IMPORT_UNREADABLE: &str = "track-import-unreadable";
 /// Only the author edits a comment; the author or an admin deletes it.
 pub const DOC_COMMENT_NOT_AUTHOR: &str = "doc-comment-not-author";
 
-// ── Vision Lab (media-vision-studio.md D198–D200) ─────────────────────
+// ── Vision Lab (vision.md D198–D200) ─────────────────────
 
 pub const LAB_PROJECT_NOT_FOUND: &str = "lab-project-not-found";
 pub const LAB_IMAGE_NOT_FOUND: &str = "lab-image-not-found";

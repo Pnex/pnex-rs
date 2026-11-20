@@ -1,4 +1,4 @@
-//! Page `/lab` — Vision Lab projects (media-vision-studio.md §4.6,
+//! Page `/lab` — Vision Lab projects (vision.md §3.8,
 //! D198–D200): the datasets of custom object detectors. A project opens
 //! its annotation workspace (`/lab/:id`, [`workspace`]).
 //!

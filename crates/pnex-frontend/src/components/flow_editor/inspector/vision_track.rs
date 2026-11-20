@@ -4,7 +4,7 @@ use super::*;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::vision::{VisionTrackConfig, TRACK_LOST_MAX_SECS};
 
-// ─────────────── vision-track (media-vision-studio.md D192) ───────────────
+// ─────────────── vision-track (vision.md D192) ───────────────
 
 /// Writes one numeric field of the selected track node.
 type TrackSetter = fn(&mut VisionTrackConfig, f64);

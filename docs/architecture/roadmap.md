@@ -97,7 +97,7 @@ données collectées.
   notifications, règles). Cible à trancher : serveur (runtime
   d'inférence backend/worker), navigateur (wasm/webgpu), edge (agent
   local C2 sur mini-PC, ou ESP32-S3 pour modèles minuscules).
-- **Stack proposée (pilier `ml-vision.md`, statut « proposé »)** :
+- **Stack proposée (pilier `vision.md`, statut « proposé »)** :
   tout-Rust, sans Python côté plateforme — **Burn**/`burn-import` +
   **tract** (inférence ONNX, à benchmarker l'une contre l'autre sur Pi),
   **linfa** (ML classique), **augurs** (séries temporelles : forecast,
@@ -195,10 +195,10 @@ tâche).
 | **Scale horizontal** (D106–D108) | **Livré 2026-10-01** — flows shardés par org (contrôleur élu, fencing), bus device Valkey par pod, présence device en baux Valkey (Valkey obligatoire), audit multi-pods scale-a→e (quotas atomiques, versions optimistes, listes paginées SQL, single-flight) ; E2E 2 processus | **E2E multi-réplicas réel** (k8s : bascule contrôleur, perte de pod, rolling update) ; manifests k8s dans `pnex-deploy` ; `LAST_VALUES` encore local au pod (flow-engine §7) |
 | **Palette de nœuds** | **Sections par catégorie livrées** (D109, P1.7) : 9 catégories en ordre fixe, recherche transverse | **P2.11** catalogue piloté par descripteurs (parité n8n) |
 | **Firmware ESP générique** (F1/F2) | Consolidé — transport commun dans la lib `firmware/lib/pnex`, `Announce.caps`, StateReport par capacité ; flash F1/F2 validé réel (NodeMCU, ESP32-C3 0639ee4) | **F3 firmware `regulator`** (persist D45, buffer D46, boucle) — hardware requis ; e2e carte réelle Brick 0 jamais flashée |
-| **Flow engine** | Consolidé — ETL full-Rust, device read/write (routage topic 90f23e0), calc, debug, http_fetch (C1a), nœud notify, cache live Valkey (b966c1a→e7257f8), **exclusivité write par pin** (8d60950), nœuds caméra/vision/mémoire/prédictifs, cluster D106 ; deploy de la version affichée + présence multi-utilisateurs dans l'éditeur (2578ffe) | Palette par capacité (ouverture §12, après P1.7 livré), E2E matériel du write/PWM, ack des commandes non persisté (brick0 §10) |
+| **Flow engine** | Consolidé — ETL full-Rust, device read/write (routage topic 90f23e0), calc, debug, http_fetch (C1a), nœud notify, cache live Valkey (b966c1a→e7257f8), **exclusivité write par pin** (8d60950), nœuds caméra/vision/mémoire/prédictifs, cluster D106 ; deploy de la version affichée + présence multi-utilisateurs dans l'éditeur (2578ffe) | Palette par capacité (ouverture §12, après P1.7 livré), E2E matériel du write/PWM, ack des commandes non persisté (`firmware.md` §7) |
 | **Fonctions custom** | Livré — JS (rquickjs) + Starlark (`_` privé, json en extension) | Limite acceptée : interrupt handler rquickjs ; payload remplacé (pas merge) — rien d'ouvert |
 | **Notifications** | N1–N4 livrées (7 canaux, templates, anti-spam, canaux dédiés D61–D65), D66–D68 (trigger booléen), journal O2 D86, fan-out `/ws/notify` multi-pods | ~~N5 chiffrement AEAD des secrets~~ fermé par le coffre de secrets (2026-10-01) ; N6 points d'extension, canal gotify en réserve |
-| **OTA** | Livré + E2E réel 8266 (2 cycles ~23 s, boucle 4003 anti-clone) ; OTA signée + anti-downgrade validées sur banc 8266 + ESP32-C6 (2026-10-09, SEC-18) | Politique de re-flash quand v2 du `.bin` (brick0 §10) |
+| **OTA** | Livré + E2E réel 8266 (2 cycles ~23 s, boucle 4003 anti-clone) ; OTA signée + anti-downgrade validées sur banc 8266 + ESP32-C6 (2026-10-09, SEC-18) | Politique de re-flash quand v2 du `.bin` (`firmware.md` §7) |
 | **Devices / pins** | Consolidé — CRUD, catalogue, quotas, pinout SVG v2, board variants, placements D43 | E2E matériel (write/PWM, fraîcheur read via Valkey) |
 | **TFT / écrans** | V2 livré — barre dès boot, timeline OTA, panneau 21 pins (8e69519) | E2E matériel (tft_dev) |
 | **Média (D21) + Take 360** | Couche 1 livrée ; Take 360 V2 serveur + V3 guidage device-validé + auto-cal focale | Capture portrait 2 anneaux, résolution 1080+, iOS/web, calibration par device |
@@ -215,7 +215,7 @@ tâche).
 | **Organisations (D42)** | Backend livré (labels, containment, edges) ; UI livrée (P1.1, 2026-10-09) : page Sites, fil d'Ariane Emplacement, labels D42 partout | Vue arbre « Organisation » dédiée |
 | **Auth (D19)** | Rauthy livré, branding API, password grant, OIDC natif | — |
 | **CoolProp** | In-process mergé (d126225) | — |
-| **Brick 0** (prototypage rapide) | PRD (`brick0.md`) | e2e carte réelle, quota mixed 0→1 à valider, persistance ack |
+| **Brick 0** (prototypage rapide) | PRD (`firmware.md`) | e2e carte réelle, quota mixed 0→1 à valider, persistance ack |
 | **Caméra & vidéo** (D73–D86, D100–D104) | **Phases V et W implémentées** (2026-09-29/30) : `/ws/camera`, CameraHub, `camera-source`/`video-record`/`vision-detect`/`event-log`, registre `ml_models` (tract YOLOX), fiabilité W5 ; flash web ESP32-CAM-MB validé, stream 5 fps stable (XCLK 16 MHz) | E2E complet caméra → vision → événement → notification sur carte réelle |
 | **Workers / fabric** | 2 workers Loco CPU co-localisés sur le control plane (`build_firmware`, `stitch_panorama`) ; claim idempotent + timeout par job (stitch, 2026-10-01) ; **PRD fabric proposé** (`agents.md`, 2026-09-25) | Validation du PRD (P1.6) puis MVP (P2.7) — pré-requis de tout job GPU (Gaussian Splatting, axe C) |
 | **Prédictif** (anomaly/forecast) | **Livré** 2026-09-29 (`pnex-node-predict` : BOCPD maison + forecast) — étape 3 du pilier ML/Vision | Branchement documenté anomalie → notify (cas « anomalie persistante ») ; E2E sur séries réelles |
@@ -240,7 +240,7 @@ SEC-35) puis `feat/media-vision-studio` (P2.15 M1 → M5, D192–D210,
 migrations `000014`–`000020`, SEC-30 à SEC-34) sont mergées dans `main`
 le 2026-10-13 après la suite de tests complète ; worktrees et branches
 locales supprimés. Ordre de relecture de la branche vision :
-`media-vision-studio-concepts.md` §8.
+`vision.md`.
 
 ## P0 — Consolidation : fermer le livré non validé
 
@@ -405,7 +405,7 @@ avec la passe P0.1 (même banc).
 
 ### P1.4 — Annotations : couche ETL/device
 
-> **✅ Couvert par D147** (2026-10-07, `annotations.md` §13), constaté le
+> **✅ Couvert par D147** (2026-10-07, `vision.md` §3.7), constaté le
 > 2026-10-15 : les annotations sont des mini-tableaux de bord ancrés sur
 > le média (valeur, sparkline, jauge, indicateur sur une série, contrôles
 > d'org). L'écriture directe d'un device depuis une annotation reste
@@ -515,7 +515,7 @@ localisation + création POI + géotag Take 360. Aucune app dédiée.
 
 ### P2.3 — Axe C : pilier ML/Vision (après validation du pilier)
 
-Suivre les 4 étapes de `ml-vision.md` :
+Suivre les 4 étapes de `vision.md` :
 
 1. **POC inférence** — YOLOX ONNX via Burn **et** tract sur image fixe,
    bench sur Pi → tranche burn vs tract. **De fait : tract** en
@@ -534,7 +534,7 @@ Le **Model Lab** (datasets images + séries O2, annotation, entraînement
 linfa, registre) s'appuie sur l'étape 4 et reste la tranche suivante ;
 le fine-tuning de détecteurs est une décision explicite ultérieure.
 
-### P2.8 — Caméra & vidéo (`camera-video.md`, D73–D86) — **phases V+W implémentées** (2026-09-30)
+### P2.8 — Caméra & vidéo (`vision.md`, D73–D86) — **phases V+W implémentées** (2026-09-30)
 
 Déclencheur : ESP32-CAM commandé (2026-09-29) — tranche « sources vidéo
 V1 » de l'axe C. **Phase V (collecte)** : canal binaire `/ws/camera`
@@ -562,7 +562,7 @@ client O2 logs de la phase W1 (P2.8). Livré : table supprimée
 interne `/internal/notify/journal` pour le nœud, badge par requête O2
 agrégée, onglet Événements ; détail `notifications.md` §15.
 
-### P2.10 — Firmware custom : IDE intégré (`custom-firmware.md`, D87–D94) — **en cours** (L1/L3/L4/L5 livrés, L2 partiel)
+### P2.10 — Firmware custom : IDE intégré (`firmware.md`, D87–D94) — **en cours** (L1/L3/L4/L5 livrés, L2 partiel)
 
 Écrire son propre `main.cpp` dans l'UI (lib PneX complète, board du
 device, libs d'un catalogue épinglé), versionné en base (révisions
@@ -756,9 +756,9 @@ nœuds génériques (`inject` → données → `llm_text` → `page_write` →
 `page_pdf` → `pnex_notify` avec pièce jointe), approbation humaine par
 défaut des versions IA (D210), PDF par krilla (Typst écarté). INT8
 évalué, non livré. Détail et ordre de relecture :
-`media-vision-studio-concepts.md`.
+`vision.md`.
 
-PRD `media-vision-studio.md`. Texte d'origine (2026-10-10) : étend la caméra
+PRD `vision.md`. Texte d'origine (2026-10-10) : étend la caméra
 (D73–D105) et l'ingestion média (P2.13) sans les refaire : nœuds
 `vision_track` (ByteTrack en Rust), `vision_zone` (polygones sur
 l'image), `vision_caption` (VLM de l'org, D119), `media_fuse`
@@ -1364,9 +1364,9 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 |---|---|---|
 | 1 | Sort des tables dormantes viz (drop vs keep) | Après `count(*)` — avant P2.4 |
 | 2 | Engagement M2M M1 (POC zenoh-pico) ou report | Après P0/P1 |
-| 3 | Quota Free mixed 0→1 (brick0 §10) | À la prochaine revue de brick0 |
+| 3 | Quota Free mixed 0→1 (`firmware.md` §7) | À la prochaine revue de brick0 |
 | 4 | Priorité relative UI arbre org (P1.1) vs banc matériel (P0.1) | Peut réordonner P0/P1 |
-| 5 | Axe C : ~~stack tout-Rust vs Python~~ **tranché-proposé : tout-Rust (`ml-vision.md`)** ; ~~stockage des modèles~~ **média `kind=model` (D81)** ; ~~sources vidéo V1~~ **ESP32-CAM (D73–D77)** ; cible d'inférence V1 = serveur (D82) ; restent burn vs tract (POC étape 1) | Au POC étape 1 du pilier |
+| 5 | Axe C : ~~stack tout-Rust vs Python~~ **tranché-proposé : tout-Rust (`vision.md`)** ; ~~stockage des modèles~~ **média `kind=model` (D81)** ; ~~sources vidéo V1~~ **ESP32-CAM (D73–D77)** ; cible d'inférence V1 = serveur (D82) ; restent burn vs tract (POC étape 1) | Au POC étape 1 du pilier |
 | 6 | Axe G : module GPS de référence (NEO-6M/M8N…) et surface V1 prioritaire (firmware vs web) | Au PRD axe G (P1.5) |
 | 7 | Besoin réel de fine-tuning détecteurs sur données client (sinon : modèles pré-entraînés + labo linfa seulement) | Après POC (P2.3) |
 | 8 | Fabric de workers : la queue Loco couvre-t-elle lease/heartbeat/reaper (sinon le coder) ; durée du lease sur jobs longs ; archetype distant du MVP | À la validation du PRD (P1.6) |
@@ -1379,7 +1379,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 | 15 | Profils de sécurité : ~~date de lancement de V1 (correctifs protocole, SEC-17 à SEC-19)~~ ; socle de V4 (ESP-IDF C++ ou firmware Rust) ; statut CRA de PneX (avis juridique) | V1 : ✅ livrée le 2026-10-09 (D153–D158) ; V4 : après 1 à 2 ans de communauté |
 | 16 | Flux média : runtime ASR (sherpa-onnx, whisper.cpp ou les deux), ~~tags Loco ou queue dédiée~~ (tranché à la relecture du 2026-10-09 : tags, ASR configurable), superviseur de capture in-process (proposé), agrégation « par plage » (primitive D182), ~~plafond des extraits, amendement de D3~~ (sans objet : pas de publication), ordre vis-à-vis de l'ontologie (`media.md` §7) | Lot 0 (POC ASR) ; ordre à la validation |
 | 17 | Ontologie 0.2.0 : ~~**actions D183 remontées dans la 0.2.0 ?**~~ (oui : livrées le 2026-10-13) (au moins une action simple tracée : c'est ce qui rend la plateforme « opérationnelle », et le pack Maintenance et les procédures de `pages.md` en dépendent) ; ~~identifiant d'objet global (UUID vs `ResourceRef`)~~ (tranché 2026-10-10 : UUID par table d'identité universelle), moment du bitemporel, format du schéma de propriétés (maison vs JSON Schema), liaison device → objet (lien générique vs table dédiée), packs forkables ou surcouche, langage de requête textuel, spécification publique du noyau ; ordre P2.13 / P2.14 / P2.1 vu le gel des nouveaux piliers (`ontology.md` §9) | À la validation du PRD |
-| 18 | ~~Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible~~ — **tranché 2026-10-13** (`media-vision-studio.md` §10) : poste de travail, tract seul, entraînement en Rust sans Python, détection → `device_write` régie par D128, pas d'attente de tag | ✅ |
+| 18 | ~~Media & Vision Studio : pose humaine ou poste de travail, tract vs `ort`, entraînement CPU, D174 en usage interne, détection → `device_write`, version cible~~ — **tranché 2026-10-13** (`vision.md` §5) : poste de travail, tract seul, entraînement en Rust sans Python, détection → `device_write` régie par D128, pas d'attente de tag | ✅ |
 | 19 | ~~Garder SQLite à côté de PostgreSQL~~ — tranché 2026-10-10 : **PostgreSQL obligatoire, SQLite abandonné**. La parité coûte à chaque migration et chaque requête (`ilike`, FK par reconstruction de table, pas de PostGIS) et pèse de plus en plus lourd à mesure que le produit grandit ; l'argument Raspberry Pi ne tient pas, Postgres reste léger sur un Pi. Les nouveaux développements ne gèrent plus SQLite | ✅ |
 | 20 | Couches géographiques : ~~gel 0.2.0~~ (tranché 2026-10-10 : phase F avant, A–E après), ~~rétention des seeds~~ (génération courante), raster, OGC API – Features, plafonds par tier, lien ontologie (`geo-layers.md` §10) ; image Postgres étendue PostGIS + pgvector commune avec #22 | À la validation du PRD |
 | 21 | Pages : Loro vs yrs (`pages.md` §11). Tranché 2026-10-10 (`pages.md` §13) : L1–L2 en exception au gel, tableau local admis (formule = lecture, `ontology.md` §3 amendé), pas de pages privées (suit D188), mesure publiée en série `*_manual` seulement, signature = trace d'identité en V1, nom « Pages » | Loro/yrs au spike L0 |
@@ -1413,7 +1413,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   + tract (ONNX), linfa (ML classique), augurs (forecast/anomalie),
   ffmpeg/gstreamer (décodage, seule dépendance native). Capacités
   exposées en **nœuds natifs du moteur de flows** (schéma pnex-core).
-  Détail : `ml-vision.md` (4 étapes : POC YOLOX ONNX → pipeline RTSP →
+  Détail : `vision.md` (4 étapes : POC YOLOX ONNX → pipeline RTSP →
   nœuds augurs → linfa + registre). Stockage des modèles = RustFS
   ou Postgres.
 - **2026-09-25 (fabric de workers)** — Ajout du PRD `agents.md`
@@ -1425,7 +1425,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   jobs GPU de l'axe C. Nouveaux P1.6 (validation du PRD), P2.7 (MVP) ;
   v2/v3 en P3 ; décision #8.
 - **2026-09-29 (caméra & vidéo)** — ESP32-CAM commandé : PRD
-  `camera-video.md` (D73–D86). Phase V : canal vidéo binaire dédié,
+  `vision.md` (D73–D86). Phase V : canal vidéo binaire dédié,
   live sans cron, enregistrement choisi **dans le flow** (segments
   MJPEG-AVI paramétrables → fs ou S3/RustFS), firmware
   `generic_esp32cam`. Phase W : registre de modèles + test sur image,
@@ -1437,7 +1437,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   table relationnelle supprimée, O2 posé comme obligatoire dans la stack ;
   au passage, total des listes O2 (événements, journal) corrigé par un
   `count(*)` séparé.
-- **2026-09-29 (firmware custom)** — PRD `custom-firmware.md`
+- **2026-09-29 (firmware custom)** — PRD `firmware.md`
   (D87–D94) : IDE firmware dans le navigateur, un `main.cpp` versionné en
   base, lib PneX fournie par le serveur (plus besoin du registre PIO),
   catalogue de libs épinglé et préchargé (offline), worker de build isolé
@@ -1508,7 +1508,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   (`ontology.md`, D176–D191, décision #17). Numérotation décalée de +11 à
   l'intégration (D148–D158 déjà pris par `security.md` §8).
 - **2026-10-10 (Media & Vision Studio)** — PRD proposé, rien
-  d'implémenté : P2.15 (`media-vision-studio.md`, décision #18), relu
+  d'implémenté : P2.15 (`vision.md`, décision #18), relu
   contre la doc (stockage RustFS, tract, kinds existants, LLM
   d'org D119, conflits D173/D174 et gel 0.2.0 signalés).
 - **2026-10-10 (PostgreSQL seul)** — Décision #19 : SQLite abandonné,
@@ -1596,7 +1596,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   projets à classes positionnelles, annotation à la souris d'images de la
   médiathèque, split par source, versions figées, export COCO (D198–D200).
 - **2026-10-13 (Media & Vision Studio, questions)** — Q1–Q15 toutes
-  tranchées (`media-vision-studio.md` §10) : « poste » = poste de
+  tranchées (`vision.md` §5) : « poste » = poste de
   travail, tract seul runtime, détection → `device_write` régie par D128,
   pas d'attente de tag (0.1.0 épinglée, 0.2.0 annoncée sans promettre de
   fonctionnalités), INT8 obligatoire sur Pi pour `text_decide`, seuil de

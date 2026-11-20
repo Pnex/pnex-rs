@@ -11,7 +11,7 @@
 //! with the regulator embedded on the ESP (D13/D17 — no server loop).
 //! The node is only an authoring surface: its config is cast to the
 //! device by the backend (`ServerMsg::ControlConfig`, see
-//! docs/architecture/control-cards.md). The runtime node exists to
+//! docs/architecture/firmware.md §3.10). The runtime node exists to
 //! restore **fail-loud at build**: without it, the engine would degrade the
 //! unknown type into an `unknown` node (warn only, silent no-op). Its
 //! `run()` loop consumes and drops incoming messages — anti-clogging if a

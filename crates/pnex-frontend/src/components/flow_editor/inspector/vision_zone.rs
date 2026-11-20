@@ -9,7 +9,7 @@ use pnex_core::vision::{
     VisionZone, VisionZoneConfig, ZoneAnchor, TRACK_LOST_MAX_SECS, ZONE_MAX_COUNT, ZONE_MAX_POINTS,
 };
 
-// ─────────────── vision-zone (media-vision-studio.md D193) ───────────────
+// ─────────────── vision-zone (vision.md D193) ───────────────
 
 /// Rounds a normalized coordinate to 3 decimals (tidy config, 0.1 % grid).
 fn norm(v: f64) -> f32 {

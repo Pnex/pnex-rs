@@ -1,4 +1,4 @@
-//! Events API (camera-video.md D84) — JSON events stored as OpenObserve
+//! Events API (vision.md D84) — JSON events stored as OpenObserve
 //! logs, written by the flow `event-log` node.
 
 use pnex_core::events::EventRecord;

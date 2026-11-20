@@ -1,4 +1,4 @@
-//! Pages written by flows (media-vision-studio.md D209): a `page_write`
+//! Pages written by flows (vision.md D209): a `page_write`
 //! node sends Markdown; the server creates a page or appends to one of the
 //! org, then freezes a named version stamped with the flow and its AI
 //! provenance (D210). Appends go through [`super::write_server`] (same

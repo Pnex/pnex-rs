@@ -1,4 +1,4 @@
-// Vision Lab (media-vision-studio.md D198–D200): a project, two photos of
+// Vision Lab (vision.md D198–D200): a project, two photos of
 // the media library added together (one source), a box drawn with the
 // mouse, a negative example, a frozen dataset version and its COCO zip.
 import { expect, test } from '../src/fixtures.ts';

@@ -2,7 +2,7 @@
 
 ## 1. Résumé
 
-Ce document décrit la partie edge de PneX : tout ce qui tourne hors du serveur et lui envoie des données. Il couvre la taxonomie des devices, le firmware en couches, les collecteurs, l'agent edge `pnex-agent`, le TLS de bout en bout et la mise à jour firmware par le réseau (OTA). Il s'adresse aux développeurs firmware, backend et aux exploitants d'une instance. Le mode M2M résilient est un PRD : il n'est pas codé. Le build firmware, les cartes de régulation et le banc de pins sont décrits dans `firmware-build.md`, `control-cards.md` et `pin-selftest.md`.
+Ce document décrit la partie edge de PneX : tout ce qui tourne hors du serveur et lui envoie des données. Il couvre la taxonomie des devices, le firmware en couches, les collecteurs, l'agent edge `pnex-agent`, le TLS de bout en bout et la mise à jour firmware par le réseau (OTA). Il s'adresse aux développeurs firmware, backend et aux exploitants d'une instance. Le mode M2M résilient est un PRD : il n'est pas codé. Le build firmware, l'IDE custom, les cartes de régulation et le banc de pins sont décrits dans `firmware.md`.
 
 ## 2. Concepts
 
@@ -168,7 +168,7 @@ Règles du profil autonome :
 - Au retour du lien, l'announce fait une conciliation par version de config. Le serveur fait autorité.
 - Le buffer est un anneau en flash borné : 24 h à 1 min ≈ 1 440 échantillons × 30 o ≈ 43 Ko. Le flush est idempotent (D46) et limité quand le lien est faible.
 - L'horloge est `millis()`, monotone et sûre au wrap. RTC et SNTP ne sont pas obligatoires.
-- Un lien WS coupé n'arrête pas la régulation. Le safe-state vient d'un capteur illisible ou d'un premier boot sans config (`control-cards.md`).
+- Un lien WS coupé n'arrête pas la régulation. Le safe-state vient d'un capteur illisible ou d'un premier boot sans config (`firmware.md` §3.10).
 
 ### 3.3 Datation des échantillons bufferisés (D46)
 
@@ -564,7 +564,7 @@ Code 60 bits, rotation du jeton et de la clé, empreinte de CA (§3.5).
 
 Binaires musl et Windows servis par `pnex-server`, API sur `127.0.0.1:7070` (§3.5).
 
-Renvois : D12 (`ts_source`), D16 (canon des noms), D20 (`control-cards.md`), D42–D43 (organisation, placements), D87–D94 (IDE custom, `custom-firmware.md`), D121 (catalogue en code), D153–D157 (identité device, Noise, `security.md`), D159–D160 (capture média, `media.md`), D254–D265 (`browser-agents.md`).
+Renvois : D12 (`ts_source`), D16 (canon des noms), D20 (`firmware.md`), D42–D43 (organisation, placements), D87–D94 (IDE custom, `firmware.md`), D121 (catalogue en code), D153–D157 (identité device, Noise, `security.md`), D159–D160 (capture média, `media.md`), D254–D265 (`browser-agents.md`).
 
 ## 6. Interfaces
 

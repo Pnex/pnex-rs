@@ -12,7 +12,7 @@ pub mod apps;
 pub mod auth;
 pub mod boards;
 pub mod builds;
-/// Cameras & recordings (camera-video.md D75–D80).
+/// Cameras & recordings (vision.md D75–D80).
 pub mod cameras;
 pub mod cases;
 pub mod client;
@@ -35,11 +35,11 @@ pub mod docs;
 pub mod error;
 /// Render-time error localization — code → fluent key (`err-<kebab>`).
 pub mod error_i18n;
-/// JSON events stored in OpenObserve logs (camera-video.md D84).
+/// JSON events stored in OpenObserve logs (vision.md D84).
 pub mod events;
 /// Browser agents and their missions (browser-agents.md D254–D270).
 pub mod extension;
-/// Custom firmware IDE (custom-firmware.md D87–D94).
+/// Custom firmware IDE (firmware.md D87–D94).
 pub mod firmware;
 pub mod flows;
 /// "Functions" registry ("Automation" group) — versioned functions.
@@ -51,7 +51,7 @@ pub mod lab;
 pub mod mailboxes;
 pub mod markets;
 pub mod media;
-/// Vision model registry (camera-video.md D81).
+/// Vision model registry (vision.md D81).
 pub mod media_streams;
 pub mod memory;
 pub mod ml_models;

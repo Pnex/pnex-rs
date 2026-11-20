@@ -20,7 +20,7 @@
 // touches this facade. Redraws are change-only / partial so the pnex loop
 // stays responsive.
 //
-// Contract of the defines (docs/architecture/firmware-build.md §2.1):
+// Contract of the defines (docs/architecture/firmware.md §3.4):
 // PNEX_SCREEN_{KIND} = 0/1, PNEX_SCREEN_{ROLE} = gpio or -1. The builder
 // always pushes all of them; manual builds get the same defaults in
 // pnex_status.h / pnex_screen.cpp.

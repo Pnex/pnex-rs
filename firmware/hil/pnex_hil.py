@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PneX pin self-test bench (D122, docs/architecture/pin-selftest.md).
+"""PneX pin self-test bench (D122, docs/architecture/firmware.md §3.9).
 
 Flashes the bench firmware (firmware/selftest) on a catalog board, runs
 every (gpio, mode) step of the board's plan over the serial console and

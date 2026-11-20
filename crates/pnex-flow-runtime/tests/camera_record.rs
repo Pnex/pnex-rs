@@ -1,4 +1,4 @@
-//! Camera E2E (camera-video.md D78): frames published on the Valkey frame
+//! Camera E2E (vision.md D78): frames published on the Valkey frame
 //! bus (exactly like the backend CameraHub) → `camera-source` →
 //! `video-record` → segment POSTed to the internal video route (canned
 //! server) as a readable MJPEG-AVI. Requires a live Valkey (`VALKEY_URL`,

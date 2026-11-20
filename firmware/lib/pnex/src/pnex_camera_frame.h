@@ -1,5 +1,5 @@
 //
-// PXC1 camera frame header (camera-video.md D73) — header-only, no Arduino
+// PXC1 camera frame header (vision.md D73) — header-only, no Arduino
 // dependency: included by pnex_camera.cpp (firmware) AND by the host test
 // core-cpp-tests (golden vector replayed, same bytes as the Rust
 // `header_golden_bytes` test in crates/pnex-core/src/camera.rs).

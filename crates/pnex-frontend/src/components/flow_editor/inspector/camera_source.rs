@@ -2,7 +2,7 @@ use super::helpers::*;
 use super::*;
 use crate::components::ui::FIELD_LABEL;
 
-// ─────────────── camera-source (camera-video.md D78) ───────────────
+// ─────────────── camera-source (vision.md D78) ───────────────
 
 /// Camera source inspector: source switch (device | media stream, D175),
 /// camera picker (cameras of the org, from `GET /api/v1/cameras`) or

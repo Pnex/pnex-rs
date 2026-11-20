@@ -7188,7 +7188,7 @@
             "type": "string"
           },
           "firmware_project_id": {
-            "description": "Custom firmware chosen at provisioning (custom-firmware.md D94) —\nmust belong to the org and target the board's chip. Absent = the\ngeneric preset firmware.",
+            "description": "Custom firmware chosen at provisioning (firmware.md D94) —\nmust belong to the org and target the board's chip. Absent = the\ngeneric preset firmware.",
             "format": "int64",
             "type": [
               "integer",
@@ -8550,7 +8550,7 @@
             "type": "array"
           },
           "firmware_project_id": {
-            "description": "Custom firmware project the device runs (custom-firmware.md D94) —\n`None` = generic preset firmware.",
+            "description": "Custom firmware project the device runs (firmware.md D94) —\n`None` = generic preset firmware.",
             "format": "int64",
             "type": [
               "integer",

@@ -4,7 +4,7 @@ use super::*;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::vision::{VisionDetectConfig, VisionEmit};
 
-// ─────────────── vision-detect (camera-video.md D83) ───────────────
+// ─────────────── vision-detect (vision.md D83) ───────────────
 
 /// Toggles `label` in the picked label list (order of the model kept by the
 /// caller's chip iteration, not here).

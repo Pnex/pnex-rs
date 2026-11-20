@@ -605,7 +605,7 @@ async fn model_import_check_and_transcription_chain() {
     let _ = std::fs::remove_dir_all(models_dir);
 }
 
-/// Batch analysis of a library file (media-vision-studio.md D211): the
+/// Batch analysis of a library file (vision.md D211): the
 /// `transcribe` step is blocked without a profile, then starts a hidden
 /// batch stream on the version (outside the stream list), whose segments
 /// sit on the file clock (the version date, even days old: never skipped as

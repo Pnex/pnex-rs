@@ -1,4 +1,4 @@
-//! Custom firmware IDE (custom-firmware.md D87–D94) — projects list and
+//! Custom firmware IDE (firmware.md D87–D94) — projects list and
 //! editor sub-view (signal `selected`, same pattern as `functions`). One
 //! `main.cpp` per project, versioned server-side (append-only revisions),
 //! PneX library + pinned catalog libraries, compile-only "Verify" checks.

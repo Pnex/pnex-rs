@@ -1,6 +1,6 @@
 //! Assembly of the environment variables of the `pio run` subprocess.
 //!
-//! Firmware repository contract (verified, firmware-build.md §2.1): the device
+//! Firmware repository contract (verified, firmware.md §3.4): the device
 //! config is read from **environment variables** (platformio.ini
 //! `-D WIFI_SSID="${sysenv.WIFI_SSID}"`…) — WIFI_SSID, WIFI_PASSWORD,
 //! HOST, TOKEN and DEVICE_ID **in base64** (the firmware decodes them; the

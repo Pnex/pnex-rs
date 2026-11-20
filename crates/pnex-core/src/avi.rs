@@ -1,4 +1,4 @@
-//! Minimal MJPEG-in-AVI (RIFF) writer and reader (camera-video.md D78).
+//! Minimal MJPEG-in-AVI (RIFF) writer and reader (vision.md D78).
 //!
 //! Recording segments are plain AVI 1.0 files with one `MJPG` video
 //! stream and an `idx1` index: playable by VLC/ffmpeg, no transcoding, no

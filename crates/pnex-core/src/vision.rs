@@ -1,4 +1,4 @@
-//! Vision contract (camera-video.md D81–D83) — model registry DTOs,
+//! Vision contract (vision.md D81–D83) — model registry DTOs,
 //! inference spec and detections. Pure, wasm-safe.
 
 use serde::{Deserialize, Serialize};

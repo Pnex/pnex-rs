@@ -1,4 +1,4 @@
-//! Cameras & recordings API (camera-video.md D76/D79/D80) — org-scoped
+//! Cameras & recordings API (vision.md D76/D79/D80) — org-scoped
 //! (`X-Org-Id`, cross-org = masking 404), writes gated by their IAM permission.
 //!
 //! - `GET    /api/v1/cameras`: cameras of the org (settings + live state), paginated

@@ -6,7 +6,7 @@ use pnex_core::decide::{
     DecideQuestion, QuestionKind, TextDecideConfig, DECIDE_INSTRUCTIONS_MAX, DECIDE_MAX_QUESTIONS,
 };
 
-// ─────────────── text-decide (media-vision-studio.md D197) ───────────────
+// ─────────────── text-decide (vision.md D197) ───────────────
 
 fn patch_decide(cx: &mut EditorCx, f: impl FnOnce(&mut TextDecideConfig) + 'static) {
     patch_selected(cx, move |node: &mut FlowNode| {

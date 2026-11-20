@@ -1020,7 +1020,7 @@ Données publiques (domaine public américain), API Socrata `publicreporting.cft
 
 ### G.1 Le besoin
 
-1. Un **projet Python à part** (hors de `pnex-rs`) entraîne un petit modèle de décision sur l'historique de PNeX : une question à options (`buy`, `neutral`, `sell`), une probabilité calibrée par option, comme Laya (§4.5bis de `media-vision-studio.md`).
+1. Un **projet Python à part** (hors de `pnex-rs`) entraîne un petit modèle de décision sur l'historique de PNeX : une question à options (`buy`, `neutral`, `sell`), une probabilité calibrée par option, comme Laya (§3.5 de `vision.md`).
 2. En direct, **le même projet** tourne en service (le « runner ») : il lit dans PNeX ce qui est connu maintenant (barres, séries macro, calendrier, événements), décide, et renvoie sa décision à PNeX.
 3. PNeX **range, affiche et mesure** les décisions. Il n'exécute ni le modèle ni Python, et ne passe aucun ordre.
 

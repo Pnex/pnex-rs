@@ -1,4 +1,4 @@
-//! Events API (camera-video.md D84) — org-scoped read of the JSON events
+//! Events API (vision.md D84) — org-scoped read of the JSON events
 //! stored in OpenObserve logs streams (`ev_…`).
 //!
 //! - `GET /api/v1/events/streams` — event streams of the org (D14 page)
