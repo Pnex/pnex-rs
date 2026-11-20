@@ -6,6 +6,50 @@
 - **Ne jamais nommer l'éditeur de référence ni ses produits**, ni dans le repo, ni dans l'UI, ni dans un commit (D552).
 - Cœur en Rust ; Python seulement en déploiement séparé et optionnel (D553, D559).
 
+## Façon de travailler (lignes directrices Karpathy, règle permanente, 2026-11-20)
+
+- **Ne jamais supposer.** Écrire ses hypothèses. Si la demande a deux lectures, les montrer et demander ; ne jamais choisir en silence. Si un point est flou : s'arrêter, nommer ce qui bloque, demander.
+- **Dire quand il y a plus simple**, et contredire Shan quand c'est justifié.
+- **Simplicité d'abord** : le minimum de code qui règle le problème. Pas de fonction non demandée, pas d'abstraction pour un seul usage, pas d'option ni de configuration non demandée, pas de gestion d'erreur pour un cas impossible. Test : « un senior trouverait-il ça trop compliqué ? » Si 1000 lignes peuvent tenir en 50, écrire les 50.
+- **Changements chirurgicaux** : chaque ligne changée se rattache à la demande. Ne pas « améliorer » le code voisin, ne pas le reformater, ne pas refactorer ce qui marche ; garder le style existant. Supprimer seulement ce que son propre changement rend mort ; le code mort préexistant se signale, il ne se supprime pas.
+- **Réécrire pour simplifier = proposer d'abord** : si réécrire un module ou un fichier le simplifie nettement, le proposer avec le gain (lignes avant → après, ce qui disparaît, ce qui casse). Ne réécrire qu'après l'accord de Shan.
+- **Un but vérifiable** : bug → un test qui le reproduit, puis passe ; validation → des tests d'entrées invalides ; refactor → tests verts avant et après. Tâche en plusieurs étapes : un plan numéroté court, une vérification par étape.
+
+## Specs et PRD : français STE + Mermaid (règle permanente, 2026-11-20)
+
+Tout document de `docs/` (spec technique, PRD, architecture) suit l'ASD-STE100 adapté au français. Dosage : environ 80 % de prose STE, 20 % de forme dev classique (tableaux, blocs de code, routes, YAML, schémas).
+
+Écriture (d'après STE Issue 9) :
+- **Un mot = un sens** : le lexique de `design-system.md` §7 et les termes définis dans la section Concepts du document. Jamais de synonyme pour varier le style.
+- **Phrases courtes** : 20 mots au plus dans une procédure (une instruction par phrase, à l'impératif), 25 au plus dans une description.
+- **Voix active** : le sujet fait l'action. Passif seulement si l'acteur est inconnu.
+- **Temps simples** : présent, passé composé, futur. Pas de conditionnel ni de « il conviendrait de » : une exigence dit « doit », une option dit « peut ».
+- **Paragraphe** : un sujet, 6 phrases au plus. Texte complexe → liste verticale.
+- **Groupe nominal** : 3 noms au plus (« file des jobs du runner du builder » → découper).
+- Ne pas omettre sujet, verbe ni article pour raccourcir.
+- **Avertissement** : commencer par la condition ou l'ordre (« Si le pool est saturé, … »).
+- Identifiants, routes, types, codes d'erreur : en `code`, écrits comme dans le code.
+
+Gabarit (sections dans cet ordre ; omettre une section vide) :
+1. **Résumé** : 3 à 5 phrases (quoi, pour qui, pourquoi).
+2. **Concepts** : un terme par ligne avec sa définition, puis un diagramme des relations (`classDiagram` ou `flowchart`).
+3. **Fonctionnement** : un diagramme par flux ou cycle de vie (`sequenceDiagram`, `stateDiagram-v2`, `flowchart`), puis le texte qui l'explique.
+4. **Exigences** : numérotées, une par ligne, vérifiables (« X doit … »).
+5. **Décisions** : les Dn concernés, en renvoi ; ne pas recopier le registre.
+6. **Interfaces** : routes, schémas, configuration (forme dev classique).
+7. **Reste à faire** et questions ouvertes.
+
+Mermaid :
+- Tout concept avec plus de deux acteurs, un cycle de vie ou un flux reçoit un diagramme. Jamais d'art ASCII ; le convertir quand on touche la page.
+- Un diagramme = une idée, 15 nœuds au plus, libellés courts avec les mots du texte.
+- `flowchart` : en-tête `---` / `config:` / `  layout: elk` / `---`, comme les diagrammes existants.
+
+Retouche d'un doc existant :
+- Garder intacts les numéros Dn, les décisions, les liens et les titres cités ailleurs (grep avant de renommer un titre).
+- Réécrire en STE les phrases floues ; ne pas reformuler une phrase déjà claire.
+- Supprimer une redite ou un historique périmé seulement si le registre de décisions ou git le garde.
+- Un choix qui revient à Shan ne se tranche pas : il va dans « Reste à faire ».
+
 ## Langues
 
 - **Code et commentaires de code : ANGLAIS. RÈGLE ABSOLUE, ZÉRO EXCEPTION. RÉPÉTÉE ET RENFORCÉE (2026-09-22, après récidives).**
@@ -95,6 +139,12 @@ Cause réelle, 5ᵉ fois : un build Rust lancé depuis un terminal vit dans le c
 - **`task fmt` avant chaque commit, `task fmt:check` = job CI `fmt`.** Rust → `cargo fmt` ; intérieur des `rsx!` → `dx fmt` via le wrapper gardé `crates/pnex-frontend/scripts/rsx_fmt.py`.
 - **Jamais `dx fmt` à la main** (bugs de recollage : commentaires déplacés/dupliqués, tokens perdus, non-convergence ; `--check` réécrit les fichiers). Détail : `docs/architecture/rsx-fmt.md`.
 - Fichier refusé par `task fmt` → réécrire la construction fautive (liste dans rsx-fmt.md : `{match … => rsx!{}}` en bloc, expression multi-ligne en attribut, handler `let … else { return; };` sur une ligne, `with_mut` multi-ligne…). Ne jamais contourner la garde.
+
+## Passe STE sur `docs/` (en cours depuis 2026-11-20)
+
+- Boucle `/loop` en auto-compaction : **un doc par itération**, au gabarit ci-dessus, puis un commit local `docs(<scope>): restructure <doc> in STE with diagrams` avec chemins explicites. Pas de push : Shan relit et pousse.
+- Fait = `git log --oneline --grep 'in STE with diagrams'`. Ordre : les docs centraux d'abord (`operational-platform`, `ontology`, `flow-engine`, `iam`, `api-contract`, `security`, `data-pipelines`, `ingestion`, `ai-assistant`, `design-system`), puis le reste de `docs/architecture/` par ordre alphabétique, puis `docs/*.md`.
+- Les journaux datés (`audit-*`, `test-grandeur-nature-*`, `*-recette`, `docs/bench/`) reçoivent seulement un résumé et des diagrammes : on ne réécrit pas un constat daté.
 
 ## graphify
 
