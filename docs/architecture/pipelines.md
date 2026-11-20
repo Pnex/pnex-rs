@@ -763,8 +763,8 @@ tests:
 
 **Lots du moteur non finis :**
 
-- PE5.5 : `/site-recipes`, la page « Sites web » et `pnex_core::default_rules` existent encore.
-- PE7 : les routes de lecture `/markets/*` existent encore à côté des requêtes nommées.
+- PE5.5 (choix de Shan, 2026-11-20) : la page « Sites web » reste. Elle garde l'édition visuelle, les captures d'écran du run et la description des actions sur la page. Seul le stockage change : une règle devient un pipeline avec `browse`, après D934. `/site-recipes` disparaît alors, pas l'UI.
+- PE7 (choix de Shan, 2026-11-20) : les routes de lecture `/markets/*` restent, car market-advisor les lit. Elles lisent les nouvelles tables. Écarts connus : `/markets/bars` ne lit pas `dukascopy_ohlcv_1m`, et le contrôle « instrument connu » d'une décision lit encore `market_history_partitions`.
 - PE8 : mesure autour d'événements et chaînes candidates dans `/analysis`, note de séance en règle.
 - PE9 : `HOST_DEBT` à vider (5 lignes), suppression de `market_history_partitions` et de `per_object_cursor`, lexique (Étape, Table de travail, Sonde, Requête nommée), fiches de l'assistant.
 - D934 : une org ne peut pas écrire un pipeline du moteur. `/api/v1/pipelines` sert le document D571.
