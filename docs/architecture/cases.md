@@ -1,6 +1,6 @@
 # Dossiers d'enquête
 
-Décisions K1–K64, GS1–GS17, D904–D911. Liens : `ontology.md` (D176–D191 : types, liens temporels D179, provenance D184, requête D185, packs D190), `pages.md` (P5, P6, P13), `proposals.md` (boîte commune), `media.md` (D271–D280 : apparitions, déclarations), `media.md` §3.12 (K19 variante A), `partners.md` (dossiers de veille D426–D431), `markets-research.md` (§3.14 : cœur causal réutilisé), `discourse-analysis.md`, `security.md`, `ai-assistant.md` §9. Benchmark : `docs/bench/dossier-enquete.md` et `docs/bench/dossier-enquete/`.
+Décisions K1–K64, GS1–GS17, D904–D911. Liens : `ontology.md` (D176–D191 : types, liens temporels D179, provenance D184, requête D185, packs D190), `pages.md` (P5, P6, P13), `proposals.md` (boîte commune), `media.md` (D271–D280 : apparitions, déclarations), `media.md` §3.12 (K19 variante A), `partners.md` (dossiers de veille D426–D431), `markets-research.md` (§3.14 : cœur causal réutilisé), `discourse-analysis.md`, `security.md`, `ai-assistant.md` §9. Benchmark : `docs/journal/bench/dossier-enquete.md` et `docs/journal/bench/dossier-enquete/`.
 
 ## 1. Résumé
 
@@ -487,7 +487,7 @@ Le reste (édition d'un événement, d'une note, d'un rôle) passe par `/api/v1/
 - **Enquête média** : chronologie des citations, détecteurs de discours K44 avec vérification mot pour mot, comparateur, motifs d'écart, réponse de la personne.
 - **Chaînes causales** : jeu d'incidents étiquetés et mesure McNemar avant d'activer le détecteur par défaut.
 - **Sous-dossiers** : découper les dossiers de `pnex-france-overview` par l'API (GS-L7).
-- **Graphe** : licences npm à consigner dans `docs/inventory.md` ; colonne des isolés coupée au bord quand il y a peu de nœuds reliés.
+- **Graphe** : licences npm à consigner dans `docs/journal/inventory.md` ; colonne des isolés coupée au bord quand il y a peu de nœuds reliés.
 - **Export** : vérification de divergence SHA-256 des pièces ; JSON canonique RFC 8785 exact (aujourd'hui clés triées seulement) ; réimport entre orgs.
 
 Choix de Shan :

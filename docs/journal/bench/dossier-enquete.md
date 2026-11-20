@@ -3,7 +3,7 @@
 **Date :** 2026-10-12 · **Pour :** PRD `docs/architecture/cases.md`
 (refonte de l'écran dossier, phase 0 « benchmark open source »).
 **Fiches complètes** (une par projet, 9 sections, références
-`chemin:ligne`) : `docs/bench/dossier-enquete/*.md`. Ce fichier en est la
+`chemin:ligne`) : `docs/journal/bench/dossier-enquete/*.md`. Ce fichier en est la
 synthèse et la seule partie à lire pour décider.
 
 ## 0. Méthode et limites

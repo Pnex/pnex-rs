@@ -317,7 +317,7 @@ Il a relevé SEC-11 à SEC-14. Points sous le seuil restés ouverts :
 
 ### Audit du dépôt du 2026-11-06
 
-Détail et correctifs dans `audit-2026-11-06.md` (référence entre parenthèses). ✔ = relu dans le code à la main.
+Détail et correctifs dans `docs/journal/audit-2026-11-06.md` (référence entre parenthèses). ✔ = relu dans le code à la main.
 
 | # | Sév. | Finding | Règle | Statut |
 |---|---|---|---|---|

@@ -190,7 +190,7 @@ PE5.4 est le seul lot en cours au 2026-11-20 (`pipelines.md`). D786, D801 et les
 | P2.34 | Applications dans PneX (D506–D513) | Codé, en pause. | `app-builder.md` §7 |
 | P2.35 | Recherche d'investissement | Codé en grande partie. | `markets-research.md` §7 |
 | P2.36 | Plateforme opérationnelle (OP1–OP15) | Voir §1. | `operational-platform.md` §11 |
-| P2.37 | Audit du 2026-11-06 | Constats corrigés le 2026-11-07 (SEC-67 à SEC-79). | `audit-2026-11-06.md` |
+| P2.37 | Audit du 2026-11-06 | Constats corrigés le 2026-11-07 (SEC-67 à SEC-79). | `docs/journal/audit-2026-11-06.md` |
 | P2.38 | Chaîne de livraison logicielle | PRD proposé. | `software-delivery.md` §7 |
 | P2.39 | Pièces et documentation | PD0–PD1c codés. | `parts-docs.md` §7 |
 

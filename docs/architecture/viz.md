@@ -308,7 +308,7 @@ Carte et documents :
 - **D39** : attachements de médias et de tableaux de bord à un site. Portés par D42.
 - **D40** : canevas libre en pixels et traits visuels.
 - **D41** : bibliothèque de widgets par org, copiée à la pose.
-- **D42, D43** : couche d'organisation et placements multi-devices, dans `docs/inventory.md`.
+- **D42, D43** : couche d'organisation et placements multi-devices, dans `docs/journal/inventory.md`.
 
 Surfaces et contrôles :
 

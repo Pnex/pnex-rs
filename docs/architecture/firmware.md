@@ -385,7 +385,7 @@ Le crate `pnex-node-control` enregistre les trois types dans le moteur de flows 
 
 ## 5. Décisions
 
-Décisions générales : D5 (artefacts en base, S3 en option), D6 (pas de rétention d'artefact), D13 (M2M à l'edge), D17 (downlink borné au manuel et aux flows de l'utilisateur), D19 (Rauthy), D44–D48 (`edge.md`), D70 (TLS), D128 (une source d'écriture par pin), D153–D156 (identité device, Noise, `security.md`). Registre : `docs/inventory.md`.
+Décisions générales : D5 (artefacts en base, S3 en option), D6 (pas de rétention d'artefact), D13 (M2M à l'edge), D17 (downlink borné au manuel et aux flows de l'utilisateur), D19 (Rauthy), D44–D48 (`edge.md`), D70 (TLS), D128 (une source d'écriture par pin), D153–D156 (identité device, Noise, `security.md`). Registre : `docs/journal/inventory.md`.
 
 Décisions du firmware générique, gardées pour les renvois du code :
 

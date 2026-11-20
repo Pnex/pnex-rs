@@ -6,7 +6,7 @@ env:
 
 # Firmware merged into the monorepo (firmware/) + toolchain pinned to
 # its venv when it exists (otherwise `pio` from PATH — a potentially
-# divergent install: see docs/observations.md O7). Used by
+# divergent install: see docs/journal/observations.md O7). Used by
 # dev:backend and the fw:* tasks.
 vars:
   # Every heavy build (cargo, dx, docker buildx) runs through the guard:

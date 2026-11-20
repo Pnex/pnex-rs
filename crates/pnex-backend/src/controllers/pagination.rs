@@ -1,4 +1,4 @@
-//! Pagination + search for the lists — decision D14 (docs/inventory.md):
+//! Pagination + search for the lists — decision D14 (docs/journal/inventory.md):
 //! **all** API lists return the `{count, next, previous, results}` envelope
 //! and accept a multi-field `search` parameter. Filters use the Axum
 //! `Query<T>` extractor + the SeaORM paginator (`count()` /

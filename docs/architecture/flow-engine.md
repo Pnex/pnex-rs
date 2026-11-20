@@ -248,7 +248,7 @@ Tests de référence : `tests/flows.rs::deploy_edit_rollback_cycle_with_runtime`
 
 ## 5. Décisions
 
-- **D18** : moteur de flows sur `edgelink-core`, binaire maison supervisé (mode B), rechargement à chaud par `SIGUSR1` (`inventory.md`).
+- **D18** : moteur de flows sur `edgelink-core`, binaire maison supervisé (mode B), rechargement à chaud par `SIGUSR1` (`docs/journal/inventory.md`).
 - **D13, D17** : frontière d'écriture device. D17 est amendé : `device_write` écrit depuis un flow déployé.
 - **D102** : la demande caméra est tenue par worker source. La poussée `CameraConfig` passe par le bus D107.
 - **D106** : plan de contrôle et plan d'exécution séparés, sharding par org, contrôleur élu (§3.4).

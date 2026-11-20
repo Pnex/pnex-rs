@@ -5,7 +5,7 @@
 //!
 //! Algorithms follow MovingPandas (BSD-3-Clause, © MovingPandas developers):
 //! `ObservationGapSplitter` (strict `>` gap) and `TopDownTimeRatioGeneralizer`
-//! (Meratnia & de By). See docs/bench/dossier-enquete/movingpandas.md.
+//! (Meratnia & de By). See docs/journal/bench/dossier-enquete/movingpandas.md.
 
 pub mod detect;
 

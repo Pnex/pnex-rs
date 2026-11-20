@@ -189,7 +189,7 @@ Le test d'un fournisseur rend les mêmes codes, plus `llm-provider-no-key` et `l
 
 | # | Décision |
 |---|---|
-| A1 | Tranche v1 (D20b, `docs/inventory.md`) : chat, fournisseur par org, lecture O2, flows en brouillon |
+| A1 | Tranche v1 (D20b, `docs/journal/inventory.md`) : chat, fournisseur par org, lecture O2, flows en brouillon |
 | A2 | UI = panneau flottant global, monté dans `pages/shell.rs` |
 | A3 | Levée. Remplacée par D116 puis D119 : défaut de l'org, sinon non configuré. Le kill-switch `PNEX_AI_ENABLED` reste |
 | A4 | Devices en lecture seule : l'assistant n'envoie aucune commande (frontière D17, étendue par D143) |

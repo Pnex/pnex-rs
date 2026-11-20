@@ -1572,7 +1572,7 @@ pub const AGENTS_MAX: i64 = 20;
 pub const MISSIONS_MAX: i64 = 200;
 /// Most parts of one post's video (16 × 30 min, O92).
 pub const VIDEO_PARTS_MAX: u32 = 16;
-/// Most posts an org's video registry keeps (observations.md O89).
+/// Most posts an org's video registry keeps (docs/journal/observations.md O89).
 pub const VIDEOS_MAX: i64 = 500_000;
 
 /// Largest captured video (bytes).
