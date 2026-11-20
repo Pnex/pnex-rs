@@ -19,15 +19,20 @@
 
 Tout document de `docs/` (spec technique, PRD, architecture) suit l'ASD-STE100 adapté au français. Dosage : environ 80 % de prose STE, 20 % de forme dev classique (tableaux, blocs de code, routes, YAML, schémas).
 
-Écriture (d'après STE Issue 9) :
-- **Un mot = un sens** : le lexique de `design-system.md` §7 et les termes définis dans la section Concepts du document. Jamais de synonyme pour varier le style.
-- **Phrases courtes** : 20 mots au plus dans une procédure (une instruction par phrase, à l'impératif), 25 au plus dans une description.
-- **Voix active** : le sujet fait l'action. Passif seulement si l'acteur est inconnu.
-- **Temps simples** : présent, passé composé, futur. Pas de conditionnel ni de « il conviendrait de » : une exigence dit « doit », une option dit « peut ».
-- **Paragraphe** : un sujet, 6 phrases au plus. Texte complexe → liste verticale.
-- **Groupe nominal** : 3 noms au plus (« file des jobs du runner du builder » → découper).
-- Ne pas omettre sujet, verbe ni article pour raccourcir.
-- **Avertissement** : commencer par la condition ou l'ordre (« Si le pool est saturé, … »).
+Écriture (ASD-STE100 Issue 9, 2025-01-15 ; numéro de règle entre crochets) :
+- **Un mot = un sens** [1.3, 1.11, 9.4] : le lexique de `design-system.md` §7 et les termes définis dans la section Concepts du document. Jamais deux noms pour la même chose, jamais de synonyme pour varier le style. Le lexique tient lieu de dictionnaire STE (qui n'existe qu'en anglais).
+- **Termes techniques** [1.9, 1.10] : courts et clairs ; pas de jargon d'équipe ni d'argot. Un terme nouveau est défini dans Concepts avant son premier emploi.
+- **Une action = un verbe** [3.7] : « supprimer le job », jamais « procéder à la suppression du job ».
+- **Phrases courtes** : 20 mots au plus dans une procédure [5.1], 25 dans une description [6.3]. Un identifiant, un nombre avec son unité, un titre ou un texte entre parenthèses compte pour un mot [8.5, 8.6].
+- **Procédure** : une instruction par phrase [5.2], à l'impératif [5.3]. Si le lecteur doit d'abord connaître une condition, la phrase commence par elle, suivie d'une virgule [5.4]. Une note informe, elle ne donne jamais d'ordre [5.5].
+- **Voix active** [3.6] : le sujet fait l'action. Passif seulement dans une description, et si l'acteur est inconnu.
+- **Temps simples** [3.2, 3.4] : présent, passé composé, futur ; pas de construction verbale complexe. Pas de conditionnel ni de « il conviendrait de » : une exigence dit « doit », une option dit « peut ».
+- **Description** : donner l'information pas à pas, un sujet par phrase [6.1] ; des mots-clés qui structurent [6.2]. Paragraphe : un seul sujet [6.5], 6 phrases au plus [6.6].
+- **Texte complexe → liste verticale** [4.3] ; lier les phrases d'un même sujet par des mots de liaison [4.4].
+- **Groupe nominal** [2.1, 2.2] : 3 mots au plus (« file des jobs du runner du builder » → découper). Un nom technique plus long s'écrit en entier une fois, avec sa forme courte.
+- **Pas d'ellipse** [4.2] : ne pas omettre sujet, verbe ni article [4.5] pour raccourcir.
+- **Pas de point-virgule** [8.1] : couper en deux phrases.
+- **Avertissement** [7.1–7.3] : un mot de niveau (`**Danger :**` perte ou fuite de données, faille de sécurité ; `**Attention :**` panne, dégradation), puis l'ordre ou la condition, puis le risque.
 - Identifiants, routes, types, codes d'erreur : en `code`, écrits comme dans le code.
 
 Gabarit (sections dans cet ordre ; omettre une section vide) :
