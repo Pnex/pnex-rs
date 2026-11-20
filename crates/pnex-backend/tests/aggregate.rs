@@ -1,4 +1,4 @@
-//! Read-only aggregates (object-aggregates.md D579–D582), on an invented
+//! Read-only aggregates (viz.md D579–D582), on an invented
 //! ontology: the exact numbers of each metric and split, currencies kept
 //! apart, what a role may not read refused, the org boundary.
 //!

@@ -1,4 +1,4 @@
-//! Read-only aggregates of an ontology query (object-aggregates.md D579–D582):
+//! Read-only aggregates of an ontology query (viz.md D579–D582):
 //! the selection of `query::plan`, its masks included, then one `GROUP BY`.
 //! Keys are checked against the schema before entering the text; values are
 //! always bound.

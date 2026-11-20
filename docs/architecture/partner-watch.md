@@ -120,7 +120,7 @@ Un run `snapshot` refusé ne ferme jamais rien.
 
 ### D304 — Pack `companies_fr` : réutiliser, pas créer
 
-> **Amendé 2026-10-21 (D343, `account-mapping.md`)** : les champs communs, `establishment_of`, `manages` et la hiérarchie `group` passent au pack mondial `companies` ; `companies_fr` 2.0.0 en devient le pack France.
+> **Amendé 2026-10-21 (D343, `crm.md`)** : les champs communs, `establishment_of`, `manages` et la hiérarchie `group` passent au pack mondial `companies` ; `companies_fr` 2.0.0 en devient le pack France.
 
 Pack générique (requires `investigation`) :
 

@@ -1162,7 +1162,7 @@ async fn a_profile_capture_lands_on_the_person_once_and_respects_objection() {
         )
         .await;
         assert_eq!(s, 200);
-        // The layer that reads captured profiles (account-mapping.md D538).
+        // The layer that reads captured profiles (crm.md D538).
         let (s, _) = call(
             &server,
             "POST",

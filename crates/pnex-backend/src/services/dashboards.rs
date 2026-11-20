@@ -57,7 +57,7 @@ fn validate_dashboard_write(
 }
 
 /// The aggregate sources of a dashboard: a query the org's schema knows, never
-/// a set, which only a screen of an application has (object-aggregates.md
+/// a set, which only a screen of an application has (viz.md
 /// D583). Checked without masks: the reader's rights apply at each read.
 async fn check_objects_sources(
     db: &DatabaseConnection,

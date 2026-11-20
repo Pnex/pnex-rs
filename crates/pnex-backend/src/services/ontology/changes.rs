@@ -27,7 +27,7 @@ use crate::services::openobserve::{
 };
 
 pub const OBJECT_CHANGES_STREAM: &str = "object_changes";
-/// One row per change of a property with a history (sales-dashboards.md
+/// One row per change of a property with a history (crm.md
 /// D722): `before` and `after` of the journal are text, not to be grouped.
 pub const OBJECT_TRANSITIONS_STREAM: &str = "object_transitions";
 const WINDOW_US: i64 = 365 * 24 * 3600 * 1_000_000;

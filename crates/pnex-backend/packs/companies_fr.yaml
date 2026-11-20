@@ -1,5 +1,5 @@
 # Country pack "French companies" (partner-watch.md D304–D306,
-# account-mapping.md D343): the French specifics on top of the worldwide
+# crm.md D343): the French specifics on top of the worldwide
 # `companies` pack. A legal unit carries its SIREN and its French codes,
 # an establishment its SIRET; the shared fields (country, NACE activity,
 # headcount range, status, dates) are filled from them by the import.
@@ -14,7 +14,7 @@
 # establishments on the map, officers and holdings. Only known legal units
 # are enriched; a mandate that ended is not closed by it (incremental).
 # Since 2.1.0 the group structure comes from two worldwide sources
-# (account-mapping.md D331), each import taking the known companies in
+# (crm.md D331), each import taking the known companies in
 # turn: GLEIF gives the LEI of a SIREN and its declared direct and ultimate
 # parents (`subsidiary_of`, confirmed), and creates the parents it names
 # (French ones by SIREN, others by LEI); Wikidata gives parents and

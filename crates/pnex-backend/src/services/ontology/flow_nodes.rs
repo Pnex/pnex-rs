@@ -164,7 +164,7 @@ async fn resolved_filters(
     Ok(filters)
 }
 
-/// `ontology_aggregate` (object-aggregates.md D587). A deployed flow reads
+/// `ontology_aggregate` (viz.md D587). A deployed flow reads
 /// what its deployer's org holds, as `query` does.
 pub async fn aggregate(
     db: &DatabaseConnection,

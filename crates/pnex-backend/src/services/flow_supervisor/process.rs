@@ -132,7 +132,7 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_PIPELINE_ASK_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/pipeline-ask"),
             )
-            // Company name → SIREN (account-mapping.md D332).
+            // Company name → SIREN (crm.md D332).
             .env(
                 "PNEX_FLOW_ORG_RESOLVE_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/org-resolve"),

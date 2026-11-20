@@ -1,5 +1,5 @@
 ### Contrat API Studio — parcours de visite 3D versionnés (mode panorama).
-### Cf. docs/architecture/studio.md. Les assets (plans d'étage kind
+### Cf. docs/architecture/viz.md. Les assets (plans d'étage kind
 ### `floorplan`, panoramas kind `panorama`) restent des media_assets
 ### référencés par UUID — jamais dupliqués (D21).
 ###

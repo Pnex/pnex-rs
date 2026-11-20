@@ -124,7 +124,7 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
     (
         "pnex-backend/src/services/network_connections.rs",
         &["person", "organization", "knows", "employs"],
-        "a contact's connections kept as investigation people, known by the contact and proposed at an organization (account-mapping.md D976); to move into keys the prospecting pack declares, with the person match",
+        "a contact's connections kept as investigation people, known by the contact and proposed at an organization (crm.md D976); to move into keys the prospecting pack declares, with the person match",
     ),
     (
         "pnex-backend/src/services/mail/invitations.rs",

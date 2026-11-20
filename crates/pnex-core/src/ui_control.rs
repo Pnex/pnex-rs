@@ -1,4 +1,4 @@
-//! Org controls (D125–D127, `docs/architecture/surfaces-controls.md`):
+//! Org controls (D125–D127, `docs/architecture/viz.md`):
 //! the write side of the surfaces. Pure and wasm-safe (serde only).
 //!
 //! A surface (dashboard card, annotation) never writes a pin: it writes the

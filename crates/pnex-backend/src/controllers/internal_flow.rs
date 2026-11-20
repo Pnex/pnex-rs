@@ -904,7 +904,7 @@ async fn flow_web_search(
 }
 
 /// `POST /internal/flow/org-resolve` — one lookup of a deployed
-/// `org_resolve` node (account-mapping.md D332). A failed lookup answers
+/// `org_resolve` node (crm.md D332). A failed lookup answers
 /// 200 on port 2; only a forged or stale node is refused.
 async fn flow_org_resolve(
     State(ctx): State<AppContext>,

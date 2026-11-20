@@ -1,4 +1,4 @@
-//! Prospecting opposition list (account-mapping.md D341, minimum): one
+//! Prospecting opposition list (crm.md D341, minimum): one
 //! fingerprint per row, `person:<uuid>` or a canonical profile address.
 //! Profile captures (D333) read it and refuse; it outlives the person.
 

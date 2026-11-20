@@ -2,7 +2,7 @@
 
 > Statut : **proposé** (2026-10-21, versé au dépôt le 2026-10-27) · Décisions **D468–D483** · Lots **DD0–DD7**
 > Dépend de : ontologie 0.2.0 (D176–D191), dossiers (K1–K64), `companies_fr` (D304–D306), imports déclaratifs (D301), recherche documentaire P1 (P2.18), orchestrateur d'analyses média (D212–D214), revue « à valider » (D316), propositions (D367, D371–D377).
-> Numérotation : rédigé à l'origine en D329–D344, plage déjà prise par `account-mapping.md` ; renuméroté à l'identique (D329 → D468 … D344 → D483).
+> Numérotation : rédigé à l'origine en D329–D344, plage déjà prise par `crm.md` ; renuméroté à l'identique (D329 → D468 … D344 → D483).
 
 ---
 
@@ -303,7 +303,7 @@ Consolidation normée, évaluation d'entreprise (DCF, multiples), prévisionnel,
 Le PRD date du 2026-10-21 ; une partie du constat (§2–§3) a bougé depuis. À reprendre avant DD0 :
 
 - **D477 est déjà en grande partie construit** : la proposition est un objet du noyau (`proposals.md`, D367, D371–D377, livré 2026-10-22/23), et `object_upsert` sait proposer au lieu d'écrire (D375). D477 se réduit à brancher `fin_facts.proposed` et les extracteurs sur cette file, sans nouvelle table `proposals`.
-- **BODACC** : un import « Annonces légales (BODACC) » par SIREN existe dans `prospecting_b2b_fr` (`account-mapping.md` §10, CC4). DD5 le réutilise ou le déplace dans un pack commun plutôt que d'en écrire un second via `ingest`.
+- **BODACC** : un import « Annonces légales (BODACC) » par SIREN existe dans `prospecting_b2b_fr` (`crm.md` §3.5). DD5 le réutilise ou le déplace dans un pack commun plutôt que d'en écrire un second via `ingest`.
 - **Groupe et filiales** : `subsidiary_of` (GLEIF + Wikidata) est dans le socle `companies` (D331, D343) ; `finance` devrait dépendre de `companies`, pas seulement d'`companies_fr`.
 - **Lien `concerns`** : la clé est déjà prise par `quali_watch` (une seule cible, départ `finding`) ; `due_diligence` doit choisir un autre nom (même cas que `signal_about` en CC4).
 - **Lexique** : « Signal » est déjà employé (« Signal commercial », CC4) ; `red_flag` demande sa propre ligne au lexique pour ne pas créer deux sens.

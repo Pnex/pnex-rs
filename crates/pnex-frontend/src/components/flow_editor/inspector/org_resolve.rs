@@ -4,7 +4,7 @@ use super::*;
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::org_resolve::{OrgResolveConfig, CANDIDATES_MAX};
 
-// ─────────────── company name → SIREN (account-mapping.md D332) ───────────────
+// ─────────────── company name → SIREN (crm.md D332) ───────────────
 
 const INPUT: &str = "w-full px-2 py-1 border border-gray-300 rounded-lg text-sm";
 

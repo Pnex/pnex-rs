@@ -4,7 +4,7 @@
 |---|---|
 | Statut | Périmètre validé le 2026-11-03. OP1 en grande partie livré. OP2, OP3, OP5 (hors AN4) et OP9 livrés. État des lots au **§11** |
 | Numérotation | **D551…D568**, lots **OP1…OP15** |
-| Repose sur | `ontology.md`, `pipelines.md`, `iam.md`, `proposals.md`, `agents.md` (§3.3), `surfaces-controls.md`, `security.md` §8, `app-builder.md`, `external-apps.md` |
+| Repose sur | `ontology.md`, `pipelines.md`, `iam.md`, `proposals.md`, `agents.md` (§3.3), `viz.md`, `security.md` §8, `app-builder.md`, `external-apps.md` |
 | Sécurité | Chaque lot passe `security.md` §6. Un finding = une ligne SEC-n au §7 |
 
 ## Résumé
@@ -462,8 +462,8 @@ Décisions des lots : D791–D806 (OP2, OP3), D825–D832 (OP5), D833–D840 (OP
 |---|---|---|---|
 | OP1 | En grande partie livré | `pipelines.md` | voir le PRD |
 | OP2 | Livré (CN1–CN5) | `pipelines.md` §3.10 | choix du secret des webhooks, provisoire (`pipelines.md` §7) |
-| OP3 | Livré (G1–G7) | `governance.md` §7 | SAML à la première demande client, I4 général, SEC-80 ouvert |
-| OP5 | Livré (AN1–AN3) + agrégats | `analysis.md` §6, `object-aggregates.md` | AN4 (analyse sans code), règle → proposition (D829) |
+| OP3 | Livré (G1–G7) | `governance.md` §7 | SAML à la première demande client, I4 général |
+| OP5 | Livré (AN1–AN3) + agrégats | `analysis.md` §6, `viz.md` | AN4 (analyse sans code), règle → proposition (D829) |
 | OP9 | Livré (VG1–VG3) | `agents.md` §3.12 | voir le PRD |
 | OP4, OP6–OP8, OP10–OP15 | Non commencés | — | OP10 dépend aussi de P0.1 et P0.3 |
 

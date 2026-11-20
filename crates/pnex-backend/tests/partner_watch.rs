@@ -242,7 +242,7 @@ async fn natural_keys_extensions_and_hierarchy() {
     .await;
 }
 
-/// account-mapping.md D343: an org on `companies_fr` 1.0.0 (shared fields
+/// crm.md D343: an org on `companies_fr` 1.0.0 (shared fields
 /// and links owned by it) upgrades onto the worldwide `companies` pack,
 /// which takes those keys over; objects keep their values.
 #[tokio::test]
@@ -284,7 +284,7 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
     .await;
 }
 
-/// account-mapping.md D331: group links from GLEIF (LEI, declared parents,
+/// crm.md D331: group links from GLEIF (LEI, declared parents,
 /// confirmed) and Wikidata (parents and subsidiaries with a SIREN, to be
 /// validated); their pipelines ask every company known each run.
 #[tokio::test]
@@ -391,7 +391,7 @@ async fn group_links_from_gleif_and_wikidata() {
     .await;
 }
 
-/// account-mapping.md D337: a saved search of the company register, paged,
+/// crm.md D337: a saved search of the company register, paged,
 /// brings new targets (`target`) and leaves known accounts' status alone.
 #[tokio::test]
 #[serial]
@@ -507,7 +507,7 @@ async fn target_list_enters_new_accounts_as_targets() {
     .await;
 }
 
-/// account-mapping.md D330, D339: statuses carry their colour to the
+/// crm.md D330, D339: statuses carry their colour to the
 /// hierarchy, the graph and the map; the commercial group sums its users
 /// and lists the nodes with neither a contact nor a client status.
 #[tokio::test]
@@ -763,7 +763,7 @@ async fn web_presence_takes_websites_over() {
     .await;
 }
 
-/// account-mapping.md D335: the legal announcements of followed accounts
+/// crm.md D335: the legal announcements of followed accounts
 /// become signals linked to them, decoded, never reset once decided.
 #[tokio::test]
 #[serial]
@@ -1063,7 +1063,7 @@ async fn mock_registers() -> String {
     base
 }
 
-/// account-mapping.md D329: the B2B pack extends the company types and its
+/// crm.md D329: the B2B pack extends the company types and its
 /// commercial group follows subsidiaries, under each of their parents.
 #[tokio::test]
 #[serial]
@@ -3136,7 +3136,7 @@ fn gkg_zip() -> Vec<u8> {
     out.into_inner()
 }
 
-/// account-mapping.md D539: the world's press read once, kept for the
+/// crm.md D539: the world's press read once, kept for the
 /// accounts followed, one news item per article however many runs.
 #[tokio::test]
 #[serial]

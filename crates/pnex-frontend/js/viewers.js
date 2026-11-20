@@ -833,7 +833,7 @@ window.pnexViewers = {
 
 // ─────────────────────────────────────────────────────────────────
 // Tour (Studio) — single pannellum shared with `panorama` (S12
-// studio.md: no separate bundle). A single scene mounted at a time
+// viz.md: no separate bundle). A single scene mounted at a time
 // (S13): `switch` = destroy + re-mount. Hotspots are placed on the
 // glue side (synchronous JS closure): the click sets the global
 // `window.__pnexTourLastNav` (JSON string {seq, scene_id, floor_id})

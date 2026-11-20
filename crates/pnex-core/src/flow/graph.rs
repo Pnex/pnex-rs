@@ -227,7 +227,7 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ontology::flow::OntologyQueryConfig,
     },
-    /// Numbers over objects (object-aggregates.md D587).
+    /// Numbers over objects (viz.md D587).
     OntologyAggregate {
         #[serde(default)]
         config: crate::ontology::flow::OntologyAggregateConfig,
@@ -272,7 +272,7 @@ pub enum FlowNodeKind {
         config: crate::web_search::WebSearchConfig,
     },
     /// Company name → SIREN candidates from the public register; writes
-    /// nothing (account-mapping.md D332).
+    /// nothing (crm.md D332).
     OrgResolve {
         #[serde(default)]
         config: crate::org_resolve::OrgResolveConfig,

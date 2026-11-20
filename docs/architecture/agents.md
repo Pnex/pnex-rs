@@ -760,7 +760,7 @@ Principes retenus par la proposition :
 | D839 | Disjoncteur du validateur et réarmement | ✅ |
 | D840 | Après une lecture non fiable, pas d'écriture autonome | ✅ |
 
-Décisions liées, définies ailleurs : D123, D144 (`ai-assistant.md`, `security.md`), D221, D222 (`design-system.md`), D254, D258, D333, D341, D550 (`browser-agents.md`, `account-mapping.md`), D367 (`proposals.md`), D441 (`external-apps.md`), D563, D564, D998 (`operational-platform.md`).
+Décisions liées, définies ailleurs : D123, D144 (`ai-assistant.md`, `security.md`), D221, D222 (`design-system.md`), D254, D258, D333, D341, D550 (`browser-agents.md`, `crm.md`), D367 (`proposals.md`), D441 (`external-apps.md`), D563, D564, D998 (`operational-platform.md`).
 
 ## 6. Interfaces
 

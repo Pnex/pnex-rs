@@ -128,7 +128,7 @@ pub async fn cluster_pins(
         })
         .collect();
     let mut items = cluster_points(&points, cell_size_deg(q.zoom));
-    // Single pins wear the colour of their status (account-mapping.md D339).
+    // Single pins wear the colour of their status (crm.md D339).
     let singles: Vec<String> = items
         .iter()
         .filter_map(|i| i.id)

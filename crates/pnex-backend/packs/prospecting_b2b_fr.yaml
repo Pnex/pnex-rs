@@ -1,4 +1,4 @@
-# Country layer "B2B prospecting, France" (account-mapping.md D337, D343)
+# Country layer "B2B prospecting, France" (crm.md D337, D343)
 # of the generic `prospecting_b2b` pack. Convention: `<generic pack>_<country>`
 # is the country layer of a generic pack (like `companies_fr` over
 # `companies`): it holds only what is specific to the country, here the

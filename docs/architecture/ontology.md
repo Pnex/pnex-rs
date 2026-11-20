@@ -4,7 +4,7 @@
 |---|---|
 | Statut | Noyau livré en 0.2.0 (lots L0–L5, 2026-10-10). Actions D183 livrées le 2026-10-13. D367 et D368 livrés, D369 acté sans code |
 | Numérotation | **D176…D191**, **D367…D370**, **D589**. Décision « étiquettes et ontologie » sans numéro (§4) |
-| Repose sur | `inventory.md` D42 (couche Resource), D43 (placements), D69 (recherche), `media.md` (D159–D175), `viz-bases.md`, `ai-assistant.md` (D123, D142–D145), `security.md` (R1–R23) |
+| Repose sur | `inventory.md` D42 (couche Resource), D43 (placements), D69 (recherche), `media.md` (D159–D175), `viz.md`, `ai-assistant.md` (D123, D142–D145), `security.md` (R1–R23) |
 | Sécurité | Chaque changement passe `security.md` §6 |
 
 ## Résumé

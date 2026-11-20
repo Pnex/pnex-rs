@@ -1,4 +1,4 @@
-//! Home cards of the dashboards (D138, `docs/architecture/home-dashboards.md`):
+//! Home cards of the dashboards (D138, `docs/architecture/viz.md`):
 //! one widget of type [`HOME_WIDGET_TYPE`] = one composite card (light,
 //! thermostat, shutter…) driving **N org controls named by role** and
 //! reading **sources named by role** (`SourceRef.role`). Pure and wasm-safe.

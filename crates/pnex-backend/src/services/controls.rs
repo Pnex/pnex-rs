@@ -1,4 +1,4 @@
-//! Org controls (D125–D127, `docs/architecture/surfaces-controls.md`) —
+//! Org controls (D125–D127, `docs/architecture/viz.md`) —
 //! value store and listeners.
 //!
 //! A surface writes the value of a control; the server validates it

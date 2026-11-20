@@ -1,4 +1,4 @@
-# Reference pack "Companies" (account-mapping.md D343): what a company is
+# Reference pack "Companies" (crm.md D343): what a company is
 # in every country. A legal unit is the `organization` of the investigation
 # pack, extended with fields every register has in some form; an
 # establishment is a `map_pin` tied to its legal unit by `establishment_of`;
@@ -16,7 +16,7 @@
 # officer across companies; no full birth date, no personal address.
 # Hierarchy (partner-watch.md D305): a tree computed on links (several
 # parents allowed), never containment.
-# Since 1.1.0 the group structure lives here (account-mapping.md D331):
+# Since 1.1.0 the group structure lives here (crm.md D331):
 # `subsidiary_of` carries a control or consolidation relation as open sources
 # give it, without a share (`owns` stays for known holdings). Several
 # targets are allowed on purpose: a direct and an ultimate parent, or two

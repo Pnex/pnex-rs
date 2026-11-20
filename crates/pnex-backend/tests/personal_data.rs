@@ -1,4 +1,4 @@
-//! Personal data (crm.md D442–D447, account-mapping.md D341): masking by
+//! Personal data (crm.md D341, D442–D447): masking by
 //! role, erasure as a shell, the objection enforced on new links, and the
 //! retention queue of erasure proposals decided by a human.
 //!

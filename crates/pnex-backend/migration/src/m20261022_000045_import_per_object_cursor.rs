@@ -1,4 +1,4 @@
-//! Per-object imports take the objects in turn (account-mapping.md D331):
+//! Per-object imports take the objects in turn (crm.md D331):
 //! the last value queried by a scheduled run, the next run starts after it.
 
 use sea_orm_migration::prelude::*;

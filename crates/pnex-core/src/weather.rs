@@ -1,4 +1,4 @@
-//! Weather source node contract (D140, `docs/architecture/home-dashboards.md`):
+//! Weather source node contract (D140, `docs/architecture/viz.md`):
 //! config, allowlisted provider URLs and the normalization of each provider
 //! response into three stable payloads (current, daily, hourly). Pure and
 //! wasm-safe: the HTTP call lives in `pnex-node-weather`.

@@ -1,4 +1,4 @@
-//! Surface-declared controls (D131, `docs/architecture/surfaces-controls.md`).
+//! Surface-declared controls (D131, `docs/architecture/viz.md`).
 //!
 //! A surface declares, the engine registers: a dashboard control widget or
 //! an annotation `control` item without a control gets its **own** control

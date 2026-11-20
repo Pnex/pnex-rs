@@ -860,7 +860,7 @@ pub async fn update_many_with<C: ConnectionTrait>(
 }
 
 /// Colour of an object: its first coloured enum property that holds a
-/// value (account-mapping.md D339).
+/// value (crm.md D339).
 pub fn color_of(s: &OrgSchema, o: &objects::Model) -> Option<String> {
     s.object_type(&o.type_key)?
         .properties

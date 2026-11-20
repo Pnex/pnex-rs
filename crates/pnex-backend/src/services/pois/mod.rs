@@ -1,4 +1,4 @@
-//! POI-first map (D35–D39, PRD `docs/architecture/viz-bases.md`):
+//! POI-first map (D35–D39, PRD `docs/architecture/viz.md`):
 //! single write service for POIs (`map_pins`), **backend
 //! clustering** (D37) and **device GPS positions** (D38). Modelled on
 //! `services/flow.rs`: controllers (and future AI tools) go through here,

@@ -226,7 +226,7 @@ pub async fn query_ontology(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
     outcome(json!({ "count": r.count, "rows": r.rows }))
 }
 
-/// Numbers over the objects of a query (object-aggregates.md D587): the
+/// Numbers over the objects of a query (viz.md D587): the
 /// route's service, rights and refusals.
 pub async fn aggregate_objects(
     deps: &ToolDeps<'_>,

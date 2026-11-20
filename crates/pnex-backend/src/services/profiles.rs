@@ -1,4 +1,4 @@
-//! Profile captures (account-mapping.md D333) and the prospecting
+//! Profile captures (crm.md D333) and the prospecting
 //! opposition list (D341, minimum). A human asks, from a `person`'s page,
 //! one capture of one profile page on a social network; a browser agent of
 //! the org opens it once in its signed-in session and uploads the page

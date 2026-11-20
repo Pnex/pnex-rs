@@ -1,284 +1,496 @@
-# Suivi commercial : données personnelles et pack `crm` (D442–D452)
+# Suivi commercial : comptes, données personnelles et pack `crm`
 
-| | |
-|---|---|
-| Statut | **Livré** (lots DP, CRM1, CRM2, CRM4 ; CRM3 : mails livrés ; tableaux de bord : `sales-dashboards.md`, livrés, volet clos le 2026-11-06). Flows essayés sur le vrai runtime : `e2e/tests/crm.spec.ts` (2026-11-04) |
-| Déclencheur | Outillage commercial (P2.28) : après la cartographie et les signaux, le suivi des opportunités, des activités et des relances, sans ressaisie dans un second outil. Avant de vendre : D341 fini |
-| Repose sur | `account-mapping.md` (D329–D343, pack `prospecting_b2b`), `proposals.md` (D367, D371–D377), `ontology.md` (D176–D191, D368 réglages de pack, D370 libellés d'énumération), `iam.md` (D298 classification, D296 portées), `partner-watch.md` (nœuds ontologie D312) |
-| Numérotation | **D442…D452**, lots **DP**, **CRM1…CRM3** ; **D514…D517**, lot **CRM4** ; **D522** (2026-10-29) |
-| Revient sur | le non-objectif « Pas de CRM » d'`account-mapping.md` §2 (D448) |
+Décisions D329–D343, D442–D452, D514–D517, D522, D537–D539, D590, D591, D610, D611, D721–D727, D779, D976–D977. Liens : `ontology.md` (D176–D191, D368 réglages de pack, D370 libellés), `partner-watch.md` (D300–D316 : imports, clé naturelle, vue Hiérarchie, crawl, preuves), `browser-agents.md` (D254–D284), `agents.md` (D780–D790, recherche d'une personne D788), `pipelines.md` (D972–D973 pack `watch`, D996–D999), `operational-platform.md` (D998), `iam.md` (D296, D298), `proposals.md` (D367, D371–D377), `mail.md` (D453–D462, D518–D521), `viz.md` §3.5 (calculs sur des objets, D579–D588), `app-builder.md` (D506–D513), `cases.md` (chemins K51), `labor-market.md`.
 
-## 1. Le besoin en une phrase
+## 1. Résumé
 
-Suivre une affaire de la liste cible au contrat dans le même graphe que le compte : l'opportunité, qui y participe, ce qui a été fait et ce qu'il reste à faire, avec des relances préparées par la plateforme et envoyées par un humain. Avant cela, tenir les engagements de D341 sur les données personnelles.
+Le suivi commercial couvre un compte de la liste cible au contrat, dans le même graphe que l'ontologie. Le pack `prospecting_b2b` montre un compte comme un réseau daté : groupe, filiales, sites, contacts, recommandations et signaux. Le pack `crm` ajoute les pistes, les opportunités, les activités, les relances, les devis et les factures, avec une application et ses tableaux de bord. Le noyau donne seulement des briques génériques : classification, masquage, effacement, opposition, couleurs, couverture, historique d'étape. La plateforme prépare les textes. Un humain envoie, décide et valide.
 
-## 2. Non-objectifs
+## 2. Concepts
 
-- **Pas d'émission de facture légale ni de contrat** : la facture (numérotation sans trou, inaltérabilité, Factur-X, plateforme agréée de la réforme 2026) est émise par l'outil de facturation de l'org ; PneX suit les devis et les factures (D516, revu le 2026-10-29).
-- **Aucun envoi automatique** de mail ni de message sur un réseau social : la plateforme prépare, l'humain envoie et coche (règle des tickets, CGU des réseaux).
-- **Pas de surveillance automatique des personnes** (D254, D333 inchangés).
-- **Pas de playbook dans le pack** : étapes, critères de qualification, plan de relance et personas sont des données de l'org (règle « le pack donne la forme, l'org donne le playbook »).
-- **Pas de synchro CRM/ERP** dans ce PRD (D369, lot L6 de la note produit).
-- **Rien de propre au CRM dans le moteur** (D441) : le noyau gagne seulement des briques génériques (classification, masquage, effacement, jetons de date).
+- **Compte** : une `organization` du pack mondial `companies`. Aucun type « entreprise » ou « compte » à côté (D304).
+- **Statut commercial** (`account_status`) : `customer`, `prospect`, `target`, `former_customer`, `competitor`, `partner`, `excluded`. Un **compte suivi** a le statut `customer`, `prospect` ou `target`.
+- **Couche pays** : pack `<pack générique>_<pays>` qui contient seulement ce qui est propre au pays (`companies_fr`, `prospecting_b2b_fr`).
+- **Persona** : rôle d'une `person` dans le comité d'achat (`decision_maker`, `champion`, `sponsor`, `influencer`, `buyer`, `user`, `technical`, `other`). L'intitulé de poste reste sur `employs.position`.
+- **Couverture** : résumé calculé à la lecture sur une hiérarchie (sites clients, utilisateurs, contacts par persona, signaux).
+- **Espace blanc** : filiales et sites d'un groupe sans contact ni statut client.
+- **Signal commercial** (`sales_signal`) : ce qui a bougé sur un compte suivi. `kind` dit comment il a été détecté, `topic` dit de quoi il parle.
+- **Contact de liste** (`list_contact`) : une ligne d'une liste de salon, d'association ou de salariés. Ce n'est pas une `person` du graphe.
+- **Rendez-vous** (`meeting`) : rencontre avec un compte, ses participants, son enregistrement et son compte rendu.
+- **Piste** (`lead`) : une demande ou un contact pas encore qualifié. Elle devient une opportunité par l'action `convert`.
+- **Opportunité** (`opportunity`) : une affaire suivie avec un compte, de `discovery` à `won` ou `lost`.
+- **Activité** (`activity`) : ce qui est fait ou à faire (appel, mail, rendez-vous, message réseau, note, tâche).
+- **Plan de relance** : les objets `follow_up_step` de l'org (jour, nature, consigne).
+- **Effacement** : retrait des données personnelles d'un objet, qui reste en **coquille** en lecture seule.
+- **Opposition** : refus de prospection d'une personne, gardé en empreintes dans la liste `prospecting_oppositions`.
+- **Point de contact** (`contact_point`) : une propriété qui atteint une personne (adresse, téléphone, URL de profil).
 
-## 3. Données personnelles : fin de D341 (lot DP)
+```mermaid
+classDiagram
+  class Organization
+  class MapPin
+  class Person
+  class SalesSignal
+  class ListContact
+  class Meeting
+  class Lead
+  class Opportunity
+  class Activity
+  class Quote
+  class Invoice
+  Organization "1" --> "*" MapPin : establishment_of
+  Person --> Organization : employs, follows_account
+  SalesSignal --> Organization : signal_about
+  ListContact --> Organization : contact_of
+  Meeting --> Organization : meeting_with
+  Lead --> Organization : lead_of
+  Opportunity --> Organization : opportunity_with
+  Person --> Opportunity : involved_in
+  Activity --> Opportunity : activity_on
+  Quote --> Opportunity : quote_for
+  Invoice --> Opportunity : invoice_for
+```
 
-### D442 — Classification D298 codée
+## 3. Fonctionnement
 
-`PropertyDef` gagne `classification` : `public`, `internal` (défaut, omis), `personal`, `sensitive` (liste fermée, iam.md D298). Les attributs de type de lien sont des `PropertyDef` : même champ.
+### 3.1 Packs et couches
 
-`ObjectTypeDef` gagne `title_classification` (même liste, défaut `internal`) : le titre d'une personne est son nom.
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart BT
+  inv[investigation] 
+  comp[companies]
+  compfr[companies_fr]
+  web[web_presence]
+  watch[watch]
+  pb[prospecting_b2b]
+  pbfr[prospecting_b2b_fr]
+  crm[crm]
+  comp --> inv
+  compfr --> comp
+  pb --> comp
+  pb --> web
+  pb --> watch
+  pbfr --> compfr
+  pbfr --> pb
+  crm --> pb
+  crm --> watch
+```
 
-Packs livrés classés : `investigation` (personne : alias, rôle, notes, titre ; `employs.position`), `prospecting_b2b` (personne : persona), `companies` (dirigeant : `manages` sans attribut personnel ajouté). Une valeur hors liste est refusée à l'installation (`field-invalid`).
+Le socle `companies` vaut pour tout pays (D343) : pays ISO 3166-1, LEI, classe NACE, effectif minimum et maximum, `subsidiary_of`, hiérarchie `group`. Une couche pays ajoute sa clé, ses codes et son registre. Son import remplit aussi les champs communs (NAF vers NACE, tranche vers effectif). Une clé passe d'une couche pays au socle à la mise à jour (`hands_over`), sans perte. Un pays sans couche utilise GLEIF, Wikidata, la saisie ou un fichier.
 
-### D443 — Masquage par rôle
+`prospecting_b2b_fr` joint `companies_fr` et `prospecting_b2b` : aucun des deux ne connaît l'autre. Un pack amène ses dépendances à leur version livrée avant de s'installer (`install_locked`).
 
-Deux permissions de lecture, inscrites au registre IAM :
+Versions livrées : `companies` 2.3.0, `companies_fr` 4.4.0, `prospecting_b2b` 4.5.1, `prospecting_b2b_fr` 4.1.0, `crm` 4.0.0.
+
+### 3.2 Groupe, couverture et couleurs
+
+`prospecting_b2b` étend `organization` (statut, utilisateurs actuels et potentiels, `last_revenue` et `revenue_year`, `target_score`), `map_pin` (`establishment_status`, utilisateurs) et `person` (`persona`, `review_on`). Il ajoute les liens `recommended` (qui a recommandé qui), `follows_account` (suiveur interne avec un `role` libre) et `uses_solution` (solution concurrente). La hiérarchie `sales_group` suit `subsidiary_of`, `owns` puis `establishment_of`.
+
+`subsidiary_of` dit un contrôle ou une consolidation, sans pourcentage. `owns` reste réservé aux participations connues. Ce lien n'a pas de cible unique : une mère directe, une mère ultime et deux sources en conflit restent côte à côte, avec leur provenance (D184). L'humain ferme le lien faux.
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  siren[Compte suivi, SIREN] --> lei[Import GLEIF par SIREN]
+  lei --> meres[Mères directe et ultime]
+  siren --> wd[Import Wikidata par SIREN]
+  wd --> prop[subsidiary_of à valider]
+  lei --> fil[Filiales GLEIF par LEI]
+  fil --> conf[subsidiary_of confirmé]
+  meres --> conf
+  prop --> humain[Un humain ferme le faux]
+```
+
+Les imports par objet prennent les objets à tour de rôle (`per_object_cursor`). Les filiales sont lues seulement depuis les comptes suivis. Une mère étrangère sans SIREN devient une `organization` de clé `lei` ou `wikidata`.
+
+La couverture se calcule à la lecture, à une date, comme la hiérarchie (D330). Une hiérarchie de pack déclare `sums`, `coverage` et `tallies`. La vue rend les totaux, les nombres par valeur colorée et l'espace blanc. Un rôle masqué voit le total sans la répartition par persona.
+
+Une propriété d'énumération peut porter `colors` : valeur vers un jeton de la palette fermée (`schema::COLORS`, D339). La hiérarchie, le graphe et la carte (points isolés) prennent la couleur de la première propriété colorée renseignée. `prospecting_b2b` colore `account_status` et `establishment_status`.
+
+### 3.3 Ingestion et organisation (D998)
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  subgraph Pipelines[Pipelines : collecte]
+    reg[Registre, BODACC, GLEIF, Wikidata]
+    gkg[Presse GDELT]
+    cap[Captures de profil et de salariés]
+    srch[Recherche d'une personne]
+  end
+  subgraph Flows[Flows : organisation]
+    score[Score de ciblage]
+    res[org_resolve]
+    sig[Signaux et thèmes]
+    pm[Score des profils]
+  end
+  reg --> score
+  reg --> sig
+  gkg --> sig
+  cap --> res
+  srch --> pm
+  res --> val[À valider]
+  pm --> val
+  sig --> val
+```
+
+Les pipelines des deux packs collectent et stockent le brut. Les flows du pack rapprochent, notent et proposent sur l'état courant. Le tableau dit où tourne chaque décision d'organisation aujourd'hui.
+
+| Décision | Où | Déclencheur |
+|---|---|---|
+| Score de ciblage (D336) | flow `Prospecting · target score` | toutes les 15 min, 500 organisations non notées du jour |
+| Société d'un contact de liste (D332) | flow `Prospecting · list contacts to companies` (`org_resolve`) | toutes les 15 min, 100 contacts |
+| Employeur d'un profil capturé (D538) | flow `Prospecting · captured profiles` | toutes les heures, 20 personnes |
+| Employeur d'un export réseau | flow `Prospecting · network export to companies` | toutes les 15 min, 100 personnes |
+| Employeur d'après l'entreprise du profil | flow `Prospecting · employers from profiles` (nom replié, sans LLM) | `ontology_trigger` sur `profile_company` |
+| Profil d'une personne (D788) | flows `identify people`, `score profiles`, `follow decisions` | action `find_profile`, `ontology_trigger`, horaire |
+| Thème d'une actualité (D539) | flow `Prospecting · news to topics` | toutes les heures |
+| Signal d'une page suivie (D335) | flow `Prospecting · watched pages to signals` | toutes les heures |
+| Nouvel établissement | flow `Prospecting · new establishments` | chaque matin |
+| Article rattaché à un compte | pipeline `press_gdelt` (filtre par nom) | écart justifié par le volume, au tableau D998 |
+| Relations d'un contact (D976) | code `services/network_connections.rs` | écart levé, code à retirer (§7) |
+
+Le pipeline de recherche d'une personne collecte. Les trois flows du pack notent le profil, proposent ou capturent, puis relancent la requête suivante (`pipeline_ask`, D999). Rescorer veut dire relancer la collecte.
+
+### 3.4 Listes de ciblage, de salon et score
+
+- **Ciblage** (D337) : l'import `targeting_list` de `prospecting_b2b_fr` lit une recherche enregistrée du registre, paginée jusqu'à 10 000 résultats. L'org remplace l'URL exemple par son profil de client idéal. Un nouveau SIREN entre en `target` par `defaults`, appliqués seulement à la création : le statut d'un compte connu ne change pas.
+- **Listes de salon ou d'association** : un fichier donne des `list_contact` (colonnes `list`, `name`, `job_title`, `company`, `city`, `postal_code`, `email`). Un flow cherche le SIREN de chaque société (`org_resolve`) et propose `contact_of`.
+- **Rapprochement** (D332) : le nœud `org_resolve` prend un nom et une ville ou un code postal. Il rend 0 à 5 candidats notés (nom 70, même code postal 20, siège dans la ville 15, autre site 5, société active 10). Il n'écrit rien. Ports : *trouvée* (80 au moins et 10 points d'avance), *à revoir*, *échec*. Plafond : 2 000 appels par jour et par org.
+- **Score** (D336) : les critères sont des objets `targeting_criterion` de l'org (propriété, opérateur, valeur, points). Le pack n'en livre aucun. Les fonctions Starlark `pb_criteres` et `pb_score` écrivent `target_score`, `score_detail` (une ligne par critère) et `scored_on`. Pas de ML : le score s'explique ligne par ligne.
+
+Le score porte sur les organisations seulement. `map_pin` est un type système qu'un flow n'écrit pas : l'explorateur filtre les sites sur leur effectif.
+
+### 3.5 Signaux, actualités et établissements
+
+```mermaid
+stateDiagram-v2
+  [*] --> to_validate : import, flow ou LLM
+  to_validate --> retained : un humain retient
+  to_validate --> dismissed : un humain écarte
+  retained --> [*]
+  dismissed --> [*]
+```
+
+Un signal garde sa source et l'extrait cité. Un import pose `to_validate` à la création seulement : une décision humaine n'est jamais écrasée. Sources :
+
+- **Annonces légales** : import BODACC par SIREN des comptes suivis, dépôts de comptes exclus. *Créations* donne `new_establishment`, *Radiations* `establishment_closure`, le reste `legal_notice`.
+- **Nouvel établissement** : l'import `company_establishments` lit les sites ouverts des comptes suivis par leur nom (`per_object.by_title`), car le registre n'en rend aucun par SIREN. Un site créé depuis moins de 30 jours devient un signal, une fois (clé `siret:<siret>`).
+- **Pages suivies** (`watched_page`) : le crawl marque une page dont le texte a changé. Le LLM de l'org choisit un thème de la liste de l'org et écrit un signal `page_changed`. Les pages d'un concurrent passent par le même chemin.
+- **Changement de poste** (D334) : un lien `manages` ouvert ou fermé au registre crée un signal `executive_change`. Une recapture qui donne une autre société propose de fermer l'ancien `employs`. `review_on` rappelle au suiveur de revérifier à la main.
+
+Les actualités de presse sont des `news_item` du pack `watch`, liées par `item_about` (D539, amendée par D972–D973). L'import `press_gdelt` lit les fichiers GKG des dernières 26 heures, une fois pour toutes les orgs. Il garde un article par compte et par jour quand son titre nomme le compte. Il écrit le crédit de la source sur chaque item. Le flow `news to topics` donne un thème ou écarte l'item. La couche France 4.1.0 écrit aussi des actualités depuis d'autres sources publiques (`decp_awards`, `sitadel_permits`, `amf_releases`, `icpe_inspections`, `boamp_tenders`).
+
+Le flow `Prospecting · signals digest` fait chaque matin un texte des signaux non notifiés. L'org ajoute son nœud de notification.
+
+### 3.6 Personnes : captures, listes de salariés, relations
+
+```mermaid
+sequenceDiagram
+  actor H as Membre
+  participant S as Serveur
+  participant A as Agent du membre
+  participant F as Flow du pack
+  H->>S: colle l'URL sur la fiche
+  S->>S: vérifie motif, opposition, plafond
+  S->>A: lance le pipeline de capture
+  A->>S: texte de la page (document)
+  S->>F: profile_to_read ou people_to_read
+  F->>S: propriétés et liens à valider
+```
+
+PneX ne surveille aucun profil et ne parcourt aucun graphe social (D254). Chaque capture part d'un humain, une page à la fois, dans la session déjà connectée de son agent.
+
+- **Profil d'une personne** (D333) : six réseaux reconnus (`browser_agent::profile_of`). Toute autre page reçoit `ext-target-not-profile`. Plafond compilé : 30 captures par jour, par org et par réseau (`ext-profile-daily-cap`). Le texte va dans un document `captured_text` lié à la personne. L'adresse devient un `identifier` relié par `uses_identifier`.
+- **Lecture du profil** (D538) : le flow `captured profiles` écrit poste et société sur la personne (`personal`). Il propose `employs` quand le registre trouve la société. Il ne crée aucune personne.
+- **Liste des salariés** (D779) : seule la page des salariés d'une entreprise est admise (`browser_agent::people_page_of`, sinon `ext-target-not-people-page`). L'agent fait défiler 5 écrans. Plafond : 10 listes par jour et par org (`ext-people-daily-cap`). Le flow `captured employee lists` écrit un `list_contact` par personne nommée et propose `contact_of`. Aucune `person` n'est créée.
+- **Export de profils réseau** : l'import *Network profiles export (file)* crée une personne par `profile_url` (unique, point de contact). Un flow cherche l'employeur au registre et le propose.
+- **Relations du membre connecté** : un pipeline du pack lit les relations directes du membre qui déploie le flow, 50 pages par jour. Chaque relation devient une personne de clé `profile_url`. Le flow `employers from profiles` la rattache à sa société.
+- **Recherche d'une personne** (D788, `agents.md`) : action `find_profile` sur la fiche, ou flow horaire pour les comptes cibles et prospects.
+
+Le texte capturé est purgé après 30 jours. Une personne opposée n'est ni capturée ni lue (`prospecting-opposed`).
+
+**Relations d'un contact (D976–D977) : retirées le 2026-11-18, code présent.** Le code lit les relations d'un contact déclaré en relation avec le membre. Il garde seulement les personnes d'une organisation qui porte l'étiquette du réglage `connections_keep_label`. Il écrit `knows` et propose `employs`. Le code restant :
+
+- la table `network_connections` (migration `m20261114_000152_network_connections`) et `services/network_connections.rs`.
+- les routes `GET`/`PUT /api/v1/extension/people/{id}/connection` et `GET`/`POST …/connections-captures`.
+- la règle par défaut `connections_capture` (`pnex-core` `default_rules.rs`, code `ext-connections-hidden`).
+- le réglage `connections_keep_label` de `prospecting_b2b` et le panneau de la fiche (`pages/ontology/profile_capture.rs`).
+
+### 3.7 Chemin d'introduction, rendez-vous et pages
+
+**Chemin d'introduction** (D338) : `GET /api/v1/ontology/path` avec `links` suit seulement les liens donnés, dans la marche récursive. `INTRODUCTION_LINKS` vaut `knows`, `recommended`, `employs`, `manages`, `member_of`, sur 4 sauts au plus. `from_links` donne plusieurs départs : les sources des liens ouverts de ce type (500 au plus), par exemple `follows_account`. Le chemin s'affiche surligné dans le graphe.
+
+**Rendez-vous** : `meeting` (date, `purpose`, `status` `planned`/`held`/`cancelled`, lieu, suite). Liens `meeting_with`, `takes_part_in` (côté `internal` ou `customer`), `recording_of` (média) et `covered` (critère du playbook). Un mail d'invitation crée ou déplace un rendez-vous par son `invitation_uid` (D484, `mail.md`). L'enregistrement suit le chemin des médias. L'étape `summarize` accepte un `focus` saisi par l'utilisateur. La hiérarchie `coaching` compte les rendez-vous par critère, jamais par personne.
+
+**Pages remplies depuis un objet** (D340, D452, D516) : un modèle de page de pack déclare `subject` et `link`. Ses balises (`{{prop:…}}`, `{{links:…}}`, `{{tree:…}}`, `{{coverage:…}}`, `{{white_space:…}}`) sont remplies à la création (`pnex_core::ontology::page_render`). La page est un instantané : pour la rafraîchir, on la recrée. Modèles : `account_plan`, `competitor_sheet`, `meeting_prep`, `meeting_debrief`, `opportunity_sheet`, `quote_sheet`. Export PDF par `page_pdf`.
+
+### 3.8 Pistes et opportunités
+
+```mermaid
+stateDiagram-v2
+  [*] --> new : saisie, fichier, liste de salon, boîte partagée
+  new --> contacted
+  contacted --> qualified
+  new --> disqualified
+  contacted --> disqualified
+  new --> converted : action convert
+  contacted --> converted : action convert
+  qualified --> converted : action convert
+  converted --> [*]
+  disqualified --> [*]
+```
+
+Une piste (D514) porte `company`, `contact_name`, `email`, `phone`, `message`, `source`. Son titre et ses coordonnées sont `personal`. Elle entre par :
+
+- la saisie ou un import.
+- une liste de salon (D590) : le salon (`show` du pack `watch`) nomme sa liste (`list`). Le flow `leads from trade show lists` crée une piste `new` par contact, liée par `from_list`. Être sur une liste n'est pas avoir été rencontré (`met_at`).
+- une boîte partagée choisie (D591) : un mail authentifié d'un inconnu crée une piste. Une personne connue ne fait pas de piste. Le texte va dans `message`, sans LLM.
+
+Une piste par adresse (D611) : les deux flows cherchent d'abord une piste à cette adresse. `lead.email` n'est pas `unique`, pour ne pas bloquer la saisie à la main.
+
+L'action `convert` (D515) appelle le flow modèle `CRM · convert a lead`. L'humain choisit le compte. Le flow crée une opportunité en `discovery`, de `ref` `lead:<id>`, et ne recopie aucune donnée personnelle. Une seconde conversion retrouve la même opportunité.
+
+```mermaid
+stateDiagram-v2
+  [*] --> discovery
+  discovery --> qualification
+  qualification --> proposal
+  proposal --> negotiation
+  negotiation --> won
+  discovery --> lost
+  qualification --> lost
+  proposal --> lost
+  negotiation --> lost
+  won --> [*]
+  lost --> [*]
+```
+
+Un humain change l'étape (D449). L'org renomme les étapes par D370. La qualification est une donnée de l'org : objets `qualification_criterion` et lien `qualified_on` (`unknown`, `partial`, `valid`). Le flow `missing criteria` écrit `missing_criteria`. Rien n'est bloqué.
+
+### 3.9 Activités, relances et digest
+
+```mermaid
+sequenceDiagram
+  participant P as Flow follow-up plan
+  participant D as Flow drafts
+  participant O as Flow drafts to the outbox
+  participant B as Boîte d'envoi
+  actor H as Commercial
+  P->>P: opportunité en qualification
+  P->>P: une activité to_do par étape du plan
+  D->>D: brouillon par le LLM de l'org
+  O->>B: mail en attente (clé crm:<ref>)
+  H->>B: relit, envoie ou écarte
+  H->>H: passe l'activité à faite
+```
+
+- **Plan de relance** (D450) : une activité `to_do` par étape active, due au jour de lancement plus le jour de l'étape. Une opportunité dont tous les contacts se sont opposés est sautée.
+- **Brouillons** : une activité `mail` ou `network_message` due d'ici demain reçoit un brouillon du LLM de l'org. Les messages réseau restent sur l'activité.
+- **Boîte d'envoi** (D522) : un brouillon de mail devient un mail en attente de la boîte choisie, 20 par heure au plus. Destinataires : les adresses des personnes impliquées, sauf les personnes opposées. Rien ne part sans un humain, sauf une boîte partagée réglée sur l'envoi direct (D520).
+- **Réponses** : le flow `replies to follow-ups` marque une relance faite quand une activité entrante arrive sur la même opportunité.
+- **Dernière activité** : une activité faite met à jour `last_activity` de son opportunité.
+- **Ma journée** (D451) : chaque matin, un texte avec les relances dues, les opportunités sans activité depuis 14 jours et les pistes `new`. Les jetons `$today-<n>` et `$today+<n>` (0 à 3650 jours) servent dans les filtres.
+
+### 3.10 Devis et factures
+
+```mermaid
+stateDiagram-v2
+  [*] --> issued
+  issued --> partially_paid
+  partially_paid --> paid
+  issued --> paid
+  issued --> overdue : due_on passée
+  partially_paid --> overdue : due_on passée
+  overdue --> paid
+  issued --> cancelled
+  paid --> [*]
+```
+
+L'outil de facturation de l'org émet la facture légale (D516). PneX suit le numéro, les montants et les dates. Un devis (`quote` : `draft`, `sent`, `accepted`, `refused`, `expired`) peut naître dans PneX par le modèle `quote_sheet`. Le flow `quotes and invoices due` (D517) marque un devis `sent` expiré et une facture en retard. Il crée une tâche par facture en retard (`ref` `invoice:<id>:overdue`). Rien ne lie devis, facture et étape : un devis accepté ne fait pas gagner l'opportunité.
+
+### 3.11 Données personnelles
+
+`PropertyDef.classification` et `ObjectTypeDef.title_classification` prennent `public`, `internal` (défaut), `personal` ou `sensitive` (D442). Deux permissions de lecture masquent les valeurs (D443) :
 
 | Permission | Plus bas rôle | Ce qu'elle laisse voir |
 |---|---|---|
 | `ontology.personal:read` | Lecteur | propriétés, attributs et titres `personal` |
 | `ontology.sensitive:read` | Administrateur | propriétés, attributs et titres `sensitive` |
 
-Un rôle personnalisé sans la permission reçoit les objets **caviardés** : propriétés et attributs de lien retirés, titre remplacé par `•••• <8 caractères de l'id>` (neutre, sans traduction), et la liste `redacted` des clés retirées sur l'objet. Points d'application : lecture d'un objet, résolution, liens, voisinage, chemin, impact, nœuds de la hiérarchie, requête D185, historique, flux des changements (D435), ensembles d'objets (D434), propositions (leurs objets), outils `query_ontology` et `get_object` de l'assistant ; le MCP passe par les mêmes routes. Une écriture ne touche jamais ce que son auteur ne peut pas lire : le titre, les propriétés et les attributs masqués restent tels quels (SEC-55).
+Sans la permission, l'objet arrive caviardé : valeurs retirées, titre `•••• <8 caractères de l'id>`, liste `redacted`. Le masque s'applique à toutes les lectures d'ontologie, aux dossiers, aux ensembles d'objets, aux propositions et aux outils de l'assistant. Une écriture ne touche jamais une valeur que son auteur ne peut pas lire (SEC-55).
 
-Étendu le 2026-10-26 : les autres parents d'un nœud de hiérarchie (`also_under`, masqués à la construction) et toutes les lectures des dossiers d'enquête (espace de travail, tableau, signaux, traces, propositions, relations, export, instantanés, journal des lectures, et les outils de l'assistant qui les lisent) passent par le même masque, un parcours du JSON qui masque tout objet (`id` + `type_key`) et tout lien qu'il nomme. Une page générée depuis un objet est remplie avec le masque de son auteur (SEC-53, 2026-10-27). Limite restante : elle garde le texte que son auteur pouvait lire ; la masquer pour ses lecteurs suivants demande la visibilité par objet (iam.md I5).
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TD
+  nuit[Purgeur horaire] --> q{Sans activité depuis retention_months ?}
+  q -- oui --> prop[Proposition object_erase]
+  prop --> h{Décision humaine}
+  h -- refusée --> garde[Gardée, période relancée]
+  h -- acceptée --> er[Effacement en coquille]
+  er --> opp[Empreintes dans la liste d'opposition]
+  er --> mails[Mails de l'adresse supprimés]
+  er --> src[Sources erase_sources effacées]
+  er --> autres[Autres détenteurs proposés]
+```
 
-### D444 — Base légale et durée de rétention : réglages du pack
+- **Rétention** (D444, D445) : réglages `legal_basis` et `retention_months` (36 par défaut, de 6 à 120) de `prospecting_b2b`. Une personne, une piste ou un contact de liste sans activité devient une proposition `object_erase`. Aucune règle d'org ne l'accepte.
+- **Effacement** (D446, D610) : `POST /ontology/objects/{id}/erase`. Les valeurs classées partent, `objects.erased_at` est posée, la coquille refuse toute écriture (`ontology-erased`). L'historique est relu caviardé. Le journal O2 garde l'ancien contenu jusqu'à sa rétention, sans le servir.
+- **Opposition** (D447, D610) : empreintes nom + compte (`title:<nom replié>@<id>`), `person:<uuid>`, adresses de profil et `contact:<sha256(org:valeur)>`. Le moteur refuse un lien qui recrée la même personne chez le même compte (`prospecting-opposed`). `object_upsert` ne crée pas un objet qui porte un point de contact opposé. Un import laisse la ligne de côté dès l'aperçu (`opposed_contact`).
+- **Repli des noms** : une seule table (`pnex_core::fold`) sert aux empreintes, à la recherche globale et à la requête D185.
+- **Rendez-vous** : effacer un participant propose le rendez-vous à l'effacement (`propose_erase_targets`). Accepté, il garde sa date, son statut et `invitation_uid`.
 
-Deux réglages D368 de `prospecting_b2b` :
+Un membre garde la main : la saisie et la réponse à quelqu'un qui écrit restent possibles. L'empreinte est une pseudonymisation salée par l'id de l'org, sans clé secrète. PneX ne génère pas le registre des traitements : l'org le tient pour tous ses outils.
 
-- `legal_basis` (texte, défaut `legitimate_interest_b2b_prospecting`) : affichée sur la fiche d'une personne ;
-- `retention_months` (nombre, défaut 36, de 6 à 120).
+### 3.12 Tableaux de bord
 
-### D445 — File de rétention : des propositions d'effacement
+L'application « Suivi commercial » du pack `crm` porte les écrans Pipeline, Chiffres, Résultats, Prévision, Passage par étape, Prospection, Salons, Opportunité, Pistes, Activités, Devis et factures. Ils utilisent le moteur d'agrégats (D580, D584).
 
-Chaque nuit, pour chaque org où `prospecting_b2b` est installé : une personne (ou une piste, D514) sans modification, sans lien ouvert ou fermé et sans capture depuis `retention_months` devient une **proposition d'effacement** (nouveau genre `object_erase` de D371) dans la boîte « à valider », avec sa dernière activité en preuve.
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  w[Écriture de stage] --> dates[closed_on, stage_entered_on en base]
+  w --> file[File du journal]
+  file --> o2[Stream O2 object_transitions]
+  o2 --> route[POST /ontology/transitions/query]
+  route --> ecran[Passage par étape, Prospection]
+  dates --> res[Résultats, Prévision]
+```
 
-- **Jamais acceptée par une règle d'org** (D377 refusé pour ce genre) : l'effacement est une action humaine.
-- Accepter = effacer (D446). Refuser = garder ; la date du refus compte comme une activité, la personne ne revient pas avant une nouvelle période.
-- Une seule proposition ouverte par personne.
+- **Historique d'étape** (D722) : l'option `history` d'une énumération interne (`opportunity.stage`, `lead.status`) écrit chaque changement dans le stream O2 `object_transitions`. L'écriture est au mieux. Le suivi commence à la version qui l'a livré, sans reprise. Plafond : 10 000 transitions sur trois ans, sinon `truncated`.
+- **Dates en base** (D723) : le serveur écrit `closed_on` (à l'entrée en `won` ou `lost`) et `stage_entered_on`. Elles rendent le CA et le taux de gain par période exacts sans O2.
+- **Prévision** (D724) : métrique `sum` avec `weight: probability`. Une opportunité sans probabilité n'est pas comptée, et le widget le dit.
+- **Objectifs** (D725) : type `sales_target` au niveau de l'org. Le flow `CRM · target progress` écrit chaque heure le CA gagné de la période.
+- **Définitions** (D726) : taux de gain = gagnés / (gagnés + perdus) sur les opportunités clôturées dans la période. Bloquée = ouverte et sans activité depuis 30 jours. Un clic sur une barre de Prospection remplit un tableau du même écran par une variable `enum`.
+- **Motifs de perte** (D727) : `loss_category` (prix, concurrent, pas de budget, pas de décision, timing, autre) à côté du texte `loss_reason`.
 
-### D446 — Effacement en coquille
+La période de l'écran Résultats est un filtre de session (D509, 365 jours par défaut). Il n'existe ni filtre par propriétaire ni écran Équipe.
 
-`POST /ontology/objects/{id}/erase` (permission `ontology:delete`), générique :
+## 4. Exigences
 
-- propriétés `personal` et `sensitive` supprimées, titre `personal`/`sensitive` remplacé par `∅ <8 caractères de l'id>`, attributs personnels de ses liens supprimés ;
-- colonne `objects.erased_at` posée ; l'objet reste (coquille), ses liens et la provenance des autres objets tiennent ; **la coquille est en lecture seule** : toute modification et tout nouveau lien sont refusés (`ontology-erased`, 409), un import en masse laisse le lien de côté (constaté à l'essai du 2026-10-26 : un `PUT` remettait le nom effacé) ;
-- l'historique d'un objet effacé est relu caviardé (propriétés classées et titre) ; le journal O2 garde l'ancien contenu jusqu'à sa rétention (D72), sans le servir ;
-- journalisé `object.erase`, sans le contenu effacé.
+1. Aucun envoi automatique de mail ni de message réseau ne doit partir sans un humain, sauf une boîte partagée réglée sur l'envoi direct (D520).
+2. Le moteur ne doit contenir aucune clé propre au CRM (D441). Le métier vit dans les packs.
+3. Un pack ne doit livrer aucun contenu de playbook : critères de score, personas visés, thèmes, étapes de relance et critères de qualification sont des données de l'org.
+4. Une capture de profil ou de liste de salariés doit partir d'un humain, une URL à la fois, sous un plafond compilé que l'org peut seulement baisser.
+5. Un fait extrait par un LLM doit rester à valider (D316).
+6. Un effacement ne doit jamais être automatique et ne doit pas être exposé au MCP.
+7. Une coquille doit refuser toute écriture et tout nouveau lien (`ontology-erased`, 409).
+8. Le contenu effacé ne doit pas entrer dans le journal d'audit.
+9. Une personne opposée ne doit être ni recréée, ni capturée, ni relancée.
+10. Une lecture doit masquer les valeurs `personal` et `sensitive` pour un rôle sans la permission.
+11. Chaque chiffre d'un tableau de bord doit afficher sa définition et sa période réelle.
+12. Les sources GLEIF, Wikidata, BODACC, GDELT et le registre doivent passer la garde de sortie réseau (R8).
+13. Chaque route doit prendre l'org du principal (R1) et figurer au registre IAM (R2).
 
-Pour une personne (service des profils, exempté de la garde D441) : ses identifiants de compte et ses textes de profil capturés sont archivés, les mails dont elle est le correspondant (l'origine d'un transfert cru, sinon l'expéditeur) sont supprimés, jamais le transfert d'un membre qui la citerait, et elle entre dans la liste d'opposition (D447).
+## 5. Décisions
 
-Le MCP ne l'expose pas (motif destructif).
-
-### D447 — Opposition consultée partout
-
-- `oppose` pose aussi la propriété `opposed_on` (date, pack `prospecting_b2b`) sur la personne : les flows de relance la filtrent.
-- La liste d'opposition gagne une empreinte **nom + compte** : `title:<nom normalisé>@<id de l'purpose lié>`, posée pour chaque organisation liée à la personne au moment de l'opposition ou de l'effacement.
-- **Le moteur refuse tout nouveau lien** entre un objet dont le titre est `personal` et un objet de l'empreinte quand le nom normalisé correspond (`prospecting-opposed`, 409) : un rapprochement qui recrée « la même personne chez le même compte » échoue. Dans un import en masse, le lien est laissé de côté et le reste du lot passe (un refus ne fait pas échouer l'import). Générique : aucune clé de type ou de lien n'est nommée.
-- Nom normalisé : minuscules, accents latins repliés (« Élodie » = « elodie » = « ELODIE », `œ` → `oe`, apostrophe typographique), lettres et chiffres seulement, un espace entre les mots.
-- **Une seule table de repli** (`pnex_core::fold`) sert aux empreintes, au texte de la recherche globale et de la requête D185 (titre et filtre `contains`) : la colonne y est repliée en SQL par `translate(lower(…))`, majuscules accentuées comprises. Aucune extension Postgres (`unaccent`), aucune dépendance. Les deux copies qui existaient (`taxonomy`, `browser_agent`) y délèguent. Coût : la recherche par sous-chaîne n'utilisait déjà aucun index.
-
-## 4. Le pack `crm` (lots CRM1…CRM3)
-
-### D448 — Le CRM est un pack
-
-Nouveau pack `crm` (`requires: [prospecting_b2b]`). Il revient sur le non-objectif « Pas de CRM » d'`account-mapping.md` §2 en le gardant hors du noyau. Le pipeline reste simple : la valeur est dans le compte vu comme un réseau, les signaux et le rendez-vous.
-
-### D449 — Opportunité et qualification
-
-Type `opportunity` :
-
-| Propriété | Forme |
-|---|---|
-| `stage` | énumération : `discovery`, `qualification`, `proposal`, `negotiation`, `won`, `lost` (clés stables, l'org les renomme par D370) |
-| `amount`, `probability` (0–100), `expected_close` (date) | |
-| `source` | `trade_show`, `buying_group`, `inbound`, `outbound`, `referral`, `network`, `other` ; `source_detail` (nom du salon…) |
-| `loss_reason` | texte |
-| `last_activity` | date-heure, écrite par flow |
-| `missing_criteria` | texte, écrit par flow |
-| `follow_up_started_on` | date, écrite par flow |
-
-Liens : `opportunity_with` (→ `organization`, un seul ouvert), `involved_in` (`person` → opportunité, attribut `role` = persona), `owned_by` (opportunité → `person` interne), `comes_from` (opportunité → `sales_signal`, `meeting`), `meeting_for` (`meeting` → opportunité).
-
-**Qualification = données de l'org** : type `qualification_criterion` (description, `stage` à partir de laquelle il est exigé, actif). Lien `qualified_on` (opportunité → critère, attributs `status` `unknown`/`partial`/`valid`, `note`). SPICED, MEDDPICC ou la grille maison sont des listes de critères ; le pack n'en livre aucune. Un flow écrit `missing_criteria` : les critères exigés jusqu'à l'étape courante qui ne sont pas `valid`. Rien n'est bloqué : le passage d'étape reste une décision humaine.
-
-### D450 — Activités et cadence
-
-Type `activity` : `ref` (unique), `kind` (`call`, `mail`, `meeting`, `network_message`, `note`, `task`), `state` (`to_do`, `done`, `cancelled`), `due_on` (date), `done_at` (date-heure), `direction` (`inbound`, `outbound`), `content`, `draft` (texte préparé par le LLM de l'org), `reported` (bool, écrit par flow). Lien `activity_on` (→ opportunité, organisation, personne).
-
-Le **plan de relance** est une donnée de l'org : type `follow_up_step` (`day` depuis le lancement, `kind`, `instruction`, actif). Flows livrés :
-
-- **Cadence** (toutes les heures) : une opportunité en `qualification` sans `follow_up_started_on` reçoit une activité `to_do` par étape active, d'échéance « lancement + jour », liée à l'opportunité ; puis `follow_up_started_on`. Une opportunité dont tous les contacts impliqués ont fait opposition est sautée.
-- **Brouillons** (toutes les heures) : une activité `mail` ou `network_message` à faire, due d'ici demain, sans brouillon, reçoit une accroche rédigée par le LLM de l'org à partir de la consigne et du compte. **L'humain la relit et l'envoie lui-même**, puis coche `done`.
-- **Dernière activité** (toutes les 15 minutes) : une activité faite et non reportée met à jour `last_activity` de son opportunité.
-- **Critères manquants** (toutes les heures) : D449.
-
-### D451 — « Ma journée » et alertes : un digest du matin
-
-Flow « CRM · ma journée » (7 h) : un texte pour le nœud de notification de l'org, avec les relances dues aujourd'hui ou en retard et les opportunités ouvertes sans activité depuis 14 jours (modifiable dans le flow). Même forme que le digest des signaux (D335), qui reste le digest des signaux : les deux ne sont pas fusionnés.
-
-Brique générique pour cela : les jetons `$today-<n>` et `$today+<n>` (jours, 0 à 3650) dans les filtres des nœuds `ontology_query`, résolus par le runtime comme `$today`.
-
-### D452 — Modèle de page `opportunity_sheet`
-
-Rempli depuis l'opportunité (D340) : compte, étape, montant, contacts impliqués, critères et leur statut, activités, rendez-vous, puis les prochaines étapes en texte libre. Export PDF par `page_pdf`.
-
-## 4 bis. Pistes, devis et factures (lot CRM4, 2026-10-29)
-
-Demande de Shan (2026-10-29) : « la partie CRM / facturation / gestion des leads ». Arbitrage : devis et suivi des factures dans le pack, pas d'émission légale.
-
-### D514 — La piste (`lead`) avant l'opportunité
-
-Type `lead` : `ref` (unique, facultative : clé d'import d'un fichier de salon), `status` (`new`, `contacted`, `qualified`, `disqualified`, `converted`), `source` et `source_detail` (mêmes valeurs que l'opportunité), `company`, `contact_name`, `email`, `phone`, `message`, `received_on`, `disqualify_reason`. Titre et coordonnées classés `personal` (D442) : une piste nomme une personne qui n'est pas encore dans le graphe.
-
-Liens : `lead_of` (→ `organization`, un seul ouvert), `lead_contact` (→ `person`, un seul), `owned_by` et `activity_on` acceptent la piste, `comes_from` accepte la piste comme origine d'une opportunité.
-
-Entrées : saisie à la main, import (Ontologie › Imports, fichier de salon). Pas de création depuis les mails reçus (le pourriel deviendrait des pistes) ni de formulaire public en V1.
-
-### D515 — Convertir : une action, un flow livré
-
-Action `convert` sur la piste (`organization` exigé, `person` et `name` facultatifs), servie par le flow modèle « CRM · convert a lead » (D183, `action_trigger`) : opportunité en `discovery`, source reprise, titre = nom donné, sinon la société, jamais le nom du contact ; liens `opportunity_with`, `comes_from`, `lead_of`, `lead_contact`, `involved_in` ; piste `converted`. L'opportunité porte une nouvelle propriété `ref` = `lead:<id de la piste>` (unique) : une seconde conversion retrouve la même. Le compte est choisi par l'humain (créé avant au besoin) : pas de rapprochement automatique au moment de la conversion. Dans le dialogue, un paramètre `ref` se cherche par nom (8 résultats, recherche sur le titre) ; il est prérempli seulement quand l'objet a exactement un lien ouvert vers un objet du type visé (piste déjà convertie, contact lié), avec une mention à vérifier. Pas de préremplissage d'après le nom de la société : ce serait le rapprochement écarté ci-dessus (2026-11-06). Aucune donnée personnelle n'est recopiée sur l'opportunité.
-
-### D516 — Devis et factures suivis, émis ailleurs
-
-Revient en partie sur le non-objectif §2. Type `quote` : `ref` (numéro, unique, exigé), `state` (`draft`, `sent`, `accepted`, `refused`, `expired`), `amount` (HT), `issued_on`, `valid_until`, `content` ; lien `quote_for` (→ opportunité, une seule). Modèle de page `quote_sheet` (lignes à compléter, export PDF par `page_pdf`) : le devis peut naître dans PneX. Type `invoice` : `ref` (numéro de l'outil de facturation, unique, exigé), `state` (`issued`, `partially_paid`, `paid`, `overdue`, `cancelled`), `amount` (TTC), `paid_amount`, `issued_on`, `due_on`, `paid_on`, `url` (la facture dans l'outil) ; liens `invoice_for` (→ opportunité, compte) et `invoices_quote` (→ devis). La facture entre à la main ou par import ; la synchro avec l'outil attend les connecteurs D369.
-
-Rien n'est automatique entre devis, facture et étape : un devis accepté ne fait pas gagner l'opportunité (D449, le passage d'étape reste humain).
-
-### D517 — Échéances et digest
-
-Flow modèle « CRM · quotes and invoices due » (6 h 30) : devis `sent` dont `valid_until` est passée → `expired` ; facture `issued` ou `partially_paid` dont `due_on` est passée → `overdue` et une activité `task` à faire aujourd'hui (`ref` `invoice:<id>:overdue`, une seule par facture) sur ce qu'elle facture. « CRM · my day » liste aussi les pistes `new`.
-
-### D522 — Brouillons de relance dans la boîte d'envoi
-
-Flow modèle « CRM · drafts to the outbox » (toutes les heures, 20 au plus) : une activité `mail` à faire qui a un brouillon (D451) devient un mail de la boîte d'envoi (nœud `mail_send`, `mail.md` D518–D521) de la boîte choisie au déploiement. Destinataires : les identifiants `email` des personnes impliquées dans l'opportunité de l'activité, sauf celles qui se sont opposées (`opposed_on`, D447) ; objet : le nom de l'opportunité ; clé `crm:<ref>` (jamais deux mails pour une activité). L'activité garde l'id du mail (`outbox_mail`), ou `none` quand personne n'a d'adresse. Une personne relit, envoie ou écarte dans Boîtes mail › Boîte d'envoi, puis passe l'activité à faite : rien n'est envoyé sans elle, sauf boîte partagée réglée sur l'envoi direct (D520). Les messages réseau restent des brouillons sur l'activité.
-
-
-| Lot | Décisions | Sortie |
+| # | Décision | Choix actuel |
 |---|---|---|
-| DP | D442–D447 | D341 fini : classification, masquage, base légale, file de rétention, effacement, opposition au moteur |
-| CRM1 | D448, D449, D452 | pack installable : opportunités, qualification, fiche |
-| CRM2 | D450, D451 | activités, cadence, brouillons, digest du matin |
-| CRM4 | D514–D517, D522 | pistes et conversion, devis et factures suivis, échéances, brouillons vers la boîte d'envoi |
-| CRM3 | — | mail entrant rattaché à la fiche : devient le lot M6 de `mail.md` (boîtes mail génériques, D453–D462) ; tableaux de bord (ROI par salon, taux par étape de relance) à part ; la suite est dans `sales-dashboards.md` (D721–D727, CRM7) |
+| D329 | Pack `prospecting_b2b` : étendre, ne pas créer | statut, utilisateurs, persona d'achat ; liens `recommended`, `follows_account`, `uses_solution` ; hiérarchie `sales_group` ; `subsidiary_of` passé au socle |
+| D330 | Couverture calculée à la lecture | `sums`, `coverage`, `tallies` d'une hiérarchie ; espace blanc |
+| D331 | Liens de groupe GLEIF et Wikidata | côte à côte, provenance par source, Wikidata à valider, pas de fusion |
+| D332 | Rapprochement nom vers SIREN | nœud `org_resolve`, candidats notés, n'écrit rien |
+| D333 | Capture ponctuelle d'un profil | humaine, six réseaux, 30 par jour par org et par réseau, texte purgé à 30 jours |
+| D334 | Changement de poste | registre, recapture humaine, rappel `review_on` ; aucune surveillance |
+| D335 | Signal commercial | `kind` × `topic` de l'org, imports et flows du pack, LLM à valider |
+| D336 | Score de ciblage | fonction Starlark sans critère, critères objets de l'org, flow du pack |
+| D337 | Listes de ciblage et de salon | recherche enregistrée du registre ; fichier en `list_contact` |
+| D338 | Chemin d'introduction | K51 restreint aux liens humains, 4 sauts, départs multiples |
+| D339 | Coloration par valeur de propriété | `colors` au noyau ; surcharge par l'org non faite |
+| D340 | Modèles de pages | plan de compte, fiche concurrent, préparation et compte rendu de rendez-vous |
+| D341 | Données personnelles de la prospection | fini par D442–D447 et D610 |
+| D342 | Assistant et MCP sans outil nouveau | ni capture ni changement de statut par l'assistant |
+| D343 | Socle mondial, une couche par pays | `companies` + `companies_fr` ; passation `hands_over` |
+| D442 | Classification D298 codée | propriétés, attributs, titre |
+| D443 | Masquage par rôle | `ontology.personal:read`, `ontology.sensitive:read` |
+| D444 | Base légale et rétention | réglages de `prospecting_b2b` |
+| D445 | File de rétention | propositions `object_erase`, jamais acceptées par une règle |
+| D446 | Effacement en coquille | lecture seule, historique relu caviardé |
+| D447 | Opposition au moteur | empreinte nom + compte, `opposed_on`, repli `fold` |
+| D448 | Le CRM est un pack | `crm`, hors du noyau |
+| D449 | Opportunité et qualification | étapes stables, critères de l'org, passage humain |
+| D450 | Activités et plan de relance | activités par étape, brouillons relus |
+| D451 | Digest « ma journée » | jetons `$today±n` |
+| D452 | Modèle `opportunity_sheet` | fiche remplie depuis l'opportunité |
+| D514 | Piste avant l'opportunité | type `lead`, coordonnées `personal` |
+| D515 | Convertir une piste | action `convert`, flow modèle, clé `lead:<id>` |
+| D516 | Devis et factures suivis | émission légale hors PneX, modèle `quote_sheet` |
+| D517 | Échéances | devis expirés, factures en retard avec tâche, pistes au digest |
+| D522 | Brouillons vers la boîte d'envoi | sans les personnes opposées |
+| D537 | Actualités par moteur de recherche | abandonnée, remplacée par D539 |
+| D538 | Lecture d'un profil capturé | poste et société sur la personne, `employs` proposé |
+| D539 | Actualités par GDELT | une lecture pour toutes les orgs ; items `news_item` du pack `watch` depuis D972–D973 |
+| D590 | Liste de salon en pistes | le salon nomme sa liste, lien `from_list` ; salon = `show` du pack `watch` (D973) |
+| D591 | Mail d'un inconnu en piste | boîte partagée choisie, expéditeur authentifié |
+| D610 | Ce qu'un effacement emporte | activités, mails, clés, `contact_point` haché, autres détenteurs proposés |
+| D611 | Une piste par adresse | entre listes de salon et boîtes mail |
+| D721 | Douze indicateurs | écrans du pack, pas de constructeur en plus |
+| D722 | Historique d'étape dans O2 | option `history`, stream `object_transitions`, sans reprise |
+| D723 | Deux dates en base | `closed_on`, `stage_entered_on` écrites par le serveur |
+| D724 | Prévision pondérée | `weight` sur `sum`, aucune probabilité inventée |
+| D725 | Objectifs | type `sales_target` au niveau de l'org |
+| D726 | Définition affichée | taux de gain, conversion, bloquée ; clic de barre sur le même écran |
+| D727 | Motifs de perte | `loss_category` + texte libre |
+| D779 | Liste des salariés d'une entreprise | une page, demandée par un humain, 10 par jour par org |
+| D976 | Relations d'un contact | retirée le 2026-11-18 ; code encore présent (§3.6) |
+| D977 | État de relation et règle `connections_capture` | retirée avec D976 ; code encore présent |
 
-### D590 — Une liste de salon devient des pistes (2026-11-04)
+## 6. Interfaces
 
-> Amendée par D973 (2026-11-14, `pipelines.md`) : le salon est le `show` neutre du pack `watch`, étendu de `list` ; ses chiffres (coût, conversion, retour) sont supprimés.
+Routes (sous `/api/v1`) :
 
-Avant : le fichier donnait des `list_contact` et une société proposée (D337), mais rien ne menait à une piste ni au salon, et le ROI de D588 partait de saisies à la main.
-
-- **Choix explicite** : un salon nomme sa liste (`trade_show.list`, le nom de la colonne `list` du fichier). Une liste d'exposants ou d'association ne devient jamais des pistes toute seule.
-- **Flow *CRM · leads from trade show lists*** (15 min, 100 contacts par salon) : piste `new`, source `trade_show`, clé `list:<id du contact>` (`skip_existing` : jamais deux pistes pour un contact). Le contact n'est marqué `lead_state` qu'après l'écriture de la piste : un échec se rejoue.
-- **Lien `from_list`, distinct de `met_at`** : figurer sur une liste n'est pas avoir été rencontré. Et `with_links` plafonne à 200 liens par type (`LINKS_PER_ROW_MAX`) : des pistes en `met_at` fausseraient sans bruit les chiffres d'un gros salon. À la conversion, l'opportunité passe en `met_at` : c'est elle que le ROI compte. Le nombre de pistes par salon vient d'un agrégat (écran *Salons*), sans plafond.
-- **Opposition** : une adresse qui appartient à une personne opposée ne donne pas de piste (`lead_state: objected`).
-- **Classification** : le titre et l'e-mail de `list_contact` passent `personal` (`prospecting_b2b` 3.2.0) ; ils ne l'étaient pas.
-
-Limites : l'opposition se vérifie sur l'adresse d'une personne connue, un contact sans e-mail ne peut pas être rapproché. Le compte se choisit à la conversion, même si `org_resolve` a déjà trouvé la société. Le nom de liste doit être exact.
-
-### D591 — Un mail d'un inconnu authentifié devient une piste (2026-11-04)
-
-Flow *CRM · leads from a mailbox*, séparé de *CRM · mails received* parce qu'il se branche sur une boîte partagée choisie (`contact@`) : sur une boîte personnelle, chaque inconnu deviendrait une piste.
-
-- **Une piste par adresse** (clé `mail:<adresse en minuscules>`, `skip_existing`) : un deuxième mail ne la modifie pas et ne rouvre pas une piste écartée.
-- **Authentifié seulement** (D458, même règle que `crm_mail_prep`) : un expéditeur usurpé ne remplit pas la liste. Les réponses automatiques et les mails de PneX sont écartés.
-- **Une personne connue ne fait pas de piste**, opposée ou non : *mails received* la suit déjà.
-- **Le texte reste une donnée** : il va dans `message`, classé `personal`, sans LLM ni action.
-
-Limites : un spammeur authentifié (SPF de son propre domaine) passe : un filtre anti-spam reste celui du serveur mail. Le compte se choisit à la conversion.
-
-### D610 — Ce qu'un effacement emporte vraiment (2026-11-04)
-
-Un audit de ce qui restait en base après un effacement a trouvé des fuites réelles, prouvées par `tests/crm.rs` `an_erasure_leaves_no_address_and_no_mail_text` (SEC-63) : l'adresse dans la clé `mail:<adresse>` d'une piste (D591), le texte des mails dans les activités de la personne, le nom dans la clé `liste|nom|société` d'un contact de liste, les mails reçus d'une piste et les mails sortants.
-
-- **Classé `personal`** : `ref` d'une piste, d'une activité et d'un contact de liste ; titre, `content`, `context`, `draft` d'une activité ; `job_title` d'un contact de liste. Le sujet d'un mail ne va plus dans `source_detail` d'une piste, que la conversion recopie sur l'opportunité : il ouvre `message`.
-- **Lien `erase_sources`** (générique, porté ici par `activity_on`) : effacer une cible au titre personnel efface aussi les sources de ces liens, ouverts ou fermés.
-- **Point de contact `contact_point`** (générique : `lead.email`, `lead.phone`, `list_contact.email`, `identifier.value`). À l'effacement ou à l'opposition, une **empreinte hachée** `contact:<sha256(org:valeur)>` entre dans la liste d'opposition : elle répond à « celui-ci est-il opposé ? » pour une valeur déjà en main, sans rendre l'adresse.
-- **Le moteur s'en sert** : `object_upsert` ne crée pas d'objet portant ce point de contact (`msg.opposed`) ; un flow n'écrit plus à cette adresse (`prospecting-opposed`). Une opposition écarte aussi les brouillons non envoyés. **Un membre garde la main** : la saisie à la main et la réponse à quelqu'un qui écrit restent possibles, répondre n'est pas prospecter.
-- **Imports** : une ligne dont le point de contact est refusé est laissée de côté avec ses liens, le reste du fichier passe. Elle l'est dès l'aperçu, avec un avertissement `opposed_contact` sur sa ligne, et n'est jamais retentée : l'aperçu et le run comptent la même chose (2026-11-05). Limite : une opposition enregistrée entre l'aperçu et l'application est encore écartée à l'écriture, mais le run la compte dans les créations.
-- **Mails** : l'effacement d'un point de contact supprime les mails reçus de cette adresse et les mails sortants vers elle ; un mail à plusieurs destinataires perd seulement celui-ci.
-- **Autres détenteurs : proposés, pas effacés.** Un autre objet portant la même adresse devient une proposition `object_erase` : une adresse peut être partagée (`contact@`), un effacement ne se rattrape pas.
-- **Un flow ne lit plus de coquille** (`ontology_query`) : une coquille refuse toute écriture, une règle qui la relirait réessaierait sans fin, avec un coût LLM pour les brouillons.
-- **File de rétention** : les contacts de liste y entrent.
-- **Rendez-vous** : titre, `purpose`, `place`, `next_step` sont classés `personal`. Un rendez-vous concerne tous ses participants : effacer l'un d'eux le **propose** à l'effacement (lien `takes_part_in`, option générique `propose_erase_targets`), une personne décide ; jusque-là il garde son texte. Accepté, il garde sa date, son statut et `invitation_uid`, qui empêche une mise à jour de l'invitation de le recréer. Une preuve de lien proposé ne porte plus l'objet du rendez-vous.
-
-Validé par Shan (2026-11-04) : un mail envoyé à une adresse effacée disparaît aussi, PneX n'en garde plus de preuve ; une note sur deux personnes part quand l'une est effacée. Les autres détenteurs d'une adresse sont proposés plutôt qu'effacés. L'empreinte reste salée par l'identifiant de l'org, sans clé secrète.
-
-Limites : un mail à plusieurs garde son texte. Le compte rendu (page liée par `page_about`) et l'enregistrement d'un rendez-vous ne sont pas touchés par son effacement. L'empreinte d'un numéro de téléphone exige la même écriture exacte. L'empreinte est une pseudonymisation, pas une anonymisation : quelqu'un qui lit la base et devine une adresse peut la vérifier, le sel étant l'identifiant de l'org. Une clé secrète par org le fermerait : écartée pour l'instant (Shan, 2026-11-04), à rouvrir sur demande de conformité. Un flow déjà déployé garde ses fonctions épinglées : D611 ne s'applique qu'une fois le flow redéployé après la mise à jour du pack.
-
-### D611 — Une piste par adresse, quelle que soit la source (2026-11-04)
-
-Lève la limite de D591. Les deux flows cherchent d'abord une piste à cette adresse. Depuis un fichier de salon, la piste existante est liée au salon et le contact marqué `created` ; depuis un mail, rien n'est écrit. `lead.email` n'est **pas** déclarée `unique` : la mise à jour du pack échouerait pour une org qui a déjà deux pistes à la même adresse, et la saisie à la main serait refusée.
-
-Limites : la comparaison est exacte (les flows et les imports écrivent en minuscules, pas forcément une saisie à la main) ; deux personnes derrière `contact@` font une seule piste.
-
-## 6. Sécurité et conformité
-
-- Org depuis le principal (R1) ; chaque route au registre IAM (R2) ; aucun identifiant dans les DTO (R4).
-- L'effacement n'est jamais automatique (D445) et n'est pas exposé au MCP (D446).
-- Le contenu effacé ne part pas dans le journal (D446).
-- Les brouillons sont des propositions de texte, jamais envoyés par la plateforme (D450).
-
-## 7. Questions ouvertes
-
-1. **Q-CRM1 — Purge O2** : faut-il aussi supprimer du journal O2 les lignes d'un objet effacé avant la fin de la rétention, si O2 le permet ?
-2. **Q-CRM2 — Titres dans le graphe** : en attendant I5, masquer aussi les titres `personal` dans le graphe, la hiérarchie et les chemins ?
-3. ~~**Q-CRM3 — Mail**~~ : IMAP retenu (Shan, 2026-10-26), OAuth2 XOAUTH2 ensuite pour Microsoft 365 et Google ; conception générique dans `mail.md`.
-
-Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennent — pas de purge O2 (journal borné par sa rétention, jamais relu en clair) ; masquage actuel (voisinage, chemins, impact, nœuds de hiérarchie), le reste avec I5.
-
-## 8. Récapitulatif des décisions
-
-| # | Décision |
-|---|---|
-| D442 | Classification D298 codée (propriétés, attributs, titre) |
-| D443 | Masquage par rôle : `ontology.personal:read`, `ontology.sensitive:read` |
-| D444 | Base légale et rétention : réglages de `prospecting_b2b` |
-| D445 | File de rétention = propositions `object_erase`, jamais automatiques |
-| D446 | Effacement en coquille, historique relu caviardé |
-| D447 | Opposition au moteur : empreinte nom + compte, `opposed_on` |
-| D448 | Le CRM est un pack |
-| D449 | Opportunité et qualification par critères de l'org |
-| D450 | Activités, plan de relance, brouillons relus |
-| D451 | Digest « ma journée », jetons `$today±n` |
-| D452 | Modèle de page `opportunity_sheet` |
-| D514 | Type `lead`, coordonnées `personal` |
-| D515 | Action `convert` et son flow modèle, opportunité clé `lead:<id>` |
-| D516 | Devis et factures suivis, émission légale hors PneX, modèle `quote_sheet` |
-| D517 | Devis expirés, factures en retard avec relance, pistes au digest |
-| D522 | Brouillons de relance mail dans la boîte d'envoi, sans les personnes opposées |
-| D590 | Une liste de salon nommée par le salon devient des pistes, lien `from_list` distinct de `met_at` |
-| D591 | Un mail d'un inconnu authentifié, sur une boîte choisie, devient une piste, une par adresse |
-| D610 | Effacement complet : activités, mails, clés ; empreinte hachée des points de contact ; autres détenteurs proposés |
-| D611 | Une piste par adresse, entre les fichiers de salon et les boîtes mail |
-
-## 9. État d'implémentation
-
-### Lot DP — 2026-10-26
-
-| Brique | Où | Tests |
+| Route | Permission | Effet |
 |---|---|---|
-| D442 `classification` + `title_classification` | `pnex-core` `ontology/schema.rs`, `ontology/mod.rs` ; packs `investigation` 1.11.0, `prospecting_b2b` 1.3.0 | désérialisation fermée (valeur inconnue refusée) |
-| D443 masquage | `services/ontology/redact.rs` ; contrôleurs `ontology`, `ontology_feed`, `apps`, `proposals` ; outils de l'assistant ; permissions au registre IAM + `GATES` | unitaires `redact` ; `tests/personal_data.rs` (rôle refusé : titre, propriétés, attributs, requête) |
-| D444 réglages | `prospecting_b2b.yaml` `settings` | — |
-| D445 file de rétention | `services/profiles.rs` `propose_erasures` (boucle horaire du purgeur, singleton) ; genre `object_erase` (`pnex-core` `proposal.rs`, contrainte SQL étendue) ; `erase::decide` | `personal_data.rs` (proposée une fois, acceptée = effacée, refusée = période relancée) ; vérifiée en réel le 2026-10-27 sur la stack Docker (personne vieillie de 40 mois, proposée au démarrage du serveur avec la durée de l'org, acceptée = coquille, même archivée) |
-| D446 effacement | `services/ontology/erase.rs`, `POST /ontology/objects/{id}/erase` (`ontology:delete`, exclu du MCP : destructif) ; colonne `objects.erased_at` (migration 000057) ; historique relu caviardé ; `profiles::before_erase` | `personal_data.rs` (coquille, idempotent, attribut de lien retiré) |
-| D447 opposition au moteur | `services/ontology/opposition.rs` ; contrôle dans `links::create_with` et `create_many_with` (lien laissé de côté) ; `opposed_on` posé par `oppose` | `personal_data.rs` (même nom au même compte refusé, ailleurs accepté) |
-| Repli des accents (D447) | `pnex-core` `fold.rs` ; `opposition.rs`, `query.rs`, `controllers/global_search.rs` | unitaires `fold` ; `tests/crm.rs` `names_match_without_accents_or_case` |
-| Jetons `$today±n` (D451) | `pnex-core` `ontology/flow.rs`, doc du nœud `ontology_query` | unitaire `today_offsets_resolve` |
+| `POST /ontology/objects/{id}/erase` | `ontology:delete` | effacer en coquille ; exclue du MCP |
+| `POST /ontology/objects/{id}/pages` | `docs:write` | page depuis un modèle du pack |
+| `GET /ontology/path` (`links`, `from_links`) | `ontology:read` | chemin, chemin d'introduction |
+| `POST /ontology/transitions/query` | `ontology:read` | historique d'une énumération (O2) |
+| `GET`/`POST /extension/people/{id}/profile-captures` | `extension:read` / `extension:write` | captures de profil |
+| `GET`/`POST /extension/organizations/{id}/people-captures` | `extension:read` / `extension:write` | listes de salariés |
+| `GET`/`POST /extension/people/{id}/opposition` | `extension:read` / `extension:write` | opposition |
+| `GET`/`PUT /extension/people/{id}/connection`, `GET`/`POST …/connections-captures` | `extension:read` / `extension:write` | D976–D977, à retirer |
 
-Écran livré le 2026-11-02 sur la fiche d'un objet : bouton « Effacer les données personnelles » (permission `ontology:delete`, type qui porte des données classées), date d'effacement et fiche en lecture seule, « Masqué » à la place d'une propriété cachée, base légale de l'org en pied de fiche d'une personne ou d'une piste. Essayé dans un navigateur le 2026-11-02 (effacement d'une piste, base légale) ; affichage « Masqué » et bandeau vus en réel pour un rôle restreint le même jour.
+- **Packs** : `crates/pnex-backend/packs/{companies,companies_fr,prospecting_b2b,prospecting_b2b_fr,crm}.yaml`. Pipelines dans `packs/prospecting_b2b/pipelines/` et `packs/prospecting_b2b_fr/pipelines/`.
+- **Noyau** : `pnex_core::{fold, org_resolve, browser_agent}`, `ontology::{schema, page_render, aggregate, flow, api}`.
+- **Backend** : `services/ontology/{redact, erase, opposition, transitions, changes}.rs`, `services/profiles.rs`, `services/org_resolve.rs`, `services/network_connections.rs`.
+- **Tables** : `objects.erased_at` (migration 000057), `prospecting_oppositions` (000041), `object_imports.per_object_cursor` (000045), `network_connections` (000152). Stream O2 `object_transitions`.
+- **Erreurs** : `prospecting-opposed`, `ontology-erased`, `ext-target-not-profile`, `ext-profile-daily-cap`, `ext-target-not-people-page`, `ext-people-daily-cap`, `ext-login-required`, `ext-challenge`, `ext-connections-hidden`.
+- **Assistant** : fiches `assistant-kb/sales-follow-up.md`, `personal-data.md`, `company-groups.md`.
+- **Tests** : `tests/crm.rs`, `tests/personal_data.rs`, `tests/partner_watch.rs`, `tests/org_resolve.rs`, `tests/extension.rs`, `tests/mail.rs`, `pnex-node-starlark/tests/pack_rules.rs`, `e2e/tests/crm.spec.ts`.
 
-Reste : le masquage des titres dans les pages générées pour leurs lecteurs suivants (I5). Décidé le 2026-11-06, à la clôture du volet CRM : **pas d'export du registre des traitements** dans PneX. Le registre (RGPD art. 30) est tenu par le responsable de traitement, c'est-à-dire l'org cliente, pour tous ses outils ; PneX lui fournit les éléments à y recopier, déjà visibles dans l'interface : base légale et durée de rétention (réglages de `prospecting_b2b`), catégories de données (classification `personal` des propriétés), effacements et oppositions (fiche de l'objet). Un export généré ferait croire à un registre complet alors qu'il ne couvrirait que PneX.
+## 7. Reste à faire
 
-### Lots CRM1–CRM2 — 2026-10-26
+- **Registres étrangers** : couches pays après la France (registres gratuits avec dirigeants), à confirmer par source.
+- **Prospection** : score par site, surcharge des couleurs par l'org (D339), proposition des critères abordés depuis la transcription, temps de parole par côté, profil capturé au-delà du haut de la page.
+- **Établissements** : 100 sites par société au plus avec l'API du registre. L'API de l'INSEE lèverait ce plafond, avec une clé.
+- **Presse** : environ 1 Go lu par run et par org, sans partage entre orgs.
+- **Pistes** : la reprise de l'historique d'étape et de statut n'est pas faite (décidé : pas de reprise).
 
-Pack `crm` 1.0.0 (`packs/crm.yaml`) : types, liens, hiérarchie `opportunities`, modèle `opportunity_sheet`, 11 fonctions Starlark, 5 flows modèles (plan de relance, dernière activité, critères manquants, brouillons, ma journée). Tests : `pnex-node-starlark/tests/pack_rules.rs` (échéances à travers les fins de mois et années bissextiles, opposition, critères, dernière activité, digest) et `tests/crm.rs` (installation, brouillons de flows, cardinalité, hiérarchie, fiche). Fiches de l'assistant `sales-follow-up` et `personal-data` ; lexique §7 + garde.
+Choix de Shan :
 
-### Lot CRM4 — 2026-10-29
-
-Pack `crm` 3.1.0 : types `lead`, `quote`, `invoice`, propriété `opportunity.ref`, liens `lead_of`, `lead_contact`, `quote_for`, `invoice_for`, `invoices_quote`, action `convert`, modèle `quote_sheet`, 6 fonctions Starlark, 2 flows modèles (9 au total). Tests : `pack_rules.rs` (`a_converted_lead_becomes_an_opportunity_of_its_account`, `an_overdue_invoice_is_marked_and_reminded`, digest avec pistes) et `tests/crm.rs` (piste, cardinalités, numéros uniques, page devis, action refusée sans flow déployé).
-
-Limites : pas de piste créée depuis un formulaire public, reporté par Shan le 2026-11-04 avec sa décision anti-abus (depuis un mail : D591). Brouillons de relance branchés sur la boîte d'envoi (D522) : objet = nom de l'opportunité par défaut, corrigeable à la relecture ; une adresse ajoutée après le marquage `none` n'est pas reprise. La file de rétention (D445) propose aussi les pistes depuis le 2026-11-02 (`RETENTION_TYPES`). Écrans métier : application « Suivi commercial » livrée par le pack `crm` 3.2.0 (`app-builder.md` §11), nombres par étape compris. Écrans Pipeline, Chiffres et Salons, avec le ROI par salon et le taux de réponse par étape de relance : pack `crm` 3.3.0, `object-aggregates.md`.
+- **D976–D977** : retirer le code des relations d'un contact (§3.6 : table, service, routes, règle, réglage, panneau) et la ligne du tableau des écarts D998. Ou rétablir l'écart comme justifié.
+- **Filtre par propriétaire et écran Équipe** : seulement après l'avis d'un juriste sur le suivi de l'activité de salariés. Objectifs par personne avec l'écran Équipe.
+- **Formulaire public de pistes** : reporté (2026-11-04), avec sa protection contre les abus.
+- **Q-CRM1** : purger du journal O2 les lignes d'un objet effacé avant sa rétention. Défaut tenu : pas de purge.
+- **Q-CRM2** : masquer les titres `personal` dans le graphe et les chemins avant la visibilité par objet (I5). Défaut tenu : masquage actuel.
+- **Clé secrète d'empreinte** par org : écartée, à rouvrir sur une demande de conformité.
+- **Q-CC1** : source payante en option pour les groupes sans LEI.
+- **Q-CC2** : personne interne = type dédié ou propriété sur `person`.
+- **Q-CC4** : la coquille suffit-elle au droit à l'effacement, ou faut-il réécrire les extraits cités dans les preuves et les signaux ?
+- **Q-CC6** : l'org peut-elle étendre une énumération du pack (`persona`), ou faut-il une taxonomie ?

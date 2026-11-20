@@ -1,4 +1,4 @@
-//! Where a user's own network account stands with a person (account-mapping
+//! Where a user's own network account stands with a person (crm.md
 //! D977): declared on the person's page, it gates the exploration of that
 //! person's connections (D976). One row per user, person and network.
 

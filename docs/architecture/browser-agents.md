@@ -1,6 +1,6 @@
 # Agents navigateur (extension Chrome/Firefox)
 
-Décisions D254–D270, D281–D284, D550. Liens : `edge.md` §2.3 (doctrine edge), `security.md` (identité device D153–D158, grille §6, registre §7), `media.md` (flux, segments, passes, relecture), `doc-search.md` (indexation), `account-mapping.md` (profils D333, salariés D779, relations D976–D977), `partner-watch.md` (sites et preuves D307–D310), `agents.md` (règles jouées par l'extension D780–D790), `api.md`, `ai-assistant.md` §9.
+Décisions D254–D270, D281–D284, D550. Liens : `edge.md` §2.3 (doctrine edge), `security.md` (identité device D153–D158, grille §6, registre §7), `media.md` (flux, segments, passes, relecture), `doc-search.md` (indexation), `crm.md` (profils D333, salariés D779, relations D976–D977), `partner-watch.md` (sites et preuves D307–D310), `agents.md` (règles jouées par l'extension D780–D790), `api.md`, `ai-assistant.md` §9.
 
 ## 1. Résumé
 
@@ -310,7 +310,7 @@ L'agent du demandeur exécute la capture, sinon un agent commun. Sans agent appa
 | D284 | Mission simple | un compte à suivre ; texte par défaut, case `force_video` |
 | D550 | Agent personnel ou commun | un agent est personnel ; un admin (`extension:share`) le rend commun pour les membres sans agent et les tâches du serveur (SEC-56) |
 
-Décisions liées, tenues ailleurs : D307–D310 (`partner-watch.md`), D333 et D779 (`account-mapping.md`), D976–D977 (`account-mapping.md`), D780–D790 (`agents.md`), D341 (opposition).
+Décisions liées, tenues ailleurs : D307–D310 (`partner-watch.md`), D333 et D779 (`crm.md`), D976–D977 (`crm.md`), D780–D790 (`agents.md`), D341 (opposition).
 
 ## 6. Interfaces
 
@@ -342,7 +342,7 @@ Tests : `crates/pnex-backend/tests/extension.rs`, tests unitaires des adaptateur
 ## 7. Reste à faire
 
 - **Publication** (question 4) : Chrome Web Store et signature AMO pour Firefox, ou chargement non empaqueté seulement ? Aujourd'hui : chargement non empaqueté en mode développeur. Choix de Shan.
-- **D976 retiré le 2026-11-18** (`account-mapping.md`) : supprimer du code la règle `connections_capture`, la table `network_connections`, les routes `connection` et `connections-captures`, et le panneau de la fiche.
+- **D976 retiré le 2026-11-18** (`crm.md` §3.6) : supprimer du code la règle `connections_capture`, la table `network_connections`, les routes `connection` et `connections-captures`, et le panneau de la fiche.
 - **U4b** (`agents.md`) : `collect_value`, `collect_page`, `follow_account`, `watch_live`, `crawl_site` et `capture_proof` doivent devenir des étapes ou des sorties de règle.
 - **D268** : coder la rétention par mission avec la phase « rétention et limites d'usage » (O91).
 - **Mission `search`** (proposée) : une recherche sur une plateforme dont chaque résultat passe par le registre des vidéos.

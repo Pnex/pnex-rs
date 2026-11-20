@@ -578,7 +578,7 @@ seuls ; E2E cible : BME280 I2C → O2 → flow → notification.
 
 ### P2.4 — Studio : tranches suivantes
 
-Dans l'ordre écrit (studio.md §5) : maquette 3D (`tours.mode = maquette`),
+Dans l'ordre écrit (viz.md §7) : maquette 3D (`tours.mode = maquette`),
 préchargement/LRU des panoramas, éditeur de vue initiale « depuis le
 panorama », export offline non planifié.
 
@@ -648,7 +648,7 @@ tiers) : on reproduit des fonctionnalités, pas l'implémentation.
 
 ### P2.12 — Dashboards « Maison » : palette domotique (ajout 2026-10-04) — **livré 2026-10-04** (lots A → E)
 
-Plan validé le 2026-10-04 (`home-dashboards.md`, D134–D141) : palette
+Plan validé le 2026-10-04 (`viz.md`, D134–D141) : palette
 catégorisée, règles d'état, icônes maison, primitives de contrôle
 `select`/`stepper`/`command`/`color`, cartes composées par domaine
 (éclairage, climat, ouvrants, sécurité, énergie, environnement, scènes,
@@ -656,7 +656,7 @@ appareils), nœud `pnex-weather` (actuel / 7 jours / 48 h → mémoire ou
 O2), pages + pièces + chips en mobile, modèles Maison/Énergie/Sécurité/
 Jardin. Lots A → E.
 
-**Reportés (consignés, `home-dashboards.md` §6)** :
+**Reportés (consignés, `viz.md` §7)** :
 - **REP-1 — Mode sombre global** : chantier transverse sur toutes les
   pages (jetons de couleur, variantes sombres des cartes et symboles).
 - **REP-2 — Code PIN serrure/alarme** : écriture protégée vérifiée côté
@@ -1047,7 +1047,7 @@ après les comptes de service (P2.25).
 
 ### P2.27 — Cartographie commerciale des comptes (ajout 2026-10-21) — **CC1, CC2, CC4, CC5, CC6, réunions, collecte, D779 et D788 livrés** ; ouvert : registres étrangers
 
-`account-mapping.md`, D329–D342 : un compte vu comme un réseau daté
+`crm.md`, D329–D342 : un compte vu comme un réseau daté
 (groupe, filiales, établissements, dirigeants, contacts, recommandations)
 sur la carte, dans la hiérarchie et le graphe. Pack `prospecting_b2b`
 au-dessus d'`companies_fr` ; couverture et espace blanc calculés à la
@@ -1060,7 +1060,7 @@ Suite et état au 2026-10-22 : **P2.28**.
 
 ### P2.28 — Outillage commercial : prospection, veille, cartographie des comptes (ajout 2026-10-22) — **9 blocs commités** (relevé 2026-10-26)
 
-Docs : `account-mapping.md` §10 et `web-presence.md`. Décisions de
+Docs : `crm.md` §3 et `web-presence.md`. Décisions de
 pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 
 **Décisions de cadre (voir `ontology.md` §11)**
@@ -1091,7 +1091,7 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 - Pack de veille autonome : thèmes d'org, page ou actualité → `text_decide` → signal, envoi par suiveur, dédoublonnage, tableau de bord.
 - Pages actualités et carrières par le parcours D307.
 - Diff des pages concurrentes (D311).
-- ~~Signal « nouvel établissement » tiré de la synchro SIRET~~ : fait le 2026-11-04, avec l'import des établissements des comptes suivis, que l'import par SIREN ne ramenait jamais (`account-mapping.md`, dernière section).
+- ~~Signal « nouvel établissement » tiré de la synchro SIRET~~ : fait le 2026-11-04, avec l'import des établissements des comptes suivis, que l'import par SIREN ne ramenait jamais (`crm.md` §3.5).
 - Étape LLM pour les scores moyens de présence web + capture (Q-W4).
 - Proposition automatique des critères abordés depuis la transcription + temps de parole par côté.
 - Listes de salon et d'associations (fichier + `org_resolve`).
@@ -1153,7 +1153,7 @@ rétention (`media.md` §3.13).
 ### P2.31 — Suivi commercial et fin de D341 (ajout 2026-10-26) — **lots DP, CRM1, CRM2, CRM4 poussés** ; priorité 2026-11-03 : robustesse et tests avant toute nouvelle fonctionnalité
 
 Doc : `crm.md` (D442–D452). Revient sur le non-objectif « Pas de CRM »
-d'`account-mapping.md` en gardant le CRM dans un pack.
+de la cartographie des comptes en gardant le CRM dans un pack.
 
 | Lot | Contenu | État |
 |---|---|---|
@@ -1161,10 +1161,10 @@ d'`account-mapping.md` en gardant le CRM dans un pack.
 | CRM1 | Pack `crm` : opportunités, qualification par les critères de l'org, fiche opportunité, hiérarchie des opportunités d'un compte | codé + tests |
 | CRM2 | Activités, plan de relance, brouillons relus (jamais envoyés par PneX), dernière activité, digest « ma journée » ; jetons `$today±n` | codé + tests |
 | CRM4 | Pistes et conversion (action `convert`), devis (modèle `quote_sheet`) et factures suivis (émises par l'outil de facturation), devis expirés et factures en retard avec relance, pistes au digest (D514–D517) | poussé |
-| CRM3 | Mail entrant rattaché à la fiche → lot M6 de `mail.md` (boîtes mail génériques D453–D462, réflexion) ; tableaux de bord (ROI par salon, taux par étape de relance) | M1, M2, M6 codés (2026-10-26) : boîtes IMAP, relève, déclencheur `mail_received`, flow « CRM · mails reçus » ; **essai de bout en bout le 2026-10-26** sur une vraie boîte o2switch (pack `crm` 1.1.0) : 7 défauts trouvés et corrigés (SEC-51 oracle de requête, SEC-52 effacement annulable et en-tête d'authentification forgeable, DKIM vérifié par PneX, date de transfert, chaîne de transferts, refus silencieux des nœuds d'ontologie, mails effacés par correspondant) ; rejeu des mails manqués par un nœud qui redémarre (D464, curseur par nœud, vérifié en réel le 2026-10-26) ; écran `/mailboxes` le 2026-10-27 (ajout, test de connexion qui signale un dossier spam non relevé, pause, suppression, fiche des mails relevés en texte avec la vérification de l'expéditeur, lien depuis le nœud Mail reçu) ; envoi (M3) codé le 2026-10-29 : SMTP sur la boîte, boîte d'envoi relue par un humain, nœud `mail_send`, garde-fous au serveur (D518–D521), essayé sur un vrai serveur le 2026-11-03 ; relances `crm` branchées sur la boîte d'envoi (D522) ; flows `crm` exécutés sur le vrai runtime en e2e le 2026-11-04 (`e2e/tests/crm.spec.ts`) ; restent Microsoft, reporté par Shan le 2026-11-03 (`mail.md` §9–§10), et le nœud de flow d'agrégat. Tableaux de bord : `object-aggregates.md` (D579–D588, pack `crm` 3.3.0, 2026-11-04) |
+| CRM3 | Mail entrant rattaché à la fiche → lot M6 de `mail.md` (boîtes mail génériques D453–D462, réflexion) ; tableaux de bord (ROI par salon, taux par étape de relance) | M1, M2, M6 codés (2026-10-26) : boîtes IMAP, relève, déclencheur `mail_received`, flow « CRM · mails reçus » ; **essai de bout en bout le 2026-10-26** sur une vraie boîte o2switch (pack `crm` 1.1.0) : 7 défauts trouvés et corrigés (SEC-51 oracle de requête, SEC-52 effacement annulable et en-tête d'authentification forgeable, DKIM vérifié par PneX, date de transfert, chaîne de transferts, refus silencieux des nœuds d'ontologie, mails effacés par correspondant) ; rejeu des mails manqués par un nœud qui redémarre (D464, curseur par nœud, vérifié en réel le 2026-10-26) ; écran `/mailboxes` le 2026-10-27 (ajout, test de connexion qui signale un dossier spam non relevé, pause, suppression, fiche des mails relevés en texte avec la vérification de l'expéditeur, lien depuis le nœud Mail reçu) ; envoi (M3) codé le 2026-10-29 : SMTP sur la boîte, boîte d'envoi relue par un humain, nœud `mail_send`, garde-fous au serveur (D518–D521), essayé sur un vrai serveur le 2026-11-03 ; relances `crm` branchées sur la boîte d'envoi (D522) ; flows `crm` exécutés sur le vrai runtime en e2e le 2026-11-04 (`e2e/tests/crm.spec.ts`) ; restent Microsoft, reporté par Shan le 2026-11-03 (`mail.md` §9–§10), et le nœud de flow d'agrégat. Tableaux de bord : `viz.md` (D579–D588, pack `crm` 3.3.0, 2026-11-04) |
 | CRM5 | Pistes depuis une liste de salon (D590) et depuis une boîte partagée (D591), `crm.md` | poussé |
 | CRM6 | Effacement complet et empreinte hachée des points de contact (D610, SEC-63), une piste par adresse (D611) | poussé (70103cd7) |
-| CRM7 | Tableaux de bord commerciaux (`sales-dashboards.md`, D721–D727) : Résultats, Prévision, Passage par étape, Prospection, objectifs, historique d'étape dans O2 | livré, volet clos le 2026-11-06 ; filtre par propriétaire et écran Équipe hors volet (avis juridique) |
+| CRM7 | Tableaux de bord commerciaux (`crm.md` §3.12, D721–D727) : Résultats, Prévision, Passage par étape, Prospection, objectifs, historique d'étape dans O2 | livré, volet clos le 2026-11-06 ; filtre par propriétaire et écran Équipe hors volet (avis juridique) |
 
 Écrans (bouton « Effacer », base légale affichée, vues dédiées) : hors de ce
 lot, l'application commerciale viendra sur l'API.
@@ -1251,7 +1251,7 @@ failles (demande du 2026-11-05, D728).
 | OP2 | Cadre de connecteurs (`pipelines.md`, D791–D797) : PostgreSQL, MySQL sous TLS, REST générique, lecture incrémentale par curseur, webhooks entrants, écran — codés le 2026-11-08 ; écriture retour à OP9, tables virtuelles après OP3, stockage cloud réduit au S3 de PneX (D796) |
 | OP3 | Gouvernance (`governance.md`, D798–D806) : marquages, habilitations à finalité, héritage par lignage, objets masqués, détection proposée, `pseudonym()`, export d'une personne, écrans — codés le 2026-11-08 ; SAML à la demande, I4 général (droits par ligne de toutes les listes) ensuite |
 | OP4 | Branches transverses, interfaces d'ontologie |
-| OP5 | Agrégats (`object-aggregates.md`, D579–D588, validé et codé le 2026-11-04 ; passe avant OP1) ; analyse (`analysis.md`, D825–D832) : SQL en lecture par le worker, règles avec rejeu (`/rules`), blocs vivants dans les pages et PDF daté — codés le 2026-11-08 ; analyse sans code (AN4) ensuite |
+| OP5 | Agrégats (`viz.md`, D579–D588, validé et codé le 2026-11-04 ; passe avant OP1) ; analyse (`analysis.md`, D825–D832) : SQL en lecture par le worker, règles avec rejeu (`/rules`), blocs vivants dans les pages et PDF daté — codés le 2026-11-08 ; analyse sans code (AN4) ensuite |
 | OP6 | Tableur et traitement de texte (GridCraft, WordCraft), après POC |
 | OP7 | Notebooks Python en déploiement séparé, SDK d'accès aux données |
 | OP8 | SDK typés, applications en code sur origine isolée, génération par l'IA, hors ligne |
@@ -1491,7 +1491,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   jour même : ArduinoWebsockets (GPL-3) remplacée par le client WS maison
   `pnex_ws` (Apache-2.0).
 - **2026-10-04 (surfaces pilotables)** — D123–D129 livrés (L1–L7,
-  `surfaces-controls.md`) : dashboards PC/mobile, contrôles d'org, nœud
+  `viz.md`) : dashboards PC/mobile, contrôles d'org, nœud
   `control-source`, ajout guidé depuis un device avec « Créer le flow »,
   items d'annotation `control` / `reading`. Reste : e2e matériel
   interrupteur → LED réelle (banc P0.1).
@@ -1653,7 +1653,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   question ouverte à `iam.md` §14 (compte de service qui écrit). Rien
   d'implémenté.
 - **2026-10-21 (cartographie commerciale)** — Ajout de P2.27
-  (`account-mapping.md`, D329–D342) : pack `prospecting_b2b`, couverture
+  (`crm.md`, D329–D342) : pack `prospecting_b2b`, couverture
   et espace blanc, liens de groupe GLEIF/Wikidata, signaux, capture
   ponctuelle de profil. Amende D261 (`browser-agents.md`, mode
   `once`) et avance le mapping BODACC prévu en V2 par D304. Pack écrit
@@ -1680,7 +1680,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 - **2026-10-27 (due diligence)** — Ajout de P2.32 (`due-diligence.md`,
   D468–D483, lots DD0–DD7) : dossier de transaction, grand livre FEC,
   faits financiers normalisés, moteur de ratios, flux, pro forma. PRD
-  rédigé en D329–D344, renuméroté (plage prise par `account-mapping.md`).
+  rédigé en D329–D344, renuméroté (plage prise par `crm.md`).
 - **2026-10-28 (jurisprudence)** — Ajout de P2.33 (`legal-research.md`,
   D485–D496, lots LR0–LR6) : open data juridique français, vérificateur
   de citations, façade MCP/API `pnex-juris` pour assistants tiers.

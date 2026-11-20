@@ -1,4 +1,4 @@
-//! Profile capture of a person (account-mapping.md D333) and its
+//! Profile capture of a person (crm.md D333) and its
 //! prospecting objection (D341): one pasted profile address, captured once
 //! by the caller's browser agent in its signed-in session, and where the
 //! captures of the person stand. The same dialog asks the capture of a

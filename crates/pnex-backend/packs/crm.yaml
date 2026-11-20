@@ -235,7 +235,7 @@ apps:
       won_in_period: {query: {type_key: opportunity, filters: [{key: stage, op: eq, value: won}, {key: closed_on, op: gte, value: "$from"}, {key: closed_on, op: lte, value: "$to"}]}}
       open_without_probability: {query: {type_key: opportunity, filters: [{key: stage, op: in, value: [discovery, qualification, proposal, negotiation]}, {key: probability, op: missing}]}}
       targets: {query: {type_key: sales_target, order_by: start_on, descending: true}}
-      # Open with no activity for 30 days (sales-dashboards.md D726).
+      # Open with no activity for 30 days (crm.md D726).
       stalled_opportunities:
         query:
           type_key: opportunity
@@ -627,7 +627,7 @@ types:
           closed_on: closed_on
           closed_values: [won, lost]
           funnel: [discovery, qualification, proposal, negotiation, won]
-      # Written by the server from the stage (sales-dashboards.md D723).
+      # Written by the server from the stage (crm.md D723).
       - { key: stage_entered_on, name: In this stage since, names: {fr: "Dans cette étape depuis"}, kind: date, indexed: true }
       - { key: closed_on, name: Closed on, names: {fr: "Clôturée le"}, kind: date, indexed: true }
       - { key: amount, name: Amount, names: {fr: "Montant"}, kind: money }
@@ -655,7 +655,7 @@ types:
       # Written by the convert flow (`lead:<lead id>`): a second convert finds it.
       - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
   # A target of the organization over a period; the figures are written by the
-  # flow "CRM · target progress" (sales-dashboards.md D725).
+  # flow "CRM · target progress" (crm.md D725).
   - key: sales_target
     name: Sales target
     names: {fr: "Objectif commercial"}
@@ -685,7 +685,7 @@ types:
         colors: { new: blue, contacted: amber, qualified: violet, disqualified: gray, converted: green }
         required: true
         indexed: true
-        # Since 3.7.0: feeds the outreach funnel of the Prospecting screen (sales-dashboards.md D722).
+        # Since 3.7.0: feeds the outreach funnel of the Prospecting screen (crm.md D722).
         history:
           funnel: [new, contacted, qualified, converted]
       - key: source

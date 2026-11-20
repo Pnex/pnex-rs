@@ -251,7 +251,7 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
                 },
                 g { transform: "translate({pan.0} {pan.1}) scale({zoom})",
                     // Plan (image stretched to the declared dimensions — fallback
-                    // 2000×1000 if unknown; studio.md doc "still open").
+                    // 2000×1000 if unknown; viz.md §7, still open).
                     if let Some(Some(Some(url))) = plan_url.value().read().as_ref().map(Some) {
                         image {
                             key: "plan-{plan_asset:?}",

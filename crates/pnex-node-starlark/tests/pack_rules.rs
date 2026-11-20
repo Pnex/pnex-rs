@@ -1,6 +1,6 @@
 //! The Starlark rules shipped by the `quali_watch` pack (partner-watch.md
 //! D314, D316) and the target score of `prospecting_b2b`
-//! (account-mapping.md D336) run as the flow runtime runs them.
+//! (crm.md D336) run as the flow runtime runs them.
 
 use pnex_node_starlark::executor::ExecOutcome;
 use serde_json::json;
@@ -1602,7 +1602,7 @@ fn a_new_site_of_a_followed_account_is_a_signal() {
     );
 }
 
-/// `crm` « target progress » (sales-dashboards.md D725): in the currency of
+/// `crm` « target progress » (crm.md D725): in the currency of
 /// the target, the others counted apart, never converted.
 #[test]
 fn a_target_gets_its_progress_without_converting_currencies() {
@@ -1835,7 +1835,7 @@ fn a_mail_draft_goes_to_the_people_who_did_not_object() {
     assert_eq!(r[1]["object_id"], "a1");
 }
 
-/// Press news items (account-mapping.md D539): a model's answer gives a topic,
+/// Press news items (crm.md D539): a model's answer gives a topic,
 /// an explicit none dismisses, anything else stays for a human.
 #[test]
 fn a_press_signal_is_triaged_without_losing_news() {
@@ -1886,7 +1886,7 @@ fn a_press_signal_is_triaged_without_losing_news() {
     assert!(odd["payload"].get("state").is_none(), "{odd}");
 }
 
-/// A captured profile (account-mapping.md D538): read once, an objection
+/// A captured profile (crm.md D538): read once, an objection
 /// stops it, what the profile leaves out stays empty, and the company is
 /// only proposed, never a person created.
 #[test]

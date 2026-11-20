@@ -12180,7 +12180,7 @@
             "type": "array"
           },
           "sums": {
-            "description": "Number properties summed over the tree's nodes, each node once\n(account-mapping.md D330: current and potential users).",
+            "description": "Number properties summed over the tree's nodes, each node once\n(crm.md D330: current and potential users).",
             "items": {
               "type": "string"
             },
@@ -17744,7 +17744,7 @@
         "type": "object"
       },
       "NodeMark": {
-        "description": "A value of a coloured enum property (account-mapping.md D339).",
+        "description": "A value of a coloured enum property (crm.md D339).",
         "properties": {
           "color": {
             "description": "One of the palette tokens (`green`, `amber`…).",
@@ -19818,7 +19818,7 @@
             "$ref": "#/components/schemas/BTreeMap"
           },
           "subject": {
-            "description": "Object type the template is filled from (`page_render`\nplaceholders, account-mapping.md D340); none = a blank page.",
+            "description": "Object type the template is filled from (`page_render`\nplaceholders, crm.md D340); none = a blank page.",
             "type": [
               "string",
               "null"
@@ -26640,7 +26640,7 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Enum only: value → colour of the map, hierarchy and graph\n(account-mapping.md D339), one of [`COLORS`].",
+                "description": "Enum only: value → colour of the map, hierarchy and graph\n(crm.md D339), one of [`COLORS`].",
                 "propertyNames": {
                   "type": "string"
                 },
@@ -26652,7 +26652,7 @@
               },
               "history": {
                 "$ref": "#/components/schemas/PropertyHistory",
-                "description": "Changes of this enum property are recorded and stamped\n(sales-dashboards.md D722, D723)."
+                "description": "Changes of this enum property are recorded and stamped\n(crm.md D722, D723)."
               },
               "indexed": {
                 "description": "Backed by the GIN index of `objects.properties` in queries.",
@@ -31340,7 +31340,7 @@
           },
           "objects": {
             "$ref": "#/components/schemas/ObjectsSource",
-            "description": "An aggregate of objects instead of a series (object-aggregates.md\nD583): `metric`, `device_id` and `window` are then ignored."
+            "description": "An aggregate of objects instead of a series (viz.md\nD583): `metric`, `device_id` and `window` are then ignored."
           },
           "role": {
             "type": "string"
@@ -33788,7 +33788,7 @@
       },
       "TransitionsSource": {
         "additionalProperties": false,
-        "description": "The history of a property (sales-dashboards.md D722): how far objects go\nand how long they stay. Its groups hold `reached`, `rate` and `days`.",
+        "description": "The history of a property (crm.md D722): how far objects go\nand how long they stay. Its groups hold `reached`, `rate` and `days`.",
         "properties": {
           "property": {
             "type": "string"

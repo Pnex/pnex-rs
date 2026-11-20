@@ -267,7 +267,7 @@ pub async fn run_set(
     Ok(crate::services::ontology::query::run(db, client, org_id, &q, hide).await?)
 }
 
-/// An aggregate over a set, with the reader's rights (object-aggregates.md
+/// An aggregate over a set, with the reader's rights (viz.md
 /// D583): the application's scope holds because the set selects the objects.
 pub async fn aggregate_set(
     db: &DatabaseConnection,

@@ -6933,7 +6933,7 @@ mailboxes-invitation-add = Ajouter au calendrier
 mailboxes-invitation-added = Réunion ajoutée au calendrier
 login-browser-error = Ouverture du navigateur impossible
 
-# Aggregates of objects in a widget (object-aggregates.md D584)
+# Aggregates of objects in a widget (viz.md D584)
 objects-no-value = Sans valeur
 objects-others = Autres
 objects-empty = Aucun objet

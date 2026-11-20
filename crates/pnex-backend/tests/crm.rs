@@ -381,7 +381,7 @@ async fn the_pack_ships_its_screens() {
 }
 
 /// The figures of the Results and Prospecting screens and the stalled list
-/// (sales-dashboards.md D726): open opportunities stay out of the win rate.
+/// (crm.md D726): open opportunities stay out of the win rate.
 #[tokio::test]
 #[serial]
 async fn the_results_screens_count_what_is_there() {

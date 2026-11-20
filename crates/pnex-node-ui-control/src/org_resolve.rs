@@ -1,4 +1,4 @@
-//! Company name → SIREN node (account-mapping.md D332): `pnex-org-resolve`.
+//! Company name → SIREN node (crm.md D332): `pnex-org-resolve`.
 //! Each message calls `POST /internal/flow/org-resolve` naming the deployed
 //! node; the backend reads the thresholds from the deployed config, asks
 //! the company register and answers scored candidates. Port 0 matched,

@@ -6937,7 +6937,7 @@ mailboxes-invitation-add = Add to calendar
 mailboxes-invitation-added = Meeting added to the calendar
 login-browser-error = Opening the browser failed
 
-# Aggregates of objects in a widget (object-aggregates.md D584)
+# Aggregates of objects in a widget (viz.md D584)
 objects-no-value = No value
 objects-others = Others
 objects-empty = No objects

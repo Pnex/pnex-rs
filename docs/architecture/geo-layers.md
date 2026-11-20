@@ -1,12 +1,12 @@
 # Couches géographiques — PostGIS natif, sans GeoServer (2026-10-10)
 
-> PRD — **Phase F livrée (2026-10-10), phase A livrée (2026-11-14)**, B–E proposées. Ajoute à la base map (`viz-bases.md`) des **couches
+> PRD — **Phase F livrée (2026-10-10), phase A livrée (2026-11-14)**, B–E proposées. Ajoute à la base map (`viz.md`) des **couches
 > géographiques complexes** (vecteur importé depuis des fichiers, stylées,
 > tuilées, cachées, seedables), servies **en Rust dans Loco**, sans GeoServer.
 > **Martin reste en place pour le fond de carte** (PMTiles Protomaps) : ce
 > PRD n'y touche pas.
 >
-> Renvois : `viz-bases.md` (D27 maplibre 4.x + style Protomaps auto-hébergé,
+> Renvois : `viz.md` (D27 maplibre 4.x + style Protomaps auto-hébergé,
 > D37 clustering POI, D38 positions GPS), `media.md` (D21 — octets jamais en
 > base, MediaStore opendal `fs`/`s3`, versions append-only), `agents.md`
 > (jobs par capabilities), `ontology.md` (D181 temps des objets, D184
@@ -49,7 +49,7 @@
 - Fournisseurs de **fond de carte, geocoding, reverse geocoding et routage
   configurables par l'org** (Martin, Nominatim, Pelias, Valhalla…), avec
   leurs secrets et en-têtes, et un **défaut par org** (§8). Supprime l'URL
-  de fond de carte codée en dur (D27, `viz-bases.md` §9.2).
+  de fond de carte codée en dur (D27, `viz.md` §5).
 
 **Non-objectifs (V1)**
 

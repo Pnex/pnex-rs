@@ -320,9 +320,9 @@ Chaque concept a un seul nom dans chaque langue, un seul composant et une seule 
 | Unité d'autorisation `service:verbe` (D289) | Permission | Permission | une autorisation du navigateur ou du device |
 | Écran « qui peut faire quoi » (iam.md §9) | Accès | Access | pas « Partager » (lien public d'un tour) |
 | Service externe qui répond à une requête de recherche sur le web (web-presence.md D360) | Fournisseur de recherche web | Web search provider | pas « moteur de recherche » (le service tiers), pas « recherche » seule (= recherche globale D69) |
-| Filiales et sites d'un groupe sans contact ni statut client (account-mapping.md D330) | Espace blanc | White space | pas « zone blanche » (couverture réseau), pas « trou » |
-| Ce qui a bougé sur un compte suivi : annonce légale, nouvel établissement, page modifiée (account-mapping.md D335) | Signal commercial | Commercial signal | pas « alerte » (= notification envoyée), pas « signal » seul (= signaux d'un dossier) |
-| Rencontre avec un compte, ses participants, son enregistrement (account-mapping.md, réunions) | Rendez-vous | Meeting | pas « réunion commerciale » ni « RDV » |
+| Filiales et sites d'un groupe sans contact ni statut client (crm.md D330) | Espace blanc | White space | pas « zone blanche » (couverture réseau), pas « trou » |
+| Ce qui a bougé sur un compte suivi : annonce légale, nouvel établissement, page modifiée (crm.md D335) | Signal commercial | Commercial signal | pas « alerte » (= notification envoyée), pas « signal » seul (= signaux d'un dossier) |
+| Rencontre avec un compte, ses participants, son enregistrement (crm.md §3.7) | Rendez-vous | Meeting | pas « réunion commerciale » ni « RDV » |
 | Point de la méthode de vente de l'org, suivi rendez-vous par rendez-vous | Critère du playbook | Playbook criterion | pas « note » ni « score » d'une personne : on agrège par critère |
 | Écriture proposée par une machine (import, flow, détecteur, modèle), en attente d'un humain (proposals.md D371) | Proposition ; la page « À valider » | Proposal ; « To validate » | pas « suggestion » ni « recommandation » (= lien `recommended`) |
 | Agent interne qui lit la demande d'écriture d'un autre agent et l'accepte ou la refuse (agents.md D836) | Agent validateur ; « Qui décide » ; « Réarmer » | Validator agent ; « Who decides » ; « Rearm » | pas « agent de contrôle », pas « approbateur » |

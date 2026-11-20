@@ -9,7 +9,7 @@ use super::{LinkTypeDef, ObjectTypeDef};
 /// Maximum hops of a query traversal (D185: the API stays bounded).
 pub const MAX_HOPS: usize = 4;
 
-/// Links between people an introduction path follows (account-mapping.md
+/// Links between people an introduction path follows (crm.md
 /// D338): who knows, recommends, employs or directs whom, and who belongs
 /// to a professional group.
 pub const INTRODUCTION_LINKS: &[&str] =
@@ -684,7 +684,7 @@ pub struct Hierarchy {
     pub names: super::Names,
     pub steps: Vec<HierarchyStep>,
     /// Number properties summed over the tree's nodes, each node once
-    /// (account-mapping.md D330: current and potential users).
+    /// (crm.md D330: current and potential users).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sums: Vec<String>,
     /// What makes a node of the tree covered; the others are its white
@@ -771,7 +771,7 @@ pub struct HierarchyNode {
     pub white_space: bool,
 }
 
-/// A value of a coloured enum property (account-mapping.md D339).
+/// A value of a coloured enum property (crm.md D339).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NodeMark {
@@ -861,7 +861,7 @@ pub struct PageTemplate {
     #[serde(default, skip_serializing_if = "super::Names::is_empty")]
     pub bodies: super::Names,
     /// Object type the template is filled from (`page_render`
-    /// placeholders, account-mapping.md D340); none = a blank page.
+    /// placeholders, crm.md D340); none = a blank page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject: Option<String>,
     /// Link type from the page (`doc`) to that object.

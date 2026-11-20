@@ -93,7 +93,7 @@ pub async fn on_concluded(db: &DatabaseConnection, org_id: i64, actor: &Actor, p
     }
 }
 
-/// A page from a pack template, filled from the object `id` (account-mapping.md
+/// A page from a pack template, filled from the object `id` (crm.md
 /// D340): the template's placeholders read the object, its open links and
 /// its hierarchies today; the page is then linked to the object by the
 /// template's link. A snapshot of the day, edited freely afterwards.

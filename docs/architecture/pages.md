@@ -12,7 +12,7 @@ la 0.2.0 s'applique (`roadmap.md` P2.14). Entrée roadmap : P2.17, décision #21
 validation (D192+ déjà réservé par `vision.md`).
 **Renvois :** `ontology.md` (D176 types, D179 liens, D183 actions, D184
 provenance, D185 requête, D186 explorateur, D188 permissions, D190 packs),
-`media.md` (D21 bibliothèque média, MediaStore), `viz-bases.md` (`pnexMap`,
+`media.md` (D21 bibliothèque média, MediaStore), `viz.md` (`pnexMap`,
 pont JS → Rust, modes live/édition D34), `geo-layers.md` (fond de carte de
 l'org, couches), `doc-search.md` (index de recherche des documents),
 `dashboard_editor` / D129 (liaisons de lecture `SourceRef`),
@@ -120,7 +120,7 @@ Promesses : **collaboratif temps réel**, **versionné**, **importable**,
 ### P3 — Éditeur : ProseMirror en bundle IIFE, piloté par Dioxus
 
 - Dioxus n'a pas d'éditeur de texte riche viable ; en écrire un est hors
-  de portée. On suit l'école `pnexMap` (`viz-bases.md`) : bundle esbuild
+  de portée. On suit l'école `pnexMap` (`viz.md`) : bundle esbuild
   IIFE `js/doc.js` → `window.pnexDoc`, pont `Closure::wrap`, stub natif,
   échec → badge, jamais panic.
 - Contenu : **ProseMirror** (MIT, headless, aucun service distant) + la

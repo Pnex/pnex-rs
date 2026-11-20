@@ -1,4 +1,4 @@
-//! "New page" on an object (account-mapping.md D340): a page started from a
+//! "New page" on an object (crm.md D340): a page started from a
 //! pack template whose subject is the object's type, filled from the
 //! object (account plan, competitor sheet, meeting preparation), then
 //! opened in the page editor.

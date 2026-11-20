@@ -1,4 +1,4 @@
-//! The `org_resolve` node (account-mapping.md D332) against a local mock of
+//! The `org_resolve` node (crm.md D332) against a local mock of
 //! the company register: a clear match on port 0, namesakes to review on
 //! port 1, a wrong postcode retried without it, a forged node refused.
 //!

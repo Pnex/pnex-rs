@@ -1,5 +1,5 @@
 //! `pnex-weather` — timed weather source (D140,
-//! `docs/architecture/home-dashboards.md`).
+//! `docs/architecture/viz.md`).
 //!
 //! No input. Every `interval_min` minutes (and once at start with
 //! `emit_on_start`) the node fetches the forecast of its coordinates from an

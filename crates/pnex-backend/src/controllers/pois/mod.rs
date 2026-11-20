@@ -2,7 +2,7 @@
 //! typed links (D39) and device GPS positions (D38), org scoping (D2).
 //! **Additive** endpoints — never bump `pnex_api_contract::CONTRACT`.
 //!
-//! Contract: `docs/contracts/viz.http`; PRD: `docs/architecture/viz-bases.md`.
+//! Contract: `docs/contracts/viz.http`; PRD: `docs/architecture/viz.md`.
 //! - lists = D14 envelope `{count, next, previous, results}`;
 //! - errors are `ErrorDetail` (`field-invalid` with machine tokens);
 //! - cross-org 404 hidden (POI/link not found or from another org);

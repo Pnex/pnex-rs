@@ -149,7 +149,7 @@ pub struct PropertyDef {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pack: Option<String>,
     /// Enum only: value → colour of the map, hierarchy and graph
-    /// (account-mapping.md D339), one of [`COLORS`].
+    /// (crm.md D339), one of [`COLORS`].
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub colors: std::collections::BTreeMap<String, String>,
     /// Enum only: value → displayed label by language (ontology.md D370).
@@ -168,7 +168,7 @@ pub struct PropertyDef {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub contact_point: bool,
     /// Changes of this enum property are recorded and stamped
-    /// (sales-dashboards.md D722, D723).
+    /// (crm.md D722, D723).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history: Option<PropertyHistory>,
     /// Text only: the value is stored in this form, whatever is typed or

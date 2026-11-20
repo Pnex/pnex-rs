@@ -1,5 +1,5 @@
 //! Invariant "no direct dashboard → device link" (D123, D131,
-//! docs/architecture/home-dashboards.md §1 bis): surface editors and views
+//! docs/architecture/viz.md §3.3): surface editors and views
 //! read device metadata (pin labels and modes) but never call the device
 //! command, OTA, build or flash paths — a surface writes org controls and
 //! only a deployed flow acts on a device.
@@ -71,7 +71,7 @@ fn surfaces_never_reach_a_device() {
     assert!(
         hits.is_empty(),
         "a surface references a device actuation path (only a deployed flow acts on a \
-         device, home-dashboards.md §1 bis):\n{}",
+         device, viz.md §3.3):\n{}",
         hits.join("\n")
     );
 }

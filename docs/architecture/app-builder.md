@@ -16,8 +16,8 @@
 > interface construite dans PneX, à côté de l'interface externe par le
 > SDK. Une notion, un mot (lexique D218).
 >
-> Liens : `external-apps.md` (D432–D441), `viz-bases.md` (D24, D31, D40,
-> D41), `surfaces-controls.md` (D123–D133), `ontology.md` (D183 actions,
+> Liens : `external-apps.md` (D432–D441), `viz.md` (D24, D31, D40,
+> D41, D123–D133), `ontology.md` (D183 actions,
 > D185 requête, D187 dashboards de type, D188 droits), `iam.md`,
 > `design-system.md` §8 (coquille d'éditeur) et §7 (lexique), `security.md`
 > (R1–R23), `ai-assistant.md` §9, `api.md`.
@@ -105,7 +105,7 @@ tests sur l'ontologie inventée (`article`, `auteur`, lien `ecrit_par`).
 - Écrites par : un champ de saisie, la sélection d'une ligne de tableau
   (variable `object`), le clic sur une barre d'un graphique d'agrégat
   (variable `enum` de la propriété qu'il groupe, second clic = vide ;
-  `sales-dashboards.md` D726), le paramètre d'URL `?v.<nom>=…` (deep-link).
+  `crm.md` D726), le paramètre d'URL `?v.<nom>=…` (deep-link).
 - Lues par : les paramètres des ensembles d'objets, les fiches, les
   formulaires, les boutons d'action.
 - État local à la session de l'utilisateur, jamais en base. Une variable
@@ -219,6 +219,6 @@ Limites :
 - La vue reste dans la coquille PneX (barre latérale visible), pas en plein écran.
 - Pas d'aperçu d'un écran non publié : publier pour le voir.
 - Pas de brouillon d'écran proposé par l'assistant (§8).
-- `object_count` retiré le 2026-11-04 : les nombres passent par les widgets `stat`, `gauge`, `indicator`, `line`, `symbol` et `range_bars`, avec une source d'objets (`object-aggregates.md`, D579–D588).
+- `object_count` retiré le 2026-11-04 : les nombres passent par les widgets `stat`, `gauge`, `indicator`, `line`, `symbol` et `range_bars`, avec une source d'objets (`viz.md`, D579–D588).
 - Le tri d'un tableau ne porte pas sur le titre (ordre par défaut de la requête).
 

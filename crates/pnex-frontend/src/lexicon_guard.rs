@@ -169,7 +169,7 @@ const RULES: &[Rule] = &[
         use_instead: "web search provider (D360)",
         allowed_keys: &[],
     },
-    // account-mapping.md D335: what moved on an account is a « signal
+    // crm.md D335: what moved on an account is a « signal
     // commercial »; an « alerte » is a notification sent.
     Rule {
         scope: Scope::Fr,
@@ -191,7 +191,7 @@ const RULES: &[Rule] = &[
         use_instead: "rendez-vous",
         allowed_keys: &[],
     },
-    // account-mapping.md D330: the uncovered part of a group.
+    // crm.md D330: the uncovered part of a group.
     Rule {
         scope: Scope::Fr,
         term: "zone blanche",

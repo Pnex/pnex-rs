@@ -1,5 +1,5 @@
 //! `pnex-control-source` — event-driven source of org controls (D127,
-//! `docs/architecture/surfaces-controls.md`).
+//! `docs/architecture/viz.md`).
 //!
 //! A surface (dashboard card, annotation) writes a control through the
 //! backend, which stores the `ControlEvent` under `pnex:ctl:v1:{org}:{id}`

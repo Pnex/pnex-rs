@@ -1,4 +1,4 @@
-//! Read-only aggregates of an ontology query (object-aggregates.md D579–D581):
+//! Read-only aggregates of an ontology query (viz.md D579–D581):
 //! the request, its answer, and the pure part of the computation. Pure,
 //! wasm-safe. No `flatten` and no untagged enum (serde_json
 //! `arbitrary_precision`).
@@ -151,7 +151,7 @@ pub struct AggregateResult {
     pub computed_at: String,
 }
 
-/// The history of a property (sales-dashboards.md D722): how far objects go
+/// The history of a property (crm.md D722): how far objects go
 /// and how long they stay. Its groups hold `reached`, `rate` and `days`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

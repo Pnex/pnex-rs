@@ -1,4 +1,4 @@
-//! A widget showing an aggregate of objects (object-aggregates.md D584). It
+//! A widget showing an aggregate of objects (viz.md D584). It
 //! reads on its own timer, not in the `series-batch`, then hands the value
 //! to the same body as a series: thresholds, formats and symbols stay theirs.
 

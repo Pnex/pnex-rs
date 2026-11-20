@@ -1,4 +1,4 @@
-//! Org controls (D125–D127, `docs/architecture/surfaces-controls.md`):
+//! Org controls (D125–D127, `docs/architecture/viz.md`):
 //! CRUD of the control definitions, value write and batch read.
 //!
 //! A control is an org entity (not a dashboard property): the same control

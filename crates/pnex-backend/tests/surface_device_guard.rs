@@ -1,5 +1,5 @@
 //! Invariant "no direct dashboard → device link" (D123, D131,
-//! docs/architecture/home-dashboards.md §1 bis): the surface services only
+//! docs/architecture/viz.md §3.3): the surface services only
 //! declare and write org controls; only a deployed flow acts on a device.
 //! Static guard: the surface sources never reference the device bus or the
 //! device command path.
@@ -45,7 +45,7 @@ fn surface_services_never_reach_a_device() {
     assert!(
         hits.is_empty(),
         "a surface service references a device actuation path (only a deployed flow \
-         acts on a device, home-dashboards.md §1 bis):\n{}",
+         acts on a device, viz.md §3.3):\n{}",
         hits.join("\n")
     );
 }

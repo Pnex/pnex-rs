@@ -1,5 +1,5 @@
 //! Shared rendering of the **surfaces** (D129, `docs/architecture/
-//! surfaces-controls.md`): dashboards (desktop canvas, mobile stack) and
+//! viz.md`): dashboards (desktop canvas, mobile stack) and
 //! annotations show the same control cards and readings.
 //!
 //! "A surface reads, a flow acts": a control card only writes the value of

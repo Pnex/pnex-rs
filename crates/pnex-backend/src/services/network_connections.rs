@@ -1,4 +1,4 @@
-//! Connections of a contact on LinkedIn (account-mapping.md D976, D977).
+//! Connections of a contact on LinkedIn (crm.md D976, D977).
 //!
 //! A user declares where their own account stands with a person (none,
 //! invitation sent, connected). Only for a connected person may they ask

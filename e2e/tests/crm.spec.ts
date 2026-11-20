@@ -3,7 +3,7 @@
 // end to end and the ontology is read back. A cron trigger is swapped for a
 // one-shot inject, nothing else in the graph changes. Each test works in an
 // organization of its own. The LLM is a local stand-in; the real models are
-// evaluated on their own (account-mapping.md).
+// evaluated on their own (crm.md).
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';

@@ -1,4 +1,4 @@
-//! A pack page template filled from one object (account-mapping.md D340):
+//! A pack page template filled from one object (crm.md D340):
 //! generic placeholders in the template body, read at instantiation, so
 //! the business content lives in the pack (D190) and the core only knows
 //! objects, links and hierarchies. The result is plain Markdown: a snapshot

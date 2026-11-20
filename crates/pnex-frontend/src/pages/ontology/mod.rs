@@ -369,7 +369,7 @@ pub fn ObjectForm(
         .properties
         .iter()
         .filter(|p| !p.kind.is_temporal())
-        // The dates of a history are the server's (sales-dashboards.md D723).
+        // The dates of a history are the server's (crm.md D723).
         .filter(|p| {
             !def.properties
                 .iter()

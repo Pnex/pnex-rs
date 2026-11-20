@@ -1,5 +1,5 @@
 //! Inspector section: a widget shows numbers over objects instead of a series
-//! (object-aggregates.md D583). The form covers one calculation and one split;
+//! (viz.md D583). The form covers one calculation and one split;
 //! a richer source (a pack's ratio, several metrics, two hops) stays as it is
 //! and is only summed up here.
 
@@ -352,7 +352,7 @@ pub fn ObjectsSourcePanel(cx: EditorCx, widget: Widget, can_write: bool) -> Elem
     let current_op = current.op.unwrap_or(MetricOp::Count);
     let split = split_value(o.group_by.first());
     // In an application, a bar click can write the enum variable of the
-    // property the bars split by (sales-dashboards.md D726).
+    // property the bars split by (crm.md D726).
     let bar_var = widget.options.app.as_ref().and_then(|a| a.variable.clone());
     let bar_vars: Vec<String> = match (&app, split.strip_prefix("p:")) {
         (Some(a), Some(prop)) if widget.widget_type == pnex_core::RANGE_BARS => a

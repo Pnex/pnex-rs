@@ -1011,7 +1011,7 @@ pub fn requires_closure(pack: &Pack) -> Vec<String> {
 }
 
 /// Whether `owner` gives a key up to `taker` on upgrade: the shipped
-/// `owner` now builds on `taker`, which took the key over (account-mapping.md
+/// `owner` now builds on `taker`, which took the key over (crm.md
 /// D343: `companies_fr` handing its shared fields to `companies`).
 fn hands_over(owner: &str, taker: &str) -> bool {
     shipped()

@@ -1,5 +1,5 @@
 //! Page `/controls` — org controls (D125, `docs/architecture/
-//! surfaces-controls.md`): the switches, sliders, buttons and numeric
+//! viz.md`): the switches, sliders, buttons and numeric
 //! inputs that the surfaces operate and the flows listen to
 //! (`control-source`). A control is never bound to a pin: the flow decides.
 //!

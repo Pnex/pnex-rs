@@ -64,7 +64,7 @@ pub struct OntologyQueryConfig {
 }
 
 /// `ontology_aggregate`: numbers over the objects of one type matching the
-/// filters (object-aggregates.md D587). It reads; it never writes.
+/// filters (viz.md D587). It reads; it never writes.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct OntologyAggregateConfig {
     #[serde(default)]

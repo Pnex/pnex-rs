@@ -1,6 +1,6 @@
 ### Contrat API carte POI-first (D35–D39, D43) — POIs, clustering backend,
 ### placements devices, liens typés, positions GPS devices. Cf.
-### docs/architecture/viz-bases.md §0 bis.
+### docs/architecture/viz.md §3.1.
 ###
 ### D43 (2026-09-12) : POI multi-devices — table `device_placements`
 ### (1 placement par device), `location_detail` par placement, PAS de
@@ -196,7 +196,7 @@ X-Org-Id: {{org_id}}
 ### ------------------------------------ studio SCADA : dashboards (D40) ---
 
 ### ⚠ Décisions D40/D41 (studio SCADA, 2026-09-11) — D35–D39 sont les
-### décisions POI-first ; cf. viz-bases.md §0.
+### décisions POI-first ; cf. viz.md §5.
 
 ### Lister (D14) — 200
 GET {{base}}/api/v1/dashboards?search=temp

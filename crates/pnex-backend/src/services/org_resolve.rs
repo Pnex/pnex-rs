@@ -1,4 +1,4 @@
-//! The `org_resolve` node (account-mapping.md D332): a company name (and a
+//! The `org_resolve` node (crm.md D332): a company name (and a
 //! place) → scored SIREN candidates from the public company register
 //! (the French company search API). Writes nothing; the thresholds are read
 //! from the deployed node, never from the runtime (R1).

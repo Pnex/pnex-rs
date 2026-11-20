@@ -1,5 +1,5 @@
 //! Reads the O2 `object_transitions` stream: how far objects go through the
-//! values of a property and how long they stay in each (sales-dashboards.md
+//! values of a property and how long they stay in each (crm.md
 //! D722). Written best effort: trends, never accounting.
 
 use std::collections::{BTreeMap, HashMap};

@@ -433,7 +433,7 @@ pub const RUNNER_NOT_FOUND: &str = "runner-not-found";
 /// The runner does not hold the job any more.
 pub const RUNNER_JOB_NOT_HELD: &str = "runner-job-not-held";
 
-// ── Org controls (D125–D127, surfaces-controls.md) ──────────────────────
+// ── Org controls (D125–D127, viz.md) ──────────────────────
 
 /// Another control of the org already uses this key.
 pub const CONTROL_KEY_TAKEN: &str = "control-key-taken";
@@ -1287,7 +1287,7 @@ pub const EXT_CONNECTIONS_HIDDEN: &str = "ext-connections-hidden";
 pub const PROSPECTING_OPPOSED: &str = "prospecting-opposed";
 /// The object was erased: a shell, never edited nor linked again (D446).
 pub const ONTOLOGY_ERASED: &str = "ontology-erased";
-/// An aggregate ran past its time cap (object-aggregates.md D586).
+/// An aggregate ran past its time cap (viz.md D586).
 pub const ONTOLOGY_AGGREGATE_TIMEOUT: &str = "ontology-aggregate-timeout";
 /// A path search stopped at its cap before finding a path: "no path" would
 /// be a guess (ontology.md D589).

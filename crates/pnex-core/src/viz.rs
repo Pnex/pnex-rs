@@ -2,7 +2,7 @@
 //! as JSONB (`dashboard_versions.layout`, `flow.rs` school: the same
 //! structure validates in the browser before save and on the server as 400).
 //!
-//! D40/D41 specifics (PRD `docs/architecture/viz-bases.md`):
+//! D40/D41 specifics (PRD `docs/architecture/viz.md`):
 //! - **Free-hand canvas** — **absolute px** coordinates in a
 //!   sized canvas (no grid);
 //! - **Lines and anchors** (`Wire`) — **purely visual** links
@@ -192,7 +192,7 @@ pub struct SourceRef {
     /// `device_id` are then filled by [`bind_object`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object_property: Option<String>,
-    /// An aggregate of objects instead of a series (object-aggregates.md
+    /// An aggregate of objects instead of a series (viz.md
     /// D583): `metric`, `device_id` and `window` are then ignored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub objects: Option<crate::ontology::aggregate::ObjectsSource>,
@@ -784,7 +784,7 @@ pub fn bind_object(layout: &DashboardLayout, bindings: &[SeriesBinding]) -> Dash
 }
 
 /// The layout with `$object` of its aggregates set to the shown object
-/// (object-aggregates.md D583). Without an object they stay as they are, and
+/// (viz.md D583). Without an object they stay as they are, and
 /// the widget reads nothing.
 pub fn bind_object_id(layout: &DashboardLayout, id: &str) -> DashboardLayout {
     let mut out = layout.clone();
