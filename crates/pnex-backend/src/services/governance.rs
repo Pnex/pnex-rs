@@ -704,7 +704,11 @@ pub async fn detect_pass(
         let org_id: i64 = row.try_get("", "org_id")?;
         let seq: i64 = row.try_get("", "seq")?;
         if dataset_markings(db, id).await?.is_empty() {
-            let keys: Vec<String> = markings(db, org_id).await?.into_iter().map(|m| m.key).collect();
+            let keys: Vec<String> = markings(db, org_id)
+                .await?
+                .into_iter()
+                .map(|m| m.key)
+                .collect();
             let sample =
                 crate::services::datasets::sample(db, store, org_id, id, DETECT_ROWS, None).await;
             if let Ok(sample) = sample {
