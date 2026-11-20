@@ -1,4 +1,4 @@
-//! Flow execution cluster (D106, docs/architecture/flow-engine.md §12).
+//! Flow execution cluster (D106, docs/architecture/flow-engine.md §3.4).
 //!
 //! Split between a **control plane** and a **data plane**:
 //! - control plane: one elected placement controller (row lease

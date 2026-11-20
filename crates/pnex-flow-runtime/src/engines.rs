@@ -15,7 +15,7 @@
 //! health only). `--check` reuses `build_engine` without `start()` for the
 //! deploy pre-flight.
 //!
-//! Semantic delta (accepted, see flow-engine.md §5): "global" context,
+//! Semantic delta (accepted, see flow-engine.md §3.3): "global" context,
 //! link call and the http-response registry become **intra-flow** — each
 //! engine is self-contained (own ContextManager, registries, channels,
 //! CancellationToken), zero mutable global state in the vendor.

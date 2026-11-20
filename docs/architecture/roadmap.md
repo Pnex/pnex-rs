@@ -1635,7 +1635,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   runtime assainis (O72), défauts visuels de l'éditeur (O73), recherche
   globale dans le contenu des documents (O54), `word_timestamps` appliqué
   (O56), suite des listes CRUD (O64). Docs d'architecture alignées
-  (`flow-engine.md` §10, `edge-model.md` §3, `design-system.md` règle 8).
+  (`flow-engine.md` §3.6, `edge-model.md` §3, `design-system.md` règle 8).
 - **2026-10-17 (positionnement)** — Ajout de P2.23 : observabilité IT
   (OTLP logs/traces/métriques, Prometheus scrape + `remote_write`, syslog,
   Loki, InfluxDB, StatsD). PneX = toute donnée, pas seulement le physique ;

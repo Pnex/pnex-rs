@@ -1,632 +1,329 @@
-# Moteur de flow ETL « Node-RED full-Rust » — EdgeLinkd vendored, mode B
+# Moteur de flows
 
-> **Rôle (D998, `operational-platform.md`, 2026-11-18)** : les flows portent les petites
-> données et manipulations, et l'organisation de l'ontologie (faire et défaire les liens
-> déduits, rejouable sur les données du moment) ; l'ingestion en volume reste aux pipelines.
+## 1. Résumé
 
-> **Statut : IMPLÉMENTÉ (Phase 0 + Phase 1, 2026-09-03 — branché
-> `worktree-etl-flow-engine` ; Phase 5 — éditeur Dioxus — IMPLÉMENTÉ
-> 2026-09-04, branche `flow-engine-phase5-editeur` ; Phase 6 — nœuds
-> device/calc/metric + dépendances pin↔flows — IMPLÉMENTÉ 2026-09-04,
-> branche `flow-engine-phase6-nodes-device` ; ferme d'engines « N Engines,
-> 1 process » + pré-flight deploy — IMPLÉMENTÉ 2026-09-07 ; contrôles
-> runtime Stop/Start/Restart + statut DB `stopped` — IMPLÉMENTÉ 2026-09-07 ;
-> cluster d'exécution shardé par org D106 + bus device D107 — §7, 2026-10-01 ;
-> en attente de revue humaine).** Ce document consigne (a) la décision
-> d'intégration et de rechargement (spike PRD §5.1), (b) les faits
-> **vérifiés** sur EdgeLinkd au commit épinglé, (c) les écarts vs la
-> conception initiale.
->
-> **Rappel PRD (§3, garde-fous)** : ingestion uniquement (pas de write-side
-> device, frontière D13/D17) — **dépassé** : le nœud `pnex-device-write`
-> écrit sur les pins depuis un flow déployé (mode « connecté », source
-> d'écriture exclusive par pin, 8d60950 ; D17 amendé dans `inventory.md`) ;
-> cœur EdgeLinkd patché seulement dans notre fork `Pnex/edgelinkd` (vendor/README.md) ; pas de
-> type-check global du graphe (contrats typés aux frontières des nœuds
-> custom) ; les utilisateurs n'écrivent pas de Rust ; l'éditeur Node-RED
-> embarqué n'est **jamais exposé** (runtime headless) ; tranches fines —
-> l'éditeur Dioxus est la phase 5 de la piste.
+Un flow est un graphe de nœuds qu'une personne dessine dans l'éditeur `/flows`. Il porte les petites données et l'organisation de l'ontologie : il fait et défait les liens déduits, sur les données du moment (D998). L'ingestion en volume reste aux pipelines. Le moteur exécute les flows déployés dans `pnex-flow-runtime`, un binaire maison qui lie `edgelink-core` (D18). Le backend ne lie jamais ce moteur : il projette les flows en artefact, supervise le process et acquitte chaque déploiement.
 
-## 0. Phase 5 — Éditeur de flows (2026-09-04)
+## 2. Concepts
 
-Éditeur drag & drop complet dans `crates/pnex-frontend/src/components/
-flow_editor/`, page `/flows` (liste + éditeur en sous-vue — routes
-statiques, pattern `devices.rs`). L'éditeur ne parle **qu'à l'API Loco**
-(garde-fou PRD respecté — zéro contact avec le runtime).
+- **Flow** : graphe typé de nœuds (`pnex_core::flow`), stocké en base. Statut `draft`, `deployed` ou `stopped`.
+- **Version** : état enregistré d'un flow (`flow_versions`, ajout seul). Enregistrer crée une version. Déployer publie une version.
+- **Kind** : type d'un nœud du graphe (`inject`, `device_read`, `calc`, `function`…). La liste et la doc de chaque kind vivent dans `crates/pnex-core/src/flow/node_docs.rs`.
+- **Projection** : traduction des flows déployés d'une org en tableau Node-RED (`flows.json`). Un flow donne un tab `pnexflow{id}`.
+- **Runtime** : process `pnex-flow-runtime`, enfant du serveur. Il lit l'artefact et exécute les tabs.
+- **Engine** : instance `edgelink-core` qui exécute un seul tab. La ferme d'engines tient un engine par flow.
+- **Superviseur** : tâche du backend qui lance le runtime, lui envoie `SIGUSR1` et lit ses événements.
+- **Worker** : un superviseur et son runtime. Il exécute les flows des orgs placées chez lui.
+- **Contrôleur** : rôle élu qui place chaque org sur un worker. Il n'exécute aucun flow.
+- **Fonction** : code utilisateur versionné (JS ou Starlark) de la page `/functions`, appelé par un nœud `function`.
 
-Choix structurants :
-
-- **Canevas SVG pur Dioxus** (aucune dépendance npm/Rust ajoutée) — l'SVG
-  n'a **pas** de `view_box` : 1 unité utilisateur = 1 px CSS, conversion
-  `(client − origine − pan)/zoom`, origine (`getBoundingClientRect`)
-  mesurée au début de chaque geste.
-- **Gestes** : handlers `move`/`up` sur le root SVG (fiables quand le
-  pointeur sort du nœud), `pointerleave` annule un geste orphelin, hit-test
-  bbox **mathématique** (pas d'`elementFromPoint`), zoom molette borné
-  0.4–2.0 vers le curseur, drag snappé sur grille 20 px.
-- **Validation partagée** : `pnex_core::validate_graph` exécutée **dans le
-  navigateur** (pnex-core est wasm32) AVANT chaque save — surlignage des
-  nœuds en cause + bandeau ; le 400 `{"violations": [...]}` serveur est
-  traité à l'identique. Pas de cycle-détection ni de type-check ajoutés
-  (garde-fou PRD).
-- **Versioning** : save = PATCH avec `expected_version_number` (409 →
-  modal « Recharger depuis le serveur / Écraser avec ma version », les deux
-  branches repartent d'un détail frais) ; drawer d'historique — « Charger »
-  une ancienne version = édition (le prochain save crée v(n+1) avec ce
-  graphe), « Déployer cette version » = rollback serveur (ne crée pas de
-  version) ; dirty dérivé au rendu (`graph != saved_graph`, jamais de
-  signal dirty à tenir à jour — leçon brick0 « zéro set en render »).
-- **Inspecteur par kind** : inject/debug (pnex_sql retiré le 2026-10-01, red le 2026-10-14), JSON (payload
-  inject) validé localement avec drapeau d'invalidité (pattern
-  `MetadataEditor` devices) ; les violations du nœud sélectionné sont
-  listées dans l'inspecteur (messages pnex-core affichés tels quels).
-- **Deploy/rollback** : bouton gated `can_write && !dirty` (deploy =
-  publier une version enregistrée) ; chip runtime pollé 5 s
-  (`GET /flows/{id}/runtime`) — moteur actif/arrêté, pid/version au
-  survol ; 503 `flow-runtime` toasté tel quel.
-- **Frontières** : `ApiError` porte désormais `status`/`body` (409/400
-  distinguables sans parser le message) ; `Serialize` ajouté sur les DTOs
-  requête `pnex-core` (le front construit les requêtes typées) ; handlers
-  sans capture de `String` (l'id du nœud ciblé est relu du signal
-  sélection — piège FnMut).
-
-## 0bis. Phase 6 — nœuds device/calc/metric (2026-09-04)
-
-La « partie lecture » des devices dans les flows : choisir n'importe quel
-device **dans le nœud** (rien d'imposé à la création du flow), lire ses pins,
-combiner plusieurs devices, calculer, et écrire le résultat dans OpenObserve
-**comme une métrique au même titre que les capteurs**.
-
-Pipeline cible : `[inject] → [device] → [calc] → [metric]`
-
-- **pnex-device** (crate `pnex-node-device`) : dernières valeurs des pins de
-  N devices via PromQL `last_over_time(<pin>{device_id="…"}[window])` — la
-  **même série** que l'ingestion (`normalize_measurement_name` déplacé dans
-  pnex-core pour garantir l'égalité des noms ingestion/lecture). Payload =
-  objet `clé → valeur`, clés `sanitize(device) + "_" + sanitize(pin)`
-  (`device_payload_key`, prévisualisées à l'identique par l'éditeur) ; lecture
-  sans donnée dans la fenêtre = clé omise + warn — **jamais de zéro inventé**,
-  le calc aval échoue « variable inconnue » (fail-loud).
-- **pnex-calc** : évaluateur d'expressions **maison dans pnex-core**
-  (`calc.rs`, pratt parser pur, wasm-safe, zéro dep) — la MÊME fonction
-  valide l'expression dans l'éditeur (validation live) et l'exécute au
-  runtime. Langage : opérateurs, comparaisons → 1/0, ternaire, `^` droite-
-  associatif, 19 fonctions, constantes pi/e ; division par zéro / hors
-  domaine = erreur propre, jamais de panic.
-- **pnex-metric** : remote-write OpenObserve depuis le runtime — série
-  `etl_<nom>` avec `device_id="flow_{id}"` (device **virtuel**),
-  `pred_dev="virtual_device"`, `source_type="etl"`, `ts_source="server"`.
-  Le préfixe `etl_` est la **séparation d'index** demandée (pas un stream O2
-  séparé) : le catalogue Visualisation étant une découverte dynamique des
-  streams metrics, la série apparaît d'elle-même « comme un capteur »,
-  filtrable par source_type.
-- **Creds/org** : `pnex_org_id` **et `pnex_o2_org`** estampillés dans
-  l'artefact au deploy (`FlowArtifactMeta` → nœuds device/metric ; plus sur
-  l'onglet, où personne ne le lisait : le provisioning changeait le hash de
-  tous les flows de l'org et les relançait, messages en cours perdus) —
-  l'identifiant O2 **réel** (`openobserve_orgs.o2_org`, généré par le
-  provisioning) est résolu en lecture seule (`provisioned_credentials`) au
-  moment de la reprojection, **sans schéma déduit** (`pnex_org_{id}` était
-  faux : le provisioning génère un id O2 arbitraire). `pnex_o2_org` vide =
-  org pas encore provisionnée → nœuds device/metric dégradent (warn,
-  lecture/écriture sautée, pipeline vivant) ; le provisioning O2 (1ʳᵉ
-  ingestion) déclenche une reprojection qui comble le champ (self-healing,
-  sink.rs) ; seuls les flows qui ont un tel nœud redémarrent alors. Auth Basic racine via allowlist env. Spike exécuté contre l'O2
-  réel (`examples/o2_spike.rs`) : remote-write racine accepté + relecture
-  `last_over_time` cohérente — le passcode d'org reste inutile aux lectures
-  (O2 v0.92.1), la racine couvre lecture **et** écriture.
-- **Évaluateur partagé** (`eval_calc`/`validate_calc`) + nommage centralisé
-  (`naming.rs`) + structs prompb en feature (`prompb`) dans pnex-core — le
-  front wasm ne compile aucune de ces parties natives.
-- **Dépendances pin↔flows** : un `set_mode` in↔out sur un pin scanne les
-  flows déployés de l'org dont un nœud device lit ce (device, pin) →
-  **dé-déploiement automatique** (status draft, reprojection + SIGUSR1 : le
-  flow s'arrête réellement ; la version publiée reste enregistrée), réponse
-  enrichie `flow_impacts` → toast UI Pins. Dans l'éditeur, violations de
-  **staleness** client-only (pin en sortie, pin disparu, device supprimé,
-  inactif ou hors ligne — états distincts, `connected` exposé par
-  `/devices/{id}/pinout`) → nœud **et câble** en rouge ; re-scan au
-  changement de configuration uniquement (pas au drag).
-
-## 0ter. Outils de debug du flow (2026-09-05) — panneau Debug, sonde `pnex-display`
-
-Boucle de mise au point dans l'éditeur : **voir** ce que le flow émet. Un
-flow se peaufine **en marche** : son inject est en répétition continue
-(défaut 30 s), et l'outil « run once » (SIGUSR2/cmd.json, retiré
-2026-09-07) est remplacé par ce trafic permanent. Garde-fou transversal :
-ces outils sont **mode dev/debug uniquement** (`settings.flow.debug_tools`,
-défaut `false`, activé par `config/development.yaml` via
-`PNEX_FLOW_DEBUG_TOOLS`) — en mode run les endpoints répondent **403** et
-l'éditeur ne rend même pas les boutons (porté par le chip runtime
-`FlowRuntimeStatus.debug_tools`, pas d'endpoint dédié).
-
-- **Panneau Debug** : le nœud `debug` builtin publie sur le canal debug du
-  moteur **seulement si `tosidebar: true`** — la projection le positionne
-  déjà (flow.rs:632), gardé par un test de non-régression. Le runtime
-  enrichit chaque événement stdout avec l'attribution (`flow`, `node_red`)
-  : le `DebugMessage.id` du moteur est un hex (`ElementId`, hash du id RED
-  quand il n'est pas hex) et `path` l'hex du tab — non mappables côté
-  backend. L'attribution vit donc dans le runtime (`src/attrib.rs`, maps
-  hex→RED reconstruites au boot et **avant** l'acquittement de redeploy).
-  Le superviseur parse le stdout (INFO uniquement) dans un anneau mémoire
-  par flow (cap 200/flow, 64 flows, TTL 5 min, purge **avant** SIGUSR1 au
-  deploy — les entrées meurent avec l'artefact qu'elles reflètent) exposé
-  par `GET /flows/{id}/debug` (200 même moteur arrêté, 404 hors-org —
-  entrée sans attribution = jetée, les orgs partagent un flows.json).
-- **Sonde `pnex-display`** (crate `pnex-node-display`, pattern
-  `pnex-node-device`) : passthrough + publication au canal debug avec
-  l'id canvas **brut** (`pnex_node_id` estampillé par la projection) et la
-  valeur **non stringifiée** (le debug builtin pré-stringifie — le drawer
-  tente un re-parse pour pretty-printer). Badge live sous le nœud dans
-  l'éditeur, purgé si le moteur s'arrête.
-- **Pas de « run once »** (retrait 2026-09-07) : l'exécution manuelle
-  créait plus de problèmes qu'elle n'en résolvait (ack SIGUSR2/cmd.json,
-  sémantique de tir unique face au TTL 5 min du feed). Un flow se met au
-  point **déployé et en marche** — inject en `repeat_secs` (défaut 30 s) ;
-  le déclencheur reste obligatoire à la validation (`no_trigger`).
-
-## 0quater. Fonctions du registre « Automation » (2026-09-15/16)
-
-Registre de **fonctions utilisateur versionnées** (page `/functions`, groupe
-« Automation ») importables dans les flows via le nœud `PnexFunction`, avec
-**test en live**. Deux langages : **JS** et **Starlark** — pas de Python
-(décision utilisateur 2026-09-15 : pas de sandbox réelle en Rust, subprocess
-borné jugé insuffisant).
-
-Choix structurants :
-
-- **Interface = signature structurée, hors du code (D497, 2026-10-29)** :
-  `inputs`/`outputs` typés (`number|string|bool|any`, défaut, description)
-  portés par la version de fonction (`function_versions.inputs/outputs`),
-  édités dans le panneau Entrées/Sorties, envoyés tels quels par l'API et
-  déclarés en clés `inputs:`/`outputs:` dans les packs. Le code ne contient
-  que `handle`. Les anciennes directives en commentaire `@input`/`@output`
-  sont **retirées** (voir §11).
-- **Contrat d'exécution** : le code définit `handle` — JS
-  `function handle(inputs, msg)`, Starlark `def handle(inputs, msg):`.
-  `inputs` = objet construit depuis les entrées déclarées (fil posé sur
-  l'ancre → payload entrant, sinon `payload.<name>`, sinon défaut),
-  `msg` = message entrant. Retour : voir le mode du nœud (§11).
-- **JS = le nœud `function` QuickJS du vendor, réutilisé tel quel**
-  (réutilisation maximale ; le cœur n'est patché que dans notre fork, pour la sécurité) : la projection
-  génère un **wrapper** (`build_js_wrapper` dans pnex-core) — helpers
-  embarqués + code utilisateur + tail qui construit `inputs` et mappe le
-  retour en ports — et l'inline dans la config `func` du nœud builtin.
-- **Starlark = nœud custom `pnex-starlark`** (crate `pnex-node-starlark`,
-  pattern des nœuds custom `pnex-node-*`) : Starlark n'existe pas en amont. Parse +
-  **évaluation du module au build du nœud** (defs, exige `handle`) → le
-  pré-flight `--check` attrape les erreurs de syntaxe au deploy (400
-  `engine_load`). Limits Evaluator : ticks, heap 64 Mo, callstack, deadline
-  wall-time (`check_cancelled`). Driver `json.decode`/`json.encode` comme
-  pont Rust ↔ script (pas de conversion Valeur ↔ JSON). **`Globals` :
-  `extended_by([LibraryExtension::Json])` — pas `standard()`** (le module
-  `json` est une extension) ; les variables préfixées `_` sont **privées**
-  en Starlark (jamais exposées au `module.get`) — le driver utilise donc
-  des noms `pnex_*` publics.
-- **Artefact self-contained** : la projection inline le CODE de la version
-  **épinglée** du nœud (`pnex_function_id`/`pnex_function_version` sur
-  l'entrée) — éditer une fonction n'affecte jamais un flow déployé tant
-  qu'il n'est pas re-déployé (école « save ≠ déployé »). Le graphe ne
-  porte **jamais** de code, seulement références + snapshot d'interface +
-  bindings. Ref non résolue au deploy → 400 `function_unresolved`
-  (violations) ; en reprojection background → warn + artefact conservé.
-- **Versioning** (école flows/media) : `functions` + `function_versions`
-  append-only (m000024), save = nouvelle version (concurrence optimiste
-  409), `current_version_id` circulaire SET NULL. Delete → 409
-  `function-in-use` si référencée par un flow `deployed` (scan des graphs,
-  double filet avec la résolution au deploy).
-- **Test en live** : sous-commande `pnex-flow-runtime --test-function
-  <req.json>` → **une ligne JSON** `FunctionTestResponse` sur stdout. Le
-  backend (`POST /api/v1/functions/{id}/test`) spawn le même binaire que le
-  superviseur (`resolve_program` + `env_clear` + `apply_runtime_env`,
-  kill à 10 s) : le backend ne lie jamais edgelink. **Parité test ≡
-  runtime** : Starlark = exactement l'exécuteur du nœud ; JS = miroir
-  rquickjs du harnais vendor (wrap `__el_user_func`, options promise/strict
-  identiques) évaluant le **même texte de wrapper** que la projection.
-  Console capturée dans `logs` (shim dédié côté miroir). Test ad-hoc
-  possible sans save (code du textarea + `ad_hoc`).
-
-Limitations documentées (acceptées, décision 2026-09-15) :
-
-- le nœud `function` vendor n'a **ni limite CPU/mémoire ni deadline** — une
-  boucle infinie pend la tâche du nœud jusqu'au stop du flow ; propriété
-  pré-existante, non aggravée. Depuis D130 (SEC-1/SEC-2, 2026-10-04)
-  l'échappatoire `Red` a d'abord été restreinte à une liste blanche,
-  puis **retirée le 2026-10-14** (aucun usage, source de confusion) :
-  un flow ne contient plus que des kinds typés, et le registre du runtime
-  n'enregistre que `runtime_type_allowed` (builtins émis par la projection
-  + `pnex-*`) ; le magasin d'env des engines
-  ne contient plus l'environnement du process (SEC-3, fork edgelinkd) —
-  voir `security.md`. Rationale : l'isolation des fonctions « bizarres » est un sujet
-  **d'infrastructure** (1 tenant = 1 process/conteneur à l'horizon SaaS),
-  pas de sandbox in-process. Chemin de migration si ça mord : basculer la
-  projection JS vers un nœud custom (switch de projection, l'éditeur et le
-  registre sont inchangés) ;
-- le pré-flight reste **aveugle aux erreurs de syntaxe JS** (le vendor
-  évalue au 1er message, pas au build) — la validation passe par le test en
-  live ;
-- Starlark : pas de capture `print` dans `logs` v1 ; `inputs`/`msg` sont des
-  dicts Starlark (accès `inputs["t"]`, pas d'attribut).
-
-## 1. Architecture cible
-
-```
-Workspace PNEX                                    vendor/edgelinkd/ (submodule, épinglé)
-├─ crates/pnex-core          modèle typé flow.rs (pur, wasm32)          │
-├─ crates/pnex-node-*        nœuds custom (device, value, …) ◀──────────┤ path-dep edgelink-core
-├─ crates/pnex-flow-runtime  binaire headless maison ◀──────────────────┘ (features core+js)
-├─ crates/pnex-backend (Loco) — NE LIE JAMAIS EdgeLinkd
-│   ├─ services/flow.rs             settings.flow (FirmwarePartial)
-│   ├─ services/flow_supervisor.rs  process enfant + SIGUSR1 + acquittement
-│   ├─ controllers/flows.rs         API /api/v1/flows (versionné, 409, deploy)
-│   └─ migration m20260903_000009   flows + flow_versions (append-only)
-└─ frontend (Phase 5) : éditeur → API Loco uniquement
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  ED[Éditeur /flows] -->|API| BE[Backend]
+  BE --> DB[(flows + flow_versions)]
+  CT[Contrôleur] -->|place l'org| WK[Worker]
+  BE --> WK
+  WK --> SUP[Superviseur]
+  SUP -->|flows.json + SIGUSR1| RT[Runtime]
+  RT --> EN[Engine par flow]
+  EN -->|écritures fencées| BE
+  RT -->|événements stdout| SUP
 ```
 
-Flux de déploiement :
+## 3. Fonctionnement
 
+### 3.1 Déploiement
+
+```mermaid
+sequenceDiagram
+  participant UI as Éditeur
+  participant BE as Backend
+  participant RT as Runtime
+  UI->>BE: POST /flows/{id}/deploy
+  BE->>BE: projette l'org dans flows.json.candidate
+  BE->>RT: pnex-flow-runtime --check
+  alt un tab invalide
+    RT-->>BE: rapport check_flow en échec
+    BE-->>UI: 400 engine_load
+  else candidat vert
+    BE->>BE: renomme en flows.json
+    BE->>RT: SIGUSR1
+    RT-->>BE: flow_started ou flow_error
+    BE->>BE: marque deployed_version_id
+    BE-->>UI: 200
+  end
 ```
-Éditeur/API Loco → flow_version (Postgres, append-only)
-                     │  deploy = publie une version
-                     ▼
-   Loco projette le CANDIDAT (to_red_flows_json de TOUS les flows
-   `deployed` + la version candidate, MOINS les exclusions (Stop) —
-   DB en lecture seule)
-                     │  écrit flows.json.candidate
-                     ▼
-   pnex-flow-runtime --check (pré-flight : chaque tab construit sans start)
-                     │  candidat vert → rename → flows.json
-                     ▼
-   SIGUSR1 → ferme d'engines : diff par tab → swap des engines modifiés
-                     │  acquittement PAR FLOW : flow_started / flow_error /
-                     │  flow_stopped (retrait de tab)
-                     ▼
-   400 engine_load (erreur moteur réelle) ou 200 + marquage DB
-   (deployed_version_id) ; versions par flow tenues en DB
+
+La projection lit la base en lecture seule. Elle prend tous les flows `deployed` de l'org, plus la version candidate, moins les flows arrêtés. Le pré-flight construit chaque engine sans le démarrer. La base change seulement après l'acquittement du flow. Un échec d'acquittement laisse donc l'état antérieur intact.
+
+La projection estampille `pnex_flow_id`, `pnex_version`, `pnex_org_id` et `pnex_o2_org` dans l'artefact (`FlowArtifactMeta`). L'identifiant O2 réel vient de `provisioned_credentials`. Si l'org n'a pas encore d'O2, les nœuds device et metric sautent leur lecture ou écriture avec un warn. Le provisioning O2 relance la projection, et seuls les flows avec un tel nœud redémarrent.
+
+Un nœud appelé pendant un déploiement peut voir la base en retard. Le serveur relit alors la base tant qu'un déploiement de l'org est en cours, 5 s au plus (`flow_nodes::deployed`). Hors déploiement, un nœud périmé est refusé sans attente.
+
+### 3.2 Contrôles runtime
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> deployed: deploy (ack flow_started)
+  deployed --> deployed: deploy d'une autre version / rollback
+  deployed --> stopped: stop (ack flow_stopped)
+  stopped --> deployed: start ou deploy
+  deployed --> draft: pin passé en sortie
+  deployed --> [*]: delete
 ```
 
-Contrôles runtime (2026-09-07) — même chemin signal/ack que le deploy :
+- **Stop** retire le tab de l'artefact. La base garde `deployed_version_id`, donc la reprise ne reconstruit rien.
+- **Start** redéploie `deployed_version_id`. **Restart** chaîne stop et start, car un tab identique ne change pas d'engine.
+- **Deploy sur un flow arrêté** démarre la nouvelle version.
+- **Dé-déploiement automatique** : un `set_mode` in↔out sur un pin arrête les flows déployés qui lisent ce pin. Le flow repasse en `draft` et `deployed_version_id` devient NULL. La réponse porte `flow_impacts`, que la page Pins affiche.
+- L'acquittement d'un stop porte toujours la meta du flow arrêté, jamais une meta vide.
 
-- **Stop** `POST /flows/{id}/stop` : reprojection **excluant** le flow
-  (retrait du tab → `flow_stopped`) → DB `stopped`, `deployed_version_id`
-  **conservé** (reprise sans rebuild). L'ack est keyé sur la **meta du flow
-  stoppé** (jamais la meta vide, sinon timeout).
-- **Start** `POST /flows/{id}/start` : re-déploiement de la version
-  `deployed_version_id` via le chemin `deploy_version` (l'override de
-  `reproject_candidate` inclut le tab même hors statut `deployed`) → ack
-  `flow_started` → DB `deployed`.
-- **Restart** `POST /flows/{id}/restart` : stop puis start chaînés — deux
-  cycles (le reload est un diff par hash, un tab identique ne swappe pas).
-- **Deploy sur un flow stopped = start avec la nouvelle version** (aucun
-  garde spécial) ; DB écrite **après** ack sur les trois chemins — un
-  arrêt/démarrage non acquitté laisse l'état antérieur intact.
+### 3.3 Ferme d'engines
 
-## 2. Spike §5.1 — décision : mode B renforcé (binaire maison)
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart TD
+  SIG[SIGUSR1] --> READ[Relit flows.json]
+  READ -->|illisible| RF[reload_failed, engines gardés]
+  READ --> DIFF[Diff par tab, SHA-256]
+  DIFF -->|tab inchangé| KEEP[Engine gardé]
+  DIFF -->|tab modifié| BUILD[Construit le nouvel engine]
+  BUILD -->|ok| SWAP[Swap, flow_started]
+  BUILD -->|échec| ERR[flow_error, last-good gardé]
+  DIFF -->|tab retiré| STOP[flow_stopped]
+```
 
-Le PRD recommandait de démarrer en **process supervisé (B)** et chargeait le
-spike de vérifier si une crate moteur réutilisable rendrait A viable plus tôt.
-Faits vérifiés au commit épinglé :
+Chaque flow a son engine (`crates/pnex-flow-runtime/src/engines.rs`). Un flow invalide n'arrête donc jamais les autres. Le contexte « global », le `link call` et le registre `http-response` sont intra-flow. `parse_tabs` regroupe les entrées par `z` et jette les entrées sans `z`. Un tab inchangé en erreur n'est pas retenté : il faut redéployer ce flow ou redémarrer le process.
 
-- `edgelink-core` est une vraie lib (`Engine::with_json/with_flows_file/start/
-  stop/redeploy_flows/subscribe_events`) — consommée en interne par
-  `edgelink-pymod` (PyO3) ;
-- l'enregistrement des nœuds est **automatique par `inventory`** : tout crate
-  lié statiquement s'enregistre via `#[flow_node(...)]` (modèle :
-  `node-plugins/edgelink-nodes-dummy`) ;
-- `edgelinkd` upstream n'a **ni** hot-reload fichier **ni** SIGHUP
-  (uniquement ctrl_c et son API admin web Node-RED, **non authentifiée**) ;
-- inject couvre `repeat` + `crontab` (tokio-cron-scheduler) → le besoin
-  « cron/interval » de la Phase 4 est déjà couvert.
+Le runtime écrit ses événements en JSON-lines sur stdout (`started`, `flow_started`, `flow_error`, `flow_stopped`, `debug`, `redeployed`, `stopped`). Il écrit ses logs JSON sur stderr. `runtime.json` donne la santé du process (`pid`, `running`, `flow_rev`, `redeploys`), jamais une version. Si le process échoue, le superviseur le relance avec un backoff exponentiel borné.
 
-**Décision : B renforcé.** On ne lance pas le `edgelinkd` upstream : notre
-propre binaire `pnex-flow-runtime` lie `edgelink-core` + nœuds PNEX et ajoute
-ce qu'upstream n'a pas :
+### 3.4 Cluster d'exécution (D106)
 
-- **rechargement à chaud sans coupure** : SIGUSR1 → relecture du flows.json →
-  **ferme d'engines, diff par tab** (2026-09-07 — initialement
-  `Engine::redeploy_flows`, écart global vs le vendor, cf. §5) — les flows
-  inchangés ne sont jamais touchés, aucune surface HTTP ;
-- **stdout = événements JSON-lines machine** (`started`, `flow_started`,
-  `flow_error`, `flow_stopped`, `debug`, `redeployed`, `stopped`…),
-  stderr = logs JSON — le superviseur Loco rejoue en `tracing`, acquitte
-  les deploys par flow (oneshot `flow_started`/`flow_error`/
-  `flow_stopped`) et tient la santé par flow ;
-  `runtime.json` reste la santé process (pid, flow_rev, redeploys —
-  **jamais de version** : artefact multi-flows) ;
-- **échec process = exit(1)** : le superviseur relance avec backoff
-  exponentiel borné ; un flow invalide n'est **plus** un échec process
-  (`flow_error` isolé, les autres continuent).
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  L[(flow_leases)] -->|bail flow-placement| C[Contrôleur]
+  C -->|lit| W[(flow_workers)]
+  C -->|écrit| P[(flow_placements)]
+  P -->|epoch, revision| W1[Worker A]
+  P --> W2[Worker B]
+  W1 -->|heartbeat| W
+  W2 -->|heartbeat| W
+  API[Pod API] -->|HTTP interne| W2
+```
 
-A reste la cible à terme (EdgeLinkd stabilisé), la porte reste ouverte : le
-backend n'a aucune dépendance à la couche transport, seul le superviseur
-changerait.
+L'unité de placement est l'org. Un deploy projette seulement l'org concernée. Un nœud unique forme un cluster d'un seul worker, avec le même code.
 
-## 3. Contrat de déploiement constaté
+- `flow_workers` : un `boot` neuf à chaque démarrage. Une ancienne incarnation du même id est supplantée et s'arrête.
+- `flow_placements` : `epoch` augmente à chaque déplacement (jeton de fencing). `revision` augmente à chaque changement des flows de l'org.
+- **Worker** (`services/flow_cluster/worker.rs`) : le heartbeat tourne dans sa propre tâche. Le worker reprojette seulement les orgs dont la révision a changé. Un resync complet passe toutes les 5 min. Au boot, tout part de la base.
+- **Contrôleur** (`controller.rs`, planificateur pur `placement.rs`) : il bascule les workers morts ou en drain. Il rééquilibre au plus `max_moves` orgs par tour. Il libère une org sans flow déployé après `release_grace_ms` et un recomptage à zéro.
+- **Transport** : in-process si le worker vit dans le même process, sinon `/internal/flow-cluster/*`. Le jeton est `x-pnex-cluster-token`, le worker cible `x-pnex-cluster-worker`.
+- **Sweeps** : une tâche périodique prend le bail `task:<nom>` (`services/singleton.rs`). Un seul pod l'exécute.
 
-| Élément | Valeur (vérifiée au commit épinglé) |
+```mermaid
+sequenceDiagram
+  participant RT as Runtime (worker A)
+  participant BE as Backend
+  participant C as Contrôleur
+  Note over RT: heartbeat en échec pendant self_fence_ms
+  RT->>RT: runtime tué (auto-fencing)
+  Note over C: worker_ttl_ms dépassé
+  C->>C: org placée sur B, epoch +1
+  RT->>BE: écriture avec x-pnex-flow-worker
+  BE-->>RT: 409 fenced
+```
+
+Le runtime reçoit `PNEX_FLOW_WORKER_FENCE=<id>:<boot>`. Il pose cet en-tête sur device-write, event, video-segment, video-annotations et notify. Le backend refuse l'écriture si le worker ne possède plus l'org (cache 1 s). Un appel sans en-tête passe, car le jeton de service authentifie. Les canaux notify externes (ntfy, SMTP) partent en direct : seul l'auto-fencing les couvre.
+
+Le runtime reçoit `PR_SET_PDEATHSIG=SIGKILL`. Si le serveur meurt, son runtime meurt avec lui. Au shutdown, le worker passe `draining=true`, le contrôleur déplace ses orgs, puis le runtime s'arrête. Un rolling update n'exécute donc jamais un flow deux fois.
+
+### 3.5 Bus de commandes device (D107)
+
+```mermaid
+sequenceDiagram
+  participant RT as Runtime (pod B)
+  participant PB as Pod B
+  participant V as Valkey
+  participant PA as Pod A (session du device)
+  PA->>V: SET pnex:devroute:v1:{device} = A, EX 90
+  RT->>PB: device-write
+  PB->>V: GET route, puis PUBLISH pnex:devcmd:v1:{A}
+  V-->>PA: commande
+  PA->>PA: envoi au device
+```
+
+Chaque pod a une seule souscription, quel que soit le nombre de devices. La session rafraîchit la route toutes les 30 s et seul son propriétaire la supprime. Un `PUBLISH` sans récepteur supprime la route périmée : le device est hors ligne. Sans Valkey, le comportement reste local.
+
+### 3.6 Éditeur de flows
+
+L'éditeur (`crates/pnex-frontend/src/components/flow_editor/`) parle seulement à l'API du backend, jamais au runtime.
+
+- **Canevas** : SVG pur Dioxus, sans `view_box`. Le zoom va de 0.4 à 2.0 vers le curseur. Le drag se cale sur une grille de 20 px.
+- **Validation** : `pnex_core::validate_graph` tourne dans le navigateur avant chaque save. Le serveur renvoie les mêmes violations en 400 `{"violations": [...]}`. Aucun type-check global et aucune détection de cycle.
+- **Versions** : le save envoie `expected_version_number`. Un 409 ouvre le choix « Recharger » ou « Écraser ». Charger une ancienne version la rend éditable. « Déployer cette version » fait un rollback sans nouvelle version.
+- **Deploy** : le bouton exige `can_write` et un graphe enregistré. Le chip runtime interroge `GET /flows/{id}/runtime` toutes les 5 s. Il distingue `stopped` (ardoise) et `error` (rouge).
+- **Staleness** : un pin en sortie, un pin disparu, un device supprimé, inactif ou hors ligne colorent le nœud et le fil en rouge.
+- **Palette (D109)** : chaque kind a une seule catégorie (`kind_category`, `match` exhaustif). Les sections suivent `PALETTE_CATEGORIES`. La recherche reste transverse.
+- **Types sur le canevas** : chaque port de sortie prend la couleur du type émis. Chaque fil porte ce type en libellé. Un nœud de passage prend le type de son entrée.
+- **Rejets visibles** : `calc` et `Device (écriture)` publient un statut. Un rejet affiche un badge ambre « Nothing written · N ok / M rejected » avec la raison.
+
+### 3.7 Nœuds PneX
+
+Les nœuds custom vivent dans `crates/pnex-node-*`. Ils s'enregistrent par `inventory` (`#[flow_node]`). Le runtime enregistre seulement les builtins que la projection émet et les types `pnex-*` (`runtime_type_allowed`). Un graphe enregistré avec `pnex_sql` échoue au parse avec un message explicite.
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  I[inject / ontology_trigger / dataset_trigger] --> D[device_read]
+  D -->|clé device_pin| C[calc]
+  C --> M[metric]
+  M -->|remote-write etl_*| O2[(OpenObserve)]
+  CS[control-source] --> W[device_write]
+  C --> W
+```
+
+- **device_read** (`pnex-node-device`) : lit la dernière valeur des pins par PromQL `last_over_time`, sur la même série que l'ingestion. La clé du payload est `device_payload_key`. Une lecture sans donnée omet la clé, jamais un zéro inventé.
+- **calc** : évaluateur maison de `pnex-core` (`calc.rs`). La même fonction valide l'expression dans l'éditeur et l'exécute au runtime. Les clés non numériques du payload sont ignorées.
+- **metric** : écrit la série `etl_<nom>` avec `device_id="flow_{id}"`, `pred_dev="virtual_device"`, `source_type="etl"`. La série apparaît comme un capteur.
+- **device_write** : une seule source d'écriture par pin (D128). La config `values` `{pin: valeur}` déclare une valeur fixe par sortie. La validation refuse une valeur fausse (`device_bad_fixed_value`).
+- **control-source** (D127, D133) : souscrit à `pnex:ctl:v1:{org}` et sort un port par contrôle. `emit_on_start` relit les dernières valeurs après l'abonnement. Le deploy refuse un contrôle absent (`control-unknown`). Un contrôle écouté ne peut pas être supprimé (`control-in-use`).
+- **display** (`pnex-node-display`) : sonde de passage qui publie la valeur brute au canal debug. L'éditeur l'affiche en badge sous le nœud.
+
+**Exécuter maintenant** : `POST /flows/{id}/nodes/{node}/run` publie un `RunNowEvent` sur `pnex:run-now:v1:{org}`. La projection donne à chaque `inject` un compagnon `pnex-inject-now` qui émet son message. Un deploy refuse de couper une règle de navigation en cours (`flow-collecting`), sauf avec `force`.
+
+**Panneau Debug** : seulement en mode dev (`settings.flow.debug_tools`). En mode run, `GET /flows/{id}/debug` répond 403 `flow-debug-disabled` et l'éditeur cache les boutons. Le runtime attribue chaque événement à son flow (`src/attrib.rs`). Le superviseur garde un anneau par flow : 200 entrées, 64 flows, TTL 5 min. Une entrée sans attribution est jetée.
+
+### 3.8 Fonctions (D497)
+
+```mermaid
+sequenceDiagram
+  participant UI as Page /functions
+  participant BE as Backend
+  participant RT as pnex-flow-runtime --test-function
+  UI->>BE: POST /functions/{id}/test
+  BE->>RT: spawn, env vidé, kill à 10 s
+  RT-->>BE: une ligne FunctionTestResponse
+  BE-->>UI: résultat + logs
+```
+
+Le code définit `handle(inputs, msg)`. L'interface est une donnée de la version (`FunctionSignature`, colonnes `function_versions.inputs/outputs`), jamais du texte dans le code. Les packs la déclarent en `inputs:` et `outputs:`.
+
+- **Mode message** : aucune sortie déclarée. Une entrée, une sortie. `None` jette le message, un dict avec `payload` fusionne, une autre valeur devient `payload`.
+- **Mode ports** : au moins une sortie. Un port par sortie, dans l'ordre. Un dict est routé par clé, une liste par position.
+- **JS** : la projection génère un wrapper (`build_js_wrapper`) et l'inline dans le builtin `function` (QuickJS). Le budget du fork borne chaque appel (SEC-67, voir `vendor/README.md`). Le pré-flight ne voit pas les erreurs de syntaxe JS : le test en live les montre.
+- **Starlark** : nœud `pnex-starlark`, sans I/O. Le module est évalué au build du nœud, donc le pré-flight attrape les erreurs (400 `engine_load`). L'évaluateur borne les ticks, le tas, la pile et la durée.
+- **Artefact autonome** : la projection inline le code de la version épinglée. Modifier une fonction ne change pas un flow déployé avant son redeploy. Une référence non résolue au deploy donne 400 `function_unresolved`.
+- **Parité** : le test en live lance le même binaire que le superviseur. Starlark utilise le même exécuteur. JS évalue le même texte de wrapper dans un miroir rquickjs.
+
+## 4. Exigences
+
+1. Le backend ne doit jamais lier `edgelink-core`.
+2. La base doit marquer un déploiement, un stop ou un start seulement après l'acquittement du runtime.
+3. Un flow invalide doit produire un `flow_error` isolé, sans arrêter les autres flows.
+4. Un save avec une version périmée doit répondre 409 et ne créer aucune version.
+5. Un `msg` malformé doit être rejeté à la frontière du nœud, sans panic (`pnex_core::flow::payload`).
+6. Chaque flow déployé doit tourner sur exactement un worker (`tests/flow_cluster.rs`).
+7. Un worker qui ne possède plus l'org doit recevoir 409 `fenced` sur ses écritures.
+8. Les secrets doivent passer par l'env de l'enfant (`apply_runtime_env`), jamais par `flows.json`.
+9. Le runtime ne doit enregistrer que les types de `runtime_type_allowed`.
+10. Un nouveau kind doit avoir une catégorie de palette et une entrée `NodeDoc`.
+11. Une fonction référencée par un flow `deployed` ne doit pas être supprimée (409 `function-in-use`).
+
+Tests de référence : `tests/flows.rs::deploy_edit_rollback_cycle_with_runtime`, `pnex-flow-runtime/tests/inject_debug.rs`, `tests/flow_cluster.rs`, `tests/flow_cluster_e2e.rs` (`--ignored`, deux vrais `pnex-server`).
+
+## 5. Décisions
+
+- **D18** : moteur de flows sur `edgelink-core`, binaire maison supervisé (mode B), rechargement à chaud par `SIGUSR1` (`inventory.md`).
+- **D13, D17** : frontière d'écriture device. D17 est amendé : `device_write` écrit depuis un flow déployé.
+- **D102** : la demande caméra est tenue par worker source. La poussée `CameraConfig` passe par le bus D107.
+- **D106** : plan de contrôle et plan d'exécution séparés, sharding par org, contrôleur élu (§3.4).
+- **D107** : bus de commandes device inter-pods par Valkey, adressé par pod (§3.5).
+- **D109** : chaque kind a une catégorie unique de palette (§3.6).
+- **D127** : nœud `control-source`, source d'événements des contrôles d'org.
+- **D128** : une seule source d'écriture par pin.
+- **D130** : revue de sécurité. SEC-1, SEC-2 (liste blanche des types) et SEC-3 (env du process absent du moteur) en découlent.
+- **D131, D133** : une surface enregistrée apparaît dans l'inspecteur de `control-source`. Ce nœud n'a pas d'entrée.
+- **D497** : la signature d'une fonction est une donnée de sa version (§3.8).
+- **D998** : les flows organisent, les pipelines ingèrent (`operational-platform.md`).
+
+## 6. Interfaces
+
+Routes (`crates/pnex-backend/src/controllers/flows/mod.rs`, préfixe `/api/v1/flows`) :
+
+| Route | Effet |
 |---|---|
-| Artefact | `<state_dir>/flows.json`, tableau Node-RED multi-tabs ; un tab par flow déployé (`id = pnexflow{flow_id}`) |
-| Métadonnées | `pnex_flow_id` / `pnex_version` sur le tab et les nœuds custom — préservées par le désérialiseur EdgeLinkd (`#[serde(flatten)] rest`) |
-| Exécution | **Ferme d'engines** (`engines.rs`) : un `Engine` **par flow** (1 tab = 1 engine, build-then-swap, last-good préservé) — `redeploy_flows` du vendor n'est **plus jamais appelé** |
-| Fenêtre de déploiement | Le runtime démarre le flow avant que la base le marque déployé : un nœud appelé entre les deux voit le serveur relire la base tant qu'un déploiement de l'org est en cours (5 s au plus, sous les 10 s de l'accusé, sans garder de connexion du pool ; un `/stop` tient ce verrou en attendant la fin du nœud, donc pas d'attente bloquante) (`flow_nodes::deployed`). Un nœud vraiment périmé reste refusé, sans attente hors déploiement |
-| Rechargement | SIGUSR1 → relecture du fichier → **diff par tab** (SHA-256) : seuls les engines des tabs modifiés sont swappés — aucune pause d'ingestion pour les autres ; fichier illisible → `reload_failed`, engines courants conservés |
-| Acquittement | Événements **par flow** sur stdout : `flow_started {flow, rev}` / `flow_error {flow, error}` / `flow_stopped {flow}` (l'erreur moteur **réelle** remonte au backend) ; `<state_dir>/runtime.json` reste la santé **process** (`pid`, `running`, `flow_rev`, `redeploys`) — **aucune version** (la version déployée d'un flow vit en DB, `flows.deployed_version_id`) |
-| Pré-flight | `pnex-flow-runtime --check <fichier>` : construit chaque engine sans `start()`, rapport `check_flow` par tab, exit 0/1 ; le deploy écrit `flows.json.candidate`, le vérifie, puis le renomme **seulement si vert** |
-| Version incohérente | tab invalide → `flow_error` isolé sur CE flow (les autres continuent) ; le last-good tourne encore si un swap échoue ; retry = deploy de CE flow ou redémarrage du process |
-| Contrôles runtime | `POST /flows/{id}/stop` (retrait de tab → `flow_stopped` → DB `stopped`, version conservée) · `/start` (re-déploiement de la version déployée → `flow_started` → DB `deployed`) · `/restart` (stop+start chaînés) — même chemin signal/ack que le deploy, DB marquée **après** acquittement |
-| Secrets | env enfant/pré-flight = `PATH`, `HOME`, `PNEX_FLOW_LOG` + allowlist + creds OpenObserve injectées du yaml (`apply_runtime_env` — identiques pour les deux) — **jamais** dans flows.json |
+| `GET /`, `POST /` | Liste, création |
+| `GET/PATCH/DELETE /{id}` | Détail, save (nouvelle version), suppression |
+| `GET /{id}/versions`, `/{id}/versions/{n}` | Historique |
+| `POST /{id}/deploy`, `/{id}/rollback` | Publie une version |
+| `POST /{id}/stop`, `/{id}/start`, `/{id}/restart` | Contrôles runtime |
+| `GET /{id}/runtime`, `/{id}/node-status` | Santé (`engine_status`, `last_error`) |
+| `GET /{id}/debug` | Feed debug (mode dev seulement) |
+| `POST /{id}/nodes/{node}/run` | Exécuter maintenant un `inject` |
 
-## 4. Vérification d'acceptance (Phase 0 + 1)
+Contrat runtime :
 
-- (a) `inject → debug` headless lancé/arrêté par Loco —
-  `tests/flows.rs::deploy_edit_rollback_cycle_with_runtime` +
-  `pnex-flow-runtime/tests/inject_debug.rs` ;
-- (b) flow créé via API (v1 persistée) → déployé → exécuté par le runtime —
-  à l'origine une vraie requête SQL (`tests/sql_query.rs`), retirée avec le
-  nœud `pnex-sql` (2026-10-01, cf. § 5) ; couvert aujourd'hui par les tests
-  runtime des autres nœuds custom ;
-- (c) édition → v2 **sans** rechargement (aucun artifact écrit au save),
-  deploy v2 rechargé, artefact porte la version 2 ;
-- (d) rollback v1 → ancien graphe reprojété ;
-- (e) save périmé → **409**, aucune v3 ;
-- (f) `msg` malformé rejeté à la frontière du nœud (contrats typés de
-  `pnex_core::flow::payload`, jamais de panic) + validation de graphe en 400 `{"violations": [...]}`.
-
-Empreinte mémoire : la mesure sur Pi (PRD Phase 0) reste un TODO manuel — le
-job CI `arm-check` couvre la compilation croisée aarch64/armv7 (`cargo check`
-avec cross-compilateurs C : les build scripts de `ring`/`rquickjs-sys`
-compilent pour la cible même sans lien). EdgeLinkd revendique ~10× moins de
-RAM que Node-RED (non vérifié).
-
-## 5. Écarts vs la conception initiale
-
-- **`features = ["core", "js"]` et non `["core"]` seul** (2026-09-03) : le
-  commit épinglé contient un `use rquickjs::...` non conditionné dans
-  `variant/mod.rs` — la feature `core` seule ne compile pas. On active la
-  feature amont `js` (QuickJS embarqué, ARM OK dans leur CI) — pas de patch
-  vendor. À remonter amont ; si corrigé, réduire à `core`.
-- **`rust-version` workspace 1.85 → 1.88** : `edgelink-core` (edition 2024)
-  utilise les let-chains.
-- **Tables physiques plurielées** : le DSL Loco crée `flows`/`flow_versions`
-  (`normalize_table` = pluriel cruet) — le PRD parlait de `flow`/`flow_version`
-  au niveau conceptuel.
-- **FK circulaire** `flows.deployed_version_id` (`ALTER TABLE ADD
-  CONSTRAINT`, `ON DELETE SET NULL`) ; `schema_invariants.rs` la vérifie.
-- **409 au lieu de 400** pour les saves périmés : exigence explicite du PRD
-  (concurrence optimiste), écart assumé avec la convention 400 historique.
-- **Un seul flows.json par instance** : le deploy reprojette l'ensemble des
-  flows `deployed` (tous tenants confondus — le runtime exécute multi-tabs).
-  L'isolation runtime par org/device est une décision de Phase 3 (attachement
-  produit aux devices) — à concevoir avec le modèle de déploiement multi-tenant.
-- **Superviseur dans `after_routes`, pas `connect_workers`** : doit vivre aussi
-  en ServerOnly (même logique que `spawn_reaper`) ; gate = `settings.flow.enabled`
-  uniquement (les tests d'intégration l'activent par env avant boot).
-- **Ferme d'engines « N Engines, 1 process » (2026-09-07)** : remplace le
-  « 1 Engine, N tabs » initial. Un flow invalide au chargement ne fait plus
-  `exit(1)` global (l'ancien crash-loop downait **tous** les flows, toutes
-  orgs, et la version fautive restait marquée `deployed`) : `flow_error`
-  isolé, les autres continuent, le last-good tourne si un swap échoue.
-  Context « global », link call et registre http-response deviennent
-  **intra-flow** (chaque engine est autonome — zéro état global mutable dans
-  le vendor, seul `inventory` immuable) ; catch déjà intra-tab. Plus de
-  pause d'ingestion globale au deploy d'un flow. Le déploiement est
-  **pré-flighté** (`--check`) : un tab invalide répond 400 `engine_load`
-  avec l'erreur moteur réelle et la DB n'est marquée `deployed` **qu'après**
-  acquittement. Santé par flow (`engine_status`/`last_error` sur
-  `GET /flows/{id}/runtime`), chip rouge dans l'éditeur. Un tab inchangé en
-  erreur n'est pas retenté (retry = deploy de CE flow ou redémarrage).
-- **Contrôles runtime + statut `stopped` (2026-09-07)** : Stop = retrait de
-  tab (même mécanique que le delete, sans détruire le flow) → DB `stopped`
-  avec `deployed_version_id` **conservé** — la reprise (Start ou Deploy)
-  re-déploie cette version. Distinction avec le dé-déploiement **automatique**
-  (cascade suppression de pin → `draft` + `deployed_version_id` NULL, car la
-  version n'a plus de sens) : le stop est **volontaire** et réversible sans
-  rebuild. Le chip distingue `engine_status "stopped"` (ardoise) de
-  `"error"` (rouge) et de la santé process. L'ack du stop est toujours keyé
-  sur la **meta du flow stoppé** — jamais la meta vide (le retrait du
-  dernier flow déployé sinon attend un ack impossible).
-- **Subflows/templates ignorés par la ferme** : `parse_tabs` regroupe par
-  `z` et jette les entrées sans `z` (subflow templates, global config nodes
-  — jamais produits par la projection PNEX) ; un subflow instance orphelin
-  fera échouer son tab (`flow_error`), ce qui est l'isolation voulue.
-- **Nœuds exclus Phase 1** : `join`, `csv`, `file` partiellement cassés en
-  amont (tests de spéc diff) — non utilisés ; à re-évaluer avant la Phase 3.
-- **Crédentials Node-RED non implémentés côté EdgeLinkd** : confirmé — notre
-  règle « secrets par env seulement » est la seule voie.
-
-### Retrait du nœud `pnex-sql` (2026-10-01)
-
-Le premier nœud custom `pnex-sql` (SELECT-only, sqlx Postgres, connexion
-par `DATABASE_URL` dans l'env du runtime) n'a jamais été utilisé ; il est
-**supprimé** (crate `pnex-node-sql`, kind `pnex_sql`, inspecteur, palette,
-clés i18n). Effet sécurité : `DATABASE_URL` ne franchit plus la frontière
-process vers le runtime (retiré de `env_allowlist` par défaut et des yaml).
-Un graphe enregistré qui contient encore `pnex_sql` échoue proprement au
-parse (« node kind `pnex_sql` has been removed ») : tab d'un autre flow
-isolé (`skipped_tabs`), deploy du flow lui-même en 400 `graph_unreadable`.
-
-## 6. Provenance et règles vendor (`vendor/edgelinkd`)
-
-- Submodule épinglé à `d0a5e114468ee1b26147de55cdca10484ade6b05`
-  (master, 2026-01-19 — pas de release versionnée amont : on épingle un SHA).
-- **Ne jamais patcher** : extension par nœuds custom + binaire maison
-  uniquement ; retours amont = issues/PR ; mise à jour = bump de submodule
-  (SHA re-épinglé + note d'écart ici).
-- Sous-module amont `3rd-party/node-red` **volontairement non initialisé**
-  (~100 Mo, inutile à la compilation) — jamais `git submodule update --recursive`.
-- Licence Apache-2.0 (code vendored séparé, non modifié) — compatible avec la licence MIT du workspace
-  du workspace.
-
-## 7. Cluster d'exécution des flows (D106) + bus de commandes device (D107) — 2026-10-01
-
-> **Statut : IMPLÉMENTÉ (branche `feat/flow-sharding`, en attente de revue
-> humaine).** Remplace « un runtime par process `pnex-server` » : avec N
-> pods, les N runtimes exécutaient **les mêmes flows N fois** (N commandes
-> sur le même relais, N notifications), et chaque deploy reprojetait
-> **tous** les flows de l'instance (O(total)).
-
-### 7.1 Décisions
-
-| # | Décision |
+| Élément | Valeur |
 |---|---|
-| **D106** | **Plan de contrôle / plan d'exécution séparés, sharding par org.** Un contrôleur de placement **élu** (bail en ligne `flow_leases`, portable PG/sqlite, pas d'advisory lock de session — compatible pgbouncer) décide quelle org tourne sur quel worker ; il n'exécute aucun flow. N workers (un worker = un superviseur = un runtime enfant) exécutent les flows des orgs placées chez eux. Unité de placement = **l'org** (nœuds mémoire partagés par org, isolation tenant à l'horizon SaaS). Le deploy ne projette **que l'org** concernée (O(flows de l'org)). Mode embarqué (Pi/VM/compose) = **cluster d'un seul worker**, même chemin de code. |
-| **D107** | **Bus de commandes device inter-pods via Valkey**, adressé par **pod** (1 souscription par pod, quel que soit le nombre de devices) : route `pnex:devroute:v1:{device}` = pod (EX 90, rafraîchie toutes les 30 s par la session, supprimée par son seul propriétaire), canal `pnex:devcmd:v1:{pod}`, `PUBLISH` = 0 récepteur ⇒ route périmée supprimée, device hors ligne. Sans Valkey : comportement local inchangé. |
+| Artefact | `<state_dir>/flows.json`, un tab `pnexflow{flow_id}` par flow déployé de l'org |
+| Pré-flight | `pnex-flow-runtime --check <fichier>`, exit 0/1 |
+| Erreurs deploy | 400 `engine_load`, 400 `graph_unreadable`, 400 `{"violations": [...]}`, 503 `flow-runtime` |
+| Env enfant | `PATH`, `HOME`, `PNEX_FLOW_LOG`, `env_allowlist`, identifiants OpenObserve |
+| Mémoire | `PNEX_FLOW_RUNTIME_MAX_MEMORY_MB`, 4096 par défaut, 0 = sans limite (SEC-67) |
+| Moteur | `vendor/edgelinkd` (fork `Pnex/edgelinkd`), features `["core", "js"]` : `core` seul ne compile pas |
+| Rust | `rust-version` 1.88 (let-chains de `edgelink-core` edition 2024) |
+| Tables | `flows`, `flow_versions`, FK circulaire `flows.deployed_version_id` (`ON DELETE SET NULL`) |
 
-### 7.2 Données
+Configuration du cluster (`settings.flow.cluster`) : un nœud unique n'a rien à régler. Pour plusieurs pods :
 
-- `flow_workers(id, boot, advertise_url, capacity, draining, started_at, heartbeat_at)` — `boot` change à chaque démarrage : une ancienne incarnation du même id est **supplantée** (son heartbeat échoue → elle se coupe).
-- `flow_placements(org_id PK, worker_id, epoch, revision, updated_at)` — `epoch` +1 à chaque déplacement (jeton de fencing), `revision` +1 à chaque changement des flows projetés de l'org (le propriétaire ne reprojette **que** les orgs dont la révision a bougé : O(orgs possédées) par tick).
-- `flow_leases(name PK, holder, expires_at)` — `flow-placement` = contrôleur.
-- Index `flows(status, org_id)` pour le poids des orgs (flows déployés par org).
+- `PNEX_FLOW_ADVERTISE_URL=http://$(POD_IP):5150` et le même `PNEX_FLOW_CLUSTER_TOKEN` partout.
+- Valkey configurée (D107).
+- `PNEX_FLOW_RUN_WORKER=false` pour un pod API seul, `PNEX_SERVES_API=false` pour un pod worker dédié.
+- `worker_id` vaut `HOSTNAME` par défaut.
 
-### 7.3 Mécanique
-
-- **Worker** (`services/flow_cluster/worker.rs`) : heartbeat dans **sa propre tâche** (un deploy lent qui tient le verrou d'état n'affame jamais le heartbeat — trouvé par les tests), réconciliation séparée ; `apply_org` (push API, acquitté) et réconciliation sérialisés par le verrou d'état ; un fragment poussé enregistre son `(epoch, revision)` comme « vu » (une org neuve n'est pas reprojetée depuis une base pas encore marquée) ; resync complet toutes les 5 min (répare un bump de révision manqué / un crash entre ack et marquage DB). Aucun `flows.json` résiduel n'est rejoué au boot : tout part de la base.
-- **Auto-fencing** : heartbeat en échec pendant `self_fence_ms` (< `worker_ttl_ms`) ⇒ runtime tué ; supplanté ⇒ arrêt définitif. Le contrôleur ne réaffecte qu'après `worker_ttl_ms` : l'ancien runtime est **déjà** coupé.
-- **Fencing des écritures** : le runtime reçoit `PNEX_FLOW_WORKER_FENCE=<id>:<boot>` et le pose en `x-pnex-flow-worker` sur device-write, event, video-segment, video-annotations, notify deliver/journal ; le backend refuse (`409 {"code":"fenced"}`) si le worker ne possède plus l'org (cache 1 s). Sans en-tête = appel legacy autorisé (le jeton de service authentifie ; le fencing est une garantie de cohérence). Les canaux notify externes (ntfy, SMTP…) partent en direct : couverts par l'auto-fencing uniquement.
-- **Contrôleur** (`controller.rs` + planificateur **pur** `placement.rs`) : bascule des workers morts/en drain (jamais bornée), rééquilibrage **borné** (`max_moves`/tour, ne déplace qu'une org qui réduit strictement l'écart), libération des orgs sans flow déployé seulement après `release_grace_ms` **et** recomptage frais à zéro (un deploy en vol garde sa placement — trouvé par les tests). Poids rafraîchis toutes les `weights_refresh_ms` (un agrégat indexé) ; la bascule n'en a pas besoin.
-- **Drain** (`App::on_shutdown`) : `draining=true` → le contrôleur déplace les orgs → le worker les voit partir → runtime coupé → désinscription. Rolling update sans double exécution.
-- **Transport** : in-process si le propriétaire vit dans le process, sinon HTTP interne `/internal/flow-cluster/{apply, flows/{id}/runtime, flows/{id}/debug}` (jeton `x-pnex-cluster-token`, fail-closed ; worker cible nommé par `x-pnex-cluster-worker`). Runtime/debug/node-status de l'API sont demandés au propriétaire.
-- **Caméras (D102)** : la demande est tenue par worker source ; la poussée `CameraConfig` passe par le bus D107.
-- **Runtime lié à son serveur** : l'enfant reçoit `PR_SET_PDEATHSIG=SIGKILL` (Linux) — un `pnex-server` tué hors conteneur ne laisse plus de runtime orphelin exécutant des flows déjà réaffectés (trouvé en préparant l'E2E). Les boucles locales runtime → backend (device-write, notify) suivent le **port réel** du serveur (étaient figées sur 5150).
-- **Sweeps singletons** : chaque tâche périodique prend le bail `task:<nom>` (3 périodes) à chaque tour ; un seul pod l'exécute, un autre reprend à l'expiration.
-
-### 7.4 Configuration (`settings.flow.cluster`)
-
-Nœud unique : **rien à régler**. Plusieurs pods : `PNEX_FLOW_ADVERTISE_URL=http://$(POD_IP):5150`, même `PNEX_FLOW_CLUSTER_TOKEN` partout, Valkey configurée (D107), `PNEX_FLOW_RUN_WORKER=false` pour un pod API seul, `PNEX_SERVES_API=false` pour un pod flow-worker dédié (le chart le pose : sans Service devant, l'avertissement « API et runtime dans le même cgroup » n'a pas lieu d'être et le serveur le tait). `worker_id` par défaut = `HOSTNAME` (nom du pod). Délais par défaut : heartbeat 2 s, TTL 10 s, auto-fencing 6 s, tick contrôleur 2 s, bail 10 s.
-
-### 7.5 Vérification
-
-- Unitaires : planificateur (9 tests, dont 10 000 orgs × 1 000 workers < 5 s, convergence du rééquilibrage, capacité, drain), bus D107 contre une vraie Valkey (route, relais verbatim, route périmée, libération propriétaire seul).
-- Intégration `tests/flow_cluster.rs` (vrais workers + contrôleur + fake runtime) : sharding (chaque flow sur **exactement un** worker, artefact disque de chaque runtime = ses seuls tabs), bascule d'un worker crashé (≥ TTL, epoch +1) + écritures fencées, rééquilibrage vers un nouveau worker + drain, supplantation, **deploy/stop/runtime/debug vers un worker distant en vrai HTTP**, sémantique des baux. Stable 4/4.
-- **E2E multi-process** `tests/flow_cluster_e2e.rs` (`--ignored`) : **deux vrais process `pnex-server`** (5251/5252) + **vrai `pnex-flow-runtime` release** + base fraîche + Valkey isolée (db 9). Flows de 4 orgs déployés via les DEUX serveurs → 2 orgs par worker, artefacts disjoints ; statut runtime répondu cross-pod ; **SIGKILL du pod B** → son runtime meurt avec lui (`PR_SET_PDEATHSIG`), bascule de ses orgs, le pod A exécute tous les flows ; **SIGTERM du pod A** → drain, runtime arrêté, worker désinscrit. ~4 s, stable 3/3.
-
-### 7.6 Coût mesuré d'un flow (runtime release, 2026-10-01)
-
-| Flows | Variante | RSS | Par flow | Boot | CPU (1 msg / 5 s / flow) |
-|---|---|---|---|---|---|
-| 200 | inject→debug | 120 Mo | 615 Ko | 0,16 s | ~0 % |
-| 2 000 | inject→debug | 1 002 Mo | 513 Ko | 0,58 s | ~0 % |
-| 1 000 | inject→function JS→debug | 750 Mo | 768 Ko | 0,39 s | ~0 % |
-| 2 000 | inject→function JS→debug | 1 472 Mo | 753 Ko | 0,74 s | 2 % |
-
-⇒ ~0,5–0,75 Mo **par flow résident** (≈ 250 Ko par nœud : un `Engine` edgelink complet par flow). Un worker 16 Go ≈ 20 000 flows. 2 M de flows **tous résidents** ≈ 100 workers / ~1,5 To : c'est le plafond économique du modèle « tout résident ».
-
-### 7.7 Ce qui reste (honnêtement) pour « 10 000 clients / 2 M flows »
-
-1. **Mise en sommeil des flows inactifs** (acteurs virtuels) : seuls les flows actifs résident ; réveil sur événement/cron, état des nœuds (anomaly, forecast, merge…) checkpointé en Valkey. Levier principal au-delà de ~20 k flows/worker.
-2. **Réduire le coût par engine** (~250 Ko/nœud) : piste vendor (canaux pré-alloués, registres par engine) — à profiler.
-3. **Journal d'événements partitionné** (NATS JetStream ou Valkey Streams, par org) si des événements doivent survivre à une bascule : aujourd'hui un message en vol pendant la bascule est perdu (fenêtre ≈ TTL).
-4. **État encore local à un pod** : `LAST_VALUES` des pins (valeurs live de la page Pins : vides si l'UI interroge un autre pod que celui du device — à servir depuis le cache live Valkey). Les sweeps périodiques (reaper de liveness, watchdog OTA, pruner vidéo, reconcile rétention O2) tournent désormais sur **un seul pod** (bail `task:<nom>`, `services/singleton.rs`).
-5. **E2E avec devices physiques** sur 2 pods (un device connecté au pod A, son flow sur le pod B → écriture via le bus D107) : non joué sur matériel — le bus est testé contre une vraie Valkey, le multi-process sans device.
-6. **Manifests k8s** (Deployment, `POD_IP` → `PNEX_FLOW_ADVERTISE_URL`, secret du jeton cluster, `terminationGracePeriodSeconds` ≥ `drain_timeout`) : à écrire dans `pnex-deploy`. Exigences opérationnelles (rôles API / worker, arrêt ≥ 40 s, migrations sous verrou, pools, cohérence base) : `horizontal-scaling.md`.
-
-## 8. Palette de nœuds par catégories (D109) — 2026-10-01
-
-| # | Décision |
+| Délai | Défaut |
 |---|---|
-| **D109** | **Chaque kind appartient à une catégorie unique**, déclarée par un `match` exhaustif (`kind_category`, `flow_editor/canvas/palette.rs`) : ajouter un kind sans choisir sa section ne compile pas. La palette `+` affiche des **sections titrées** dans l'ordre fixe `PALETTE_CATEGORIES` (parcours d'un flow : Déclencheurs → Devices → Régulation → Données & calcul → Code → Stockage & séries → IA & prédictif → Intégrations → Debug). La recherche reste transverse (libellé, description **et** nom de catégorie) ; une section vidée par le filtre disparaît avec son titre. `PaletteItem.group` est optionnel : dashboard et studio restent en liste plate. |
+| `heartbeat_ms` | 2 000 |
+| `worker_ttl_ms` | 10 000 |
+| `self_fence_ms` | 6 000 (doit rester sous `worker_ttl_ms`) |
+| `controller_tick_ms`, `lease_ttl_ms` | 2 000, 10 000 |
+| `full_resync_ms` | 300 000 |
+| `release_grace_ms` | 120 000 |
+| `drain_timeout_ms` | 20 000 |
 
-Répartition et suite (catalogue piloté par descripteurs, parité n8n) : `roadmap.md` P1.7 / P2.11. La couleur des nœuds au canevas reste par kind.
+Coût mesuré d'un flow résident (runtime release, 2026-10-01) :
 
-## 9. Nœud `pnex-control-source` (D127) — 2026-10-03
+| Flows | Variante | RSS | Par flow |
+|---|---|---|---|
+| 2 000 | inject → debug | 1 002 Mo | 513 Ko |
+| 2 000 | inject → function JS → debug | 1 472 Mo | 753 Ko |
 
-Source événementielle des **contrôles d'org** (`surfaces-controls.md`) :
-config `{controls: [uuid], emit_on_start}`, un port de sortie par contrôle
-(dans l'ordre de la liste). `SUBSCRIBE pnex:ctl:v1:{org}` ; chaque écriture
-d'une surface sort `payload` = valeur, `topic` = clé du contrôle,
-`msg.control = {id, key, by, via, ts_ms}`. `emit_on_start` relit les
-dernières valeurs (MGET) **après** l'abonnement : aucune écriture perdue
-entre les deux. Reconnexion avec backoff (≤ 30 s), statut `control-listening`
-/ `control-bus-unavailable`, compteur `commands`. Le deploy refuse un
-contrôle absent de l'org (`control-unknown`) ; un contrôle écouté par un flow
-déployé ne peut pas être supprimé (`control-in-use`). Un interrupteur (1/0)
-ou un curseur (0..100) se branche tel quel sur `device-write` ; la règle
-« une source d'écriture par pin » reste la seule voie vers un pin (D128).
-**D133** (2026-10-04) : dans l'éditeur, le nœud n'a pas d'entrée et garde
-toujours sa sortie ; son inspecteur liste les sources groupées par surface
-(les interrupteurs, curseurs et boutons posés sur les dashboards et les
-annotations y apparaissent dès l'enregistrement de leur surface, D131).
+Un worker de 16 Go tient donc environ 20 000 flows résidents.
 
-## 10. Flows lisibles et rejets visibles (O66–O73) — 2026-10-14/15
+## 7. Reste à faire
 
-Retours d'usage (`observations.md` O66–O73) : un flow « vert » qui ne fait
-rien, un modèle `payload` opaque pour un non-développeur.
-
-- **Nœud `red` retiré** (2026-10-14, rupture) : le runtime n'enregistre plus
-  que les builtins émis par la projection et les nœuds `pnex-*` (surface
-  SEC-1/SEC-2 supprimée). Un flow qui en contient un ne se charge plus :
-  le remplacer par un nœud typé (function, json split/merge, calc).
-- **Rejets visibles** : `calc` et `Device (écriture)` publient un statut de
-  nœud ; un message rejeté ou une écriture vide affiche un badge ambre
-  « Nothing written · N ok / M rejected » avec la raison (clic), sur le
-  canevas et dans le panneau Debug. Le log serveur d'un même refus est
-  limité à une ligne par minute (le badge garde le compte exact).
-- **`calc` tolérant** : les clés non numériques du payload sont ignorées
-  (`vision_detect → calc "count > 0"` fonctionne).
-- **Types sur le canevas** : chaque port de sortie est coloré par le type
-  émis (nombre, vrai/faux, texte, objet, vidéo, audio, détections), chaque
-  fil porte ce type en libellé centré ; un nœud de passage prend le type de
-  son entrée. L'`inject` choisit sa valeur par type (heure courante,
-  nombre, vrai/faux, texte, JSON). `Inject` et `Camera source` n'ont pas
-  d'ancre d'entrée.
-- **Sélecteurs d'appareils** (read/write) : tous les appareils de l'org,
-  hors ligne marqués, liste rechargée à l'ouverture.
-- **Valeur déclarée par sortie** (`Device (écriture)`, config `values`
-  `{pin: valeur}`) : « Toujours allumé / éteint » sur une sortie digitale,
-  « Fixe » 0–100 en PWM ; le message n'est alors qu'un déclencheur. Un fil
-  posé sur l'ancre d'un pin écrit la valeur de ce pin ; un autre message
-  (sans ancre nommée) écrit toutes les valeurs déclarées ; dans un payload
-  map, la valeur déclarée l'emporte ; un pin sans valeur déclarée écrit la
-  valeur du message. Validation au deploy : `device_bad_fixed_value`
-  (pin non sélectionné, ou valeur hors booléen / 0–100).
-- **Bruit du runtime** : les avertissements d'edgelink à chaque chargement
-  d'un flow valide (« Failed to parse ID … as hex », « No output wires »)
-  ne sont plus relayés.
-- **Reste** (roadmap P2.21) : groupes de nœuds, valeur déclarée affichée
-  sur le canevas.
-
-## 11. Signature des fonctions hors du code (D497) — 2026-10-29
-
-**Constat** : les ports d'une fonction étaient déclarés par des commentaires
-`# @input …` / `# @output …` dans le code. Trois sources lisaient la même
-chose différemment : le parseur de directives, l'analyse statique de
-l'éditeur (qui devinait des « sorties non déclarées » à partir des clés d'un
-dict retourné) et le runtime (`map_return`, qui distingue message et ports
-nommés selon la présence de `@output`). Résultat observé : `qw_finding`
-(quali_watch) affichait 6 « sorties à déclarer » qui étaient les champs de
-son message ; « Déclarer les 6 » aurait changé le nœud en 6 ports et cassé
-l'écriture des findings. `crm_day` déclarait `@output digest` mais retournait
-`{"payload": …}` : port muet au runtime, sans que rien ne le signale.
-
-**Décision D497** : l'interface d'une fonction est une **donnée structurée**
-de sa version, jamais du texte dans le code.
-
-- `FunctionSignature { inputs, outputs }` (pnex-core) est la source de vérité.
-  Elle est stockée sur `function_versions.inputs/outputs`, validée côté
-  serveur (`FunctionSignature::validate` : nom `[a-z_][a-z0-9_]*`, unique,
-  défaut conforme au type ; erreurs de champ `inputs.<i>.name`…), envoyée
-  par l'API (`CreateFunction`, `SaveFunctionVersion`, test ad hoc) et
-  déclarée dans les packs (`inputs:`/`outputs:` à côté de `code:`).
-- **Le mode du nœud se lit dans la signature, pas dans le code** :
-  - aucune sortie déclarée = **mode message** : une entrée, une sortie ; la
-    valeur retournée est le message (`None` → jeté ; dict avec `payload` →
-    fusionné dans le message ; autre valeur → `payload`) ;
-  - au moins une sortie = **mode ports** : un port par sortie, dans l'ordre ;
-    un dict retourné est routé par clé (clé absente ou `None` = port muet),
-    une liste par position.
-  Le mode est dérivé, pas stocké : un champ `mode` à côté de `outputs`
-  pourrait contredire la liste (mode ports sans sortie).
-- Le runtime ne lit plus jamais le code pour connaître les ports : la
-  projection passe `inputs` **et** `outputs` au nœud `pnex-starlark` (comme
-  au wrapper JS), le test en live les reçoit dans la requête.
-- L'éditeur édite la signature dans le panneau (grilles Entrées/Sorties,
-  bascule message ↔ ports nommés) ; l'aperçu du nœud et le canevas des
-  flows lisent la même signature. L'analyse statique ne fait plus
-  qu'**avertir** (port lu ou retourné mais non déclaré) et ne propose
-  d'ajouter une sortie qu'en mode ports.
-- Migration : les colonnes `inputs/outputs` étaient déjà remplies au save ;
-  la migration retire seulement les lignes de directive du code des
-  versions existantes. Les packs sont convertis (version patch).
-- Rupture d'API : `feat(api)!`, `CONTRACT` incrémenté ; le code
-  `function-directive-invalid` disparaît (erreurs de champ à la place).
+1. **Mise en sommeil des flows inactifs** : seuls les flows actifs résident, l'état des nœuds est gardé en Valkey. C'est le levier principal au-delà de 20 000 flows par worker.
+2. **Coût par engine** (environ 250 Ko par nœud) : à profiler dans le fork.
+3. **Journal d'événements partitionné** par org : aujourd'hui, un message en vol pendant une bascule est perdu.
+4. **`LAST_VALUES` des pins** reste local à un pod : à servir depuis le cache live Valkey.
+5. **E2E avec devices physiques** sur deux pods (device sur A, flow sur B) : non joué sur matériel.
+6. **Manifests k8s** dans `pnex-deploy` (`POD_IP`, secret du jeton cluster, `terminationGracePeriodSeconds` ≥ `drain_timeout`). Exigences opérationnelles : `horizontal-scaling.md`.
+7. **Mesure mémoire sur Pi** : manuelle. Le job CI `arm-check` couvre seulement la compilation croisée.
+8. **Nœuds `join`, `csv`, `file`** : cassés en partie en amont, non projetés. À réévaluer.
+9. **Starlark** : pas de capture de `print` dans `logs`.
+10. **Éditeur** (roadmap P2.21) : groupes de nœuds, valeur déclarée affichée sur le canevas.

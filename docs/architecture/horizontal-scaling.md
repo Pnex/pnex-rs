@@ -1,7 +1,7 @@
 # Scalabilité horizontale — exigences opérationnelles et cohérence base
 
 > **Statut : 2026-10-01, chantier « scale » (audit multi-pods, workstream D).**
-> Complète `flow-engine.md` §7 (cluster d'exécution D106, bus device D107).
+> Complète `flow-engine.md` §3.4–§3.5 (cluster d'exécution D106, bus device D107).
 > Cible : N pods `pnex-server` derrière un load balancer **sans affinité de
 > session**, une seule base Postgres, Valkey, un stockage S3-compatible.
 

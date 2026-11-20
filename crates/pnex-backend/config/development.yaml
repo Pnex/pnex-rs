@@ -203,7 +203,7 @@ settings:
     # /internal/flow/device-write): absent/empty ⇒ 401 fail-closed and the
     # node fails hard at preflight. Env PNEX_FLOW_RUNTIME_TOKEN takes precedence.
     runtime_token: <%= get_env(name="PNEX_FLOW_RUNTIME_TOKEN", default="pnex-dev-write") %>
-    # Flow execution cluster (D106, docs/architecture/flow-engine.md §12).
+    # Flow execution cluster (D106, docs/architecture/flow-engine.md §3.4).
     # Single node: nothing to set (a cluster of one). Several pods: give
     # each one a reachable advertise_url (e.g. http://$(POD_IP):5150) and
     # the same cluster token; PNEX_FLOW_RUN_WORKER=false makes an API-only pod.
