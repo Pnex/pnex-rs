@@ -47,6 +47,7 @@ Gabarit (sections dans cet ordre ; omettre une section vide) :
 Mermaid :
 - Tout concept avec plus de deux acteurs, un cycle de vie ou un flux reçoit un diagramme. Jamais d'art ASCII ; le convertir quand on touche la page.
 - Un diagramme = une idée, 15 nœuds au plus, libellés courts avec les mots du texte.
+- Une liste qui décrit un flux, une séquence ou un cycle de vie devient un diagramme : le diagramme **remplace** la liste, il ne la double pas. On garde en texte seulement ce que le diagramme ne montre pas (conditions, limites, raisons).
 - `flowchart` : en-tête `---` / `config:` / `  layout: elk` / `---`, comme les diagrammes existants.
 
 Retouche d'un doc existant (réécrire, regrouper, nettoyer : accord de Shan du 2026-11-20) :
