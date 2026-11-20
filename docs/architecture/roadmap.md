@@ -320,7 +320,7 @@ manifests k8s dans `pnex-deploy` (flow-engine §7, point 6).
 > un `rollout restart` (O67, pas de `preStop`) → corrigé dans `pnex-deploy`
 > (`preStop.sleep` 10 s) avec l'option `flowWorker.replicas` (pods
 > flow-worker dédiés, API en `PNEX_FLOW_RUN_WORKER=false`,
-> `horizontal-scaling.md` §1). **Après `helm upgrade`** (3 API + 2 flow-workers) :
+> `runtime.md` §3.6). **Après `helm upgrade`** (3 API + 2 flow-workers) :
 > topologie séparée validée (contrôleur sur un pod API, flow sur un
 > flow-worker, caméra sur un pod API, commandes via le bus) ; rolling update
 > rejoué : 1 timeout sur 743, 50 s après la fin du roulement, imputé au
@@ -590,7 +590,7 @@ Portrait 2 anneaux (16 à plat + 12 incliné), montée en résolution
 ### P2.6 — Viz : trancher les décisions §9
 
 1. ~~Sort des tables dormantes~~ : **supprimées** le 2026-10-01 par la
-   migration de base (D120, `migrations.md`).
+   migration de base (D120, `runtime.md` §3.5).
 2. Style de tuiles configurable (constante/env front, repli vieux
    webviews sans WebGL1 à mesurer).
 3. Widget psychrométrique/Mollier (+ CoolProp in-process déjà mergé —
@@ -1314,7 +1314,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
 - **M1 — POC M2M zenoh-pico WiFi** (sans broker, parc ESP existant, zéro
   achat) : coupure hub → la boucle continue. M2 (6LoWPAN) nécessite un
   prototype MTU avant tout engagement. UI de gestion seulement à M3.
-- **iOS** : décision de phase explicite (features.md). Le desktop est
+- **iOS** : décision de phase explicite (runtime.md). Le desktop est
   livré (2026-10-01, Linux + Windows).
 - **Fabric de workers v2/v3** (`worker-fabric.md` §12) : générateur de
   script d'install + UI de fleet + pools GitOps/HPA (v2) ; frontière
@@ -1469,7 +1469,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   du push via l'agent edge, et la 0.1.0 reste centrée sur le contenu
   communautaire. Roadmap publique du site (`pnex-website`) alignée.
 - **2026-10-01 (première release)** — Historique git ramené à un commit ;
-  50 migrations fondues en une migration de base (D120, `migrations.md`) :
+  50 migrations fondues en une migration de base (D120, `runtime.md` §3.5) :
   tables dormantes et reliquats pré-coffre supprimés, dérive SQLite
   corrigée, parité PG/SQLite bloquante en CI. Pas de LLM plateforme
   (D119). CI sur runners GitHub (dépôt public) ; nouvelle CI **Apps** :

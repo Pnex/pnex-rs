@@ -83,7 +83,7 @@ database:
   # (500 ms made every load spike a 500); idle = how long an unused
   # connection is kept (500 ms closed and reopened connections constantly).
   # Sizing: pods x (max_connections + queue.max_connections) must stay
-  # below Postgres max_connections (docs/architecture/horizontal-scaling.md).
+  # below Postgres max_connections (docs/architecture/runtime.md).
   connect_timeout: <%= get_env(name="DB_CONNECT_TIMEOUT", default="5000") %>
   acquire_timeout: <%= get_env(name="DB_ACQUIRE_TIMEOUT", default="5000") %>
   idle_timeout: <%= get_env(name="DB_IDLE_TIMEOUT", default="300000") %>

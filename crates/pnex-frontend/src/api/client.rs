@@ -14,7 +14,7 @@
 //! The client lives in a `thread_local`: on wasm the runtime is single-threaded and
 //! reqwest futures are `!Send`; natively the UI stays on its thread.
 //! (The future desktop target will have to make these futures `Send` — noted in
-//! docs/architecture/features.md.)
+//! docs/architecture/runtime.md.)
 
 use std::cell::RefCell;
 use std::future::Future;

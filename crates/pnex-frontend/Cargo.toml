@@ -122,7 +122,7 @@ fluent-syntax = "0.12"
 
 # Web CSR only. ⚠️ NO fullstack/ssr/server-fn feature: the server
 # is Loco (Axum), not the Dioxus runtime — the two Axum servings collide
-# (pitfall documented in docs/architecture/features.md).
+# (pitfall documented in docs/architecture/runtime.md).
 #
 # desktop/mobile: explicit later-phase decision — the architecture is
 # prepared (api/config.rs for the server URL, native storage) but the
@@ -130,7 +130,7 @@ fluent-syntax = "0.12"
 [features]
 default = ["web"]
 web = ["dioxus/web"]
-# Android target (directive 2026-08-15, see docs/architecture/features.md):
+# Android target (directive 2026-08-15, see docs/architecture/runtime.md):
 # the toolchain is validated, PKCE login and flash remain to be decided.
 # Built with --no-default-features --features mobile.
 mobile = ["dioxus/mobile"]

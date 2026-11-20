@@ -1,5 +1,5 @@
 //! Cross-pod serialization helpers on the database (horizontal scaling,
-//! docs/architecture/horizontal-scaling.md).
+//! docs/architecture/runtime.md).
 //!
 //! Several API pods share one Postgres: in-process mutexes no longer
 //! serialize anything. Read-check-write sequences that must be atomic per

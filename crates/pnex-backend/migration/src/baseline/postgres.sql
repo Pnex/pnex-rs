@@ -2,7 +2,7 @@
 -- Generated from the pre-release migrations, then cleaned: legacy
 -- plaintext/AI-connector leftovers removed, compatibility columns dropped
 -- (device metadata, host ws_ssl, build success flag). Every later change
--- goes in a new migration (docs/architecture/migrations.md).
+-- goes in a new migration (docs/architecture/runtime.md).
 
 -- ===== Enum types =====
 

@@ -4,7 +4,7 @@
 //! login (the front's compatibility gate at boot), and the LAN scan uses it
 //! to identify a PNEX server on the local network. No CORS: the web front
 //! is served same-origin by this server, and the APK uses native sockets
-//! (hyper) outside the WebView — see `docs/architecture/features.md`.
+//! (hyper) outside the WebView — see `docs/architecture/runtime.md`.
 
 use axum::http::StatusCode;
 use axum::routing::get;

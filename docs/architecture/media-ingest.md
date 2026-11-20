@@ -20,7 +20,7 @@ types système, plages D182, provenance D184, rapports D187), `viz-bases.md`
 dashboard), `studio.md` (S3 versioning, S5 lien public), `security.md` §9
 (D113 `SecretRef`, D116/D119 LLM d'org), `ai-assistant.md` (D142–D145,
 règle d'extension §9.3), `security.md` (R1–R20, grille §6),
-`migrations.md` §2 et §4 (migrations, PostgreSQL seul), `extension-collector.md` (C1b).
+`runtime.md` §3.5 (migrations, PostgreSQL seul), `extension-collector.md` (C1b).
 
 > **Numérotation** : PRD rédigé avec les numéros D148–D164 ; renuméroté D159–D175 à
 > l'intégration (D148–D158 déjà pris par `security.md` §8).
@@ -128,7 +128,7 @@ reçoit du **texte** et des événements, et fait l'ETL léger.
   `name` ; un slug supprimé n'est pas réattribuable tant que
   `tx_<slug>`/`mx_<slug>` existent dans la rétention O2), `kind`
   (`icecast` | `hls` | `dash` | `rtmp` | `rtsp` | `dvb` | `http_file` —
-  varchar, `migrations.md` §2), `url` (**sans secret**), `auth_secret`
+  varchar, `runtime.md` §3.5), `url` (**sans secret**), `auth_secret`
   (`SecretRef` optionnel, D113 — en-tête ou identifiants, destination
   verrouillée sur l'hôte de `url`, R9), `enabled`, `capture_on`
   (`server` | `worker` | `device:<device_registry_id>`), `asr_profile_id` (D164),
@@ -147,7 +147,7 @@ reçoit du **texte** et des événements, et fait l'ETL léger.
   `notify_channel_id` et `asr_profile_id` appartiennent à l'org (R1),
   sinon 400 de champ `invalid` (même réponse qu'un id inexistant : pas
   d'oracle inter-org).
-- **Quotas** (école `horizontal-scaling.md` : `COUNT` sous verrou
+- **Quotas** (école `runtime.md` §3.6 : `COUNT` sous verrou
   advisory par org) : `PNEX_MEDIA_MAX_STREAMS_PER_ORG` (défaut 3),
   plafond global de captures actives par porteur ; bornes de config :
   `segment_secs` ∈ [10, 120], `overlap_secs` ∈ [0, 3], `fps` (D175) ≤ 5 ;
@@ -715,7 +715,7 @@ Changements de contrat assumés (additifs, défaut = comportement actuel) :
 | `media_*` | O2 metrics | séries de dashboards (D171) |
 | blobs audio | RustFS / fs | éphémères (D161) |
 
-Migrations : `migrations.md` §2 et §4 — PostgreSQL seul (décision #19,
+Migrations : `runtime.md` §3.5 — PostgreSQL seul (décision #19,
 fonctions natives PG permises), enums en `varchar`, `org_id bigint`,
 index `idx_<table>_<cols>`, après la base `m20261009_000001_baseline`
 (0.1.0) ; `schema_invariants.rs` complété, tests sur `TEST_DATABASE_URL`.
@@ -961,7 +961,7 @@ Corrections intégrées ci-dessus :
 | D173 | `report_templates`, « école S3/D18 », « S4 » | D3 a supprimé `ReportTemplate` ; D123 fixe `desktop\|mobile` ; lien public = S5 | format `document`, amende D3/D123, kind `report` |
 | D174 | LLM D116, frontière D123 | D119 : LLM d'org seulement ; frontière assistant = D143 | citations |
 | D175 | bus « clé par `device_registry_id` », nœuds « sans modification » | bus clé par slug de device ; `camera_source.device_id` validé comme device | espace `pnex:media:v1`, sélecteur `source`, `stream_id` nullable |
-| §5 | migrations (`migrations.md`) | `migrations.md` §2 et §4 : PostgreSQL seul (décision #19), base 0.1.0 | renvoi |
+| §5 | migrations (`runtime.md` §3.5) | `runtime.md` §3.5 : PostgreSQL seul (décision #19), base 0.1.0 | renvoi |
 | D173 / D174 | studio de rapports, rapports figés, lien public, synthèse IA | décision user : pas de publication, consultation dans PNEX | studio et synthèse en tranche ultérieure, lot 4 = consultation, D3 intacte |
 | §14 | 5 questions | Loco 1.1 vérifié ; D3 contredit ; ordre ontologie | Q2 tranchée, Q3 proposée, Q6–Q7 ajoutées ; lot 6 reporté dans `roadmap.md` |
 

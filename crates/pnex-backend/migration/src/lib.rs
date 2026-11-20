@@ -6,7 +6,7 @@
 //! PostgreSQL (`baseline/postgres.sql`). It replaces the
 //! pre-release chain: a database created before it is refused (its applied
 //! migrations no longer exist) and must be recreated. Every later change
-//! is a new migration following docs/architecture/migrations.md.
+//! is a new migration following docs/architecture/runtime.md.
 //! PostgreSQL is the only supported backend (decision #19).
 
 pub use sea_orm_migration::prelude::*;

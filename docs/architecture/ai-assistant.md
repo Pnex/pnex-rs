@@ -354,7 +354,7 @@ affirmation (409 `ontology-claim-unsourced` sinon). Fiche
 
 ### 9.4 D145 — conversations
 
-**Modèle** (nouvelle migration, parité PG/SQLite, règles `migrations.md`) :
+**Modèle** (nouvelle migration, parité PG/SQLite, règles `runtime.md` §3.5) :
 - `ai_conversations` : `id` (uuid), `org_id`, `user_id`, `title`,
   `created_at`, `updated_at`, `last_message_at` ; index `(user_id, org_id,
   last_message_at desc)` ; FK `ON DELETE CASCADE` vers `users` et `orgs`.

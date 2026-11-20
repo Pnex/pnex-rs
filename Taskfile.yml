@@ -78,7 +78,7 @@ tasks:
       - '{{.G}} crates/pnex-extension/build-dist.sh {{.ROOT_DIR}}/dist/extension'
 
   build:frontend:android:
-    desc: Build the release arm64 Android APK (mobile chain validation — see docs/architecture/features.md)
+    desc: Build the release arm64 Android APK (mobile chain validation — see docs/architecture/runtime.md)
     deps: [css:build, js:build]
     # method timestamp (same reason as build:frontend): go-task writes the
     # checksum BEFORE running — an interrupted build would record an

@@ -13,7 +13,7 @@
 > provenance obligatoire), `roadmap.md` (§ Geofencing : PostGIS accepté
 > GPL-2, stockage pas temps réel ; PostgreSQL seul moteur, décision #19),
 > `security.md` §9 (D110 références de coffre, D116/D119 fournisseurs LLM
-> d'org), `horizontal-scaling.md` (D108 Valkey obligatoire).
+> d'org), `runtime.md` §3.6 (D108 Valkey obligatoire).
 >
 > Positionnement : **extension de la base map**, pas un nouveau pilier
 > (cf. gel des piliers en 0.2.0). Entrée roadmap : P2.16, décision #20.
@@ -396,7 +396,7 @@ Corrections apportées à la v0.1 à l'intégration :
    sortant à passer par l'egress guard R8.
 6. **Image Postgres** : PostGIS (L1) et pgvector (`doc-search.md`) doivent
    tenir dans **une seule** image étendue, Chainguard/Wolfi en livraison
-   (`container-images.md`) ; à valider ensemble.
+   (`runtime.md` §3.4) ; à valider ensemble.
 7. **Question 7 ajoutée** : position vis-à-vis du gel des piliers 0.2.0.
 8. Diagramme d'états ASCII converti en Mermaid (convention des docs).
 

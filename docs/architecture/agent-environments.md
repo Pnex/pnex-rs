@@ -75,7 +75,7 @@ sable (voir D701).
 **Image du builder** : construite par nous sur `wolfi-base` (`buildkitd`,
 `buildctl`, `rootlesskit`, paquets Wolfi disponibles). L'image `buildkit` et
 l'image `kaniko` du catalogue Chainguard ne sont pas accessibles sans licence
-(403 vérifié). L'image amont est basée sur Alpine : écartée (`container-images.md`).
+(403 vérifié). L'image amont est basée sur Alpine : écartée (`runtime.md` §3.4).
 
 **Sens de « distroless » ici** :
 

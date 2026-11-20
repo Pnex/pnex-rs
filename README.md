@@ -328,7 +328,7 @@ Design records (in French): [`docs/architecture/`](docs/architecture) — start 
 [`media-ingest.md`](docs/architecture/media-ingest.md),
 [`pipelines.md`](docs/architecture/pipelines.md),
 [`agent-environments.md`](docs/architecture/agent-environments.md) and
-[`horizontal-scaling.md`](docs/architecture/horizontal-scaling.md).
+[`runtime.md`](docs/architecture/runtime.md).
 
 ## Repository layout
 
@@ -401,7 +401,7 @@ task dev          # app build + server on http://localhost:5150
 
 Heavy builds go through `scripts/guarded.sh` (the `task` targets already do): a capped systemd
 scope, one heavy build at a time, a free-disk check. Schema changes follow
-[`docs/architecture/migrations.md`](docs/architecture/migrations.md): additive first,
+[`docs/architecture/runtime.md`](docs/architecture/runtime.md): additive first,
 PostgreSQL only.
 
 **CI**: `ci.yml` (fmt, deny, check native + wasm + ARM, tests, web build) → `images.yml`

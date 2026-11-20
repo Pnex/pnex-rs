@@ -322,7 +322,7 @@ Un worker de 16 Go tient donc environ 20 000 flows résidents.
 3. **Journal d'événements partitionné** par org : aujourd'hui, un message en vol pendant une bascule est perdu.
 4. **`LAST_VALUES` des pins** reste local à un pod : à servir depuis le cache live Valkey.
 5. **E2E avec devices physiques** sur deux pods (device sur A, flow sur B) : non joué sur matériel.
-6. **Manifests k8s** dans `pnex-deploy` (`POD_IP`, secret du jeton cluster, `terminationGracePeriodSeconds` ≥ `drain_timeout`). Exigences opérationnelles : `horizontal-scaling.md`.
+6. **Manifests k8s** dans `pnex-deploy` (`POD_IP`, secret du jeton cluster, `terminationGracePeriodSeconds` ≥ `drain_timeout`). Exigences opérationnelles : `runtime.md` §3.6.
 7. **Mesure mémoire sur Pi** : manuelle. Le job CI `arm-check` couvre seulement la compilation croisée.
 8. **Nœuds `join`, `csv`, `file`** : cassés en partie en amont, non projetés. À réévaluer.
 9. **Starlark** : pas de capture de `print` dans `logs`.

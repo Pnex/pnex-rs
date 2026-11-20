@@ -16,7 +16,7 @@ provenance, D185 requête, D186 explorateur, D188 permissions, D190 packs),
 pont JS → Rust, modes live/édition D34), `geo-layers.md` (fond de carte de
 l'org, couches), `doc-search.md` (index de recherche des documents),
 `dashboard_editor` / D129 (liaisons de lecture `SourceRef`),
-`horizontal-scaling.md` (D108 Valkey obligatoire), `ai-assistant.md` §9
+`runtime.md` §3.6 (D108 Valkey obligatoire), `ai-assistant.md` §9
 (D142–D145), `security.md` (R1–R20, R11–R13 en particulier),
 `editor-shell.md`.
 
