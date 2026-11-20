@@ -1,1384 +1,959 @@
-# PRD — PNEX 0.2.0 : noyau ontologique (objets, liens, temps, actions) (D176–D191)
+# Noyau ontologique : objets, liens, temps, actions (D176–D191, D367–D370, D589)
 
-**Statut :** Implémenté L0–L5 (2026-10-10, §10) — PRD proposé le 2026-10-09, cible de la version **0.2.0**, première
-version réécrite autour de ce noyau. Zéro code avant validation.
-**Portée :** transverse — modèle de domaine, API, UI, assistant, flows,
-dashboards. Tous les domaines existants deviennent des vues spécialisées
-de ce noyau.
-**Renvois :** `inventory.md` D42 (couche Resource : labels, containment,
-edges — la graine de ce PRD), D43 (placements), D69 (recherche),
-`media-ingest.md` (D159–D175 : flux, plages, taxonomies),
-`viz-bases.md` (liaisons de lecture), `ai-assistant.md` (D123, D142–D145),
-`worker-fabric.md` (as-code / as-UI sur une même source de vérité),
-`edge-model.md`, `security.md` (R1–R20).
-
-> **Numérotation** : PRD rédigé en D165–D180 ; renuméroté D176–D191 à
-> l'intégration (D148–D158 déjà pris par `security-tiers.md`, puis
-> `media-ingest.md` en D159–D175).
-
----
-
-## 1. Constat
-
-PNEX a commencé comme plateforme IoT. Il porte aujourd'hui des devices,
-des flows, des dashboards, des médias, des tours, des POI, des
-annotations, des caméras, des modèles ML, et bientôt des flux média, des
-plages et des taxonomies. Chaque domaine a ses tables, ses pages et sa
-façon de se relier aux autres.
-
-Le noyau qui émerge est le même partout : **capter des sources, les
-ramener sur un axe temporel, les rattacher à des objets du monde réel,
-les analyser, agir.** C'est la forme d'une plateforme de données
-opérationnelle, mais PNEX n'en a
-pas encore la pièce centrale : un **modèle d'objets métier défini par
-l'utilisateur**.
-
-Ce qui existe déjà et sert de graine (D42) :
-
-- une identité polymorphe `ResourceRef (org, kind, id)` ;
-- des **labels**, un **containment** (arbre) et des **edges** génériques
-  (`resource_edges`, relation `placed_on`) ;
-- un registre `KindSpec` où la validité kind × relation × kind est
-  déclarée par kind, sans `match` dans le moteur.
-
-Ce qui manque :
-
-1. Les kinds sont **codés en dur** (7 constantes). Un utilisateur ne peut
-   pas créer « Pompe », « Ligne de production » ou « Chaîne TV ».
-2. Aucun modèle de **propriétés typées** : le métier vit dans des JSONB
-   `metadata` libres.
-3. Le **temps est rattaché aux devices**, pas aux objets : remplacer un
-   capteur casse l'historique de la pompe qu'il mesurait.
-4. Les liens servent à **ranger**, pas à **raisonner** : pas de
-   relation typée, pas de validité temporelle, pas de provenance.
-5. Pas de notion d'**action** métier déclarée et tracée.
-
-## 2. Vision 0.2.0
-
-> **Tout ce que PNEX connaît est un objet typé, relié à d'autres objets,
-> porteur de temps, d'où l'on peut agir, et dont chaque fait dit d'où il
-> vient.**
-
-Cinq primitives, et rien d'autre dans le noyau :
-
-| Primitive | Question à laquelle elle répond |
+| | |
 |---|---|
-| **Objet** | De quoi parle-t-on ? (une pompe, un site, une chaîne, une personne) |
+| Statut | Noyau livré en 0.2.0 (lots L0–L5, 2026-10-10). Actions D183 livrées le 2026-10-13. D367 et D368 livrés, D369 acté sans code |
+| Numérotation | **D176…D191**, **D367…D370**, **D589**. Décision « étiquettes et ontologie » sans numéro (§4) |
+| Repose sur | `inventory.md` D42 (couche Resource), D43 (placements), D69 (recherche), `media-ingest.md` (D159–D175), `viz-bases.md`, `ai-assistant.md` (D123, D142–D145), `security.md` (R1–R23) |
+| Sécurité | Chaque changement passe `security.md` §6 |
+
+## Résumé
+
+Le noyau ontologique donne à PneX un modèle d'objets métier que l'org définit elle-même. Tout ce que
+PneX connaît est un objet typé, relié à d'autres objets, porteur de temps. Chaque fait dit d'où il
+vient, et l'humain peut agir depuis l'objet. Le noyau ne connaît aucun métier : les métiers vivent
+dans des packs. Ce document fixe le modèle, ses règles de lecture et d'écriture, le stockage graphe
+(annexe A) et la GMAO livrée en packs (annexes B et C).
+
+## Concepts
+
+- **Objet** : une chose du monde réel (pompe, site, chaîne, personne). Il a une identité UUID dans
+  `objects`, un type, un titre, des propriétés et une validité `valid_from` / `valid_to`.
+- **Type système** : type déclaré dans le code (`device`, `flow`, `media_asset`…). Son contenu reste
+  dans sa table native.
+- **Type d'org** : type que l'org déclare en données (`object_types`, versions en ajout seul).
+- **Propriété** : fait typé d'un objet. Une **propriété temporelle** (`series`, `events`) désigne
+  des données dans O2, elle ne les copie pas.
+- **Lien** : relation typée et datée entre deux objets, avec des attributs et une provenance.
+- **Liaison** : lien système `measures` qui relie une capability d'un device à une propriété
+  `series` d'un objet.
+- **Containment** : arbre de rangement à un seul parent (site › ligne › machine).
+- **Plage** : intervalle de temps (`time_ranges`) sur un objet.
+- **Action** : opération déclarée sur un type et exécutée par un flow déployé.
+- **Provenance** : origine d'un fait (`source_ref`), journalisée dans le stream O2 `object_changes`.
+- **Pack** : ensemble YAML versionné de types, liens, actions, réglages, fonctions et flows.
+- **Couche d'org** : ce que l'org surcharge dans un pack (réglages, libellés, couleurs).
+- **Proposition** : écriture machine en attente d'une décision humaine (D367).
+- **Étiquette** : classement libre `clé:valeur` d'un objet, sans schéma (D42, D218).
+
+```mermaid
+classDiagram
+  direction LR
+  Pack "1" --> "*" Type : déclare
+  Type "1" --> "*" Propriete : schéma
+  Type "1" --> "*" Action : déclare
+  Objet "*" --> "1" Type : est un
+  Objet "1" --> "*" Lien : source ou cible
+  Objet "1" --> "*" Plage : porte
+  Objet "1" --> "*" Objet : contient
+  Proposition --> Objet : modifie
+  Proposition --> Lien : ouvre
+```
+
+## 1. Fonctionnement
+
+### 1.1 Les cinq primitives et leurs stockages
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  ui[UI, assistant, flows] --> q[Requête D185]
+  q --> obj[(objects + tables natives)]
+  q --> lk[(resource_edges)]
+  q --> o2[(O2 séries et événements)]
+  ui --> act[Action D183]
+  act --> bus[Bus Valkey]
+  bus --> flow[Flow déployé]
+  ui --> wr[Service d'écriture]
+  wr --> obj
+  wr --> lk
+  wr --> prov[(O2 object_changes)]
+```
+
+Toute lecture passe par un point unique, la requête D185. Toute écriture passe par le service
+partagé entre l'UI, l'API et l'assistant. Le service écrit la provenance de chaque fait dans
+`object_changes`. Les octets et la télémétrie restent dans leurs stockages : MediaStore et O2.
+L'ontologie les désigne par identifiant.
+
+### 1.2 Identité d'un objet
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  nat[Écriture native] --> trg[Trigger pnex_object_identity]
+  trg --> id[(objects)]
+  del[Suppression native] --> cls[Trigger pnex_object_close]
+  cls --> vt[valid_to posé]
+  org[Écriture d'objet d'org] --> id
+  edge[Insertion de lien] --> fk[Trigger : deux identités]
+  fk --> id
+```
+
+PostgreSQL écrit l'identité d'un objet système dans la même transaction que la ligne native. Les
+seeds et les chemins chauds reçoivent donc leur identité sans code applicatif. Le trigger de mise à
+jour porte seulement sur la colonne de titre. Une écriture de présence ou d'état ne le déclenche
+jamais. Une suppression ferme l'identité, elle ne l'efface pas.
+
+### 1.3 Cycle de vie d'un lien
+
+```mermaid
+stateDiagram-v2
+  [*] --> Ouvert : créer
+  [*] --> Clos : créer avec valid_to
+  Ouvert --> Ouvert : modifier les attributs
+  Ouvert --> Clos : fermer
+  Clos --> Clos : modifier les attributs
+  Clos --> [*] : purge de l'org
+```
+
+Fermer un lien pose `valid_to`. Le lien reste dans l'historique. Un lien créé avec `valid_to`
+s'écrit directement comme historique, même si la paire a déjà un lien ouvert. Seuls les liens
+ouverts sont uniques par paire et comptent pour la cardinalité. `valid_to` ne peut pas être futur.
+Une fin annoncée va dans un attribut, par exemple `planned_end`. Les extrémités, le type et la
+validité d'un lien ne changent pas : il faut fermer le lien et en créer un autre.
+
+## 2. Principes
+
+Le noyau capte des sources, les rattache à des objets typés et les relie dans le temps. Il permet
+d'agir et dit d'où vient chaque fait. Il a cinq primitives, et rien d'autre.
+
+| Primitive | Question |
+|---|---|
+| **Objet** | De quoi parle-t-on ? |
 | **Lien** | Comment ces choses sont-elles reliées, et depuis quand ? |
 | **Temps** | Que s'est-il passé, quand, et sur quelle plage ? |
 | **Action** | Que peut-on faire sur cet objet, qui l'a fait, avec quel résultat ? |
 | **Provenance** | D'où vient chaque fait, et peut-on le rejouer ? |
 
-Positionnement : une plateforme **de l'edge à l'ontologie**, open source
-(MIT), souveraine, qui tient sur un Raspberry Pi et monte en cluster,
-sur PostgreSQL dans les deux cas (décision #19). Le capteur à 3 € et l'objet métier vivent
-dans le même modèle.
+Le noyau tourne sur PostgreSQL, du Raspberry Pi au cluster. Le capteur à 3 € et l'objet métier
+vivent dans le même modèle. L'ontologie est optionnelle : un device sans objet rattaché fonctionne
+normalement.
 
 ## 3. Non-objectifs
 
-- ~~La parité fonctionnelle avec les plateformes opérationnelles.~~ Levé le
-  2026-11-03 (D551, `operational-platform.md`).
-- Une base graphe dédiée : tout reste dans PostgreSQL (CTE récursives,
-  JSONB).
-- Un environnement de code de type notebook ou workbook : le calcul
-  passe par les flows et les fonctions existants. Amendé le 2026-10-10
-  (`pages.md` P7b, décision #21) : le tableau local d'une page est admis
-  car une formule ne fait que **lire** (jamais d'écriture ni de code).
-  Amendé le 2026-11-03 : notebooks Python en déploiement séparé, jamais
-  dans le cœur (D559).
-- La fédération inter-orgs (partage d'objets entre organisations) : plus
-  tard.
-- La prise de décision par l'IA : l'assistant propose, l'humain ou un
-  flow déployé agit (D123 inchangé).
+- **Base graphe dédiée** : tout reste dans PostgreSQL (annexe A, D589).
+- **Notebook dans le cœur** : le calcul passe par les flows et les fonctions. Le tableau local d'une
+  page est admis, car une formule lit seulement (`pages.md` P7b). Les notebooks Python existent en
+  déploiement séparé (D559).
+- **Fédération implicite entre orgs** : le partage entre orgs est explicite et contractuel (D567).
+- **Décision par l'IA** : l'assistant propose, l'humain ou un flow déployé agit (D123).
+
+La parité fonctionnelle avec les plateformes opérationnelles n'est plus un non-objectif depuis D551
+(`operational-platform.md`).
 
 ## 4. Décisions
 
 ### D176 — Les types d'objets sont des données, versionnées
 
-- `object_types` (org-scoped, ou `org_id NULL` pour les types système) :
-  `key` (`[a-z0-9_]`), `name`, `icon`, `system` (bool), `latest_version`.
-- `object_type_versions` (append-only, école D18) : schéma des
-  propriétés (D178), règles de containment (D180), actions (D183),
-  `expected_version` → 409 à l'écriture.
-- Les **types système** (`device`, `flow`, `dashboard`, `media_asset`,
-  `tour`, `map_pin`, `folder`, puis `media_stream`, `time_range`,
-  `ml_model`…) sont déclarés dans ce même registre, `system = true`,
-  non supprimables, schéma extensible par l'org (propriétés
-  supplémentaires) sans toucher aux colonnes natives.
-- Le registre `KindSpec` (D42) n'est plus écrit à la main : il est
-  **dérivé** du registre de types au démarrage. Les constantes
-  `KIND_*` restent pour le code qui manipule un type système précis.
+Un type d'org vit dans `object_types` et `object_type_versions`, en ajout seul. Une version porte le
+schéma des propriétés, les règles de containment et les actions. Une écriture donne
+`expected_version`, sinon le serveur répond 409. Les types système sont déclarés dans
+`pnex_core::ontology` et ne se suppriment pas. Une ligne d'org sous une clé système est une
+**extension** : elle ajoute des propriétés, sans toucher aux colonnes natives. Le noyau dérive les
+règles de containment du registre des types. Le `KindSpec` écrit à la main n'existe plus.
 
-### D177 — Stockage hybride : objets utilisateur en table générique, objets système dans leurs tables
+### D177 — Identité universelle, contenu natif en place
 
-- Types utilisateur → table `objects` (UUID, `org_id`, `type_id`,
-  `type_version`, `title`, `properties` JSONB, `source_ref` (D184),
-  `created_at`, `updated_at`, `archived_at`).
-- Types système → **inchangés dans leurs tables** (`device_registries`,
-  `flows`, `media_assets`…). Ils sont exposés comme objets par un
-  **adaptateur** par type (lecture des colonnes natives + propriétés
-  supplémentaires de l'org dans `object_extensions (kind, id,
-  properties)`).
-- Pourquoi : déplacer les devices dans une table générique casserait les
-  chemins chauds (`/ws/device`, firmware, OTA) pour aucun gain. L'API et
-  l'UI, elles, voient un modèle **uniforme** par `ResourceRef`.
-- Garde-fou anti-EAV : les propriétés sont un **document JSONB validé
-  par schéma**, pas une table ligne-par-propriété ; index GIN (PG) sur
-  les propriétés déclarées `indexed`.
-- **Amendé le 2026-10-10 (annexe A2) — identité universelle** : `objects`
-  porte une ligne d'**identité** pour *tout* objet, système compris
-  (UUID, `org_id`, `type_id`, titre, `valid_from` / `valid_to`) ; le
-  contenu natif des types système reste dans sa table, en 1:1 avec FK
-  vers `objects.id`. Les liens (D179) ont de vraies FK vers `objects.id`.
-  Les objets sont **temporels** comme les liens : `archived_at` devient
-  la fermeture de validité (`valid_to`).
+Chaque objet, système ou d'org, a une ligne d'identité dans `objects` : UUID, `org_id`, `type_id`,
+titre, `valid_from` / `valid_to`. Le contenu natif d'un type système reste dans sa table, en 1:1,
+avec une FK vers `objects.id`. `objects.native_id` garde la clé native en texte. Les liens ont de
+vraies FK vers `objects.id`. Les propriétés d'un objet d'org sont un document JSONB validé par
+schéma, pas une table par propriété. Un index GIN couvre les propriétés déclarées `indexed`.
 
-### D178 — Propriétés typées, y compris les propriétés temporelles
+Raison : déplacer les devices dans une table générique casserait `/ws/device`, la présence et l'OTA,
+sans gain. Les options écartées sont dans l'annexe A2.
 
-Types de propriétés (schéma partagé dans `pnex-core`, natif + wasm32,
-validation identique front et back) :
+### D178 — Propriétés typées, y compris temporelles
 
-- scalaires : `text`, `number` (+ unité, réutilise `unit_conversions`),
-  `bool`, `date`, `datetime`, `enum`, `geo_point`, `url`, `ref`
-  (référence typée vers un autre objet) ;
-- **temporelles** :
-  - `series` : liaison vers une série O2 (métrique + sélecteur de
-    labels) ; la valeur « actuelle » est la dernière valeur, l'historique
-    est la série elle-même ;
-  - `events` : liaison vers un stream O2 logs + filtre (transcriptions,
-    détections, notifications).
+`pnex-core` porte le format des propriétés (`PropertyDef`). Le front (wasm32) et le back valident
+avec le même code.
 
-Une propriété temporelle ne copie jamais de données : elle **désigne** où
-elles vivent. Le moteur de lecture (`series-batch`, `_search`) est
-inchangé.
+| Famille | Types |
+|---|---|
+| Scalaires | `text`, `number` (unité, bornes), `bool`, `date`, `date_time`, `enum`, `geo_point`, `geo_area`, `url` (http(s) seulement, R11), `ref`, `money`, `fuzzy_time` (`cases.md` K5) |
+| Temporelles | `series` (une série O2 : métrique et dimensions), `events` (un stream O2 filtré sur `object=<id>`) |
+| Planification | `recurrence` (annexe B13) |
+
+Une propriété temporelle désigne où vivent les données. Le moteur de lecture (`series-batch`,
+`_search`) ne change pas. Une erreur de validation est un jeton de champ : `required`,
+`max_length:N`, `invalid`, `unknown`, `duplicate`.
 
 ### D179 — Liens typés, temporels, porteurs d'attributs
 
-- `link_types` (org-scoped ou système) : `key`, `name`, `inverse_name`,
-  `from_type`, `to_type` (ou `*`), cardinalité (`one`, `many` de chaque
-  côté), schéma d'attributs, `temporal` (bool).
-- `resource_edges` (D42) devient la table des liens : ajout de
-  `link_type_id`, `attributes` JSONB validé, `valid_from` / `valid_to`
-  (nullables), `source_ref` (D184). `placed_on` devient le premier type
-  de lien système ; la colonne `placement` reste son attribut.
-- **Validité temporelle** : « le capteur C est monté sur la pompe P du
-  1ᵉʳ mars au 12 juin », « le groupe G possède la chaîne X depuis 2015 ».
-  Une requête « à la date T » ne voit que les liens valides à T. Fermer
-  un lien (poser `valid_to`) ne le supprime jamais : l'histoire reste.
-- La purge symétrique `purge_for` (D42) est conservée.
+`link_types` déclare `key`, `name`, `inverse_name`, `from_type`, `to_type` (ou `*`), la cardinalité
+de chaque côté, le schéma des attributs et `temporal`. `resource_edges` (D42) est la table des
+liens. Elle porte `link_type_id`, `attributes`, `valid_from` / `valid_to` et `source_ref`. Une
+lecture « à la date T » voit seulement les liens valides à T. La section 1.3 montre le cycle de vie
+d'un lien. La purge `purge_for` (D42) ferme les liens, elle ne les supprime pas.
 
 ### D180 — Le containment reste un arbre, séparé des liens
 
-Le containment (un seul parent, cycles refusés, D42) sert la hiérarchie
-physique et organisationnelle : site › bâtiment › ligne › machine ; org
-› dossier. Les règles « peut contenir / peut être contenu dans » passent
-du code au schéma de type (D176). Les liens (D179) servent tout le
-reste. Ne pas fusionner les deux : un arbre se navigue, un graphe se
-requête.
-
-> **2026-10-19 (`partner-watch.md` D305, proposé)** : une hiérarchie à
-> plusieurs parents (dirigeants, groupes, filiales) n'entre pas dans le
-> containment ; c'est une **vue d'arbre calculée sur des liens** déclarés
-> par un pack. D180 est inchangé.
+Le containment sert la hiérarchie physique et organisationnelle : un parent, pas de cycle. Le schéma
+de type déclare « peut contenir » et « peut être contenu dans ». Les liens servent tout le reste. Un
+arbre se navigue, un graphe se requête : le noyau ne les fusionne pas. Une hiérarchie à plusieurs
+parents (groupes, filiales) est une vue d'arbre calculée sur des liens de pack (`partner-watch.md`
+D305).
 
 ### D181 — Le temps appartient aux objets, pas aux devices
 
-- **Liaison device → objet** : une capability d'un device est liée à une
-  propriété `series` d'un objet (« température de C → P.température »).
-  La liaison est un lien temporel (D179) : remplacer le capteur ferme
-  l'ancienne liaison et en ouvre une nouvelle.
-- La lecture de `P.température` **recompose** l'historique à partir des
-  liaisons successives : l'objet survit à ses capteurs. C'est la
-  première valeur visible de la 0.2.0 pour l'industrie (maintenance,
-  remplacement de matériel, audit).
-- Toutes les voies d'ingestion (télémétrie device, agent edge D95, flux
-  média D163, `http-fetch`) peuvent étiqueter leurs points d'un
-  `object=<kind>/<id>` : les séries sont alors interrogeables par objet
-  sans liaison explicite.
+```mermaid
+sequenceDiagram
+  participant U as Utilisateur
+  participant S as Service ontologie
+  participant O2 as O2
+  U->>S: lier C47 à P12.température
+  S->>S: ouvrir le lien measures
+  U->>S: remplacer C47 par C88
+  S->>S: fermer le lien de C47
+  S->>S: ouvrir le lien de C88
+  U->>S: lire P12.température
+  S->>O2: série de C47 sur sa validité
+  S->>O2: série de C88 sur sa validité
+  S-->>U: une courbe continue
+```
+
+Le lien système `measures` va d'un device vers tout type. Ses attributs sont `{metric, property}`.
+Une propriété `series` a un seul capteur ouvert à la fois, sinon le serveur répond 409
+`ontology-link-cardinality`. Le service recompose la série segment par segment. Il coupe chaque
+segment à la validité de son lien. L'objet survit donc à ses capteurs.
 
 ### D182 — Les plages s'appliquent à n'importe quel objet
 
-`time_ranges` (`media-ingest.md` D169) prend pour `scope` n'importe quel
-`ResourceRef` : émission d'une chaîne, poste d'équipe d'une ligne, lot
-d'une machine, mandat d'une personne. L'agrégation « par plage » (D171)
-devient une primitive de lecture du noyau, pas une fonction média.
-
-> Livré pour les séries temporelles (2026-10-10, media-ingest.md §19) :
-> `POST /api/v1/telemetry/aggregate` agrège une série O2 (`sum`, `avg`,
-> `max`, `min`, `increase`) par plage d'une portée (heure recalée si elle
-> existe, sinon annoncée, la base est exposée par ligne) ou par tranche
-> horaire répétée sur les jours d'une fenêtre ; le widget de dashboard
-> `range_bars` le consomme. Les propriétés `series` des objets (D185) le
-> réutiliseront.
+`time_ranges` (`media-ingest.md` D169) accepte `scope_kind = object`. Une plage peut être une
+émission, un poste d'équipe, un lot ou un mandat. `POST /api/v1/telemetry/aggregate` agrège une
+série O2 (`sum`, `avg`, `max`, `min`, `increase`) par plage d'une portée (D171). Le widget
+`range_bars` lit cette route. Une écriture de plage sur un objet exige le `write_role` du type de
+l'objet (D188). Un viewer ou un member sans ce rôle reçoit 403 `ontology-write-forbidden`.
 
 ### D183 — Actions déclarées sur les types, exécutées par des flows, tracées
 
-- Une action est déclarée dans le schéma de type : `key`, `name`,
-  schéma de paramètres, préconditions (expression sur les propriétés),
-  **exécuteur** = point d'entrée d'un **flow déployé** (nouveau nœud
-  `action-trigger`) ou action système (ex. archiver).
-- Invocation : UI (bouton sur la page objet), API, flow. Option
-  `confirm: true` → confirmation humaine obligatoire.
-- Chaque invocation est journalisée dans le stream O2 `actions` : qui,
-  quand, objet, paramètres, version du flow, résultat.
-- L'assistant IA peut **proposer** une invocation (pré-remplie), jamais
-  l'exécuter (D123 : seul un flow déployé par un humain agit).
+```mermaid
+sequenceDiagram
+  participant U as UI ou API
+  participant S as Backend
+  participant V as Valkey
+  participant F as Flow déployé
+  U->>S: POST objects/{id}/actions/{key}
+  S->>S: vérifier write_role et paramètres
+  S->>S: chercher les flows déclencheurs
+  alt aucun flow déployé
+    S-->>U: 409 ontology-action-no-flow
+  else flows trouvés
+    S->>V: PUBLISH pnex:act:v1:{org}
+    V->>F: nœud pnex-action-trigger
+    S->>S: journal action.invoke
+    S-->>U: envoyé à ces flows
+  end
+```
 
-> **Livré 2026-10-13 (0.2.0, question #17 tranchée : oui)** — écarts au
-> texte ci-dessus, assumés :
-> - Journal : pas de stream O2 `actions` dédié ; l'invocation est une
->   entrée `action.invoke` du journal de provenance `object_changes`
->   (paramètres, flows destinataires), visible dans l'onglet Provenance.
->   Un seul lecteur, une seule rétention.
-> - Pas de préconditions ni d'action système en V1 ; pas de résultat
->   remonté par le flow (fire-and-forget, comme les contrôles D127) : le
->   journal dit « envoyé à ces flows (id, version) ».
-> - Bus : `PUBLISH pnex:act:v1:{org}` (Valkey), nœud `pnex-action-trigger`
->   (crate `pnex-node-ui-control`, à côté de `control-source`). Une
->   invocation sans flow déployé tenant le déclencheur est refusée (409
->   `ontology-action-no-flow`) ; le deploy refuse un déclencheur dont
->   l'action n'existe plus (`ontology-action-unknown`).
-> - `confirm: true` = avertissement dans le dialogue ; toute invocation
->   UI passe de toute façon par un dialogue et un clic explicite.
-> - Garde : `can_write` + `write_role` du type (D188), paramètres validés
->   comme des propriétés (refs vérifiées dans l'org, R1).
-> - Assistant : outil `propose_action` (vérifie, liste les flows
->   destinataires, n'envoie rien) ; l'UI affiche « Vérifier et exécuter »
->   qui ouvre le même dialogue pré-rempli.
-> - Déclaration : dans le schéma du type (`actions`), via un pack ou
->   l'import YAML ; pas encore d'éditeur d'actions dans l'éditeur de type.
+Le schéma du type déclare une action dans `actions` : clé, nom, schéma des paramètres. Un pack ou
+l'import YAML la déclare. Le service valide les paramètres comme des propriétés et vérifie les `ref`
+dans l'org (R1). L'invocation est sans retour, comme les contrôles D127. Le journal dit à quels
+flows (id, version) le service a envoyé l'action. Le journal est l'entrée `action.invoke` de
+`object_changes`, visible dans l'onglet Provenance.
+
+- Le déploiement refuse un déclencheur dont l'action n'existe plus (`ontology-action-unknown`).
+- `confirm: true` affiche un avertissement. Une invocation UI passe toujours par un dialogue et un
+  clic.
+- L'assistant utilise `propose_action` : l'outil vérifie, liste les flows et n'envoie rien. L'UI
+  montre « Vérifier et exécuter », qui ouvre le même dialogue pré-rempli (D123).
 
 ### D184 — Provenance obligatoire sur chaque fait
 
-- `source_ref` sur chaque objet, valeur de propriété modifiée et lien :
-  `manual:<user>`, `import:<job>`, `flow:<id>@<version>`,
-  `device:<id>`, `stream:<id>/segment:<id>`, `api:<token>`.
-- Historique des modifications d'objets et de liens dans un stream O2
-  `object_changes` (avant/après, provenance) : pas de table d'audit en
-  base, rétention réglable (D72).
-- Page objet : onglet **Provenance** qui répond à « d'où vient ce
-  chiffre / ce lien ». C'est la condition pour Repère (fait sourcé et
-  rejouable) comme pour l'audit industriel.
+Chaque objet, propriété modifiée et lien porte `source_ref`. Les formes sont `manual:<user>`,
+`assistant:<user>`, `import:<job>`, `flow:<id>@<version>`, `device:<id>`, `device_placements`,
+`stream:<id>/segment:<id>` et `api:<token>`.
+
+Le stream O2 `object_changes` garde l'avant, l'après et la provenance. Il n'y a pas de table d'audit
+en base. La rétention suit D72. Le serveur écrit en file et lit sans provisionner. La page objet
+montre l'onglet **Provenance** : « d'où vient ce chiffre, ce lien ».
 
 ### D185 — Une API de requête sur l'ontologie
 
-`POST /api/v1/ontology/query`, requête JSON déclarative (pas de langage
-textuel en V1) :
+La requête est un JSON déclaratif. Il n'y a pas de langage textuel. Elle filtre par type,
+propriétés, étiquettes effectives et containment. Elle traverse des liens à type explicite, au plus
+`MAX_HOPS` (4) sauts, à une date `as_of`. Elle joint la dernière valeur ou un agrégat des propriétés
+`series`. Le schéma de la requête vit dans `pnex-core` : l'UI, l'assistant et les flows parlent le
+même langage.
 
-- filtre par type, propriétés, labels effectifs (D42), containment ;
-- traversée de liens **bornée** (profondeur ≤ 4, type de lien explicite,
-  date de validité `as_of`) ;
-- jointure temporelle : dernière valeur, agrégat sur fenêtre ou sur
-  plage (D182) des propriétés `series`.
+- Le serveur contrôle les clés de propriété par jeu de caractères et lie toujours les valeurs.
+- L'égalité utilise `@>` (index GIN).
+- À `as_of`, le service filtre les liens sur `valid_from` / `valid_to`. Il filtre les objets
+  seulement sur leur fermeture : `valid_from` d'un objet est sa date d'enregistrement.
+- La recherche globale (D69) couvre les objets.
 
-Implémentation : CTE récursives bornées en PostgreSQL ; les agrégats temporels sont délégués à O2.
-**Amendé le 2026-10-10 (annexe A3)** : l'API reste bornée (≤ 4) ; en
-interne, l'interface graphe de `pnex-core` couvre profondeur variable,
-plus court chemin et impact en cascade (CTE, timeout et plafond de
-lignes) et `petgraph` pour les algorithmes (annexe A3).
-La recherche globale (D69) s'étend aux objets. Le schéma de la requête
-vit dans `pnex-core` : l'UI, l'assistant et les flows (nœud
-`ontology-query`) parlent le même langage.
+Le voisinage, l'impact et le chemin utilisent l'interface graphe interne (annexe A3, D589).
 
 ### D186 — UI : un explorateur générique, les pages actuelles deviennent des vues
 
-- **Explorateur** : liste par type (filtres D185), page objet
-  standard = propriétés, liens (graphe local + liste), panneau temps
-  (séries et événements liés), actions, provenance.
-- **Éditeur de types** (as-UI) et **export/import YAML** (as-code,
-  GitOps) sur la même source de vérité, école `worker-fabric.md` §9.
-- Les pages existantes (`/devices`, `/media`, `/cameras`, dashboards,
-  tours) restent : ce sont des **vues spécialisées** de types système,
-  et chacune gagne un lien vers la page objet générique.
-- Un utilisateur hobbyiste n'a jamais besoin de voir l'ontologie : il
-  passe par les packs (D190) et les pages spécialisées.
+| Route | Contenu |
+|---|---|
+| `/ontology` | objets, schéma, packs |
+| `/ontology/object/:id` | propriétés, liens à date et historique, graphe radial, temps, actions, provenance |
+| `/ontology/types/:type_key` | éditeur de type |
+
+L'éditeur de type (as-UI) et l'export / import YAML (as-code) écrivent la même source de vérité
+(`worker-fabric.md` §9). Les pages `/devices`, `/media`, `/cameras`, les dashboards et les tours
+restent. Ce sont des vues de types système, avec un bouton « Page objet ». Un utilisateur hobbyiste
+peut ignorer l'ontologie : il passe par les packs et les pages spécialisées.
 
 ### D187 — Dashboards et rapports se lient aux objets et aux types
 
-- Les liaisons de lecture (`SourceRef`, D129) gagnent une cible
-  `object_property` (objet + propriété temporelle).
-- **Dashboard de type** : un dashboard conçu pour le type « Pompe »
-  s'affiche pour n'importe quelle pompe (sélecteur d'objet), au lieu
-  d'un dashboard copié par équipement.
-- Les rapports (`media-ingest.md` D173) s'appuient sur la même requête
-  (D185) : « temps de parole par personnalité sur les plages de type
-  émission de la chaîne X » s'exprime dans l'ontologie, pas en code.
+Une liaison de lecture (`SourceRef`, D129) peut viser `object_property` : un objet et une propriété
+temporelle. Un **dashboard de type** porte `layout.object_type`. Il s'affiche pour n'importe quel
+objet du type, avec un sélecteur d'objet. Le serveur résout la propriété au capteur courant
+(`/objects/{id}/bindings`), puis le pipeline `series-batch` lit la série. Les rapports
+(`media-ingest.md` D173) utilisent la même requête D185.
 
-### D188 — Permissions : l'org reste la frontière en 0.2.0
+### D188 — Permissions : l'org reste la frontière
 
-La frontière de sécurité reste l'**org** puis la **plateforme** (R1, R2).
-En 0.2.0 : rôle par org (inchangé) + verrou par **type** (lecture seule
-pour les viewers, écriture réservée aux rôles désignés). Les ACL par
-objet et le marquage de sensibilité (exigés par la défense et le public)
-sont une décision explicite ultérieure, mais le modèle les anticipe :
-toute lecture passe par un point unique (D185) où le filtre pourra se
-brancher.
+La frontière de sécurité est l'org, puis la plateforme (R1, R2). Chaque type porte un `write_role` :
+member, admin ou owner. Un viewer lit seulement. Le schéma (types, types de liens, packs, import)
+exige `ontology.schema:write`. Les droits par ligne et les marquages viennent de OP3
+(`governance.md`). Ils se branchent sur le point de lecture unique (D185).
 
 ### D189 — L'assistant IA raisonne sur l'ontologie
 
-- Le schéma (types, liens, actions) devient le contexte principal de
-  l'assistant : sa base de connaissance est **générée** depuis le
-  registre, pas écrite à la main (prolonge D142).
-- Outils : lecture via D185 ; création et édition de types, d'objets et
-  de liens via le service partagé avec l'UI (`expected_version`, R1, R2,
-  D144) ; proposition d'actions (D183), jamais d'exécution.
-- Règle CLAUDE.md inchangée : tout nouveau type système, type de lien
-  système ou nœud livré sans sa documentation pour l'assistant = travail
-  non fini.
+Le serveur injecte le schéma de l'org dans le prompt système. L'assistant a ces outils :
 
-### D190 — Packs : la frontière entre le noyau et les applications
+| Outil | Effet |
+|---|---|
+| `describe_ontology` | lit le schéma |
+| `query_ontology`, `get_object` | lisent par D185 |
+| `create_object`, `update_object`, `open_link`, `close_link`, `save_object_type` | écrivent par le service du contrôleur (`expected_version`, R1, R2, D144) |
+| `propose_action` | propose une action (D183), sans l'exécuter |
 
-Un **pack** est un ensemble importable/exportable (YAML versionné) de
-types, types de liens, actions, flows, dashboards de type et modèles de
-rapport. Le noyau ne connaît aucun métier ; les métiers sont des packs.
+L'assistant n'archive et ne supprime jamais. La fiche `assistant-kb/ontology.md` décrit ces outils.
+Un type système, un type de lien système ou un nœud sans fiche pour l'assistant est un travail non
+fini (D142).
 
-Packs de référence pour valider le noyau :
+### D190 — Packs : la frontière entre le noyau et les métiers
 
-- **Maintenance augmentée** (vedette `use-cases.md`) : Site, Ligne,
-  Machine, Pompe ; liaisons capteurs ; action « mettre en
-  maintenance » ; dashboard de type Pompe.
-- **Maison** : Pièce, Équipement ; reprend la palette domotique P2.12.
-- **Couverture médiatique** (Repère) : Chaîne, Groupe, Émission (plage),
-  Personnalité, Organisation, Sujet ; liens temporels « possède »,
-  « présente », « intervient dans », « rattaché à » ; provenance jusqu'au
-  segment de transcription.
-- **Création assistée** (`assisted-creation.md`, v0.3 2026-10-16) :
-  Production, Partie, Personnage, Cadrage ; la séquence (scène) est un
-  événement du noyau ; profils Enquête, Vidéo, Fiction. Les briques transverses
-  (espace de travail générique, liens ordonnés, rôles de pack, assets sur
-  tout objet, visionneuse 3D, exports) sont au noyau.
+Un pack est un YAML versionné dans `crates/pnex-backend/packs/`. Il déclare des types, des types de
+liens, des actions, des réglages, des fonctions, des modèles de flows et des modèles de pages. Le
+noyau ne connaît aucun métier. Une fonction utile à un seul pack va dans le pack. La garde
+`tests/engine_genericity.rs` refuse tout nom de type, de lien ou de pack dans le code du moteur
+(D441, `external-apps.md` D432).
 
-Règle : une fonctionnalité qui n'a de sens que pour un pack va **dans le
-pack**, jamais dans le noyau.
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  inst[Installer le pack] --> req{requires présent ?}
+  req -- non --> dep[Installer les dépendances]
+  dep --> own
+  req -- oui --> own{Clé à l'org hors pack ?}
+  own -- oui --> ko[Refus]
+  own -- non --> ho[Appliquer hands_over]
+  ho --> mrg[Fusion pack + couche d'org + ajouts]
+  mrg --> ver[Nouvelle version des types]
+  ver --> fn[Fonctions et flows non modifiés par l'org]
+```
 
-> **2026-10-25 (`external-apps.md`, D432–D441, proposé)** : PneX est une
-> plateforme de données générique. Le métier vit dans
-> les packs **et** dans les applications, qui passent par le SDK
-> d'applications (identité, ensembles d'objets, flux des changements,
-> médias, preuves et provenance, client OpenAPI et exemples, miroir hors ligne,
-> actions). La règle ci-dessus devient vérifiable : une garde (D441)
-> refuse tout nom de type, de lien ou de pack livré dans le code du moteur.
+- `requires:` installe d'abord les packs dont le pack utilise les types.
+- `extends:` (D306) étend un type d'un autre pack. Une couche pays s'écrit `<pack générique>_<pays>`
+  et contient seulement ce qui est propre au pays.
+- Le format porte aussi `unique` (D302), des mappings d'import (D301), des fonctions et des modèles
+  de flows jamais déployés par l'installation (D316, D123).
+- Les types installés appartiennent à l'org et restent éditables. Une montée de version garde les
+  ajouts de l'org : propriétés, actions, attributs de lien, types source et cible (test
+  `pack_upgrade_keeps_org_additions`).
 
-> **2026-10-19 (`partner-watch.md`, proposé)** : deux packs de plus,
-> `companies_fr` (unité légale = `organization` étendue, établissement =
-> `map_pin`, dirigeants par lien temporel `manages`, D304) et
-> `quali_watch` (contrôle des réseaux de certificateurs). Le format de
-> pack gagne `extends:` (D306), la propriété `unique` (D302), des
-> mappings d'import (D301), des fonctions et des modèles de flows non
-> déployés (D316).
-
-> **2026-10-21 (`account-mapping.md`, D329)** : pack `prospecting_b2b`
-> (`requires: [companies_fr]`) : statut commercial des comptes et des
-> sites, persona, liens `recommended`, `follows_account`, `subsidiary_of`,
-> `uses_solution`, hiérarchie `sales_group`. Aucun type nouveau.
-
-> **2026-10-21 (D343)** : pack mondial `companies` (pays, LEI, NACE,
-> effectif chiffré, `establishment_of`, `manages`, hiérarchie `group`) ;
-> `companies_fr` 2.0.0 en devient le pack France. Une clé passe d'un pack
-> au pack dont il dépend désormais, à la mise à jour.
+Packs livrés, entre autres : `maintenance`, `maintenance_partners`, `investigation`,
+`media_coverage`, `companies`, `companies_fr`, `prospecting_b2b`, `quali_watch`, `web_presence`,
+`crm`, `markets`. La liste complète est le dossier `crates/pnex-backend/packs/`.
 
 ### D191 — Migration 0.1 → 0.2 : non destructive
 
-La 0.1 est publiée (2026-09-27) : contrairement à D42 (« app non prod,
-migration destructrice »), la 0.2.0 **migre les données**.
+La 0.2.0 a migré les données d'une base 0.1. Les tables système sont devenues des types système.
+Chaque entité existante a reçu sa ligne d'identité. Les lignes `placed_on` ont reçu leur type de
+lien. `device_placements` (D43) reste un index matérialisé : un trigger tient les liens `placed_at`
+(device → map_pin, cardinalité un). Déplacer un device ferme un lien et en ouvre un autre. Les
+routes `/api/v1/resources/*` restent servies. Les routes `/api/v1/ontology/*` sont additives :
+`CONTRACT` n'a pas changé pour elles.
 
-- Les tables système sont conservées ; elles sont enregistrées comme
-  types système (D176).
-- `resource_edges` est étendue en place (D179) ; les lignes `placed_on`
-  reçoivent le type de lien système correspondant.
-- `device_placements` (D43) est exprimé comme lien système `placed_at`
-  (device → map_pin, cardinalité un) ; la table peut rester comme index
-  matérialisé si les performances l'exigent.
-- API : les routes `/api/v1/resources/*` restent servies pendant toute
-  la 0.2.x (adaptateur), marquées dépréciées ; `CONTRACT` est incrémenté
-  pour les nouvelles routes `/api/v1/ontology/*`.
-- Migration testée sur une base 0.1 réelle (fixture).
+### Étiquettes et ontologie : deux rôles, pas deux modèles
 
-### Labels et ontologie : deux rôles, pas deux modèles (2026-10-11)
+Décision du 2026-10-11, sans numéro D.
 
-> Numéro D à attribuer à la validation (D192+ réservé par
-> `media-vision-studio.md`).
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  f[Un fait sur un objet] --> q{Raisonner, requêter ou agir dessus ?}
+  q -- oui --> o[Propriété ou lien]
+  q -- non --> e[Étiquette]
+  e --> d{Même clé sur beaucoup d'objets d'un type ?}
+  d -- oui --> o
+```
 
-Les labels D42 restent, mais ne sont **pas** un second outil de
-modélisation :
+- L'ontologie dit ce que l'objet **est** : type, propriétés typées, liens datés et sourcés.
+- Une étiquette est un classement de travail (`lot:2026`, `à-vérifier`), pour trier et filtrer. D218
+  étend les étiquettes à tout objet listable et à la recherche globale.
+- Une étiquette qui porte un fait métier (`marque:grundfos`) est une dette. Sa place est une
+  propriété ou un lien.
+- Les dimensions des séries O2 (`__name__`, `device_id`) ne sont pas des étiquettes. Elles
+  sélectionnent les données d'une propriété `series`.
+- Sur une fiche, le type et les propriétés viennent d'abord. Les étiquettes sont des `LabelTag`
+  discrets.
 
-- **Ontologie = ce que l'objet est** : type, propriétés typées, liens
-  datés et sourcés. Tout fait métier sur lequel on raisonne, requête ou
-  agit y vit.
-- **Labels = étiquettes de travail** : clé:valeur libre, sans schéma,
-  pour trier, filtrer et regrouper à la volée (« lot:2026 »,
-  « à-vérifier »). D185 filtre par labels effectifs : les deux
-  cohabitent.
-- ~~Les labels ne sont pas étendus à tous les kinds~~ **Révisé par D218**
-  (`design-system.md` §7, 2026-10-15) : les étiquettes s'appliquent à tout
-  objet listable et alimentent la recherche globale ; structurer un objet
-  passe toujours par l'ontologie.
-- Un label qui porte un fait métier (`marque:grundfos`, `site:serre`) est
-  une dette : la bonne place est une propriété ou un lien. Évolution
-  possible, non planifiée : « promouvoir ce label en propriété » (même
-  clé sur beaucoup d'objets d'un type → propriété du type, valeurs
-  migrées, provenance D184).
-- À ne pas confondre avec les labels des séries O2 (`__name__`,
-  `device_id`…) : sélecteurs de données, utilisés par les propriétés
-  `series` (D178).
-- UI : sur une fiche, type et propriétés d'abord ; labels en étiquettes
-  discrètes (`LabelTag`, `design-system.md`).
-
-## 5. Modèle de données (récapitulatif)
+## 5. Modèle de données
 
 | Table / stream | Rôle |
 |---|---|
-| `object_types` / `object_type_versions` | registre des types (D176) |
-| `objects` | objets des types utilisateur (D177) |
-| `object_extensions` | propriétés supplémentaires des objets système (D177) |
-| `link_types` | registre des types de liens (D179) |
-| `resource_edges` (étendue) | liens typés, temporels, attribués (D179) |
-| `resource_containments`, `resource_labels`, `resource_folders` | inchangées (D42, D180) |
+| `objects` | identité de tout objet, propriétés des objets d'org (D177) |
+| `object_types` / `object_type_versions` | types d'org et extensions de types système (D176) |
+| `link_types` | types de liens (D179) |
+| `resource_edges` | liens typés, temporels, avec attributs (D179) |
+| `link_versions`, `object_versions` | temps de connaissance (`markets-research.md` D912–D917) |
+| `resource_containments`, `resource_labels`, `resource_folders` | containment, étiquettes, dossiers (D42, D180) |
+| `device_placements` | index matérialisé des liens `placed_at` (D191) |
 | `time_ranges` | plages sur tout objet (D182) |
-| `packs` / `pack_versions` | packs installés (D190) |
-| O2 `object_changes` | historique et provenance (D184) |
-| O2 `object_changes` (`action.invoke`) | journal des invocations (D183, amendé) |
+| `packs` (+ `settings`, `display`) | packs installés et couche d'org (D190, D368) |
+| O2 `object_changes` | historique, provenance, invocations `action.invoke` (D183, D184) |
 
-## 6. Exemple bout en bout (pack maintenance)
+Migrations : `m20261011_000002_ontology` (identité, types, liens temporels, packs, reprise 0.1),
+`m20261011_000010_placed_at_links` (D191).
 
-1. L'utilisateur installe le pack : types Site › Ligne › Machine ›
-   Pompe, type de lien `mesure` (capability → propriété), action
-   « Mettre en maintenance ».
-2. Il crée la pompe P12 dans la ligne L2, lie le capteur C47 à
-   `P12.température` (lien temporel ouvert aujourd'hui).
-3. Le flow d'anomalie (nœud `anomaly`) lit `P12.température` par
-   l'ontologie, pas par l'identifiant du capteur.
-4. Le capteur est remplacé : C47 → C88. Le lien est fermé et rouvert ;
-   la courbe de P12 reste continue, le dashboard de type Pompe ne bouge
-   pas.
-5. Un technicien invoque « Mettre en maintenance » : le flow notifie,
-   l'invocation est journalisée avec sa provenance.
+## 6. Exemple de bout en bout (pack Maintenance)
 
-## 7. Lots de la 0.2.0
+Un technicien installe le pack `maintenance` et crée la pompe P12 dans la ligne L2. Il lie le
+capteur C47 à `P12.température`. Le flow d'anomalie lit la propriété de l'objet, pas l'identifiant
+du capteur. Le remplacement de C47 par C88 ne casse donc ni le flow, ni le dashboard de type
+(diagramme de D181). L'invocation de `start_maintenance` suit le diagramme de D183.
 
-| Lot | Contenu | Sortie |
-|---|---|---|
-| **L0** ✅ | Spike : types en données dérivant le `KindSpec` existant, sans changement fonctionnel | registre généré identique au registre codé (test d'égalité) — **livré 2026-10-10** : `pnex_core::ontology` (`ObjectTypeDef`, `LinkTypeDef`, `TypeSet`), `KindSpec` supprimé, garde `derived_registry_matches_d42_rules` |
-| **L1** ✅ | D176–D178 : types, objets, propriétés scalaires, éditeur de types, YAML | créer « Pompe » et 100 objets en UI et en YAML — **livré 2026-10-10** (18af2f9d, 21375662) |
-| **L2** ✅ | D179–D180 : types de liens, validité temporelle, migration `placed_on` / `placed_at` | requête `as_of` correcte sur liens fermés — **livré 2026-10-10** |
-| **L3** ✅ | D178 temporel + D181 : propriétés `series`/`events`, liaisons device → objet | remplacement de capteur sans rupture de courbe — **livré 2026-10-10** |
-| **L4** ✅ | D185–D187 : API de requête, interface graphe (CTE + `petgraph`), explorateur, **vue graphe Dioxus**, dashboards de type, verrou par type (D188) | dashboard de type Pompe, recherche globale sur objets — **livré 2026-10-10** (7318940c) |
-| **L5** ✅ | D184, D189, D191 : provenance, assistant, migration 0.1 → 0.2 | migration d'une base 0.1 réelle, onglet provenance — **livré 2026-10-10** (e0298159) |
-| **0.2.0** | L0–L5 + pack « Maintenance augmentée » (1.1.0 : action `start_maintenance`, D183 livré 2026-10-13) | release |
-| **0.3** | packs Maison et Couverture médiatique, ACL par objet (décision) | |
+## 7. Exigences
 
-Le PRD `media-ingest.md` s'aligne : `media_stream` et `time_range`
-naissent directement comme types système de l'ontologie si leur
-implémentation commence après L1.
+1. Chaque objet doit avoir une ligne `objects`, écrite dans la transaction de sa ligne native.
+2. Une écriture de présence ou d'état d'un device ne doit pas toucher `objects`.
+3. Une suppression d'objet ou de lien doit fermer sa validité, jamais effacer la ligne.
+4. Le front et le back doivent valider une propriété avec le même code `pnex-core`.
+5. Une propriété temporelle ne doit copier aucune donnée de O2.
+6. Une propriété `series` doit avoir au plus un lien `measures` ouvert.
+7. Une lecture `as_of` doit voir seulement les liens valides à cette date.
+8. Une requête D185 doit refuser plus de `MAX_HOPS` (4) sauts.
+9. Chaque écriture doit porter un `source_ref` et une entrée `object_changes`.
+10. Une invocation d'action sans flow déployé doit répondre 409 `ontology-action-no-flow`.
+11. L'assistant doit écrire par le service du contrôleur, jamais archiver ni supprimer.
+12. Le code du moteur ne doit nommer aucun type, lien ou pack (`tests/engine_genericity.rs`).
+13. Une montée de version de pack doit garder les ajouts et la couche de l'org.
+14. Un parcours de graphe plafonné doit le dire par `truncated`, jamais en silence (D589).
 
 ## 8. Risques
 
-- **Sur-généricité** : un noyau trop abstrait devient lent et illisible.
-  Parade : types système dans leurs tables (D177), packs concrets dès la
-  0.2.0, pas de langage de requête textuel en V1.
-- **Performance du JSONB** sur gros volumes : index GIN uniquement sur
-  propriétés `indexed`, mesures sur 100 k objets avant la release.
-- **Dispersion** : la 0.2.0 est un chantier de noyau ; aucun nouveau
-  pilier fonctionnel ne démarre pendant sa réalisation (seuls les
-  correctifs et la finition des piliers existants).
-- **Complexité perçue** par les makers : l'ontologie est invisible tant
-  qu'on n'en a pas besoin (D186, D190).
-- **Comparaison commerciale** : jamais de comparaison à un éditeur nommé
-  (D552). L'accompagnement (déploiement, intégration, souveraineté
-  documentée) reste à construire ; vendre d'abord la maintenance augmentée
-  sur un noyau ontologique.
+- **Sur-généricité** : un noyau trop abstrait devient lent et illisible. Parade : types système dans
+  leurs tables, packs concrets, pas de langage de requête textuel.
+- **Performance du JSONB** : un index GIN couvre seulement les propriétés `indexed`. La mesure sur
+  100 k objets reste à faire.
+- **Complexité perçue** par les makers : l'ontologie reste invisible tant qu'ils n'en ont pas besoin
+  (D186, D190).
+- **Comparaison commerciale** : jamais de comparaison à un éditeur nommé (D552).
 
 ## 9. Questions ouvertes
 
-1. ~~Faut-il un identifiant d'objet global unique (UUID pour tous, y
-   compris les objets système aux PK `i64`), ou garder `ResourceRef`
-   stringifiée (D42) ?~~ **Tranché 2026-10-10** : UUID pour tous via la
-   table d'identité universelle (D177 amendé, annexe A2) ; `ResourceRef`
-   reste une forme d'affichage et d'API.
-2. ~~Le schéma de propriétés : format maison dans `pnex-core`, ou JSON
-   Schema ?~~ **Tranché 2026-10-10** : format maison (§10.2), validation
-   identique front/back, aucun outillage JSON Schema à embarquer en wasm.
-3. ~~Liaison device → objet : lien temporel générique (D179) ou table
-   dédiée ?~~ **Tranché 2026-10-10** : lien système générique `measures`
-   (§10.3) ; une table dédiée seulement si la recomposition devient un
-   goulot mesuré.
-4. ~~Les packs installés sont-ils modifiables par l'org ?~~ **Tranché
-   2026-10-10** : fork local — les types installés appartiennent à l'org
-   et restent éditables ; une mise à jour du pack ajoute une version (§10.5).
-5. Un langage de requête textuel (type Cypher/GQL réduit) en 0.3, ou
-   jamais ?
-6. Gouvernance du noyau en vue d'une fondation (CNCF, Apache) : les
-   types système et le format des packs sont-ils une spécification
-   publique versionnée à part ?
+Ces choix reviennent à Shan.
 
-## Annexe — Ontologie & stockage graphe (2026-10-10)
+1. Un langage de requête textuel (Cypher ou GQL réduit) : en 0.3, ou jamais ?
+2. Les types système et le format des packs deviennent-ils une spécification publique versionnée à
+   part, en vue d'une fondation ?
+3. Types libres par org ou base fixe étendue : D176 répond (types système, types d'org, packs). Shan
+   doit reconfirmer ce choix.
 
-Synthèse de la discussion du 2026-10-10, intégrée et arbitrée le même
-jour. Ne remplace pas les décisions D176–D191 : les amende là où c'est
-indiqué.
+Le temps de connaissance (bitemporel) a sa réponse dans `markets-research.md` D912–D917.
+
+## 10. Mise en œuvre
+
+Cette section donne les choix d'implémentation. Elle ne change pas les décisions D176–D191.
+
+### 10.1 Identité tenue par la base
+
+Les triggers de la section 1.2 tiennent l'identité des types système.
+
+- La table native porte `object_id` (FK, unique). `objects.native_id` est la clé native en texte.
+  Pour un type d'org, c'est l'id de l'objet lui-même.
+- `resource_edges` reçoit ses deux identités par trigger à l'insertion.
+
+### 10.2 Propriétés (D178)
+
+`PropertyDef` a un `kind` à plat. Il se désérialise à la main via `Value`, à cause du piège
+`arbitrary_precision` des enums taggés. `TypeSet` vaut `"*"` ou une liste de clés, lisible en YAML.
+
+### 10.3 Temps (D181, D182)
+
+Les préréglages de fenêtre des plages comptent 7 j et 30 j.
+
+### 10.4 Requête, graphe, UI (D185–D188)
+
+Le trait de stockage graphe, asynchrone, vit côté backend (`services/ontology/graph.rs`). Les
+algorithmes purs vivent dans `pnex_core::ontology::graph`. L'aperçu POI (`DashboardLive`) n'a pas de
+sélecteur d'objet de type.
+
+### 10.5 Provenance, packs, assistant (D184, D189, D190)
+
+- Packs : YAML embarqués. L'installation crée puis versionne les types. Elle refuse une clé qui
+  appartient à l'org hors pack.
+- `PUT /api/v1/ontology/links/{id}` remplace les attributs d'un lien, ouvert ou clos, validés contre
+  son type. Il ne s'applique pas aux liaisons `measures` et `depicts`. Le journal note `link.update`
+  avec la version précédente (test `link_attributes_update_in_place`).
+- Test du lien clos à côté du lien ouvert : `closed_link_is_history_beside_the_open_one`.
+- Pack `media_coverage` : `media`, `program`, `party`, `mandate`, et des liens qui portent leur
+  source, leur date de consultation et leur début collecté. Il exige `investigation` (test
+  `media_coverage_pack_requires_investigation`).
+
+## 11. Décisions de pérennité (D367–D370)
+
+Critère : ce qui deviendrait un piège de migration si PneX attendait.
+
+### D367 — La proposition est un objet du noyau
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  src[Import, LLM, flow, recherche web] --> p[Proposition]
+  p --> box[Boîte à valider]
+  box --> d{Décision humaine}
+  d -- accepter --> svc[Service partagé avec l'UI]
+  svc --> obj[(Objet ou lien)]
+  d -- rejeter --> j[(Journal des décisions)]
+  svc --> j
+```
+
+Une écriture machine peut arriver comme proposition au lieu d'une donnée vivante. Une proposition
+porte une cible, une différence, des preuves, une source, une confiance et un auteur machine.
+Accepter applique la différence par le service partagé avec l'UI : mêmes contrôles, mêmes 409. Les
+packs ne déclarent plus d'état `to_validate` par type. Le détail et les lots P0–P4 sont dans
+`proposals.md` (D371–D377).
+
+### D368 — Contrat pack + couche d'org
+
+Un pack déclare ses points réglables : réglages, libellés et couleurs des valeurs d'énumération,
+modèles de pages, hiérarchies. Une org surcharge seulement ces points, dans sa couche. Elle peut
+toujours ajouter des propriétés et des actions (`keep_org_additions`). À la montée de version, la
+fusion est fixe : pack, puis couche d'org, puis ajouts de l'org. `hands_over` s'applique avant.
+
+**Réglages.** Le pack déclare `settings` : `key`, nom, description, `kind` (`number`, `text`,
+`bool`), `default`, `min` / `max`.
+
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  ui[Bouton Réglages] --> patch[PATCH packs/key/settings]
+  patch --> col[(packs.settings)]
+  col --> v{Valeur de l'org ?}
+  v -- oui --> org[Valeur de l'org]
+  v -- non --> def[Valeur du pack]
+  org --> dep[Déploiement du flow]
+  def --> dep
+  dep --> st[pack_setting dans Starlark]
+```
+
+- `null` rend un réglage au pack. Une clé inconnue ou une valeur hors bornes donne 400.
+- Une réinstallation ou une montée de version ne touche pas la couche de l'org.
+- Une fonction Starlark lit `pack_setting("<pack>.<clé>", défaut)`, dans une fonction et pas au
+  niveau du module. Le déploiement copie les valeurs dans chaque nœud Starlark de l'org. Un
+  changement s'applique donc au prochain déploiement, geste humain (D123).
+
+**Libellés et couleurs** (D370). `PropertyDef.labels` donne un libellé par langue à chaque valeur, à
+côté de `colors` (8 langues au plus). Sans libellé, l'UI affiche la clé en mots. La couche de l'org
+est la colonne `packs.display`, clé `type:<clé>/<propriété>` ou `link:<clé>/<attribut>`. Chaque
+écriture de type y note ce qui diffère du pack propriétaire. Un libellé que l'org a retiré vaut
+`null` et reste retiré à la montée de version. Les pages générées (`page_render`) écrivent le
+libellé dans la langue de l'auteur.
+
+**Fonctions et flows du pack.** Une montée de version écrit une nouvelle version d'une fonction ou
+d'un flow que l'org n'a pas modifié. Dès que l'org a sa propre version, le pack n'y touche plus.
+`PackView.kept` liste ces éléments modifiés. `POST /ontology/packs/{key}/take` écrit la version du
+pack par-dessus. La version de l'org reste dans l'historique. Un flow mis à jour reste à redéployer
+(D123).
+
+### D369 — Identité externe et frontière des transactions
+
+Principe acté. Le code commence avec le CRM ou l'ERP. `external_ref` n'existe pas encore dans le
+code.
+
+- `external_ref` de premier rang sur les objets et les liens : système, identifiant externe, version
+  ou etag, dernière synchro, sens. Aucun pack ne crée de champ `<outil>_id`.
+- Événements de changement sortants : D356 (`import.applied`) s'étend à toute écriture. Une synchro
+  bidirectionnelle arbitre ses conflits par la version.
+- Les écritures chiffrées (mouvements de stock, lignes de facture, temps passés) vont dans des
+  tables dédiées en ajout seul. L'ontologie reste le graphe des choses.
+
+### D370 — Clé d'énumération stable, libellé séparé
+
+La clé d'une valeur d'énumération (`customer`, `to_validate`) est un identifiant stable. Personne ne
+la renomme, pas même pour la traduire. Le libellé est séparé, par langue, et l'org peut le
+surcharger (D368). Renommer une clé est une migration de données. La même règle s'applique au texte
+d'un modèle de page : `body` en anglais, `bodies.fr` pour le français, avec les mêmes champs `{{…}}`
+(garde du test des packs).
+
+## Annexe A — Ontologie et stockage graphe
 
 ### A1. Principes
 
-- L'ontologie est **le chantier prioritaire de la 0.2.0** : socle de la
-  recherche globale, du graphe de relations, du time travel, des
-  permissions fines et du hub de kits (`hub.md`, gelé jusque-là).
-- **Ontologie optionnelle** : un device sans objet rattaché fonctionne
-  normalement ; l'ontologie s'ajoute par-dessus, elle ne s'impose pas aux
-  makers (cohérent avec D186, D190).
-- POI + placements = première ontologie existante, **migrés** en types
-  intégrés, jamais dupliqués (D191).
-- Les données restent où elles sont : télémétrie dans OpenObserve, octets
-  dans le MediaStore (fs / S3 RustFS, D21) ; l'ontologie les référence
-  par identifiant.
-- Le **méta-modèle** (format des schémas, types et liens système,
-  interface graphe) vit dans `pnex-core` ; les types d'org sont des
-  données (D176).
+POI et placements sont des types intégrés, migrés, jamais dupliqués (D191). Le méta-modèle (format
+des schémas, types et liens système, interface graphe) vit dans `pnex-core`.
 
-### A2. Stockage : identité universelle (tranché)
-
-Trois options pesées pour la sérénité à long terme :
+### A2. Stockage : identité universelle
 
 | Option | Verdict |
 |---|---|
-| Tout dans des tables `object` / `link` génériques | Écarté : chemins chauds (`/ws/device`, présence, OTA, build) en JSONB, perte des FK typées et des entités SeaORM, chaque fonctionnalité système revalidée à la main |
-| D177 tel qu'écrit (`ResourceRef` chaîne) | Écarté : pas de FK sur les liens, intégrité par purge applicative |
-| **Table d'identité pour tout objet, contenu natif en place** | **Retenu** |
+| Tout dans des tables `object` / `link` génériques | Écartée : chemins chauds en JSONB, perte des FK typées et des entités SeaORM |
+| `ResourceRef` en chaîne, sans identité | Écartée : pas de FK sur les liens, intégrité par purge applicative |
+| **Table d'identité pour tout objet, contenu natif en place** | **Retenue** (D177) |
 
-Conséquences : une ligne `objects` par entité, système ou utilisateur
-(UUID, org, type, titre, `valid_from` / `valid_to`) ; tables système en
-1:1 avec FK ; liens avec FK réelles ; création et suppression système
-écrivent l'identité dans la même transaction ; la migration 0.1 → 0.2
-(D191) crée une ligne d'identité par entité existante. Objets **et**
-liens sont temporels (temps de validité). Un déplacement = fermeture
-d'un lien + ouverture d'un autre, rien n'est écrasé. Contraintes pour
-toute projection graphe future : identifiants stables, un seul type par
-lien, source et destination explicites.
+Contraintes pour toute projection graphe future : identifiants stables, un type par lien, source et
+destination explicites.
 
 ### A3. Accès graphe
 
 | Besoin | Mécanisme |
 |---|---|
-| Parcours de la requête D185 (rétroliens, état à une date) | **Jointures et CTE récursives** générées par le cœur Rust, timeout et plafond de lignes |
-| Voisinage, impact, plus court chemin | **Lecture niveau par niveau** (D589) : sans revisite, timeout par niveau, plafond signalé par `truncated` |
-| Algorithmes (cycles, composantes, chemin dans un sous-graphe) | **`petgraph`** (Rust, MIT/Apache-2.0) ou code pur de `pnex-core`, sur le sous-graphe chargé |
-| Filtre temporel | SQL classique sur `valid_from` / `valid_to` |
+| Parcours de la requête D185 | jointures et CTE générées par le cœur Rust, timeout et plafond de lignes |
+| Voisinage, impact, plus court chemin | lecture niveau par niveau (D589) |
+| Algorithmes (cycles, composantes) | `petgraph` ou code pur de `pnex-core`, sur le sous-graphe chargé |
+| Filtre temporel | SQL sur `valid_from` / `valid_to` |
 
-SQL/PGQ (`CREATE PROPERTY GRAPH` / `GRAPH_TABLE`) n'est **pas dans
-PostgreSQL 19** (vérifié sur 19beta4, 2026-10-10) ; il n'apporterait de
-toute façon qu'une syntaxe, réécrite en jointures par le planificateur.
-Branchements possibles plus tard, jamais prérequis : **pgRouting**
-(GPL-2, algorithmes en SQL sur notre table de liens, exige des
-identifiants entiers) une fois PostGIS monté, **Apache AGE** (A4) si
-Cypher devient un besoin utilisateur.
+Toutes les requêtes graphe passent par une seule interface, un trait Rust. L'API D185 reste bornée à
+4 sauts. SQL/PGQ n'est pas dans PostgreSQL 19 (vérifié sur 19beta4). Il donnerait seulement une
+syntaxe. PneX reste sur PostgreSQL 18. Il passera à 19 en GA, quand PostGIS et pgvector le suivront
+sur arm64. pgRouting (GPL-2) et Apache AGE (A4) sont des branchements possibles, jamais des
+prérequis.
 
-**Pourquoi ce choix (2026-10-10)** : une ontologie opérationnelle n'exige
-pas de base graphe — objets adossés à des tables, liens par clés, parcours
-bornés, exploration visuelle en surcouche. C'est notre modèle. Le graphe
-de connaissances central (entités, événements, relations) sert surtout
-le renseignement ; chez nous ce besoin ne concerne que la persona analyste
-média, et c'est le déclencheur prévu pour AGE. L'écart réel n'est pas
-le moteur de graphe mais les actions (D183), les droits fins (D188) et
-l'intégration de sources.
-
-Toutes les requêtes graphe passent par **une seule interface** (trait
-Rust dans `pnex-core`) ; implémentation 1 = jointures + CTE + `petgraph`,
-pure Rust testable sans base. L'API D185
-reste bornée à 4 sauts ; l'illimité est réservé aux usages internes.
-
-**PostgreSQL 18 maintenu** (tranché 2026-10-10, après un passage
-éphémère en 19beta4) : la seule raison de PG 19 était SQL/PGQ, absent.
-Passage à 19 quand il sera en GA **et** que PostGIS et pgvector le
-suivront sur arm64 (la base de référence s'y applique déjà sans
-changement, testé sur 19beta4).
+Une ontologie opérationnelle n'exige pas de base graphe : objets en tables, liens par clés, parcours
+bornés. L'écart réel est dans les actions, les droits fins et l'intégration de sources.
 
 ### A4. Apache AGE : réserve, pas départ
 
-- Extension PostgreSQL (Apache-2.0) : openCypher, chemins de longueur
-  variable. Cible éventuelle : **projection en lecture alimentée par
-  triggers**, Postgres relationnel restant la source de vérité ; feature
-  optionnelle (2ᵉ implémentation de l'interface graphe), PNEX
-  fonctionne sans.
-- **Pas dans la 0.2.0.** Déclencheur d'adoption : parcours profonds
-  (5+ sauts, plus courts chemins) sur des millions d'objets en temps
-  interactif, devenus un vrai goulot.
-- Pas AGE seul : perte des jointures avec les tables Loco, `agtype` sans
-  schéma (ni FK ni `NOT NULL`), temporel verbeux en Cypher, ni SeaORM ni
-  migrations Loco, retard possible sur les majeures de Postgres, rare en
-  Postgres managé.
-- Coût de la projection : stockage négligeable (~1–2 Go pour 1 M objets
-  + 1 M liens, estimation), écriture rare ; le vrai coût est la
-  cohérence de deux modèles. Écrire une extension Cypher sur les tables
-  existantes : écarté (SQL/PGQ le fera nativement).
+- AGE (Apache-2.0) apporte openCypher et les chemins de longueur variable.
+- Cible éventuelle : une projection en lecture, alimentée par triggers, sur le même serveur.
+  PostgreSQL relationnel reste la source de vérité. PneX fonctionne sans AGE.
+- AGE seul est écarté : perte des jointures, `agtype` sans schéma, temporel verbeux, pas de
+  migrations Loco, retard possible sur les versions majeures.
+- Le coût réel d'une projection est la cohérence de deux modèles, pas le disque.
 
-### A5. Alternatives écartées
+### A5. Options écartées
 
 | Option | Raison |
 |---|---|
-| Base graphe dédiée (Neo4j…) | Brique en plus, synchronisation, contraire à l'objectif Pi / 2 briques de stockage |
-| SurrealDB | Licence BSL (incompatible MIT et fondation), maturité, réécriture complète de la couche données |
-| XTDB | Bitemporel natif, mais JVM : trop lourd pour le Pi |
-| AGE seul | Voir A4 |
+| Neo4j | Une brique de plus, GPL pour la version Community |
+| SurrealDB | Licence BSL |
+| XTDB, ArcadeDB | JVM, trop lourd pour le Pi |
+| AgensGraph | Fork de PostgreSQL : il remplace la base de toute la plateforme |
+| Grafeo, LadybugDB, NeuG | Une base de plus à synchroniser, isolation par org à refaire. À tester seulement si AGE échoue |
+| DuckDB + DuckPGQ | Dépassements de temps et erreurs au comparatif |
+| FalkorDB, TuringDB | Licences SSPL, BSL |
 
-### D589 — Graphe à grande échelle : PostgreSQL d'abord, AGE en réserve (2026-11-04)
+### D589 — Graphe à grande échelle : PostgreSQL d'abord, AGE en réserve
 
-**Question.** PostgreSQL tient-il de gros volumes de liens face à une base
-graphe, et faut-il ajouter un composant ? Tranché par Shan. **Ne pas rouvrir
-sans l'une des conditions listées plus bas.**
+Shan a tranché le 2026-11-04. PostgreSQL reste la seule source de vérité. PneX corrige la requête de
+parcours avant d'ajouter un composant. AGE reste la seule réserve : une projection en lecture,
+jamais une dépendance d'une fonction essentielle. Si PneX l'adopte, ce sera un seul graphe à labels
+génériques (`object`, `link`). L'org devient une propriété filtrée dans chaque requête.
 
-**Décision.**
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  s[Objet de départ] --> l[Lire un niveau]
+  l --> c{Plafond ou délai de 3 s ?}
+  c -- oui --> t[Fin, truncated = vrai]
+  c -- non --> n{Profondeur atteinte ?}
+  n -- non --> l
+  n -- oui --> ok[Réponse complète]
+```
 
-- PostgreSQL reste la seule source de vérité. A3 et A4 sont confirmées.
-- On corrige d'abord la requête de parcours. Aucun composant n'est ajouté tant
-  que cette correction atteint la cible.
-- Apache AGE reste la seule réserve retenue : une projection en lecture, sur le
-  même serveur, jamais une source de vérité ni une dépendance d'une fonction
-  essentielle.
-- **Contrainte d'exploitation** : ni multiplication des tables, ni base de
-  données en plus à gérer. AGE crée un schéma par graphe et une table par label :
-  si on l'adopte, ce sera un seul graphe à labels génériques (`object`, `link`),
-  jamais un label par type ni un graphe par org. L'org devient alors une
-  propriété, à filtrer dans chaque requête.
+- Voisinage et impact lisent niveau par niveau, sans revisite, plafonnés à 5 000 liens
+  (`EDGES_MAX`). La réponse porte `truncated`.
+- L'impact suit le sens des liens, dans la limite de `depth`.
+- Le chemin part des deux extrémités, plafonné à 200 000 liens (`PATH_EDGES_MAX`). Coupé avant
+  d'aboutir, il répond 503 `ontology-path-incomplete`, jamais un faux 404. Trouvé malgré une coupe,
+  il porte `truncated`.
+- Test : `tests/ontology.rs`, `a_walk_past_its_cap_says_so`.
 
-**Mesure** (requête actuelle de `services/ontology/graph.rs`, graphe synthétique
-à degrés très inégaux, `shared_buffers` de 128 Mo, machine partagée) :
+Mesure de référence (30 M de liens, PostgreSQL réglé, 95ᵉ percentile à 3 sauts) :
 
-| Départ | 3 M de liens | 30 M de liens |
-|---|---|---|
-| Objet ordinaire (3 liens) | 3 ms à 2 sauts ; tronqué à 3 ; échec à 4 | ~220 ms jusqu'à 3 sauts ; échec à 4 |
-| Objet moyen (~170 liens) | 4 ms à 1 saut ; tronqué à 2 ; échec à 3 | ~220 ms à 1 saut ; instable à 2 ; échec à 3 |
-| Objet très connecté | 56 780 liens : tronqué à 1 ; échec à 2 | 263 896 liens : tronqué à 1 ; échec à 2 |
-
-« Échec » : délai de 3 s dépassé. « Tronqué » : 5 000 liens rendus sur davantage.
-
-**Constats.**
-
-- Le problème vient des objets très connectés et de la requête, plus que du
-  volume : le parcours revisite un objet à chaque profondeur, et le plafond de
-  5 000 liens coupe après le calcul, arbitrairement et sans le signaler.
-- Conséquence lue dans le code, non reproduite de bout en bout : `path` peut
-  répondre « aucun chemin » à tort, et `impact` rendre une liste incomplète.
-- Le plancher de ~220 ms à 30 M de liens disparaît avec un PostgreSQL réglé
-  (2,5 ms sans JIT, 17 ms avec, à 1 saut depuis un objet ordinaire). La part de
-  chaque réglage n'a pas été isolée.
-
-**Correction mesurée** (2026-11-04, 30 M de liens, 10 M d'objets, conteneur dédié :
-`shared_buffers` 8 Go, 8 CPU, JIT coupé pour ce parcours). Parcours en largeur
-conduit par le client : un objet n'est jamais revisité, chaque niveau est borné par
-un `LIMIT`. Client Python, donc sans le gain éventuel d'un client Rust. Les réponses
-sans plafond sont identiques à celles de la requête actuelle sur le seul objet
-comparé (4 184 liens à 3 sauts).
-
-| Mesure à 3 sauts, 95ᵉ percentile | Index actuels | Avec index couvrants |
+| Cas | Index actuels | Index couvrants |
 |---|---|---|
 | Plafond de 5 000 liens, objet ordinaire | 25 ms | 10 ms |
-| Plafond de 5 000 liens, objet moyen | 21 ms | 13 ms |
 | Plafond de 5 000 liens, objet très connecté | 9 ms | 5 ms |
 | Sans plafond, objet ordinaire (~555 000 liens) | 2,3 s | 1,2 s |
-| Sans plafond, objet moyen (~4,6 M de liens) | 14 s | 8,6 s |
-| Sans plafond, objet très connecté (~24 M de liens) | Délai de 30 s dépassé par niveau pour un objet sur deux | 89 s |
+| Sans plafond, objet très connecté (~24 M de liens) | délai dépassé | 89 s |
 
-À titre de comparaison, la requête actuelle échoue encore à 3 sauts sur l'objet moyen
-et sur l'objet très connecté avec les mêmes réglages.
+La cible (moins de 500 ms à 3 sauts sur 30 M de liens) est atteinte avec un plafond signalé. Le
+graphe de test est synthétique, à une seule org, sans `as_of` ni masquage. Le comparatif public
+`graph-bench` ne tranche pas : il ne mesure pas PostgreSQL.
 
-- **Plus court chemin bidirectionnel**, jusqu'à 6 sauts, sans plafond atteint à 2 M de
-  liens : 95ᵉ percentile de 283 ms, 37 chemins trouvés sur 40 paires. Longueurs non
-  recoupées avec une référence. Mesuré avec les index couvrants seulement.
-- **8 clients simultanés** à 3 sauts, plafond de 5 000, 40 écritures par seconde :
-  181 requêtes par seconde, 95ᵉ percentile de 73 ms, pic isolé à 1,6 s, aucun échec.
-  Mesuré avec les index couvrants seulement, `synchronous_commit=off`.
-- **Coût des index couvrants** : 7,9 à 11 Go pour la table et ses index, 227 s de
-  création, coût en écriture non mesuré.
+**Conditions pour rouvrir la question.** Une seule suffit. Sans elle, la question reste close.
 
-**Lecture.** La cible de travail (moins de 500 ms au 95ᵉ percentile à 3 sauts sur
-30 M de liens) est atteinte **avec un plafond signalé**, même sans index couvrants.
-Sans plafond, elle ne l'est pas dès que le parcours touche des millions de liens :
-aucun écran n'en a l'usage, mais `impact` devra signaler une liste incomplète, ou
-passer par un traitement différé si un besoin de liste complète apparaît. Le plus
-court chemin, lui, n'a pas besoin de ce plafond.
-
-**Limites.** Graphe synthétique, une seule org, sans filtre de relation, sans `as_of`
-ni masquage. Le taux de troncature de ce test est sous-estimé par un défaut du script
-(doublons d'une même arête comptés par le `LIMIT`) : il ne faut pas s'y fier, et le
-code devra signaler la coupe dès que le `LIMIT` est atteint. Les temps restent valides.
-
-**Livré le 2026-11-04** (`services/ontology/graph.rs`) :
-
-- voisinage et impact lisent niveau par niveau, plafonnés à 5 000 liens, avec
-  `truncated` dans la réponse et une note dans l'UI. Sans index ajouté ;
-- l'impact suit réellement le sens des liens, dans la limite de `depth`. Avant, il
-  chargeait les liens dans les deux sens puis filtrait, et pouvait dépasser `depth` ;
-- le chemin est cherché depuis les deux extrémités, plafonné à 200 000 liens. Coupé
-  avant d'aboutir : **503 `ontology-path-incomplete`**, jamais un faux 404. Trouvé
-  malgré une coupe : `truncated` à vrai, un chemin plus court peut exister ;
-- un niveau qui dépasse son délai de 3 s termine le parcours comme tronqué, au lieu
-  d'une erreur ;
-- l'UI n'affiche pas encore `truncated` sur un chemin trouvé (l'API et le MCP le
-  rendent). Les parcours de la requête D185 (`query.rs`) n'ont pas été modifiés.
-
-Test : `tests/ontology.rs`, `a_walk_past_its_cap_says_so`.
-
-**Options écartées.**
-
-| Option | Raison |
-|---|---|
-| AgensGraph | Fork de PostgreSQL : il remplace la base de toute la plateforme, retour en arrière coûteux, correctifs dépendants de son équipe. Licence Apache-2.0 et base 18.6 vérifiées : ce n'est pas le motif du rejet |
-| Grafeo, LadybugDB, NeuG | Licences acceptables, mais une base de plus, une copie à synchroniser, et l'isolation par org et le masquage à refaire. À tester seulement si AGE échoue. Grafeo : 10 mois, v0.6.1, un auteur pour l'essentiel des commits |
-| DuckDB + DuckPGQ | Moteur embarqué, dépassements de temps et erreurs dans le comparatif ci-dessous |
-| ArcadeDB, Neo4j | JVM pour le premier ; GPL pour la version Community du second |
-| FalkorDB, TuringDB | Licences refusées : SSPL, BSL |
-
-**Le comparatif public `graph-bench` ne tranche pas.** PostgreSQL n'y figure pas
-dans les résultats actuels, son niveau « medium » s'arrête à 180 000 liens `KNOWS`,
-il tourne sur un seul thread, surtout en mémoire, sans accès concurrents ni droits
-par org, et il est publié par l'éditeur de Grafeo.
-
-**AGE n'est pas une valeur sûre du seul fait d'être chez Apache** (relevé du
-2026-11-04) : aucun commit sur la branche par défaut d'octobre 2024 à avril 2025,
-44 % des commits des 12 derniers mois par une seule personne, 236 issues ouvertes,
-peu de contributions externes selon les rapports au board. Une extension doit
-suivre chaque version majeure de PostgreSQL et peut bloquer notre montée de
-version : d'où une projection qu'on peut retirer sans perdre de données. Le délai
-d'AGE à suivre les versions passées n'a pas été mesuré.
-
-**Conditions pour rouvrir la question.**
-
-1. La requête corrigée rate la cible sur des données réelles ; ou
-2. le déclencheur d'A4 est atteint : parcours de 5 sauts ou plus, en interactif,
-   sur des millions d'objets, devenus un vrai goulot ; ou
+1. La requête corrigée rate la cible sur des données réelles.
+2. Des parcours de 5 sauts ou plus, interactifs, sur des millions d'objets, deviennent un goulot.
 3. Cypher devient un besoin utilisateur.
 
-Dans ce cas, tester AGE en projection, sur les mêmes graphes, avec vérification des
-réponses, disque, 8 clients simultanés, écritures concurrentes et `kill -9`. Une
-autre base n'est envisagée que si AGE échoue et qu'elle fait au moins 10 fois mieux
-sans perte de données.
+Dans ce cas, tester AGE en projection, sur les mêmes graphes : réponses, disque, 8 clients,
+écritures concurrentes, `kill -9`. Une autre base entre seulement si AGE échoue et qu'elle fait 10
+fois mieux sans perte de données.
 
-### A6. Positionnement
+## Annexe B — Calendrier GMAO
 
-- 0.2.0 : « **plateforme open source de données industrielles et IoT,
-  pilotée par une ontologie** » (du firmware au jumeau numérique).
-- Jamais de comparaison à un éditeur nommé (D552). Pour se dire plateforme
-  opérationnelle complète, il manque (`operational-platform.md`) :
-  intégration massive de sources, gouvernance fine
-  (classification, permissions ligne/colonne, lignage, audit),
-  actions / writeback, apps par des non-devs, déploiement déconnecté.
-- Plus tard (actions + gouvernance + connecteurs) : « plateforme
-  opérationnelle ontologique open source ».
-
-### A7. Questions ouvertes
-
-- Types libres par org ou base fixe étendue : **déjà répondu par D176**
-  (types système + types d'org en données + packs) — à reconfirmer.
-- Introduction du **bitemporel** (temps système pour l'audit) : plus
-  tard, sans casser le modèle (O2 `object_changes` couvre l'historique
-  en attendant).
-
-## 10. Mise en œuvre (2026-10-10)
-
-L0 à L5 livrés le 2026-10-10 (commits fbf5f952 → e0298159, poussés sur
-`main`). Ce qui suit consigne les choix d'implémentation pris en route,
-sans revenir sur les décisions D176–D191.
-
-### 10.1 Identité tenue par la base
-
-- Une ligne `objects` par objet, système ou d'org (annexe A2). Pour les
-  types système, l'identité est écrite par des **triggers PostgreSQL**
-  (`pnex_object_identity`, `pnex_object_close`) : toute écriture native,
-  seeds et chemins chauds compris, reçoit son identité dans la même
-  transaction, sans code applicatif. Le trigger de mise à jour ne porte que
-  sur la colonne de titre (`UPDATE OF`) : les écritures de présence ou
-  d'état ne le déclenchent jamais.
-- La table native porte `object_id` (FK, unique) ; `objects.native_id` est
-  la clé native stringifiée (l'id de l'objet lui-même pour un type d'org).
-  `resource_edges` reçoit ses deux identités par trigger à l'insertion.
-- Supprimer une ligne native **ferme** l'identité (`valid_to`) ; la purge
-  D42 (`purge_for`) **ferme** les liens au lieu de les supprimer.
-- Les types système restent du code (`pnex_core::ontology`) ; les types
-  d'org sont des données (`object_types` + `object_type_versions`
-  append-only). Une ligne d'org sous une clé système = **extension** du
-  type système (propriétés seulement, D176).
-- Migrations : `m20261011_000002_ontology` (identité, types, liens
-  temporels, packs, reprise 0.1 → 0.2) et `m20261011_000010_placed_at_links`
-  (D191 : `device_placements` reste l'index matérialisé, un trigger tient
-  les liens `placed_at` ; déplacer un device ferme puis rouvre).
-
-### 10.2 Propriétés (D178)
-
-Format maison sérialisé (`PropertyDef`, `kind` à plat) : `text`, `number`
-(unité, bornes), `bool`, `date`, `date_time`, `enum`, `geo_point`, `url`
-(http(s) seulement, R11), `ref`, `series`, `events`. Erreurs = jetons de
-champ (`required`, `max_length:N`, `invalid`, `unknown`, `duplicate`).
-`PropertyDef` se désérialise à la main via `Value` (piège
-`arbitrary_precision` des enums taggés). `TypeSet` = `"*"` ou une liste de
-clés, lisible en YAML.
-
-### 10.3 Temps (D181, D182)
-
-- Lien système `measures` (device → tout type), attributs `{metric,
-  property}` ; une propriété `series` n'a qu'un capteur ouvert à la fois
-  (409 `ontology-link-cardinality`). La série d'un objet est recomposée
-  segment par segment, chaque segment découpé à la validité de son lien.
-- `as_of` : les liens sont filtrés sur `valid_from`/`valid_to` ; les
-  objets seulement sur leur fermeture (`valid_from` d'un objet = date
-  d'enregistrement, pas date du monde réel).
-- Plages : `scope_kind = object` (D182) ; fenêtres 7 j et 30 j ajoutées
-  aux préréglages.
-
-### 10.4 Requête, graphe, UI (D185–D188)
-
-- `POST /api/v1/ontology/query` : une requête SQL paramétrée (CTE par
-  saut, ≤ 4), clés de propriété contrôlées par jeu de caractères, valeurs
-  toujours liées ; filtres `@>` (GIN) pour l'égalité.
-- Graphe : CTE récursive bornée (5 000 liens, 3 s via `SET LOCAL
-  statement_timeout`) puis `petgraph` dans `pnex_core::ontology::graph`
-  (plus court chemin, impact en cascade, cycles). Le trait de stockage
-  vit côté backend (asynchrone) ; les algorithmes, purs, dans `pnex-core`.
-- UI : `/ontology` (objets, schéma, packs), `/ontology/object/:id`
-  (propriétés, liens à date / historique, graphe radial SVG, temps,
-  provenance), `/ontology/types/:type_key` (éditeur). Devices, médias et
-  POI gagnent un bouton « Page objet ».
-- Dashboards de type (D187) : `layout.object_type` + `source.object_property`,
-  résolus au capteur courant (`/objects/{id}/bindings`) avant le pipeline
-  `series-batch` inchangé. Raccourci : l'aperçu POI (`DashboardLive`) n'a
-  pas de sélecteur d'objet.
-- D188 : `write_role` par type (membre / admin / propriétaire) ; le schéma
-  (types, types de liens, packs, import) exige un admin d'org.
-
-### 10.5 Provenance, packs, assistant (D184, D189, D190)
-
-- `source_ref` : `manual:<user>`, `assistant:<user>`, `device_placements` ;
-  journal O2 `object_changes` (écriture en file, lecture sans
-  provisionner), onglet Provenance.
-- Packs : YAML embarqués (`crates/pnex-backend/packs/`, pack
-  `maintenance`) ; installation = types créés puis versionnés, refus si une
-  clé appartient à l'org hors pack ; export / import YAML du schéma d'org.
-- Montée de version d'un pack (2026-10-18) : la définition du pack fait foi
-  sur ce qu'elle déclare, mais les **ajouts locaux de l'org** (propriétés,
-  actions, attributs de lien, types source/cible) sont conservés ; avant,
-  la nouvelle version les effaçait et rendait invalides les données qui
-  les portaient. Test `pack_upgrade_keeps_org_additions`.
-- Lien écrit clos (2026-10-18) : `valid_to` à la création (après
-  `valid_from`, pas dans le futur) écrit directement une entrée
-  d'historique, même quand la paire a déjà un lien ouvert (seuls les liens
-  ouverts sont uniques par paire) ; les cardinalités ne lient que les liens
-  ouverts. Avant, un mandat passé ne pouvait pas être saisi à côté du mandat
-  en cours. Test `closed_link_is_history_beside_the_open_one`.
-- Attributs d'un lien modifiables (2026-10-18) : `PUT
-  /api/v1/ontology/links/{id}` remplace les attributs d'un lien, ouvert ou
-  clos, validés contre son type (une source ajoutée, une note corrigée) ;
-  extrémités, type et validité ne changent pas (fermer et recréer). Pas pour
-  les liaisons `measures` / `depicts`. Journal `link.update` avec la version
-  précédente. Avec : `investigation` 1.9.0, `about.link` (une affirmation
-  désigne le lien qu'elle corrobore ou conteste) ; `media_coverage` 1.1.0,
-  `planned_end` (fin annoncée à venir : `valid_to` n'est jamais futur).
-  Test `link_attributes_update_in_place`.
-- Pack **`media_coverage`** livré (2026-10-18, la « Couverture médiatique »
-  de D190, sans pays) : `media`, `program`, `party`, `mandate` ; liens
-  `controls`, `finances` (montant + devise), `broadcasts`, `staffs`,
-  `presents`, `columnist_of`, `party_member`, `holds_mandate`,
-  `appears_on`, `describes` (page → objet) ; chaque lien porte sa source,
-  sa date de consultation et son début tel que collecté. Les identifiants
-  nationaux (parlement, registre des sociétés) restent des propriétés de
-  l'org. Un pack déclare les packs dont il utilise les types
-  (`requires: [investigation]`) : ils sont installés avant lui s'ils
-  manquent. `investigation` 1.7.0 : `wikidata` sur personne et
-  organisation, provenance (`source`, `retrieved_on`, `note`) sur `owns`,
-  `employs`, `member_of`. Premier usage : ontologie politique × médias
-  France (dépôt `pnex-france-overview`). Test
-  `media_coverage_pack_requires_investigation`.
-- Assistant : schéma de l'org injecté dans le prompt système et outil
-  `describe_ontology` ; `query_ontology`, `get_object`, `create_object`,
-  `update_object`, `open_link`, `close_link`, `save_object_type` via les
-  services du contrôleur ; jamais d'archivage ni de suppression ; fiche
-  `assistant-kb/ontology.md`.
-
-### 10.6 Reste ouvert
-
-- **D183 actions** : livrées 2026-10-13 (voir l'encadré sous D183). Restent
-  l'éditeur d'actions dans l'éditeur de type, les préconditions, le retour
-  de résultat par le flow et un plafond de débit par objet.
-- Étiquetage d'ingestion `object=<kind>/<id>` (D181, dernier point) : non
-  fait ; la liaison `measures` couvre le besoin.
-- Mesures de performance sur 100 k objets (§8) : non faites.
-- Deep-link de la trace assistant vers l'objet écrit : non fait (la trace
-  nomme l'objet).
-- `/api/v1/resources/*` reste servi tel quel (pas encore marqué
-  déprécié), `CONTRACT` inchangé : les routes `/ontology/*` sont
-  additives.
-
-## 11. Décisions de pérennité (2026-10-22)
-
-Prises au vu de l'outillage commercial (`account-mapping.md`,
-`web-presence.md`) et de l'horizon CRM/ERP. Critère : ce qui deviendrait
-un piège de migration si on attendait. Le reste s'ajoute plus tard sans
-rien casser.
-
-### D367 — La proposition est un objet du noyau (priorité 1)
-
-Toute écriture produite par une machine peut arriver comme **proposition**
-au lieu d'être écrite comme donnée vivante : imports de sources
-communautaires, LLM, règles de flow, `org_resolve`, recherche web. Champs :
-cible (objet, lien ou création), différence proposée, preuves, source,
-confiance, auteur machine.
-
-- On **généralise les propositions des dossiers** (détection → proposition
-  → retenue ou rejetée) au lieu d'inventer un second mécanisme.
-- **Une seule boîte « à valider »** et **un seul journal des décisions**
-  (qui, quand, pourquoi). Accepter applique la différence par le service
-  partagé avec l'UI : mêmes contrôles, mêmes 409.
-- Les packs **cessent de déclarer** un état `to_validate` par type.
-- **Migration** des champs existants : `subsidiary_of.state`,
-  `has_website.status`, `sales_signal.state`, constats de
-  `quali_watch`. Elle reste bon marché tant que ces données sont peu
-  nombreuses.
-- À coder en premier.
-
-### D368 — Contrat pack + couche d'org (priorité 2)
-
-- Un pack **déclare ses points réglables** : réglages (seuils, poids),
-  couleurs et libellés des valeurs d'énumération, modèles de pages
-  copiables, hiérarchies.
-- Une org ne surcharge **que ces points**, dans sa propre couche ; elle
-  garde le droit d'ajouter des propriétés et des actions
-  (`keep_org_additions`).
-- À la mise à jour d'un pack, la fusion est fixe : **pack ⊕ couche d'org
-  ⊕ ajouts de l'org**. La passation entre packs (`hands_over`) s'applique
-  avant.
-- Sans ce contrat, la première adaptation d'un client devient une copie du
-  pack, et les montées de version ne fusionnent plus.
-- **Livré, première partie (2026-10-22)** : les **réglages**.
-  - Le pack déclare `settings` (`key`, nom, description, `kind`
-    `number` / `text` / `bool`, `default`, `min` / `max`).
-  - La couche de l'org = colonne `packs.settings` (migration 000048) : ses
-    valeurs seulement. Valeur en vigueur = la sienne, sinon celle du pack.
-    Une réinstallation ou une montée de version ne la touche pas.
-  - `PATCH /api/v1/ontology/packs/{key}/settings` (`ontology.schema:write`,
-    exposé au MCP) ; `null` rend un réglage au pack ; clé inconnue ou
-    valeur hors bornes = 400. `GET …/packs` rend les réglages d'un pack
-    installé.
-  - Les fonctions Starlark lisent `pack_setting("<pack>.<clé>", défaut)`
-    (dans une fonction, pas au niveau du module). Le déploiement tamponne
-    la carte en vigueur dans chaque nœud Starlark de l'org : un changement
-    s'applique au prochain déploiement, geste humain (D123).
-  - UI : bouton « Réglages » sur la ligne d'un pack installé.
-  - Premier usage : `web_presence` 1.4.0 (`confirm_threshold`, `propose_threshold`).
-  - Montée de version des fonctions et flows (2026-10-22) : une fonction
-    dont la dernière version porte encore la note `pack <clé> <version>`,
-    ou un flow dont la dernière version a pour auteur `pack:<clé>`, reçoit
-    une nouvelle version (celle du pack). Dès que l'org a enregistré sa
-    propre version, le pack n'y touche plus. Un flow mis à jour reste à
-    redéployer (D123). La réponse de l'installation nomme ce qui a été
-    gardé (`kept`) et l'UI l'affiche après la mise à jour. Test :
-    `partner_watch` web_presence.
-- **Livré, deuxième partie (2026-10-23)** : les **libellés et couleurs
-  des valeurs d'énumération** (D370).
-  - `PropertyDef.labels` : valeur → libellé par langue, à côté de
-    `colors` ; validés (valeurs connues seulement, 8 langues au plus). Sans
-    libellé, l'UI affiche la clé en mots.
-  - L'éditeur de type montre, pour chaque valeur, son libellé en
-    français et en anglais (langue de l'interface en premier) et sa
-    couleur (palette fermée).
-  - Couche de l'org = colonne `packs.display` (migration 000050) :
-    `{"type:<clé>/<propriété>" | "link:<clé>/<attribut>": {labels,
-    colors}}`. Chaque écriture d'un type ou d'un type de lien y enregistre
-    ce qui diffère de la définition livrée par le pack propriétaire de la
-    propriété (extensions D306 comprises) ; l'installation l'applique
-    par-dessus la nouvelle version. Une valeur que le pack retire perd son
-    libellé. Un libellé ou une couleur du pack que l'org a retiré est
-    noté `null` et reste retiré à la montée de version.
-  - Modifications de l'org (D368) : `PackView.kept` est calculé à chaque
-    lecture (fonctions et flows que le pack a écrits puis que l'org a
-    modifiés ; un homonyme que le pack n'a jamais écrit n'y figure pas).
-    L'onglet Packs les liste sous le pack ; « reprendre la version du
-    pack » (`POST /ontology/packs/{key}/take`, `ontology.schema:write`,
-    pack à sa version livrée) écrit la version du pack par-dessus, celle
-    de l'org reste dans l'historique.
-  - Types de lien : l'action « Affichage des valeurs » de l'onglet Types
-    de lien règle libellés et couleurs des attributs en liste de valeurs
-    (même composant que l'éditeur de type).
-  - Les pages générées (`page_render`) écrivent le libellé dans la langue
-    de l'interface de l'auteur (`ObjectPageInput.lang`, anglais par
-    défaut) : `{{prop:<clé>}}`, pastilles de `{{tree:…}}` et comptes de
-    `{{coverage:…}}`.
-  - Les pastilles de la hiérarchie portent le libellé (`labels` de
-    `NodeMark` / `MarkCount`).
-  - Test : `partner_watch` web_presence (libellé et couleur gardés à la
-    montée de version).
-- **Pas fait** :
-  - fusion d'une fonction ou d'un flow que l'org a modifié avec la
-    nouvelle version du pack : c'est l'une ou l'autre ;
-  - le nœud JavaScript ne lit pas les réglages (aucune fonction de pack
-    n'est en JavaScript).
-
-### D369 — Identité externe et frontière des transactions (principe acté, code au démarrage CRM/ERP)
-
-- **`external_ref` de premier rang** sur les objets et les liens :
-  système, identifiant externe, version ou etag, dernière synchro, sens.
-  Les identifiants existants (SIREN, LEI…) s'expriment comme des
-  références. Aucun pack ne crée de champ `<outil>_id`.
-- **Événements de changement sortants** : D356 (`import.applied`)
-  généralisé à toute écriture. Une synchro bidirectionnelle arbitre ses
-  conflits par la version (concurrence optimiste déjà en place).
-- **Écritures chiffrées = tables dédiées en ajout seul**, à côté de
-  l'ontologie et référencées par elle : mouvements de stock, lignes de
-  facture, temps passés. Elles ne sont pas des objets jsonb. L'ontologie
-  reste le graphe des choses ; les transactions vivent à côté.
-
-### D370 — Clé d'énumération stable, libellé séparé
-
-- La **clé** d'une valeur d'énumération (`customer`, `target`, `to_validate`…)
-  est un identifiant stable, **jamais renommé**, pas même pour la
-  traduire.
-- Le **libellé affiché** est séparé, par langue et surchargeable par
-  l'org (D368).
-- Renommer une clé est une migration de données, jamais une retouche
-  d'affichage.
-- Même règle pour le **texte d'un modèle de page** (2026-10-27) : `body`
-  en anglais, `bodies.fr`… pour les autres langues, avec exactement les
-  mêmes champs `{{…}}` (garde du test des packs) ; la page générée prend
-  la langue de l'interface de son auteur.
-
-## Annexe B — Calendrier GMAO : étude de l'existant (pré-PRD, 2026-10-13)
-
-> Statut : brouillon v0.1, phase de recherche. Aucun code, aucun numéro
-> D : ils seront attribués au PRD « Calendrier GMAO » que cette étude
-> alimente (roadmap P2.20, décision #26). La GMAO est un **pack** (D190) :
-> le noyau ne gagne que ce qui sert aussi hors maintenance (récurrence,
-> vue calendrier des plages).
+La GMAO est un pack (D190). Le noyau gagne seulement ce qui sert aussi hors maintenance : la
+propriété `recurrence` et l'état d'occurrence des plages. L'étude de l'existant (roadmap P2.20,
+décision #26) est dans `research/gmao-calendar/` : une fiche par projet, `matrice.md`, `patterns.md`
+(18 patterns, 9 anti-patterns) et `modele-cible.md`. Le solveur d'optimisation et le serveur CalDAV
+sont hors de l'étude.
 
 ### B1. Objectif
 
-Avant de concevoir le calendrier de la GMAO, étudier une sélection de
-projets open source sur quatre plans, et en tirer des **constats**, des
-**patterns** et des **décisions** en langage naturel, réécrits ensuite
-from scratch en Rust (Loco, Dioxus, `pnex-core`) :
-
-1. **Modèle métier** : plan de maintenance, déclencheurs, occurrences,
-   ordres de travail (OT), ressources.
-2. **UX** : vues, interactions, densité d'information, conflits.
-3. **Moteur** : récurrence, matérialisation, interop iCal/CalDAV.
-4. **Optimisation** : affectation des équipes, contraintes.
+Étudier des projets open source sur quatre plans : modèle métier, UX, moteur de récurrence,
+optimisation. En tirer des règles en langage naturel, puis écrire le code depuis zéro en Rust.
 
 ### B2. Règles d'étude (clean-room)
 
-PNEX est sous MIT ; une partie du corpus est sous copyleft
-(GPL/AGPL/LGPL).
+PneX est sous MIT. Une partie du corpus est sous copyleft.
 
 | Règle | Détail |
 |---|---|
-| Aucun extrait de code dans les notes | Ni copier-coller, ni pseudo-code calqué ligne à ligne sur une source copyleft. |
-| Comportements, pas implémentations | « La date suivante est recalculée depuis la clôture de l'OT » ✅ ; « la fonction X appelle Y puis Z » ❌ |
-| Schéma au niveau concept | Entités, relations, cardinalités, états ; jamais les noms de tables ou de colonnes. |
-| Captures = usage interne | Elles servent à l'analyse UX et ne sont **pas versionnées** (`shots/` ignoré par git). |
-| Séparation | Notes dans `research/gmao-calendar/`, hors du code ; le code s'écrit depuis le PRD, pas depuis les notes brutes. |
-| Projets permissifs aussi | On réécrit par défaut. Seules des crates Rust s'utilisent telles quelles, à licence MIT/BSD/Apache vérifiée sur le `LICENSE` réel (règle des dépendances). |
+| Aucun extrait de code dans les notes | Ni copier-coller, ni pseudo-code calqué sur une source copyleft |
+| Comportements, pas implémentations | « La date suivante part de la clôture de l'OT » oui, « la fonction X appelle Y » non |
+| Schéma au niveau concept | Entités, relations, états. Jamais les noms de tables ou de colonnes |
+| Captures en usage interne | `shots/` n'est pas versionné |
+| Séparation | Notes dans `research/gmao-calendar/`. Le code part du PRD, pas des notes |
+| Projets permissifs aussi | Réécrire par défaut. Seules des crates MIT/BSD/Apache vérifiées s'utilisent telles quelles |
 
 ### B3. Corpus
 
-**GMAO — modèle métier**
-
-| Projet | Licence | Ce qu'on cherche |
-|---|---|---|
-| Atlas CMMS (grashjs/cmms) | AGPLv3 (+ commerciale ; vérifié 2026-10-13) | Préventif **calendrier vs compteur**, génération automatique d'OT, règles d'automatisation, vue calendrier, portail de demandes, app terrain |
-| Odoo Maintenance (Community) | LGPLv3 | Équipement → périodicité → demande ; calendrier/kanban des demandes ; équipes ; durée prévue vs réelle |
-| ERPNext — Maintenance Schedule / Visit | GPLv3 | Échéancier généré depuis une périodicité ; plan vs visite réalisée |
-| openMAINT | AGPL (numéro de version à confirmer) ; mobile propriétaire | Maintenance patrimoniale, lien bâtiments/localisations (POI, carte) |
-
-**UI calendrier — vues et interactions**
-
-| Projet | Licence | Ce qu'on cherche |
-|---|---|---|
-| vkurko/calendar (EventCalendar) | MIT | Vues **ressource et timeline** gratuites, drag & drop, resize, sélection de créneau, chevauchements, performances, architecture des vues |
-| FullCalendar | MIT (core) / commercial (premium) | Référence d'interaction : sélection, heures ouvrées, événements de fond ; *resource timeline* observée sur la démo seulement, jamais dans le code premium |
-| Frappe Gantt | MIT | Gantt léger pour les arrêts techniques, dépendances, glisser pour replanifier |
-
-**Moteur — récurrence et interop**
-
-| Projet | Licence | Usage |
-|---|---|---|
-| `rrule` (rust-rrule) | MIT OR Apache-2.0 (vérifié) | Dépendance candidate de `pnex-core` : wasm32 ? bornes anti-abus, fuseaux, `after`/`before` |
-| `icalendar` (crate) | MIT/Apache-2.0 (vérifié) | Dépendance candidate pour l'export `.ics` |
-| RustiCal | AGPL-3.0 (vérifié) : étude seulement | Étude seulement : faisabilité d'un CalDAV exposé plus tard |
-
-**Optimisation**
-
-| Projet | Licence | Ce qu'on cherche |
-|---|---|---|
-| Timefold — quickstart *maintenance scheduling* | Apache-2.0 | **Catalogue de contraintes** (conflit d'équipe, compétence, fenêtre au plus tôt / date limite, pénalité prématuré vs retard), modèle *TimeGrain*. Le solveur Java n'est pas repris. |
+Modèle métier : Atlas CMMS, Odoo Maintenance, ERPNext, openMAINT (copyleft). UI : EventCalendar,
+FullCalendar core, Frappe Gantt (MIT). Moteur : `rrule`, `icalendar` (MIT / Apache-2.0), RustiCal
+(AGPL, étude seulement). Contraintes : quickstart Timefold (Apache-2.0).
 
 ### B4. Méthode par projet
 
-1. Lancer en local (docker compose ou démo officielle) avec un jeu
-   réaliste : 3 sites, 20 équipements, 3 équipes, 10 plans préventifs
-   mixtes (date + compteur).
-2. Parcours UX chronométré sur les 6 scénarios (B6) : clics, frictions,
-   ce qui est élégant.
-3. Lecture du modèle de données au niveau concept (entités, états,
-   transitions).
-4. Lecture ciblée des sources pour un comportement précis ; seule la
-   règle métier observée entre dans les notes.
-5. Captures des vues clés dans `research/gmao-calendar/<projet>/shots/`.
-6. Verdict : *à reprendre* / *à améliorer* / *à éviter*.
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  run[Lancer avec un jeu réaliste] --> ux[Jouer les 6 scénarios B6]
+  ux --> mod[Lire le modèle au niveau concept]
+  mod --> src[Lire une source pour une règle précise]
+  src --> cap[Captures dans shots/]
+  cap --> v[Verdict : reprendre, améliorer, éviter]
+```
 
-### B5. Gabarit de fiche
-
-`research/gmao-calendar/<projet>.md` :
-
-- **Identité** : version étudiée, date, licence, stack (contexte seul).
-- **Modèle métier observé** : entités et relations ; cycle de vie d'un OT
-  (états, transitions, qui déclenche) ; déclencheurs (date fixe, date
-  flottante, compteur, condition) ; matérialisation des occurrences (à la
-  volée, en base, horizon).
-- **UX calendrier** : vues et usage de chacune ; interactions (drag,
-  resize, création, replanification, multi-sélection) ; conflits,
-  surcharge, absences ; filtres (site, équipe, équipement, criticité) ;
-  mobile/terrain.
-- **Points forts** (à reprendre), **faiblesses** (à éviter), **idées pour
-  PNEX**, **verdict global**.
+Le jeu réaliste compte 3 sites, 20 équipements, 3 équipes et 10 plans préventifs mixtes. Chaque
+projet a sa fiche `research/gmao-calendar/<projet>.md`.
 
 ### B6. Scénarios communs
 
-| # | Scénario | Ce qu'on observe |
+| # | Scénario | Observation |
 |---|---|---|
-| S1 | Plan « graissage tous les 3 mois » sur une pompe | Saisie de la récurrence, aperçu des prochaines dates |
-| S2 | Plan « vidange toutes les 500 h de marche » | Déclencheur compteur, source, seuil, prévisionnel |
-| S3 | Décaler une occurrence d'une semaine sans toucher la règle | Exception vs modification de série |
-| S4 | Clôturer un OT en retard de 10 jours | Échéance suivante fixe ou flottante ? paramétrable ? |
-| S5 | Charge d'une équipe sur 4 semaines et réaffectation | Vue ressource/timeline, détection de conflit |
-| S6 | Arrêt technique de 3 jours avec 8 OT dépendants | Gantt, dépendances, fenêtre d'arrêt |
+| S1 | Graissage tous les 3 mois sur une pompe | saisie, aperçu des dates |
+| S2 | Vidange toutes les 500 h de marche | déclencheur compteur |
+| S3 | Décaler une occurrence sans toucher la règle | exception ou modification de série |
+| S4 | Clôturer un OT en retard de 10 jours | échéance fixe ou flottante |
+| S5 | Charge d'une équipe sur 4 semaines | vue ressource, conflit |
+| S6 | Arrêt de 3 jours avec 8 OT dépendants | Gantt, dépendances |
 
 ### B7. Grille comparative
 
-`research/gmao-calendar/matrice.md` : note 0–3 par projet et par critère,
-avec un commentaire court. Critères : expressivité de la récurrence
-(RRULE complète, exceptions, fuseaux) ; déclencheurs compteur/condition ;
-mode fixe vs flottant ; matérialisation et horizon ; vue mois/semaine ;
-vue ressource/timeline (technicien, équipe, équipement) ; Gantt/arrêts ;
-drag & drop et replanification ; conflits et surcharge ; filtres et
-densité ; mobile/terrain ; interop (`.ics`, CalDAV) ; performance perçue
-sur un gros jeu.
+`research/gmao-calendar/matrice.md` note chaque projet de 0 à 3 par critère : récurrence, compteur,
+fixe ou flottant, matérialisation, vues, Gantt, glisser-déposer, conflits, mobile, interop,
+performance.
 
-### B8. Hypothèses de modèle, ancrées sur l'existant
+### B8. Hypothèses de modèle
 
-À confirmer ou invalider par l'étude. Règle : **réutiliser les briques
-livrées**, ne rien redéfinir.
-
-| Hypothèse | Brique PNEX existante |
+| Hypothèse | État |
 |---|---|
-| Un **plan de maintenance** est rattaché à un objet : device, équipement ou POI | identité universelle (annexe A2) : un device est déjà un objet ; **un plan sur un device seul marche sans aucun type utilisateur** (la GMAO n'impose pas l'ontologie) |
-| Déclencheur `rrule` (date) | nouveau : types et validation de la récurrence dans `pnex-core`, compilés en wasm32, comme `check_values` (même code pour l'aperçu dans l'éditeur Dioxus et pour le backend) |
-| Déclencheur `meter` : seuil sur une mesure O2 (heures de marche, cycles, vibrations) | propriété `series` (D178/D181) ; cas M5 de `use-cases.md` (cumul calculé par flow) |
-| Déclencheur `condition` : alerte issue d'un flow | flows + notifications (D86) ; nœuds anomalie/forecast (M2–M4) |
-| Mode de recalcul `fixed` (depuis la date prévue) ou `floating` (depuis la clôture) | nouveau (scénario S4) |
-| **Occurrences** matérialisées en Postgres sur un horizon glissant (ex. 90 j) par un worker Loco ; exceptions (déplacée, annulée) portées par l'occurrence, pas par la règle | une occurrence est une **plage** `time_ranges` à portée objet (D182) ; à trancher : plage seule ou table dédiée |
-| **OT** généré depuis une occurrence : automatique, à J-n ou manuel | l'OT est la **procédure instanciée** des Pages (`pages.md` P9), jamais un nouvel objet « bon de travail » |
-| Ce qui doit agir au début d'une occurrence (mise en maintenance, consignation) | **action** déclarée (D183, ex. `start_maintenance`), exécutée par un flow déployé, jamais par le calendrier (D123) |
-| **Ressources** : technicien, équipe, compétence, équipement immobilisé | types et liens du pack Maintenance (D179) ; personnes = utilisateurs de l'org ou objets du pack, à trancher |
-| Assistant IA | il propose un plan ou un décalage (pré-rempli), jamais d'écriture silencieuse (D142–D145) |
-
-### B9. Livrables de la phase
-
-1. `research/gmao-calendar/<projet>.md` : une fiche par projet (B5).
-2. `research/gmao-calendar/matrice.md` : la grille (B7).
-3. `research/gmao-calendar/patterns.md` : le best-of en règles métier et
-   patterns UX, sans référence au code.
-4. `research/gmao-calendar/modele-cible.md` : le modèle de domaine
-   proposé (B8 tranché) et les questions ouvertes.
-5. Maquettes des vues retenues aux jetons PNEX (`design-system.md`),
-   avant tout code (« UI design d'abord »).
-
-### B10. Hors périmètre de la phase
-
-- Toute implémentation Rust.
-- Stock, pièces détachées, achats, coûts (notés seulement s'ils
-  touchent le calendrier).
-- Le solveur d'optimisation (seul le catalogue de contraintes est
-  collecté).
-- Le serveur CalDAV (faisabilité seulement).
+| Un plan se rattache à tout objet, device nu compris | fait : lien `maintains` (B13) |
+| Déclencheur date | fait : propriété `recurrence`, sans RRULE |
+| Déclencheur compteur (heures de marche) | ouvert : propriété `series` (D181) |
+| Déclencheur condition (alerte de flow) | ouvert : flows, notifications (D86) |
+| Mode `fixed` ou `floating` | fait : champ `floating` |
+| Occurrence = plage D182 sur un horizon glissant | fait : plage de l'objet plan, 90 jours |
+| OT = procédure instanciée des Pages (`pages.md` P9) | remplacé : OT = objet `work_order` (annexe C1) |
+| Action au début d'une occurrence | ouvert : action D183, exécutée par un flow (D123) |
+| Ressources : technicien, équipe, compétence | partiel : `assigned_to` (annexe C2) |
+| Assistant | fait : il propose, il n'écrit jamais en silence |
 
 ### B11. Questions ouvertes
 
-1. Le compteur produit-il une **date prévisionnelle** (extrapolation de
-   la tendance) affichée au calendrier ? Avec quel modèle (le nœud
-   forecast existant ?) ?
-2. Granularité de l'horizon de matérialisation, configurable par org ?
-3. **Calendriers ouvrés** (fériés, astreintes, horaires d'équipe) dès la
-   v1 ?
-4. Représentation d'un OT **correctif** (non planifié) pour voir la
-   charge réelle ?
-5. Mode hors ligne pour le terrain en v1 ?
-6. Le calendrier est-il une vue **générique des plages** (noyau, utile
-   au média et aux dossiers) dont la GMAO n'est qu'un usage, ou une vue
-   du pack ? (lien `pages.md` §10 : vues calendrier/Gantt des
-   collections, repoussées)
+1. Le compteur produit-il une date prévisionnelle au calendrier ? Avec le nœud forecast ?
+2. L'horizon de matérialisation (90 jours) devient-il réglable par org ?
+3. Les calendriers ouvrés (fériés, astreintes, horaires d'équipe) entrent-ils dès la v1 ?
+4. Comment représenter un OT correctif pour voir la charge réelle ?
+5. Le mode hors ligne entre-t-il en v1 ?
+6. Le calendrier est-il une vue générique des plages (noyau) ou une vue du pack ?
 
-### B12. Critères de fin de phase
+### B12. État de l'étude
 
-> État 2026-10-13 : étude **documentaire** faite (docs, démos, tickets
-> publics ; aucune instance lancée), livrables dans `research/gmao-calendar/`.
-> Constats clés : aucun projet ne couvre à la fois modèle, vue de charge
-> et Gantt ; le compteur est partout manuel (avantage PNEX : télémétrie) ;
-> aucune interop calendrier ; FullCalendar premium exclu (licence) →
-> EventCalendar (MIT) embarqué + Gantt Dioxus natif proposés ; `rrule`
-> MIT/Apache mais maintenance ralentie et wasm32 non prouvé.
+L'étude documentaire est faite, sans instance lancée. Aucun projet ne couvre à la fois modèle, vue
+de charge et Gantt. Le compteur est partout manuel. FullCalendar premium est exclu par sa licence.
 
-- [ ] Les 6 scénarios joués sur au moins Atlas, Odoo et EventCalendar.
-- [x] Une fiche par projet du corpus (B3) — étude documentaire
-  2026-10-13, scénarios « à jouer » encore ouverts.
-- [x] Matrice comparative remplie (version documentaire).
-- [x] `patterns.md` : 18 patterns et 9 anti-patterns.
-- [ ] `modele-cible.md` relu, hypothèses B8 tranchées (proposition
-  écrite 2026-10-13, relecture à faire).
-- [ ] Relecture finale : aucun extrait de code tiers dans `research/`.
+### B13. Calendrier livré
 
-### B13. Premier lot de code (2026-10-13, branche `feat/gmao-plans`, 21f68103)
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  ev[Objet créé, modifié ou archivé] --> m[Matérialiseur]
+  occ[Occurrence modifiée] --> m
+  tick[Balayage 6 h, un pod] --> m
+  m --> d[Dates sur 90 jours]
+  d --> r[(Plages rec:propriété:date)]
+  m --> k{Occurrence touchée par un humain ?}
+  k -- oui --> keep[Jamais réécrite]
+  k -- non --> upd[Suit la règle et le titre]
+```
 
-Lancé sur l'accord de l'user, avant la relecture complète de
-`modele-cible.md`. Ce qui est fait, et en quoi cela s'écarte de la
-proposition :
+```mermaid
+stateDiagram-v2
+  [*] --> planned
+  planned --> due : lead_days atteint
+  due --> late : fin prévue passée
+  planned --> done : clôturer
+  due --> done : clôturer
+  late --> done : clôturer
+  planned --> cancelled : annuler
+  due --> cancelled : annuler
+  late --> cancelled : annuler
+```
 
-- **Noyau** :
-  - type de propriété **`recurrence`** dans `pnex-core`
-    (`ontology/recurrence.rs`) : début, tous les N jours, semaines, mois ou
-    ans, fin facultative, `floating`, durée en jours ;
-  - énumération bornée (1000 dates au plus) et fins de mois sans dérive.
+- **Noyau** : `pnex-core/src/ontology/recurrence.rs`. Début, tous les N jours, semaines, mois ou
+  ans, fin facultative, `floating`, durée, `lead_days`. 1000 dates au plus, fins de mois sans
+  dérive. Pas de RRULE : il faudra `rrule` quand un plan demandera BYDAY ou une heure.
+- **État** : `pnex_core::time_range::occurrence_state`, partagé par le serveur, l'UI et l'assistant.
+- **Matérialiseur** : `services/ontology/recurrence.rs`, `HORIZON_DAYS` = 90. Les occurrences
+  portent sur l'objet qui tient la récurrence, le plan. La cible se rejoint par `maintains`. Toute
+  propriété `recurrence` de tout type produit ses plages.
+- **Pack** : type `maintenance_plan`, lien `maintains` vers tout type, device compris.
+- **UI** : `/calendar`, grille du mois native Dioxus. Le dialogue d'occurrence marque réalisée
+  (date, temps passé), annule ou déplace. L'occurrence change seule, jamais le plan. La carte
+  « Occurrences » de l'onglet Temps apparaît sur le plan et sur tout objet lié à lui.
+- **Sécurité** : une plage d'objet exige le `write_role` du type (D182, D188). Le nœud
+  `range_upsert` d'un flow déployé n'est pas concerné.
+- **Assistant** : fiche `assistant-kb/calendar.md`, `list_calendar` (lecture),
+  `propose_occurrence_change` (rien n'est écrit, même règle `scope_writable` que l'API).
 
-  **Écart** : pas de RRULE ni de crate `rrule`. Une période simple
-  couvre S1, S2 en date et S4. Il faudra passer à `rrule` quand un plan
-  demandera BYDAY ou une heure. La crate `chrono` (sans horloge) entre
-  dans `pnex-core`.
-- **Matérialiseur** (`services/ontology/recurrence.rs`) :
-  - fonctionnement :
-    - horizon de 90 jours ;
-    - `external_id = rec:<propriété>:<date>`, origine `grid` ;
-    - recalcul après chaque création, modification ou archivage d'objet, et
-      après la modification d'une occurrence ;
-    - balayage toutes les 6 h, sur un seul pod (D106).
-  - **ce qu'un utilisateur a touché n'est jamais réécrit** (réalisée,
-    statut posé, ou déplacée). Les occurrences futures intactes sortent de
-    la série quand la règle change ou que l'objet est archivé.
-  - **Écart** : les occurrences portent sur **l'objet qui tient la
-    récurrence** (le plan), pas sur la cible. La cible se rejoint par le
-    lien `maintains`, et le mécanisme reste générique : toute propriété
-    `recurrence` de tout type produit ses plages.
-- **Pack Maintenance 1.2.0** : type `maintenance_plan` (`schedule`,
-  `instructions` ; `immobilizes` retiré tant qu'il ne fait rien) et lien `maintains` vers
-  n'importe quel type, device compris.
-- **UI** :
-  - saisie de la récurrence avec aperçu des 5 prochaines dates (même code
-    que le serveur) ;
-  - page **`/calendar`** : grille du mois native Dioxus, états planifiée,
-    en retard (calculé), réalisée, annulée ;
-  - dialogue d'occurrence : marquer réalisée, annuler, déplacer ;
-    l'occurrence seule change, jamais le plan.
-  
-  **Écart** : ni EventCalendar ni vue de charge pour l'instant (pas encore
-  d'équipes).
-- **Sécurité** : une plage d'objet (création, modification, suppression,
-  import) exige désormais le `write_role` du type de l'objet (D188), comme
-  l'objet lui-même. Cet écart préexistait (D182) ; test viewer/member →
-  403 `ontology-write-forbidden`. Le nœud `range_upsert` (flow déployé
-  par un humain) n'est pas concerné.
-- **Assistant** :
-  - fiche `assistant-kb/calendar.md` ;
-  - les plans se créent par `create_object`, dont la description donne
-    la forme d'une récurrence ;
-  - **`list_calendar`** (lecture, avec l'état calculé) ;
-  - **`propose_occurrence_change`** : réalisée, déplacer ou annuler. Rien
-    n'est écrit ; mêmes règles que l'API (`scope_writable`, partagé avec
-    le contrôleur) ; le bouton « Vérifier » sous la réponse ouvre le
-    dialogue du calendrier pré-rempli.
-- **Second passage (même jour)** :
-  - **état d'occurrence partagé** dans `pnex-core`
-    (`time_range::occurrence_state`) : planifiée, à préparer
-    (`lead_days`, devenu un champ de la récurrence), en retard, réalisée,
-    annulée ;
-  - les occurrences intactes suivent le titre et le délai du plan ;
-  - **clôture** avec date et temps passé ;
-  - `GET /time-ranges/{id}` ;
-  - **carte « Occurrences »** dans l'onglet Temps de l'objet qui porte la
-    récurrence **et de tout objet lié à lui** (la pompe montre son
-    prochain graissage) : générique, sans connaître le lien `maintains`.
-- **Reste à faire** :
-  - **côté terrain** : compteur (S2 en heures de marche), OT = procédure
-    (Pages L6), équipes et vue de charge, Gantt d'arrêt, flux `.ics` ;
-  - **côté occurrences** : proposer l'action D183 (`start_maintenance`) à
-    l'ouverture d'une occurrence ; jours en UTC.
+## Annexe C — GMAO générique : ordres de travail, pièces, stock, fournisseurs, QR
 
-## Annexe C — GMAO générique : ordres de travail, pièces, stock, fournisseurs, QR (2026-11-12)
-
-Suite de l'annexe B. Objectif : une GMAO **générique**, valable pour tout
-corps de métier de la maintenance (froid, CVC, électricité, ascenseurs,
-cuisines professionnelles, plomberie, machines de production,
-multi-technique), posée sur la collecte et la mesure déjà en place
-(devices, séries d'objets D181, alertes, calendrier de maintenance). Aucun
-type ni aucune règle propre à un métier n'entre dans le moteur : tout vit
-dans les packs (garde `tests/engine_genericity.rs`), un métier ajoute au
-besoin sa couche (`maintenance_<métier>`, même règle que les couches pays).
+La GMAO vaut pour tout corps de métier de la maintenance. Elle repose sur la collecte et la mesure
+existantes : devices, séries d'objets, alertes, calendrier. Aucun type ni règle de métier n'entre
+dans le moteur. Un métier ajoute au besoin sa couche `maintenance_<métier>`.
 
 ### C1. Choix (Shan, 2026-11-12)
 
 | Sujet | Choix |
 |---|---|
-| Ordre de travail (OT) | **Objet d'ontologie** `work_order` du pack Maintenance. La procédure Pages L6 s'y rattachera plus tard ; l'OT ne l'attend pas |
-| Stock de pièces | **Par emplacement** (magasin, site, véhicule du technicien), seuil de réapprovisionnement, sortie de stock à la clôture d'un OT |
-| Fournisseurs et prix | **Les `organization` du graphe** (pack Investigation, déjà partagé avec le CRM) : une fiche par société, pas de type « fournisseur » à part |
+| Ordre de travail (OT) | Objet `work_order` du pack Maintenance. La procédure des Pages s'y rattachera plus tard |
+| Stock de pièces | Par emplacement (magasin, site, véhicule), seuil de réapprovisionnement, sortie à la clôture d'un OT |
+| Fournisseurs et prix | Les `organization` du graphe (pack `investigation`, partagé avec le CRM). Pas de type « fournisseur » |
 | QR code | Sur la fiche de chaque objet, planche d'étiquettes imprimable, scan dans l'app mobile |
 
-### C2. Modèle (lot 1, codé le 2026-11-12)
+### C2. Modèle
 
-Pack **Maintenance 1.6.0** :
+```mermaid
+classDiagram
+  direction LR
+  work_order --> Objet : work_order_on
+  work_order --> maintenance_plan : from_plan
+  work_order --> spare_part : uses_part
+  spare_part --> Objet : fits
+  organization --> spare_part : supplies
+  stock_movement --> spare_part
+  stock_movement --> stock_location
+  stock_level --> spare_part
+  stock_level --> stock_location
+```
 
-- `work_order` : référence, nature (préventif, correctif, inspection,
-  amélioration), état (demandé, planifié, en cours, en attente, terminé,
-  annulé), priorité, dates (demande, échéance, fin), description, compte
-  rendu, heures de main-d'œuvre, emplacement d'où sortent les pièces ;
-- `spare_part` : référence interne (unique), fabricant et sa référence,
-  unité, coût unitaire, fiche technique ;
-- `stock_location` : code, nature (magasin, sur site, véhicule) ; contenu
-  dans un site ou un dossier ;
-- `stock_movement` : **le stock est un journal** — pièce, emplacement,
-  quantité signée, motif (réception, sortie, inventaire, transfert), date,
-  OT. On ne corrige jamais un mouvement, on en ajoute un ; l'historique
-  et l'audit sont gratuits, et deux sorties simultanées ne s'écrasent pas ;
-- `stock_level` : une ligne par pièce × emplacement, `on_hand` calculé,
-  seuil `min_quantity` posé par l'org, drapeau `below_min` ;
-- liens : `work_order_on` (OT → **tout objet**, un device nu compris),
-  `from_plan` (OT → plan de maintenance), `uses_part` (OT → pièce,
-  attribut quantité), `fits` (pièce → tout objet : nomenclature).
+- `work_order` : référence unique, nature (`preventive`, `corrective`, `inspection`, `improvement`),
+  état, priorité, dates, compte rendu, heures, emplacement d'où sortent les pièces. Les états sont
+  `requested`, `planned`, `in_progress`, `on_hold`, `done`, `cancelled`. Le pack n'impose aucune
+  transition.
+- `stock_movement` : le stock est un journal. Un mouvement porte une pièce, un emplacement, une
+  quantité signée, un motif, une date et un OT. Personne ne corrige un mouvement : on en ajoute un.
+- `stock_level` : une ligne par pièce et emplacement, `on_hand` calculé, seuil `min_quantity`,
+  drapeau `below_min`.
+- Pack `maintenance_partners` (`requires: [maintenance, investigation]`) : `supplies` (prix `money`,
+  référence fournisseur, délai, minimum, préféré), `assigned_to` (technicien), `performed_by`
+  (sous-traitant), `manufactures`.
 
-Deux modèles de flows livrés en brouillon (jamais déployés par
-l'installation, D123) :
+```mermaid
+---
+config:
+  layout: elk
+---
+flowchart LR
+  wo[OT done] --> f1[Flow pièces sorties, chaque heure]
+  f1 --> mv[(stock_movement wo:OT:pièce)]
+  f1 --> mk[OT : pièces sorties le]
+  mv --> f2[Flow niveaux de stock, chaque heure]
+  f2 --> lv[(stock_level)]
+  lv --> bm[below_min]
+```
 
-- **pièces sorties à la clôture** : chaque heure, un OT terminé donne un
-  mouvement de sortie par pièce utilisée, clé `wo:<OT>:<pièce>` (rejouer
-  ne double rien), puis l'OT est marqué « pièces sorties le » ; sans
-  emplacement, l'OT attend ;
-- **niveaux de stock** : chaque heure, somme des mouvements par pièce et
-  emplacement (agrégat en base), seuls les niveaux qui changent sont
-  écrits, drapeau sous le seuil.
+Les deux flows sont des modèles en brouillon. L'installation ne les déploie jamais (D123). La clé
+`wo:<OT>:<pièce>` rend le rejeu sans doublon. Un OT sans emplacement attend. Le flow des niveaux
+écrit seulement les niveaux qui changent.
 
-Pack **Maintenance partners 1.0.0** (`requires: [maintenance,
-investigation]`) :
+Limites connues :
 
-- `supplies` (organisation → pièce) : prix unitaire (`money`), référence
-  fournisseur, délai, minimum de commande, date du prix, préféré ;
-- `assigned_to` (OT → personne : le technicien), `performed_by`
-  (OT → organisation : le sous-traitant).
+- 500 niveaux et 1000 couples pièce × emplacement par passe.
+- Un niveau sans mouvement n'est jamais signalé sous le seuil.
+- Un OT dont une partie des mouvements s'écrit est marqué quand même.
 
-Limites connues du lot 1 (raccourcis assumés) : 500 niveaux et
-1000 couples pièce × emplacement par passe ; un niveau sans aucun
-mouvement n'est jamais signalé sous le seuil ; un OT dont une partie
-seulement des mouvements s'écrit est marqué quand même.
+Les nomenclatures, références de pièces et variantes d'équipement sont dans `parts-docs.md`
+(D960–D971, lots PD0 et PD1).
 
 ### C3. Lots suivants
 
 | Lot | Contenu |
 |---|---|
-| C-QR1 | QR sur la fiche objet : URL courte vers un jeton `qr_tags` (D962, `parts-docs.md` §5.4), jamais un lien profond en clair ; crate `qrcode` déjà dans le front ; planche d'étiquettes imprimable pour une sélection, planches vierges (D963) |
-| C-QR2 | Scan dans l'app mobile : caméra → objet ouvert |
-| C-PV | OT préventif créé depuis une occurrence de plan qui devient due (annexe B) |
-| C-AL | Une alerte d'un device lié à un équipement propose un OT correctif (courbes et pré-diagnostic joints) |
-| C-DOC | Document d'intervention par métier = modèle de page du pack métier, rempli depuis l'OT et les mesures |
+| C-QR1 | QR sur la fiche objet : URL courte vers un jeton `qr_tags` (D962, `parts-docs.md` §5.4), planche d'étiquettes, planches vierges (D963). Lot commun avec PD1 |
+| C-QR2 | Scan dans l'app mobile : caméra, puis objet ouvert |
+| C-PV | OT préventif créé depuis une occurrence de plan qui devient due |
+| C-AL | Une alerte d'un device lié à un équipement propose un OT correctif |
+| C-DOC | Document d'intervention par métier : modèle de page du pack métier, rempli depuis l'OT |
 | C-ACH | Demande d'achat depuis un niveau sous le seuil, fournisseur préféré proposé |
-| C-UI | Écrans dédiés : file des OT d'un technicien, fiche pièce avec stock par emplacement et prix par fournisseur (même fiche que PD0 de `parts-docs.md`, enrichie) |
-- Pièces et documentation (recherche, nomenclatures, QR d'appareils, procédures de montage) : `parts-docs.md` (P2.39) ; PD1 et C-QR1/C-QR2 se font une fois.
+| C-UI | File des OT d'un technicien, fiche pièce avec stock et prix par fournisseur |
+
+## Reste à faire
+
+- **Actions D183** : éditeur d'actions dans l'éditeur de type, préconditions, retour de résultat par
+  le flow, plafond de débit par objet. Pas d'action système (archiver) en V1.
+- **Étiquetage d'ingestion** `object=<kind>/<id>` sur les points de télémétrie (D181) : non fait. La
+  liaison `measures` couvre le besoin.
+- **Performance** : mesures sur 100 k objets (§8).
+- **Assistant** : deep-link de la trace vers l'objet écrit. La trace nomme l'objet.
+- **API** : `/api/v1/resources/*` n'est pas marqué déprécié (D191).
+- **Graphe** : l'UI n'affiche pas `truncated` sur un chemin trouvé, l'API et le MCP le rendent. Les
+  parcours de la requête D185 (`query.rs`) n'ont pas reçu la lecture niveau par niveau. Le coût en
+  écriture des index couvrants n'est pas mesuré.
+- **Packs (D368)** : pas de fusion d'une fonction ou d'un flow modifié par l'org avec la version du
+  pack, c'est l'une ou l'autre. Le nœud JavaScript ne lit pas les réglages.
+- **D369** : `external_ref` et événements de changement sortants, au démarrage du CRM ou de l'ERP.
+- **Calendrier GMAO** : compteur (S2 en heures de marche), équipes et vue de charge, Gantt d'arrêt,
+  flux `.ics`, proposer `start_maintenance` à l'ouverture d'une occurrence, jours en UTC.
+- **Étude GMAO** : jouer les 6 scénarios sur Atlas, Odoo et EventCalendar. Relire `modele-cible.md`.
+  Vérifier qu'aucun extrait de code tiers n'est dans `research/`.
+- **Annexe C** : lots C-QR1 à C-UI (§C3).
+- **Questions de Shan** : §9 et B11.

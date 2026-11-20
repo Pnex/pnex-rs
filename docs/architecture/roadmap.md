@@ -48,8 +48,7 @@ une même org, des sources hétérogènes et les rend exploitables ensemble.
   frontière de sécurité reste l'org puis la plateforme (D130).
 - **Conséquence de tri** : à priorité égale, un chantier qui relie des
   données existantes (ontologie, chronologie, recherche) passe avant un
-  nouveau pilier isolé — cohérent avec le gel des nouveaux piliers de la
-  0.2.0 (`ontology.md` §9).
+  nouveau pilier isolé.
 
 **Périmètre élargi le 2026-11-03** (`operational-platform.md`, D551–D568) :
 toute capacité civile d'une plateforme opérationnelle ontologique, militaire
