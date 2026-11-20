@@ -153,8 +153,9 @@ hôte, pour toute la plateforme** : deux orgs qui lisent la même source ne doub
 ### D939 — Des lecteurs de format, jamais de fournisseur
 
 `read` accepte : `csv` (séparateur, en-tête ou colonnes par position, encodage), `json` (pointeur
-des enregistrements, dépliage d'un tableau imbriqué), `xml` (chemin), `html` (sélecteur d'un
-tableau), `ical`, `lines`, `binary` (enregistrements de taille fixe : champs, type, boutisme).
+des enregistrements, dépliage d'un tableau imbriqué), `xml` (chemin), `html` (page web lue
+comme un document : `/ld` les objets JSON-LD, `@graph` déplié ; `/meta` les balises `<meta>`, le
+titre et l'adresse canonique ; `/links` chaque lien et son texte ; puis pointeurs comme en JSON), `ical`, `lines`, `binary` (enregistrements de taille fixe : champs, type, boutisme).
 Une colonne déclare son type, son format de date, son fuseau, son échelle décimale. Le fuseau est
 un nom IANA (`America/New_York`), heure d'été comprise ; un décalage fixe (`-05:00`) seulement pour
 une source qui ne change jamais d'heure. Relevé du 2026-11-12 : les fichiers HistData sont à l'heure

@@ -770,9 +770,85 @@ fn read_json(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, F
         let doc = serde_json::from_slice(&bytes).map_err(|_| unreadable())?;
         (doc, r.records.as_deref().unwrap_or(""))
     };
+    records_of(r, row, &doc, pointer)
+}
+
+/// A web page read as a document of three arrays: `ld` (every JSON-LD
+/// object, `@graph` flattened), `meta` (one object: `<meta>` name or
+/// property to content, plus `title` and `canonical`) and `links` (each
+/// `<a href>` with its text), then walked like JSON.
+fn read_html(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, Failure> {
+    let bytes = file.bytes(READ_MAX_BYTES as u64)?;
+    let doc = html_doc(&String::from_utf8_lossy(&bytes));
+    records_of(r, row, &doc, r.records.as_deref().unwrap_or(""))
+}
+
+fn html_doc(text: &str) -> Value {
+    use scraper::{Html, Selector};
+    let page = Html::parse_document(text);
+    let sel = |s: &str| Selector::parse(s).expect("static selector");
+    let mut ld = Vec::new();
+    for script in page.select(&sel(r#"script[type="application/ld+json"]"#)) {
+        // A malformed block is skipped: the page's other blocks still read.
+        let Ok(v) = serde_json::from_str::<Value>(&script.text().collect::<String>()) else {
+            continue;
+        };
+        let items = match v {
+            Value::Array(a) => a,
+            v => vec![v],
+        };
+        for item in items {
+            match item.get("@graph").and_then(Value::as_array) {
+                Some(graph) => ld.extend(graph.iter().cloned()),
+                None => ld.push(item),
+            }
+        }
+    }
+    let mut meta = serde_json::Map::new();
+    for m in page.select(&sel("meta[content]")) {
+        let e = m.value();
+        if let Some(k) = e.attr("property").or_else(|| e.attr("name")) {
+            meta.entry(k.to_string())
+                .or_insert_with(|| Value::String(e.attr("content").unwrap_or("").to_string()));
+        }
+    }
+    if let Some(t) = page.select(&sel("title")).next() {
+        meta.insert(
+            "title".into(),
+            Value::String(t.text().collect::<String>().trim().to_string()),
+        );
+    }
+    if let Some(href) = page
+        .select(&sel(r#"link[rel="canonical"][href]"#))
+        .next()
+        .and_then(|l| l.value().attr("href"))
+    {
+        meta.insert("canonical".into(), Value::String(href.to_string()));
+    }
+    let links: Vec<Value> = page
+        .select(&sel("a[href]"))
+        .map(|a| {
+            let text = a.text().collect::<Vec<_>>().join(" ");
+            json!({
+                "href": a.value().attr("href").unwrap_or(""),
+                "text": text.split_whitespace().collect::<Vec<_>>().join(" "),
+            })
+        })
+        .collect();
+    json!({ "ld": ld, "meta": [meta], "links": links })
+}
+
+/// The records a pointer reaches in a document, typed.
+fn records_of(
+    r: &Read,
+    row: &Row,
+    doc: &Value,
+    pointer: &str,
+) -> Result<Option<Arc<Batches>>, Failure> {
+    let unreadable = || fail("unreadable", json!({ "what": "json" }));
     let segments: Vec<&str> = pointer.split('/').skip(1).collect();
     let mut found = Vec::new();
-    walk(&doc, &segments, &mut Vec::new(), &mut found);
+    walk(doc, &segments, &mut Vec::new(), &mut found);
     // The records: each array reached, or an object of arrays read by position.
     let mut records: Vec<(Vec<String>, Value)> = Vec::new();
     for (keys, v) in found {
@@ -802,7 +878,7 @@ fn read_json(r: &Read, row: &Row, file: &Blob) -> Result<Option<Arc<Batches>>, F
     if records.is_empty() && !pointer.contains('*') && doc.pointer(pointer).is_none() {
         return Err(unreadable());
     }
-    typed_records(r, row, &doc, &records)
+    typed_records(r, row, doc, &records)
 }
 
 /// Typed rows of records read from a document (JSON, XML, iCalendar, lines).
@@ -955,14 +1031,11 @@ pub fn read(r: &Read, input: &[Row]) -> Result<Vec<Arc<Batches>>, Failure> {
         let batches = match r.format {
             Format::Csv => read_csv(r, row, file)?,
             Format::Json | Format::Xml => read_json(r, row, file)?,
+            Format::Html => read_html(r, row, file)?,
             Format::Binary => read_binary(r, row, file)?,
             Format::Ical => read_ical(r, row, file)?,
             Format::Lines => read_lines(r, row, file)?,
             Format::Xlsx => read_sheet(r, row, file)?,
-            _ => {
-                let format = format!("{:?}", r.format).to_lowercase();
-                return Err(fail("format_unsupported", json!({ "format": format })));
-            }
         };
         out.extend(batches);
     }
@@ -1115,5 +1188,52 @@ mod tests {
             "{rec:?}"
         );
         assert_eq!(rec[0]["side"], "buy");
+    }
+
+    /// A press release page: its JSON-LD article (inside `@graph`), its
+    /// meta tags and its links, each a pointer away.
+    #[test]
+    fn an_html_page_reads_its_json_ld_meta_and_links() {
+        let page = r#"<html><head><title> ACME opens a plant </title>
+            <meta property="og:title" content="ACME opens a plant">
+            <meta property="article:published_time" content="2026-11-10T08:00:00Z">
+            <link rel="canonical" href="https://news.example.org/plant">
+            <script type="application/ld+json">{"@context":"https://schema.org","@graph":[
+              {"@type":"WebPage","name":"x"},
+              {"@type":"NewsArticle","headline":"ACME opens a plant","datePublished":"2026-11-10"}]}</script>
+            <script type="application/ld+json">{ not json</script>
+            </head><body><a href="/files/plant.pdf"> The   release (PDF)</a></body></html>"#;
+        let row = Row {
+            file: Some(Arc::new(Blob::Mem(page.as_bytes().to_vec()))),
+            ..Default::default()
+        };
+        let read_at = |records: &str, columns: Value| {
+            let r: Read = serde_json::from_value(json!({
+                "as": "t", "from": "f", "format": "html", "records": records, "columns": columns
+            }))
+            .unwrap();
+            rows_of(&read(&r, std::slice::from_ref(&row)).unwrap())
+        };
+        let ld = read_at(
+            "/ld",
+            json!([{"name": "type", "at": "/@type"}, {"name": "headline", "optional": true}]),
+        );
+        assert_eq!(ld.len(), 2, "{ld:?}");
+        assert_eq!(ld[1]["headline"], "ACME opens a plant");
+        let meta = read_at(
+            "/meta",
+            json!([
+                {"name": "title"}, {"name": "canonical"},
+                {"name": "published", "at": "/article:published_time"}
+            ]),
+        );
+        assert_eq!(meta[0]["title"], "ACME opens a plant");
+        assert_eq!(meta[0]["canonical"], "https://news.example.org/plant");
+        assert_eq!(meta[0]["published"], "2026-11-10T08:00:00Z");
+        let links = read_at("/links", json!([{"name": "href"}, {"name": "text"}]));
+        assert_eq!(
+            (links[0]["href"].as_str(), links[0]["text"].as_str()),
+            (Some("/files/plant.pdf"), Some("The release (PDF)"))
+        );
     }
 }

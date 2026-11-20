@@ -1,0 +1,145 @@
+# The articles of the org's newsrooms read through their sitemap (sources
+# of format `sitemap`): the addresses containing the source's `match` (a
+# path such as `/press-releases/`; empty: every address) changed in the last
+# 14 days, each page read for its title, date, summary (JSON-LD
+# article first, then the meta tags) and its first PDF. A sitemap index is
+# followed one level down. Which company an item is about is the source's
+# (`source_of`) or the org's flow.
+# shortcut: the pages of the last 14 days are read again at every run (a
+# tracked enumeration must be a pipeline's first step), split the page
+# reading into its own pipeline over a table if a newsroom publishes more.
+# shortcut: a site answering bots with a challenge page (200) yields items
+# without date or title, dropped here; such sites need the browser agent.
+key: sitemap
+name: Newsrooms (sitemap)
+object_hosts:
+  - { type: news_source, property: url, only: { format: [sitemap] } }
+steps:
+  - enumerate: { as: sources, cross: [{ as: url, objects: { type: news_source, property: url, only: { format: [sitemap] }, columns: [match] } }] }
+  - fetch: { as: maps, for_each: sources, url: "{{url}}", every: 1s, missing_is_empty: true }
+  - read:
+      as: index
+      from: maps
+      format: xml
+      records: sitemapindex/sitemap
+      columns:
+        - { name: source, value: "{{url}}" }
+        - { name: match, value: "{{match}}" }
+        - { name: url, at: loc }
+        - { name: lastmod, optional: true }
+        - { name: since, value: "{{run_date|days_before:14}}" }
+  - read:
+      as: entries
+      from: maps
+      format: xml
+      records: urlset/url
+      columns:
+        - { name: source, value: "{{url}}" }
+        - { name: match, value: "{{match}}" }
+        - { name: loc }
+        - { name: lastmod, optional: true }
+        - { name: since, value: "{{run_date|days_before:14}}" }
+  - sql:
+      as: children
+      sql: |
+        SELECT source, match, url FROM index
+        WHERE lastmod IS NULL OR substr(lastmod, 1, 10) >= since
+  - fetch: { as: child_maps, for_each: children, url: "{{url}}", every: 1s, missing_is_empty: true }
+  - read:
+      as: child_entries
+      from: child_maps
+      format: xml
+      records: urlset/url
+      columns:
+        - { name: source, value: "{{source}}" }
+        - { name: match, value: "{{match}}" }
+        - { name: loc }
+        - { name: lastmod, optional: true }
+        - { name: since, value: "{{run_date|days_before:14}}" }
+  - sql:
+      as: candidates
+      sql: |
+        SELECT DISTINCT source, loc AS url FROM (
+          SELECT source, match, loc, lastmod, since FROM entries
+          UNION ALL
+          SELECT source, match, loc, lastmod, since FROM child_entries
+        ) e
+        WHERE (match IS NULL OR match = '' OR strpos(loc, match) > 0)
+          AND lastmod IS NOT NULL AND substr(lastmod, 1, 10) >= since
+  - fetch: { as: pages, for_each: candidates, url: "{{url}}", every: 2s, missing_is_empty: true }
+  - read:
+      as: ld
+      from: pages
+      format: html
+      records: /ld
+      columns:
+        - { name: url, value: "{{url}}" }
+        - { name: type, at: "/@type", optional: true }
+        - { name: headline, optional: true }
+        - { name: description, optional: true }
+        - { name: published, at: /datePublished, optional: true }
+  - read:
+      as: meta
+      from: pages
+      format: html
+      records: /meta
+      columns:
+        - { name: source, value: "{{source}}" }
+        - { name: url, value: "{{url}}" }
+        - { name: title, optional: true }
+        - { name: og_title, at: "/og:title", optional: true }
+        - { name: og_description, at: "/og:description", optional: true }
+        - { name: description, optional: true }
+        - { name: published, at: "/article:published_time", optional: true }
+  - read:
+      as: links
+      from: pages
+      format: html
+      records: /links
+      columns:
+        - { name: url, value: "{{url}}" }
+        - { name: href }
+  - sql:
+      as: items
+      sql: |
+        SELECT m.source, m.url,
+               coalesce(a.headline, m.og_title, m.title) AS title,
+               substr(coalesce(a.published, m.published), 1, 10) AS date,
+               substr(coalesce(a.description, m.og_description, m.description, ''), 1, 2000) AS summary,
+               p.pdf
+        FROM meta m
+        LEFT JOIN (SELECT url, max(headline) AS headline, max(description) AS description, max(published) AS published
+                   FROM ld WHERE type IN ('NewsArticle', 'Article', 'BlogPosting', 'PressRelease')
+                   GROUP BY url) a ON a.url = m.url
+        LEFT JOIN (SELECT l.url, min(CASE WHEN l.href LIKE 'http%' THEN l.href
+                                         ELSE split_part(l.url, '/', 1) || '//' || split_part(l.url, '/', 3) || l.href END) AS pdf
+                   FROM links l WHERE lower(l.href) LIKE '%.pdf' GROUP BY l.url) p ON p.url = m.url
+  - sql:
+      as: kept
+      sql: "SELECT *, coalesce(pdf, url) AS link FROM items WHERE title IS NOT NULL AND date IS NOT NULL AND length(date) = 10"
+  - write: { from: kept, table: { name: watch_sitemap, replace: true } }
+tests:
+  - name: an index, its recent press releases, each page's article and PDF
+    today: "2026-11-20"
+    objects:
+      "news_source.url?format=sitemap": ["https://news.example.org/sitemap.xml"]
+      "news_source.url?format=sitemap?columns=match": ["https://news.example.org/sitemap.xml"]
+    extra:
+      "news_source.url?format=sitemap?columns=match":
+        "https://news.example.org/sitemap.xml": { match: "/press/" }
+    given:
+      "https://news.example.org/sitemap.xml": sitemap_index.xml
+      "https://news.example.org/sitemap-posts.xml": sitemap_posts.xml
+      "https://news.example.org/press/plant": press_plant.html
+      "https://news.example.org/press/contract": press_contract.html
+    expect:
+      children:
+        rows: 1
+      candidates:
+        rows: 2
+      kept:
+        rows: 2
+        columns: [source, url, title, date, summary, pdf, link]
+        contains:
+          - { url: "https://news.example.org/press/plant", title: "ACME opens a plant", date: "2026-11-10", summary: "A new site in Lyon.", pdf: "https://news.example.org/files/plant.pdf", source: "https://news.example.org/sitemap.xml" }
+          - { url: "https://news.example.org/press/contract", title: "ACME wins a contract", date: "2026-11-12", summary: "Meta only." }

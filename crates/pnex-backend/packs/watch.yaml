@@ -7,13 +7,15 @@
 # gives it): a second run never makes a second item. `state` is the human
 # decision: a flow may dismiss an item about something else, only a person
 # retains one.
+# Since 1.1.0 a source of format `sitemap` is a newsroom read through its
+# sitemap: its pages of the last 14 days matching the source's `match`.
 # An item of a company's own source reaches the company through the source
 # (`from_source` then `source_of`); an item found elsewhere is linked by a
 # flow (`item_about`, proposed when the match is uncertain).
 key: watch
 name: Watch
 names: {fr: "Veille"}
-version: "1.0.0"
+version: "1.1.0"
 requires: [investigation]
 description: "News items about the objects followed, the sources they come from, and shows with their organizers and exhibitors. Questions: what is new about this company? Which shows are coming, and who exhibits?"
 descriptions: {fr: "Les actualités des objets suivis, les sources d'où elles viennent, et les salons avec leurs organisateurs et leurs exposants. Questions : quoi de neuf sur cette société ? Quels salons arrivent, et qui expose ?"}
@@ -50,9 +52,10 @@ types:
         name: Format
         names: {fr: "Format"}
         kind: enum
-        values: [feed, page]
-        labels: {feed: {fr: "Flux RSS ou Atom", en: "RSS or Atom feed"}, page: {fr: "Page", en: "Page"}}
+        values: [feed, page, sitemap]
+        labels: {feed: {fr: "Flux RSS ou Atom", en: "RSS or Atom feed"}, page: {fr: "Page", en: "Page"}, sitemap: {fr: "Plan de site (sitemap)", en: "Sitemap"}}
         indexed: true
+      - { key: match, name: Addresses kept, names: {fr: "Adresses retenues"}, description: "Sitemap: the part every article address contains, for example /press-releases/. Empty: every address.", descriptions: {fr: "Plan de site : la partie que contient l'adresse de chaque article, par exemple /communiques/. Vide : toutes les adresses."}, kind: text, max_len: 255 }
   - key: show
     name: Show
     names: {fr: "Salon"}
@@ -125,5 +128,28 @@ imports:
             source_url: url
             state: { value: to_validate }
         - { as: source, type: news_source, key: url, create: false, missing: skip, properties: { url: feed } }
+      links:
+        - { type: from_source, from: item, to: source }
+  - name: Newsrooms (sitemap)
+    source: file
+    mapping:
+      key: watch_sitemap
+      pipeline: watch/sitemap
+      name: Newsrooms
+      names: {fr: "Salles de presse (sitemap)"}
+      description: The recent articles of the org's news sources of format sitemap, each linked to its source, with its first PDF as source when it has one. A second run never makes a second item.
+      objects:
+        - as: item
+          type: news_item
+          key: ref
+          title: title
+          update: false
+          properties:
+            ref: url
+            summary: summary
+            date: date
+            source_url: link
+            state: { value: to_validate }
+        - { as: source, type: news_source, key: url, create: false, missing: skip, properties: { url: source } }
       links:
         - { type: from_source, from: item, to: source }

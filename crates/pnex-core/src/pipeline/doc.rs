@@ -493,6 +493,8 @@ pub enum Format {
     Csv,
     Json,
     Xml,
+    /// A web page: its JSON-LD objects (`/ld`), meta tags (`/meta`) and
+    /// links (`/links`).
     Html,
     Ical,
     Lines,
