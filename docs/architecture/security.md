@@ -335,7 +335,7 @@ Détail et correctifs dans `audit-2026-11-06.md` (référence entre parenthèses
 | SEC-78 | LOW | **Contrôle de version non atomique de `update_notification_template`** (C5) | D144 | corrigé 2026-11-07 : `update_if_unchanged` |
 | SEC-79 | LOW | **`authorize_tool` ouvert sur un outil hors registre IAM** (C6) | R2 | corrigé 2026-11-07 |
 | SEC-80 | LOW | **`OrgContext` laisse passer une route absente du registre IAM** (`operation_of` → `None`) | R2 | corrigé 2026-11-20 : refus par défaut (403 `access-denied`). Seules les routes hors spec (`services::iam::off_spec` : `/_*`, `/ws/*`, `/internal/*`) passent sans entrée. Test `unregistered_org_route_is_refused` |
-| SEC-81 | LOW | **AIS danois servi en HTTP clair, sans somme de contrôle** (`markets-research.md` F.7) | R8 | accepté 2026-11-09 : hôte fixé, rien de l'org envoyé, décodage strict |
+| SEC-81 | LOW | **AIS danois servi en HTTP clair, sans somme de contrôle** (`markets-research.md` §3.10) | R8 | accepté 2026-11-09 : hôte fixé, rien de l'org envoyé, décodage strict |
 | SEC-82 | MEDIUM | **Chargements massifs déclenchables par tout inscrit** (MK22–MK24) | R2 | corrigé 2026-11-09 : `bulk_history` seulement avec un quota de tables fixé par un admin plateforme (D821) |
 | SEC-83 | LOW | **Lectures non bornées d'un fichier massif** (ADS-B, gzip) | R8 | corrigé 2026-11-09 : 64 Mio avant et après décompression, ligne ≤ 64 Kio |
 | SEC-84 | MEDIUM | **Boîte des terminaux MT5 sans plafond par org** | R2 | corrigé 2026-11-09 : 20 terminaux, 2 000 appels en attente, jeton haché |
