@@ -20,7 +20,7 @@
 Tout document de `docs/` (spec technique, PRD, architecture) suit l'ASD-STE100 adapté au français. Dosage : environ 80 % de prose STE, 20 % de forme dev classique (tableaux, blocs de code, routes, YAML, schémas).
 
 Écriture (ASD-STE100 Issue 9, 2025-01-15 ; numéro de règle entre crochets) :
-- **Un mot = un sens** [1.3, 1.11, 9.4] : le lexique de `design-system.md` §7 et les termes définis dans la section Concepts du document. Jamais deux noms pour la même chose, jamais de synonyme pour varier le style. Le lexique tient lieu de dictionnaire STE (qui n'existe qu'en anglais).
+- **Un mot = un sens** [1.3, 1.11, 9.4] : le lexique de `design-system.md` §7 et les termes définis dans la section Concepts du document. Jamais deux noms pour la même chose, jamais de synonyme pour varier le style. Le lexique tient lieu de dictionnaire STE (qui n'existe qu'en anglais). Les docs emploient les mots de l'UI : « Table », jamais « dataset » ni « jeu de données » en prose (choix de Shan, 2026-11-20). Un identifiant en `code` (`dataset_trigger`, `datasets`) reste tel quel.
 - **Termes techniques** [1.9, 1.10] : courts et clairs ; pas de jargon d'équipe ni d'argot. Un terme nouveau est défini dans Concepts avant son premier emploi.
 - **Une action = un verbe** [3.7] : « supprimer le job », jamais « procéder à la suppression du job ».
 - **Phrases courtes** : 20 mots au plus dans une procédure [5.1], 25 dans une description [6.3]. Un identifiant, un nombre avec son unité, un titre ou un texte entre parenthèses compte pour un mot [8.5, 8.6].
