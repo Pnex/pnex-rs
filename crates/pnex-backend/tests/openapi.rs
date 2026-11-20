@@ -108,7 +108,7 @@ fn every_route_is_documented_or_pending() {
     assert!(routes.len() > 100, "sterile sweep: {} routes", routes.len());
 }
 
-// ── Contract shape guards (api-contract.md D239–D243) ─────────────────────
+// ── Contract shape guards (api.md D239–D243) ─────────────────────
 
 fn spec_value() -> serde_json::Value {
     serde_json::from_str(&pnex_backend::openapi::spec_json()).expect("spec is JSON")

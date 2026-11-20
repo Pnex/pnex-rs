@@ -1556,11 +1556,11 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
 - **Statut** : corrigé (non commité).
 
 
-## 2026-10-17 — audit du contrat d'API (spec OpenAPI, `api-contract.md`)
+## 2026-10-17 — audit du contrat d'API (spec OpenAPI, `api.md`)
 
 Constats relevés en annotant les 421 routes. Les écarts de forme (erreurs,
 pagination, types, verbes, langue) sont traités par les lots H1–H5 de
-`docs/architecture/api-contract.md` ; restent ici les défauts ponctuels.
+`docs/architecture/api.md` ; restent ici les défauts ponctuels.
 
 ### O74 — Visite publique : assets en cache un an sans version
 

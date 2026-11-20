@@ -694,7 +694,7 @@ puis L4 pour 6 ; 4 et 5 sont des règles à tenir, 9 est fait.
   d'eux tourne sur une autre version que le serveur interrogé : c'est vrai aussi pendant un
   déploiement normal, le temps du déploiement. Ligne de runbook : `helm/README.md` du dépôt
   `pnex-deploy`, section Scaling.
-- **Point 8, outillage**. `pnex import run <id> --wait` (`cli.md` §3). La sortie de `pnex
+- **Point 8, outillage**. `pnex import run <id> --wait` (`api.md` §6.3). La sortie de `pnex
   raw` passe par `serde_json`, qui échappe les caractères de contrôle : le défaut relevé le
   23 n'existe plus pour une réponse JSON. Création et modification d'un import par le MCP :
   non faites, aucun besoin depuis.
@@ -1476,7 +1476,7 @@ Rien ici ne bloque ce qui est livré. Chaque ligne renvoie au détail du §9.6.
 | Sujet | Question | Recommandation | Bloque |
 |---|---|---|---|
 | Identifiant S3 du worker (SEC-61) | ~~Identité limitée à `org_*/datasets/*`~~ **faite le 2026-11-06** dans le chart (`security.md` SEC-61), RustFS le permet. Reste : une identité par org si la frontière doit tenir hors du code | Une seule identité tant qu'il n'y a qu'un worker partagé | Rien |
-| Média derrière Cloudflare | ~~Envoi par parties aussi~~ **fait le 2026-11-05** (`media.md`) : parties, assemblage en tâche de fond, hachage au fil de l'eau. `pnex media load` le 2026-11-06 (`cli.md`). Reste : le front lit encore le fichier entier en mémoire avant d'envoyer | Lecture du fichier par morceaux côté front si un client envoie plusieurs Gio | Rien |
+| Média derrière Cloudflare | ~~Envoi par parties aussi~~ **fait le 2026-11-05** (`media.md`) : parties, assemblage en tâche de fond, hachage au fil de l'eau. `pnex media load` le 2026-11-06 (`api.md` §6.3). Reste : le front lit encore le fichier entier en mémoire avant d'envoyer | Lecture du fichier par morceaux côté front si un client envoie plusieurs Gio | Rien |
 | Effacement : non déclaré | Un fichier sans déclaration ni lignage garde la personne | À trancher avant de promettre un effacement complet | Promesse d'effacement |
 | Effacement : table supprimée | Les empreintes partent avec elle : recréée et rechargée, la personne revient | Garder les empreintes par org | Promesse d'effacement |
 | Effacement : colonne convertie | `digits`, `left`, `concat` ne sont pas déclarées | À trancher avec le cas réel | Promesse d'effacement |

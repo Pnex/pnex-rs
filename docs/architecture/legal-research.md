@@ -25,7 +25,7 @@
 > généricité), `ingestion.md` (D317–D322), `partner-watch.md` (D303
 > synchronisations), `ontology.md` (D176–D191, D184 provenance, D185
 > requêtes, D190 packs), `doc-search.md` (index plein texte et
-> vectoriel), `iam.md` (comptes de service), `mcp.md`, `api-contract.md`,
+> vectoriel), `iam.md` (comptes de service), `api.md`,
 > `ai-assistant.md` (D119 : LLM de l'org seulement), `security.md`.
 
 ## 1. Le besoin en une phrase
@@ -155,7 +155,7 @@ Par ordre de lot :
 - `verify_citation` ne « corrige » rien en silence : il dit ce qui
   diffère et propose des candidates, l'avocat tranche.
 - API REST et MCP sont générés du même contrat que la façade publie
-  (même discipline que `api-contract.md`).
+  (même discipline que `api.md`).
 
 ### D493 — Accès : clé API gratuite, quotas
 

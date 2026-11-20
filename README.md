@@ -209,13 +209,13 @@ The data model of an organization is itself data
 
 ### API, MCP and CLI
 
-The HTTP API is a contract ([`api-contract.md`](docs/architecture/api-contract.md)): every
+The HTTP API is a contract ([`api.md`](docs/architecture/api.md)): every
 route is annotated and published in [`docs/contracts/openapi.json`](docs/contracts/openapi.json),
 checked by blocking tests. From that one spec:
 
-- **MCP** at `/api/v1/mcp` ([`mcp.md`](docs/architecture/mcp.md)), OAuth sign-in, the caller's
+- **MCP** at `/api/v1/mcp` ([`api.md` §3.2](docs/architecture/api.md)), OAuth sign-in, the caller's
   own rights. Deletes, device commands and deploy/stop are never exposed.
-- **`pnex` CLI** ([`cli.md`](docs/architecture/cli.md)): every operation as
+- **`pnex` CLI** ([`api.md` §3.4](docs/architecture/api.md)): every operation as
   `pnex <tag> <action>`, dangerous ones behind `--yes`.
 
 ### Vision Lab: from footage to a deployed model

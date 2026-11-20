@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **Proposé le 2026-10-23, rien d'implémenté** |
 | Numérotation | **D378…D401**, lots **A0…A5** |
-| Repose sur | IAM et comptes de service (`iam.md`, D285–D299), MCP (`mcp.md`, D245–D250), assistant (`ai-assistant.md` §9, D142–D145), propositions (`proposals.md`, D367, D371–D377), usages LLM (`media-import-pipeline.md` D212), fabric de workers (`worker-fabric.md`, §14 bacs à sable), coffre (`secrets.md`, D110–D119), egress (`security.md` R8), extension navigateur (`extension-collector.md`) |
+| Repose sur | IAM et comptes de service (`iam.md`, D285–D299), MCP (`api.md` §3.2, D245–D250), assistant (`ai-assistant.md` §9, D142–D145), propositions (`proposals.md`, D367, D371–D377), usages LLM (`media-import-pipeline.md` D212), fabric de workers (`worker-fabric.md`, §14 bacs à sable), coffre (`secrets.md`, D110–D119), egress (`security.md` R8), extension navigateur (`extension-collector.md`) |
 | Sécurité | `security.md` §6 avant tout lot ; finding = ligne SEC-n au §7 |
 | Complété par | `agent-environments.md` (D700–D720) : connecteur de registre, build, environnements, ontologie, audit LLM. Le catalogue de moteurs D394 y devient un usage des environnements (D704) |
 
@@ -482,7 +482,7 @@ référencer qu'une opération `EXPOSED`.
 ## 15. Contrat, IAM, MCP, assistant (D392)
 
 - Routes `agents`, `agent_runs`, `agent_teams`, `agent_policies`,
-  `agent_roles`, `agent_skills`, `agent_engines`, `runners` : annotées (`api-contract.md`),
+  `agent_roles`, `agent_skills`, `agent_engines`, `runners` : annotées (`api.md`),
   inscrites dans `iam.rs`
   (`agents:read`, `agents:write`, `agents:run`, `agents:stop`,
   `runners:manage`) et dans `exposure.rs` :

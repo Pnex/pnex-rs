@@ -170,7 +170,7 @@ wanted = {
                       "http://localhost:33418/callback"],
     "post_logout_redirect_uris": [f"{origin}/"],
     "allowed_origins": [origin],  # Rauthy rejects a trailing slash here
-    # RFC 8707 `resource` sent by MCP clients (docs/architecture/mcp.md).
+    # RFC 8707 `resource` sent by MCP clients (docs/architecture/api.md §3.3).
     "allowed_resources": [f"{origin}/api/v1/mcp"],
 }
 added = 0

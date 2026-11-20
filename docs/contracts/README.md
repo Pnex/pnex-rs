@@ -22,7 +22,7 @@ contrats asservissent le comportement Rust (tests de parité).
   périmètre : WebSockets (`/ws/*`), endpoints internes (`/internal/*`),
   sondes loco (`/_*`). Non servi en HTTP (pas de Swagger UI).
   Règles de forme (erreurs, pagination, types, verbes, langue) :
-  `docs/architecture/api-contract.md` (D238–D245).
+  `docs/architecture/api.md` (D238–D245).
 - **Lint** : `task openapi:lint` (Redocly, `redocly.yaml`) — toute
   opération documente au moins une 2xx et une 4xx. Le spec ajoute de
   lui-même 401 (route authentifiée), 403 `org-not-member` (route d'org) et
@@ -46,7 +46,7 @@ contrats asservissent le comportement Rust (tests de parité).
 - **MCP** : `POST /api/v1/mcp` sert les opérations de ce spec comme
   outils MCP, avec les droits de l'appelant ; la table d'exposition
   (`crates/pnex-api-contract/src/exposure.rs`) et le branchement
-  d'un client sont décrits dans `docs/architecture/mcp.md`.
+  d'un client sont décrits dans `docs/architecture/api.md`.
 
 ## Règles de parité retenues
 

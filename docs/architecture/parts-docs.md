@@ -242,7 +242,7 @@ Pas de tables métier (D960). Ce qui s'ajoute :
 | Pages | modèles de procédure de montage par modèle × pièce |
 
 Contrat d'API, IAM, MCP et assistant suivent les règles permanentes
-(`api-contract.md`, `iam.md`, `mcp.md`, `ai-assistant.md` §9) au moment de
+(`api.md`, `iam.md`, `ai-assistant.md` §9) au moment de
 chaque lot.
 
 ## 7. Briques réutilisées

@@ -185,7 +185,7 @@ la sous-traitance privée de rang 2 et 3 reste partielle.
   déploiement.
 - **C7** : une conversion d'upload perdue est reprise après 3 min sans battement (au
   lieu de 10), avec la transaction ouverte par le pod perdu.
-- **C11** : `pnex import update <id> --mapping @fichier` (`cli.md`).
+- **C11** : `pnex import update <id> --mapping @fichier` (`api.md` §6.3).
 - **C12** : pas de connecteur INSEE (il faut une clé) ; la sortie du plafond de 100 sites
   est le pipeline sur le fichier SIRENE complet, éprouvé ici (« Group sites » v4).
 - **C16** : sous 24 px, motif de tirets court (`pnex-gerbe-small`) : le loader de 16 px

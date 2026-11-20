@@ -273,7 +273,7 @@ Les décisions suivantes des agents navigateur commencent à D281.
   Activation par org avec une déclaration d'usage, comme D275 ; avis
   juridique avant tout modèle.
 
-## 6. API (esquisse, à mettre au contrat `api-contract.md` au codage)
+## 6. API (esquisse, à mettre au contrat `api.md` au codage)
 
 | Route | Rôle |
 |---|---|

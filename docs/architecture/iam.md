@@ -4,7 +4,7 @@
 |---|---|
 | Statut | Lots I0–I3 livrés. I6 livré en lecture seule, I7 livré sans simulateur ni « Gérer l'accès ». I4 et I5 à faire (§16) |
 | Numérotation | **D285…D299**. Rouvre D188 (`ontology.md`) |
-| Repose sur | D117 (rôles d'org), D72 (admin plateforme), `security.md` (R1–R23), `api-contract.md` (D238–D245), `ontology.md` (D183, D185, D187, D190), `design-system.md` §7 (lexique) |
+| Repose sur | D117 (rôles d'org), D72 (admin plateforme), `security.md` (R1–R23), `api.md` (D238–D245), `ontology.md` (D183, D185, D187, D190), `design-system.md` §7 (lexique) |
 | Sécurité | Chaque changement passe `security.md` §6 |
 
 ## Résumé

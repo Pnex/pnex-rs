@@ -13,7 +13,7 @@
 > Liens : `ontology.md` (D176–D190, en particulier D183 actions, D185
 > requêtes, D190 packs), `iam.md` (comptes de service), `media.md`,
 > `network-check.md` (D408 preuves serveur, D421 documents d'une page),
-> `api-contract.md` (D238–D245), `mcp.md`.
+> `api.md` (D238–D253).
 
 ## 1. Principe : PneX est une plateforme de données générique (D432)
 

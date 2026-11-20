@@ -15,7 +15,7 @@ Liens : `edge-model.md` §8 (doctrine edge), `security-tiers.md` §6 bis
 (identité device D153–D158), `media-ingest.md` (flux, segments, D159),
 `media.md` (médias), `doc-search.md` (indexation), `cases.md` §4 et
 `discourse-analysis.md` DA6 (périmètre, rouvert par D254),
-`api-contract.md`, `mcp.md`, `ai-assistant.md` §9, `security.md`.
+`api.md`, `ai-assistant.md` §9, `security.md`.
 
 ## 1. Ce qui change par rapport à la v1
 
@@ -423,7 +423,7 @@ appairage. Aucun identifiant de plateforme n'est stocké par PNEX ni par
 l'extension : l'agent utilise la session déjà ouverte dans le profil
 (D265).
 
-API, contrat et MCP : chaque route suit `api-contract.md` (annotation,
+API, contrat et MCP : chaque route suit `api.md` (annotation,
 `ErrorDetail`, `Paginated`), le CRUD `extension-missions` et la lecture
 du registre (`GET /api/v1/extension/videos`) sont des routes org
 `can_write`/lecture ; les routes `ws-ticket`, `uploads`, `ws` sont
