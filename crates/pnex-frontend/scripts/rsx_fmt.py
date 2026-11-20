@@ -1,4 +1,4 @@
-"""Guarded `dx fmt` for the frontend's rsx (see docs/architecture/rsx-fmt.md).
+"""Guarded `dx fmt` for the frontend's rsx (see docs/architecture/design-system.md §9).
 
 dx fmt 0.7 has splicing bugs: on some constructs it moves or duplicates
 comments, drops tokens or never converges. This wrapper never trusts it
@@ -191,7 +191,7 @@ def main():
     if bad:
         print(
             f"\n{len(bad)} file(s) need attention — rewrite the construct dx fmt "
-            "mishandles (docs/architecture/rsx-fmt.md), then re-run.",
+            "mishandles (docs/architecture/design-system.md §9), then re-run.",
             file=sys.stderr,
         )
         sys.exit(1)

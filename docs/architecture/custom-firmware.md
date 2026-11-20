@@ -4,7 +4,7 @@
 **Portée :** firmware ESP (lib PneX), build serveur, front (éditeur), protocole device
 **Renvois :** `firmware-build.md` (pipeline de build par device), `edge-model.md`
 (D44–D48 : manifeste de capacités, golden vectors), `ota.md`, `worker-fabric.md`
-(isolation des workers), `editor-shell.md` (coquille d'éditeur), `runtime.md`
+(isolation des workers), `design-system.md` §8 (coquille d'éditeur), `runtime.md`
 
 ---
 

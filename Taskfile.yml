@@ -726,7 +726,7 @@ tasks:
   # ---------- Quality ----------
 
   fmt:
-    desc: Format the workspace — rsx through the guarded dx fmt, then cargo fmt (docs/architecture/rsx-fmt.md)
+    desc: Format the workspace — rsx through the guarded dx fmt, then cargo fmt (docs/architecture/design-system.md §9)
     cmds:
       - python3 crates/pnex-frontend/scripts/rsx_fmt.py write
       - cargo fmt --all

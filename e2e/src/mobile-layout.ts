@@ -1,4 +1,4 @@
-// Phone layout probe (docs/architecture/mobile-ui.md): on the current page,
+// Phone layout probe (docs/architecture/design-system.md rule 11): on the current page,
 // lists what a phone user cannot reach — a page that scrolls sideways, an
 // action (button, link, select) past the right edge of the screen that no
 // scrollable ancestor brings back, a row action of a table outside the

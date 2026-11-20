@@ -18,7 +18,7 @@ l'org, couches), `doc-search.md` (index de recherche des documents),
 `dashboard_editor` / D129 (liaisons de lecture `SourceRef`),
 `runtime.md` §3.6 (D108 Valkey obligatoire), `ai-assistant.md` §9
 (D142–D145), `security.md` (R1–R20, R11–R13 en particulier),
-`editor-shell.md`.
+`design-system.md` §8.
 
 ---
 

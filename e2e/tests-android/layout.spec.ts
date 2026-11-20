@@ -1,4 +1,4 @@
-// Phone layout guard (docs/architecture/mobile-ui.md): on every route, no
+// Phone layout guard (docs/architecture/design-system.md rule 11): on every route, no
 // sideways page scroll and no action out of reach — list row actions stay on
 // screen, the editors' Save / Deploy too. Runs in both UI locales (French
 // labels are longer).

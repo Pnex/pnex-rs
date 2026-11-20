@@ -144,8 +144,8 @@ Cause réelle, 5ᵉ fois : un build Rust lancé depuis un terminal vit dans le c
 ## Formatage (hygiène, bloquant en CI)
 
 - **`task fmt` avant chaque commit, `task fmt:check` = job CI `fmt`.** Rust → `cargo fmt` ; intérieur des `rsx!` → `dx fmt` via le wrapper gardé `crates/pnex-frontend/scripts/rsx_fmt.py`.
-- **Jamais `dx fmt` à la main** (bugs de recollage : commentaires déplacés/dupliqués, tokens perdus, non-convergence ; `--check` réécrit les fichiers). Détail : `docs/architecture/rsx-fmt.md`.
-- Fichier refusé par `task fmt` → réécrire la construction fautive (liste dans rsx-fmt.md : `{match … => rsx!{}}` en bloc, expression multi-ligne en attribut, handler `let … else { return; };` sur une ligne, `with_mut` multi-ligne…). Ne jamais contourner la garde.
+- **Jamais `dx fmt` à la main** (bugs de recollage : commentaires déplacés/dupliqués, tokens perdus, non-convergence ; `--check` réécrit les fichiers). Détail : `docs/architecture/design-system.md` §9.
+- Fichier refusé par `task fmt` → réécrire la construction fautive (liste dans `design-system.md` §9 : `{match … => rsx!{}}` en bloc, expression multi-ligne en attribut, handler `let … else { return; };` sur une ligne, `with_mut` multi-ligne…). Ne jamais contourner la garde.
 
 ## Passe STE sur `docs/` (en cours depuis 2026-11-20)
 

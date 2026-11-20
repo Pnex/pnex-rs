@@ -617,7 +617,7 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   pages liste ; la barre `EditorShell` fait 613–680 px avec Enregistrer /
   Déployer hors écran.
 - **Détail** : 17 anomalies M1–M17 mesurées + plan en 4 lots dans
-  [`architecture/mobile-ui.md`](architecture/mobile-ui.md).
+  l'audit `mobile-ui.md` (retiré, règles reprises dans [`architecture/design-system.md`](architecture/design-system.md) §4 « Téléphone » et règle 11).
 - **Statut** : ✅ résolu (lots livrés et poussés, `1620f8b`, garde
   `layout.spec.ts` Android).
 
@@ -668,7 +668,7 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
 
 - **En-tête** à 392 px : titre coupé mot par mot (« Demo / – / Home »),
   « Back to list » sur deux lignes, « v2 · live » et « Refresh every » tassés
-  (capture `home-mobile-live`). À rapprocher de mobile-ui.md (pas vu dans
+  (capture `home-mobile-live`). À rapprocher de `design-system.md` §4 « Téléphone » (pas vu dans
   M1–M17 pour la vue live d'un tableau).
 - **Cartes** : hauteur fixe (`h-44`, carte Lumière ~350 px de haut sur
   téléphone pour une ligne de contenu ; carte Météo idem dans l'éditeur) → beaucoup

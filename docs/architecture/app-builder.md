@@ -19,7 +19,7 @@
 > Liens : `external-apps.md` (D432–D441), `viz-bases.md` (D24, D31, D40,
 > D41), `surfaces-controls.md` (D123–D133), `ontology.md` (D183 actions,
 > D185 requête, D187 dashboards de type, D188 droits), `iam.md`,
-> `editor-shell.md`, `design-system.md` §7 (lexique), `security.md`
+> `design-system.md` §8 (coquille d'éditeur) et §7 (lexique), `security.md`
 > (R1–R23), `ai-assistant.md` §9, `api.md`.
 
 ## 1. Constat (relevé du 2026-10-29)

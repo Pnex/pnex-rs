@@ -94,7 +94,7 @@ pub fn HomePanel(cx: EditorCx, widget: Widget, can_write: bool, catalog: SourceC
     let all_controls = controls.read().clone().unwrap_or_default();
     let dirty = *cx.layout.read() != *cx.saved_layout.read();
     let source_roles = card.source_roles();
-    // Bound control of each role (computed outside the markup, rsx-fmt.md).
+    // Bound control of each role (computed outside the markup, design-system.md §9).
     let role_controls: Vec<(&'static pnex_core::home::ControlRole, Option<UiControl>)> = card
         .control_roles()
         .iter()
